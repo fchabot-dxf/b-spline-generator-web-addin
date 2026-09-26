@@ -9417,3 +9417,41 @@ Verified with a real render (same local-server + force-reveal technique as AMEND
 Contour checked (row fully absent, only the checkbox+width remain) and unchecked (row appears with all 4 buttons).
 
 Verify: 1234/1234 vitest. Commit 9c56304, pushed. NO FUSION this whole turn.
+
+## T75 item 1 — LAT-SIZE: a declared PATTERN.size {width,height} row in BOTH lattice panels
+
+Escalated to the advisor before touching code (a genuine architectural fork, not a guess call): the Shape Lattice
+tool's own board sizing was already real-inches (`CONTOUR_SIZE_INSET_IN`, 0.5in/side, `insetRegionForContour`), but
+the Box Lattice tool's own `PATTERN.margin` was LATTICE CELLS (~0.25in/side at default spacing) — unifying naively
+would have silently resized every existing saved Box Lattice pattern's rendered extent. Advisor's own ruling
+("option C"): unify under real inches with a LOSSLESS one-time migration converting any existing cell-margin into an
+equivalent explicit `size`, so no saved file's rendered result changes on load.
+
+Landed as one new function both tools' own region resolution now shares — `sizedBoardRegion(region, size)`
+(editor-lattice-boundary.js): a centered region at the declared `{width,height}` (real inches, the OUTSIDE size),
+falling back per-axis to the existing board-minus-1in default when null/unset. `PATTERN_DEFAULTS.margin` is
+retired entirely, replaced by `PATTERN_DEFAULTS.size = {width:null, height:null}`. Every consumer of the old
+margin-based board math now goes through this one function instead: `_resolveExtent`'s own 'board' branch (app-
+side fill), `resolveBoardExtent` (manifest-side, editor-sketch-manifest.js), and Shape Lattice's own
+`_shapeContourRegion`/`buildSketchManifest` contour-region computation. A new migration, `box-lattice-margin-to-
+size` (app-init.js), converts an existing pattern's `margin*spacing` into the equivalent explicit `size` and
+deletes `margin`, gated (as always) on the CURRENT shape of a saved pattern, never a version number.
+
+Both panels now show a "Size" section (width/height, blank = "auto"): Shape Lattice's own row is immediate-effect,
+matching its existing Contour-width field's own wiring. Box Lattice's own row is ALSO immediate-effect, mirroring
+its existing Orientation toggle rather than this panel's own usual "read on Generate" convention for structural
+fields — changing the fill AREA itself needs a full re-layout of rails/ties immediately, the same reasoning that
+already makes Orientation an immediate re-projection instead of a deferred field; there's no "re-style already-
+owned pieces in place" option here the way Widths/Colors have.
+
+Verified end-to-end against the REAL running app, not just unit tests: local static HTTP server over the actual
+palette HTML, headless Chrome driven over its own CDP WebSocket (PowerShell `Start-Process` to launch the browser —
+this session's usual node-`spawn`-launches-chrome scripts silently failed to open their own CDP port in this
+particular environment, root cause not chased down since the PowerShell launch path works fine), force-revealed the
+Box Lattice panel, clicked Generate, read the real generated rail geometry's bounding box, then typed a Size width
+and confirmed the SAME live pattern re-centered and shrank exactly as `sizedBoardRegion`'s own formula predicts
+(board 7in wide, auto region [0.5,6.5], width=1 region correctly becomes the centered [3,4]) — a real regenerate,
+not just a UI relabel.
+
+Verify: 1252/1252 vitest, 40/40 pytest (untouched by this item, still green). Commit 95dfd82, pushed. NO FUSION this
+whole turn.
