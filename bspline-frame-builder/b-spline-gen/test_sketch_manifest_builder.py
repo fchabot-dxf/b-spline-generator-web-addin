@@ -1712,6 +1712,16 @@ def test_shared_ctx_lets_a_later_kind_project_an_earlier_kinds_entity_and_constr
     # the cross-kind Coincident succeeded against the projected copy -- zero wrap-fails.
     assert ties_summary["constraints"]["count"] == 0, ties_summary["constraints"]["first_reasons"]
 
+    # T76 item 7 ("Parity per sketch"): verify_sketch_against_manifest runs
+    # ONCE per build_constrained_sketch call, reading ctx.entity_map[sketch.
+    # name] and manifest['entities'] -- BOTH already scoped to just the ONE
+    # sketch/kind being built, even though ctx.entity_map now holds every
+    # OTHER kind's own entries too (Rails' own, from the earlier call). No
+    # extra code was needed for this: each kind's own parity check already
+    # only ever sees its own geometry.
+    assert rails_summary["parity"]["mismatches"] == []
+    assert ties_summary["parity"]["mismatches"] == []
+
     # the projected point is geometrically IDENTICAL to rails' own rail0:S
     # (project() copies geometry; it is a real, separate entity, not the
     # same object) -- proving this isn't just "no crash" but the actual

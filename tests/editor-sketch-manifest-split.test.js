@@ -206,3 +206,20 @@ describe('splitManifestByKind — shape lattice (with contour)', () => {
     expect(totalEntities).toBe(combined.entities.length);
   });
 });
+
+describe('splitManifestByKind — T76 item 7: contour off (pattern.contour.show === false)', () => {
+  it('omits contour entirely (same as Box Lattice having none at all) -- rails/ties/nodes still build fine, with no dangling projection referencing it', () => {
+    const contourOffPattern = { ...SHAPE_PATTERN, contour: { show: false } };
+    const split = splitManifestByKind(contourOffPattern, REGION, {});
+    expect(split.contour).toBeUndefined();
+    expect(split.rails).toBeDefined();
+    expect(split.ties).toBeDefined();
+    expect(split.nodes).toBeDefined();
+    // no rail/tie/node manifest declares a projection sourced from 'contour'
+    // -- it was never generated in the first place (contourVisible gates
+    // manifestFromShape's own entities to [] before this function ever runs).
+    for (const kind of ['rails', 'ties', 'nodes']) {
+      expect(split[kind].projections.every((p) => p.sourceKind !== 'contour')).toBe(true);
+    }
+  });
+});

@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   LATTICE_FUSION_BUILD_ORDER, LATTICE_KIND_LAYER_DEFAULTS, resolvePatternLayer, _ensureKindLayers,
+  recolorOwnedKind, detachAllOwned, PATTERN_DEFAULTS,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { currentPattern } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
 
@@ -162,5 +163,62 @@ describe('currentPattern (properties-shape-lattice.js) does NOT fork the pattern
 
     expect(readBack).toBe(pattern); // the EXACT same object -- not a fork
     expect(readBack.seed).toBe(999);
+  });
+});
+
+/**
+ * T76 (SE17, item 7 — the explicit decide+log point): "saved single-layer
+ * lattices from before SE17 still load (migrate on read or keep as one
+ * layer — decide+log)". Decided: KEEP AS ONE LAYER on load, migrating
+ * LAZILY (automatically, no separate migration step at all) the next
+ * time Generate/Regenerate actually runs on it — neither of the two named
+ * options taken as-is, but the one every OTHER fallback in this whole
+ * feature already implements for free: `pattern.layers` absent means
+ * every "act on everything" helper resolves straight to the one shared
+ * `layerId` it was always given, unchanged from before this turn. A file
+ * that's loaded and never touched again behaves EXACTLY as it always has
+ * — zero risk, zero new migration code to get wrong — and the instant the
+ * user next hits Generate, `_ensureKindLayers` (item 2) splits it, using
+ * the SAME code path a brand-new pattern already takes, not a special
+ * "migrated" branch of its own.
+ */
+describe('T76 item 7: a pre-SE17 saved pattern (no .layers field at all) keeps working, unmigrated, until the next Generate', () => {
+  function makeMockElement(store) {
+    return {
+      node: {
+        getAttribute: (k) => (store[k] !== undefined ? store[k] : null),
+        hasAttribute: (k) => store[k] !== undefined,
+      },
+      attr(k, ...rest) {
+        if (rest.length === 0) return store[k];
+        const v = rest[0];
+        if (v === null || v === undefined) delete store[k];
+        else store[k] = v;
+        return this;
+      },
+      stroke(v) { if (v && v.color) store.stroke = v.color; return this; },
+      fill(v) { if (v !== undefined) store.fill = v; return this; },
+    };
+  }
+
+  it('recolorOwnedKind/detachAllOwned still act on the ONE shared layer\'s own owned pieces directly -- no pattern.layers lookup needed, nothing forced to split just to be edited', () => {
+    const pattern = { ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)) }; // no .layers key, exactly like an old save
+    const railEl = makeMockElement({ 'data-layer': '0', 'data-lattice-gen': pattern.id || 'old', 'data-lattice': 'rail', stroke: '#ff0000' });
+    const tieEl = makeMockElement({ 'data-layer': '0', 'data-lattice-gen': pattern.id || 'old', 'data-lattice': 'tie', stroke: '#ffff00' });
+    const editor = {
+      _layers: [{ id: '0', name: 'Layer 1', visible: true, pattern }],
+      _sketchLayer: { children() { const a = [railEl, tieEl]; a.toArray = () => a; return a; } },
+      pushState() {}, _notifyChange() {},
+    };
+
+    const recolored = recolorOwnedKind(editor, '0', 'rails', '#00ff00');
+    expect(recolored).toBe(1);
+    expect(railEl.attr('stroke')).toBe('#00ff00');
+    expect(tieEl.attr('stroke')).toBe('#ffff00'); // untouched -- rails-only recolor
+
+    const detached = detachAllOwned(editor, '0');
+    expect(detached).toBe(2); // BOTH pieces, still correctly found on the one shared layer
+    expect(railEl.node.hasAttribute('data-lattice-gen')).toBe(false);
+    expect(tieEl.node.hasAttribute('data-lattice-gen')).toBe(false);
   });
 });
