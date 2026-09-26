@@ -804,3 +804,15 @@ Lattice (Hourglass/Bottle, straight/curve/kink bar), Fusion Geometry, Boundary/E
 [👁|3D|🎨]. Actions (Generate, Apply Stencils, Regenerate, Detach) keep their button look. Retire the per-control
 variants' CSS (no dead styles). Reference mock: scratchpad layerrowsC.html (.C1). Before/after screenshots desktop +
 phone.
+
+## Queued — SE15b: Shape Lattice CONTOUR (hourglass/bottle outline) as constrained Fusion geometry (Fred 2026-09-25)
+Advisor MEASURED arc slots in Fusion: `sketch.addThreePointArcSlot(p1, mid, p2, width, True)` inserts correctly
+(centerline r=1, sides ±w/2, end caps w/2); width dimension .parameter.expression = param works; on a width edit:
+centerline free or center-only fixed → LOPSIDED; all 3 points fixed → BROKEN (cap grows, sides don't); **both
+centerline END points fixed → grows EVENLY** (0.908/1.108 around 1.008). Same anchoring rule as straight slots.
+Plan (default = slot chain, Fred: "some of it is already slot parts" / "slot has an arced slot tool"): straight contour
+segments = center-to-center slots, shoulder/waist/hip = 3-point arc slots, centerline END points anchored, widths =
+border_width (or stroke_width), joints = separate points + explicit Coincident + Tangent on the centerlines, a vertical
+construction line + Symmetry for left/right, a few named params (waist_depth, waist_height, corner_radius).
+Open: slot joints OVERLAP (fine for a carved groove; for a resin-inlay POCKET a single closed-loop Offset band is
+cleaner) — ask Fred which use dominates before choosing the alternative. After T64.
