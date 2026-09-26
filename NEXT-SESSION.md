@@ -5,6 +5,14 @@
 that item, and push — the progress page (bspline-status.pages.dev) counts the ticks.
 
 ## Checklist
+- [ ] 0. BUG FIRST (Fred + advisor reproduced headless on live main): in the SHAPE LATTICE, the Select icon drag shows the
+      preview but the piece does NOT move on release — rail body drag moved 0.000 (box Lattice: same drag moves 0.5 and
+      attached ties follow, all correct). After a tie drag the shape-lattice pieces were REPLACED (fresh elements) —
+      suspect the shape lattice regenerates from its pattern after the drop (boundary refresh / refreshBoundaryPatterns)
+      and discards the move. Root-cause; a Select move must persist on both lattice types (ties follow rails, rail ends
+      stay on the contour per T73 where applicable). Also: dragging a NODE on the box Lattice didn't move it and left a
+      DUPLICATE node (26 -> 27 nodes). Reproduce with real CDP mouse drags (scratchpad pattern: Input.dispatchMouseEvent
+      press/move x8/release on the piece's screen point via getScreenCTM). Tests for both lattice types.
 - [x] 1. Pinned-action style (AMEND 4b): ONE shared sticky style for the main sidebar "Generate New Seed" and both lattice
       Regenerates — top:0 with NO gap above (nothing visible above while scrolling), opaque background full column width,
       full-width button. Root-cause the gap, note it in WORK-LOG.
