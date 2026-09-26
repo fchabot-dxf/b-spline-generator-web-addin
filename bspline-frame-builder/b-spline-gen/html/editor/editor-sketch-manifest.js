@@ -53,7 +53,7 @@
  * `entities[]`, so every OTHER producer above keeps working in the
  * simpler natural board-space it was already written and tested in.
  */
-import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline } from './editor-lattice-pattern.js';
+import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline, LATTICE_FUSION_BUILD_ORDER } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
   primitivesBBox, insetGeneratedPresetPathDToPrimitives, sizedBoardRegion,
@@ -1142,4 +1142,131 @@ export function buildSketchManifest(pattern, region, opts = {}) {
     latticeConstrained: lattice.constrained,
   };
   return applyCarvePlacement(manifest, region);
+}
+
+// T76 (SE17, item 4): which kind an entity id belongs to, purely from its
+// own declared prefix (toEntityId's own scheme, editor-sketch-manifest.js:
+// rail{i}/tie{i}/node{i}/seg{i}) -- never re-derived from geometry or a
+// separate lookup table, since the prefix already IS the kind, by
+// construction, for every entity this module has ever emitted.
+function _kindOfEntityId(rawId) {
+  const base = rawId.split(':')[0];
+  if (base.startsWith('rail')) return 'rails';
+  if (base.startsWith('tie')) return 'ties';
+  if (base.startsWith('node')) return 'nodes';
+  if (base.startsWith('seg')) return 'contour';
+  return null;
+}
+
+/**
+ * T76 (SE17, item 4): partitions a `buildSketchManifest` combined result
+ * into ONE manifest per kind (contour/rails/ties/nodes) -- entities and
+ * dimensions bucketed by their own id's kind; any CROSS-kind constraint
+ * (tie-end -> rail, rail/tie-end -> contour seg, node -> anything) becomes
+ * a PROJECTION reference instead, mirroring frame-builder's OWN already-
+ * proven `project_step` contract exactly (`{sourceKind, sourceId,
+ * targetId}` -- see fb_engine/projections.py) rather than inventing a new
+ * shape: a direct cross-sketch constraint is refused by Fusion (advisor-
+ * measured, ROADMAP.md's own SE17 entry), so the LATER-built kind (per
+ * LATTICE_FUSION_BUILD_ORDER -- contour -> rails -> ties -> nodes, the
+ * fixed dependency order every cross-kind reference in this module already
+ * only ever points BACKWARD along) gets both the new projection AND the
+ * constraint rewritten to target the projected copy instead of the
+ * original cross-sketch id. A same-kind constraint (H/V's own single
+ * target, Collinear, or a same-kind Coincident) passes through completely
+ * unchanged -- "Collinear stays within a kind" (the dispatch's own text)
+ * is already true by construction; this function never needs to special-
+ * case it.
+ *
+ * Every kind's own manifest gets the FULL parameter list, not just "the
+ * ones it references" -- Python's own `_sync_manifest_parameters` already
+ * creates-or-updates a design parameter BY NAME, so redeclaring one (e.g.
+ * `stroke_width`, needed by both the contour's own slot AND rails/ties')
+ * in more than one kind-manifest is harmless, the SAME precedent T69
+ * already established for one combined manifest, just carried across
+ * several now-separate ones.
+ *
+ * Projections are deduped by (sourceKind, sourceId) WITHIN each consuming
+ * kind's own manifest -- two different ties touching the SAME rail end
+ * share ONE projected copy, never two independently-projected overlaps of
+ * the same source entity.
+ *
+ * Returns `{contour?, rails?, ties?, nodes?}` -- a kind with nothing to
+ * build (Box Lattice has no contour at all) is simply OMITTED, never an
+ * empty placeholder manifest.
+ */
+export function splitManifestByKind(pattern, region, opts = {}) {
+  const combined = buildSketchManifest(pattern, region, opts);
+  const buildOrderIndex = Object.fromEntries(LATTICE_FUSION_BUILD_ORDER.map((k, i) => [k, i]));
+  const perKind = {};
+  for (const kind of LATTICE_FUSION_BUILD_ORDER) {
+    perKind[kind] = {
+      version: combined.version, widthMode: combined.widthMode, contourWidthMode: combined.contourWidthMode,
+      units: combined.units, region: combined.region,
+      entities: [], constraints: [], parameters: combined.parameters, dimensions: [], projections: [], groups: {},
+    };
+  }
+
+  for (const e of combined.entities) {
+    const kind = _kindOfEntityId(e.id);
+    if (kind) perKind[kind].entities.push(e);
+  }
+  for (const d of combined.dimensions) {
+    // SlotWidth/Diameter dims use a singular `target`; the contour's own
+    // Distance dims (contour_width/height) use a plural `targets`, both
+    // entries always within the contour kind by construction (both ends
+    // are Line entities `manifestFromShape` itself found) -- either shape
+    // classifies correctly off its own first/only target id.
+    const kind = _kindOfEntityId(d.target ?? d.targets[0]);
+    if (kind) perKind[kind].dimensions.push(d);
+  }
+  for (const [key, ids] of Object.entries(combined.groups || {})) {
+    const kind = key === 'silhouette' ? 'contour' : key; // manifestFromShape's own group key
+    if (perKind[kind]) perKind[kind].groups[key] = ids;
+  }
+  if (combined.latticePieceCount !== undefined) {
+    for (const kind of ['rails', 'ties', 'nodes']) {
+      perKind[kind].latticePieceCount = combined.latticePieceCount;
+      perKind[kind].latticeConstrained = combined.latticeConstrained;
+    }
+  }
+
+  const projectionIdByConsumer = {};
+  for (const kind of LATTICE_FUSION_BUILD_ORDER) projectionIdByConsumer[kind] = new Map();
+  function projectedId(consumingKind, sourceKind, sourceId) {
+    const key = `${sourceKind}:${sourceId}`;
+    const seen = projectionIdByConsumer[consumingKind];
+    if (seen.has(key)) return seen.get(key);
+    const targetId = `proj_${sourceId.replace(':', '_')}`;
+    seen.set(key, targetId);
+    perKind[consumingKind].projections.push({ sourceKind, sourceId, targetId });
+    return targetId;
+  }
+
+  for (const c of combined.constraints) {
+    if (c.targets.length === 1) {
+      const kind = _kindOfEntityId(c.targets[0]);
+      if (kind) perKind[kind].constraints.push(c);
+      continue;
+    }
+    const kinds = c.targets.map(_kindOfEntityId);
+    if (kinds[0] === kinds[1]) {
+      if (kinds[0]) perKind[kinds[0]].constraints.push(c);
+      continue;
+    }
+    const consumingSlot = buildOrderIndex[kinds[0]] > buildOrderIndex[kinds[1]] ? 0 : 1;
+    const sourceSlot = 1 - consumingSlot;
+    const consumingKind = kinds[consumingSlot], sourceKind = kinds[sourceSlot];
+    const targetId = projectedId(consumingKind, sourceKind, c.targets[sourceSlot]);
+    const newTargets = [...c.targets];
+    newTargets[sourceSlot] = targetId;
+    perKind[consumingKind].constraints.push({ ...c, targets: newTargets });
+  }
+
+  const result = {};
+  for (const kind of LATTICE_FUSION_BUILD_ORDER) {
+    if (perKind[kind].entities.length === 0) continue; // e.g. no contour at all, or an empty kind
+    result[kind] = perKind[kind];
+  }
+  return result;
 }

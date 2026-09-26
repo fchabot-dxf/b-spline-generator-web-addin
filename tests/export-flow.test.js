@@ -60,6 +60,9 @@ function mockEditor(layers) {
       profile: l.profile,
       _mask: l.mask ?? null,
       pattern: l.pattern ?? null,
+      // T76 (SE17): a sibling kind-layer carries only this pointer, never
+      // its own `.pattern` — see resolvePatternLayer's own doc comment.
+      ...(l.patternOwner !== undefined ? { patternOwner: l.patternOwner } : {}),
     })),
   };
 }
@@ -366,5 +369,78 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
     // same 7x9 board — a real, checkable difference, not just "not null".
     const railCount = (m) => m.entities.filter((e) => e.id.match(/^rail\d+$/)).length;
     expect(railCount(manifestB)).toBeGreaterThan(railCount(manifestA));
+  });
+});
+
+/**
+ * T76 (SE17, item 4) — a pattern already split across its own kind-layers
+ * (`pattern.layers`, item 2's own `_ensureKindLayers`) builds ONE manifest
+ * PER KIND-LAYER via splitManifestByKind, not one combined manifest for
+ * whichever layer happens to be asked about.
+ */
+describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kind-layer)', () => {
+  function makeKindSplitEditor() {
+    const pattern = {
+      spacing: 0.25,
+      rails: { mode: 'every', every: 2, offset: 0 },
+      ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
+      nodes: { ends: true, crossings: true, railEnds: false },
+      widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
+      layers: { rails: 'railsL', ties: 'tiesL', nodes: 'nodesL' },
+    };
+    return mockEditor([
+      { id: 'railsL', pattern, owned: [{ 'data-layer': 'railsL', 'data-lattice-gen': 'p', 'data-lattice': 'rail' }] },
+      { id: 'tiesL', patternOwner: 'railsL', owned: [{ 'data-layer': 'tiesL', 'data-lattice-gen': 'p', 'data-lattice': 'tie' }] },
+      { id: 'nodesL', patternOwner: 'railsL', owned: [{ 'data-layer': 'nodesL', 'data-lattice-gen': 'p', 'data-lattice': 'node' }] },
+    ]);
+  }
+
+  it('the Rails layer\'s own manifest contains ONLY rail entities (no ties/nodes mixed in)', () => {
+    const editor = makeKindSplitEditor();
+    const manifest = _fusionLayerManifest(editor, { id: 'railsL' });
+    expect(manifest).not.toBeNull();
+    expect(manifest.layerId).toBe('railsL');
+    expect(manifest.entities.length).toBeGreaterThan(0);
+    expect(manifest.entities.every((e) => e.id.startsWith('rail'))).toBe(true);
+  });
+
+  it('the Ties layer\'s own manifest (a SIBLING with no .pattern of its own) still resolves the shared pattern and contains ONLY tie entities', () => {
+    const editor = makeKindSplitEditor();
+    const manifest = _fusionLayerManifest(editor, { id: 'tiesL' });
+    expect(manifest).not.toBeNull();
+    expect(manifest.layerId).toBe('tiesL');
+    expect(manifest.entities.length).toBeGreaterThan(0);
+    expect(manifest.entities.every((e) => e.id.startsWith('tie'))).toBe(true);
+    // its own cross-kind tie-on-rail links became projections, not raw rail ids.
+    expect(manifest.projections.length).toBeGreaterThan(0);
+    expect(manifest.projections.every((p) => p.sourceKind === 'rails')).toBe(true);
+  });
+
+  it('the Nodes layer\'s own manifest resolves the shared pattern too, with projections sourced from rails and/or ties', () => {
+    const editor = makeKindSplitEditor();
+    const manifest = _fusionLayerManifest(editor, { id: 'nodesL' });
+    expect(manifest).not.toBeNull();
+    expect(manifest.entities.every((e) => e.id.startsWith('node'))).toBe(true);
+    expect(manifest.projections.length).toBeGreaterThan(0);
+    for (const p of manifest.projections) expect(['rails', 'ties']).toContain(p.sourceKind);
+  });
+
+  it('a per-kind-layer manifest\'s own overrides are read from THAT KIND\'s own owned elements, not whichever layer id was asked about', () => {
+    const pattern = {
+      spacing: 0.25,
+      rails: { mode: 'every', every: 2, offset: 0 },
+      ties: { mode: 'density', density: 0 },
+      nodes: { ends: false, crossings: false, railEnds: false },
+      widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
+      layers: { rails: 'railsL', ties: 'tiesL', nodes: 'nodesL' },
+    };
+    const editor = mockEditor([
+      { id: 'railsL', pattern, owned: [{ 'data-layer': 'railsL', 'data-lattice-gen': 'p', 'data-lattice': 'rail', 'data-override-width': '0.5' }] },
+      { id: 'tiesL', patternOwner: 'railsL', owned: [] },
+      { id: 'nodesL', patternOwner: 'railsL', owned: [] },
+    ]);
+    const manifest = _fusionLayerManifest(editor, { id: 'railsL' });
+    const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');
+    expect(rail0Dim.expression).toBe('0.5 in'); // hardcoded, from the Rails layer's own override
   });
 });

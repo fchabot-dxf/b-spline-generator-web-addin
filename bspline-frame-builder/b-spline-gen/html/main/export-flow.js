@@ -30,9 +30,9 @@ import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 import { isCarved, isExported } from '../editor/layers.js';
-import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
+import { buildSketchManifest, splitManifestByKind } from '../editor/editor-sketch-manifest.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
-import { latticeOwnedElementsOnLayer, _ownedOnLayer } from '../editor/editor-lattice-pattern.js';
+import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer } from '../editor/editor-lattice-pattern.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -158,22 +158,48 @@ export async function _fusionLayerSvg(editor, l, excludePattern) {
  *  "rendered live" — the same attribute that already drives the piece's own
  *  visible stroke-width); a piece with none reads back `null`, same as
  *  every other "absent means default" field this codebase already uses. */
-function _overridesForLayer(editor, layerId) {
-    const widthsOf = (kind) => _ownedOnLayer(editor, layerId, kind).map((el) => {
+// T76 (SE17, item 4): each kind's own overrides now come from THAT KIND's
+// own layer (`pattern.layers[kind]`), not necessarily `layerId` itself --
+// rails/ties/nodes each got their own layer in item 2's own split. Falls
+// back to `layerId` for a pre-SE17 pattern with no `.layers` map yet
+// (every kind still resolves to that one shared layer, unchanged).
+function _overridesForLayer(editor, pattern, layerId) {
+    const kindLayerId = (kind) => (pattern && pattern.layers && pattern.layers[kind]) || layerId;
+    const widthsOf = (latticeKind, patternKind) => _ownedOnLayer(editor, kindLayerId(patternKind), latticeKind).map((el) => {
         const raw = el.node.getAttribute('data-override-width');
         return raw == null || raw === '' ? null : parseFloat(raw);
     });
-    return { rails: widthsOf('rail'), ties: widthsOf('tie'), nodes: widthsOf('node') };
+    return { rails: widthsOf('rail', 'rails'), ties: widthsOf('tie', 'ties'), nodes: widthsOf('node', 'nodes') };
 }
 
 export function _fusionLayerManifest(editor, l) {
     if (!editor || l.id == null) return null;
-    const editorLayer = Array.isArray(editor._layers) ? editor._layers.find((el) => el.id === l.id) : null;
-    if (!editorLayer || !editorLayer.pattern) return null;
-    if (!latticeOwnedElementsOnLayer(editor, l.id, editorLayer.pattern).length) return null;
-    return buildSketchManifest(editorLayer.pattern, boardRegion(editor), {
+    // T76 (SE17): the pattern may live on a DIFFERENT layer than `l` itself
+    // -- `l` could be any one of the pattern's own Contour/Rails/Ties/Nodes
+    // kind-layers, only the rails/primary one actually holds `.pattern`.
+    const patternLayer = resolvePatternLayer(editor, l.id);
+    if (!patternLayer) return null;
+    const pattern = patternLayer.pattern;
+    if (!latticeOwnedElementsOnLayer(editor, l.id, pattern).length) return null;
+
+    // A pattern already split across kind-layers (`pattern.layers` set --
+    // item 2's own `_ensureKindLayers`) builds ONE manifest PER KIND-LAYER,
+    // via splitManifestByKind, picking out just the slice for THIS layer's
+    // own kind. A pre-SE17 pattern with no `.layers` map yet (still one
+    // shared layer for everything) keeps building the single combined
+    // manifest exactly as before this turn.
+    const kind = pattern.layers && Object.keys(pattern.layers).find((k) => pattern.layers[k] === l.id);
+    if (kind) {
+        const perKind = splitManifestByKind(pattern, boardRegion(editor), {
+            overrides: _overridesForLayer(editor, pattern, l.id),
+        });
+        const manifest = perKind[kind];
+        if (!manifest) return null; // e.g. this pattern's own contour is empty/off
+        return { ...manifest, layerId: l.id, sketchName: `Layer ${l.id}` };
+    }
+    return buildSketchManifest(pattern, boardRegion(editor), {
         layerId: l.id, sketchName: `Layer ${l.id}`,
-        overrides: _overridesForLayer(editor, l.id),
+        overrides: _overridesForLayer(editor, pattern, l.id),
     });
 }
 
