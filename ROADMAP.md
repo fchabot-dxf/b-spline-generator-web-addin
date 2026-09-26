@@ -835,4 +835,9 @@ principle as SE7i's derived tie-on-rail attachment, no second source of truth; d
 Join = tap the joint again (or "Join" action). Fred: "like a cut tool" → tap ANYWHERE on a line to cut there (snaps to joints then grid points; Alt / Snap-off =
 free); Fred: "we don't need it in lattice if it's not needed for keeping structure" → main rail only, NO lattice-panel
 button and NO "Cut all at joints"; the tool itself preserves lattice membership when cutting a rail/tie; tap a cut point again with the tool = Join. Default: cut
-segments move together as one rail (Fred to confirm vs fully independent). Works on any plain line too (main tool). After SE14b/SE15b (same "one piece → segments" idea).
+segments move together as one rail (Fred to confirm vs fully independent). Works on any plain line too (main tool).
+ACCEPTANCE (Fred: "I don't want the cut tool to break the lattice structure editability — rails and ties following
+each other on drag"): for the SAME lattice before and after cutting a rail (and a tie) at several joints, the SAME
+drag gestures must give IDENTICAL results — dragging any segment moves every collinear touching segment of that rail,
+every tie attached to ANY segment stretches exactly as before, tie drags still slide/attach, stretch-at-ends still
+works on the outer ends. Test = before/after equality of all piece coordinates after each gesture, both orientations. After SE14b/SE15b (same "one piece → segments" idea).
