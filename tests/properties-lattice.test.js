@@ -93,6 +93,7 @@ describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', 
       <select id="latticeTiesAnchor"><option value="free" selected>free</option></select>
       <input id="latticeTiesRailSnapRows" type="number" value="1">
       <input id="latticeTiesOneEnded" type="number" value="1">
+      <input id="latticeTiesMinSpacing" type="number" value="0.5">
       <input id="latticeNodesEnds" type="checkbox" checked>
       <input id="latticeNodesCrossings" type="checkbox" checked>
       <input id="latticeSeed" type="number" value="42">
@@ -148,6 +149,18 @@ describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', 
     document.getElementById('latticeTiesOneEnded').value = '2';
     document.getElementById('latticeGenerate').click();
     expect(activeLayerPattern(editor).ties.oneEnded).toBe(2);
+  });
+
+  it('T77 (TIE-GAP): a fresh pattern reads PATTERN_DEFAULTS.ties.minSpacing (0.5) onto the Min spacing field', () => {
+    initLatticeProperties(editor);
+    expect(document.getElementById('latticeTiesMinSpacing').value).toBe(String(PATTERN_DEFAULTS.ties.minSpacing));
+  });
+
+  it('T77 (TIE-GAP): editing the Min spacing field and pressing Generate writes PATTERN.ties.minSpacing', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeTiesMinSpacing').value = '0.75';
+    document.getElementById('latticeGenerate').click();
+    expect(activeLayerPattern(editor).ties.minSpacing).toBe(0.75);
   });
 
   it('the Generate button label flips to Regenerate after the first press', async () => {

@@ -74,6 +74,7 @@ export function initLatticeProperties(editor) {
     const tiesAnchorEl = el('latticeTiesAnchor');
     const tiesRailSnapRowsEl = el('latticeTiesRailSnapRows');
     const tiesOneEndedEl = el('latticeTiesOneEnded');
+    const tiesMinSpacingEl = el('latticeTiesMinSpacing');
     const nodesEndsEl = el('latticeNodesEnds');
     const nodesCrossingsEl = el('latticeNodesCrossings');
     const nodesRailEndsEl = el('latticeNodesRailEnds');
@@ -226,6 +227,10 @@ export function initLatticeProperties(editor) {
         // declared default (1) — same "absent key = default, no silent
         // behavior change" convention every other field here follows.
         if (tiesOneEndedEl) tiesOneEndedEl.value = p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded;
+        // T77 (TIE-GAP): a saved pattern with no `minSpacing` key reads
+        // the declared default (0.5in) — same "absent key = default"
+        // convention every other field here follows.
+        if (tiesMinSpacingEl) tiesMinSpacingEl.value = p.ties?.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing;
         if (nodesEndsEl) nodesEndsEl.checked = p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends;
         if (nodesCrossingsEl) nodesCrossingsEl.checked = p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings;
         if (nodesRailEndsEl) nodesRailEndsEl.checked = p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds;
@@ -344,6 +349,10 @@ export function initLatticeProperties(editor) {
             // rail, no one-ended ties at all) — `|| 0` (not `|| 1`) so a
             // typed "0" isn't coerced back up to the default.
             oneEnded: tiesOneEndedEl ? (parseInt(tiesOneEndedEl.value, 10) || 0) : (p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded),
+            // T77 (TIE-GAP): a real-inch decimal value, so parseFloat (not
+            // parseInt). 0 is also a genuinely valid minSpacing (no minimum
+            // at all), so a typed "0" is preserved as-is, not coerced up.
+            minSpacing: tiesMinSpacingEl ? (parseFloat(tiesMinSpacingEl.value) || 0) : (p.ties?.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing),
         };
         p.nodes = {
             ends: nodesEndsEl ? !!nodesEndsEl.checked : (p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends),
