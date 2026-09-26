@@ -22,6 +22,7 @@ import { initDrawer, initHeaderOverflowMenu, syncDrawerForMode } from './editor-
 import { refreshOutlinePreview } from './editor-outline-preview.js';
 import { refreshBoundaryPatterns, CONTOUR_SEG_INDEX_ATTR, resolvePatternLayer } from './editor-lattice-pattern.js';
 import { detectShapeLatticeDetach } from './properties-shape-lattice.js';
+import { refreshGuides, installGuides } from './editor-guides.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 
@@ -193,6 +194,8 @@ export class VectorEditor {
         this._outlinePreviewLayer = canvas.outlinePreviewLayer;
         this._handleLayer = canvas.handleLayer;
         this._highlightLayer = canvas.highlightLayer;
+        this._guideLayer = null; // BOUNDARY-GUIDE: created lazily next to the sketch layer (editor-guides.js)
+        installGuides(this);
 
         initIO(this);
         initInteraction(this);
@@ -368,6 +371,7 @@ export class VectorEditor {
         // correctness — refreshBoundaryPatterns never reads shape.source).
         if (kind === 'commit') detectShapeLatticeDetach(this);
         if (kind === 'commit') refreshBoundaryPatterns(this); // T49 (SE13 §9): commit-only boundary-link refill, same hook
+        if (kind === 'commit') refreshGuides(this); // BOUNDARY-GUIDE: Generate / Size edit / undo can move or add a box
         if (!this._onChange) return;
         if (kind === 'commit') {
             if (this._pendingChangeFrame != null) {
@@ -620,6 +624,7 @@ export class VectorEditor {
         this._bgLayer.clear();
         // Remove the grey viewbox background rectangle so the preview is not clipped by it.
         this.sync3DBackground();
+        refreshGuides(this); // BOUNDARY-GUIDE: the box is sized from the board
     }
 
     /** Reset the view to fit the whole board — bound to the Fit tool button. */
