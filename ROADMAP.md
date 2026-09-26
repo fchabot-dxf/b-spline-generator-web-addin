@@ -988,6 +988,17 @@ not in this Send's payload + not referenced by another param expression or a fea
 (`Parameter.dependentParameters`) → delete, else keep + log. See the design doc §2f for the open questions queued
 for Fred (dry-run first, touch- vs create-only stamping, lattice tag sharing, cross-Send scope).
 
+## Queued (seat C, fb-app, after F9 frame handles) — SHAPE-PARAMS: more Shape Lattice shape params, each with a handle (Fred 2026-09-26)
+Fred: "for lattice I think more is better". Add to the shared silhouette solver (editor-shape-lattice-generator.js),
+each a DECLARED param in PARAM_ORDER + BASE_RANGES + feasibleParamRanges, with its own handle (computeParamHandles)
+and slider: (1) hourglass WAIST RADIUS, independent of the corner radius (replaces the fixed WAIST_MIN_RADIUS_OF_DEPTH
+coupling; gives the "subtle but large radius" waist); (2) hourglass TOP and BOTTOM corner radius separately (today one
+cornerRadius; the old value migrates to both); (3) bottle BODY SHOULDER radius (the neck-to-body transition). Old saved
+patterns keep their exact shape (migration test). F5 guarantees hold (dense sweep: simple outline, tangent joints).
+Shape Lattice first. Frames get handles for their EXISTING template params in F9. The new params reach frames only if
+Fred asks, since the Fusion frame is built by fb_engine's Python templates, which would need the same params (parity).
+Fusion Shape Lattice export unchanged in kind (the geometry changes, no new radius dims: Fred's SE15 rule).
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
