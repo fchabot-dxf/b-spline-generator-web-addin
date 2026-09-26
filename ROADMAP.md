@@ -846,4 +846,7 @@ snapped point; "touching" is checked with a declared tolerance (drift after many
 the grid. (2) CUT POINT ≠ END: grabbing at a cut point moves the JOINT (both segments' ends together, like a node);
 only the rail's true OUTER ends stretch — otherwise end-stretch would silently open a gap and split the rail.
 (3) Select-tool free move of one segment = intentional break (unchanged). (4) deleting a middle segment = two rails
-(intended). (5) membership is geometry-only — colour/width per segment never splits a rail. Test (2) explicitly. After SE14b/SE15b (same "one piece → segments" idea).
+(intended). (5) membership is geometry-only — colour/width per segment never splits a rail. Test (2) explicitly.
+GOAL (Fred: "different colour per segment is the goal, that should not break it"): acceptance includes cutting a rail,
+giving EVERY segment a different colour (and one a different width), then re-running the same drags → identical
+coordinates to the uncoloured cut rail; colours stay on their segments through every drag and undo/redo. After SE14b/SE15b (same "one piece → segments" idea).
