@@ -56,8 +56,10 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
    move together (the default) or independently?
 4. **Stale-param cleanup**: a declared list of params the add-in owns (including the frame params), so Send removes
    parameters it created before and no longer uses. Coordinate the frame-param names with fb-app (FB-APP-DESIGN.md on branch fb-app).
-5. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
-6. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
+5. **RAIL-SPACING** (ROADMAP.md): the lattice "Spacing" field becomes rail-to-rail distance; the grid step comes from the
+   editor's toolbar grid (one grid). Old saved patterns keep their geometry.
+6. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
+7. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
 
 ## 4. How to work on it
 
