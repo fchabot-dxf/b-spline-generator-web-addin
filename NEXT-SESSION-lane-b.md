@@ -26,3 +26,13 @@ the same point, dedupe it (one relation per point pair).
 Append WORK-LOG-lane-b.md, commit by path, push, then from the WORKTREE root:
 `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T67: SE15 slot dim flag + node :C + arc S/E — <sha>, tests"`
 and stop.
+
+## AMEND (Fred 2026-09-25: "Ties needs to be coincident to their rails")
+4. Box lattice default tie span → `span: { mode: 'rails', rails: 1 }` (the declared alternative in PATTERN_DEFAULTS.ties,
+   editor-lattice-pattern.js ~L272): every tie bridges exactly one pair of ADJACENT rails, both ends ON a rail — no
+   stubs floating mid-span. Keep count [8,13] + stratified spread (still 7 rails / ~13 ties). 'cells' stays a declared
+   alternative (not deleted). The Shape Lattice's ties too, if it has its own span default — check and align.
+   Manifest: every tie end → Coincident on its rail centerline (tie-end-to-rail, :S/:E when it lands on a rail end).
+   Tests: for the default pattern, EVERY tie endpoint lies on a rail (|y - railY| < 1e-9 within the rail's x-extent),
+   and the manifest has exactly 2 tie-on-rail Coincidents per tie. Render the default box + shape lattice to PNG and
+   VIEW it before passing (no floating ties).
