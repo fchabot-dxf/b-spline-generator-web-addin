@@ -10,7 +10,7 @@ Run:  python tools/status_site/status_watch.py          (loop, every 60 s)
 Env:  CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID from the repo's .env
       (never printed). Project: STATUS_PROJECT below.
 """
-import hashlib, html, json, os, re, shutil, subprocess, sys, time
+import glob, hashlib, html, json, os, re, shutil, subprocess, sys, time
 from datetime import datetime
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -54,6 +54,22 @@ def _remote_state(s):
     when, subj = (last.split("|", 1) + [""])[:2] if last else ("", "")
     return {"turn": "-", "who": "remote (" + STATIONS.get(s["station"], s["station"]) + ")", "note": (ball.group(1).strip() if ball else "") +
             (f"  | last: {subj}" if subj else ""), "updated": when}
+
+
+def _session_url(seat):
+    """A seat's Claude link: its declared url, or its local session's CURRENT Remote Control id (looked up by name)."""
+    if seat.get("url"):
+        return seat["url"]
+    if not seat.get("session"):
+        return ""
+    for f in glob.glob(os.path.join(os.path.expanduser("~"), ".claude", "sessions", "*.json")):
+        try:
+            d = json.load(open(f, encoding="utf-8"))
+        except Exception:
+            continue
+        if d.get("name") == seat["session"] and d.get("bridgeSessionId"):
+            return "https://claude.ai/code/" + d["bridgeSessionId"]
+    return ""
 
 
 def _bar(done, total, width=10):
@@ -128,7 +144,7 @@ def collect():
         sd = os.path.join(SHOTS_DIR, s["key"])
         shots = sorted((f for f in (os.listdir(sd) if os.path.isdir(sd) else []) if f.lower().endswith((".png", ".jpg", ".jpeg"))),
                        key=lambda f: os.path.getmtime(os.path.join(sd, f)), reverse=True)[:SHOTS_PER_SEAT]
-        seats.append({**s, "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
+        seats.append({**s, "url": _session_url(s), "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
                       "updated": h.get("updated", ""), "done": d, "total": t, "shots": shots})
     commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b", "fb-app")}
     return seats, commits, _roadmap()

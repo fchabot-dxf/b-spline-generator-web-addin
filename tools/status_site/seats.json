@@ -1,5 +1,5 @@
 {
-  "_about": "Declared seats for the status page. station = the machine the seat runs on. The watcher reads seats on its OWN station from their local checkout (repo folder + 'checkout' suffix, HANDOFF.md), and seats on other stations from origin (task file + last commit matching 'commits'). Add a seat here, no code change. Optional 'url': the seat's Claude session link (Remote Control sessions only); the card title links to it.",
+  "_about": "Declared seats for the status page. station = the machine the seat runs on. The watcher reads seats on its OWN station from their local checkout (repo folder + 'checkout' suffix, HANDOFF.md), and seats on other stations from origin (task file + last commit matching 'commits'). Add a seat here, no code change. Card title links to the seat's Claude session: 'url' (fixed link, e.g. a remote station's Remote Control session) or 'session' (a local session NAME: the watcher looks up its current Remote Control id in ~/.claude/sessions, so a restarted session only needs its new name here).",
   "stations": {
     "home-pc": "Home PC",
     "asus": "Asus"
@@ -11,7 +11,8 @@
       "station": "home-pc",
       "branch": "main",
       "task": "NEXT-SESSION.md",
-      "checkout": ""
+      "checkout": "",
+      "session": "b-spline-generator-web-addin-b1"
     },
     {
       "key": "seatB",
@@ -19,7 +20,8 @@
       "station": "home-pc",
       "branch": "lane-b",
       "task": "NEXT-SESSION-lane-b.md",
-      "checkout": "-lane-b"
+      "checkout": "-lane-b",
+      "session": "b-spline-generator-web-addin-51"
     },
     {
       "key": "seatC",
@@ -27,7 +29,8 @@
       "station": "home-pc",
       "branch": "fb-app",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-fb-app"
+      "checkout": "-fb-app",
+      "session": "b-spline-generator-web-addin-9f"
     },
     {
       "key": "asus",
