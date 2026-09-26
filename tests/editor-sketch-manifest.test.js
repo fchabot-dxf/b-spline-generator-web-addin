@@ -598,6 +598,39 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
       if (!['half_width', 'stroke_width', 'contour_width', 'contour_height'].includes(p.name)) expect(p.unit).toBeNull();
     }
   });
+
+  it('T73 AMEND 1 (advisor, measured live in Fusion on main 660f417): the contour_width/contour_height Distance dims are anchored on the contour\'s OWN geometric extremes (min-x/max-x, min-y/max-y), never merely the first mirror pair a search happens to visit -- Bottle\'s NECK (narrower than its body) previously got forced to the full contour_width', () => {
+    const shape = { preset, seed: 42, params: {} };
+    const { primitives } = generateSilhouette(REGION, shape);
+    const manifest = manifestFromShape(shape, REGION);
+
+    const widthDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.expression === 'contour_width');
+    const heightDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.expression === 'contour_height');
+    expect(widthDim).toBeDefined(); // non-vacuous
+    expect(heightDim).toBeDefined();
+    expect(widthDim.orientation).toBe('Horizontal');
+    expect(heightDim.orientation).toBe('Vertical');
+
+    const [wA, wB] = widthDim.targets.map((t) => pointOf(manifest.entities, t));
+    const [hA, hB] = heightDim.targets.map((t) => pointOf(manifest.entities, t));
+    // NOTE: the dim's own driven VALUE (region.w/h, already covered by the
+    // "parameters carry..." test above) is NOT the same claim as "the raw,
+    // undriven geometry already measures region.w/h apart" -- a Distance
+    // dim is a DRIVING dimension; its whole job is to STRETCH whatever the
+    // raw generated geometry measured (params like bodyWidth jitter narrower
+    // than the full region on purpose) out to the declared value once Fusion
+    // solves it. The bug was never "wrong VALUE" -- it's "wrong POINTS":
+    // independent oracle, the anchor points must sit at the contour's own
+    // TRUE geometric extremes (every Line primitive's own endpoints), never
+    // an incidental mirror pair narrower than the shape's real widest/
+    // tallest point (e.g. Bottle's neck).
+    const xs = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.x, p.p1.x] : []));
+    const ys = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.y, p.p1.y] : []));
+    expect(Math.min(wA.x, wB.x)).toBeCloseTo(Math.min(...xs), 9);
+    expect(Math.max(wA.x, wB.x)).toBeCloseTo(Math.max(...xs), 9);
+    expect(Math.min(hA.y, hB.y)).toBeCloseTo(Math.min(...ys), 9);
+    expect(Math.max(hA.y, hB.y)).toBeCloseTo(Math.max(...ys), 9);
+  });
 });
 
 describe('manifestFromShape — hourglass-specific: shoulder<->hip cross-tie', () => {
@@ -703,17 +736,33 @@ describe('manifestFromShape — T71 (T69-fix-3): loose contour -- Symmetry/mirro
     expect(manifest.constraints.some((c) => c.type === 'Equal' && c.targets.includes('seg2') && c.targets.includes('seg8'))).toBe(true);
   });
 
-  it('a horizontal point-to-point Distance dim (=contour_width, a NEW independent parameter) ties the first Line mirror pair, and a vertical one (=contour_height) ties the top/bottom self-mirroring edges -- both driven by region.w/region.h, never widthIn/heightIn', () => {
+  it('a horizontal point-to-point Distance dim (=contour_width, a NEW independent parameter) ties the contour\'s own left/right extreme corners, and a vertical one (=contour_height) ties its top/bottom extreme corners -- both driven by region.w/region.h, never widthIn/heightIn', () => {
     const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const { primitives } = generateSilhouette(REGION, shape);
     const manifest = manifestFromShape(shape, REGION);
     const widthDim = manifest.dimensions.find((c) => c.type === 'Distance' && c.orientation === 'Horizontal');
     expect(widthDim).toBeDefined();
     expect(widthDim.expression).toBe('contour_width');
-    expect(new Set(widthDim.targets.map((t) => t.split(':')[0]))).toEqual(new Set(['seg0', 'seg10']));
     const heightDim = manifest.dimensions.find((c) => c.type === 'Distance' && c.orientation === 'Vertical');
     expect(heightDim).toBeDefined();
     expect(heightDim.expression).toBe('contour_height');
-    expect(new Set(heightDim.targets.map((t) => t.split(':')[0]))).toEqual(new Set(['seg5', 'seg11']));
+    // T73 AMEND 1: which SPECIFIC segment anchors each dim is no longer
+    // asserted by hardcoded id -- the hourglass's 4 horn segments (the
+    // top/bottom horn on each side) all sit at the identical left/right
+    // extreme x, so any one of them is an equally valid, equally correct
+    // anchor (the earlier hardcoded 'seg0'/'seg10' expectation was really
+    // asserting an INCIDENTAL detail of the old, since-fixed mirror-pair
+    // search order, not a real requirement). Assert the GEOMETRIC property
+    // that actually matters instead: the anchor points sit at the
+    // contour's own true min-x/max-x (width) and min-y/max-y (height).
+    const [wA, wB] = widthDim.targets.map((t) => pointOf(manifest.entities, t));
+    const [hA, hB] = heightDim.targets.map((t) => pointOf(manifest.entities, t));
+    const xs = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.x, p.p1.x] : []));
+    const ys = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.y, p.p1.y] : []));
+    expect(Math.min(wA.x, wB.x)).toBeCloseTo(Math.min(...xs), 9);
+    expect(Math.max(wA.x, wB.x)).toBeCloseTo(Math.max(...xs), 9);
+    expect(Math.min(hA.y, hB.y)).toBeCloseTo(Math.min(...ys), 9);
+    expect(Math.max(hA.y, hB.y)).toBeCloseTo(Math.max(...ys), 9);
     // The dims' own VALUES are independent numbers (region.w/region.h at
     // whatever region manifestFromShape was actually called with), never
     // an expression referencing the board's own widthIn/heightIn.

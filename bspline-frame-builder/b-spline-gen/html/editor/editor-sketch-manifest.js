@@ -563,15 +563,11 @@ export function manifestFromShape(shape, region, opts = {}) {
   // second mirror-index formula.
   // T71 (AMEND 6/12/13's own real-Fusion measurement: addDistanceDimension
   // only ever accepts 2 SketchPoints, never a curve — "Wrong number or
-  // type of arguments"): `widthPairIds`/`selfMirrorHorizontalIds` below are
-  // STILL discovered the same way (a representative Line mirror pair, and
-  // the 2 self-mirroring horizontal edges) — the overall-size Distance
-  // dims (below) now just target ONE POINT on each entity (`:S`) rather
-  // than the whole curve; which end is picked doesn't affect the measured
-  // VALUE (a Horizontal/Vertical-oriented Distance reads only the
-  // corresponding axis of the two points), just which real SketchPoint
-  // anchors it.
-  let widthPairIds = null;
+  // type of arguments"): the overall-size Distance dims (below) target
+  // ONE POINT on each entity (`:S`) rather than the whole curve; which end
+  // is picked doesn't affect the measured VALUE (a Horizontal/Vertical-
+  // oriented Distance reads only the corresponding axis of the two
+  // points), just which real SketchPoint anchors it.
   const seen = new Set();
   for (let i = 0; i < n; i++) {
     const mi = mirrorSegmentIndex(i, n);
@@ -584,19 +580,45 @@ export function manifestFromShape(shape, region, opts = {}) {
     const primA = primitives[primIdxI], primB = primitives[primIdxMi];
     if (primA.type !== primB.type) continue; // never structurally mixed in these presets; skip rather than guess
     const idA = idsByPrimIndex[primIdxI], idB = idsByPrimIndex[primIdxMi];
-    if (primA.type === 'L' && !widthPairIds) widthPairIds = [idA, idB];
     constraints.push({ type: 'Equal', targets: [idA, idB] });
   }
 
-  const selfMirrorHorizontalIds = [];
-  for (let i = 0; i < n; i++) {
-    if (mirrorSegmentIndex(i, n) !== i) continue;
-    const primIdx = segMap.indexOf(i);
-    const prim = primitives[primIdx];
-    if (prim.type === 'L' && axisConstraintType(prim.p0, prim.p1) === 'Horizontal') {
-      selfMirrorHorizontalIds.push(idsByPrimIndex[primIdx]);
+  // T73 AMEND 1 (advisor, measured live in Fusion on main 660f417): the
+  // overall-size Distance dims used to anchor on whichever Line mirror
+  // pair / self-mirroring horizontal pair the Equal loop above found
+  // FIRST in primitive-iteration order — for the Bottle preset that's
+  // seg0/seg8, the NECK sides, so Fusion's own solver forced the NECK to
+  // contour_width (up to 3.07in off, live-measured); the hourglass only
+  // ever passed by luck, because ITS first mirror pair already happens to
+  // be the outer/widest sides. Fixed by choosing the anchor points BY
+  // GEOMETRY instead: the contour's own actual corners at min-x/max-x
+  // (width) and min-y/max-y (height), found directly from every LINE
+  // primitive's own endpoints (never an arc's — an arc's full bounding
+  // circle can overshoot its own visible sweep, e.g. a gently-curved arc
+  // with a large radius). Every preset this module knows builds its
+  // outline as top cap -> vertical "horn" -> arc -> ... -> bottom cap ->
+  // vertical "horn" -> arc -> ..., with every arc tangent to (never past)
+  // its neighboring horn/cap, so a Line's own endpoint is always the true
+  // extreme, by construction, never an incidental one.
+  let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+  for (const prim of primitives) {
+    if (prim.type !== 'L') continue;
+    for (const pt of [prim.p0, prim.p1]) {
+      if (pt.x < xMin) xMin = pt.x;
+      if (pt.x > xMax) xMax = pt.x;
+      if (pt.y < yMin) yMin = pt.y;
+      if (pt.y > yMax) yMax = pt.y;
     }
   }
+  const firstLineIdAt = (axis, value) => {
+    const idx = primitives.findIndex((prim) => prim.type === 'L'
+      && Math.abs(prim.p0[axis] - value) < EPS && Math.abs(prim.p1[axis] - value) < EPS);
+    return idx === -1 ? null : idsByPrimIndex[idx];
+  };
+  const leftId = firstLineIdAt('x', xMin), rightId = firstLineIdAt('x', xMax);
+  const widthPairIds = (leftId && rightId) ? [leftId, rightId] : null;
+  const topId = firstLineIdAt('y', yMin), bottomId = firstLineIdAt('y', yMax);
+  const heightPairIds = (topId && bottomId) ? [topId, bottomId] : [];
 
   const nameTable = PARAM_FUSION_NAMES[preset] || {};
   const parameters = Object.entries(params).map(([key, value]) => ({
@@ -626,8 +648,8 @@ export function manifestFromShape(shape, region, opts = {}) {
       orientation: 'Horizontal', expression: 'contour_width',
     });
   }
-  if (selfMirrorHorizontalIds.length === 2) {
-    const [topId, bottomId] = selfMirrorHorizontalIds;
+  if (heightPairIds.length === 2) {
+    const [topId, bottomId] = heightPairIds;
     parameters.push({ name: 'contour_height', value: region.h, unit: 'in' });
     dimensions.push({
       type: 'Distance', targets: [`${topId}:S`, `${bottomId}:S`],
