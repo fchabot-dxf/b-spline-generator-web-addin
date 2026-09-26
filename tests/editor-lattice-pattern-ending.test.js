@@ -87,12 +87,23 @@ describe('computePattern: §5 ending-rule table, a circular boundary (non-collin
   const cx = 5, cy = 4, r = 4;
   const primitives = [{ type: 'CIRCLE', cx, cy, r }];
   const spacing = PATTERN_DEFAULTS.spacing;
-  const halfRail = PATTERN_DEFAULTS.widths.rails / 2 / spacing;
+  // T71: this suite is about the ENDING-RULE geometry math (inset/loose
+  // pullback), not about whatever the UI's own current stroke-width
+  // default happens to be -- an explicit, small width, independent of
+  // PATTERN_DEFAULTS.widths.rails (now 0.25in, T71's own default bump),
+  // keeps this geometry decoupled from that default (same "a few tests
+  // intentionally pass a non-default width" pattern this codebase already
+  // uses elsewhere, e.g. editor-sketch-manifest.test.js's own CARVE_PATTERN).
+  const RAIL_WIDTH_IN = 0.07;
+  const halfRail = RAIL_WIDTH_IN / 2 / spacing;
   const j = 1; // |j - cy| = 3 -> a real chord, not tangent
   const expectedHalfChord = Math.sqrt(r * r - (j - cy) * (j - cy));
   const rawLo = cx - expectedHalfChord, rawHi = cx + expectedHalfChord;
   const extent = { iMin: 1, jMin: 0, iMax: 9, jMax: 8, mode: 'boundary', primitives };
-  const basePattern = { ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 } };
+  const basePattern = {
+    ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
+    widths: { ...PATTERN_DEFAULTS.widths, rails: RAIL_WIDTH_IN, ties: RAIL_WIDTH_IN },
+  };
 
   function railAtJ(endRule) {
     const pattern = { ...basePattern, boundary: { ...PATTERN_DEFAULTS.boundary, endRule } };
@@ -143,6 +154,7 @@ describe('computePattern: §5 ending-rule table, a circular boundary (non-collin
     const pattern = {
       ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'loose' },
+      widths: { ...PATTERN_DEFAULTS.widths, rails: RAIL_WIDTH_IN, ties: RAIL_WIDTH_IN },
     };
     const { segments } = computePattern(pattern, { extent: tinyExtent });
     const rail = segments.find((s) => s.kind === 'rail' && s.a.j === 4); // the row through the tiny circle's own center

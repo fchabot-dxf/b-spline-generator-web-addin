@@ -383,14 +383,18 @@ describe('PATTERN_DEFAULTS.colors (SE7g amend)', () => {
  * pattern.js's own comment on why these are absolute inches, not factors.
  */
 describe('PATTERN_DEFAULTS.widths (SE7i)', () => {
-  it('declares the three default kind widths, derived from LATTICE_STYLE × the default spacing (0.25)', () => {
-    expect(PATTERN_DEFAULTS.widths.rails).toBeCloseTo(0.07, 10);
+  it('declares the three default kind widths -- rails/ties a plain 0.25in (T71), nodeRadius still derived from LATTICE_STYLE × the default spacing (0.25)', () => {
+    // T71 (Fred: "Stroke width default to .25"): rails/ties raised from
+    // 0.07 (LATTICE_STYLE.rail.widthFactor*0.25) to a plain 0.25in --
+    // covers rails, ties, and (since T69) the Shape Lattice contour's own
+    // slot width, all via this one seed value.
+    expect(PATTERN_DEFAULTS.widths.rails).toBeCloseTo(0.25, 10);
     // T58 ADD-ON (Fred: "I normally want ties and rails to be the same
-    // width"): a brand-new layer's own ties DEFAULT now equals rails'
-    // (0.07), not LATTICE_STYLE.tie's own separate 0.055 — a disclosed
-    // default-VALUE change, matching widths.linkRailsTies's own default
-    // of true for a new layer.
-    expect(PATTERN_DEFAULTS.widths.ties).toBeCloseTo(0.07, 10);
+    // width"): a brand-new layer's own ties DEFAULT still equals rails'
+    // own default, not LATTICE_STYLE.tie's own separate 0.055 — a
+    // disclosed default-VALUE change, matching widths.linkRailsTies's own
+    // default of true for a new layer.
+    expect(PATTERN_DEFAULTS.widths.ties).toBeCloseTo(0.25, 10);
     expect(PATTERN_DEFAULTS.widths.nodeRadius).toBeCloseTo(0.075, 10);
     expect(PATTERN_DEFAULTS.widths.linkRailsTies).toBe(true);
   });

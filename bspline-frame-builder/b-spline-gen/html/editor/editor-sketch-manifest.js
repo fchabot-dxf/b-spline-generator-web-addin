@@ -55,7 +55,7 @@
  */
 import { computePattern, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice } from './editor-lattice.js';
-import { primitivesBBox, insetPathDToPrimitives, SILHOUETTE_STROKE_WIDTH } from './editor-lattice-boundary.js';
+import { primitivesBBox, insetPathDToPrimitives, SILHOUETTE_STROKE_WIDTH, insetRegionForContour } from './editor-lattice-boundary.js';
 import { generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
@@ -512,124 +512,52 @@ export function manifestFromShape(shape, region, opts = {}) {
   // exists to produce; this is the corrected, self-consistent reading of
   // §2's own "kink: none beyond the shared point" row — see WORK-LOG-
   // lane-b.md T61 for the fuller derivation).
-  // T70 AMEND 3 (advisor MEASURED in Fusion, T69 post-arg-order-fix):
-  // Tangent seg8/seg9 came back OVER_CONSTRAINTS once the Symmetry pass
-  // below ties the two halves together — a mirrored Tangent JOINT is
-  // implied by its own already-declared mirror-image joint (same "process
-  // each mirror pair once" dedup the Equal/Symmetry pass below already
-  // used, applied here to Tangent joints instead of segment pairs). The
-  // mirror of joint (segI, segJ) is joint (mirror(segJ), mirror(segI)) —
-  // REVERSED, since the left half is walked in the OPPOSITE direction
-  // (this module's own header comment on the generator: "Left side...
-  // bottom -> top"). Declared generically off `mirrorSegmentIndex`/
-  // `segMap`, not hardcoded segment numbers, so it applies to any preset
-  // with this same L/R structure, not just hourglass's own measured case.
+  // T71 (SE15 T69-fix-3, Fred: "dont use symmetry either" / "no radius dim
+  // though, leave the sketch loose for now" — a near-total rollback of
+  // T69-FIX's own AMEND 3/4/5, back to close to T69's ORIGINAL shape): the
+  // mirror axis, the horizontal axis, every Symmetry constraint, and their
+  // Coincident-to-origin anchors are ALL removed — Fred's own explicit
+  // "loose contour" ruling (SE15-CONSTRAINED-SKETCH-DESIGN.md's own "LOOSE
+  // CONTOUR"/"NO FIX" vocabulary): geometry is inserted symmetric (by
+  // construction, from the manifest's own coordinates) and left LOOSE, not
+  // explicitly re-constrained to stay so. The mirror-Tangent DEDUP (T70
+  // AMEND 3, below) is REVERTED too: with Symmetry gone, "redundant given
+  // the Symmetry pass" no longer holds, so every joint gets its own Tangent
+  // again, undeduped (advisor-confirmed judgment call, T71 dispatch).
   const m = primitives.length;
-  const tangentSeen = new Set();
   for (let i = 0; i < m; i++) {
     const j = (i + 1) % m;
     const idA = idsByPrimIndex[i], idB = idsByPrimIndex[j];
     constraints.push({ type: 'Coincident', targets: [`${idA}:E`, `${idB}:S`] });
     const isKinkJoint = segments[segMap[i]].style === 'kink' || segments[segMap[j]].style === 'kink';
     const eitherArc = primitives[i].type === 'A' || primitives[j].type === 'A';
-    if (eitherArc && !isKinkJoint) {
-      const segI = segMap[i], segJ = segMap[j];
-      const mirrorKey = `${mirrorSegmentIndex(segJ, n)}:${mirrorSegmentIndex(segI, n)}`;
-      if (!tangentSeen.has(mirrorKey)) {
-        constraints.push({ type: 'Tangent', targets: [idA, idB] });
-        tangentSeen.add(`${segI}:${segJ}`);
-      }
-    }
+    if (eitherArc && !isKinkJoint) constraints.push({ type: 'Tangent', targets: [idA, idB] });
   }
 
-  // T70 AMEND 3 (advisor MEASURED: the OLD mirror-Equal alone left the two
-  // halves the SAME SIZE but with no ABSOLUTE POSITION link to each other
-  // — a stroke_width change, or a rigid sketch move, let them drift/
-  // collapse asymmetrically, since nothing tied WHERE the left half sat
-  // relative to the right). Fixed with a genuine relationship, never Fix:
-  // every mirror pair's own points get a Symmetry constraint about a new
-  // vertical construction centerline at x=0 (carve-space — natural-space
-  // x=cx0, the SAME mirror-x both `_solveHourglass`/`_solveBottle` already
-  // use for their own `M()` reflection, confirmed identical in both).
-  // LINE pair: Symmetry on BOTH endpoints fully determines the pair's
-  // relative length too, so the OLD mirror-Equal (length) is now genuinely
-  // redundant and dropped. ARC pair: Symmetry on ONLY the center point is
-  // added — its two endpoints are already pinned transitively via the
-  // Coincident chain through their own (already-symmetric) neighbors —
-  // this fixes POSITION, not SIZE, so the mirror-Equal (radius) STAYS,
-  // exactly like the EXISTING seg1<->seg3 shoulder<->hip pattern just
-  // below (Equal + one Radial dim driving both). ONLY between segments
+  // Mirror-Equal (§2's own "every right-side entity <-> its LEFT mirror"),
+  // restored to T69's own ORIGINAL, preset-agnostic shape — one plain
+  // Equal per mirror pair, Line or Arc alike, no Symmetry/axis alongside
+  // it. T71 also drops the shoulder-pair exception (T70 AMEND 4's own
+  // "Equal(['seg1','seg9']) is OVER_CONSTRAINTS" — that reasoning depended
+  // on the NOW-REMOVED Symmetry-on-center pinning the pair's position; gone,
+  // the shoulder pair needs its own Equal again like every other pair,
+  // advisor-confirmed judgment call, T71 dispatch). ONLY between segments
   // that produce exactly ONE primitive each — a disclosed scope-narrowing
   // (WORK-LOG-lane-b.md T61, unchanged by this turn): a kink's own
   // 2-primitive mirror pairing isn't verified this turn, so it's skipped
   // rather than guessed. Reuses `mirrorSegmentIndex` (T59) directly, not a
   // second mirror-index formula.
-  // T70 AMEND 4 (advisor MEASURED on 2e56151: at stroke_width 0.5 the
-  // WHOLE right half slid to x=353.9in — the mirror axis itself was FREE,
-  // so Symmetry pinned the two halves TO EACH OTHER but nothing pinned the
-  // AXIS to any fixed absolute position, letting the entire assembly
-  // translate/rotate about it as a rigid body). Fixed with ONE relationship
-  // per axis, never Fix: `Coincident(sketch's own origin point, axis)` —
-  // a point-ON-line constraint, using Fusion's own ALWAYS-fixed origin
-  // point as the anchor rather than an isFixed flag WE set. `ensureAxis`
-  // below (shared by both the vertical mirror axis and, AMEND 5, a new
-  // horizontal one) emits this exactly once per axis, right where it's
-  // created.
-  const cx0 = region.x + region.w / 2;
-  const cy0 = region.y + region.h / 2;
-  const axisIds = {};
-  const ensureAxis = (key, p1, p2) => {
-    if (axisIds[key]) return axisIds[key];
-    axisIds[key] = key;
-    entities.push({ id: key, type: 'Line', isConstruction: true, p1, p2 });
-    constraints.push({ type: 'Coincident', targets: ['origin', key] });
-    return key;
-  };
-  const ensureMirrorAxis = () => ensureAxis('mirrorAxis', [cx0, region.y], [cx0, region.y + region.h]);
-  const ensureHorizontalAxis = () => ensureAxis('horizontalAxis', [region.x, cy0], [region.x + region.w, cy0]);
-
-  // A mirrored LINE pair's own 2 endpoints have no declared order
-  // correspondence (the left half is walked in the OPPOSITE traversal
-  // direction, per the generator's own header comment) — matched here by
-  // actual Y-coordinate proximity (mirroring only ever flips X), the SAME
-  // "read real coordinates, don't assume a convention" discipline
-  // `axisConstraintType`/`pieceEndOrCurveTarget` already use elsewhere in
-  // this module.
-  const nearestEndBySameY = (pt, primB) => (
-    Math.abs(pt.y - primB.p0.y) <= Math.abs(pt.y - primB.p1.y) ? 'S' : 'E'
-  );
-  // T70 AMEND 4 (advisor MEASURED: Symmetry ['seg4:E','seg6:S'] is
-  // OVER_CONSTRAINTS — redundant with the OTHER symmetry this same pair
-  // already gets, plus each line's own axis constraint, plus the
-  // Coincident chain to their shared self-mirroring neighbor): the SECOND
-  // endpoint-pair emitted for a Line mirror pair (see below: the "S" pair
-  // is always emitted first, "E" second) is only genuinely independent
-  // information when the FIRST pair + each line's own H/V constraint
-  // DON'T already pin it — true whenever the "E" end of BOTH lines
-  // connects (via the existing adjacency Coincident chain, always the
-  // FORWARD/i+1 neighbor by this module's own construction order) to a
-  // SELF-mirroring segment that is itself axis-constrained: that
-  // neighbor's own two ends share one coordinate BY CONSTRUCTION, closing
-  // the loop back to the first Symmetry pair. Declared off
-  // `mirrorSegmentIndex`/`segMap` adjacency, never a raw index literal —
-  // but empirically NARROWER than it might look: it only ever inspects
-  // the "E" pair specifically (never "S"), so for hourglass it selects
-  // exactly ONE of the shape's 2 Line mirror pairs (seg4<->seg6, via the
-  // bottom edge seg5) — the SAME ONE the advisor's own live run measured,
-  // not a broader set. seg0<->seg10's own analogous closing happens on
-  // its "S" side (via the top edge seg11) instead, which this rule does
-  // NOT inspect, so that pair keeps both Symmetry constraints — a
-  // deliberately conservative asymmetry, not a bug: extending detection to
-  // the "S" side too is a real possible improvement, left for a future
-  // turn since it isn't what was actually measured.
-  const closesViaSelfMirrorNeighbor = (primIdx, step) => {
-    const neighborPrimIdx = (primIdx + step + m) % m;
-    const neighborSeg = segMap[neighborPrimIdx];
-    if (mirrorSegmentIndex(neighborSeg, n) !== neighborSeg) return false;
-    const neighborPrim = primitives[neighborPrimIdx];
-    return neighborPrim.type === 'L' && !!axisConstraintType(neighborPrim.p0, neighborPrim.p1);
-  };
-  let widthPairIds = null; // T70 AMEND 5: first Line mirror pair found, for the overall-width dim
+  // T71 (AMEND 6/12/13's own real-Fusion measurement: addDistanceDimension
+  // only ever accepts 2 SketchPoints, never a curve — "Wrong number or
+  // type of arguments"): `widthPairIds`/`selfMirrorHorizontalIds` below are
+  // STILL discovered the same way (a representative Line mirror pair, and
+  // the 2 self-mirroring horizontal edges) — the overall-size Distance
+  // dims (below) now just target ONE POINT on each entity (`:S`) rather
+  // than the whole curve; which end is picked doesn't affect the measured
+  // VALUE (a Horizontal/Vertical-oriented Distance reads only the
+  // corresponding axis of the two points), just which real SketchPoint
+  // anchors it.
+  let widthPairIds = null;
   const seen = new Set();
   for (let i = 0; i < n; i++) {
     const mi = mirrorSegmentIndex(i, n);
@@ -642,60 +570,10 @@ export function manifestFromShape(shape, region, opts = {}) {
     const primA = primitives[primIdxI], primB = primitives[primIdxMi];
     if (primA.type !== primB.type) continue; // never structurally mixed in these presets; skip rather than guess
     const idA = idsByPrimIndex[primIdxI], idB = idsByPrimIndex[primIdxMi];
-    const axis = ensureMirrorAxis();
-    if (primA.type === 'L') {
-      if (!widthPairIds) widthPairIds = [idA, idB];
-      const sSuffix = nearestEndBySameY(primA.p0, primB);
-      const eSuffix = sSuffix === 'S' ? 'E' : 'S';
-      constraints.push({ type: 'Symmetry', targets: [`${idA}:S`, `${idB}:${sSuffix}`, axis] });
-      const eCloses = closesViaSelfMirrorNeighbor(primIdxI, 1)
-        && closesViaSelfMirrorNeighbor(primIdxMi, eSuffix === 'E' ? 1 : -1);
-      if (!eCloses) constraints.push({ type: 'Symmetry', targets: [`${idA}:E`, `${idB}:${eSuffix}`, axis] });
-    } else {
-      constraints.push({ type: 'Symmetry', targets: [`${idA}:C`, `${idB}:C`, axis] });
-      // T70 AMEND 4 (advisor MEASURED: Equal ['seg1','seg9'] is
-      // OVER_CONSTRAINTS): the shoulder pair's own radius is ALREADY fully
-      // implied once BOTH its 2 endpoints (via the Coincident chain,
-      // always true) AND its center (via the Symmetry just above) are
-      // fixed — a circle through 2 known points with a known center has
-      // no remaining freedom. This is a narrow, MEASURED exception, not
-      // generalized to hip (seg3<->seg7) or the waist (seg2<->seg8) —
-      // unlike the Tangent dedup above, hand-tracing did NOT produce a
-      // clean, confident reason those two are ALSO safe to drop, so they
-      // keep their own mirror-Equal rather than risk under-constraining on
-      // a guess; flagged for the advisor's own next live check.
-      const isMeasuredRedundantShoulderPair = preset === 'hourglass' && ((i === 1 && mi === 9) || (i === 9 && mi === 1));
-      if (!isMeasuredRedundantShoulderPair) constraints.push({ type: 'Equal', targets: [idA, idB] });
-    }
+    if (primA.type === 'L' && !widthPairIds) widthPairIds = [idA, idB];
+    constraints.push({ type: 'Equal', targets: [idA, idB] });
   }
 
-  // T70 AMEND 5 (advisor MEASURED: with the origin anchor in place the
-  // arcs hold, but the straight EDGES still stretch at stroke_width 0.5 —
-  // nothing set the contour's own OVERALL size, only its mirror-symmetry
-  // and per-piece H/V). Fixed with param-driven distance dims (never Fix),
-  // referencing `widthIn`/`heightIn` — the BOARD's own pre-existing Fusion
-  // document parameters (b-spline-gen.py's own _sync_user_parameters,
-  // NOT re-declared here — this module only ever REFERENCES them by name,
-  // the same "declare, don't hand-roll a duplicate" reasoning already
-  // applied to `stroke_width`, just for a parameter this module doesn't
-  // OWN at all): a horizontal Distance dim between the first Line mirror
-  // pair (widthPairIds, already Symmetry-linked and each individually
-  // Vertical — this pins their ABSOLUTE separation, not just their
-  // relative one) = widthIn; and, for the two SELF-mirroring Horizontal
-  // segments (the top/bottom edges — never processed by the mirror-pair
-  // loop above, since `mi === i` for a self-mirror skips it entirely), a
-  // vertical Distance dim between them = heightIn, PLUS a Symmetry of the
-  // two edges (as whole curves, not points — Fusion's own addSymmetry
-  // accepts either) about a NEW horizontal construction axis through the
-  // origin, which places them in Y — the width dim alone says nothing
-  // about height, and the height dim alone only fixes their SEPARATION,
-  // not where the pair sits relative to the origin.
-  // Distance is a DIMENSION (fb_engine's own dimension_step), not a
-  // geometric constraint — declared into `dimensions[]`, the SAME array
-  // 'Radial'/'SlotWidth' already use, never `constraints[]`.
-  if (widthPairIds) {
-    dimensions.push({ type: 'Distance', targets: widthPairIds, orientation: 'Horizontal', expression: 'widthIn' });
-  }
   const selfMirrorHorizontalIds = [];
   for (let i = 0; i < n; i++) {
     if (mirrorSegmentIndex(i, n) !== i) continue;
@@ -704,11 +582,6 @@ export function manifestFromShape(shape, region, opts = {}) {
     if (prim.type === 'L' && axisConstraintType(prim.p0, prim.p1) === 'Horizontal') {
       selfMirrorHorizontalIds.push(idsByPrimIndex[primIdx]);
     }
-  }
-  if (selfMirrorHorizontalIds.length === 2) {
-    const [topId, bottomId] = selfMirrorHorizontalIds;
-    dimensions.push({ type: 'Distance', targets: [topId, bottomId], orientation: 'Vertical', expression: 'heightIn' });
-    constraints.push({ type: 'Symmetry', targets: [topId, bottomId, ensureHorizontalAxis()] });
   }
 
   const nameTable = PARAM_FUSION_NAMES[preset] || {};
@@ -724,34 +597,42 @@ export function manifestFromShape(shape, region, opts = {}) {
   // in the common linked case, and is the ONLY source of it when unlinked.
   if (isSlotMode && entities.length) parameters.push({ name: 'stroke_width', value: strokeWidth, unit: 'in' });
 
-  // Hourglass-only, §4's own "a FEW driving dimensions" example (§1):
-  // the shoulder arc's own radius, driven by corner_radius * half_width —
-  // ONLY when segment 1 is still a real arc (not overridden away from
-  // 'curve'), since a kink/straight override has no "radius" to drive.
-  // The shoulder<->hip Equal declared above (mirror pass ties 1<->9,
-  // 3<->7) is completed into ONE group by this same gate adding 1<->3.
+  // T71: the contour's overall size — KEPT (Fred: "W and H is good"), but
+  // now a point-to-point Distance (never a curve target) driven by a NEW,
+  // INDEPENDENT parameter (`contour_width`/`contour_height`, plain numbers
+  // — never an expression referencing widthIn/heightIn) rather than the
+  // board's own pre-existing widthIn/heightIn. `region` here is ALREADY
+  // the contour's own inset region (buildSketchManifest passes it in, see
+  // that function's own doc comment) — CONTOUR_SIZE_INSET_IN's margin is
+  // baked into `region.w`/`region.h` for free, no separate arithmetic here.
+  if (widthPairIds) {
+    parameters.push({ name: 'contour_width', value: region.w, unit: 'in' });
+    dimensions.push({
+      type: 'Distance', targets: [`${widthPairIds[0]}:S`, `${widthPairIds[1]}:S`],
+      orientation: 'Horizontal', expression: 'contour_width',
+    });
+  }
+  if (selfMirrorHorizontalIds.length === 2) {
+    const [topId, bottomId] = selfMirrorHorizontalIds;
+    parameters.push({ name: 'contour_height', value: region.h, unit: 'in' });
+    dimensions.push({
+      type: 'Distance', targets: [`${topId}:S`, `${bottomId}:S`],
+      orientation: 'Vertical', expression: 'contour_height',
+    });
+  }
+
+  // T71 (Fred: "no radius dim though, leave the sketch loose for now"):
+  // the shoulder's own Radial dim (corner_radius * half_width) and the
+  // waist's own Radial dim (waist_radius, plus the parameter that only
+  // ever existed to drive it) are BOTH removed — "no radius dims" means no
+  // DIMENSION, not no RELATIONSHIP: the shoulder<->hip Equal stays (every
+  // other mirror/same-side Equal in this function does too), just with
+  // nothing left driving an actual radius VALUE. Hourglass-only, same
+  // disclosed scope as before (bottle's own analogous "neck"/"waist" arcs
+  // were never touched by either dim).
   if (preset === 'hourglass' && segments[1]?.style === 'curve' && segments[3]?.style === 'curve') {
     const idx1 = segMap.indexOf(1), idx3 = segMap.indexOf(3);
     constraints.push({ type: 'Equal', targets: [idsByPrimIndex[idx1], idsByPrimIndex[idx3]] });
-    dimensions.push({ type: 'Radial', target: idsByPrimIndex[idx1], expression: 'corner_radius * half_width' });
-  }
-
-  // T70 AMEND 3 (advisor MEASURED: without this, the waist arc's own
-  // radius was never actually dimensioned at all — its two ENDPOINTS were
-  // already pinned transitively via the Coincident chain through the
-  // shoulder/hip arcs, but nothing fixed the arc's own THIRD degree of
-  // freedom [how far it bulges], so a re-solve left it drifting). The
-  // mirror pass above already declared the seg2<->seg8 Equal (radius) —
-  // this only adds the ONE driving Radial dim, on the RIGHT waist arc
-  // (index 2), matching the shoulder<->hip block's own "Radial on the
-  // right one, Equal carries it to the left" convention exactly.
-  // Hourglass-only, same disclosed scope as the shoulder/hip block above
-  // (bottle's own analogous "neck" arc is untouched — a PRE-EXISTING
-  // scope-narrowing, not introduced by this fix).
-  if (preset === 'hourglass' && segments[2]?.style === 'curve') {
-    const idx2 = segMap.indexOf(2);
-    parameters.push({ name: 'waist_radius', value: primitives[idx2].rx, unit: 'in' });
-    dimensions.push({ type: 'Radial', target: idsByPrimIndex[idx2], expression: 'waist_radius' });
   }
 
   return { entities, constraints, parameters, dimensions, groups };
@@ -948,7 +829,20 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // a silhouette — reused here rather than inventing a second flag.
   const hasShape = !!(pattern.shape && pattern.shape.source === 'generated' && pattern.extent && pattern.extent.mode === 'boundary');
   const widthMode = hasShape ? SKETCH_WIDTH_MODE.shapeLattice : SKETCH_WIDTH_MODE.boxLattice;
-  const extent = hasShape ? resolveShapeBoundaryExtent(pattern, region) : resolveBoardExtent(pattern, region);
+  // T71: the contour's own region is the board region INSET by the
+  // declared contour-size margin (editor-lattice-boundary.js's own
+  // `insetRegionForContour`, the SAME helper `regenerateSilhouette` uses
+  // on the app side) — both the lattice-fill's own clip boundary
+  // (`resolveShapeBoundaryExtent`) AND the contour's own entities
+  // (`manifestFromShape`) build from this ONE inset region, so the fill
+  // never pokes past the new, smaller contour, and the contour's own
+  // `contour_width`/`contour_height` parameter values (region.w/region.h,
+  // read inside `manifestFromShape`) land at board-minus-margin for free.
+  // `manifest.region` below and `applyCarvePlacement` both keep using the
+  // ORIGINAL, un-inset `region` — carve placement centers the WHOLE BOARD,
+  // not just the contour.
+  const contourRegion = hasShape ? insetRegionForContour(region) : region;
+  const extent = hasShape ? resolveShapeBoundaryExtent(pattern, contourRegion) : resolveBoardExtent(pattern, region);
   const lattice = manifestFromLattice(pattern, extent, widthMode);
   // T69: the contour's own slot width matches the layer's own REAL
   // rails/ties width (`pattern.widths.rails`, merged over
@@ -959,7 +853,7 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
   const contourWidthMode = hasShape ? SKETCH_CONTOUR_WIDTH_MODE : null;
   const shape = hasShape
-    ? manifestFromShape(pattern.shape, region, { widthMode: contourWidthMode, strokeWidth: widths.rails })
+    ? manifestFromShape(pattern.shape, contourRegion, { widthMode: contourWidthMode, strokeWidth: widths.rails })
     : { entities: [], constraints: [], parameters: [], dimensions: [], groups: {} };
 
   const manifest = {

@@ -47,10 +47,10 @@ import {
 // so this file — which has no panel DOM at all — can call the identical
 // write/regenerate logic, not a second copy of it).
 import { generateSilhouette } from './editor-shape-lattice-generator.js';
-import { boardRegion, hitTestSegment } from './editor-shape-lattice-interaction.js';
+import { hitTestSegment } from './editor-shape-lattice-interaction.js';
 import {
     currentPattern, currentShape, regenerateSilhouette, regenerateSilhouetteAndFill,
-    paramHandleRecords, renderShapeLatticeHandles, openSegmentStyleBar,
+    paramHandleRecords, renderShapeLatticeHandles, openSegmentStyleBar, _shapeContourRegion,
 } from './properties-shape-lattice.js';
 
 function _strokeLog(msg) {
@@ -1619,7 +1619,7 @@ const shapeLatticeHandler = {
         }
         const shape = currentShape(currentPattern(editor));
         if (shape.source === 'generated' && Array.isArray(shape.segments)) {
-            const { primitives } = generateSilhouette(boardRegion(editor), shape);
+            const { primitives } = generateSilhouette(_shapeContourRegion(editor), shape);
             const tol = getDynamicTolerance(editor, 10, 'slopPx');
             const segIndex = hitTestSegment(primitives, shape.segments, rawPt, tol);
             if (segIndex != null) {

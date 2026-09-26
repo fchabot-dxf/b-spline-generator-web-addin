@@ -55,6 +55,31 @@ const TAU = Math.PI * 2;
  *  declared number from a neutral home instead. */
 export const SILHOUETTE_STROKE_WIDTH = 0.02;
 
+/** T71 (SE15 T69-fix-3, Fred: "W and H is good" + AMEND 13's own final
+ *  margin value): the Shape Lattice contour's own overall size is the
+ *  board minus a fixed 1in margin (0.5in inset per side, centred) —
+ *  declared HERE for the SAME reason SILHOUETTE_STROKE_WIDTH is (a pure,
+ *  DOM-free module both the app's own drawing, `properties-shape-
+ *  lattice.js`'s `regenerateSilhouette`, AND the manifest producer,
+ *  `editor-sketch-manifest.js`'s `buildSketchManifest`, already import
+ *  from) — one declaration, two consumers, never two divergent margin
+ *  numbers. */
+export const CONTOUR_SIZE_INSET_IN = 0.5;
+
+/** The board `region` ({x,y,w,h}), shrunk by CONTOUR_SIZE_INSET_IN on
+ *  every side and re-centred — the ONE region BOTH the app's own drawn
+ *  contour and the manifest's own contour entities must build their
+ *  geometry from, so neither ever draws/declares a different size than
+ *  the other (T68's own parity discipline, extended to this margin). */
+export function insetRegionForContour(region) {
+  return {
+    x: region.x + CONTOUR_SIZE_INSET_IN,
+    y: region.y + CONTOUR_SIZE_INSET_IN,
+    w: region.w - 2 * CONTOUR_SIZE_INSET_IN,
+    h: region.h - 2 * CONTOUR_SIZE_INSET_IN,
+  };
+}
+
 /** Same plain-DOM-element adapter contract OUTLINE_KINDS' own callers use
  *  (editor-io.js's `_outlineAdapter`) — `el.attr(name)` / `el.array()` /
  *  `el.type`. Accepts either that adapter shape directly, or a live

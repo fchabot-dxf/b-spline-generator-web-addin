@@ -8549,3 +8549,99 @@ pick up T70 with the investigation already done.
 Amendments polled clean before this pass (10 new absorbed into the synthesis above, nothing left unaddressed in
 the mailbox). No code changed in this section — nothing to commit for it.
 
+### T71 — T69-fix-3 implemented (loose contour + contour_width/height) + stroke default 0.25
+
+Implemented the synthesized spec above exactly, epoch 3, fresh session. `editor-sketch-manifest.js`'s
+`manifestFromShape`: removed the mirror axis, horizontal axis, every Symmetry constraint, and their
+Coincident-to-origin anchors entirely; reverted the mirror-Tangent dedup (all 8 Tangents again, not 4) and the
+shoulder-pair Equal drop (Equal(seg1,seg9) restored) — both exactly as flagged/confirmed, since neither
+exception's own justification ("redundant given Symmetry") survives Symmetry's removal. The mirror pass is now
+back to T69's own ORIGINAL shape: one plain Equal per valid mirror pair (Line or Arc alike), no exceptions.
+Both Radial dims (shoulder's `corner_radius * half_width`, waist's `waist_radius`) are gone, along with the
+`waist_radius` parameter that only ever existed to drive one — the shoulder<->hip Equal itself stays ("no radius
+dims" means no driving DIMENSION, not no relationship).
+
+Overall size: kept, per Fred's "W and H is good", but redesigned to match the AMEND 6 real-Fusion finding
+(`addDistanceDimension` only accepts 2 SketchPoints, "Wrong number or type of arguments" on a curve) — the
+Distance dims now target `id:S` points on the SAME `widthPairIds`/`selfMirrorHorizontalIds` entities the old code
+already discovered (a representative Line mirror pair, and the 2 self-mirroring horizontal edges), never the bare
+curve id. Driven by two NEW, independent parameters (`contour_width`/`contour_height`, plain numbers, never an
+expression referencing `widthIn`/`heightIn`) — declared once `region.w`/`region.h` are known, which is why I moved
+the `if (widthPairIds)`/`if (selfMirrorHorizontalIds.length === 2)` blocks to AFTER the `parameters` const
+declaration (a TDZ crash the first vitest run caught immediately: `parameters` wasn't a plain accumulator array
+from the top of the function the way `entities`/`constraints`/`dimensions` are — it's built from
+`Object.entries(params)` partway through — moving just the two `if` blocks down, not the `widthPairIds`/
+`selfMirrorHorizontalIds` *discovery* loops, fixed it with the smallest possible diff).
+
+Margin: one declared constant, `CONTOUR_SIZE_INSET_IN = 0.5` (+ a paired `insetRegionForContour` helper), in
+`editor-lattice-boundary.js` — the SAME neutral home `SILHOUETTE_STROKE_WIDTH` already established for exactly
+this "both the app's drawing and the manifest producer import this" reason. `buildSketchManifest` computes the
+inset contour region ONCE and threads it into BOTH `resolveShapeBoundaryExtent` (so the lattice fill clips to the
+NEW smaller contour, not the old board-wide one) and `manifestFromShape` (so `region.w`/`region.h` — already
+consumed for `half_width` — become `contour_width`/`contour_height` for free, no separate arithmetic). Verified:
+on the standard 7x9 test board this comes out to 6/8 exactly, matching the spec's own worked example.
+
+App-side parity turned out to need FOUR call sites, not the one the dispatch named (`regenerateSilhouette`) — a
+grep for `generateSilhouette(` in `properties-shape-lattice.js` plus a chase through `editor-interaction.js`
+found `_effectiveSegments` (segment list before a first Generate), `paramHandleRecords` (the draggable param
+handles' own anchor positions), and `detectShapeLatticeDetach` (the "did a hand-edit diverge from what
+Generate would produce" check) all independently re-derive the SAME silhouette from `boardRegion(editor)`
+directly. Missing any of them would have left a real, user-visible bug (handles misaligned with the now-smaller
+drawn contour, or `detectShapeLatticeDetach` permanently misfiring "picked" on every commit since its own
+recomputed `d` would never again match what's actually drawn) even though no test in the existing suite would
+have caught it — none of them assert against an oracle built from the OLD uninset region. Declared one shared
+`_shapeContourRegion(editor)` helper (properties-shape-lattice.js) — exported (same underscore-kept-while-exported
+convention `_findBoundaryElement` already uses in this file) since `editor-interaction.js`'s own segment-tap
+hit-test (`shapeLatticeHandler.start`) needed the identical region too; that call site's own `boardRegion` import
+became dead and was removed.
+
+Python: `test_sketch_manifest_builder.py`'s `FakeSketchDimensions.addDistanceDimension` now type-checks both args
+against `FakeSketchPoint`, raising the same "Wrong number or type of arguments" real Fusion gives for a curve —
+this immediately turned up ONE existing test (`_mirror_anchor_and_size_manifest`, T70 AMEND 4/5's own end-to-end
+fixture) that was itself feeding the exact bug the fix now catches (`targets: ["segR", "segL"]`, bare ids) —
+fixed to `["segR:S", "segL:S"]`, matching what a correct manifest actually looks like; the mirror-axis/Symmetry
+machinery it exercises is unrelated, still-generic fb_engine capability (T71 only stops the JS PRODUCER from
+emitting it for the contour) so that fixture and its Symmetry-only sibling test are otherwise untouched. Added
+`test_distance_dim_targeting_a_bare_curve_id_is_rejected_not_silently_accepted` proving the regression is now
+caught as a graceful DIM CRASH (skip-and-report, never a hard crash) — confirmed non-vacuous by construction
+(the pre-fix shim unconditionally logged `dim:Distance` and returned success for the identical input).
+
+AMEND 14 (stroke default 0.25): `PATTERN_DEFAULTS.widths.rails`/`.ties` changed from
+`LATTICE_STYLE.rail.widthFactor * 0.25` (=0.07) to a plain `0.25`. Swept `0.07` across `tests/*.js` and
+`test_sketch_manifest_builder.py` per the dispatch's own instruction — only ONE hit was actually testing THIS
+default symbolically (`editor-lattice-pattern-emit.test.js`'s own "declares the three default kind widths");
+every other hit either hardcodes an explicit non-default width on its own test pattern (unaffected by the
+JS-side default at all) or belongs to an unrelated function (`emitSegment`'s own `LATTICE_STYLE`-derived
+fallback, `stepToGrid`'s rounding-grid samples). One MORE non-`0.07`-literal casualty the grep couldn't catch:
+`editor-lattice-pattern-ending.test.js`'s own circular-boundary ending-rule suite reads
+`PATTERN_DEFAULTS.widths.rails` *symbolically* (not a literal), and its "loose degrades to inset" test used a
+hand-picked tiny circle (chord 0.6) that was safely bigger than 2×the OLD half-width (0.14) but smaller than
+2×the NEW one (0.5, i.e. now exactly one full grid cell) — the pullback started overshooting into a clamped/
+midpoint fallback the test never anticipated. Not a production bug (the clamp is the CORRECT defensive
+behavior once a rail is a full grid cell wide) — decoupled that whole describe block from the evolving UI
+default with an explicit local `RAIL_WIDTH_IN = 0.07`, the same "a few tests intentionally pass a non-default
+width" pattern already used elsewhere in this codebase.
+
+Required test (AMEND 7, still valid per 8/12/13's partial Distance reinstatement): added, asserting every
+Distance dim's targets end in `:S`/`:E`. Also replaced the entire obsolete "T70 AMEND 3"/"T70 AMEND 4/5" describe
+blocks in `tests/editor-sketch-manifest.test.js` (mirrorAxis/Symmetry/waist_radius assertions that would now
+either throw — reading `.expression` off a dim that no longer exists — or simply assert the wrong thing) with a
+new "T71 (T69-fix-3): loose contour" block covering the reverted behavior directly, plus a new `buildSketchManifest`
+describe block proving the 7x9-board contour_width=6/contour_height=8 example end-to-end. Updated 2 buildSketchManifest+
+shape tests and both `parity-app-manifest.test.js` contour tests that independently re-derive expected geometry via
+`generateSilhouette(REGION, ...)` to use `insetRegionForContour(REGION)` instead, matching what the manifest/app
+now actually build from.
+
+Verify: 1048/1048 vitest, 33/33 pytest (`bspline-frame-builder/b-spline-gen`), both full suites, twice (once before
+the comment cleanup below, once after). `proc_health.py watch` showed nothing lingering — no dev server or
+watch-mode process was started this turn.
+
+One thing caught only by re-reading my own diff, not by any test: my first draft of the T71 doc comment above the
+wraparound-joint loop duplicated the PRE-EXISTING "Coincident at EVERY adjacent primitive joint..." paragraph
+verbatim right after itself (I'd meant to ADD to that comment, not restate it) — trimmed to just the new,
+T71-specific delta before committing. Nothing behavioral, but worth naming since it's exactly the kind of stale/
+redundant doc-comment drift the worker skill's own architecture-map guidance warns against, just inside a
+function comment rather than a map file.
+
+NO FUSION this turn, per the dispatch. Amendments polled clean immediately before this commit+pass (nothing new).
+

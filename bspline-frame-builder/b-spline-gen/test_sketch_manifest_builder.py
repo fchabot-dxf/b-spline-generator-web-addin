@@ -349,6 +349,19 @@ class FakeSketchDimensions:
         # T70 AMEND 5: logged now (matching addRadialDimension's own
         # existing convention) so a test can observe it fired, not just
         # that its own dimension object landed in self._items.
+        # T71 (AMEND 6's own real-Fusion measurement): the REAL
+        # addDistanceDimension only ever accepts 2 SketchPoints -- a
+        # SketchLine/SketchArc crashes with "Wrong number or type of
+        # arguments." The fake used to accept anything positionally,
+        # silently passing a curve straight through and hiding this exact
+        # bug from every test ("so this class can't pass again" -- the
+        # same discipline FakeSketchPoint.isFixed's own setter already
+        # applies to the Fix-ban, T66).
+        if not isinstance(src, FakeSketchPoint) or not isinstance(tgt, FakeSketchPoint):
+            raise TypeError(
+                "addDistanceDimension requires 2 SketchPoint arguments "
+                "(Wrong number or type of arguments.)"
+            )
         CALL_LOG.append(("dim:Distance",))
         d = FakeDimension()
         self._items.append(d)
@@ -1437,7 +1450,18 @@ def _mirror_anchor_and_size_manifest():
     mirrored Line segments tied to it via Symmetry (AMEND 3's own
     mechanism, unchanged), and a Distance dim between them driven by
     'widthIn' (AMEND 5) -- proves the full anchor+size chain end-to-end,
-    not just origin-Coincident in isolation."""
+    not just origin-Coincident in isolation.
+
+    T71: the Distance dim's own targets are point-suffixed ('segR:S'/
+    'segL:S'), not the OLD bare curve ids -- this fixture predates T71's
+    own addDistanceDimension curve-rejection fix (below), and a bare-id
+    target would now correctly raise inside the fake, turning this into a
+    DIM CRASH instead of the dim:Distance dispatch this test actually
+    means to prove. The mirror-axis/Symmetry machinery itself is
+    UNCHANGED/still-generic fb_engine capability (T71 only stops the JS
+    manifest PRODUCER from emitting it for the contour, see
+    editor-sketch-manifest.js) -- this fixture is a hand-built manifest,
+    independent of what that producer currently emits."""
     return {
         "version": 1, "layerId": "1", "sketchName": "Test Mirror Anchor Size",
         "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9}, "widthMode": "centerline",
@@ -1453,12 +1477,53 @@ def _mirror_anchor_and_size_manifest():
         ],
         "parameters": [],
         "dimensions": [
+            {"type": "Distance", "targets": ["segR:S", "segL:S"], "orientation": "Horizontal", "expression": "widthIn"},
+        ],
+        "groups": {"silhouette": ["segR", "segL"]},
+        "latticePieceCount": 0,
+        "latticeConstrained": True,
+    }
+
+
+def _curve_targeted_distance_manifest():
+    """T71: the OLD, buggy shape the fixture above just moved away from --
+    a Distance dim targeting 2 bare curve ids instead of 2 points. Real
+    Fusion's addDistanceDimension rejects this outright ("Wrong number or
+    type of arguments", AMEND 6's own live measurement); proves the fake
+    now catches the SAME regression instead of silently accepting it."""
+    return {
+        "version": 1, "layerId": "1", "sketchName": "Test Curve Distance Rejected",
+        "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9}, "widthMode": "centerline",
+        "entities": [
+            {"id": "segR", "type": "Line", "p1": [2.0, 0.0], "p2": [3.0, 1.0]},
+            {"id": "segL", "type": "Line", "p1": [-2.0, 0.0], "p2": [-3.0, 1.0]},
+        ],
+        "constraints": [],
+        "parameters": [],
+        "dimensions": [
             {"type": "Distance", "targets": ["segR", "segL"], "orientation": "Horizontal", "expression": "widthIn"},
         ],
         "groups": {"silhouette": ["segR", "segL"]},
         "latticePieceCount": 0,
         "latticeConstrained": True,
     }
+
+
+def test_distance_dim_targeting_a_bare_curve_id_is_rejected_not_silently_accepted(call_log):
+    """T71: build_constrained_sketch's own skip-and-report contract (this
+    file's own header docstring: a bad target is skipped, logged, and the
+    build continues -- never raises past this function) means the shim's
+    new TypeError surfaces as a graceful DIM CRASH, not a hard crash of
+    the whole build -- and, critically, the dimension is NEVER actually
+    created (dim:Distance never logged), unlike before this fix where the
+    fake silently accepted the curve and logged success."""
+    design = FakeDesign()
+    manifest = _curve_targeted_distance_manifest()
+    summary = build_constrained_sketch(design.rootComponent, design, manifest)
+    kinds = [entry[0] for entry in call_log]
+    assert kinds.count("dim:Distance") == 0  # rejected before ever logging success
+    assert summary["dimensions"]["count"] == 1  # exactly one DIM CRASH marker, not a silent pass
+    assert summary["entities"]["created"] == 2  # the geometry itself still built fine
 
 
 def test_origin_anchor_and_distance_dim_dispatch_end_to_end_with_zero_parity_mismatches(call_log):
@@ -1519,6 +1584,7 @@ if __name__ == "__main__":
         test_line_entity_isConstruction_flag_sets_the_real_attribute_when_declared,
         test_mirror_symmetry_constraint_dispatches_via_constraint_step_with_zero_parity_mismatches,
         test_origin_anchor_and_distance_dim_dispatch_end_to_end_with_zero_parity_mismatches,
+        test_distance_dim_targeting_a_bare_curve_id_is_rejected_not_silently_accepted,
     ]
     passed, failed = 0, 0
     for t in tests:

@@ -326,13 +326,19 @@ export const PATTERN_DEFAULTS = {
   // (computePattern/emitSegment read `widths.ties` directly, unaware this
   // link exists at all; the link is a properties-*.js-level UI/write
   // convenience, not a new fill-engine concept). A brand-new layer's own
-  // ties DEFAULT now equals rails' own default (0.07), not its own
-  // previous 0.055 (LATTICE_STYLE.tie.widthFactor*0.25) — Fred's own
-  // explicit ruling ("rails = ties = the current rails default"), a
-  // disclosed default-VALUE change, not just an added field.
+  // ties DEFAULT now equals rails' own default, not its own previous
+  // 0.055 (LATTICE_STYLE.tie.widthFactor*0.25) — Fred's own explicit
+  // ruling ("rails = ties = the current rails default"), a disclosed
+  // default-VALUE change, not just an added field.
+  // T71 (Fred: "Stroke width default to .25"): rails/ties default raised
+  // from 0.07 (LATTICE_STYLE.rail.widthFactor*0.25) to a plain 0.25in —
+  // covers rails, ties, AND (since T69) the Shape Lattice contour's own
+  // slot width, all via this ONE seed value. A saved pattern with its own
+  // already-set width is unaffected (defaults only seed a NEW/unset
+  // pattern's own widths.rails/.ties).
   widths: {
-    rails: LATTICE_STYLE.rail.widthFactor * 0.25,       // 0.07
-    ties: LATTICE_STYLE.rail.widthFactor * 0.25,         // 0.07 (T58: was 0.055, now == rails)
+    rails: 0.25,
+    ties: 0.25,
     nodeRadius: LATTICE_STYLE.node.radiusFactor * 0.25,  // 0.075
     linkRailsTies: true,
   },

@@ -26,7 +26,7 @@ import {
 } from './editor-lattice-pattern.js';
 import { PRESETS, generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
-import { SILHOUETTE_STROKE_WIDTH } from './editor-lattice-boundary.js';
+import { SILHOUETTE_STROKE_WIDTH, insetRegionForContour } from './editor-lattice-boundary.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { viewScale } from './editor-view.js';
@@ -116,6 +116,21 @@ export function currentShape(p) {
     return p.shape;
 }
 
+/** T71: the region a GENERATED shape's own silhouette actually builds
+ *  from — the board region, inset by the declared contour-size margin
+ *  (editor-lattice-boundary.js's own `insetRegionForContour`, the SAME
+ *  helper `buildSketchManifest` uses on the manifest side) — every caller
+ *  below that builds OR re-derives a generated silhouette must use this,
+ *  never the raw `boardRegion`, so the drawn contour, its param handles,
+ *  and the manifest's own contour entities always agree on where the
+ *  shape actually sits. Exported (same underscore-kept-while-exported
+ *  convention `_findBoundaryElement` already uses in this file) — editor-
+ *  interaction.js's own segment-tap hit-test needs this SAME region too,
+ *  not a second copy of the formula. */
+export function _shapeContourRegion(editor) {
+  return insetRegionForContour(boardRegion(editor));
+}
+
 /** The segments array a JUST-generated silhouette would use RIGHT NOW —
  *  `shape.segments` once the tool has generated at least once (an
  *  explicit override, `generateSilhouette`'s own contract), else a pure,
@@ -128,7 +143,7 @@ export function currentShape(p) {
  *  PATTERN_DEFAULTS before a first Generate. */
 function _effectiveSegments(editor, shape) {
   if (Array.isArray(shape.segments)) return shape.segments;
-  return generateSilhouette(boardRegion(editor), shape).segments;
+  return generateSilhouette(_shapeContourRegion(editor), shape).segments;
 }
 
 /**
@@ -158,7 +173,7 @@ function _effectiveSegments(editor, shape) {
  */
 export function regenerateSilhouette(editor, p) {
     const shape = currentShape(p);
-    const region = boardRegion(editor);
+    const region = _shapeContourRegion(editor);
     const { primitives, segments } = generateSilhouette(region, shape);
     shape.segments = segments;
     const d = primitivesToPathD(primitives);
@@ -241,7 +256,7 @@ export function paramHandleRecords(editor) {
     const p = currentPattern(editor);
     const shape = currentShape(p);
     if (shape.source !== 'generated') return [];
-    const region = boardRegion(editor);
+    const region = _shapeContourRegion(editor);
     const { params: resolved } = generateSilhouette(region, shape);
     if (!resolved) return [];
     return computeParamHandles(shape.preset, region, resolved).map((h) => ({ ...h, hx: h.anchor.x, hy: h.anchor.y }));
@@ -318,7 +333,7 @@ export function detectShapeLatticeDetach(editor) {
     if (!p.boundary || !p.boundary.shapeId) return;
     const pathEl = _findBoundaryElement(editor, p.boundary.shapeId);
     if (!pathEl) return;
-    const region = boardRegion(editor);
+    const region = _shapeContourRegion(editor);
     const { primitives } = generateSilhouette(region, shape);
     const expectedD = primitivesToPathD(primitives);
     if (pathEl.attr('d') !== expectedD) shape.source = 'picked';

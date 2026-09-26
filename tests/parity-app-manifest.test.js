@@ -22,6 +22,7 @@ import { generatePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-sp
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { regenerateSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
 import { generateSilhouette, primitivesToPathD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+import { insetRegionForContour } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 function makeMockEditor(mW, mH) {
   let elements = [];
@@ -186,7 +187,10 @@ describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManife
     const pattern = shapePattern();
     const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
     regenerateSilhouette(editor, pattern);
-    const { primitives } = generateSilhouette(region, pattern.shape);
+    // T71: the app draws the contour from the board region INSET by the
+    // declared contour-size margin (regenerateSilhouette's own
+    // `_shapeContourRegion`) -- this oracle must build from the SAME region.
+    const { primitives } = generateSilhouette(insetRegionForContour(region), pattern.shape);
     const pathEl = editor._sketchLayer.children().toArray().find((e) => e.attr('d'));
     expect(pathEl).toBeDefined(); // non-vacuous: a contour path was actually drawn
     expect(pathEl.attr('d')).toBe(primitivesToPathD(primitives));
@@ -196,7 +200,10 @@ describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManife
     const editor = makeMockEditor(7, 9);
     const pattern = shapePattern();
     const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
-    const { primitives } = generateSilhouette(region, pattern.shape);
+    // T71: same inset-region oracle as the "d" parity test above --
+    // buildSketchManifest's own contour entities build from the inset
+    // region too (see editor-sketch-manifest.js's own buildSketchManifest).
+    const { primitives } = generateSilhouette(insetRegionForContour(region), pattern.shape);
     expect(primitives.length).toBeGreaterThan(0); // non-vacuous
     const manifest = buildSketchManifest(pattern, region, {});
     const contourEntities = manifest.entities.filter((e) => e.id.match(/^seg\d+$/));
