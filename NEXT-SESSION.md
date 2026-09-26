@@ -1,17 +1,15 @@
-# NEXT — FB-ORDER: frame before the inlay in the timeline; board params owned by Send to Fusion
+# NEXT — UI3: collapsible sections in the lattice panels (like the main sidebar)
 
-**Ball: worker (seat A) · epoch 2 · FB-ORDER.** NO FUSION (advisor verifies live). Spec = ROADMAP.md "## Queued —
-FB-ORDER" (read it fully — it has the advisor's scratch-doc measurements). Summary:
-1. OWNERSHIP (declared list): widthIn/heightIn are created/updated ONLY by Send to Fusion (b-spline-gen). The frame
-   builder's _sync_user_parameters (frame-builder/fb_engine/parametric_engine.py) must SKIP the owned board params; if
-   they're missing at frame build, stop with a clear user-facing "Run Send to Fusion first" message (no partial frame).
-2. ORDER: after the frame builds, move the frame block (its occurrence creation, sketches, planes, and any features
-   already built from them — incl. solid-builder features) as ONE UNIT, original order, to just BEFORE the earliest
-   inlay timeline item ("Plane for L…" / "Source - L…"), never before the initial B-Spline Set comp/body. Measured:
-   TimelineObject.reorder of a later item to an earlier index works; canReorder False for the inlay/plane moving later.
-   Check canReorder for every item first; if any refuses, move nothing and warn. No inlay present -> do nothing.
-   Declare the inlay-item name patterns once.
-3. Solid builder run afterwards lands at the end and still sees the frame sketches — keep it that way.
-Tests: a fake timeline shim (items with canReorder/reorder/index) — block moved as a unit in order; refusal -> nothing
-moved + warning; no inlay -> no-op; board params never created by the frame builder. Commit by path, push, then
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB-ORDER — <sha>"`.
+**Ball: worker (seat A) · epoch 2 · UI3.** NO FUSION. FB-ORDER verified live by the advisor (scratch doc) — accepted.
+Fred: "like in main side bar, make lattice section collapsible".
+- Every section of the Lattice and Shape Lattice panels (the ones UI2's decorator tags with data-lattice-section)
+  gets a clickable header that collapses/expands its body, using the SAME look + behaviour as the main sidebar's
+  collapsible sections (find that component/CSS and REUSE it — one declared collapsible pattern, not a second one).
+- The pinned Generate stays pinned and never collapses; the Layers block in the side column is collapsible too.
+- Collapsed state remembered per section (same mechanism the main sidebar uses, if it persists; else localStorage,
+  wrapped in try/catch) and restored on reopen.
+- Desktop side column AND the mobile drawer.
+- Still NO edits to bspline_gen_palette.html (seat B edits that markup in lane-b: T74 merges the Contour/Border
+  sections and removes Pick shape — your decorator must tag by title, so a new 'Contour' section just works).
+Tests for the collapse state + persistence; screenshots desktop + mobile with a couple collapsed. Commit by path, push,
+then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "UI3 — <sha>"`.
