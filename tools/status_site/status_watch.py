@@ -120,8 +120,11 @@ def collect():
             h, who = r, r["who"]
         else:
             h = _handoff(s["path"])
-            who = "worker (working)" if h.get("to") == "worker" else "advisor (reviewing)"
+            who = ("finished (stood down)" if h.get("to") == "done"
+                   else "worker (working)" if h.get("to") == "worker" else "advisor (reviewing)")
         d, t = _checklist(s["path"], s["task"], s["branch"])
+        if who.startswith("finished") and t:
+            d = t
         sd = os.path.join(SHOTS_DIR, s["key"])
         shots = sorted((f for f in (os.listdir(sd) if os.path.isdir(sd) else []) if f.lower().endswith((".png", ".jpg", ".jpeg"))),
                        key=lambda f: os.path.getmtime(os.path.join(sd, f)), reverse=True)[:SHOTS_PER_SEAT]
