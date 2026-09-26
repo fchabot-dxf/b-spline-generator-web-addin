@@ -49,17 +49,21 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
    The rail and tie ends should stay coincident to the contour through a `stroke_width` edit (small drift is accepted).
    Hide one kind and it shouldn't be sent. Change the lattice Size and `contour_width`/`contour_height` should follow.
    Give one piece a width override and it should get a hardcoded dim. Inspect `last_send.json` when something looks off.
-2. **Live check of UI5** once merged: override one piece → only that piece changes; Regenerate clears the override; Undo restores it.
-3. **SE16 ✂ Cut tool** (full spec in ROADMAP.md "SE16"). Main tool rail only. Tap a line to cut it; tap the cut again to join.
+2. **Live check of the Frame Builder F4 fixes** (merged 6dfdcaf): build a frame with the standalone Frame Builder; the
+   log should show NO "FALLING BACK to a NON-parametric offset"; changing frame_thickness must move the frame; a
+   unit value like 0.75 in resolves (no FAIL RESOLVE). If the offset lands OUTSIDE, report it (OFFSET_SIDE sign).
+3. **Live check of UI5** once merged: override one piece → only that piece changes; Regenerate clears the override; Undo restores it.
+4. **SE16 ✂ Cut tool** (full spec in ROADMAP.md "SE16"). Main tool rail only. Tap a line to cut it; tap the cut again to join.
    Segments keep lattice membership by DERIVATION (collinear + touching = one rail). Acceptance: the same drags give
    identical coordinates before and after cutting and colouring the segments. One open question: should cut segments
    move together (the default) or independently?
-4. **Stale-param cleanup**: a declared list of params the add-in owns (including the frame params), so Send removes
+5. **Stale-param cleanup**: a declared list of params the add-in owns (including the frame params), so Send removes
    parameters it created before and no longer uses. Coordinate the frame-param names with fb-app (FB-APP-DESIGN.md on branch fb-app).
-5. **RAIL-SPACING** (ROADMAP.md): the lattice "Spacing" field becomes rail-to-rail distance; the grid step comes from the
-   editor's toolbar grid (one grid). Old saved patterns keep their geometry.
-6. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
-7. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
+6. **RAIL-SPACING** (ROADMAP.md): Boundary becomes the FIRST panel section; Rails [Spacing | Count] laid out from the
+   boundary with exact equal gaps; one grid (the editor's). Old saved patterns keep their geometry.
+   Do it after seat B's TIE-GAP lands (same panels).
+7. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
+8. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
 
 ## 4. How to work on it
 
@@ -74,10 +78,9 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
 - **Design rules** (all in ROADMAP.md / SE15-CONSTRAINED-SKETCH-DESIGN.md): never Fix; no Symmetry; only the contour
   size dims; acceptance = spawn parity; a coincident follows ONE curve, not a path; lattice overrides don't survive
   Regenerate and never get a param.
-- **Lattice grid (Fred 2026-09-26)**: rails, ties and nodes live on the lattice's own grid, whose step is the
-  "Spacing" select in Grid & rails (default 0.25", choices 1/16-1"). Count mode spreads rails evenly and rounds each
-  to a grid row, so gaps may differ by one Spacing step. Intended, don't "fix" it. Only the contour is off-grid, so
-  anything anchored to the contour snaps to the contour, not the grid (UI5 item 5).
+- **Lattice layout (Fred 2026-09-26)**: GENERATED rails are laid out from the BOUNDARY (count: edge to edge, exact
+  equal gaps; spacing: exact gaps, centred), not from the grid (see ROADMAP RAIL-SPACING). The grid is for drawing
+  and dragging. The contour is off-grid, so an end anchored to it snaps to the contour, not the grid (UI5 item 5).
 - **Progress page**: https://bspline-status.pages.dev. The watcher runs on the home PC and reads that PC's local
   checkouts, so your Asus commits won't show there. It tracks seats A/B/C only.
 - **Handoff loop files**: `HANDOFF.md` / `NEXT-SESSION.md` / `WORK-LOG.md` on main belong to seat A's loop until it
