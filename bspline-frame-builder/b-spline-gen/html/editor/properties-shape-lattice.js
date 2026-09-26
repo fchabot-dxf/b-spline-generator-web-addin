@@ -196,20 +196,22 @@ export function regenerateSilhouette(editor, p) {
     // agrees between the app and the manifest.
     const contourWidth = widths.rails;
     const contourColor = ({ ...PATTERN_DEFAULTS.colors, ...p.colors }).contour;
-    const contourShow = ({ ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) }).show !== false;
+    p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
+    const contourShow = p.contour.show !== false;
 
     const reuseExisting = shape.source === 'generated' && p.boundary && p.boundary.shapeId;
     const existing = reuseExisting ? _findBoundaryElements(editor, p.boundary.shapeId) : [];
     const countMatches = existing.length === primitives.length && primitives.length > 0;
 
+    // T73: `p.contour.segmentColors[i]` is keyed by PRIMITIVE index (the
+    // SAME index `primitives[i]` and the manifest's own `seg{i}` ids use) —
+    // NOT `shape.segments[i]`'s topology index, which `_segmentToPrimitives`
+    // can expand 1-to-2 for a 'kink' style-segment, so the two arrays can
+    // have different lengths. A segment-count change means index i no
+    // longer names the same drawn edge, so overrides are cleared rather
+    // than silently misapplied to a different piece after the rebuild.
     if (!countMatches) {
-        // T73: the segment count changed (or this is the first Generate) —
-        // any OLD per-segment colour overrides no longer refer to the same
-        // physical segment by index, so they're cleared here rather than
-        // silently misapplied to a different piece after the rebuild.
-        if (Array.isArray(shape.segments)) {
-            for (const seg of shape.segments) { if (seg && 'color' in seg) delete seg.color; }
-        }
+        p.contour.segmentColors = [];
         for (const oldEl of existing) oldEl.remove();
     }
     shape.segments = segments;
@@ -234,7 +236,7 @@ export function regenerateSilhouette(editor, p) {
     // width/show change already written to `p` takes effect immediately —
     // matching contourWidth's own "follows live" requirement.
     for (let i = 0; i < segEls.length; i++) {
-        const segColor = shape.segments[i]?.color || contourColor;
+        const segColor = (p.contour.segmentColors && p.contour.segmentColors[i]) || contourColor;
         segEls[i].stroke({ color: segColor, width: contourWidth });
         segEls[i].attr('display', contourShow ? null : 'none');
     }

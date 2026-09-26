@@ -488,7 +488,7 @@ describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () 
     cb.dispatchEvent(new Event('change'));
     await flush();
 
-    expect(activeLayerPattern(editor).contour).toEqual({ show: false });
+    expect(activeLayerPattern(editor).contour).toEqual({ show: false, segmentColors: [] });
     expect(pathEl.attr('display')).toBe('none'); // SAME element, still live -- just hidden
   });
 
@@ -506,7 +506,7 @@ describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () 
     cb.checked = true;
     cb.dispatchEvent(new Event('change'));
     await flush();
-    expect(activeLayerPattern(editor).contour).toEqual({ show: true });
+    expect(activeLayerPattern(editor).contour).toEqual({ show: true, segmentColors: [] });
     expect(pathEl.attr('display')).not.toBe('none');
   });
 });

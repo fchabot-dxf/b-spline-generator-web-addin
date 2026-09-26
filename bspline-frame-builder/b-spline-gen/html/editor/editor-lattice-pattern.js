@@ -511,7 +511,17 @@ export const PATTERN_DEFAULTS = {
   // A saved pattern with no `contour` key at all (every pattern before
   // this turn) reads `show` as true via the SAME `{ ...PATTERN_DEFAULTS,
   // ...PATTERN }` merge every other field already relies on.
-  contour: { show: true },
+  //
+  // T73 (SE14b): `segmentColors[i]` is the per-DRAWN-SEGMENT color
+  // override, indexed by PRIMITIVE index — the SAME index `generateSilhouette`'s
+  // own `primitives[i]` and the manifest's own `seg{i}` ids already use
+  // (NOT `shape.segments[i]`'s topology index: `_segmentToPrimitives`
+  // expands a single 'kink' style-segment into 2 primitives, so the two
+  // arrays can diverge in length). `regenerateSilhouette` carries this
+  // array forward across a regenerate that keeps the SAME primitive count,
+  // and resets it (`[]`) when the count changes — a changed count means
+  // index i no longer names the same drawn edge.
+  contour: { show: true, segmentColors: [] },
 };
 
 /** SE7g (Fred: "the generate button needs to automatically use a new
@@ -1936,9 +1946,11 @@ function _ownedOnLayer(editor, layerId, latticeKind) {
  *
  * T73 (SE14b): this is the CONTOUR'S OWN DEFAULT colour swatch — it
  * recolors every segment that does NOT carry its own explicit per-segment
- * override (`shape.segments[i].color`, set via the normal select tool +
- * toolbar color picker, see `editor.setColor`'s own new contour-aware
- * branch), exactly like a rail/tie's own DEFAULT color never overwrites a
+ * override (`PATTERN.contour.segmentColors[i]`, keyed by PRIMITIVE index —
+ * NOT `shape.segments[i]`'s topology index, see that field's own doc
+ * comment in PATTERN_DEFAULTS — set via the normal select tool + toolbar
+ * color picker, see `editor.setColor`'s own new contour-aware branch),
+ * exactly like a rail/tie's own DEFAULT color never overwrites a
  * hand-detached piece's own color above. A segment WITH an override is
  * still counted as "owned" (still real, still Generate-managed) for the
  * @returns below, just left alone here.
@@ -1947,11 +1959,11 @@ export function recolorOwnedKind(editor, layerId, kind, color) {
   if (kind === 'contour') {
     const layer = Array.isArray(editor?._layers) ? editor._layers.find((l) => l.id === layerId) : null;
     const shapeId = layer?.pattern?.boundary?.shapeId;
-    const segments = layer?.pattern?.shape?.segments;
+    const segmentColors = layer?.pattern?.contour?.segmentColors;
     const segEls = shapeId ? _findBoundaryElements(editor, shapeId) : [];
     if (!segEls.length) return 0;
     for (let i = 0; i < segEls.length; i++) {
-      const override = Array.isArray(segments) ? segments[i]?.color : null;
+      const override = Array.isArray(segmentColors) ? segmentColors[i] : null;
       if (!override) segEls[i].stroke({ color });
     }
     if (typeof editor.pushState === 'function') editor.pushState();
