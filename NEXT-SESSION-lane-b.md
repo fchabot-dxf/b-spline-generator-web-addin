@@ -24,3 +24,4 @@ Pass back: `cd <lane-b worktree> && python ~/.claude/skills/multi-agent-handoff/
 - [x] AMEND 2: size = OUTSIDE of contour; centerline dims = size − stroke_width; app centerline inset stroke/2
 - [x] AMEND 3: bottle body fills the box; remove body_width as a sweep
 - [ ] AMEND 4: Contour section cleanup ("Shape linked" gone, settings inside, edge-rule audit)
+- [ ] AMEND 5 (BUG, first): manifest only for layers that contain owned lattice pieces; mixed layer = sketch + plain SVG of the rest
