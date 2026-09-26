@@ -8822,3 +8822,43 @@ Verify: 1208/1208 vitest (1203 + 5 new), 151/151 pytest. Amendments polled clean
 whole turn, per the dispatch. Two commits: 859eb70 (per-segment rewrite + shapeHalfInset parity fix + existing-test
 updates), a455a28 (colour-persistence hook + new test file).
 
+## T73 AMEND 1 — contour_width/height Distance dims anchor by geometry, not iteration-order luck
+
+Delivered via a direct cross-session message from the advisor (not the usual NEXT-SESSION-lane-b.md dispatch file),
+flagged as a BLOCKER to fix before anything else, "measured live in Fusion on main 660f417": the default Bottle
+preset spawns with its contour up to 3.07in off.
+
+Verified the root cause independently by reading the code before touching anything (not just trusting the report):
+`manifestFromShape`'s width/height Distance-dim anchor points were a SIDE EFFECT of the mirror-pair Equal-constraint
+search — `widthPairIds` captured whichever Line mirror pair that search visited FIRST in primitive-iteration order,
+and `selfMirrorHorizontalIds` similarly grabbed the first self-mirroring horizontal pair. For Bottle that first Line
+pair is seg0/seg8 — the NECK horns (confirmed against `_solveBottle`'s own `fresh` segment array: index 0 is
+`rTop -> rNeckHorn`) — so the contour_width Distance dim forced the NECK out to the full board width once Fusion
+solved it. Hourglass's own first mirror pair (seg0/seg10) happens to already be the outer/widest horns, so it
+"passed" — coincidence, not correctness.
+
+Fixed by choosing the anchor points BY GEOMETRY: the contour's own actual corners at min-x/max-x (width) and
+min-y/max-y (height), found directly from every LINE primitive's own endpoints only (deliberately never an arc's —
+`primitivesBBox`'s existing arc handling uses the arc's full bounding CIRCLE, which can overshoot a gently-curved,
+large-radius arc's own visible sweep; every arc in these presets is tangent to, never past, its neighboring
+horn/cap by construction, so a plain Line-endpoint scan is both simpler and safer than reusing that general-purpose
+bbox helper here).
+
+New test (`tests/editor-sketch-manifest.test.js`, inside the existing `describe.each(['hourglass','bottle'])` block)
+confirmed FAILING FIRST against the unfixed code before any fix was applied: Bottle's anchor points measured 3.56in
+narrower than the contour's true width (closely matching the live "~3.07in off" report — same bug, independently
+reproduced from pure geometry, no Fusion needed); hourglass passed even unfixed, matching the "passed by luck"
+diagnosis exactly. Also caught and fixed a design mistake in my OWN first draft of that test: it asserted the RAW,
+undriven geometry should already measure exactly `region.w`/`region.h` apart — wrong, since `bodyWidth` (and every
+other shape param) carries deliberate seeded jitter that can narrow the raw shape below the full region on purpose;
+the Distance dim's whole job is to DRIVE it there once Fusion solves the sketch, not to already equal it beforehand.
+Corrected to assert only the property that actually matters: the anchor points sit at the raw geometry's own true
+extremes. Separately fixed a pre-existing test that hardcoded the OLD algorithm's own incidental segment ids
+(`seg0`/`seg10`) as if they were a real requirement — hourglass has 4 horn segments tied at the identical extreme x
+(my fix's deterministic first-found tie-break landed on `seg0`/`seg6` instead, equally correct, equally valid) — so
+it was rewritten to assert the geometric property instead of hardcoded ids, avoiding reintroducing the same
+brittleness this whole AMEND exists to fix.
+
+Verify: 1210/1210 vitest (1208 + 2 new), 151/151 pytest. Amendments polled clean before commit. Commit 65545ef,
+pushed. NO FUSION.
+
