@@ -823,3 +823,13 @@ stroke_width or border_width, colour per segment) instead of one path — each s
 segment in the drape/3D preview and exported per segment (→ one Fusion slot each, SE15b). The fill boundary = the
 segments chained into one closed loop (derived, not stored twice). Straight/curve/kink styling stays mirrored per pair;
 COLOUR is per segment (left ≠ right allowed). Hand node-edit still detaches from the generator. Pair with SE15b.
+
+## Queued — SE16: SPLIT (and Join) rails/ties at joints — tool in the main rail AND the lattice panels (Fred 2026-09-25)
+Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
+sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
+tap a joint (node / tie-rail meeting) → the rail/tie through it splits there into separate segments (each its own
+element in the app, its own SLOT in Fusion; joint = separate points + explicit Coincident, deletable in Fusion). Lattice
+panels also get "Split all at joints". Segments KEEP LATTICE MEMBERSHIP (declared group id, e.g. data-rail-id): dragging
+the rail moves all its segments, outer ends still stretch, stroke_width drives all; each segment selectable/colourable.
+Join = tap the joint again (or "Join" action). Default: split segments move together as one rail (Fred to confirm vs
+fully independent). Works on any plain line too (main tool). After SE14b/SE15b (same "one piece → segments" idea).
