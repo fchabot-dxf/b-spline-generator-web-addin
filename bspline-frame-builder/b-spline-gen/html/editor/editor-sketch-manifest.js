@@ -34,6 +34,24 @@
  *   Radial dimension driving that radius from the same width parameter;
  *   the tangent-to-offset wiring is Slice 3's own runtime job, using
  *   object references it holds directly, not a manifest-declared id pair.
+ *
+ * T64 fix (advisor's own real end-to-end Fusion run, `_import_all_svg_
+ * layers` fed a real two-layer payload): every producer above builds in
+ * RAW board-inches space (region-relative, origin at the board's own
+ * top-left) — the SAME space `computePattern`/`generateSilhouette`
+ * themselves already use. That is NOT where the plain-SVG carve path
+ * lands: `bakeSvgForCarving`/`carveMatrix` (editor-coords.js) center the
+ * board on the origin, and Fusion's own SVG importer (empirically
+ * measured by the advisor, not re-derived here — `carveMatrix`'s own
+ * matrix has NO Y term despite its neighboring `bakeSvgForCarving`
+ * comment claiming one, so the flip demonstrably happens somewhere in
+ * Fusion's own SVG-import step, not in this codebase's JS) ends up
+ * flipping Y on top of that. `build_constrained_sketch` builds geometry
+ * DIRECTLY (no SVG, no importer), so it never gets that implicit flip for
+ * free — this module must bake the SAME NET transform in itself, applied
+ * as ONE final pass (`applyCarvePlacement`, below) over the already-built
+ * `entities[]`, so every OTHER producer above keeps working in the
+ * simpler natural board-space it was already written and tested in.
  */
 import { computePattern, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice } from './editor-lattice.js';
@@ -53,6 +71,21 @@ import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-
  *  here — a declared constant, not a magic number inline (§6's own bar).
  */
 export const SKETCH_PIECE_THRESHOLD = 60;
+
+/** T64 (5 mid-turn amendments, final state): every rail/tie piece becomes
+ *  a Fusion-native anchored SLOT (`addCenterToCenterSlot`), for BOTH a
+ *  plain box Lattice layer AND a Shape Lattice layer's own fill — Fred's
+ *  own final call ("box lattice needs to be slots too"), after first
+ *  asking only to remove the OLD offset+cap mechanism (now deleted
+ *  entirely, not kept as a dead third option) from the box tool. Kept as
+ *  a declared per-LAYER-TYPE table, not a single hardcoded string,
+ *  because `'centerline'` (a bare, undimensioned line) is EXPLICITLY
+ *  named as still a real, available value for later — just not the
+ *  default for either type any more. `buildSketchManifest` picks the
+ *  mode from the SAME `hasShape` discriminator it already computes;
+ *  declared here so both that call site and any direct
+ *  `manifestFromLattice` caller share the identical constants. */
+export const SKETCH_WIDTH_MODE = { boxLattice: 'slot', shapeLattice: 'slot' };
 
 const EPS = 1e-9;
 
@@ -95,47 +128,24 @@ function pointOnLatticeSegment(pt, seg) {
   return false;
 }
 
-/** §4: one round cap centered at `center` (a piece's own endpoint),
- *  bulging AWAY from `otherEnd` (the piece's own OTHER end) — sweep
- *  exactly 180 degrees, matching a `linecap:'round'` stroke end (the SAME
- *  visual convention `emitSegment`, editor-lattice.js, already draws by
- *  hand). Derivation (verified by hand against a horizontal test case,
- *  WORK-LOG-lane-b.md T61): with d = otherEnd-center and thetaD =
- *  atan2(d.y,d.x), starting the arc at thetaD+90deg and sweeping +180deg
- *  always passes through thetaD+180deg — the direction exactly opposite
- *  the piece body — reusing the SAME "a chord of length===diameter is a
- *  diameter, its center is the chord's own midpoint" fact editor-shape-
- *  lattice-generator.js's own _arcPrimitive/_bulgeFromRadius (T55) already
- *  use for a different piece of geometry (a silhouette bulge, not a line
- *  cap), ported here rather than re-derived from scratch. */
-function capArc(id, center, otherEnd, radius) {
-  const thetaD = Math.atan2(otherEnd.y - center.y, otherEnd.x - center.x);
-  const startAngleDeg = ((thetaD + Math.PI / 2) * 180) / Math.PI;
-  return { id, type: 'ArcCenter', center: [center.x, center.y], radius, startAngleDeg, sweepDeg: 180 };
-}
-
-/** §4: width offsets — TWO per centerline group (one `+width/2`, one
- *  `-width/2`), per the advisor's own live-Fusion measurement that a
- *  single open line needs one `sketch.offset` call PER SIDE ("Answers"
- *  §1+2: "ONE side per call -> two calls per centerline") — plus one pair
- *  of round-cap ArcCenter entities PER PIECE (always emitted, regardless
- *  of the §6 threshold — see this module's own header). `pieces` is
- *  `[{id, p1, p2}]` (model-inch Line endpoints); mutates `entities`/
- *  `dimensions` in place (both are plain arrays the caller already owns —
- *  same "small pure helper over shared arrays" shape `computePattern`'s
- *  own `addNode` closure already uses). */
-function addWidthOffsetsAndCaps(entities, dimensions, pieces, kindPrefix, paramName, widthValue) {
-  if (!pieces.length) return;
-  const ids = pieces.map((p) => p.id);
-  dimensions.push({ type: 'Offset', targets: ids, expression: `${paramName} / 2`, id: `${kindPrefix}_offset_pos` });
-  dimensions.push({ type: 'Offset', targets: ids, expression: `-(${paramName} / 2)`, id: `${kindPrefix}_offset_neg` });
-  const capRadius = widthValue / 2;
+/** T64 CHANGE (Fred, via the advisor: "box lattice needs to be slots too"
+ *  — the FINAL design after 5 mid-turn amendments superseded the offset+
+ *  cap mechanism above entirely): every rail/tie piece becomes a
+ *  `type:'Slot'` entity, built in Fusion via the NATIVE
+ *  `sketchLines.addCenterToCenterSlot(p1, p2, width, isFixed)` — ONE call
+ *  produces the whole rounded-rect body (2 side lines + 2 end arcs + an
+ *  internal construction centerline + ONE width dimension) as a single,
+ *  already-correct, already-symmetric unit. No JS-side offset math, no
+ *  cap-arc construction, no cap-to-offset coincidence wiring — Fusion's
+ *  own primitive already does all of that. A `SlotWidth` dimension entry
+ *  drives that one dimension's own expression (sketch_manifest_builder.py
+ *  resolves it after creation, same "seed value, then re-drive by
+ *  expression" pattern this module already uses for every other
+ *  dimensioned quantity). */
+function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
   for (const { id, p1, p2 } of pieces) {
-    const capA = capArc(`${id}_capA`, p1, p2, capRadius);
-    const capB = capArc(`${id}_capB`, p2, p1, capRadius);
-    entities.push(capA, capB);
-    dimensions.push({ type: 'Radial', target: capA.id, expression: `${paramName} / 2` });
-    dimensions.push({ type: 'Radial', target: capB.id, expression: `${paramName} / 2` });
+    entities.push({ id, type: 'Slot', p1: [p1.x, p1.y], p2: [p2.x, p2.y], width: widthValue });
+    dimensions.push({ type: 'SlotWidth', target: id, expression: paramName });
   }
 }
 
@@ -152,7 +162,7 @@ function addWidthOffsetsAndCaps(entities, dimensions, pieces, kindPrefix, paramN
  * already runs, building manifest entities instead of calling
  * `emitSegment`/`emitNode`.
  */
-export function manifestFromLattice(pattern, extent) {
+export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MODE.shapeLattice) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
   const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
   const { segments, nodePoints } = computePattern(pattern, { extent, occupied: null });
@@ -168,11 +178,21 @@ export function manifestFromLattice(pattern, extent) {
   const dimensions = [];
   const groups = { rails: [], ties: [], nodes: [] };
 
+  // T64 CHANGE: 'centerline' (a bare, undimensioned line — legacy/
+  // available but no longer the default for either layer type per
+  // Fred's own "box lattice needs to be slots too") vs 'slot' (the new
+  // default for BOTH: a Fusion-native anchored center-to-center slot,
+  // see addSlotPieces above). Entity TYPE is decided per-piece here;
+  // isFixed (anchoring the slot's own two end points, per the advisor's
+  // own measurement that an anchored slot grows evenly while an
+  // unanchored one drifts lopsided) is the Python builder's own job.
+  const isSlotMode = widthMode !== 'centerline';
+
   const railPieces = [];
   railsCanon.forEach((seg, idx) => {
     const id = toEntityId('rail', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
-    entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
+    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
     groups.rails.push(id);
     railPieces.push({ id, p1, p2 });
     if (constrained) {
@@ -185,7 +205,7 @@ export function manifestFromLattice(pattern, extent) {
   tiesCanon.forEach((seg, idx) => {
     const id = toEntityId('tie', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
-    entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
+    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
     groups.ties.push(id);
     tiePieces.push({ id, p1, p2 });
     if (constrained) {
@@ -193,7 +213,10 @@ export function manifestFromLattice(pattern, extent) {
       if (axis) constraints.push({ type: axis, targets: [id] });
       // "tie-end-on-rail" (ROADMAP.md:765) — a plain equality check on the
       // already-computed lattice coordinates, §3's own doc comment; no
-      // geometric search needed.
+      // geometric search needed. Targets the rail/tie by BARE id either
+      // way (resolves to the slot's own internal centerline in 'slot'
+      // mode, sketch_manifest_builder.py's own registration) — this
+      // declaration doesn't change between width modes at all.
       ['a', 'b'].forEach((end) => {
         const railIdx = railsCanon.findIndex((r) => pointOnLatticeSegment(seg[end], r));
         if (railIdx >= 0) {
@@ -204,11 +227,47 @@ export function manifestFromLattice(pattern, extent) {
     }
   });
 
+  // T64 CHANGE (amendment #1's own "NODES: node circle CENTER coincident
+  // to the slot centerline END point... crossing nodes: center
+  // coincident to the tie centerline end + point-on-curve of the rail
+  // centerline"): a real, previously-undeclared relation — T61 only ever
+  // placed the node's own Circle numerically at the right coordinate,
+  // with no explicit constraint tying it to the piece(s) it sits on.
+  // Reuses `pointOnLatticeSegment` (the SAME closed-form check tie-on-
+  // rail already uses) against BOTH rails and ties: an EXACT end match
+  // -> Coincident to that piece's own `:S`/`:E` point; a match elsewhere
+  // along the piece's own span -> Coincident to the piece's own BARE id
+  // (point-on-curve — Fusion's own addCoincident(point, curve) overload,
+  // already how a bare-id Coincident target resolves via
+  // fb_engine's own resolve_entity). A node can coincide with MULTIPLE
+  // pieces (a genuine crossing) — every match gets its own constraint,
+  // per Fred's own "separate points + one explicit Coincident per joint,
+  // never merged" rule (T64's own FINAL RULE amendment).
+  function nodePieceCoincidences(pt) {
+    const out = [];
+    const check = (canonList, kindPrefix) => {
+      canonList.forEach((seg, i) => {
+        const id = toEntityId(kindPrefix, i);
+        if (pt.i === seg.a.i && pt.j === seg.a.j) out.push(`${id}:S`);
+        else if (pt.i === seg.b.i && pt.j === seg.b.j) out.push(`${id}:E`);
+        else if (pointOnLatticeSegment(pt, seg)) out.push(id);
+      });
+    };
+    check(railsCanon, 'rail');
+    check(tiesCanon, 'tie');
+    return out;
+  }
+
   nodePoints.forEach((pt, idx) => {
     const id = toEntityId('node', idx);
     const p = fromLattice(pt, spacing);
     entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: widths.nodeRadius });
     groups.nodes.push(id);
+    if (constrained) {
+      for (const target of nodePieceCoincidences(pt)) {
+        constraints.push({ type: 'Coincident', targets: [id, target] });
+      }
+    }
   });
 
   // T63 ADD-ON (Fred: "I would prefer a unique stroke width param"): when
@@ -229,16 +288,16 @@ export function manifestFromLattice(pattern, extent) {
     if (railPieces.length || tiePieces.length) {
       parameters.push({ name: 'stroke_width', value: widths.rails, unit: 'in' });
     }
-    if (railPieces.length) addWidthOffsetsAndCaps(entities, dimensions, railPieces, 'rail', 'stroke_width', widths.rails);
-    if (tiePieces.length) addWidthOffsetsAndCaps(entities, dimensions, tiePieces, 'tie', 'stroke_width', widths.ties);
+    if (isSlotMode && railPieces.length) addSlotPieces(entities, dimensions, railPieces, 'stroke_width', widths.rails);
+    if (isSlotMode && tiePieces.length) addSlotPieces(entities, dimensions, tiePieces, 'stroke_width', widths.ties);
   } else {
     if (railPieces.length) {
       parameters.push({ name: 'rail_width', value: widths.rails, unit: 'in' });
-      addWidthOffsetsAndCaps(entities, dimensions, railPieces, 'rail', 'rail_width', widths.rails);
+      if (isSlotMode) addSlotPieces(entities, dimensions, railPieces, 'rail_width', widths.rails);
     }
     if (tiePieces.length) {
       parameters.push({ name: 'tie_width', value: widths.ties, unit: 'in' });
-      addWidthOffsetsAndCaps(entities, dimensions, tiePieces, 'tie', 'tie_width', widths.ties);
+      if (isSlotMode) addSlotPieces(entities, dimensions, tiePieces, 'tie_width', widths.ties);
     }
   }
   if (nodePoints.length) {
@@ -411,6 +470,57 @@ function resolveShapeBoundaryExtent(pattern, region) {
   };
 }
 
+/** T64: board-inches (x,y) -> carve-space (x,y) — center the board on the
+ *  origin AND flip Y, matching the NET placement the plain-SVG path ends
+ *  up with (this module's own header comment explains why the flip has
+ *  to be applied explicitly here even though `carveMatrix` itself has no
+ *  Y term). `region.w`/`region.h` are the FULL board dimensions
+ *  (`boardRegion`'s own `{x:0,y:0,w,h}` contract — region.x/y are always
+ *  0 in this codebase, so, matching `carveMatrix`'s own formula, they're
+ *  not subtracted here either). */
+function toCarvePoint(pt, region) {
+  return { x: pt.x - region.w / 2, y: region.h / 2 - pt.y };
+}
+
+/** T64: the ONE final pass that converts an already-built manifest's own
+ *  `entities[]` from natural board-inches space into carve-space —
+ *  every producer above (`manifestFromLattice`/`manifestFromShape`) keeps
+ *  computing in the simpler, natural space it was already written and
+ *  tested in; only the FINAL coordinates change. `constraints[]`/
+ *  `dimensions[]`/`parameters[]`/`groups` reference entities BY ID, never
+ *  by raw coordinate, so none of them need touching.
+ *
+ *  A reflection (unlike a pure translation) reverses ANGLE sense: a point
+ *  at `center + r*(cos theta, sin theta)` maps to
+ *  `center' + r*(cos(-theta), sin(-theta))` around the transformed center
+ *  (worked by hand, WORK-LOG-lane-b.md T64) — so an ArcCenter's own
+ *  `startAngleDeg`/`sweepDeg` are BOTH negated; `radius` is unchanged (a
+ *  reflection preserves distances). H/V constraint CHOICE (computed
+ *  earlier, from natural-space coordinates, by `axisConstraintType`) is
+ *  unaffected either way — a reflection that only ever remaps y as a
+ *  function of y alone can't turn a horizontal segment into a vertical
+ *  one or vice versa, so those constraints stay correct without
+ *  recomputation. */
+function applyCarvePlacement(manifest, region) {
+  for (const e of manifest.entities) {
+    if (e.type === 'Line' || e.type === 'Slot') {
+      const p1 = toCarvePoint({ x: e.p1[0], y: e.p1[1] }, region);
+      const p2 = toCarvePoint({ x: e.p2[0], y: e.p2[1] }, region);
+      e.p1 = [p1.x, p1.y];
+      e.p2 = [p2.x, p2.y];
+    } else if (e.type === 'Circle') {
+      const c = toCarvePoint({ x: e.center[0], y: e.center[1] }, region);
+      e.center = [c.x, c.y];
+    } else if (e.type === 'ArcCenter') {
+      const c = toCarvePoint({ x: e.center[0], y: e.center[1] }, region);
+      e.center = [c.x, c.y];
+      e.startAngleDeg = -e.startAngleDeg;
+      e.sweepDeg = -e.sweepDeg;
+    }
+  }
+  return manifest;
+}
+
 /**
  * §1's own top-level `buildSketchManifest(pattern, region, opts)` —
  * composes the two producers above exactly like a real Shape Lattice
@@ -420,6 +530,9 @@ function resolveShapeBoundaryExtent(pattern, region) {
  * silhouette's own entities are included; otherwise (a plain "box"
  * Lattice layer) the lattice fill runs board-wide. `opts.layerId`/
  * `opts.sketchName` are diagnostic-only passthroughs (§1's own schema).
+ * T64: the returned manifest's own `entities[]` are in CARVE space (see
+ * `applyCarvePlacement`), not the natural board-inches space the two
+ * producers above compute in internally.
  */
 export function buildSketchManifest(pattern, region, opts = {}) {
   // PATTERN_DEFAULTS.shape.source defaults to 'generated' UNCONDITIONALLY
@@ -432,14 +545,16 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // when the Shape Lattice tool's own Generate has actually run and linked
   // a silhouette — reused here rather than inventing a second flag.
   const hasShape = !!(pattern.shape && pattern.shape.source === 'generated' && pattern.extent && pattern.extent.mode === 'boundary');
+  const widthMode = hasShape ? SKETCH_WIDTH_MODE.shapeLattice : SKETCH_WIDTH_MODE.boxLattice;
   const extent = hasShape ? resolveShapeBoundaryExtent(pattern, region) : resolveBoardExtent(pattern, region);
-  const lattice = manifestFromLattice(pattern, extent);
+  const lattice = manifestFromLattice(pattern, extent, widthMode);
   const shape = hasShape
     ? manifestFromShape(pattern.shape, region)
     : { entities: [], constraints: [], parameters: [], dimensions: [], groups: {} };
 
-  return {
+  const manifest = {
     version: 1,
+    widthMode,
     layerId: opts.layerId ?? null,
     sketchName: opts.sketchName || 'Sketch',
     units: 'in',
@@ -452,4 +567,5 @@ export function buildSketchManifest(pattern, region, opts = {}) {
     latticePieceCount: lattice.pieceCount,
     latticeConstrained: lattice.constrained,
   };
+  return applyCarvePlacement(manifest, region);
 }

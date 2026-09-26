@@ -11,10 +11,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  buildSketchManifest, manifestFromLattice, manifestFromShape, SKETCH_PIECE_THRESHOLD,
+  buildSketchManifest, manifestFromLattice, manifestFromShape, SKETCH_PIECE_THRESHOLD, SKETCH_WIDTH_MODE,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { computePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
-import { fromLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
+import { fromLattice, toLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 import { generateSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 
 const REGION = { x: 0, y: 0, w: 7, h: 9 };
@@ -28,7 +28,7 @@ function pointOf(entities, target) {
   const [id, suffix] = target.split(':');
   const e = entityById(entities, id);
   if (!e) return null;
-  if (e.type === 'Line') {
+  if (e.type === 'Line' || e.type === 'Slot') {
     if (suffix === 'S') return { x: e.p1[0], y: e.p1[1] };
     if (suffix === 'E') return { x: e.p2[0], y: e.p2[1] };
     return null;
@@ -70,7 +70,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     const rails = segments.filter((s) => s.kind === 'rail');
     const ties = segments.filter((s) => s.kind === 'tie');
 
-    const railEntities = manifest.entities.filter((e) => e.id.startsWith('rail') && e.type === 'Line');
+    const railEntities = manifest.entities.filter((e) => e.id.startsWith('rail') && e.type === 'Slot');
     expect(railEntities.length).toBe(rails.length);
     rails.forEach((seg, i) => {
       const p1 = fromLattice(seg.a, PATTERN.spacing), p2 = fromLattice(seg.b, PATTERN.spacing);
@@ -78,7 +78,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
       expect(e.p1).toEqual([p1.x, p1.y]);
       expect(e.p2).toEqual([p2.x, p2.y]);
     });
-    const tieEntities = manifest.entities.filter((e) => e.id.startsWith('tie') && e.type === 'Line');
+    const tieEntities = manifest.entities.filter((e) => e.id.startsWith('tie') && e.type === 'Slot');
     expect(tieEntities.length).toBe(ties.length);
     ties.forEach((seg, i) => {
       const p1 = fromLattice(seg.a, PATTERN.spacing), p2 = fromLattice(seg.b, PATTERN.spacing);
@@ -93,7 +93,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
   it('every Horizontal/Vertical constraint is geometrically true, and every rail/tie gets exactly one (below threshold)', () => {
     const manifest = manifestFromLattice(PATTERN, EXTENT);
     expect(manifest.constrained).toBe(true);
-    const railTieIds = manifest.entities.filter((e) => e.type === 'Line' && !e.id.includes('_cap')).map((e) => e.id);
+    const railTieIds = manifest.entities.filter((e) => e.type === 'Slot').map((e) => e.id);
     for (const id of railTieIds) {
       const hv = manifest.constraints.filter((c) => (c.type === 'Horizontal' || c.type === 'Vertical') && c.targets[0] === id);
       expect(hv.length).toBe(1);
@@ -113,8 +113,15 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
       return false;
     });
 
-    // Positive: every declared Coincident really touches a rail.
-    const coincidents = manifest.constraints.filter((c) => c.type === 'Coincident');
+    // Positive: every declared TIE-ON-RAIL Coincident really touches a
+    // rail. T64 added a SEPARATE node-to-piece Coincident feature whose
+    // own targets can ALSO include a tie id (e.g. node5<->tie3:S) without
+    // that tie end being anywhere near a rail — filtered out here by
+    // requiring BOTH targets look like a bare rail/tie piece (never a
+    // node), so this test stays specific to the tie-on-rail relationship
+    // it was written to verify.
+    const pieceIdPattern = /^(rail|tie)\d+(:[SE])?$/;
+    const coincidents = manifest.constraints.filter((c) => c.type === 'Coincident' && c.targets.every((t) => pieceIdPattern.test(t)));
     expect(coincidents.length).toBeGreaterThan(0); // non-vacuous: this pattern actually produces some
     for (const c of coincidents) {
       const tieEndTarget = c.targets.find((t) => t.startsWith('tie'));
@@ -137,39 +144,67 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     expect(uncoveredChecked).toBeGreaterThan(0); // non-vacuous: some free ends actually exist to check
   });
 
-  it('width offsets (two per kind, +/- half) and round caps (two per piece, perpendicular endpoints)', () => {
+  it('T64 ADD-ON (amendment #1): every node sitting on a rail/tie gets an explicit Coincident to it — end-match uses :S/:E, mid-span match uses the bare (point-on-curve) id', () => {
+    const manifest = manifestFromLattice(PATTERN, EXTENT);
+    const nodeEntities = manifest.entities.filter((e) => e.id.match(/^node\d+$/));
+    expect(nodeEntities.length).toBeGreaterThan(0); // non-vacuous: this pattern actually produces nodes
+
+    // Independent re-derivation: does a node's own coordinate sit
+    // EXACTLY at a piece's own end, or somewhere along its own span?
+    const pieceEntities = manifest.entities.filter((e) => e.type === 'Slot');
+    const pointsEqual = (a, b) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
+    const onSpan = (pt, p1, p2) => {
+      if (Math.abs(p1.x - p2.x) < 1e-9) return Math.abs(pt.x - p1.x) < 1e-6 && pt.y >= Math.min(p1.y, p2.y) - 1e-6 && pt.y <= Math.max(p1.y, p2.y) + 1e-6;
+      if (Math.abs(p1.y - p2.y) < 1e-9) return Math.abs(pt.y - p1.y) < 1e-6 && pt.x >= Math.min(p1.x, p2.x) - 1e-6 && pt.x <= Math.max(p1.x, p2.x) + 1e-6;
+      return false;
+    };
+
+    let endMatches = 0, curveMatches = 0;
+    for (const node of nodeEntities) {
+      const nodePt = { x: node.center[0], y: node.center[1] };
+      const nodeConstraints = manifest.constraints.filter((c) => c.type === 'Coincident' && c.targets[0] === node.id);
+      for (const piece of pieceEntities) {
+        const p1 = { x: piece.p1[0], y: piece.p1[1] }, p2 = { x: piece.p2[0], y: piece.p2[1] };
+        if (pointsEqual(nodePt, p1)) {
+          expect(nodeConstraints.some((c) => c.targets[1] === `${piece.id}:S`)).toBe(true);
+          endMatches++;
+        } else if (pointsEqual(nodePt, p2)) {
+          expect(nodeConstraints.some((c) => c.targets[1] === `${piece.id}:E`)).toBe(true);
+          endMatches++;
+        } else if (onSpan(nodePt, p1, p2)) {
+          expect(nodeConstraints.some((c) => c.targets[1] === piece.id)).toBe(true);
+          curveMatches++;
+        }
+      }
+    }
+    expect(endMatches).toBeGreaterThan(0); // non-vacuous: real end-matches exist in this fixture
+    expect(curveMatches).toBeGreaterThan(0); // non-vacuous: real mid-span (crossing) matches exist too
+  });
+
+  it('T64: every rail/tie is a Slot entity with exactly ONE SlotWidth dimension referencing its own width param', () => {
     const manifest = manifestFromLattice(PATTERN, EXTENT);
     const railIds = manifest.entities.filter((e) => e.id.match(/^rail\d+$/)).map((e) => e.id);
-    const railOffsetPos = manifest.dimensions.find((d) => d.id === 'rail_offset_pos');
-    const railOffsetNeg = manifest.dimensions.find((d) => d.id === 'rail_offset_neg');
-    expect(railOffsetPos.targets.sort()).toEqual(railIds.slice().sort());
-    expect(railOffsetNeg.targets.sort()).toEqual(railIds.slice().sort());
-    expect(railOffsetPos.expression).toBe('rail_width / 2');
-    expect(railOffsetNeg.expression).toBe('-(rail_width / 2)');
-
+    const tieIds = manifest.entities.filter((e) => e.id.match(/^tie\d+$/)).map((e) => e.id);
+    expect(railIds.length).toBeGreaterThan(0);
+    expect(tieIds.length).toBeGreaterThan(0);
     for (const id of railIds) {
-      const capA = entityById(manifest.entities, `${id}_capA`);
-      const capB = entityById(manifest.entities, `${id}_capB`);
-      expect(capA.type).toBe('ArcCenter');
-      expect(capB.type).toBe('ArcCenter');
-      expect(capA.sweepDeg).toBe(180);
-      const rail = entityById(manifest.entities, id);
-      const [x1, y1] = rail.p1, [x2, y2] = rail.p2;
-      const dirX = x2 - x1, dirY = y2 - y1;
-      // The cap's own two endpoints must sit exactly `radius` from its
-      // center AND be perpendicular to the rail's own direction (a
-      // rounded line cap's diameter is perpendicular to the line it
-      // caps) — independent check via dot product, not re-using capArc.
-      const rad = (d) => (d * Math.PI) / 180;
-      const sPt = { x: capA.center[0] + capA.radius * Math.cos(rad(capA.startAngleDeg)), y: capA.center[1] + capA.radius * Math.sin(rad(capA.startAngleDeg)) };
-      const ePt = { x: capA.center[0] + capA.radius * Math.cos(rad(capA.startAngleDeg + capA.sweepDeg)), y: capA.center[1] + capA.radius * Math.sin(rad(capA.startAngleDeg + capA.sweepDeg)) };
-      const chordX = ePt.x - sPt.x, chordY = ePt.y - sPt.y;
-      expect(Math.abs(chordX * dirX + chordY * dirY)).toBeLessThan(1e-6); // perpendicular
-      expect(Math.hypot(ePt.x - sPt.x, ePt.y - sPt.y)).toBeCloseTo(2 * capA.radius, 6); // a true diameter
-      // Radial dimension drives the SAME parameter the offset does.
-      const radDim = manifest.dimensions.find((d) => d.type === 'Radial' && d.target === capA.id);
-      expect(radDim.expression).toBe('rail_width / 2');
+      const e = entityById(manifest.entities, id);
+      expect(e.type).toBe('Slot');
+      expect(e.width).toBe(0.07); // PATTERN.widths.rails -- the Python builder's own addCenterToCenterSlot seed
+      const dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === id);
+      expect(dim.expression).toBe('rail_width'); // PATTERN's own linkRailsTies:false
     }
+    for (const id of tieIds) {
+      const e = entityById(manifest.entities, id);
+      expect(e.type).toBe('Slot');
+      expect(e.width).toBe(0.05); // PATTERN.widths.ties -- deliberately DIFFERENT from rails, so a
+      // swapped-argument bug (rails' own width leaking onto ties, or vice versa) would fail here.
+      const dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === id);
+      expect(dim.expression).toBe('tie_width');
+    }
+    // No leftover offset/cap machinery of any kind.
+    expect(manifest.dimensions.some((d) => d.type === 'Offset')).toBe(false);
+    expect(manifest.entities.some((e) => e.id.includes('_cap'))).toBe(false);
   });
 
   it('T63: linked rail/tie widths (linkRailsTies true, the default) share ONE stroke_width param, not rail_width+tie_width', () => {
@@ -182,14 +217,12 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     expect(manifest.parameters.some((p) => p.name === 'rail_width')).toBe(false);
     expect(manifest.parameters.some((p) => p.name === 'tie_width')).toBe(false);
 
-    const railOffsetPos = manifest.dimensions.find((d) => d.id === 'rail_offset_pos');
-    const tieOffsetPos = manifest.dimensions.find((d) => d.id === 'tie_offset_pos');
-    expect(railOffsetPos.expression).toBe('stroke_width / 2');
-    expect(tieOffsetPos.expression).toBe('stroke_width / 2');
-
     const someRailId = manifest.entities.find((e) => e.id.match(/^rail\d+$/)).id;
-    const capRadDim = manifest.dimensions.find((d) => d.type === 'Radial' && d.target === `${someRailId}_capA`);
-    expect(capRadDim.expression).toBe('stroke_width / 2');
+    const someTieId = manifest.entities.find((e) => e.id.match(/^tie\d+$/)).id;
+    const railSlotDim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === someRailId);
+    const tieSlotDim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === someTieId);
+    expect(railSlotDim.expression).toBe('stroke_width');
+    expect(tieSlotDim.expression).toBe('stroke_width');
   });
 
   it('T63: an UNLINKED layer whose rail/tie widths genuinely differ still gets separate rail_width/tie_width (non-vacuous: verified against the SAME fixture the default-linked test above uses, just with the flag flipped)', () => {
@@ -213,7 +246,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     expect(manifest.parameters.some((p) => p.name === 'rail_width')).toBe(false);
   });
 
-  it('>=SKETCH_PIECE_THRESHOLD pieces: no per-piece H/V/Coincident constraints, but caps/dimensions still present', () => {
+  it('>=SKETCH_PIECE_THRESHOLD pieces: no per-piece H/V/Coincident constraints, but every Slot + its SlotWidth dimension still present', () => {
     const bigPattern = {
       ...PATTERN,
       rails: { mode: 'every', every: 1, offset: 0 },
@@ -225,11 +258,14 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     expect(manifest.pieceCount).toBeGreaterThanOrEqual(SKETCH_PIECE_THRESHOLD);
     expect(manifest.constrained).toBe(false);
     expect(manifest.constraints.filter((c) => c.type === 'Horizontal' || c.type === 'Vertical' || c.type === 'Coincident').length).toBe(0);
-    // The width/offset/cap mechanism is NOT gated by the threshold (§6).
-    expect(manifest.dimensions.some((d) => d.id === 'rail_offset_pos')).toBe(true);
-    const railCount = manifest.entities.filter((e) => e.id.match(/^rail\d+$/)).length;
-    const capCount = manifest.entities.filter((e) => e.id.match(/^rail\d+_cap[AB]$/)).length;
-    expect(capCount).toBe(railCount * 2);
+    // The width/slot mechanism is NOT gated by the threshold (§6) — every
+    // rail still becomes a real Slot with its own SlotWidth dimension.
+    const railIds = manifest.entities.filter((e) => e.id.match(/^rail\d+$/)).map((e) => e.id);
+    expect(railIds.length).toBeGreaterThan(0);
+    for (const id of railIds) {
+      expect(entityById(manifest.entities, id).type).toBe('Slot');
+      expect(manifest.dimensions.some((d) => d.type === 'SlotWidth' && d.target === id)).toBe(true);
+    }
   });
 
   it('a small pattern (< threshold) is constrained', () => {
@@ -345,6 +381,101 @@ describe('manifestFromShape — hourglass-specific: shoulder<->hip cross-tie', (
   });
 });
 
+describe('buildSketchManifest — T64 carve-space placement (centered + Y-flipped)', () => {
+  // The advisor's own real end-to-end Fusion measurement (NEXT-SESSION-
+  // lane-b.md T64): a rect drawn at board x 2.5..4.5, y 3..4.5 on a 7x9
+  // board lands, via the PLAIN-SVG carve path, at sketch bbox x -1..1,
+  // y 0..1.5 -- i.e. x_carve = x_board - W/2, y_carve = H/2 - y_board.
+  // build_constrained_sketch builds geometry directly (no SVG importer),
+  // so it never got that transform for free; this suite proves
+  // buildSketchManifest's own output already carries it, independently
+  // re-derived from computePattern + fromLattice (natural space), not by
+  // re-trusting applyCarvePlacement's own internals.
+  const CARVE_PATTERN = {
+    ...PATTERN_DEFAULTS, spacing: 0.25,
+    rails: { mode: 'every', every: 2, offset: 0 },
+    ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
+    nodes: { ends: false, crossings: false, railEnds: false },
+    widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
+    seed: 42,
+  };
+  // buildSketchManifest resolves its OWN board extent internally
+  // (resolveBoardExtent, editor-sketch-manifest.js — not exported), from
+  // `region`/`pattern.margin`/`pattern.spacing` via `toLattice` — the
+  // SAME formula replicated here so the "independent" natural-space
+  // re-run below uses the IDENTICAL extent the manifest itself actually
+  // built against, not an arbitrarily-guessed one.
+  function resolveBoardExtentForTest(pattern, region) {
+    const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
+    const margin = pattern.margin ?? PATTERN_DEFAULTS.margin ?? 1;
+    const topLeft = toLattice({ x: region.x, y: region.y }, spacing);
+    const bottomRight = toLattice({ x: region.x + region.w, y: region.y + region.h }, spacing);
+    return { iMin: topLeft.i + margin, jMin: topLeft.j + margin, iMax: bottomRight.i - margin, jMax: bottomRight.j - margin };
+  }
+
+  it('every rail Line lands at carve-space (x - W/2, H/2 - y), matching an independent natural-space re-run', () => {
+    const extent = resolveBoardExtentForTest(CARVE_PATTERN, REGION);
+    const { segments } = computePattern(CARVE_PATTERN, { extent, occupied: null });
+    const rails = segments.filter((s) => s.kind === 'rail');
+    expect(rails.length).toBeGreaterThan(0); // non-vacuous: this pattern actually produces rails to check
+
+    const manifest = buildSketchManifest(CARVE_PATTERN, REGION, {});
+    rails.forEach((seg, i) => {
+      const naturalP1 = fromLattice(seg.a, CARVE_PATTERN.spacing);
+      const naturalP2 = fromLattice(seg.b, CARVE_PATTERN.spacing);
+      const e = manifest.entities.find((en) => en.id === `rail${i}`);
+      expect(e.p1[0]).toBeCloseTo(naturalP1.x - REGION.w / 2, 9);
+      expect(e.p1[1]).toBeCloseTo(REGION.h / 2 - naturalP1.y, 9);
+      expect(e.p2[0]).toBeCloseTo(naturalP2.x - REGION.w / 2, 9);
+      expect(e.p2[1]).toBeCloseTo(REGION.h / 2 - naturalP2.y, 9);
+    });
+  });
+
+  it('reproduces the advisor\'s own exact measured example (x 2.5..4.5, y 3..4.5 -> x -1..1, y 0..1.5) via the raw transform formula', () => {
+    // A direct, hand-computed check of the documented formula itself,
+    // independent of any lattice/shape producer.
+    const region = { x: 0, y: 0, w: 7, h: 9 };
+    const p1 = { x: 2.5, y: 3 }, p2 = { x: 4.5, y: 4.5 };
+    const c1 = { x: p1.x - region.w / 2, y: region.h / 2 - p1.y };
+    const c2 = { x: p2.x - region.w / 2, y: region.h / 2 - p2.y };
+    expect(c1).toEqual({ x: -1, y: 1.5 });
+    expect(c2).toEqual({ x: 1, y: 0 });
+    // i.e. bbox x [-1,1], y [0,1.5] -- exactly the advisor's own reported numbers.
+  });
+
+  it('a Shape Lattice arc entity gets its angle negated (reflection reverses angle sense) alongside the centered+flipped center', () => {
+    const shapePattern = {
+      ...CARVE_PATTERN,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    const { primitives } = generateSilhouette(REGION, shapePattern.shape);
+    const arcPrim = primitives.find((p) => p.type === 'A');
+    expect(arcPrim).toBeTruthy(); // non-vacuous: the hourglass preset genuinely has arcs to check
+
+    const manifest = buildSketchManifest(shapePattern, REGION, {});
+    const arcIndex = primitives.indexOf(arcPrim);
+    const e = manifest.entities.find((en) => en.id === `seg${arcIndex}`);
+    expect(e.center[0]).toBeCloseTo(arcPrim.cx - REGION.w / 2, 9);
+    expect(e.center[1]).toBeCloseTo(REGION.h / 2 - arcPrim.cy, 9);
+    expect(e.radius).toBeCloseTo(arcPrim.rx, 9); // a reflection preserves distances
+    expect(e.startAngleDeg).toBeCloseTo(-(arcPrim.theta1 * 180) / Math.PI, 9);
+    expect(e.sweepDeg).toBeCloseTo(-(arcPrim.dTheta * 180) / Math.PI, 9);
+  });
+
+  it('H/V constraint TYPES are unaffected by the carve transform (a reflection in y alone cannot turn horizontal into vertical)', () => {
+    const manifest = buildSketchManifest(CARVE_PATTERN, REGION, {});
+    const hvCount = manifest.constraints.filter((c) => c.type === 'Horizontal' || c.type === 'Vertical').length;
+    expect(hvCount).toBeGreaterThan(0); // non-vacuous
+    for (const c of manifest.constraints) {
+      if (c.type !== 'Horizontal' && c.type !== 'Vertical') continue;
+      const e = manifest.entities.find((en) => en.id === c.targets[0]);
+      if (c.type === 'Horizontal') expect(e.p1[1]).toBeCloseTo(e.p2[1], 9);
+      else expect(e.p1[0]).toBeCloseTo(e.p2[0], 9);
+    }
+  });
+});
+
 describe('buildSketchManifest — composition', () => {
   it('a box lattice (no shape) has empty shape-groups and a populated lattice', () => {
     const pattern = { ...PATTERN_DEFAULTS, spacing: 0.25 };
@@ -370,5 +501,49 @@ describe('buildSketchManifest — composition', () => {
     const shapeManifest = buildSketchManifest(shapePattern, REGION, {});
     expect(shapeManifest.entities.some((e) => e.id.startsWith('seg'))).toBe(true); // silhouette entities present
     expect(shapeManifest.latticePieceCount).toBeLessThan(boardManifest.latticePieceCount); // genuinely clipped, not board-wide
+  });
+
+  it('T64 CHANGE: a plain box lattice (no shape) ALSO gets widthMode "slot" (Fred: "box lattice needs to be slots too") — Slot entities + SlotWidth dims, relationship constraints intact', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25,
+      rails: { mode: 'every', every: 8, offset: 0 },
+      ties: { mode: 'density', density: 0.1, anchor: 'free', spanMin: 1, spanMax: 1, railSnapRows: 0 },
+    };
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    expect(manifest.latticePieceCount).toBeLessThan(SKETCH_PIECE_THRESHOLD); // non-vacuous: below threshold, so H/V constraints genuinely apply
+    expect(manifest.widthMode).toBe('slot');
+    expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(true);
+    const railIds = manifest.entities.filter((e) => e.id.match(/^rail\d+$/)).map((e) => e.id);
+    expect(railIds.length).toBeGreaterThan(0);
+    for (const id of railIds) {
+      expect(entityById(manifest.entities, id).type).toBe('Slot');
+      expect(manifest.dimensions.some((d) => d.type === 'SlotWidth' && d.target === id)).toBe(true);
+    }
+    expect(manifest.constraints.some((c) => c.type === 'Horizontal' || c.type === 'Vertical')).toBe(true);
+    // No silhouette entities at all -- this is a plain box lattice.
+    expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(false);
+  });
+
+  it('T64: a Shape Lattice layer ALSO gets widthMode "slot" for its own lattice fill, plus the silhouette entities widthMode never touches', () => {
+    const basePattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25,
+      rails: { mode: 'every', every: 1, offset: 0 },
+      ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 1, railSnapRows: 0 },
+    };
+    const shapePattern = {
+      ...basePattern,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    const manifest = buildSketchManifest(shapePattern, REGION, {});
+    expect(manifest.widthMode).toBe('slot');
+    const railIds = manifest.entities.filter((e) => e.id.match(/^rail\d+$/)).map((e) => e.id);
+    expect(railIds.length).toBeGreaterThan(0);
+    expect(entityById(manifest.entities, railIds[0]).type).toBe('Slot');
+    // The silhouette's own segments stay plain Line/ArcCenter, untouched
+    // by widthMode (only rails/ties become slots — §4's own "the
+    // silhouette's own boundary centerline is NOT separately offset by a
+    // rail/tie/node width").
+    expect(manifest.entities.some((e) => e.id.startsWith('seg') && (e.type === 'Line' || e.type === 'ArcCenter'))).toBe(true);
   });
 });

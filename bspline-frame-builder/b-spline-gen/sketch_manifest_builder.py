@@ -11,19 +11,22 @@ Reuses fb_engine's already-working constraint_step/dimension_step dispatch
 already on sys.path by the time the add-in's own run() has bootstrapped;
 _ensure_fb_engine_importable below is a defensive fallback, not the
 primary mechanism) rather than re-deriving that machinery. Writes its own
-geometry-creation (Line/Circle/ArcCenter) and width-offset+cap functions,
-because fb_engine's own gaps don't fit this manifest's shape:
-  - geometry.py's geom_step has no Circle/ArcCenterPoint dispatch branch
-    (T60's own research confirmed this — declared in a type list elsewhere,
-    never implemented).
-  - offsets.py's offset_step/_try_parametric_offset assumes a CLOSED
-    multi-curve loop (_tag_offset_results' own classify_rect_lines needs
-    >=4 curves; a single open rail/tie would silently get NO endpoint
-    tagging at all through that path). The advisor's own live-Fusion
-    measurement (SE15-CONSTRAINED-SKETCH-DESIGN.md "Answers" §1+2)
-    confirmed the CLASSIC sketch.offset() call (not addOffset2) is what
-    actually works for a single open line — that's what this module calls
-    directly, per T62's own dispatch text.
+geometry-creation (Line/Circle/ArcCenter/Slot) because fb_engine's own
+gaps don't fit this manifest's shape — geometry.py's geom_step has no
+Circle/ArcCenterPoint/Slot dispatch branch at all (T60's own research
+confirmed the first two are declared in a type list elsewhere, never
+implemented; Slot doesn't exist in fb_engine's own vocabulary).
+
+T64 (5 mid-turn amendments, final design): every rail/tie piece is a
+Fusion-NATIVE anchored center-to-center SLOT (`addCenterToCenterSlot`),
+not the two-classic-sketch.offset()-calls-plus-cap-arcs mechanism T62/T63
+originally built and then had to fix twice (one-sided offsets, then an
+over-constrained cap scheme) — Fred's own final call, after first asking
+only to remove that mechanism from the box-lattice tool, then extending
+the removal to Shape Lattice's own lattice fill too ("box lattice needs
+to be slots too"). See _create_slot_entity's own doc comment for the
+current, still-partially-UNVERIFIED-against-real-Fusion mechanics
+(this turn stays NO FUSION; the advisor verifies live after merge).
 
 Importing this module is safe without a live Fusion session (see
 test_sketch_manifest_builder.py's own fake-adsk shim) — every adsk.* call
@@ -171,15 +174,121 @@ def _create_arc_center_entity(ctx, curves, s_name, ent):
     return arc
 
 
-def _create_geometry(ctx, sketch, s_name, entities):
+def _find_slot_centerline(sketch, curves, p1, p2):
+    """T64: `addCenterToCenterSlot`'s own RETURN value is (per the
+    advisor's own description) the slot's VISIBLE body — 2 side lines + 2
+    end arcs — with the construction centerline created as a SEPARATE
+    side effect, possibly not included in that return collection at all
+    (UNVERIFIED against real Fusion this turn — flagged for the advisor's
+    own live check). So this searches `sketch.sketchCurves.sketchLines`
+    directly (every line in the WHOLE sketch, not just the call's own
+    return) for the one whose own two endpoints match p1/p2 EXACTLY — the
+    centerline sits exactly there by construction; the two side lines sit
+    offset away from it, so an exact match is unambiguous (no proximity
+    heuristic needed, unlike this function's own first version)."""
+    lines = curves.sketchLines
+    try:
+        count = lines.count
+    except Exception:
+        return None
+    for i in range(count):
+        c = lines.item(i)
+        try:
+            if c.startSketchPoint.geometry.distanceTo(p1) < 1e-7 and c.endSketchPoint.geometry.distanceTo(p2) < 1e-7:
+                return c
+        except Exception:
+            continue
+    return None
+
+
+def _drive_last_dimension(ctx, sketch, expression, semantic_name):
+    """After a geometry call that creates its OWN dimension as a side
+    effect (addCenterToCenterSlot's own width dimension; previously also
+    used for sketch.offset()'s own dimension, T63/T64's now-removed
+    offset mechanism) — the driving dimension is the LAST one Fusion just
+    appended to sketch.sketchDimensions, not reachable off the geometry
+    call's own return value (confirmed via fb_engine's own
+    _force_rename_offset_dim, offsets.py, using the identical lookup for
+    the identical reason). Sets .expression unconditionally and best-
+    effort renames .parameter.name for readability."""
+    dims = sketch.sketchDimensions
+    if dims.count == 0:
+        ctx.logger.log(f"DIM MISS: no dimension found after geometry creation for {semantic_name}", "WARNING")
+        return None
+    d = dims.item(dims.count - 1)
+    try:
+        if hasattr(d, 'parameter') and d.parameter:
+            try:
+                d.parameter.name = semantic_name
+            except Exception:
+                pass
+            d.parameter.expression = str(expression)
+        return d
+    except Exception as e:
+        ctx.logger.log(f"DIM DRIVE FAIL: {semantic_name}: {e}", "WARNING")
+        return None
+
+
+def _create_slot_entity(ctx, sketch, curves, s_name, ent, width_expression):
+    """T64 (5 mid-turn amendments, final design): a rail/tie piece becomes
+    a Fusion-native ANCHORED center-to-center slot — ONE
+    `addCenterToCenterSlot` call produces the whole rounded-rect body
+    (2 side lines + 2 end arcs) PLUS an internal construction centerline
+    and its own width dimension, all at once. This function:
+    1. Creates the slot with a SEED width (`ent['width']`, the manifest's
+       own resolved value in inches) — a real, usable starting number,
+       later re-driven by `width_expression` (e.g. "stroke_width"), same
+       "seed then re-drive" pattern every other dimensioned quantity in
+       this module already uses.
+    2. Registers the CENTERLINE (not the visible slot body) under this
+       piece's own manifest id — relationship constraints (H/V, tie-on-
+       rail, node coincidences) all target rails/ties by bare id, and per
+       the advisor's own instruction, those constraints act on the slot's
+       own centerline.
+    3. ANCHORS the centerline's own two end points (`isFixed = True`) —
+       measured live: an anchored slot grows EVENLY on a width change; an
+       unanchored one drifts lopsided. Passed BOTH as the API call's own
+       4th argument (per the advisor's own literal example) AND set
+       explicitly on the endpoints afterward (belt-and-suspenders,
+       since which of the two actually does the anchoring is itself
+       unverified this turn).
+    4. Re-drives the width dimension via `width_expression`.
+    NO symmetry constraint is added (measured: the slot is already
+    symmetric by construction; an explicit one over-constrains)."""
+    p1 = _to_point3d(ent["p1"])
+    p2 = _to_point3d(ent["p2"])
+    width_in = ent.get("width", 0.07)
+    value_input = adsk.core.ValueInput.createByReal(width_in * IN_TO_CM)
+    curves.sketchLines.addCenterToCenterSlot(p1, p2, value_input, True)
+    centerline = _find_slot_centerline(sketch, curves, p1, p2)
+    if not centerline:
+        raise RuntimeError(f"could not identify the slot's own centerline for {ent['id']}")
+    ctx.set_id(centerline, s_name, "line", override_id=ent["id"])
+    ctx.set_id(centerline.startSketchPoint, s_name, "point", override_id=f"{ent['id']}:S")
+    ctx.set_id(centerline.endSketchPoint, s_name, "point", override_id=f"{ent['id']}:E")
+    try:
+        centerline.startSketchPoint.isFixed = True
+        centerline.endSketchPoint.isFixed = True
+    except Exception as e:
+        ctx.logger.log(f"SLOT ANCHOR FAIL: {ent['id']}: {e}", "WARNING")
+    if width_expression:
+        _drive_last_dimension(ctx, sketch, width_expression, f"{ent['id']}_width")
+    return centerline
+
+
+def _create_geometry(ctx, sketch, s_name, entities, dimensions=None):
     """Entities-first pass (§5's own build order). Returns (created_count,
     skipped) — skipped is a list of {"id","type","reason"} dicts. Never
     raises past this function: one bad entity is skipped and reported,
     never aborts the rest of the sketch (the dispatch's own explicit ask,
     applied here since this is NEW code fb_engine doesn't provide — unlike
     constraint_step/dimension_step, which already have this contract
-    built in)."""
+    built in). `dimensions` (T64) is looked up for each `Slot` entity's
+    own matching SlotWidth expression — created and dimensioned in the
+    SAME step, unlike every other entity type here (see _create_slot_
+    entity's own doc comment for why)."""
     curves = sketch.sketchCurves
+    slot_width_expr_by_id = {d["target"]: d.get("expression") for d in (dimensions or []) if d.get("type") == "SlotWidth"}
     created = 0
     skipped = []
     for ent in entities or []:
@@ -192,6 +301,8 @@ def _create_geometry(ctx, sketch, s_name, entities):
                 _create_circle_entity(ctx, curves, s_name, ent)
             elif etype == "ArcCenter":
                 _create_arc_center_entity(ctx, curves, s_name, ent)
+            elif etype == "Slot":
+                _create_slot_entity(ctx, sketch, curves, s_name, ent, slot_width_expr_by_id.get(eid))
             else:
                 skipped.append({"id": eid, "type": etype, "reason": "unknown entity type"})
                 ctx.logger.log(f"GEOM SKIP: unknown type '{etype}' for {eid}", "WARNING")
@@ -229,10 +340,11 @@ def _apply_radial_dimensions(ctx, sketch, s_name, dimensions):
     """The manifest's Radial dimension entries ({target, expression}) map
     onto dimension_step's own {"DimType":"Radius", "Target", "Expression"}
     shape — already implemented there for both Radius/Diameter (T60's own
-    research). Offset-type dimension entries are handled separately, by
-    _apply_width_offsets below — dimension_step itself
-    has NO "Offset" DimType branch (offsets are OffsetConstraints, not
-    SketchDimensions, in this codebase's own established split)."""
+    research). SlotWidth entries are handled separately, during geometry
+    creation itself (_create_slot_entity) — dimension_step itself has NO
+    "SlotWidth" DimType branch, and a slot's own width dimension is a side
+    effect of `addCenterToCenterSlot`, not a standalone dimension_step
+    call the way Radial is."""
     for d in dimensions or []:
         if d.get("type") != "Radial":
             continue
@@ -242,161 +354,6 @@ def _apply_radial_dimensions(ctx, sketch, s_name, dimensions):
             dimension_step(ctx, sketch, s_name, dim_spec)
         except Exception as e:
             ctx.logger.log(f"DIM WRAP FAIL: {target}: {e}", "ERROR")
-
-
-# ---------------------------------------------------------------------------
-# Width offsets + round caps — this module's own (fb_engine's offset_step
-# doesn't fit a single open line; see module header)
-# ---------------------------------------------------------------------------
-def _resolve_offset_seed_distance(expression, ctx):
-    """A best-effort NUMERIC seed (cm) for sketch.offset()'s own `dist` arg
-    — the dimension this call creates is immediately re-driven by
-    `expression` right after (e.g. "rail_width / 2"), so this seed only
-    needs to be a small, positive, non-degenerate magnitude; it does not
-    need to equal the expression's own resolved value exactly. Tries
-    Fusion's own expression evaluator first (correct units, correct
-    CURRENT parameter value, since parameters are synced before this
-    runs); falls back to a small fixed constant if that fails."""
-    try:
-        return abs(ctx.design.unitsManager.evaluateExpression(str(expression), "cm"))
-    except Exception:
-        return 0.05 * IN_TO_CM  # ~0.05in seed, arbitrary but safely nonzero
-
-
-def _perp_direction_point(line_entity, side_sign, distance_cm):
-    """A point offset perpendicular from `line_entity`'s own midpoint, on
-    the side `side_sign` (+1/-1) picks — sketch.offset()'s own `dirPt` arg
-    is how it's told WHICH SIDE of the curve to offset toward (per the
-    advisor's own live-Fusion measurement, SE15-CONSTRAINED-SKETCH-
-    DESIGN.md "Answers": a single open line needs ONE sketch.offset() call
-    PER SIDE, dirPt-selected). Reads the line's own ALREADY-BUILT Fusion
-    geometry (cm), not the manifest's raw inches, so this stays correct
-    regardless of how _to_point3d converted the original coordinates."""
-    p1, p2 = line_entity.startSketchPoint.geometry, line_entity.endSketchPoint.geometry
-    mx, my = (p1.x + p2.x) / 2, (p1.y + p2.y) / 2
-    dx, dy = p2.x - p1.x, p2.y - p1.y
-    length = math.hypot(dx, dy) or 1.0
-    perp_x, perp_y = -dy / length, dx / length
-    return adsk.core.Point3D.create(mx + perp_x * distance_cm * side_sign, my + perp_y * distance_cm * side_sign, 0)
-
-
-def _drive_last_offset_dimension(ctx, sketch, expression, semantic_name):
-    """After a sketch.offset() call, the driving SketchOffsetCurvesDimension
-    is the LAST dimension Fusion just appended to sketch.sketchDimensions —
-    NOT reachable off the returned curve collection directly (confirmed by
-    reading fb_engine's own _force_rename_offset_dim, offsets.py, which
-    uses this exact same lookup for the identical reason). Sets
-    .expression unconditionally (the real driving value) and best-effort
-    renames .parameter.name for readability in Fusion's own parameter
-    list — same rename-then-set order dimensions.py's own _apply_expression
-    already uses."""
-    dims = sketch.sketchDimensions
-    if dims.count == 0:
-        ctx.logger.log(f"OFFSET DIM MISS: no dimension found after offset for {semantic_name}", "WARNING")
-        return None
-    d = dims.item(dims.count - 1)
-    try:
-        if hasattr(d, 'parameter') and d.parameter:
-            try:
-                d.parameter.name = semantic_name
-            except Exception:
-                pass
-            d.parameter.expression = str(expression)
-        return d
-    except Exception as e:
-        ctx.logger.log(f"OFFSET DIM DRIVE FAIL: {semantic_name}: {e}", "WARNING")
-        return None
-
-
-def _do_single_offset(ctx, sketch, s_name, line_entity, side_sign, expression, semantic_name):
-    """ONE classic sketch.offset() call (the advisor's own measured,
-    proven path — NOT addOffset2, per T62's own dispatch text) on a single
-    line, one side. Pulses the sketch (isComputeDeferred False->True)
-    right after — offsets.py's own established reason: the returned curve
-    is an unfinalized proxy while deferred, so a write like
-    `dim.parameter.expression = ...` would silently no-op without this."""
-    seed_dist = _resolve_offset_seed_distance(expression, ctx)
-    coll = adsk.core.ObjectCollection.create()
-    coll.add(line_entity)
-    dir_pt = _perp_direction_point(line_entity, side_sign, seed_dist)
-    result = sketch.offset(coll, dir_pt, seed_dist)
-    if not result or result.count == 0:
-        ctx.logger.log(f"OFFSET EMPTY: {semantic_name}", "WARNING")
-        return None
-    sketch.isComputeDeferred = False
-    sketch.isComputeDeferred = True
-    _drive_last_offset_dimension(ctx, sketch, expression, semantic_name)
-    return result.item(0)
-
-
-def _apply_width_offsets(ctx, sketch, s_name, offset_dims):
-    """§4/§5/§6: TWO classic sketch.offset() calls per centerline (one per
-    side). Cap arcs themselves are already created in the geometry pass
-    (<id>_capA/<id>_capB, centered on the centerline's own end, radius =
-    the SAME width/2 the offsets use) and already get a Radial dimension
-    (§1's own manifest, handled by _apply_radial_dimensions) — that alone
-    fully determines them (center on the centerline's own end point,
-    radius tied to the same parameter driving the offsets).
-
-    T63 fix (advisor's own real-Fusion run, `build_from_manifest_file` on
-    a live 75-entity/51-constraint hourglass+lattice fixture): T62's own
-    FIRST version of this function also added an explicit Tangent between
-    each cap and its nearby offset curve. That produced 30 "CAP TANGENT
-    SKIP ... VCS_SKETCH_OVER_CONSTRAINTS" — the cap is ALREADY fully
-    pinned by the center+radius above, so an explicit Tangent is a
-    redundant, conflicting 5th constraint on a curve that already has 0
-    remaining degrees of freedom. Per the advisor's own explicit
-    instruction ("drop the explicit cap-tangent step... the result must
-    have ZERO skips on this fixture, don't just silence the log"), the
-    addTangent call is REMOVED here, not wrapped/silenced — this function
-    no longer touches sketch.geometricConstraints at all.
-
-    `offset_dims`: the manifest's own `dimensions[]` entries with
-    type=='Offset' — each already {targets:[...ids], expression, id}, one
-    pos/neg PAIR per kind-group (rail_offset_pos/rail_offset_neg, etc.).
-    One sketch.offset() call PER TARGET id (not one call for the whole
-    group's ObjectCollection at once) — the design doc's own open question
-    #1/#2 resolved conservatively here, since the advisor's own live
-    measurement was specifically against a SINGLE line, not an untested
-    multi-line collection.
-    """
-    pos_by_kind, neg_by_kind = {}, {}
-    for od in offset_dims or []:
-        oid = od.get("id", "")
-        if oid.endswith("_offset_pos"):
-            pos_by_kind[oid[:-len("_offset_pos")]] = od
-        elif oid.endswith("_offset_neg"):
-            neg_by_kind[oid[:-len("_offset_neg")]] = od
-
-    created = 0
-    issues = []
-    for kind, pos_od in pos_by_kind.items():
-        neg_od = neg_by_kind.get(kind)
-        if not neg_od:
-            msg = f"OFFSET PAIR MISS: no matching _neg entry for '{kind}'"
-            issues.append(msg)
-            ctx.logger.log(msg, "WARNING")
-            continue
-        for target_id in pos_od.get("targets", []):
-            try:
-                line_entity = ctx.resolve_entity(s_name, target_id)
-                if not line_entity:
-                    msg = f"OFFSET MISS: {target_id} not found in {s_name}"
-                    issues.append(msg)
-                    ctx.logger.log(msg, "WARNING")
-                    continue
-
-                pos_curve = _do_single_offset(ctx, sketch, s_name, line_entity, +1, pos_od.get("expression"), f"{target_id}_offset_pos")
-                neg_curve = _do_single_offset(ctx, sketch, s_name, line_entity, -1, neg_od.get("expression"), f"{target_id}_offset_neg")
-                if pos_curve:
-                    created += 1
-                if neg_curve:
-                    created += 1
-            except Exception as e:
-                msg = f"OFFSET FAIL: {target_id}: {e}"
-                issues.append(msg)
-                ctx.logger.log(msg, "ERROR")
-    return created, issues
 
 
 # ---------------------------------------------------------------------------
@@ -456,7 +413,7 @@ def _sync_manifest_parameters(ctx, parameters):
 # ---------------------------------------------------------------------------
 # Orchestration — §5's own build sequence
 # ---------------------------------------------------------------------------
-def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui_data=None, log_fn=None):
+def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui_data=None, log_fn=None, sketch_name_override=None):
     """§5's own build sequence — the add-in side of SE15 (design doc §5,
     T61's own JS-side manifest producer). `sketch_target` is a Component
     (matching _import_single_layer_svg's own contract —
@@ -471,7 +428,16 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     orientation=='z-up' — open question #4 in the design doc, kept as
     today's default per the advisor's own "Answers" ruling: "keep
     _import_single_layer_svg's construction-plane placement... revisit
-    after use").
+    after use"). `sketch_name_override` (T64): the manifest's own
+    `sketchName` field is set by export-flow.js's own `_fusionLayerManifest`
+    to a generic `f"Layer {id}"` — fine as a diagnostic default for
+    `build_from_manifest_file`'s own dev usage, but WRONG for a real
+    per-layer send, where the sketch should match the plain-SVG path's own
+    naming scheme (`_import_all_svg_layers`'s own `sketch_name`, "L<n> -
+    <profile> (<depth>\")"). The caller (`_build_constrained_sketch_for_
+    layer`, b-spline-gen.py) passes the matching name here; when omitted
+    (the dev-entry-point path), the manifest's own field is used exactly
+    as before.
 
     Order (§5, matching fb_engine's own _build_blocks convention): all
     PARAMETERS first (so an expression can reference one by name), then
@@ -489,7 +455,6 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
 
     Returns a summary dict: {sketchName, entities:{created,skipped},
     constraints:{count,first_reasons}, dimensions:{count,first_reasons},
-    offsets:{created,issues:{count,first_reasons}},
     parameters:{created,updated,failed}, latticeConstrained, seconds}.
     """
     t0 = time.time()
@@ -498,7 +463,7 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
 
     plane = placement or sketch_target.xYConstructionPlane
     sketch = sketch_target.sketches.add(plane)
-    sketch.name = manifest.get("sketchName") or "SE15 Constrained Sketch"
+    sketch.name = sketch_name_override or manifest.get("sketchName") or "SE15 Constrained Sketch"
     s_name = sketch.name
     ctx.entity_map[s_name] = {}
     ctx.sketches[s_name] = sketch
@@ -509,38 +474,43 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     constraints = manifest.get("constraints", [])
     dimensions = manifest.get("dimensions", [])
 
+    # T64 (final design, 5 mid-turn amendments): a Slot entity creates its
+    # OWN width dimension as a side effect of geometry creation itself
+    # (_create_slot_entity, inside _create_geometry) — no separate
+    # offset/cap phase exists any more (Fred: "box lattice needs to be
+    # slots too", removing the old offset+cap mechanism entirely, not
+    # just gating it off for one layer type). Geometry + constraints stay
+    # in ONE deferred-compute window, same as before.
     sketch.isComputeDeferred = True
     try:
-        e_created, e_skipped = _create_geometry(ctx, sketch, s_name, entities)
+        e_created, e_skipped = _create_geometry(ctx, sketch, s_name, entities, dimensions)
         _apply_constraints(ctx, sketch, s_name, constraints)
     finally:
         sketch.isComputeDeferred = False
 
-    # Manual Pulse — offsets/dimensions below need to reference endpoints
+    # Manual Pulse — Radial dimensions below may reference points/curves
     # the geometry/constraint pass just created (offsets.py's own
-    # documented reason, Ground truth #5).
+    # documented reason, Ground truth #5, reused here for the same
+    # structural reason even though the offset mechanism itself is gone).
     sketch.isComputeDeferred = True
     sketch.isComputeDeferred = False
 
     sketch.isComputeDeferred = True
     try:
         _apply_radial_dimensions(ctx, sketch, s_name, dimensions)
-        offset_dims = [d for d in dimensions if d.get("type") == "Offset"]
-        o_created, o_issues = _apply_width_offsets(ctx, sketch, s_name, offset_dims)
     finally:
         sketch.isComputeDeferred = False
 
     constraint_issues = _summarize_issues(
         logger.records, markers=("CONSTRAINT SKIP", "CONSTRAINT FAIL", "CONSTRAINT MISS", "CONSTRAINT WRAP FAIL"))
     dim_issues = _summarize_issues(
-        logger.records, markers=("DIM MISS", "DIM CRASH", "DIM NODIM", "DIM EXPR FAIL", "DIM WRAP FAIL", "DIM NAME FAIL"))
+        logger.records, markers=("DIM MISS", "DIM CRASH", "DIM NODIM", "DIM EXPR FAIL", "DIM WRAP FAIL", "DIM NAME FAIL", "SLOT ANCHOR FAIL"))
 
     return {
         "sketchName": s_name,
         "entities": {"created": e_created, "skipped": e_skipped},
         "constraints": constraint_issues,
         "dimensions": dim_issues,
-        "offsets": {"created": o_created, "issues": {"count": len(o_issues), "first_reasons": o_issues[:5]}},
         "parameters": {"created": p_created, "updated": p_updated, "failed": p_failed},
         "latticeConstrained": manifest.get("latticeConstrained"),
         "seconds": round(time.time() - t0, 2),

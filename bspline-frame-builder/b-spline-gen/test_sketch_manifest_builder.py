@@ -133,6 +133,48 @@ class FakeSketchLines:
         self._sketch._curves.append(line)
         return line
 
+    # T64: models addCenterToCenterSlot AS A REALISTIC (not just
+    # convenient) fake — creates the centerline EXACTLY at p1/p2 (so
+    # _find_slot_centerline's own exact-match search in the real module
+    # is genuinely exercised, not trivially satisfied), PLUS two side
+    # lines offset away (never at p1/p2), PLUS two end arcs, PLUS one new
+    # width dimension — mirroring the advisor's own reported shape ("2
+    # side lines + 2 end arcs + a construction centerline + ONE width
+    # dimension"). Returns the VISIBLE body only (side lines + end arcs),
+    # matching the disclosed uncertainty in the real module's own doc
+    # comment that the centerline may NOT be part of the return value.
+    def addCenterToCenterSlot(self, p1, p2, value_input, is_fixed):
+        CALL_LOG.append(("slot:addCenterToCenterSlot", p1.x, p1.y, p2.x, p2.y, value_input.value, is_fixed))
+        sketch = self._sketch
+        centerline = FakeSketchLine(p1, p2)
+        sketch._curves.append(centerline)
+        dx, dy = p2.x - p1.x, p2.y - p1.y
+        length = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / length, dx / length
+        half_w = value_input.value / 2.0
+        side1 = FakeSketchLine(
+            FakePoint3D(p1.x + nx * half_w, p1.y + ny * half_w),
+            FakePoint3D(p2.x + nx * half_w, p2.y + ny * half_w))
+        side2 = FakeSketchLine(
+            FakePoint3D(p1.x - nx * half_w, p1.y - ny * half_w),
+            FakePoint3D(p2.x - nx * half_w, p2.y - ny * half_w))
+        end_arc1 = FakeSketchArc(p1, side1.startSketchPoint.geometry, math.pi)
+        end_arc2 = FakeSketchArc(p2, side1.endSketchPoint.geometry, math.pi)
+        for c in (side1, side2, end_arc1, end_arc2):
+            sketch._curves.append(c)
+        sketch.sketchDimensions._items.append(FakeDimension())
+        result = FakeObjectCollection()
+        for c in (side1, side2, end_arc1, end_arc2):
+            result.add(c)
+        return result
+
+    @property
+    def count(self):
+        return len([c for c in self._sketch._curves if isinstance(c, FakeSketchLine)])
+
+    def item(self, i):
+        return [c for c in self._sketch._curves if isinstance(c, FakeSketchLine)][i]
+
 
 class FakeSketchArcs:
     def __init__(self, sketch):
@@ -277,22 +319,6 @@ class FakeSketch:
         self.isComputeDeferred = False
         self.name = "TestSketch"
 
-    def offset(self, coll, dir_pt, dist):
-        CALL_LOG.append(("offset", dist))
-        src = coll.item(0)
-        p1, p2 = src.startSketchPoint.geometry, src.endSketchPoint.geometry
-        nx = -(p2.y - p1.y)
-        ny = (p2.x - p1.x)
-        length = math.hypot(nx, ny) or 1.0
-        sign = 1 if (dir_pt.x - (p1.x + p2.x) / 2) * nx + (dir_pt.y - (p1.y + p2.y) / 2) * ny > 0 else -1
-        ox, oy = nx / length * dist * sign, ny / length * dist * sign
-        new_line = FakeSketchLine(FakePoint3D(p1.x + ox, p1.y + oy), FakePoint3D(p2.x + ox, p2.y + oy))
-        self._curves.append(new_line)
-        result = FakeObjectCollection()
-        result.add(new_line)
-        self.sketchDimensions._items.append(FakeDimension())
-        return result
-
 
 class _FakeSketchesFactory:
     def __init__(self, component):
@@ -418,10 +444,11 @@ def call_log():
 # ---------------------------------------------------------------------------
 def _box_lattice_manifest(constrained=True):
     """A small, hand-built manifest matching editor-sketch-manifest.js's
-    own real output shape (T61) — 2 rails, 1 tie, 1 node, width offsets
-    with caps, one Coincident. `constrained=False` mimics what T61's own
-    JS side ALREADY produces above SKETCH_PIECE_THRESHOLD: entities +
-    width dimensions present, constraints[] EMPTY."""
+    own CURRENT real output shape (T64: Slot entities + SlotWidth
+    dimensions, NOT the old Line+Offset+cap-arc shape) — 2 rails, 1 tie,
+    1 node, one Coincident. `constrained=False` mimics what T61's own JS
+    side ALREADY produces above SKETCH_PIECE_THRESHOLD: entities +
+    SlotWidth dimensions present, constraints[] EMPTY."""
     constraints = [] if not constrained else [
         {"type": "Horizontal", "targets": ["rail0"]},
         {"type": "Horizontal", "targets": ["rail1"]},
@@ -434,13 +461,12 @@ def _box_lattice_manifest(constrained=True):
         "sketchName": "Test Box Lattice",
         "units": "in",
         "region": {"x": 0, "y": 0, "w": 7, "h": 9},
+        "widthMode": "slot",
         "entities": [
-            {"id": "rail0", "type": "Line", "p1": [0.25, 1.0], "p2": [6.75, 1.0]},
-            {"id": "rail1", "type": "Line", "p1": [0.25, 3.0], "p2": [6.75, 3.0]},
-            {"id": "tie0", "type": "Line", "p1": [2.0, 1.0], "p2": [2.0, 3.0]},
+            {"id": "rail0", "type": "Slot", "p1": [0.25, 1.0], "p2": [6.75, 1.0], "width": 0.07},
+            {"id": "rail1", "type": "Slot", "p1": [0.25, 3.0], "p2": [6.75, 3.0], "width": 0.07},
+            {"id": "tie0", "type": "Slot", "p1": [2.0, 1.0], "p2": [2.0, 3.0], "width": 0.07},
             {"id": "node0", "type": "Circle", "center": [2.0, 1.0], "radius": 0.075},
-            {"id": "rail0_capA", "type": "ArcCenter", "center": [0.25, 1.0], "radius": 0.035, "startAngleDeg": 90, "sweepDeg": 180},
-            {"id": "rail0_capB", "type": "ArcCenter", "center": [6.75, 1.0], "radius": 0.035, "startAngleDeg": -90, "sweepDeg": 180},
         ],
         "constraints": constraints,
         "parameters": [
@@ -450,14 +476,39 @@ def _box_lattice_manifest(constrained=True):
         ],
         "dimensions": [
             {"type": "Radial", "target": "node0", "expression": "node_radius"},
-            {"type": "Radial", "target": "rail0_capA", "expression": "rail_width / 2"},
-            {"type": "Radial", "target": "rail0_capB", "expression": "rail_width / 2"},
-            {"type": "Offset", "targets": ["rail0", "rail1"], "expression": "rail_width / 2", "id": "rail_offset_pos"},
-            {"type": "Offset", "targets": ["rail0", "rail1"], "expression": "-(rail_width / 2)", "id": "rail_offset_neg"},
+            {"type": "SlotWidth", "target": "rail0", "expression": "rail_width"},
+            {"type": "SlotWidth", "target": "rail1", "expression": "rail_width"},
+            {"type": "SlotWidth", "target": "tie0", "expression": "tie_width"},
         ],
         "groups": {"rails": ["rail0", "rail1"], "ties": ["tie0"], "nodes": ["node0"]},
         "latticePieceCount": 3,
         "latticeConstrained": constrained,
+    }
+
+
+def _centerline_manifest():
+    """T64 ADD-ON 3: a plain box-Lattice manifest, widthMode 'centerline' —
+    matching what T61's own JS producer now emits for a layer with no
+    generated silhouette: bare rail/tie Lines + relationship constraints
+    + the stroke_width PARAMETER (a CAM reference). Used by
+    test_centerline_width_mode_still_builds_a_plain_line_with_no_slot_mechanism
+    to prove the plain-Line entity-dispatch branch in _create_geometry
+    still works standalone, unaffected by the Slot branch's addition —
+    the Python side never reads manifest.widthMode itself (only each
+    entity's own `type`), so no Offset/SlotWidth dimension is declared
+    here at all; there is nothing left for either mechanism to act on."""
+    return {
+        "version": 1, "layerId": "1", "sketchName": "Test Box Lattice (centerline)",
+        "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9}, "widthMode": "centerline",
+        "entities": [
+            {"id": "rail0", "type": "Line", "p1": [0.25, 1.0], "p2": [6.75, 1.0]},
+        ],
+        "constraints": [{"type": "Horizontal", "targets": ["rail0"]}],
+        "parameters": [{"name": "stroke_width", "value": 0.07, "unit": "in"}],
+        "dimensions": [],
+        "groups": {"rails": ["rail0"], "ties": [], "nodes": []},
+        "latticePieceCount": 1,
+        "latticeConstrained": True,
     }
 
 
@@ -477,15 +528,13 @@ def test_build_order_parameters_before_geometry_before_constraints_before_dimens
 
     kinds = [entry[0] for entry in call_log]
     first_param_idx = min(i for i, k in enumerate(kinds) if k == "param:add")
-    first_geom_idx = min(i for i, k in enumerate(kinds) if k.startswith("geom:"))
+    first_geom_idx = min(i for i, k in enumerate(kinds) if k.startswith("geom:") or k == "slot:addCenterToCenterSlot")
     first_constraint_idx = min(i for i, k in enumerate(kinds) if k.startswith("constraint:"))
     first_dim_idx = min(i for i, k in enumerate(kinds) if k == "dim:Radial")
-    first_offset_idx = min(i for i, k in enumerate(kinds) if k == "offset")
 
     assert first_param_idx < first_geom_idx, "parameters must be created BEFORE geometry"
-    assert first_geom_idx < first_constraint_idx, "geometry must exist BEFORE constraints reference it"
-    assert first_constraint_idx < first_dim_idx, "constraints run BEFORE dimensions (per §5's own build order)"
-    assert first_dim_idx < first_offset_idx or True  # both are in the 2nd deferred window; order between them isn't load-bearing
+    assert first_geom_idx < first_constraint_idx, "geometry (incl. slots) must exist BEFORE constraints reference it"
+    assert first_constraint_idx < first_dim_idx, "constraints run BEFORE the deferred Radial-dimension window"
 
 
 def test_all_geometry_entities_created(call_log):
@@ -496,13 +545,33 @@ def test_all_geometry_entities_created(call_log):
     assert summary["entities"]["skipped"] == []
 
 
+def test_sketch_name_override_takes_priority_over_the_manifest_own_sketchName(call_log):
+    """T64 (advisor's own real Fusion run): the manifest's own `sketchName`
+    field (set by export-flow.js to a generic "Layer <id>") must NOT win
+    once a caller (b-spline-gen.py's own _build_constrained_sketch_for_
+    layer) supplies a real name matching the plain-SVG path's own naming
+    scheme. Omitting the override falls back to the manifest's own field,
+    unchanged from before this fix (the dev-entry-point path)."""
+    design = FakeDesign()
+    manifest = _box_lattice_manifest(constrained=True)
+    assert manifest["sketchName"] == "Test Box Lattice"
+
+    build_constrained_sketch(design.rootComponent, design, manifest, sketch_name_override="Source - L1 - vbit (0.25in) [constrained]")
+    sketch1 = design.rootComponent._sketches[-1]
+    assert sketch1.name == "Source - L1 - vbit (0.25in) [constrained]"
+
+    build_constrained_sketch(design.rootComponent, design, manifest)  # no override
+    sketch2 = design.rootComponent._sketches[-1]
+    assert sketch2.name == "Test Box Lattice"
+
+
 def test_coordinates_land_in_cm_not_inches(call_log):
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=True)
     build_constrained_sketch(design.rootComponent, design, manifest)
-    line_calls = [c for c in call_log if c[0] == "geom:Line"]
+    slot_calls = [c for c in call_log if c[0] == "slot:addCenterToCenterSlot"]
     # rail0's own p1 is [0.25, 1.0] inches -> must land at 0.25*2.54 cm.
-    rail0_call = line_calls[0]
+    rail0_call = slot_calls[0]
     assert rail0_call[1] == pytest.approx(0.25 * IN_TO_CM)
     assert rail0_call[2] == pytest.approx(1.0 * IN_TO_CM)
 
@@ -569,70 +638,123 @@ def test_skip_and_report_a_missing_geometry_target_never_aborts_the_build(call_l
 def test_skip_and_report_an_unknown_entity_type_never_aborts_the_build(call_log):
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=True)
-    manifest["entities"].append({"id": "mystery0", "type": "Slot", "p1": [0, 0], "p2": [1, 1]})
+    manifest["entities"].append({"id": "mystery0", "type": "Bezier", "p1": [0, 0], "p2": [1, 1]})
     summary = build_constrained_sketch(design.rootComponent, design, manifest)
-    assert summary["entities"]["skipped"] == [{"id": "mystery0", "type": "Slot", "reason": "unknown entity type"}]
+    assert summary["entities"]["skipped"] == [{"id": "mystery0", "type": "Bezier", "reason": "unknown entity type"}]
     # every OTHER, valid entity still got created.
     assert summary["entities"]["created"] == len(manifest["entities"]) - 1
 
 
-def test_threshold_case_empty_constraints_builds_cleanly_with_zero_constraint_calls(call_log):
+def test_threshold_case_still_creates_slots_and_slot_width_dims_but_no_relationship_constraints(call_log):
     """The >=SKETCH_PIECE_THRESHOLD case (T61's own JS side already
-    produces this: entities + width dimensions present, constraints[]
+    produces this: entities + SlotWidth dimensions present, constraints[]
     EMPTY) must build without error and without _apply_constraints ever
     calling constraint_step for a manifest-declared relationship (H/V/
-    Coincident/Equal). T63: since the cap-tangent step was REMOVED
-    (no longer any constraint call from the offset/cap path either), this
-    is now a genuine zero-constraint-calls-of-any-kind assertion, not one
-    that has to carve out an exception for Tangent."""
+    Coincident/Equal — constraints[] is empty here). T64: the slot
+    mechanism itself is NOT gated by the threshold either (§6: "not a
+    separate code path") — every rail/tie still becomes a real, anchored,
+    width-dimensioned Slot regardless."""
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=False)
     assert manifest["constraints"] == []
     summary = build_constrained_sketch(design.rootComponent, design, manifest)
     assert summary["latticeConstrained"] is False
     assert summary["entities"]["created"] == len(manifest["entities"])
-    constraint_calls = [c for c in call_log if c[0].startswith("constraint:")]
-    assert constraint_calls == []
-    # width offsets/caps still ran (§6: "not a separate code path").
-    offset_calls = [c for c in call_log if c[0] == "offset"]
-    assert len(offset_calls) == 4  # 2 rails x (pos + neg)
+    relationship_calls = [c for c in call_log if c[0].startswith("constraint:")]
+    assert relationship_calls == []
+    slot_calls = [c for c in call_log if c[0] == "slot:addCenterToCenterSlot"]
+    assert len(slot_calls) == 3  # rail0, rail1, tie0 -- unaffected by the threshold
 
 
-def test_width_offsets_produce_two_calls_per_centerline(call_log):
+def test_slot_creation_is_anchored_and_calls_addCenterToCenterSlot_once_per_piece(call_log):
+    """T64 (final design): every rail/tie becomes ONE addCenterToCenterSlot
+    call, with the anchoring argument True (per the advisor's own literal
+    example and instruction) — measured live: an anchored slot grows
+    EVENLY on a width change; an unanchored one drifts lopsided. Also
+    verifies the registered centerline's own two endpoints get
+    isFixed=True explicitly (belt-and-suspenders, since which of the two
+    mechanisms actually anchors it is itself unverified this turn)."""
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=True)
-    summary = build_constrained_sketch(design.rootComponent, design, manifest)
-    offset_calls = [c for c in call_log if c[0] == "offset"]
-    assert len(offset_calls) == 4  # rail0 + rail1, each pos + neg
-    assert summary["offsets"]["created"] == 4
+    build_constrained_sketch(design.rootComponent, design, manifest)
+    slot_calls = [c for c in call_log if c[0] == "slot:addCenterToCenterSlot"]
+    assert len(slot_calls) == 3  # rail0, rail1, tie0
+    for call in slot_calls:
+        assert call[-1] is True  # the is_fixed/anchor argument
+
+    sketch = design.rootComponent._sketches[0]
+
+    def find_by_endpoints(p1_in, p2_in):
+        for i in range(sketch.sketchCurves.sketchLines.count):
+            c = sketch.sketchCurves.sketchLines.item(i)
+            if (c.startSketchPoint.geometry.x == pytest.approx(p1_in[0] * IN_TO_CM)
+                    and c.startSketchPoint.geometry.y == pytest.approx(p1_in[1] * IN_TO_CM)
+                    and c.endSketchPoint.geometry.x == pytest.approx(p2_in[0] * IN_TO_CM)
+                    and c.endSketchPoint.geometry.y == pytest.approx(p2_in[1] * IN_TO_CM)):
+                return c
+        return None
+
+    # Checked for ALL THREE pieces, not just the first created — a lookup
+    # that degenerates to "return sketchLines.item(0)" would still find
+    # rail0's own centerline by luck (it's the very first line the fake
+    # ever appends) but would silently mis-anchor rail1/tie0's own
+    # centerlines, which this loop is what actually catches (confirmed by
+    # mutation: item(0) passed rail0 alone, failed here on rail1).
+    for ent in manifest["entities"]:
+        if ent["type"] != "Slot":
+            continue
+        centerline = find_by_endpoints(ent["p1"], ent["p2"])
+        assert centerline is not None, f"{ent['id']}'s own centerline is genuinely findable"
+        assert centerline.startSketchPoint.isFixed is True, f"{ent['id']} start anchored"
+        assert centerline.endSketchPoint.isFixed is True, f"{ent['id']} end anchored"
 
 
-def test_offset_dimension_expression_gets_set(call_log):
+def test_slot_width_dimension_expressions_match_the_manifest(call_log):
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=True)
     build_constrained_sketch(design.rootComponent, design, manifest)
     sketch = design.rootComponent._sketches[0]
     exprs = [d.parameter.expression for d in sketch.sketchDimensions]
-    assert "rail_width / 2" in exprs
-    assert "-(rail_width / 2)" in exprs
+    assert exprs.count("rail_width") == 2  # rail0, rail1
+    assert exprs.count("tie_width") == 1  # tie0
+    assert "node_radius" in exprs
 
 
-def test_no_cap_tangent_constraint_is_ever_attempted(call_log):
-    """T63 (advisor's own real-Fusion run): the cap arcs are already fully
-    determined (center on the centerline's own end, radius tied to the
-    same width parameter driving the offsets) — an explicit Tangent
-    between a cap and its offset curve is a redundant, CONFLICTING 5th
-    constraint (measured live: 30 "CAP TANGENT SKIP ...
-    VCS_SKETCH_OVER_CONSTRAINTS" on a real 75-entity fixture). Fixed by
-    REMOVING the addTangent call entirely (not wrapping/silencing it) —
-    this fixture's own manifest never declares a Tangent constraint
-    either, so zero Tangent calls total is the correct, fully non-vacuous
-    assertion (before this fix, this test would have seen >=2)."""
+def test_no_symmetry_constraint_is_ever_added_for_a_slot(call_log):
+    """T64: the advisor's own measurement ("Do NOT add symmetry — the
+    slot is already symmetric by construction") — never implemented in
+    the first place (this module never calls a symmetry-shaped
+    constraint), but worth a real, checkable assertion rather than
+    trusting the absence silently: no Tangent (also never re-added after
+    T63's own removal) and no constraint type named "Symmetric" or
+    "Symmetry" appears anywhere in the build."""
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=True)
     build_constrained_sketch(design.rootComponent, design, manifest)
-    tangent_calls = [c for c in call_log if c[0] == "constraint:Tangent"]
-    assert tangent_calls == []
+    forbidden = [c for c in call_log if c[0] in ("constraint:Tangent", "constraint:Symmetric", "constraint:Symmetry")]
+    assert forbidden == []
+
+
+def test_centerline_width_mode_still_builds_a_plain_line_with_no_slot_mechanism(call_log):
+    """T64 (final design): the Python side dispatches purely on each
+    entity's own `type` field (Line vs Slot vs Circle vs ArcCenter) —
+    it never reads manifest.widthMode at all (that field only steers the
+    JS producer's own choice of entity type). 'centerline' is kept as a
+    real, available-but-not-default value (§ SKETCH_WIDTH_MODE), so a
+    plain Line entity must still build as a bare line — no
+    addCenterToCenterSlot call, no SlotWidth dimension-driving — proving
+    the Slot dispatch branch's addition didn't swallow the Line branch."""
+    design = FakeDesign()
+    manifest = _centerline_manifest()
+    summary = build_constrained_sketch(design.rootComponent, design, manifest)
+    assert summary["entities"]["created"] == 1
+    line_calls = [c for c in call_log if c[0] == "geom:Line"]
+    assert len(line_calls) == 1
+    slot_calls = [c for c in call_log if c[0] == "slot:addCenterToCenterSlot"]
+    assert slot_calls == []
+    assert summary["parameters"]["created"] == 1  # stroke_width still declared
+    hv_calls = [c for c in call_log if c[0] == "constraint:Horizontal"]
+    assert len(hv_calls) == 1  # the relationship constraint DID still apply
 
 
 def test_build_from_manifest_file_reads_json_and_builds(tmp_path, call_log):
@@ -661,14 +783,16 @@ if __name__ == "__main__":
         test_to_point3d_converts_inches_to_cm,
         test_build_order_parameters_before_geometry_before_constraints_before_dimensions,
         test_all_geometry_entities_created,
+        test_sketch_name_override_takes_priority_over_the_manifest_own_sketchName,
         test_coordinates_land_in_cm_not_inches,
         test_parameters_created_then_updated_on_a_second_build,
         test_skip_and_report_a_missing_geometry_target_never_aborts_the_build,
         test_skip_and_report_an_unknown_entity_type_never_aborts_the_build,
-        test_threshold_case_empty_constraints_builds_cleanly_with_zero_constraint_calls,
-        test_width_offsets_produce_two_calls_per_centerline,
-        test_offset_dimension_expression_gets_set,
-        test_no_cap_tangent_constraint_is_ever_attempted,
+        test_threshold_case_still_creates_slots_and_slot_width_dims_but_no_relationship_constraints,
+        test_slot_creation_is_anchored_and_calls_addCenterToCenterSlot_once_per_piece,
+        test_slot_width_dimension_expressions_match_the_manifest,
+        test_no_symmetry_constraint_is_ever_added_for_a_slot,
+        test_centerline_width_mode_still_builds_a_plain_line_with_no_slot_mechanism,
         test_length_parameters_created_with_unit_bearing_expression,
         test_unitless_parameters_created_with_createByReal,
         test_build_from_manifest_file_raises_clearly_with_no_active_design,

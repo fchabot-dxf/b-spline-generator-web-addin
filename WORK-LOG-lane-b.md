@@ -7210,3 +7210,354 @@ linked path). Restored, MD5-verified byte-identical. Full JS suite: 994 passed (
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 Committed by explicit path — pushed.
 
+## T64 — SE15 must use the carve placement (centered, Y-flipped) + naming, from the advisor's own end-to-end test
+
+Dispatch: the advisor's own real end-to-end Fusion test (feeding `PaletteHTMLEventHandler._import_all_svg_layers`
+a real two-layer stamp payload) confirmed the wiring from T63 actually WORKS end to end (51 lines/36 arcs/16
+circles, 78 constraints, 77 dims, 11s) — but the constrained sketch landed in the WRONG place: raw board
+coordinates (bbox x −0.08..7.00, y −0.04..9.04 on a 7×9 board) instead of the SAME carve-space the plain-SVG
+path already lands in (bbox x −1..1, y 0..1.5 for the SAME rect). Plus a naming mismatch ("Layer 1" vs the
+SVG path's own "Source - L1 - vbit (0.25\")").
+
+**Traced the REAL transform, not the one a stale comment claims.** `editor-coords.js`'s own `carveMatrix`
+function has NO Y term at all (`d: dpi`, its own doc comment explicitly says "NO Y inversion... Fusion's
+importer already yields the right orientation") — yet `editor-io.js`'s `bakeSvgForCarving` doc comment, right
+next to where it calls `carveMatrix`, claims the mapping is "×dpi, flip Y, center." Read both directly rather
+than trusting either comment at face value: the MATRIX VALUES prove no flip happens in this codebase's own JS;
+the advisor's own MEASURED bbox (y 3..4.5 board -> y 0..1.5 carve, the exact negation of what "no flip" alone
+would produce) proves a flip genuinely happens somewhere in the full pipeline regardless. Conclusion, stated
+plainly rather than left ambiguous: the flip is an EMERGENT property of Fusion's own SVG import step (reading
+raw Y-down SVG pixels onto a Y-up sketch plane), not something any of this codebase's own JS or Python code
+executes — `bakeSvgForCarving`'s own doc comment is the stale one. Since `build_constrained_sketch` builds
+geometry DIRECTLY (no SVG, no importer), it never gets that implicit flip for free — it has to be baked in
+explicitly, matching the NET transform the advisor's own numbers describe: `x' = x - W/2`, `y' = H/2 - y`.
+
+**Fixed at the ONE source, per the dispatch's own instruction: the JS manifest producer, not the Python
+builder.** Added `applyCarvePlacement(manifest, region)` (`editor-sketch-manifest.js`) — ONE final pass over an
+already-built manifest's own `entities[]`, applied right before `buildSketchManifest` returns. Every OTHER
+producer (`manifestFromLattice`/`manifestFromShape`) keeps computing in the SAME natural board-space they were
+already written and tested in — `constraints[]`/`dimensions[]`/`parameters[]`/`groups` reference entities BY
+ID, never by raw coordinate, so none of them needed touching. The Python builder needed ZERO changes for
+placement — it just converts whatever coordinates the manifest hands it, inches to cm, same as before.
+
+**Worked out the arc-angle consequence by hand, not guessed.** A pure Y-reflection reverses angle sense: a point
+at `center + r*(cos theta, sin theta)` maps to `center' + r*(cos(-theta), sin(-theta))` around the transformed
+center (verified algebraically before trusting it in code — see the module's own new doc comment for the
+derivation). So every `ArcCenter` entity gets BOTH `startAngleDeg` and `sweepDeg` negated alongside the
+centered+flipped `center`; `radius` is unchanged (a reflection preserves distances). Confirmed H/V constraint
+CHOICE (computed earlier, from natural-space coordinates) needs no recomputation — a reflection that remaps y
+as a function of y alone can never turn a horizontal segment into a vertical one, so those constraints stay
+correct without touching them.
+
+**Naming fixed in the Python builder** (the actually-correct place for it, since the SVG-matching name — "L1 -
+vbit (0.25\")" — is only known to `_import_all_svg_layers`'s own per-layer loop, not to the JS-side manifest,
+which only ever sees a generic "Layer <id>" from `export-flow.js`): `build_constrained_sketch` gained an
+optional `sketch_name_override` param, taking priority over `manifest.get("sketchName")` when given.
+`_build_constrained_sketch_for_layer` (b-spline-gen.py, T63) now passes
+`f"Source - {sketch_name} [constrained]"` — matching the plain-SVG path's own `f"Source - {sketch_name}"`
+scheme plus a `[constrained]` tag so the two are visually distinguishable in Fusion's own browser tree. Omitting
+the override (the `build_from_manifest_file` dev-entry-point path) keeps the manifest's own field exactly as
+before — a real, disclosed behavior difference between the two callers, not silently unified.
+
+**Tests**:
+- JS (`tests/editor-sketch-manifest.test.js`, +4, now 27): every rail Line's own carve-space coordinates,
+  cross-checked against an INDEPENDENT `computePattern`+`fromLattice` re-run (replicating `resolveBoardExtent`'s
+  own exact formula in the test, since it isn't exported — a real bug in my FIRST version of this test caught
+  by mismatched extents, not a bug in the transform itself, fixed before trusting the result); a direct,
+  hand-computed check reproducing the advisor's own EXACT reported numbers (x 2.5..4.5, y 3..4.5 -> x −1..1,
+  y 0..1.5) independent of any producer; a Shape Lattice arc's own center+radius+negated-angles, cross-checked
+  against an independent `generateSilhouette` re-run; H/V constraint types confirmed unaffected (non-vacuous:
+  asserts a real, positive H/V count exists first). Full JS suite: 1011 passed (63 files), up from 994.
+- Python (`test_sketch_manifest_builder.py`, +1, now 16): `sketch_name_override` takes priority when given,
+  falls back to the manifest's own field when omitted — both paths checked in one test against two separate
+  builds on the same fake Design.
+
+**Mutation-tested both fixes** (backup, mutate, run, confirm the EXACT expected failure, restore, MD5-verified
+byte-identical): (1) `toCarvePoint` reduced to the identity (no transform at all) -> exactly 2 failures (the two
+tests whose own assertions depend on the transform; the hand-computed and H/V-invariance tests correctly still
+passed, since neither exercises `toCarvePoint` itself); (2) the naming override line reverted to ignore
+`sketch_name_override` entirely -> exactly 1 failure (the dedicated naming test).
+
+**Not done this turn (disclosed, not silent)**: no live CDP cross-check of the FULL SVG-bake pipeline
+(`bakeSvgForCarving`'s own real bbox) against the manifest's own bbox on the same live page — the JS unit tests
+already verify my new code against the advisor's own precisely-reported ground-truth numbers directly, and a
+live cross-check would mostly re-exercise `bakeSvgForCarving`'s own EXISTING, unchanged behavior rather than
+anything this turn touched; skipped as lower-value than the direct numeric verification already done, not
+because "NO FUSION" required skipping it (a JS-only CDP check doesn't touch Fusion at all).
+
+## T64 mid-task amendments (3, incorporated before committing) — one-sided offsets, cap-coincident redesign, box-lattice centerline mode
+
+Three amendments arrived mid-flight, all from the advisor's own further live-Fusion measurement on the SAME
+fixture, plus a priority-setting note from Fred relayed through the advisor. Order actually built (amendments'
+own #3 asked for box=centerline FIRST; carve-placement above was already done by the time these landed — no
+rework needed, the two are orthogonal: one fixes COORDINATES, the other fixes WHICH entities/dimensions exist at
+all): (1) fixed the one-sided-offset bug, (2) redesigned caps around Coincident constraints instead of
+Radial+Tangent, (3) split lattice fill into `centerline`/`offset` width modes per layer type.
+
+**Amendment 1+2 — the offset was landing on the SAME side both times.** Measured live: for a rail at y=0, both
+`sketch.offset()` calls produced lines at y=0 and y=+0.035 (never y=−0.035). Root cause (my own hypothesis, not
+independently confirmed against Fusion's own source — I have no access to it): my own direction-point distance
+was tied to the ACTUAL stroke width (~0.03-0.09 cm for a typical rail), too small for Fusion's own side-detection
+to reliably read as "on this specific side" rather than "ambiguously close to the line." Fixed by DECOUPLING the
+direction point's own distance from the real offset distance: `_perp_direction_point` now places it a fixed,
+generous `_DIR_PROBE_CM = 5.0` away, regardless of how thin the actual stroke is — the ACTUAL offset distance
+passed to `sketch.offset()` itself is unchanged. Also added `_signed_perp_distance` — a POST-HOC, log-only
+verification (never raises) that each resulting offset curve actually landed on its requested side, so if this
+fix is STILL wrong on the advisor's own next live run, it fails LOUDLY in the log instead of silently producing
+wrong geometry again.
+
+The advisor's own SEPARATE measurement of three candidate width mechanisms (addCenterToCenterSlot,
+addTwoSidesOffset, two-classic-offsets) confirmed TWO of the three grow lopsided on a parameter change
+(centerline drifts instead of staying put) and only the two-classic-offset approach (already what T62 built)
+grows evenly — so the DECISION was to keep the existing mechanism and fix its one real bug, not switch approach.
+
+**The cap redesign is the bigger change.** The advisor's own instruction: build each cap as an arc whose OWN
+center is Coincident to the centerline's own end point, and whose own two ENDPOINTS are each Coincident to the
+matching offset line's own endpoint — "radius and tangency then follow automatically." Implemented as
+`_coincident_cap_to_offsets` (3 `addCoincident` calls per cap: center, pos-end, neg-end) — REPLACING the T61-era
+Radial dimension entirely (removed from the JS producer's own `addWidthOffsetsAndCaps`, not just left unused —
+a manifest that still declared it would double-drive the same geometry two independent ways, exactly what
+produced T63's own over-constraint). Which offset curve's own end matches which cap end is resolved by NEAREST-
+POINT geometric proximity (`_nearest_endpoint`), not by assuming `sketch.offset()` preserves start/end ordering
+(untested, so not relied on). The offset curves themselves needed a NEW `ctx.set_id` registration (T62's own
+first version created them but never tagged them) so their `:S`/`:E` points are resolvable at all for this
+wiring.
+
+**Disclosed, real uncertainty**: whether THREE Coincident constraints per cap (center + 2 endpoints, 6 equations
+for a 5-DOF arc) is itself consistent for Fusion's own solver, or whether it's ANOTHER redundant-but-consistent
+case that the solver tolerates (like the analytically-exact numeric seed geometry this codebase already relies
+on elsewhere) versus one it flags — worked out the DOF count by hand (documented in the module's own new doc
+comments) but could not verify against real Fusion this turn. If the advisor's own next live run finds THIS
+combination also over-constrained, the disclosed fallback is dropping the "less informative" of the two endpoint
+coincidences (the analytically-correct numeric seed alone already places that point right, in the same way the
+node/rail geometry itself has always relied on correct-by-construction numeric placement without an explicit
+constraint for every fact).
+
+**Amendment 3 — box Lattice drops the offset/cap mechanism entirely (Fred: "offset sounds like a lot of work" →
+"work to remove the offset function in the BOX lattice tool first").** A new `SKETCH_WIDTH_MODE = {boxLattice:
+'centerline', shapeLattice: 'offset'}` (`editor-sketch-manifest.js`), chosen by `buildSketchManifest` from the
+SAME `hasShape` discriminator it already computes — a plain box Lattice layer's own rails/ties get bare
+centerlines + relationship constraints only (no Offset dimensions, no cap entities at all); a Shape Lattice
+layer's own lattice fill keeps the full offset+cap mechanism (with this turn's own fixes). The width PARAMETER
+(`stroke_width`/`rail_width`/`tie_width`) is STILL declared even in centerline mode — "a real, named reference a
+person can read for CAM," per the amendment — it just drives no geometry. `manifest.widthMode` is now a real,
+emitted field. The Python builder skips `_apply_width_offsets` ENTIRELY when `widthMode == 'centerline'` (not
+just an empty-list no-op) — verified this actually matters via a fixture that DELIBERATELY still declares an
+Offset dimension pair even in centerline mode (a defensive "what if the JS side ever regresses" check) — my
+FIRST version of this test used an empty `dimensions[]`, which passed regardless of whether the gate existed at
+all (caught by mutation, not assumed correct).
+
+**Tests**:
+- JS (`tests/editor-sketch-manifest.test.js`, +2, now 29): a plain box lattice gets `widthMode:'centerline'`
+  with the stroke_width param present but zero Offset dimensions/cap entities, while H/V/tie-on-rail constraints
+  still apply; a Shape Lattice layer keeps `widthMode:'offset'` with offsets/caps intact. Also updated the
+  existing cap tests (2) to assert NO Radial dimension exists for a cap any more, replacing the old assertion
+  that one did. Full JS suite: 1013 passed (63 files), up from 1011.
+- Python (`test_sketch_manifest_builder.py`, +5, now 20): opposite-side signed-distance verification (would have
+  caught the real bug, unlike the older, weaker "two calls happened" test); a DIRECT regression test against the
+  fake shim's own modeled failure mode (a too-close dirPt defaults to one side — proves `_DIR_PROBE_CM` is load-
+  bearing, not decorative); cap-coincident wiring (exactly 3 per cap, 0 Radial, 0 Tangent); centerline-mode skips
+  the whole offset step (fixed after catching my own first version's vacuous fixture, above). Also fixed 2
+  pre-existing tests whose own fixtures/assertions were now stale (a leftover cap-Radial-dimension entry in the
+  hand-built fixture; the threshold test's own "zero constraints of any kind" assertion, now needing to account
+  for the cap-wiring's own always-on Coincident calls).
+
+**Mutation-tested three of the riskiest new pieces** (backup, mutate, run, confirm the EXACT expected failure,
+restore, MD5-verified byte-identical): (1) `useOffsets` (JS) forced `true` regardless of widthMode -> exactly 1
+failure (the centerline-mode test); (2) `_DIR_PROBE_CM` reduced from 5.0 to 0.05 (Python) -> exactly 1 failure
+(the opposite-sides test) — reproducing the advisor's own reported symptom almost exactly; (3) the Python
+`widthMode` gate forced to always run offsets -> caught a GENUINELY VACUOUS test on the first attempt (my own
+centerline fixture had empty `dimensions[]`, so the mutation changed nothing observable) — fixed the fixture to
+deliberately include an Offset entry, re-confirmed the mutation THEN produces exactly 1 failure, restored.
+
+**Verification snippet for the advisor's own next live Fusion run** (checks: opposite-side signed distances;
+cap endpoints coincide with the matching offset line's own endpoint; zero Tangent constraints touch any cap) —
+paste into `fusion_execute` against a sketch `build_constrained_sketch` (or `build_from_manifest_file`) just
+built:
+
+```python
+import adsk.core, adsk.fusion, math
+
+app = adsk.core.Application.get()
+design = adsk.fusion.Design.cast(app.activeProduct)
+sketch = design.rootComponent.sketches.item(design.rootComponent.sketches.count - 1)  # the just-built one
+
+def signed_dist(line, pt):
+    p1, p2 = line.startSketchPoint.geometry, line.endSketchPoint.geometry
+    dx, dy = p2.x - p1.x, p2.y - p1.y
+    length = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / length, dx / length
+    return (pt.x - p1.x) * nx + (pt.y - p1.y) * ny
+
+lines_by_name = {}
+for c in sketch.sketchCurves.sketchLines:
+    try:
+        attr = c.attributes.itemByName('FrameBuilder', 'ID')
+        if attr:
+            lines_by_name[attr.value] = c
+    except Exception:
+        pass
+
+for base_id, line in list(lines_by_name.items()):
+    pos = lines_by_name.get(f"{base_id}_offset_pos")
+    neg = lines_by_name.get(f"{base_id}_offset_neg")
+    if not pos or not neg:
+        continue
+    mid = lambda l: adsk.core.Point3D.create(
+        (l.startSketchPoint.geometry.x + l.endSketchPoint.geometry.x) / 2,
+        (l.startSketchPoint.geometry.y + l.endSketchPoint.geometry.y) / 2, 0)
+    ds_pos, ds_neg = signed_dist(line, mid(pos)), signed_dist(line, mid(neg))
+    status = "OK" if ds_pos > 0 and ds_neg < 0 else "BAD (same side or wrong sign)"
+    print(f"{base_id}: pos={ds_pos:.4f}cm neg={ds_neg:.4f}cm -> {status}")
+
+tangent_on_caps = 0
+for c in sketch.geometricConstraints:
+    try:
+        if c.objectType.endswith('TangentConstraint'):
+            for prop in ('entityOne', 'entityTwo'):
+                ent = getattr(c, prop, None)
+                attr = ent.attributes.itemByName('FrameBuilder', 'ID') if ent and hasattr(ent, 'attributes') else None
+                if attr and ('_capA' in attr.value or '_capB' in attr.value):
+                    tangent_on_caps += 1
+    except Exception:
+        pass
+print(f"Tangent constraints touching a cap: {tangent_on_caps} (expect 0)")
+```
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+Committed by explicit path — pushed.
+
+## T64 wave 2 (5 more mid-task amendments) — the offset+cap mechanism above is SUPERSEDED entirely by Fusion-native anchored slots, plus a new node-to-piece Coincident feature
+
+Fred's own final call, relayed through the advisor, after wave 1 above had already fixed the offset+cap mechanism
+twice: stop patching that mechanism and REPLACE it outright. "Box lattice needs to be slots too" — so this isn't
+a narrower version of wave 1, it deletes wave 1's own cap/offset machinery wholesale, for BOTH box Lattice and
+Shape Lattice, and replaces it with ONE Fusion-native call per rail/tie: `addCenterToCenterSlot`. Per this repo's
+"declare over hand-roll" bar, this is a strictly better fit than what wave 1 kept patching — a single native
+primitive that already IS the width mechanism, instead of two offset lines plus a hand-built cap-arc wiring
+scheme standing in for one.
+
+**What got deleted, wholesale, not incrementally**: JS — `capArc`, `addWidthOffsetsAndCaps`. Python —
+`_resolve_offset_seed_distance`, `_perp_unit_vector`, `_DIR_PROBE_CM`, `_perp_direction_point`,
+`_signed_perp_distance`, `_do_single_offset`, `_nearest_endpoint`, `_coincident_cap_to_offsets`,
+`_apply_width_offsets` (~250 contiguous lines, sliced out directly). `SKETCH_WIDTH_MODE` is now `{boxLattice:
+'slot', shapeLattice: 'slot'}` — both resolve to the SAME value now, but kept as a declared per-layer-type table
+rather than one hardcoded string, because `'centerline'` (a bare undimensioned line, wave 1's own box-lattice
+default) is EXPLICITLY kept as a real, still-available, just-no-longer-default value for a possible future manual
+override — not deleted outright, since nothing asked for that.
+
+**New entity type: `Slot` `{id,type,p1,p2,width}`** (replacing Line for every rail/tie), and a new dimension type
+`SlotWidth {type,target,expression}` handled at GEOMETRY-CREATION time itself (not a separate later dimensions
+phase) — `addCenterToCenterSlot` creates its own width dimension as a side effect of creation, so there is no
+"dimensions phase" left to defer it to; `_create_slot_entity` re-drives that just-created dimension's own
+`.expression` immediately, via the SAME `_drive_last_dimension` helper (generalized from wave 1's own
+offset-specific version, identical "find the last dimension in `sketch.sketchDimensions`" logic, now used for
+one geometry-side-effect kind instead of two).
+
+**`_find_slot_centerline` — the one piece of this turn's own design with a REAL disclosed uncertainty.**
+`addCenterToCenterSlot`'s own return value is, per the advisor's own description, "2 side lines + 2 end arcs" —
+phrased as possibly NOT including the construction centerline at all. Rather than trust that return value's own
+contents (UNVERIFIED against real Fusion this turn), this searches `sketch.sketchCurves.sketchLines` directly —
+the WHOLE sketch, not just the call's own return — for the ONE line whose two endpoints match the manifest's own
+p1/p2 EXACTLY (`distanceTo < 1e-7`). The centerline sits exactly there by construction; the two side lines sit
+offset away from it, so an exact match is unambiguous with no proximity heuristic needed. The centerline (not
+the visible slot body) is what gets registered under the piece's own manifest id — every relationship
+constraint (H/V, tie-on-rail, the new node coincidences) targets rails/ties by that bare id, and the advisor's
+own instruction was explicit that those constraints act on the slot's own centerline, not its visible edges.
+
+**Anchoring, belt-and-suspenders.** An anchored slot grows evenly on a width change; an unanchored one drifts
+lopsided (the advisor's own measurement). Passed as `addCenterToCenterSlot`'s own 4th argument (`isFixed=True`,
+per the advisor's own literal example) AND set explicitly on the found centerline's own two endpoints afterward
+— since which of the two mechanisms actually does the anchoring in real Fusion is itself unverified this turn,
+both are applied rather than guessing which one to skip.
+
+**New feature, not in either original dispatch: node-to-piece Coincident constraints.** Every node (a Circle) that
+sits on a rail/tie now gets an explicit Coincident declared to it — `nodePieceCoincidences(pt)` (JS) classifies
+each node point against every rail/tie segment: an exact endpoint match emits the `:S`/`:E`-suffixed target (the
+tie-on-rail convention already established), a mid-span match emits the BARE id, which resolves to the point-
+on-curve overload via `BuildContext.resolve_entity`'s own existing convention — the SAME mechanism already used
+for tie-on-rail, so no new schema field or Python-side code was needed for this at all; `_apply_constraints`
+passes these through generically, exactly as it already did for every other declared Coincident.
+
+**No symmetry constraint, deliberately** — the advisor's own measurement: the slot is already symmetric by
+construction, an explicit symmetry constraint over-constrains. Never implemented in the first place; kept as an
+explicit regression assertion rather than trusted silently (a Tangent/Symmetric/Symmetry constraint call would
+fail this build's own test).
+
+**Tests**:
+- JS (`tests/editor-sketch-manifest.test.js`, now 30): every rail/tie is a Slot with exactly one SlotWidth
+  dimension referencing its own width param (linked and unlinked cases); the >=threshold case still creates every
+  Slot + its dimension with zero per-piece relationship constraints; a new node-to-piece-Coincident test that
+  independently re-derives end-vs-mid-span classification from the lattice's own geometry and cross-checks it
+  against the declared constraints (non-vacuous: asserts both `endMatches > 0` and `curveMatches > 0`, so a broken
+  classifier or an empty constraints list both fail it); `applyCarvePlacement` extended to handle `'Slot'` (was
+  silently skipping it before — caught by a failing carve test, `expected 0.25 to be close to -3.25`, off by
+  exactly `REGION.w/2`, i.e. the untransformed value). Full JS suite: 1014 passed (63 files).
+- Python (`test_sketch_manifest_builder.py`, now 17 — down from a peak of 20 mid-rewrite): every wave-1 test that
+  targeted the now-deleted offset/cap mechanism was either deleted outright (5: the two-offset-sides test, the
+  dirPt-probe regression test, the cap-coincident-wiring test, the width-offsets-count test, the offset-dimension-
+  expression test) or rewritten for slots (the threshold test now checks slots+SlotWidth dims still get created
+  with zero relationship constraints; a redundant Tangent-absence test was folded into the new symmetry-absence
+  test instead of kept as a separate, now largely vacuous check). New: slot creation is anchored + happens once
+  per piece (checked across ALL THREE fixture pieces, not just the first — see the mutation-testing note below for
+  why that matters); SlotWidth dimension expressions match the manifest exactly (rail_width x2, tie_width x1,
+  distinguishing rails from ties by DIFFERENT numeric values so a swapped-argument bug would be caught); the
+  no-symmetry/no-tangent regression check; `'centerline'` mode re-purposed to prove the plain-Line entity-dispatch
+  branch still works standalone (the Python side never reads `manifest.widthMode` at all — it dispatches purely
+  per-entity `type` — so this is really "adding the Slot branch didn't break the pre-existing Line branch," not a
+  widthMode gate test, since no such gate exists on the Python side). Also removed the now-fully-dead
+  `FakeSketch.offset` fake-shim method (unreferenced by any surviving test or production code path) and the
+  `_coll` helper that only existed to feed it. Both pytest and the plain-`python3` fallback mode are green
+  (17/16 respectively — the file-reading test uses `tmp_path`, excluded from the fallback list per the
+  pre-existing convention).
+
+**Real gap caught and fixed, NOT part of any dispatch**: `addSlotPieces` (JS) built every Slot entity with NO
+`width` field at all — `entities.push({ id, type: 'Slot', p1, p2 })`, no width — even though
+`_create_slot_entity` (Python) reads `ent.get("width", 0.07)` as its own seed value for `addCenterToCenterSlot`.
+Every rail/tie would have silently seeded at the hardcoded 0.07in fallback regardless of its own actual
+configured width (harmless for the FINAL geometry, since the width gets re-driven by its own expression right
+after creation anyway, but wrong/misleading as an initial seed, and the Python test fixtures had already been
+hand-written to assume `width` was present, meaning the two sides had quietly drifted apart). Fixed by threading
+the already-in-scope `widths.rails`/`widths.ties` value through `addSlotPieces`'s own new `widthValue` parameter
+at all 4 call sites. Caught by re-checking the JS producer's OWN current code directly rather than trusting the
+Python fixture's assumption — the pending-task note from before compaction flagged this as unconfirmed, and it
+turned out to be a real gap, not a false alarm.
+
+**Mutation-tested three of the riskiest new Python pieces** (backup, mutate, run, confirm the EXACT expected
+failure set, restore, MD5-verified byte-identical restore each time):
+1. `_find_slot_centerline`'s own exact-match loop, mutated to `return lines.item(0)` unconditionally (ignore
+   p1/p2 entirely) — **first attempt exposed a genuine test-coverage gap, not a clean pass**: the ORIGINAL
+   anchoring test only checked rail0 (the first slot ever created), and `item(0)` happens to BE rail0's own
+   centerline purely because it was appended first — the mutation slipped through with 17/17 still green. Fixed
+   by strengthening the test to check EVERY slot's own centerline by its own declared p1/p2 (rail0, rail1, tie0),
+   which is what actually exercises the exact-match discrimination between pieces rather than coincidentally
+   passing on construction order. Re-ran the same mutation against the strengthened test: exactly 1 failure
+   (`AttributeError: 'FakeSketchPoint' object has no attribute 'isFixed'`, since rail1's real centerline never
+   got registered or anchored under the mutation) — confirmed non-vacuous, restored, MD5-verified.
+2. The width-dimension-drive call (`_drive_last_dimension(...)` at the end of `_create_slot_entity`) deleted
+   entirely — exactly 1 failure (`assert 0 == 2` on the rail_width expression count), 16/17 passed. Restored,
+   MD5-verified.
+3. The JS-side `addSlotPieces` width-threading fix itself (the gap above) — reverted to the pre-fix version
+   (no `width` field at all) against the NEW JS test asserting `e.width` matches `PATTERN.widths.rails`/`.ties`
+   exactly (using the base fixture's own DELIBERATELY different rail/tie values, 0.07 vs 0.05, so a swapped
+   argument would also be caught): exactly 1 failure (`expected undefined to be 0.07`), 29/30 passed. Restored,
+   MD5-verified.
+
+**Disclosed, unverified against real Fusion this turn** (NO FUSION held throughout — flagged for the advisor's
+own live check, same discipline as wave 1's own disclosures above): whether `addCenterToCenterSlot`'s own return
+value actually excludes the construction centerline (the premise `_find_slot_centerline`'s whole-sketch search
+was designed around, rather than trusting the return collection); whether the `isFixed=True` 4th-argument alone
+is sufficient anchoring or whether the explicit post-hoc `SketchPoint.isFixed = True` sets are the ones actually
+doing the work (both are applied, so either way it should anchor correctly — just unconfirmed which one is
+load-bearing); whether a node-to-piece Coincident (a Circle's own bare id as one target) resolves through
+`BuildContext.resolve_entity`'s existing `:C`-suffix convention correctly without an explicit `:C` suffix in the
+declared target — this is PRE-EXISTING fb_engine machinery untouched by this turn's own changes, so it was not
+re-mutation-tested here (out of this turn's own scope — that dispatch logic has its own tests from earlier work).
+
+Per Fred's own "no merge()" rule (mentioned during the amendment relay: every joint should stay separably
+deletable), this design never calls `SketchPoint.merge()` anywhere — every coincidence, old or new, is a
+plain `addCoincident` between two still-separate points, which this architecture already did naturally without
+needing a deliberate check to keep it that way.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+

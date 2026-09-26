@@ -1428,10 +1428,18 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         plane above). Failures here are caught and logged, never abort
         the rest of _handle_generate's own per-layer loop (same "skip +
         report" discipline build_constrained_sketch's own internals
-        already apply one level down)."""
+        already apply one level down).
+
+        T64: names the sketch to match the plain-SVG path's own scheme
+        (`Source - {sketch_name} [constrained]`, e.g. "Source - L1 - vbit
+        (0.25\") [constrained]") instead of letting build_constrained_sketch
+        fall back to the manifest's own generic `sketchName` field
+        ("Layer 1") — the advisor's own real Fusion run found the mismatch."""
         try:
             plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
-            summary = build_constrained_sketch(sketch_target, design, manifest, placement=plane, log_fn=_log)
+            summary = build_constrained_sketch(
+                sketch_target, design, manifest, placement=plane, log_fn=_log,
+                sketch_name_override=f"Source - {sketch_name} [constrained]")
             _log(
                 f"[SE15] {sketch_name}: entities={summary['entities']['created']}/"
                 f"{summary['entities']['created'] + len(summary['entities']['skipped'])} "
