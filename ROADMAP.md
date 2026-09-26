@@ -872,7 +872,8 @@ builder still see the frame sketch?" — yes). Seat A after UI2; advisor verifie
 
 ## Queued — LAT-SIZE: lattice size fields in the app, both lattice tools (Fred 2026-09-26: "yes")
 A declared SIZE (width, height) per lattice pattern, shown as a "Size" row in the Shape Lattice AND the box Lattice
-panels, default = board minus 1 in (the existing one declared margin constant), centred on the board. Shape Lattice:
+panels, default = board minus 1 in (the existing one declared margin constant), centred on the board. The size is the
+OUTSIDE of the contour slots (Fred); Fusion dims stay on the centerline with expression size - stroke_width. Shape Lattice:
 the contour + its rails/ties regenerate at that size and the SAME numbers go to Fusion as contour_width/contour_height
 (param values). Box Lattice: its fill area inside the board = that size (rails/ties fit inside; if it exports size
 dims, same parameter pattern — decide + log). Saved patterns without size read the default. Parity + sweep tests cover
