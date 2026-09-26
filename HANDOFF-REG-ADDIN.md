@@ -78,8 +78,8 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
 - **Design rules** (all in ROADMAP.md / SE15-CONSTRAINED-SKETCH-DESIGN.md): never Fix; no Symmetry; only the contour
   size dims; acceptance = spawn parity; a coincident follows ONE curve, not a path; lattice overrides don't survive
   Regenerate and never get a param.
-- **Lattice layout (Fred 2026-09-26)**: GENERATED rails are laid out from the BOUNDARY (count: evenly inside the box, edge
-  margins = gaps; spacing: exact gaps, centred), not from the grid (see ROADMAP RAIL-SPACING). The grid is for drawing
+- **Lattice layout (Fred 2026-09-26)**: GENERATED rails are laid out from the BOUNDARY (count: evenly between a Margin
+  field you set; spacing: exact gaps, centred), not from the grid (see ROADMAP RAIL-SPACING). The grid is for drawing
   and dragging. The contour is off-grid, so an end anchored to it snaps to the contour, not the grid (UI5 item 5).
 - **Progress page**: https://bspline-status.pages.dev. The watcher runs on the home PC and reads that PC's local
   checkouts, so your Asus commits won't show there. It tracks seats A/B/C only.
