@@ -941,6 +941,13 @@ param (hourglass + bottle, both orientations, several board sizes) asserting sim
 positive sweep per arc, tangency at joints; reproduce Fred's case first (red before the fix). The inversion detector
 (F3 AMEND 7b) becomes a guard, not the fix. Coordinate: seat B (T76) edits lattice layers, not the silhouette solver.
 
+## Queued (seat B, T77, after T76) — TIE-GAP: minimum spacing between ties (Fred 2026-09-26)
+Fred: "in ties I want a minimum space apart". Declared `ties.minSpacing` (default 0.5 in, a 'Min spacing' field in the
+Ties section of BOTH lattice panels): Generate never places two ties closer than this measured along the rail direction
+(ties in the same rail gap, and across adjacent gaps if they'd visually pair up — decide + log); if the count range
+can't fit, generate FEWER (spacing wins over count). Hand-added / dragged ties are exempt. Sweep test: no pair of
+generated ties closer than minSpacing across seeds/counts/presets; parity unchanged.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
