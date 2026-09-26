@@ -1201,6 +1201,19 @@ export function splitManifestByKind(pattern, region, opts = {}) {
   const perKind = {};
   for (const kind of LATTICE_FUSION_BUILD_ORDER) {
     perKind[kind] = {
+      // `kind` + `buildOrder`: the Python builder's own orchestration
+      // (item 5) groups a pattern's own per-kind manifests and must build
+      // them in LATTICE_FUSION_BUILD_ORDER regardless of the APP's own
+      // layer array order (user-drag-reorderable, independent — see this
+      // function's own doc comment) — carried explicitly here rather than
+      // re-derived from entity id prefixes on that side too.
+      kind, buildOrder: buildOrderIndex[kind],
+      // Which pattern this kind-layer belongs to -- a document can hold
+      // more than one generated lattice, each with its own 4 kind-layers;
+      // the Python builder groups manifests sharing this id to share ONE
+      // build context (so a later kind can project an earlier one's own
+      // entities) and never mixes two different patterns' own sketches.
+      patternId: pattern.id ?? null,
       version: combined.version, widthMode: combined.widthMode, contourWidthMode: combined.contourWidthMode,
       units: combined.units, region: combined.region,
       entities: [], constraints: [], parameters: combined.parameters, dimensions: [], projections: [], groups: {},

@@ -20,7 +20,7 @@ import { PATTERN_DEFAULTS, LATTICE_FUSION_BUILD_ORDER } from '../bspline-frame-b
 const REGION = { x: 0, y: 0, w: 7, h: 9 };
 
 const BOX_PATTERN = {
-  ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+  ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42, id: 'test-pattern-1',
   rails: { mode: 'every', every: 2, offset: 0 },
   ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
   nodes: { ends: true, crossings: true, railEnds: false },
@@ -45,6 +45,16 @@ function entityKind(id) {
 describe('splitManifestByKind — box lattice (no contour)', () => {
   const combined = buildSketchManifest(BOX_PATTERN, REGION, {});
   const split = splitManifestByKind(BOX_PATTERN, REGION, {});
+
+  it('each per-kind manifest carries its own kind, its build-order index, and this pattern\'s own id -- item 5\'s own Python orchestration groups/orders by these, not layer array position', () => {
+    expect(split.rails.kind).toBe('rails');
+    expect(split.ties.kind).toBe('ties');
+    expect(split.nodes.kind).toBe('nodes');
+    expect(split.rails.buildOrder).toBeLessThan(split.ties.buildOrder);
+    expect(split.ties.buildOrder).toBeLessThan(split.nodes.buildOrder);
+    expect(split.rails.patternId).toBe(BOX_PATTERN.id);
+    expect(split.ties.patternId).toBe(BOX_PATTERN.id);
+  });
 
   it('omits contour entirely — Box Lattice has no shape at all', () => {
     expect(split.contour).toBeUndefined();

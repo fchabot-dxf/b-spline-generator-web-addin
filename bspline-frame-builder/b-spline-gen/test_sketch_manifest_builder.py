@@ -272,38 +272,53 @@ class FakeConstraint:
 
 
 class FakeGeometricConstraints:
-    def __init__(self):
+    # T76 (SE17, item 5): `sketch` (the OWNING sketch) lets every add*
+    # method refuse a constraint whose own entities aren't ALL owned by
+    # THIS sketch — mirroring the advisor's own real, measured Fusion
+    # error for exactly this ("a direct constraint to another sketch's
+    # curve is refused") — the exact text below is quoted straight from
+    # ROADMAP.md's own SE17 entry, not invented. `sketch.project(...)`
+    # (this file, below) is the ONE way to make a cross-kind reference
+    # pass this check: it creates a fresh, THIS-sketch-owned copy first.
+    def __init__(self, sketch):
+        self._sketch = sketch
         self.created = []
 
-    def _make(self, kind):
+    def _check_owned(self, *entities):
+        for e in entities:
+            if e is not None and not self._sketch.owns(e):
+                raise RuntimeError("InternalValidationError : sketch == msketch")
+
+    def _make(self, kind, *entities):
+        self._check_owned(*entities)
         c = FakeConstraint(kind)
         self.created.append(c)
         CALL_LOG.append((f"constraint:{kind}",))
         return c
 
     def addCoincident(self, a, b):
-        return self._make("Coincident")
+        return self._make("Coincident", a, b)
 
     def addHorizontal(self, a):
-        return self._make("Horizontal")
+        return self._make("Horizontal", a)
 
     def addVertical(self, a):
-        return self._make("Vertical")
+        return self._make("Vertical", a)
 
     def addTangent(self, a, b):
-        return self._make("Tangent")
+        return self._make("Tangent", a, b)
 
     def addEqual(self, a, b):
-        return self._make("Equal")
+        return self._make("Equal", a, b)
 
     def addCollinear(self, a, b):
-        return self._make("Collinear")
+        return self._make("Collinear", a, b)
 
     def addParallel(self, a, b):
-        return self._make("Parallel")
+        return self._make("Parallel", a, b)
 
     def addSymmetry(self, a, b, sym_line):
-        return self._make("Symmetry")
+        return self._make("Symmetry", a, b, sym_line)
 
 
 class FakeParameter:
@@ -397,9 +412,14 @@ class FakeObjectCollection:
 class FakeSketch:
     def __init__(self):
         self.sketchCurves = FakeSketchCurves(self)
-        self.geometricConstraints = FakeGeometricConstraints()
+        self.geometricConstraints = FakeGeometricConstraints(self)
         self.sketchDimensions = FakeSketchDimensions()
         self._curves = []
+        # T76 (SE17, item 5): standalone points this sketch owns that
+        # AREN'T a curve's own start/end/center -- today, only a
+        # `.project()`-ed point lands here (a projected Line/Arc is a
+        # normal curve, appended to `_curves` like any other).
+        self._points = []
         self.isComputeDeferred = False
         self.name = "TestSketch"
         # T70 AMEND 4: a real Fusion sketch's own ALWAYS-fixed origin point
@@ -408,6 +428,54 @@ class FakeSketch:
         # (via entity_map['origin'], registered in build_constrained_sketch)
         # to anchor an axis's absolute position without an isFixed flag.
         self.originPoint = FakeSketchPoint(FakePoint3D(0, 0, 0))
+
+    def owns(self, entity):
+        """T76 (SE17, item 5): does THIS sketch's own geometry include
+        `entity` -- either directly (a curve in `_curves`, a standalone
+        projected point in `_points`, or `originPoint`) or as one of a
+        curve's own start/end/center SketchPoints. Backs
+        FakeGeometricConstraints' own cross-sketch refusal below."""
+        if entity is self.originPoint or entity in self._points:
+            return True
+        for c in self._curves:
+            if c is entity:
+                return True
+            for attr in ('startSketchPoint', 'endSketchPoint', 'centerSketchPoint'):
+                if getattr(c, attr, None) is entity:
+                    return True
+        return False
+
+    def project(self, entity):
+        """T76 (SE17, item 5): models the ONE Fusion API call that makes a
+        cross-kind constraint possible at all -- creates a fresh copy of
+        `entity`, OWNED BY THIS SKETCH (geometrically identical, its own
+        independent SketchPoints, exactly like the real API: a projected
+        curve/point is a real, separate entity, not a live reference back
+        to the source). Returns an ObjectCollection of exactly one item,
+        mirroring frame-builder's own `project_step`'s own assumption
+        about `sketch.project`'s real return shape (fb_engine/
+        projections.py) -- the same real Fusion API, called from a
+        different tool in this same repo."""
+        CALL_LOG.append(("project", type(entity).__name__))
+        if isinstance(entity, FakeSketchPoint):
+            copy = FakeSketchPoint(entity.geometry.copy())
+            self._points.append(copy)
+        elif isinstance(entity, FakeSketchLine):
+            copy = FakeSketchLine(entity.startSketchPoint.geometry.copy(), entity.endSketchPoint.geometry.copy())
+            copy.isConstruction = entity.isConstruction
+            self._curves.append(copy)
+        elif isinstance(entity, FakeSketchArc):
+            copy = FakeCurveBase.__new__(FakeSketchArc)
+            FakeCurveBase.__init__(copy)
+            copy.centerSketchPoint = FakeSketchPoint(entity.centerSketchPoint.geometry.copy())
+            copy.startSketchPoint = FakeSketchPoint(entity.startSketchPoint.geometry.copy())
+            copy.endSketchPoint = FakeSketchPoint(entity.endSketchPoint.geometry.copy())
+            self._curves.append(copy)
+        else:
+            raise TypeError(f"FakeSketch.project: unsupported source type {type(entity).__name__}")
+        result = FakeObjectCollection()
+        result.add(copy)
+        return result
 
     # T65 (advisor's own real Fusion run, verified via dir()): the slot
     # methods (addCenterToCenterSlot, addThreePointArcSlot,
@@ -1576,6 +1644,139 @@ def test_origin_anchor_and_distance_dim_dispatch_end_to_end_with_zero_parity_mis
     assert summary["parity"]["maxErr"] < 1e-6
 
 
+# ---------------------------------------------------------------------------
+# T76 (SE17, item 5) — a pattern's own kind-layers share ONE BuildContext
+# across successive build_constrained_sketch calls, so a LATER kind can
+# `sketch.project()` an EARLIER kind's own entity and constrain against
+# the projected copy -- a direct cross-sketch constraint is refused by
+# Fusion (advisor-measured, "sketch == msketch"); this is the ONE
+# mechanism that makes a cross-kind relationship possible at all.
+# ---------------------------------------------------------------------------
+def _rails_kind_manifest():
+    """A minimal 'rails' kind-manifest -- one horizontal rail slot, no
+    cross-kind references of its own (rails is FIRST in build order, so
+    it never needs to project anything)."""
+    return {
+        "version": 1, "kind": "rails", "buildOrder": 1, "patternId": "p1",
+        "sketchName": "Rails", "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9},
+        "widthMode": "slot",
+        "entities": [{"id": "rail0", "type": "Slot", "p1": [0.0, 1.0], "p2": [7.0, 1.0], "width": 0.07}],
+        "constraints": [{"type": "Horizontal", "targets": ["rail0"]}],
+        "parameters": [{"name": "stroke_width", "value": 0.07, "unit": "in"}],
+        "dimensions": [{"type": "SlotWidth", "target": "rail0", "expression": "stroke_width"}],
+        "projections": [],
+        "groups": {"rails": ["rail0"]},
+        "latticePieceCount": 1, "latticeConstrained": True,
+    }
+
+
+def _ties_kind_manifest_with_projection():
+    """A minimal 'ties' kind-manifest -- one vertical tie slot whose own
+    top end is tie-on-rail linked to rails' own rail0:S, declared as a
+    PROJECTION (splitManifestByKind's own shape, JS side) rather than a
+    raw cross-sketch id."""
+    return {
+        "version": 1, "kind": "ties", "buildOrder": 2, "patternId": "p1",
+        "sketchName": "Ties", "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9},
+        "widthMode": "slot",
+        "entities": [{"id": "tie0", "type": "Slot", "p1": [0.0, 1.0], "p2": [0.0, 3.0], "width": 0.05}],
+        "constraints": [
+            {"type": "Vertical", "targets": ["tie0"]},
+            {"type": "Coincident", "targets": ["tie0:S", "proj_rail0_S"]},
+        ],
+        "parameters": [{"name": "stroke_width", "value": 0.07, "unit": "in"}],
+        "dimensions": [{"type": "SlotWidth", "target": "tie0", "expression": "stroke_width"}],
+        "projections": [{"sourceKind": "rails", "sourceId": "rail0:S", "targetId": "proj_rail0_S"}],
+        "groups": {"ties": ["tie0"]},
+        "latticePieceCount": 1, "latticeConstrained": True,
+    }
+
+
+def test_shared_ctx_lets_a_later_kind_project_an_earlier_kinds_entity_and_constrain_against_it(call_log):
+    design = FakeDesign()
+    ctx = BuildContext(design.rootComponent, design, _Logger(None), prefix="SE15")
+    kind_to_sketch = {}
+
+    rails_summary = build_constrained_sketch(
+        design.rootComponent, design, _rails_kind_manifest(),
+        sketch_name_override="Rails", ctx=ctx, kind_to_sketch=kind_to_sketch)
+    assert rails_summary["constraints"]["count"] == 0
+    assert kind_to_sketch["rails"] == "Rails"  # this kind registered itself for the NEXT one to find
+
+    ties_summary = build_constrained_sketch(
+        design.rootComponent, design, _ties_kind_manifest_with_projection(),
+        sketch_name_override="Ties", ctx=ctx, kind_to_sketch=kind_to_sketch)
+
+    kinds = [entry[0] for entry in call_log]
+    assert "project" in kinds  # the projection genuinely ran, not skipped
+    # the cross-kind Coincident succeeded against the projected copy -- zero wrap-fails.
+    assert ties_summary["constraints"]["count"] == 0, ties_summary["constraints"]["first_reasons"]
+
+    # the projected point is geometrically IDENTICAL to rails' own rail0:S
+    # (project() copies geometry; it is a real, separate entity, not the
+    # same object) -- proving this isn't just "no crash" but the actual
+    # coordinate the cross-kind link is supposed to land on.
+    rail0 = ctx.entity_map["Rails"]["rail0"]
+    proj = ctx.entity_map["Ties"]["proj_rail0_S"]
+    assert proj is not rail0.startSketchPoint  # a genuine copy, not the same object
+    assert proj.geometry.x == pytest.approx(rail0.startSketchPoint.geometry.x)
+    assert proj.geometry.y == pytest.approx(rail0.startSketchPoint.geometry.y)
+
+
+def test_without_a_shared_kind_to_sketch_a_projection_gracefully_misses_instead_of_crashing(call_log):
+    """A pattern's own kind-layers built WITHOUT sharing ctx/kind_to_sketch
+    (the pre-SE17 default, or a caller bug) must degrade gracefully -- the
+    projection logs a MISS and is skipped, the dependent constraint then
+    logs its own MISS too, and the build finishes cleanly either way,
+    never raising past build_constrained_sketch (this file's own header
+    docstring: skip-and-report, never abort)."""
+    design = FakeDesign()
+    build_constrained_sketch(design.rootComponent, design, _rails_kind_manifest(), sketch_name_override="Rails")
+    ties_summary = build_constrained_sketch(
+        design.rootComponent, design, _ties_kind_manifest_with_projection(), sketch_name_override="Ties")
+    kinds = [entry[0] for entry in call_log]
+    assert "project" not in kinds  # never even attempted -- no kind_to_sketch to resolve 'rails' from
+    assert ties_summary["constraints"]["count"] >= 1  # the now-unresolvable Coincident is reported, not silent
+
+
+def test_shim_refuses_a_direct_cross_sketch_constraint(call_log):
+    """T76 (SE17, item 5): "Shim models ... refuses cross-sketch
+    constraints" -- the shim's OWN enforcement, tested directly against
+    two real (fake) sketches. `constraint_step`'s own target resolution is
+    ALREADY scoped to the CURRENT sketch's own entity_map sub-dict (fb_
+    engine's own pre-existing BuildContext.resolve_entity), so a manifest
+    can never even NAME a foreign entity by id in the first place -- the
+    only way one could reach `addCoincident` at all is a bug that
+    registers a foreign entity directly (skipping `sketch.project()`,
+    the ONE step meant to prevent exactly this). This test proves the
+    shim would catch that bug: the exact real Fusion error the advisor
+    measured ('sketch == msketch', ROADMAP.md's own SE17 entry) fires the
+    moment a constraint from one sketch is asked to touch another's own
+    entity."""
+    sketch_a = FakeSketch()
+    sketch_b = FakeSketch()
+    line_a = sketch_a.sketchCurves.sketchLines.addByTwoPoints(FakePoint3D(0, 0), FakePoint3D(1, 0))
+    with pytest.raises(RuntimeError, match="msketch"):
+        sketch_b.geometricConstraints.addHorizontal(line_a)
+    # the SAME sketch's own entity is never rejected -- this isn't just
+    # "always raise", it's genuinely ownership-based.
+    sketch_a.geometricConstraints.addHorizontal(line_a)
+
+
+def test_shim_allows_the_projected_copy_the_ONE_way_a_cross_kind_constraint_actually_succeeds(call_log):
+    """The positive half of the same rule: `sketch.project()` first, THEN
+    constrain against the projected (now same-sketch-owned) copy -- no
+    refusal, because it genuinely is no longer a cross-sketch reference by
+    the time the constraint runs."""
+    sketch_a = FakeSketch()
+    sketch_b = FakeSketch()
+    line_a = sketch_a.sketchCurves.sketchLines.addByTwoPoints(FakePoint3D(0, 0), FakePoint3D(1, 0))
+    projected = sketch_b.project(line_a).item(0)
+    assert sketch_b.owns(projected)
+    assert not sketch_b.owns(line_a)  # the ORIGINAL is still only owned by sketch_a
+    sketch_b.geometricConstraints.addHorizontal(projected)  # no raise
+
+
 if __name__ == "__main__":
     # Plain-Python fallback (no pytest needed), same dual-mode convention
     # frame-builder/test_templates.py already documents.
@@ -1613,6 +1814,10 @@ if __name__ == "__main__":
         test_mirror_symmetry_constraint_dispatches_via_constraint_step_with_zero_parity_mismatches,
         test_origin_anchor_and_distance_dim_dispatch_end_to_end_with_zero_parity_mismatches,
         test_distance_dim_targeting_a_bare_curve_id_is_rejected_not_silently_accepted,
+        test_shared_ctx_lets_a_later_kind_project_an_earlier_kinds_entity_and_constrain_against_it,
+        test_without_a_shared_kind_to_sketch_a_projection_gracefully_misses_instead_of_crashing,
+        test_shim_refuses_a_direct_cross_sketch_constraint,
+        test_shim_allows_the_projected_copy_the_ONE_way_a_cross_kind_constraint_actually_succeeds,
     ]
     passed, failed = 0, 0
     for t in tests:
