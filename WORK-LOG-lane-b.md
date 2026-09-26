@@ -9402,3 +9402,18 @@ edge-rule buttons, the Contour checkbox, and the width field — now renders as 
 correctly remaining its own separate section right after it (not accidentally merged in too).
 
 Verify: 1232/1232 vitest, 40/40 pytest (untouched by this item). Commit 41bf2d1, pushed. NO FUSION this whole turn.
+
+## T75 item 4 — hide "Rail ends" row while the contour is shown
+
+Direct follow-on from T74 AMEND 4's own edge-rule audit: since the row is a genuine no-op whenever the contour is
+shown (T73 AMEND 3 forces `on-boundary` unconditionally in that state), the advisor/Fred's own next ask was to just
+hide it then, rather than leave it visible-but-inert with a caption explaining why. New `shapeLatticeEndRuleRow`
+wrapper div around the label + segmented group, toggled by a small `_showEndRuleRow(contourShown)` helper — called
+from `syncFieldsFromPattern` (so a saved pattern with `contour.show:false` shows the row immediately on tool-open,
+without needing to touch the checkbox first) and from the Contour checkbox's own existing immediate change handler
+(no new event wiring). Derived purely from that one checkbox's own state, never a second stored flag.
+
+Verified with a real render (same local-server + force-reveal technique as AMEND 4): screenshotted the panel with
+Contour checked (row fully absent, only the checkbox+width remain) and unchecked (row appears with all 4 buttons).
+
+Verify: 1234/1234 vitest. Commit 9c56304, pushed. NO FUSION this whole turn.
