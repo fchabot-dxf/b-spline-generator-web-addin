@@ -611,8 +611,12 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     const { primitives } = generateSilhouette(REGION, shape);
     const manifest = manifestFromShape(shape, REGION);
 
-    const widthDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.expression === 'contour_width');
-    const heightDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.expression === 'contour_height');
+    // T74 AMEND 0: the width dim's own expression is now PER-PRESET (the
+    // bottle's own body is a bodyWidth FRACTION of contour_width, so its
+    // expression is 'contour_width * body_width', not the bare name) --
+    // found by orientation, not by matching a specific expression string.
+    const widthDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Horizontal');
+    const heightDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Vertical');
     expect(widthDim).toBeDefined(); // non-vacuous
     expect(heightDim).toBeDefined();
     expect(widthDim.orientation).toBe('Horizontal');
@@ -637,6 +641,28 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     expect(Math.max(wA.x, wB.x)).toBeCloseTo(Math.max(...xs), 9);
     expect(Math.min(hA.y, hB.y)).toBeCloseTo(Math.min(...ys), 9);
     expect(Math.max(hA.y, hB.y)).toBeCloseTo(Math.max(...ys), 9);
+  });
+
+  it('T74 AMEND 0 (advisor, measured live in Fusion on 847f289: the bottle spawned 0.45in off): each size dim\'s own EXPRESSION evaluates (using the manifest\'s own declared parameter values) to exactly the distance between its two anchor points in the raw, undriven geometry -- a Distance dim is a DRIVING dimension, so a mismatch here means Fusion silently re-shapes the contour to whatever the expression DOES evaluate to, not what the points actually measure', () => {
+    const shape = { preset, seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const paramValue = Object.fromEntries(manifest.parameters.map((p) => [p.name, p.value]));
+    const evalExpr = (expr) => expr.split('*').map((tok) => {
+      const name = tok.trim();
+      expect(name in paramValue).toBe(true); // non-vacuous: every token must be a REAL declared parameter
+      return paramValue[name];
+    }).reduce((a, b) => a * b, 1);
+
+    const widthDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Horizontal');
+    const heightDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Vertical');
+    const [wA, wB] = widthDim.targets.map((t) => pointOf(manifest.entities, t));
+    const [hA, hB] = heightDim.targets.map((t) => pointOf(manifest.entities, t));
+
+    // A Fusion 'Horizontal'/'Vertical' Distance dim reads only the ONE
+    // relevant axis between its two points, not the full point-to-point
+    // distance -- matching AMEND 1's own oracle above.
+    expect(evalExpr(widthDim.expression)).toBeCloseTo(Math.abs(wB.x - wA.x), 9);
+    expect(evalExpr(heightDim.expression)).toBeCloseTo(Math.abs(hB.y - hA.y), 9);
   });
 });
 

@@ -58,7 +58,7 @@ import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js
 import {
   primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetRegionForContour,
 } from './editor-lattice-boundary.js';
-import { generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
+import { generateSilhouette, primitivesToPathD, PRESETS } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
 /** §6: below this many rails+ties+nodes, every piece gets its own H/V +
@@ -506,6 +506,20 @@ const PARAM_FUSION_NAMES = {
   bottle: { neckWidth: 'neck_width', bodyWidth: 'body_width', skeletonX: 'skeleton_x', neckLength: 'neck_length' },
 };
 
+// T74 AMEND 0: `PRESETS[preset].widthExpr` (editor-shape-lattice-
+// generator.js — declared once, alongside the params that determine it)
+// is written in THIS module's own camelCase param names; translate each
+// token to its Fusion name via the SAME `nameTable` `parameters` itself
+// already uses below, so the two never drift apart. A token that isn't a
+// resolved param (`contour_width` itself) passes through unchanged.
+function resolveWidthExpr(preset, nameTable) {
+  const raw = (PRESETS[preset] && PRESETS[preset].widthExpr) || 'contour_width';
+  return raw.split('*').map((tok) => {
+    const name = tok.trim();
+    return nameTable[name] || name;
+  }).join(' * ');
+}
+
 /**
  * §3's own `_manifestFromShape` — `shape` (a layer's own
  * `PATTERN.shape` object, `generateSilhouette`'s own 2nd arg) + `region`
@@ -710,7 +724,7 @@ export function manifestFromShape(shape, region, opts = {}) {
     parameters.push({ name: 'contour_width', value: region.w, unit: 'in' });
     dimensions.push({
       type: 'Distance', targets: [`${widthPairIds[0]}:S`, `${widthPairIds[1]}:S`],
-      orientation: 'Horizontal', expression: 'contour_width',
+      orientation: 'Horizontal', expression: resolveWidthExpr(preset, nameTable),
     });
   }
   if (heightPairIds.length === 2) {

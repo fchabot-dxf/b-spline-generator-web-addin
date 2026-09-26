@@ -78,6 +78,25 @@ export const WIRED_STYLES = ['straight', 'curve', 'kink'];
  * randomization, since the shape's TOPOLOGY here is fixed by the preset,
  * only its proportions vary).
  */
+// T74 AMEND 0 (advisor, measured live in Fusion on 847f289: the bottle
+// spawned 0.45in off): `widthExpr` is the manifest's own contour_width
+// Distance dim's DRIVING expression — declared HERE, per preset, rather
+// than an if/else keyed by preset name in the manifest producer, so a
+// future preset's own author states its shape's true measured width
+// right alongside the params that determine it, not in a second,
+// separately-maintained lookup elsewhere. Written in this module's OWN
+// camelCase param names (`bodyWidth`, matching `params` above exactly) —
+// editor-sketch-manifest.js translates each token to its Fusion name
+// (PARAM_FUSION_NAMES, the SAME translation `parameters` itself already
+// gets) at the one place that boundary crossing already happens, not
+// duplicated here. A bare 'contour_width' (no multiplier) is exact for
+// the hourglass: its own body already touches the FULL contour width
+// unconditionally (no width-fraction param exists for it). The bottle's
+// own body sits at `bodyWidth * half_width` (`_solveBottle`'s own
+// formula — `bodyWidth` a genuine 0..1 fraction, never necessarily 1), so
+// its expression must include that same factor or Fusion stretches the
+// body straight out to the full contour_width regardless of the shape's
+// own intended proportions.
 export const PRESETS = {
   hourglass: {
     label: 'Hourglass',
@@ -87,6 +106,7 @@ export const PRESETS = {
       waistCenterY: 0, // -1..1: vertical position of the pinch, fraction of halfH (0 = region's own center)
     },
     jitter: { waistReach: 0.08, cornerRadius: 0.05, waistCenterY: 0.08 },
+    widthExpr: 'contour_width',
   },
   bottle: {
     label: 'Bottle',
@@ -97,6 +117,7 @@ export const PRESETS = {
       neckLength: 0.32, // 0-1: how far down the straight neck run extends before the S-curve, fraction of halfH
     },
     jitter: { neckWidth: 0.06, bodyWidth: 0.04, skeletonX: 0.05, neckLength: 0.06 },
+    widthExpr: 'contour_width * bodyWidth',
   },
 };
 
