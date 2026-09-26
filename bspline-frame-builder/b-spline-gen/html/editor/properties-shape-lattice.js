@@ -572,6 +572,7 @@ export function initShapeLatticeProperties(editor) {
     const tiesAnchorEl = el('shapeLatticeTiesAnchor');
     const tiesRailSnapRowsEl = el('shapeLatticeTiesRailSnapRows');
     const tiesOneEndedEl = el('shapeLatticeTiesOneEnded');
+    const tiesMinSpacingEl = el('shapeLatticeTiesMinSpacing');
     const nodesEndsEl = el('shapeLatticeNodesEnds');
     const nodesCrossingsEl = el('shapeLatticeNodesCrossings');
     const nodesRailEndsEl = el('shapeLatticeNodesRailEnds');
@@ -801,6 +802,10 @@ export function initShapeLatticeProperties(editor) {
         if (tiesAnchorEl) tiesAnchorEl.value = p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor;
         if (tiesRailSnapRowsEl) tiesRailSnapRowsEl.value = p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
         if (tiesOneEndedEl) tiesOneEndedEl.value = p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded;
+        // T77 (TIE-GAP): a saved pattern with no `minSpacing` key reads
+        // the declared default (0.5in) — same "absent key = default"
+        // convention every other field here follows.
+        if (tiesMinSpacingEl) tiesMinSpacingEl.value = p.ties?.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing;
         if (nodesEndsEl) nodesEndsEl.checked = p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends;
         if (nodesCrossingsEl) nodesCrossingsEl.checked = p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings;
         if (nodesRailEndsEl) nodesRailEndsEl.checked = p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds;
@@ -868,6 +873,10 @@ export function initShapeLatticeProperties(editor) {
             anchor: tiesAnchorEl ? tiesAnchorEl.value : (p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor),
             railSnapRows: tiesRailSnapRowsEl ? (parseInt(tiesRailSnapRowsEl.value, 10) || 0) : (p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows),
             oneEnded: tiesOneEndedEl ? (parseInt(tiesOneEndedEl.value, 10) || 0) : (p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded),
+            // T77 (TIE-GAP): a real-inch decimal value, so parseFloat (not
+            // parseInt). 0 is also a genuinely valid minSpacing (no minimum
+            // at all), so a typed "0" is preserved as-is, not coerced up.
+            minSpacing: tiesMinSpacingEl ? (parseFloat(tiesMinSpacingEl.value) || 0) : (p.ties?.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing),
         };
         p.nodes = {
             ends: nodesEndsEl ? !!nodesEndsEl.checked : (p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends),

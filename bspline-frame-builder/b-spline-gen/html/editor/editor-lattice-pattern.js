@@ -463,6 +463,20 @@ export const PATTERN_DEFAULTS = {
     mode: 'count', count: [8, 13], spread: 'stratified', span: { mode: 'rails', rails: 1 }, maxRailGaps: 1,
     oneEnded: 1,
     density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'free', railSnapRows: 1,
+    // T77 (TIE-GAP, Fred: "in ties I want a minimum space apart"): real
+    // INCHES (not a lattice-cell count, matching Widths' own "0.05"
+    // steppers per the dispatch" convention above) -- the LEAST distance
+    // allowed, measured along the rail direction, between two GENERATED
+    // ties whose own spans occupy the same or an adjacent rail gap (see
+    // `_enforceTieMinSpacing`'s own doc comment for the exact rule and why
+    // "adjacent gaps" is included). Hand-added/dragged ties are exempt --
+    // this only ever filters `computePattern`'s own seeded candidate list.
+    // A saved pattern with no `minSpacing` key reads this same default
+    // (0.5), same "declare the new field, don't silently change old
+    // behavior for a key that's absent" convention this file already uses
+    // throughout -- 0.5in is also loose enough that most EXISTING seeded
+    // patterns already satisfy it without ever dropping a tie.
+    minSpacing: 0.5,
   },
   // SE7h ADD-ON 2 (Fred: "add a check box for nodes at rail end"):
   // default false — the crossings loop below deliberately SKIPS rail

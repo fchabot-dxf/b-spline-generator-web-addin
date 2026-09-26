@@ -158,6 +158,7 @@ function fixtureHTML() {
     <select id="shapeLatticeTiesAnchor"><option value="free" selected>free</option></select>
     <input id="shapeLatticeTiesRailSnapRows" type="number" value="1">
     <input id="shapeLatticeTiesOneEnded" type="number" value="1">
+    <input id="shapeLatticeTiesMinSpacing" type="number" value="0.5">
     <input id="shapeLatticeNodesEnds" type="checkbox" checked>
     <input id="shapeLatticeNodesCrossings" type="checkbox" checked>
     <input id="shapeLatticeNodesRailEnds" type="checkbox">
@@ -368,6 +369,15 @@ describe('initShapeLatticeProperties: Fill + Generate', () => {
     document.getElementById('shapeLatticeGenerate').click();
     await flush();
     expect(activeLayerPattern(editor).ties.oneEnded).toBe(2);
+  });
+
+  it('T77 (TIE-GAP): a fresh pattern reads PATTERN_DEFAULTS.ties.minSpacing (0.5) onto the Min spacing field, and Generate writes an edited value back into PATTERN.ties.minSpacing', async () => {
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeTiesMinSpacing').value).toBe(String(PATTERN_DEFAULTS.ties.minSpacing));
+    document.getElementById('shapeLatticeTiesMinSpacing').value = '0.75';
+    document.getElementById('shapeLatticeGenerate').click();
+    await flush();
+    expect(activeLayerPattern(editor).ties.minSpacing).toBe(0.75);
   });
 
   it('the Ending segmented group is populated from the 4 declared rules and defaults to "inset"', () => {
