@@ -829,8 +829,9 @@ Fred: "a tool to separate slot rails and ties lines into shared coincident point
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
 tap a joint (node / tie-rail meeting) → the rail/tie through it splits there into separate segments (each its own
 element in the app, its own SLOT in Fusion; joint = separate points + explicit Coincident, deletable in Fusion). Lattice
-panels also get "Split all at joints". Segments KEEP LATTICE MEMBERSHIP (declared group id, e.g. data-rail-id): dragging
-the rail moves all its segments, outer ends still stretch, stroke_width drives all; each segment selectable/colourable.
+panels also get "Split all at joints". Segments KEEP LATTICE MEMBERSHIP by DERIVATION, not a stored id (Fred: "it's derived anyways"): at drag start,
+same-kind segments that are collinear and touch end-to-end count as ONE rail/tie (a gap = separate pieces) — same
+principle as SE7i's derived tie-on-rail attachment, no second source of truth; dragging the rail moves all its segments, outer ends still stretch, stroke_width drives all; each segment selectable/colourable.
 Join = tap the joint again (or "Join" action). Fred: "like a cut tool" → tap ANYWHERE on a line to cut there (snaps to joints then grid points; Alt / Snap-off =
 free); Fred: "we don't need it in lattice if it's not needed for keeping structure" → main rail only, NO lattice-panel
 button and NO "Cut all at joints"; the tool itself preserves lattice membership when cutting a rail/tie; tap a cut point again with the tool = Join. Default: cut
