@@ -9749,3 +9749,58 @@ per-kind blind spot (reading ALL THREE kinds' own overrides from the ONE `layerI
 Verify: 1339/1339 vitest (17 new: 13 for splitManifestByKind itself, 4 for the per-kind export wiring), 45/45 pytest
 (untouched — the Python-side projection RESOLUTION, actually calling `sketch.project()`, is item 5's own scope, not
 this one). Commit 4b82168, pushed. NO FUSION this whole turn.
+
+## T76 item 5 — Python builder shares a BuildContext across a pattern's own kind-layers, resolves projections
+
+Added two small fields to item 4's own `splitManifestByKind` output first (`kind`, `buildOrder`, `patternId`) —
+needed so the PYTHON side can group/order a pattern's own kind-layers without re-deriving anything from entity id
+prefixes on that side too. Minor, quick addition, folded into this item rather than reopening item 4's own commit.
+
+**The core question**: `build_constrained_sketch` (sketch_manifest_builder.py) has always created a brand-new
+`BuildContext` — and therefore a brand-new, empty `entity_map` — on every single call. For a LATER kind (say, Ties)
+to `sketch.project()` an EARLIER kind's own entity (Rails' own `rail0`), that entity has to still be findable
+somewhere by the time Ties' own sketch is built. Extended `build_constrained_sketch` with optional `ctx`/
+`kind_to_sketch` params: when given, the SAME `BuildContext` is reused (its own `entity_map` already has Rails' own
+entities registered from the earlier call) rather than starting fresh — every EXISTING caller (the dev entry point,
+every one of ~20 existing tests) passes neither, so behavior for a standalone build is completely unchanged. One
+real subtlety caught before it became a bug: reusing the SAME `ctx` object also means reusing whatever it's
+carrying — EXCEPT the logger, which gets a FRESH `_Logger` on every call regardless, so a later kind's own returned
+summary reports only ITS OWN issues, never double-counting an earlier kind's own.
+
+**Projection resolution** (`_apply_projections`, new): given `{sourceKind, sourceId, targetId}` (item 4's own
+declared shape), looks the source sketch up via a `kind_to_sketch` dict (`{'rails': 'Rails', ...}`, populated as a
+side effect of each kind's own build registering itself), resolves the entity through `ctx.resolve_entity` — the
+EXISTING, shared fb_engine helper, already handling `:S`/`:E`/`:C` suffixes, needing ZERO changes of its own since
+`entity_map` is now genuinely shared across sketches — calls `sketch.project()`, and registers the projected
+copy's own id (+ its own endpoints) into the CURRENT sketch's own `entity_map`, so every later constraint targeting
+it resolves through the exact same path as any ordinary same-sketch entity. This deliberately mirrors
+`frame-builder/fb_engine/projections.py`'s own `project_step` almost line for line — real, shipped code in this
+same repo, already proven against real Fusion by a different tool — rather than guessing the shape of an API call
+this module had never used before. Runs BEFORE constraints (a cross-kind constraint's own target IS the projected
+copy, which has to exist first).
+
+**Orchestration** (`b-spline-gen.py`): a new pure function, `_ordered_svg_layer_import_plan`, reorders
+`_svg_layer_import_plan`'s own steps so a pattern's own kind-layers (grouped by `patternId`) build in
+`buildOrder` sequence — contour, then rails, then ties, then nodes — regardless of where they sit in the raw
+`layers` array (the APP's own layer stacking order, independently user-drag-reorderable, per the roadmap's own
+text). `_import_all_svg_layers` now keeps per-`patternId` dicts for the plane, the ctx, and the kind→sketch map
+across its own loop. One thing measured, not assumed, before wiring this: all four kind-layers of one pattern share
+a SINGLE construction plane, not one each — `parametric_engine`'s own doc comments explicitly flag that coplanar
+sketches matter for this exact real Fusion API, and projecting a curve from one plane onto a sketch on a
+numerically-identical-but-DIFFERENT plane object was too large a risk to leave untested-for.
+
+**Test shim, "models project() + refuses cross-sketch constraints"** (the dispatch's own explicit wording): gave
+`FakeSketch` an `.owns(entity)` check (walks its own `_curves` plus their start/end/center points, plus a new
+`_points` list for standalone projected points) and a `.project(entity)` method that creates a genuine, separate,
+THIS-sketch-owned copy — never a live reference back to the source, matching the real API's own semantics.
+`FakeGeometricConstraints` now refuses any constraint whose own entities aren't ALL owned by its own sketch, raising
+the advisor's own exact measured Fusion error text ("sketch == msketch"). Verified both directions directly (skip
+`project()` first → refused; call it first → succeeds) AND through the full multi-sketch build (shared ctx →
+projection runs, zero wrap-fails, and the projected point's own coordinates genuinely match the source; no shared
+`kind_to_sketch` → a graceful MISS is logged, never a crash — proving the "pre-SE17, standalone" fallback path stays
+safe even for a manifest that mistakenly still carries a `projections` list).
+
+Verify: 1340/1340 vitest (unchanged this item — the JS-side fields landed with item 4's own commit), 52/52
+b-spline-gen pytest (7 new: 3 ordering, 4 projection/shim), 196/196 wider frame-builder pytest (untouched).
+Commit 7ce6546, pushed. NO FUSION this whole turn (per dispatch: "NO FUSION — advisor verifies live") — built
+against frame-builder's own already-proven, real-Fusion-measured contract rather than guessing one from scratch.
