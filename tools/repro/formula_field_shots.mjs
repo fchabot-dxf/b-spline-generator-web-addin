@@ -1,11 +1,11 @@
-// FORMULA-FIELDS R1 item 5 + R2 item 3: drive the stock Width field AND (R2) the Vector Stamping V-Bit Angle field
-// in a real (headless) Chrome with REAL key events and taps, screenshot the autocomplete dropdown open, and read
-// back the committed value from the app's own P. V-Bit Angle has a declared range (10-170), so it also proves the
-// R2 range clamp on a real gesture (a formula result above 170 commits as 170).
+// FORMULA-FIELDS R1 item 5 + R2 item 3 + R5 item 4: drive the stock Width field, the Vector Stamping V-Bit Angle
+// field (R2, range clamp), AND (R5) the SVG editor's Lattice panel Size Width field, in a real (headless)
+// Chrome with REAL key events and taps. Screenshots the autocomplete dropdown open; reads back the committed
+// value from the app's own P (stock/stamp) or window.svgEditor's own active-layer pattern (lattice).
 //   python tools/serve_app.py 8780      (serves the palette WITH its stylesheets)
 //   node tools/repro/formula_field_shots.mjs <outPrefix> <paletteUrl> [desktop|mobile] [cdpPort]
-// Writes <outPrefix>_dropdown.png, <outPrefix>_committed.png, <outPrefix>_angle.png; prints the checks as JSON
-// (ok:false on any miss).
+// Writes <outPrefix>_dropdown.png, <outPrefix>_committed.png, <outPrefix>_angle.png, <outPrefix>_lattice.png;
+// prints the checks as JSON (ok:false on any miss).
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -129,9 +129,39 @@ await press('Enter');
 const s8 = await state('stampVBitAngle');
 checks.angleClamped = s8.A === 170 && s8.value === '170';
 
+// 7. (R5 item 4) the SVG editor's Lattice panel — a per-LAYER pattern, not the global P — Size Width over the
+// `width`/`height` boundary names (lattice-formula-fields.js). Opens the editor, switches to the Lattice tool
+// (same flow tools/repro/select_drag_shape.mjs already uses), types a formula, commits, reads
+// window.svgEditor's own active layer pattern back.
+const latticeState = async () => JSON.parse(await evalJS(`(()=>{ const e=window.svgEditor;
+  const layer=(e._layers||[]).find(l=>l.id===e._activeLayer);
+  const f=document.getElementById('latticeSizeWidth');
+  return JSON.stringify({ value: f.value, sizeWidth: layer && layer.pattern && layer.pattern.size.width,
+    preview: document.querySelector('.formula-preview')?.textContent || '' }); })()`));
+await evalJS(`document.getElementById('btnStampEdit')?.click()`); await sleep(2500);
+await evalJS(`document.getElementById('toolLattice')?.click()`); await sleep(800);
+const l0 = await latticeState();
+checks.latticeInitial = l0;
+await tap('#latticeSizeWidth');
+await evalJS(`document.getElementById('latticeSizeWidth').select()`);
+await typeText('width*2');
+const l1 = await latticeState();
+checks.latticeTyped = l1;
+await shot('lattice');
+await press('Enter');
+const l2 = await latticeState();
+checks.latticeCommitted = l2;
+// width*2 must commit to a plain, finite number the pattern actually stores. Independently expected value:
+// the editor's board is the app's current P.widthIn/heightIn (s6.P, captured above, before this section ran);
+// the boundary auto-insets CONTOUR_SIZE_INSET_IN=0.5in per side (editor-lattice-boundary.js) when size is
+// unset (l0/l1 show `sizeWidth: null` — never written until commit), so width*2 = (s6.P - 1) * 2.
+const expectedLatticeWidth = (s6.P - 1) * 2;
+checks.latticeOk = Number.isFinite(l2.sizeWidth) && l2.sizeWidth === expectedLatticeWidth
+  && l2.value === String(l2.sizeWidth);
+
 const ok = checks.halfTypedNotApplied && s1.dropdown.length === 1 && /^height/.test(s1.dropdown[0]) && checks.inserted
   && checks.committedOk && checks.badKept && checks.plainOk && checks.stepperOk && checks.angleClamped
-  && errors.length === 0;
+  && checks.latticeOk && errors.length === 0;
 console.log(JSON.stringify({ ok, mode: MODE, checks, errors: errors.slice(0, 5) }, null, 1));
 ws.close(); chrome.kill();
 process.exit(ok ? 0 : 1);
