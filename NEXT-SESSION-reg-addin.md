@@ -1,57 +1,35 @@
-# NEXT (reg-addin, Asus) — R4: STALE-PARAMS, DELETE ON (Bspline group: board + lattice)
+# NEXT (reg-addin, Asus) — R5: FORMULA-FIELDS stage 3 (Lattice + Shape Lattice panels)
 
-**Ball: worker (reg-addin) · epoch 1 · R4.** NO FUSION (Fred live-checks after). R3 design (8df6681) ACCEPTED with the
-advisor's amendments below. Log = WORK-LOG-reg-addin.md. Work-commit subjects "R4 item N: …"; PUSH AFTER EVERY ITEM
-(the status page only sees origin).
+**Ball: worker (reg-addin) · epoch 1 · R5.** NO FUSION. R4 (be1f25b..a28c3ef) ACCEPTED (pytest 284/284, advisor re-ran).
+UI5 has MERGED (home advisor, 0acc3bb): seat A's files are ours now. Log = WORK-LOG-reg-addin.md. Commit subjects
+"R5 item N: …", push after every item.
 
-## Rulings (advisor + home-PC advisor, 2026-09-26) — these override the design doc where they differ
-1. **AMENDED (Fred, 2026-09-26): NOT log-only — "just apply it".** Candidates that pass rules 3-4 ARE deleted
-   (`deleteMe()`), and every decision is still logged in last_send.json (`deleted`, `kept_referenced`, `kept_unstamped`,
-   `failed`). A `deleteMe()` that returns False or raises → `failed` + warning, never retried, never breaks Send.
-2. **ONE registry, the existing one:** add `LATTICE_OWNED_PARAMS` (stroke_width, rail_width, tie_width, node_diameter,
-   half_width, contour_width, contour_height) right beside `_BOARD_OWNED_PARAMS` in
-   `frame-builder/fb_engine/parameter_schema.py` + an accessor, tag group `Bspline`. That additive edit is the ONLY
-   change allowed in frame-builder/. The cleanup LOGIC lives in `b-spline-gen/` (e.g. `param_ownership.py`) and READS
-   the registry — it never holds its own name list. No `fb_engine/param_ownership.py`.
-3. **Candidate = registered name (board or lattice) + not in this Send's payload + no dependents** (see rule 5: registered
-   = ours, stamp adopted). Unregistered → never touched and never stamped, whatever its name.
-4. **Reference guard = `Parameter.dependentParameters` ONLY** (feature/sketch dims are model parameters, so it covers
-   both param→param and dimension references). Drop the hand-rolled regex expression scan. Mark it "verify live" for Fred.
-5. **AMENDED (Fred, 2026-09-26): TAKE OVER existing params.** A param whose name is in the registry is the add-in's,
-   whether or not an older version stamped it: stamp it on EVERY Send touch (create AND update in
-   `_sync_manifest_parameters`, like the board's `_ensure_bspline_param_tag`), and at cleanup time any existing
-   registered-name param (stamped or not) that's out of the payload + has no dependents is deleted. Fred accepted that a
-   hand-typed param with a registered name is treated as ours. UNREGISTERED names are still never stamped/deleted.
-   `kept_unstamped` goes away (log `adopted: [...]` for params stamped for the first time instead).
-6. **Scope: Bspline group only.** Frame params (FrameBuilder.owner) belong to seat C — don't touch parametric_engine.py /
-   solid_coordinator.py.
-7. **b-spline-gen.py footprint = ONE call** at the end of `_handle_generate` (non-preview path, after geometry) + the
-   `stale_params` key in the last_send.json dump. Keep it that small (seat C's S5 will merge there later).
-8. Drop the undo claim from the design doc (palette-driven Sends may not be one command transaction); it's moot while log-only.
-
-## Hands off
-fb-app; editor-shape-lattice-generator.js; core/frame-record.js, editor-frame-profile.js, frame-mesh.js, main/frame-panel.js;
-frame-builder/ except rule 2; seat A's files (editor-lattice-pattern.js, editor-ui.js, editor.js, editor-piece-override.js,
-properties-lattice.js, properties-shape-lattice.js, tools/repro/select_drag_shape.mjs). Need one? STOP and say so.
+## Hands off / sequencing
+- fb-app, `editor-shape-lattice-generator.js` (silhouette solver), frame files (core/frame-record.js,
+  editor-frame-profile.js, frame-mesh.js, main/frame-panel.js, frame-builder/).
+- `properties-shape-lattice.js` + `editor-shape-lattice-interaction.js`: seat C's F9 / SHAPE-PARAMS will touch the Shape
+  Lattice handles/sliders later. Keep your edit there SMALL and additive (a declaration + one attach call at build);
+  no restructuring. If it has to be bigger → STOP and say so (the advisor sequences it with the home PC).
 
 ## Checklist
-- [ ] [R4-item-1] Registry: LATTICE_OWNED_PARAMS + accessor in parameter_schema.py (rule 2); pytest for it.
-- [ ] [R4-item-2] Stamp at create in sketch_manifest_builder.py (rule 5); pytest with the adsk stub: create stamps,
-      update of an existing unstamped REGISTERED param stamps it (adopt); an unregistered param is never stamped.
-- [ ] [R4-item-3] `b-spline-gen/param_ownership.py`: compute `{deleted, kept_referenced, adopted,
-      failed}` from the registry + stamps + payload names + dependentParameters (rules 3-4); pure/testable against a
-      fake params collection. Pytest: stale stamped registered → deleted (deleteMe called exactly on it); referenced → kept_referenced with reason;
-      registered-name but unstamped + stale → adopted + deleted; UNREGISTERED param (any name, stamped or not) → never listed,
-      never stamped; in-payload → never listed; deleteMe returning False / raising → failed; deleteMe NEVER called on anything
-      unregistered, unstamped, in-payload or referenced.
-- [ ] [R4-item-4] Wire: one call in _handle_generate + `stale_params` in last_send.json (always present, empty lists
-      when nothing); a guarded try so a failure here logs and never breaks Send. Update STALE-PARAMS-DESIGN.md to
-      match the rulings (short "R4 rulings" section at the top; fix §2a/§2b/§2c/§2d). Add a short live-check recipe
-      for Fred to the WORK-LOG (what to Send, what to read in last_send.json).
+- [ ] [R5-item-1] SURVEY first (WORK-LOG, file:line): how both panels build their number inputs (dynamic re-render?
+      Regenerate? Lattice ⇄ Shape Lattice switch? the new editor/lattice-piece-panel.js override width field?) and which
+      handler each input runs on change. Pick the attach point that survives every re-render.
+- [ ] [R5-item-2] DECLARE one scope per panel in the R1/R2 pattern (data, no per-field code): names read LIVE from the
+      pattern record — at least width, height (lattice Size / boundary), stroke, count (+ spacing, minspacing, node, or
+      others the panel obviously has). Declare which fields are formula-capable (all numeric fields in both panels
+      unless there's a stated reason, incl. the per-piece override width). Board vs lattice names must be unambiguous
+      (e.g. `width`/`height` = lattice Size, `boardw`/`boardh` = stock) — state the choice.
+- [ ] [R5-item-3] Fred's case: "a rail exactly on the boundary" — show which field + formula does it and prove it in
+      the real browser. If no field today can express it, say so (that's RAIL-SPACING's job next — don't build it here).
+- [ ] [R5-item-4] Tests: each panel scope resolves live values; a formula in a lattice field commits + runs the panel's
+      normal update with ONE undo snapshot; still works after Regenerate and after switching panels; range clamp holds.
+      Real-browser desktop + mobile (extend tools/repro/formula_field_shots.mjs), screenshots to shots/reg-addin/.
+      Also rerun `node tools/repro/select_drag_shape.mjs` to prove the lattice panels still drag-persist.
 
 ## Gate (fast tier)
-`python -m pytest -q` in `bspline-frame-builder/` (touched + full is quick) + vitest smoke only if JS touched. No Fusion.
+Touched/new specs + full `npx vitest run` smoke. No Fusion.
 
 ## Finish
-Commit by path, `git pull --rebase`, push main after each item. From the REPO ROOT:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R4 — <shas>"`.
+Commit by path, `git pull --rebase`, push main. From the REPO ROOT:
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R5 — <shas>"`.
