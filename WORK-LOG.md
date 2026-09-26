@@ -10414,3 +10414,54 @@ rendered (screenshot confirms: straight corner-to-corner rails, no leftover hour
 
 Full suite: `npx vitest run` -> **1269 passed** (up from 1267 — the 2 new tests), zero regressions. No edits
 to `bspline_gen_palette.html`.
+
+## Turn 285 — UI5 item 0 (REOPENED UI4 item 0): Shape Lattice Select-drag STILL didn't persist — DONE — NO FUSION
+
+The advisor's own fresh-headless-profile repro (`tools/repro/select_drag_shape.mjs`, committed by them) still
+showed "rail moved 0.000 / tie moved 0.000" against the SAME main branch my earlier "fixed" claim was based
+on. Ran their exact script against my own local dev server first — it reproduced immediately, proving my
+earlier verification (Turn 284) had a real gap, not just an environment difference. Found and fixed TWO
+further, distinct causes.
+
+**Cause A — a genuinely applied move never got written into the SVG attributes anything else reads.**
+Diagnostic logging showed the drag WAS live: the selected element carried a real `transform="matrix(1,0,0,1,
+0,0.442...)"` after the move. But `translateSelection` (the generic Select-mode body-drag, `editor-
+interaction.js`) moves an element via `el.translate(dx,dy)` — a transform matrix, never baked into raw
+attributes — which is the ordinary, correct way this app's Select tool has always moved a plain hand-drawn
+shape. This app's OWN declared convention for a LATTICE piece is different: `_beginLatticeMove` (the box
+Lattice tool's own move mechanism) explicitly bakes its result into raw `x1/y1/x2/y2`/`cx/cy` with no
+transform left ("a Lattice-mode move BAKES its result into the attrs" — SE7i's own words), because
+`generatePattern` and every other lattice-aware reader (attachment checks, manifest export, the advisor's own
+verification script) reads those raw attributes directly, never a transform matrix. `translateSelection`'s
+own generic move was never taught this convention. Fixed by extracting `_beginLatticeMove`'s own inline bake
+logic into a shared `_bakeLatticeTransform(el, kind)` helper, and calling it from `handleEnd`'s own
+plain-body-drag completion path (gated to rail/tie/node-kind selected elements only; never
+`wasTransform`/`wasNodeDrag`/`wasMarquee`, all excluded already) — BEFORE `pushState()`/`_notifyChange('commit')`,
+so the persisted state reflects the baked position.
+
+**Cause B — a second, genuinely different hit-test ambiguity the fix for the FIRST one (Turn 284) reintroduced.**
+Even after baking, the RAIL drag specifically still failed ~50% of the time (the TIE drag, unaffected,
+consistently worked). Temporary diagnostic logging inside `handleEnd`'s own bake loop revealed why: in every
+failing run, the element actually baked was `kind:'node'`, not the rail the script (and the user) genuinely
+clicked on. `_getNearbyLatticePiece` (added in Turn 284 to fix the CONTOUR-tie-break ambiguity) used the SAME
+"distance to the element's own bounding-box CENTER" comparison `editor._getNearbyElement` (editor-hit.js) uses
+— fine for roughly-square shapes, but wrong for a long, thin rail: a tiny NODE sitting anywhere near the
+click point (e.g. a crossing node, "at crossings" is on by default) has its own bbox center essentially AT
+the click, while a full-length rail's bbox center sits at its own 50% mark — far from a click at, say, 30%
+along its length — so a nearby node could win the comparison even when the click was unambiguously on the
+rail's body. Fixed by replacing the bbox-center comparison with true distance-to-GEOMETRY: distance-to-point
+for a node, distance-to-the-actual-line-SEGMENT (`_distToSegment`, the same standard point-to-segment formula
+`editor-shape-lattice-interaction.js`'s own private `_distToLine` already uses, duplicated rather than
+imported across that module boundary for one 5-line pure function) for a rail/tie — which has no such bias
+regardless of a piece's own bounding-box shape.
+
+**Verification: the advisor's own exact script, unmodified, run 8 times in a row against local — all 8
+green** (`RAIL moved dy(model)= 0.442`, `TIE moved dx= 0.442`, both showing a real, persisted, non-zero move
+every time — the prior fix's own 2/4 and 2/6 failure rates across earlier trial runs are gone). Full suite:
+`npx vitest run` -> **1269 passed**, zero regressions (no new isolated unit test this entry — both causes are
+DOM/pointer-event-dispatch-pipeline fixes with no existing scaffold reaching this code; the advisor's own
+live script is kept, per their instruction, AS the test for this scenario, matching how this repo's own
+`scripts/smoke-*.mjs` files already serve as the de facto suite for comparably deep interactive behavior).
+
+No edits to `bspline_gen_palette.html`. `tools/repro/select_drag_shape.mjs` itself untouched (kept exactly as
+the advisor committed it, per "keep the script as a test").

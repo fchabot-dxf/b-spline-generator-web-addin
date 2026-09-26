@@ -522,6 +522,31 @@ function handleEnd(editor, e) {
             return;
         }
         if (editor._dragMoved) {
+            // UI5 item 0 (advisor's own fresh-profile repro: a Shape
+            // Lattice Select-mode drag genuinely MOVED the piece on
+            // screen — confirmed live, transform="matrix(...)" was
+            // really applied — but every raw x1/y1/x2/y2 attribute
+            // still read as if nothing happened). translateSelection
+            // (a plain body drag, not a resize/rotate handle or a node-
+            // path edit) moves a selected element via el.translate(),
+            // leaving a transform= matrix — the ordinary, correct way
+            // this app's Select tool has always moved a hand-drawn
+            // shape. But this app's OWN declared convention for a
+            // LATTICE piece's move is to bake the result into raw attrs
+            // with no transform left (_bakeLatticeTransform, shared with
+            // _beginLatticeMove's own identical bake) — generatePattern
+            // and every other lattice-aware reader (attachment checks,
+            // manifest export) reads x1/y1/x2/y2 directly, never a
+            // transform matrix. Baking ONLY the plain-body-drag case
+            // (never wasTransform/wasNodeDrag/wasMarquee, all excluded
+            // above) — a lattice piece is never resized/rotated via
+            // handles or node-edited today, so this never fires for
+            // those, but scoping it explicitly avoids assuming that stays
+            // true forever.
+            for (const el of (editor._selectedElements || [])) {
+                const kind = el.node.getAttribute(LATTICE_ATTR);
+                if (kind === 'rail' || kind === 'tie' || kind === 'node') _bakeLatticeTransform(el, kind);
+            }
             // SE7b slice 3 / design §2 retired this turn (SE7i, Fred: "I'll
             // create a new one if I want"): a completed drag used to
             // detach the elements it touched from their Lattice pattern
@@ -1017,10 +1042,16 @@ const _OFF_GRID_SENTINEL = { i: NaN, j: NaN };
  * writes them — every subsequent live write in this gesture sets those
  * raw attrs directly and would otherwise double-apply a leftover
  * transform on top of the new coordinates. */
-function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
-    // Bake any leftover transform (a prior Select-mode move) into the
-    // grabbed element's raw attrs FIRST, once, before anything below
-    // reads or writes them — see this function's own header comment.
+/** SE7i (Section 4: "a Lattice-mode move BAKES its result into the attrs
+ *  (no transform left)"), extracted from _beginLatticeMove's own former
+ *  inline bake (UI5 item 0: the SAME bake is now also needed at the END
+ *  of a plain Select-mode drag — see handleEnd's own call below) so both
+ *  call sites share it rather than diverging. If `hit` carries a
+ *  `transform=` (either a prior Select-mode move this function is baking
+ *  before a NEW lattice-mode grab, or one Select mode itself just applied
+ *  via translateSelection), folds it into the raw x1/y1/x2/y2 (or cx/cy)
+ *  attrs and clears it — a no-op if there's no transform to bake. */
+function _bakeLatticeTransform(hit, kind) {
     if (kind === 'node') {
         const nodeWorld = worldPoint(hit, { x: parseFloat(hit.attr('cx')), y: parseFloat(hit.attr('cy')) });
         if (hit.attr('transform')) { hit.attr({ transform: null }); hit.center(nodeWorld.x, nodeWorld.y); }
@@ -1029,6 +1060,13 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
         const bWorld = worldPoint(hit, { x: parseFloat(hit.attr('x2')), y: parseFloat(hit.attr('y2')) });
         if (hit.attr('transform')) hit.attr({ x1: aWorld.x, y1: aWorld.y, x2: bWorld.x, y2: bWorld.y, transform: null });
     }
+}
+
+function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
+    // Bake any leftover transform (a prior Select-mode move) into the
+    // grabbed element's raw attrs FIRST, once, before anything below
+    // reads or writes them — see this function's own header comment.
+    _bakeLatticeTransform(hit, kind);
     const startAttrs = kind === 'node'
         ? { cx: hit.attr('cx'), cy: hit.attr('cy') }
         : { x1: hit.attr('x1'), y1: hit.attr('y1'), x2: hit.attr('x2'), y2: hit.attr('y2') };
@@ -1586,36 +1624,61 @@ const latticeHandler = {
     },
 };
 
-/** UI4 item 0 (Fred, live: a Select tap on the topmost/bottommost rail
- *  of a Shape Lattice silhouette hit the CONTOUR instead) — a rail/tie
- *  that touches the silhouette's own straight edge can have IDENTICAL
- *  endpoints to that edge's own contour segment (confirmed live: both
- *  `M 0.5 0.5 L 6.5 0.5`), so `getNearbyElement`'s generic bbox-CENTER
- *  distance tie-break (editor-hit.js) is a genuine tie between them —
- *  and the contour, added to the DOM first, always wins ties (`<` is
- *  strict). Rather than touch that shared, heavily-used function (used
- *  by every mode's own hit-testing; a distance-tie-break change there
- *  risks other pickers), this is a small, self-contained search scoped
- *  to ONLY rail/tie/node elements — a contour segment can never match it
- *  at all, tie or not. Same bbox-center distance math as
- *  getNearbyElement for consistency; not exported, this file's own use
- *  only (shapeLatticeHandler.start, below). */
+/** Point-to-segment distance — same standard formula
+ *  editor-shape-lattice-interaction.js's own (module-private) _distToLine
+ *  uses; duplicated rather than imported across that module boundary for
+ *  one 5-line pure function (this file's own established convention for
+ *  a genuinely shared small pure helper — see _collectLatticeElements's
+ *  own header comment for the same reasoning elsewhere in this file). */
+function _distToSegment(pt, p0, p1) {
+    const dx = p1.x - p0.x, dy = p1.y - p0.y;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq > 0 ? ((pt.x - p0.x) * dx + (pt.y - p0.y) * dy) / lenSq : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(pt.x - (p0.x + t * dx), pt.y - (p0.y + t * dy));
+}
+
+/** UI4 item 0 / UI5 item 0 (Fred, live: a Select tap on the topmost/
+ *  bottommost rail of a Shape Lattice silhouette hit the CONTOUR instead
+ *  — fixed below by scoping to rail/tie/node only; then the advisor's own
+ *  fresh-profile repro found a SECOND, distinct ambiguity this same
+ *  function's first version re-introduced: a NODE sitting anywhere near
+ *  a RAIL's own body (a crossing node, "at crossings"/"at tie ends" are
+ *  both on) could win a bbox-CENTER distance comparison against the rail
+ *  even when the click is genuinely on the rail's body far from that
+ *  node — a tiny node's bbox center IS the click point (~0 distance)
+ *  while a long rail's bbox center is at its OWN 50% mark, however far
+ *  that is from wherever along its length was actually clicked. Confirmed
+ *  live via a temporary diagnostic: ~50% of trials selected kind:'node'
+ *  when the intent (and the screen point) was clearly the rail's body.
+ *  Distance-to-ACTUAL-GEOMETRY (a point for a node, the true line segment
+ *  for a rail/tie via _distToSegment above) has no such bias — replaces
+ *  the bbox-center distance entirely, not just for the contour case.
+ *  Rather than touch the shared, heavily-used editor._getNearbyElement
+ *  (editor-hit.js, used by every mode's own hit-testing; a distance
+ *  algorithm change there risks other pickers), this stays a small,
+ *  self-contained search scoped to ONLY rail/tie/node elements — a
+ *  contour segment can never match it at all. Not exported, this file's
+ *  own use only (shapeLatticeHandler.start, below). */
 function _getNearbyLatticePiece(editor, pt, tol) {
     if (!editor._sketchLayer) return null;
     let bestEl = null;
-    let bestDistSq = Infinity;
+    let bestDist = Infinity;
     editor._sketchLayer.children().toArray().forEach((el) => {
         const kind = el.node.getAttribute(LATTICE_ATTR);
         if (kind !== 'rail' && kind !== 'tie' && kind !== 'node') return;
-        const b = worldBbox(el);
         const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth || 0.01;
         const buffer = tol + (sw / 2);
-        if (pt.x >= b.x - buffer && pt.x <= b.x2 + buffer && pt.y >= b.y - buffer && pt.y <= b.y2 + buffer) {
-            const cx = (b.x + b.x2) / 2;
-            const cy = (b.y + b.y2) / 2;
-            const dSq = (pt.x - cx) ** 2 + (pt.y - cy) ** 2;
-            if (dSq < bestDistSq) { bestDistSq = dSq; bestEl = el; }
+        let d;
+        if (kind === 'node') {
+            const c = worldPoint(el, { x: parseFloat(el.attr('cx')), y: parseFloat(el.attr('cy')) });
+            d = Math.hypot(pt.x - c.x, pt.y - c.y);
+        } else {
+            const a = worldPoint(el, { x: parseFloat(el.attr('x1')), y: parseFloat(el.attr('y1')) });
+            const b = worldPoint(el, { x: parseFloat(el.attr('x2')), y: parseFloat(el.attr('y2')) });
+            d = _distToSegment(pt, a, b);
         }
+        if (d <= buffer && d < bestDist) { bestDist = d; bestEl = el; }
     });
     return bestEl;
 }
