@@ -93,6 +93,7 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
     if external_logger:
         external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars, max_phase={max_phase}")
     builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase)
+    return builder.fit
 
 def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
     """Entry point with signature safety net."""
@@ -108,6 +109,7 @@ def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwar
     ui_data = {**ui_state, **ui_snapshot}
 
     builder.run_full_synthesis(style_id, joint_prefix, ui_data=ui_data)
+    return builder.fit
 
 class FrameBuilder:
     def __init__(self, external_logger=None):
@@ -116,6 +118,7 @@ class FrameBuilder:
         self.root = self.design.rootComponent if self.design else None
         self.user_params = self.design.userParameters if self.design else None
         self.params_dna = {}
+        self.fit = None  # frame_definition.frame_fit result of the last build (FB-FIX F4)
         
         if external_logger:
             self.logger = external_logger
@@ -179,6 +182,7 @@ class FrameBuilder:
             target_body = self._discover_aesthetic_core()
             self.logger.log(f"target_body found: {'yes' if target_body else 'no'}")
             self._create_skeletal_parameters(target_body, style_id, ui_data)
+            self._check_frame_fit()
             frame_comp = self._create_incremental_component()
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
@@ -214,6 +218,7 @@ class FrameBuilder:
             target_body = self._discover_aesthetic_core()
             self.logger.log(f"target_body found: {'yes' if target_body else 'no'}")
             self._create_skeletal_parameters(target_body, style_id, ui_data)
+            self._check_frame_fit()
             frame_comp = self._create_incremental_component()
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
@@ -356,6 +361,24 @@ class FrameBuilder:
                         self.logger.log(f"DEPENDENT (Updated): {name} -> {val_expr}")
                     except Exception as e:
                         self.logger.log(f"DEPENDENT UPDATE FAIL ({name}): {e}", "WARNING")
+
+    def _check_frame_fit(self):
+        """FB-FIX (F4): evaluate the declared FRAME_FIT rule on the document's
+        own params. A board too small for the frame is WARNED (the build
+        would otherwise just produce 0 bars in silence) and returned to the
+        caller via self.fit / the entry functions' return value."""
+        from fb_engine.frame_definition import frame_fit
+        vals = {}
+        for name in ("widthIn", "heightIn", "frame_thickness", "boundingboxoffset"):
+            p = self.user_params.itemByName(name) if self.user_params else None
+            if p is None:
+                self.logger.log(f"FRAME FIT: '{name}' missing; fit not checked", "WARNING")
+                return None
+            vals[name] = p.value / 2.54  # Fusion stores cm
+        self.fit = frame_fit(vals["widthIn"], vals["heightIn"], vals["frame_thickness"], vals["boundingboxoffset"])
+        if not self.fit["ok"]:
+            self.logger.log(f"FRAME FIT: {self.fit['message']}", "WARNING")
+        return self.fit
 
     def _discover_aesthetic_core(self):
         """Thin pass-through to ``DocumentDiscovery.find_aesthetic_core_body``.

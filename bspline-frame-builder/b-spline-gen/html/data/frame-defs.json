@@ -43,8 +43,12 @@
       "value": "core.underside"
     }
   ],
+  "fit": {
+    "message": "Board too small for this frame: the safe zone is {safe:.2f} in but the frame needs more than {need:.2f} in (2 x frame thickness). Use a bigger board or a thinner frame.",
+    "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
+  },
   "frameDefsVersion": 1,
-  "sourceHash": "b67aab2733bd1e77e5f6b70f81cea6d1beda5d989776c12682507a7111017bc3",
+  "sourceHash": "79c238c7991659c477569dea603e5493c1fcd4edf2e55ef805fa9c6763628875",
   "templates": [
     {
       "features": [

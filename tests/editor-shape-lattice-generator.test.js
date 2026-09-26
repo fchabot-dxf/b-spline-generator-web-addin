@@ -192,14 +192,20 @@ describe('generateSilhouette — explicit params override the gentle seed jitter
 });
 
 describe('generateSilhouette — segment persistence (per-segment style override survives a param change)', () => {
-  it('reuses an explicit segments array verbatim when its length matches, across a seed change', () => {
+  it('keeps a USER-styled segment verbatim across a seed change, and re-solves the rest (SIL-RESOLVE F5)', () => {
+    // Contract changed in F5: the rest of a stored array used to be reused
+    // verbatim too, which reused bulges solved for the OLD params (a
+    // non-tangent outline after any param/seed change). Now only
+    // user-owned segments survive; solver-owned ones match a fresh solve.
     const region = REGIONS[0];
     const first = generateSilhouette(region, { preset: 'hourglass', seed: 1 });
     const edited = first.segments.map((s, i) =>
       i === 1 ? { style: 'kink', bulge: 0.4, dir: 'out', cornerRadius: 0 } : s
     );
     const second = generateSilhouette(region, { preset: 'hourglass', seed: 2, segments: edited });
-    expect(second.segments).toEqual(edited);
+    const fresh2 = generateSilhouette(region, { preset: 'hourglass', seed: 2 });
+    expect(second.segments[1]).toMatchObject(edited[1]);
+    second.segments.forEach((s, i) => { if (i !== 1) expect(s).toEqual(fresh2.segments[i]); });
     expect(second.primitives[1].type).toBe('L'); // kink -> 2 Ls, so index 1 is now an L, not the default A
   });
 
