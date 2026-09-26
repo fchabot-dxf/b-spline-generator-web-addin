@@ -9705,3 +9705,47 @@ kind test seam for one fix.
 
 Verify: 1322/1322 vitest (unchanged -- no unit-testable seam for this fix). Commit b160dbb, pushed. NO FUSION this
 whole turn.
+
+## T76 item 4 — one manifest per kind-layer, cross-kind relations declared as projection references
+
+Found the exact, already-proven contract to build against BEFORE writing anything: `frame-builder/fb_engine/
+projections.py`'s own `project_step` (a sibling tool in this same repo, real shipped code, not a first attempt) —
+`{SourceSketch, SourceID, TargetID}`, resolved by looking the source entity up in a SHARED `BuildContext` that spans
+multiple sketches built in a declared order, calling `sketch.project(src_ent)`, then registering the projected
+result's own `:S`/`:E`/`:C` endpoints under a fresh id. This is the mechanism the roadmap's own "advisor measured: a
+direct constraint to another sketch's curve is refused" note is describing — I didn't need to guess the shape,
+just translate the naming to this tool's own kind vocabulary (`sourceKind` instead of `SourceSketch`, since a "sketch"
+here IS a kind).
+
+`splitManifestByKind` (editor-sketch-manifest.js) partitions an ordinary `buildSketchManifest` combined result
+(unchanged, still used wherever a single manifest is still wanted) into one manifest per kind. The one real design
+decision: EVERY cross-kind constraint in this codebase's own manifest builder is exactly 2 targets spanning exactly
+2 kinds (tie-end→rail, rail/tie-end→contour-seg, node→rail/tie/contour) — so "which kind gets the projection" always
+resolves to a single rule: the LATER-built kind, per `LATTICE_FUSION_BUILD_ORDER` (contour→rails→ties→nodes),
+because every cross-kind reference in this manifest builder already only ever points BACKWARD along that same fixed
+order (a rail can reference the contour that came before it; nothing ever needs to reference something built
+AFTER it). That single rule handles all three of the roadmap's own named cases without any per-relation-type special
+casing. Collinear and Horizontal/Vertical constraints are ALREADY same-kind only, by construction (a rail's own
+Collinear never references a tie) — "Collinear stays within a kind" needed no code at all, just confirming it holds
+(it does, checked directly against every `dimensions.push`/`constraints.push` call site in the file, no 3+ target
+shape exists anywhere).
+
+Parameters: rather than tracing which kind's own dimension expression references which parameter name (fragile,
+easy to get subtly wrong for a shared name like `stroke_width`), every kind's own manifest just gets the FULL
+parameter list. `sketch_manifest_builder.py`'s own `_sync_manifest_parameters` already creates-or-updates a design
+parameter BY NAME regardless of which manifest declared it — the SAME precedent T69 already established (one
+combined manifest declaring `stroke_width` twice, once from the contour and once from the lattice, was already
+proven harmless) — just leaning on it across FOUR manifests instead of one, rather than re-deriving a "who actually
+needs this" rule that adds risk for no real benefit.
+
+`export-flow.js`'s `_fusionLayerManifest` had a real, previously-latent gap from item 2's own split, only surfaced
+by actually wiring this up: it read `editorLayer.pattern` directly, which is `undefined` for every SIBLING kind-
+layer (only the rails/primary layer holds it) — meaning Send-to-Fusion would have silently produced a manifest for
+the Rails layer only, and nothing at all for Ties/Nodes/Contour, the moment anyone tried to export a kind-split
+pattern. Fixed via `resolvePatternLayer` (item 2's own resolver) plus, once `pattern.layers` exists, a call into
+`splitManifestByKind` picking out just that layer's own kind's slice. `_overridesForLayer` had the identical
+per-kind blind spot (reading ALL THREE kinds' own overrides from the ONE `layerId` passed in) and got the same fix.
+
+Verify: 1339/1339 vitest (17 new: 13 for splitManifestByKind itself, 4 for the per-kind export wiring), 45/45 pytest
+(untouched — the Python-side projection RESOLUTION, actually calling `sketch.project()`, is item 5's own scope, not
+this one). Commit 4b82168, pushed. NO FUSION this whole turn.
