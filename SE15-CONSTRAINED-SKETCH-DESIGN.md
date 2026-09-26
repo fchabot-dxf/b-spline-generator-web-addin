@@ -594,6 +594,11 @@ UPDATE (Fred: "box lattice needs to be slots too"): BOTH Box and Shape Lattice =
 end points fixed (anchored slots grow evenly on stroke_width edits; free ones drift lopsided - measured), nodes built
 on the slot centerline end points. Offsets removed.
 
+## NO FIX (Fred 2026-09-25: "never use Fix") — advisor MEASURED
+All slots, NO Fix, relationships only (rails Horizontal, ties Vertical, tie ends Coincident on rail centerlines): zero
+failures; stroke_width 0.07→0.2 moved centerlines 0.005", back to 0.07 returned exactly. Fix + relationships together =
+over-constrained (T65 failure). This supersedes every "anchor / isFixed" note above.
+
 ## Open questions for Fred / the advisor (this doc's own defaults above; revisit after Slice 3's own live pass)
 
 1. **Two-sided offset (§4)**: does `createOffsetInput`/`addOffset2` accept a SINGLE call for both sides of an
