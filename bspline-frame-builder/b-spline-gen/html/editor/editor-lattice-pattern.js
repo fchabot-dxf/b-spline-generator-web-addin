@@ -1754,7 +1754,7 @@ export function _resolveExtent(editor, PATTERN, boundaryPrimitives) {
  *  (angles are scale-invariant), not an approximation. Mirrors `toLattice`
  *  itself (`{x,y} -> {i,j}` is the same division, just not rounded to an
  *  integer here — `insideSpans` needs the CONTINUOUS position). */
-function _scalePrimitiveToLattice(prim, spacing) {
+export function _scalePrimitiveToLattice(prim, spacing) {
   const pt = (p) => ({ x: p.x / spacing, y: p.y / spacing });
   switch (prim.type) {
     case 'L': return { type: 'L', p0: pt(prim.p0), p1: pt(prim.p1) };

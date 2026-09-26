@@ -35,7 +35,8 @@ import {
     isLatticePoint, moveRailAlongAxis, translateTie,
     nearestEndWithin, stretchRailEnd, stretchTieEnd,
 } from './editor-lattice.js';
-import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent } from './editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements } from './editor-lattice-pattern.js';
+import { insideSpans, insetGeneratedPresetPathDToPrimitives } from './editor-lattice-boundary.js';
 import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
     shouldCancelDrawOnPointerDown, isPinching,
@@ -46,7 +47,7 @@ import {
 // LEVEL public API (lifted out of that panel's own closures specifically
 // so this file — which has no panel DOM at all — can call the identical
 // write/regenerate logic, not a second copy of it).
-import { generateSilhouette } from './editor-shape-lattice-generator.js';
+import { generateSilhouette, joinSegmentPathsIntoClosedD } from './editor-shape-lattice-generator.js';
 import { hitTestSegment } from './editor-shape-lattice-interaction.js';
 import {
     currentPattern, currentShape, regenerateSilhouette, regenerateSilhouetteAndFill,
@@ -1090,7 +1091,19 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
     const endGrabTolCells = getDynamicTolerance(editor, 8, 'handlePx') / spacing;
 
     if (kind === 'rail' || kind === 'tie') {
-        const pieceCanon = { a: orient(toLattice(aWorld, spacing), orientation), b: orient(toLattice(bWorld, spacing), orientation) };
+        // T73: the piece's OWN endpoints, read via toLatticeFractional (not
+        // toLattice) -- an on-boundary Shape Lattice end sits at the
+        // contour's true FRACTIONAL crossing (e.g. canonical i=2.5), not
+        // necessarily an integer cell. toLattice's Math.round would collapse
+        // that to 3, silently drifting the piece's own recorded position a
+        // half-cell away from where it actually is; nearestEndWithin below
+        // then compares the click against the WRONG point and misses the
+        // end-grab zone entirely, falling back to a body MOVE. Confirmed
+        // live (T73 diagnostic, CDP): clicking exactly on an on-boundary
+        // rail's own end reported mode:'move', not 'stretch', until this
+        // read became fractional. A board-mode piece's endpoints are always
+        // already integer, so this is a no-op there.
+        const pieceCanon = { a: orient(toLatticeFractional(aWorld, spacing), orientation), b: orient(toLatticeFractional(bWorld, spacing), orientation) };
         const ptFracCanon = orient(toLatticeFractional(pt, spacing), orientation);
         const end = nearestEndWithin(pieceCanon, ptFracCanon, endGrabTolCells);
 
@@ -1206,6 +1219,79 @@ function _writeRailMove(move, result) {
     }
 }
 
+/** T48's own `_rowScanLine`/`_colScanLine` (editor-lattice-pattern.js,
+ *  module-private there), duplicated rather than imported across that
+ *  module boundary for two small pure helpers this file's own contour-
+ *  stretch clamp (below) needs — same "genuinely shared small pure
+ *  helper" convention `_distToSegment` above already uses. Real
+ *  (un-oriented) scan line for a CANONICAL row `j` (a rail) / column `i`
+ *  (a tie) — see editor-lattice-pattern.js's own doc comment on the
+ *  originals for the full derivation. */
+function _rowScanLine(j, orientation) {
+    const p0 = orient({ i: 0, j }, orientation);
+    const p1 = orient({ i: 1, j }, orientation);
+    return { point: { x: p0.i, y: p0.j }, dir: { x: p1.i - p0.i, y: p1.j - p0.j } };
+}
+function _colScanLine(i, orientation) {
+    const p0 = orient({ i, j: 0 }, orientation);
+    const p1 = orient({ i, j: 1 }, orientation);
+    return { point: { x: p0.i, y: p0.j }, dir: { x: p1.i - p0.i, y: p1.j - p0.j } };
+}
+
+/** UI5 AMEND 2 (Fred, "T73 rule": rail/tie ends that sit on the contour
+ *  stay ON the contour segment): clamps a stretch's target axis value to
+ *  the boundary's own insideSpans along the piece's FIXED axis (the row
+ *  for a rail, the column for a tie) — the SAME span-clip math
+ *  `_resolveExtent`'s own 'boundary' branch already uses to bound
+ *  freshly-GENERATED rails/ties (editor-lattice-pattern.js), applied here
+ *  to a single live END-STRETCH instead of a whole grid. Gated on
+ *  `usesContourCenterline` — the SAME declared condition T73 AMEND 3
+ *  already established for GENERATION ("a Shape Lattice with its contour
+ *  shown forces 'on-boundary' regardless of the pattern's own stored
+ *  endRule"): a no-op for the box Lattice (board-mode, no boundary at
+ *  all) AND for a Shape Lattice whose contour is hidden or whose endRule
+ *  is inset/joint/loose (freshly-generated ends don't reach the contour
+ *  there either, so a drag has nothing to stay coincident with).
+ *
+ *  Reads the boundary from the LIVE DRAWN CONTOUR ELEMENTS
+ *  (`_findBoundaryElements` + `joinSegmentPathsIntoClosedD` +
+ *  `insetGeneratedPresetPathDToPrimitives(d, 0)`) — the exact same
+ *  synchronous branch `_resolveBoundaryPrimitives` itself takes for a
+ *  generated (N-segment) contour under this same `usesContourCenterline`
+ *  gate (halfWidth 0) — rather than a fresh `generateSilhouette` call.
+ *  Confirmed live (T73 diagnostic) the two are NOT geometrically
+ *  identical: `insetGeneratedPresetPathDToPrimitives`'s own path
+ *  round-trip through the drawn `d` shifts a crossing by a fraction of a
+ *  lattice unit versus a bare fresh silhouette — using the SAME source
+ *  the actual rails/ties were placed against is what makes an end that's
+ *  already sitting on the contour clamp to ITS OWN position (a no-op)
+ *  instead of drifting. Picks whichever span CONTAINS the fixed end's own
+ *  position (not just the first span on that row/column) so a multi-lobe
+ *  silhouette (e.g. the hourglass' waist) clamps against the lobe the
+ *  piece is actually in. */
+function _clampStretchToContour(editor, move, targetAxisValue) {
+    const pattern = getLayerPattern(editor);
+    if (!pattern || !usesContourCenterline(pattern)) return targetAxisValue;
+    const shapeId = pattern.boundary && pattern.boundary.shapeId;
+    const boundaryEls = _findBoundaryElements(editor, shapeId);
+    if (boundaryEls.length <= 1) return targetAxisValue; // async shapeToInnerBoundaryPrimitives path -- not reachable synchronously here; see doc comment
+    let scaled;
+    try {
+        const combinedD = joinSegmentPathsIntoClosedD(boundaryEls.map((el) => el.attr('d') || ''));
+        const primitives = insetGeneratedPresetPathDToPrimitives(combinedD, 0);
+        scaled = primitives.map((p) => _scalePrimitiveToLattice(p, move.spacing));
+    } catch (_) {
+        return targetAxisValue; // defensive: never let a boundary lookup crash a live drag
+    }
+    const fixedEnd = move.end === 'a' ? move.pieceCanon.b : move.pieceCanon.a;
+    const scanLine = move.kind === 'rail' ? _rowScanLine(fixedEnd.j, move.orientation) : _colScanLine(fixedEnd.i, move.orientation);
+    const spans = insideSpans(scanLine, scaled);
+    if (!spans.length) return targetAxisValue; // no boundary crossing on this row/column -- nothing to clamp against
+    const fixedAlong = move.kind === 'rail' ? fixedEnd.i : fixedEnd.j;
+    const span = spans.find(([lo, hi]) => fixedAlong >= lo - 1e-6 && fixedAlong <= hi + 1e-6) || spans[0];
+    return Math.max(span[0], Math.min(span[1], targetAxisValue));
+}
+
 /** SE7k AMEND 4/5: one tick of an end-STRETCH gesture — recomputes the
  *  stretched end from the FIXED drag-start snapshot and the CURRENT
  *  pointer, writing straight to `move.el`'s attrs and carrying its own
@@ -1241,8 +1327,10 @@ function _updateLatticeMove(editor, pt) {
 
     if (move.kind === 'rail' && move.mode === 'stretch') {
         // A rail's end moves along its OWN axis (canonical i) only — its
-        // row (j) never changes during a stretch, unlike a move.
-        _updateLatticeStretch(editor, move, canonPt.i, stretchRailEnd);
+        // row (j) never changes during a stretch, unlike a move. T73:
+        // clamped to the contour when the layer's pattern is boundary-mode
+        // (a no-op for board-mode box Lattice).
+        _updateLatticeStretch(editor, move, _clampStretchToContour(editor, move, canonPt.i), stretchRailEnd);
     } else if (move.kind === 'rail') {
         // A rail moves only ACROSS its own direction — never slides
         // along its own length — so only the row (canonical j) tracks
@@ -1256,7 +1344,12 @@ function _updateLatticeMove(editor, pt) {
         const railSnapRows = getLayerPattern(editor)?.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
         const railRows = _existingRailRows(editor, spacing, orientation);
         const snapped = nearestRailRow(canonPt.j, railRows, railSnapRows);
-        _updateLatticeStretch(editor, move, snapped != null ? snapped : canonPt.j, stretchTieEnd);
+        // T73: same contour clamp as the rail-stretch branch above, applied
+        // AFTER the rail-row snap so the two constraints compose (snap
+        // first, then pull back inside the contour if the snapped row
+        // itself falls outside it).
+        const target = _clampStretchToContour(editor, move, snapped != null ? snapped : canonPt.j);
+        _updateLatticeStretch(editor, move, target, stretchTieEnd);
     } else if (move.kind === 'tie') {
         // A tie "drags freely... NOT confined between rails" — a rigid
         // translation of both ends by the same snapped delta, free in
