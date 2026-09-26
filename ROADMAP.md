@@ -912,7 +912,34 @@ features as they are from the different add-ins". Shape: DEFINITION (templates/p
 the add-ins' Python (one source); PREVIEW in the app (2D guide layer in the editor + straight-extruded 3D solid in the
 three.js view); REAL parametric features stay Python (fb_engine) invoked by ONE Send in the order body → frame → inlay.
 Parity test per feature (app preview vs Fusion build). Frame Builder first; other add-ins only if Fred wants.
+CORE REQUIREMENT (Fred: "once a frame is cut and we go in the SVG editor, it should show the new profile — that's
+the whole point, make it good"): with a frame chosen, the editor's board shape IS the frame's trimmed outline (outside
+shaded as cut away, artwork untouched), the 3D preview trims the panel to it with bars in the chosen wood, live on
+param change, one outline source shared with the Fusion build. Design + stages on branch fb-app (FB-APP-DESIGN.md).
+UI APPROVED (Fred: "sounds amazing") — two doors, one room: a FRAME sidebar section (template/none, frame bottom Z,
+wood, [Edit frame]) + the full-screen editor with [Frame | Artwork] tabs; the frame record is persisted in the project
+and re-editable any time; Frame and Shape Lattice are separate records sharing one silhouette engine.
 Fred confirmed no tapers: `Skel_Frame_Taper` exists but extrusion_engine hard-codes 0° — drop the param, don't port it.
+
+## Queued (seat C, F4, after F3) — FB-FIX: two live Frame Builder bugs found by seat C's parity recording (2026-09-26)
+Affect frames built TODAY with the standalone Frame Builder. (1) BuildContext.resolve_val does float(ui_data[name]);
+a unit-suffixed value ('0.75 in') fails silently (FAIL RESOLVE) and the offset becomes 0 — parse via Fusion's
+expression/unit evaluation (one declared resolver), never silently 0. (2) sketch.addOffset2 fails ('argument 2
+vector<SketchCurve>') and the build falls back to a NON-parametric offset for sketch 1/3 in most cases, so
+frame_thickness may not drive the frame in Fusion — fix the call (correct curve collection type / API), verify live
+that changing frame_thickness updates the frame. Plus an app/engine sanity warning when the board is too small for
+the frame (5.51x1.97: safe-zone 1.47in < 2x0.75in -> 0 bars). Verify in a short Fusion window; goldens re-recorded.
+
+## Queued (seat C, F5, after F4) — SIL-RESOLVE: silhouette arcs must never invert (Fred 2026-09-26, live screenshot)
+Fred: "increasing corner radius shouldn't collapse arcs past the center, they should be able to resolve cleanly".
+Live main, Shape Lattice Hourglass, corner radius high: the shoulder + waist arcs loop over each other ('fish' loops).
+Same engine as the future frame preview (editor-shape-lattice-generator.js generateSilhouette / PRESETS). Fix the
+SOLVE, not the symptom: for any slider combination the outline stays a simple closed curve with tangent joints —
+derive the feasible range (e.g. corner radius vs waist reach vs available height) and resolve within it (clamp or
+redistribute, declared), never produce self-intersection or reversed arc sweep. Tests: a dense sweep over every preset
+param (hourglass + bottle, both orientations, several board sizes) asserting simple (non-self-intersecting) outline,
+positive sweep per arc, tangency at joints; reproduce Fred's case first (red before the fix). The inversion detector
+(F3 AMEND 7b) becomes a guard, not the fix. Coordinate: seat B (T76) edits lattice layers, not the silhouette solver.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool

@@ -15,8 +15,9 @@ from datetime import datetime
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SEATS = [  # declared: which checkout is which seat, and its task file (checklist = progress)
-    {"name": "Seat A", "path": ROOT, "branch": "main", "task": "NEXT-SESSION.md"},
-    {"name": "Seat B", "path": ROOT + "-lane-b", "branch": "lane-b", "task": "NEXT-SESSION-lane-b.md"},
+    {"name": "Seat A", "key": "seatA", "path": ROOT, "branch": "main", "task": "NEXT-SESSION.md"},
+    {"name": "Seat B", "key": "seatB", "path": ROOT + "-lane-b", "branch": "lane-b", "task": "NEXT-SESSION-lane-b.md"},
+    {"name": "Seat C", "key": "seatC", "path": ROOT + "-fb-app", "branch": "fb-app", "task": "NEXT-SESSION-fb-app.md"},
 ]
 
 
@@ -48,6 +49,9 @@ OUT = os.path.join(os.path.dirname(__file__), "out")
 # no console window flashing for git/wrangler children when run under pythonw (Fred: "a terminal window constantly spawning")
 NOWIN = {"creationflags": 0x08000000} if os.name == "nt" else {}
 INTERVAL_S = 60
+# declared screenshot drop folder: workers save <seat key>/<HHMM>_<tag>_<what>.png here; newest SHOTS_PER_SEAT are published
+SHOTS_DIR = os.path.join(os.path.expanduser("~"), ".bspline-status", "shots")
+SHOTS_PER_SEAT = 6
 
 
 def _env():
@@ -97,9 +101,12 @@ def collect():
         h = _handoff(s["path"])
         who = "worker (working)" if h.get("to") == "worker" else "advisor (reviewing)"
         d, t = _checklist(s["path"], s["task"], s["branch"])
+        sd = os.path.join(SHOTS_DIR, s["key"])
+        shots = sorted((f for f in (os.listdir(sd) if os.path.isdir(sd) else []) if f.lower().endswith((".png", ".jpg", ".jpeg"))),
+                       key=lambda f: os.path.getmtime(os.path.join(sd, f)), reverse=True)[:SHOTS_PER_SEAT]
         seats.append({**s, "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
-                      "updated": h.get("updated", ""), "done": d, "total": t})
-    commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b")}
+                      "updated": h.get("updated", ""), "done": d, "total": t, "shots": shots})
+    commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b", "fb-app")}
     return seats, commits, _roadmap()
 
 
@@ -107,7 +114,7 @@ def render(seats, commits, roadmap):
     md = ["# B-Spline — progress", ""]
     for s in seats:
         md += [f"## {s['name']} ({s['branch']}) — turn {s['turn']}, ball: {s['who']}", f"Task: {_bar(s['done'], s['total'])}",
-               f"{s['note']}", f"_updated {s['updated']}_", ""]
+               f"{s['note']}", f"_updated {s['updated']}_"] + [f"- shot: {x}" for x in s["shots"]] + [""]
     for b, cs in commits.items():
         md += [f"## Recent commits — {b}"] + [f"- `{c.split('|')[0]}` {c.split('|')[2]} ({c.split('|')[1]})" for c in cs if c.count("|") >= 2] + [""]
     body = "\n".join(md)
@@ -123,7 +130,9 @@ def render(seats, commits, roadmap):
         f'<section class="seat"><h2>{e(s["name"])} <small>{e(s["branch"])} · turn {e(s["turn"])}</small></h2>'
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
-        f'<p class="t">updated {e(s["updated"])}</p></section>' for s in seats)
+        f'<p class="t">updated {e(s["updated"])}</p>'
+        + ('<div class="shots">' + "".join(f'<img class="thumb" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for x in s["shots"]) + "</div>" if s["shots"] else "")
+        + '</section>' for s in seats)
     def lst(rows, cls):
         return "".join(f'<li class="{cls}">{e(r[2])}{" <em>" + e(r[1]) + "</em>" if r[1] else ""}</li>' for r in rows)
     com = "".join(f'<details><summary>Commits — {e(b)} ({len(cs)})</summary><ul class="c">' + "".join(
@@ -140,10 +149,20 @@ h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} sm
 .ball{{font-weight:700;margin:4px 0}} .ball.w{{color:var(--w)}} .ball.a{{color:var(--a)}}
 .bar{{margin:8px 0}} .track{{height:8px;background:var(--line);border-radius:4px;overflow:hidden}}
 .fill{{height:100%;background:var(--w)}} .lbl{{font-size:12px;color:var(--mut)}}
+img.thumb{{cursor:zoom-in}} dialog#lb{{border:0;padding:0;background:transparent;max-width:96vw;max-height:94vh}} dialog#lb::backdrop{{background:rgba(0,0,0,.8)}}
+dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cursor:zoom-out}} dialog#lb figcaption{{color:#ddd;font-size:12px;text-align:center;padding-top:4px}}
+.shots{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}} .shots img{{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line)}}
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
-<div class="grid">{cards}</div>{com}</body></html>"""
+<div class="grid">{cards}</div>{com}
+<dialog id="lb"><figure><img id="lbImg" alt=""><figcaption id="lbCap"></figcaption></figure></dialog>
+<script>
+const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
+function openShot(t){{ im.src=t.src; cap.textContent=t.alt; lb.showModal(); }}
+document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog')){{ lb.close(); }} }});
+document.addEventListener('keydown',ev=>{{ const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
+</script></body></html>"""
     return body, page
 
 
@@ -176,6 +195,11 @@ def once(last_hash=None):
     if h == last_hash:
         return h
     os.makedirs(OUT, exist_ok=True)
+    shutil.rmtree(os.path.join(OUT, "shots"), ignore_errors=True)
+    for st in seats:
+        for x in st["shots"]:
+            dst = os.path.join(OUT, "shots", st["key"]); os.makedirs(dst, exist_ok=True)
+            shutil.copy2(os.path.join(SHOTS_DIR, st["key"], x), os.path.join(dst, x))
     open(os.path.join(OUT, "PROGRESS.md"), "w", encoding="utf-8").write(md)
     open(os.path.join(OUT, "index.html"), "w", encoding="utf-8").write(page)
     return h if deploy() else last_hash

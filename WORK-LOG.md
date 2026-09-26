@@ -10511,3 +10511,93 @@ focused on snap+ties-follow+end-stretch specifically), so left as a candidate fo
 check rather than guessed at.
 
 No edits to `bspline_gen_palette.html`.
+
+## Turn 288 — UI5 AMEND 2 (item 0 continued): T73 rule — a rail/tie end sitting on the contour stays on it — DONE — NO FUSION
+
+The advisor's own follow-up (mailbox): "additionally rail/tie ends that sit on the contour stay ON the
+contour segment (T73 rule). Extend the repro into assertions (snap to spacing, attached ties still on rail
+after rail move, end-drag stretches) and make it pass on BOTH lattice types. Do this before items 1-4."
+
+**The clamp.** `_clampStretchToContour(editor, move, targetAxisValue)` (`editor-interaction.js`), called from
+both `_updateLatticeMove` stretch branches (rail: wraps `canonPt.i`; tie: wraps the rail-row-snapped value)
+before it reaches `_updateLatticeStretch`. Gated on `usesContourCenterline(pattern)` — the SAME declared
+condition T73 AMEND 3 already established for pattern *generation* ("a Shape Lattice with its contour shown
+forces 'on-boundary' regardless of the pattern's own stored endRule") — so it's a no-op for the box Lattice
+(board-mode, nothing to clamp against) and for a Shape Lattice whose contour is hidden or whose endRule is
+inset/joint/loose (freshly-generated ends don't reach the contour there either). When gated in: builds the
+row/column scan line for the piece's own FIXED (non-stretching) end, via two ~4-line helpers
+(`_rowScanLine`/`_colScanLine`) duplicated from `editor-lattice-pattern.js`'s own module-private originals
+(not exported — same "small pure helper, cheaper to duplicate than to open that module's export surface"
+convention `_distToSegment` already used in this file); calls the already-exported `insideSpans` against the
+boundary primitives; picks whichever returned span actually contains the fixed end (not just the first one,
+so a multi-lobe silhouette like the hourglass' waist clamps against the lobe the piece is really in); clamps
+`targetAxisValue` into that span.
+
+**Getting the boundary primitives right took two tries — worth recording why.** First attempt read them via a
+fresh `generateSilhouette(_shapeContourRegion(editor), shape)` call (the same call this file's own segment-hit-
+test branch already makes, so it looked like the "no new expensive call" answer). Live CDP verification
+against the actual generated Hourglass rails immediately disagreed: the topmost rail's own generated endpoint
+sat at canonical i=2.5, but `generateSilhouette`'s own primitives, scanned the same way, gave a span of
+`[2, 26]` — an exact 0.5-canonical-unit (one full grid cell) mismatch, confirmed by three separate CDP
+diagnostics (module dynamic-imported live into the page, `insideSpans` called directly). Root cause: pattern
+*generation* doesn't clip against a fresh silhouette at all — `_resolveBoundaryPrimitives` reads the ALREADY-
+DRAWN contour path ELEMENTS (`_findBoundaryElements` + `joinSegmentPathsIntoClosedD` +
+`insetGeneratedPresetPathDToPrimitives(d, 0)` for the `usesContourCenterline` case), and that function's own
+path-round-trip through the drawn `d` is NOT geometrically identical to a bare fresh silhouette — confirmed by
+recomputing `insideSpans` from the DOM-read primitives instead, which landed exactly on `[2.5, 25.5]`, matching
+the real rail to the mantissa. Switched the clamp to the same DOM-read path (`_findBoundaryElements` now
+imported here too); the `boundaryEls.length <= 1` case (single hand-picked boundary, not a generated N-segment
+contour) is left as a no-op rather than the async `shapeToInnerBoundaryPrimitives` fallback, since this
+function must stay synchronous (called every mousemove tick) and `usesContourCenterline`'s own gate already
+gets exercised almost exclusively by generated (N-segment) presets.
+
+**A second, independent bug found in the same investigation — also fixed.** Even with the clamp math correct,
+clicking exactly on an on-boundary rail's own end (the mathematically exact contour crossing, e.g. canonical
+i=2.5) registered as a body MOVE, not an end STRETCH, in live CDP testing — silently defeating the whole
+feature for the exact case it's meant to protect. Root cause: `_beginLatticeMove` built the grabbed piece's
+own `pieceCanon` via `toLattice()` (`Math.round`), not `toLatticeFractional()`. `Math.round(2.5)` is `3` in
+JS — collapsing the piece's TRUE fractional position by half a grid cell before `nearestEndWithin`'s own
+distance-to-end check ever ran, so the click (correctly read at the true 2.5) compared against a `pieceCanon`
+that silently said `3`, missed the end-grab tolerance zone, and fell through to a body grab. A board-mode
+piece's endpoints are always already integer, so `toLattice`'s rounding was a no-op there — this only ever
+showed up for a Shape Lattice's on-boundary ends, i.e. exactly the geometry T73 is about. Fixed by reading the
+piece's own endpoints via `toLatticeFractional` instead (the pointer's own PER-FRAME position during a drag
+still correctly uses `toLattice` for grid-snap — untouched; only the ONE-TIME read of the grabbed piece's own
+existing geometry changed).
+
+**Verification (live CDP, `tools/repro/select_drag_shape.mjs`, extended into real pass/fail assertions per the
+advisor's own instruction — previously console.log-only).** Added: a `check()` accumulator (exits non-zero on
+any failure); a `runSharedScenario(kind)` run against BOTH `box` and `shape` Lattice (rail body move -> snap +
+ties follow; tie body move -> snap + stays on rail; tie end -> stretches only that end, snapped to grid); a
+`runContourClampScenario()` (Shape Lattice only — no box-Lattice analogue, board mode has no boundary): drags
+the topmost rail's own end 300px past the contour and asserts it clamped back to (within 0.02 of) its own
+pre-drag position, then pulls the SAME end back inward and asserts it genuinely moved that time (the
+mutation-style counterweight — proves the clamp is directional, not "this end is just frozen"). Also added
+`ALT` (CDP modifier bit 1) to the contour-scenario's own drags: `editor._snap(pt, e.altKey, 'start')` is the
+app's own "hold Alt to draw off-grid" escape hatch, needed because a plain grid-snapping click rounds the
+pointer away from an on-boundary end's own small grab-tolerance zone (confirmed via a live pointerdown-
+listener diagnostic: `e.altKey=true` correctly disabled `editor._snap`, `raw === snapped` to 7 decimal places).
+
+Hardened the shared-scenario driver against BOTH lattice tools' own genuine randomness (box Lattice rolls a
+FRESH random seed on every Generate press "by design" — its own code comment — so a dense layout can
+occasionally put a rail/tie/node close enough to another that a fixed click point grabs the wrong one; even
+Shape Lattice's fixed seed showed a rarer CDP/timing race in the synthetic pointer pipeline): `grabAndVerify`
+peeks `window.svgEditor._latticeMove` right after mousedown and reports a miss instead of dragging blind;
+`robustDrag` retries a handful of nearby grab fractions before giving up; the tie-end step tries BOTH ends
+against a spread of distances and accepts the first combination that yields a clean single-end, grid-aligned
+stretch (a tie's rail-anchored end sits under `railSnapRows`' own magnetism, which snaps a too-short stretch
+attempt right back to the SAME row — indistinguishable from "didn't move" without knowing that row's spacing,
+which varies per random box-Lattice layout); the whole box (then shape) scenario re-rolls a fresh layout up to
+3x if any check failed, so a genuinely reproducing bug still fails loudly while pure layout-randomness doesn't
+flake the suite. **6/6 consecutive full runs green** after hardening (both lattice types, all scenarios,
+against both the plain `http.server` and the properly-styled `tools/serve_app.py`).
+
+Full suite: `npx vitest run` -> **1269 passed**, zero regressions (this fix is DOM/live-drag-pipeline behavior
+with no existing scaffold reaching it, matching Turn 285's own note on the SAME code path — the CDP repro is
+the test here, kept and extended rather than duplicated as a unit test).
+
+Pulled the advisor's own fb-app F1-F3 merge (`a132bad`, Python-only: FB-ORDER fix, S0 clean-up,
+`template_catalog.py` deletion, new `tools/`+fixtures+docs) via `git pull --ff-only` on a clean tree before
+this entry's own commit — clean fast-forward, no conflicts with this file's own JS changes.
+
+No edits to `bspline_gen_palette.html`.
