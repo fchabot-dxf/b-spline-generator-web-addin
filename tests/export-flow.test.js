@@ -314,6 +314,29 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
     expect(_fusionLayerManifest(editor, { id: '2' })).toBeNull();
   });
 
+  it('T75 item 3 (OVR-FUSION): a real owned rail element carrying data-override-width produces a HARDCODED SlotWidth expression on that piece\'s manifest entity', () => {
+    const pattern = {
+      spacing: 0.25,
+      rails: { mode: 'every', every: 2, offset: 0 },
+      ties: { mode: 'density', density: 0, anchor: 'free', spanMin: 1, spanMax: 1 },
+      nodes: { ends: false, crossings: false, railEnds: false },
+      widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
+    };
+    const editor = mockEditor([{
+      id: '3', pattern,
+      owned: [
+        { 'data-layer': '3', 'data-lattice-gen': 'anything', 'data-lattice': 'rail', 'data-override-width': '0.5' },
+      ],
+    }]);
+    const manifest = _fusionLayerManifest(editor, { id: '3' });
+    const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');
+    expect(rail0Dim.expression).toBe('0.5 in');
+    // a sibling rail with no mock override at all keeps referencing the
+    // shared parameter, exactly like every rail did before this feature.
+    const rail1Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail1');
+    expect(rail1Dim.expression).toBe('stroke_width');
+  });
+
   it('returns a real manifest for a layer that DOES carry a .pattern AND owned pieces', () => {
     const pattern = {
       spacing: 0.25,

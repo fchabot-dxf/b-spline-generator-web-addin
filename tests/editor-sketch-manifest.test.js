@@ -489,6 +489,61 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     expect(manifest.pieceCount).toBeLessThan(SKETCH_PIECE_THRESHOLD);
     expect(manifest.constrained).toBe(true);
   });
+
+  describe('T75 item 3 (OVR-FUSION): per-piece width overrides -> a HARDCODED dimension, no shared parameter', () => {
+    it('an overridden rail gets a plain "<n> in" SlotWidth expression instead of the shared rail_width name; sibling rails are untouched', () => {
+      const overrides = { rails: [null, 0.375], ties: [], nodes: [] };
+      const withOverride = manifestFromLattice(PATTERN, EXTENT, undefined, overrides);
+      const plain = manifestFromLattice(PATTERN, EXTENT);
+      const railIds = plain.entities.filter((e) => e.id.match(/^rail\d+$/)).map((e) => e.id);
+      expect(railIds.length).toBeGreaterThan(1); // non-vacuous: at least a rail0 AND rail1 exist to tell apart
+
+      const dimFor = (manifest, id) => manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === id);
+      // rail1 (the overridden one): hardcoded, not the shared param name.
+      expect(dimFor(withOverride, 'rail1').expression).toBe('0.375 in');
+      expect(dimFor(withOverride, 'rail1').expression).not.toBe(dimFor(plain, 'rail1').expression);
+      // its own seed width also reflects the override, not PATTERN.widths.rails.
+      expect(entityById(withOverride.entities, 'rail1').width).toBe(0.375);
+      // every OTHER rail is byte-for-byte identical to the no-override run.
+      for (const id of railIds) {
+        if (id === 'rail1') continue;
+        expect(dimFor(withOverride, id)).toEqual(dimFor(plain, id));
+      }
+      // the shared parameter is still declared for those siblings ("no
+      // param" only means THIS piece stops referencing it).
+      expect(withOverride.parameters.some((p) => p.name === 'rail_width')).toBe(true);
+    });
+
+    it('an overridden tie and an overridden node behave the same way, independently of rails', () => {
+      const overrides = { rails: [], ties: [null, 0.2], nodes: [null, 0.3] };
+      const manifest = manifestFromLattice(PATTERN, EXTENT, undefined, overrides);
+      const tieIds = manifest.entities.filter((e) => e.id.match(/^tie\d+$/)).map((e) => e.id);
+      const nodeIds = manifest.entities.filter((e) => e.id.match(/^node\d+$/)).map((e) => e.id);
+      expect(tieIds.length).toBeGreaterThan(1);
+      expect(nodeIds.length).toBeGreaterThan(1);
+
+      const dimFor = (type, id) => manifest.dimensions.find((d) => d.type === type && d.target === id);
+      expect(dimFor('SlotWidth', 'tie1').expression).toBe('0.2 in');
+      expect(dimFor('SlotWidth', 'tie0').expression).toBe('tie_width'); // untouched sibling
+
+      expect(dimFor('Diameter', 'node1').expression).toBe('0.3 in');
+      expect(entityById(manifest.entities, 'node1').radius).toBeCloseTo(0.15, 9); // 0.3 diameter / 2
+      expect(dimFor('Diameter', 'node0').expression).toBe('node_diameter'); // untouched sibling
+    });
+
+    it('null/absent overrides (the default) reproduce the plain manifest exactly -- no accidental behavior change for every existing caller', () => {
+      const withNullOverrides = manifestFromLattice(PATTERN, EXTENT, undefined, { rails: [], ties: [], nodes: [] });
+      const withNoArgAtAll = manifestFromLattice(PATTERN, EXTENT);
+      expect(withNullOverrides).toEqual(withNoArgAtAll);
+    });
+
+    it('buildSketchManifest threads opts.overrides through to the lattice producer', () => {
+      const boardPattern = { ...PATTERN, extent: { mode: 'board' } };
+      const manifest = buildSketchManifest(boardPattern, REGION, { overrides: { rails: [0.5], ties: [], nodes: [] } });
+      const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');
+      expect(rail0Dim.expression).toBe('0.5 in');
+    });
+  });
 });
 
 describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {

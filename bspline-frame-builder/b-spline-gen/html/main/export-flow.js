@@ -32,7 +32,7 @@ import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 import { isCarved, isExported } from '../editor/layers.js';
 import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
-import { latticeOwnedElementsOnLayer } from '../editor/editor-lattice-pattern.js';
+import { latticeOwnedElementsOnLayer, _ownedOnLayer } from '../editor/editor-lattice-pattern.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -147,6 +147,25 @@ export async function _fusionLayerSvg(editor, l, excludePattern) {
  *  SAME declared "does this layer really have lattice content" check the
  *  mixed-layer SVG exclusion below reuses), so a layer only ever earns a
  *  manifest when there's something real for it to represent. */
+/** T75 item 3 (OVR-FUSION): `{rails, ties, nodes}`, each an array of
+ *  override-width-or-null, one entry per REAL owned element of that kind on
+ *  the layer, in `_ownedOnLayer`'s own (DOM/creation) order — the SAME
+ *  order `manifestFromLattice`'s own rail/tie/node loops emit their
+ *  entities in (both walk the identical seeded `computePattern` output),
+ *  so position N here lines up with the Nth entity of that kind by
+ *  construction, with no separate id scheme needed. Seat A's own UI5-item-2
+ *  writes the override VALUE directly into `data-override-width` (Fred:
+ *  "rendered live" — the same attribute that already drives the piece's own
+ *  visible stroke-width); a piece with none reads back `null`, same as
+ *  every other "absent means default" field this codebase already uses. */
+function _overridesForLayer(editor, layerId) {
+    const widthsOf = (kind) => _ownedOnLayer(editor, layerId, kind).map((el) => {
+        const raw = el.node.getAttribute('data-override-width');
+        return raw == null || raw === '' ? null : parseFloat(raw);
+    });
+    return { rails: widthsOf('rail'), ties: widthsOf('tie'), nodes: widthsOf('node') };
+}
+
 export function _fusionLayerManifest(editor, l) {
     if (!editor || l.id == null) return null;
     const editorLayer = Array.isArray(editor._layers) ? editor._layers.find((el) => el.id === l.id) : null;
@@ -154,6 +173,7 @@ export function _fusionLayerManifest(editor, l) {
     if (!latticeOwnedElementsOnLayer(editor, l.id, editorLayer.pattern).length) return null;
     return buildSketchManifest(editorLayer.pattern, boardRegion(editor), {
         layerId: l.id, sketchName: `Layer ${l.id}`,
+        overrides: _overridesForLayer(editor, l.id),
     });
 }
 

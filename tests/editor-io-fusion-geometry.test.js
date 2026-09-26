@@ -104,6 +104,28 @@ describe('getLayerSvg({geometry:"fusion"}) — outline pick', () => {
   });
 });
 
+describe('getLayerSvg({geometry:"fusion"}) — T75 item 3 (OVR-FUSION): a piece\'s own per-piece colour override survives into the Fusion SVG, untouched -- no manifest-side colour mechanism exists (or is needed: Fusion sketch curves have no per-curve colour concept), so this generic data-*/stroke pass-through IS the whole "colour reaches Fusion" story', () => {
+  it('centerline pick: the overridden stroke colour and the data-override-color marker both survive verbatim (never rewritten to the kind\'s shared/default colour)', async () => {
+    const html = '<line x1="0" y1="0" x2="2" y2="0" stroke="#ff00ff" stroke-width="0.2" data-layer="0" data-override-color="#ff00ff"/>';
+    const layers = [{ id: '0', fusionGeometry: 'centerline' }];
+    const editor = mockEditor(html, layers);
+    const { svg } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+    expect(svg).toContain('stroke="#ff00ff"');
+    expect(svg).toContain('data-override-color="#ff00ff"');
+  });
+
+  it('outline pick: the SAME override colour and marker carry over onto the constructed replacement path, alongside every other data-* attribute (the existing, generic "copy every data-* attr + reapply stroke/stroke-width" pass this feature rides on for free)', async () => {
+    const html = '<line x1="0" y1="0" x2="2" y2="0" stroke="#ff00ff" stroke-width="0.2" data-layer="0" data-override-color="#ff00ff" data-override-width="0.2"/>';
+    const layers = [{ id: '0', fusionGeometry: 'outline' }];
+    const editor = mockEditor(html, layers);
+    const { svg } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+    expect(svg).not.toContain('<line');
+    expect(svg).toContain('stroke="#ff00ff"'); // the OVERRIDE colour, not a default/shared one
+    expect(svg).toContain('data-override-color="#ff00ff"');
+    expect(svg).toContain('data-override-width="0.2"');
+  });
+});
+
 describe('getLayerSvg({geometry:"fusion"}) — both pick', () => {
   it('keeps the original centerline element AND adds the outline path alongside it', async () => {
     const html = '<rect x="0" y="0" width="2" height="1" stroke-width="0.1" fill="none" stroke="#000000" data-layer="0"/>';
