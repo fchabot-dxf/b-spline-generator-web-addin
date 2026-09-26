@@ -16,6 +16,10 @@
  * - Typing letters opens a dropdown of the declared names matching the word at the caret, each with its CURRENT
  *   value; ArrowUp/Down move, Enter/Tab insert, Esc closes, tap/click inserts (mousedown is swallowed so the
  *   field keeps focus on mobile).
+ * - RANGE (R2): a formula RESULT is CLAMPED to the field's declared min/max attributes (the same attributes the
+ *   ± steppers clamp to), and the clamp is shown ("= 200 → 96 (max)" while typing, a short note after commit).
+ *   Clamp, not reject: it is what the field already does for a plain typed 200 in Stock Width (applyParam clamps)
+ *   and for the steppers, so one rule covers every way of entering a value. Plain typed numbers are untouched.
  * - Idempotent: attaching twice keeps one binding (the second call just replaces the scope).
  *
  * type="number" inputs cannot hold "width/2", so they are switched to type="text" (min/max/step attributes stay,
@@ -58,6 +62,24 @@ export function formatValue(v, unit = '') {
 export function wordAtCaret(text, caret) {
   const m = String(text).slice(0, caret).match(/[A-Za-z_][A-Za-z0-9_]*$/);
   return m ? { start: caret - m[0].length, prefix: m[0] } : null;
+}
+
+/** The input's declared [min, max] (missing/blank attribute = unbounded). */
+export function declaredRange(input) {
+  const read = (attr, dflt) => {
+    const raw = input.getAttribute(attr);
+    const n = raw == null || raw.trim() === '' ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : dflt;
+  };
+  return [read('min', -Infinity), read('max', Infinity)];
+}
+
+/** Clamp `v` into the input's declared range: { value, bound: null | 'min' | 'max' }. */
+export function clampToField(input, v) {
+  const [lo, hi] = declaredRange(input);
+  if (v < lo) return { value: lo, bound: 'min' };
+  if (v > hi) return { value: hi, bound: 'max' };
+  return { value: v, bound: null };
 }
 
 function onCaptured(e) {
@@ -186,7 +208,12 @@ export function attachFormula(input, scope) {
     st.updateDropdown();
     // Mid-name ("heig" while the dropdown offers "height") is not an error yet — keep the preview neutral.
     if (!r.ok && st.items.length) st.showPreview('= …', false);
-    else st.showPreview(r.ok ? `= ${+r.value.toFixed(6)}` : `✕ ${r.error}`, !r.ok);
+    else if (!r.ok) st.showPreview(`✕ ${r.error}`, true);
+    else {
+      const c = clampToField(input, r.value);
+      const shown = `= ${+r.value.toFixed(6)}`;
+      st.showPreview(c.bound ? `${shown} → ${+c.value.toFixed(6)} (${c.bound})` : shown, false);
+    }
   };
 
   /** Evaluate the field's formula; true when the field now holds a committed number. */
@@ -200,12 +227,17 @@ export function attachFormula(input, scope) {
       if (revertOnError) input.value = st.lastGood;
       return false;
     }
-    const value = Number(r.value.toFixed(10));
+    const c = clampToField(input, r.value);
+    const value = Number(c.value.toFixed(10));
     input.value = String(value);
     st.lastGood = input.value;
     st.hidePreview();
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
+    if (c.bound) {
+      st.showPreview(`${+r.value.toFixed(6)} clamped to ${value} (${c.bound})`, false);
+      setTimeout(() => { if (st.preview && !st.preview.classList.contains('is-error')) st.hidePreview(); }, 2500);
+    }
     return true;
   };
 

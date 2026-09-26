@@ -1,8 +1,11 @@
-// FORMULA-FIELDS R1 item 5: drive the stock Width field in a real (headless) Chrome with REAL key events and taps,
-// screenshot the autocomplete dropdown open, and read back the committed value from the app's own P.
+// FORMULA-FIELDS R1 item 5 + R2 item 3: drive the stock Width field AND (R2) the Vector Stamping V-Bit Angle field
+// in a real (headless) Chrome with REAL key events and taps, screenshot the autocomplete dropdown open, and read
+// back the committed value from the app's own P. V-Bit Angle has a declared range (10-170), so it also proves the
+// R2 range clamp on a real gesture (a formula result above 170 commits as 170).
 //   python tools/serve_app.py 8780      (serves the palette WITH its stylesheets)
 //   node tools/repro/formula_field_shots.mjs <outPrefix> <paletteUrl> [desktop|mobile] [cdpPort]
-// Writes <outPrefix>_dropdown.png and <outPrefix>_committed.png; prints the checks as JSON (ok:false on any miss).
+// Writes <outPrefix>_dropdown.png, <outPrefix>_committed.png, <outPrefix>_angle.png; prints the checks as JSON
+// (ok:false on any miss).
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -50,8 +53,9 @@ const tap = async (sel) => {
   }
   await sleep(200); return true;
 };
-const state = async () => JSON.parse(await evalJS(`(async()=>{ const { P } = await import('./core/state.js');
-  const f=document.getElementById('widthIn'); return JSON.stringify({ value: f.value, type: f.type, P: P.widthIn, H: P.heightIn,
+const state = async (id = 'widthIn') => JSON.parse(await evalJS(`(async()=>{ const { P } = await import('./core/state.js');
+  const f=document.getElementById(${JSON.stringify(id)}); return JSON.stringify({ value: f.value, type: f.type,
+    P: P.widthIn, H: P.heightIn, A: P.stampVBitAngle,
     focused: document.activeElement===f, dropdown: [...document.querySelectorAll('.formula-dropdown li')].map(li=>li.textContent),
     preview: document.querySelector('.formula-preview')?.textContent || '',
     steppers: f.closest('.cad-stepper')?.querySelectorAll('button').length || 0 }); })()`));
@@ -109,8 +113,25 @@ await tap('.panel-stock .cad-stepper button:last-child');
 const s6 = await state();
 checks.stepperOk = s6.P === 9 && s6.steppers === 2;
 
+// 6. (R2 item 3) a second, non-stock section: Vector Stamping's V-Bit Angle — declared range [10,170] — a formula
+// result above the max commits CLAMPED, per R2 item 1.
+await evalJS(`(()=>{ const s=document.querySelector('.panel-stamp'); const h=s.querySelector('.panel-header');
+  if (h.classList.contains('collapsed') || getComputedStyle(s.querySelector('.panel-body')).display==='none') h.click();
+  s.scrollIntoView({block:'start'}); })()`);
+await sleep(500);
+await tap('#stampVBitAngle');
+await evalJS(`document.getElementById('stampVBitAngle').select()`);
+await typeText('angle*3');
+const s7 = await state('stampVBitAngle');
+checks.angleTyped = s7;
+await shot('angle');
+await press('Enter');
+const s8 = await state('stampVBitAngle');
+checks.angleClamped = s8.A === 170 && s8.value === '170';
+
 const ok = checks.halfTypedNotApplied && s1.dropdown.length === 1 && /^height/.test(s1.dropdown[0]) && checks.inserted
-  && checks.committedOk && checks.badKept && checks.plainOk && checks.stepperOk && errors.length === 0;
+  && checks.committedOk && checks.badKept && checks.plainOk && checks.stepperOk && checks.angleClamped
+  && errors.length === 0;
 console.log(JSON.stringify({ ok, mode: MODE, checks, errors: errors.slice(0, 5) }, null, 1));
 ws.close(); chrome.kill();
 process.exit(ok ? 0 : 1);
