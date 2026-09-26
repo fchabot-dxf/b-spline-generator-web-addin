@@ -1302,6 +1302,12 @@
         <div style="display:flex; align-items:center; gap:10px;">
           <span style="font-size:9px; font-weight:700; color:#666; text-transform:uppercase; letter-spacing:0.08em;">Active Layer</span>
           <span id="editorActiveLayerLabel" style="font-size:11px; font-weight:700; color:#333; padding:3px 10px; background:#eee; border:1px solid #ccc; border-radius:3px; min-width:90px; text-align:center;">—</span>
+          <!-- FB-APP F8: [Frame | Artwork] modes (main/frame-panel.js). Frame = the
+               frame's template + params with the live cut profile; Artwork = the editor. -->
+          <div id="editorModeTabs" role="tablist" style="display:flex; border:1px solid #ccc; border-radius:3px; overflow:hidden;">
+            <button type="button" id="editorTabFrame" role="tab" data-editor-tab="frame" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Frame</button>
+            <button type="button" id="editorTabArtwork" role="tab" data-editor-tab="artwork" class="editor-fillmode-btn active" style="font-size:11px; padding:3px 12px; border:none;">Artwork</button>
+          </div>
         </div>
         <div class="editor-header-actions" style="display:flex; gap:8px; align-items:center;">
           <!-- T32 (Fred: undo/redo out of the left tool rail): ONE group,
@@ -1528,6 +1534,8 @@
         <div style="flex:1; background:#ececec; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;" id="editorCanvasContainer">
           <div class="canvas-grid" style="position:absolute; top:0; left:0; right:0; bottom:0; background-image: radial-gradient(circle, #ccc 1.2px, transparent 1.2px); background-size: 20px 20px; opacity:0.7;"></div>
           <div id="editorSVGContainer" style="position:relative; z-index:2; width:100%; height:100%;"></div>
+          <!-- FB-APP F8: in the Frame tab the artwork is view-only (no tool reaches it). -->
+          <div id="editorFrameShield" style="display:none; position:absolute; inset:0; z-index:3; cursor:default;"></div>
           <!--
             Status hint bar — small, unobtrusive overlay at the bottom of the
             canvas. setMode() and the pen-tool anchor flow update its text so
@@ -2319,6 +2327,24 @@
           <div id="editorShapeLatticePanelFooter" style="display:flex; flex-direction:column; gap:10px;">
             <button id="shapeLatticeGenerate" type="button" class="cad-btn cad-btn-primary" style="height:32px; border-radius:3px; font-weight:700; cursor:pointer;">Generate</button>
             <button id="shapeLatticeDetachAll" type="button" style="height:28px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Detach all</button>
+          </div>
+        </aside>
+
+        <!-- FB-APP F8: the Frame tab's right column (the frame's template + params + wood;
+             gate 3.2 (c): numeric fields, no on-canvas handles yet). -->
+        <aside class="editor-layers-panel" id="editorFramePanel" style="display:none;">
+          <div class="layers-header"><span>Frame</span></div>
+          <div style="padding:10px; display:flex; flex-direction:column; gap:10px; font-size:11px;">
+            <label>Template
+              <select id="editorFrameTemplate" style="width:100%; margin-top:4px;"></select>
+            </label>
+            <label id="editorFrameThicknessRow">Frame thickness (in)
+              <input type="number" id="editorFrameThickness" step="0.0625" style="width:100%; margin-top:4px;">
+            </label>
+            <label id="editorFrameWoodRow">Wood
+              <select id="editorFrameWood" style="width:100%; margin-top:4px;"></select>
+            </label>
+            <div id="editorFrameNote" style="color:#666;">The outline follows the template's shape fitted to Fusion. Shape handles come later.</div>
           </div>
         </aside>
 

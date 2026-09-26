@@ -21,6 +21,8 @@ export function wireGlobalEvents(preview) {
         // (window.svgEditor.undo/redo) — unifiedUndo/Redo already
         // early-out via isEditorOpen() so they don't double-fire.
         const editorOpen = isEditorOpen();
+        // FB-APP F8: in the editor's Frame tab the artwork is read-only, so its undo stack is too.
+        if (editorOpen && window.svgEditor?._artworkLocked) return;
 
         if (e.key === 'z' && !e.shiftKey) {
             e.preventDefault();

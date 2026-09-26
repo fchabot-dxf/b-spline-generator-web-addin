@@ -85,15 +85,9 @@ FRAME_REGIONS = {
     "surround": "surround_rect",                           # p03_05
 }
 FRAME_FEATURES = COMMON_FRAME_FEATURES
-# F6: the app preset's shape params for this template (gate 3.2 = no handles
-# yet: the frame's shape comes from the template + these declared params).
-# FITTED to the live-recorded S4 golden at the 7x9 reference board
-# (tests/fixtures/frame-parity/template_2_7x9.json):
-#   neck half-width 2.009 in -> neckWidth 0.618; neck arc centre 2.696 in -> skeletonX 0.83;
-#   neck arc centre 1.363 in below the top -> neckLength 0.16. Fusion's hip centre is not on the neck
-#   column (0.672 in radius vs the app's shared-column 0.554), and its solve is not scale-invariant:
-#   a close match at other sizes is S4's parity job.
-FRAME_SHAPE_PARAMS = {"neckWidth": 0.618, "skeletonX": 0.83, "neckLength": 0.16}
+# F8: this template's app shape is a MODEL fitted from the recorded Fusion
+# goldens (fb_engine/frame_shape_fit.py, run by tools/gen_frame_defs.py);
+# the F6 constant fractions it replaces could not match every board size.
 
 
 def get_template_logic(ui_data=None):
@@ -130,6 +124,5 @@ def get_template_logic(ui_data=None):
             "silhouettePreset": FRAME_SILHOUETTE_PRESET,
             "regions": FRAME_REGIONS,
             "features": [dict(f) for f in FRAME_FEATURES],
-            "shapeParams": dict(FRAME_SHAPE_PARAMS),
         },
     }

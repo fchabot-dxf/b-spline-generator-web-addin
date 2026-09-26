@@ -649,3 +649,178 @@ tab is gated (3.2).
     terrain rebuild while a frame is on.
   - Not optimised (not asked). A bbox prefilter or a raster mask would cut it if it matters.
 - Full vitest: **1403 passed / 76 files, 0 failed**. Python 120 pass, frame-defs fresh.
+
+
+## 🔨 turn 14 — F8 (seat C, epoch 1): S4 parity, editor Frame/Artwork tabs, true inner offset, the bar-top BLOCKER, the focus rule
+
+Commits (fb-app, all pushed): `2a039a1` item 1 parity · `a9d6fc5` items 2-4 + the true-offset
+amendment · `742ca5b` the bar-top blocker · `6f6f043` the focus rule / artwork lock / one line colour.
+The Trim offset amendment is **not wired: it is a GATE** (below).
+
+### Item 1: S4 parity (committed as 2a039a1 earlier this turn)
+- **Cause of the 12x6 gap:** the app solved the template with one fixed set of fractions, and one
+  construction was missing a degree of freedom. Fusion's T1 waist at 12x6 is a MAJOR arc (235°).
+- **Fix:** a model fitted to the goldens (`fb_engine/frame_shape_fit.py`, emitted in frame-defs as
+  `shapeModel`), major-arc support in the silhouette engine, and optional waist/body radii.
+  My F5 guard's "half-turn" arc rule was wrong: it is now a full turn.
+- **Tolerance 0.1 in, measured both ways:** T1 7x9 0.021, 12x6 0.023 (was 0.44), 5.51x1.97 0.043;
+  T2 7x9 0.010, 12x6 0.065. T2 5.51x1.97 is excluded and the exclusion is declared in the fit: Fusion's
+  own body arc there is not tangent to the horn.
+
+### Items 2-4: editor [Frame | Artwork] tabs (a9d6fc5)
+- **Frame tab:** template, thickness and wood fields editing the SAME frame record as the sidebar,
+  with the live cut profile.
+- **Artwork tab:** today's editor with the profile as background.
+- **[Edit frame shape]** opens the Frame tab; "Open SVG Editor" opens the Artwork tab.
+- **Mobile:** the drawer tab label follows the mode (Frame / Layers).
+- **Round trip test** (`tests/frame-tabs.test.js`): Frame → Artwork → Frame → save → reload keeps the
+  record intact, and the artwork layer records zero writes other than its display opacity.
+- **Fred: "see the frame thickness and miter lines in the editor".** Done: the band (wood tint), the
+  inner edge and the 4 miters, drawn from the same inner loop the 3D bars use.
+
+### AMEND: the inner edge is the TRUE offset (a9d6fc5)
+- **New module:** `editor/outline-offset.js`.
+  - Lines are shifted along their inward normal; arcs stay concentric at r − t (convex) or r + t
+    (concave). Pieces are re-joined at tangent joints and intersected at corners.
+  - A collapsed piece (convex r ≤ t, or a piece whose joints cross) is merged across. It stays as a
+    zero-length placeholder, so the result has the same count and order (bars and miters pair by index).
+- **Root choice, the one subtle part:** of two intersections, take the one on the true erosion
+  (inside, and ≥ t from every piece), otherwise the one nearest the original joint.
+  - Nearest-reference alone picked the outside root at T1 4x3.5.
+  - Distance-equals-t alone broke the merged regime.
+  - The sweep caught both.
+- **No inner edge when the frame does not fit** (the declared fit rule). Fusion's own offset at T1
+  5.51x1.97 flips outside the board, and the test asserts both facts.
+- **Inner edge vs Fusion's `inner_*` curves:** T1 7x9 0.020, 12x6 0.016; T2 7x9 0.010, 12x6 0.064 in.
+  This is the outline's own gap carried through.
+- **Bar volume vs the goldens:** T1 7x9 **−0.18%**, 12x6 **−0.09%**, T2 7x9 **−0.00%**, 12x6
+  **−0.35%** (F7: −11.1 / −18.9 / −5.4 / −10.3%). The tolerance goes from 0.20 to **0.01**.
+- **Mutations** on the offset: no collapse (10 red), sign flipped (14 red), nearest-reference root only
+  (1 red), the pre-change inner edge (8 red).
+
+### F8 BLOCKER: bar tops on the board's BOTTOM face (742ca5b)
+**MEASURED first** (`tools/repro/frame_bartop_measure.mjs`; Fred's two scenes, T1 Mahogany and T2 Ash,
+7x9, carve 1.5, read back from the DRAWN meshes).
+- The tops were **not flat**: 541-668 distinct z values.
+- They were **never above the drawn top face**, and on the right surface at default settings (median
+  0.004 in).
+- So the advisor's "flat tops near the top" reading was not it. Three real causes:
+  1. **Position error.** The thickened underside is offset along the surface NORMAL, so its vertices
+     sit off the x,y grid: 0.15 in at Thicken 0.2, 0.54 in at 1.0. The bars sampled it as a regular
+     grid, so the bar top missed the drawn bottom face by up to **0.37 in** (p95 0.18) at Thicken 1.0.
+     This is Fred's "top side isn't adjusted to the bottom face".
+  2. **Centroid trim.** It left a sawtooth gap inside the outline where the bar shows from above:
+     0.13% of the ring at Resolution 0.05, **3.2% at 0.15, 7% at 0.4**, up to 0.26 in in from the
+     outline. This is the wood poking through.
+  3. **The white ledge.** The outline wall was the panel material with `vertexColors = false`, which
+     renders as plain #ffffff.
+
+**Fix** (`core/preview/frame-mesh.js`):
+- `panelSurface`: heights from the drawn triangles themselves. The bar top is the LOWEST face at x,y,
+  i.e. the underside, or the slanted side wall where the offset underside pulled in.
+- `clipPanelToOutline`: triangles wholly inside stay in the panel index. Triangles the outline crosses
+  are clipped exactly (triangle ∩ polygon, Weiler-Atherton against the convex triangle) into a separate
+  `frame-panel-rim` mesh, with position, colour, uv and normal interpolated barycentrically, so there
+  is no shading seam.
+  - It is a separate mesh because appending vertices to the panel geometry would break
+    `setThickenOverlay` (colour arrays sized to the grid) and the export.
+- The wall (`frame-panel-wall`) carries the panel's own top colours, as the panel's own side walls do.
+
+**Removed, with every link swept:**
+- `trimIndices` and `sampleGridZ`: no production caller left.
+- Their tests: "sampleGridZ reads the underside" is deleted.
+- The sweep's on-grid underside check: it could not fail on the real bug (on-grid underside), so it is
+  replaced by a check against the drawn faces.
+
+**Degenerate cases found by the tests on the way** (each fixed at the cause):
+- Sutherland-Hodgman bridges two pieces when a concave outline crosses one triangle twice, so I
+  replaced it with Weiler-Atherton.
+- A chain entering or leaving exactly at a polygon vertex on the boundary was dropped (strict ties).
+- A triangle only touching the outline was decided by its vertices, which are ambiguous on the
+  boundary; it is now decided by the centroid.
+- A chain running along a triangle edge with the interior outside is zero-width; it is now dropped.
+
+**Tests:**
+- `tests/frame-bartop-drawn.test.js`: real `buildSolidMesh`, normal-offset underside,
+  `tests/helpers/drawn-panel.js` (its own face lookup, independent of `panelSurface`).
+- Red first on the old code: bar tops up to 0.94 in off the drawn underside, bars visible from above
+  (up to 485 samples), panel drawn outside the outline (up to 1046).
+- Plus area conservation: clipped top-face area == outline area at spacing 1.0 / 0.4 / 0.15.
+- The sweep and frame-3d now use a real solid.
+- Mutations: the old frame-mesh (8 red); first piece only (1); strict ties (2); vertex-decided (2);
+  drop-filter off (2); wall uncoloured (1).
+
+**After the fix, in the app:** 12 combos (T1/T2 × defaults, Thicken 1.0, Resolution 0.4 / 0.15 +
+Thicken 0.5 / 0.03, Carve 3 + new seed):
+- bar top vs the drawn underside **0**, bars visible from above **0**, tops above the top face **0**,
+  wall colours on;
+- pixel check on the close-up: wall (190,160,118) tan, bar (114,55,40) mahogany.
+- Shots: `1942_F8bartop_*`.
+- `refreshFrame` takes 153 ms with a frame (was 156).
+
+**Not covered:**
+- **Sculpt Bottom** is a paint brush, not a DOM toggle, so it was not driven in the app. It is covered
+  by construction (it only moves the underside vertices, and the heights are now read from the drawn
+  faces) and by the sculpted fixtures. A live Sculpt Bottom check is one for Fred.
+- **Known gap:** the drape overlay shares the panel geometry, so it does not cover the ≤ 1-cell rim
+  mesh.
+
+### AMEND: Frame tab shows the artwork faded + locked; symmetric focus rule; one line colour (6f6f043)
+- **`setEditorFocus(editor, tab)`** (`editor-frame-profile.js`):
+  - Frame tab: the artwork layer is faded (the same `_sketchLayer`, no second copy),
+    `editor._artworkLocked` is set, and the art is deselected.
+  - Artwork tab: the frame profile and its shading are the faded ones.
+- One declared value, **`INACTIVE_LAYER_OPACITY = 0.4`**, for both tabs.
+- **The lock** is read by the editor's own keyboard gate (`_isEditorActive`), which covers Delete, tool
+  keys and Ctrl+C/V/A, and by the global Ctrl+Z/Y.
+  - Tested: the editor gate, through the real `initInteraction` with real keydown events.
+  - Not tested: the global undo line (`wireGlobalEvents` pulls in the engine).
+- **`FRAME_OUTLINE_COLOR`** for every frame line; the green outline is gone.
+- The new tests fail 4/22 on the old code.
+- Shots with a real artwork (paths + a circle): the artwork's SVG is read back **unchanged** across the
+  switch. `1947_F8focus_*`, T1/T2 × desktop/mobile.
+- **Mix-up noted:** Fred's message "can we show the art in the frame editor" first reached me directly.
+  I began a no-dim change, Fred said it wasn't for me, and I reverted it (clean tree, nothing
+  committed). It then arrived properly as this amendment.
+
+### GATE: the "Trim offset" field (boundingboxoffset). NOT wired.
+The amendment said to check `readOnly` first, and it does **not** mean "the palette hides it".
+- In the Python build, `ReadOnly` marks a **master parameter**. `fb_engine/frame_engine.py`
+  (`_create_skeletal_parameters`, PHASE 1, around l.309):
+  - creates it once, from the template default (0.25 in), only if it does not exist yet
+    (`if existing: continue`);
+  - never feeds it a UI or payload value (PHASE 2, the resolver, skips ReadOnly).
+- So a changed value sent from the app would be **silently ignored by the build**. The preview would
+  then no longer match Fusion.
+- The standalone palette also treats it as external, as a hidden input
+  (`ui/html/sketch_builder_palette.html` ~l.324).
+
+Options:
+- **(A)** Make `boundingboxoffset` a normal (non-ReadOnly) template param in `template_data.py`, so
+  the resolver writes the payload value on every build. This changes the standalone palette too (it
+  becomes an editable field). It is a Python change on the add-in side.
+- **(B)** Keep it ReadOnly and make it app-owned like widthIn/heightIn (the app writes the Fusion
+  user parameter). This touches the ownership registry in `parameter_schema.py`, which R4 is editing
+  (hands off in F8/F9).
+- **(C)** Preview-only field: rejected, it breaks preview == Fusion.
+
+My pick: **(A)**. It is the declared path the other frame params already take, and it creates no new
+Fusion param.
+
+### Fred's question "are there handles on the profile arcs?"
+Not yet: gate 3.2 was (c), numeric fields. Fred has since chosen (a), so handles are F9 (per the
+amendments: one binding table, param-bound only once proven by goldens, seeded otherwise).
+
+### Other
+- Merge-hygiene heads-up noted: after merging main, rerun `tools/gen_frame_defs.py`, never
+  hand-resolve.
+- `FB-APP-DESIGN.md` §4 lattice row (coordination amendment) not done this turn.
+- Gates:
+  - fast tier: 25 files / 450 tests green after the last change;
+  - earlier this turn: frame suites 88/88;
+  - the full vitest was 1415 before the blocker work. I did not re-run the full suite (it is the
+    advisor's merge gate).
+- **Processes:** the http.server (8784) and my Chrome instances are to be stopped at pass. Capacity
+  is fine; no fresh session needed.
+
+- **F4 item 4: DONE, live-verified by Fred** on his machine ("frame builder looks fine"; unit resolver / addOffset2 / fit rule, merged 6dfdcaf). Noted: lane2 (BOUNDARY-GUIDE) edits core/preview/index.js; my 3D work stays in frame-mesh.js (this turn did not touch index.js).

@@ -9,44 +9,23 @@ import {
   frameCutProfile, frameSolidSpec, frameSnapGate, frameFitRegion,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import {
-  sampleOutline, toWorld, pointInPolygon, trimIndices, sampleGridZ, ringArrays, applyFrameToPanel,
+  sampleOutline, toWorld, pointInPolygon, ringArrays, applyFrameToPanel, frameLoopsWorld,
 } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
-import { buildHeightField } from '../bspline-frame-builder/b-spline-gen/html/core/preview/terrain-mesh.js';
+import { FakeTHREE, carvedPanel } from './helpers/drawn-panel.js';
 import { fitView } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-view.js';
 
 const BOARD = { widthIn: 7, heightIn: 9 };
 const rec = (id, extra = {}) => normalizeFrameRecord({ templateId: id, ...extra });
 
-// A minimal stand-in for the THREE classes applyFrameToPanel touches.
-const FakeTHREE = {
-  DoubleSide: 2,
-  BufferGeometry: class {
-    constructor() { this.attributes = {}; this.index = null; this.userData = {}; }
-    setAttribute(k, a) { this.attributes[k] = a; }
-    setIndex(ix) { this.index = { array: Array.isArray(ix) ? ix : Array.from(ix) }; }
-    computeVertexNormals() {}
-  },
-  Float32BufferAttribute: class { constructor(arr, n) { this.array = Float32Array.from(arr); this.itemSize = n; } },
-  Mesh: class { constructor(g, m) { this.geometry = g; this.material = m; } },
-  MeshPhongMaterial: class { constructor(o) { Object.assign(this, o); } },
-};
-
-function panel(W, H, nx, nz, topZ = 2, botZ = 0.5) {
-  const top = buildHeightField(new Float32Array(nx * nz).fill(topZ), nx, nz, W, H);
-  const bot = buildHeightField(new Float32Array(nx * nz).fill(botZ), nx, nz, W, H).pos;
-  const g = new FakeTHREE.BufferGeometry();
-  g.setAttribute('position', new FakeTHREE.Float32BufferAttribute(top.pos, 3));
-  g.setIndex(top.indices);
-  const mat = { clone() { return { ...this }; } };
-  return { mesh: new FakeTHREE.Mesh(g, mat), grid: { W, H, nx, nz, topPos: top.pos, botPos: bot } };
-}
+/** A flat solid panel (the real buildSolidMesh): top at topZ, underside at botZ. */
+const panel = (W, H, nx, nz, topZ = 2, botZ = 0.5) => carvedPanel(W, H, nx, nz, () => topZ, topZ - botZ);
 
 describe('one outline source (editor profile == 3D outline == the definition the build reads)', () => {
   it.each(['template_1', 'template_2'])('%s: the 3D spec samples exactly the editor cut profile', (id) => {
     const prof = frameCutProfile(FRAME_DEFS, rec(id), BOARD);
     const spec = frameSolidSpec(FRAME_DEFS, rec(id), BOARD);
     expect(spec.outline).toEqual(sampleOutline(prof.primitives));
-    expect(spec.inner).toHaveLength(spec.outline.length); // outer/inner correspond point-for-point
+    expect(spec.innerPrimitives).toHaveLength(prof.primitives.length); // outer/inner pair by index (the bars)
   });
 
   it('no frame -> no 3D spec', () => {
@@ -64,11 +43,11 @@ describe('one outline source (editor profile == 3D outline == the definition the
 });
 
 describe('trimmed panel', () => {
-  it.each(['template_1', 'template_2'])('%s: every kept triangle lies inside the outline, and some are cut', (id) => {
+  it.each(['template_1', 'template_2'])('%s: every kept triangle lies inside the outline, the cut ones become the rim', (id) => {
     const { mesh, grid } = panel(7, 9, 71, 91);
     const full = mesh.geometry.index.array.length;
     const extra = applyFrameToPanel(FakeTHREE, mesh, grid, frameSolidSpec(FRAME_DEFS, rec(id), BOARD));
-    const poly = toWorld(frameSolidSpec(FRAME_DEFS, rec(id), BOARD).outline, 7, 9);
+    const poly = frameLoopsWorld(frameSolidSpec(FRAME_DEFS, rec(id), BOARD), grid).outer; // the SAME loop the trim uses
     const ix = mesh.geometry.index.array, pos = mesh.geometry.attributes.position.array;
     expect(ix.length).toBeLessThan(full);
     for (let t = 0; t < ix.length; t += 3) {
@@ -76,7 +55,7 @@ describe('trimmed panel', () => {
       const cy = (pos[ix[t] * 3 + 1] + pos[ix[t + 1] * 3 + 1] + pos[ix[t + 2] * 3 + 1]) / 3;
       expect(pointInPolygon(cx, cy, poly)).toBe(true);
     }
-    expect(extra.map((m) => m.name || 'wall')).toEqual(['wall', 'frame-bars']);
+    expect(extra.map((m) => m.name)).toEqual(['frame-panel-rim', 'frame-panel-wall', 'frame-bars']);
   });
 
   it('no frame = unchanged panel (the full index is restored exactly)', () => {
@@ -118,10 +97,6 @@ describe('bars', () => {
     expect(() => ringArrays([{ x: 0, y: 0 }], [], 0, () => 1)).toThrow(/correspond/);
   });
 
-  it('sampleGridZ reads the underside', () => {
-    const { grid } = panel(7, 9, 8, 10, 2, 0.5);
-    expect(sampleGridZ(grid.botPos, 8, 10, 7, 9, 1.23, -2.1)).toBeCloseTo(0.5, 9);
-  });
 });
 
 describe('editor grid / snap / fit follow the outline (AMEND 1)', () => {

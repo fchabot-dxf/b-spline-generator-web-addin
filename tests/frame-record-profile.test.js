@@ -9,7 +9,8 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { P, persistableP, saveLastSession, loadLastSession } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
-  frameCutProfile, frameFit, drawFrameProfile, setFrameProfileProvider, FRAME_PROFILE_GROUP_ID,
+  frameCutProfile, frameFit, drawFrameProfile, setFrameProfileProvider, FRAME_PROFILE_GROUP_ID, frameInnerProfile, frameMiters,
+  FRAME_OUTLINE_COLOR, INACTIVE_LAYER_OPACITY, setEditorFocus,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 
 const T1 = 'template_1', T2 = 'template_2';
@@ -118,7 +119,9 @@ describe('drawFrameProfile (editor background)', () => {
     const prof = drawFrameProfile(editor);
     const g = bg.findOne('#' + FRAME_PROFILE_GROUP_ID);
     expect(g).toBeTruthy();
-    expect(g.children.map((c) => c.cls[0])).toEqual(['frame-cutaway', 'frame-cut-profile']);
+    // F8 (Fred): the frame band (thickness), its inner edge and the 4 miters, under the profile outline.
+    expect(g.children.map((c) => c.cls[0])).toEqual(['frame-cutaway', 'frame-band', 'frame-inner-edge',
+      'frame-miter', 'frame-miter', 'frame-miter', 'frame-miter', 'frame-cut-profile']);
     expect(g.children[0].attrs['fill-rule']).toBe('evenodd');
     expect(g.children[0].attrs.d.startsWith('M0 0 H7 V9 H0 Z ')).toBe(true);
     expect(sketch.children).toEqual([]);
@@ -147,5 +150,49 @@ describe('drawFrameProfile (editor background)', () => {
     const prof = drawFrameProfile(editor);
     expect(prof.defects.length).toBeGreaterThan(0);
     expect(bg.findOne('#' + FRAME_PROFILE_GROUP_ID)).toBeNull();
+  });
+});
+
+describe('frame thickness + miters (F8, Fred)', () => {
+  it.each([T1, T2])('%s: 4 miters, from each outer corner to its inner corner (the frame thickness down, and inward)', (id) => {
+    const r = normalizeFrameRecord({ templateId: id });
+    const outer = frameCutProfile(FRAME_DEFS, r, { widthIn: 7, heightIn: 9 });
+    const inner = frameInnerProfile(FRAME_DEFS, r, { widthIn: 7, heightIn: 9 });
+    const miters = frameMiters(outer.primitives, inner.primitives);
+    expect(miters).toHaveLength(4);
+    for (const m of miters) {
+      expect(Math.abs(m.inner.y - m.outer.y)).toBeCloseTo(0.75, 9); // frame_thickness 0.75 in
+      expect(Math.abs(Math.abs(m.inner.x - m.outer.x))).toBeGreaterThan(0); // runs inward, not along an edge
+    }
+  });
+});
+
+describe('frame lines + the focus rule (F8, Fred)', () => {
+  const drawn = (tab) => {
+    const { editor, bg, sketch } = mockEditor();
+    if (tab) setEditorFocus(editor, tab);
+    setFrameProfileProvider(() => ({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: T1 }) }));
+    drawFrameProfile(editor);
+    return { editor, g: bg.findOne('#' + FRAME_PROFILE_GROUP_ID), sketch };
+  };
+
+  it('every frame line (outline, inner edge, miters) is drawn in the ONE declared colour', () => {
+    const { g } = drawn();
+    const stroked = g.children.filter((c) => c.attrs.stroke);
+    expect(stroked.map((c) => c.cls[0]).sort()).toEqual(['frame-cut-profile', 'frame-inner-edge',
+      'frame-miter', 'frame-miter', 'frame-miter', 'frame-miter']);
+    expect(new Set(stroked.map((c) => c.attrs.stroke.color))).toEqual(new Set([FRAME_OUTLINE_COLOR]));
+  });
+
+  it('Artwork tab: the frame is the faded one; Frame tab: the artwork is, with the SAME declared value', () => {
+    const art = drawn('artwork');
+    expect(art.g.attrs.opacity).toBe(INACTIVE_LAYER_OPACITY);
+    expect(art.sketch.attrs.opacity).toBe(null);
+    const frame = drawn('frame');
+    expect(frame.g.attrs.opacity).toBeUndefined(); // full
+    expect(frame.sketch.attrs.opacity).toBe(INACTIVE_LAYER_OPACITY);
+    // switching back on the same editor restores both
+    setEditorFocus(frame.editor, 'artwork');
+    expect([frame.g.attrs.opacity, frame.sketch.attrs.opacity]).toEqual([INACTIVE_LAYER_OPACITY, null]);
   });
 });
