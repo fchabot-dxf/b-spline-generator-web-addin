@@ -1729,7 +1729,19 @@ def test_without_a_shared_kind_to_sketch_a_projection_gracefully_misses_instead_
     projection logs a MISS and is skipped, the dependent constraint then
     logs its own MISS too, and the build finishes cleanly either way,
     never raising past build_constrained_sketch (this file's own header
-    docstring: skip-and-report, never abort)."""
+    docstring: skip-and-report, never abort).
+
+    T76 item 6 ("Hidden kind-layer: not exported; dependents keep exact
+    geometry but lose those links"): from Ties' own point of view, this is
+    OBSERVABLY IDENTICAL to what happens when Rails is hidden and never
+    exported at all -- either way, `kind_to_sketch.get('rails')` comes
+    back empty by the time Ties builds (never populated at all, if Rails
+    was hidden and _import_all_svg_layers never called build_constrained_
+    sketch for it; populated into a DIFFERENT, unshared dict here, as this
+    test models it) -- so the same graceful-MISS path this test proves
+    fires either way. Ties' own entities are still created below with
+    their real, correct geometry -- only the cross-kind LINK is lost,
+    never the shape itself."""
     design = FakeDesign()
     build_constrained_sketch(design.rootComponent, design, _rails_kind_manifest(), sketch_name_override="Rails")
     ties_summary = build_constrained_sketch(

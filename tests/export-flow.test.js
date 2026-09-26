@@ -425,6 +425,25 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
     for (const p of manifest.projections) expect(['rails', 'ties']).toContain(p.sourceKind);
   });
 
+  it('T76 item 6 (hidden kind-layer, dependents keep exact geometry): a SIBLING kind-layer\'s own visible/hidden state has NO effect on another kind-layer\'s own manifest at all -- Nodes\' own entities/projections come out byte-for-byte identical whether Ties is visible or hidden', () => {
+    const editorTiesVisible = makeKindSplitEditor();
+    const editorTiesHidden = makeKindSplitEditor();
+    editorTiesHidden._layers.find((l) => l.id === 'tiesL').visible = false;
+
+    const manifestA = _fusionLayerManifest(editorTiesVisible, { id: 'nodesL' });
+    const manifestB = _fusionLayerManifest(editorTiesHidden, { id: 'nodesL' });
+    // _fusionLayerManifest itself never reads ANY layer's own `.visible` --
+    // visibility gating happens one level up, in sendToFusion's own
+    // layersToExport filter (isExported), which decides WHETHER this
+    // function ever gets called for a given layer at all, not what it
+    // returns once called. Nodes' own geometry/projections are therefore
+    // computed the SAME way regardless -- "dependents keep exact
+    // geometry" holds by construction, not by a special case added here.
+    expect(manifestB).toEqual(manifestA);
+    expect(manifestB.entities.length).toBeGreaterThan(0);
+    expect(manifestB.projections.length).toBeGreaterThan(0);
+  });
+
   it('a per-kind-layer manifest\'s own overrides are read from THAT KIND\'s own owned elements, not whichever layer id was asked about', () => {
     const pattern = {
       spacing: 0.25,
