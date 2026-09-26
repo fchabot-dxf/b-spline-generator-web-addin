@@ -318,6 +318,62 @@ export const MIGRATIONS = [
       }
     },
   },
+  {
+    id: 'box-lattice-margin-to-size',
+    // T75 (LAT-SIZE, advisor's own decision: ONE shared size concept for
+    // both lattice tools): `PATTERN.margin` (lattice CELLS) is retired as
+    // the box Lattice's own fill-area driver, replaced by `PATTERN.size`
+    // (real inches, shared with the Shape Lattice tool's own field).
+    // An already-saved BOX LATTICE pattern (never a Shape Lattice one --
+    // `extent.mode === 'boundary'` uses a completely different, UNAFFECTED
+    // region mechanism, `sizedBoardRegion` there already falls back to
+    // its own pre-existing default exactly as before) converts its own
+    // margin+spacing into an EQUIVALENT explicit `size`, LOSSLESSLY:
+    // margin (cells) * spacing (in/cell) = the exact same real-inches
+    // inset `_resolveExtent`'s own OLD formula already produced, so this
+    // never changes what an existing save actually renders. `margin`/
+    // `spacing`'s own HISTORICAL defaults (1 cell, 0.25in) are hardcoded
+    // here deliberately -- margin's own live default no longer exists
+    // (retired from PATTERN_DEFAULTS this SAME turn), so this is the one
+    // place its old value is preserved. `margin` itself is deleted after
+    // conversion, matching node-radius-to-diameter's own "delete the
+    // retired key" convention.
+    when: (p) => {
+      if (!p.editorSvg) return false;
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return false;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        return Array.isArray(layers) && layers.some((l) => l && l.pattern
+          && !(l.pattern.extent && l.pattern.extent.mode === 'boundary')
+          && l.pattern.size === undefined);
+      } catch (_) {
+        return false;
+      }
+    },
+    apply: (p) => {
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        if (!Array.isArray(layers)) return;
+        const boardW = p.widthIn || 7, boardH = p.heightIn || 9;
+        layers.forEach((l) => {
+          const pat = l && l.pattern;
+          if (!pat || (pat.extent && pat.extent.mode === 'boundary') || pat.size !== undefined) return;
+          const spacing = pat.spacing ?? 0.25;
+          const margin = pat.margin ?? 1;
+          const marginIn = margin * spacing;
+          pat.size = { width: boardW - 2 * marginIn, height: boardH - 2 * marginIn };
+          delete pat.margin;
+        });
+        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
+      } catch (e) {
+        console.warn('[migration] box-lattice-margin-to-size failed:', e);
+      }
+    },
+  },
 ];
 
 export function runMigrations(p = P) {

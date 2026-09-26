@@ -53,10 +53,10 @@
  * `entities[]`, so every OTHER producer above keeps working in the
  * simpler natural board-space it was already written and tested in.
  */
-import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline } from './editor-lattice-pattern.js';
+import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline, LATTICE_FUSION_BUILD_ORDER } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
-  primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetRegionForContour,
+  primitivesBBox, insetGeneratedPresetPathDToPrimitives, sizedBoardRegion,
 } from './editor-lattice-boundary.js';
 import { generateContourSilhouette, primitivesToPathD, PRESETS } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
@@ -206,9 +206,21 @@ function pieceEndOrCurveTarget(pt, seg, id) {
  *  resolves it after creation, same "seed value, then re-drive by
  *  expression" pattern this module already uses for every other
  *  dimensioned quantity). */
+// T75 item 3 (OVR-FUSION, Fred: "overrides don't survive [regenerate] and
+// don't get a param, just hardcode the dimension seed"): a piece with its
+// own per-piece width override drives its OWN dimension from a plain
+// "<n> in" Fusion expression (a literal, valid expression Fusion resolves
+// with no named parameter at all) instead of the kind's shared parameter
+// name — sibling, non-overridden pieces of the same kind are untouched,
+// still referencing the shared parameter exactly as before.
+function _widthExprFor(paramName, overrideWidth) {
+  return overrideWidth != null ? `${overrideWidth} in` : paramName;
+}
+
 function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
-  for (const { id, p1, p2, railGroup } of pieces) {
-    const entity = { id, type: 'Slot', p1: [p1.x, p1.y], p2: [p2.x, p2.y], width: widthValue };
+  for (const { id, p1, p2, railGroup, overrideWidth } of pieces) {
+    const width = overrideWidth != null ? overrideWidth : widthValue;
+    const entity = { id, type: 'Slot', p1: [p1.x, p1.y], p2: [p2.x, p2.y], width };
     // T73 AMEND 3c (Fred: "rails can have colinearity"): a piece's OWN
     // railGroup (only rail/tie pieces carry one — the contour's own
     // single-piece call site below never passes it) is plain DATA here,
@@ -217,7 +229,7 @@ function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
     // rail" from the Collinear constraints below.
     if (railGroup !== undefined) entity.railGroup = railGroup;
     entities.push(entity);
-    dimensions.push({ type: 'SlotWidth', target: id, expression: paramName });
+    dimensions.push({ type: 'SlotWidth', target: id, expression: _widthExprFor(paramName, overrideWidth) });
   }
 }
 
@@ -234,10 +246,21 @@ function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
  * already runs, building manifest entities instead of calling
  * `emitSegment`/`emitNode`.
  */
-export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MODE.shapeLattice) {
+// T75 item 3 (OVR-FUSION): `overrides` is `{rails, ties, nodes}`, each an
+// array of override-width-or-null, POSITIONALLY matching the real, already-
+// drawn owned elements of that kind on the layer, in the SAME order this
+// function's own rail/tie/node loops below emit their entities (both derive
+// from the identical seeded `computePattern` output, in the identical
+// filtered order — the same parity guarantee every other app/manifest
+// correspondence in this module already relies on). `null` (the default)
+// means "nothing overridden", identical to every array read as empty.
+export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MODE.shapeLattice, overrides = null) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
   const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
   const { segments, nodePoints } = computePattern(pattern, { extent, occupied: null });
+  const railOverrides = (overrides && overrides.rails) || [];
+  const tieOverrides = (overrides && overrides.ties) || [];
+  const nodeOverrides = (overrides && overrides.nodes) || [];
 
   const railsCanon = segments.filter((s) => s.kind === 'rail');
   const tiesCanon = segments.filter((s) => s.kind === 'tie');
@@ -336,9 +359,10 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     const id = toEntityId('rail', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
+    const overrideWidth = railOverrides[railPieces.length] ?? null;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.rails.push(id);
-    railPieces.push({ id, p1, p2, railGroup: seg.railGroup });
+    railPieces.push({ id, p1, p2, railGroup: seg.railGroup, overrideWidth });
     if (constrained) {
       emitAxisOncePerGroup(railAxisGroupsSeen, seg.railGroup, axisConstraintType(p1, p2), id);
       contourHitConstraint(id, 'S', seg.aContourHit);
@@ -368,9 +392,10 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     const id = toEntityId('tie', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
+    const overrideWidth = tieOverrides[tiePieces.length] ?? null;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.ties.push(id);
-    tiePieces.push({ id, p1, p2, railGroup: seg.railGroup });
+    tiePieces.push({ id, p1, p2, railGroup: seg.railGroup, overrideWidth });
     if (constrained) {
       emitAxisOncePerGroup(tieAxisGroupsSeen, seg.railGroup, axisConstraintType(p1, p2), id);
       // "tie-end-on-rail" (ROADMAP.md:765) — a plain equality check on the
@@ -440,10 +465,13 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     return out.filter((t) => !redundant.has(t));
   }
 
+  const nodeOverrideById = {};
   nodePoints.forEach((pt, idx) => {
     const id = toEntityId('node', idx);
     const p = fromLattice(pt, spacing);
-    entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: widths.nodeDiameter / 2 });
+    const overrideWidth = nodeOverrides[groups.nodes.length] ?? null;
+    if (overrideWidth != null) nodeOverrideById[id] = overrideWidth;
+    entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: (overrideWidth != null ? overrideWidth : widths.nodeDiameter) / 2 });
     groups.nodes.push(id);
     if (constrained) {
       for (const target of nodePieceCoincidences(pt)) {
@@ -496,7 +524,9 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     // needs one) — only the declared PARAMETER + its DRIVING dimension
     // are diameter-based now, matching what the panel's stepper edits.
     parameters.push({ name: 'node_diameter', value: widths.nodeDiameter, unit: 'in' });
-    groups.nodes.forEach((id) => dimensions.push({ type: 'Diameter', target: id, expression: 'node_diameter' }));
+    groups.nodes.forEach((id) => dimensions.push({
+      type: 'Diameter', target: id, expression: _widthExprFor('node_diameter', nodeOverrideById[id] ?? null),
+    }));
   }
 
   return { entities, constraints, parameters, dimensions, groups, pieceCount, constrained };
@@ -799,20 +829,20 @@ function scalePrimitiveToLattice(prim, spacing) {
 }
 
 // Mirrors `_resolveExtent`'s own 'board' branch (editor-lattice-pattern.js)
-// exactly (same margin/toLattice math), parameterized by an already-
-// resolved `region` instead of `editor._mW/_mH` — this module's own "no
-// DOM, no editor object" contract (header comment) means it can't call
-// the DOM-touching original directly, so the SAME formula is reused here
-// rather than a divergent one (not a new algorithm, just its one DOM
-// dependency swapped for a plain argument).
+// exactly (T75: the SAME `sizedBoardRegion`/toLattice math), parameterized
+// by an already-resolved `region` instead of `editor._mW/_mH` — this
+// module's own "no DOM, no editor object" contract (header comment) means
+// it can't call the DOM-touching original directly, so the SAME formula
+// is reused here rather than a divergent one (not a new algorithm, just
+// its one DOM dependency swapped for a plain argument).
 function resolveBoardExtent(pattern, region) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
-  const margin = pattern.margin ?? PATTERN_DEFAULTS.margin;
-  const topLeft = toLattice({ x: region.x, y: region.y }, spacing);
-  const bottomRight = toLattice({ x: region.x + region.w, y: region.y + region.h }, spacing);
+  const sized = sizedBoardRegion(region, pattern.size);
+  const topLeft = toLattice({ x: sized.x, y: sized.y }, spacing);
+  const bottomRight = toLattice({ x: sized.x + sized.w, y: sized.y + sized.h }, spacing);
   return {
-    iMin: topLeft.i + margin, jMin: topLeft.j + margin,
-    iMax: bottomRight.i - margin, jMax: bottomRight.j - margin,
+    iMin: topLeft.i, jMin: topLeft.j,
+    iMax: bottomRight.i, jMax: bottomRight.j,
   };
 }
 
@@ -1035,21 +1065,32 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // copies of the same condition.
   const hasShape = hasGeneratedSilhouette(pattern);
   const widthMode = hasShape ? SKETCH_WIDTH_MODE.shapeLattice : SKETCH_WIDTH_MODE.boxLattice;
-  // T71: the contour's own region is the board region INSET by the
-  // declared contour-size margin (editor-lattice-boundary.js's own
-  // `insetRegionForContour`, the SAME helper `regenerateSilhouette` uses
-  // on the app side) — both the lattice-fill's own clip boundary
+  // T71/T75 (LAT-SIZE): the contour's own region is the board region sized
+  // to `pattern.size`, centred (editor-lattice-boundary.js's own
+  // `sizedBoardRegion`, the SAME helper `regenerateSilhouette` uses on the
+  // app side; null/unset falls back to the original board-minus-margin
+  // default) — both the lattice-fill's own clip boundary
   // (`resolveShapeBoundaryExtent`) AND the contour's own entities
-  // (`manifestFromShape`) build from this ONE inset region, so the fill
-  // never pokes past the new, smaller contour, and the contour's own
+  // (`manifestFromShape`) build from this ONE sized region, so the fill
+  // never pokes past the contour, and the contour's own
   // `contour_width`/`contour_height` parameter values (region.w/region.h,
-  // read inside `manifestFromShape`) land at board-minus-margin for free.
+  // read inside `manifestFromShape`) land at the declared Size for free.
   // `manifest.region` below and `applyCarvePlacement` both keep using the
-  // ORIGINAL, un-inset `region` — carve placement centers the WHOLE BOARD,
+  // ORIGINAL, un-sized `region` — carve placement centers the WHOLE BOARD,
   // not just the contour.
-  const contourRegion = hasShape ? insetRegionForContour(region) : region;
+  const contourRegion = hasShape ? sizedBoardRegion(region, pattern.size) : region;
+  // T75 item 2 (decided + logged, not escalated -- see WORK-LOG): Box
+  // Lattice's own fill area DOES honor `pattern.size` for PLACEMENT
+  // (resolveBoardExtent calls the same sizedBoardRegion internally), but
+  // exports NO matching Fusion parameter for it, unlike Shape Lattice's
+  // contour_width/height above. Those drive a REAL dimensioned entity (the
+  // contour outline's own Distance dim); Box Lattice has no such single
+  // entity representing its fill boundary -- every rail/tie is already its
+  // own dimensioned piece, so a `lattice_width`/`lattice_height` parameter
+  // would have nothing to drive, just an inert number in Fusion's
+  // parameter table.
   const extent = hasShape ? resolveShapeBoundaryExtent(pattern, contourRegion) : resolveBoardExtent(pattern, region);
-  const lattice = manifestFromLattice(pattern, extent, widthMode);
+  const lattice = manifestFromLattice(pattern, extent, widthMode, opts.overrides);
   // T69: the contour's own slot width matches the layer's own REAL
   // rails/ties width (`pattern.widths.rails`, merged over
   // PATTERN_DEFAULTS.widths the SAME way manifestFromLattice's own
@@ -1101,4 +1142,144 @@ export function buildSketchManifest(pattern, region, opts = {}) {
     latticeConstrained: lattice.constrained,
   };
   return applyCarvePlacement(manifest, region);
+}
+
+// T76 (SE17, item 4): which kind an entity id belongs to, purely from its
+// own declared prefix (toEntityId's own scheme, editor-sketch-manifest.js:
+// rail{i}/tie{i}/node{i}/seg{i}) -- never re-derived from geometry or a
+// separate lookup table, since the prefix already IS the kind, by
+// construction, for every entity this module has ever emitted.
+function _kindOfEntityId(rawId) {
+  const base = rawId.split(':')[0];
+  if (base.startsWith('rail')) return 'rails';
+  if (base.startsWith('tie')) return 'ties';
+  if (base.startsWith('node')) return 'nodes';
+  if (base.startsWith('seg')) return 'contour';
+  return null;
+}
+
+/**
+ * T76 (SE17, item 4): partitions a `buildSketchManifest` combined result
+ * into ONE manifest per kind (contour/rails/ties/nodes) -- entities and
+ * dimensions bucketed by their own id's kind; any CROSS-kind constraint
+ * (tie-end -> rail, rail/tie-end -> contour seg, node -> anything) becomes
+ * a PROJECTION reference instead, mirroring frame-builder's OWN already-
+ * proven `project_step` contract exactly (`{sourceKind, sourceId,
+ * targetId}` -- see fb_engine/projections.py) rather than inventing a new
+ * shape: a direct cross-sketch constraint is refused by Fusion (advisor-
+ * measured, ROADMAP.md's own SE17 entry), so the LATER-built kind (per
+ * LATTICE_FUSION_BUILD_ORDER -- contour -> rails -> ties -> nodes, the
+ * fixed dependency order every cross-kind reference in this module already
+ * only ever points BACKWARD along) gets both the new projection AND the
+ * constraint rewritten to target the projected copy instead of the
+ * original cross-sketch id. A same-kind constraint (H/V's own single
+ * target, Collinear, or a same-kind Coincident) passes through completely
+ * unchanged -- "Collinear stays within a kind" (the dispatch's own text)
+ * is already true by construction; this function never needs to special-
+ * case it.
+ *
+ * Every kind's own manifest gets the FULL parameter list, not just "the
+ * ones it references" -- Python's own `_sync_manifest_parameters` already
+ * creates-or-updates a design parameter BY NAME, so redeclaring one (e.g.
+ * `stroke_width`, needed by both the contour's own slot AND rails/ties')
+ * in more than one kind-manifest is harmless, the SAME precedent T69
+ * already established for one combined manifest, just carried across
+ * several now-separate ones.
+ *
+ * Projections are deduped by (sourceKind, sourceId) WITHIN each consuming
+ * kind's own manifest -- two different ties touching the SAME rail end
+ * share ONE projected copy, never two independently-projected overlaps of
+ * the same source entity.
+ *
+ * Returns `{contour?, rails?, ties?, nodes?}` -- a kind with nothing to
+ * build (Box Lattice has no contour at all) is simply OMITTED, never an
+ * empty placeholder manifest.
+ */
+export function splitManifestByKind(pattern, region, opts = {}) {
+  const combined = buildSketchManifest(pattern, region, opts);
+  const buildOrderIndex = Object.fromEntries(LATTICE_FUSION_BUILD_ORDER.map((k, i) => [k, i]));
+  const perKind = {};
+  for (const kind of LATTICE_FUSION_BUILD_ORDER) {
+    perKind[kind] = {
+      // `kind` + `buildOrder`: the Python builder's own orchestration
+      // (item 5) groups a pattern's own per-kind manifests and must build
+      // them in LATTICE_FUSION_BUILD_ORDER regardless of the APP's own
+      // layer array order (user-drag-reorderable, independent — see this
+      // function's own doc comment) — carried explicitly here rather than
+      // re-derived from entity id prefixes on that side too.
+      kind, buildOrder: buildOrderIndex[kind],
+      // Which pattern this kind-layer belongs to -- a document can hold
+      // more than one generated lattice, each with its own 4 kind-layers;
+      // the Python builder groups manifests sharing this id to share ONE
+      // build context (so a later kind can project an earlier one's own
+      // entities) and never mixes two different patterns' own sketches.
+      patternId: pattern.id ?? null,
+      version: combined.version, widthMode: combined.widthMode, contourWidthMode: combined.contourWidthMode,
+      units: combined.units, region: combined.region,
+      entities: [], constraints: [], parameters: combined.parameters, dimensions: [], projections: [], groups: {},
+    };
+  }
+
+  for (const e of combined.entities) {
+    const kind = _kindOfEntityId(e.id);
+    if (kind) perKind[kind].entities.push(e);
+  }
+  for (const d of combined.dimensions) {
+    // SlotWidth/Diameter dims use a singular `target`; the contour's own
+    // Distance dims (contour_width/height) use a plural `targets`, both
+    // entries always within the contour kind by construction (both ends
+    // are Line entities `manifestFromShape` itself found) -- either shape
+    // classifies correctly off its own first/only target id.
+    const kind = _kindOfEntityId(d.target ?? d.targets[0]);
+    if (kind) perKind[kind].dimensions.push(d);
+  }
+  for (const [key, ids] of Object.entries(combined.groups || {})) {
+    const kind = key === 'silhouette' ? 'contour' : key; // manifestFromShape's own group key
+    if (perKind[kind]) perKind[kind].groups[key] = ids;
+  }
+  if (combined.latticePieceCount !== undefined) {
+    for (const kind of ['rails', 'ties', 'nodes']) {
+      perKind[kind].latticePieceCount = combined.latticePieceCount;
+      perKind[kind].latticeConstrained = combined.latticeConstrained;
+    }
+  }
+
+  const projectionIdByConsumer = {};
+  for (const kind of LATTICE_FUSION_BUILD_ORDER) projectionIdByConsumer[kind] = new Map();
+  function projectedId(consumingKind, sourceKind, sourceId) {
+    const key = `${sourceKind}:${sourceId}`;
+    const seen = projectionIdByConsumer[consumingKind];
+    if (seen.has(key)) return seen.get(key);
+    const targetId = `proj_${sourceId.replace(':', '_')}`;
+    seen.set(key, targetId);
+    perKind[consumingKind].projections.push({ sourceKind, sourceId, targetId });
+    return targetId;
+  }
+
+  for (const c of combined.constraints) {
+    if (c.targets.length === 1) {
+      const kind = _kindOfEntityId(c.targets[0]);
+      if (kind) perKind[kind].constraints.push(c);
+      continue;
+    }
+    const kinds = c.targets.map(_kindOfEntityId);
+    if (kinds[0] === kinds[1]) {
+      if (kinds[0]) perKind[kinds[0]].constraints.push(c);
+      continue;
+    }
+    const consumingSlot = buildOrderIndex[kinds[0]] > buildOrderIndex[kinds[1]] ? 0 : 1;
+    const sourceSlot = 1 - consumingSlot;
+    const consumingKind = kinds[consumingSlot], sourceKind = kinds[sourceSlot];
+    const targetId = projectedId(consumingKind, sourceKind, c.targets[sourceSlot]);
+    const newTargets = [...c.targets];
+    newTargets[sourceSlot] = targetId;
+    perKind[consumingKind].constraints.push({ ...c, targets: newTargets });
+  }
+
+  const result = {};
+  for (const kind of LATTICE_FUSION_BUILD_ORDER) {
+    if (perKind[kind].entities.length === 0) continue; // e.g. no contour at all, or an empty kind
+    result[kind] = perKind[kind];
+  }
+  return result;
 }

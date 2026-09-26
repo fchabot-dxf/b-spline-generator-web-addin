@@ -35,7 +35,7 @@ import {
     isLatticePoint, moveRailAlongAxis, translateTie,
     nearestEndWithin, stretchRailEnd, stretchTieEnd,
 } from './editor-lattice.js';
-import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements } from './editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements, resolvePatternLayer } from './editor-lattice-pattern.js';
 import { insideSpans, insetGeneratedPresetPathDToPrimitives } from './editor-lattice-boundary.js';
 import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
@@ -975,10 +975,26 @@ function _existingRailRows(editor, spacing, orientation) {
 function _collectLatticeElements(editor, spacing, excludeEl = null) {
     if (!editor._sketchLayer) return [];
     const activeLayer = getActiveLayer(editor);
+    // T76 (SE17): gather across ALL of this pattern's own rail/tie/node
+    // kind-layers, not just whichever ONE is currently active — a rail
+    // living on the Rails layer must still find its own ties on the Ties
+    // layer for "move connected" to work at all. Resolved from `excludeEl`
+    // itself when given (the piece already being dragged — the most
+    // specific context available, and correct even when the active layer
+    // hasn't caught up to it yet); else the active layer. Falls back to
+    // `[activeLayer]` alone for a pre-SE17 pattern with no `.layers` map
+    // yet (every kind still resolves to that one shared layer, unchanged
+    // from before this turn).
+    const anchorLayerId = excludeEl ? getElementLayer(excludeEl) : activeLayer;
+    const patternLayer = resolvePatternLayer(editor, anchorLayerId);
+    const pattern = patternLayer && patternLayer.pattern;
+    const layerIds = pattern && pattern.layers
+        ? new Set([pattern.layers.rails, pattern.layers.ties, pattern.layers.nodes].filter(Boolean))
+        : new Set([activeLayer]);
     const out = [];
     for (const ch of editor._sketchLayer.children().toArray()) {
         if (!ch || !ch.node || ch === excludeEl) continue;
-        if (getElementLayer(ch) !== activeLayer) continue;
+        if (!layerIds.has(getElementLayer(ch))) continue;
         const kind = ch.node.getAttribute(LATTICE_ATTR);
         if (kind === 'rail' || kind === 'tie') {
             const x1 = parseFloat(ch.node.getAttribute('x1'));
@@ -1502,15 +1518,30 @@ const latticeHandler = {
         // SE7i (Section 3, connected editing): drag ON an existing rail/
         // tie/node moves it, structure-aware; drag on empty space (or on
         // a non-lattice shape) still draws a new rail/tie exactly as
-        // before. Active-layer-only, same scope every other drawing mode
-        // already uses (getNearbyElement's own default). SE7k: this check
-        // runs BEFORE the drawKind branch below, so dragging ON an
-        // existing piece still moves it no matter which Add mode is
-        // active — only empty space reaches the kind-specific behavior.
+        // before. SE7k: this check runs BEFORE the drawKind branch below,
+        // so dragging ON an existing piece still moves it no matter which
+        // Add mode is active — only empty space reaches the kind-specific
+        // behavior.
+        // T76 (SE17): `_getNearbyLatticePiece` (not `editor._getNearbyElement`,
+        // this block's own pre-SE17 mechanism) — the SAME rail/tie/node-only
+        // hit-test `shapeLatticeHandler.start` already uses, coordinating on
+        // ONE shared implementation rather than two, per the dispatch's own
+        // instruction. Critically, it is NOT layer-scoped at all (unlike
+        // `getNearbyElement`'s own active-layer-only default) — a rail is
+        // now on the Rails layer while a tie sits on the Ties layer, so a
+        // hit-test confined to "whichever layer is active" would miss
+        // every piece of a DIFFERENT kind than the one just clicked.
         const tol = getDynamicTolerance(editor, 10, 'slopPx');
-        const hit = editor._getNearbyElement(pt, tol);
+        const hit = _getNearbyLatticePiece(editor, pt, tol);
         const hitKind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
         if (hitKind === 'rail' || hitKind === 'tie' || hitKind === 'node') {
+            // T76 (SE17): grabbing a piece on a DIFFERENT kind-layer than
+            // the currently active one makes ITS layer the active one —
+            // same "clicking something makes it what you're now editing"
+            // rule selectHandler/nodeHandler's own analogous hit already
+            // applies (this file, above).
+            const hitLayer = getElementLayer(hit);
+            if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
             // UI3 AMEND 1/3 (Fred): Select sub-mode also SELECTS the
             // grabbed piece (reusing editor._select/_selectAdd — the same
             // whole-selection state editor.setColor/deleteSelected read —
@@ -1877,9 +1908,13 @@ const shapeLatticeHandler = {
             editor._latticeMove = _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation);
             return;
         }
-        const shape = currentShape(currentPattern(editor));
+        // T75 LAT-SIZE: kept as its own `p` (not inlined) -- the trailing
+        // `_shapeContourRegion(editor, p)` call below needs the pattern
+        // object too, not just its shape.
+        const p = currentPattern(editor);
+        const shape = currentShape(p);
         if (shape.source === 'generated' && Array.isArray(shape.segments)) {
-            const { primitives } = generateSilhouette(_shapeContourRegion(editor), shape);
+            const { primitives } = generateSilhouette(_shapeContourRegion(editor, p), shape);
             const tol = getDynamicTolerance(editor, 10, 'slopPx');
             const segIndex = hitTestSegment(primitives, shape.segments, rawPt, tol);
             if (segIndex != null) {

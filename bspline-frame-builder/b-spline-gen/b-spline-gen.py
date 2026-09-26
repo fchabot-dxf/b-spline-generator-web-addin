@@ -16,7 +16,7 @@ from datetime import datetime
 # (bspline-frame-builder.py's own _load_submodule inserts 'b-spline-gen/'
 # before exec'ing this file), so a plain top-level import is safe here,
 # matching this file's own existing import style.
-from sketch_manifest_builder import build_constrained_sketch
+from sketch_manifest_builder import build_constrained_sketch, BuildContext
 from constrained_sketch_log import format_constrained_sketch_log
 
 # imports check: removed diagnostic
@@ -723,6 +723,46 @@ def _svg_layer_import_plan(layers, design_available):
             'import_svg': bool(svg),
         })
     return plan
+
+
+def _ordered_svg_layer_import_plan(layers, design_available):
+    """T76 (SE17, item 5): `_svg_layer_import_plan`'s own plan, REORDERED so
+    a pattern's own kind-layers (contour/rails/ties/nodes -- identified by
+    `manifest['patternId']`, splitManifestByKind's own new field, JS side)
+    build in `manifest['buildOrder']` sequence, regardless of the layers'
+    own array position (the APP's own layer stacking order, independently
+    user-drag-reorderable -- ROADMAP.md's own SE17 entry: "The APP
+    stacking order is independent of the FUSION sketch build order").
+    This matters because a LATER kind's own manifest.projections can only
+    resolve an EARLIER kind's own entities once that earlier sketch has
+    actually been built.
+
+    Every step NOT part of a kind-split pattern (no `patternId` at all --
+    a hand-drawn layer, or a pre-SE17 single-layer lattice) keeps its own
+    original RELATIVE order untouched, via a stable sort: Python's own
+    `sorted()` never reorders two entries whose sort key compares equal,
+    so `(1, original_index)` for every ungrouped step preserves the exact
+    order `_svg_layer_import_plan` already produced. Grouped-pattern steps
+    sort before ungrouped ones (`0 < 1`) -- an arbitrary but harmless and
+    fully deterministic choice; nothing in the spec cares which SIDE of a
+    hand-drawn layer's own sketch a lattice pattern's own four land on,
+    only that the four themselves land in the right order relative to
+    EACH OTHER.
+
+    Pure and Fusion-API-free, same as `_svg_layer_import_plan` itself --
+    directly unit-testable without a live Fusion session."""
+    plan = _svg_layer_import_plan(layers, design_available)
+
+    def sort_key(item, idx):
+        m = item['manifest']
+        pattern_id = m.get('patternId') if m else None
+        if pattern_id:
+            return (0, pattern_id, m.get('buildOrder', 0))
+        return (1, idx, 0)
+
+    indexed = list(enumerate(plan))
+    indexed.sort(key=lambda pair: sort_key(pair[1], pair[0]))
+    return [item for _, item in indexed]
 
 
 # ── Palette HTML event handler ────────────────────────────────────────────────
@@ -1450,19 +1490,51 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     max_val = val
                     top_face = face
 
-        for step in _svg_layer_import_plan(layers, design is not None):
+        # T76 (SE17, item 5): a pattern's own kind-layers (contour/rails/
+        # ties/nodes, identified by manifest['patternId']) share ONE
+        # construction plane (coplanar sketches, so a LATER kind's own
+        # `sketch.project()` of an EARLIER kind's curve is geometrically
+        # meaningful — parametric_engine's own noted precedent for this
+        # SAME real Fusion API), ONE BuildContext (so entity_map
+        # accumulates across the group, letting a projection find what an
+        # earlier call already built), and ONE kind->sketch-name map (so a
+        # projection's own `sourceKind` resolves to the actual sketch to
+        # project FROM). Keyed by patternId; empty/never-touched for any
+        # plan with no kind-split pattern in it at all, in which case
+        # every step behaves exactly as it always has (its own fresh plane,
+        # its own fresh ctx, via build_constrained_sketch's own `ctx=None`
+        # default).
+        pattern_planes = {}
+        pattern_ctx = {}
+        pattern_kind_to_sketch = {}
+
+        for step in _ordered_svg_layer_import_plan(layers, design is not None):
             sketch_name = step['sketch_name']
+            manifest = step.get('manifest')
+            pattern_id = manifest.get('patternId') if manifest else None
+
             # T74 AMEND 5: ONE construction plane per layer, computed lazily
             # (only if this layer actually imports something) and SHARED by
             # both import paths below — previously each path computed its
             # own, so a mixed layer would have ended up with two identically
-            # -named, identically-placed planes for no reason.
-            plane = None
+            # -named, identically-placed planes for no reason. T76 (SE17):
+            # a kind-split pattern's own steps instead share ONE plane
+            # across the WHOLE group (see this loop's own header comment).
+            plane = pattern_planes.get(pattern_id) if pattern_id else None
 
             if step['build_constrained']:
                 _log(f'[SE15] Starting constrained-sketch build: {sketch_name}')
-                plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
-                self._build_constrained_sketch_for_layer(sketch_target, design, step['manifest'], sketch_name, plane)
+                if plane is None:
+                    plane_name = f"pattern {pattern_id}" if pattern_id else sketch_name
+                    plane = self._compute_artwork_plane(sketch_target, plane_name, top_face, orientation)
+                    if pattern_id:
+                        pattern_planes[pattern_id] = plane
+                ctx = pattern_ctx.get(pattern_id) if pattern_id else None
+                kind_to_sketch = pattern_kind_to_sketch.setdefault(pattern_id, {}) if pattern_id else None
+                used_ctx = self._build_constrained_sketch_for_layer(
+                    sketch_target, design, manifest, sketch_name, plane, ctx=ctx, kind_to_sketch=kind_to_sketch)
+                if pattern_id and ctx is None:
+                    pattern_ctx[pattern_id] = used_ctx
             elif step['manifest_skipped_no_design']:
                 _log(f'[SE15] Manifest present for {sketch_name} but no active Design in scope — constrained sketch skipped; importing whatever plain SVG remains.')
 
@@ -1500,7 +1572,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         artwork_plane.name = f"Plane for {sketch_name}"
         return artwork_plane
 
-    def _build_constrained_sketch_for_layer(self, sketch_target, design, manifest, sketch_name, plane):
+    def _build_constrained_sketch_for_layer(self, sketch_target, design, manifest, sketch_name, plane, ctx=None, kind_to_sketch=None):
         """T63 (SE15 §7): builds a real constrained sketch for one layer,
         via sketch_manifest_builder.build_constrained_sketch — placed on
         `plane` (T74 AMEND 5: computed ONCE by the caller and shared with
@@ -1515,11 +1587,28 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         (`Source - {sketch_name} [constrained]`, e.g. "Source - L1 - vbit
         (0.25\") [constrained]") instead of letting build_constrained_sketch
         fall back to the manifest's own generic `sketchName` field
-        ("Layer 1") — the advisor's own real Fusion run found the mismatch."""
+        ("Layer 1") — the advisor's own real Fusion run found the mismatch.
+
+        T76 (SE17, item 5): `ctx`/`kind_to_sketch`, when given by the
+        caller (a kind-split pattern's own later steps), are passed
+        straight through to build_constrained_sketch so this sketch's own
+        projections can resolve an earlier kind's own entities, and so
+        THIS sketch registers itself for whichever LATER kind still needs
+        to find it. When `ctx` is omitted (the first step of a pattern
+        group, or any standalone layer), a fresh one is created here (not
+        left for build_constrained_sketch's own internal default) so it
+        can be RETURNED to the caller, which caches it for the group's own
+        remaining steps — build_constrained_sketch itself has no way to
+        hand back a ctx it created internally, only to mutate one it was
+        already given. Returns the ctx used (whether freshly created here
+        or the one passed in), so the caller always has it to cache."""
+        if ctx is None:
+            ctx = BuildContext(sketch_target, design, logger=None, prefix="SE15")
         try:
             summary = build_constrained_sketch(
                 sketch_target, design, manifest, placement=plane, log_fn=_log,
-                sketch_name_override=f"Source - {sketch_name} [constrained]")
+                sketch_name_override=f"Source - {sketch_name} [constrained]",
+                ctx=ctx, kind_to_sketch=kind_to_sketch)
             # ADD1 (measured live): this log used to read summary['offsets']
             # inline here — see constrained_sketch_log.py's own module
             # docstring for why that raised KeyError on every SUCCESSFUL
@@ -1527,6 +1616,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _log(format_constrained_sketch_log(sketch_name, summary))
         except Exception as e:
             _log(f'[SE15] Constrained sketch build failed for {sketch_name}: {e}')
+        return ctx
 
     def _import_single_layer_svg(self, sketch_target, svg_text, plane, sketch_name, params=None):
         """Imports a single SVG string and projects it onto `plane` (T74

@@ -9402,3 +9402,473 @@ edge-rule buttons, the Contour checkbox, and the width field — now renders as 
 correctly remaining its own separate section right after it (not accidentally merged in too).
 
 Verify: 1232/1232 vitest, 40/40 pytest (untouched by this item). Commit 41bf2d1, pushed. NO FUSION this whole turn.
+
+## T75 item 4 — hide "Rail ends" row while the contour is shown
+
+Direct follow-on from T74 AMEND 4's own edge-rule audit: since the row is a genuine no-op whenever the contour is
+shown (T73 AMEND 3 forces `on-boundary` unconditionally in that state), the advisor/Fred's own next ask was to just
+hide it then, rather than leave it visible-but-inert with a caption explaining why. New `shapeLatticeEndRuleRow`
+wrapper div around the label + segmented group, toggled by a small `_showEndRuleRow(contourShown)` helper — called
+from `syncFieldsFromPattern` (so a saved pattern with `contour.show:false` shows the row immediately on tool-open,
+without needing to touch the checkbox first) and from the Contour checkbox's own existing immediate change handler
+(no new event wiring). Derived purely from that one checkbox's own state, never a second stored flag.
+
+Verified with a real render (same local-server + force-reveal technique as AMEND 4): screenshotted the panel with
+Contour checked (row fully absent, only the checkbox+width remain) and unchecked (row appears with all 4 buttons).
+
+Verify: 1234/1234 vitest. Commit 9c56304, pushed. NO FUSION this whole turn.
+
+## T75 item 1 — LAT-SIZE: a declared PATTERN.size {width,height} row in BOTH lattice panels
+
+Escalated to the advisor before touching code (a genuine architectural fork, not a guess call): the Shape Lattice
+tool's own board sizing was already real-inches (`CONTOUR_SIZE_INSET_IN`, 0.5in/side, `insetRegionForContour`), but
+the Box Lattice tool's own `PATTERN.margin` was LATTICE CELLS (~0.25in/side at default spacing) — unifying naively
+would have silently resized every existing saved Box Lattice pattern's rendered extent. Advisor's own ruling
+("option C"): unify under real inches with a LOSSLESS one-time migration converting any existing cell-margin into an
+equivalent explicit `size`, so no saved file's rendered result changes on load.
+
+Landed as one new function both tools' own region resolution now shares — `sizedBoardRegion(region, size)`
+(editor-lattice-boundary.js): a centered region at the declared `{width,height}` (real inches, the OUTSIDE size),
+falling back per-axis to the existing board-minus-1in default when null/unset. `PATTERN_DEFAULTS.margin` is
+retired entirely, replaced by `PATTERN_DEFAULTS.size = {width:null, height:null}`. Every consumer of the old
+margin-based board math now goes through this one function instead: `_resolveExtent`'s own 'board' branch (app-
+side fill), `resolveBoardExtent` (manifest-side, editor-sketch-manifest.js), and Shape Lattice's own
+`_shapeContourRegion`/`buildSketchManifest` contour-region computation. A new migration, `box-lattice-margin-to-
+size` (app-init.js), converts an existing pattern's `margin*spacing` into the equivalent explicit `size` and
+deletes `margin`, gated (as always) on the CURRENT shape of a saved pattern, never a version number.
+
+Both panels now show a "Size" section (width/height, blank = "auto"): Shape Lattice's own row is immediate-effect,
+matching its existing Contour-width field's own wiring. Box Lattice's own row is ALSO immediate-effect, mirroring
+its existing Orientation toggle rather than this panel's own usual "read on Generate" convention for structural
+fields — changing the fill AREA itself needs a full re-layout of rails/ties immediately, the same reasoning that
+already makes Orientation an immediate re-projection instead of a deferred field; there's no "re-style already-
+owned pieces in place" option here the way Widths/Colors have.
+
+Verified end-to-end against the REAL running app, not just unit tests: local static HTTP server over the actual
+palette HTML, headless Chrome driven over its own CDP WebSocket (PowerShell `Start-Process` to launch the browser —
+this session's usual node-`spawn`-launches-chrome scripts silently failed to open their own CDP port in this
+particular environment, root cause not chased down since the PowerShell launch path works fine), force-revealed the
+Box Lattice panel, clicked Generate, read the real generated rail geometry's bounding box, then typed a Size width
+and confirmed the SAME live pattern re-centered and shrank exactly as `sizedBoardRegion`'s own formula predicts
+(board 7in wide, auto region [0.5,6.5], width=1 region correctly becomes the centered [3,4]) — a real regenerate,
+not just a UI relabel.
+
+Verify: 1252/1252 vitest, 40/40 pytest (untouched by this item, still green). Commit 95dfd82, pushed. NO FUSION this
+whole turn.
+
+## T75 item 2 — LAT-SIZE Fusion: verify contour_width/height derive from pattern.size; decide + log Box Lattice's own export
+
+**Verification.** Item 1's own plumbing already threaded `pattern.size` through to `manifestFromShape`'s own
+`contour_width`/`contour_height` parameter VALUES (via `contourRegion = sizedBoardRegion(region, pattern.size)`,
+editor-sketch-manifest.js), and an existing test already covered the AUTO case (7x9 board, no explicit size, comes
+out to 6x8 — "a new pattern gives board - 1in", exactly the advisor's own spec). What was missing was the EXPLICIT-
+size case itself. Added two: a `pattern.size = {width:3, height:4}` case (asserts the params land on the DECLARED
+size, explicitly checked as genuinely different from the 6x8 auto default, not just "some value"), and a per-axis
+case (`{width:3, height:null}`) confirming the OTHER axis keeps its own independent auto fallback rather than the
+whole size object being all-or-nothing.
+
+**Decision (logged here, not escalated).** The dispatch's own text flagged this as a "decide + log" item, not a
+"decide + log OR escalate" one — a materially different risk shape from item 1's own margin/size unification (that
+one could silently resize EXISTING saved files, this one is purely additive: whether to add a NEW, never-before-
+existing Fusion parameter). Box Lattice's fill area already honors `pattern.size` for its own PLACEMENT math
+(`resolveBoardExtent`'s own `sizedBoardRegion` call, same as everything else in item 1) — the open question was only
+whether to ALSO export a matching `lattice_width`/`lattice_height` parameter to Fusion, the way Shape Lattice exports
+`contour_width`/`contour_height`.
+
+Decided **no**. `contour_width`/`contour_height` exist because they drive a REAL Distance dimension on a REAL
+entity — the contour outline's own two extreme corners (T71). Box Lattice has no equivalent single entity
+representing its own fill boundary at all; every rail and tie is already its own independently-dimensioned piece,
+with no shared "outer rectangle" entity a width/height parameter could attach to. Declaring the parameter anyway
+would leave it completely inert in Fusion's own parameter table — editable there, but wired to nothing, changing
+it would do nothing. Logged as a one-line code comment at the exact branch point (editor-sketch-manifest.js, right
+above the `hasShape ? resolveShapeBoundaryExtent(...) : resolveBoardExtent(...)` split) so a future reader asking
+"why does only one branch export a size parameter" finds the answer in place, not just in this log. If Box Lattice
+ever needs Fusion-side size editing to match Shape Lattice's own, that's a real feature request needing its own
+dimensioned construction rectangle first, not implied by this housekeeping item.
+
+Verify: 1254/1254 vitest, 40/40 pytest. Commit 0bd50e2, pushed. NO FUSION this whole turn.
+
+## T75 item 3 — OVR-FUSION: per-piece width override hardcodes its own dim; colour already reaches Fusion for free
+
+Seat A's own UI5 (the actual override UI, on `main`) had not landed yet — checked `origin/main` directly rather than
+assuming: `NEXT-SESSION.md` there still lists it as an OPEN checklist item (`[ ] [UI5-item-2] Declared data schema on
+the piece: data-override-color / data-override-width ...`), so per this turn's own dispatch ("if not there yet,
+build against the declared attribute names"), built against those two exact names, taken from that same spec:
+`data-override-width` carries the override VALUE itself; `data-override-color` too, "rendered live (stroke colour/
+width)" — i.e. seat A's own future UI is expected to set the piece's REAL `stroke`/`stroke-width` attribute directly,
+with the `data-override-*` attribute as a parallel, declared marker of the same value (not a separate indirection).
+
+**Width → a hardcoded manifest dimension.** `manifestFromLattice` (editor-sketch-manifest.js) gains an optional 4th
+param, `overrides` — `{rails, ties, nodes}`, each an array of override-width-or-null. The key design question was
+HOW a positional/DOM-agnostic function (it only ever consumes `pattern`+`extent`, by design, so it stays unit-
+testable without a real editor) could line up an override against the entity it just generated, since it never sees
+the real DOM at all. Resolved by POSITION: this module's own rail/tie/node loops and `generatePattern`'s own DOM-
+emit loop (editor-lattice-pattern.js) both walk the IDENTICAL seeded `computePattern` output, filtering the same
+kind and skipping the same too-short pieces, in the same order — the SAME parity guarantee this codebase already
+leans on everywhere else (parity-app-manifest.test.js's whole reason to exist). So the Nth real owned element of a
+kind on the layer corresponds EXACTLY to the Nth entity of that kind the manifest emits, without needing any new id
+scheme. An overridden piece's own `SlotWidth`/`Diameter` dimension becomes a literal `"<n> in"` Fusion expression
+(a plain, valid Fusion expression string, no named parameter at all) instead of referencing the kind's shared
+parameter; every sibling piece is byte-for-byte unchanged, and the shared parameter itself stays declared for them
+("no param" means THIS piece stops referencing it, not that the parameter disappears for everyone).
+
+`sketch_manifest_builder.py` needed **zero changes** — confirmed by reading it, not assumed: `_drive_last_dimension`
+already does `d.parameter.expression = str(expression)` unconditionally, with no validation of whether the string
+names a real parameter or is a bare numeric literal. Every existing dimension expression this module has ever
+produced (`'stroke_width'`, `'contour_height - stroke_width'`, `'node_diameter'`) already goes through this exact
+same code path — a hardcoded `'0.375 in'` is just one more string to it. The full Python suite (40/40, including
+`test_sketch_manifest_builder.py`'s own dimension-dispatch tests) stayed green untouched, which is the real proof.
+
+`export-flow.js`'s `_fusionLayerManifest` builds the `overrides` array straight from the real DOM
+(`_overridesForLayer`, new — reads each owned piece's own `data-override-width` via `_ownedOnLayer`, now exported)
+and threads it through `buildSketchManifest`'s new `opts.overrides`.
+
+**Colour needed no new code.** Read `_buildOutlineReplacementNodes`/`_parseLayerContent` (editor-io.js) before
+writing anything: they already (a) read `stroke`/`stroke-width` FRESH off the source element for every replacement
+node they build, and (b) copy EVERY `data-*` attribute onto it verbatim (`Array.from(ch.attributes).filter(a =>
+a.name.startsWith('data-'))` — a SA-ROUNDTRIP-2 precedent already established for text->path bakes, reused here for
+the same reason). Since seat A's own schema renders the override "live" as the piece's real `stroke` attribute,
+this existing, fully generic machinery already carries an override colour (and its own `data-override-color`
+marker) through unchanged — proven with two new tests (centerline pick + outline pick), both asserting the
+OVERRIDE colour survives, never silently rewritten back to the kind's shared/default one.
+
+**No manifest-side colour field was added — logged, not built.** A lattice piece built via the manifest path
+(rails/ties/nodes as Slot/Line/Circle sketch entities) has no per-curve colour concept in Fusion's own Sketch API
+at all — a dimension drives a length/diameter, never an appearance, and nothing in `sketch_manifest_builder.py`
+touches curve colour today. So colour's entire "reaches Fusion" story is the SVG path above; there was nothing
+further to add on the manifest side, matching the roadmap's own explicit split ("manifest" for width, "SVG" for
+colour) rather than inventing new Fusion-appearance machinery for a "small" item.
+
+Verify: 1261/1261 vitest (7 new), 40/40 pytest (untouched). Commit da63682, pushed. NO FUSION this whole turn.
+
+## T75 item 5 — Tests: parity + sweep for a non-default Size (the remaining gap)
+
+Two of this item's own three asks were already fully satisfied by earlier items this turn: override width -> a
+hardcoded dim got its own dedicated tests under item 3 (`editor-sketch-manifest.test.js` + `export-flow.test.js`);
+rail-ends visibility already had 2 tests from item 4. The one real gap was a non-default `pattern.size` swept
+against this codebase's own standing app/manifest PARITY oracle (`parity-app-manifest.test.js`, T68 AMEND 2's own
+"permanent, declared check" that every app-drawn piece matches exactly one manifest entity and vice versa) — every
+existing parity sweep there (oneEnded, seed) predates LAT-SIZE and never exercised `pattern.size` at all.
+
+Added a 2-value size sweep (`{width:3,height:4}` — both axes set; `{width:2,height:null}` — one axis auto-falls-back)
+to BOTH the box lattice and shape lattice (hourglass) parity describe blocks. `checkLatticeParity` itself needed no
+changes and no size-awareness — it only ever diffs whatever the app actually drew against whatever the manifest
+actually declared, so a real divergence between `_resolveExtent`'s 'board' branch (app) and `resolveBoardExtent`/
+`sizedBoardRegion` (manifest) would show up here as a genuine mismatch, not something the test's own oracle could
+paper over. Also added a non-vacuous control (default size vs `{width:2,height:2}`) proving a non-default size
+actually MOVES the drawn rail geometry — without it, a sweep that silently produced the same fill region every time
+(a bug hiding as "still passes") would go unnoticed.
+
+Verify: 1266/1266 vitest (5 new), 40/40 pytest (untouched, no Python touched this item). Commit fde15b6, pushed.
+NO FUSION this whole turn.
+
+**T75 — all 5 items complete.** Passing back to the advisor.
+
+# T76 — SE17: lattice kinds on separate layers → separate Fusion sketches linked by projection
+
+## Merge origin/main into lane-b (required first, per dispatch)
+
+Brought in seat A's own UI2-UI5 work (colour-coded/collapsible lattice sections, pinned Generate styling, and —
+most relevant here — the Shape Lattice Select-drag fix that now shares the box tool's own constrained lattice-move
+path) plus FB-ORDER. One real conflict: `editor-interaction.js`'s `shapeLatticeHandler.start` — seat A's new
+lattice-piece-hit-test block (UI4 item 0 / UI5 AMEND 2) was built against the OLD, pre-LAT-SIZE
+`_shapeContourRegion(editor)` single-arg signature (main never had T75's own change), while lane-b's own side had
+already rethreaded a `p` (pattern) variable through to `_shapeContourRegion(editor, p)`. Resolved by keeping seat
+A's whole inserted block verbatim and restoring the two-line `const p = currentPattern(editor); const shape =
+currentShape(p);` at its own tail, so both the new Select/move behavior and LAT-SIZE's own region-sizing plumbing
+survive together — nothing from either side dropped.
+
+Verify: 1303/1303 vitest, 45/45 b-spline-gen pytest, 189/189 frame-builder pytest (all pre-existing, none touched by
+the resolution itself). Commit 1117d08, pushed.
+
+Spec read in full from `ROADMAP.md` on main, "SE17" entry, before starting: kind→layer map (contour/rails/ties/
+nodes) is DATA; Fusion sketch build order is FIXED (contour → rails → ties → nodes, independent of the app's own
+layer stacking order) because later sketches PROJECT curves from earlier ones for their cross-kind constraints (a
+direct cross-sketch constraint is refused — advisor-measured); hidden kind-layers are not exported and their
+dependents keep exact geometry but lose the cross-kind link; migration of pre-SE17 single-layer lattices is an
+explicit decide+log.
+
+## T76 item 1 — declared kind→layer defaults + Fusion sketch build order
+
+Dispatched research (Explore agent) into the current layer/pattern/manifest architecture BEFORE writing anything,
+given the size of what SE17 asks for. Most important finding: this codebase already had a "one pattern, one layer
+per kind" model once — SE7b built it, SE7i retired it (Fred: "I don't mind if all lattice geometry is in one
+layer") — recovered directly from git history (`git show c2b59b4^:...`) as a real, already-tuned precedent to build
+on rather than re-derive from scratch, rather than guessing tooling numbers.
+
+`LATTICE_FUSION_BUILD_ORDER` (`['contour','rails','ties','nodes']`) and `LATTICE_KIND_LAYER_DEFAULTS`
+(editor-lattice-pattern.js) — the ONE table both the per-kind layer creation (item 2) and the Fusion sketch build
+sequencing (item 5) read from. Order here is the FIXED Fusion dependency order, deliberately NOT the app's own
+layer stacking order (user-drag-reorderable, independent, per the roadmap's own text). rails/ties/nodes tooling is
+the recovered SE7b starting point (0.15/vbit rails, 0.08/vbit ties, 0.12/ballnose nodes); contour — a genuinely new
+kind-layer, no SE7b precedent — left at `addLayer`'s own generic tooling defaults rather than inventing a tuned
+number with no basis.
+
+Verify: 1310/1310 vitest (7 new). Commit f787c24, pushed. NO FUSION this whole turn.
+
+## T76 item 2 — a generated lattice splits across FOUR kind-layers (Contour/Rails/Ties/Nodes), one shared pattern record
+
+**The core design question**: SE7i's own retirement of the three-layer split happened because ONE pattern used to
+live on ONE layer, `layer.pattern` — with FOUR kind-layers now sharing ONE pattern, exactly where does that shared
+record live, given persistence (`editor-io.js`'s own per-layer `JSON.stringify`) and undo (`editor.js`'s own
+per-layer deep-clone) both already assume `layer.pattern` is that ONE layer's own, independent copy? A shared OBJECT
+REFERENCE across all four layers' own `.pattern` fields would silently fork into four diverged copies on the very
+first save+reload or undo/redo — a real, easy-to-miss correctness trap, not just an awkwardness.
+
+Resolved: `rails` is the pattern's own designated PRIMARY kind-layer (always present in both tools; `contour` is the
+only ever-absent one, for a Box Lattice pattern) — it alone holds the real `.pattern` object. Every OTHER kind-layer
+holds only `layer.patternOwner` (a plain layer-id STRING), which survives JSON-serialization and shallow-copy
+undo/redo trivially, no special-casing needed anywhere in either mechanism. `resolvePatternLayer(editor, layerId)`
+is the ONE place that walks this indirection; every "act on everything" helper and both panels' own pattern
+accessor now go through it.
+
+**Two bugs found only by testing, not by inspection** (both would have silently corrupted the "one pattern record"
+invariant this whole item exists to guarantee):
+1. `currentPattern`/`_currentPattern` (both panels) lazily materialize a fresh DEFAULT pattern onto any layer with
+   no `.pattern` of its own — which, after this item's own split, is every SIBLING kind-layer, always. Since
+   clicking a tie/node/contour piece ACTIVATES that piece's own layer (an existing, pre-SE17 mechanism,
+   editor-interaction.js), simply clicking a tie would have forked a second, diverging pattern onto the Ties layer
+   the very next time the panel re-synced. Caught by a from-scratch regression test built specifically to probe this
+   (`tests/editor-lattice-kind-layers.test.js`, `tests/properties-lattice.test.js`) — the existing 1310-test suite
+   never exercised "switch active layer to a sibling, then re-read the pattern" at all, so this shipped invisibly
+   until deliberately tested for.
+2. `_storeContourSegmentColor` (editor.js) and `detectShapeLatticeDetach` (properties-shape-lattice.js) read
+   `layer.pattern` directly, unconditionally, for the exact same reason — silently no-opped (never wrote a
+   segment-colour override; never detected a hand-edit) the instant the active layer was a sibling. Both fixed via
+   the SAME `resolvePatternLayer`, kept deliberately READ-ONLY for `detectShapeLatticeDetach` (whose own pre-existing
+   contract, a prior measured regression's fix, explicitly forbids materializing a phantom pattern here).
+
+**A third, related gap**: `_collectLatticeElements` (the "drag a rail, its attached ties follow" mechanism) was
+scoped to the single active layer — with rails/ties now on separate layers, a rail could never again find its own
+ties. Fixed to gather across all three of the pattern's own rail/tie/node kind-layers, anchored on whichever piece
+is actually being dragged (not just the active layer, which may lag behind a fast successive drag). This overlaps
+item 3's own explicit scope ("Select/move keeps working across kind-layers") but was fixed here rather than left
+broken, since an item-2 "it generates correctly" that can't then be edited isn't a coherent stopping point. A fuller
+live-drag verification (real CDP pointer events, not just this fix's own code-level correctness) is still owed as
+part of item 3's own pass.
+
+**Live-verified** (headless Chrome/CDP, screenshot saved per the new convention:
+`C:\Users\danse\.bspline-status\shots\seatB\1650_T76-item-2_layers.png`) — a real, non-mocked bug was found and
+fixed ALONG THE WAY: the first attempt read stale content from a duplicate/orphaned `python -m http.server` process
+still bound to the port from an earlier command in this same turn (multiple simultaneous listeners on Windows can
+each still answer requests) — Generate appeared to do nothing at all. Diagnosed by grepping the SERVED file for the
+new function name (absent) vs the file on disk (present), not by re-guessing the app logic; fixed by killing every
+stray listener on that port and relaunching exactly one, from an explicit, verified working directory, before
+re-testing. With the correct server: Generate on a fresh layer produces exactly Rails (the original layer, renamed,
+same id) + Ties + Nodes, `pattern.layers` recorded correctly, active layer lands on Rails, zero console errors.
+
+Verify: 1322/1322 vitest (11 new), 45/45 b-spline-gen pytest + 189/189 frame-builder pytest (both untouched).
+Commit ce57bc3, pushed. NO FUSION this whole turn.
+
+## T76 item 3 — box-Lattice Select/move finds pieces across ALL kind-layers, one shared hit-test
+
+Auditing the rest of the constrained-move mechanism (item 2 already fixed `_collectLatticeElements`, the "carry the
+attached ties along" lookup) found ONE more real gap: `latticeHandler.start` (the box-Lattice tool's own canvas
+gesture dispatch, `editor-interaction.js`) hit-tests via `editor._getNearbyElement(pt, tol)` with NO
+`anyVisibleLayer` option — the DEFAULT, active-layer-only behavior. Before this turn that was fine (rails/ties/nodes
+all lived on the one active layer anyway); after item 2's split, dragging a TIE while the RAILS layer happened to be
+active would never even find it — the hit-test would come back empty and the gesture would silently fall through to
+"draw a new rail on empty space" instead.
+
+The fix used the SAME function `shapeLatticeHandler.start` (the Shape Lattice tool) already relies on for this exact
+purpose, `_getNearbyLatticePiece` — already completely layer-agnostic (no `data-layer` check in it at all), so
+switching to it also satisfies the dispatch's own explicit "coordinate via the shared move path — no second
+implementation" instruction, not just a narrower kind-layer-aware patch to the box tool's own copy. Grabbing a piece
+on a different kind-layer than the currently active one now also activates it, mirroring `selectHandler`/
+`nodeHandler`'s own pre-existing "clicking something makes it what you're editing" rule (added for the SAME reason,
+back when generated Rails/Ties/Nodes first became unclickable via the plain Select tool).
+
+**Live-verified with a REAL mouse drag**, not a mock or a code-review claim: headless Chrome/CDP,
+`Input.dispatchMouseEvent` press/move×8/release exactly like the advisor's own established repro-script technique
+(`tools/repro/select_drag_shape.mjs`). Hit one real snag getting the canvas itself reachable: `#svgEditorModal`
+(the editor's own overlay) is `display:none` until `#btnStampEdit`'s own click handler shows it, but that handler
+also depends on other main-screen state (`ctx.activeLayer()`, `P.editorSvg`) this minimal test harness never
+populates — clicking it did nothing. Fixed by forcing the modal's own inline style directly
+(`display/position/top/left/z-index` all `!important`) rather than trying to satisfy its real preconditions, the
+same "force-reveal past the app's own screen-gating" technique already used for panel verification, just applied to
+the whole modal this time (a first attempt without `position:fixed` left the modal visible but 4878px down the
+page, outside the viewport CDP's own mouse coordinates operate in — diagnosed via `getBoundingClientRect()`, not
+guessed).
+
+With the canvas correctly reachable: generated a box lattice, dragged the top rail (Rails layer) down by 0.5in.
+Result: the rail moved and stayed horizontal; BOTH ties attached to it — sitting on the SEPARATE Ties layer —
+stretched their near end to follow the rail by the identical 0.5in while their far end stayed exactly fixed, and
+both remained geometrically connected to the rail's new position. Active layer correctly became Rails. Zero console
+errors. Screenshot: `C:\Users\danse\.bspline-status\shots\seatB\1700_T76-item-3_drag.png`.
+
+No new unit test: this interaction path (editor-interaction.js's own internal `latticeHandler`/`_beginLatticeMove`
+dispatch) has zero existing unit-test coverage in this codebase at all — confirmed by checking for a prior
+`editor-interaction.test.js` (none exists) before assuming a gap needed filling here specifically; this whole class
+of gesture-level behavior is, and has been, verified live via CDP only (the UI4/UI5 Select-drag fixes this same
+mechanism needed did the same). Followed that established convention rather than retrofitting a new, first-of-its-
+kind test seam for one fix.
+
+Verify: 1322/1322 vitest (unchanged -- no unit-testable seam for this fix). Commit b160dbb, pushed. NO FUSION this
+whole turn.
+
+## T76 item 4 — one manifest per kind-layer, cross-kind relations declared as projection references
+
+Found the exact, already-proven contract to build against BEFORE writing anything: `frame-builder/fb_engine/
+projections.py`'s own `project_step` (a sibling tool in this same repo, real shipped code, not a first attempt) —
+`{SourceSketch, SourceID, TargetID}`, resolved by looking the source entity up in a SHARED `BuildContext` that spans
+multiple sketches built in a declared order, calling `sketch.project(src_ent)`, then registering the projected
+result's own `:S`/`:E`/`:C` endpoints under a fresh id. This is the mechanism the roadmap's own "advisor measured: a
+direct constraint to another sketch's curve is refused" note is describing — I didn't need to guess the shape,
+just translate the naming to this tool's own kind vocabulary (`sourceKind` instead of `SourceSketch`, since a "sketch"
+here IS a kind).
+
+`splitManifestByKind` (editor-sketch-manifest.js) partitions an ordinary `buildSketchManifest` combined result
+(unchanged, still used wherever a single manifest is still wanted) into one manifest per kind. The one real design
+decision: EVERY cross-kind constraint in this codebase's own manifest builder is exactly 2 targets spanning exactly
+2 kinds (tie-end→rail, rail/tie-end→contour-seg, node→rail/tie/contour) — so "which kind gets the projection" always
+resolves to a single rule: the LATER-built kind, per `LATTICE_FUSION_BUILD_ORDER` (contour→rails→ties→nodes),
+because every cross-kind reference in this manifest builder already only ever points BACKWARD along that same fixed
+order (a rail can reference the contour that came before it; nothing ever needs to reference something built
+AFTER it). That single rule handles all three of the roadmap's own named cases without any per-relation-type special
+casing. Collinear and Horizontal/Vertical constraints are ALREADY same-kind only, by construction (a rail's own
+Collinear never references a tie) — "Collinear stays within a kind" needed no code at all, just confirming it holds
+(it does, checked directly against every `dimensions.push`/`constraints.push` call site in the file, no 3+ target
+shape exists anywhere).
+
+Parameters: rather than tracing which kind's own dimension expression references which parameter name (fragile,
+easy to get subtly wrong for a shared name like `stroke_width`), every kind's own manifest just gets the FULL
+parameter list. `sketch_manifest_builder.py`'s own `_sync_manifest_parameters` already creates-or-updates a design
+parameter BY NAME regardless of which manifest declared it — the SAME precedent T69 already established (one
+combined manifest declaring `stroke_width` twice, once from the contour and once from the lattice, was already
+proven harmless) — just leaning on it across FOUR manifests instead of one, rather than re-deriving a "who actually
+needs this" rule that adds risk for no real benefit.
+
+`export-flow.js`'s `_fusionLayerManifest` had a real, previously-latent gap from item 2's own split, only surfaced
+by actually wiring this up: it read `editorLayer.pattern` directly, which is `undefined` for every SIBLING kind-
+layer (only the rails/primary layer holds it) — meaning Send-to-Fusion would have silently produced a manifest for
+the Rails layer only, and nothing at all for Ties/Nodes/Contour, the moment anyone tried to export a kind-split
+pattern. Fixed via `resolvePatternLayer` (item 2's own resolver) plus, once `pattern.layers` exists, a call into
+`splitManifestByKind` picking out just that layer's own kind's slice. `_overridesForLayer` had the identical
+per-kind blind spot (reading ALL THREE kinds' own overrides from the ONE `layerId` passed in) and got the same fix.
+
+Verify: 1339/1339 vitest (17 new: 13 for splitManifestByKind itself, 4 for the per-kind export wiring), 45/45 pytest
+(untouched — the Python-side projection RESOLUTION, actually calling `sketch.project()`, is item 5's own scope, not
+this one). Commit 4b82168, pushed. NO FUSION this whole turn.
+
+## T76 item 5 — Python builder shares a BuildContext across a pattern's own kind-layers, resolves projections
+
+Added two small fields to item 4's own `splitManifestByKind` output first (`kind`, `buildOrder`, `patternId`) —
+needed so the PYTHON side can group/order a pattern's own kind-layers without re-deriving anything from entity id
+prefixes on that side too. Minor, quick addition, folded into this item rather than reopening item 4's own commit.
+
+**The core question**: `build_constrained_sketch` (sketch_manifest_builder.py) has always created a brand-new
+`BuildContext` — and therefore a brand-new, empty `entity_map` — on every single call. For a LATER kind (say, Ties)
+to `sketch.project()` an EARLIER kind's own entity (Rails' own `rail0`), that entity has to still be findable
+somewhere by the time Ties' own sketch is built. Extended `build_constrained_sketch` with optional `ctx`/
+`kind_to_sketch` params: when given, the SAME `BuildContext` is reused (its own `entity_map` already has Rails' own
+entities registered from the earlier call) rather than starting fresh — every EXISTING caller (the dev entry point,
+every one of ~20 existing tests) passes neither, so behavior for a standalone build is completely unchanged. One
+real subtlety caught before it became a bug: reusing the SAME `ctx` object also means reusing whatever it's
+carrying — EXCEPT the logger, which gets a FRESH `_Logger` on every call regardless, so a later kind's own returned
+summary reports only ITS OWN issues, never double-counting an earlier kind's own.
+
+**Projection resolution** (`_apply_projections`, new): given `{sourceKind, sourceId, targetId}` (item 4's own
+declared shape), looks the source sketch up via a `kind_to_sketch` dict (`{'rails': 'Rails', ...}`, populated as a
+side effect of each kind's own build registering itself), resolves the entity through `ctx.resolve_entity` — the
+EXISTING, shared fb_engine helper, already handling `:S`/`:E`/`:C` suffixes, needing ZERO changes of its own since
+`entity_map` is now genuinely shared across sketches — calls `sketch.project()`, and registers the projected
+copy's own id (+ its own endpoints) into the CURRENT sketch's own `entity_map`, so every later constraint targeting
+it resolves through the exact same path as any ordinary same-sketch entity. This deliberately mirrors
+`frame-builder/fb_engine/projections.py`'s own `project_step` almost line for line — real, shipped code in this
+same repo, already proven against real Fusion by a different tool — rather than guessing the shape of an API call
+this module had never used before. Runs BEFORE constraints (a cross-kind constraint's own target IS the projected
+copy, which has to exist first).
+
+**Orchestration** (`b-spline-gen.py`): a new pure function, `_ordered_svg_layer_import_plan`, reorders
+`_svg_layer_import_plan`'s own steps so a pattern's own kind-layers (grouped by `patternId`) build in
+`buildOrder` sequence — contour, then rails, then ties, then nodes — regardless of where they sit in the raw
+`layers` array (the APP's own layer stacking order, independently user-drag-reorderable, per the roadmap's own
+text). `_import_all_svg_layers` now keeps per-`patternId` dicts for the plane, the ctx, and the kind→sketch map
+across its own loop. One thing measured, not assumed, before wiring this: all four kind-layers of one pattern share
+a SINGLE construction plane, not one each — `parametric_engine`'s own doc comments explicitly flag that coplanar
+sketches matter for this exact real Fusion API, and projecting a curve from one plane onto a sketch on a
+numerically-identical-but-DIFFERENT plane object was too large a risk to leave untested-for.
+
+**Test shim, "models project() + refuses cross-sketch constraints"** (the dispatch's own explicit wording): gave
+`FakeSketch` an `.owns(entity)` check (walks its own `_curves` plus their start/end/center points, plus a new
+`_points` list for standalone projected points) and a `.project(entity)` method that creates a genuine, separate,
+THIS-sketch-owned copy — never a live reference back to the source, matching the real API's own semantics.
+`FakeGeometricConstraints` now refuses any constraint whose own entities aren't ALL owned by its own sketch, raising
+the advisor's own exact measured Fusion error text ("sketch == msketch"). Verified both directions directly (skip
+`project()` first → refused; call it first → succeeds) AND through the full multi-sketch build (shared ctx →
+projection runs, zero wrap-fails, and the projected point's own coordinates genuinely match the source; no shared
+`kind_to_sketch` → a graceful MISS is logged, never a crash — proving the "pre-SE17, standalone" fallback path stays
+safe even for a manifest that mistakenly still carries a `projections` list).
+
+Verify: 1340/1340 vitest (unchanged this item — the JS-side fields landed with item 4's own commit), 52/52
+b-spline-gen pytest (7 new: 3 ordering, 4 projection/shim), 196/196 wider frame-builder pytest (untouched).
+Commit 7ce6546, pushed. NO FUSION this whole turn (per dispatch: "NO FUSION — advisor verifies live") — built
+against frame-builder's own already-proven, real-Fusion-measured contract rather than guessing one from scratch.
+
+## T76 item 6 — hidden kind-layer not exported, dependents keep exact geometry (verified, zero new production code)
+
+Traced both halves of this item through the ACTUAL code before assuming either needed new work:
+
+**"Not exported"**: `isExported(l)` (layers.js) is `l.visible !== false` — a purely generic check, zero kind-layer
+awareness at all. `_fusionLayerManifest` is only ever called for layers already inside `layersToExport`, itself
+filtered through `isExported` upstream. A hidden kind-layer is excluded from export precisely like any other hidden
+layer already is — exactly matching the roadmap's own framing that "the kind-layers are ordinary layers." This
+whole mechanism already has generic (kind-agnostic) test coverage in `export-flow.test.js`; a kind-layer-flavored
+duplicate would exercise the identical code path with different fixture data, so none was added.
+
+**"Dependents keep exact geometry but lose those links"**: confirmed `_fusionLayerManifest` never reads ANY layer's
+own `.visible` while building a manifest for one of its siblings — visibility gating lives entirely ONE LEVEL UP
+(`sendToFusion`'s own `layersToExport` filter), fully decoupled from what a manifest contains once actually built.
+Added one test proving this isn't just true by absence of code, but true in practice: Nodes' own manifest (entities
++ projections) comes out byte-for-byte IDENTICAL whether Ties is visible or hidden — the "lose the link, keep the
+geometry" split holds by construction, not by a special case written for this item. On the Python side, item 5's
+own graceful-MISS test already covers the exact mechanism a hidden dependency would trigger (`kind_to_sketch.get
+(sourceKind)` coming back empty) — annotated with an explicit cross-reference to this item's own spec language
+rather than writing a near-duplicate: "Rails was hidden and never built" and "a caller didn't share kind_to_sketch"
+are OBSERVABLY IDENTICAL from Ties' own point of view, so the same test already proves both.
+
+Verify: 1341/1341 vitest (1 new), 52/52 b-spline-gen pytest (a docstring-only change on the Python side, still
+green). Commit 2c62362, pushed. NO FUSION this whole turn.
+
+## T76 item 7 (FINAL) — parity per sketch, the three named test scenarios, the migration decision
+
+**Parity per sketch**: read `verify_sketch_against_manifest` closely before assuming this needed new code — it
+already reads `ctx.entity_map[sketch.name]` and `manifest['entities']`, BOTH already scoped to the one sketch
+currently being built, and `build_constrained_sketch` already calls it once per call. Since item 5 already made
+every kind get its own call, per-sketch parity was already true the moment item 5 landed. Added explicit
+`parity["mismatches"] == []` assertions to the existing shared-ctx test (proving it holds even with `ctx.entity_map`
+now spanning several sketches at once) rather than leaving this as an unverified claim.
+
+**The three named test scenarios**: all-shown was already covered throughout items 1-6. Rails-hidden turned out to
+already be exactly what item 6's own graceful-projection-miss test models (a missing `kind_to_sketch` entry looks
+identical whether it's because a caller didn't share the dict or because Rails was genuinely hidden and never
+built) — cross-referenced rather than duplicated. Contour-off got one new test: `splitManifestByKind` correctly
+omits the contour kind entirely when `pattern.contour.show === false` (mirroring Box Lattice's own "no shape at
+all" case exactly), and confirmed no rail/tie/node manifest is left holding a dangling projection that points at
+nothing.
+
+**The migration decision** (the dispatch's own explicit decide+log point — "migrate on read or keep as one layer"):
+decided on neither option AS STATED, but a third one that the whole feature's own fallback design already gives for
+free once named explicitly: pre-SE17 saved lattices load and stay as ONE layer, exactly as before this turn, with
+**no separate migration step at all** — but the INSTANT the user next presses Generate/Regenerate on one,
+`_ensureKindLayers` (item 2) splits it into kind-layers, using the IDENTICAL code path a brand-new pattern already
+takes (it has no "is this an old pattern" branch to speak of). This beats both named options: "keep as one layer"
+forever would permanently deny old files the kind-layer benefits; "migrate on read" would mean writing and trusting
+a whole new DOM-rewriting migration pass (reassigning `data-layer` on every existing rail/tie/node/contour element)
+that runs on EVERY load whether or not the user ever asked for it, for a risk this lazy approach avoids
+completely — a file that's loaded and never touched again is byte-for-byte unaffected. Verified with a new test:
+`recolorOwnedKind`/`detachAllOwned` still correctly act on a genuinely pre-SE17-shaped pattern object (no `.layers`
+field at all) via the exact same fallback path every OTHER item's own "act on everything" helper already needed.
+
+**Final live verification** (headless Chrome/CDP) — correctly styled this time, per the advisor's own mid-turn
+correction to serve from `bspline-frame-builder/` (not `b-spline-gen/html` directly) so `../../styles` resolves:
+Shape Lattice Generate on a fresh layer produces exactly the four expected layers (Rails/Contour/Ties/Nodes, in
+that creation order), `pattern.layers` correctly recorded end to end, the active layer lands on Rails, and a real
+hourglass lattice — green contour, red rails, yellow ties, node dots at every crossing — renders correctly on
+canvas, with the Layers panel showing all four, "Rails" highlighted as the active one. Screenshot:
+`C:\Users\danse\.bspline-status\shots\seatB\1741_T76-item-7_final.png`.
+
+Verify: 1343/1343 vitest (3 new), 52/52 b-spline-gen pytest (2 new assertions on an existing test). Commit abf9685,
+pushed. NO FUSION this whole turn.
+
+# T76 — SE17 complete: all 7 items landed (merge + items 1-7). Passing back to the advisor.
