@@ -595,8 +595,9 @@ end points fixed (anchored slots grow evenly on stroke_width edits; free ones dr
 on the slot centerline end points. Offsets removed.
 
 ## LOOSE CONTOUR (Fred 2026-09-26: "dont use symmetry either" / "no radius dim though, leave the sketch loose for now")
-Constraint vocabulary for SE15/SE15b sketches: NO Fix, NO Symmetry, NO radius dims, NO length/size dims. Allowed:
-slots + the `stroke_width` width dim, Coincident joints (separate points), Tangent at contour joints, Horizontal /
+Constraint vocabulary for SE15/SE15b sketches: NO Fix, NO Symmetry, NO radius dims, NO length dims. Allowed:
+slots + the `stroke_width` width dim, the contour's overall width/height dims = `widthIn`/`heightIn` (Fred: "W and H is
+good"; point-to-point on corner points), Coincident joints (separate points), Tangent at contour joints, Horizontal /
 Vertical. Geometry is INSERTED in position (symmetric by coordinates) and left loose — drift on a width edit is accepted.
 Measured before this ruling (for the record): Symmetry needed an origin-anchored axis, and without size dims the edges
 ran off on a width edit; revisit only if Fred asks for a held shape.
