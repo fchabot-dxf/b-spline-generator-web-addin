@@ -231,11 +231,29 @@ async function runSharedScenario(kind) {
   // Rather than guess which end/delta clears it, this tries both ends
   // against a spread of distances and accepts the first combination that
   // actually produces a clean, grid-aligned, single-end stretch.
+  // Box Lattice's default "rails-to-rails" span mode means MOST ties have
+  // BOTH ends exactly coincident with a rail's own endpoint -- a genuine
+  // geometric tie (0 distance to each), not a near-miss, so no amount of
+  // nearby-fraction retrying reliably favors the tie over the rail there.
+  // `ties.oneEnded` (default >=1) guarantees at least one tie has a FREE
+  // end that touches no rail at all -- prefer THAT tie/end when one
+  // exists, sidestepping the ambiguity entirely rather than fighting it.
+  const allRails = Object.entries(a2).filter(([, v]) => v.k === 'rail').map(([, v]) => v);
+  const endIsFree = (p, ex, ey) => !allRails.some((r) => connected({ x1: ex, y1: ey, x2: ex, y2: ey }, r));
   let endTid = pick.att.find((t) => t !== tid) || tid;
+  let preferredT = null;
+  for (const [id, p] of Object.entries(a2)) {
+    if (p.k !== 'tie') continue;
+    if (endIsFree(p, p.x1, p.y1)) { endTid = id; preferredT = 0.0; break; }
+    if (endIsFree(p, p.x2, p.y2)) { endTid = id; preferredT = 1.0; break; }
+  }
   let stretched = null;
-  outer: for (const t of [0.0, 1.0]) {
+  const tOrder = preferredT != null ? [preferredT] : [0.0, 1.0];
+  outer: for (const t of tOrder) {
     for (const dy of [-40, -90, -150]) {
-      const tries = t === 0 ? [0, 0.03, 0.06] : [1, 0.97, 0.94];
+      // A coincident (non-free) end still gets a wider fraction spread as
+      // a fallback, in case no free end exists on this generation at all.
+      const tries = t === 0 ? [0, 0.03, 0.06, 0.1, 0.15, 0.2] : [1, 0.97, 0.94, 0.9, 0.85, 0.8];
       if (!(await robustDrag(endTid, tries, 0, dy, { expectMode: 'stretch', label: `${kind} tie end t=${t} dy=${dy}` }))) continue;
       const snapAfter = JSON.parse(await evalJS(snap))[endTid];
       const [movedKey, stillKey] = t === 0 ? ['y1', 'y2'] : ['y2', 'y1'];
