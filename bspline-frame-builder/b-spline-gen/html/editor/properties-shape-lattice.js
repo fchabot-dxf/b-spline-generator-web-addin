@@ -578,6 +578,11 @@ export function initShapeLatticeProperties(editor) {
     //    a Pick-shape-era readout SE14d already made dead — it could only
     //    ever say one thing once Generate had run) is retired too. ──────
     const endRuleEl = el('shapeLatticeEndRule');
+    // T75 item 4: the "Rail ends" row's own wrapping container — hidden
+    // while the contour is shown (T74 AMEND 4's own audit found the whole
+    // row is a no-op then; T73 AMEND 3 forces 'on-boundary' unconditionally
+    // whenever the contour is shown, regardless of this control's value).
+    const endRuleRowEl = el('shapeLatticeEndRuleRow');
     // T72 (SE14c): show/hide the contour's own drawn segments (rails/ties
     // still clip/fit to it either way) — unlike most of this section,
     // wired for an IMMEDIATE effect (below), not deferred to Generate,
@@ -651,6 +656,12 @@ export function initShapeLatticeProperties(editor) {
         if (widthLinkToggleEl) widthLinkToggleEl.classList.toggle('active', linked);
         if (widthUnlinkedFieldsEl) widthUnlinkedFieldsEl.style.display = linked ? 'none' : 'flex';
         if (widthLinkedRowEl) widthLinkedRowEl.style.display = linked ? 'flex' : 'none';
+    }
+    // T75 item 4: derived purely from the Contour checkbox's own state,
+    // never a second stored flag (see shapeLatticeEndRuleRow's own HTML
+    // comment for why).
+    function _showEndRuleRow(contourShown) {
+        if (endRuleRowEl) endRuleRowEl.style.display = contourShown ? 'none' : 'flex';
     }
     function _showPresetParams(preset) {
         for (const [presetName, keys] of Object.entries(PARAM_ROWS)) {
@@ -780,6 +791,7 @@ export function initShapeLatticeProperties(editor) {
         const contour = { ...PATTERN_DEFAULTS.contour, ...p.contour };
         if (contourShowEl) contourShowEl.checked = contour.show !== false;
         if (contourWidthEl) contourWidthEl.value = contour.width == null ? '' : contour.width;
+        _showEndRuleRow(contour.show !== false);
 
         syncGenerateLabel();
     }
@@ -1022,6 +1034,7 @@ export function initShapeLatticeProperties(editor) {
             // replacing it outright — `width` and `segmentColors` must
             // survive a plain checkbox toggle, not just `show`.
             p.contour = { ...PATTERN_DEFAULTS.contour, ...p.contour, show: !!contourShowEl.checked };
+            _showEndRuleRow(contourShowEl.checked); // T75 item 4: immediate, matches this checkbox's own other effects
             await regenerateSilhouetteAndFill(editor);
         });
     }

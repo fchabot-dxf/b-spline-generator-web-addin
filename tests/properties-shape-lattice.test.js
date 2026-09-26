@@ -174,7 +174,9 @@ function fixtureHTML() {
     <button id="shapeLatticeWidthLinkToggle" class="editor-fillmode-btn active"></button>
     <input id="shapeLatticeWidthNodes" type="number">
 
-    <div role="group" id="shapeLatticeEndRule"></div>
+    <div id="shapeLatticeEndRuleRow">
+      <div role="group" id="shapeLatticeEndRule"></div>
+    </div>
     <input id="shapeLatticeContourShow" type="checkbox" checked>
     <input id="shapeLatticeContourWidth" type="number">
   `;
@@ -465,6 +467,30 @@ describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () 
     await flush();
     expect(activeLayerPattern(editor).contour).toEqual({ show: true, width: null, segmentColors: [] });
     expect(pathEl.attr('display')).not.toBe('none');
+  });
+
+  it('T75 item 4: the "Rail ends" row is hidden while the contour is shown (the DEFAULT), and revealed the moment it\'s turned off -- immediate, no Generate needed', async () => {
+    initShapeLatticeProperties(editor);
+    const row = document.getElementById('shapeLatticeEndRuleRow');
+    expect(row.style.display).toBe('none'); // non-vacuous: checked by default (PATTERN_DEFAULTS.contour.show), so hidden from the start
+
+    const cb = document.getElementById('shapeLatticeContourShow');
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    expect(row.style.display).not.toBe('none');
+
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    expect(row.style.display).toBe('none');
+  });
+
+  it('T75 item 4: a saved pattern with contour.show already false shows the row on tool-open, without needing to toggle the checkbox first', () => {
+    const p = currentPattern(editor);
+    p.contour = { show: false };
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeEndRuleRow').style.display).not.toBe('none');
   });
 });
 
