@@ -45,6 +45,8 @@ def _bar(done, total, width=10):
     return "█" * n + "░" * (width - n) + f"  {done}/{total}"
 STATUS_PROJECT = "bspline-status"
 OUT = os.path.join(os.path.dirname(__file__), "out")
+# no console window flashing for git/wrangler children when run under pythonw (Fred: "a terminal window constantly spawning")
+NOWIN = {"creationflags": 0x08000000} if os.name == "nt" else {}
 INTERVAL_S = 60
 
 
@@ -60,7 +62,7 @@ def _env():
 
 def _git(path, *args):
     try:
-        return subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, timeout=30,
+        return subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, timeout=30, **NOWIN,
                               encoding="utf-8", errors="replace").stdout
     except Exception:
         return ""
@@ -159,7 +161,7 @@ def deploy():
         print("status: wrangler or CLOUDFLARE_API_TOKEN missing — rendered locally only")
         return False
     r = subprocess.run([w, "pages", "deploy", OUT, "--project-name", STATUS_PROJECT, "--branch", "main",
-                        "--commit-dirty=true"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                        "--commit-dirty=true"], capture_output=True, text=True, **NOWIN, encoding="utf-8", errors="replace")
     ok = r.returncode == 0
     print(f"status: deploy {'ok' if ok else 'FAILED'} {datetime.now():%H:%M:%S}")
     if not ok:
