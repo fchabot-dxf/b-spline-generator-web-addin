@@ -1,17 +1,20 @@
-# NEXT (fb-app) — F4: FB-FIX — two live Frame Builder bugs + "board too small" warning
+# NEXT (fb-app) — F5: SIL-RESOLVE — silhouette arcs never invert
 
-**Ball: worker (seat C) · epoch 1 · F4.** F3 (c060eaf) accepted. Spec: ROADMAP.md on main "FB-FIX". PROGRESS automatic
-("F4 item N: …"). FUSION: NOT yet — do items 1-3 with the shim first; ask the advisor for a Fusion window for item 4
-(Fred may be using Fusion). GATE 3.2 (shape handles) is with Fred — don't build handles.
+**Ball: worker (seat C) · epoch 1 · F5.** F4 items 1-3 accepted; item 4 (live) is BLOCKED until Fusion on this PC is
+free (Fred's other machine suspended it) — do NOT use Fusion. Spec: ROADMAP.md "SIL-RESOLVE" (Fred's live screenshot:
+Hourglass with high corner radius -> shoulder/waist arcs loop over each other). PROGRESS automatic ("F5 item N: …").
+Merge origin/main into fb-app first (advisor already merged it at dispatch time — check it's clean).
 
 ## Checklist
-- [ ] [F4-item-1] resolve_val: unit-suffixed values ('0.75 in', '19 mm') resolve correctly via ONE declared resolver
-      (Fusion expression/unit evaluation when available; a tested parser in the shim); never silently 0 — a failed
-      resolve is an error the build reports.
-- [ ] [F4-item-2] addOffset2: fix the call (correct curve collection type/API) so the offset for sketch 1/3 is
-      PARAMETRIC (driven by frame_thickness); keep the non-parametric fallback only as a reported, logged last resort.
-- [ ] [F4-item-3] "Board too small for this frame": declared check (safe-zone < 2 x frame_thickness -> 0 bars) surfaced
-      as a clear warning (engine log + a value the app can show); unit tests incl. the 5.51x1.97 golden.
-- [ ] [F4-item-4] (Fusion window, ask first) verify live: '0.75 in' resolves; changing frame_thickness in Fusion
-      updates the frame; re-record the 4 healthy goldens if anything moved.
+- [ ] [F5-item-1] Reproduce Fred's case as a FAILING test first (Hourglass, high corner radius; find the exact params
+      that loop; also scan bottle) — assert simple closed outline, positive sweep per arc, tangency at joints.
+- [ ] [F5-item-2] Fix the SOLVE in editor-shape-lattice-generator.js (generateSilhouette / PRESETS): derive the feasible
+      range for each preset's params (corner radius vs waist reach vs available height / neck…) and resolve within it —
+      declared (clamp / redistribute), never self-intersecting, never reversed arcs. Slider ranges in the panel follow
+      the declared feasible range (no dead zone that silently clamps).
+- [ ] [F5-item-3] Dense sweep test: every preset param x several values x both orientations x several board sizes
+      (incl. a small board) — all simple + tangent. Keep it fast.
+- [ ] [F5-item-4] Inversion detector (F3 AMEND 7b) as a guard used by the app preview (warn, never draw a looped
+      outline) — shared with the future frame preview.
+- [ ] [F5-item-5] Screenshots (styled server) before/after of Fred's case to shots\seatC\.
 Commit by path, push origin fb-app, pass back from the fb-app root.
