@@ -977,16 +977,20 @@ readers -> tests; old saved patterns read it as ignored). The Shape Lattice "Con
 separate thing and stays. IN FUSION (Fred: "it's geometry but construction geometry in Fusion"): the boundary box IS sent, as CONSTRUCTION geometry (isConstruction = True) in the lattice sketch: never a profile, never extruded, still usable for constraints/dims. Declared as a role on the manifest entity (e.g. `construction: true`), read by the builder; not a special case.
 Test: boundary present in editor DOM, absent from the 3D input; export unchanged.
 
-## Queued — STALE-PARAMS: delete the add-in's own stale Fusion user parameters on Send (reg-addin, R3 design, 2026-09-26)
-DESIGN in `STALE-PARAMS-DESIGN.md` (repo root; R3, no code yet — gated for the advisor/Fred before R4 implements
-it, since it deletes user parameters in Fred's live designs). Declared ownership registry (board `Bspline.owner=1`
-existing / frame `FrameBuilder.owner=1` new, per `FB-APP-DESIGN.md` §4) extended to cover the lattice/constrained-
-sketch param family (`sketch_manifest_builder.py`'s `stroke_width`/`rail_width`/`tie_width`/`node_diameter`/
-`half_width`/`contour_width`/`contour_height`), which today is unstamped. Ownership proven by an attribute stamp
-written at creation (never by name match, since lattice names are open-ended); delete rule = owned + stamped +
-not in this Send's payload + not referenced by another param expression or a feature/sketch dimension
-(`Parameter.dependentParameters`) → delete, else keep + log. See the design doc §2f for the open questions queued
-for Fred (dry-run first, touch- vs create-only stamping, lattice tag sharing, cross-Send scope).
+## Shipped — STALE-PARAMS: delete the add-in's own stale Fusion user parameters on Send (reg-addin, R4, 2026-09-26)
+DESIGN in `STALE-PARAMS-DESIGN.md` (repo root; R3 design + its "R4 rulings" section, the living amended version).
+IMPLEMENTED (R4, Bspline group: board + lattice; frame/`FrameBuilder.owner` is seat C's and out of scope here).
+Declared registry: `ParameterSchema.LATTICE_OWNED_PARAMS` (`stroke_width`/`rail_width`/`tie_width`/`node_diameter`/
+`half_width`/`contour_width`/`contour_height`) beside the existing `BOARD_OWNED_PARAMS`
+(`frame-builder/fb_engine/parameter_schema.py`), sharing the board's `Bspline.owner` tag group. **Fred amended the
+rule live twice during R4:** (1) delete is ON, not log-only; (2) a REGISTERED NAME is ours whether or not an older
+build stamped it ("take over existing params") — the stamp is now written on every touch (create+update, matching
+the board) but is a breadcrumb, not the ownership gate; the registry name is. Delete rule = registered name + not
+in this Send's payload + no `Parameter.dependentParameters` → delete (logged `deleted`, or `adopted`+`deleted` if
+it was found unstamped); referenced → `kept_referenced` + reason; a `deleteMe()` failure → `failed`, never breaks
+Send. New: `b-spline-gen/param_ownership.py` (pure, tested). Wired: one call in `_handle_generate`'s Finalise
+block; `stale_params` merged into `last_send.json`. NO FUSION this loop — Fred live-checks it (see
+`WORK-LOG-reg-addin.md`'s R4 entry for the recipe: what to Send, what to read back).
 
 ## Queued (seat C, fb-app, after F9 frame handles) — SHAPE-PARAMS: more Shape Lattice shape params, each with a handle (Fred 2026-09-26)
 Fred: "for lattice I think more is better". Add to the shared silhouette solver (editor-shape-lattice-generator.js),

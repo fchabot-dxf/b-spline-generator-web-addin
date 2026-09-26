@@ -1,10 +1,63 @@
-# STALE-PARAMS-DESIGN — DESIGN ONLY (R3, reg-addin/Asus)
+# STALE-PARAMS-DESIGN — R3 design, R4 IMPLEMENTED (Bspline group)
 
-**Status: gate for the advisor / Fred. No product code changes this turn.** R4 implements whatever is
-blessed here. Why design-first: this feature **deletes user parameters in Fred's live Fusion designs** —
-irreversible against his data if the ownership check is wrong. Plan of record it builds on:
-`HANDOFF-REG-ADDIN.md` §3 item 5 and `FB-APP-DESIGN.md` §4 "Send order and parameter ownership" (read from
-`origin/fb-app`, not checked out — see §2a below for the cross-check).
+**Status: R4 implemented and merged (this doc's §1-2 below is the R3 design as originally written; read it
+alongside the rulings here, which override it where they differ — nothing in §1-2 was edited in place, so
+history stays legible).** R3 was a plan; the advisor + Fred amended it twice during R4, and R4 built exactly
+the amended version. Plan of record: `HANDOFF-REG-ADDIN.md` §3 item 5, `FB-APP-DESIGN.md` §4 (read from
+`origin/fb-app`, not checked out), and `NEXT-SESSION-reg-addin.md`'s own R4 rulings (the living copy — this
+section mirrors it for anyone reading this file in isolation).
+
+## R4 rulings (advisor + Fred, 2026-09-26) — override §2 below where they differ
+
+1. **DELETE ON, not log-only.** The design's own §2f Q1 recommended a log-only rollout first; Fred overruled
+   it live ("just apply it") — candidates ARE deleted (`deleteMe()`), every decision still logged.
+2. **ONE registry, additive only in `frame-builder/`:** `ParameterSchema.LATTICE_OWNED_PARAMS` +
+   `is_lattice_owned()` sit right beside `BOARD_OWNED_PARAMS`/`is_board_owned()`
+   (`frame-builder/fb_engine/parameter_schema.py`) — that file is the ONLY change allowed in `frame-builder/`.
+   The cleanup logic (`b-spline-gen/param_ownership.py`) reads this registry; it holds no name list of its own.
+   This also answers §2a's flagged question: lattice params share the board's `Bspline` tag group (one Send
+   surface, one tag) — confirmed, not just proposed.
+3. **AMENDED, reversing §2b's "stamp, never name" rule: registered NAME is the whole ownership test.**
+   Fred's second amendment ("take over existing params") replaces §2b/§2c's "a param matching a known name but
+   lacking the stamp = Fred's, never touched" with the opposite: **a registered name is ours, whether or not an
+   older build stamped it.** The stamp is still written (every touch — see item 5), but the CLEANUP decision no
+   longer gates on it; `param_ownership.compute_stale_params` reads the registry directly. The stamp is now an
+   audit breadcrumb ("adopted": a stale registered param found unstamped is logged, then still deleted like any
+   other stale candidate), not an ownership gate. §2b/§2c below describe the ORIGINAL (name+stamp) rule for
+   the historical record; it was never shipped.
+4. **Reference guard = `Parameter.dependentParameters` only** — §2c(a)'s hand-rolled expression regex-scan was
+   dropped per the ruling; only §2c(b)'s live-API check shipped, still flagged "verify live" (no Fusion access
+   this loop). `param_ownership.py`'s own guard additionally treats "no `dependentParameters` on this object at
+   all" as kept-not-deleted (can't prove unreferenced → never delete) — a defensive case §2c didn't spell out.
+5. **Stamp on every touch (create AND update)**, matching the board's own `_ensure_bspline_param_tag` exactly —
+   reversing this doc's originally-committed §2f Q2 recommendation, which Fred's second amendment overturned
+   (item 3 above is the reason: name alone decides ownership, so gating the stamp write itself no longer matters
+   for safety the way it did under the original rule).
+6. **Scope: `Bspline` group only.** Frame params (`FrameBuilder.owner`) are seat C's; `parametric_engine.py` /
+   `solid_coordinator.py` were not touched.
+7. **`b-spline-gen.py` footprint: one call**, in `_handle_generate`'s Finalise block (non-preview path, after
+   `_import_all_svg_layers` returns — so `des.userParameters` reflects this Send's own just-synced params),
+   guarded in its own try/except. `stale_params` merged into the existing `last_send.json` via a new
+   `_merge_last_send_key` helper (the payload snapshot dump, `_dump_last_send`, runs earlier and is unchanged).
+8. **No undo-transaction claim** — §2d's "one Send = one undo step" reasoning was dropped per the ruling
+   (a palette-driven Send may not be one Fusion command transaction); moot while every delete happens inside
+   the same `_handle_generate` call regardless.
+
+**What shipped, file:line:**
+- `frame-builder/fb_engine/parameter_schema.py` — `_LATTICE_OWNED_PARAMS` (7 names) + `LATTICE_OWNED_PARAMS` +
+  `is_lattice_owned()`, beside the board equivalents.
+- `b-spline-gen/sketch_manifest_builder.py` — `_stamp_bspline_owner(ctx, param, name)` (idempotent, touch-based),
+  called from both the create and update branches of `_sync_manifest_parameters`.
+- `b-spline-gen/param_ownership.py` (new) — `compute_stale_params(user_params, payload_names, logger=None)`,
+  pure/no-`adsk`, returns `{deleted, kept_referenced, adopted, failed}` (every key always present).
+- `b-spline-gen/b-spline-gen.py` — one `compute_stale_params(...)` call + `_merge_last_send_key('stale_params',
+  stale)`, in `_handle_generate`'s Finalise block; `payload_names` = `set(params.keys())` (covers the board
+  names, whatever the payload actually carried) unioned with every `manifest['parameters'][*].name` across
+  `stamp_data['layers']` (the same source `_import_all_svg_layers` reads — no new plumbing needed to collect
+  the lattice names this Send touched).
+- Tests: `frame-builder/fb_engine/test_lattice_owned_params.py` (6), additions to
+  `b-spline-gen/test_sketch_manifest_builder.py` (3, touch-stamp + adoption), `b-spline-gen/test_param_ownership.py`
+  (13, the decision matrix). All mutation-checked (see WORK-LOG-reg-addin.md's R4 entry).
 
 ---
 
@@ -102,6 +155,9 @@ the ruling, not by finding delete-worthy code (there is none, by design).
 ## 2. Design
 
 ### 2a. ONE declared ownership list, cross-checked against `FB-APP-DESIGN.md`
+> **Confirmed as shipped (R4 rulings 2-3):** lattice params DO share the board's `Bspline` tag/registry —
+> the flagged question below is answered, not just proposed.
+
 
 `FB-APP-DESIGN.md` §4 ("Parameter ownership, one declared registry", read from `origin/fb-app`, not checked
 out) already sketches:
@@ -140,6 +196,9 @@ class ParamOwnership:
 ```
 
 ### 2b. Proving "created by us" at delete time: STAMP, not name
+> **SUPERSEDED (R4 ruling 3, Fred's "take over existing params" amendment):** the shipped rule is the
+> opposite — registered NAME alone is ownership, stamped or not. Kept below for the historical record only.
+
 
 **Proposal (as the checklist asked): an attribute stamp written at creation, checked at delete time — never a
 name match.** This is the only approach that survives family 1b's arbitrary/evolving names (§1b) and protects
@@ -166,6 +225,10 @@ a parameter literally named `frame_thickness` before ever running this add-in �
   dispatch's problem statement.
 
 ### 2c. The delete rule
+> **PARTIALLY SUPERSEDED (R4 rulings 3-4):** step 1 ("owned + stamped") is gone — replaced by "registered
+> name" alone; step 3a (the hand-rolled expression regex-scan) was dropped, `dependentParameters` (3b) is
+> the ONLY reference guard shipped. Step 3c (skip + log, never retry) shipped as designed.
+
 
 A stamped-owned parameter `p` is deleted when **all** of:
 1. **Owned + stamped** — `p.attributes.itemByName(<its group>, "owner")` exists and is truthy (§2b).
@@ -194,6 +257,10 @@ A stamped-owned parameter `p` is deleted when **all** of:
      doc comments at `:785-788`, `projections` handling).
 
 ### 2d. Ordering vs. the rebuild, undo, dry-run/log
+> **PARTIALLY SUPERSEDED (R4 ruling 8):** the undo-transaction paragraph was dropped per the ruling.
+> Ordering (delete after geometry) and the `last_send.json` shape shipped close to as designed here — see
+> the R4 rulings' "What shipped" list for the exact call site and merge mechanism.
+
 
 - **Ordering: delete AFTER the new sketches/params exist**, not before. Reason: the reference guard (2c) must
   see the NEW payload's parameters already created/updated (so a param that's merely being renamed this Send
