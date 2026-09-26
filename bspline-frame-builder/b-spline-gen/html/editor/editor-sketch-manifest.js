@@ -512,23 +512,79 @@ export function manifestFromShape(shape, region, opts = {}) {
   // exists to produce; this is the corrected, self-consistent reading of
   // §2's own "kink: none beyond the shared point" row — see WORK-LOG-
   // lane-b.md T61 for the fuller derivation).
+  // T70 AMEND 3 (advisor MEASURED in Fusion, T69 post-arg-order-fix):
+  // Tangent seg8/seg9 came back OVER_CONSTRAINTS once the Symmetry pass
+  // below ties the two halves together — a mirrored Tangent JOINT is
+  // implied by its own already-declared mirror-image joint (same "process
+  // each mirror pair once" dedup the Equal/Symmetry pass below already
+  // used, applied here to Tangent joints instead of segment pairs). The
+  // mirror of joint (segI, segJ) is joint (mirror(segJ), mirror(segI)) —
+  // REVERSED, since the left half is walked in the OPPOSITE direction
+  // (this module's own header comment on the generator: "Left side...
+  // bottom -> top"). Declared generically off `mirrorSegmentIndex`/
+  // `segMap`, not hardcoded segment numbers, so it applies to any preset
+  // with this same L/R structure, not just hourglass's own measured case.
   const m = primitives.length;
+  const tangentSeen = new Set();
   for (let i = 0; i < m; i++) {
     const j = (i + 1) % m;
     const idA = idsByPrimIndex[i], idB = idsByPrimIndex[j];
     constraints.push({ type: 'Coincident', targets: [`${idA}:E`, `${idB}:S`] });
     const isKinkJoint = segments[segMap[i]].style === 'kink' || segments[segMap[j]].style === 'kink';
     const eitherArc = primitives[i].type === 'A' || primitives[j].type === 'A';
-    if (eitherArc && !isKinkJoint) constraints.push({ type: 'Tangent', targets: [idA, idB] });
+    if (eitherArc && !isKinkJoint) {
+      const segI = segMap[i], segJ = segMap[j];
+      const mirrorKey = `${mirrorSegmentIndex(segJ, n)}:${mirrorSegmentIndex(segI, n)}`;
+      if (!tangentSeen.has(mirrorKey)) {
+        constraints.push({ type: 'Tangent', targets: [idA, idB] });
+        tangentSeen.add(`${segI}:${segJ}`);
+      }
+    }
   }
 
-  // Mirror-Equal (§2's own "every right-side entity <-> its LEFT mirror"):
-  // ONLY between segments that produce exactly ONE primitive each — a
-  // disclosed scope-narrowing (WORK-LOG-lane-b.md T61): a kink's own
-  // 2-primitive mirror pairing (which of its 2 lines pairs with which of
-  // its mirror's 2 lines) isn't verified this turn, so it's skipped
-  // rather than guessed. Reuses `mirrorSegmentIndex` (T59) directly, not
-  // a second mirror-index formula.
+  // T70 AMEND 3 (advisor MEASURED: the OLD mirror-Equal alone left the two
+  // halves the SAME SIZE but with no ABSOLUTE POSITION link to each other
+  // — a stroke_width change, or a rigid sketch move, let them drift/
+  // collapse asymmetrically, since nothing tied WHERE the left half sat
+  // relative to the right). Fixed with a genuine relationship, never Fix:
+  // every mirror pair's own points get a Symmetry constraint about a new
+  // vertical construction centerline at x=0 (carve-space — natural-space
+  // x=cx0, the SAME mirror-x both `_solveHourglass`/`_solveBottle` already
+  // use for their own `M()` reflection, confirmed identical in both).
+  // LINE pair: Symmetry on BOTH endpoints fully determines the pair's
+  // relative length too, so the OLD mirror-Equal (length) is now genuinely
+  // redundant and dropped. ARC pair: Symmetry on ONLY the center point is
+  // added — its two endpoints are already pinned transitively via the
+  // Coincident chain through their own (already-symmetric) neighbors —
+  // this fixes POSITION, not SIZE, so the mirror-Equal (radius) STAYS,
+  // exactly like the EXISTING seg1<->seg3 shoulder<->hip pattern just
+  // below (Equal + one Radial dim driving both). ONLY between segments
+  // that produce exactly ONE primitive each — a disclosed scope-narrowing
+  // (WORK-LOG-lane-b.md T61, unchanged by this turn): a kink's own
+  // 2-primitive mirror pairing isn't verified this turn, so it's skipped
+  // rather than guessed. Reuses `mirrorSegmentIndex` (T59) directly, not a
+  // second mirror-index formula.
+  const cx0 = region.x + region.w / 2;
+  let mirrorAxisId = null;
+  const ensureMirrorAxis = () => {
+    if (mirrorAxisId) return mirrorAxisId;
+    mirrorAxisId = 'mirrorAxis';
+    entities.push({
+      id: mirrorAxisId, type: 'Line', isConstruction: true,
+      p1: [cx0, region.y], p2: [cx0, region.y + region.h],
+    });
+    return mirrorAxisId;
+  };
+  // A mirrored LINE pair's own 2 endpoints have no declared order
+  // correspondence (the left half is walked in the OPPOSITE traversal
+  // direction, per the generator's own header comment) — matched here by
+  // actual Y-coordinate proximity (mirroring only ever flips X), the SAME
+  // "read real coordinates, don't assume a convention" discipline
+  // `axisConstraintType`/`pieceEndOrCurveTarget` already use elsewhere in
+  // this module.
+  const nearestEndBySameY = (pt, primB) => (
+    Math.abs(pt.y - primB.p0.y) <= Math.abs(pt.y - primB.p1.y) ? 'S' : 'E'
+  );
   const seen = new Set();
   for (let i = 0; i < n; i++) {
     const mi = mirrorSegmentIndex(i, n);
@@ -538,7 +594,19 @@ export function manifestFromShape(shape, region, opts = {}) {
     const countI = segMap.filter((s) => s === i).length;
     const countMi = segMap.filter((s) => s === mi).length;
     if (countI !== 1 || countMi !== 1) continue;
-    constraints.push({ type: 'Equal', targets: [idsByPrimIndex[primIdxI], idsByPrimIndex[primIdxMi]] });
+    const primA = primitives[primIdxI], primB = primitives[primIdxMi];
+    if (primA.type !== primB.type) continue; // never structurally mixed in these presets; skip rather than guess
+    const idA = idsByPrimIndex[primIdxI], idB = idsByPrimIndex[primIdxMi];
+    const axis = ensureMirrorAxis();
+    if (primA.type === 'L') {
+      const sSuffix = nearestEndBySameY(primA.p0, primB);
+      const eSuffix = sSuffix === 'S' ? 'E' : 'S';
+      constraints.push({ type: 'Symmetry', targets: [`${idA}:S`, `${idB}:${sSuffix}`, axis] });
+      constraints.push({ type: 'Symmetry', targets: [`${idA}:E`, `${idB}:${eSuffix}`, axis] });
+    } else {
+      constraints.push({ type: 'Symmetry', targets: [`${idA}:C`, `${idB}:C`, axis] });
+      constraints.push({ type: 'Equal', targets: [idA, idB] });
+    }
   }
 
   const nameTable = PARAM_FUSION_NAMES[preset] || {};
@@ -564,6 +632,24 @@ export function manifestFromShape(shape, region, opts = {}) {
     const idx1 = segMap.indexOf(1), idx3 = segMap.indexOf(3);
     constraints.push({ type: 'Equal', targets: [idsByPrimIndex[idx1], idsByPrimIndex[idx3]] });
     dimensions.push({ type: 'Radial', target: idsByPrimIndex[idx1], expression: 'corner_radius * half_width' });
+  }
+
+  // T70 AMEND 3 (advisor MEASURED: without this, the waist arc's own
+  // radius was never actually dimensioned at all — its two ENDPOINTS were
+  // already pinned transitively via the Coincident chain through the
+  // shoulder/hip arcs, but nothing fixed the arc's own THIRD degree of
+  // freedom [how far it bulges], so a re-solve left it drifting). The
+  // mirror pass above already declared the seg2<->seg8 Equal (radius) —
+  // this only adds the ONE driving Radial dim, on the RIGHT waist arc
+  // (index 2), matching the shoulder<->hip block's own "Radial on the
+  // right one, Equal carries it to the left" convention exactly.
+  // Hourglass-only, same disclosed scope as the shoulder/hip block above
+  // (bottle's own analogous "neck" arc is untouched — a PRE-EXISTING
+  // scope-narrowing, not introduced by this fix).
+  if (preset === 'hourglass' && segments[2]?.style === 'curve') {
+    const idx2 = segMap.indexOf(2);
+    parameters.push({ name: 'waist_radius', value: primitives[idx2].rx, unit: 'in' });
+    dimensions.push({ type: 'Radial', target: idsByPrimIndex[idx2], expression: 'waist_radius' });
   }
 
   return { entities, constraints, parameters, dimensions, groups };

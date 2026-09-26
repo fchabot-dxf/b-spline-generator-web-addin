@@ -487,7 +487,12 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     const shape = { preset, seed: 42, params: {} };
     const { primitives } = generateSilhouette(REGION, shape);
     const manifest = manifestFromShape(shape, REGION);
-    expect(manifest.entities.length).toBe(primitives.length);
+    // T70 AMEND 3: manifest.entities can ALSO carry a non-primitive-derived
+    // mirror-axis construction Line now -- filter to the per-primitive
+    // `seg*` entities specifically, rather than asserting an exact overall
+    // count that a structural (not per-segment) entity would break.
+    const segEntities = manifest.entities.filter((e) => e.id.startsWith('seg'));
+    expect(segEntities.length).toBe(primitives.length);
     primitives.forEach((prim, i) => {
       const e = entityById(manifest.entities, `seg${i}`);
       if (prim.type === 'L') {
@@ -568,9 +573,14 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     expect(halfWidth.unit).toBe('in');
     const strokeWidth = manifest.parameters.find((p) => p.name === 'stroke_width');
     expect(strokeWidth.unit).toBe('in');
-    expect(manifest.parameters.length).toBe(Object.keys(params).length + 2);
+    // T70 AMEND 3: hourglass ALSO gets a 'waist_radius' param (bottle's
+    // own analogous "neck" arc stays undimensioned -- a pre-existing
+    // scope-narrowing, matching the shoulder/hip Radial dim's own
+    // hourglass-only guard just below).
+    const extra = preset === 'hourglass' ? 3 : 2;
+    expect(manifest.parameters.length).toBe(Object.keys(params).length + extra);
     for (const p of manifest.parameters) {
-      if (p.name !== 'half_width' && p.name !== 'stroke_width') expect(p.unit).toBeNull();
+      if (!['half_width', 'stroke_width', 'waist_radius'].includes(p.name)) expect(p.unit).toBeNull();
     }
   });
 });
@@ -612,6 +622,77 @@ describe('manifestFromShape — hourglass-specific: shoulder<->hip cross-tie', (
     // "radius" to drive once seg1 is a kink, not an arc), so this checks
     // only THAT type, not dimensions in general.
     expect(manifest.dimensions.some((d) => d.type === 'Radial' && kinkIds.includes(d.target))).toBe(false);
+  });
+});
+
+describe('manifestFromShape — T70 AMEND 3: mirror Symmetry (never Fix, replaces the L/R mirror-Equal for lines)', () => {
+  it('a mirrorAxis construction Line exists at natural-space x = region.x + region.w/2 (the confirmed shared mirror-x both _solveHourglass/_solveBottle already use for their own M() reflection)', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const axis = manifest.entities.find((e) => e.id === 'mirrorAxis');
+    expect(axis).toBeDefined();
+    expect(axis.type).toBe('Line');
+    expect(axis.isConstruction).toBe(true);
+    expect(axis.p1[0]).toBeCloseTo(REGION.x + REGION.w / 2, 9);
+    expect(axis.p2[0]).toBeCloseTo(REGION.x + REGION.w / 2, 9);
+  });
+
+  it('every Symmetry constraint targets exactly 2 points + the mirror axis, and its own 2 points are genuine mirror images about that axis (independent coordinate check)', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const symmetries = manifest.constraints.filter((c) => c.type === 'Symmetry');
+    expect(symmetries.length).toBeGreaterThan(0); // non-vacuous
+    const axisX = REGION.x + REGION.w / 2;
+    for (const c of symmetries) {
+      expect(c.targets.length).toBe(3);
+      expect(c.targets[2]).toBe('mirrorAxis');
+      const [ptA, ptB] = c.targets.slice(0, 2).map((t) => pointOf(manifest.entities, t));
+      expect(ptA.x - axisX).toBeCloseTo(-(ptB.x - axisX), 6); // mirror images about the axis
+      expect(ptA.y).toBeCloseTo(ptB.y, 6); // mirroring never touches Y
+    }
+  });
+
+  it('a LINE mirror pair (seg0 horn-R <-> seg10 horn-L) no longer gets the OLD mirror-Equal -- Symmetry on both endpoints fully subsumes length-equality', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const hasOldEqual = manifest.constraints.some((c) => c.type === 'Equal' && c.targets.includes('seg0') && c.targets.includes('seg10'));
+    expect(hasOldEqual).toBe(false);
+    const symmetryCount = manifest.constraints.filter((c) => c.type === 'Symmetry'
+      && c.targets.some((t) => t.startsWith('seg0:')) && c.targets.some((t) => t.startsWith('seg10:'))).length;
+    expect(symmetryCount).toBe(2); // both endpoints
+  });
+
+  it('an ARC mirror pair (seg2 waist-R <-> seg8 waist-L) KEEPS its own mirror-Equal (radius) alongside the NEW Symmetry (position) -- Symmetry on a center point alone never implies equal radius', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const hasEqual = manifest.constraints.some((c) => c.type === 'Equal' && c.targets.includes('seg2') && c.targets.includes('seg8'));
+    expect(hasEqual).toBe(true);
+    const hasSymmetryOnCenter = manifest.constraints.some((c) => c.type === 'Symmetry'
+      && c.targets.includes('seg2:C') && c.targets.includes('seg8:C'));
+    expect(hasSymmetryOnCenter).toBe(true);
+  });
+
+  it('exactly HALF the arc-adjacency Tangent joints are dropped as mirror-redundant once Symmetry ties the two halves together (hourglass default: 8 candidate joints, 4 kept) -- the SPECIFIC pair the advisor measured OVER_CONSTRAINTS in real Fusion (seg8/seg9) is the one dropped, not its own mirror seg1/seg2 (kept)', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const tangents = manifest.constraints.filter((c) => c.type === 'Tangent');
+    expect(tangents.length).toBe(4);
+    const has12 = tangents.some((c) => c.targets.includes('seg1') && c.targets.includes('seg2'));
+    const has89 = tangents.some((c) => c.targets.includes('seg8') && c.targets.includes('seg9'));
+    expect(has12).toBe(true);
+    expect(has89).toBe(false);
+  });
+
+  it("the waist arc (seg2) gets its own Radial dim driven by a NEW waist_radius parameter, matching corner_radius/seg1's own pattern exactly", () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const { primitives } = generateSilhouette(REGION, shape);
+    const manifest = manifestFromShape(shape, REGION);
+    const waistRadiusParam = manifest.parameters.find((p) => p.name === 'waist_radius');
+    expect(waistRadiusParam).toBeDefined();
+    expect(waistRadiusParam.value).toBeCloseTo(primitives[2].rx, 9);
+    expect(waistRadiusParam.unit).toBe('in');
+    const dim = manifest.dimensions.find((d) => d.target === 'seg2' && d.type === 'Radial');
+    expect(dim.expression).toBe('waist_radius');
   });
 });
 

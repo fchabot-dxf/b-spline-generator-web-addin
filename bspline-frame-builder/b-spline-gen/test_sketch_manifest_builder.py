@@ -302,6 +302,9 @@ class FakeGeometricConstraints:
     def addParallel(self, a, b):
         return self._make("Parallel")
 
+    def addSymmetry(self, a, b, sym_line):
+        return self._make("Symmetry")
+
 
 class FakeParameter:
     def __init__(self, name):
@@ -451,20 +454,39 @@ class FakeSketch:
     # orchestration, not Fusion's own solver" posture every fake in this
     # file already carries; what matters for _create_arc3_slot_entity's own
     # tests is that a UNIQUE, CONSTRUCTION, 3-point-matching arc exists to
-    # find. Uses the SAME CCW-normalization helper addByThreePoints already
-    # uses (T67's own real-Fusion measurement of that method; assumed, not
-    # verified live, for this one).
-    def addThreePointArcSlot(self, p1, p_mid, p2, value_input, create_width_dim):
-        CALL_LOG.append(("slot:addThreePointArcSlot", p1.x, p1.y, p_mid.x, p_mid.y, p2.x, p2.y, value_input.value, create_width_dim))
-        center = _circumcenter(p1, p_mid, p2)
-        radius = center.distanceTo(p1)
+    # find.
+    #
+    # T70 AMEND 2 (advisor's own real Fusion run on T69's own 02b9100 —
+    # this is the SECOND version of this fake; the FIRST modeled the wrong
+    # argument semantics and never caught T69's own real bug because a
+    # circumcenter is order-independent regardless of which 3 raw values
+    # land in which slot, so the WRONG call order still produced a
+    # numerically correct CIRCLE — just built from the wrong pair of
+    # endpoints, which the old fake never distinguished). The REAL method
+    # signature is `(START, END, POINT-ON-ARC)`, not `(start, mid, end)` —
+    # `start`/`end` are used DIRECTLY as the arc's own two ends (after
+    # Fusion's own CCW-normalization, modeled here via the SAME signed-area
+    # helper `addByThreePoints` already uses, fed this method's own
+    # positional order so a WRONG call — e.g. the OLD buggy production
+    # code's `(p1, p_mid, p2)`, meaning start=p1, end=p_mid, point-on-arc=p2
+    # under THIS signature — genuinely produces an arc ending at p_mid, not
+    # p2: a real, catchable geometric error, not just a relabeling); the
+    # 3rd argument only ever feeds the CIRCUMCENTER (order-independent,
+    # same formula as before) and is never guaranteed to land on the drawn
+    # sweep in general (the advisor's own "quarter arc" measured case) —
+    # irrelevant for every real call this module ever makes, since `pMid`
+    # is always the TRUE geometric mid-sweep point of the SAME `p1..p2` arc.
+    def addThreePointArcSlot(self, start, end, point_on_arc, value_input, create_width_dim):
+        CALL_LOG.append(("slot:addThreePointArcSlot", start.x, start.y, end.x, end.y, point_on_arc.x, point_on_arc.y, value_input.value, create_width_dim))
+        center = _circumcenter(start, end, point_on_arc)
+        radius = center.distanceTo(start)
         centerline = FakeCurveBase.__new__(FakeSketchArc)
         FakeCurveBase.__init__(centerline)
         centerline.isConstruction = True
         centerline.centerSketchPoint = FakeSketchPoint(center)
-        start, end = _ccw_normalized_ends(p1, p_mid, p2)
-        centerline.startSketchPoint = FakeSketchPoint(start)
-        centerline.endSketchPoint = FakeSketchPoint(end)
+        s, e = _ccw_normalized_ends(start, point_on_arc, end)
+        centerline.startSketchPoint = FakeSketchPoint(s)
+        centerline.endSketchPoint = FakeSketchPoint(e)
         self._curves.append(centerline)
 
         half_w = value_input.value / 2.0
@@ -596,6 +618,7 @@ from sketch_manifest_builder import (  # noqa: E402
     _create_arc3_entity,
     _create_slot_entity,
     _create_circle_entity,
+    _create_line_entity,
     _create_arc3_slot_entity,
     verify_sketch_against_manifest,
     _Logger,
@@ -1188,6 +1211,35 @@ def test_arc3_point_slot_S_E_survive_addThreePointArcSlot_own_CCW_normalization_
     assert tagged_end.geometry.distanceTo(_to_point3d(ent["p2"])) < 1e-9
 
 
+def test_addThreePointArcSlot_shim_models_the_real_start_end_pointOnArc_argument_order():
+    """T70 AMEND 2's own acceptance test (advisor's own real Fusion run on
+    T69's own 02b9100): the FIRST version of this fake modeled a plain
+    3-point-through construction (like addByThreePoints) and could NEVER
+    have caught T69's own real bug, because a circumcenter is order-
+    independent — the WRONG call order still produced a numerically
+    correct circle, just labeled wrong, which the old fake's own CCW
+    normalization then silently "fixed" back to the right pair by
+    accident. This proves the CURRENT fake actually distinguishes argument
+    ROLE, not just which 3 raw values got passed: the OLD, buggy call
+    shape `addThreePointArcSlot(p1, p_mid, p2, ...)` — under the REAL
+    `(start, end, point_on_arc)` signature, meaning start=p1, end=p_mid,
+    point_on_arc=p2 — must build an arc whose actual END is p_mid, NEVER
+    the real end p2, matching the advisor's own measured symptom (every
+    contour arc built only half its intended sweep)."""
+    design = FakeDesign()
+    sketch = design.rootComponent.sketches.add(design.rootComponent.xYConstructionPlane)
+    p1, p_mid, p2 = FakePoint3D(0, 0), FakePoint3D(5, 5), FakePoint3D(10, 0)
+    value_input = adsk.core.ValueInput.createByReal(0.07)
+    sketch.addThreePointArcSlot(p1, p_mid, p2, value_input, True)  # the OLD, buggy call shape
+    centerline = [c for c in sketch._curves if isinstance(c, FakeSketchArc) and c.isConstruction][0]
+    ends = {
+        (round(centerline.startSketchPoint.geometry.x, 6), round(centerline.startSketchPoint.geometry.y, 6)),
+        (round(centerline.endSketchPoint.geometry.x, 6), round(centerline.endSketchPoint.geometry.y, 6)),
+    }
+    assert (p2.x, p2.y) not in ends  # the old call order never reaches the real end p2
+    assert (p_mid.x, p_mid.y) in ends  # ...it ends at pMid instead -- the actual measured bug
+
+
 def test_arc3_point_slot_centerline_not_uniquely_identifiable_raises_never_guesses():
     """The dispatch's own explicit instruction: 'if you can't identify an
     arc slot's centerline robustly... log it and skip that seg, never
@@ -1278,6 +1330,80 @@ def test_shape_contour_as_slots_end_to_end_builds_dimensions_and_reports_zero_pa
     assert summary["parity"]["maxErr"] < 1e-6
 
 
+# ---------------------------------------------------------------------------
+# T70 AMEND 3 — the new Symmetry constraint + a construction mirror-axis
+# Line (Fred, via the advisor's own live measurement: the old mirror-Equal
+# alone left the contour's two halves the same SIZE with no shared
+# POSITION, drifting/collapsing under a width change or a rigid move)
+# ---------------------------------------------------------------------------
+def test_line_entity_isConstruction_flag_sets_the_real_attribute_when_declared():
+    """The mirror-axis Line is the FIRST manifest Line that ever needs
+    `isConstruction` -- every other Line entity omits the field entirely,
+    so this also proves the omission path stays a real, unchanged False."""
+    design = FakeDesign()
+    logger = _Logger()
+    ctx = BuildContext(design.rootComponent, design, logger)
+    s_name = "TestSketch"
+    ctx.entity_map[s_name] = {}
+    sketch = design.rootComponent.sketches.add(design.rootComponent.xYConstructionPlane)
+    curves = sketch.sketchCurves
+
+    axis_ent = {"id": "axis", "type": "Line", "isConstruction": True, "p1": [0.0, -1.0], "p2": [0.0, 2.0]}
+    axis_line = _create_line_entity(ctx, curves, s_name, axis_ent)
+    assert axis_line.isConstruction is True
+
+    plain_ent = {"id": "plain", "type": "Line", "p1": [0.0, 0.0], "p2": [1.0, 0.0]}
+    plain_line = _create_line_entity(ctx, curves, s_name, plain_ent)
+    assert plain_line.isConstruction is False
+
+
+def _mirror_symmetry_manifest():
+    """T70 AMEND 3: a minimal hand-built manifest proving the NEW Symmetry
+    constraint end-to-end -- 2 mirrored Line entities + 1 construction
+    mirror-axis Line, each end pair tied by Symmetry about the axis.
+    Deliberately carries NO Equal at all: two lines whose own 4 endpoints
+    are ALL pinned symmetric about the same axis have an equal length as a
+    direct CONSEQUENCE, exactly the "Symmetry subsumes the old mirror-Equal
+    for lines" reasoning this fix is built on -- if that reasoning were
+    wrong, this fixture's own points (chosen non-trivially, not axis-
+    aligned) simply wouldn't parity-match after a build."""
+    return {
+        "version": 1, "layerId": "1", "sketchName": "Test Mirror Symmetry",
+        "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9}, "widthMode": "centerline",
+        "entities": [
+            {"id": "axis", "type": "Line", "isConstruction": True, "p1": [0.0, -1.0], "p2": [0.0, 2.0]},
+            {"id": "segR", "type": "Line", "p1": [2.0, 0.0], "p2": [3.0, 1.0]},
+            {"id": "segL", "type": "Line", "p1": [-2.0, 0.0], "p2": [-3.0, 1.0]},
+        ],
+        "constraints": [
+            {"type": "Symmetry", "targets": ["segR:S", "segL:S", "axis"]},
+            {"type": "Symmetry", "targets": ["segR:E", "segL:E", "axis"]},
+        ],
+        "parameters": [],
+        "dimensions": [],
+        "groups": {"silhouette": ["segR", "segL"]},
+        "latticePieceCount": 0,
+        "latticeConstrained": True,
+    }
+
+
+def test_mirror_symmetry_constraint_dispatches_via_constraint_step_with_zero_parity_mismatches(call_log):
+    """End-to-end via build_constrained_sketch: the axis builds as a real
+    construction Line, both Symmetry constraints dispatch through
+    fb_engine's own constraint_step (a genuinely NEW type there, T70), and
+    the parity check reads back an untouched build with zero mismatches."""
+    design = FakeDesign()
+    manifest = _mirror_symmetry_manifest()
+    summary = build_constrained_sketch(design.rootComponent, design, manifest)
+    assert summary["entities"]["created"] == 3
+    assert summary["entities"]["skipped"] == []
+    kinds = [entry[0] for entry in call_log]
+    assert kinds.count("constraint:Symmetry") == 2
+    assert summary["constraints"]["count"] == 0  # no CONSTRAINT SKIP/FAIL/MISS/WRAP FAIL markers
+    assert summary["parity"]["mismatches"] == []
+    assert summary["parity"]["maxErr"] < 1e-6
+
+
 if __name__ == "__main__":
     # Plain-Python fallback (no pytest needed), same dual-mode convention
     # frame-builder/test_templates.py already documents.
@@ -1308,8 +1434,11 @@ if __name__ == "__main__":
         test_verify_sketch_against_manifest_arc3point_ends_compared_order_free,
         test_arc3_point_slot_entity_builds_via_addThreePointArcSlot_and_registers_the_construction_centerline,
         test_arc3_point_slot_S_E_survive_addThreePointArcSlot_own_CCW_normalization_even_for_a_clockwise_input,
+        test_addThreePointArcSlot_shim_models_the_real_start_end_pointOnArc_argument_order,
         test_arc3_point_slot_centerline_not_uniquely_identifiable_raises_never_guesses,
         test_shape_contour_as_slots_end_to_end_builds_dimensions_and_reports_zero_parity_mismatches,
+        test_line_entity_isConstruction_flag_sets_the_real_attribute_when_declared,
+        test_mirror_symmetry_constraint_dispatches_via_constraint_step_with_zero_parity_mismatches,
     ]
     passed, failed = 0, 0
     for t in tests:

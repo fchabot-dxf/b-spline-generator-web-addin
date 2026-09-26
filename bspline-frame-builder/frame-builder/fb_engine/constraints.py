@@ -2,7 +2,7 @@
 Constraint Step — Applies geometric constraints to sketch entities.
 
 Supported types: Coincident, Collinear, Horizontal, Vertical,
-Tangent, Parallel, Equal.
+Tangent, Parallel, Equal, Symmetry.
 """
 
 
@@ -86,6 +86,15 @@ def constraint_step(ctx, sketch, s_name, rel):
             created.append((c, None))
         elif ctype == "Equal" and len(targets) == 2:
             c = gc.addEqual(targets[0], targets[1])
+            created.append((c, None))
+        elif ctype == "Symmetry" and len(targets) == 3:
+            # T70 (SE15b AMEND 3, b-spline-gen's own sketch_manifest_builder.py):
+            # (point, point, symmetryLine) -- ties a mirrored pair of
+            # contour points to a shared construction axis, so the two
+            # halves stay a single rigid assembly under re-solve instead of
+            # only ever being tied by an Equal (same SIZE, no shared
+            # POSITION).
+            c = gc.addSymmetry(targets[0], targets[1], targets[2])
             created.append((c, None))
         else:
             ctx.logger.log(

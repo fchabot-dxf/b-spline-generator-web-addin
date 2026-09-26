@@ -8198,3 +8198,105 @@ are now done.
 
 Amendments polled clean before this commit; will poll once more immediately before passing.
 
+## T69-FIX — the arc argument order (advisor MEASURED, real bug in 02b9100) + a genuine symmetry relationship for the contour's two halves, before T70 could start
+
+**How this arrived**: mid-T70 (before any T70 code was written), a peer session (`b-spline-generator-web-addin-5c`)
+relayed two cross-session messages carrying the advisor's own live-Fusion measurements of T69 (02b9100), with an
+explicit instruction to fix these FIRST, as their own commit, before continuing SE14b. Also relayed a separate T70
+AMEND 1 (a node-parity gap on the Shape lattice) — left for T70 proper, since it's squarely inside that turn's own
+parity-test-extension scope, not urgent-blocking like the other two.
+
+### AMEND 2 — `sketch.addThreePointArcSlot`'s own argument order was wrong
+
+**Measured**: the method's real signature is `(START, END, POINT-ON-ARC)`, not `(start, mid, end)`. T69's own call
+— `addThreePointArcSlot(p1, p_mid, p2, ...)` — told Fusion the arc's own END was THIS module's own MIDPOINT, so
+every one of the 6 contour arcs built only HALF its intended sweep (start to midpoint, never reaching the real
+end). Measured fallout: 2 Tangent constraints SOLVING_FAILED, parity maxErr 2.35in across all 12 contour segments.
+
+**Fix**: swap the call to `addThreePointArcSlot(p1, p2, p_mid, ...)` — one line, in `_create_arc3_slot_entity`.
+The existing proximity-based `:S`/`:E` relabeling (kept unchanged) still handles whatever CCW-normalization
+Fusion's own solver applies regardless of argument order.
+
+**Why the FIRST version of the test shim never caught this**: a circumcenter is order-independent — feeding the
+SAME 3 raw points into the fake's own `_circumcenter` in ANY order produces the identical center/radius, so the
+OLD (buggy) call and the FIXED call looked numerically indistinguishable to a shim that only modeled "3 points
+define a circle" (the SAME mental model `addByThreePoints` genuinely uses, which this method does NOT). Rewrote
+the fake to model the REAL role-based semantics: `start`/`end` become the arc's own two ends DIRECTLY (after the
+SAME CCW-normalization signed-area check `addByThreePoints`'s own fake already uses, now factored into a shared
+`_ccw_normalized_ends` helper used by both), and the 3rd argument feeds ONLY the circumcenter. Added a dedicated
+regression test (`test_addThreePointArcSlot_shim_models_the_real_start_end_pointOnArc_argument_order`) proving the
+OLD call shape, under the NEW fake, genuinely builds an arc ending at the midpoint, not the real end — the
+dispatch's own explicit "make the shim model this order so a wrong call fails first" ask.
+
+### AMEND 3 — the contour's two halves were never actually tied to each other, only made the same size
+
+**Measured** (advisor, live, with AMEND 2's fix applied — parity was already exact by then): stroke_width
+0.07->0.25 moved the arcs ~0.1in and broke symmetry (irreversibly — going back to 0.07 did NOT restore it); a
+rigid move of the whole sketch collapsed the waist to r 0.274; Tangent seg8/seg9 came back OVER_CONSTRAINTS.
+
+**Root cause**: the OLD mirror-Equal pass (`Equal(seg_i, seg_mirror(i))`) only ever asserted the two halves were
+the SAME SIZE — nothing tied WHERE the left half sat relative to the right, so the assembly had a genuine
+unconstrained rigid-body degree of freedom between its two halves, invisible until something disturbed it.
+
+**Fix, with relationships + parameter-driven dims, never Fix** (per the dispatch's own explicit instruction):
+- A new construction Line, `mirrorAxis`, at natural-space `x = region.x + region.w/2` — confirmed (by reading
+  `_solveHourglass`/`_solveBottle` directly) to be the IDENTICAL mirror-x both presets already use for their own
+  `M()` reflection, so this generalizes across both without any preset-specific plumbing. `_create_line_entity`
+  (Python) gained an `isConstruction` flag, read from the manifest's own declared field (every OTHER Line entity
+  omits it, defaulting False, unchanged) — the FIRST manifest entity that ever needed it.
+- A genuinely NEW Fusion constraint type, `Symmetry` (`gc.addSymmetry(point, point, symmetryLine)`), added to
+  `fb_engine/constraints.py`'s own `constraint_step` (previously only Coincident/Collinear/H/V/Tangent/Parallel/
+  Equal — a real gap, not a re-guess, since `addSymmetry` genuinely didn't exist there before).
+- For a mirrored LINE pair (e.g. a horn segment and its own mirror): Symmetry on BOTH endpoints, matched to their
+  geometrically-correct counterpart by Y-proximity (mirroring only ever flips X) rather than an assumed traversal-
+  order convention — the SAME "read real coordinates, don't guess from convention" discipline `axisConstraintType`
+  already uses elsewhere in this module. This fully determines the pair's relative length too, so the OLD
+  mirror-Equal is now genuinely redundant and dropped for lines.
+- For a mirrored ARC pair (the waist, seg2<->seg8): Symmetry on ONLY the center point — its own two ENDpoints are
+  already pinned transitively via the Coincident chain through their own (now-symmetric) neighbors, so Symmetry's
+  job here is purely POSITION. The mirror-Equal STAYS for arcs (radius is a genuinely separate concern Symmetry-
+  on-a-center-point alone never implies) — exactly mirroring the EXISTING seg1<->seg3 shoulder<->hip pattern
+  (Equal + one Radial dim driving both).
+- A NEW `waist_radius` parameter + Radial dim on the right waist arc (seg2) — the waist's own radius (its third
+  degree of freedom beyond its two now-transitively-pinned endpoints) was previously undimensioned entirely; a
+  semicircle drawn 3-point-through has no OTHER constraint holding its bulge in place once built, so it was
+  drifting on every re-solve. Hourglass-only, matching the shoulder/hip Radial dim's own pre-existing scope
+  (bottle's own analogous "neck" arc stays undimensioned — a disclosed, pre-existing narrowing, not new).
+- The SPECIFIC redundant Tangent (seg8/seg9) the advisor measured: generalized into a declarative rule rather
+  than hardcoded indices (fragile under segment overrides, and meaningless for bottle's own different layout) —
+  when an adjacent-joint Tangent's OWN mirror-image joint (`mirrorSegmentIndex`, reversed order since the left
+  half is walked in the OPPOSITE traversal direction per the generator's own header comment) was ALREADY declared
+  earlier in the same pass, skip it. Verified by hand-tracing all 4 mirror-Tangent pairs in the default hourglass
+  (0,1)<->(9,10), (1,2)<->(8,9), (2,3)<->(7,8), (3,4)<->(6,7): the rule drops ALL FOUR left-side ones (each being
+  the second-encountered of its own pair, since the right side is always walked first in forward-index order) —
+  a result that CONTAINS the one specific pair (8,9) the advisor measured, not one that contradicts it, giving
+  real confidence the generalization is sound and not just a re-guess dressed as one. A dedicated test
+  (`exactly HALF the arc-adjacency Tangent joints...`) locks in the count (4, not 8) and specifically that
+  seg8/seg9 is dropped while its own mirror seg1/seg2 is kept.
+
+**Disclosed uncertainty** (this turn stays NO FUSION): whether ALL FOUR dropped Tangents are genuinely as
+redundant as the ONE the advisor actually measured, versus Fusion's solver simply never got far enough to report
+the others, is not independently confirmed here — flagged for the advisor's own next live re-measurement, which
+they already said they'd do ("Advisor will re-measure drift + reversibility live").
+
+### Tests and verification
+
+**JS** (`tests/editor-sketch-manifest.test.js`): a new describe block, 6 tests — mirror axis exists at the
+confirmed shared mirror-x and is construction; every Symmetry constraint's own 2 points are genuine mirror images
+(independent coordinate check, not re-trusting the function under test); a Line pair loses its old Equal; an Arc
+pair keeps it; exactly 4 (not 8) Tangents survive, with seg8/seg9 specifically dropped and seg1/seg2 specifically
+kept; the waist gets its own parameter+dim. 3 existing tests' own count assertions updated (mirror axis adds one
+non-`seg*` entity; hourglass gets one extra parameter) — each checked against the test's own stated PURPOSE before
+touching it, not mechanically. Mutation-tested all 3 new behaviors separately (Tangent dedup, Symmetry emission,
+waist dim), each isolated and MD5-restored: disabling each broke EXACTLY the test(s) built to catch it, nothing
+else. Full JS suite: 1045/1045 (up from 1039 — 6 new tests, 0 regressions).
+
+**Python** (`test_sketch_manifest_builder.py`): the arg-order regression test above, plus a direct
+`isConstruction` unit test, plus an end-to-end `Symmetry`-dispatch test (2 mirrored Lines + a construction axis,
+built via `build_constrained_sketch`, confirming `constraint:Symmetry` fires twice and `verify_sketch_against_
+manifest` reports zero mismatches on the untouched build). Full suite: 149/149 (`pytest`), 30/30 (plain-`python3`
+fallback — the SAME single pre-existing gap noted at T69 remains, still unrelated to this turn).
+
+Amendments polled clean before this commit; will poll once more immediately before passing, then continue into
+T70 (SE14b) proper, folding in AMEND 1 (the node-parity gap) as part of that turn's own parity-test extension.
+

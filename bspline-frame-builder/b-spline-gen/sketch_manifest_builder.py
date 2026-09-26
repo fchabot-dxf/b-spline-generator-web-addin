@@ -135,6 +135,13 @@ def _create_line_entity(ctx, curves, s_name, ent):
     p2 = _to_point3d(ent["p2"])
     line = curves.sketchLines.addByTwoPoints(p1, p2)
     ctx.set_id(line, s_name, "line", override_id=ent["id"])
+    # T70 AMEND 3: the shape contour's own new mirror-axis Line (declared
+    # `isConstruction: true` in the manifest so it never becomes a real,
+    # selectable profile edge) is the first Line entity that ever needs
+    # this — every OTHER Line entity omits the field, so `.get(...)`
+    # defaults False and this is a no-op for them.
+    if ent.get("isConstruction"):
+        line.isConstruction = True
     ctx.set_id(line.startSketchPoint, s_name, "point", override_id=f"{ent['id']}:S")
     ctx.set_id(line.endSketchPoint, s_name, "point", override_id=f"{ent['id']}:E")
     return line
@@ -298,22 +305,34 @@ def _create_arc3_slot_entity(ctx, sketch, curves, s_name, ent, width_expression)
     (`addThreePointArcSlot`), the arc-shaped sibling of `_create_slot_
     entity`'s own center-to-center Line slot: a construction CENTERLINE
     arc through the manifest's own p1/pMid/p2, two side arcs at +-width/2,
-    two end caps, and its own width dimension (the advisor's own measured
-    shape — this API surface itself is NOT verified live this turn, NO
-    FUSION; the advisor verifies after merge, same disclosed-uncertainty
-    posture `_create_slot_entity` carried before T65's own real run
-    confirmed it).
+    two end caps, and its own width dimension.
+
+    T70 AMEND 2 (advisor's own real Fusion run on T69's own 02b9100, a
+    genuine measured bug, not a re-guess): the method's own argument order
+    is `(START, END, POINT-ON-ARC)`, NOT `(start, mid, end)` — T69's own
+    first attempt called `addThreePointArcSlot(p1, p_mid, p2, ...)`,
+    telling Fusion its arc's own END was THIS module's own MIDPOINT, so
+    every contour arc built only half its intended sweep (start to
+    midpoint, not start to end) — measured as 2 Tangent constraints
+    SOLVING_FAILED and a parity maxErr of 2.35in across all 12 contour
+    segments. Fixed by passing `p2` (this function's own real end point)
+    as Fusion's own END argument, and `p_mid` as Fusion's own POINT-ON-ARC
+    (a hint used only to fix the circle, not guaranteed to land on the
+    drawn sweep in general — true for every point THIS module ever passes
+    it, since `p_mid` is always the real geometric mid-sweep point of the
+    SAME arc `p1`/`p2` bound, so it always lands on the intended minor
+    arc). `:S`/`:E` are STILL tagged by PROXIMITY to `p1` afterward (kept,
+    not removed by this fix) — the advisor's own measurement found
+    Fusion's returned centerline arc CCW-normalized regardless of the
+    fixed argument order, exactly like `addByThreePoints` already is (T67).
 
     Registers the CENTERLINE (never the visible slot body) under this
-    segment's own manifest id, its own :S/:E by PROXIMITY to p1/p2 — the
-    SAME technique T67 already applies to a plain Arc3Point, since
-    `addThreePointArcSlot`'s own centerline is expected to normalize to
-    CCW exactly like `addByThreePoints` does (unverified live this turn) —
-    and :C for the centre. Every EXISTING contour constraint (Coincident
-    chain, Tangent, H/V, Equal, the hourglass's own shoulder<->hip Radial)
-    already targets this SAME id/suffix scheme, so they re-target onto the
-    centerline with NO changes of their own — a real re-target, not an
-    additive mechanism, exactly like the Line-slot case.
+    segment's own manifest id, :C for the centre. Every EXISTING contour
+    constraint (Coincident chain, Tangent, H/V, Equal, Symmetry, the
+    hourglass's own Radial dims) already targets this SAME id/suffix
+    scheme, so they re-target onto the centerline with NO changes of their
+    own — a real re-target, not an additive mechanism, exactly like the
+    Line-slot case.
 
     If the centerline can't be identified UNIQUELY, this raises rather
     than guessing — `_find_arc_slot_centerline`'s own doc comment has the
@@ -326,7 +345,7 @@ def _create_arc3_slot_entity(ctx, sketch, curves, s_name, ent, width_expression)
     width_in = ent.get("width", 0.07)
     value_input = adsk.core.ValueInput.createByReal(width_in * IN_TO_CM)
     arc_count_before = curves.sketchArcs.count
-    sketch.addThreePointArcSlot(p1, p_mid, p2, value_input, True)
+    sketch.addThreePointArcSlot(p1, p2, p_mid, value_input, True)
     centerline = _find_arc_slot_centerline(curves, p1, p_mid, p2, arc_count_before)
     if not centerline:
         raise RuntimeError(f"could not identify the arc slot's own centerline for {ent['id']}")
@@ -492,10 +511,12 @@ def _apply_constraints(ctx, sketch, s_name, constraints):
     """The manifest's {type, targets} constraint dicts map 1:1 onto
     constraint_step's own {"Type", "Targets"} shape — Coincident, Tangent,
     Horizontal, Vertical, Equal are ALL already implemented there (T60's
-    own research confirmed this: 5 of 5 needed types, no gap). Wrapped in
-    a defensive try/except anyway (constraint_step itself never raises
-    past its own internals, per its own code — this is belt-and-suspenders
-    for a genuinely malformed manifest entry, not the primary safety net)."""
+    own research confirmed this: 5 of 5 needed types, no gap); Symmetry
+    (3 targets: point, point, symmetryLine) added in T70 for the shape
+    contour's own L/R mirror pass. Wrapped in a defensive try/except anyway
+    (constraint_step itself never raises past its own internals, per its
+    own code — this is belt-and-suspenders for a genuinely malformed
+    manifest entry, not the primary safety net)."""
     for c in constraints or []:
         rel = {"Type": c.get("type"), "Targets": c.get("targets", [])}
         try:
