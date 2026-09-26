@@ -58,3 +58,12 @@ Advisor measured it today: app SVG ↔ manifest = identical (box: 14/14 lines, 1
     Manifest: each rail-touching end → Coincident on that rail centerline; a free end gets NO constraint.
     Tests: default pattern — every tie has ≥1 end on a rail; some ties (seeded fixture) have a free end; manifest has
     1 tie-on-rail Coincident per touching end. Render + view (no fully floating ties).
+
+## AMEND 4 — REFINES amend 3 (Fred: "one setting: number of one ended ties; I'll usually want 1 or 2")
+Declare `ties.oneEnded: <int>` (default 1) in PATTERN_DEFAULTS. Generation: ALL ties bridge rail to rail (both ends ON
+adjacent rails, as span.mode 'rails'), EXCEPT exactly `oneEnded` of them (seeded pick among the ties, clamped to the
+tie count), which start on a rail and end free (a stub that does not reach the next rail). Never a tie with both ends
+free. UI: one number stepper "One-ended ties" (0..count, step 1) in the Lattice panel's ties section, same C1 style as
+its neighbours; Shape Lattice gets the same field if it generates ties the same way. Saved patterns without the key read
+the default. Manifest: rail ends Coincident on their rail; the free end gets nothing.
+Tests: for oneEnded = 0, 1, 2: exactly that many ties have a free end, all others have both ends on rails; render + view.
