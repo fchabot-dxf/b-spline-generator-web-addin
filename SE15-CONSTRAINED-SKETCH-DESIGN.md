@@ -594,6 +594,13 @@ UPDATE (Fred: "box lattice needs to be slots too"): BOTH Box and Shape Lattice =
 end points fixed (anchored slots grow evenly on stroke_width edits; free ones drift lopsided - measured), nodes built
 on the slot centerline end points. Offsets removed.
 
+## LOOSE CONTOUR (Fred 2026-09-26: "dont use symmetry either" / "no radius dim though, leave the sketch loose for now")
+Constraint vocabulary for SE15/SE15b sketches: NO Fix, NO Symmetry, NO radius dims, NO length/size dims. Allowed:
+slots + the `stroke_width` width dim, Coincident joints (separate points), Tangent at contour joints, Horizontal /
+Vertical. Geometry is INSERTED in position (symmetric by coordinates) and left loose — drift on a width edit is accepted.
+Measured before this ruling (for the record): Symmetry needed an origin-anchored axis, and without size dims the edges
+ran off on a width edit; revisit only if Fred asks for a held shape.
+
 ## NO FIX (Fred 2026-09-25: "never use Fix") — advisor MEASURED
 All slots, NO Fix, relationships only (rails Horizontal, ties Vertical, tie ends Coincident on rail centerlines): zero
 failures; stroke_width 0.07→0.2 moved centerlines 0.005", back to 0.07 returned exactly. Fix + relationships together =
