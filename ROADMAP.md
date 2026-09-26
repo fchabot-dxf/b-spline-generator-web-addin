@@ -846,6 +846,12 @@ button, its handler, panel state/strings, tests that only guard the picked-shape
 named reason. Saved patterns that have a picked boundary still load (read-only / detach) — decide and log.
 Later, optional: a standalone "Fill shape" tool (pick any drawn shape → lattice inside) if Fred wants it.
 
+## Queued — NODE-D: node size entered as DIAMETER (Fred 2026-09-26: "node size should be entered as diameter not radius")
+With SE14d (seat B, after T73). Lattice + Shape Lattice "Node size" field shows/accepts DIAMETER (default 0.075 r →
+0.15 Ø). Fusion: parameter `node_diameter`, each node circle gets a DIAMETER dimension (Ø) driven by it (replaces
+node_radius + radial dims). Declare which quantity is stored once; saved patterns with the old radius value load
+correctly (convert on read, one place). Parity + builder tests updated; advisor verifies live.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
