@@ -1,0 +1,2466 @@
+{
+ "params": {
+  "stampSmoothingRadius": 15,
+  "stampFilletPower": 2.2,
+  "stampEdgeFilletRadius": 0,
+  "stampDepth": 0.25,
+  "stampProfile": "vbit",
+  "stampVBitAngle": 90,
+  "stampBlur": 0,
+  "stampTextureSuppression": 0.15,
+  "widthIn": 7,
+  "heightIn": 11,
+  "carveZ": 1.1,
+  "seed": 86467,
+  "scale": 3.7,
+  "macroScale": 0.65,
+  "warpIntensity": 1,
+  "symmetry": "x",
+  "symOffsetX": 0,
+  "symOffsetY": 0,
+  "spacing": 0.05,
+  "smoothIntensity": 0,
+  "smoothRadius": 1.2,
+  "showMesh": false,
+  "noiseType": "simplex",
+  "filterTweaks": {},
+  "detailDensity": 1,
+  "detailStrength": 0.25,
+  "detailDensityRespectSymmetry": true,
+  "smoothRespectSymmetry": true,
+  "peakShape": 2.2,
+  "density": 1,
+  "clustering": 0,
+  "seedType": "perlin",
+  "seedOffsetX": 0,
+  "seedOffsetY": 0,
+  "seedRotation": 0,
+  "isolateSkeleton": false,
+  "thickenEnabled": true,
+  "thickness": 0.125,
+  "thickenDir": "down",
+  "thickenMode": "adaptive",
+  "showLeaders": true,
+  "includeSurface": true,
+  "bottomSmoothRadius": 0.3,
+  "includeUnstampedSolid": false,
+  "thickenWireframe": false,
+  "flatShading": false,
+  "activeSculptLayer": null,
+  "sculptTopRadius": 2,
+  "sculptTopStrength": 0.03,
+  "sculptTopRespectSymmetry": true,
+  "sculptTopMode": "draw",
+  "sculptTopNoiseScale": 10,
+  "sculptBotRadius": 1,
+  "sculptBotStrength": 0.008,
+  "sculptBotRespectSymmetry": true,
+  "sculptBotMode": "draw",
+  "sculptBotNoiseScale": 10,
+  "extraThickenThin": 0.4,
+  "extraThickenThinFalloff": 0.05,
+  "exportOrientation": "z-up",
+  "edgeMarginIn": 0,
+  "stampLayers": [
+   {
+    "id": "layer0",
+    "name": "Layer 1",
+    "depth": 0.25,
+    "profile": "vbit",
+    "angle": 90,
+    "blur": 0,
+    "enabled": true,
+    "smoothing": 15,
+    "suppression": 0.15,
+    "edgeFilletRadius": 0,
+    "filletPower": 2.2,
+    "tx": 0,
+    "ty": 0,
+    "rotation": 0,
+    "scale": 1,
+    "mirrorX": false,
+    "mirrorY": false
+   },
+   {
+    "id": "layer1",
+    "name": "Layer 2",
+    "depth": -0.5,
+    "profile": "ballnose",
+    "angle": 90,
+    "blur": 0,
+    "enabled": false,
+    "smoothing": 10,
+    "suppression": 0.1,
+    "edgeFilletRadius": 0,
+    "filletPower": 2.2,
+    "tx": 0,
+    "ty": 0,
+    "rotation": 0,
+    "scale": 1,
+    "mirrorX": false,
+    "mirrorY": false
+   },
+   {
+    "id": "layer2",
+    "name": "Layer 3",
+    "depth": 0.75,
+    "profile": "flat",
+    "angle": 90,
+    "blur": 0,
+    "enabled": false,
+    "smoothing": 5,
+    "suppression": 0.05,
+    "edgeFilletRadius": 0,
+    "filletPower": 2.2,
+    "tx": 0,
+    "ty": 0,
+    "rotation": 0,
+    "scale": 1,
+    "mirrorX": false,
+    "mirrorY": false
+   }
+  ],
+  "activeLayerIdx": 1,
+  "thickenYellowOffset": 0.01,
+  "editorSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"672\" height=\"1056\" viewBox=\"0 0 7 11\" preserveAspectRatio=\"none\" data-export-dpi=\"96\" data-editor-layers=\"[{&quot;id&quot;:&quot;1&quot;,&quot;name&quot;:&quot;Layer 1&quot;,&quot;visible&quot;:true,&quot;carve&quot;:false,&quot;showColor&quot;:true,&quot;fusionGeometry&quot;:&quot;centerline&quot;,&quot;depth&quot;:0.25,&quot;profile&quot;:&quot;vbit&quot;,&quot;angle&quot;:90,&quot;tx&quot;:0,&quot;ty&quot;:0,&quot;rotation&quot;:0,&quot;scale&quot;:1,&quot;mirrorX&quot;:false,&quot;mirrorY&quot;:false,&quot;blur&quot;:0,&quot;smoothing&quot;:15,&quot;suppression&quot;:0.15,&quot;edgeFilletRadius&quot;:0,&quot;filletPower&quot;:2.2,&quot;pattern&quot;:{&quot;spacing&quot;:0.25,&quot;orientation&quot;:&quot;horizontal&quot;,&quot;margin&quot;:1,&quot;rails&quot;:{&quot;mode&quot;:&quot;count&quot;,&quot;count&quot;:[6,7],&quot;every&quot;:2,&quot;offset&quot;:0},&quot;ties&quot;:{&quot;mode&quot;:&quot;count&quot;,&quot;count&quot;:[8,13],&quot;spread&quot;:&quot;stratified&quot;,&quot;span&quot;:{&quot;mode&quot;:&quot;rails&quot;,&quot;rails&quot;:1},&quot;maxRailGaps&quot;:1,&quot;oneEnded&quot;:1,&quot;density&quot;:0.4,&quot;spanMin&quot;:1,&quot;spanMax&quot;:3,&quot;columns&quot;:null,&quot;anchor&quot;:&quot;free&quot;,&quot;railSnapRows&quot;:1},&quot;nodes&quot;:{&quot;ends&quot;:true,&quot;crossings&quot;:true,&quot;railEnds&quot;:false},&quot;colors&quot;:{&quot;rails&quot;:&quot;#c62828&quot;,&quot;ties&quot;:&quot;#f9c80e&quot;,&quot;nodes&quot;:&quot;#1a237e&quot;,&quot;contour&quot;:&quot;#2e7d32&quot;},&quot;widths&quot;:{&quot;rails&quot;:0.25,&quot;ties&quot;:0.25,&quot;nodeDiameter&quot;:0.15,&quot;linkRailsTies&quot;:true},&quot;seed&quot;:322179,&quot;boundary&quot;:{&quot;shapeId&quot;:&quot;b-muiqi0l3&quot;,&quot;endRule&quot;:&quot;inset&quot;,&quot;edge&quot;:&quot;inner-stroke&quot;,&quot;runs&quot;:null,&quot;joints&quot;:{&quot;freq&quot;:1,&quot;shape&quot;:&quot;circle&quot;,&quot;size&quot;:null}},&quot;shape&quot;:{&quot;source&quot;:&quot;generated&quot;,&quot;preset&quot;:&quot;hourglass&quot;,&quot;seed&quot;:42,&quot;params&quot;:{},&quot;segments&quot;:[{&quot;style&quot;:&quot;straight&quot;,&quot;bulge&quot;:0,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;curve&quot;,&quot;bulge&quot;:0.41421356237309537,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;curve&quot;,&quot;bulge&quot;:1,&quot;dir&quot;:&quot;in&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;curve&quot;,&quot;bulge&quot;:0.41421356237309537,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;straight&quot;,&quot;bulge&quot;:0,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;straight&quot;,&quot;bulge&quot;:0,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;straight&quot;,&quot;bulge&quot;:0,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;curve&quot;,&quot;bulge&quot;:0.41421356237309537,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;curve&quot;,&quot;bulge&quot;:1,&quot;dir&quot;:&quot;in&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;curve&quot;,&quot;bulge&quot;:0.41421356237309537,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;straight&quot;,&quot;bulge&quot;:0,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0},{&quot;style&quot;:&quot;straight&quot;,&quot;bulge&quot;:0,&quot;dir&quot;:&quot;out&quot;,&quot;cornerRadius&quot;:0}]},&quot;contour&quot;:{&quot;show&quot;:true,&quot;width&quot;:null,&quot;segmentColors&quot;:[]},&quot;extent&quot;:{&quot;mode&quot;:&quot;boundary&quot;},&quot;id&quot;:&quot;lattice-muiqi0l4&quot;}},{&quot;id&quot;:&quot;2&quot;,&quot;name&quot;:&quot;Layer 2&quot;,&quot;visible&quot;:true,&quot;carve&quot;:true,&quot;showColor&quot;:false,&quot;fusionGeometry&quot;:&quot;centerline&quot;,&quot;depth&quot;:0.25,&quot;profile&quot;:&quot;vbit&quot;,&quot;angle&quot;:90,&quot;tx&quot;:0,&quot;ty&quot;:0,&quot;rotation&quot;:0,&quot;scale&quot;:1,&quot;mirrorX&quot;:false,&quot;mirrorY&quot;:false,&quot;blur&quot;:0,&quot;smoothing&quot;:15,&quot;suppression&quot;:0.15,&quot;edgeFilletRadius&quot;:0,&quot;filletPower&quot;:2.2,&quot;pattern&quot;:{&quot;spacing&quot;:0.25,&quot;orientation&quot;:&quot;horizontal&quot;,&quot;margin&quot;:1,&quot;rails&quot;:{&quot;mode&quot;:&quot;count&quot;,&quot;count&quot;:[6,7],&quot;every&quot;:2,&quot;offset&quot;:0},&quot;ties&quot;:{&quot;mode&quot;:&quot;count&quot;,&quot;count&quot;:[8,13],&quot;spread&quot;:&quot;stratified&quot;,&quot;span&quot;:{&quot;mode&quot;:&quot;rails&quot;,&quot;rails&quot;:1},&quot;maxRailGaps&quot;:1,&quot;oneEnded&quot;:1,&quot;density&quot;:0.4,&quot;spanMin&quot;:1,&quot;spanMax&quot;:3,&quot;columns&quot;:null,&quot;anchor&quot;:&quot;free&quot;,&quot;railSnapRows&quot;:1},&quot;nodes&quot;:{&quot;ends&quot;:true,&quot;crossings&quot;:true,&quot;railEnds&quot;:false},&quot;colors&quot;:{&quot;rails&quot;:&quot;#c62828&quot;,&quot;ties&quot;:&quot;#f9c80e&quot;,&quot;nodes&quot;:&quot;#1a237e&quot;,&quot;contour&quot;:&quot;#2e7d32&quot;},&quot;widths&quot;:{&quot;rails&quot;:0.25,&quot;ties&quot;:0.25,&quot;nodeDiameter&quot;:0.15,&quot;linkRailsTies&quot;:true},&quot;seed&quot;:42,&quot;boundary&quot;:{&quot;shapeId&quot;:null,&quot;endRule&quot;:&quot;inset&quot;,&quot;edge&quot;:&quot;inner-stroke&quot;,&quot;runs&quot;:null,&quot;joints&quot;:{&quot;freq&quot;:1,&quot;shape&quot;:&quot;circle&quot;,&quot;size&quot;:null}},&quot;shape&quot;:{&quot;source&quot;:&quot;generated&quot;,&quot;preset&quot;:&quot;hourglass&quot;,&quot;seed&quot;:42,&quot;params&quot;:{},&quot;segments&quot;:null},&quot;contour&quot;:{&quot;show&quot;:true,&quot;width&quot;:null,&quot;segmentColors&quot;:[]}}}]\" data-editor-active-layer=\"2\"><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 6.5 0.5 L 6.5 3.676\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"0\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 6.5 3.676 A 0.727 0.727 0 0 1 5.773 4.403\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"1\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" class=\" inactive-layer\" style=\"cursor: pointer;\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 5.773 4.403 A 0.914 0.914 0 0 0 5.773 6.232\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"2\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\" inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 5.773 6.232 A 0.727 0.727 0 0 1 6.5 6.959\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"3\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" class=\" inactive-layer\" style=\"cursor: pointer;\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 6.5 6.959 L 6.5 10.5\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"4\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 6.5 10.5 L 0.5 10.5\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"5\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 0.5 10.5 L 0.5 6.959\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"6\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\" inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 0.5 6.959 A 0.727 0.727 0 0 1 1.227 6.232\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"7\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 1.227 6.232 A 0.914 0.914 0 0 0 1.227 4.403\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"8\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 1.227 4.403 A 0.727 0.727 0 0 1 0.5 3.676\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"9\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 0.5 3.676 L 0.5 0.5\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"10\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 0.5 0.5 L 6.5 0.5\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"11\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"0.5\" y1=\"0.5\" x2=\"6.5\" y2=\"0.5\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"0.5\" y1=\"2.25\" x2=\"6.5\" y2=\"2.25\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"0.503775968319636\" y1=\"3.75\" x2=\"6.496224031680362\" y2=\"3.75\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"2.12310490457312\" y1=\"5.5\" x2=\"4.876895095426879\" y2=\"5.5\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"0.5\" y1=\"7.25\" x2=\"6.5\" y2=\"7.25\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\" inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"0.5\" y1=\"8.75\" x2=\"6.5\" y2=\"8.75\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"0.5\" y1=\"10.5\" x2=\"6.5\" y2=\"10.5\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"1.25\" y1=\"0.5\" x2=\"1.25\" y2=\"2.25\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"2.25\" y1=\"7.25\" x2=\"2.25\" y2=\"8.75\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"2.75\" y1=\"3.75\" x2=\"2.75\" y2=\"5.5\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"3.75\" y1=\"2.25\" x2=\"3.75\" y2=\"3.75\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"4.75\" y1=\"0.5\" x2=\"4.75\" y2=\"2.25\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"5.75\" y1=\"8.25\" x2=\"5.75\" y2=\"8.75\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"6.5\" y1=\"0.5\" x2=\"6.5\" y2=\"2.25\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"1.25\" cy=\"0.5\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"1.25\" cy=\"2.25\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"2.25\" cy=\"7.25\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\" inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"2.25\" cy=\"8.75\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"2.75\" cy=\"3.75\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"2.75\" cy=\"5.5\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"3.75\" cy=\"2.25\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"3.75\" cy=\"3.75\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"4.75\" cy=\"0.5\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"4.75\" cy=\"2.25\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"5.75\" cy=\"8.25\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"5.75\" cy=\"8.75\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"6.5\" cy=\"0.5\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"0.075\" cx=\"6.5\" cy=\"2.25\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><path d=\"M 3.000,1.250 L 2.929,1.332 L 2.187,1.256 L 1.939,1.351 L 1.692,1.713 L 1.673,2.398 L 1.997,2.645 L 2.510,2.664 L 2.701,2.208 L 2.701,1.998 L 2.434,1.599\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"2\" class=\"layer-no-color\"></path><path d=\"M 5.750,1.500 L 5.631,1.503 L 5.137,1.275 L 4.813,1.275 L 4.223,1.656 L 3.900,2.017 L 3.824,2.779 L 3.976,3.178 L 4.471,3.844 L 4.680,3.978 L 5.022,4.035 L 5.593,3.559 L 5.689,3.026 L 5.498,2.607 L 5.137,2.341 L 4.604,2.322 L 4.433,2.588 L 4.452,2.969 L 4.661,3.197 L 4.908,3.064\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"2\" class=\"layer-no-color\"></path><path d=\"M 2.250,4.750 L 2.130,4.739 L 2.187,5.119 L 2.339,5.462 L 2.529,5.614 L 3.157,5.633 L 3.291,5.443 L 3.367,4.986\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"2\" class=\"layer-no-color\"></path><path d=\"M 5.250,7.500 L 5.308,7.422 L 3.576,7.156 L 2.301,7.137 L 1.806,7.251 L 0.969,7.651 L 0.893,7.917 L 0.893,8.450 L 0.969,8.754 L 1.407,9.344 L 1.882,9.573 L 3.919,9.649 L 4.832,9.458 L 5.479,9.154 L 5.612,9.002 L 5.746,8.602 L 5.574,7.917 L 5.022,7.517\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"2\" class=\"svg-selected layer-no-color\"></path></svg>"
+ },
+ "filename": "B-Spline.step",
+ "isPreview": false,
+ "isAppend": false,
+ "isVisible": true,
+ "stamp": {
+  "enabled": true,
+  "layers": [
+   {
+    "index": 1,
+    "config": {
+     "profile": "vbit",
+     "depth": 0.25
+    },
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"672\" height=\"1056\" viewBox=\"-336 -528 672 1056\" preserveAspectRatio=\"none\" data-export-dpi=\"96\"><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 288 -480 L 288 -175.10399999999998\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"0\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 288 -175.10399999999998 A 69.792 69.792 0 0 1 218.20799999999997 -105.31200000000001\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"1\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" class=\" inactive-layer\" style=\"cursor: pointer;\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 218.20799999999997 -105.31200000000001 A 87.79200000000002 87.79200000000002 0 0 0 218.20799999999997 70.27200000000005\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"2\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\" inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 218.20799999999997 70.27200000000005 A 69.792 69.792 0 0 1 288 140.06399999999996\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"3\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" class=\" inactive-layer\" style=\"cursor: pointer;\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 288 140.06399999999996 L 288 480\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"4\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 288 480 L -288 480\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"5\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M -288 480 L -288 140.06399999999996\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"6\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\" inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M -288 140.06399999999996 A 69.792 69.792 0 0 1 -218.208 70.27200000000005\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"7\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M -218.208 70.27200000000005 A 87.79200000000002 87.79200000000002 0 0 0 -218.208 -105.31200000000001\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"8\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M -218.208 -105.31200000000001 A 69.792 69.792 0 0 1 -288 -175.10399999999998\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"9\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M -288 -175.10399999999998 L -288 -480\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"10\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M -288 -480 L 288 -480\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" data-layer=\"1\" data-contour-seg=\"11\" data-boundary-ref=\"b-muiqi0l3\" stroke-width=\"0.25\" stroke=\"#2e7d32\" style=\"cursor: pointer;\" class=\"inactive-layer\"></path><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-288\" y1=\"-480\" x2=\"288\" y2=\"-480\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-288\" y1=\"-312\" x2=\"288\" y2=\"-312\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-287.63750704131496\" y1=\"-168\" x2=\"287.63750704131473\" y2=\"-168\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-132.18192916098047\" y1=\"0\" x2=\"132.18192916098042\" y2=\"0\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-288\" y1=\"168\" x2=\"288\" y2=\"168\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\" inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-288\" y1=\"312\" x2=\"288\" y2=\"312\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-288\" y1=\"480\" x2=\"288\" y2=\"480\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#c62828\" data-layer=\"1\" data-lattice=\"rail\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-216\" y1=\"-480\" x2=\"-216\" y2=\"-312\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-120\" y1=\"168\" x2=\"-120\" y2=\"312\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"-72\" y1=\"-168\" x2=\"-72\" y2=\"0\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"24\" y1=\"-312\" x2=\"24\" y2=\"-168\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"120\" y1=\"-480\" x2=\"120\" y2=\"-312\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"216\" y1=\"264\" x2=\"216\" y2=\"312\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><line xmlns=\"http://www.w3.org/2000/svg\" x1=\"288\" y1=\"-480\" x2=\"288\" y2=\"-312\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"1\" data-lattice=\"tie\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></line><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"-216\" cy=\"-480\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"-216\" cy=\"-312\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"-120\" cy=\"168\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\" inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"-120\" cy=\"312\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"-72\" cy=\"-168\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"-72\" cy=\"0\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"24\" cy=\"-312\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"24\" cy=\"-168\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"120\" cy=\"-480\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"120\" cy=\"-312\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"216\" cy=\"264\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"216\" cy=\"312\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"288\" cy=\"-480\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle><circle xmlns=\"http://www.w3.org/2000/svg\" r=\"7.199999999999999\" cx=\"288\" cy=\"-312\" fill=\"#1a237e\" stroke-width=\"0\" stroke=\"none\" data-layer=\"1\" data-lattice=\"node\" data-lattice-gen=\"lattice-muiqi0l4\" style=\"cursor: pointer;\" class=\"inactive-layer\"></circle></svg>",
+    "sketchManifest": {
+     "version": 1,
+     "widthMode": "slot",
+     "contourWidthMode": "slot",
+     "layerId": "1",
+     "sketchName": "Layer 1",
+     "units": "in",
+     "region": {
+      "x": 0,
+      "y": 0,
+      "w": 7,
+      "h": 11
+     },
+     "entities": [
+      {
+       "id": "seg0",
+       "type": "Slot",
+       "p1": [
+        3,
+        5
+       ],
+       "p2": [
+        3,
+        1.8237903745877064
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg1",
+       "type": "Arc3PointSlot",
+       "p1": [
+        3,
+        1.8237903745877064
+       ],
+       "pMid": [
+        2.7870289947746967,
+        1.30963288538055
+       ],
+       "p2": [
+        2.27287150556754,
+        1.0966618801552475
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg2",
+       "type": "Arc3PointSlot",
+       "p1": [
+        2.272871505567541,
+        1.0966618801552475
+       ],
+       "pMid": [
+        1.358659375405093,
+        0.18244974999279862
+       ],
+       "p2": [
+        2.272871505567541,
+        -0.7317623801696502
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg3",
+       "type": "Arc3PointSlot",
+       "p1": [
+        2.272871505567541,
+        -0.7317623801696485
+       ],
+       "pMid": [
+        2.7870289947746976,
+        -0.9447333853949509
+       ],
+       "p2": [
+        3,
+        -1.4588908746021074
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg4",
+       "type": "Slot",
+       "p1": [
+        3,
+        -1.4588908746021083
+       ],
+       "p2": [
+        3,
+        -5
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg5",
+       "type": "Slot",
+       "p1": [
+        3,
+        -5
+       ],
+       "p2": [
+        -3,
+        -5
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg6",
+       "type": "Slot",
+       "p1": [
+        -3,
+        -5
+       ],
+       "p2": [
+        -3,
+        -1.4588908746021083
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg7",
+       "type": "Arc3PointSlot",
+       "p1": [
+        -3,
+        -1.4588908746021074
+       ],
+       "pMid": [
+        -2.7870289947746976,
+        -0.9447333853949509
+       ],
+       "p2": [
+        -2.272871505567541,
+        -0.7317623801696485
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg8",
+       "type": "Arc3PointSlot",
+       "p1": [
+        -2.272871505567541,
+        -0.7317623801696502
+       ],
+       "pMid": [
+        -1.3586593754050926,
+        0.18244974999279862
+       ],
+       "p2": [
+        -2.272871505567541,
+        1.0966618801552475
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg9",
+       "type": "Arc3PointSlot",
+       "p1": [
+        -2.272871505567541,
+        1.0966618801552475
+       ],
+       "pMid": [
+        -2.7870289947746976,
+        1.30963288538055
+       ],
+       "p2": [
+        -3,
+        1.8237903745877069
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg10",
+       "type": "Slot",
+       "p1": [
+        -3,
+        1.8237903745877064
+       ],
+       "p2": [
+        -3,
+        5
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "seg11",
+       "type": "Slot",
+       "p1": [
+        -3,
+        5
+       ],
+       "p2": [
+        3,
+        5
+       ],
+       "width": 0.25
+      },
+      {
+       "id": "node0",
+       "type": "Circle",
+       "center": [
+        -2.25,
+        5
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node1",
+       "type": "Circle",
+       "center": [
+        -2.25,
+        3.25
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node2",
+       "type": "Circle",
+       "center": [
+        -1.25,
+        -1.75
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node3",
+       "type": "Circle",
+       "center": [
+        -1.25,
+        -3.25
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node4",
+       "type": "Circle",
+       "center": [
+        -0.75,
+        1.75
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node5",
+       "type": "Circle",
+       "center": [
+        -0.75,
+        0
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node6",
+       "type": "Circle",
+       "center": [
+        0.25,
+        3.25
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node7",
+       "type": "Circle",
+       "center": [
+        0.25,
+        1.75
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node8",
+       "type": "Circle",
+       "center": [
+        1.25,
+        5
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node9",
+       "type": "Circle",
+       "center": [
+        1.25,
+        3.25
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node10",
+       "type": "Circle",
+       "center": [
+        2.25,
+        -2.75
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node11",
+       "type": "Circle",
+       "center": [
+        2.25,
+        -3.25
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node12",
+       "type": "Circle",
+       "center": [
+        3,
+        5
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node13",
+       "type": "Circle",
+       "center": [
+        3,
+        3.25
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "rail0",
+       "type": "Slot",
+       "p1": [
+        -3,
+        5
+       ],
+       "p2": [
+        3,
+        5
+       ],
+       "width": 0.25,
+       "railGroup": 2
+      },
+      {
+       "id": "rail1",
+       "type": "Slot",
+       "p1": [
+        -3,
+        3.25
+       ],
+       "p2": [
+        3,
+        3.25
+       ],
+       "width": 0.25,
+       "railGroup": 9
+      },
+      {
+       "id": "rail2",
+       "type": "Slot",
+       "p1": [
+        -2.996224031680364,
+        1.75
+       ],
+       "p2": [
+        2.996224031680362,
+        1.75
+       ],
+       "width": 0.25,
+       "railGroup": 15
+      },
+      {
+       "id": "rail3",
+       "type": "Slot",
+       "p1": [
+        -1.37689509542688,
+        0
+       ],
+       "p2": [
+        1.376895095426879,
+        0
+       ],
+       "width": 0.25,
+       "railGroup": 22
+      },
+      {
+       "id": "rail4",
+       "type": "Slot",
+       "p1": [
+        -3,
+        -1.75
+       ],
+       "p2": [
+        3,
+        -1.75
+       ],
+       "width": 0.25,
+       "railGroup": 29
+      },
+      {
+       "id": "rail5",
+       "type": "Slot",
+       "p1": [
+        -3,
+        -3.25
+       ],
+       "p2": [
+        3,
+        -3.25
+       ],
+       "width": 0.25,
+       "railGroup": 35
+      },
+      {
+       "id": "rail6",
+       "type": "Slot",
+       "p1": [
+        -3,
+        -5
+       ],
+       "p2": [
+        3,
+        -5
+       ],
+       "width": 0.25,
+       "railGroup": 42
+      },
+      {
+       "id": "tie0",
+       "type": "Slot",
+       "p1": [
+        -2.25,
+        5
+       ],
+       "p2": [
+        -2.25,
+        3.25
+       ],
+       "width": 0.25,
+       "railGroup": 5
+      },
+      {
+       "id": "tie1",
+       "type": "Slot",
+       "p1": [
+        -1.25,
+        -1.75
+       ],
+       "p2": [
+        -1.25,
+        -3.25
+       ],
+       "width": 0.25,
+       "railGroup": 9
+      },
+      {
+       "id": "tie2",
+       "type": "Slot",
+       "p1": [
+        -0.75,
+        1.75
+       ],
+       "p2": [
+        -0.75,
+        0
+       ],
+       "width": 0.25,
+       "railGroup": 11
+      },
+      {
+       "id": "tie3",
+       "type": "Slot",
+       "p1": [
+        0.25,
+        3.25
+       ],
+       "p2": [
+        0.25,
+        1.75
+       ],
+       "width": 0.25,
+       "railGroup": 15
+      },
+      {
+       "id": "tie4",
+       "type": "Slot",
+       "p1": [
+        1.25,
+        5
+       ],
+       "p2": [
+        1.25,
+        3.25
+       ],
+       "width": 0.25,
+       "railGroup": 19
+      },
+      {
+       "id": "tie5",
+       "type": "Slot",
+       "p1": [
+        2.25,
+        -2.75
+       ],
+       "p2": [
+        2.25,
+        -3.25
+       ],
+       "width": 0.25,
+       "railGroup": 23
+      },
+      {
+       "id": "tie6",
+       "type": "Slot",
+       "p1": [
+        3,
+        5
+       ],
+       "p2": [
+        3,
+        3.25
+       ],
+       "width": 0.25,
+       "railGroup": 26
+      }
+     ],
+     "constraints": [
+      {
+       "type": "Vertical",
+       "targets": [
+        "seg0"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "seg4"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "seg5"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "seg6"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "seg10"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "seg11"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg0:E",
+        "seg1:S"
+       ]
+      },
+      {
+       "type": "Tangent",
+       "targets": [
+        "seg0",
+        "seg1"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg1:E",
+        "seg2:S"
+       ]
+      },
+      {
+       "type": "Tangent",
+       "targets": [
+        "seg1",
+        "seg2"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg2:E",
+        "seg3:S"
+       ]
+      },
+      {
+       "type": "Tangent",
+       "targets": [
+        "seg2",
+        "seg3"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg3:E",
+        "seg4:S"
+       ]
+      },
+      {
+       "type": "Tangent",
+       "targets": [
+        "seg3",
+        "seg4"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg4:E",
+        "seg5:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg5:E",
+        "seg6:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg6:E",
+        "seg7:S"
+       ]
+      },
+      {
+       "type": "Tangent",
+       "targets": [
+        "seg6",
+        "seg7"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg7:E",
+        "seg8:S"
+       ]
+      },
+      {
+       "type": "Tangent",
+       "targets": [
+        "seg7",
+        "seg8"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg8:E",
+        "seg9:S"
+       ]
+      },
+      {
+       "type": "Tangent",
+       "targets": [
+        "seg8",
+        "seg9"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg9:E",
+        "seg10:S"
+       ]
+      },
+      {
+       "type": "Tangent",
+       "targets": [
+        "seg9",
+        "seg10"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg10:E",
+        "seg11:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "seg11:E",
+        "seg0:S"
+       ]
+      },
+      {
+       "type": "Equal",
+       "targets": [
+        "seg0",
+        "seg10"
+       ]
+      },
+      {
+       "type": "Equal",
+       "targets": [
+        "seg1",
+        "seg9"
+       ]
+      },
+      {
+       "type": "Equal",
+       "targets": [
+        "seg2",
+        "seg8"
+       ]
+      },
+      {
+       "type": "Equal",
+       "targets": [
+        "seg3",
+        "seg7"
+       ]
+      },
+      {
+       "type": "Equal",
+       "targets": [
+        "seg4",
+        "seg6"
+       ]
+      },
+      {
+       "type": "Equal",
+       "targets": [
+        "seg1",
+        "seg3"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail0"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail0:S",
+        "seg10:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail0:E",
+        "seg0:S"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail1"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail1:S",
+        "seg10"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail1:E",
+        "seg0"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail2"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail2:S",
+        "seg9"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail2:E",
+        "seg1"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail3"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail3:S",
+        "seg8"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail3:E",
+        "seg2"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail4"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail4:S",
+        "seg6"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail4:E",
+        "seg4"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail5"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail5:S",
+        "seg6"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail5:E",
+        "seg4"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail6"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail6:S",
+        "seg5:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "rail6:E",
+        "seg4:E"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie0"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie0:S",
+        "rail0"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie0:E",
+        "rail1"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie1"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie1:S",
+        "rail4"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie1:E",
+        "rail5"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie2"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie2:S",
+        "rail2"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie2:E",
+        "rail3"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie3"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie3:S",
+        "rail1"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie3:E",
+        "rail2"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie4"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie4:S",
+        "rail0"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie4:E",
+        "rail1"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie5"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie5:E",
+        "rail5"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie6"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie6:S",
+        "rail0:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie6:E",
+        "rail1:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node0:C",
+        "tie0:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node1:C",
+        "tie0:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node2:C",
+        "tie1:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node3:C",
+        "tie1:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node4:C",
+        "tie2:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node5:C",
+        "tie2:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node6:C",
+        "tie3:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node7:C",
+        "tie3:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node8:C",
+        "tie4:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node9:C",
+        "tie4:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node10:C",
+        "tie5:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node11:C",
+        "tie5:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node12:C",
+        "tie6:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node13:C",
+        "tie6:E"
+       ]
+      }
+     ],
+     "parameters": [
+      {
+       "name": "waist_reach",
+       "value": 0.5471135415316358,
+       "unit": null
+      },
+      {
+       "name": "corner_radius",
+       "value": 0.24237616481081958,
+       "unit": null
+      },
+      {
+       "name": "waist_center_y",
+       "value": -0.03648994999855988,
+       "unit": null
+      },
+      {
+       "name": "half_width",
+       "value": 3,
+       "unit": "in"
+      },
+      {
+       "name": "stroke_width",
+       "value": 0.25,
+       "unit": "in"
+      },
+      {
+       "name": "contour_width",
+       "value": 6,
+       "unit": "in"
+      },
+      {
+       "name": "contour_height",
+       "value": 10,
+       "unit": "in"
+      },
+      {
+       "name": "node_diameter",
+       "value": 0.15,
+       "unit": "in"
+      }
+     ],
+     "dimensions": [
+      {
+       "type": "SlotWidth",
+       "target": "seg0",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg1",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg2",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg3",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg4",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg5",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg6",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg7",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg8",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg9",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg10",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "seg11",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "Distance",
+       "targets": [
+        "seg6:S",
+        "seg0:S"
+       ],
+       "orientation": "Horizontal",
+       "expression": "contour_width"
+      },
+      {
+       "type": "Distance",
+       "targets": [
+        "seg11:S",
+        "seg5:S"
+       ],
+       "orientation": "Vertical",
+       "expression": "contour_height"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail0",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail1",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail2",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail3",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail4",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail5",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail6",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie0",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie1",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie2",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie3",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie4",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie5",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie6",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "Diameter",
+       "target": "node0",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node1",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node2",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node3",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node4",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node5",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node6",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node7",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node8",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node9",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node10",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node11",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node12",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node13",
+       "expression": "node_diameter"
+      }
+     ],
+     "groups": {
+      "silhouette": [
+       "seg0",
+       "seg1",
+       "seg2",
+       "seg3",
+       "seg4",
+       "seg5",
+       "seg6",
+       "seg7",
+       "seg8",
+       "seg9",
+       "seg10",
+       "seg11"
+      ],
+      "rails": [
+       "rail0",
+       "rail1",
+       "rail2",
+       "rail3",
+       "rail4",
+       "rail5",
+       "rail6"
+      ],
+      "ties": [
+       "tie0",
+       "tie1",
+       "tie2",
+       "tie3",
+       "tie4",
+       "tie5",
+       "tie6"
+      ],
+      "nodes": [
+       "node0",
+       "node1",
+       "node2",
+       "node3",
+       "node4",
+       "node5",
+       "node6",
+       "node7",
+       "node8",
+       "node9",
+       "node10",
+       "node11",
+       "node12",
+       "node13"
+      ]
+     },
+     "latticePieceCount": 28,
+     "latticeConstrained": true
+    }
+   },
+   {
+    "index": 2,
+    "config": {
+     "profile": "vbit",
+     "depth": 0.25
+    },
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"672\" height=\"1056\" viewBox=\"-336 -528 672 1056\" preserveAspectRatio=\"none\" data-export-dpi=\"96\"><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M -48 -408 L -54.81600000000003 -400.128 L -126.048 -407.424 L -149.856 -398.304 L -173.568 -363.552 L -175.392 -297.792 L -144.28799999999998 -274.08 L -95.04000000000002 -272.256 L -76.70400000000001 -316.032 L -76.70400000000001 -336.192 L -102.33599999999998 -374.496\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"2\" class=\"layer-no-color\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 216 -384 L 204.57600000000002 -383.712 L 157.15199999999993 -405.6 L 126.048 -405.6 L 69.40800000000002 -369.024 L 38.39999999999998 -334.368 L 31.103999999999985 -261.216 L 45.696000000000026 -222.91200000000003 L 93.21600000000001 -158.976 L 113.27999999999997 -146.11199999999997 L 146.11200000000002 -140.64 L 200.928 -186.336 L 210.144 -237.50400000000002 L 191.808 -277.72799999999995 L 157.15199999999993 -303.264 L 105.98400000000004 -305.08799999999997 L 89.56799999999998 -279.552 L 91.392 -242.976 L 111.45599999999996 -221.08799999999997 L 135.168 -233.856\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"2\" class=\"layer-no-color\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M -120 -72 L -131.52 -73.05600000000004 L -126.048 -36.57600000000002 L -111.45600000000002 -3.6480000000000246 L -93.21600000000001 10.94399999999996 L -32.928 12.768000000000029 L -20.06400000000002 -5.47199999999998 L -12.768000000000029 -49.34400000000005\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"2\" class=\"layer-no-color\"></path><path xmlns=\"http://www.w3.org/2000/svg\" d=\"M 168 192 L 173.56799999999998 184.51199999999994 L 7.295999999999992 158.976 L -115.10399999999998 157.15199999999993 L -162.624 168.096 L -242.976 206.49599999999998 L -250.272 232.03199999999993 L -250.272 283.19999999999993 L -242.976 312.384 L -200.928 369.0239999999999 L -155.328 391.00800000000004 L 40.22399999999999 398.30399999999986 L 127.87199999999996 379.9680000000001 L 189.98400000000004 350.784 L 202.75199999999995 336.192 L 215.61599999999999 297.79200000000003 L 199.10400000000004 232.03199999999993 L 146.11200000000002 193.63200000000006\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\" stroke-width=\"0.25\" stroke=\"#f9c80e\" data-layer=\"2\" class=\"svg-selected layer-no-color\"></path></svg>",
+    "sketchManifest": {
+     "version": 1,
+     "widthMode": "slot",
+     "contourWidthMode": null,
+     "layerId": "2",
+     "sketchName": "Layer 2",
+     "units": "in",
+     "region": {
+      "x": 0,
+      "y": 0,
+      "w": 7,
+      "h": 11
+     },
+     "entities": [
+      {
+       "id": "node0",
+       "type": "Circle",
+       "center": [
+        -3,
+        -1.75
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node1",
+       "type": "Circle",
+       "center": [
+        -3,
+        -3.5
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node2",
+       "type": "Circle",
+       "center": [
+        -2,
+        1.75
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node3",
+       "type": "Circle",
+       "center": [
+        -2,
+        0
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node4",
+       "type": "Circle",
+       "center": [
+        -1.5,
+        0
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node5",
+       "type": "Circle",
+       "center": [
+        -1.5,
+        -1.75
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node6",
+       "type": "Circle",
+       "center": [
+        -0.5,
+        4.25
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node7",
+       "type": "Circle",
+       "center": [
+        -0.5,
+        3.5
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node8",
+       "type": "Circle",
+       "center": [
+        0,
+        5.25
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node9",
+       "type": "Circle",
+       "center": [
+        0,
+        3.5
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node10",
+       "type": "Circle",
+       "center": [
+        0.75,
+        5.25
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node11",
+       "type": "Circle",
+       "center": [
+        0.75,
+        3.5
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node12",
+       "type": "Circle",
+       "center": [
+        2.25,
+        -1.75
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node13",
+       "type": "Circle",
+       "center": [
+        2.25,
+        -3.5
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node14",
+       "type": "Circle",
+       "center": [
+        2.5,
+        3.5
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "node15",
+       "type": "Circle",
+       "center": [
+        2.5,
+        1.75
+       ],
+       "radius": 0.075
+      },
+      {
+       "id": "rail0",
+       "type": "Slot",
+       "p1": [
+        -3.25,
+        5.25
+       ],
+       "p2": [
+        3.25,
+        5.25
+       ],
+       "width": 0.25,
+       "railGroup": 1
+      },
+      {
+       "id": "rail1",
+       "type": "Slot",
+       "p1": [
+        -3.25,
+        3.5
+       ],
+       "p2": [
+        3.25,
+        3.5
+       ],
+       "width": 0.25,
+       "railGroup": 8
+      },
+      {
+       "id": "rail2",
+       "type": "Slot",
+       "p1": [
+        -3.25,
+        1.75
+       ],
+       "p2": [
+        3.25,
+        1.75
+       ],
+       "width": 0.25,
+       "railGroup": 15
+      },
+      {
+       "id": "rail3",
+       "type": "Slot",
+       "p1": [
+        -3.25,
+        0
+       ],
+       "p2": [
+        3.25,
+        0
+       ],
+       "width": 0.25,
+       "railGroup": 22
+      },
+      {
+       "id": "rail4",
+       "type": "Slot",
+       "p1": [
+        -3.25,
+        -1.75
+       ],
+       "p2": [
+        3.25,
+        -1.75
+       ],
+       "width": 0.25,
+       "railGroup": 29
+      },
+      {
+       "id": "rail5",
+       "type": "Slot",
+       "p1": [
+        -3.25,
+        -3.5
+       ],
+       "p2": [
+        3.25,
+        -3.5
+       ],
+       "width": 0.25,
+       "railGroup": 36
+      },
+      {
+       "id": "rail6",
+       "type": "Slot",
+       "p1": [
+        -3.25,
+        -5.25
+       ],
+       "p2": [
+        3.25,
+        -5.25
+       ],
+       "width": 0.25,
+       "railGroup": 43
+      },
+      {
+       "id": "tie0",
+       "type": "Slot",
+       "p1": [
+        -3,
+        -1.75
+       ],
+       "p2": [
+        -3,
+        -3.5
+       ],
+       "width": 0.25,
+       "railGroup": 2
+      },
+      {
+       "id": "tie1",
+       "type": "Slot",
+       "p1": [
+        -2,
+        1.75
+       ],
+       "p2": [
+        -2,
+        0
+       ],
+       "width": 0.25,
+       "railGroup": 6
+      },
+      {
+       "id": "tie2",
+       "type": "Slot",
+       "p1": [
+        -1.5,
+        0
+       ],
+       "p2": [
+        -1.5,
+        -1.75
+       ],
+       "width": 0.25,
+       "railGroup": 8
+      },
+      {
+       "id": "tie3",
+       "type": "Slot",
+       "p1": [
+        -0.5,
+        4.25
+       ],
+       "p2": [
+        -0.5,
+        3.5
+       ],
+       "width": 0.25,
+       "railGroup": 12
+      },
+      {
+       "id": "tie4",
+       "type": "Slot",
+       "p1": [
+        0,
+        5.25
+       ],
+       "p2": [
+        0,
+        3.5
+       ],
+       "width": 0.25,
+       "railGroup": 14
+      },
+      {
+       "id": "tie5",
+       "type": "Slot",
+       "p1": [
+        0.75,
+        5.25
+       ],
+       "p2": [
+        0.75,
+        3.5
+       ],
+       "width": 0.25,
+       "railGroup": 17
+      },
+      {
+       "id": "tie6",
+       "type": "Slot",
+       "p1": [
+        2.25,
+        -1.75
+       ],
+       "p2": [
+        2.25,
+        -3.5
+       ],
+       "width": 0.25,
+       "railGroup": 23
+      },
+      {
+       "id": "tie7",
+       "type": "Slot",
+       "p1": [
+        2.5,
+        3.5
+       ],
+       "p2": [
+        2.5,
+        1.75
+       ],
+       "width": 0.25,
+       "railGroup": 24
+      }
+     ],
+     "constraints": [
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail0"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail1"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail2"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail3"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail4"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail5"
+       ]
+      },
+      {
+       "type": "Horizontal",
+       "targets": [
+        "rail6"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie0"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie0:S",
+        "rail4"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie0:E",
+        "rail5"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie1"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie1:S",
+        "rail2"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie1:E",
+        "rail3"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie2"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie2:S",
+        "rail3"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie2:E",
+        "rail4"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie3"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie3:E",
+        "rail1"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie4"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie4:S",
+        "rail0"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie4:E",
+        "rail1"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie5"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie5:S",
+        "rail0"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie5:E",
+        "rail1"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie6"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie6:S",
+        "rail4"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie6:E",
+        "rail5"
+       ]
+      },
+      {
+       "type": "Vertical",
+       "targets": [
+        "tie7"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie7:S",
+        "rail1"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "tie7:E",
+        "rail2"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node0:C",
+        "tie0:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node1:C",
+        "tie0:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node2:C",
+        "tie1:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node3:C",
+        "tie1:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node4:C",
+        "tie2:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node5:C",
+        "tie2:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node6:C",
+        "tie3:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node7:C",
+        "tie3:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node8:C",
+        "tie4:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node9:C",
+        "tie4:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node10:C",
+        "tie5:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node11:C",
+        "tie5:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node12:C",
+        "tie6:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node13:C",
+        "tie6:E"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node14:C",
+        "tie7:S"
+       ]
+      },
+      {
+       "type": "Coincident",
+       "targets": [
+        "node15:C",
+        "tie7:E"
+       ]
+      }
+     ],
+     "parameters": [
+      {
+       "name": "stroke_width",
+       "value": 0.25,
+       "unit": "in"
+      },
+      {
+       "name": "node_diameter",
+       "value": 0.15,
+       "unit": "in"
+      }
+     ],
+     "dimensions": [
+      {
+       "type": "SlotWidth",
+       "target": "rail0",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail1",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail2",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail3",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail4",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail5",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "rail6",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie0",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie1",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie2",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie3",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie4",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie5",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie6",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "SlotWidth",
+       "target": "tie7",
+       "expression": "stroke_width"
+      },
+      {
+       "type": "Diameter",
+       "target": "node0",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node1",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node2",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node3",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node4",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node5",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node6",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node7",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node8",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node9",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node10",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node11",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node12",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node13",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node14",
+       "expression": "node_diameter"
+      },
+      {
+       "type": "Diameter",
+       "target": "node15",
+       "expression": "node_diameter"
+      }
+     ],
+     "groups": {
+      "rails": [
+       "rail0",
+       "rail1",
+       "rail2",
+       "rail3",
+       "rail4",
+       "rail5",
+       "rail6"
+      ],
+      "ties": [
+       "tie0",
+       "tie1",
+       "tie2",
+       "tie3",
+       "tie4",
+       "tie5",
+       "tie6",
+       "tie7"
+      ],
+      "nodes": [
+       "node0",
+       "node1",
+       "node2",
+       "node3",
+       "node4",
+       "node5",
+       "node6",
+       "node7",
+       "node8",
+       "node9",
+       "node10",
+       "node11",
+       "node12",
+       "node13",
+       "node14",
+       "node15"
+      ]
+     },
+     "latticePieceCount": 31,
+     "latticeConstrained": true
+    }
+   }
+  ],
+  "dpi": 96
+ },
+ "_written": "2026-09-26T14:40:37"
+}

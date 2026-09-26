@@ -25,15 +25,32 @@ import { setLayerVisible } from '../bspline-frame-builder/b-spline-gen/html/edit
 
 /** Editor layer mock: tooling (depth/profile/visible) lives ON the layer
  *  object itself now, alongside content — matching what editor._layers
- *  actually carries (TOOLING_DEFAULTS + _PERSISTED_LAYER_FIELDS). */
+ *  actually carries (TOOLING_DEFAULTS + _PERSISTED_LAYER_FIELDS).
+ *
+ *  T74 AMEND 5: an optional per-layer `owned` array seeds mock DOM
+ *  elements `latticeOwnedElementsOnLayer` can actually find — each entry
+ *  is a plain attribute-store object (e.g. `{ 'data-layer': '3',
+ *  'data-lattice-gen': 'anything' }` for an owned rail/tie/node, or
+ *  `{ 'data-layer': '3', 'data-boundary-ref': shapeId }` for a contour
+ *  segment) — same `.node.getAttribute`/`.hasAttribute` shape every other
+ *  mock editor in this suite already uses (editor-lattice-pattern-emit.
+ *  test.js's own `_makeMockEditor`), not a second, differently-shaped one. */
 function mockEditor(layers) {
+  const elements = layers.flatMap(l => (l.owned || []).map(store => ({
+    node: {
+      getAttribute: (k) => (store[k] !== undefined ? store[k] : null),
+      hasAttribute: (k) => store[k] !== undefined,
+    },
+  })));
   return {
     _draw: {},
     _mW: 7,
     _mH: 9,
     _sketchLayer: {
       node: { innerHTML: layers.map(l => l.content || '').join('') },
-      children: () => [], // svg.js API stub — enough for setLayerVisible's applyLayerState() call
+      // svg.js API stub — enough for setLayerVisible's applyLayerState()
+      // call AND latticeOwnedElementsOnLayer's own children().toArray().
+      children: () => { const arr = elements.slice(); arr.toArray = () => arr; return arr; },
     },
     _layers: layers.map(l => ({
       id: l.id,
@@ -260,6 +277,14 @@ describe('export-flow: _reportDeclinedOutlines (T44 fallback notice)', () => {
  * Own describe block, own small function, directly testable without the
  * heavier STEP-generation/Fusion-bridge machinery `sendToFusion` itself
  * needs — same reason `_fusionLayerSvg` is its own function here.
+ *
+ * T74 AMEND 5 (Fred, live: a hand-drawn layer got sent to Fusion as a
+ * LATTICE constrained sketch instead of its own artwork): `.pattern`
+ * merely existing is NOT enough — every fixture below that expects a REAL
+ * manifest now also seeds at least one owned/contour element, matching
+ * what `latticeOwnedElementsOnLayer` (editor-lattice-pattern.js) actually
+ * requires; the exact bug itself (a `.pattern` with ZERO owned content)
+ * gets its own new case.
  */
 describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () => {
   it('returns null when the editor is missing', () => {
@@ -276,14 +301,27 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
     expect(_fusionLayerManifest(editor, { id: '1' })).toBeNull();
   });
 
-  it('returns a real manifest for a layer that DOES carry a .pattern', () => {
+  it('T74 AMEND 5 (the reported bug, exactly): returns null for a layer with a STALE .pattern but ZERO owned pieces (the Lattice tool was opened on it once, nothing was ever generated, or the user drew something else by hand afterward) — never builds a manifest for content that is not actually there', () => {
     const pattern = {
       spacing: 0.25,
       rails: { mode: 'every', every: 2, offset: 0 },
       ties: { mode: 'density', density: 0, anchor: 'free', spanMin: 1, spanMax: 1 },
       nodes: { ends: false, crossings: false, railEnds: false },
     };
-    const editor = mockEditor([{ id: '3', pattern }]);
+    // No `owned` array at all -- the exact "hand-drawn layer, stale
+    // pattern" shape the live bug report described.
+    const editor = mockEditor([{ id: '2', pattern, content: '<path d="M0 0 L1 1"/><path d="M2 2 L3 3"/>' }]);
+    expect(_fusionLayerManifest(editor, { id: '2' })).toBeNull();
+  });
+
+  it('returns a real manifest for a layer that DOES carry a .pattern AND owned pieces', () => {
+    const pattern = {
+      spacing: 0.25,
+      rails: { mode: 'every', every: 2, offset: 0 },
+      ties: { mode: 'density', density: 0, anchor: 'free', spanMin: 1, spanMax: 1 },
+      nodes: { ends: false, crossings: false, railEnds: false },
+    };
+    const editor = mockEditor([{ id: '3', pattern, owned: [{ 'data-layer': '3', 'data-lattice-gen': 'anything' }] }]);
     const manifest = _fusionLayerManifest(editor, { id: '3' });
     expect(manifest).not.toBeNull();
     expect(manifest.layerId).toBe('3');
@@ -295,7 +333,10 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
   it('non-vacuous: looks up the layer by id, not by array position (a stale/wrong index would silently attach the WRONG layer\'s pattern)', () => {
     const patternA = { spacing: 0.25, rails: { mode: 'every', every: 100, offset: 0 }, ties: { mode: 'density', density: 0 }, nodes: { ends: false, crossings: false, railEnds: false } };
     const patternB = { spacing: 0.25, rails: { mode: 'every', every: 1, offset: 0 }, ties: { mode: 'density', density: 0 }, nodes: { ends: false, crossings: false, railEnds: false } };
-    const editor = mockEditor([{ id: 'A', pattern: patternA }, { id: 'B', pattern: patternB }]);
+    const editor = mockEditor([
+      { id: 'A', pattern: patternA, owned: [{ 'data-layer': 'A', 'data-lattice-gen': 'a' }] },
+      { id: 'B', pattern: patternB, owned: [{ 'data-layer': 'B', 'data-lattice-gen': 'b' }] },
+    ]);
     const manifestB = _fusionLayerManifest(editor, { id: 'B' });
     const manifestA = _fusionLayerManifest(editor, { id: 'A' });
     // every:1 (B) produces strictly more rails than every:100 (A) on the

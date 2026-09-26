@@ -32,6 +32,7 @@ import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 import { isCarved, isExported } from '../editor/layers.js';
 import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
+import { latticeOwnedElementsOnLayer } from '../editor/editor-lattice-pattern.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -105,11 +106,23 @@ function _stampExportCandidates() {
  *  per-layer declines are already console-warned inside getLayerSvg
  *  itself. Falls back to the plain centerline svg already on `l` if the
  *  editor isn't live — shouldn't happen (export only runs with one), but
- *  matches every other defensive `editor ? ... : null` in this file. */
-async function _fusionLayerSvg(editor, l) {
-    if (!editor || l.id == null) return { svg: l.svg, declined: 0, declinedKinds: [] };
-    const { svg, declined, declinedKinds } = await getLayerSvg(editor, l.id, 96, { geometry: 'fusion' });
-    return { svg: svg || l.svg, declined, declinedKinds };
+ *  matches every other defensive `editor ? ... : null` in this file.
+ *
+ *  T74 AMEND 5: `excludePattern`, when given (a MIXED layer that's ALSO
+ *  earning a sketchManifest below), strips that pattern's own lattice/
+ *  contour content out of the returned SVG — it's already fully
+ *  represented by the manifest, so sending it again as plain SVG curves
+ *  would duplicate the geometry in Fusion. `null`/omitted (the common,
+ *  non-lattice-layer case) keeps this byte-for-byte the same as before. */
+export async function _fusionLayerSvg(editor, l, excludePattern) {
+    if (!editor || l.id == null) return { svg: excludePattern ? '' : l.svg, declined: 0, declinedKinds: [] };
+    const opts = excludePattern ? { geometry: 'fusion', excludeLatticeOwnedFor: excludePattern } : { geometry: 'fusion' };
+    const { svg, declined, declinedKinds } = await getLayerSvg(editor, l.id, 96, opts);
+    // T74 AMEND 5: excluding this pattern's own content, an empty result
+    // means "nothing else in this layer" -- never fall back to the
+    // UNFILTERED l.svg (that would silently reintroduce the exact
+    // duplicate-geometry bug this exclusion exists to prevent).
+    return { svg: svg || (excludePattern ? '' : l.svg), declined, declinedKinds };
 }
 
 /** T62 (SE15): a layer's own SE15 sketch manifest, or `null` when the
@@ -123,11 +136,22 @@ async function _fusionLayerSvg(editor, l) {
  *  smaller change": no new checkbox — a layer's sketch manifest rides on
  *  the SAME "ship this layer's artwork" decision the user already makes,
  *  rather than a second, parallel toggle for a shape most users won't
- *  distinguish from the SVG they already asked to send). */
+ *  distinguish from the SVG they already asked to send).
+ *
+ *  T74 AMEND 5 (Fred, live: a hand-drawn layer got sent to Fusion as a
+ *  LATTICE constrained sketch instead of its own artwork): `.pattern`
+ *  EXISTING is not enough — the Lattice tool merely having been opened on
+ *  a layer once (materializing a stored, possibly now-STALE `.pattern`)
+ *  is not the same as the layer actually containing that pattern's own
+ *  drawn content right now. Gated on `latticeOwnedElementsOnLayer` (the
+ *  SAME declared "does this layer really have lattice content" check the
+ *  mixed-layer SVG exclusion below reuses), so a layer only ever earns a
+ *  manifest when there's something real for it to represent. */
 export function _fusionLayerManifest(editor, l) {
     if (!editor || l.id == null) return null;
     const editorLayer = Array.isArray(editor._layers) ? editor._layers.find((el) => el.id === l.id) : null;
     if (!editorLayer || !editorLayer.pattern) return null;
+    if (!latticeOwnedElementsOnLayer(editor, l.id, editorLayer.pattern).length) return null;
     return buildSketchManifest(editorLayer.pattern, boardRegion(editor), {
         layerId: l.id, sketchName: `Layer ${l.id}`,
     });
@@ -357,12 +381,22 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
     // as its own pass (not inline in the bakedLayers map) so T44's
     // declined-outline notice can see every layer's result in one place.
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
+    // T74 AMEND 5: manifests are resolved BEFORE the SVG pass now (was
+    // after) — a layer that earns one needs its own PATTERN threaded into
+    // _fusionLayerSvg below, so that layer's own lattice/contour content
+    // is excluded from the plain SVG it sends alongside the manifest
+    // (else Fusion would import that geometry twice: once as a
+    // constrained sketch, once as flat curves).
+    const manifests = options.includeSVG
+        ? layersToExport.map((l) => _fusionLayerManifest(editor, l))
+        : [];
+    const editorLayerFor = (l) => (Array.isArray(editor && editor._layers) ? editor._layers.find((el) => el.id === l.id) : null);
     const fusionResults = options.includeSVG
-        ? await Promise.all(layersToExport.map((l) => _fusionLayerSvg(editor, l)))
+        ? await Promise.all(layersToExport.map((l, i) => _fusionLayerSvg(editor, l, manifests[i] && editorLayerFor(l).pattern)))
         : [];
     const bakedLayers = options.includeSVG
         ? await Promise.all(fusionResults.map(async (r, i) => {
-            const manifest = _fusionLayerManifest(editor, layersToExport[i]);
+            const manifest = manifests[i];
             return {
                 index: i + 1,
                 config: { profile: layersToExport[i].profile, depth: layersToExport[i].depth },

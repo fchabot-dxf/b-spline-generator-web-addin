@@ -278,3 +278,89 @@ describe('getLayerSvg — T72 (SE14c): a display:none child is dropped from BOTH
     expect(svg).toContain('<path');
   });
 });
+
+/**
+ * T74 AMEND 5 (Fred, live: a hand-drawn layer got sent to Fusion as a
+ * LATTICE constrained sketch instead of its own artwork) — the fix's own
+ * mixed-layer half: `options.excludeLatticeOwnedFor` (a PATTERN object)
+ * strips that pattern's own lattice/contour content out of the returned
+ * SVG, so export-flow.js can send a layer's non-lattice remainder
+ * alongside its sketchManifest without duplicating the lattice geometry.
+ * A generated silhouette's own contour segments carry NO
+ * `data-lattice-gen` at all (they're linked via `data-boundary-ref`
+ * instead, regenerateSilhouette's own separate mechanism), so BOTH
+ * attributes are exercised here, not just the OWNERSHIP one.
+ */
+describe('getLayerSvg({excludeLatticeOwnedFor}) — T74 AMEND 5: strips this pattern\'s own lattice/contour content, leaves everything else', () => {
+  it('a pure hand-drawn layer (no lattice content at all) is completely unaffected by the option', () => {
+    const html = '<path data-layer="0" d="M0 0 L1 1"/><path data-layer="0" d="M2 2 L3 3"/>';
+    const editor = mockEditor(html, [{ id: '0' }]);
+    const withOption = getLayerSvg(editor, '0', 96, { excludeLatticeOwnedFor: { shape: { source: 'generated' }, extent: { mode: 'boundary' }, boundary: { shapeId: 'nope' } } });
+    const withoutOption = getLayerSvg(editor, '0');
+    expect(withOption).toBe(withoutOption);
+    expect((withOption.match(/<path/g) || []).length).toBe(2);
+  });
+
+  it('a pure lattice layer (every child owned) excludes down to nothing -- null content, never a fallback to the unfiltered SVG', () => {
+    const html = '<line data-layer="0" data-lattice-gen="lat1" x1="0" y1="0" x2="1" y2="0"/>'
+      + '<line data-layer="0" data-lattice-gen="lat1" x1="0" y1="1" x2="1" y2="1"/>';
+    const editor = mockEditor(html, [{ id: '0' }]);
+    const pattern = { shape: { source: 'generated' }, extent: {}, boundary: {} }; // no boundary needed -- OWNERSHIP_ATTR alone covers rails/ties/nodes
+    const svg = getLayerSvg(editor, '0', 96, { excludeLatticeOwnedFor: pattern });
+    expect(svg).toBe(''); // getLayerSvg's own established "nothing to export" contract (_parseLayerContent returns null)
+  });
+
+  it('a MIXED layer: owned rails/ties/nodes (data-lattice-gen) are stripped, hand-drawn siblings survive', () => {
+    const html = '<line data-layer="0" data-lattice-gen="lat1" x1="0" y1="0" x2="1" y2="0"/>'
+      + '<path data-layer="0" d="M5 5 L6 6"/>';
+    const editor = mockEditor(html, [{ id: '0' }]);
+    const pattern = { shape: { source: 'generated' }, extent: {}, boundary: {} };
+    const svg = getLayerSvg(editor, '0', 96, { excludeLatticeOwnedFor: pattern });
+    expect(svg).not.toContain('<line');
+    expect(svg).toContain('<path');
+    expect(svg).toContain('M5 5 L6 6');
+  });
+
+  it('a MIXED layer: a generated silhouette own contour segments (data-boundary-ref, no OWNERSHIP_ATTR at all) are ALSO stripped when hasGeneratedSilhouette(pattern) matches its shapeId, hand-drawn siblings survive', () => {
+    const html = '<path data-layer="0" data-boundary-ref="shape-1" d="M0 0 L1 0"/>'
+      + '<path data-layer="0" d="M5 5 L6 6"/>';
+    const editor = mockEditor(html, [{ id: '0' }]);
+    const pattern = { shape: { source: 'generated' }, extent: { mode: 'boundary' }, boundary: { shapeId: 'shape-1' } };
+    const svg = getLayerSvg(editor, '0', 96, { excludeLatticeOwnedFor: pattern });
+    expect(svg).not.toContain('shape-1');
+    expect(svg).not.toContain('M0 0 L1 0');
+    expect(svg).toContain('M5 5 L6 6');
+  });
+
+  it('a contour segment with a DIFFERENT shapeId (a hand-picked boundary, or another layer\'s own link) is NOT stripped -- match is by this exact shapeId, never any boundary ref', () => {
+    const html = '<path data-layer="0" data-boundary-ref="some-other-shape" d="M0 0 L1 0"/>';
+    const editor = mockEditor(html, [{ id: '0' }]);
+    const pattern = { shape: { source: 'generated' }, extent: { mode: 'boundary' }, boundary: { shapeId: 'shape-1' } };
+    const svg = getLayerSvg(editor, '0', 96, { excludeLatticeOwnedFor: pattern });
+    expect(svg).toContain('some-other-shape');
+  });
+
+  it('a non-generated (hand-picked) pattern never strips contour segments by boundary-ref, only OWNERSHIP_ATTR-marked pieces -- hasGeneratedSilhouette must be true', () => {
+    const html = '<path data-layer="0" data-boundary-ref="shape-1" d="M0 0 L1 0"/>';
+    const editor = mockEditor(html, [{ id: '0' }]);
+    const pattern = { shape: { source: 'picked' }, extent: { mode: 'boundary' }, boundary: { shapeId: 'shape-1' } };
+    const svg = getLayerSvg(editor, '0', 96, { excludeLatticeOwnedFor: pattern });
+    expect(svg).toContain('shape-1'); // NOT a generated silhouette -- its own boundary link is a hand-picked shape, never lattice-owned content
+  });
+
+  it('the {geometry:"fusion"} path ALSO honors excludeLatticeOwnedFor (same shared _parseLayerContent filter, not a second copy)', async () => {
+    const html = '<line data-layer="0" data-lattice-gen="lat1" x1="0" y1="0" x2="1" y2="0" stroke-width="0.1"/>'
+      + '<path data-layer="0" d="M5 5 L6 6"/>';
+    const editor = mockEditor(html, [{ id: '0', fusionGeometry: 'centerline' }]);
+    const pattern = { shape: { source: 'generated' }, extent: {}, boundary: {} };
+    const { svg } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion', excludeLatticeOwnedFor: pattern });
+    expect(svg).not.toContain('<line');
+    expect(svg).toContain('M5 5 L6 6');
+  });
+
+  it('omitting the option keeps the existing default behavior byte-for-byte (no accidental always-on filtering)', () => {
+    const html = '<line data-layer="0" data-lattice-gen="lat1" x1="0" y1="0" x2="1" y2="0"/>';
+    const editor = mockEditor(html, [{ id: '0' }]);
+    expect(getLayerSvg(editor, '0')).toContain('<line');
+  });
+});
