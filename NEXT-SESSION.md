@@ -17,6 +17,11 @@ that item, and push — the progress page (bspline-status.pages.dev) counts the 
       lattice types; likely the pattern still references a boundary/silhouette element or piece ids that Clear deleted.
       Regenerate after Clear must rebuild from the pattern's own declared data (re-creating the silhouette for the Shape
       Lattice). Test: generate -> Clear -> Regenerate -> pieces present (and contour for shape).
+- [ ] 0c. BUG (Fred): layer holds a SHAPE lattice -> switch to the BOX Lattice tool -> its Regenerate rebuilds the SHAPE.
+      Rule (declared): the ACTIVE TOOL decides the kind. Box tool Regenerate on that layer = clear the layer's generated
+      pieces (Fred's 'regenerate clears and reuses the same layer') and generate a BOX lattice with the box panel's
+      settings; Shape tool Regenerate = shape. Each tool's panel shows its own kind's settings even when the layer's
+      stored pattern is the other kind. Test both directions.
 - [x] 1. Pinned-action style (AMEND 4b): ONE shared sticky style for the main sidebar "Generate New Seed" and both lattice
       Regenerates — top:0 with NO gap above (nothing visible above while scrolling), opaque background full column width,
       full-width button. Root-cause the gap, note it in WORK-LOG.
