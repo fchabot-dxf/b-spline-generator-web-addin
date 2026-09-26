@@ -9831,3 +9831,63 @@ that file).
     `#editorLatticePanelBody` while it was showing through the drawer, all correct.
 - No edits to `bspline_gen_palette.html` this entire turn — confirmed via `git status --short` before every
   commit: exactly `editor-controls.js`, `styles/editor.css`, and the 2 new files, every time.
+
+## Turn 280 — UI2-FIX: pinned-bar opacity + Widths-row truncation (advisor's live screenshot on 3910e72) — DONE
+
+Two bugs from the advisor's own live screenshot of the merged AMEND 2 commit, dispatched as an amendment to
+do BEFORE FB-ORDER, in its OWN commit.
+
+**Bug #1 — scrolled content peeked through the pinned Generate bar's corners.** The earlier (Turn 278) fix
+made `#latticeGenerate`/`#shapeLatticeGenerate` themselves `position:sticky` + opaque. That's wrong at the
+corners: the BUTTON has its own `border-radius` (`.cad-btn-primary`), so the opaque background is only
+opaque where the button's own rounded rect covers it — a full-width RECTANGULAR band of scrolled content
+still shows through the 4 corner gaps outside that rounded rect. Fix: `_mount()` in `lattice-side-column.js`
+now wraps `generateEl` in a freshly-created plain `<div class="lattice-side-column-pinned-slot">` before
+inserting it as the layers panel's first child — a genuine rectangle, no radius — and `editor.css` moves the
+`position:sticky`/background/shadow from the button's own ID selector onto this new class instead.
+`_unmount()` finds the slot via `generateEl.closest('.' + PINNED_SLOT_CLASS)` (works regardless of which
+tool's Generate button is currently inside it) and removes it, after unwrapping `generateEl` back into its
+own footer.
+
+**Bug #2 — the Widths row's "Node size" input read "0.C", clipped.** First attempt: `min-width: 40px` on the
+number inputs themselves. Verified LIVE via CDP this did **nothing** — `shapeLatticeWidthNodes` still showed
+`clientWidth: 44` against a `scrollWidth: 57` (genuinely clipped, not a visual illusion). Root cause: the
+input's own flex ITEM is its wrapping `<label>` (or, for the unlinked Rails/Ties pair,
+`#...WidthUnlinkedFields`), and the row's `flex:2`/`flex:1` shorthand sets `flex-basis:0%` on each — Flexbox's
+space-distribution step only ever honours a `min-width` declared on the flex item itself, so a `min-width` on
+the nested input was invisible to it. Moved the floor onto the actual flex items instead:
+`#latticeWidthLinkedRow`/`#shapeLatticeWidthLinkedRow` (Rails & ties), the unnamed Node-size `<label>`
+(targeted via `:has()` — the same pattern `label:has(> #latticeNodesEnds)` already uses in this file), and
+each unlinked Rails/Ties label plus their shared wrapper div — all `min-width: 60px`/`120px`. Kept
+`.panel-row-3:has(#...WidthNodes) { flex-wrap: wrap }` as the fallback once these floors alone exceed the
+row's own width (verified live: in the UNLINKED state the row genuinely wraps — Rails/Ties stay on one line,
+Node size drops cleanly to its own full-width line below, nothing clipped).
+- Placed OUTSIDE the existing `.panel-row-2, .panel-row-3` block, which is scoped inside a
+  coarse-pointer/narrow mobile media query (MOB5/UI1b) — this bug is specifically on DESKTOP, confirmed by
+  reading that block's own boundaries first.
+- Live (CDP, desktop 1400x900, hard-reload with cache ignored), both panels, both link states:
+  - Shape Lattice, linked: `shapeLatticeWidthNodes` went from `clientWidth 44 / scrollWidth 57` (clipped) to
+    `clientWidth 58 / scrollWidth 58` (`scrollWidth === clientWidth` — exactly zero clipping); screenshot
+    confirms "0.075" fully legible next to "Rails & ties" "0.25", no wrap needed at this width.
+  - Plain Lattice, linked: identical numbers (`58/58`), same screenshot proof.
+  - Plain Lattice, UNLINKED (`latticeWidthLinkToggle` clicked): `latticeWidthRails`/`latticeWidthTies` both
+    `67/67`, `latticeWidthNodes` `172/172` — zero clipping, and the row visibly wrapped (Rails/Ties row, then
+    Node size on its own full-width row below), proving the `flex-wrap` fallback is real, not just declared.
+  - Pinned-slot corners (Bug #1): scrolled the Shape Lattice panel to its middle (`scrollTop: 771` of
+    `scrollHeight: 1585`) and sampled `document.elementFromPoint` at all 4 corners of the pinned slot's own
+    `getBoundingClientRect()` — all 4 resolved to `DIV.lattice-side-column-pinned-slot` itself (`isSlotOrChild:
+    true`), i.e. nothing scrolled is the topmost paint at any corner. Screenshot: solid `#fdfdfd` band behind
+    "Generate", no fibrous canvas texture bleeding through anywhere.
+- JS suite: `tests/lattice-side-column.test.js`'s 2 mount-order tests (lattice-mount, lattice->shapeLattice)
+  updated for the new pinned-slot wrapper (first child is now `lattice-side-column-pinned-slot`, not the bare
+  button id) plus an added assertion that the button's own `.parentElement.className` is the slot. **Mutation-
+  tested non-vacuous**: temporarily reverted `_mount()` to insert `generateEl` directly (no wrapper) — exactly
+  those 2 tests failed (`'latticeGenerate'`/`'shapeLatticeGenerate'` where the slot class was expected), the
+  other 12 stayed green; restored, re-ran, all 14 green again. The existing "switching AWAY unmounts" test
+  already proves the unwrap-and-remove side without any change needed (`footerChildIds` asserts
+  `latticeGenerate` is a direct `.id`'d child of the footer again — impossible if still wrapped).
+  Full suite: `npx vitest run` -> **1223 passed**, zero regressions (same count as end of Turn 278 — this
+  turn changed no test file's test COUNT, only 2 pre-existing assertions' expected values plus 1 added
+  assertion inside an existing test).
+- No edits to `bspline_gen_palette.html` — confirmed via `git status --short` before commit: only
+  `lattice-side-column.js`, `editor.css`, and `tests/lattice-side-column.test.js`.

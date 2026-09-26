@@ -733,6 +733,44 @@
     }
 }
 
+/* UI2-FIX (Fred, live screenshot on desktop: "Node size" read "0.C",
+   truncated) — the Widths row's 3-way flex split (Rails&ties/link/Node
+   size) has no floor, so it can shrink an input below a usable width;
+   this predates UI2 (see the row's OWN comment: "3 of those plus gaps
+   need 237px against this panel's 220px width, clipping the 3rd (Node
+   size) stepper on DESKTOP too") but reads worse now that AMEND 2's one
+   scrolling side column (plus its own scrollbar once content overflows)
+   leaves a little less width than the Lattice/Shape Lattice panel's own
+   former standalone column did.
+   A min-width on the number INPUTS alone (first attempt here) did
+   nothing: each input's flex ITEM is its wrapping <label> (or, for the
+   unlinked Rails/Ties pair, the #...WidthUnlinkedFields div), and every
+   one of those uses `flex-basis:0%` (the `flex:2`/`flex:1` shorthand) —
+   Flexbox's space-distribution step only ever reads a min-width declared
+   on the FLEX ITEM itself, so a min-width on the nested input was
+   invisible to it and the item still shrank the input under its floor
+   (proven live: computed clientWidth 44px against a measured
+   scrollWidth of 57px — genuinely clipped, not just a visual illusion).
+   Moving the floor onto the actual flex items — the Rails&ties label,
+   the unnamed Node-size label (selected via :has(), same pattern
+   label:has(> #latticeNodesEnds) already uses in this file), and each
+   unlinked Rails/Ties label plus their shared wrapper — fixes that.
+   flex-wrap on the row is the fallback once these floors alone exceed
+   the row's own width: it wraps instead of squeezing below them. */
+#latticeWidthLinkedRow, #shapeLatticeWidthLinkedRow,
+.panel-row-3 label:has(> #latticeWidthNodes),
+.panel-row-3 label:has(> #shapeLatticeWidthNodes),
+#latticeWidthUnlinkedFields label, #shapeLatticeWidthUnlinkedFields label {
+    min-width: 60px;
+}
+#latticeWidthUnlinkedFields, #shapeLatticeWidthUnlinkedFields {
+    min-width: 120px;
+}
+.panel-row-3:has(#latticeWidthNodes),
+.panel-row-3:has(#shapeLatticeWidthNodes) {
+    flex-wrap: wrap;
+}
+
 /* =========================================================================
    ===== Mobile: PORTRAIT-only (bottom drawer, narrow-width layout) =====
    ========================================================================= */
@@ -1439,23 +1477,32 @@
 
 /* UI2 AMEND 2: whichever tool's Generate/Regenerate button
    lattice-side-column.js moves in becomes this column's own first
-   child — pin it so it stays visible while Layers + the tool's own
-   settings scroll underneath. Listed by id (not a class, since neither
-   button's own markup can be touched — seat B owns bspline_gen_palette.
-   html in lane-b) — one selector per TOOL_PANEL_MOUNTS entry.
-   NO `background` here — an ID+ID selector like this one beats
-   `.cad-btn-primary`'s own class-level blue background by specificity,
-   which silently painted the button #fdfdfd (matching the panel) with
-   its OWN white text still on top — invisible white-on-white (caught
-   live via CDP: computed backgroundColor read back as rgb(253,253,253)
-   instead of the button's real blue). The button already fully covers
-   its own row with its own opaque background; nothing needs to show
-   through behind it. */
-#editorLayersPanel > #latticeGenerate,
-#editorLayersPanel > #shapeLatticeGenerate {
+   child, WRAPPED in its own plain-rectangle slot div (that module's own
+   PINNED_SLOT_CLASS) — pin THE SLOT, not the button directly, so it
+   stays visible while Layers + the tool's own settings scroll
+   underneath.
+   UI2-FIX (Fred, live screenshot: scrolled content — the Ties "Cells/
+   Rails" row and controls above it — visibly peeked out from behind the
+   pinned bar): the BUTTON's own rounded corners (`.cad-btn-primary`'s
+   `border-radius`) don't cover a full rectangular band; scrolled
+   content showed through the corner gaps. This slot is a plain square
+   backdrop the button floats inside, with real padding and a shadow
+   separating it from what scrolls beneath — no gaps of any shape.
+   (An EARLIER version of this rule targeted `#editorLayersPanel >
+   #latticeGenerate` directly and ALSO set `background` there — that
+   ID+ID selector beat `.cad-btn-primary`'s own class-level blue by
+   specificity, painting the button #fdfdfd with its own white text
+   still on top: invisible white-on-white, caught live via CDP. Wrapping
+   the button in its own slot sidesteps that fight entirely — the
+   button's own background/radius are untouched, and this class owns a
+   DIFFERENT element.) */
+.lattice-side-column-pinned-slot {
     position: sticky;
     top: 0;
     z-index: 3;
+    background: #fdfdfd;
+    padding: 8px 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* =========================================================================

@@ -189,6 +189,17 @@ function _isDesktop() {
   return !window.matchMedia(MOBILE_MEDIA_QUERY).matches;
 }
 
+// UI2-FIX (Fred, live screenshot on the merged AMEND 2: scrolled content
+// — the Ties "Cells/Rails" row and controls above it — visibly peeked
+// out from behind the pinned Generate bar). The BUTTON's own rounded
+// corners (`.cad-btn-primary`'s `border-radius`) don't cover a full
+// rectangular band — scrolled content shows through the corner gaps.
+// Generate is wrapped in its OWN plain-rectangle slot div (this class,
+// styled in styles/editor.css with an opaque background + padding + a
+// bottom shadow) so the STICKY element is a full-width square backdrop,
+// with the rounded button floating inside it, not the button itself.
+const PINNED_SLOT_CLASS = 'lattice-side-column-pinned-slot';
+
 let _mountedMode = null;
 
 function _unmount(mode) {
@@ -199,9 +210,14 @@ function _unmount(mode) {
   const footerEl = el(cfg.footerId);
   const generateEl = el(cfg.generateId);
   const detachAllEl = el(cfg.detachAllId);
+  // generateEl is found by id regardless of which parent currently
+  // wraps it — closest() unwraps it from the pinned slot before that
+  // slot (created fresh on every _mount) is discarded below.
+  const pinnedSlot = generateEl ? generateEl.closest('.' + PINNED_SLOT_CLASS) : null;
   if (panelEl && bodyEl) panelEl.insertBefore(bodyEl, footerEl || null);
   if (footerEl && generateEl) footerEl.insertBefore(generateEl, footerEl.firstChild);
   if (footerEl && detachAllEl) footerEl.appendChild(detachAllEl);
+  if (pinnedSlot) pinnedSlot.remove();
   // Clears the inline override this module itself added in _mount — the
   // panel goes back to relying purely on editor-ui.js's own
   // TOOLBAR_GROUPS `.hidden` class, same as before this module existed.
@@ -218,9 +234,14 @@ function _mount(mode, layersPanelEl) {
   const detachAllEl = el(cfg.detachAllId);
   if (!panelEl || !bodyEl) return;
   const layersList = layersPanelEl.querySelector('.layers-list');
-  // Order: [pinned Generate] -> [layers-header + layers-list, untouched]
-  // -> [this tool's own settings body] -> [Detach all].
-  if (generateEl) layersPanelEl.insertBefore(generateEl, layersPanelEl.firstChild);
+  // Order: [pinned Generate, in its own opaque slot] -> [layers-header +
+  // layers-list, untouched] -> [this tool's own settings body] -> [Detach all].
+  if (generateEl) {
+    const pinnedSlot = document.createElement('div');
+    pinnedSlot.className = PINNED_SLOT_CLASS;
+    pinnedSlot.appendChild(generateEl);
+    layersPanelEl.insertBefore(pinnedSlot, layersPanelEl.firstChild);
+  }
   layersPanelEl.insertBefore(bodyEl, layersList ? layersList.nextSibling : null);
   if (detachAllEl) layersPanelEl.appendChild(detachAllEl);
   // The original middle column is now an empty shell (its own header +

@@ -176,7 +176,11 @@ describe('initLatticeSideColumn', () => {
 
     const layersPanel = document.getElementById('editorLayersPanel');
     const ids = Array.from(layersPanel.children).map((c) => c.id || c.className);
-    expect(ids).toEqual(['latticeGenerate', 'layers-header', 'editorLayersList', 'editorLatticePanelBody', 'latticeDetachAll']);
+    // UI2-FIX: Generate mounts wrapped in its own opaque pinned-slot div
+    // (a plain rectangle so scrolled content can't peek through the
+    // button's own rounded corners) rather than as a bare direct child.
+    expect(ids).toEqual(['lattice-side-column-pinned-slot', 'layers-header', 'editorLayersList', 'editorLatticePanelBody', 'latticeDetachAll']);
+    expect(document.getElementById('latticeGenerate').parentElement.className).toBe('lattice-side-column-pinned-slot');
 
     expect(document.getElementById('editorLatticePanel').style.display).toBe('none');
   });
@@ -205,7 +209,8 @@ describe('initLatticeSideColumn', () => {
 
     const layersPanel = document.getElementById('editorLayersPanel');
     const ids = Array.from(layersPanel.children).map((c) => c.id || c.className);
-    expect(ids).toEqual(['shapeLatticeGenerate', 'layers-header', 'editorLayersList', 'editorShapeLatticePanelBody', 'shapeLatticeDetachAll']);
+    expect(ids).toEqual(['lattice-side-column-pinned-slot', 'layers-header', 'editorLayersList', 'editorShapeLatticePanelBody', 'shapeLatticeDetachAll']);
+    expect(document.getElementById('shapeLatticeGenerate').parentElement.className).toBe('lattice-side-column-pinned-slot');
     expect(document.getElementById('editorLatticePanel').style.display).toBe('');
     expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');
   });
