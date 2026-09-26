@@ -811,7 +811,8 @@ Advisor MEASURED arc slots in Fusion: `sketch.addThreePointArcSlot(p1, mid, p2, 
 centerline free or center-only fixed → LOPSIDED; all 3 points fixed → BROKEN (cap grows, sides don't); **both
 centerline END points fixed → grows EVENLY** (0.908/1.108 around 1.008). Same anchoring rule as straight slots.
 Plan (default = slot chain, Fred: "some of it is already slot parts" / "slot has an arced slot tool"): straight contour
-segments = center-to-center slots, shoulder/waist/hip = 3-point arc slots, centerline END points anchored, widths =
+segments = center-to-center slots, shoulder/waist/hip = 3-point arc slots, NO Fix anywhere (Fred 2026-09-25: "never use
+Fix" — supersedes the anchoring measurement above; hold shape with relationship constraints only), widths =
 border_width (or stroke_width), joints = separate points + explicit Coincident + Tangent on the centerlines, a vertical
 construction line + Symmetry for left/right, a few named params (waist_depth, waist_height, corner_radius).
 DECIDED (Fred: "it can be separate slot parts"): slot chain, overlapping joints accepted; no closed-loop offset. After T64.
