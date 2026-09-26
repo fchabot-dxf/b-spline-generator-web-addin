@@ -905,6 +905,15 @@ any hidden layer); a sketch whose dependency kind is hidden keeps its exact geom
 constraints (e.g. rails hidden → tie ends placed exactly but not linked). Declared as data, tested both ways.
 Parity: verify_sketch_against_manifest per sketch; spawn parity rule unchanged. Seat B after T74.
 
+## Idea (Fred 2026-09-26, design doc pending his go-ahead) — FB-APP: Frame Builder inside the main app
+Fred: "I'd like to decide the shape of the frame first and then the drawing on it" / "everything points to implement
+the framebuilder in the main app" / "that means making the previews and solid extrusion there too and making parametric
+features as they are from the different add-ins". Shape: DEFINITION (templates/params/features) exported as data from
+the add-ins' Python (one source); PREVIEW in the app (2D guide layer in the editor + straight-extruded 3D solid in the
+three.js view); REAL parametric features stay Python (fb_engine) invoked by ONE Send in the order body → frame → inlay.
+Parity test per feature (app preview vs Fusion build). Frame Builder first; other add-ins only if Fred wants.
+Fred confirmed no tapers: `Skel_Frame_Taper` exists but extrusion_engine hard-codes 0° — drop the param, don't port it.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
