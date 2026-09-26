@@ -9659,3 +9659,49 @@ same id) + Ties + Nodes, `pattern.layers` recorded correctly, active layer lands
 
 Verify: 1322/1322 vitest (11 new), 45/45 b-spline-gen pytest + 189/189 frame-builder pytest (both untouched).
 Commit ce57bc3, pushed. NO FUSION this whole turn.
+
+## T76 item 3 — box-Lattice Select/move finds pieces across ALL kind-layers, one shared hit-test
+
+Auditing the rest of the constrained-move mechanism (item 2 already fixed `_collectLatticeElements`, the "carry the
+attached ties along" lookup) found ONE more real gap: `latticeHandler.start` (the box-Lattice tool's own canvas
+gesture dispatch, `editor-interaction.js`) hit-tests via `editor._getNearbyElement(pt, tol)` with NO
+`anyVisibleLayer` option — the DEFAULT, active-layer-only behavior. Before this turn that was fine (rails/ties/nodes
+all lived on the one active layer anyway); after item 2's split, dragging a TIE while the RAILS layer happened to be
+active would never even find it — the hit-test would come back empty and the gesture would silently fall through to
+"draw a new rail on empty space" instead.
+
+The fix used the SAME function `shapeLatticeHandler.start` (the Shape Lattice tool) already relies on for this exact
+purpose, `_getNearbyLatticePiece` — already completely layer-agnostic (no `data-layer` check in it at all), so
+switching to it also satisfies the dispatch's own explicit "coordinate via the shared move path — no second
+implementation" instruction, not just a narrower kind-layer-aware patch to the box tool's own copy. Grabbing a piece
+on a different kind-layer than the currently active one now also activates it, mirroring `selectHandler`/
+`nodeHandler`'s own pre-existing "clicking something makes it what you're editing" rule (added for the SAME reason,
+back when generated Rails/Ties/Nodes first became unclickable via the plain Select tool).
+
+**Live-verified with a REAL mouse drag**, not a mock or a code-review claim: headless Chrome/CDP,
+`Input.dispatchMouseEvent` press/move×8/release exactly like the advisor's own established repro-script technique
+(`tools/repro/select_drag_shape.mjs`). Hit one real snag getting the canvas itself reachable: `#svgEditorModal`
+(the editor's own overlay) is `display:none` until `#btnStampEdit`'s own click handler shows it, but that handler
+also depends on other main-screen state (`ctx.activeLayer()`, `P.editorSvg`) this minimal test harness never
+populates — clicking it did nothing. Fixed by forcing the modal's own inline style directly
+(`display/position/top/left/z-index` all `!important`) rather than trying to satisfy its real preconditions, the
+same "force-reveal past the app's own screen-gating" technique already used for panel verification, just applied to
+the whole modal this time (a first attempt without `position:fixed` left the modal visible but 4878px down the
+page, outside the viewport CDP's own mouse coordinates operate in — diagnosed via `getBoundingClientRect()`, not
+guessed).
+
+With the canvas correctly reachable: generated a box lattice, dragged the top rail (Rails layer) down by 0.5in.
+Result: the rail moved and stayed horizontal; BOTH ties attached to it — sitting on the SEPARATE Ties layer —
+stretched their near end to follow the rail by the identical 0.5in while their far end stayed exactly fixed, and
+both remained geometrically connected to the rail's new position. Active layer correctly became Rails. Zero console
+errors. Screenshot: `C:\Users\danse\.bspline-status\shots\seatB\1700_T76-item-3_drag.png`.
+
+No new unit test: this interaction path (editor-interaction.js's own internal `latticeHandler`/`_beginLatticeMove`
+dispatch) has zero existing unit-test coverage in this codebase at all — confirmed by checking for a prior
+`editor-interaction.test.js` (none exists) before assuming a gap needed filling here specifically; this whole class
+of gesture-level behavior is, and has been, verified live via CDP only (the UI4/UI5 Select-drag fixes this same
+mechanism needed did the same). Followed that established convention rather than retrofitting a new, first-of-its-
+kind test seam for one fix.
+
+Verify: 1322/1322 vitest (unchanged -- no unit-testable seam for this fix). Commit b160dbb, pushed. NO FUSION this
+whole turn.
