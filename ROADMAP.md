@@ -930,6 +930,17 @@ frame_thickness may not drive the frame in Fusion — fix the call (correct curv
 that changing frame_thickness updates the frame. Plus an app/engine sanity warning when the board is too small for
 the frame (5.51x1.97: safe-zone 1.47in < 2x0.75in -> 0 bars). Verify in a short Fusion window; goldens re-recorded.
 
+## Queued (seat C, F5, after F4) — SIL-RESOLVE: silhouette arcs must never invert (Fred 2026-09-26, live screenshot)
+Fred: "increasing corner radius shouldn't collapse arcs past the center, they should be able to resolve cleanly".
+Live main, Shape Lattice Hourglass, corner radius high: the shoulder + waist arcs loop over each other ('fish' loops).
+Same engine as the future frame preview (editor-shape-lattice-generator.js generateSilhouette / PRESETS). Fix the
+SOLVE, not the symptom: for any slider combination the outline stays a simple closed curve with tangent joints —
+derive the feasible range (e.g. corner radius vs waist reach vs available height) and resolve within it (clamp or
+redistribute, declared), never produce self-intersection or reversed arc sweep. Tests: a dense sweep over every preset
+param (hourglass + bottle, both orientations, several board sizes) asserting simple (non-self-intersecting) outline,
+positive sweep per arc, tangency at joints; reproduce Fred's case first (red before the fix). The inversion detector
+(F3 AMEND 7b) becomes a guard, not the fix. Coordinate: seat B (T76) edits lattice layers, not the silhouette solver.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
