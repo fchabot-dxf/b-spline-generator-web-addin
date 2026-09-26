@@ -139,3 +139,100 @@ no Fusion, per the dispatch.
 **Hands off, respected:** read-only into `frame-builder/`, `fb_engine/*.py`, `template_data.py` (both
 templates), `frame-defs.json` (via `python -c` dump, no write), and `FB-APP-DESIGN.md` on `origin/fb-app` (read
 via `git show`, never checked out, never edited). No product code touched anywhere in the repo this turn.
+
+## 2026-09-26 — turn 7 — R4: STALE-PARAMS implementation (Bspline group, board + lattice)
+
+**Landed, item by item (each committed + pushed separately per the dispatch):**
+- **item 1** (`90deee2` -> rebased to `be1f25b`): `ParameterSchema.LATTICE_OWNED_PARAMS` (the 7 names) +
+  `is_lattice_owned()` beside `BOARD_OWNED_PARAMS`/`is_board_owned()` in
+  `frame-builder/fb_engine/parameter_schema.py` — the ONLY change in `frame-builder/` this turn, per ruling 2.
+  6 new tests (`fb_engine/test_lattice_owned_params.py`), no adsk stub needed (pure Python).
+- **item 2** (`1d74777`, then revised in `9c5fbe4` after AMEND 2 — see below): `_stamp_bspline_owner(ctx, param,
+  name)` in `sketch_manifest_builder.py`, called from BOTH the create and update branches of
+  `_sync_manifest_parameters` — idempotent (checks the tag before adding, exactly like the board's own
+  `_ensure_bspline_param_tag`). 3 tests added to `test_sketch_manifest_builder.py`.
+- **item 3** (`57cd575`): new `b-spline-gen/param_ownership.py`, `compute_stale_params(user_params,
+  payload_names, logger=None)` — pure, no `adsk` import, takes a plain iterable (`for p in
+  design.userParameters`, the pattern already used in `CAM-builder/cam_engine/mm_builder.py:284` and
+  `fusion-exporter/exporter.py:226-228`). Returns `{deleted, kept_referenced, adopted, failed}`, every key
+  always present. 13 tests (`test_param_ownership.py`), all four buckets plus the mixed-batch/crosstalk case.
+- **item 4** (this commit): one call in `b-spline-gen.py`'s `_handle_generate`, in the Finalise block
+  (non-preview path, right after `_import_all_svg_layers` returns — so `des.userParameters` reflects THIS
+  Send's own just-synced params, per ruling 7/2d's ordering). `payload_names` = `set(params.keys())` (covers
+  whichever board names this Send's payload actually carried) unioned with every
+  `manifest['parameters'][*].name` read straight out of `stamp_data['layers']` — the exact same source
+  `_import_all_svg_layers` already reads, so no new plumbing/return-value threading was needed to collect the
+  lattice names this Send touched. New `_merge_last_send_key(key, value)` helper (next to `_dump_last_send`)
+  merges `stale_params` into the ALREADY-written `last_send.json` (that file is written early, right after the
+  param sync, before geometry — item 4's call happens much later, so it can only ever ADD a key, never
+  overwrite the payload snapshot). The whole block is one guarded try/except that only logs on failure —
+  Send itself is never at risk.
+
+**Two mid-flight amendments from Fred, both incorporated before their affected item was committed:**
+1. **"Just apply it" — delete ON, not log-only** (landed while item 1 was in flight; item 1 was unaffected by
+   it, so it committed as originally written; NEXT-SESSION-reg-addin.md rule 1 + item 3's wording were updated
+   by the advisor to match).
+2. **"Take over existing params"** (landed after item 2's first commit `1d74777`): reverses the original
+   create-only stamping rule. I revised item 2 in a SECOND commit (`9c5fbe4`) rather than silently folding the
+   change into a rewritten item 1 commit, so the git history shows the actual amendment as it happened —
+   `_stamp_bspline_owner_on_create` (create-only) became `_stamp_bspline_owner` (every touch, idempotent), and
+   the two tests asserting create-only behaviour were rewritten to assert the opposite (adoption on update).
+   `param_ownership.py` (item 3, written after this amendment) was designed against the FINAL rule from the
+   start — registry membership by name is the whole ownership test; the stamp is written for the audit trail
+   (`adopted` in the output) but never gates the delete decision. **Process note:** I hadn't polled amendments
+   before item 1's own commit (a miss against the "poll before commit" rule) — it happened to not matter since
+   item 1 was untouched by the amendment, but I'm naming it rather than letting it pass quietly.
+
+**Real consequence I found and fixed, not asked for in the checklist:** adding `LATTICE_OWNED_PARAMS` to
+`parameter_schema.py` changed that file's hash, which `tools/gen_frame_defs.py` hashes as one of
+`frame-defs.json`'s own source files — this immediately made the checked-in `frame-defs.json`/`.js` STALE
+(`test_frame_defs.py::test_checked_in_file_is_fresh` failed in the full suite run). Regenerated both
+(`python tools/gen_frame_defs.py`) — the diff is exactly one line, `sourceHash`, nothing else. Ran the FULL
+vitest suite afterward (not just the fast tier) specifically because a generated file both sides read
+changed, not because a rule required it: 80 files / 1515 passed.
+
+**Mutation-checked:** item 2's stamp-write line (both new tests catch its removal); item 3's three gates
+(registered-name check, payload-membership check, dependents>0 check) each fail a distinct, correct subset of
+tests when removed — logged live in the transcript, not re-summarized here since nothing needed fixing.
+
+**Not built this turn (deliberately, per the rulings):** no `fb_engine/param_ownership.py` (ruling 2: logic
+lives in `b-spline-gen/` only); no touch to `parametric_engine.py`/`solid_coordinator.py` (ruling 6, seat C's
+territory); no hand-rolled expression-text reference scan (ruling 4 dropped it in favour of
+`dependentParameters` alone — genuinely unverified against live Fusion, flagged again below); no dedicated
+pytest for the `_handle_generate` wiring itself (that method has no existing test file at all — it's
+Fusion-integration-shaped, not unit-tested anywhere today — adding one felt like scope creep against "keep it
+that small," ruling 7; flagging this choice rather than silently making it).
+
+**STALE-PARAMS-DESIGN.md updated** with a new "R4 rulings" section at the top (the living, current version)
+and short supersession notes on 2a-2d pointing at exactly which ruling overrides which paragraph — the
+original survey/design text was left AS WRITTEN (not rewritten in place) so the R3-to-R4 amendment history
+stays legible to whoever reads it later. `ROADMAP.md`'s STALE-PARAMS entry updated from "Queued" to "Shipped"
+with the amended rule summarized.
+
+### Live-check recipe for Fred (NO FUSION this loop — this needs a real Fusion session)
+
+1. Open a document with an existing Shape Lattice (or build one). Send B-spline once, normally.
+2. Look at `~/.bspline-frame-builder/last_send.json` — it now has a `stale_params` key, e.g.
+   `{"deleted": [], "kept_referenced": [], "adopted": [], "failed": []}` on a totally ordinary Send (nothing
+   stale the first time).
+3. **Prove a real deletion:** in the Fusion Parameters table, arrange for one lattice piece's parameter (e.g.
+   `rail_width`) to no longer be part of this Send's manifest (simplest: hide/delete that rail's layer content
+   so the manifest no longer emits `rail_width`, then Send). Expect: `rail_width` disappears from the
+   Parameters table, and `last_send.json`'s `stale_params.deleted` lists it.
+4. **Prove "take over existing":** by hand, in the Parameters table, create a parameter literally named
+   `half_width` (a registered lattice name) with any value, unreferenced by anything, and not part of this
+   Send's current lattice. Send. Expect: it gets DELETED, and `stale_params.adopted` names it (it had no
+   `Bspline` stamp before this Send touched it).
+5. **Prove the reference guard:** create a parameter with a registered name that's currently unused by this
+   Send, and have another parameter's expression (or a sketch dimension) reference it by name. Send. Expect:
+   it survives, and `stale_params.kept_referenced` names it with a reason mentioning `dependentParameters`.
+6. Report back whether `Parameter.dependentParameters` behaved as expected in steps 4-5 — this is the one API
+   surface the whole feature leans on that nobody has run against live Fusion yet. Anything surprising goes to
+   BUGS_OPEN.md or straight to the advisor.
+
+**Gate:** `python -m pytest -q` in `bspline-frame-builder/`: **284/284 passed** (was 282, plus the 2 now-fixed
+freshness failures). Full `npx vitest run`: **80 files / 1515 passed**. No Fusion.
+
+**Hands off, respected:** `fb-app`, `editor-shape-lattice-generator.js`, `core/frame-record.js`,
+`editor-frame-profile.js`, `frame-mesh.js`, `main/frame-panel.js`, `parametric_engine.py`,
+`solid_coordinator.py`, and every seat-A file, were not touched.
