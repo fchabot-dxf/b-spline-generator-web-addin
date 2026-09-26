@@ -133,47 +133,29 @@ class FakeSketchLines:
         self._sketch._curves.append(line)
         return line
 
-    # T64: models addCenterToCenterSlot AS A REALISTIC (not just
-    # convenient) fake — creates the centerline EXACTLY at p1/p2 (so
-    # _find_slot_centerline's own exact-match search in the real module
-    # is genuinely exercised, not trivially satisfied), PLUS two side
-    # lines offset away (never at p1/p2), PLUS two end arcs, PLUS one new
-    # width dimension — mirroring the advisor's own reported shape ("2
-    # side lines + 2 end arcs + a construction centerline + ONE width
-    # dimension"). Returns the VISIBLE body only (side lines + end arcs),
-    # matching the disclosed uncertainty in the real module's own doc
-    # comment that the centerline may NOT be part of the return value.
-    def addCenterToCenterSlot(self, p1, p2, value_input, is_fixed):
-        CALL_LOG.append(("slot:addCenterToCenterSlot", p1.x, p1.y, p2.x, p2.y, value_input.value, is_fixed))
-        sketch = self._sketch
-        centerline = FakeSketchLine(p1, p2)
-        sketch._curves.append(centerline)
-        dx, dy = p2.x - p1.x, p2.y - p1.y
-        length = math.hypot(dx, dy) or 1.0
-        nx, ny = -dy / length, dx / length
-        half_w = value_input.value / 2.0
-        side1 = FakeSketchLine(
-            FakePoint3D(p1.x + nx * half_w, p1.y + ny * half_w),
-            FakePoint3D(p2.x + nx * half_w, p2.y + ny * half_w))
-        side2 = FakeSketchLine(
-            FakePoint3D(p1.x - nx * half_w, p1.y - ny * half_w),
-            FakePoint3D(p2.x - nx * half_w, p2.y - ny * half_w))
-        end_arc1 = FakeSketchArc(p1, side1.startSketchPoint.geometry, math.pi)
-        end_arc2 = FakeSketchArc(p2, side1.endSketchPoint.geometry, math.pi)
-        for c in (side1, side2, end_arc1, end_arc2):
-            sketch._curves.append(c)
-        sketch.sketchDimensions._items.append(FakeDimension())
-        result = FakeObjectCollection()
-        for c in (side1, side2, end_arc1, end_arc2):
-            result.add(c)
-        return result
-
     @property
     def count(self):
         return len([c for c in self._sketch._curves if isinstance(c, FakeSketchLine)])
 
     def item(self, i):
         return [c for c in self._sketch._curves if isinstance(c, FakeSketchLine)][i]
+
+
+def _circumcenter(a, b, c):
+    """T65: addByThreePoints derives its own center/radius FROM the 3
+    points — this is the fake's own equivalent (standard circumcenter
+    formula), so a 3-point-arc fake is geometrically consistent (its own
+    startSketchPoint/endSketchPoint are the GIVEN p1/p2 exactly, its
+    center is DERIVED, never the other way around, matching the real
+    API's own semantics and unlike addByCenterStartSweep's fake below,
+    where center is given and the end point is derived)."""
+    ax, ay, bx, by, cx, cy = a.x, a.y, b.x, b.y, c.x, c.y
+    d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+    if abs(d) < 1e-12:
+        return FakePoint3D((ax + cx) / 2, (ay + cy) / 2)
+    ux = ((ax ** 2 + ay ** 2) * (by - cy) + (bx ** 2 + by ** 2) * (cy - ay) + (cx ** 2 + cy ** 2) * (ay - by)) / d
+    uy = ((ax ** 2 + ay ** 2) * (cx - bx) + (bx ** 2 + by ** 2) * (ax - cx) + (cx ** 2 + cy ** 2) * (bx - ax)) / d
+    return FakePoint3D(ux, uy)
 
 
 class FakeSketchArcs:
@@ -183,6 +165,16 @@ class FakeSketchArcs:
     def addByCenterStartSweep(self, center, start, sweep_rad):
         CALL_LOG.append(("geom:Arc", center.x, center.y))
         arc = FakeSketchArc(center, start, sweep_rad)
+        self._sketch._curves.append(arc)
+        return arc
+
+    def addByThreePoints(self, p1, p_mid, p2):
+        CALL_LOG.append(("geom:Arc3Point", p1.x, p1.y, p_mid.x, p_mid.y, p2.x, p2.y))
+        arc = FakeCurveBase.__new__(FakeSketchArc)
+        FakeCurveBase.__init__(arc)
+        arc.centerSketchPoint = FakeSketchPoint(_circumcenter(p1, p_mid, p2))
+        arc.startSketchPoint = FakeSketchPoint(p1)
+        arc.endSketchPoint = FakeSketchPoint(p2)
         self._sketch._curves.append(arc)
         return arc
 
@@ -318,6 +310,51 @@ class FakeSketch:
         self._curves = []
         self.isComputeDeferred = False
         self.name = "TestSketch"
+
+    # T65 (advisor's own real Fusion run, verified via dir()): the slot
+    # methods (addCenterToCenterSlot, addThreePointArcSlot,
+    # addCenterPointArcSlot, addCenterPointSlot, addOverallSlot) live on
+    # SKETCH itself, NOT on SketchLines — T64's fake had this on
+    # FakeSketchLines, matching T64's OWN wrong call site exactly, which is
+    # why that bug slipped past every test: shim and code agreed with each
+    # other, just not with real Fusion. Moved here to match the real API;
+    # the module under test's OWN call site is fixed to match in the same
+    # commit, so this would have failed loudly (AttributeError on
+    # FakeSketchLines) had the shim alone been fixed without the module.
+    #
+    # Still creates the centerline EXACTLY at p1/p2 (so _find_slot_
+    # centerline's own exact-match search is genuinely exercised, not
+    # trivially satisfied), PLUS two side lines offset away (never at
+    # p1/p2), PLUS two end arcs, PLUS one new width dimension — mirroring
+    # the advisor's own reported shape ("2 side lines + 2 end arcs + a
+    # construction centerline + ONE width dimension"). Returns the VISIBLE
+    # body only (side lines + end arcs), matching the advisor's own report
+    # that the return value was "a generic vector" not reliably carrying
+    # the centerline — this is WHY the real module diffs sketchLines'
+    # own count before/after instead of trusting this return value.
+    def addCenterToCenterSlot(self, p1, p2, value_input, is_fixed):
+        CALL_LOG.append(("slot:addCenterToCenterSlot", p1.x, p1.y, p2.x, p2.y, value_input.value, is_fixed))
+        centerline = FakeSketchLine(p1, p2)
+        self._curves.append(centerline)
+        dx, dy = p2.x - p1.x, p2.y - p1.y
+        length = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / length, dx / length
+        half_w = value_input.value / 2.0
+        side1 = FakeSketchLine(
+            FakePoint3D(p1.x + nx * half_w, p1.y + ny * half_w),
+            FakePoint3D(p2.x + nx * half_w, p2.y + ny * half_w))
+        side2 = FakeSketchLine(
+            FakePoint3D(p1.x - nx * half_w, p1.y - ny * half_w),
+            FakePoint3D(p2.x - nx * half_w, p2.y - ny * half_w))
+        end_arc1 = FakeSketchArc(p1, side1.startSketchPoint.geometry, math.pi)
+        end_arc2 = FakeSketchArc(p2, side1.endSketchPoint.geometry, math.pi)
+        for c in (side1, side2, end_arc1, end_arc2):
+            self._curves.append(c)
+        self.sketchDimensions._items.append(FakeDimension())
+        result = FakeObjectCollection()
+        for c in (side1, side2, end_arc1, end_arc2):
+            result.add(c)
+        return result
 
 
 class _FakeSketchesFactory:
@@ -543,6 +580,56 @@ def test_all_geometry_entities_created(call_log):
     summary = build_constrained_sketch(design.rootComponent, design, manifest)
     assert summary["entities"]["created"] == len(manifest["entities"])
     assert summary["entities"]["skipped"] == []
+
+
+def _shape_manifest_with_arc3point():
+    """T65: a minimal silhouette manifest — 2 lines + 1 Arc3Point in
+    between, exactly the shape `toCarveArc3Point` (JS) now produces for a
+    carve-placed Shape Lattice arc — arranged so the arc's own p1/p2
+    coincide with its neighbours' own matching endpoints BY CONSTRUCTION,
+    same as the real silhouette generator's own chained segments."""
+    return {
+        "version": 1, "layerId": "1", "sketchName": "Test Shape",
+        "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9}, "widthMode": "slot",
+        "entities": [
+            {"id": "seg0", "type": "Line", "p1": [0.0, 0.0], "p2": [1.0, 0.0]},
+            {"id": "seg1", "type": "Arc3Point", "p1": [1.0, 0.0], "pMid": [1.5, 0.5], "p2": [1.0, 1.0]},
+            {"id": "seg2", "type": "Line", "p1": [1.0, 1.0], "p2": [0.0, 1.0]},
+        ],
+        "constraints": [],
+        "parameters": [],
+        "dimensions": [],
+        "groups": {"silhouette": ["seg0", "seg1", "seg2"]},
+        "latticePieceCount": 0,
+        "latticeConstrained": True,
+    }
+
+
+def test_arc3point_entity_builds_via_addByThreePoints_and_connects_to_its_neighbours_by_geometry(call_log):
+    """T65 (dispatch's own explicit ask): 'arcs must be checked by geometry
+    (endpoint continuity)', not just by a call-log count — an angle-based
+    build could log the right CALL and still land the wrong POINT. Checks
+    the arc's own real geometry (startSketchPoint/endSketchPoint) against
+    its neighbouring lines' own real geometry, independent of ids."""
+    design = FakeDesign()
+    manifest = _shape_manifest_with_arc3point()
+    summary = build_constrained_sketch(design.rootComponent, design, manifest)
+    assert summary["entities"]["created"] == 3
+    assert summary["entities"]["skipped"] == []
+
+    arc_calls = [c for c in call_log if c[0] == "geom:Arc3Point"]
+    assert len(arc_calls) == 1
+    _, p1x, p1y, pmx, pmy, p2x, p2y = arc_calls[0]
+    assert (p1x, p1y) == pytest.approx((1.0 * IN_TO_CM, 0.0 * IN_TO_CM))
+    assert (pmx, pmy) == pytest.approx((1.5 * IN_TO_CM, 0.5 * IN_TO_CM))
+    assert (p2x, p2y) == pytest.approx((1.0 * IN_TO_CM, 1.0 * IN_TO_CM))
+
+    sketch = design.rootComponent._sketches[0]
+    arc = next(c for c in sketch._curves if isinstance(c, FakeSketchArc))
+    seg0 = sketch.sketchCurves.sketchLines.item(0)
+    seg2 = sketch.sketchCurves.sketchLines.item(1)
+    assert arc.startSketchPoint.geometry.distanceTo(seg0.endSketchPoint.geometry) < 1e-9
+    assert arc.endSketchPoint.geometry.distanceTo(seg2.startSketchPoint.geometry) < 1e-9
 
 
 def test_sketch_name_override_takes_priority_over_the_manifest_own_sketchName(call_log):
@@ -783,6 +870,7 @@ if __name__ == "__main__":
         test_to_point3d_converts_inches_to_cm,
         test_build_order_parameters_before_geometry_before_constraints_before_dimensions,
         test_all_geometry_entities_created,
+        test_arc3point_entity_builds_via_addByThreePoints_and_connects_to_its_neighbours_by_geometry,
         test_sketch_name_override_takes_priority_over_the_manifest_own_sketchName,
         test_coordinates_land_in_cm_not_inches,
         test_parameters_created_then_updated_on_a_second_build,

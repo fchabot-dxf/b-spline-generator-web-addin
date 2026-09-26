@@ -174,24 +174,58 @@ def _create_arc_center_entity(ctx, curves, s_name, ent):
     return arc
 
 
-def _find_slot_centerline(sketch, curves, p1, p2):
-    """T64: `addCenterToCenterSlot`'s own RETURN value is (per the
-    advisor's own description) the slot's VISIBLE body — 2 side lines + 2
-    end arcs — with the construction centerline created as a SEPARATE
-    side effect, possibly not included in that return collection at all
-    (UNVERIFIED against real Fusion this turn — flagged for the advisor's
-    own live check). So this searches `sketch.sketchCurves.sketchLines`
-    directly (every line in the WHOLE sketch, not just the call's own
-    return) for the one whose own two endpoints match p1/p2 EXACTLY — the
-    centerline sits exactly there by construction; the two side lines sit
-    offset away from it, so an exact match is unambiguous (no proximity
-    heuristic needed, unlike this function's own first version)."""
+def _create_arc3_entity(ctx, curves, s_name, ent):
+    """T65 (advisor's own real Fusion run): a Shape Lattice silhouette arc,
+    once it has gone through the JS side's `applyCarvePlacement`, arrives
+    here as `{id, type:'Arc3Point', p1, pMid, p2}` — 3 raw points, NOT
+    center+radius+angle. The advisor's own measured bug (center+angle
+    ArcCenter build, angles negated for the Y-flip): arc centers landed
+    outside the board, left/right halves didn't mirror, arc ends didn't
+    meet their neighbouring line's own end. The fix moved upstream (JS
+    side never re-derives an angle representation after a reflection at
+    all) — this function is the OTHER half: build straight off 3 points
+    via `addByThreePoints`, matching fb_engine's own pre-existing
+    'Arc3Point' naming (geometry.py's own `_create_arc3`, a different
+    calling convention — that one resolves template expression strings
+    via `ctx.resolve_val`, this one converts already-resolved manifest
+    inches directly via `_to_point3d`, the SAME convention every other
+    entity in THIS module already uses — so this is a sibling, not a
+    delegation, matching the module's own header: 'writes its own
+    geometry-creation because fb_engine's own gaps don't fit this
+    manifest's shape')."""
+    p1 = _to_point3d(ent["p1"])
+    p_mid = _to_point3d(ent["pMid"])
+    p2 = _to_point3d(ent["p2"])
+    arc = curves.sketchArcs.addByThreePoints(p1, p_mid, p2)
+    ctx.set_id(arc, s_name, "arc", override_id=ent["id"])
+    ctx.set_id(arc.startSketchPoint, s_name, "point", override_id=f"{ent['id']}:S")
+    ctx.set_id(arc.endSketchPoint, s_name, "point", override_id=f"{ent['id']}:E")
+    ctx.set_id(arc.centerSketchPoint, s_name, "point", override_id=f"{ent['id']}:C")
+    return arc
+
+
+def _find_slot_centerline(curves, p1, p2, line_count_before):
+    """T65 (advisor's own real Fusion run, measured): `addCenterToCenterSlot`'s
+    own return value is a generic vector, not reliably indexable into named
+    curves — the advisor's own recommended technique is to diff the
+    sketch's curve collections before/after the call. `addCenterToCenterSlot`
+    appends exactly 3 new SketchLines (2 side lines + 1 construction
+    centerline; the 2 end arcs land in sketchArcs, irrelevant here) — this
+    only searches that NEW slice (`sketchLines[line_count_before:]`, the
+    ones this SPECIFIC call just created), not the whole sketch, so an
+    earlier piece's own centerline can never be mistaken for this one's
+    (T64's first version searched the whole sketch by exact p1/p2 match
+    alone, which happened to work for the FIRST slot created purely by
+    construction-order coincidence — caught by strengthening a test to
+    check a SECOND piece, see WORK-LOG-lane-b.md T64). Within that small
+    new slice, the centerline is still the one match on p1/p2 EXACTLY —
+    the two side lines sit offset away from it, so this is unambiguous."""
     lines = curves.sketchLines
     try:
         count = lines.count
     except Exception:
         return None
-    for i in range(count):
+    for i in range(line_count_before, count):
         c = lines.item(i)
         try:
             if c.startSketchPoint.geometry.distanceTo(p1) < 1e-7 and c.endSketchPoint.geometry.distanceTo(p2) < 1e-7:
@@ -254,13 +288,25 @@ def _create_slot_entity(ctx, sketch, curves, s_name, ent, width_expression):
        unverified this turn).
     4. Re-drives the width dimension via `width_expression`.
     NO symmetry constraint is added (measured: the slot is already
-    symmetric by construction; an explicit one over-constrains)."""
+    symmetric by construction; an explicit one over-constrains).
+
+    T65 (advisor's own real Fusion run): `addCenterToCenterSlot` lives on
+    `Sketch` itself, NOT on `SketchLines` (verified live via `dir()`) —
+    the T64 call site had it backwards, which made EVERY slot call raise
+    AttributeError, caught one level up in `_create_geometry`'s own per-
+    entity try/except and logged as a skip (80-94 "CONSTRAINT MISS" on the
+    advisor's own real fixtures, since no rail/tie ever got registered).
+    `Sketch` also exposes `addThreePointArcSlot`/`addCenterPointArcSlot`/
+    `addCenterPointSlot`/`addOverallSlot` alongside it — none used here,
+    named only because they confirm the METHOD FAMILY lives on Sketch, not
+    a coincidence specific to this one method."""
     p1 = _to_point3d(ent["p1"])
     p2 = _to_point3d(ent["p2"])
     width_in = ent.get("width", 0.07)
     value_input = adsk.core.ValueInput.createByReal(width_in * IN_TO_CM)
-    curves.sketchLines.addCenterToCenterSlot(p1, p2, value_input, True)
-    centerline = _find_slot_centerline(sketch, curves, p1, p2)
+    line_count_before = curves.sketchLines.count
+    sketch.addCenterToCenterSlot(p1, p2, value_input, True)
+    centerline = _find_slot_centerline(curves, p1, p2, line_count_before)
     if not centerline:
         raise RuntimeError(f"could not identify the slot's own centerline for {ent['id']}")
     ctx.set_id(centerline, s_name, "line", override_id=ent["id"])
@@ -301,6 +347,8 @@ def _create_geometry(ctx, sketch, s_name, entities, dimensions=None):
                 _create_circle_entity(ctx, curves, s_name, ent)
             elif etype == "ArcCenter":
                 _create_arc_center_entity(ctx, curves, s_name, ent)
+            elif etype == "Arc3Point":
+                _create_arc3_entity(ctx, curves, s_name, ent)
             elif etype == "Slot":
                 _create_slot_entity(ctx, sketch, curves, s_name, ent, slot_width_expr_by_id.get(eid))
             else:

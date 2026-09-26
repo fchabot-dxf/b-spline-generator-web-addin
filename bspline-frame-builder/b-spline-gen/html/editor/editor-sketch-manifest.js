@@ -482,42 +482,70 @@ function toCarvePoint(pt, region) {
   return { x: pt.x - region.w / 2, y: region.h / 2 - pt.y };
 }
 
-/** T64: the ONE final pass that converts an already-built manifest's own
- *  `entities[]` from natural board-inches space into carve-space —
+/** T65 (advisor's own real Fusion run): an ArcCenter's arc, rebuilt AFTER
+ *  transform from a NEGATED startAngleDeg/sweepDeg around the transformed
+ *  center, measured live as WRONG — centers landed outside the board,
+ *  left/right silhouette halves didn't mirror, arc ends didn't meet their
+ *  neighbouring line's own end. The angle-negation math itself checks out
+ *  by hand for a pure reflection (see T64's own now-superseded comment,
+ *  kept in WORK-LOG-lane-b.md T65 for the record) — but re-deriving an
+ *  angle representation is an extra step that a subtle sign/convention
+ *  mismatch (Fusion's own addByCenterStartSweep sweep-sign convention,
+ *  unverified this turn either) can silently break. The advisor's own
+ *  fix, applied here: never transform the angles at all. Compute the
+ *  arc's own three DEFINING POINTS (start, mid-sweep, end) in the SAME
+ *  natural board-space the silhouette generator already built and tested
+ *  them in, run each one through the IDENTICAL `toCarvePoint` map lines
+ *  and circles already use, and hand the transformed points straight to
+ *  Fusion's own addByThreePoints (Python side) — no angle math survives
+ *  the flip to get wrong. Mutates the entity's own `type` from
+ *  'ArcCenter' to 'Arc3Point' as part of this pass (a real representation
+ *  change, not a cosmetic rename): `startAngleDeg`/`sweepDeg`/`radius`
+ *  are not carryable through a reflection without risking exactly this
+ *  bug, so post-placement the entity is HONESTLY a different shape,
+ *  matching fb_engine's own pre-existing "Arc3Point" naming/convention
+ *  (geometry.py's _create_arc3) rather than inventing a new name. */
+function toCarveArc3Point(e, region) {
+  const startRad = (e.startAngleDeg * Math.PI) / 180;
+  const midRad = ((e.startAngleDeg + e.sweepDeg / 2) * Math.PI) / 180;
+  const endRad = ((e.startAngleDeg + e.sweepDeg) * Math.PI) / 180;
+  const [cx, cy] = e.center;
+  const raw = (rad) => ({ x: cx + e.radius * Math.cos(rad), y: cy + e.radius * Math.sin(rad) });
+  const p1 = toCarvePoint(raw(startRad), region);
+  const pMid = toCarvePoint(raw(midRad), region);
+  const p2 = toCarvePoint(raw(endRad), region);
+  return { id: e.id, type: 'Arc3Point', p1: [p1.x, p1.y], pMid: [pMid.x, pMid.y], p2: [p2.x, p2.y] };
+}
+
+/** T64/T65: the ONE final pass that converts an already-built manifest's
+ *  own `entities[]` from natural board-inches space into carve-space —
  *  every producer above (`manifestFromLattice`/`manifestFromShape`) keeps
  *  computing in the simpler, natural space it was already written and
  *  tested in; only the FINAL coordinates change. `constraints[]`/
  *  `dimensions[]`/`parameters[]`/`groups` reference entities BY ID, never
- *  by raw coordinate, so none of them need touching.
- *
- *  A reflection (unlike a pure translation) reverses ANGLE sense: a point
- *  at `center + r*(cos theta, sin theta)` maps to
- *  `center' + r*(cos(-theta), sin(-theta))` around the transformed center
- *  (worked by hand, WORK-LOG-lane-b.md T64) — so an ArcCenter's own
- *  `startAngleDeg`/`sweepDeg` are BOTH negated; `radius` is unchanged (a
- *  reflection preserves distances). H/V constraint CHOICE (computed
- *  earlier, from natural-space coordinates, by `axisConstraintType`) is
- *  unaffected either way — a reflection that only ever remaps y as a
- *  function of y alone can't turn a horizontal segment into a vertical
- *  one or vice versa, so those constraints stay correct without
- *  recomputation. */
+ *  by raw coordinate, so none of them need touching — an ArcCenter's own
+ *  `:C` (center) suffix still resolves correctly post-mutation, since the
+ *  Python builder's own Arc3Point dispatch still tags `arc.centerSketchPoint`
+ *  under the same id (see sketch_manifest_builder.py's _create_arc3_entity).
+ *  H/V constraint CHOICE for Line/Slot entities (computed earlier, from
+ *  natural-space coordinates, by `axisConstraintType`) is unaffected either
+ *  way — a reflection that only ever remaps y as a function of y alone
+ *  can't turn a horizontal segment into a vertical one or vice versa, so
+ *  those constraints stay correct without recomputation. */
 function applyCarvePlacement(manifest, region) {
-  for (const e of manifest.entities) {
+  manifest.entities = manifest.entities.map((e) => {
     if (e.type === 'Line' || e.type === 'Slot') {
       const p1 = toCarvePoint({ x: e.p1[0], y: e.p1[1] }, region);
       const p2 = toCarvePoint({ x: e.p2[0], y: e.p2[1] }, region);
-      e.p1 = [p1.x, p1.y];
-      e.p2 = [p2.x, p2.y];
+      return { ...e, p1: [p1.x, p1.y], p2: [p2.x, p2.y] };
     } else if (e.type === 'Circle') {
       const c = toCarvePoint({ x: e.center[0], y: e.center[1] }, region);
-      e.center = [c.x, c.y];
+      return { ...e, center: [c.x, c.y] };
     } else if (e.type === 'ArcCenter') {
-      const c = toCarvePoint({ x: e.center[0], y: e.center[1] }, region);
-      e.center = [c.x, c.y];
-      e.startAngleDeg = -e.startAngleDeg;
-      e.sweepDeg = -e.sweepDeg;
+      return toCarveArc3Point(e, region);
     }
-  }
+    return e;
+  });
   return manifest;
 }
 

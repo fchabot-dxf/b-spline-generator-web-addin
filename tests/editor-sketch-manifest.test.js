@@ -43,6 +43,13 @@ function pointOf(entities, target) {
     if (suffix === 'E') return at(e.startAngleDeg + e.sweepDeg);
     return { x: e.center[0], y: e.center[1] };
   }
+  if (e.type === 'Arc3Point') {
+    // T65: post-carve-placement arcs carry their 3 defining points
+    // directly (see toCarveArc3Point) -- no center/angle to recompute.
+    if (suffix === 'S') return { x: e.p1[0], y: e.p1[1] };
+    if (suffix === 'E') return { x: e.p2[0], y: e.p2[1] };
+    return null;
+  }
   if (e.type === 'Circle') return { x: e.center[0], y: e.center[1] };
   return null;
 }
@@ -443,7 +450,7 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
     // i.e. bbox x [-1,1], y [0,1.5] -- exactly the advisor's own reported numbers.
   });
 
-  it('a Shape Lattice arc entity gets its angle negated (reflection reverses angle sense) alongside the centered+flipped center', () => {
+  it('T65: a Shape Lattice arc entity becomes Arc3Point after carve placement (advisor\'s own real Fusion run measured the old angle-negation approach as WRONG) -- its 3 defining points independently re-derived in natural space, then transformed', () => {
     const shapePattern = {
       ...CARVE_PATTERN,
       extent: { mode: 'boundary' },
@@ -456,11 +463,122 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
     const manifest = buildSketchManifest(shapePattern, REGION, {});
     const arcIndex = primitives.indexOf(arcPrim);
     const e = manifest.entities.find((en) => en.id === `seg${arcIndex}`);
-    expect(e.center[0]).toBeCloseTo(arcPrim.cx - REGION.w / 2, 9);
-    expect(e.center[1]).toBeCloseTo(REGION.h / 2 - arcPrim.cy, 9);
-    expect(e.radius).toBeCloseTo(arcPrim.rx, 9); // a reflection preserves distances
-    expect(e.startAngleDeg).toBeCloseTo(-(arcPrim.theta1 * 180) / Math.PI, 9);
-    expect(e.sweepDeg).toBeCloseTo(-(arcPrim.dTheta * 180) / Math.PI, 9);
+    expect(e.type).toBe('Arc3Point');
+
+    // Independent re-derivation: the arc's own 3 defining points in NATURAL
+    // (pre-carve) board space, computed straight from the primitive's own
+    // cx/cy/rx/theta1/dTheta (never touching toCarveArc3Point's own code),
+    // then each one run through the documented raw transform formula.
+    const toCarve = (pt) => ({ x: pt.x - REGION.w / 2, y: REGION.h / 2 - pt.y });
+    const rawAt = (theta) => ({ x: arcPrim.cx + arcPrim.rx * Math.cos(theta), y: arcPrim.cy + arcPrim.rx * Math.sin(theta) });
+    const expP1 = toCarve(rawAt(arcPrim.theta1));
+    const expPMid = toCarve(rawAt(arcPrim.theta1 + arcPrim.dTheta / 2));
+    const expP2 = toCarve(rawAt(arcPrim.theta1 + arcPrim.dTheta));
+
+    expect(e.p1[0]).toBeCloseTo(expP1.x, 9);
+    expect(e.p1[1]).toBeCloseTo(expP1.y, 9);
+    expect(e.pMid[0]).toBeCloseTo(expPMid.x, 9);
+    expect(e.pMid[1]).toBeCloseTo(expPMid.y, 9);
+    expect(e.p2[0]).toBeCloseTo(expP2.x, 9);
+    expect(e.p2[1]).toBeCloseTo(expP2.y, 9);
+  });
+
+  it('T65: every carve-placed arc\'s own start/end point coincides with its neighbouring line/arc\'s own matching end (dispatch\'s own acceptance test)', () => {
+    const shapePattern = {
+      ...CARVE_PATTERN,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    const manifest = buildSketchManifest(shapePattern, REGION, {});
+    const arcs = manifest.entities.filter((e) => e.type === 'Arc3Point');
+    expect(arcs.length).toBeGreaterThan(0); // non-vacuous
+    // Every silhouette segment's own :E must land exactly on the NEXT
+    // segment's own :S -- re-derived independently via pointOf (which for
+    // Arc3Point reads e.p1/e.p2 directly, and for Line reads e.p1/e.p2 too),
+    // so a wrong per-point transform (not just a wrong center) would show
+    // up here as a broken chain, not just a wrong bbox.
+    const silIds = manifest.groups.silhouette;
+    expect(silIds.length).toBeGreaterThan(1);
+    for (let i = 0; i < silIds.length; i++) {
+      const endPt = pointOf(manifest.entities, `${silIds[i]}:E`);
+      const nextStartPt = pointOf(manifest.entities, `${silIds[(i + 1) % silIds.length]}:S`);
+      expect(endPt.x).toBeCloseTo(nextStartPt.x, 9);
+      expect(endPt.y).toBeCloseTo(nextStartPt.y, 9);
+    }
+  });
+
+  it('T65: the carve-placed silhouette\'s own bbox matches its natural-space bbox transformed through the SAME raw formula (independent of any per-entity type dispatch)', () => {
+    const shapePattern = {
+      ...CARVE_PATTERN,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    const { primitives } = generateSilhouette(REGION, shapePattern.shape);
+    // Sample many points along the ORIGINAL (natural-space) primitives --
+    // lines by their 2 endpoints, arcs by a dense angle sweep -- and bbox
+    // those, entirely independent of buildSketchManifest/applyCarvePlacement.
+    const rawPts = [];
+    for (const p of primitives) {
+      if (p.type === 'L') {
+        rawPts.push({ x: p.p0.x, y: p.p0.y }, { x: p.p1.x, y: p.p1.y });
+      } else if (p.type === 'A') {
+        for (let k = 0; k <= 32; k++) {
+          const theta = p.theta1 + (p.dTheta * k) / 32;
+          rawPts.push({ x: p.cx + p.rx * Math.cos(theta), y: p.cy + p.rx * Math.sin(theta) });
+        }
+      }
+    }
+    expect(rawPts.length).toBeGreaterThan(0);
+    const toCarve = (pt) => ({ x: pt.x - REGION.w / 2, y: REGION.h / 2 - pt.y });
+    const carvePts = rawPts.map(toCarve);
+    const expected = {
+      minX: Math.min(...carvePts.map((p) => p.x)), maxX: Math.max(...carvePts.map((p) => p.x)),
+      minY: Math.min(...carvePts.map((p) => p.y)), maxY: Math.max(...carvePts.map((p) => p.y)),
+    };
+
+    const manifest = buildSketchManifest(shapePattern, REGION, {});
+    const sampled = [];
+    for (const id of manifest.groups.silhouette) {
+      const e = manifest.entities.find((en) => en.id === id);
+      if (e.type === 'Line') sampled.push({ x: e.p1[0], y: e.p1[1] }, { x: e.p2[0], y: e.p2[1] });
+      else if (e.type === 'Arc3Point') sampled.push({ x: e.p1[0], y: e.p1[1] }, { x: e.pMid[0], y: e.pMid[1] }, { x: e.p2[0], y: e.p2[1] });
+    }
+    // An arc's own extreme point (e.g. the top of a circle) can bulge past
+    // its own start/mid/end sample points, so the ACTUAL bbox may exceed
+    // this coarse sampling slightly for the manifest side too -- compare
+    // against the SAME coarse 3-point sampling scheme applied to the
+    // manifest's own arcs, not the 33-point-dense raw sampling above, by
+    // re-deriving the coarse bbox from the SAME dense raw samples restricted
+    // to k=0,16,32 (start/mid/end) for a fair apples-to-apples comparison.
+    const coarseRawPts = [];
+    for (const p of primitives) {
+      if (p.type === 'L') coarseRawPts.push({ x: p.p0.x, y: p.p0.y }, { x: p.p1.x, y: p.p1.y });
+      else if (p.type === 'A') {
+        for (const k of [0, 16, 32]) {
+          const theta = p.theta1 + (p.dTheta * k) / 32;
+          coarseRawPts.push({ x: p.cx + p.rx * Math.cos(theta), y: p.cy + p.rx * Math.sin(theta) });
+        }
+      }
+    }
+    const coarseCarvePts = coarseRawPts.map(toCarve);
+    const coarseExpected = {
+      minX: Math.min(...coarseCarvePts.map((p) => p.x)), maxX: Math.max(...coarseCarvePts.map((p) => p.x)),
+      minY: Math.min(...coarseCarvePts.map((p) => p.y)), maxY: Math.max(...coarseCarvePts.map((p) => p.y)),
+    };
+    const actual = {
+      minX: Math.min(...sampled.map((p) => p.x)), maxX: Math.max(...sampled.map((p) => p.x)),
+      minY: Math.min(...sampled.map((p) => p.y)), maxY: Math.max(...sampled.map((p) => p.y)),
+    };
+    expect(actual.minX).toBeCloseTo(coarseExpected.minX, 6);
+    expect(actual.maxX).toBeCloseTo(coarseExpected.maxX, 6);
+    expect(actual.minY).toBeCloseTo(coarseExpected.minY, 6);
+    expect(actual.maxY).toBeCloseTo(coarseExpected.maxY, 6);
+    // And the manifest's own bbox must land WITHIN the densely-sampled
+    // true bbox (never bulge past the real silhouette) -- the regression
+    // this test actually guards: the advisor's reported bug had centers
+    // landing OUTSIDE the board entirely (x -6.38..5.19 on a 7-wide board).
+    expect(actual.minX).toBeGreaterThanOrEqual(expected.minX - 1e-6);
+    expect(actual.maxX).toBeLessThanOrEqual(expected.maxX + 1e-6);
   });
 
   it('H/V constraint TYPES are unaffected by the carve transform (a reflection in y alone cannot turn horizontal into vertical)', () => {

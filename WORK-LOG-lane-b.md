@@ -7561,3 +7561,111 @@ needing a deliberate check to keep it that way.
 
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 
+## T65 — SE15 fixes from the advisor's REAL Fusion run of T64: every slot skipped, silhouette arcs landed outside the board
+
+T64 was NOT merged — the advisor ran lane-b's own builder on real fixtures (box + shape manifests) in real Fusion
+and found two bugs the "NO FUSION" unit-test suite could not have caught on its own, because the FAKE shim
+encoded the same wrong assumption the production code did — shim and code agreed with each other, just not with
+real Fusion. Both are now fixed in the module, the shim, AND the JS producer, with the shim fix specifically
+verified (via mutation) to actually catch the class of bug that slipped through T64.
+
+**Bug 1 — every slot was skipped.** `addCenterToCenterSlot` (and its siblings — `addThreePointArcSlot`,
+`addCenterPointArcSlot`, `addCenterPointSlot`, `addOverallSlot`, all confirmed live via `dir()`) live on `Sketch`
+itself, not on `SketchLines` — T64's call site had `curves.sketchLines.addCenterToCenterSlot(...)`, which raised
+`AttributeError` on every single call, caught one level up by `_create_geometry`'s own per-entity try/except and
+silently logged as a skip (80 on the advisor's box fixture, 94 on shape — "CONSTRAINT MISS: railN not found"
+downstream, since no rail/tie ever got registered under its own id; the box sketch ended up with 20 circles and
+ZERO lines). Fixed the call site to `sketch.addCenterToCenterSlot(...)`.
+
+The advisor's own live measurement of the return value: "a generic vector" — not reliably carrying the
+centerline as a named, indexable member. Rather than trust it at all, `_find_slot_centerline` now takes the
+advisor's own recommended technique: diff `sketch.sketchCurves.sketchLines`' own count before/after the call
+(`addCenterToCenterSlot` appends exactly 3 new lines — 2 sides + 1 centerline; the 2 end arcs land in
+`sketchArcs`, irrelevant here) and search ONLY that new slice for the exact p1/p2 match, rather than T64's own
+whole-sketch search. This is strictly narrower/safer than T64's version, not just a style change: whole-sketch
+search happened to work for the FIRST slot purely by construction-order coincidence (its own centerline WAS the
+first line in the sketch) but could mis-identify a LATER piece's centerline if two pieces' exact coordinates
+ever collided — narrowing the search window to just this call's own new lines removes that risk entirely, on top
+of now also being required by the fact that a stale whole-sketch cache could includes lines added by an
+unrelated earlier call.
+
+**Bug 2 — Shape Lattice silhouette arcs landed outside the board after the Y flip.** The advisor's own real
+measurement on a 7-wide board: arc centers at cx = 3.578, 5.189, −4.673, −6.384... (expected roughly ±3.5,
+symmetric) — left half not a mirror of the right, arc ends not meeting their neighbouring line's own end. T64's
+own `applyCarvePlacement` negated `startAngleDeg`/`sweepDeg` around the transformed center — a hand-worked
+derivation for a pure reflection that checks out symbolically (see the now-superseded comment this replaces,
+still readable via `git log`/T64's own commit) but evidently diverges from Fusion's OWN `addByCenterStartSweep`
+sweep-sign convention in a way that was never independently verifiable without a live Fusion run — angle
+representations are fragile exactly because a sign/convention mismatch can hide behind math that looks correct
+on paper.
+
+The advisor's own fix, applied directly: never re-derive an angle representation after a reflection at all.
+`toCarveArc3Point` (new, JS) computes the arc's own 3 DEFINING POINTS (start, mid-sweep, end) in the SAME natural
+board-space the silhouette generator already built and tested them in, runs each one through the IDENTICAL
+`toCarvePoint` map lines/circles already use (simple coordinate arithmetic, no angle math to get wrong), and the
+entity's own `type` mutates from `'ArcCenter'` to `'Arc3Point'` as part of the SAME pass — a genuine
+representation change (center+radius+angle isn't carryable through a reflection without this exact risk), named
+to match fb_engine's own pre-existing `'Arc3Point'` convention (`geometry.py`'s `_create_arc3`) rather than
+inventing a new name for the same concept. Python side: new `_create_arc3_entity` builds via
+`curves.sketchArcs.addByThreePoints(p1, pMid, p2)` directly off the already-resolved manifest inches (the SAME
+`_to_point3d` convention every other entity in this module uses) — a sibling to fb_engine's own `_create_arc3`,
+not a delegation to it, since that one resolves template EXPRESSION strings via `ctx.resolve_val`, a different
+calling convention entirely. `_create_arc_center_entity`/the raw `'ArcCenter'` dispatch branch is left intact —
+still correct and still used for any manifest that never goes through carve placement at all (e.g. a direct,
+non-placed `manifestFromShape` caller); only the CARVE-PLACED path changes.
+
+**Fix 3 — the shim itself, per the dispatch's own explicit instruction ("so these two bugs would have failed your
+tests. Mutation-check that.")**: moved `addCenterToCenterSlot` off `FakeSketchLines` onto `FakeSketch` (matching
+the real API), and added `FakeSketchArcs.addByThreePoints` — computes its own arc's center via a real circumcenter
+formula from the 3 given points (never given, always DERIVED, matching the real API's own semantics, the reverse
+of `addByCenterStartSweep`'s fake where center is given and the end point is derived).
+
+**Tests**:
+- Python (`test_sketch_manifest_builder.py`, now 18): a new `_shape_manifest_with_arc3point` fixture (2 lines +
+  1 Arc3Point in between) + a test that checks the arc builds via `addByThreePoints` with the correct 3 points
+  AND — per the dispatch's own explicit ask — checks by GEOMETRY, not just call-log counts: the arc's own real
+  `startSketchPoint`/`endSketchPoint` must coincide with its neighbouring lines' own real endpoints, independent
+  of ids. Both pytest (18/18) and the plain-`python3` fallback (17/17, `tmp_path`-using test excluded per the
+  pre-existing convention) are green.
+- JS (`tests/editor-sketch-manifest.test.js`, now 32, +2 net after replacing 1 stale test with 3 new ones): the
+  carve-placed arc entity becomes `Arc3Point`, its own 3 points independently re-derived from the primitive's own
+  `cx/cy/rx/theta1/dTheta` in natural space then transformed (never trusting `toCarveArc3Point`'s own internals);
+  every silhouette segment's own `:E` coincides with the NEXT segment's own `:S` around the WHOLE closed loop
+  (the dispatch's own explicit acceptance test: "every arc end coincides with its neighbour line end"); the
+  carve-placed silhouette's own bbox matches an independently-sampled natural-space bbox run through the same
+  raw transform formula, and never bulges outside the true (densely-sampled) bbox — directly targeting the
+  advisor's own reported symptom of centers landing outside the board. Full JS suite: 1016 passed (63 files).
+
+**Mutation-tested all three fixes** (backup, mutate, run, confirm the EXACT expected failure, restore, MD5-verified
+byte-identical restore each time):
+1. Reverted ONLY the Python call site back to `curves.sketchLines.addCenterToCenterSlot(...)` (bug 1's own exact
+   regression, keeping the now-fixed shim in place) — exactly 9 of 18 tests failed with `AttributeError:
+   'FakeSketchLines' object has no attribute 'addCenterToCenterSlot'`, reproducing the advisor's own reported
+   symptom almost exactly. Confirms the fixed shim WOULD have caught T64's own bug had it been in place then.
+   Restored, MD5-verified.
+2. Swapped `p1`/`p2` order in the new `addByThreePoints` call — exactly 1 failure, the new geometry-based
+   endpoint-continuity assertion (`assert (2.54, 2.54) == approx((2.54, 0.0))`), 17/18 passed. Restored,
+   MD5-verified.
+3. Reverted `applyCarvePlacement`'s own `ArcCenter` branch back to T64's angle-negation approach (keeping
+   `toCarveArc3Point` itself untouched, unused) — exactly 2 of 32 JS tests failed (the Arc3Point type-check test,
+   and the endpoint-continuity test's own non-vacuous precondition `arcs.length > 0`, since no entity was an
+   Arc3Point under the reversion). The independently-sampled bbox test did NOT fail under this mutation — an
+   honest finding, not swept under the rug: T64's angle-negation math is internally self-consistent as PURE
+   reflection math (worked by hand, see T64's own now-superseded comment), so a bbox computed in pure JS from
+   that same self-consistent math still lands in a plausible place; the advisor's own reported bug (centers
+   outside the board) most plausibly lives at the Fusion-API boundary (a sweep-sign convention mismatch in real
+   `addByCenterStartSweep`) that no amount of pure-JS testing can observe directly — which is exactly why the
+   fix moved to a representation (3 raw points) that has no angle-sign convention left to get wrong on either
+   side of that boundary, rather than trying to hunt down and patch the exact original sign error blind.
+   30/32 passed under the reversion. Restored, MD5-verified.
+
+**Disclosed, unverified against real Fusion this turn** (NO FUSION held throughout, per the dispatch): whether
+`addByThreePoints`'s own real return value behaves as assumed (start/end SketchPoints matching the given p1/p2
+exactly — a reasonable assumption for a 3-point arc, unlike `addCenterToCenterSlot`'s own murkier "generic
+vector", but not independently confirmed live); did not have access to the advisor's own exact fixture files
+(`scratchpad\t64\t64.json`, `m_box.json`, `m_shape.json` — presumably local to the advisor's own machine/session)
+so verification here relies on hand-built equivalent fixtures matching the STRUCTURE the dispatch described, not
+a byte-for-byte replay of the advisor's own real run.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+
