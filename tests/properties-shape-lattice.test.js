@@ -16,7 +16,7 @@ import {
   paramHandleRecords, renderShapeLatticeHandles, detectShapeLatticeDetach, openSegmentStyleBar,
   currentPattern, currentShape,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
-import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
 function makeMockEditor() {
   let elements = [];
@@ -259,14 +259,17 @@ describe('initShapeLatticeProperties: Shape section', () => {
     expect(dAfter).not.toBe(dBefore);
   });
 
-  it('regenerating updates the SAME linked path element in place (one path, not a growing pile)', async () => {
+  it('T73: regenerating updates the SAME per-segment elements in place (N segments, not a growing pile)', async () => {
     initShapeLatticeProperties(editor);
     document.getElementById('shapeReroll').click();
     await flush();
+    const firstSegs = editor._sketchLayer.children().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+    const countAfterFirst = firstSegs.length;
+    expect(countAfterFirst).toBeGreaterThan(0);
     document.getElementById('shapeReroll').click();
     await flush();
-    const paths = editor._sketchLayer.children().filter((e) => e.attr('d'));
-    expect(paths.length).toBe(1);
+    const segs = editor._sketchLayer.children().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+    expect(segs.length).toBe(countAfterFirst);
   });
 });
 
@@ -579,31 +582,34 @@ describe('initShapeLatticeProperties (T58 ADD-ON): linked Rails & ties width', (
  * whole point of lifting them out of the panel's own closures.
  */
 describe('properties-shape-lattice.js: module-level exports (T59)', () => {
-  it('regenerateSilhouette creates the linked path; a second call updates it IN PLACE (same element)', () => {
+  it('T73: regenerateSilhouette creates the N linked per-segment paths; a second call (same segment count) updates them IN PLACE (same elements)', () => {
     const p = currentPattern(editor);
-    regenerateSilhouette(editor, p);
-    const first = editor._sketchLayer.children().find((e) => e.attr('d'));
-    expect(first).toBeDefined();
+    const first = regenerateSilhouette(editor, p);
+    expect(first.length).toBeGreaterThan(0);
     currentShape(p).params = { waistReach: 0.8 };
-    regenerateSilhouette(editor, p);
-    const paths = editor._sketchLayer.children().filter((e) => e.attr('d'));
-    expect(paths.length).toBe(1);
-    expect(paths[0]).toBe(first);
+    const second = regenerateSilhouette(editor, p);
+    const paths = editor._sketchLayer.children().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+    expect(paths.length).toBe(first.length);
+    expect(second.every((el, i) => el === first[i])).toBe(true);
   });
 
   it('T72 (AMEND 2): a freshly-minted contour draws in PATTERN.colors.contour, not the general drawing tool\'s current color', () => {
     const p = currentPattern(editor);
     editor._color = '#ff00ff'; // a DIFFERENT color -- proves the contour does NOT inherit this
-    const pathEl = regenerateSilhouette(editor, p);
-    expect(pathEl.attr('stroke')).toBe(PATTERN_DEFAULTS.colors.contour);
-    expect(pathEl.attr('stroke')).not.toBe('#ff00ff');
+    const pathEls = regenerateSilhouette(editor, p);
+    for (const pathEl of pathEls) {
+      expect(pathEl.attr('stroke')).toBe(PATTERN_DEFAULTS.colors.contour);
+      expect(pathEl.attr('stroke')).not.toBe('#ff00ff');
+    }
   });
 
   it('T72 (AMEND 2): a custom PATTERN.colors.contour is honored for a freshly-minted path', () => {
     const p = currentPattern(editor);
     p.colors = { ...PATTERN_DEFAULTS.colors, contour: '#ab12cd' };
-    const pathEl = regenerateSilhouette(editor, p);
-    expect(pathEl.attr('stroke')).toBe('#ab12cd');
+    const pathEls = regenerateSilhouette(editor, p);
+    for (const pathEl of pathEls) {
+      expect(pathEl.attr('stroke')).toBe('#ab12cd');
+    }
   });
 
   it('regenerateSilhouetteAndFill fills AND dispatches SHAPE_CHANGED_EVENT', async () => {
@@ -694,10 +700,11 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
       expect(currentShape(p).source).toBe('generated');
     });
 
-    it('non-vacuous: flips to \'picked\' when the linked path\'s own `d` has been hand-edited (a real Node-mode drag, simulated)', () => {
+    it('non-vacuous: flips to \'picked\' when a linked segment\'s own `d` has been hand-edited (a real Node-mode drag, simulated)', () => {
       const p = currentPattern(editor);
-      const pathEl = regenerateSilhouette(editor, p);
-      pathEl.attr('d', pathEl.attr('d') + ' L 0.01 0.01'); // simulate a hand node-drag mutating the live d
+      const pathEls = regenerateSilhouette(editor, p);
+      const seg = pathEls[0];
+      seg.attr('d', seg.attr('d') + ' L 0.01 0.01'); // simulate a hand node-drag mutating the live d
       detectShapeLatticeDetach(editor);
       expect(currentShape(p).source).toBe('picked');
     });

@@ -56,7 +56,7 @@
 import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
-  primitivesBBox, insetGeneratedPresetPathDToPrimitives, SILHOUETTE_STROKE_WIDTH, insetRegionForContour,
+  primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetRegionForContour,
 } from './editor-lattice-boundary.js';
 import { generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
@@ -688,9 +688,10 @@ function resolveBoardExtent(pattern, region) {
 // SAME half-inset the app's own drawing applies before clipping the
 // lattice fill (`_effectiveBorderWidth` + `boundary.edge`, editor-
 // lattice-pattern.js's own `_resolveBoundaryPrimitives`) — DOM-free here,
-// since a GENERATED shape's own drawn boundary element is ALWAYS stroked
-// at `SILHOUETTE_STROKE_WIDTH` (`regenerateSilhouette`) regardless of
-// whether the separate Border FEATURE is enabled; the only way this
+// since a GENERATED shape's own drawn boundary element(s) are ALWAYS
+// stroked at `widths.rails` (T73: `regenerateSilhouette`'s per-segment
+// contour width, "auto = lattice stroke width" per T72 item 6) regardless
+// of whether the separate Border FEATURE is enabled; the only way this
 // differs from what a live element's own stroke-width would report is an
 // EXPLICIT `boundary.border.width` override, which is plain DATA already
 // available here, no DOM read needed for it either.
@@ -698,9 +699,10 @@ function shapeHalfInset(pattern) {
   const boundary = { ...PATTERN_DEFAULTS.boundary, ...(pattern.boundary || {}) };
   const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
   if (edge === 'centerline') return 0;
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
   const borderWidth = (boundary.border && boundary.border.enabled && boundary.border.width != null)
     ? boundary.border.width
-    : SILHOUETTE_STROKE_WIDTH;
+    : widths.rails;
   return borderWidth / 2;
 }
 

@@ -538,3 +538,61 @@ export function primitivesToPathD(primitives) {
   if (started) parts.push('Z');
   return parts.join(' ');
 }
+
+/**
+ * T73 (SE14b): ONE primitive's own SELF-CONTAINED, OPEN `d` string — its
+ * own `M` start, then a single `L`/`A` command, NEVER a trailing `Z`.
+ * `primitivesToPathD` above can't be reused for a single-primitive call:
+ * it unconditionally appends `Z` once `started` is true, which for
+ * an `'L'` re-traces the same 2-point line back onto itself (harmless but
+ * redundant) and for an `'A'` draws a spurious straight chord across the
+ * arc's own two endpoints — visibly wrong for what's supposed to be an
+ * OPEN curve. Used to draw the contour as N independent per-segment
+ * elements (one call per primitive) rather than one combined closed path
+ * — each element's own `d` is exactly what a caller re-deriving the
+ * combined boundary (editor-lattice-pattern.js's own multi-element
+ * `_resolveBoundaryPrimitives`) can concatenate back into one closed loop,
+ * by simply joining every element's own commands and appending ONE
+ * trailing `Z` at the very end — never re-deriving the geometry a second
+ * way.
+ */
+export function primitiveToPathD(prim) {
+  if (prim.type === 'L') {
+    return `M ${_fmt(prim.p0.x)} ${_fmt(prim.p0.y)} L ${_fmt(prim.p1.x)} ${_fmt(prim.p1.y)}`;
+  }
+  if (prim.type === 'A') {
+    if (prim.rx <= 0 || prim.ry <= 0) return ''; // same defensive floor as primitivesToPathD
+    const p0 = _arcPointAt(prim, prim.theta1);
+    const p1 = _arcPointAt(prim, prim.theta1 + prim.dTheta);
+    const largeArc = Math.abs(prim.dTheta) > Math.PI ? 1 : 0;
+    const sweep = prim.dTheta > 0 ? 1 : 0;
+    const phiDeg = (prim.phi * 180) / Math.PI;
+    return `M ${_fmt(p0.x)} ${_fmt(p0.y)} A ${_fmt(prim.rx)} ${_fmt(prim.ry)} ${_fmt(phiDeg)} ${largeArc} ${sweep} ${_fmt(p1.x)} ${_fmt(p1.y)}`;
+  }
+  return '';
+}
+
+/**
+ * T73: the exact inverse of splitting a silhouette into N per-primitive
+ * `primitiveToPathD` strings — joins them back into ONE closed-loop `d`,
+ * in primitive order. Each input string is its own self-contained
+ * `M ... L|A ...` (never a `Z`, per `primitiveToPathD`'s own contract) —
+ * every one AFTER the first has its own leading `M x y` stripped (the
+ * SAME coordinate the previous segment's own command already ended at,
+ * by construction — the Coincident joint chain every adjacent pair of
+ * silhouette primitives already shares), then one trailing `Z` closes the
+ * whole loop. Lets `_resolveBoundaryPrimitives` (editor-lattice-
+ * pattern.js) re-derive the SAME combined boundary
+ * `insetPathDToPrimitives`/`insetGeneratedPresetPathDToPrimitives` already
+ * know how to inset, from N live per-segment elements instead of one.
+ */
+export function joinSegmentPathsIntoClosedD(dStrings) {
+  const nonEmpty = dStrings.filter(Boolean);
+  if (!nonEmpty.length) return '';
+  const parts = [nonEmpty[0]];
+  for (let i = 1; i < nonEmpty.length; i++) {
+    parts.push(nonEmpty[i].replace(/^M\s+-?[\d.]+\s+-?[\d.]+\s+/, ''));
+  }
+  parts.push('Z');
+  return parts.join(' ');
+}

@@ -18,10 +18,10 @@
  * `regenerateSilhouette` run FOR REAL against it, not a stub.
  */
 import { describe, it, expect } from 'vitest';
-import { generatePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { generatePattern, PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { regenerateSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
-import { generateSilhouette, primitivesToPathD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+import { generateSilhouette, primitiveToPathD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { insetRegionForContour } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 function makeMockEditor(mW, mH) {
@@ -187,7 +187,7 @@ describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManife
     checkLatticeParity(editor, manifest, region);
   });
 
-  it('the drawn contour path\'s own "d" matches primitivesToPathD(primitives) exactly (the app draws precisely what generateSilhouette says, byte for byte)', () => {
+  it('T73: the drawn per-segment contour paths\' own "d" each match primitiveToPathD(primitives[i]) exactly, in segment order (the app draws precisely what generateSilhouette says, byte for byte)', () => {
     const editor = makeMockEditor(7, 9);
     const pattern = shapePattern();
     const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
@@ -196,9 +196,13 @@ describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManife
     // declared contour-size margin (regenerateSilhouette's own
     // `_shapeContourRegion`) -- this oracle must build from the SAME region.
     const { primitives } = generateSilhouette(insetRegionForContour(region), pattern.shape);
-    const pathEl = editor._sketchLayer.children().toArray().find((e) => e.attr('d'));
-    expect(pathEl).toBeDefined(); // non-vacuous: a contour path was actually drawn
-    expect(pathEl.attr('d')).toBe(primitivesToPathD(primitives));
+    const segEls = editor._sketchLayer.children().toArray()
+      .filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR))
+      .sort((a, b) => Number(a.attr(CONTOUR_SEG_INDEX_ATTR)) - Number(b.attr(CONTOUR_SEG_INDEX_ATTR)));
+    expect(segEls.length).toBe(primitives.length); // non-vacuous: N segments drawn, N primitives declared
+    for (let i = 0; i < primitives.length; i++) {
+      expect(segEls[i].attr('d')).toBe(primitiveToPathD(primitives[i]));
+    }
   });
 
   it('every contour primitive\'s own defining points (transformed through the SAME carve-space formula) has exactly one matching manifest seg entity, and vice versa — lines by p1/p2, arcs by p1/pMid/p2', () => {
