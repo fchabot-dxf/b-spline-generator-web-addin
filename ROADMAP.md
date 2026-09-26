@@ -916,6 +916,9 @@ CORE REQUIREMENT (Fred: "once a frame is cut and we go in the SVG editor, it sho
 the whole point, make it good"): with a frame chosen, the editor's board shape IS the frame's trimmed outline (outside
 shaded as cut away, artwork untouched), the 3D preview trims the panel to it with bars in the chosen wood, live on
 param change, one outline source shared with the Fusion build. Design + stages on branch fb-app (FB-APP-DESIGN.md).
+UI APPROVED (Fred: "sounds amazing") — two doors, one room: a FRAME sidebar section (template/none, frame bottom Z,
+wood, [Edit frame]) + the full-screen editor with [Frame | Artwork] tabs; the frame record is persisted in the project
+and re-editable any time; Frame and Shape Lattice are separate records sharing one silhouette engine.
 Fred confirmed no tapers: `Skel_Frame_Taper` exists but extrusion_engine hard-codes 0° — drop the param, don't port it.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
