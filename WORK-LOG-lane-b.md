@@ -9021,3 +9021,103 @@ AMEND 3b items above (near-tangent-angle threshold, dedicated MIN_RAIL_PIECE).
 
 Verify: 1221/1221 vitest, 151/151 pytest. Amendments polled clean before commit. Commit 23f1584, pushed. NO FUSION.
 
+# T74 — AMEND 0 (blocker), AMEND 3b close-out, SE14d, NODE-D
+
+## T74 AMEND 0 (BLOCKER, own commit first) — per-preset contour_width dim expression
+
+Advisor, measured live in Fusion on 847f289: hourglass spawns exact, but the bottle spawns 0.45in off. AMEND 1's
+own geometry fix (T73) already targets the RIGHT points (the body's own vertical horns), but the dim's VALUE
+(contour_width=6) doesn't match what those points actually measure in the raw geometry (5.564 = contour_width *
+body_width, since bodyWidth is a genuine 0..1 fraction of the available half-width, `_solveBottle`'s own formula,
+never necessarily 1) — Fusion, solving a DRIVING dimension, stretches the body straight out to contour_width,
+distorting the shape.
+
+Declared per preset, in the preset's own data (`PRESETS[preset].widthExpr`, editor-shape-lattice-generator.js) —
+per the amend's own explicit instruction ("declare the expression per preset... in the preset's own shape data, not
+an if/else in the builder"). Written in the geometry engine's own camelCase param names (`bodyWidth`) — the
+geometry engine has zero Fusion-naming awareness by design, so `editor-sketch-manifest.js`'s new `resolveWidthExpr`
+translates each token via the SAME `PARAM_FUSION_NAMES` table `parameters` itself already uses. Height needs no
+factor for either preset: both presets' own top/bottom caps always span the full contour_height unconditionally
+(verified directly in `_solveHourglass`/`_solveBottle` — half-height is always `region.h/2`).
+
+New test evaluates every Distance dim's own expression against the manifest's declared parameter values and
+asserts it equals the distance between that dim's two target points, on the SAME axis a Fusion Horizontal/Vertical
+dim actually reads (self-caught: my own first draft compared against the full point-to-point hypot distance, which
+overstates a Horizontal/Vertical-only reading whenever the two points differ in the OTHER axis too). Confirmed
+failing first against the pre-fix expression (bottle: 6 vs 6.492, a 0.508in gap — matching the live ~0.45in
+report; hourglass passed even unfixed).
+
+Verify: 1223/1223 vitest, 151/151 pytest. Commit 9a86638, pushed.
+
+## T74 item 1 — AMEND 3b close-out: near-tangent threshold + MIN_RAIL_PIECE
+
+Closes the two AMEND 3b items disclosed as deferred at the end of T73. `primitiveHitAt` now also returns the
+contour's own tangent direction at the hit point; `computePattern`'s `contourHit` compares it against the rail/
+tie's own scanline direction and suppresses the Coincident below a declared 10° threshold.
+
+**Self-caught bug**, found via a live sweep across `waistReach` values (not assumed): the first version applied the
+angle check unconditionally, silently suppressing a real fraction of every rail's own perfectly-valid CORNER
+Coincidents whenever `primitiveHitAt`'s first-found primitive at that joint happened to be near-parallel to the
+rail — a joint (`hit.end` 'S'/'E') is an EXACT point-to-point match regardless of what angle the two segments meet
+at; "near-tangent" only makes sense for a genuine mid-primitive landing (`hit.end` null). Fixed by skipping the
+angle check entirely for joints.
+
+MIN_RAIL_PIECE (2x the relevant stroke width) is checked inside `computePattern` itself, only for a genuinely
+SPLIT row/column — an ordinary un-split rail is never at risk regardless of its own length.
+
+New tests: a REAL deep-waist hourglass fixture (waistReach 0.15, dense vertical rails — found live, not contrived)
+shows rails split by the waist keeping exactly one Coincident on their clean end, with an independently-computed
+crossing angle confirming the kept end is >=10° and the dropped end is <10°. MIN_RAIL_PIECE verified
+deterministically by inflating the lattice stroke width so its own 2x threshold exceeds an EXISTING split piece's
+real length, rather than hunting for a naturally tiny sliver.
+
+Verify: 1225/1225 vitest, 151/151 pytest. Commit ecae8d3, pushed.
+
+## T74 item 2 (SE14d) — remove "Pick shape…" from the Shape Lattice panel
+
+Fred: "boundary pick shape isn't useful, it might just be another tool." A sweep: removed the button, its click
+handler, and the now-dead "next click picks a target" canvas dispatcher (its only remaining caller — box-Lattice's
+own former Pick-shape UI was already removed in T58). KEPT everything the GENERATED silhouette path shares with a
+hand-picked boundary: `shape.source==='picked'` semantics (`detectShapeLatticeDetach`'s auto-detach safety net, the
+`reuseExisting` regenerate guard, `_resolveBoundaryPrimitives`'s collapse-fallback), the endRule segmented control
+(NOT picked-only — read whenever `usesContourCenterline` is false), and `boundary.edge` (data-only, no UI row
+exists for it). The "Boundary" section heading text is untouched, for seat A's own title-based
+`TOOL_PANEL_MOUNTS` decoration on main.
+
+**Decided (not left ambiguous)** on the ROADMAP's "saved patterns with a picked boundary still load — decide +
+log": a picked pattern already renders/fills correctly today with no branch on `shape.source` anywhere in the
+draw/fill path — removing the CREATE-a-new-pick button doesn't change that. Left the existing "touching a
+Shape-section control on a picked pattern silently converts it to generated" behavior exactly as-is (already
+documented in-code as deliberate) — a new read-only-mode gate would be a feature addition beyond this sweep's own
+scope, and the edge case only shrinks over time since new picked patterns can no longer be created.
+
+Tests: removed the 2 tests exclusively about the button/dispatch mechanism; kept and rewrote the 3rd
+(regenerate-never-overwrites-a-hand-pick contract) to seed `shape.source='picked'`/`boundary.shapeId` directly.
+
+Verify: 1223/1223 vitest, 151/151 pytest. Commit 9b4a8bc, pushed.
+
+## T74 item 3 (NODE-D) — node size entered/stored as diameter, not radius
+
+Fred: "node size should be entered as diameter not radius." Renamed `PATTERN.widths.nodeRadius` → `nodeDiameter`
+everywhere (default 0.075 → 0.15, same physical size, re-expressed). `emitNode` itself is UNCHANGED (still takes a
+real radius, a general-purpose utility) — every caller divides by 2 at the point it reads `widths.nodeDiameter`,
+rather than changing `emitNode`'s own contract.
+
+Manifest: `node_radius` param → `node_diameter`; the node's `Radial` dimension → `Diameter`; the Circle entity's
+own `radius` field stays a true radius (Fusion geometry needs one). Python builder: added the `"Diameter"` branch
+to `_apply_declared_dimensions`, mirroring the existing `"Radial"` one — `fb_engine/dimensions.py`'s own
+`addDiameterDimension` was already built (T60's own research) but never exercised by a real manifest until now.
+
+**Self-caught while running the full Python suite**: `FakeDesign`'s own `addDiameterDimension` stub existed but
+never logged to `CALL_LOG` (unlike `addRadialDimension`) — a real, pre-existing test-infra gap invisible until this
+change made it the first real caller. Fixed the stub and the one order-check test that hardcoded `"dim:Radial"`.
+
+Migration (`app-init.js`'s `MIGRATIONS` array, `node-radius-to-diameter`): mirrors `layer-carve-flag`'s own exact
+convention, gated on the CURRENT shape (not a version number). Doubles the old radius into the new diameter field
+and removes the stale key, so a saved pattern's own CUSTOM node size survives the rename instead of the
+`PATTERN_DEFAULTS` merge silently substituting the new default for a value it can no longer find under the old
+name. New tests/migrations.test.js coverage: conversion, already-migrated left alone, no-pattern layer untouched,
+mixed roster, idempotent on a second run.
+
+Verify: 1228/1228 vitest, 151/151 pytest. Commit 6544851, pushed. NO FUSION this whole turn.
+
