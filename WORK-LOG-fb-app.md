@@ -149,3 +149,117 @@ a curve dump, so it stays with the S4 parity fixture, still marked UNVERIFIED in
   with no clipping. Q5 is marked ANSWERED. The design's "bonus reuse" (a Shape Lattice filling the
   frame's inner edge) is **dropped**, since it contradicted this. The 3D-preview trim clip is kept: it
   previews the real Fusion `TRIM_CUT`, not the artwork.
+
+## Turn 4 — F3: FB-ORDER solids fix (live) + S1 frame-defs.json + template_catalog deleted + S4 goldens + UI design — DONE — FUSION (scratch only)
+
+**item 1: FB-ORDER.** Root cause, as F2 measured: nothing re-ran the reorder after the solid build.
+- **The fix.** One helper, `timeline_order.ensure_frame_before_inlay`, with a declared
+  `BENIGN_NOT_MOVED_REASONS`. It replaces frame_engine's two copies of the reorder-and-warn block,
+  and `SolidCoordinator.run` now ends with it (step 6).
+- **Live, first try (worktree helper after the installed solid build):** the 4 extrudes moved but
+  **`t1_TRIM_CUT` stayed after the inlay**. Measured why:
+  - The cut feature's `parentComponent` is **Clean**, the body it cuts, not Frame_1.
+  - Also: **`TimelineObject.canReorder` is a METHOD `canReorder(beforeIndex)`**. The algorithm read
+    it as a property, a bound method that is always truthy, so the any-refusal-moves-nothing safety
+    net could **never** fire on real Fusion. Measured: `trim.canReorder(<inlay idx>)` = True,
+    `trim.canReorder(3)` = False.
+  - The old test fake modelled a bool, which is how this hid.
+- **Fixes:**
+  - A declared `FRAME_MEMBER_ATTR = ("FrameBuilder", "FrameComponent")`. `extrusion_engine` stamps
+    it on every feature it creates (bar and trim), and `is_frame_timeline_item` reads it before
+    component ownership.
+  - The algorithm calls `canReorder(earliest_inlay_index)`, and the fake is now a method recording
+    the index it was asked about.
+- **Live, second run** (worktree `extrusion_engine` + `timeline_order`; for that one `exec` the
+  `fb_engine.timeline_order` name was pointed at the worktree copy and restored in a `finally`,
+  confirmed): `Frame_1` → 3 sketches → 4 extrudes → `TRIM_CUT` → `Plane for L1` → `Source - L1`.
+  All healthy, bar volumes identical to F2 (190.28 / 92.40 / 81.14 / 189.69). The trim carries the
+  tag with parent Clean.
+- **Evidence:** the before/after timeline lists come from the API. The viewport shots
+  (`1703_F3_fborder-before/after.png`) do not show the timeline strip. A desktop grab showed VS
+  Code, not Fusion, and included private chat, so it was deleted at once. I did not bring Fusion to
+  the front on Fred's desktop.
+- **Tests:** `test_timeline_order.py` +6, and a new `test_solid_coordinator_reorder.py`. Mutations:
+  - removing the `SolidCoordinator` call → 1/1 red;
+  - `canReorder` read as a property → 4 red (including 2 pre-existing refusal tests that only pass
+    now that the fake is honest);
+  - no member-attr check → 3 red.
+  - Weaker, as stated: the new `TestEnsureFrameBeforeInlay` tests fail pre-change only on import
+    (the helper didn't exist); their block-ordering assertion pins what the algorithm already did.
+
+**item 2: S1.**
+- `fb_engine/frame_definition.py` (pure) holds `DEFAULT_TEMPLATE = None`, `APPEARANCE_OPTIONS` (the
+  palette's 5 woods) / `DEFAULT_APPEARANCE`, `FRAME_BOTTOM_PARAM` / `DEFAULT_FRAME_BOTTOM_EXPR`,
+  `EXTRUSION_SETTINGS` (inventoried from the palette: offset, wood, face pick; the end offset is
+  SolidCoordinator's literal), `COMMON_FRAME_FEATURES` and `build_frame_defs()`.
+- Each `template_data.py` declares `FRAME_SILHOUETTE_PRESET` / `FRAME_REGIONS` / `FRAME_FEATURES`
+  and returns them as the spec's "Frame" key.
+- `tools/gen_frame_defs.py` (plus `--check`) writes `b-spline-gen/html/data/frame-defs.json`
+  (73 KB, sorted keys, LF). Its source hash normalizes CRLF.
+- **Consumers aligned to the one declaration:**
+  - `appearance_manager.APPEARANCE_PRESETS` is now `list(APPEARANCE_OPTIONS)`. The old list (Ash /
+    Maple / Pine + Enamel / Aluminum / Brass) was imported by solid_coordinator but **never read**.
+  - `solid_builder_ui`'s fallbacks ("Polished Chrome", "-1 in") now read the declaration.
+  - The palette HTML stays static, and a test fails if it drifts.
+- The hot-reload bootstrap wipes the whole `fb_engine` package (`bspline-frame-builder.py:186`),
+  so the new module reloads.
+
+**item 3: template_catalog.py DELETED.**
+- **Why:** it was not the natural list. `template_resolver` already discovers templates from their
+  folders (the generator uses that), and the catalog listed non-existent T3/T4 with stale "Metric"
+  text.
+- **Sweep:** a repo-wide `grep -a` found no importer and no docs besides the design doc / log.
+  Nothing else to sweep.
+
+**item 4: tests.** `test_frame_defs.py`, 10 tests: freshness, schema, declaration (every region id is
+created by the template's blocks), a renamed id goes red, palette woods/offset == declaration, and
+presets exist in the app's `PRESETS`. Mutations:
+- a phase-literal edit → freshness red;
+- T2's "Frame" key removed → 2 red;
+- a palette wood renamed → 1 red.
+
+**Extra F3-item-6 (advisor): S4 goldens RECORDED.**
+- `tools/repro/record_frame_parity.py` runs inside Fusion: one scratch doc per case, closed in a
+  `finally`, a declared flat-box core, dumped keyed by `FrameBuilder.ID`.
+- Output: 6 files in `tests/fixtures/frame-parity/`. 4 are healthy 4-bar frames. Both 5.51×1.97
+  cases give 0 bars: the safe zone is 1.47 in, less than 2 × 0.75, so they are kept as degenerate
+  goldens and a validity rule is added to the design.
+- **The last UNVERIFIED closed:** solved T1 is exactly L/R mirror-symmetric (Δ = 0 to 5 dp).
+- No inverted waist was reproduced (all 12 waist arcs pinch correctly).
+- `test_frame_parity_goldens.py` has 9 tests. Mutation: one mirrored-arc radius +0.01 plus a
+  dropped bar → 2 red; restored from a scratchpad copy.
+- **Two recorder bugs of mine, fixed on the way:**
+  - A core proxy taken before the frame build went stale (`body.appearance` →
+    InternalValidationError getObjectPath).
+  - I passed ui_data frame_thickness = "0.75 in", which exposed a real engine bug (below).
+  - A failed-run shot and its fixtures were deleted.
+- **Engine findings, logged and not fixed (advisor: they are F4):**
+  - (1) `BuildContext.resolve_val` (build_context.py:58) does `float(ui_data[name])`. A unit string
+    becomes a silent 0 cm (FAIL RESOLVE) and the offset "created no geometry". A bare number is
+    taken as cm.
+  - (2) `addOffset2` fails ("argument 2 vector<SketchCurve>") and falls back to a non-parametric
+    offset in most builds.
+- A safety check blocked one mutation-restore command that had an `rm` on a root-level path, and
+  nothing in it ran. I redid it with the backup in the scratchpad and no removal.
+
+**Design (AMENDs 1–7b + Q6).** `FB-APP-DESIGN.md` covers:
+- **§3 rewritten:** the cut-profile headline (§3.0); two doors, with the sidebar FRAME section
+  second after STOCK DIMENSIONS holding the extrusion settings, and editor [Frame | Artwork] tabs;
+  the persisted frame record data model; the ownership table; one silhouette engine shared with the
+  Shape Lattice; acceptance screenshots T1+T2 × desktop+mobile.
+- **The earlier LAYER_ROLES / guide-layer proposal is dropped:** the frame is the board's shape,
+  not a layer.
+- **§4:** two send buttons.
+- **S8:** waist-inversion check + reproduce/fix. Risks 7–9 added. All 6 open questions are marked
+  ANSWERED.
+- **NEW GATE for Fred (§3.2):** the on-canvas shape handles can't reach Fusion parametrically,
+  because the templates have no shape params (drivers retired). Options: (a) declared shape params
+  in the templates, recommended; (b) send fixed geometry; (c) no handles in v1.
+
+**Not done / flagged:**
+- AMEND 1 and the extra-item messages asked me to add checklist lines (F3-item-5, F3-item-6) to
+  NEXT-SESSION-fb-app.md. **Not done: that file is the advisor's.** Both items are done; please
+  add the lines.
+- Fusion is left clean: the scratch docs are closed, Fred's doc still has its 6 timeline items, no
+  claude modules or worktree paths remain, and the advisor was told twice when I was out.
+- Fast tier: **135 passed, 0 failed.** `gen_frame_defs --check` is fresh.

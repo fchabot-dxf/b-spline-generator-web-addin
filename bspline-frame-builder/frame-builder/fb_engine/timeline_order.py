@@ -12,7 +12,7 @@ Target timeline order:
 Two layers, deliberately split:
   * `reorder_frame_before_inlay` — the PURE algorithm. Takes a
     timeline-LIKE object (anything with `.count` and `.item(i)` -> an
-    item exposing `.name`/`.index`/`.canReorder`/`.reorder(i)`) and two
+    item exposing `.name`/`.index`/`.canReorder(beforeIndex)`/`.reorder(i)`) and two
     predicate functions that each take an ITEM (not just its name, so a
     real predicate can inspect `.entity`/owning-component identity
     without a name-collision risk). No adsk import — testable with a
@@ -36,6 +36,23 @@ TimelineObject.reorder of a LATER item to an EARLIER index works
 inlay later.
 """
 
+# Declared once: the attribute the frame build stamps on every FEATURE it
+# creates, naming its Frame_N component. MEASURED live (F3): Fusion puts a
+# cut feature in the component of the body it CUTS — the TRIM_CUT's
+# parentComponent is 'Clean', not 'Frame_1' — so component ownership alone
+# cannot find it. Written by extrusion_engine, read by is_frame_timeline_item.
+FRAME_MEMBER_ATTR = ("FrameBuilder", "FrameComponent")
+
+
+def _declared_frame_member(entity):
+    """The Frame_N name stamped via FRAME_MEMBER_ATTR, or None."""
+    try:
+        attr = entity.attributes.itemByName(*FRAME_MEMBER_ATTR)
+        return attr.value if attr else None
+    except Exception:
+        return None
+
+
 # Declared once (not hand-rolled per call site) — the inlay's own two
 # timeline item name prefixes, per the dispatch's own "Plane for L…" /
 # "Source - L…" naming (main/export-flow.js's own per-layer sketch/plane
@@ -57,7 +74,7 @@ def reorder_frame_before_inlay(timeline, is_frame_item, is_inlay_item, logger=No
     Args:
         timeline: object with `.count` (int) and `.item(i)` -> an item
             exposing `.name` (str), `.index` (int, current position),
-            `.canReorder` (bool), `.reorder(new_index)` (method).
+            `.canReorder(beforeIndex)` (method -> bool), `.reorder(new_index)` (method).
         is_frame_item: predicate(item) -> bool, which items belong to
             the frame block being moved.
         is_inlay_item: predicate(item) -> bool, which items are the
@@ -99,8 +116,14 @@ def reorder_frame_before_inlay(timeline, is_frame_item, is_inlay_item, logger=No
 
     # Check EVERY item first — one refusal means moving nothing at all,
     # never a partial reorder (the dispatch's own explicit rule).
+    # MEASURED live (F3): TimelineObject.canReorder is a METHOD taking the
+    # target beforeIndex (e.g. the trim cut: canReorder(<inlay>) True,
+    # canReorder(<before the body it cuts>) False). Reading it as a
+    # property gave a bound method — always truthy — so this safety net
+    # could never fire on real Fusion. The block lands right before the
+    # earliest inlay item, so that is the position each item is checked for.
     for it in to_move:
-        if not it.canReorder:
+        if not it.canReorder(earliest_inlay_index):
             _log(f"FB-ORDER: '{it.name}' refused reorder -- moving nothing.", "WARNING")
             return {"moved": False, "reason": f"'{it.name}' refused reorder"}
 
@@ -155,6 +178,11 @@ def is_frame_timeline_item(timeline_item, frame_component_name):
         entity = timeline_item.entity
     except Exception:
         return False
+    if entity is None:
+        return False
+    declared = _declared_frame_member(entity)
+    if declared is not None:
+        return declared == frame_component_name
     return _component_name_for_entity(entity) == frame_component_name
 
 
@@ -169,3 +197,31 @@ def reorder_frame_before_inlay_in_design(design, frame_component_name, logger=No
     is_inlay_item = lambda it: is_inlay_item_name(getattr(it, "name", None))
 
     return reorder_frame_before_inlay(design.timeline, is_frame_item, is_inlay_item, logger=logger)
+
+
+# Declared once: reorder outcomes that are NORMAL (nothing to warn about).
+# Every other not-moved reason (a refusal, no frame items, no timeline)
+# is logged as a warning by ensure_frame_before_inlay below.
+BENIGN_NOT_MOVED_REASONS = ("no inlay present", "already in order")
+
+
+def ensure_frame_before_inlay(design, frame_component_name, logger=None):
+    """The ONE call every frame build step ends with. The sketch build
+    (frame_engine.run_sketch_only / run_full_synthesis) AND the solid build
+    (solid_coordinator.SolidCoordinator.run) both call it, because each one
+    appends new frame items to the END of the timeline. Measured live in
+    F2: with only the sketch build calling it, the solid build's BAR
+    extrudes + TRIM_CUT landed AFTER the inlay. Re-running the reorder
+    moves only the items currently after the inlay, so the block ends up
+    contiguous (occurrence -> sketches -> extrudes -> trim) right before
+    the inlay. Returns the reorder result dict; warns on any
+    non-benign not-moved reason (the any-refusal-moves-nothing rule
+    stays in reorder_frame_before_inlay)."""
+    result = reorder_frame_before_inlay_in_design(design, frame_component_name, logger)
+    if not result["moved"] and result["reason"] not in BENIGN_NOT_MOVED_REASONS:
+        if logger:
+            try:
+                logger.log(f"FB-ORDER: frame NOT reordered before inlay — {result['reason']}", "WARNING")
+            except Exception:
+                pass
+    return result

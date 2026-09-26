@@ -28,7 +28,7 @@ try:
         get_template_spec,
     )
     from fb_engine.document_discovery import DocumentDiscovery
-    from fb_engine.timeline_order import reorder_frame_before_inlay_in_design
+    from fb_engine.timeline_order import ensure_frame_before_inlay
     from fb_utils import fb_logger
     logger = fb_logger.DebugLogger(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
     importlib.reload(parameter_schema)
@@ -196,9 +196,7 @@ class FrameBuilder:
             # this DOES vs. what "NO FUSION" leaves for the advisor to
             # verify live).
             if frame_comp:
-                result = reorder_frame_before_inlay_in_design(self.design, frame_comp.name, self.logger)
-                if not result["moved"] and result["reason"] not in ("no inlay present", "already in order"):
-                    self.logger.log(f"FB-ORDER: frame NOT reordered before inlay — {result['reason']}", "WARNING")
+                ensure_frame_before_inlay(self.design, frame_comp.name, self.logger)
         except Exception as e:
             self.logger.log_error(f"CRASH in run_sketch_only: {e}")
             self.logger.log_error(traceback.format_exc())
@@ -233,9 +231,7 @@ class FrameBuilder:
             # so the moved block includes everything full synthesis just
             # built from the frame, not only its sketches.
             if frame_comp:
-                result = reorder_frame_before_inlay_in_design(self.design, frame_comp.name, self.logger)
-                if not result["moved"] and result["reason"] not in ("no inlay present", "already in order"):
-                    self.logger.log(f"FB-ORDER: frame NOT reordered before inlay — {result['reason']}", "WARNING")
+                ensure_frame_before_inlay(self.design, frame_comp.name, self.logger)
         except Exception as e:
             self.logger.log_error(f"CRASH in run_full_synthesis: {e}")
             self.logger.log_error(traceback.format_exc())
