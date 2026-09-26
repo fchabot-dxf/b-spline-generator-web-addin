@@ -39,7 +39,7 @@ import { lcgPoints } from '../core/terrain.js';
 // defers to "Slice 3's own live-wiring caller".
 import {
   insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives, shapeToPrimitives,
-  insetGeneratedPresetPathDToPrimitives, CONTOUR_STROKE_STYLE,
+  insetGeneratedPresetPathDToPrimitives, CONTOUR_STROKE_STYLE, primitiveHitAt,
 } from './editor-lattice-boundary.js';
 // T73 (SE14b): the per-primitive <-> combined-d conversions the contour's
 // OWN N-segment rendering (properties-shape-lattice.js) and this file's
@@ -1279,6 +1279,21 @@ export function computePattern(PATTERN, opts = {}) {
   const endRule = (isBoundary && usesContourCenterline(PATTERN))
     ? 'on-boundary'
     : (boundary.endRule || PATTERN_DEFAULTS.boundary.endRule);
+  // T73 AMEND 3: when (and only when) a piece's own end is BOTH a real
+  // boundary crossing AND this contour-centerline mode, attribute that
+  // end to the specific contour primitive it landed on — `manifestFromLattice`
+  // reads this to declare the Coincident constraint the amend asks for.
+  // `tol` is the contour's own known precision ceiling (T73 AMEND 3's own
+  // WORK-LOG entry: the drawn contour round-trips through a 3-decimal-
+  // rounded `d` string), not the amend's aspirational "1e-6" — a tighter
+  // tolerance would silently miss genuine joints the string-rounding
+  // nudged by a thousandth of an inch.
+  const contourHitTol = 2e-3 / P.spacing;
+  function contourHit(scanLine, position, isCrossing) {
+    if (endRule !== 'on-boundary' || !isCrossing) return undefined;
+    const pt = { x: scanLine.point.x + scanLine.dir.x * position, y: scanLine.point.y + scanLine.dir.y * position };
+    return primitiveHitAt(pt, boundaryPrimitives, contourHitTol) || undefined;
+  }
   // "i,j,kind" occupied keys are always built from REAL (un-oriented)
   // lattice coordinates (_collectOccupied, below) — re-key them into the
   // SAME canonical frame the rest of this function reads i/j in, once,
@@ -1321,8 +1336,8 @@ export function computePattern(PATTERN, opts = {}) {
   const halfRail = widths.rails / 2 / P.spacing;
   for (const j of railRows) {
     let pieces;
+    const rowScan = isBoundary ? _rowScanLine(j, orientation) : null;
     if (isBoundary) {
-      const rowScan = _rowScanLine(j, orientation);
       const inside = insideSpans(rowScan, boundaryPrimitives);
       // T49 "fix first": union in the collinear-edge span UNLESS Border
       // will draw that same edge itself (then insideSpans alone is right
@@ -1339,7 +1354,11 @@ export function computePattern(PATTERN, opts = {}) {
       // no separate per-crossing shrink step (T50's own dead end, deleted).
       const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfRail);
       if (_occupiedHas(occupied, a, j, 'rail')) continue;
-      segments.push({ kind: 'rail', a: { i: a, j }, b: { i: b, j } });
+      segments.push({
+        kind: 'rail', a: { i: a, j }, b: { i: b, j },
+        aContourHit: rowScan ? contourHit(rowScan, a, piece.aIsCrossing) : undefined,
+        bContourHit: rowScan ? contourHit(rowScan, b, piece.bIsCrossing) : undefined,
+      });
       if (aJoint && !_occupiedHas(occupied, a, j, 'node')) addNode(a, j);
       if (bJoint && !_occupiedHas(occupied, b, j, 'node')) addNode(b, j);
     }
@@ -1486,10 +1505,11 @@ export function computePattern(PATTERN, opts = {}) {
     // never pulls that one back, leaving the free end's own crossing
     // status untouched either way.
     let pieces;
+    let colScan = null;
     if (anchored && !oneEndedFree) {
       pieces = [{ a: jStart, b: jEnd, aIsCrossing: false, bIsCrossing: false }];
     } else if (isBoundary) {
-      const colScan = _colScanLine(i, orientation);
+      colScan = _colScanLine(i, orientation);
       const inside = insideSpans(colScan, boundaryPrimitives);
       const combined = borderEnabled ? inside : _unionSpans(inside, collinearSpans(colScan, boundaryPrimitives));
       pieces = _clipToSpans(Math.min(jStart, jEnd), Math.max(jStart, jEnd), combined);
@@ -1520,7 +1540,11 @@ export function computePattern(PATTERN, opts = {}) {
       // T51: same as the rails loop above — no separate shrink step.
       const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfTie);
       if (_occupiedHas(occupied, i, a, 'tie')) continue;
-      segments.push({ kind: 'tie', a: { i, j: a }, b: { i, j: b } });
+      segments.push({
+        kind: 'tie', a: { i, j: a }, b: { i, j: b },
+        aContourHit: colScan ? contourHit(colScan, a, piece.aIsCrossing) : undefined,
+        bContourHit: colScan ? contourHit(colScan, b, piece.bIsCrossing) : undefined,
+      });
 
       if (nodes.ends) {
         if (!_occupiedHas(occupied, i, a, 'node')) addNode(i, a);
@@ -1562,6 +1586,11 @@ export function computePattern(PATTERN, opts = {}) {
       kind: s.kind,
       a: orient(s.a, orientation),
       b: orient(s.b, orientation),
+      // T73 AMEND 3: aContourHit/bContourHit are {index,end} attribution
+      // against the CONTOUR's own primitive list, not lattice {i,j}
+      // points — orientation-independent, passed through unchanged.
+      aContourHit: s.aContourHit,
+      bContourHit: s.bContourHit,
     })),
     nodePoints: nodePoints.map((p) => orient(p, orientation)),
   };

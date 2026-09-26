@@ -586,6 +586,58 @@ export function insideSpans(scanLine, primitives) {
 }
 
 /**
+ * T73 AMEND 3 (Fred: "I need rails to coincide to contour") — the
+ * attribution `insideSpans` above deliberately doesn't do: given a WORLD
+ * point already known to sit ON some primitive in the list (a rail/tie
+ * end computed via the SAME 'on-boundary' endRule this amend introduced),
+ * find WHICH one, and whether the point is essentially at that
+ * primitive's own start/end (`'S'`/`'E'`) or genuinely mid-primitive
+ * (`null`) — the exact distinction `manifestFromLattice`'s own Coincident
+ * emission needs (point-to-point at a joint, point-on-curve mid-span,
+ * same "3-way end/mid-span/none" shape `pieceEndOrCurveTarget`,
+ * editor-sketch-manifest.js, already establishes for rail/tie/node
+ * relations — this is that SAME distinction, for a contour primitive
+ * instead of a lattice-grid piece). Only 'L' and 'A' are handled: every
+ * preset this module's own callers ever hand it is built exclusively from
+ * those two (this file's own header, T58's own established invariant),
+ * and 'A' is always a true circular arc here (rx===ry, phi===0 — the SAME
+ * invariant `manifestFromShape`'s own ArcCenter emission already leans
+ * on), so a plain radius/angle-sweep check is exact, not an approximation
+ * this file otherwise reserves for elliptical/cubic curves. Returns
+ * `{index, end}` for the FIRST matching primitive within `tol`, or `null`
+ * if the point isn't on anything (shouldn't happen for a genuine
+ * `insideSpans`-derived crossing, but a caller with a stale/mismatched
+ * primitive list should get a clean miss, not a wrong answer).
+ */
+export function primitiveHitAt(pt, primitives, tol) {
+  for (let i = 0; i < primitives.length; i++) {
+    const prim = primitives[i];
+    if (prim.type === 'L') {
+      const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-9) continue;
+      const t = Math.max(0, Math.min(1, ((pt.x - prim.p0.x) * dx + (pt.y - prim.p0.y) * dy) / (len * len)));
+      const projX = prim.p0.x + t * dx, projY = prim.p0.y + t * dy;
+      if (Math.hypot(pt.x - projX, pt.y - projY) > tol) continue;
+      const along = t * len;
+      return { index: i, end: along <= tol ? 'S' : (along >= len - tol ? 'E' : null) };
+    }
+    if (prim.type === 'A') {
+      if (Math.abs(Math.hypot(pt.x - prim.cx, pt.y - prim.cy) - prim.rx) > tol) continue;
+      const TAU = Math.PI * 2;
+      const theta = (((Math.atan2(pt.y - prim.cy, pt.x - prim.cx) - prim.theta1) % TAU) + TAU) % TAU;
+      const sweep = prim.dTheta;
+      const sweepAbs = Math.abs(sweep);
+      const traveled = sweep >= 0 ? theta : ((TAU - theta) % TAU);
+      const angTol = tol / Math.max(prim.rx, 1e-6);
+      if (traveled > sweepAbs + angTol) continue;
+      return { index: i, end: traveled <= angTol ? 'S' : (traveled >= sweepAbs - angTol ? 'E' : null) };
+    }
+  }
+  return null;
+}
+
+/**
  * T48 (SE13 Slice 2): a conservative axis-aligned bounding box over a
  * primitive list — the cheap pre-filter `editor-lattice-pattern.js`'s own
  * boundary branch needs ("compute insideSpans only for rows/columns whose

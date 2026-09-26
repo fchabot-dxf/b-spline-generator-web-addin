@@ -271,6 +271,25 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   // independently-maintained copies of the same threshold.
   const pieceLength = (p1, p2) => Math.hypot(p2.x - p1.x, p2.y - p1.y);
 
+  // T73 AMEND 3 (Fred: "I need rails to coincide to contour"): a rail/tie
+  // end `computePattern` attributed to a specific contour primitive
+  // (`usesContourCenterline` mode only — `seg.?ContourHit` is `undefined`
+  // otherwise, same "absent field, not a branch" convention every other
+  // optional per-piece signal in this module already uses) gets a
+  // Coincident to that primitive's own `seg{index}` entity — point-to-
+  // point (`:S`/`:E`) when the crossing landed AT that primitive's own
+  // end (a JOINT between two contour segments: `primitiveHitAt` already
+  // returns the FIRST matching primitive with its S/E flag, so this is
+  // ALREADY "one segment only, point-to-point," never a second point-on-
+  // curve to the neighboring segment — AMEND 3b's own over-constraint
+  // concern, satisfied by construction, not a separate dedup pass), else
+  // bare `seg{index}` (point-on-curve, mid-primitive).
+  const contourHitConstraint = (pieceId, suffix, hit) => {
+    if (!hit) return;
+    const segId = toEntityId('seg', hit.index);
+    constraints.push({ type: 'Coincident', targets: [`${pieceId}:${suffix}`, hit.end ? `${segId}:${hit.end}` : segId] });
+  };
+
   const railPieces = [];
   railsCanon.forEach((seg, idx) => {
     const id = toEntityId('rail', idx);
@@ -282,6 +301,8 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     if (constrained) {
       const axis = axisConstraintType(p1, p2);
       if (axis) constraints.push({ type: axis, targets: [id] });
+      contourHitConstraint(id, 'S', seg.aContourHit);
+      contourHitConstraint(id, 'E', seg.bContourHit);
     }
   });
 
@@ -333,6 +354,8 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
           }
         }
       });
+      contourHitConstraint(id, 'S', seg.aContourHit);
+      contourHitConstraint(id, 'E', seg.bContourHit);
     }
   });
 

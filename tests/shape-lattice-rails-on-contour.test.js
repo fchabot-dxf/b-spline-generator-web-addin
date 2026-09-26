@@ -9,11 +9,17 @@
  * amend itself names: a dense VERTICAL hourglass (12 rails) and the
  * default bottle.
  *
- * The Coincident CONSTRAINT half of AMEND 3 (declaring the relationship
- * in the manifest) and AMEND 3b/3c's own edge cases (near-tangent grazes,
- * joint-only landings, Collinear between split pieces) are queued as a
- * follow-up commit -- this file covers the geometry the constraint will
- * eventually target.
+ * The second describe block below covers the Coincident CONSTRAINT half:
+ * every contour-touching rail/tie end gets exactly one Coincident to the
+ * specific contour segment it landed on (point-to-point at a joint,
+ * point-on-curve mid-segment -- AMEND 3b's own "one segment only, never
+ * two point-on-curves" case, satisfied by construction: `primitiveHitAt`
+ * returns the FIRST matching primitive with its own S/E flag already).
+ *
+ * AMEND 3b's own near-tangent-angle threshold and MIN_RAIL_PIECE (a
+ * SEPARATE, stricter drop-threshold than the existing MIN_PIECE_LENGTH_IN)
+ * and AMEND 3c's Collinear/railGroup are still queued as a follow-up --
+ * see WORK-LOG-lane-b.md for the disclosed scope decision.
  */
 import { describe, it, expect } from 'vitest';
 import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
@@ -153,5 +159,105 @@ describe('T73 AMEND 3 (geometry): rail ends reach the contour\'s own RAW centerl
       distanceToContour(fromCarvePoint(rail.p2, REGION), primitives),
     ]);
     expect(Math.max(...gaps)).toBeGreaterThan(widths.rails / 2 - 0.01); // a real, non-trivial gap exists
+  });
+});
+
+// Resolves a Coincident target string ("segN", "segN:S", "segN:E") back
+// into a real {x,y} point, reading the manifest's OWN declared entity
+// shape (Line/ArcCenter endpoints via angle, matching Slot/ArcCenterSlot
+// too since both carry the same p1/p2 or center/radius/angle fields) --
+// independent of primitiveHitAt, so this test doesn't just re-trust the
+// same function that produced the constraint.
+function pointOfSegTarget(entities, target) {
+  const [id, suffix] = target.split(':');
+  const e = entities.find((en) => en.id === id);
+  if (!e) return null;
+  if (e.type === 'Line' || e.type === 'Slot') {
+    if (suffix === 'S') return { x: e.p1[0], y: e.p1[1] };
+    if (suffix === 'E') return { x: e.p2[0], y: e.p2[1] };
+    return null; // a bare Line/Slot id is never a valid point-on-curve target here
+  }
+  if (e.type === 'ArcCenter' || e.type === 'ArcCenterSlot') {
+    const angle = (deg) => (deg * Math.PI) / 180;
+    const at = (deg) => ({ x: e.center[0] + e.radius * Math.cos(angle(deg)), y: e.center[1] + e.radius * Math.sin(angle(deg)) });
+    if (suffix === 'S') return at(e.startAngleDeg);
+    if (suffix === 'E') return at(e.startAngleDeg + e.sweepDeg);
+    return { midpointOnly: true }; // a bare arc id: point-on-curve, checked via distanceToContour below instead
+  }
+  return null;
+}
+
+describe('T73 AMEND 3 (constraint): every contour-touching rail end gets exactly one Coincident to the specific segment it landed on', () => {
+  function railContourCoincidents(manifest, railId) {
+    return manifest.constraints.filter((c) => c.type === 'Coincident'
+      && c.targets.some((t) => t.startsWith(`${railId}:`))
+      && c.targets.some((t) => t.split(':')[0].match(/^seg\d+$/)));
+  }
+
+  for (const preset of ['hourglass', 'bottle']) {
+    it(`${preset}: every rail end (both S and E, since the dense vertical case reaches the contour on every rail) has EXACTLY ONE Coincident to a seg* entity, and that entity's own resolved point matches the rail's own endpoint`, () => {
+      const pattern = {
+        ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+        orientation: 'vertical',
+        rails: { mode: 'count', count: [12, 12] },
+        extent: { mode: 'boundary' },
+        shape: { source: 'generated', preset, seed: 42, params: {}, segments: null },
+      };
+      const primitives = rawContourPrimitivesForTest(pattern, REGION);
+      const manifest = buildSketchManifest(pattern, REGION, {});
+      const rails = railEntities(manifest);
+      expect(rails.length).toBeGreaterThan(1); // non-vacuous
+
+      for (const rail of rails) {
+        const coincidents = railContourCoincidents(manifest, rail.id);
+        // Both S and E of every rail in this fixture reach the contour
+        // (already independently confirmed by the geometry describe block
+        // above) -- exactly 2 total (one per end), never 0, never a
+        // duplicate pair for the same end.
+        expect(coincidents.length).toBe(2);
+        const bySuffix = { S: null, E: null };
+        for (const c of coincidents) {
+          const railTarget = c.targets.find((t) => t.startsWith(`${rail.id}:`));
+          bySuffix[railTarget.split(':')[1]] = c.targets.find((t) => !t.startsWith(`${rail.id}:`));
+        }
+        expect(bySuffix.S).toBeTruthy();
+        expect(bySuffix.E).toBeTruthy();
+
+        const railP1 = fromCarvePoint(rail.p1, REGION), railP2 = fromCarvePoint(rail.p2, REGION);
+        for (const [suffix, railPt] of [['S', railP1], ['E', railP2]]) {
+          const segTarget = bySuffix[suffix];
+          const resolved = pointOfSegTarget(manifest.entities, segTarget);
+          if (resolved && !resolved.midpointOnly) {
+            // Point-to-point (a joint): the seg entity's OWN declared
+            // endpoint must equal the rail's own endpoint (both already
+            // in carve space -- no conversion needed here).
+            expect(Math.hypot(resolved.x - railPt.x, resolved.y - railPt.y)).toBeLessThan(TOL);
+          } else {
+            // Point-on-curve (bare seg id, mid-primitive): independently
+            // re-verify the rail's own endpoint genuinely lies on SOME
+            // contour primitive (the SAME oracle the geometry block above
+            // uses), rather than trusting the constraint's own target name.
+            expect(distanceToContour(railPt, primitives)).toBeLessThan(TOL);
+          }
+        }
+      }
+    });
+  }
+
+  it('the contour HIDDEN (show:false) case declares NO contour Coincident constraints at all -- "no contour, no such constraints" per the amend', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      orientation: 'vertical',
+      rails: { mode: 'count', count: [12, 12] },
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      contour: { show: false },
+    };
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    const rails = railEntities(manifest);
+    expect(rails.length).toBeGreaterThan(1); // non-vacuous
+    const anySegCoincident = manifest.constraints.some((c) => c.type === 'Coincident'
+      && c.targets.some((t) => t.split(':')[0].match(/^seg\d+$/)));
+    expect(anySegCoincident).toBe(false);
   });
 });
