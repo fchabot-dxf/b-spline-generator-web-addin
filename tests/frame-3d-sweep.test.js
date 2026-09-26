@@ -111,12 +111,12 @@ describe('sweep: every bar is valid', () => {
 });
 
 describe('loose volume sanity vs the live-recorded Fusion goldens (a visual sim)', () => {
-  // MEASURED (app ring area x 1 in vs Fusion's 4 bars): T1 7x9 -11.1%, T1 12x6 -18.9%,
-  // T2 7x9 -5.4%, T2 12x6 -10.3%. Always SMALLER: the app's inner edge is the template
-  // solved on the inset safe zone (exact on straight runs, shallower at the arcs than a
-  // true offset), and at 12x6 the outline itself is S4's known 0.44 in gap. Fred: "only
-  // a simulation", so this is a way-wrong detector (half / double), not a tuning target.
-  const TOL = 0.20;
+  // MEASURED (app ring area x 1 in vs Fusion's 4 bars), F8 AMEND, with the inner
+  // edge the TRUE offset of the outline (editor/outline-offset.js): T1 7x9 -0.18%,
+  // T1 12x6 -0.09%, T2 7x9 -0.00%, T2 12x6 -0.35%. Before (F7, inner edge = the
+  // template re-solved on the inset safe zone, and the pre-F8 outline): -11.1%,
+  // -18.9%, -5.4%, -10.3%. The residual is the outline's own S4 parity gap.
+  const TOL = 0.01;
   const shoelace = (pts) => Math.abs(pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + p.x * q.y - q.x * p.y; }, 0)) / 2;
   it.each([['template_1', 7, 9], ['template_1', 12, 6], ['template_2', 7, 9], ['template_2', 12, 6]])('%s %dx%d', (id, W, H) => {
     // Goldens: flat core underside z=0, frame bottom -1 in -> bar volume = ring area x 1 in.

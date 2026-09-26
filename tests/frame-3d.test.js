@@ -46,7 +46,7 @@ describe('one outline source (editor profile == 3D outline == the definition the
     const prof = frameCutProfile(FRAME_DEFS, rec(id), BOARD);
     const spec = frameSolidSpec(FRAME_DEFS, rec(id), BOARD);
     expect(spec.outline).toEqual(sampleOutline(prof.primitives));
-    expect(spec.inner).toHaveLength(spec.outline.length); // outer/inner correspond point-for-point
+    expect(spec.innerPrimitives).toHaveLength(prof.primitives.length); // outer/inner pair by index (the bars)
   });
 
   it('no frame -> no 3D spec', () => {
