@@ -805,7 +805,7 @@ Lattice (Hourglass/Bottle, straight/curve/kink bar), Fusion Geometry, Boundary/E
 variants' CSS (no dead styles). Reference mock: scratchpad layerrowsC.html (.C1). Before/after screenshots desktop +
 phone.
 
-## Queued — SE15b: Shape Lattice CONTOUR (hourglass/bottle outline) as constrained Fusion geometry (Fred 2026-09-25)
+## In progress (T67, lane-b) — SE15b: Shape Lattice CONTOUR (hourglass/bottle outline) as constrained Fusion geometry (Fred 2026-09-25)
 Advisor MEASURED arc slots in Fusion: `sketch.addThreePointArcSlot(p1, mid, p2, width, True)` inserts correctly
 (centerline r=1, sides ±w/2, end caps w/2); width dimension .parameter.expression = param works; on a width edit:
 centerline free or center-only fixed → LOPSIDED; all 3 points fixed → BROKEN (cap grows, sides don't); **both
