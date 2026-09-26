@@ -604,10 +604,15 @@ export function insideSpans(scanLine, primitives) {
  * invariant `manifestFromShape`'s own ArcCenter emission already leans
  * on), so a plain radius/angle-sweep check is exact, not an approximation
  * this file otherwise reserves for elliptical/cubic curves. Returns
- * `{index, end}` for the FIRST matching primitive within `tol`, or `null`
- * if the point isn't on anything (shouldn't happen for a genuine
- * `insideSpans`-derived crossing, but a caller with a stale/mismatched
- * primitive list should get a clean miss, not a wrong answer).
+ * `{index, end, tangent}` for the FIRST matching primitive within `tol`
+ * (`tangent` a UNIT vector along the primitive AT that point — a line's
+ * own constant direction, or an arc's radius rotated 90° the sweep's own
+ * way — T73 AMEND 3b's own near-tangent-graze check needs this: the angle
+ * between a rail/tie's own direction and the contour's own tangent right
+ * where they meet), or `null` if the point isn't on anything (shouldn't
+ * happen for a genuine `insideSpans`-derived crossing, but a caller with a
+ * stale/mismatched primitive list should get a clean miss, not a wrong
+ * answer).
  */
 export function primitiveHitAt(pt, primitives, tol) {
   for (let i = 0; i < primitives.length; i++) {
@@ -620,18 +625,23 @@ export function primitiveHitAt(pt, primitives, tol) {
       const projX = prim.p0.x + t * dx, projY = prim.p0.y + t * dy;
       if (Math.hypot(pt.x - projX, pt.y - projY) > tol) continue;
       const along = t * len;
-      return { index: i, end: along <= tol ? 'S' : (along >= len - tol ? 'E' : null) };
+      return { index: i, end: along <= tol ? 'S' : (along >= len - tol ? 'E' : null), tangent: { x: dx / len, y: dy / len } };
     }
     if (prim.type === 'A') {
       if (Math.abs(Math.hypot(pt.x - prim.cx, pt.y - prim.cy) - prim.rx) > tol) continue;
       const TAU = Math.PI * 2;
-      const theta = (((Math.atan2(pt.y - prim.cy, pt.x - prim.cx) - prim.theta1) % TAU) + TAU) % TAU;
+      const rawTheta = Math.atan2(pt.y - prim.cy, pt.x - prim.cx);
+      const theta = (((rawTheta - prim.theta1) % TAU) + TAU) % TAU;
       const sweep = prim.dTheta;
       const sweepAbs = Math.abs(sweep);
       const traveled = sweep >= 0 ? theta : ((TAU - theta) % TAU);
       const angTol = tol / Math.max(prim.rx, 1e-6);
       if (traveled > sweepAbs + angTol) continue;
-      return { index: i, end: traveled <= angTol ? 'S' : (traveled >= sweepAbs - angTol ? 'E' : null) };
+      // d/dθ of (cx + r·cosθ, cy + r·sinθ) is r·(-sinθ, cosθ) — the CCW
+      // tangent; a CW sweep (dTheta<0) travels the opposite way.
+      const dir = sweep >= 0 ? 1 : -1;
+      const tangent = { x: -Math.sin(rawTheta) * dir, y: Math.cos(rawTheta) * dir };
+      return { index: i, end: traveled <= angTol ? 'S' : (traveled >= sweepAbs - angTol ? 'E' : null), tangent };
     }
   }
   return null;

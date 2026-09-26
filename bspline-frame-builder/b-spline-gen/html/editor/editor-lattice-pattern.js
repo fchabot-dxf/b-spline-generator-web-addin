@@ -1289,11 +1289,53 @@ export function computePattern(PATTERN, opts = {}) {
   // tolerance would silently miss genuine joints the string-rounding
   // nudged by a thousandth of an inch.
   const contourHitTol = 2e-3 / P.spacing;
+  // T73 AMEND 3b (Fred: "maybe you'll need to do something special for
+  // the waist section?"): a near-tangent graze (a rail/tie's own
+  // direction nearly PARALLEL to the contour's own tangent right where
+  // they meet — e.g. a vertical rail barely clipping the very tip of a
+  // concave waist arc) gets no Coincident at all: the crossing is too
+  // shallow to be a real, solvable point-on-curve relationship. Declared
+  // once, in degrees (matching the amend's own "~10 deg" wording) rather
+  // than a pre-converted radian/cosine constant, so it stays legible.
+  const MIN_CROSSING_ANGLE_DEG = 10;
   function contourHit(scanLine, position, isCrossing) {
     if (endRule !== 'on-boundary' || !isCrossing) return undefined;
     const pt = { x: scanLine.point.x + scanLine.dir.x * position, y: scanLine.point.y + scanLine.dir.y * position };
-    return primitiveHitAt(pt, boundaryPrimitives, contourHitTol) || undefined;
+    const hit = primitiveHitAt(pt, boundaryPrimitives, contourHitTol);
+    if (!hit) return undefined;
+    // The angle check applies ONLY to a genuine mid-primitive crossing
+    // (hit.end === null) — a JOINT landing (hit.end 'S'/'E', two contour
+    // segments meeting at a shared point, e.g. a horn meeting the top/
+    // bottom cap) is an EXACT point-to-point match regardless of what
+    // angle the two segments happen to meet at; "near-tangent" is a
+    // curve-crossing concept, meaningless for a corner. Self-caught: the
+    // first version of this check applied unconditionally and silently
+    // suppressed a real fraction of every rail's own perfectly-valid
+    // corner Coincidents whenever `primitiveHitAt`'s own first-found
+    // primitive at that corner happened to be near-parallel to the rail
+    // (found via a live sweep across waistReach values, not assumed).
+    if (hit.end) return hit;
+    // scanLine.dir and hit.tangent are both unit vectors; |dot| is
+    // cos(angle) between the two LINES (direction sign doesn't matter --
+    // a rail crossing "backwards" along a tangent is still a graze).
+    const cosAngle = Math.abs(scanLine.dir.x * hit.tangent.x + scanLine.dir.y * hit.tangent.y);
+    const angleDeg = (Math.acos(Math.min(1, cosAngle)) * 180) / Math.PI;
+    return angleDeg < MIN_CROSSING_ANGLE_DEG ? undefined : hit;
   }
+  // T73 AMEND 3b: a split piece shorter than this (e.g. the tiny sliver
+  // left over from a near-tangent graze that still passes the ANGLE check
+  // above, or any other short remainder at a contour crossing) is dropped
+  // entirely — never a real, buildable slot — same "declared once, both
+  // consumers" placement as the rest of this contour-centerline mode:
+  // dropping it HERE, inside computePattern, means neither generatePattern
+  // nor manifestFromLattice needs a second copy of this specific check
+  // (they keep their own, more permissive MIN_PIECE_LENGTH_IN as a general
+  // backstop, unrelated to this contour-specific threshold). "~2x stroke
+  // width" per the amend, one per kind since rails/ties can have different
+  // widths.
+  const MIN_RAIL_PIECE_STROKE_MULT = 2;
+  const minRailPieceLattice = endRule === 'on-boundary' ? (MIN_RAIL_PIECE_STROKE_MULT * widths.rails) / P.spacing : 0;
+  const minTiePieceLattice = endRule === 'on-boundary' ? (MIN_RAIL_PIECE_STROKE_MULT * widths.ties) / P.spacing : 0;
   // "i,j,kind" occupied keys are always built from REAL (un-oriented)
   // lattice coordinates (_collectOccupied, below) — re-key them into the
   // SAME canonical frame the rest of this function reads i/j in, once,
@@ -1353,6 +1395,12 @@ export function computePattern(PATTERN, opts = {}) {
       // shape now, not the raw one) — the ending rule applies directly,
       // no separate per-crossing shrink step (T50's own dead end, deleted).
       const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfRail);
+      // T73 AMEND 3b: only a genuinely SPLIT row (a boundary crossing
+      // divided it into >1 piece — e.g. a near-tangent graze at the waist
+      // leaving a tiny sliver) is checked against MIN_RAIL_PIECE; an
+      // ordinary un-split, full-length rail is never at risk of this,
+      // whatever its own length happens to be.
+      if (pieces.length > 1 && Math.abs(b - a) < minRailPieceLattice) continue;
       if (_occupiedHas(occupied, a, j, 'rail')) continue;
       segments.push({
         kind: 'rail', a: { i: a, j }, b: { i: b, j },
@@ -1544,6 +1592,9 @@ export function computePattern(PATTERN, opts = {}) {
     for (const piece of pieces) {
       // T51: same as the rails loop above — no separate shrink step.
       const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfTie);
+      // T73 AMEND 3b: same "only a genuinely split column" scoping as the
+      // rails loop above.
+      if (pieces.length > 1 && Math.abs(b - a) < minTiePieceLattice) continue;
       if (_occupiedHas(occupied, i, a, 'tie')) continue;
       segments.push({
         kind: 'tie', a: { i, j: a }, b: { i, j: b },

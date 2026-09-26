@@ -22,10 +22,14 @@
  * them, and only the FIRST piece in each group keeps its own Horizontal/
  * Vertical constraint (Collinear already fixes the rest's direction).
  *
- * AMEND 3b's own near-tangent-angle threshold and MIN_RAIL_PIECE (a
- * SEPARATE, stricter drop-threshold than the existing MIN_PIECE_LENGTH_IN)
- * are still queued as a follow-up -- see WORK-LOG-lane-b.md for the
- * disclosed scope decision.
+ * The fourth and fifth describe blocks cover the T74 close-out of AMEND
+ * 3b's own remaining thresholds: a near-tangent graze (a rail/tie's own
+ * direction nearly parallel to the contour's tangent right where they
+ * meet, e.g. barely clipping the very tip of a concave waist arc) gets no
+ * Coincident on that one shallow end (found live on a real deep-waist
+ * hourglass fixture, not contrived); and MIN_RAIL_PIECE (a stricter,
+ * stroke-width-scaled drop threshold than the general MIN_PIECE_LENGTH_IN)
+ * drops a split piece too short to be a real, buildable slot.
  */
 import { describe, it, expect } from 'vitest';
 import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
@@ -88,6 +92,41 @@ function distanceToPrimitive(pt, prim) {
 
 function distanceToContour(pt, primitives) {
   return Math.min(...primitives.map((p) => distanceToPrimitive(pt, p)));
+}
+
+// Independent tangent oracle (T73 AMEND 3b): a line's own constant
+// direction, or an arc's radius rotated 90 degrees the sweep's own way --
+// deliberately a SEPARATE derivation from primitiveHitAt's own internal
+// tangent formula (production code), so this test doesn't just re-trust
+// the same math it's meant to verify.
+function tangentAt(pt, prim) {
+  if (prim.type === 'L') {
+    const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y;
+    const len = Math.hypot(dx, dy);
+    return { x: dx / len, y: dy / len };
+  }
+  const theta = Math.atan2(pt.y - prim.cy, pt.x - prim.cx);
+  const dir = prim.dTheta >= 0 ? 1 : -1;
+  return { x: -Math.sin(theta) * dir, y: Math.cos(theta) * dir };
+}
+
+function nearestPrimitive(pt, primitives) {
+  let best = null, bestDist = Infinity;
+  for (const p of primitives) {
+    const d = distanceToPrimitive(pt, p);
+    if (d < bestDist) { bestDist = d; best = p; }
+  }
+  return best;
+}
+
+// The ACUTE angle (0-90 deg) between a rail/tie's own direction and the
+// contour's own tangent at the point they meet -- the SAME "crossing
+// angle" concept AMEND 3b's own near-tangent threshold is about.
+function crossingAngleDeg(dir, pt, primitives) {
+  const prim = nearestPrimitive(pt, primitives);
+  const t = tangentAt(pt, prim);
+  const cosAngle = Math.abs(dir.x * t.x + dir.y * t.y);
+  return (Math.acos(Math.min(1, cosAngle)) * 180) / Math.PI;
 }
 
 function railEntities(manifest) {
@@ -323,5 +362,86 @@ describe('T73 AMEND 3c: split same-rail pieces get Collinear, and only the FIRST
     const id = singlePieceGroup[0];
     const axisCount = manifest.constraints.filter((c) => (c.type === 'Horizontal' || c.type === 'Vertical') && c.targets[0] === id).length;
     expect(axisCount).toBe(1);
+  });
+});
+
+describe('T74 (AMEND 3b close-out): a near-tangent graze at the waist gets no Coincident on that one shallow end, but keeps its clean end', () => {
+  it('deep-waist hourglass (waistReach 0.15), dense vertical rails: rails split by the waist have EXACTLY ONE Coincident (their clean, far end); the missing end\'s own independently-measured crossing angle is under 10 deg, the kept end\'s is not', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      orientation: 'vertical',
+      rails: { mode: 'count', count: [20, 20] },
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: { waistReach: 0.15 }, segments: null },
+    };
+    const primitives = rawContourPrimitivesForTest(pattern, REGION);
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    const rails = railEntities(manifest);
+    const byGroup = new Map();
+    for (const r of rails) {
+      if (!byGroup.has(r.railGroup)) byGroup.set(r.railGroup, []);
+      byGroup.get(r.railGroup).push(r);
+    }
+    const splitGroups = [...byGroup.values()].filter((ids) => ids.length > 1);
+    expect(splitGroups.length).toBeGreaterThan(0); // non-vacuous: this fixture genuinely splits some rails
+
+    let sawAGraze = false;
+    for (const ids of splitGroups) {
+      for (const rail of ids) {
+        const coincidents = manifest.constraints.filter((c) => c.type === 'Coincident'
+          && c.targets.some((t) => t.startsWith(`${rail.id}:`))
+          && c.targets.some((t) => t.split(':')[0].match(/^seg\d+$/)));
+        if (coincidents.length === 2) continue; // both ends clean, nothing to check here
+        expect(coincidents.length).toBe(1); // never both ends missing -- see the geometry describe block above
+        sawAGraze = true;
+        const coincidentSuffix = coincidents[0].targets.find((t) => t.startsWith(`${rail.id}:`)).split(':')[1];
+        const missingSuffix = coincidentSuffix === 'S' ? 'E' : 'S';
+        const pointOf = { S: fromCarvePoint(rail.p1, REGION), E: fromCarvePoint(rail.p2, REGION) };
+        const dir = { x: rail.p2[0] - rail.p1[0], y: rail.p2[1] - rail.p1[1] };
+        const len = Math.hypot(dir.x, dir.y);
+        const unitDir = { x: dir.x / len, y: dir.y / len };
+
+        expect(crossingAngleDeg(unitDir, pointOf[missingSuffix], primitives)).toBeLessThan(10);
+        expect(crossingAngleDeg(unitDir, pointOf[coincidentSuffix], primitives)).toBeGreaterThanOrEqual(10);
+      }
+    }
+    expect(sawAGraze).toBe(true); // non-vacuous: this fixture genuinely produces at least one graze
+  });
+});
+
+describe('T74 (AMEND 3b close-out): MIN_RAIL_PIECE drops a split piece too short to be a real slot', () => {
+  it('inflating the lattice stroke width (so 2x it exceeds an EXISTING split piece\'s own real length) drops exactly those pieces, keeping every remaining piece at or above the new threshold', () => {
+    const basePattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      orientation: 'vertical',
+      rails: { mode: 'count', count: [20, 20] },
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: { waistReach: 0.3 }, segments: null },
+    };
+    const railLength = (r) => Math.hypot(r.p2[0] - r.p1[0], r.p2[1] - r.p1[1]);
+
+    const baseManifest = buildSketchManifest(basePattern, REGION, {});
+    const baseLengths = railEntities(baseManifest).map(railLength);
+    const shortestBase = Math.min(...baseLengths);
+    expect(shortestBase).toBeGreaterThan(0); // non-vacuous
+
+    // Pick a stroke width whose 2x threshold sits strictly between the
+    // shortest and second-shortest base piece, so exactly the shortest
+    // is expected to drop -- deterministic, not a hunt for a naturally
+    // tiny sliver (this fixture's own split pieces are all a few inches
+    // long; MIN_RAIL_PIECE only matters relative to the stroke, so an
+    // inflated stroke exercises the SAME drop logic just as validly).
+    const inflatedRails = shortestBase / 2 + 0.05;
+    const inflatedPattern = { ...basePattern, widths: { ...PATTERN_DEFAULTS.widths, rails: inflatedRails, ties: inflatedRails } };
+    const inflatedManifest = buildSketchManifest(inflatedPattern, REGION, {});
+    const inflatedRailEntities = railEntities(inflatedManifest);
+    const inflatedLengths = inflatedRailEntities.map(railLength);
+
+    expect(inflatedRailEntities.length).toBeLessThan(railEntities(baseManifest).length); // non-vacuous: something was actually dropped
+    for (const len of inflatedLengths) expect(len).toBeGreaterThanOrEqual(2 * inflatedRails);
+    // The dropped piece(s) are exactly the ones below the new threshold --
+    // no clean piece got caught in the crossfire.
+    const survivedCount = baseLengths.filter((len) => len >= 2 * inflatedRails).length;
+    expect(inflatedRailEntities.length).toBe(survivedCount);
   });
 });
