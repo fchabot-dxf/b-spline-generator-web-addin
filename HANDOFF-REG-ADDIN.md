@@ -90,3 +90,13 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
   checkouts, so your Asus commits won't show there. It tracks seats A/B/C only.
 - **Handoff loop files**: `HANDOFF.md` / `NEXT-SESSION.md` / `WORK-LOG.md` on main belong to seat A's loop until it
   stops. After that you can reuse them or ignore them.
+
+## 5. Starting your loop on the Asus
+
+- `HANDOFF.md` / `.handoff/` are LOCAL to each machine (not in git), by design, so your loop and the home PC's seats never
+  share a marker. On the Asus, from the repo root: `python ~/.claude/skills/multi-agent-handoff/handoff.py init` (epoch 1),
+  then run the advisor/worker loop as usual with section 3 as the task list.
+- The live Fusion checks (items 1-3) are Fred's own. The first worker task should be one that doesn't touch seat A's files
+  (section 2) until the UI5 merge lands. FORMULA-FIELDS is a good first pick (a new shared module).
+- Leave fb-app and the silhouette solver to the home PC.
+- The home PC also pushes to main (merges): always `git pull --rebase` before pushing.
