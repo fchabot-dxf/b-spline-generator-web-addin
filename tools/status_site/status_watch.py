@@ -20,14 +20,22 @@ SEATS = [  # declared: which checkout is which seat, and its task file (checklis
 ]
 
 
-def _checklist(path, task):
-    """(done, total) from the task file's markdown checkboxes; (0, 0) if it has none."""
+def _checklist(path, task, branch):
+    """(done, total): items are the task file's `[TAG]` checklist lines; an item is DONE when any commit on the
+    seat's branch has `[TAG]` in its subject. Fully automatic — nobody ticks anything."""
     f = os.path.join(path, task)
     if not os.path.exists(f):
         return 0, 0
-    txt = open(f, encoding="utf-8", errors="replace").read()
-    boxes = re.findall(r"^\s*- \[( |x|X)\]", txt, re.M)
-    return sum(b.lower() == "x" for b in boxes), len(boxes)
+    tags = re.findall(r"^\s*- \[[ xX]\] \[([A-Za-z0-9_-]+)\]", open(f, encoding="utf-8", errors="replace").read(), re.M)
+    if not tags:
+        return 0, 0
+    subjects = _git(ROOT, "log", "--format=%s", "-300", "origin/" + branch) + _git(path, "log", "--format=%s", "-300")
+    norm = lambda x: re.sub(r"[\s_-]+", " ", x).strip().lower()
+    # advisor dispatch/doc commits mention the same tags — only real work commits count
+    subj = norm("
+".join(l for l in subjects.splitlines() if not re.match(r"\s*docs", l, re.I)))
+    # a tag counts when its words appear as a whole phrase in any commit subject ("T74-AMEND-0" ~ "T74 AMEND 0 ...")
+    return sum(bool(re.search(r"(?<![a-z0-9])" + re.escape(norm(t)) + r"(?![a-z0-9])", subj)) for t in tags), len(tags)
 
 
 def _bar(done, total, width=10):
@@ -86,7 +94,7 @@ def collect():
     for s in SEATS:
         h = _handoff(s["path"])
         who = "worker (working)" if h.get("to") == "worker" else "advisor (reviewing)"
-        d, t = _checklist(s["path"], s["task"])
+        d, t = _checklist(s["path"], s["task"], s["branch"])
         seats.append({**s, "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
                       "updated": h.get("updated", ""), "done": d, "total": t})
     commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b")}
@@ -94,15 +102,10 @@ def collect():
 
 
 def render(seats, commits, roadmap):
-    rd = sum(r[0] == "Done" for r in roadmap); rt = len(roadmap)
-    md = ["# B-Spline — progress", "", f"Roadmap: {_bar(rd, rt, 20)}", ""]
+    md = ["# B-Spline — progress", ""]
     for s in seats:
         md += [f"## {s['name']} ({s['branch']}) — turn {s['turn']}, ball: {s['who']}", f"Task: {_bar(s['done'], s['total'])}",
                f"{s['note']}", f"_updated {s['updated']}_", ""]
-    for st in ("In progress", "Queued", "Done"):
-        rows = [r for r in roadmap if r[0] == st]
-        if rows:
-            md += [f"## {st}"] + [f"- {r[2]}" + (f" — {r[1]}" if r[1] else "") for r in (rows if st != "Done" else rows[-8:])] + [""]
     for b, cs in commits.items():
         md += [f"## Recent commits — {b}"] + [f"- `{c.split('|')[0]}` {c.split('|')[2]} ({c.split('|')[1]})" for c in cs if c.count("|") >= 2] + [""]
     body = "\n".join(md)
@@ -121,9 +124,6 @@ def render(seats, commits, roadmap):
         f'<p class="t">updated {e(s["updated"])}</p></section>' for s in seats)
     def lst(rows, cls):
         return "".join(f'<li class="{cls}">{e(r[2])}{" <em>" + e(r[1]) + "</em>" if r[1] else ""}</li>' for r in rows)
-    done = [r for r in roadmap if r[0] == "Done"][-8:]
-    road = (f'<h2>In progress / queued</h2><ul>{lst([r for r in roadmap if r[0] != "Done"], "q")}</ul>'
-            f'<details><summary>Recently done ({len(done)})</summary><ul>{lst(done, "d")}</ul></details>')
     com = "".join(f'<details><summary>Commits — {e(b)} ({len(cs)})</summary><ul class="c">' + "".join(
         f'<li><code>{e(c.split("|")[0])}</code> {e(c.split("|")[2])} <span>{e(c.split("|")[1])}</span></li>'
         for c in cs if c.count("|") >= 2) + "</ul></details>" for b, cs in commits.items())
@@ -141,7 +141,7 @@ h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} sm
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
-{hbar(rd, rt, "roadmap done")}<div class="grid">{cards}</div>{road}{com}</body></html>"""
+<div class="grid">{cards}</div>{com}</body></html>"""
     return body, page
 
 
