@@ -25,3 +25,14 @@ The manifest already emits the contour per segment (segN: Line / Arc3Point). Dec
 Append WORK-LOG-lane-b.md, commit by path, push, then from the WORKTREE root:
 `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T68: contour slots + parity — <sha>, tests"`
 and stop. If it is too big for one turn, finish item 2 FIRST (smaller), commit, then item 1, and say where you stopped.
+
+## AMEND 1 (advisor, MEASURED on T67 3105d74) — the SHAPE manifest does NOT match the app drawing. Do item 2 FIRST.
+Same session, same layer (headless, default Shape Lattice, layer 2): app drew 4 rails + 7 ties + 12 nodes; the manifest
+has 6 rails + 11 ties + 22 nodes. Extra rails at y = ±4.5 (board top/bottom edge) with ties to them; rail x ends differ
+(app ±3.455 / waist −2.991..2.991 / 1.97; manifest ±3.465 / −3.0118 / 1.954); tie set differs (e.g. app tie at x −0.75
+spans 2.75→1.0, manifest's spans −2.75→−4.5). The box manifest matches exactly. Fusion ↔ manifest is exact (1e-15) for
+both, so the whole gap is app ↔ manifest, on the shape tool only.
+Root cause to find: the manifest RECOMPUTES the shape pattern with different inputs (edge rails not excluded / other
+inset / other seed) instead of reading the pieces the app actually drew. Fix by DECLARATION: one function produces the
+shape-lattice piece list; the drawing AND the manifest both consume it (or the manifest reads the layer's drawn pieces).
+Never two computations. 2a's test must reproduce THIS case (default Shape Lattice) and fail before your fix.
