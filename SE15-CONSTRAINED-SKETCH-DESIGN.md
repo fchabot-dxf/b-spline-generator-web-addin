@@ -604,6 +604,12 @@ Vertical. Geometry is INSERTED in position (symmetric by coordinates) and left l
 Measured before this ruling (for the record): Symmetry needed an origin-anchored axis, and without size dims the edges
 ran off on a width edit; revisit only if Fred asks for a held shape.
 
+## ACCEPTANCE = SPAWN PARITY (Fred 2026-09-26: "not a problem leave it, as long as spawn is very close to intended drawing")
+The test is the sketch AS INSERTED: every piece within tolerance of the app drawing (builder's parity check, maxErr
+~0). Editing `stroke_width` later in Fusion re-solves a LOOSE sketch (no Fix, no position dims) and may shuffle it —
+measured on a T71 hourglass: after a few width edits rails/ties sat up to 1.8" off. Accepted; do not add Fix or position
+dims to prevent it.
+
 ## NO FIX (Fred 2026-09-25: "never use Fix") — advisor MEASURED
 All slots, NO Fix, relationships only (rails Horizontal, ties Vertical, tie ends Coincident on rail centerlines): zero
 failures; stroke_width 0.07→0.2 moved centerlines 0.005", back to 0.07 returned exactly. Fix + relationships together =
