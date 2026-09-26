@@ -48,3 +48,13 @@ Advisor measured it today: app SVG ↔ manifest = identical (box: 14/14 lines, 1
     slot centerline ends, circle centres, contour line ends, arc ends + radius (match arc ends order-free — Fusion
     arcs are CCW). Log a WARNING when mismatches is non-empty. Shim test: a moved point is reported, an exact build
     reports none.
+
+## AMEND 3 — REPLACES amend #4 (Fred: "i dont want it to be always rail to rail, in the addin we can allow to have one end free")
+4'. Rule: every tie has AT LEAST ONE end ON a rail; the other end may be FREE (a stub hanging off a rail) or on the
+    next rail. A tie with BOTH ends floating is never generated. Keep the stub variety of 'cells' (spans 1-3 cells) —
+    do NOT force rail-to-rail as the only form; anchor each stub's start to a rail row, then extend by its span (if the
+    span reaches the next rail, it lands on it). Declare it (e.g. span.mode 'anchored' or ties.anchor 'oneEnd' as the
+    new default); 'rails' and 'cells' stay declared alternatives.
+    Manifest: each rail-touching end → Coincident on that rail centerline; a free end gets NO constraint.
+    Tests: default pattern — every tie has ≥1 end on a rail; some ties (seeded fixture) have a free end; manifest has
+    1 tie-on-rail Coincident per touching end. Render + view (no fully floating ties).
