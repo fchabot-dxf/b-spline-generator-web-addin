@@ -580,6 +580,18 @@ reading `constraint_step`'s own code); a real "hundreds of pieces" lattice send,
    (relief + editable sketch from one send). Revisit after use.
 6. Noted as extension points; nothing to build.
 
+## Fusion coincidence rules (advisor MEASURED 2026-09-25, prompted by Fred: "Fusion doesn't like geometry placed exactly then made coincident")
+- Separate points at identical coords + addCoincident: OK. Point exactly on a curve + addCoincident(point, curve): OK.
+- `SketchPoint.merge(other)` fuses two points into ONE with no constraint = what UI snapping does ("auto-coincident").
+- addCoincident on points that are ALREADY one point (shared/merged) or already forced together -> "Failed to solve"
+  (redundant = over-constrained). That is the real quirk, not exact placement.
+- Therefore: point<->point = share/merge (never also Coincident); point<->curve = Coincident (exact placement fine).
+
+## Width decision (Fred 2026-09-25)
+Box Lattice: centerlines only (+ stroke_width param as reference). Shape Lattice: center-to-center SLOTS, centerline
+end points fixed (anchored slots grow evenly on stroke_width edits; free ones drift lopsided - measured), nodes built
+on the slot centerline end points. Offsets removed.
+
 ## Open questions for Fred / the advisor (this doc's own defaults above; revisit after Slice 3's own live pass)
 
 1. **Two-sided offset (§4)**: does `createOffsetInput`/`addOffset2` accept a SINGLE call for both sides of an
