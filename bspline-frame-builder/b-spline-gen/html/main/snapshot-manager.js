@@ -7,6 +7,7 @@ import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { resolveGrid } from '../core/terrain.js';
 import { AppState } from './app-state.js';
 import { runMigrations, editorRestoreSvg, refreshDrape } from './app-init.js';
+import { syncFramePanel } from './frame-panel.js';
 
 /**
  * T45 (Fred: "on open, a loaded project doesn't have the SVG until I open
@@ -35,6 +36,10 @@ export async function applySnapshot(snap, preview, { source } = {}) {
     P[k] = snap.P[k];
     syncUItoParam(k, P[k]);
   });
+  // FB-APP S2 (F6): a project saved before frames existed has no `frame`
+  // key; it must read as "no frame", not keep the current session's frame.
+  if (!('frame' in snap.P)) P.frame = null;
+  syncFramePanel();
   setUndoRestoring(false);
   AppState.isInitializing = false;
 

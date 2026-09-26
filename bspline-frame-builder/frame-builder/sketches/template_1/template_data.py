@@ -100,6 +100,14 @@ FRAME_REGIONS = {
     "surround": "surround_rect",                           # p03_05
 }
 FRAME_FEATURES = COMMON_FRAME_FEATURES
+# F6: the app preset's shape params for this template (gate 3.2 = no handles
+# yet: the frame's shape comes from the template + these declared params).
+# FITTED to the live-recorded S4 golden at the 7x9 reference board
+# (tests/fixtures/frame-parity/template_1_7x9.json):
+#   safe-zone pinch depth 1.039 in -> waistReach 0.32; shoulder radius 0.624 in -> cornerRadius 0.19;
+#   waist centred. At 12x6 Fusion's own solve differs (waistReach ~0.24, cornerRadius ~0.07):
+#   a close match at other sizes is S4's parity job.
+FRAME_SHAPE_PARAMS = {"waistReach": 0.32, "cornerRadius": 0.19, "waistCenterY": 0.0}
 
 
 def get_template_logic(ui_data=None):
@@ -136,5 +144,6 @@ def get_template_logic(ui_data=None):
             "silhouettePreset": FRAME_SILHOUETTE_PRESET,
             "regions": FRAME_REGIONS,
             "features": [dict(f) for f in FRAME_FEATURES],
+            "shapeParams": dict(FRAME_SHAPE_PARAMS),
         },
     }

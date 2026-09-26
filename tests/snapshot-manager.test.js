@@ -140,3 +140,20 @@ describe("applySnapshot — T45: source:'undo' leaves the live editor's document
     expect(updateStampMasks).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('applySnapshot — FB-APP S2 (F6): the frame record on project load', () => {
+  beforeEach(() => { vi.clearAllMocks(); window.svgEditor = null; });
+
+  it('an old project (saved before frames existed: no frame key) loads as NO frame', async () => {
+    P.frame = { recordVersion: 1, templateId: 'template_1', params: {}, frameBottomZ: -1, appearance: '3D Ash - Unfinished' };
+    await applySnapshot({ P: { widthIn: 7 } }, null, { source: 'load' });
+    expect(P.frame).toBeNull();
+  });
+
+  it('a project with a frame restores it', async () => {
+    P.frame = null;
+    const frame = { recordVersion: 1, templateId: 'template_2', params: {}, frameBottomZ: -0.5, appearance: '3D Maple - Unfinished' };
+    await applySnapshot({ P: { widthIn: 7, frame } }, null, { source: 'load' });
+    expect(P.frame).toEqual(frame);
+  });
+});

@@ -134,6 +134,7 @@ def build_frame_defs(source_hash):
             "name": spec["Name"],
             "prefix": prefix,
             "silhouettePreset": frame.get("silhouettePreset"),
+            "shapeParams": frame.get("shapeParams"),
             "params": params,
             "regions": frame.get("regions"),
             "features": frame.get("features"),
