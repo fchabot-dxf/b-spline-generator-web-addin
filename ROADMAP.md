@@ -977,6 +977,17 @@ readers -> tests; old saved patterns read it as ignored). The Shape Lattice "Con
 separate thing and stays. IN FUSION (Fred: "it's geometry but construction geometry in Fusion"): the boundary box IS sent, as CONSTRUCTION geometry (isConstruction = True) in the lattice sketch: never a profile, never extruded, still usable for constraints/dims. Declared as a role on the manifest entity (e.g. `construction: true`), read by the builder; not a special case.
 Test: boundary present in editor DOM, absent from the 3D input; export unchanged.
 
+## Queued — STALE-PARAMS: delete the add-in's own stale Fusion user parameters on Send (reg-addin, R3 design, 2026-09-26)
+DESIGN in `STALE-PARAMS-DESIGN.md` (repo root; R3, no code yet — gated for the advisor/Fred before R4 implements
+it, since it deletes user parameters in Fred's live designs). Declared ownership registry (board `Bspline.owner=1`
+existing / frame `FrameBuilder.owner=1` new, per `FB-APP-DESIGN.md` §4) extended to cover the lattice/constrained-
+sketch param family (`sketch_manifest_builder.py`'s `stroke_width`/`rail_width`/`tie_width`/`node_diameter`/
+`half_width`/`contour_width`/`contour_height`), which today is unstamped. Ownership proven by an attribute stamp
+written at creation (never by name match, since lattice names are open-ended); delete rule = owned + stamped +
+not in this Send's payload + not referenced by another param expression or a feature/sketch dimension
+(`Parameter.dependentParameters`) → delete, else keep + log. See the design doc §2f for the open questions queued
+for Fred (dry-run first, touch- vs create-only stamping, lattice tag sharing, cross-Send scope).
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
