@@ -117,12 +117,28 @@ export function _findBoundaryElement(editor, shapeId) {
  * element's own current `stroke-width`, IF it's visibly stroked (`stroke`
  * set and not `'none'`, width > 0); else 0 (an unstroked/fill-only
  * boundary has no stroke to cut inside of).
+ *
+ * T72 (AMEND 3, Fred: "boundary width auto doesnt seem to apply"): Border
+ * width 'auto' (`border.width == null`) used to fall back to the LIVE
+ * boundary element's own `stroke-width` unconditionally — correct for a
+ * HAND-PICKED boundary (T49's own original ruling: inherit whatever that
+ * shape is actually drawn with), but wrong for the Shape Lattice tool's
+ * OWN generated silhouette, whose drawn stroke is ALWAYS a fixed, thin
+ * hairline (SILHOUETTE_STROKE_WIDTH — regenerateSilhouette's own T68
+ * AMEND1 rule, unrelated to Border), never a meaningful "auto" value —
+ * the visible symptom was a hairline-thin Border on a preset whose
+ * lattice/Fusion-slot stroke is 0.25in. For a generated silhouette
+ * specifically, 'auto' now means the SAME `widths.rails` the manifest's
+ * own `stroke_width` parameter and every rail/tie already use — and,
+ * since `widths` is read fresh on every call (no cached value), it
+ * follows live when the lattice stroke width changes, same as the
+ * dispatch's own explicit ask.
  */
-function _effectiveBorderWidth(boundaryEl, boundary, widths) {
+function _effectiveBorderWidth(boundaryEl, pattern, boundary, widths) {
   if (boundary.border && boundary.border.enabled) {
-    return boundary.border.width != null
-      ? boundary.border.width
-      : (parseFloat(boundaryEl.attr('stroke-width')) || widths.rails);
+    if (boundary.border.width != null) return boundary.border.width;
+    if (hasGeneratedSilhouette(pattern)) return widths.rails;
+    return parseFloat(boundaryEl.attr('stroke-width')) || widths.rails;
   }
   const strokeAttr = boundaryEl.attr('stroke');
   const sw = parseFloat(boundaryEl.attr('stroke-width'));
@@ -209,7 +225,7 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
   const boundaryEl = _findBoundaryElement(editor, shapeId);
   if (!boundaryEl) return { boundaryEl: null, primitives: [] };
   const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
-  const halfWidth = edge === 'centerline' ? 0 : _effectiveBorderWidth(boundaryEl, boundary, widths) / 2;
+  const halfWidth = edge === 'centerline' ? 0 : _effectiveBorderWidth(boundaryEl, PATTERN, boundary, widths) / 2;
   let localPrimitives = await shapeToInnerBoundaryPrimitives(boundaryEl, halfWidth);
   // T72 (bug: the default Bottle preset generated 0 rails/ties after T71's
   // own contour-size inset): a collapsed inner-offset boundary (self-
@@ -1724,7 +1740,7 @@ export async function generatePattern(editor, PATTERN) {
   // own current stroke-width/stroke, not a Lattice color.
   if (isBoundary && boundary.border && boundary.border.enabled && boundaryEl) {
     const borderColor = boundary.border.color || boundaryEl.attr('stroke') || '#000000';
-    const borderWidth = _effectiveBorderWidth(boundaryEl, boundary, widths);
+    const borderWidth = _effectiveBorderWidth(boundaryEl, PATTERN, boundary, widths);
     const clone = boundaryEl.clone();
     clone.attr(BOUNDARY_REF_ATTR, null); // the clone is a COPY, not the link itself
     clone.attr('data-layer', targetLayer);

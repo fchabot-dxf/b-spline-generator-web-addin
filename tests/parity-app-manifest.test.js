@@ -70,6 +70,11 @@ function makeMockEditor(mW, mH) {
     line(x1, y1, x2, y2) { const e = makeElement('line', { x1, y1, x2, y2 }); elements.push(e); return e; },
     circle(d) { const e = makeElement('circle', { r: d / 2 }); elements.push(e); return e; },
     path(d) { const e = makeElement('path', { d }); elements.push(e); return e; },
+    // T72 (AMEND 3 parity test): the Border piece (generatePattern, §7)
+    // builds its own clone via boundaryEl.clone() (a standalone element,
+    // NOT auto-tracked) then calls sketchLayer.add(clone) to register it —
+    // this mock never needed that path before this test.
+    add(e) { elements.push(e); return e; },
     children() { const arr = elements.slice(); arr.toArray = () => arr; return arr; },
     node: {},
   };
@@ -318,5 +323,29 @@ describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice par
       expect(countByKind(editorOn, kind)).toBeGreaterThan(0); // non-vacuous
       expect(countByKind(editorOff, kind)).toBe(countByKind(editorOn, kind));
     }
+  });
+});
+
+describe('parity: T72 AMEND 3 -- Border width "auto" on a GENERATED silhouette matches the manifest\'s own stroke_width', () => {
+  it('the drawn Border\'s own stroke-width equals buildSketchManifest\'s stroke_width parameter, not the silhouette\'s own fixed hairline', async () => {
+    const editor = makeMockEditor(7, 9);
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      widths: { ...PATTERN_DEFAULTS.widths, rails: 0.25, ties: 0.25 },
+      boundary: { ...PATTERN_DEFAULTS.boundary, border: { enabled: true, width: null, color: null } },
+    };
+    regenerateSilhouette(editor, pattern);
+    await generatePattern(editor, pattern);
+
+    const border = editor._sketchLayer.children().toArray().find((e) => e.attr('data-lattice') === 'border');
+    expect(border).toBeDefined(); // non-vacuous: Border actually drew
+    const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
+    const manifest = buildSketchManifest(pattern, region, {});
+    const strokeWidthParam = manifest.parameters.find((p) => p.name === 'stroke_width');
+    expect(strokeWidthParam).toBeDefined();
+    expect(border.attr('stroke-width')).toBe(strokeWidthParam.value);
+    expect(border.attr('stroke-width')).not.toBeCloseTo(0.02, 6); // non-vacuous: not the silhouette's own hairline
   });
 });
