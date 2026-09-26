@@ -62,8 +62,10 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
 6. **RAIL-SPACING** (ROADMAP.md): Boundary becomes the FIRST panel section; Rails: Anchor [Top|Center|Bottom] + Spacing + optional Count,
    laid out from the boundary; one grid (the editor's). Old saved patterns keep their geometry.
    Do it after seat B's TIE-GAP lands (same panels).
-7. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
-8. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
+7. **FORMULA-FIELDS** (ROADMAP.md): number fields accept + - * / ( ) and names (width, height, stroke, count);
+   evaluated on Enter, stores the number.
+8. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
+9. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
 
 ## 4. How to work on it
 

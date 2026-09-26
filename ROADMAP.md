@@ -959,6 +959,14 @@ a saved pattern's old `spacing` is read as its grid step and keeps its exact geo
 spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
 the one grid.
 
+## Queued (Fred's queue, Asus) — FORMULA-FIELDS: type a formula in a number field (Fred 2026-09-26)
+Fred: "if I want a rail exactly on the boundary I just math it out" / "can we enter formula in the fields". Today no
+field accepts expressions. ONE shared parser module used by every numeric input (declared, not per-field): + - * /
+( ) and decimals, plus named values from the current context (lattice: width, height, stroke, count; declared per
+panel). A small safe arithmetic parser, NEVER eval / new Function. Evaluated on Enter/blur; the field stores the
+NUMBER (not parametric, Fred: "no need to make parametric in Fusion"); a bad formula shows an inline error and keeps
+the old value. Tests: precedence, parentheses, names, errors, and that no eval path exists.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
