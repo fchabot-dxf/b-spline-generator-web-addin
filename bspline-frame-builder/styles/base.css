@@ -1891,6 +1891,21 @@ header {
     width: 100%;
 }
 
+/* MOB6 (Fred, phone: "I can't scroll without changing params
+   inadvertently") — EVERY range input, app-wide (this selector, not
+   `.cad-slider`, so it also covers the SVG editor's own bare
+   `<input type="range">` sliders — Shape Lattice's waist/neck/body
+   params, editor-lattice-pattern.js's ties-density — that never got the
+   `.cad-slider` class). A vertical swipe over the track pans the page
+   instead of dragging the thumb; main/ui-bindings.js's
+   attachSliderScrollGuard() is the JS backstop for Chrome Android's own
+   quirk where a touch can still commit a value before the browser
+   recognizes the gesture as a scroll. Desktop mouse drag is unaffected
+   either way — touch-action only governs touch/pen gesture handling. */
+input[type="range"] {
+    touch-action: pan-y;
+}
+
 input[type="range"].cad-slider {
     -webkit-appearance: none;
     flex: 1;

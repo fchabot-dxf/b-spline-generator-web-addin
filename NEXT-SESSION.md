@@ -1,22 +1,23 @@
-# NEXT — UI1b: responsive column count + a line-ending guard
+# NEXT — UI5: per-piece colour + width overrides in the lattice Select tool
 
-**Ball: worker (seat A) · epoch 2 · UI1b.** NO FUSION. UI1 merged + pushed (23ed3c6, 1007 green). Advisor checked
-live: desktop unified segmented style ✓, layer names full ✓, landscape editor panel now shows all sections ✓.
+**Ball: worker (seat A) · epoch 2 · UI5.** NO FUSION. UI4 accepted (items 0,0c,1,2,6,7 landed; 0b could not be reproduced —
+kept open until Fred gives exact steps). Spec = UI3 AMEND 3 (Fred: overrides do NOT survive Regenerate, no warning;
+override width gets NO Fusion param — seat B's T75 item 3 reads your attributes). PROGRESS is automatic: start each
+work-commit subject with the item's tag words (e.g. "UI5 item 2: …").
 
-## Fix
-1. In the LANDSCAPE side column (≈450px wide) the 3-column row "Spacing | Horizontal/Vertical | Count/Every" is too
-   tight: "Horizonta", "Count E…" clip (scratchpad\ui-landscape-3col-tight.png). Make the column count respond to
-   the PANEL's own width, not the viewport: container queries (@container) or a declared min cell width (e.g.
-   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr))) so a row drops to 2 columns / wraps instead of
-   clipping. No text ellipsis on segmented labels. Check portrait 390, landscape 844x390, desktop.
-2. Line endings: your UI1 commit rewrote ALL 2,784 line endings of bspline_gen_palette.html (the repo blob had
-   CRLF; autocrlf normalized it to LF on your commit). That's now the normalized form — keep it — but make sure
-   your editing path doesn't flip endings on other files (edit with the Edit tool / preserve endings; check
-   `git diff --stat` vs `git diff -w --ignore-cr-at-eol --stat` before committing; if they differ wildly, stop).
-   Add a `.gitattributes` declaring `* text=auto` + `*.html text eol=lf`, `*.js text eol=lf`, `*.css text eol=lf`,
-   `*.py text eol=lf` so every seat stores the same form — then `git add --renormalize .` in ONE separate commit and
-   report how many files it touched.
-## When done
-Append WORK-LOG.md, commit by path, push, then
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "UI1b: responsive columns + eol guard — <sha>, renormalized N files"`
-and stop.
+## Checklist
+- [ ] [UI5-item-0] REOPENED UI4 item 0 (advisor, live main with _skipBoundaryRefillOnce deployed, FRESH headless profile):
+      Shape Lattice Select-drag STILL does not persist — rail body drag moved 0.000, tie body drag 0.000 (box Lattice
+      passes the same script). Run the advisor's exact repro: `node tools/repro/select_drag_shape.mjs <outdir> desktop
+      https://bspline-generator.pages.dev/bspline_gen_palette` (it clicks the visible Select button titled 'tap a
+      piece…', tags pieces lt_*, drags via Input.dispatchMouseEvent 8 steps x30ms). Find why your verification and this
+      one disagree (which Select control? drag speed/steps? hit target point?), fix for BOTH, keep the script as a test.
+- [ ] [UI5-item-1] Selecting a rail/tie/node/contour piece (lattice Select icon) shows its COLOUR + WIDTH in the properties,
+      with an override control for each; clearing the override returns it to the kind's colour / lattice width.
+- [ ] [UI5-item-2] Declared data schema on the piece: data-override-color / data-override-width (ONE schema module), rendered
+      live (stroke colour/width); exported in SVG / Send to Fusion payload as-is. Tell seat B the exact names if you
+      deviate from these.
+- [ ] [UI5-item-3] Regenerate clears all overrides on that layer; Undo restores them.
+- [ ] [UI5-item-4] Tests (override one piece -> only it changes; regenerate clears; undo restores; export carries attrs);
+      desktop + mobile screenshots of the property panel.
+Commit by path, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "UI5 — <shas>"`.

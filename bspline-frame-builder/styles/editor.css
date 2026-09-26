@@ -660,16 +660,6 @@
         border-top: 1px solid var(--cad-border-standard);
     }
 
-    /* editor-drawer.js's generic collapsible-section sweep adds this
-       chevron as a real DOM node (not a ::before/::after) so its own
-       rotate transform doesn't fight the label's own text layout. */
-    .editor-drawer-section-chevron {
-        display: inline-block;
-        font-size: 12px;
-        color: #666;
-        transition: transform 0.15s ease-out;
-    }
-
     /* MOB5 ADD-ON (Fred: "I feel like this could have a few 2-column
        sections", then "2 or even 3 columns") — ONE declared grid shape per
        column count, used by the Lattice panel's own Grid & rails/Nodes/
@@ -731,6 +721,44 @@
     .panel-widths-unlinked {
         grid-column: 1 / -1;
     }
+}
+
+/* UI2-FIX (Fred, live screenshot on desktop: "Node size" read "0.C",
+   truncated) — the Widths row's 3-way flex split (Rails&ties/link/Node
+   size) has no floor, so it can shrink an input below a usable width;
+   this predates UI2 (see the row's OWN comment: "3 of those plus gaps
+   need 237px against this panel's 220px width, clipping the 3rd (Node
+   size) stepper on DESKTOP too") but reads worse now that AMEND 2's one
+   scrolling side column (plus its own scrollbar once content overflows)
+   leaves a little less width than the Lattice/Shape Lattice panel's own
+   former standalone column did.
+   A min-width on the number INPUTS alone (first attempt here) did
+   nothing: each input's flex ITEM is its wrapping <label> (or, for the
+   unlinked Rails/Ties pair, the #...WidthUnlinkedFields div), and every
+   one of those uses `flex-basis:0%` (the `flex:2`/`flex:1` shorthand) —
+   Flexbox's space-distribution step only ever reads a min-width declared
+   on the FLEX ITEM itself, so a min-width on the nested input was
+   invisible to it and the item still shrank the input under its floor
+   (proven live: computed clientWidth 44px against a measured
+   scrollWidth of 57px — genuinely clipped, not just a visual illusion).
+   Moving the floor onto the actual flex items — the Rails&ties label,
+   the unnamed Node-size label (selected via :has(), same pattern
+   label:has(> #latticeNodesEnds) already uses in this file), and each
+   unlinked Rails/Ties label plus their shared wrapper — fixes that.
+   flex-wrap on the row is the fallback once these floors alone exceed
+   the row's own width: it wraps instead of squeezing below them. */
+#latticeWidthLinkedRow, #shapeLatticeWidthLinkedRow,
+.panel-row-3 label:has(> #latticeWidthNodes),
+.panel-row-3 label:has(> #shapeLatticeWidthNodes),
+#latticeWidthUnlinkedFields label, #shapeLatticeWidthUnlinkedFields label {
+    min-width: 60px;
+}
+#latticeWidthUnlinkedFields, #shapeLatticeWidthUnlinkedFields {
+    min-width: 120px;
+}
+.panel-row-3:has(#latticeWidthNodes),
+.panel-row-3:has(#shapeLatticeWidthNodes) {
+    flex-wrap: wrap;
 }
 
 /* =========================================================================
@@ -1183,11 +1211,23 @@
    click handler (layers.js) and for the layer-row-only additions below
    (icon sizing, the enlarged tap target) that don't belong on every
    text-label segmented button app-wide. */
-.layer-row .segmented-group { height: auto; }
+/* UI4 item 7 (Fred, live: side-column layer name truncates to "Lay…"):
+   this group has no flex-shrink of its own, but its 3 buttons' own
+   min-width:24px already puts a floor under how far it CAN shrink — so
+   under real squeeze (the narrower side column, 236px vs the main
+   sidebar's 260px) it was .layer-name's OWN `min-width:0` (below) that
+   absorbed the entire shortfall instead, down to a sliver. flex-shrink:0
+   here matches .layer-handle/.layer-delete's own existing treatment
+   (both already never shrink) — ONE thing (the name) giving way,
+   predictably, rather than two competing for the same slack. Slightly
+   tighter horizontal padding (was 6px all sides) reclaims a few more px
+   for the name on top of that, matching the item's own "buttons
+   compact" half. */
+.layer-row .segmented-group { height: auto; flex-shrink: 0; }
 .layer-row .editor-fillmode-btn {
     position: relative;
     min-width: 24px;
-    padding: 6px;
+    padding: 6px 4px;
 }
 /* Enlarges the tap target vertically (to ~40px) without growing the
    visible ~30px cell — extends into the row's own top/bottom padding,
@@ -1292,7 +1332,13 @@
 
 .layer-name {
     flex: 1;
-    min-width: 0;
+    /* UI4 item 7: was min-width:0 -- the only flexible-with-no-floor
+       child in the row, so it silently absorbed the ENTIRE shortfall
+       whenever the row's other (already near-minimum) children didn't
+       fit the column, down to "Lay…". A real floor means ellipsis only
+       ever eats into the LESS important trailing tool-summary span
+       first, same mobile drawer fix. */
+    min-width: 50px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1395,6 +1441,26 @@
     flex-direction: column;
     z-index: 10;
     min-height: 0;
+    /* UI2 AMEND 2: this column can now ALSO host a mounted tool panel's
+       own settings body + a Detach-all button below the layers list
+       (editor/lattice-side-column.js) — the WHOLE column scrolls as one
+       unit now (was: only .layers-list scrolled, in a fixed-height
+       column) so Generate (inserted as this element's own first child,
+       sticky below) stays pinned across everything beneath it. */
+    overflow-y: auto;
+}
+
+/* A flex column with overflow:auto still runs flex-shrink BEFORE
+   overflow kicks in — every child defaults to flex-shrink:1, so
+   flexbox squeezes them (measured live: Generate rendered at 17px
+   instead of its own 32px) to fit the container's height rather than
+   ever actually scrolling. Every direct child of this column — the
+   existing header/list, and whatever lattice-side-column.js mounts in
+   (Generate, a tool's settings body, Detach all) — keeps its own
+   natural content height; overflow-y:auto (above) is what handles the
+   rest via scrolling, not shrinking. */
+.editor-layers-panel > * {
+    flex-shrink: 0;
 }
 
 .editor-layers-panel .layers-header {
@@ -1414,9 +1480,96 @@
 }
 
 .editor-layers-panel .layers-list {
-    flex: 1;
-    overflow-y: auto;
+    /* UI2 AMEND 2: no longer its own independent scroll region (the
+       column's own overflow-y:auto, above, now covers it) — a plain
+       in-flow block so it stacks naturally above a mounted tool body. */
     padding: 4px;
+}
+
+/* UI2 AMEND 2: whichever tool's Generate/Regenerate button
+   lattice-side-column.js moves in becomes this column's own first
+   child, WRAPPED in its own plain-rectangle slot div (that module's own
+   PINNED_SLOT_CLASS) — pin THE SLOT, not the button directly, so it
+   stays visible while Layers + the tool's own settings scroll
+   underneath.
+   UI2-FIX (Fred, live screenshot: scrolled content — the Ties "Cells/
+   Rails" row and controls above it — visibly peeked out from behind the
+   pinned bar): the BUTTON's own rounded corners (`.cad-btn-primary`'s
+   `border-radius`) don't cover a full rectangular band; scrolled
+   content showed through the corner gaps. This slot is a plain square
+   backdrop the button floats inside, with real padding and a shadow
+   separating it from what scrolls beneath — no gaps of any shape.
+   (An EARLIER version of this rule targeted `#editorLayersPanel >
+   #latticeGenerate` directly and ALSO set `background` there — that
+   ID+ID selector beat `.cad-btn-primary`'s own class-level blue by
+   specificity, painting the button #fdfdfd with its own white text
+   still on top: invisible white-on-white, caught live via CDP. Wrapping
+   the button in its own slot sidesteps that fight entirely — the
+   button's own background/radius are untouched, and this class owns a
+   DIFFERENT element.)
+   UI4 AMEND 4b: this class's own position/background/padding/shadow
+   rule was REMOVED from here — lattice-side-column.js now also puts
+   `sticky-actions` (layout-app.css) on the same slot div, which is the
+   ONE declared pinned-action style shared with the main sidebar's own
+   "Generate New Seed" card. PINNED_SLOT_CLASS itself stays as a pure
+   identifying hook (`closest()` in _unmount) with no CSS of its own. */
+
+/* =========================================================================
+   UI2 — colour-coded Lattice/Shape Lattice panel sections (Fred's own
+   "option B" pick from the advisor's mockup): a soft tint, a 5px left
+   bar, and the section's own title in the bar colour. The KIND (rails/
+   ties/nodes/contour/neutral) is decided once by editor/lattice-side-
+   column.js's own declared title->kind map and written as
+   data-lattice-section on the section element; the bar/tint colours
+   themselves are 2 CSS custom properties that module keeps live-synced
+   to the pattern's actual rails/ties/nodes/contour colours (--kind-*,
+   --kind-*-tint) on the section's own ANCESTOR body element, so they
+   apply here purely through normal CSS inheritance — no per-section JS
+   write needed when a colour changes, only the two custom properties.
+   ========================================================================= */
+[data-lattice-section] {
+    border-radius: 4px;
+    padding: 6px 8px 6px 9px;
+    margin: 0 -2px;
+    border-left: 5px solid transparent;
+}
+[data-lattice-section="rails"]   { background: var(--kind-rails-tint, rgba(198, 40, 40, 0.12));  border-left-color: var(--kind-rails, #c62828); }
+[data-lattice-section="ties"]    { background: var(--kind-ties-tint, rgba(249, 200, 14, 0.12));   border-left-color: var(--kind-ties, #f9c80e); }
+[data-lattice-section="nodes"]   { background: var(--kind-nodes-tint, rgba(26, 35, 126, 0.12));   border-left-color: var(--kind-nodes, #1a237e); }
+[data-lattice-section="contour"] { background: var(--kind-contour-tint, rgba(46, 125, 50, 0.12)); border-left-color: var(--kind-contour, #2e7d32); }
+[data-lattice-section="neutral"] { background: rgba(0, 0, 0, 0.03); border-left-color: #bbb; }
+[data-lattice-section="rails"]   > span:first-child { color: var(--kind-rails, #c62828); }
+[data-lattice-section="ties"]    > span:first-child { color: var(--kind-ties, #f9c80e); }
+[data-lattice-section="nodes"]   > span:first-child { color: var(--kind-nodes, #1a237e); }
+[data-lattice-section="contour"] > span:first-child { color: var(--kind-contour, #2e7d32); }
+[data-lattice-section="neutral"] > span:first-child { color: #666; }
+
+/* UI3 (Fred: "like in main side bar, make lattice section collapsible")
+   — the collapsible-section chevron, generalized from editor-drawer.js's
+   own former mobile-only sweep (lattice-side-column.js now owns wiring
+   it, on BOTH desktop and mobile — see that file's own doc comment) — a
+   real DOM node (not a ::before/::after) so its own rotate transform
+   doesn't fight the label's own text layout. Renamed from
+   editor-drawer-section-chevron since it's no longer drawer-specific. */
+.lattice-section-chevron {
+    display: inline-block;
+    font-size: 12px;
+    color: #666;
+    transition: transform 0.15s ease-out;
+}
+
+/* UI3 AMEND 1 (Fred) — the icon tool row replacing the Lattice panel's
+   text "Add" row: [Select][Rail][Tie][Node], in the main tool rail's own
+   .tool-btn look (square, transparent, hover/active per editor.css's
+   existing .tool-btn rules) so it reads as native to the app rather than
+   inventing a second icon-button style. 4 buttons (34px + 6px gap each)
+   comfortably fit the side column's own width. */
+.lattice-icon-tool-row {
+    display: flex;
+    gap: 6px;
+}
+.lattice-icon-tool-btn {
+    flex-shrink: 0;
 }
 
 /* When a layer is hidden, dim and hide its SVG elements in the editor view.

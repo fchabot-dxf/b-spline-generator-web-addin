@@ -36,7 +36,6 @@ export const TOOL_PANELS = {
 
 export const DRAWER_SNAP_STATES = ['peek', 'half', 'full'];
 const DRAWER_HEIGHT_STORAGE_KEY = 'bspline.editor.drawerHeightPx';
-const SECTION_STATE_PREFIX = 'bspline.editor.drawerSection.';
 
 /** Peek is a fixed px height (the dispatch's own "~96px: tabs + essentials
  *  row" — a slim, content-driven amount, not a viewport proportion); half
@@ -89,88 +88,6 @@ export function landscapeWidthPx(state, viewportWidth) {
   if (state === 'half') return Math.round(viewportWidth * LANDSCAPE_HALF_VW_FRACTION);
   if (state === 'settingsMax') return Math.round(viewportWidth * LANDSCAPE_SETTINGS_MAX_VW_FRACTION);
   return LANDSCAPE_CANVAS_MAX_WIDTH_PX; // 'canvasMax', and the floor for any unrecognized state
-}
-
-function _loadSectionOpen(label, defaultOpen) {
-  try {
-    const raw = localStorage.getItem(SECTION_STATE_PREFIX + label);
-    return raw === null ? defaultOpen : raw === '1';
-  } catch (_) {
-    return defaultOpen;
-  }
-}
-function _saveSectionOpen(label, open) {
-  try { localStorage.setItem(SECTION_STATE_PREFIX + label, open ? '1' : '0'); } catch (_) { /* same as above */ }
-}
-
-/** SE7k/MOB2's own section shape: a direct child of the panel body whose
- *  FIRST element child is a bold (`font-weight:600`) `<span>` label —
- *  Rails/Ties/Nodes/Colors/Widths already look like this with ZERO
- *  markup changes, and any FUTURE section (e.g. seat B's own upcoming
- *  Boundary panel, lane-b) that follows this file's own established
- *  convention becomes collapsible automatically too, for free — this
- *  walks the DOM generically at drawer-init time rather than hand-wiring
- *  a toggle per section. `data-no-collapse` opts a section OUT (the "Add"
- *  row: it must always stay visible in the peek row, never collapsed).
- *  Desktop-untouched (MOB2/MOB3's own standing rule): gated on the SAME
- *  structural breakpoints styles/editor.css's drawer rules use — portrait's
- *  max-width:720px OR MOB4's own landscape query — checked ONCE here — a
- *  desktop session never gets the chevron/click affordance at all, so it
- *  can't inherit a collapsed section from a phone session sharing the
- *  same localStorage either. A live resize
- *  across the breakpoint while the modal is already open won't retro-
- *  actively wire this (same one-time-check shape as this file's own
- *  drag-vs-tap threshold), an accepted, narrow edge case. */
-function _makeSectionsCollapsible(panelBodyEl) {
-  if (!panelBodyEl) return;
-  // MOB4: landscape's own side column needs this EVEN MORE than portrait
-  // (its narrowest width, canvasMax, is only 220px) — without it, every
-  // section renders stacked-open with none of MOB5's own compact-row
-  // treatment able to compensate for a whole panel's worth of content.
-  if (!window.matchMedia(`(max-width: 720px), ${LANDSCAPE_MEDIA_QUERY}`).matches) return;
-  for (const section of Array.from(panelBodyEl.children)) {
-    if (section.hasAttribute('data-no-collapse')) continue;
-    const label = section.firstElementChild;
-    if (!label || label.tagName !== 'SPAN' || !/font-weight:\s*600/.test(label.getAttribute('style') || '')) continue;
-    const title = label.textContent.trim();
-    if (!title || section.dataset.collapsibleInit) continue;
-    section.dataset.collapsibleInit = '1';
-
-    const body = Array.from(section.children).filter((c) => c !== label);
-    // Captured BEFORE any toggle ever runs — most of these rows declare
-    // their own layout inline (`style="display:flex; ..."`, no CSS class
-    // backing it), so `node.style.display = ''` does NOT restore "flex"
-    // the way it would for a class-driven display; it just clears the
-    // inline override entirely and the element falls back to its TAG's
-    // own default (`block` for a bare `<div>`). Confirmed live (MOB5): the
-    // Colors row's 3 swatches silently stacked into a column instead of
-    // staying a row, on the very FIRST render — not just after a manual
-    // collapse/re-expand — because `applyOpen(true)` below runs
-    // unconditionally at init too. Restoring the ORIGINAL captured value
-    // (not bare '') fixes every section this way, not just Colors.
-    const bodyOriginalDisplay = body.map((node) => node.style.display);
-    const chevron = document.createElement('span');
-    chevron.className = 'editor-drawer-section-chevron';
-    chevron.setAttribute('aria-hidden', 'true');
-    chevron.textContent = '▾';
-    label.style.cursor = 'pointer';
-    label.style.display = 'flex';
-    label.style.alignItems = 'center';
-    label.style.justifyContent = 'space-between';
-    label.appendChild(chevron);
-
-    const applyOpen = (open) => {
-      body.forEach((node, i) => { node.style.display = open ? bodyOriginalDisplay[i] : 'none'; });
-      chevron.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
-    };
-    let open = _loadSectionOpen(title, true);
-    applyOpen(open);
-    on(label, 'click', () => {
-      open = !open;
-      applyOpen(open);
-      _saveSectionOpen(title, open);
-    });
-  }
 }
 
 /** SE7k's Add: row and the Generate/Regenerate footer are the dispatch's
@@ -296,17 +213,16 @@ export function initDrawer(editor) {
   if (!drawer || !handle || !toolTab || !layersTab) return; // panel not present in this host — no-op, matches other init*() modules' own guard shape
 
   // MOB4: shared by both splitters below (each is the OTHER one's
-  // `enabled()` gate) and by _makeSectionsCollapsible's own check.
+  // `enabled()` gate).
   const isLandscapeMode = () => window.matchMedia(LANDSCAPE_MEDIA_QUERY).matches;
 
-  // T58: every declared TOOL_PANELS body, not just Lattice's own — each
-  // follows the SAME "bold-span-first-child" section convention
-  // (_makeSectionsCollapsible's own doc comment already promised this for
-  // free to "any future section"; a second real panel is what actually
-  // exercises that promise).
-  for (const { panelId } of Object.values(TOOL_PANELS)) {
-    _makeSectionsCollapsible(el(`${panelId}Body`));
-  }
+  // UI3: section collapsibility for the TOOL_PANELS bodies moved to
+  // lattice-side-column.js's own initLatticeSideColumn (called once,
+  // unconditionally, from editor-controls.js) — that module already owns
+  // every other "what a lattice panel section looks like" concern
+  // (tagging, colour, hiding), and now collapsing on BOTH desktop and
+  // mobile is the SAME declared mechanism instead of this file's own
+  // former mobile-only copy of it.
 
   on(toolTab, 'click', () => _activateTab(editor, 'tool'));
   on(layersTab, 'click', () => _activateTab(editor, 'layers'));
@@ -333,9 +249,23 @@ export function initDrawer(editor) {
     const panel = panelId ? el(panelId) : null;
     const showing = panel && !panel.classList.contains('editor-drawer-tab-hidden');
     if (showing) {
-      const addSection = document.querySelector(`#${panelId}Body [data-no-collapse]`);
+      // UI3 AMEND 1: querySelector alone would find whichever
+      // `[data-no-collapse]` element is FIRST in DOM order — since
+      // lattice-side-column.js's new icon row hides the old Add div
+      // (still `[data-no-collapse]`, now permanently `display:none`,
+      // `offsetHeight` 0) rather than removing it, and inserts its own
+      // new row right AFTER it, `querySelector` kept matching the dead
+      // zero-height one — confirmed live (the icon row landed off-screen
+      // at peek, the exact "measured the wrong/hidden element" bug this
+      // function's own T58 history already had once before with the
+      // panel itself). Summing every match instead of trusting the first
+      // is correct for BOTH today's shape (one hidden + one real) and
+      // don't-care about a future one (an all-hidden or all-visible set
+      // sums the same either way).
+      const addSections = document.querySelectorAll(`#${panelId}Body [data-no-collapse]`);
+      const addHeight = Array.from(addSections).reduce((sum, node) => sum + node.offsetHeight, 0);
       const footer = el(`${panelId}Footer`);
-      if (addSection && footer) return chrome + addSection.offsetHeight + footer.offsetHeight + 24;
+      if (addSections.length && footer) return chrome + addHeight + footer.offsetHeight + 24;
     }
     return drawerHeightPx('peek', window.innerHeight);
   }

@@ -583,6 +583,48 @@ reading `constraint_step`'s own code); a real "hundreds of pieces" lattice send,
    (relief + editable sketch from one send). Revisit after use.
 6. Noted as extension points; nothing to build.
 
+## Fusion coincidence rules (advisor MEASURED 2026-09-25, prompted by Fred: "Fusion doesn't like geometry placed exactly then made coincident")
+- Separate points at identical coords + addCoincident: OK. Point exactly on a curve + addCoincident(point, curve): OK.
+- `SketchPoint.merge(other)` fuses two points into ONE with no constraint = what UI snapping does ("auto-coincident").
+- addCoincident on points that are ALREADY one point (shared/merged) or already forced together -> "Failed to solve"
+  (redundant = over-constrained). That is the real quirk, not exact placement.
+- Fred 2026-09-25: "I don't want merging of points, I need to be able to separate the coincident joints" -> EVERY
+  joint = separate points + ONE explicit Coincident (point-point or point-on-curve), exact placement; no merge, no
+  shared points between pieces; never a redundant second constraint on the same pair.
+
+## Width decision (Fred 2026-09-25)
+UPDATE (Fred: "box lattice needs to be slots too"): BOTH Box and Shape Lattice = center-to-center SLOTS, centerline
+end points fixed (anchored slots grow evenly on stroke_width edits; free ones drift lopsided - measured), nodes built
+on the slot centerline end points. Offsets removed.
+
+## LOOSE CONTOUR (Fred 2026-09-26: "dont use symmetry either" / "no radius dim though, leave the sketch loose for now")
+Constraint vocabulary for SE15/SE15b sketches: NO Fix, NO Symmetry, NO radius dims, NO length dims. Allowed:
+slots + the `stroke_width` width dim, the contour's overall width/height dims = `contour_width` / `contour_height` — NEW independent user parameters
+(default values = board size minus 1 in — Fred: "By default make it -1in"; not linked to widthIn/heightIn; Fred: "W and H is good", "-.25 then", "Instead of
+widthIn lets make a new param we can change"); point-to-point on corner points; the app draws the contour 1/8" inside
+the board so both sides match), Coincident joints (separate points), Tangent at contour joints, Horizontal /
+Vertical. Geometry is INSERTED in position (symmetric by coordinates) and left loose — drift on a width edit is accepted.
+Measured before this ruling (for the record): Symmetry needed an origin-anchored axis, and without size dims the edges
+ran off on a width edit; revisit only if Fred asks for a held shape.
+
+## A coincident follows ONE curve, never a path (advisor MEASURED 2026-09-26; Fred agreed)
+Rail end Coincident (point-on-curve) to a quarter arc, rail x driven by a dimension across the arc's end: on the arc
+r=1.000 at x=0.9/0.5/0.1; past the end (x=-0.3) it stayed on the arc's EXTENDED CIRCLE (-0.3, 0.954), at x=-1.0 it
+went to the far side of that circle (-1, 0) — it never hands over to the next (tangent) segment. So a rail end is
+bound to the contour segment it was generated on (option A). Moving a rail to another segment = regenerate in the
+app, or re-add that one Coincident in Fusion. A single-spline centerline (slidable) was rejected: not a slot.
+
+## ACCEPTANCE = SPAWN PARITY (Fred 2026-09-26: "not a problem leave it, as long as spawn is very close to intended drawing")
+The test is the sketch AS INSERTED: every piece within tolerance of the app drawing (builder's parity check, maxErr
+~0). Editing `stroke_width` later in Fusion re-solves a LOOSE sketch (no Fix, no position dims) and may shuffle it —
+measured on a T71 hourglass: after a few width edits rails/ties sat up to 1.8" off. Accepted; do not add Fix or position
+dims to prevent it.
+
+## NO FIX (Fred 2026-09-25: "never use Fix") — advisor MEASURED
+All slots, NO Fix, relationships only (rails Horizontal, ties Vertical, tie ends Coincident on rail centerlines): zero
+failures; stroke_width 0.07→0.2 moved centerlines 0.005", back to 0.07 returned exactly. Fix + relationships together =
+over-constrained (T65 failure). This supersedes every "anchor / isFixed" note above.
+
 ## Open questions for Fred / the advisor (this doc's own defaults above; revisit after Slice 3's own live pass)
 
 1. **Two-sided offset (§4)**: does `createOffsetInput`/`addOffset2` accept a SINGLE call for both sides of an

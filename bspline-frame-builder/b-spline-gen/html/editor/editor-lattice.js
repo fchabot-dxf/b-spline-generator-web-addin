@@ -22,9 +22,13 @@ import { worldPoint } from './editor-coords.js';
 // SE7k (Fred: "needs an add rail and add tie, add node button"): drawKind
 // is the EXPLICIT choice driving the hand-drawn tool's start/update/finish
 // (editor-interaction.js) — session-only UI state, same scope as
-// autoNodes (not persisted, not per-layer). 'rail' is the default —
-// today's most common gesture stays a single click-drag away.
-export const LATTICE_DEFAULTS = { autoNodes: true, drawKind: 'rail' };
+// autoNodes (not persisted, not per-layer). UI3 AMEND 1 (Fred): "Select
+// = new default mode" — 'select' isn't one of LATTICE_DRAW_KINDS below
+// (it has no clickSpawn/add behaviour of its own; it's a UI-only overlay
+// on this SAME state variable, handled directly in latticeHandler,
+// editor-interaction.js), so it's set here rather than added to that
+// table.
+export const LATTICE_DEFAULTS = { autoNodes: true, drawKind: 'select' };
 
 /**
  * SE7k: the three explicit kinds the Lattice tool can draw, declared once

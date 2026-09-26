@@ -17,6 +17,7 @@ from datetime import datetime
 # before exec'ing this file), so a plain top-level import is safe here,
 # matching this file's own existing import style.
 from sketch_manifest_builder import build_constrained_sketch
+from constrained_sketch_log import format_constrained_sketch_log
 
 # imports check: removed diagnostic
 
@@ -141,6 +142,25 @@ def _log(msg):
     except Exception:
         # Fail silently if the OS prevents file access
         pass
+
+
+# Fred (2026-09-26): "make the addin store the current project so you can read it".
+# Every Send to Fusion writes what the palette actually sent — params + every stamp
+# layer (profile/depth, SVG, sketchManifest) — minus the bulky STEP variants, to a
+# fixed local file the advisor/workers can read when debugging. Overwritten each
+# send; never read back by the add-in itself.
+LAST_SEND_FILE = os.path.join(os.path.expanduser('~'), '.bspline-frame-builder', 'last_send.json')
+
+
+def _dump_last_send(data):
+    try:
+        slim = {k: v for k, v in data.items() if k != 'stepVariants'}
+        slim['_written'] = datetime.datetime.now().isoformat(timespec='seconds')
+        os.makedirs(os.path.dirname(LAST_SEND_FILE), exist_ok=True)
+        with open(LAST_SEND_FILE, 'w', encoding='utf-8') as f:
+            json.dump(slim, f, indent=1)
+    except Exception as e:
+        _log(f'[LAST_SEND] could not write {LAST_SEND_FILE}: {e}')
 
 # ── Palette constants ─────────────────────────────────────────────────────────
 PALETTE_ID   = 'fusionHybridPalette'
@@ -987,6 +1007,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             stamp_data    = data.get('stamp')
             params        = data.get('params', {})
             orientation   = params.get('exportOrientation', 'z-up')
+            _dump_last_send(data)
 
             # ── Remove previous import ───────────────────────────────────────────
             is_append = data.get('isAppend', False)
@@ -1499,15 +1520,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             summary = build_constrained_sketch(
                 sketch_target, design, manifest, placement=plane, log_fn=_log,
                 sketch_name_override=f"Source - {sketch_name} [constrained]")
-            _log(
-                f"[SE15] {sketch_name}: entities={summary['entities']['created']}/"
-                f"{summary['entities']['created'] + len(summary['entities']['skipped'])} "
-                f"constraints_issues={summary['constraints']['count']} "
-                f"dim_issues={summary['dimensions']['count']} "
-                f"offsets={summary['offsets']['created']} offset_issues={summary['offsets']['issues']['count']} "
-                f"params(created={summary['parameters']['created']},updated={summary['parameters']['updated']}) "
-                f"{summary['seconds']}s"
-            )
+            # ADD1 (measured live): this log used to read summary['offsets']
+            # inline here — see constrained_sketch_log.py's own module
+            # docstring for why that raised KeyError on every SUCCESSFUL
+            # build and what replaced it.
+            _log(format_constrained_sketch_log(sketch_name, summary))
         except Exception as e:
             _log(f'[SE15] Constrained sketch build failed for {sketch_name}: {e}')
 

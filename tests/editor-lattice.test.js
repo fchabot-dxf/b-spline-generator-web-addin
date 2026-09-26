@@ -55,8 +55,8 @@ describe('LATTICE_DRAW_KINDS (SE7k, declared table)', () => {
     }
   });
 
-  it('rail is the default drawKind (LATTICE_DEFAULTS)', () => {
-    expect(LATTICE_DEFAULTS.drawKind).toBe('rail');
+  it('select is the default drawKind (LATTICE_DEFAULTS) -- UI3 AMEND 1', () => {
+    expect(LATTICE_DEFAULTS.drawKind).toBe('select');
   });
 });
 

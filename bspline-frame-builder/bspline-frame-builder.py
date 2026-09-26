@@ -123,6 +123,23 @@ def _bare_module_names(folder):
         return []
 
 
+def _bspline_gen_sibling_modules():
+    """ADD1 (measured live): every bare-name module the b-spline-gen folder
+    holds, EXCLUDING the entry file itself ('b-spline-gen', loaded by path
+    via `_load_submodule`, never by bare name — same filtering precedent
+    `_bootstrap`'s own fusion-exporter entry already uses below). Today
+    this is ['sketch_manifest_builder', 'test_sketch_manifest_builder'] —
+    the second one is a no-op to wipe (it's never actually imported while
+    the add-in runs) but harmless, and a REAL new sibling module added to
+    this folder later is covered automatically, the same TM1/TM2 fix
+    `_bare_module_names` already applies to template-maker/fusion-exporter.
+    Pulled out as its own named function (not inlined into `_bootstrap`'s
+    own `_force_wipe([...])` call) so it's testable without running the
+    rest of `_bootstrap` (which needs a much bigger Fusion stub)."""
+    return [n for n in _bare_module_names(os.path.join(_addin_root, 'b-spline-gen'))
+            if n != 'b-spline-gen']
+
+
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
 def _bootstrap():
     """Load logger, frame engine, and UI sub-modules. Safe to call repeatedly."""
@@ -151,6 +168,21 @@ def _bootstrap():
     # ``template_1``, ``template_2`` and their phase modules.
     # 'template_loader' is at the frame-builder root (top-level import,
     # not under fb_engine) so it needs its own entry to be reloaded.
+    #
+    # ADD1 (measured live): 'bspline_ui' (b-spline-gen.py itself) was
+    # already wiped here, but it's ALWAYS freshly reloaded anyway (it's
+    # loaded by path via `_load_submodule` below, same as every other
+    # UI sub-module) — that was never the bug. Its OWN top-level `from
+    # sketch_manifest_builder import build_constrained_sketch` is a
+    # PLAIN bare-name import, and 'sketch_manifest_builder' had no entry
+    # here at all, so it survived every Stop->Start untouched: a fresh
+    # b-spline-gen.py kept binding the OLD sketch_manifest_builder
+    # function object. `fb_engine` (already wiped above) covers the
+    # fb_engine.* it in turn imports — see that module's own imports.
+    # `_bspline_gen_sibling_modules()` (DERIVED, not hand-typed — same
+    # TM1/TM2 fix `_shared_project_names` below already applies to
+    # template-maker/fusion-exporter) covers 'sketch_manifest_builder'
+    # and any future sibling this folder gains.
     _force_wipe([
         'fb_shared',   # C4/F8 de-dup: canonical shared helpers (cascades to fb_shared.*)
         'bspline_ui',
@@ -162,7 +194,7 @@ def _bootstrap():
         'fb_engine',
         'template_loader',
         'sketches',
-    ])
+    ] + _bspline_gen_sibling_modules())
 
     # --- Engine ---
     _fb_root = os.path.join(_addin_root, 'frame-builder')

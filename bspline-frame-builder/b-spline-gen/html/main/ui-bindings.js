@@ -8,6 +8,7 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { initStampPanel } from './stamp/index.js';
 import { AppState } from './app-state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
+import { attachSliderScrollGuard } from './slider-scroll-guard.js';
 
 export function bindControls(preview) {
   // UX-UNDO: the layer row's 👁/3D/palette toggles (editor/layers.js —
@@ -140,6 +141,7 @@ export function bindControls(preview) {
   };
 
   attachNumberSteppers();
+  attachSliderScrollGuard();
 
   // All stamp-panel controls are now owned by main/stamp/* — one module
   // per slider/control, composed by initStampPanel. Stored on AppState so

@@ -9565,3 +9565,949 @@ commit BEFORE committing it, per the dispatch's own check — both reported the 
 comparison again after the renormalize commit to confirm it touched ONLY the files `.gitattributes` actually
 declared a form for (see the commit's own reported file count in the pass-back note) and nothing further drifted
 on top of it.
+
+## Turn 273 — MOB6: app-wide slider scroll guard (mobile) — DONE
+
+Fred (phone, live site): "On UI where there is a lot of sliders I can't scroll without changing params
+inadvertently" — screenshots showed the Shape Lattice panel's waist/neck/body-width/S-curve sliders and the main
+palette's Seed section (Region Scale, Offset X/Y, Rotation, Peak Shape). A vertical swipe meant to scroll the
+panel was instead landing on the track and dragging the thumb.
+
+**Two-part fix, exactly as dispatched, declared once each — not per slider.**
+1. `input[type="range"] { touch-action: pan-y; }` (styles/base.css, next to `.cad-slider`'s own rules) — the
+   SELECTOR is the element type, not the `.cad-slider` class, specifically so it also covers the SVG editor's own
+   BARE range inputs that never got that class (Shape Lattice's `shapeParam-*` waist/neck/body/skeleton sliders,
+   `latticeTiesDensity`/`shapeLatticeTiesDensity`) — grepped every `type="range"` in the HTML first to confirm
+   both flavors exist before writing a selector that would've silently missed half of them.
+2. `main/slider-scroll-guard.js` (new file) exports `attachSliderScrollGuard()` — ONE delegated, document-level
+   `pointerdown`/`pointermove`/`pointerup`/`pointercancel` listener set, not per-slider wiring. Delegation (not a
+   one-time `querySelectorAll` sweep, the shape `attachNumberSteppers` next to it in main/ui-bindings.js already
+   uses) matters here specifically because `core/noise/tweaks-ui.js`'s "Edit Filter" sub-panel builds its own
+   `<input type="range">` elements LAZILY (only when that panel is first expanded) — a one-time sweep at bind
+   time would silently never see those. Records the slider's value on `pointerdown` (`pointerType==='touch'`
+   only — the ONE gate that leaves desktop mouse completely untouched, matching the dispatch's own "desktop
+   stays unchanged"); on `pointermove`, resolves the gesture the first time it clears an 8px threshold in either
+   axis — vertical-dominant restores the recorded value (dispatching real `input`/`change` events, not just a
+   property set, so anything already listening for live updates sees it the same as a real edit) and marks the
+   gesture `resolved` so later moves in the SAME gesture don't re-fire the restore; horizontal-dominant just
+   marks it `resolved: 'drag'` and leaves the value alone. This is the documented Chrome-Android backstop
+   `touch-action` alone doesn't cover — a touch can commit the slider's value to the touched position before the
+   browser has recognized the gesture as a scroll, so `pan-y` prevents the DRAG from continuing but not that
+   first jump; this guard is what actually undoes it.
+   Kept as its own zero-dependency file (not inlined into `bindControls`, which pulls in `core/state.js`,
+   `param-manager.js`, `core/engine.js`, and several other heavy modules at import time) specifically so the
+   guard is importable and testable in complete isolation — same reasoning `splitter.js` is its own file rather
+   than living inside `editor-drawer.js`. `main/ui-bindings.js` imports it and calls it once, right next to
+   `attachNumberSteppers()`.
+
+**Verify:**
+- `tests/slider-scroll-guard.test.js` (new, 6 tests) — a real `<input type="range">` in the DOM, guard attached,
+  synthetic `PointerEvent`s dispatched (happy-dom supports `PointerEvent` with `pointerType`/`clientX`/`clientY`
+  cleanly, confirmed by just trying it — no polyfill needed): a mostly-vertical gesture restores the pre-gesture
+  value and fires exactly one real `input` event; a mostly-horizontal one leaves an already-changed value alone;
+  movement under the 8px threshold in both axes touches nothing; a MOUSE `pointerType` is never touched by the
+  guard at all (asserts desktop-unchanged directly, not just by omission); a second `pointermove` within an
+  already-resolved scroll doesn't fire a second restore; and a fresh gesture after `pointerup` is independent of
+  the previous one's outcome (a scroll doesn't poison a later drag on the same slider).
+  **Mutation-tested non-vacuous**: temporarily short-circuited the restore branch (`if (false && ...)`) and
+  re-ran — 3 of the 6 tests failed exactly as expected (the ones asserting a value was restored), confirming
+  they actually exercise the fix rather than passing on the bug's own behavior; restored the real code and
+  re-ran green. `npx vitest run tests/slider-scroll-guard.test.js` -> 6/6 passed (post-restore).
+  Full suite: `npx vitest run` -> **1013 passed** (up from 1007 — the 6 new tests, zero regressions elsewhere).
+- Live (headless Chrome via CDP, hard-reloaded with cache ignored, real `Input.dispatchTouchEvent`/
+  `dispatchMouseEvent` — not just simulated DOM events) at 390x844 with touch emulation enabled:
+  - Confirmed `getComputedStyle(slider).touchAction === 'pan-y'` on an actual rendered slider (`carveZSlider`,
+    the "Carve Depth" control — the one slider visible without expanding any collapsed section).
+  - A real vertical touch swipe starting exactly on that slider's track (10 incremental `touchMove` steps, 15px
+    apart) left its value at **exactly 1.5, unchanged**, while `.cad-sidebar`'s own `scrollTop` (the actual
+    scrolling ancestor — checked the DOM ancestor chain first rather than assuming `document.scrollingElement`,
+    which was the wrong target and read 0 either way) moved from **0 to 180** — a genuine scroll, not a no-op.
+    Screenshot (`mob6-after-vertical-swipe.png`) shows the panel scrolled down to the collapsed SEED/SKELETON/
+    FILTER/etc. sections with the Carve Depth slider's thumb still at its original position.
+  - A real horizontal touch drag on the same slider (10 steps, 20px apart) changed its value from 1.5 to 20 (the
+    slider's own max) — confirms the guard doesn't also break legitimate touch dragging.
+  - Desktop (1400x900, touch emulation OFF): a real mouse-down/move/up drag on the same slider changed its value
+    from 1.5 to 14.6 — confirms desktop mouse behavior is genuinely unaffected, not just "should be" by
+    construction.
+- Did NOT touch `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js` or any Lattice/Shape
+  Lattice generation logic (seat B's own T72 lane) — this turn's changes are exactly the 2 files above plus the
+  new guard module and its test.
+
+## Turn 276 — ADD1: two add-in Python bugs measured live in Fusion — DONE
+
+Both bugs are in b-spline-gen Python, found by the advisor's own live "Send to Fusion" run against constrained
+sketches. NO FUSION this turn (advisor verifies live); lattice/shape JS untouched (seat B's T72 lane).
+
+**Bug 1 — stale `sketch_manifest_builder` after Stop/Run.** Traced the actual reload chain rather than guessing:
+`bspline-frame-builder.py` (the REAL Fusion-registered add-in, `run()`/`stop()`) already has a deliberate hot-
+reload mechanism — `_force_wipe(names)` purges `sys.modules` entries (cascading to sub-packages) and
+`_load_submodule(...)` loads a sibling `.py` file fresh BY PATH, bypassing the cache entirely. `b-spline-gen.py`
+itself (loaded as `bspline_ui`) already gets the `_load_submodule` treatment, so IT was never stale. The actual
+gap: `b-spline-gen.py`'s own top-level `from sketch_manifest_builder import build_constrained_sketch` is a PLAIN
+bare-name import — and `'sketch_manifest_builder'` had no entry in `_bootstrap()`'s `_force_wipe([...])` list at
+all, so it survived every Stop->Start untouched. A freshly-reloaded `b-spline-gen.py` kept re-binding the SAME
+stale `sketch_manifest_builder` module object from Fusion's own startup, which still had the old
+`build_constrained_sketch` signature (missing `sketch_name_override`) — exactly the advisor's own measured
+symptom. `fb_engine`/`fb_engine.*` (the OTHER thing the dispatch named) turned out to be ALREADY covered — the
+existing wipe list already had a bare `'fb_engine'` entry, which `_force_wipe`'s own cascading logic already
+extends to every `fb_engine.*` submodule `sketch_manifest_builder.py` imports (`fb_engine.build_context`,
+`.constraints`, `.dimensions`) — so `'sketch_manifest_builder'` was the ONE missing name.
+Fixed by DECLARATION, not a hand-typed addition: `_bspline_gen_sibling_modules()` (new, pulled out as its own
+named function so it's independently testable) returns `_bare_module_names(b-spline-gen folder)` minus the entry
+file itself — the SAME "derive it from the folder's real contents" fix `_bare_module_names` already applies to
+template-maker/fusion-exporter (its own docstring: "TM1/TM2; a hand-typed list missed 8 names" — this bug was
+that exact class, just for a folder that had never gotten the treatment). A future second sibling file in
+b-spline-gen can't silently repeat this bug — it's covered by construction the moment it exists on disk.
+
+**Bug 2 — false "build failed ... 'offsets'" log.** `_build_constrained_sketch_for_layer`'s own success-path log
+line read `summary['offsets']['created']`/`summary['offsets']['issues']['count']` — T64 removed the whole
+offset/cap step (Slot entities now create their own width dimension as a side effect of geometry creation, no
+separate phase), so `build_constrained_sketch`'s return dict has never had an `'offsets'` key since. Every
+SUCCESSFUL build raised `KeyError('offsets')` inside the log statement itself, was caught by the surrounding
+`except Exception as e`, and logged "Constrained sketch build failed for {layer}: 'offsets'" — for a sketch that
+had already built fine moments earlier. Fixed by logging only the keys `build_constrained_sketch` actually
+returns (verified against its own return-statement + docstring in `sketch_manifest_builder.py`: `sketchName`,
+`entities`, `constraints`, `dimensions`, `parameters`, `parity`, `latticeConstrained`, `seconds` — no `offsets`),
+and added `parity_maxErr` (T68 item 2b's own field) per the dispatch's own ask — the one number that says whether
+the constrained result actually matches the manifest's intended geometry, which the old log never surfaced at
+all.
+Pulled the formatting itself out to a new zero-dependency module, `constrained_sketch_log.py` (
+`format_constrained_sketch_log(sketch_name, summary)`), rather than leaving it inlined in the method — `b-spline-
+gen.py` imports `adsk.core`/`adsk.fusion`/`adsk.cam` at module level AND calls `adsk.core.Application.get()` at
+IMPORT time, which would need a much bigger Fusion stub to test than this one pure dict-formatting function
+actually needs. Same reasoning MOB6's `main/slider-scroll-guard.js` (this repo's JS side) was split out for.
+
+**Verify (Python, `pytest`; NO FUSION per the dispatch):**
+- `bspline-frame-builder/test_bspline_frame_builder.py` (new, 4 tests) — loads `bspline-frame-builder.py` by path
+  (hyphenated filename, same `importlib.util.spec_from_file_location` mechanism the add-in's own
+  `_load_submodule` uses on ITS siblings) behind a minimal fake `adsk.core`/`adsk.fusion`/`adsk.cam` (extended
+  with empty `CustomEventHandler`/`CommandCreatedEventHandler` base classes once two MODULE-LEVEL class
+  statements needed real base classes to even exec, not just importable names). Asserts
+  `_bspline_gen_sibling_modules()` includes `'sketch_manifest_builder'` and excludes the entry file itself; a
+  test that drops a throwaway sibling `.py` file into the REAL b-spline-gen folder and confirms it's picked up
+  automatically (proving the list is genuinely derived, not hand-typed with a lucky match); a sanity check on
+  `_force_wipe` itself against a real `sys.modules` entry (bare name + a dotted sub-name both disappear).
+- `bspline-frame-builder/b-spline-gen/test_constrained_sketch_log.py` (new, 5 tests) — reuses
+  `test_sketch_manifest_builder.py`'s OWN adsk stub + `FakeDesign`/`_box_lattice_manifest` (importing it runs its
+  module-level `_install_adsk_stubs()` as a side effect) so `build_constrained_sketch` is called for REAL, giving
+  a genuine summary dict — not a hand-guessed fake of its shape, which is exactly the kind of drift that caused
+  this bug in the first place. One test asserts the real summary has no `'offsets'` key at all (proving the bug
+  was real against the actual function); the rest exercise `format_constrained_sketch_log` against that real
+  summary (no raise, `parity_maxErr` present, every other field present) plus one confirming a FUTURE missing key
+  still fails loudly with a `KeyError` naming that key (not silently) — so this exact class of bug is at least as
+  debuggable next time.
+  **Mutation-tested non-vacuous, both bugs**: reverted `_bspline_gen_sibling_modules()` to `return []` — 2/4
+  tests failed exactly as expected (the two asserting real coverage); reverted `format_constrained_sketch_log` to
+  re-add the old `summary['offsets']` access — 4/5 tests failed exactly as expected (every one exercising the
+  formatter; the one testing `build_constrained_sketch`'s own shape directly, unrelated to the formatter, correctly
+  kept passing). Restored both real fixes, re-ran everything green.
+  `pytest bspline-frame-builder/` (whole tree) -> **160 passed**, 0 failures (only 29 pre-existing, unrelated
+  "test returned non-None" style warnings in other files, not touched this turn).
+- JS suite untouched by this turn but re-run anyway as a sanity check: `npx vitest run` -> **1209 passed** (the
+  higher count than turn 273's own 1013 reflects lane-b's T64-T72 merge landing between turns, not anything from
+  this one).
+
+## Turn 278 — UI2: colour-coded lattice sections + Generate pinned + hide Fill seed, then AMEND 2's ONE right-hand column — DONE
+
+Original dispatch had 3 asks (colour-coded sections, pin Generate, hide Shape Lattice's Fill seed) under a HARD
+constraint repeated in every message this turn: no edits to `bspline_gen_palette.html` (seat B owns that markup
+in lane-b for T73) — CSS plus exactly one decorator module. Two amendments landed before any code was written:
+AMEND 1 asked to move the Layers list into whichever tool panel was open; AMEND 2 (Fred: "maybe the right hand
+panel is the only panel then") REPLACED AMEND 1's own mechanism entirely — ONE right-hand column
+(`#editorLayersPanel`) that always holds Layers, with the active tool's own Generate/settings/Detach mounting
+INTO it rather than opening a second, separate middle column. Implemented AMEND 2 directly (AMEND 1 was never
+built — superseded before any code existed for it).
+
+**New file: `editor/lattice-side-column.js`** — the one decorator module, wired into `editor-controls.js`'s
+existing `setupEditorToolbar` right after the two lattice `init*Properties` calls (needs both panel bodies
+already populated). Three responsibilities:
+
+1. **Section colour-coding** (Fred's own "option B" pick from the advisor's mockup). `SECTION_KIND_BY_TITLE`
+   declared once: `'Grid & rails'`->rails, `'Ties'`->ties, `'Nodes'`->nodes, `'Contour'`/`'Border'`/`'Shape'`->
+   contour (the dispatch's own 3 names) — **added `'Boundary'`->contour too**, since that's this app's ACTUAL
+   current section title for the same "outer shape" concept (Pick shape / the Ending rule / show-contour
+   checkbox) and neither panel says "Contour" verbatim anywhere today; everything else (Add, Colors, Widths,
+   Seed, Fill seed, Segments) falls through to `'neutral'`. Tags each section (same bold-span-first-child
+   detection editor-drawer.js's own `_makeSectionsCollapsible` already established) with
+   `data-lattice-section="<kind>"`; CSS (`styles/editor.css`) does the actual tint + 5px left bar + title-colour
+   look purely from that attribute.
+   **Live colour tracking** (Fred: the bar colour "follows the Colors row live"): a `MutationObserver` on each
+   of the 3 editable swatches (`#latticeColorRails/Ties/Nodes` and their `shapeLattice` counterparts) watching
+   `style` attribute changes — properties-lattice.js/properties-shape-lattice.js already write
+   `swatchEl.style.background = colors.rails` on every pattern read-back (layer switch, Generate, a colour
+   pick) with no event of their own to hook instead, and observing the swatch keeps ALL of UI2 in this one file
+   with zero edits to either properties-*.js module. Colour is read via `.style.backgroundColor` (not
+   `getComputedStyle`, which needs a fuller layout engine than every DOM environment this module runs in
+   provides — confirmed live in a test: happy-dom's `getComputedStyle().backgroundColor` came back empty for an
+   inline `background` set programmatically, while `.style.backgroundColor` correctly reflected it) and written
+   as 2 CSS custom properties (`--kind-rails`, `--kind-rails-tint`) on the section's own ANCESTOR body element —
+   inherited by every tagged section regardless of which parent that body currently lives under, so colour
+   tracking survives AMEND 2's own mount/unmount moves for free. Contour has no swatch anywhere in the UI
+   (`PATTERN_DEFAULTS.colors.contour`, editor-lattice-pattern.js, is fixed and never user-edited) so it's just a
+   constant.
+2. **Hide Shape Lattice's "Fill seed"** section — Generate already rolls a fresh fill seed on every press (that
+   section's own title bar already said so). Found by title text among the body's direct children, `display:
+   none`. The box-Lattice's own "Seed" section is untouched.
+3. **AMEND 2's mount mechanism.** `TOOL_PANEL_MOUNTS` declared once — `{lattice: {panelId, bodyId, footerId,
+   generateId, detachAllId}, shapeLattice: {...}}` — a 3rd future tool panel is one more entry, not new
+   mount/unmount code. On `editorModeChanged`: unmount whatever was previously mounted (restore its
+   Generate/body/Detach-all to their OWN panel's own original structure, clear the inline `display:none` this
+   module itself added) if the mode changed or the viewport is no longer desktop; then, on desktop with a
+   mode that has a `TOOL_PANEL_MOUNTS` entry, mount it — `insertBefore` Generate as `#editorLayersPanel`'s own
+   first child (pinned), the tool's whole settings body right after the existing `.layers-list`, Detach-all
+   appended last, and force the now-empty original panel's `display:none` (independent of whatever
+   `editor-ui.js`'s own `TOOLBAR_GROUPS` `.hidden` class already says for that mode — its content is gone
+   either way). `_isDesktop()` reuses the SAME shared breakpoint bucket (`max-width:720px` OR the landscape
+   `pointer:coarse` query) editor-drawer.js's own landscape logic and MOB5's compact-row CSS already declare, so
+   this module can't quietly disagree with the drawer about what counts as "mobile" — on mobile this gate keeps
+   the WHOLE mechanism inert, leaving the drawer's own existing tab system (which already gives Layers and the
+   active tool their own tabs) in sole control, untouched. A `resize` listener re-runs the same sync so a live
+   resize crossing the breakpoint while a tool is mounted (or, on mobile, was never supposed to be) doesn't
+   leave a stale state.
+
+**CSS (`styles/editor.css`)**: `.editor-layers-panel` gained `overflow-y:auto` (the WHOLE column now scrolls as
+one unit — was: only `.layers-list` scrolled, in a fixed-height column) and `.editor-layers-panel .layers-list`
+lost its own `flex:1;overflow-y:auto` (no longer its own independent scroll region). New: the colour-coding
+rules (`[data-lattice-section="rails"]` etc., reading the `--kind-*`/`--kind-*-tint` custom properties with
+literal fallback colours), and a sticky rule scoping to the two possible mounted Generate ids specifically
+(`#editorLayersPanel > #latticeGenerate, #editorLayersPanel > #shapeLatticeGenerate { position:sticky; top:0;
+z-index:3; }`) — declared by id rather than a class since neither button's own markup can gain one (seat B owns
+that file).
+
+**Two real bugs found only by looking at a live screenshot, not by reading the CSS:**
+1. My first sticky rule ALSO set `background:#fdfdfd` on the button (intending an opaque backdrop behind the
+   pinned element) — but `#editorLayersPanel > #latticeGenerate` is an ID+ID selector, which beats
+   `.cad-btn-primary`'s own class-level blue background by specificity. The button silently painted `#fdfdfd`
+   with its own white text still on top of it — invisible white-on-white (looked like an empty box in the
+   screenshot; confirmed via `getComputedStyle` reading back `rgb(253,253,253)` instead of the button's real
+   blue). Fixed by dropping `background` from that rule entirely — the button already fully covers its own row
+   with its own opaque colour; nothing needed to show through behind it.
+2. The pinned Generate button rendered at 17px tall instead of its own specified 32px. Root cause: a flex
+   column with `overflow-y:auto` still runs flex-shrink calculations BEFORE overflow ever kicks in — every
+   child defaults to `flex-shrink:1`, so flexbox squeezed each mounted/existing child to fit rather than ever
+   actually scrolling. Fixed with `.editor-layers-panel > * { flex-shrink: 0; }` — every direct child (the
+   existing header/list, and whatever gets mounted in) keeps its own natural content height; `overflow-y:auto`
+   is what handles the rest via scrolling.
+
+**Verify:**
+- `tests/lattice-side-column.test.js` (new, 14 tests): `sectionKindForTitle`/`SECTION_KIND_BY_TITLE` (every
+  declared title, the neutral fallback, whitespace tolerance, every declared value is one of the 4 real kinds);
+  a DOM-fixture suite mirroring the real panel/body/footer/layers-panel shape (not bspline_gen_palette.html
+  itself) exercising `initLatticeSideColumn` end-to-end: tags every real section correctly on BOTH panels;
+  hides Shape Lattice's Fill seed only (box Lattice's own Seed stays); sets the 4 `--kind-*` vars from the
+  fixture's own swatch colours plus the fixed contour; a colour change on a swatch (the exact production write
+  shape, `swatchEl.style.background = ...`) updates the CSS var live; switching to lattice mounts
+  Generate/body/Detach in the exact right order and hides the original panel; switching away unmounts
+  everything back to its own panel in original order; switching lattice->shapeLattice directly unmounts the
+  first before mounting the second (never both); on a mocked mobile `matchMedia`, a mode change mounts NOTHING;
+  a resize crossing into mobile while mounted unmounts it back; an event for a different editor instance is
+  ignored. **Mutation-tested non-vacuous**: forced `_isDesktop()` to always return `true` (simulating a
+  forgotten mobile gate) — exactly the 2 mobile-specific tests failed, the other 12 stayed green (correctly
+  unaffected); restored, re-ran, all 14 green again.
+  Full suite: `npx vitest run` -> **1223 passed** (up from 1209 — the 14 new tests, zero regressions).
+- Live (headless Chrome via CDP, hard-reload with cache ignored), desktop (1400x900):
+  - No tool active: `#editorLayersPanel` shows only its own existing header + list (screenshot confirms —
+    just "LAYERS" + the one layer row, rest of the column blank); `#editorLatticePanel`'s own `.hidden` class
+    already covers this case (no inline override needed there).
+  - Lattice tool: screenshot at the top shows Generate pinned blue-on-blue-background (readable — the earlier
+    white-on-white bug fixed), Layers, then Add (neutral)/Grid & rails (red tint+bar)/Ties (yellow)/Nodes
+    (navy)/Colors peeking at the bottom. Scrolled to the middle: Generate is STILL pinned at the exact top while
+    everything else has scrolled underneath it, ending in Detach all at the very bottom.
+  - Changed `#latticeColorRails`'s own `style.background` live (the same write production code makes) and
+    re-read `#editorLatticePanelBody`'s own `--kind-rails` custom property — it followed immediately
+    (`rgb(198,40,40)` -> `rgb(10,200,30)`), proving the live-sync claim isn't just a design intention.
+  - Shape Lattice tool: screenshot shows Shape (green/contour tint — confirms the `'Boundary'`-> contour
+    interpretation reads right visually too, since Boundary/Border both render the same green as Shape),
+    Segments (neutral), Grid & rails/Ties/Nodes/Colours (now showing FOUR swatches — Rails/Ties/Nodes/Contour,
+    contour fixed green) /Widths/Boundary (green)/Border (green) scrolling underneath a still-pinned Generate,
+    and Fill seed is completely ABSENT from the scroll (hidden) with Detach all at the very bottom.
+  - Mobile (390x844, touch emulation on): confirmed `#editorLayersPanel`'s children stay
+    `[layers-header, editorLayersList]` after switching to the Lattice tool (AMEND 2's mount mechanism never
+    engaged) and `#editorLatticePanel`'s own inline `display` stayed `"flex"` (its own untouched markup value —
+    this module never wrote to it on mobile); the drawer's own LATTICE PATTERN / LAYERS tabs both still work
+    exactly as before. Also confirmed the colour-coding itself (a separate, non-gated part of this module) DOES
+    apply inside the mobile drawer too, per the ORIGINAL dispatch's own "desktop AND the mobile drawer" —
+    read back real computed `background-color`/`border-left-color` for the rails/ties/nodes sections inside
+    `#editorLatticePanelBody` while it was showing through the drawer, all correct.
+- No edits to `bspline_gen_palette.html` this entire turn — confirmed via `git status --short` before every
+  commit: exactly `editor-controls.js`, `styles/editor.css`, and the 2 new files, every time.
+
+## Turn 280 — UI2-FIX: pinned-bar opacity + Widths-row truncation (advisor's live screenshot on 3910e72) — DONE
+
+Two bugs from the advisor's own live screenshot of the merged AMEND 2 commit, dispatched as an amendment to
+do BEFORE FB-ORDER, in its OWN commit.
+
+**Bug #1 — scrolled content peeked through the pinned Generate bar's corners.** The earlier (Turn 278) fix
+made `#latticeGenerate`/`#shapeLatticeGenerate` themselves `position:sticky` + opaque. That's wrong at the
+corners: the BUTTON has its own `border-radius` (`.cad-btn-primary`), so the opaque background is only
+opaque where the button's own rounded rect covers it — a full-width RECTANGULAR band of scrolled content
+still shows through the 4 corner gaps outside that rounded rect. Fix: `_mount()` in `lattice-side-column.js`
+now wraps `generateEl` in a freshly-created plain `<div class="lattice-side-column-pinned-slot">` before
+inserting it as the layers panel's first child — a genuine rectangle, no radius — and `editor.css` moves the
+`position:sticky`/background/shadow from the button's own ID selector onto this new class instead.
+`_unmount()` finds the slot via `generateEl.closest('.' + PINNED_SLOT_CLASS)` (works regardless of which
+tool's Generate button is currently inside it) and removes it, after unwrapping `generateEl` back into its
+own footer.
+
+**Bug #2 — the Widths row's "Node size" input read "0.C", clipped.** First attempt: `min-width: 40px` on the
+number inputs themselves. Verified LIVE via CDP this did **nothing** — `shapeLatticeWidthNodes` still showed
+`clientWidth: 44` against a `scrollWidth: 57` (genuinely clipped, not a visual illusion). Root cause: the
+input's own flex ITEM is its wrapping `<label>` (or, for the unlinked Rails/Ties pair,
+`#...WidthUnlinkedFields`), and the row's `flex:2`/`flex:1` shorthand sets `flex-basis:0%` on each — Flexbox's
+space-distribution step only ever honours a `min-width` declared on the flex item itself, so a `min-width` on
+the nested input was invisible to it. Moved the floor onto the actual flex items instead:
+`#latticeWidthLinkedRow`/`#shapeLatticeWidthLinkedRow` (Rails & ties), the unnamed Node-size `<label>`
+(targeted via `:has()` — the same pattern `label:has(> #latticeNodesEnds)` already uses in this file), and
+each unlinked Rails/Ties label plus their shared wrapper div — all `min-width: 60px`/`120px`. Kept
+`.panel-row-3:has(#...WidthNodes) { flex-wrap: wrap }` as the fallback once these floors alone exceed the
+row's own width (verified live: in the UNLINKED state the row genuinely wraps — Rails/Ties stay on one line,
+Node size drops cleanly to its own full-width line below, nothing clipped).
+- Placed OUTSIDE the existing `.panel-row-2, .panel-row-3` block, which is scoped inside a
+  coarse-pointer/narrow mobile media query (MOB5/UI1b) — this bug is specifically on DESKTOP, confirmed by
+  reading that block's own boundaries first.
+- Live (CDP, desktop 1400x900, hard-reload with cache ignored), both panels, both link states:
+  - Shape Lattice, linked: `shapeLatticeWidthNodes` went from `clientWidth 44 / scrollWidth 57` (clipped) to
+    `clientWidth 58 / scrollWidth 58` (`scrollWidth === clientWidth` — exactly zero clipping); screenshot
+    confirms "0.075" fully legible next to "Rails & ties" "0.25", no wrap needed at this width.
+  - Plain Lattice, linked: identical numbers (`58/58`), same screenshot proof.
+  - Plain Lattice, UNLINKED (`latticeWidthLinkToggle` clicked): `latticeWidthRails`/`latticeWidthTies` both
+    `67/67`, `latticeWidthNodes` `172/172` — zero clipping, and the row visibly wrapped (Rails/Ties row, then
+    Node size on its own full-width row below), proving the `flex-wrap` fallback is real, not just declared.
+  - Pinned-slot corners (Bug #1): scrolled the Shape Lattice panel to its middle (`scrollTop: 771` of
+    `scrollHeight: 1585`) and sampled `document.elementFromPoint` at all 4 corners of the pinned slot's own
+    `getBoundingClientRect()` — all 4 resolved to `DIV.lattice-side-column-pinned-slot` itself (`isSlotOrChild:
+    true`), i.e. nothing scrolled is the topmost paint at any corner. Screenshot: solid `#fdfdfd` band behind
+    "Generate", no fibrous canvas texture bleeding through anywhere.
+- JS suite: `tests/lattice-side-column.test.js`'s 2 mount-order tests (lattice-mount, lattice->shapeLattice)
+  updated for the new pinned-slot wrapper (first child is now `lattice-side-column-pinned-slot`, not the bare
+  button id) plus an added assertion that the button's own `.parentElement.className` is the slot. **Mutation-
+  tested non-vacuous**: temporarily reverted `_mount()` to insert `generateEl` directly (no wrapper) — exactly
+  those 2 tests failed (`'latticeGenerate'`/`'shapeLatticeGenerate'` where the slot class was expected), the
+  other 12 stayed green; restored, re-ran, all 14 green again. The existing "switching AWAY unmounts" test
+  already proves the unwrap-and-remove side without any change needed (`footerChildIds` asserts
+  `latticeGenerate` is a direct `.id`'d child of the footer again — impossible if still wrapped).
+  Full suite: `npx vitest run` -> **1223 passed**, zero regressions (same count as end of Turn 278 — this
+  turn changed no test file's test COUNT, only 2 pre-existing assertions' expected values plus 1 added
+  assertion inside an existing test).
+- No edits to `bspline_gen_palette.html` — confirmed via `git status --short` before commit: only
+  `lattice-side-column.js`, `editor.css`, and `tests/lattice-side-column.test.js`.
+
+## Turn 280 — FB-ORDER: board-param ownership + frame-before-inlay timeline reorder, AMEND 1 (Clean) — DONE — NO FUSION, advisor verifies live
+
+Two independent requirements, dispatched together: **OWNERSHIP** (widthIn/heightIn are Send to Fusion's
+alone — the frame builder must skip them and refuse to build without them) and **ORDER** (move the frame's
+own timeline block before the earliest inlay item, as a unit, never partially). "NO FUSION" this turn — the
+pure algorithm is unit-tested; the real-Fusion glue is explicitly flagged UNVERIFIED below for the advisor's
+own live check, same split this engine already uses elsewhere.
+
+**OWNERSHIP.** Declared ONCE — `ParameterSchema.BOARD_OWNED_PARAMS = ('widthIn', 'heightIn')` +
+`ParameterSchema.is_board_owned(name)` (`parameter_schema.py`) — rather than hand-rolling the same two string
+literals at each call site (this codebase's own `_bare_module_names` "a hand-typed list missed 8 names"
+precedent is exactly the failure mode a declared table avoids). `parametric_engine.py`'s
+`_sync_user_parameters` now `continue`s past any board-owned name as the FIRST check in its per-param loop —
+never created, never updated, even if a UI snapshot happens to carry a value for it. `frame_engine.py` adds
+`_require_board_params(builder)`, called right after `FrameBuilder(external_logger)` in BOTH
+`build_sketch_logic_v3` and `build_frame_logic`, raising `RuntimeError("Run Send to Fusion first — board
+size (…) isn't set yet.")` naming whichever of the two is actually missing — placed OUTSIDE any
+swallow-and-log try/except so it propagates straight to `_build_fn`'s own status-setting except block, with
+NO Fusion object touched before the check (build aborts before any component/sketch call).
+
+**ORDER.** Pure/impure split in the new `timeline_order.py`: `reorder_frame_before_inlay(timeline,
+is_frame_item, is_inlay_item, logger=None)` is the pure algorithm (no adsk import, plain `.count`/`.item(i)`
+shape) — checks EVERY frame item currently after the earliest inlay item's index for `canReorder` FIRST, and
+moves NOTHING if any refuses (the dispatch's own explicit rule), else moves each, in original relative
+order, to an advancing target index starting at the inlay's own original position. Handles multi-inlay
+(moves before the EARLIEST of all inlay items) and interleaved frame/inlay items correctly — both have
+dedicated tests. `reorder_frame_before_inlay_in_design(design, frame_component_name, logger)` is the
+real-Fusion glue: names the inlay by the declared `INLAY_NAME_PREFIXES = ("Plane for L", "Source - L")`
+(main/export-flow.js's own per-layer naming) and the frame block by
+`is_frame_timeline_item`/`_component_name_for_entity`, which reads `.component` (the occurrence-creation
+item itself) or `.parentComponent` (everything built inside it — sketches, planes, features) off each
+timeline item's `.entity`. **UNVERIFIED, flagged for the advisor's live check**: which of these two
+properties Fusion actually exposes can differ by real `TimelineObject.entity` type beyond what the docs say —
+this function itself has zero unit-test coverage of the real API by construction ("NO FUSION"). Wired into
+`frame_engine.py`'s `run_sketch_only` (after `build_template`) and `run_full_synthesis` (after
+`_create_assembly_joints`) — a non-"moved" result that isn't `"no inlay present"`/`"already in order"` logs a
+WARNING rather than raising (a reorder refusal is a degraded-but-working state, not a build failure).
+
+**AMEND 1 (Fred, mid-task): "the frame's extrude needs the 'Clean' body (a green timeline group)."** Target
+order: `[comp creations] -> [Clean] -> [Frame_1 block] -> [inlay]` — the frame block must insert immediately
+before the earliest inlay item, never before Clean or anything the frame's own features consume. Analysis:
+Clean is neither a frame item (not in `Frame_1`'s own component) nor an inlay item (its name matches neither
+declared prefix) — `reorder_frame_before_inlay` never touches anything that's in neither `frame_items` nor
+`inlay_items`, so Clean simply stays exactly where it already sits, and the frame block only ever moves to
+directly before the inlay, never before Clean. Concluded the EXISTING algorithm already satisfies this with
+**no code change** — confirmed (not just argued) with two new tests in `test_timeline_order.py`:
+`test_amend_1_a_frame_extrude_depending_on_clean_stays_after_it` (asserts the exact target order with Clean
+present) and `test_amend_1_clean_present_does_not_defeat_the_any_refusal_safety_net` (same Clean scenario,
+but the extrude itself refuses reorder — proves "any refusal -> move nothing" still holds with Clean in the
+mix, not just in the simpler no-Clean tests). **Mutation-tested non-vacuous, separately for each**: (1)
+narrowed the refusal-check loop to `to_move[:1]` (only checks the first item) — exactly the 2 refusal tests
+failed (the pre-existing one AND the new Clean one), 11 stayed green; (2) shifted `target` by +1 (a plausible
+off-by-one) — 4 tests failed, including the new "stays after Clean" test, alongside the 3 pre-existing
+ordering tests it would equally break; both mutations restored, re-ran, all 13 green again.
+
+**Cross-file `sys.modules` collision (found running the whole tree together, not just the new files).**
+`pytest bspline-frame-builder/ -q` initially showed 31 failures, ALL inside the PRE-EXISTING
+`test_sketch_manifest_builder.py` (b-spline-gen), despite that file passing standalone. Root cause: it and
+the new `test_board_params_ownership.py` both transitively import the SAME shared `fb_engine.build_context`
+etc. modules (genuinely shared between the b-spline-gen and frame-builder tools inside the one add-in, put on
+`sys.path` at real-Fusion runtime) — Python caches each module on FIRST import for the rest of the process,
+so whichever test file's adsk stub installs first silently "wins" that shared module for every OTHER test
+file too, producing unrelated-looking `AttributeError`s. First eviction attempt used a `"fb_engine."` prefix
+match, which crashed with a NEW `KeyError` — `fb_engine/` is a real package (`__init__.py` exists), so pytest
+registers the test file ITSELF as `fb_engine.test_board_params_ownership`, and the prefix match deleted that
+in-progress import out from under importlib mid-import. Fixed by switching to an EXPLICIT list of the real
+shared engine module names (`_SHARED_ENGINE_MODULES` in both files), evicted before each file installs its
+own stub — added to the new file AND (necessarily) to the pre-existing `test_sketch_manifest_builder.py`.
+Re-ran the combined suite in BOTH collection orderings (new file first, and old file first) to confirm the
+fix isn't order-dependent: both green.
+- `python -m pytest bspline-frame-builder/ -q` -> **182 passed** (180 pre-existing + the 2 new AMEND-1
+  Clean tests; the 9-test `test_board_params_ownership.py` and 11-test `test_timeline_order.py` base suite
+  were already counted from earlier in this same turn's own session).
+- No edits to `bspline_gen_palette.html` this entire turn either — confirmed via `git status --short` before
+  commit: only `parameter_schema.py`, `parametric_engine.py`, `frame_engine.py`, the new `timeline_order.py`
+  + its test, `test_board_params_ownership.py`, and the pre-existing `test_sketch_manifest_builder.py`'s own
+  eviction-list addition.
+
+## Turn 282 — UI3: collapsible lattice sections + AMEND 1/2 icon tool row — PARTIAL, DONE for what's covered — NO FUSION
+
+Dispatched as one task (UI3: collapsible sections, "like the main sidebar"); three amendments landed mid-task
+via the mailbox (AMEND 1: icon tool row replacing Add; AMEND 2/2b/2c/2d: the icon's glyph design + live colour
+sync; AMEND 3: per-piece Select drag/stretch + colour/width OVERRIDE property panel; AMEND 4/4b: pinned
+Regenerate/Generate-New-Seed sticky-positioning bug). **Landed this turn: base UI3 + AMEND 1 + AMEND 2 family.
+NOT started: AMEND 3's override property panel, AMEND 4/4b's pinned-card CSS fix** — see the SCOPE DECISION
+note at the end of this entry for why, and what's recommended for the next turn(s).
+
+Mid-turn, the advisor fast-forwarded main under this work with lane-b's T73-T74 merge (ebe66e7: Shape
+Lattice's show-contour+Border merged into one "Contour" section, Pick shape... removed, Node size is now a
+diameter). Working tree was clean at that point (nothing of mine staged yet), so no conflict — re-verified
+`SECTION_KIND_BY_TITLE` already maps the new "Contour" title correctly with ZERO changes needed (it was
+already a declared key from the original UI2 turn, alongside the now-unused but harmless 'Border'/'Boundary'
+legacy keys) and re-ran the full suite (1243 passed, matching the advisor's own report) before continuing.
+
+**UI3 base — collapsible sections.** Investigated first (Explore agent): TWO pre-existing, UNRELATED
+"collapsible section" mechanisms already exist in this codebase — (A) the main sidebar's own `.panel-header`
++ inline `togglePanel()` (bspline_gen_palette.html/base.css) has NO persistence and a totally different DOM
+shape (header + next-sibling body) than the lattice sections' own bold-span-first-child convention, so it
+cannot be literally reused without either editing markup (forbidden) or hand-rolling a shim; (B)
+editor-drawer.js's OWN private, MOBILE-ONLY `_makeSectionsCollapsible` + `_loadSectionOpen`/`_saveSectionOpen`
+(localStorage, keyed by title text) already matches the lattice sections' real DOM shape exactly (chevron,
+persistence, `data-no-collapse` opt-out) — it just never ran on desktop. Per NEXT-SESSION's own "one declared
+pattern, not a second one," MOVED mechanism (B) wholesale into `lattice-side-column.js` (which already owns
+every other "what counts as a lattice section" concern — tagging, colour, hiding) and un-gated it from the
+mobile media-query check entirely, rather than building a THIRD mechanism or literally reusing (A)'s
+incompatible shape. Deleted `_makeSectionsCollapsible`/`_loadSectionOpen`/`_saveSectionOpen`/
+`SECTION_STATE_PREFIX` and its one call site from `editor-drawer.js` (confirmed via that file's OWN
+`TOOL_PANELS` table + a `git diff` of the two commits spanning the merge that it was NEVER called against
+anything else). Kept the SAME localStorage key prefix (`bspline.editor.drawerSection.<title>`) so desktop and
+mobile share one remembered collapse state per section, not a second key scheme.
+- **The Layers block** ("collapsible too") has a totally different DOM shape again (`.layers-header`'s own
+  `<span>Layers</span>` + a sibling `#editorAddLayer` `+` button, then a sibling `.layers-list` — static
+  markup, can't be edited) — added a small second entry point, `_makeLayersCollapsible`, sharing the SAME
+  `_wireCollapse` tail (chevron + persistence) as the bold-span sections, scoped to the label span alone so
+  `#editorAddLayer`'s own click handler is never disturbed (proven by a spy-click test — see below).
+- **Real ordering bug caught before it shipped**: `_wireCollapse` APPENDS a chevron `<span>` into the label,
+  which changes that label's OWN `textContent` (e.g. "Seed" -> "Seed▾"). `_hideSectionByTitle('Fill seed')`
+  matches by EXACT `textContent.trim()` — if collapsibility were wired first, that match would silently break
+  (the chevron corrupts the very text the later hide-by-title lookup depends on). Reordered
+  `initLatticeSideColumn` so Fill-seed hiding runs BEFORE any section is wired collapsible; also had to relax
+  the test suite's OWN "Seed section stays visible" lookup from an exact match to `.startsWith('Seed')` for
+  the same reason — any title lookup made AFTER collapsibility is wired needs to tolerate the appended glyph,
+  not just my own code.
+- Tests (`tests/lattice-side-column.test.js`, new `describe('UI3 — collapsible sections')` block, 5 tests):
+  a section starts open, click collapses + rotates chevron + persists '0'; click again re-expands to the
+  ORIGINAL captured inline `display` (not a bare `''`, matching editor-drawer.js's own MOB5-era fix for this
+  exact footgun) + persists '1'; a PRE-EXISTING localStorage value is honoured on init; `data-no-collapse`
+  sections get no chevron at all; the Layers block collapses `.layers-list` and leaves `#editorAddLayer`'s own
+  click handler completely untouched (spy-verified). **Mutation-tested non-vacuous**: removed the `on(label,
+  'click', ...)` wiring entirely — exactly the 3 click-dependent tests failed (the init-only "honours
+  pre-existing state" test correctly stayed green, since it never depends on a click firing); restored, all
+  green again.
+
+**AMEND 1 — icon tool row replacing the text "Add" row.** Investigated (Explore agent) the exact existing
+mechanism before touching anything: `editor._lattice.drawKind` (`'rail'|'tie'|'node'`, `editor-lattice.js`'s
+`LATTICE_DEFAULTS`/`LATTICE_DRAW_KINDS`) is written in exactly ONE place, `properties-lattice.js`'s
+`selectDrawKind` (wired to the OLD `latticeAdd-rail/-tie/-node` buttons) — so the new icon buttons
+PROXY-CLICK those original (now-hidden) buttons for Rail/Tie/Node rather than re-deriving `selectDrawKind`'s
+own logic a second time; only `'select'` (a genuinely new value with no old button to proxy) is written
+directly. `LATTICE_DEFAULTS.drawKind` default changed from `'rail'` to `'select'` (Fred: "Select = new default
+mode") — a single declared-table edit, not a scattered one; updated the one existing test asserting the old
+default.
+- **Select mode's actual mechanics — smaller than expected, because most of it already existed.**
+  `editor-interaction.js`'s `latticeHandler.start` already has an UNCONDITIONAL (regardless of drawKind)
+  top-of-function check: dragging directly onto an EXISTING rail/tie/node already invokes the full
+  `_beginLatticeMove`/`_updateLatticeMove`/`_finishLatticeMove` move-or-stretch machinery (SE7i/SE7k, ties
+  follow rails, nodes stay on joints, grab-the-end-to-stretch) — this runs whether drawKind is 'rail', 'tie',
+  'node', OR (unchanged) 'select'. The ONLY gap for "Select reuses the main Select tool's own selection/
+  colour/delete path" was: a bare TAP (no movement) on an existing piece did nothing (no selection) under any
+  drawKind. Added exactly that, gated on `drawKind === 'select'`: on a hit, calls `editor._select`/
+  `_selectAdd` (shift-aware) — the SAME functions `selectHandler.start` itself calls — in addition to
+  (unchanged) starting the move/stretch tracking; on a miss (empty space), deselects and returns BEFORE
+  reaching the rail/tie/node draw-a-new-piece branches (was previously unconditional past that point). Needed
+  `latticeHandler.start`'s own signature to accept `e` (for `shiftKey`) — already passed by the one call site,
+  just previously undeclared/unused. Verified LIVE (real CDP `Input.dispatchMouseEvent` press+release, not a
+  synthetic `.click()`) that a bare tap adds the `svg-selected` class to a real generated rail; verified the
+  keyboard Delete path (`editor-interaction.js`'s own existing keydown handler -> `editor.deleteSelected()`)
+  actually removes canvas elements after a Select-mode tap — both go through the IDENTICAL generic mechanism
+  the main Select tool already uses, confirmed by reading `editor.setColor`/`deleteSelected`/`_afterSelectionChange`
+  directly (none of them branch on `editor._currentMode` at all, so staying in `_currentMode === 'lattice'`
+  the whole time, as this design does, doesn't need those functions to change either).
+- **Shape Lattice: "Select alone" needed ZERO interaction-code changes.** Its own `shapeLatticeHandler.start`
+  ALREADY falls back to `selectHandler.start` for any click that isn't on a param handle or a per-segment
+  style hit — confirmed by reading it directly. The new Select button there is real DOM (title, `.active`
+  styling) but its click handler is the same direct `drawKind = 'select'` write as the Lattice panel's own —
+  inert in Shape Lattice mode (nothing reads `editor._lattice.drawKind` there), which is fine: Select was
+  already the unconditional default behaviour in that mode before this turn existed.
+- New icon row: a plain `<div data-no-collapse class="lattice-icon-tool-row">` of `.tool-btn`-classed buttons
+  (the MAIN tool rail's own icon-button look, reused rather than inventing a second button style), inserted
+  right after the OLD (now `display:none`) Add wrapper — never removed, just hidden, so its own DOM (and
+  properties-lattice.js's `getElementById` wiring into it) stays completely intact for the proxy-clicks to
+  reach.
+- Tests (`describe('UI3 AMEND 1/2 — icon tool row replacing Add')`, 8 tests): old Add row hidden + new
+  4-button row inserted with the right tooltips (Lattice panel); Shape Lattice gets a Select-only 1-button
+  row; Select starts active at init (reflecting whatever `drawKind` already was, not hardcoded); clicking
+  Rail proxy-clicks the ORIGINAL hidden button (spied) and updates the new row's OWN active state; clicking
+  Select overwrites `drawKind` directly, overriding whatever kind was previously active. **Mutation-tested
+  non-vacuous**: removed the old-row-hide line — exactly the 1 test asserting that failed, the other 25 (by
+  then including the collapsible-section tests) stayed green.
+
+**AMEND 2/2b/2c/2d — the icon glyph.** ONE parameterised inline-SVG builder (`_buildLatticeIconSVG(kind)`),
+not three hand-drawn icons: Rail/Tie share an orientation-neutral diagonal-ladder shape (two ~45deg lines + a
+short crossbar — rails/ties can run horizontal OR vertical, so no single-axis glyph would read right for
+both), differing only in which part gets that kind's live colour vs. a declared muted grey
+(`LATTICE_ICON_MUTED`); Node is a plain filled dot per AMEND 2b ("Node is just a point"), not the ladder;
+Select reuses the exact cursor path `#toolSelect` itself uses. **Colour sync (AMEND 2c) needed ZERO new JS**:
+the SVG's colour is `style="stroke: var(--kind-rails, ...)"` etc. — the SAME `--kind-rails`/`--kind-ties`/
+`--kind-nodes` custom properties `_wireLiveColors` (UI2, unchanged) already keeps live-synced to the Colors
+row's own swatches via a MutationObserver, inherited straight down the DOM tree since the icon row is a
+descendant of the same `bodyEl` those properties live on. Verified LIVE: wrote `latticeColorRails.style.
+background = 'rgb(10,200,30)'` (the exact production write properties-lattice.js itself makes) and re-read
+the Rail icon's OWN computed `stroke` — updated red -> green immediately, no panel reopen, no explicit
+re-render call anywhere in this turn's own code. Tests assert the SVG markup contains the right `var(--kind-*)`
+reference per button and that Node's glyph has no `<line>` (ladder) content, only a `<circle>`.
+
+**Live verification (CDP), both panels, desktop (1400x900) + mobile (390x844, touch emulation):** screenshots
+confirm the icon row renders correctly under pinned Generate on desktop (4 buttons, Lattice; 1, Shape
+Lattice), sections show colour-tinted bars WITH a chevron now, collapsing "Ties" visually hides its body while
+leaving Grid & rails/Nodes expanded and correctly still tinted. Zoomed screenshot of the icon row itself
+confirms the exact glyph rendering AMEND 2/2b/2c/2d describe (red ladder w/ grey crossbar = Rail, grey ladder
+w/ yellow crossbar = Tie, navy dot = Node).
+
+**A real regression found and fixed live, NOT caught by any unit test** (`measuredPeekFloorPx`,
+`editor-drawer.js`): the mobile drawer's own peek-height measurement does
+`document.querySelector('#panelBody [data-no-collapse]')` to size the peek row around "whatever's always
+visible" — since the OLD (now hidden) Add div is STILL `[data-no-collapse]` and sits BEFORE the new icon row
+in DOM order, `querySelector` kept matching the dead, zero-height hidden div, undersizing the peek drawer by
+exactly the icon row's own height (confirmed live: the icon row was completely invisible in the mobile peek
+screenshot, cut off above the visible drawer). Root cause is generic (whichever `[data-no-collapse]` element
+happens to be FIRST wins, regardless of visibility) — fixed by summing EVERY `[data-no-collapse]` element's
+`offsetHeight` instead of trusting the first match (a hidden one contributes 0, so this is correct for both
+today's shape and any future one). Verified live: drawer height went from 178px (icon row invisible) to 212px
+(exactly +34px, the icon row's own real height) after the fix, screenshot confirms all 4 icons now visible
+above Generate/Detach all in the peek view. `measuredPeekFloorPx` is a private closure inside `initDrawer`
+(not exported) with no existing unit-test scaffold reaching it (`editor-drawer.test.js`'s own 24 tests only
+cover the pure `drawerHeightPx`/`landscapeWidthPx` functions) — this fix is LIVE-VERIFIED only, flagged here
+rather than silently claimed as unit-tested.
+
+Full JS suite: `npx vitest run` -> **1255 passed** (up from 1243 at the top of this turn — 12 net new tests:
+13 added minus... no, exactly 13 added, 1 pre-existing assertion changed value not count), zero regressions,
+across the WHOLE suite including the lane-b merge's own 1243.
+
+**SCOPE DECISION (logged, not asked as a gate — the dispatch's own "find the pattern and reuse it" framing
+already invited this kind of judgement call):** stopped absorbing amendments after AMEND 2d and did NOT start
+AMEND 3 or AMEND 4/4b this turn. Reasoning:
+- **AMEND 3** (Select-mode "drag body = move... drag an end = stretch" plus a NEW per-piece colour+width
+  OVERRIDE property panel, stored as `data-override-color`/`data-override-width`, cleared on Regenerate,
+  feeding a Fusion-side hardcoded-width-dim data contract that's explicitly seat B's) is layered on top of
+  what's already landed — move/stretch itself turned out to be FREE (see above, already unconditional), but
+  the override property panel + its data schema + its Regenerate-clears lifecycle hook + the cross-team data
+  contract is a genuinely separate, substantial feature, not a continuation of the icon-row work.
+- **AMEND 4/4b** (the pinned Regenerate/Generate-New-Seed card's own sticky-positioning bug, and Fred's
+  correction that BOTH cards share the same root-cause CSS bug) is a well-scoped but UNRELATED bug fix — a
+  different CSS area (the pinned-slot positioning from UI2-FIX, not the icon row or collapsible sections) —
+  that arrived mid-task and was never blocking anything landed here.
+- Continuing to fold each new amendment into an ever-growing single turn works against the advisor/worker
+  protocol's own "one task per wake, reviewed before the next" design — four amendments deep into what
+  started as one collapsible-sections task is the point to land what's coherent and let the next dispatch
+  pick up the rest, rather than never reaching a reviewable checkpoint.
+Recommend: AMEND 3 and AMEND 4/4b each become their own turn (AMEND 4/4b first — it's the smaller, more
+self-contained CSS fix; AMEND 3 second, given its size and the Fusion-side coordination it implies).
+
+No edits to `bspline_gen_palette.html` — confirmed via `git status --short` before commit: only
+`editor-drawer.js`, `editor-interaction.js`, `editor-lattice.js`, `lattice-side-column.js`, `editor.css`, and
+the 2 test files. (`.gitignore`/`ROADMAP.md`/`tools/` also show as changed in `git status` — confirmed via
+`git diff`/`ls` these are the ADVISOR's own concurrent work, not touched by this turn; excluded from this
+commit by committing explicit paths only, per the two-seats-one-index rule.)
+
+## Turn 284 — UI4 item 1/2: shared pinned-action style fix (AMEND 4b) — DONE — NO FUSION
+
+**Root cause (measured live via CDP, not guessed):** every `<aside>` element in this app gets `padding: 14px
+14px 60px 14px` from ONE bare tag-selector rule (`layout-app.css`'s own `aside { ... }`) — both `.cad-sidebar`
+(the main sidebar) AND `#editorLayersPanel`/`.editor-layers-panel` (the lattice side column) ARE `<aside>`
+elements, so BOTH inherit it. A `position:sticky; top:0` child of either sticks relative to the scroll
+container's PADDING edge — CSS spec behaviour, not a bug in the sticky rule itself — which leaves a 14px band
+ABOVE the stuck element where the padding (and, critically, whatever content has scrolled INTO that band)
+shows through. Confirmed live on both: `getBoundingClientRect().top - parent.getBoundingClientRect().top` was
+exactly `14` for both the main sidebar's old `.cad-panel-section` card and the lattice column's own
+`.lattice-side-column-pinned-slot`, and a screenshot of each mid-scroll showed real content (Stock Dimensions'
+own rows; "Grid & rails"' own title bar) visibly peeking through that exact band — matching Fred's own
+"(X)(Y) labels peek above it" / "the Layer row scrolls visibly above it" reports precisely.
+
+**The fix already existed, declared, just never applied.** `layout-app.css` already has a `.sticky-actions`
+class (comment: "Pin the seed + undo/redo block to the top of the sidebar... negative margins extend it
+edge-to-edge over the aside's padding, and top:-14px compensates for that same padding") — the EXACT
+compensation this bug needs, with the SAME hardcoded 14px matching the `aside` rule's own value. It was simply
+never wired to `bspline_gen_palette.html`'s real "Generate New Seed" markup (which instead had its own ad-hoc
+inline-styled `.cad-panel-section` div, missing the compensation), and never applied to the lattice side
+column's own pinned slot at all. Fixed both to use this ONE shared class, satisfying AMEND 4b's "ONE shared
+sticky style... not a second" literally (not just in spirit) — `bspline_gen_palette.html` and `editor.css` are
+both already loaded by the same page, so `.sticky-actions` (layout-app.css) is reachable from both surfaces
+with no duplication:
+- `bspline_gen_palette.html`: the "Generate New Seed" wrapper's ad-hoc inline styles replaced with
+  `class="sticky-actions"` outright.
+- `lattice-side-column.js`'s `_mount()`: the pinned slot now gets `PINNED_SLOT_CLASS + ' sticky-actions'` —
+  `PINNED_SLOT_CLASS` (`lattice-side-column-pinned-slot`) kept as a pure identifying hook (`closest()` in
+  `_unmount`, unaffected by which OTHER classes ride along), `sticky-actions` supplies the actual visuals.
+  Removed `.lattice-side-column-pinned-slot`'s own now-redundant CSS rule (position/background/padding/shadow)
+  from `editor.css` entirely — one declared style, not two overlapping ones.
+- Updated the 2 existing UI3 tests asserting this element's exact `className` string (now
+  `'lattice-side-column-pinned-slot sticky-actions'`). **Mutation-tested non-vacuous**: reverted the class
+  change — exactly those 2 tests failed, the other 24 in the same file stayed green; restored, all 26 green
+  again. No NEW test written for the main-sidebar markup swap itself (a static class-attribute change, no JS
+  logic of its own — nothing in this repo's own convention unit-tests bare markup that no JS module reads);
+  covered instead by the live verification below.
+- Full suite: **1255 passed**, zero regressions (same count as end of Turn 282 — no new test files/counts,
+  only the 2 updated assertions).
+
+**Live verification (CDP), scrolled mid-list, desktop (1400×700) AND iPad width (1024×768 — short enough to
+force REAL scrolling on both, confirmed via `scrollHeight > clientHeight` before screenshotting; an earlier
+900px-tall attempt never actually needed to scroll at all, which would have been a vacuous check):**
+screenshots of all three cards (main sidebar's "Generate New Seed", Lattice's "Generate", Shape Lattice's
+"Generate") at both sizes — each stays flush at the very top of its own scroll column with nothing visible
+above it, opaque background, full-width button, subtle bottom shadow. Measured `gapAbove` (sticky element's
+own top minus its scroll parent's top) = `0` for all 6 combinations (3 cards × 2 sizes).
+- **One measured, understood, NOT "fixed" non-issue**: the lattice column's pinned slot renders `220px` wide
+  against its own `236px`-wide parent (a real 16px gap, right side only) — the main sidebar's own card showed
+  no such gap. Root-caused: `#editorLayersPanel` has enough content to need a real (space-reserving) vertical
+  scrollbar; `.cad-sidebar` at this test's own content height did not. The 16px is the scrollbar's own track
+  width, not a residual padding gap — `.sticky-actions`'s negative-margin compensation targets the horizontal
+  PADDING specifically (confirmed: the slot's LEFT edge matches the parent's left edge within 1px on both
+  cards), and a scrollbar reserving real interactive space isn't something to render underneath. Noted here
+  rather than silently left unexplained, since AMEND 4b's own "edge to edge" wording could otherwise read as
+  unmet.
+
+Checklist items 1 and 2 ticked in `NEXT-SESSION.md`.
+
+## Turn 284 — UI4 items 6/7: layer-add persistence bug + side-column name truncation — DONE — NO FUSION
+
+**Item 6 (Fred, live: a layer added from the main sidebar vanishes when the editor reopens).** Investigated
+(Explore agent) before touching anything, since the dispatch's own hypothesis ("two layer lists not sharing
+one source?") needed checking against the real code, not assumed. Finding: there are NOT two layer lists —
+`window.svgEditor._layers` is already the ONE shared live roster, rendered into BOTH `#stampLayersList` (main
+sidebar) and `#editorLayersList` (editor panel) by the same `renderLayersPanel`/`renderLayerList`
+(`editor/layers.js`), confirmed already working correctly for every OTHER mutation (visibility/carve/
+showColor/reorder/remove) while the app stays in one continuous session. The REAL bug is narrower: `editor.
+open()` (`editor/editor-io.js`) unconditionally wipes and REBUILDS `_layers` from the PERSISTED document
+(`P.editorSvg`'s `data-editor-layers` JSON attribute, or a content-based fallback reconciler that can only
+ever see layers with actual drawn elements on them) every time the editor is opened — and `addLayer()`
+(`editor/layers.js`) was the ONE roster mutator that never called `editor._onChange()`, so a freshly-added
+EMPTY layer lived only in memory and never reached that persisted document at all. Every sibling mutator
+(`removeLayer`, `reorderLayer`, `setLayerVisible`, `setLayerCarve`, `setLayerShowColor`) already made this
+call; `addLayer` (and `renameLayer`, same gap, same fix) were the outliers. Fixed by adding the same
+`if (editor._onChange) editor._onChange();` call both were missing, mirroring `removeLayer`'s own line exactly
+— a one-line-each fix once the actual gap was identified, not a new mechanism.
+- Tests (`tests/editor-layer-list.test.js`, new `describe` block, 2 tests): `addLayer` calls `editor._onChange()`
+  exactly once; renaming a layer via the REAL dblclick -> input -> Enter path (not calling the unexported
+  `renameLayer` directly — it isn't exported, so this drives the actual DOM handler chain) also calls it.
+  **Mutation-tested non-vacuous**: reverted both `_onChange()` calls — exactly those 2 tests failed, the other
+  28 in the same file stayed green; restored, all 30 green again.
+- Live verification (CDP): added "Layer 2" via the real `#stampAddLayer` button, confirmed `window.svgEditor.
+  _layers` shows both; clicked `#editorCancel` (confirmed `#svgEditorModal`'s own `display` actually went
+  `flex` -> `none`, a real close, not a no-op), reopened via `#btnStampEdit` (confirmed `display` went back to
+  `flex`) — `_layers` still showed BOTH "Layer 1" AND "Layer 2" after this real close/reopen cycle, the exact
+  repro. Screenshot confirms both rows visible in the editor's own Layers panel, names fully legible (also
+  incidentally re-confirms item 7's fix on real data, not just a synthetic name).
+
+**Item 7 (Fred, live: side-column Layers row truncates the name to "Lay…").** Measured live first (CDP
+`getBoundingClientRect` on each `.layer-row` child) rather than guessing: at the side column's real 236px
+width, the row's own content — `.layer-handle` (14px, `flex-shrink:0`) + `.layer-name` + the 3-button
+`.segmented-group` (~80px, no floor of its OWN despite its buttons' `min-width:24px`) + `.layer-delete` (18px,
+`flex-shrink:0`) + gaps/padding — left `.layer-name` (the ONLY child with `min-width:0`, i.e. no floor at all)
+squeezed to 36px, well under what even "Layer 1" alone needs, let alone with its own inline tool-summary span
+(" · V .25\""). A PRE-EXISTING container-query rule (`@container (max-width:260px) { .layer-tool-summary {
+display:none; } }`) already hides that summary at this width and IS firing correctly (confirmed via computed
+style, not assumed) — that mechanism was never the gap; the gap was purely `.layer-name` having no floor at
+all while its neighbour `.segmented-group` also had none of its own (relying only on its children's incidental
+min-widths). Fixed by giving `.layer-name` a real `min-width:50px` and `.layer-row .segmented-group` an
+explicit `flex-shrink:0` (matching `.layer-handle`/`.layer-delete`'s own existing treatment) so the
+name is the intentionally-last thing to compress, not the only thing; tightened
+`.layer-row .editor-fillmode-btn`'s own padding (6px all sides -> 6px vertical/4px horizontal) to reclaim a
+little more room on top of that ("buttons compact", the dispatch's own other suggested lever). One shared
+`.layer-row`/`.layer-name` rule covers the main sidebar, the desktop side column, AND the mobile drawer (no
+separate per-surface rule exists — confirmed via grep, "the row is now identical at ALL widths" per its own
+MOB4-era comment), so no separate mobile fix was needed.
+- No new unit test (a pure CSS layout change — this repo's own test suite doesn't assert `getComputedStyle`
+  layout widths anywhere, since happy-dom doesn't run a real layout/flexbox engine to make such an assertion
+  meaningful). Verified live instead: screenshot shows "Layer 1" (and, after item 6's own live test, "Layer 2")
+  rendering FULLY, not truncated, in the real 236px-wide editor side column.
+
+Full suite: `npx vitest run` -> **1257 passed** (up from 1255 — the 2 new addLayer/renameLayer tests), zero
+regressions. Checklist items 6 and 7 ticked in `NEXT-SESSION.md`.
+
+No edits to `bspline_gen_palette.html`'s LATTICE panel markup (still off-limits) — the main-sidebar
+`sticky-actions` swap earlier this turn and this turn's layer/CSS fixes all touch OTHER parts of that same
+file (the main app sidebar, `editor.css`, `editor/layers.js`), never the Lattice/Shape Lattice panel sections
+seat B owns.
+
+## Turn 284 — UI4 item 0: Shape Lattice Select-drag didn't persist ("moved 0.000" / pieces replaced) — DONE — NO FUSION
+
+Reproduced live via real CDP mouse drags (`Input.dispatchMouseEvent` press/move×8/release, exactly the
+dispatch's own suggested pattern) before touching any code — found THREE distinct, stacked causes, fixed each
+in turn, re-measuring after each fix rather than assuming the first fix closed it.
+
+**Cause 1 — a rail/tie/node click could be swallowed by the segment-style-bar hit-test.**
+`shapeLatticeHandler.start` (`editor-interaction.js`) ran `hitTestSegment` (a "nearest CONTOUR edge within
+~10px tolerance" check, `editor-shape-lattice-interaction.js`) BEFORE ever checking for an existing lattice
+piece under the cursor — since rails/ties routinely sit close to (or exactly on) the silhouette's own edge,
+this could open the "edit this segment's style" popover instead of ever reaching selection. Confirmed live:
+after a plain tap on a rail, `document.body`'s children gained a `DIV.shape-lattice-segment-bar` — the click
+never reached `selectHandler` at all. Fixed by checking for an existing rail/tie/node hit FIRST, same
+priority order `latticeHandler.start` (the box Lattice tool) already uses.
+
+**Cause 2 — every Shape Lattice pattern is boundary-linked to its OWN contour, so ANY commit regenerated
+everything.** `editor.js`'s `_notifyChange('commit')` unconditionally calls `refreshBoundaryPatterns`
+whenever the active layer's pattern has `extent.mode === 'boundary'` — true for EVERY Shape Lattice pattern
+by design (its fill is generated using its own contour as the boundary shape, confirmed live:
+`getLayerPattern(editor).extent.mode === 'boundary'` on an ordinary freshly-generated Shape Lattice layer).
+`refreshBoundaryPatterns`'s own doc comment explicitly says it regenerates "on EVERY commit... not just a
+commit that touched the linked shape specifically" as a deliberate simplification — but a plain Select-mode
+piece move (via the generic `translateSelection`, `editor-interaction.js`) is ALSO a commit, and has NOTHING
+to do with the contour changing, yet triggered the exact same full regenerate, discarding the just-moved
+piece and replacing every piece with fresh elements. Fixed with a small, targeted, one-shot flag:
+`selectHandler.start` now sets `editor._skipBoundaryRefillOnce = true` the instant it grabs an existing
+rail/tie/node (never for a contour hit, where a refill legitimately IS still wanted), reset to `false` at the
+top of every gesture so a stale value from an earlier no-op click can never leak into a later, unrelated
+commit; `refreshBoundaryPatterns` consumes (reads-then-clears) it as its very first check. Unit-tested in
+isolation (`tests/editor-lattice-pattern-boundary-emit.test.js`, reusing that file's own existing
+`_makeMockEditor` harness): the flag suppresses exactly one regenerate and doesn't leave the function
+permanently dead afterward. **Mutation-tested non-vacuous**: removed the flag check — the new test failed,
+the other 11 in the file stayed green; restored, all 12 green again.
+
+**Cause 3 — a rail/tie touching the silhouette's own straight edge can be geometrically IDENTICAL to that
+edge's own contour segment.** Even after fixing causes 1 and 2, the TOPMOST rail of a freshly-generated
+pattern still didn't move — traced to `getNearbyElement`'s (`editor-hit.js`) own bbox-CENTER distance
+tie-break: confirmed live that the topmost rail (`M 0.5 0.5 L 6.5 0.5`) and its own contour segment
+(`data-contour-seg="11"`, same exact path) have IDENTICAL bounding boxes, so the tie-break is a genuine
+exact tie — and since the contour is added to the sketch layer before the rails during generation, it always
+wins ties (`<`, strict). Rather than touch `getNearbyElement` itself (shared by every mode's own
+hit-testing — a distance-tie-break change there risks other pickers), added a small, self-contained,
+NOT-exported `_getNearbyLatticePiece` search scoped to ONLY rail/tie/node-tagged elements (a contour segment
+can never match it, tie or not) — used by `shapeLatticeHandler.start`'s own cause-1 fix above. Threaded the
+pre-resolved hit through to `selectHandler.start` via a new optional 4th parameter (`presetHit`, defaulting
+to that function's own existing generic hit-test when omitted — every OTHER caller is unaffected) so
+`selectHandler` acts on the CORRECT element instead of re-running its own ambiguous generic search and
+re-finding the contour again.
+
+**A fourth thing investigated and found to be a NON-bug**, worth recording so it isn't re-investigated later:
+the dispatch's own "dragging a NODE on the box Lattice... left a duplicate (26 -> 27 nodes)" report.
+Measured directly: `editor._sketchLayer.children()` (the REAL, functional pattern data) stayed at the SAME
+count before and after such a drag, both for a box-Lattice node AND a Shape-Lattice tie; the naive
+`document.querySelectorAll('[data-lattice="..."]')` count some verification step must have used goes up by
+exactly the number of SELECTED elements, because `editor-ui.js`'s own `updateSelectionHighlight` renders a
+`.clone()` of each selected element (a `pointer-events:none` glow, into a separate `_highlightLayer`) that
+retains the SAME `data-lattice`/other attributes as the original — a long-standing, correct, intentional
+mechanism used for every selection in this app (any shape, not just lattice pieces), not something this
+turn's Select feature introduced or broke. Confirmed by comparing `_sketchLayer.children()` count (unchanged)
+against the raw DOM count (`+1`, always exactly the highlight clone) for both lattice types.
+
+Live verification (CDP), both lattice types, real mouse drags:
+- Shape Lattice: a MIDDLE rail (not touching the contour) moved and persisted correctly even before cause 3's
+  fix. The TOPMOST rail (touching the contour) — the harder case — moved by the exact drag distance (40px)
+  and persisted, `transform` shows a real translation, `_sketchLayer`'s own rail count stayed correct (6, no
+  duplication), after ALL THREE fixes landed. A tie drag (a non-boundary-touching piece) also moved and
+  persisted correctly.
+- Box Lattice: unaffected by any of this turn's changes (`latticeHandler.start`'s own
+  `_beginLatticeMove`/`_finishLatticeMove` mechanism, confirmed in Turn 282, was never in the code paths
+  touched here) — re-confirmed live: a rail move and a node move both still work exactly as before, real
+  `_sketchLayer` counts unchanged.
+
+Full suite: `npx vitest run` -> **1258 passed** (up from 1257 — 1 new isolated unit test for cause 2's fix;
+causes 1 and 3 are DOM-click-dispatch-pipeline fixes with no existing unit-test scaffold reaching that deeply
+nested interaction code — same "live-verified, not unit-tested" honesty this session has used throughout for
+this class of code — flagged here rather than silently claimed as covered), zero regressions.
+
+No edits to `bspline_gen_palette.html`.
+
+## Turn 284 — UI4 item 0b: Clear then Regenerate produces nothing — INVESTIGATED, NOT REPRODUCED (not fixed) — NO FUSION
+
+Attempted to reproduce with the dispatch's own suggested pattern (real CDP mouse-driven Clear + Generate
+clicks, `window.confirm` stubbed to accept the Clear dialog) before writing any fix — per this session's own
+"measure, don't fabricate a fix for something you can't confirm" rule. Result: genuinely could NOT get a
+reliable repro, across a wide spread of conditions:
+- Box Lattice, board-mode (default) extent: the VERY FIRST trial showed 0 pieces after Clear -> Regenerate —
+  but re-running the IDENTICAL script (unmodified) 3 more times immediately after, and again after varying
+  the Clear-to-Generate delay (0ms/50ms/300ms/1000ms) and across 15 further plain repeated-Generate trials
+  (no Clear at all, to rule out a seed-dependent degenerate case unrelated to Clear), every subsequent trial
+  produced normal non-zero output (30-46 pieces). Never reproduced a second time despite ~20 total attempts.
+- Shape Lattice, boundary-mode extent (the dispatch's own explicit hypothesis: "re-creating the silhouette"):
+  confirmed LIVE that Clear genuinely deletes the boundary-linked contour element
+  (`document.querySelectorAll('[data-boundary-ref="<shapeId>"]').length` -> `0` right after Clear, while
+  `layer.pattern.boundary.shapeId` itself is untouched, still pointing at the now-gone element) — exactly the
+  scenario the dispatch describes. Regenerate afterward still correctly rebuilt everything (25 -> 50
+  pieces+contour-segments) — Shape Lattice's silhouette is fully parametric (`shape.params`/seed), so losing
+  the STAMPED reference element doesn't block re-deriving it.
+- Read `generatePattern`/`_resolveExtent`/`_collectOccupied` (`editor-lattice-pattern.js`) end to end looking
+  for anything that reads DOM state Clear would invalidate: board-mode extent comes from `editor._mW`/`_mH`
+  (document dimensions, untouched by Clear); `_collectOccupied` only ever collects NON-owned (hand-drawn)
+  pieces on the active layer, empty before AND after Clear in every scenario tested; the ownership-sweep
+  immediately before regenerating iterates `_sketchLayer.children()`, which is simply empty (not broken) right
+  after Clear. Found no code path that behaves differently on an EMPTY canvas versus one already holding the
+  previous generation's own owned pieces.
+- This investigation happened either side of the lane-b T74 merge (`85c7e1a`, pulled mid-investigation via
+  `git pull --ff-only` on a clean tree per the advisor's own instructions) — confirmed via `git diff` that
+  merge's own 26-line change to this file is an unrelated NEW export (`latticeOwnedElementsOnLayer`, T74
+  AMEND 5's manifest fix) that doesn't touch anything on this bug's own suspected code paths.
+
+**Not marking this done.** No code change landed (nothing to fix without a reliable repro to fix it AGAINST —
+a speculative change here risks masking a real, different-shaped bug or introducing a new one). If this
+recurs, the single most useful thing to capture next time is the EXACT starting state (a freshly generated
+pattern vs. one loaded from a saved document; which extent mode; whether any OTHER action happened between
+Generate and Clear) — my own ~20-trial sweep couldn't isolate a condition that reproduces it.
+
+## Turn 284 — UI4 item 0c: box tool Regenerate on a Shape-Lattice layer rebuilt the shape — DONE — NO FUSION
+
+**Root cause.** `properties-lattice.js`'s `_currentPattern(editor)` returns the SAME `layer.pattern` object
+every panel shares (mutated in place, never copied) — `readFieldsIntoPattern()` (the box panel's own Generate
+click handler) already overwrites every box-lattice field (orientation/rails/ties/nodes/colors/widths/seed)
+on it, but until now left `extent`/`boundary`/`shape` (`properties-shape-lattice.js`'s own fields, written the
+last time THAT panel generated on this same layer) completely untouched. `generatePattern`
+(`editor-lattice-pattern.js`) branches on `PATTERN.extent.mode === 'boundary'` to decide whether to fill a
+shape's own contour at all — a stale `'boundary'` extent left on the layer silently kept the BOX panel's own
+Generate button running that same path. Confirmed live: generating a Shape Lattice, switching to the box
+Lattice tool, and pressing its "Regenerate" reproduced exactly the report (still boundary-mode, contour
+untouched).
+
+**Fix — the declared rule (Fred): the ACTIVE TOOL decides the kind.** `readFieldsIntoPattern()` now
+unconditionally `delete`s `p.extent`/`p.boundary`/`p.shape` at the very start, every press, regardless of what
+the layer's pattern held before — this panel IS the box Lattice tool, so its own Generate must always produce
+a genuine board-mode box-lattice pattern. Also swept the OLD contour segments a prior Shape Lattice generation
+left behind: `generatePattern`'s own ownership-sweep only clears `OWNERSHIP_ATTR`'d rails/ties/nodes, but a
+contour segment uses a completely different attribute scheme (`data-boundary-ref`/`data-contour-seg`, never
+`OWNERSHIP_ATTR`) and was invisible to that sweep — confirmed live, the old contour survived as orphaned
+visual clutter even after the extent/boundary/shape fields were correctly reset. Fixed by capturing the OLD
+`p.boundary.shapeId` and removing every matching element (`_findBoundaryElements`, already exported from
+`editor-lattice-pattern.js`, imported here) BEFORE dropping the field that's the only handle left to find them
+by.
+
+Tests (`tests/properties-lattice.test.js`, 2 new, reusing that file's own existing mock-editor harness): a
+stale `extent`/`boundary`/`shape` set directly on the mock layer's pattern (simulating a prior Shape Lattice
+generation) is fully gone after pressing the box panel's own Generate; a fake leftover contour segment (same
+attribute shape `_findBoundaryElements` looks for, no `OWNERSHIP_ATTR`) is genuinely removed from
+`_sketchLayer`, not just visually hidden. **Mutation-tested non-vacuous**: removed the whole fix block —
+exactly those 2 tests failed, the other 25 in the file stayed green; restored, all 27 green again.
+
+Live verification (CDP): generated a Shape Lattice (12 contour segments, `extent.mode:'boundary'`), switched
+to the box Lattice tool, pressed its Regenerate — resulting pattern has no `boundary`/`shape` fields, extent
+back to board-default, contour segment count `0` (fully swept), a normal full-width/full-height box lattice
+rendered (screenshot confirms: straight corner-to-corner rails, no leftover hourglass silhouette).
+
+Full suite: `npx vitest run` -> **1269 passed** (up from 1267 — the 2 new tests), zero regressions. No edits
+to `bspline_gen_palette.html`.
+
+## Turn 285 — UI5 item 0 (REOPENED UI4 item 0): Shape Lattice Select-drag STILL didn't persist — DONE — NO FUSION
+
+The advisor's own fresh-headless-profile repro (`tools/repro/select_drag_shape.mjs`, committed by them) still
+showed "rail moved 0.000 / tie moved 0.000" against the SAME main branch my earlier "fixed" claim was based
+on. Ran their exact script against my own local dev server first — it reproduced immediately, proving my
+earlier verification (Turn 284) had a real gap, not just an environment difference. Found and fixed TWO
+further, distinct causes.
+
+**Cause A — a genuinely applied move never got written into the SVG attributes anything else reads.**
+Diagnostic logging showed the drag WAS live: the selected element carried a real `transform="matrix(1,0,0,1,
+0,0.442...)"` after the move. But `translateSelection` (the generic Select-mode body-drag, `editor-
+interaction.js`) moves an element via `el.translate(dx,dy)` — a transform matrix, never baked into raw
+attributes — which is the ordinary, correct way this app's Select tool has always moved a plain hand-drawn
+shape. This app's OWN declared convention for a LATTICE piece is different: `_beginLatticeMove` (the box
+Lattice tool's own move mechanism) explicitly bakes its result into raw `x1/y1/x2/y2`/`cx/cy` with no
+transform left ("a Lattice-mode move BAKES its result into the attrs" — SE7i's own words), because
+`generatePattern` and every other lattice-aware reader (attachment checks, manifest export, the advisor's own
+verification script) reads those raw attributes directly, never a transform matrix. `translateSelection`'s
+own generic move was never taught this convention. Fixed by extracting `_beginLatticeMove`'s own inline bake
+logic into a shared `_bakeLatticeTransform(el, kind)` helper, and calling it from `handleEnd`'s own
+plain-body-drag completion path (gated to rail/tie/node-kind selected elements only; never
+`wasTransform`/`wasNodeDrag`/`wasMarquee`, all excluded already) — BEFORE `pushState()`/`_notifyChange('commit')`,
+so the persisted state reflects the baked position.
+
+**Cause B — a second, genuinely different hit-test ambiguity the fix for the FIRST one (Turn 284) reintroduced.**
+Even after baking, the RAIL drag specifically still failed ~50% of the time (the TIE drag, unaffected,
+consistently worked). Temporary diagnostic logging inside `handleEnd`'s own bake loop revealed why: in every
+failing run, the element actually baked was `kind:'node'`, not the rail the script (and the user) genuinely
+clicked on. `_getNearbyLatticePiece` (added in Turn 284 to fix the CONTOUR-tie-break ambiguity) used the SAME
+"distance to the element's own bounding-box CENTER" comparison `editor._getNearbyElement` (editor-hit.js) uses
+— fine for roughly-square shapes, but wrong for a long, thin rail: a tiny NODE sitting anywhere near the
+click point (e.g. a crossing node, "at crossings" is on by default) has its own bbox center essentially AT
+the click, while a full-length rail's bbox center sits at its own 50% mark — far from a click at, say, 30%
+along its length — so a nearby node could win the comparison even when the click was unambiguously on the
+rail's body. Fixed by replacing the bbox-center comparison with true distance-to-GEOMETRY: distance-to-point
+for a node, distance-to-the-actual-line-SEGMENT (`_distToSegment`, the same standard point-to-segment formula
+`editor-shape-lattice-interaction.js`'s own private `_distToLine` already uses, duplicated rather than
+imported across that module boundary for one 5-line pure function) for a rail/tie — which has no such bias
+regardless of a piece's own bounding-box shape.
+
+**Verification: the advisor's own exact script, unmodified, run 8 times in a row against local — all 8
+green** (`RAIL moved dy(model)= 0.442`, `TIE moved dx= 0.442`, both showing a real, persisted, non-zero move
+every time — the prior fix's own 2/4 and 2/6 failure rates across earlier trial runs are gone). Full suite:
+`npx vitest run` -> **1269 passed**, zero regressions (no new isolated unit test this entry — both causes are
+DOM/pointer-event-dispatch-pipeline fixes with no existing scaffold reaching this code; the advisor's own
+live script is kept, per their instruction, AS the test for this scenario, matching how this repo's own
+`scripts/smoke-*.mjs` files already serve as the de facto suite for comparably deep interactive behavior).
+
+No edits to `bspline_gen_palette.html`. `tools/repro/select_drag_shape.mjs` itself untouched (kept exactly as
+the advisor committed it, per "keep the script as a test").
+
+## Turn 288 — UI5 AMEND 2 (item 0 continued): Shape Lattice piece drag now uses the SAME constrained move as box Lattice — DONE — NO FUSION
+
+The advisor's own live re-run of the prior fix (e3949be) found the piece DID now persist, but via the GENERIC
+Select move (`translateSelection`) — no grid snap, ties left behind when their rail moved, a tie dragged off
+its own rails, and an end-drag translating the whole tie instead of stretching it. Their own instruction: "It
+must use the SAME constrained lattice-move path as the box Lattice (one code path)."
+
+**Root cause.** `shapeLatticeHandler.start`'s own lattice-piece branch (added the previous turn to fix the
+contour-hit-priority bug) called `selectHandler.start(editor, pt, e, latticeHit)` — the box Lattice tool's own
+`latticeHandler.start` instead calls `_beginLatticeMove` for the SAME kind of hit, the function with ALL the
+constrained-move logic (grid snap, ties-follow-rails, end-vs-body detection, end-stretch). Two entirely
+different move implementations for what's supposed to be the same gesture on the same kind of piece.
+
+**Fix.** Replicated `latticeHandler.start`'s own existing-piece branch inside `shapeLatticeHandler.start`
+instead of delegating to `selectHandler`: select the piece (same `editor._select`/`_selectAdd` calls, for
+colour/delete via the generic mechanism), then call the SAME `_beginLatticeMove(editor, hit, kind, pt,
+spacing, orientation)` box Lattice uses, setting `editor._isDrawing = true` + `editor._latticeMove`. The
+harder half: `handleMove`/`handleEnd` dispatch per-mode (`getModeHandler(editor._currentMode)`), so setting
+`_latticeMove` from `shapeLatticeHandler.start` alone does nothing — the NEXT frame's `shapeLatticeHandler.
+update`/`.finish` would run instead of `latticeHandler`'s own, and neither knew `_latticeMove` existed. Added
+the identical one-line dispatch `latticeHandler.update`/`.finish` already have
+(`if (editor._latticeMove) { _updateLatticeMove/_finishLatticeMove(editor); return; }`) to the TOP of
+`shapeLatticeHandler.update`/`.finish`, falling through to the existing param-handle logic otherwise — now
+BOTH tools' own mode handlers dispatch into the ONE shared constrained-move implementation whenever
+`editor._latticeMove` is active, regardless of which tool's mode is current. (Bonus, unplanned: since
+`_finishLatticeMove` calls `editor._onChange()` directly rather than `_notifyChange('commit')`, this move ALSO
+never reaches `refreshBoundaryPatterns` at all now — the exact over-triggering this turn's own earlier
+`_skipBoundaryRefillOnce` flag was built to suppress no longer even applies to this gesture; that flag stays,
+unused by this particular path but still needed for a contour-piece selection via the generic Select tool.)
+
+**Verification**: the advisor's own unmodified script, run 4 times — every trial now shows: the rail snaps to
+a clean grid value (`dy(model)=0.500`, not the prior raw `0.442`); every tie attached to that rail follows it
+by the identical shift (before/after `y1` differs by exactly the rail's own move, in every attached tie,
+every trial); a tie's own body-drag also snaps and stays connected; a tie's END-drag moves ONLY that end
+(`y1` changes, `y2` stays fixed) rather than translating the whole piece. Full suite: `npx vitest run` ->
+**1269 passed**, zero regressions.
+
+**Not yet addressed**: the dispatch's own "rail ends stay on the contour per T73 where applicable" — the
+shared `_beginLatticeMove`/end-stretch logic has no knowledge of the silhouette boundary at all (it's a pure
+grid-snap operation), so stretching a rail/tie's end PAST where the contour would visually allow isn't
+constrained today. The advisor's own AMEND 2 text didn't re-flag this as still broken (their own repro/ask
+focused on snap+ties-follow+end-stretch specifically), so left as a candidate follow-up pending their own live
+check rather than guessed at.
+
+No edits to `bspline_gen_palette.html`.

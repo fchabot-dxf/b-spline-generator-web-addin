@@ -728,7 +728,7 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   Lattice tool (drag a rail → ties change LENGTH not width, nodes follow; ties slide along rails; attachments derived
   at drag start); widths default = Widths row pending Fred. Task text staged; dispatch after SE7h.
 
-## Queued — MOB2: mobile pass on today's features (Fred 2026-09-24: "make sure it's mobile friendly and deploy to cloudflare")
+## Done — MOB2: mobile pass on today's features (Fred 2026-09-24: "make sure it's mobile friendly and deploy to cloudflare")
 Live pages.dev check at 390x844 touch (advisor, after c932646): lattice Generate/pinch/touch actions work. Found:
 - undo/redo floating pill sits ON TOP of the editor's Layers panel header (covers "LAYERS" + its add button);
 - editor header overflows: Cancel clipped, **Apply Stencils off-screen** (the one commit action);
@@ -746,7 +746,7 @@ correct inch scale (rect corner arcs r = 0.05" = w/2). Side fix: SVG text render
 Also done today: SE7h/i/j connected lattice (active layer, per-layer settings, Widths, grid-point attachment, upright
 node drag), MOB2/MOB2b mobile pass, layer toggle styling. Add-in deployed at 0258941.
 
-## Queued — SE14: SHAPE LATTICE tool (Fred 2026-09-25, supersedes the "Silhouette tool" note)
+## Done — SE14: SHAPE LATTICE tool (Fred 2026-09-25, supersedes the "Silhouette tool" note)
 Fred: "the shape lattice and lattice box are different" → TWO tools sharing one engine:
 - `#` Lattice (box): today's tool, fills the board rectangle; the SE13 Boundary row moves OUT of it.
 - Shape Lattice (new tool, own rail icon + drawer tab/panel): SHAPE section + the same Fill settings (spacing, rails,
@@ -759,7 +759,7 @@ Fred: "the shape lattice and lattice box are different" → TWO tools sharing on
 - Source: lane-b reference/svgcreator-deployed/ (pathloop.js style table, utils.js resolveGenerator, main.js chin/neck)
   + C:/Users/danse/APPS/SVG creator/src/envelope.js (waist controls). Next: seat B design doc after T50.
 
-## Queued — SE15: send Lattice/Shape as real Fusion CONSTRAINED sketches (Fred 2026-09-25)
+## Done — SE15: send Lattice/Shape as real Fusion CONSTRAINED sketches (Fred 2026-09-25)
 Fred: "when using lattice and shape we could send the sketches as actual Fusion constrained sketches" … "no need to
 fully lock them though". Instead of SVG import (plain curves), the app writes a declared SKETCH MANIFEST
 (entities: lines/arcs/circles; constraints: tangent, coincident, horizontal/vertical, symmetric, equal, tie-end-on-rail;
@@ -777,7 +777,7 @@ Outline/inlay geometry: offsets of the constrained centerlines where feasible. A
 - Fred: "no length needed though" → NO length/position dimensions on rails/ties/nodes; only WIDTH (offset) dimensions
   + the few shape params. Lengths/positions stay free (relationship constraints only).
 
-## Queued — MOB5 (seat A, NEXT after MOB3b, before MOB4): mobile pan & zoom (Fred 2026-09-25: "pan and zoom
+## Done — MOB5 (seat A, NEXT after MOB3b, before MOB4): mobile pan & zoom (Fred 2026-09-25: "pan and zoom
 (pan should be integrated in 2-finger interaction) doesn't work well in mobile")
 Root cause (advisor, editor-interaction.js ~:160-175): the two-pointer handler only ZOOMS — zoomAbout(view, pivot at
 the current midpoint, factor) — with no TRANSLATION term, so sliding two fingers without spreading them (factor ≈ 1)
@@ -788,14 +788,14 @@ empty canvas in Select mode (pan or marquee — declare which on touch), the mai
 viewport meta). CDP touch tests: two-finger slide pans by the right amount, pinch keeps the point under the fingers
 fixed, combined gesture both.
 
-## Queued — MOB4 (seat A, after MOB3b): landscape side-by-side + double-tap handle (Fred 2026-09-25: "yes ok")
+## Done — MOB4 (seat A, after MOB3b): landscape side-by-side + double-tap handle (Fred 2026-09-25: "yes ok")
 1. Phone in LANDSCAPE (coarse pointer, height ≤ ~500px): editor and main screen go side-by-side — canvas/preview left,
    the tool panel/sidebar right (scrollable), a vertical splitter handle between them (same makeSplitter, axis 'x').
 2. DOUBLE-TAP the handle (either orientation): jump to canvas-max ↔ settings-max (declared snap targets), single tap
    keeps its current cycle behaviour.
 Later if still needed: floating mini-preview while adjusting a slider with the panel tall; Sparse/Medium/Dense presets.
 
-## Queued — UI1 (seat A, after MOB4): ONE segmented-control style app-wide (Fred 2026-09-25)
+## Done — UI1 (seat A, after MOB4): ONE segmented-control style app-wide (Fred 2026-09-25)
 Fred picked layer-row style "C1 — soft segmented" (outlined group, thin dividers, ON = light-blue tint + blue glyph,
 OFF = grey; ~30px visible cell, ≥40px tap area) and: "I guess it can be the general look too, right". → Declare ONE
 segmented component (CSS class + tiny helper if needed) and use it for EVERY choice control: toolbar Stroke/Fill/Both
@@ -804,3 +804,130 @@ Lattice (Hourglass/Bottle, straight/curve/kink bar), Fusion Geometry, Boundary/E
 [👁|3D|🎨]. Actions (Generate, Apply Stencils, Regenerate, Detach) keep their button look. Retire the per-control
 variants' CSS (no dead styles). Reference mock: scratchpad layerrowsC.html (.C1). Before/after screenshots desktop +
 phone.
+
+## Done — SE15b: Shape Lattice CONTOUR (hourglass/bottle outline) as constrained Fusion geometry (Fred 2026-09-25)
+Advisor MEASURED arc slots in Fusion: `sketch.addThreePointArcSlot(p1, mid, p2, width, True)` inserts correctly
+(centerline r=1, sides ±w/2, end caps w/2); width dimension .parameter.expression = param works; on a width edit:
+centerline free or center-only fixed → LOPSIDED; all 3 points fixed → BROKEN (cap grows, sides don't); **both
+centerline END points fixed → grows EVENLY** (0.908/1.108 around 1.008). Same anchoring rule as straight slots.
+Plan (default = slot chain, Fred: "some of it is already slot parts" / "slot has an arced slot tool"): straight contour
+segments = center-to-center slots, shoulder/waist/hip = 3-point arc slots, NO Fix anywhere (Fred 2026-09-25: "never use
+Fix" — supersedes the anchoring measurement above; hold shape with relationship constraints only), widths =
+border_width (or stroke_width), joints = separate points + explicit Coincident + Tangent on the centerlines, a vertical
+construction line + Symmetry for left/right, a few named params (waist_depth, waist_height, corner_radius).
+DECIDED (Fred: "it can be separate slot parts"): slot chain, overlapping joints accepted; no closed-loop offset. After T64.
+
+## Done — SE14b: Shape Lattice CONTOUR as separate selectable SEGMENTS in the app (Fred 2026-09-25)
+Fred: "then we should also represent those separations in the add-in preview, to be able to select segments and color
+them". The generated silhouette is emitted as ONE ELEMENT PER SEGMENT (line / circular arc, round caps, stroke =
+stroke_width or border_width, colour per segment) instead of one path — each selectable, recolourable, shown per
+segment in the drape/3D preview and exported per segment (→ one Fusion slot each, SE15b). The fill boundary = the
+segments chained into one closed loop (derived, not stored twice). Straight/curve/kink styling stays mirrored per pair;
+COLOUR is per segment (left ≠ right allowed). Hand node-edit still detaches from the generator. Pair with SE15b.
+
+## Done — SE14c: Shape Lattice "Contour" checkbox (Fred 2026-09-26)
+Fred: "in shaped lattice I'd want a checkbox for the actual contour, I still want rails and ties to be contoured but
+sometimes don't want the contour profile". → a declared `contour.show` flag (default on) + a checkbox in the Shape
+Lattice panel. Off = the contour is still COMPUTED and still clips/fits the rails and ties exactly as now, but the
+contour segments are not drawn, not exported (SVG / Send to Fusion) and not in the manifest (no contour slots, no
+contour_width/height dims). Parity test covers both states. Do after T71 (and alongside or after SE14b, which draws the
+contour as segments).
+
+## Done — SE15c: raise the SKETCH_PIECE_THRESHOLD (advisor MEASURED 2026-09-26)
+Above 60 pieces the manifest sends plain, unconstrained geometry (SE15 §8 guess). Measured in Fusion, 16 rails / 97
+pieces: plain 61 s, drift 0.139" at stroke 0.5 (0.013" not recovered), rails visibly tilted; CONSTRAINED 90 s, 0 fails,
+exact parity, drift 0.030" (0.0004" recovered). Raise the threshold (e.g. 300) so dense lattices stay constrained.
+
+## Done — SE14d: remove "Pick shape…" from the Shape Lattice panel; a separate Fill-shape tool later (Fred 2026-09-26)
+Fred: "boundary pick shape isn't useful, it might just be another tool". Next task for seat B after T73. Remove the
+Boundary → Pick shape… affordance (and its edge-rule row if it only serves picked shapes) from the Shape Lattice panel;
+KEEP the boundary machinery (the generated silhouette runs through the same boundary/inset code). Removal is a sweep:
+button, its handler, panel state/strings, tests that only guard the picked-shape UI — each link removed or kept with a
+named reason. Saved patterns that have a picked boundary still load (read-only / detach) — decide and log.
+Later, optional: a standalone "Fill shape" tool (pick any drawn shape → lattice inside) if Fred wants it.
+
+## Done — NODE-D: node size entered as DIAMETER (Fred 2026-09-26: "node size should be entered as diameter not radius")
+With SE14d (seat B, after T73). Lattice + Shape Lattice "Node size" field shows/accepts DIAMETER (default 0.075 r →
+0.15 Ø). Fusion: parameter `node_diameter`, each node circle gets a DIAMETER dimension (Ø) driven by it (replaces
+node_radius + radial dims). Declare which quantity is stored once; saved patterns with the old radius value load
+correctly (convert on read, one place). Parity + builder tests updated; advisor verifies live.
+
+## Done — FB-ORDER: frame before inlay in the timeline; board params owned by Send to Fusion (Fred 2026-09-26)
+Fred: the inlay sketch (Source - L1 …) should interact with the frame-builder sketches (T1_2_shape_outline …), but the
+frame is generated after it, so the inlay can't see it; "only Send to Fusion can create" widthIn/heightIn; "move the
+frame before the inlay but still after the initial comp creation". Target timeline:
+  [Send to Fusion: B-Spline Set comp + body] → [Frame_1 comp + its sketches/features] → [Plane for L…][Source - L… inlay]
+Rules (declared, not hand-rolled): (1) OWNERSHIP: widthIn/heightIn (the board params) are created/updated ONLY by
+Send to Fusion; the frame builder READS them and, if missing, stops with a clear "Run Send to Fusion first" — its
+_sync_user_parameters must skip the board params (a declared owned-by list). (2) ORDER: after the frame builds, it
+moves its own timeline items (occurrence creation, sketches, planes, features) to just BEFORE the earliest inlay item
+(plane/sketch named "Plane for L…"/"Source - L…"), never before the initial comp/body. Advisor MEASURED in a scratch
+doc: TimelineObject.reorder of a LATER sketch to an EARLIER index works (canReorder True); moving the earlier inlay/plane
+LATER is refused (canReorder False). So move the frame earlier, not the inlay later. Also measured: API sketch.project()
+of later geometry into an earlier sketch works, stays linked, follows edits, survives a timeline rollback — but the
+UI won't do that by hand, hence the reorder. Move the frame block as ONE UNIT in its original order (occurrence, sketches, planes, AND any solid-builder
+features already built from them) — check canReorder for each first; if any refuses (e.g. a frame feature depends on the
+inlay), move nothing and warn. Solid builder run later lands at the end and sees everything (Fred asked: "will the solid
+builder still see the frame sketch?" — yes). Seat A after UI2; advisor verifies live on Fred's layout, incl. solid builder.
+
+## Queued (seat B, after T74) — LAT-SIZE: lattice size fields in the app, both lattice tools (Fred 2026-09-26: "yes")
+A declared SIZE (width, height) per lattice pattern, shown as a "Size" row in the Shape Lattice AND the box Lattice
+panels, default = board minus 1 in (the existing one declared margin constant), centred on the board. The size is the
+OUTSIDE of the contour slots (Fred); Fusion dims stay on the centerline with expression size - stroke_width. Shape Lattice:
+the contour + its rails/ties regenerate at that size and the SAME numbers go to Fusion as contour_width/contour_height
+(param values). Box Lattice: its fill area inside the board = that size (rails/ties fit inside; if it exports size
+dims, same parameter pattern — decide + log). Saved patterns without size read the default. Parity + sweep tests cover
+a non-default size. Seat B, after T74 and before SE17 (smaller; SE17 builds on the same patterns).
+
+## Queued (seat B, with LAT-SIZE) — OVR-FUSION: per-piece width/colour overrides reach Fusion (Fred 2026-09-26)
+Seat A's UI3 adds per-piece overrides in the lattice Select tool (data-override-color / data-override-width on a
+rail/tie/node/contour piece). Fred: "overrides don't survive [regenerate] and don't get a param, just hardcode the
+dimension seed". Seat B: the manifest reads data-override-width → that piece's slot width dimension is a HARDCODED value
+(no parameter, no stroke_width expression); others unchanged. Colour override → per-segment colour in SVG/Send to
+Fusion. Parity + builder tests. Small; do with LAT-SIZE.
+
+## Queued (seat B, after LAT-SIZE) — SE17: lattice KINDS on separate layers → separate Fusion sketches linked by projection (Fred 2026-09-26)
+Fred: "I want ties on a layer and rails on another and nodes another" / "it's actually in Fusion that it matters most".
+App: the Lattice + Shape Lattice tools put rails, ties, nodes (and the contour) each on their OWN layer (own
+visibility, colour, carve config, export) — still one generated pattern (regenerate/detach act on all its kind-layers).
+Fusion: one sketch per kind-layer, built in dependency order contour → rails → ties → nodes; each later sketch
+PROJECTS the curves it relates to from the earlier sketches and puts its cross-kind constraints (tie-on-rail,
+rail-on-contour, node-at-joint, Collinear) on those projections. Advisor MEASURED (scratch doc): a direct constraint
+to another sketch's curve is refused ('sketch == msketch'); a constraint to a PROJECTED copy works and follows — the
+rail moved 0.5in in its own sketch and the tie end followed (2.0, 0.5). Timeline order also lets Fred Project/Include
+by hand (earlier sketches visible to later ones). Tradeoffs Fred accepted: edits propagate after finishing the edited
+sketch (not live-drag across kinds); a deleted rail leaves a broken projection warning in the ties sketch; projected
+curves add visual clutter. Declared: the kind→layer map and the sketch build order (data), not per-kind code paths. Fred: the kind-layers
+are ordinary layers — drag-reorder = draw stacking (rails over contour or vice versa) and the eye = show/hide, per kind.
+The APP stacking order is independent of the FUSION sketch build order, which stays contour → rails → ties → nodes
+(projection dependencies). Fred confirmed the fixed build order is needed for the constraints. Hidden kind-layers are NOT exported (same rule as
+any hidden layer); a sketch whose dependency kind is hidden keeps its exact geometry but loses those cross-kind
+constraints (e.g. rails hidden → tie ends placed exactly but not linked). Declared as data, tested both ways.
+Parity: verify_sketch_against_manifest per sketch; spawn parity rule unchanged. Seat B after T74.
+
+## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
+Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
+sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
+tap a joint (node / tie-rail meeting) → the rail/tie through it splits there into separate segments (each its own
+element in the app, its own SLOT in Fusion; joint = separate points + explicit Coincident, deletable in Fusion). Lattice
+panels also get "Split all at joints". Segments KEEP LATTICE MEMBERSHIP by DERIVATION, not a stored id (Fred: "it's derived anyways"): at drag start,
+same-kind segments that are collinear and touch end-to-end count as ONE rail/tie (a gap = separate pieces) — same
+principle as SE7i's derived tie-on-rail attachment, no second source of truth; dragging the rail moves all its segments, outer ends still stretch, stroke_width drives all; each segment selectable/colourable.
+Join = tap the joint again (or "Join" action). Fred: "like a cut tool" → tap ANYWHERE on a line to cut there (snaps to joints then grid points; Alt / Snap-off =
+free); Fred: "we don't need it in lattice if it's not needed for keeping structure" → main rail only, NO lattice-panel
+button and NO "Cut all at joints"; the tool itself preserves lattice membership when cutting a rail/tie; tap a cut point again with the tool = Join. Default: cut
+segments move together as one rail (Fred to confirm vs fully independent). Works on any plain line too (main tool).
+ACCEPTANCE (Fred: "I don't want the cut tool to break the lattice structure editability — rails and ties following
+each other on drag"): for the SAME lattice before and after cutting a rail (and a tie) at several joints, the SAME
+drag gestures must give IDENTICAL results — dragging any segment moves every collinear touching segment of that rail,
+every tie attached to ANY segment stretches exactly as before, tie drags still slide/attach, stretch-at-ends still
+works on the outer ends. Test = before/after equality of all piece coordinates after each gesture, both orientations.
+BREAK RISKS + GUARDS (advisor, for Fred's "what would break it?"): (1) a cut must make both new ends the IDENTICAL
+snapped point; "touching" is checked with a declared tolerance (drift after many drags); lattice drags re-snap ends to
+the grid. (2) CUT POINT ≠ END: grabbing at a cut point moves the JOINT (both segments' ends together, like a node);
+only the rail's true OUTER ends stretch — otherwise end-stretch would silently open a gap and split the rail.
+(3) Select-tool free move of one segment = intentional break (unchanged). (4) deleting a middle segment = two rails
+(intended). (5) membership is geometry-only — colour/width per segment never splits a rail. Test (2) explicitly.
+GOAL (Fred: "different colour per segment is the goal, that should not break it"): acceptance includes cutting a rail,
+giving EVERY segment a different colour (and one a different width), then re-running the same drags → identical
+coordinates to the uncoloured cut rail; colours stay on their segments through every drag and undo/redo. After SE14b/SE15b (same "one piece → segments" idea).

@@ -344,9 +344,15 @@
 
   <main class="cad-main-content app">
     <aside class="cad-sidebar">
-      <!-- 0. Sticky Header Actions — pinned to top of sidebar scroll viewport -->
-      <div class="cad-panel-section"
-        style="padding: 12px; background: #fdfdfd; border-bottom: 1px solid var(--cad-border-color); position: sticky; top: 0; z-index: 20; box-shadow: 0 4px 6px -4px rgba(0,0,0,0.18);">
+      <!-- 0. Sticky Header Actions — pinned to top of sidebar scroll viewport.
+           UI4 AMEND 4b: .sticky-actions (layout-app.css) is the ONE shared
+           pinned-action style (also used by the lattice side column's own
+           Generate/Regenerate, lattice-side-column.js) -- its negative
+           margins + top:-14px compensate for the `aside` tag rule's own
+           14px padding, which a plain position:sticky child would
+           otherwise reveal scrolled content through (that padding sits
+           OUTSIDE the sticky element's own stuck position). -->
+      <div class="sticky-actions">
         <button class="cad-btn" id="btnRandomSeed"
           style="width:100%; height:32px; background:#4caf50; color:#ffffff; border:1px solid #388e3c; font-weight:600;">🎲 Generate New
           Seed</button>
