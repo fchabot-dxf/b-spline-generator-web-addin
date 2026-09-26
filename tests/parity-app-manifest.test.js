@@ -153,6 +153,36 @@ describe('parity: box lattice — app drawing vs buildSketchManifest', () => {
     const manifest = buildSketchManifest(pattern, region, {});
     checkLatticeParity(editor, manifest, region);
   });
+
+  // T75 item 5 (LAT-SIZE sweep): a non-default PATTERN.size shrinks/off-
+  // centers the fill region both the app's own draw (generatePattern ->
+  // _resolveExtent's 'board' branch) and the manifest (buildSketchManifest
+  // -> resolveBoardExtent) build from -- both call the SAME sizedBoardRegion
+  // (editor-lattice-boundary.js), so this sweep is a real, independent check
+  // that the two never drifted apart for this new field, not just a retest
+  // of the (unchanged) default-size path above.
+  for (const size of [{ width: 3, height: 4 }, { width: 2, height: null }]) {
+    it(`a non-default pattern.size (${JSON.stringify(size)}) still holds parity`, async () => {
+      const editor = makeMockEditor(7, 9);
+      const pattern = { ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42, size };
+      await generatePattern(editor, pattern);
+      const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
+      const manifest = buildSketchManifest(pattern, region, {});
+      checkLatticeParity(editor, manifest, region);
+    });
+  }
+
+  it('non-vacuous: a non-default size genuinely produces DIFFERENT geometry from the default (auto) size — the sweep above isn\'t silently re-testing the same fill region', async () => {
+    const editorDefault = makeMockEditor(7, 9);
+    await generatePattern(editorDefault, { ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42 });
+    const railDefault = editorDefault._sketchLayer.children().toArray().find((e) => e.attr('data-lattice') === 'rail');
+
+    const editorSized = makeMockEditor(7, 9);
+    await generatePattern(editorSized, { ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42, size: { width: 2, height: 2 } });
+    const railSized = editorSized._sketchLayer.children().toArray().find((e) => e.attr('data-lattice') === 'rail');
+
+    expect([railSized.attr('x1'), railSized.attr('x2')]).not.toEqual([railDefault.attr('x1'), railDefault.attr('x2')]);
+  });
 });
 
 describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManifest', () => {
@@ -245,6 +275,23 @@ describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManife
     }
     expect(usedSegs.size).toBe(contourEntities.length); // vice versa: every manifest seg got claimed exactly once
   });
+
+  // T75 item 5 (LAT-SIZE sweep): a non-default pattern.size shrinks the
+  // contour region BOTH regenerateSilhouette (app) and buildSketchManifest
+  // build from -- checkLatticeParity itself needs no size-awareness at all
+  // (it just diffs whatever the two producers actually drew/declared), so
+  // this is a real, independent check the two never drifted apart.
+  for (const size of [{ width: 3, height: 4 }, { width: 2, height: null }]) {
+    it(`a non-default pattern.size (${JSON.stringify(size)}) still holds lattice-fill parity on the shape lattice too`, async () => {
+      const editor = makeMockEditor(7, 9);
+      const pattern = shapePattern({ size });
+      regenerateSilhouette(editor, pattern);
+      await generatePattern(editor, pattern);
+      const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
+      const manifest = buildSketchManifest(pattern, region, {});
+      checkLatticeParity(editor, manifest, region);
+    });
+  }
 });
 
 describe('parity: shape lattice (bottle) — T72 regression: the default Bottle generated 0 rails/ties after T71\'s contour inset', () => {
