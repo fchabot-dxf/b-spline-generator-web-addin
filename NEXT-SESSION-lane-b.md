@@ -1,27 +1,19 @@
-# NEXT (lane-b) — T74: close AMEND 3b thresholds + SE14d (remove Pick shape) + NODE-D (node size as diameter)
+# NEXT (lane-b) — T75: LAT-SIZE + OVR-FUSION + hide "Rail ends" while the contour is shown
 
-**Ball: worker (seat B) · epoch 4 · T74.** NO FUSION. T73 accepted pending the advisor's live Fusion run (if it fails
-you get an `amend`). Three items, one commit each, in order:
-1. AMEND 3b leftovers: a declared near-tangent threshold (no Coincident when a rail/tie crosses a contour segment at
-   < ~10 deg — leave that end free) and a declared MIN_RAIL_PIECE (drop split pieces shorter than ~2x stroke width).
-   Tests incl. a deep-waist hourglass with vertical rails.
-2. SE14d (ROADMAP.md on main, "## Queued — SE14d"): remove "Pick shape…" from the Shape Lattice panel as a SWEEP
-   (button, handler, panel state/strings, tests guarding only that UI — each link removed or kept with a named reason);
-   KEEP the boundary machinery the generated silhouette uses; saved patterns with a picked boundary still load (decide
-   + log). NOTE: seat A's UI2 (on main, merged later) mounts this panel into a side column via TOOL_PANEL_MOUNTS in
-   editor/lattice-side-column.js and decorates sections by title — don't rename section titles.
-3. NODE-D (ROADMAP.md "## Queued — NODE-D"): Node size entered as DIAMETER in both lattice panels (default 0.15);
-   Fusion param `node_diameter` + a DIAMETER dimension per node circle (replaces node_radius + radial dims); old saved
-   radius values convert once on read.
-Pass back: `cd <lane-b worktree> && python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 4 — T74 — <shas>"`.
+**Ball: worker (seat B) · epoch 4 · T75.** NO FUSION. T74 accepted (merge + live test by the advisor). Specs: ROADMAP.md on
+main — "LAT-SIZE" and "OVR-FUSION" entries. PROGRESS is automatic: start each work-commit subject with the item's tag
+words (e.g. "T75 item 2: …"), one tag per item.
 
-## Checklist (T74 incl. amendments) — progress is automatic: commit subjects starting with the tag words (e.g. "T74 AMEND 4: …") mark the item done
-- [x] [T74-AMEND-0] per-preset contour_width dim expression (bottle)
-- [x] [T74-item-1] AMEND 3b close-out: near-tangent threshold + MIN_RAIL_PIECE
-- [x] [T74-item-2] SE14d remove "Pick shape…"
-- [x] [T74-item-3] NODE-D node size as diameter
-- [x] [T74-AMEND-1] one Contour control (show + width + colour)
-- [x] [T74-AMEND-2] size = OUTSIDE of contour; centerline dims = size − stroke_width; app centerline inset stroke/2
-- [x] [T74-AMEND-3] bottle body fills the box; remove body_width as a sweep
-- [ ] [T74-AMEND-4] Contour section cleanup ("Shape linked" gone, settings inside, edge-rule audit)
-- [x] [T74-AMEND-5] manifest only for layers that contain owned lattice pieces; mixed layer = sketch + plain SVG of the rest
+## Checklist
+- [ ] [T75-item-1] LAT-SIZE app: "Size" row (width × height) in BOTH lattice panels, default board − 1 in, centred; the value
+      is the OUTSIDE size (T74 AMEND 2 rule); contour + lattice regenerate at that size; saved patterns without size
+      read the default.
+- [ ] [T75-item-2] LAT-SIZE Fusion: the Size values → contour_width / contour_height param VALUES (dims unchanged:
+      size − stroke_width); box Lattice fill area = the Size (decide whether it exports size dims; log it).
+- [ ] [T75-item-3] OVR-FUSION: seat A's UI4 writes per-piece data-override-color / data-override-width (on main soon —
+      pull/merge main first; if not there yet, build against the declared attribute names). Manifest: an overridden
+      width → that slot's width dim is a HARDCODED value (no param, no stroke_width expr); colour → per-piece colour.
+- [ ] [T75-item-4] Shape Lattice: hide the "Rail ends (contour off only)" row while the Contour checkbox is ON; show it
+      when OFF (derived from the checkbox, not a second flag).
+- [ ] [T75-item-5] Tests: parity + sweep cover a non-default Size; override width → hardcoded dim; rail-ends visibility.
+Pass back: `cd <lane-b worktree> && python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 4 — T75 — <shas>"`.
