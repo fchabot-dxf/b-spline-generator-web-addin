@@ -22,7 +22,7 @@ import { el, on } from './dom.js';
 import { GRID_SPACINGS } from './editor-grid.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
-    stampBoundaryRef, _findBoundaryElement,
+    stampBoundaryRef, _findBoundaryElement, hasGeneratedSilhouette,
 } from './editor-lattice-pattern.js';
 import { PRESETS, generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
@@ -260,11 +260,18 @@ export async function writeSegmentStyle(editor, index, patch) {
  * `generateSilhouette` itself (pure, cheap, no DOM) to get the FULLY
  * RESOLVED params (T59's own new `params` return field) — `shape.params`
  * alone would be missing any key the user never explicitly pinned.
+ *
+ * T72 (AMEND 2): `hasGeneratedSilhouette` (editor-lattice-pattern.js) is
+ * the REAL "has Generate actually run" check — `shape.source ===
+ * 'generated'` alone is true on an untouched layer too (it's just
+ * PATTERN_DEFAULTS.shape's own default value), which is exactly why this
+ * used to show 3 handles floating over an empty board before any shape
+ * existed.
  */
 export function paramHandleRecords(editor) {
     const p = currentPattern(editor);
     const shape = currentShape(p);
-    if (shape.source !== 'generated') return [];
+    if (!hasGeneratedSilhouette(p)) return [];
     const region = _shapeContourRegion(editor);
     const { params: resolved } = generateSilhouette(region, shape);
     if (!resolved) return [];

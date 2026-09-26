@@ -609,13 +609,17 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
   });
 
   describe('paramHandleRecords / renderShapeLatticeHandles', () => {
-    it('returns [] before any Generate (source defaults to \'generated\' but nothing exists to anchor against — still computes fine, just an empty DOM)', () => {
-      // Actually: PATTERN_DEFAULTS.shape.source IS 'generated' by default,
-      // so records ARE computed even pre-Generate (paramHandleRecords is
-      // pure/cheap, no DOM needed) — this is the REAL contract, verified
-      // directly rather than assumed.
-      const records = paramHandleRecords(editor);
-      expect(records.length).toBe(3); // hourglass's own 3 declared params
+    it('T72 (AMEND 2, Fred\'s phone screenshot): returns [] before any Generate, even though shape.source already reads \'generated\' (PATTERN_DEFAULTS\' own default, materialized the first time anything touches p.shape) -- source alone was never enough to prove a silhouette actually exists', () => {
+      const p = currentPattern(editor);
+      expect(currentShape(p).source).toBe('generated'); // non-vacuous: the misleading default this bug hinges on is genuinely present
+      expect(p.extent).toBeUndefined(); // and Generate genuinely hasn't run -- no {mode:'boundary'} yet
+      expect(paramHandleRecords(editor)).toEqual([]);
+    });
+
+    it('T72 (AMEND 2): 0 handles pre-Generate, 3 after -- the dispatch\'s own exact acceptance test', () => {
+      expect(paramHandleRecords(editor).length).toBe(0);
+      regenerateSilhouette(editor, currentPattern(editor));
+      expect(paramHandleRecords(editor).length).toBe(3); // hourglass's own 3 declared params
     });
 
     it('returns [] once the linked shape is hand-PICKED (source==\'picked\') — nothing to drag', () => {
@@ -628,12 +632,14 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
     it('one handle per declared param, for the CURRENT preset (bottle: 4)', () => {
       const p = currentPattern(editor);
       currentShape(p).preset = 'bottle';
+      regenerateSilhouette(editor, p); // T72: a real Generate must have run first
       const records = paramHandleRecords(editor);
       expect(records.length).toBe(4);
       expect(records.map((r) => r.key).sort()).toEqual(['bodyWidth', 'neckLength', 'neckWidth', 'skeletonX']);
     });
 
     it('non-vacuous: renderShapeLatticeHandles draws exactly one circle per record into _handleLayer', () => {
+      regenerateSilhouette(editor, currentPattern(editor)); // T72: a real Generate must have run first
       const drawn = renderShapeLatticeHandles(editor);
       expect(drawn.length).toBe(3);
       const circles = editor._handleLayer.children();

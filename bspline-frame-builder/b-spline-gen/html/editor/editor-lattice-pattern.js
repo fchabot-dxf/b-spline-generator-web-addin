@@ -64,6 +64,25 @@ export const OWNERSHIP_ATTR = 'data-lattice-gen';
  *  convention (design doc §1). */
 export const BOUNDARY_REF_ATTR = 'data-boundary-ref';
 
+/** T72 (AMEND 2, Fred's phone screenshot: 3 param-handle dots floating
+ *  over an EMPTY board before any shape exists): `PATTERN.shape.source`
+ *  is ALREADY `'generated'` on a layer that has never touched the Shape
+ *  Lattice tool at all — `PATTERN_DEFAULTS.shape.source` is `'generated'`
+ *  by default (this file's own `shape:` block below), and `currentShape`
+ *  (properties-shape-lattice.js) lazily materializes `p.shape` from that
+ *  SAME default the first time anything reads it — so "source is
+ *  generated" alone can never distinguish "the tool actually ran Generate
+ *  once" from "nothing has touched this field yet". `buildSketchManifest`
+ *  (editor-sketch-manifest.js) already solved exactly this ambiguity for
+ *  its own `hasShape` gate, with the SAME extra check: `extent.mode ===
+ *  'boundary'` is set ONLY by `regenerateSilhouette` after a real
+ *  Generate/Regenerate has actually linked a silhouette. Declared once,
+ *  here, so both callers read the identical signal rather than
+ *  maintaining two copies of the same two-part condition. */
+export function hasGeneratedSilhouette(pattern) {
+  return !!(pattern.shape && pattern.shape.source === 'generated' && pattern.extent && pattern.extent.mode === 'boundary');
+}
+
 /** T49: find the live element a PATTERN.boundary.shapeId links to, on
  *  ANY visible layer (a boundary shape need not live on the SAME layer
  *  the Lattice pattern itself generates into — same "anyVisibleLayer"

@@ -53,7 +53,7 @@
  * `entities[]`, so every OTHER producer above keeps working in the
  * simpler natural board-space it was already written and tested in.
  */
-import { computePattern, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
+import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice } from './editor-lattice.js';
 import {
   primitivesBBox, insetGeneratedPresetPathDToPrimitives, SILHOUETTE_STROKE_WIDTH, insetRegionForContour,
@@ -853,11 +853,14 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // sub-object, even a plain box Lattice layer that has never touched the
   // Shape Lattice tool, so `.shape.source` ALONE can't distinguish "this
   // is really a Shape Lattice layer" from "this field's own default is
-  // sitting there unused". The real app's own discriminator (per that
-  // file's own comment) is `PATTERN.extent.mode === 'boundary'` — set ONLY
-  // when the Shape Lattice tool's own Generate has actually run and linked
-  // a silhouette — reused here rather than inventing a second flag.
-  const hasShape = !!(pattern.shape && pattern.shape.source === 'generated' && pattern.extent && pattern.extent.mode === 'boundary');
+  // sitting there unused". T72: this exact two-part check (source ===
+  // 'generated' AND extent.mode === 'boundary', set ONLY once Generate has
+  // actually run) is now the shared `hasGeneratedSilhouette`
+  // (editor-lattice-pattern.js) — properties-shape-lattice.js's own
+  // `paramHandleRecords` needed the identical signal (AMEND 2's own
+  // floating-handles bug), so it's declared once rather than kept as two
+  // copies of the same condition.
+  const hasShape = hasGeneratedSilhouette(pattern);
   const widthMode = hasShape ? SKETCH_WIDTH_MODE.shapeLattice : SKETCH_WIDTH_MODE.boxLattice;
   // T71: the contour's own region is the board region INSET by the
   // declared contour-size margin (editor-lattice-boundary.js's own
