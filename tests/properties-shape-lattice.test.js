@@ -174,7 +174,6 @@ function fixtureHTML() {
     <button id="shapeLatticeWidthLinkToggle" class="editor-fillmode-btn active"></button>
     <input id="shapeLatticeWidthNodes" type="number">
 
-    <span id="shapeLatticeBoundaryStatus"></span>
     <div role="group" id="shapeLatticeEndRule"></div>
     <input id="shapeLatticeContourShow" type="checkbox" checked>
     <input id="shapeLatticeContourWidth" type="number">
