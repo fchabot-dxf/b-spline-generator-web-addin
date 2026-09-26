@@ -1425,15 +1425,30 @@ const latticeHandler = {
         // SE7i (Section 3, connected editing): drag ON an existing rail/
         // tie/node moves it, structure-aware; drag on empty space (or on
         // a non-lattice shape) still draws a new rail/tie exactly as
-        // before. Active-layer-only, same scope every other drawing mode
-        // already uses (getNearbyElement's own default). SE7k: this check
-        // runs BEFORE the drawKind branch below, so dragging ON an
-        // existing piece still moves it no matter which Add mode is
-        // active — only empty space reaches the kind-specific behavior.
+        // before. SE7k: this check runs BEFORE the drawKind branch below,
+        // so dragging ON an existing piece still moves it no matter which
+        // Add mode is active — only empty space reaches the kind-specific
+        // behavior.
+        // T76 (SE17): `_getNearbyLatticePiece` (not `editor._getNearbyElement`,
+        // this block's own pre-SE17 mechanism) — the SAME rail/tie/node-only
+        // hit-test `shapeLatticeHandler.start` already uses, coordinating on
+        // ONE shared implementation rather than two, per the dispatch's own
+        // instruction. Critically, it is NOT layer-scoped at all (unlike
+        // `getNearbyElement`'s own active-layer-only default) — a rail is
+        // now on the Rails layer while a tie sits on the Ties layer, so a
+        // hit-test confined to "whichever layer is active" would miss
+        // every piece of a DIFFERENT kind than the one just clicked.
         const tol = getDynamicTolerance(editor, 10, 'slopPx');
-        const hit = editor._getNearbyElement(pt, tol);
+        const hit = _getNearbyLatticePiece(editor, pt, tol);
         const hitKind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
         if (hitKind === 'rail' || hitKind === 'tie' || hitKind === 'node') {
+            // T76 (SE17): grabbing a piece on a DIFFERENT kind-layer than
+            // the currently active one makes ITS layer the active one —
+            // same "clicking something makes it what you're now editing"
+            // rule selectHandler/nodeHandler's own analogous hit already
+            // applies (this file, above).
+            const hitLayer = getElementLayer(hit);
+            if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
             // UI3 AMEND 1/3 (Fred): Select sub-mode also SELECTS the
             // grabbed piece (reusing editor._select/_selectAdd — the same
             // whole-selection state editor.setColor/deleteSelected read —
