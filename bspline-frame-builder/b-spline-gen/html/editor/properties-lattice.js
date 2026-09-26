@@ -62,6 +62,7 @@ export function initLatticeProperties(editor) {
     const tiesSpanMaxEl = el('latticeTiesSpanMax');
     const tiesAnchorEl = el('latticeTiesAnchor');
     const tiesRailSnapRowsEl = el('latticeTiesRailSnapRows');
+    const tiesOneEndedEl = el('latticeTiesOneEnded');
     const nodesEndsEl = el('latticeNodesEnds');
     const nodesCrossingsEl = el('latticeNodesCrossings');
     const nodesRailEndsEl = el('latticeNodesRailEnds');
@@ -202,6 +203,10 @@ export function initLatticeProperties(editor) {
         // keeps reading back as 'rails' — no migration).
         if (tiesAnchorEl) tiesAnchorEl.value = p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor;
         if (tiesRailSnapRowsEl) tiesRailSnapRowsEl.value = p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
+        // T67 AMEND 3+4: a saved pattern with no `oneEnded` key reads the
+        // declared default (1) — same "absent key = default, no silent
+        // behavior change" convention every other field here follows.
+        if (tiesOneEndedEl) tiesOneEndedEl.value = p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded;
         if (nodesEndsEl) nodesEndsEl.checked = p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends;
         if (nodesCrossingsEl) nodesCrossingsEl.checked = p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings;
         if (nodesRailEndsEl) nodesRailEndsEl.checked = p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds;
@@ -280,6 +285,10 @@ export function initLatticeProperties(editor) {
             spanMax: tiesSpanMaxEl ? (parseInt(tiesSpanMaxEl.value, 10) || 1) : (p.ties?.spanMax ?? PATTERN_DEFAULTS.ties.spanMax),
             anchor: tiesAnchorEl ? tiesAnchorEl.value : (p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor),
             railSnapRows: tiesRailSnapRowsEl ? (parseInt(tiesRailSnapRowsEl.value, 10) || 0) : (p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows),
+            // T67 AMEND 3+4: 0 is a genuinely valid value (pure rail-to-
+            // rail, no one-ended ties at all) — `|| 0` (not `|| 1`) so a
+            // typed "0" isn't coerced back up to the default.
+            oneEnded: tiesOneEndedEl ? (parseInt(tiesOneEndedEl.value, 10) || 0) : (p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded),
         };
         p.nodes = {
             ends: nodesEndsEl ? !!nodesEndsEl.checked : (p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends),

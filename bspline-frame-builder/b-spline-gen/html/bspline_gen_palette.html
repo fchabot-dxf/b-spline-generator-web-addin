@@ -1710,6 +1710,18 @@
                   <button type="button" id="latticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
                   <button type="button" id="latticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
                 </div>
+                <!-- T67 AMEND 3+4 (Fred: "i dont want it to be always rail
+                     to rail... one setting: number of one ended ties;
+                     I'll usually want 1 or 2"): in Rails span mode, this
+                     many of the seeded ties start on a rail and end FREE
+                     (a stub that deliberately doesn't reach the next
+                     rail) instead of bridging rail-to-rail — never BOTH
+                     ends free. Meaningful only when span mode is Rails;
+                     left visible either way rather than adding a THIRD
+                     show/hide state to track. -->
+                <label style="display:flex; flex-direction:column; gap:2px;">one-ended ties
+                  <input id="latticeTiesOneEnded" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
               </div>
               <div id="latticeTiesDensityFields" style="display:none; flex-direction:column; gap:3px;">
                 <label style="display:flex; flex-direction:column; gap:2px;">density
@@ -2032,6 +2044,14 @@
                   <button type="button" id="shapeLatticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
                   <button type="button" id="shapeLatticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
                 </div>
+                <!-- T67 AMEND 3+4 — same field as the box Lattice panel's
+                     own #latticeTiesOneEnded; Shape Lattice's own ties
+                     generate through the identical PATTERN_DEFAULTS.ties/
+                     _tieSlotsByCount mechanism, so it needs the same
+                     control. -->
+                <label style="display:flex; flex-direction:column; gap:2px;">one-ended ties
+                  <input id="shapeLatticeTiesOneEnded" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
               </div>
               <div id="shapeLatticeTiesDensityFields" style="display:none; flex-direction:column; gap:3px;">
                 <label style="display:flex; flex-direction:column; gap:2px;">density

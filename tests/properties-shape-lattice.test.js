@@ -159,6 +159,7 @@ function fixtureHTML() {
     <input id="shapeLatticeTiesSpanMax" type="number" value="3">
     <select id="shapeLatticeTiesAnchor"><option value="free" selected>free</option></select>
     <input id="shapeLatticeTiesRailSnapRows" type="number" value="1">
+    <input id="shapeLatticeTiesOneEnded" type="number" value="1">
     <input id="shapeLatticeNodesEnds" type="checkbox" checked>
     <input id="shapeLatticeNodesCrossings" type="checkbox" checked>
     <input id="shapeLatticeNodesRailEnds" type="checkbox">
@@ -358,6 +359,15 @@ describe('initShapeLatticeProperties: Fill + Generate', () => {
     btn.click();
     await flush();
     expect(btn.textContent).toBe('Regenerate');
+  });
+
+  it('T67 AMEND 3+4: a fresh pattern reads PATTERN_DEFAULTS.ties.oneEnded (1) onto the One-ended ties field, and Generate writes an edited value back into PATTERN.ties.oneEnded', async () => {
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeTiesOneEnded').value).toBe(String(PATTERN_DEFAULTS.ties.oneEnded));
+    document.getElementById('shapeLatticeTiesOneEnded').value = '2';
+    document.getElementById('shapeLatticeGenerate').click();
+    await flush();
+    expect(activeLayerPattern(editor).ties.oneEnded).toBe(2);
   });
 
   it('the Ending segmented group is populated from the 4 declared rules and defaults to "inset"', () => {

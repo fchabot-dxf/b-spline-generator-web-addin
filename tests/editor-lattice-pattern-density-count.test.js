@@ -29,13 +29,13 @@ function tieSegs(result) {
 }
 
 describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () => {
-  it('PATTERN_DEFAULTS declares the dispatched ranges and the CELLS span default (Fred\'s own amend)', () => {
+  it('PATTERN_DEFAULTS declares the dispatched ranges and the RAILS span default (T67 AMEND #4, Fred: "ties needs to be coincident to their rails")', () => {
     expect(PATTERN_DEFAULTS.rails.mode).toBe('count');
     expect(PATTERN_DEFAULTS.rails.count).toEqual([6, 7]);
     expect(PATTERN_DEFAULTS.ties.mode).toBe('count');
     expect(PATTERN_DEFAULTS.ties.count).toEqual([8, 13]);
-    expect(PATTERN_DEFAULTS.ties.span.mode).toBe('cells');
-    expect(PATTERN_DEFAULTS.ties.span.rails).toBe(1); // declared for when span.mode:'rails' is selected
+    expect(PATTERN_DEFAULTS.ties.span.mode).toBe('rails');
+    expect(PATTERN_DEFAULTS.ties.span.rails).toBe(1);
   });
 
   it('50 seeds: rail count is always in [6,7], evenly spread (first/last row at the extent\'s own edges)', () => {
@@ -58,14 +58,18 @@ describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () =
     }
   });
 
-  it('50 seeds: every default (cells-mode) tie\'s own span is spanMin..spanMax grid cells (a short stub, per Fred\'s own pick)', () => {
+  it('50 seeds: every default tie has AT LEAST ONE end on a real rail row, and exactly PATTERN_DEFAULTS.ties.oneEnded (1) of them has the OTHER end free — never a tie with BOTH ends floating (T67 AMEND 3+4\'s own explicit goal, refining the earlier "always both ends" version)', () => {
     for (let seed = 1; seed <= 50; seed++) {
       const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: EXTENT });
+      const rows = new Set(railRows(result));
+      let oneEndedCount = 0;
       for (const tie of tieSegs(result)) {
-        const span = Math.abs(tie.b.j - tie.a.j);
-        expect(span).toBeGreaterThanOrEqual(PATTERN_DEFAULTS.ties.spanMin);
-        expect(span).toBeLessThanOrEqual(PATTERN_DEFAULTS.ties.spanMax);
+        const aOnRail = rows.has(tie.a.j), bOnRail = rows.has(tie.b.j);
+        expect(aOnRail || bOnRail).toBe(true); // never BOTH ends floating
+        expect(Math.abs(tie.b.j - tie.a.j)).toBeGreaterThan(0);
+        if (!aOnRail || !bOnRail) oneEndedCount++;
       }
+      expect(oneEndedCount).toBe(PATTERN_DEFAULTS.ties.oneEnded);
     }
   });
 
@@ -93,9 +97,15 @@ describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () =
   });
 });
 
-describe('computePattern: ties.span.mode:\'rails\' (a real, declared ALTERNATIVE, not the default)', () => {
+describe('computePattern: ties.span.mode:\'rails\' (the DEFAULT since T67 AMEND #4 — same explicit-override tests as before, still valid regardless of default)', () => {
+  // T67 AMEND 3+4: `oneEnded` explicitly forced to 0 here — this
+  // describe block's own purpose is to test PURE rail-to-rail bridging
+  // in isolation, independent of the one-ended-stub amendment (tested
+  // separately, below); PATTERN_DEFAULTS.ties.oneEnded is 1, which would
+  // otherwise silently give every one of these fixtures a free-ended tie
+  // and break the very property being tested here.
   const railsSpanTies = (overrides = {}) => ({
-    ...PATTERN_DEFAULTS.ties, span: { mode: 'rails', rails: 1 }, ...overrides,
+    ...PATTERN_DEFAULTS.ties, span: { mode: 'rails', rails: 1 }, oneEnded: 0, ...overrides,
   });
 
   it('50 seeds: every tie starts AND ends exactly on a real rail row (bridges, never a floating stub)', () => {
@@ -134,6 +144,45 @@ describe('computePattern: ties.span.mode:\'rails\' (a real, declared ALTERNATIVE
   });
 });
 
+describe('computePattern: ties.oneEnded (T67 AMEND 3+4, Fred: "one setting: number of one ended ties; I\'ll usually want 1 or 2")', () => {
+  for (const oneEnded of [0, 1, 2]) {
+    it(`oneEnded: ${oneEnded} — exactly that many ties have a free end, every other tie has BOTH ends on rails, and no tie ever has both ends free (50 seeds)`, () => {
+      for (let seed = 1; seed <= 50; seed++) {
+        const pattern = { ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, oneEnded } };
+        const result = computePattern(pattern, { extent: EXTENT });
+        const rows = new Set(railRows(result));
+        const ties = tieSegs(result);
+        let freeEndedCount = 0;
+        for (const tie of ties) {
+          const aOnRail = rows.has(tie.a.j), bOnRail = rows.has(tie.b.j);
+          expect(aOnRail || bOnRail).toBe(true); // never BOTH ends floating, regardless of oneEnded
+          if (!aOnRail || !bOnRail) freeEndedCount++;
+        }
+        // clamped to however many ties actually exist, same "place what
+        // fits" convention `_tieSlotsByCount` already uses elsewhere.
+        expect(freeEndedCount).toBe(Math.min(oneEnded, ties.length));
+      }
+    });
+  }
+});
+
+describe('computePattern: ties.span.mode:\'cells\' (T67 AMEND #4 — the PRE-existing default through T56/T66, now a real, declared ALTERNATIVE, not deleted)', () => {
+  const cellsSpanTies = (overrides = {}) => ({
+    ...PATTERN_DEFAULTS.ties, span: { mode: 'cells', rails: 1 }, ...overrides,
+  });
+
+  it('50 seeds: every cells-mode tie\'s own span is spanMin..spanMax grid cells (a short stub, per Fred\'s own original pick — still available on request)', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: cellsSpanTies() }, { extent: EXTENT });
+      for (const tie of tieSegs(result)) {
+        const span = Math.abs(tie.b.j - tie.a.j);
+        expect(span).toBeGreaterThanOrEqual(PATTERN_DEFAULTS.ties.spanMin);
+        expect(span).toBeLessThanOrEqual(PATTERN_DEFAULTS.ties.spanMax);
+      }
+    }
+  });
+});
+
 describe('computePattern: boundary mode places <= count ("place what fits")', () => {
   function rectPrimitives(iMin, jMin, iMax, jMax) {
     const c = [[iMin, jMin], [iMax, jMin], [iMax, jMax], [iMin, jMax]];
@@ -167,7 +216,7 @@ describe('computePattern: boundary mode places <= count ("place what fits")', ()
     }
   });
 
-  it('nothing throws when the boundary leaves at most one candidate rail row (cells-mode ties don\'t need 2 rails to exist at all)', () => {
+  it('nothing throws when the boundary leaves few candidate rail rows, and no tie ever exceeds the boundary\'s own bounds (T67 AMEND #4: rails-mode ties bridge only when >=2 rail rows exist, returning zero ties otherwise rather than throwing)', () => {
     const boundary = {
       mode: 'boundary',
       iMin: EXTENT.iMin, jMin: EXTENT.jMin, iMax: EXTENT.iMax, jMax: EXTENT.jMax,

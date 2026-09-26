@@ -226,7 +226,69 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     }
   });
 
-  it('T64 ADD-ON (amendment #1): every node sitting on a rail/tie gets an explicit Coincident to it — end-match uses :S/:E, mid-span match uses the bare (point-on-curve) id', () => {
+  it('T67 AMEND 3+4 (Fred: "ties needs to be coincident to their rails" -> refined to "one setting: number of one ended ties"): for the DEFAULT pattern (PATTERN_DEFAULTS.ties, unmodified), every tie has AT LEAST ONE end on a rail, exactly `oneEnded` (1) ties have their OTHER end free (no constraint at all), and every rail-touching end gets its own tie-on-rail Coincident', () => {
+    const defaultPattern = { ...PATTERN_DEFAULTS, spacing: 0.25 };
+    const extent = { iMin: 0, jMin: 0, iMax: 8, jMax: 8 };
+    const manifest = manifestFromLattice(defaultPattern, extent);
+    const railIds = manifest.entities.filter((e) => e.id.match(/^rail\d+$/)).map((e) => e.id);
+    const tieIds = manifest.entities.filter((e) => e.id.match(/^tie\d+$/)).map((e) => e.id);
+    expect(railIds.length).toBeGreaterThan(0); // non-vacuous
+    expect(tieIds.length).toBeGreaterThan(0); // non-vacuous
+
+    // Independent re-derivation: does each tie's own end land, by real
+    // GEOMETRY (not by trusting the declared constraint), on some rail's
+    // own y-coordinate, within that rail's own x-extent?
+    const onAnyRail = (pt) => railIds.some((rid) => {
+      const r = entityById(manifest.entities, rid);
+      const [x1, y1] = r.p1, [x2, y2] = r.p2;
+      return Math.abs(pt.y - y1) < 1e-9 && Math.abs(y1 - y2) < 1e-9
+        && pt.x >= Math.min(x1, x2) - 1e-6 && pt.x <= Math.max(x1, x2) + 1e-6;
+    });
+
+    let oneEndedCount = 0;
+    for (const tid of tieIds) {
+      const tie = entityById(manifest.entities, tid);
+      const p1 = { x: tie.p1[0], y: tie.p1[1] }, p2 = { x: tie.p2[0], y: tie.p2[1] };
+      const p1OnRail = onAnyRail(p1), p2OnRail = onAnyRail(p2);
+      expect(p1OnRail || p2OnRail).toBe(true); // never BOTH ends floating
+      if (!p1OnRail || !p2OnRail) oneEndedCount++;
+
+      const tieOnRailCount = manifest.constraints.filter((c) => c.type === 'Coincident'
+        && (c.targets[0] === `${tid}:S` || c.targets[0] === `${tid}:E`)
+        && railIds.some((rid) => c.targets[1] === rid || c.targets[1] === `${rid}:S` || c.targets[1] === `${rid}:E`)).length;
+      // one Coincident per rail-touching end -- 2 for a rail-to-rail tie, 1 for a one-ended tie.
+      expect(tieOnRailCount).toBe((p1OnRail ? 1 : 0) + (p2OnRail ? 1 : 0));
+    }
+    expect(oneEndedCount).toBe(PATTERN_DEFAULTS.ties.oneEnded);
+  });
+
+  it('T67 AMEND 3+4: for the DEFAULT SHAPE LATTICE pattern too (hourglass, unmodified PATTERN_DEFAULTS.ties), every tie has at least one end on a rail — never both ends floating — the boundary-clipping interaction (a pinched/non-convex shape) is specifically what this fixture exercises, unlike the box-lattice test above', () => {
+    const shapePattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    const manifest = buildSketchManifest(shapePattern, REGION, {});
+    const railIds = manifest.entities.filter((e) => e.id.match(/^rail\d+$/)).map((e) => e.id);
+    const tieIds = manifest.entities.filter((e) => e.id.match(/^tie\d+$/)).map((e) => e.id);
+    expect(railIds.length).toBeGreaterThan(0); // non-vacuous
+    expect(tieIds.length).toBeGreaterThan(0); // non-vacuous
+
+    const onAnyRail = (pt) => railIds.some((rid) => {
+      const r = entityById(manifest.entities, rid);
+      const [x1, y1] = r.p1, [x2, y2] = r.p2;
+      return Math.abs(pt.y - y1) < 1e-6 && Math.abs(y1 - y2) < 1e-6
+        && pt.x >= Math.min(x1, x2) - 1e-6 && pt.x <= Math.max(x1, x2) + 1e-6;
+    });
+
+    for (const tid of tieIds) {
+      const tie = entityById(manifest.entities, tid);
+      const p1 = { x: tie.p1[0], y: tie.p1[1] }, p2 = { x: tie.p2[0], y: tie.p2[1] };
+      expect(onAnyRail(p1) || onAnyRail(p2)).toBe(true);
+    }
+  });
+
+  it('T64 ADD-ON (amendment #1) / T67: every node sitting on a rail/tie gets an explicit Coincident FROM ITS OWN :C (centre) point to it — end-match uses :S/:E, mid-span match uses the bare (point-on-curve) id — except where T67\'s own dedup correctly drops a rail-match already implied transitively via a tie-end this node ALSO matches', () => {
     const manifest = manifestFromLattice(PATTERN, EXTENT);
     const nodeEntities = manifest.entities.filter((e) => e.id.match(/^node\d+$/));
     expect(nodeEntities.length).toBeGreaterThan(0); // non-vacuous: this pattern actually produces nodes
@@ -234,33 +296,95 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     // Independent re-derivation: does a node's own coordinate sit
     // EXACTLY at a piece's own end, or somewhere along its own span?
     const pieceEntities = manifest.entities.filter((e) => e.type === 'Slot');
+    const railEntities2 = pieceEntities.filter((e) => e.id.match(/^rail\d+$/));
+    const tieEntities2 = pieceEntities.filter((e) => e.id.match(/^tie\d+$/));
     const pointsEqual = (a, b) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
     const onSpan = (pt, p1, p2) => {
       if (Math.abs(p1.x - p2.x) < 1e-9) return Math.abs(pt.x - p1.x) < 1e-6 && pt.y >= Math.min(p1.y, p2.y) - 1e-6 && pt.y <= Math.max(p1.y, p2.y) + 1e-6;
       if (Math.abs(p1.y - p2.y) < 1e-9) return Math.abs(pt.y - p1.y) < 1e-6 && pt.x >= Math.min(p1.x, p2.x) - 1e-6 && pt.x <= Math.max(p1.x, p2.x) + 1e-6;
       return false;
     };
+    // T67's own dedup only ever suppresses a RAIL-side target (never a
+    // tie one) -- reconstructed here independently from the DECLARED
+    // tie-on-rail constraints themselves, not from re-reading the
+    // producer's own dedup code, so this stays an outside check.
+    const railTargetIfDedupedViaTie = (node, rail) => tieEntities2.some((tie) => {
+      const tieP1 = { x: tie.p1[0], y: tie.p1[1] }, tieP2 = { x: tie.p2[0], y: tie.p2[1] };
+      for (const [suffix, tiePt] of [['S', tieP1], ['E', tieP2]]) {
+        if (!pointsEqual({ x: node.center[0], y: node.center[1] }, tiePt)) continue;
+        const tieTarget = `${tie.id}:${suffix}`;
+        const wired = manifest.constraints.some((c) => c.type === 'Coincident'
+          && c.targets[0] === tieTarget && (c.targets[1] === rail.id || c.targets[1] === `${rail.id}:S` || c.targets[1] === `${rail.id}:E`));
+        if (wired) return true;
+      }
+      return false;
+    });
 
-    let endMatches = 0, curveMatches = 0;
+    let endMatches = 0, curveMatches = 0, dedupedMatches = 0;
     for (const node of nodeEntities) {
       const nodePt = { x: node.center[0], y: node.center[1] };
-      const nodeConstraints = manifest.constraints.filter((c) => c.type === 'Coincident' && c.targets[0] === node.id);
+      const nodeConstraints = manifest.constraints.filter((c) => c.type === 'Coincident' && c.targets[0] === `${node.id}:C`);
       for (const piece of pieceEntities) {
         const p1 = { x: piece.p1[0], y: piece.p1[1] }, p2 = { x: piece.p2[0], y: piece.p2[1] };
-        if (pointsEqual(nodePt, p1)) {
-          expect(nodeConstraints.some((c) => c.targets[1] === `${piece.id}:S`)).toBe(true);
-          endMatches++;
-        } else if (pointsEqual(nodePt, p2)) {
-          expect(nodeConstraints.some((c) => c.targets[1] === `${piece.id}:E`)).toBe(true);
+        const isRail = railEntities2.includes(piece);
+        if (pointsEqual(nodePt, p1) || pointsEqual(nodePt, p2)) {
+          const suffix = pointsEqual(nodePt, p1) ? 'S' : 'E';
+          const hasDirect = nodeConstraints.some((c) => c.targets[1] === `${piece.id}:${suffix}`);
+          if (!hasDirect && isRail && railTargetIfDedupedViaTie(node, piece)) { dedupedMatches++; continue; }
+          expect(hasDirect).toBe(true);
           endMatches++;
         } else if (onSpan(nodePt, p1, p2)) {
-          expect(nodeConstraints.some((c) => c.targets[1] === piece.id)).toBe(true);
+          const hasDirect = nodeConstraints.some((c) => c.targets[1] === piece.id);
+          if (!hasDirect && isRail && railTargetIfDedupedViaTie(node, piece)) { dedupedMatches++; continue; }
+          expect(hasDirect).toBe(true);
           curveMatches++;
         }
       }
     }
     expect(endMatches).toBeGreaterThan(0); // non-vacuous: real end-matches exist in this fixture
     expect(curveMatches).toBeGreaterThan(0); // non-vacuous: real mid-span (crossing) matches exist too
+    // T67: this PATTERN/EXTENT fixture (nodes.ends:true) genuinely
+    // exercises the dedup path -- a node at a tie's own end that is
+    // ALSO tie-on-rail-wired gets no SEPARATE, redundant node-to-rail
+    // Coincident of its own; confirmed here rather than merely tolerated
+    // (a broken dedup that removed EVERY rail match, not just the
+    // transitively-implied ones, would still pass every check above but
+    // would show up as a suspiciously large dedupedMatches count here).
+    expect(dedupedMatches).toBeGreaterThan(0);
+  });
+
+  it('T67: a node\'s own dedup never drops the SAME rail relation it explains away — the tie-end -> rail edge it relies on is always still declared', () => {
+    const manifest = manifestFromLattice(PATTERN, EXTENT);
+    const nodeEntities = manifest.entities.filter((e) => e.id.match(/^node\d+$/));
+    const pieceEntities = manifest.entities.filter((e) => e.type === 'Slot');
+    const railEntities3 = pieceEntities.filter((e) => e.id.match(/^rail\d+$/));
+    const tieEntities3 = pieceEntities.filter((e) => e.id.match(/^tie\d+$/));
+    const pointsEqual = (a, b) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
+
+    let checked = 0;
+    for (const node of nodeEntities) {
+      const nodePt = { x: node.center[0], y: node.center[1] };
+      for (const rail of railEntities3) {
+        const railP1 = { x: rail.p1[0], y: rail.p1[1] }, railP2 = { x: rail.p2[0], y: rail.p2[1] };
+        const isEnd = pointsEqual(nodePt, railP1) || pointsEqual(nodePt, railP2);
+        if (!isEnd) continue;
+        const suffix = pointsEqual(nodePt, railP1) ? 'S' : 'E';
+        const hasDirect = manifest.constraints.some((c) => c.type === 'Coincident'
+          && c.targets[0] === `${node.id}:C` && c.targets[1] === `${rail.id}:${suffix}`);
+        if (hasDirect) continue; // not a deduped case -- nothing to check here
+        const viaTie = tieEntities3.find((tie) => {
+          const tp1 = { x: tie.p1[0], y: tie.p1[1] }, tp2 = { x: tie.p2[0], y: tie.p2[1] };
+          return pointsEqual(nodePt, tp1) || pointsEqual(nodePt, tp2);
+        });
+        expect(viaTie).toBeTruthy(); // this WAS a deduped case -- a tie-end match must exist
+        const tieSuffix = pointsEqual(nodePt, { x: viaTie.p1[0], y: viaTie.p1[1] }) ? 'S' : 'E';
+        const tieToRailStillDeclared = manifest.constraints.some((c) => c.type === 'Coincident'
+          && c.targets[0] === `${viaTie.id}:${tieSuffix}` && (c.targets[1] === rail.id || c.targets[1] === `${rail.id}:S` || c.targets[1] === `${rail.id}:E`));
+        expect(tieToRailStillDeclared).toBe(true);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0); // non-vacuous: real deduped cases exist in this fixture
   });
 
   it('T64: every rail/tie is a Slot entity with exactly ONE SlotWidth dimension referencing its own width param', () => {

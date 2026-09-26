@@ -253,6 +253,21 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     }
   });
 
+  // T67 (advisor's own real Fusion run — a box-lattice shape run hit a
+  // "node24:C + tie12:S over-constrained" failure mid-run, not seen again
+  // in the FINAL run, so not a guaranteed reproduction, but a real,
+  // explicable one): a node whose own point sits at a tie's own end that
+  // is ALSO tie-on-rail-wired to a rail gets THREE separate Coincident
+  // constraints among the same 3 mutually-linked entities (node-to-tie-
+  // end, node-to-rail, tie-end-to-rail) — the third is transitively
+  // IMPLIED by the other two (`computePattern`'s own `addNode` calls
+  // confirm nodePoints structurally overlaps every tie's own two ends, so
+  // this triangle is a real, recurring shape, not a rare edge case).
+  // Tracked here (tie-end target string -> the rail target it's already
+  // wired to) so `nodePieceCoincidences` (below) can drop its OWN
+  // redundant leg of the same triangle rather than declaring all three.
+  const tieEndToRailTarget = {};
+
   const tiePieces = [];
   tiesCanon.forEach((seg, idx) => {
     const id = toEntityId('tie', idx);
@@ -280,7 +295,10 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
         if (railIdx >= 0) {
           const suffix = end === 'a' ? 'S' : 'E';
           const railTarget = pieceEndOrCurveTarget(seg[end], railsCanon[railIdx], toEntityId('rail', railIdx));
-          if (railTarget) constraints.push({ type: 'Coincident', targets: [`${id}:${suffix}`, railTarget] });
+          if (railTarget) {
+            constraints.push({ type: 'Coincident', targets: [`${id}:${suffix}`, railTarget] });
+            tieEndToRailTarget[`${id}:${suffix}`] = railTarget;
+          }
         }
       });
     }
@@ -312,7 +330,17 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     };
     check(railsCanon, 'rail');
     check(tiesCanon, 'tie');
-    return out;
+    // T67: drop any target that's already transitively implied by a
+    // tie-end this SAME node also coincides with (see tieEndToRailTarget's
+    // own doc comment above) — e.g. a node at tie0:S, where tie0:S is
+    // already wired to rail0, does NOT also need node-to-rail0 declared
+    // separately; node-to-tie0:S plus tie0:S-to-rail0 already implies it.
+    const redundant = new Set();
+    for (const t of out) {
+      const railViaTie = tieEndToRailTarget[t];
+      if (railViaTie && out.includes(railViaTie)) redundant.add(railViaTie);
+    }
+    return out.filter((t) => !redundant.has(t));
   }
 
   nodePoints.forEach((pt, idx) => {
@@ -322,7 +350,14 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     groups.nodes.push(id);
     if (constrained) {
       for (const target of nodePieceCoincidences(pt)) {
-        constraints.push({ type: 'Coincident', targets: [id, target] });
+        // T67 (advisor's own real Fusion run: "argument 2 of type
+        // SketchPoint"): a BARE circle id resolves to the Circle entity
+        // itself, not a point — addCoincident's own first argument must
+        // be a real SketchPoint. `:C` (the circle's own centre point,
+        // fb_engine's existing suffix convention) is what actually
+        // resolves to one; this was declared wrong at the SOURCE, not a
+        // Python-side special case to patch around.
+        constraints.push({ type: 'Coincident', targets: [`${id}:C`, target] });
       }
     }
   });

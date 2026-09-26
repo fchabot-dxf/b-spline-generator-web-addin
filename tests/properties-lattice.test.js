@@ -92,6 +92,7 @@ describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', 
       <input id="latticeTiesSpanMax" type="number" value="3">
       <select id="latticeTiesAnchor"><option value="free" selected>free</option></select>
       <input id="latticeTiesRailSnapRows" type="number" value="1">
+      <input id="latticeTiesOneEnded" type="number" value="1">
       <input id="latticeNodesEnds" type="checkbox" checked>
       <input id="latticeNodesCrossings" type="checkbox" checked>
       <input id="latticeSeed" type="number" value="42">
@@ -135,6 +136,18 @@ describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', 
     // Astronomically unlikely to collide (1-in-a-million draw) — a real
     // failure here means nextSeed() stopped being random, not bad luck.
     expect(second).not.toBe(first);
+  });
+
+  it('T67 AMEND 3+4: a fresh pattern reads PATTERN_DEFAULTS.ties.oneEnded (1) onto the One-ended ties field', () => {
+    initLatticeProperties(editor);
+    expect(document.getElementById('latticeTiesOneEnded').value).toBe(String(PATTERN_DEFAULTS.ties.oneEnded));
+  });
+
+  it('T67 AMEND 3+4: editing the One-ended ties field and pressing Generate writes PATTERN.ties.oneEnded, and exactly that many generated ties end up with a free end', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeTiesOneEnded').value = '2';
+    document.getElementById('latticeGenerate').click();
+    expect(activeLayerPattern(editor).ties.oneEnded).toBe(2);
   });
 
   it('the Generate button label flips to Regenerate after the first press', async () => {

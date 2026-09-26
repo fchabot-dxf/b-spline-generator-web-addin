@@ -7790,3 +7790,193 @@ drop.
 
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 
+## T67 — SE15: three real-Fusion-measured fixes, a dedup, the tie-span default (with two newly-discovered/fixed
+## boundary bugs), and a full "one-ended ties" redesign — amendments 2 (parity) and 5 (contour-as-slots) DEFERRED,
+## explicitly flagged for a fresh turn given their own substantial scope
+
+T66 was NOT merged either — the advisor ran it in real Fusion and confirmed the slot mechanism now WORKS end to
+end but is fully over-constrained. Separately, the SAME live run found two more real bugs in T65's own arc/node
+work. This single turn absorbed FIVE further mid-task amendments after that (an unusually long chain even by this
+project's own standard) — each is its own section below, in the order they actually landed and were incorporated.
+
+### Part 1 — the three dispatched fixes, all real-Fusion-measured by the advisor
+
+**Fix 1 — `addCenterToCenterSlot`'s own 4th argument is CREATE-WIDTH-DIMENSION, not Fix.** T66 set it `False` on
+the theory it was the SAME mechanism as T64's own post-hoc `isFixed = True` (the actual Fix bug, confirmed
+correctly removed and staying removed). Measured live: `False` means NO `SketchDiameterDimension` gets created at
+all, so `_drive_last_dimension` found nothing to re-drive (every slot's own width dimension came back "DIM MISS",
+`stroke_width` drove nothing, and 34/35 relationship constraints ALSO failed — plausibly downstream of a
+dimensionless slot's own geometry not fully resolving). Reverted to `True` — a genuinely different knob from Fix
+that happened to share T64's own anchor argument's call-site position, which is exactly what made T66's own
+diagnosis plausible without a live measurement to check it against.
+
+**Fix 2 — node Coincident targets must carry `:C`.** A bare circle id (`node0`) resolves to the Circle entity
+itself, not a point; `addCoincident`'s own first argument must be a real SketchPoint. Fixed at the JS SOURCE
+(`nodePieceCoincidences`'s own caller now emits `${id}:C`), not a Python-side special case — the `:C` suffix
+convention already existed (fb_engine's `resolve_entity`), this was a declaration bug, not a missing mechanism.
+
+**Fix 3 — Arc3Point `:S`/`:E` must be labeled by PROXIMITY, not call-argument order.** `addByThreePoints` always
+normalizes its own result to run CCW, so `arc.startSketchPoint` can legitimately be the manifest's own `p2` for a
+clockwise-ordered `(p1, pMid, p2)` input — silently swapping which physical point gets tagged `:S`/`:E`, corrupting
+every downstream continuity constraint without ever raising or logging anything (exactly why it showed up as a
+wrong-looking bbox, not a build failure — the arcs still built, just mislabeled at their own two ends). Fixed by
+labeling whichever of Fusion's own two returned points is geometrically closer to the manifest's own `p1` as `:S`.
+"This alone fixed the shape bbox" (advisor's own words).
+
+**Shim fixes for all three**: `FakeSketch.addCenterToCenterSlot`'s own 4th parameter renamed `create_width_dim`
+and now literally gates whether a `FakeDimension` gets appended (`False` -> `dims.count == 0` -> a real DIM MISS,
+reproducing the exact measured symptom); `FakeSketchArcs.addByThreePoints` now models CCW normalization via a
+real signed-area/cross-product test, swapping which of its own two returned points is `startSketchPoint` for a
+clockwise input — T65's own first version of this fake always matched start=p1/end=p2 regardless of winding,
+which is WHY this exact bug shipped once already without any test catching it.
+
+**Tests** (Python, 19->21): `test_slot_False_create_width_dim_yields_DIM_MISS...` drives the fake's own new branch
+directly; a NEW clockwise-arc fixture (mirror image of the existing CCW one) proves the S/E-by-proximity fix as a
+DIRECT unit test of `_create_arc3_entity` (not through the full orchestration — `arc.startSketchPoint`/
+`.endSketchPoint` are Fusion-internal and never reassigned by the fix itself; what the fix controls is WHICH point
+object gets registered under `:S`/`:E` in the entity map, checked here via `ctx.entity_map` directly, not the raw
+attribute). Node `:C` is covered by the dedup tests below (same fixture, same constraint list). All three
+mutation-tested (revert `True`->`False`, remove the S/E swap, revert `:C`->bare) — each caught by the EXACT test
+built for it, confirmed by an 8-test cascade for fix 1 alone (the raising isFixed-style guard plus the direct
+assertion), restored MD5-clean every time.
+
+### Part 2 — the node/tie/rail dedup, resolved (not just disclosed this time)
+
+T66's own WORK-LOG entry disclosed a real, unverified risk: a node coinciding with a tie's own end that's ALSO
+tie-on-rail-wired gets THREE Coincident constraints among the same 3 mutually-linked entities (node-to-tie-end,
+node-to-rail, tie-end-to-rail) — the third transitively implied by the other two. The advisor's own real run hit
+exactly this ("node24:C + tie12:S over-constrained", not reproducing in the FINAL run but real enough to fix).
+Fixed: `tieEndToRailTarget` (a map built during the tie-on-rail wiring pass) lets `nodePieceCoincidences` drop its
+OWN redundant leg of the same triangle. **Tests**: the existing node-coincidence test extended to tolerate (and
+explicitly track) a deduped case; a NEW dedicated test confirms the tie-end-to-rail edge the dedup relies on for
+transitivity is ALWAYS still declared (never drops BOTH legs, only the redundant third). Mutation-tested (disable
+the dedup filter) — 1 exact failure, restored.
+
+### Part 3 — the tie-span DEFAULT flip to 'rails' mode, and TWO newly-discovered, newly-fixed boundary bugs
+
+Amendment (Fred, live: "ties needs to be coincident to their rails"): `PATTERN_DEFAULTS.ties.span.mode` flips
+from `'cells'` (a short, possibly-floating stub) to `'rails'` (every tie bridges exactly one pair of adjacent
+rails, both ends ON a rail) — `'rails'` was ALREADY a fully-implemented, just-not-default alternative
+(`_tieSlotsByCount`'s own 'rails' branch, T56-era code), so this specific change was a one-line default flip plus
+test/doc updates — UNTIL "render the default box + shape lattice to PNG and VIEW it before passing" (the
+dispatch's own explicit acceptance test) caught real bugs the numeric tests alone did not:
+
+**Bug A — boundary-clipped rail coverage.** `_tieSlotsByCount`'s own 'rails' branch picks a row-pair from the RAW
+`railRows` list, assuming every row has a rail spanning the FULL extent width — true in board/rect mode, false in
+BOUNDARY mode (Shape Lattice), where each row's own rail gets independently clipped to the silhouette. A pinched/
+non-convex shape (an hourglass's own waist) can have a tie's own column dip outside the boundary somewhere BETWEEN
+two otherwise-valid rail rows. Fixed with `tieSpanIntact(i, jStart, jEnd)` — replicates the EXACT clipping
+computation the tie-emission loop itself uses, checking the WHOLE candidate span comes back unshortened, not just
+its two row values; a deterministic scan (by gap size, closest-to-drawn first) finds an alternative when the
+original seeded draw fails it. PLUS a belt-and-suspenders ground-truth filter (checked against the REAL, already-
+emitted rail segments, not a second independently-computed insideness test) — measured directly that these two
+CAN disagree at a shape's own extreme edge (seed 42's own column 0 passed the col-scan check while the real rail
+at row 12 never reached x=0 at all), so ground truth wins.
+
+**Bug B — the "on-boundary" ending rule's own pullback, applied where it shouldn't be.** Even after Bug A's own
+fix, a rails-mode tie's own rail-anchored end still ran through the SAME boundary-clip-then-`_applyEndRule` path
+as any ordinary free end — `_clipToSpans` reports a crossing whenever an end COINCIDES with the boundary's own
+crossing point (which a rail-row end near the board edge often does), and the on-boundary rule then pulls that
+end back by half the tie's own width — correct for a genuine free end meeting the boundary, wrong for an end
+that's SUPPOSED to land exactly on a rail (the tie stopped `halfTie` short of the very rail it was declared to
+bridge to). Fixed: an `anchored` slot (rails-mode, `tieSpanIntact` already proved intact) skips the whole clip-
+and-pullback branch entirely — nothing left to clip, by construction.
+
+Both bugs were found by ACTUALLY rendering (an SVG built directly from `buildSketchManifest`'s own output,
+screenshotted via headless Chrome, viewed with the Read tool) rather than trusting the numeric checks alone —
+matching this project's own "verify pixels, don't eyeball" AND "measure, don't re-reason" habits, but going one
+step further: the numeric tests I'd ALREADY written (checking row membership) were passing cleanly while the
+render showed real floating ties, because they were checking the WRONG ground truth (raw row values, not the
+real emitted rail segments).
+
+**Tests** (JS): a NEW shape-lattice-specific amendment test (the box-lattice one never exercised boundary mode at
+all) — every tie endpoint lies on a rail, for the DEFAULT hourglass, no exotic params. Mutation-tested THREE ways:
+disabling `tieSpanIntact` alone (still passes — the ground-truth filter alone is sufficient for CORRECTNESS, just
+less good at MAXIMIZING placed-tie count; an honest finding, not swept under the rug); disabling the ground-truth
+filter alone (1 exact failure); disabling the anchored-skip in the emission loop (1 exact failure, the OTHER
+bug). All restored MD5-clean.
+
+### Part 4 — amendment 3, superseded by amendment 4: `ties.oneEnded`, NOT always rail-to-rail
+
+Fred, live, twice in quick succession: first "i dont want it to be always rail to rail, in the addin we can allow
+to have one end free", then refined to "one setting: number of one ended ties; I'll usually want 1 or 2" — the
+SECOND message is the one actually implemented (the first's own design sketch is superseded, not built). Declared
+`ties.oneEnded` (default 1) in `PATTERN_DEFAULTS.ties`: exactly this many of the seeded `count` ties (clamped to
+however many actually exist) start on a rail and end FREE (a stub chosen to deliberately NOT reach the next rail —
+own seeded row + direction + span draw, falling back to the ordinary rail-to-rail path if no direction has room);
+every other tie still bridges rail-to-rail exactly as Part 3 describes. Never a tie with both ends free — the free
+end is always the second one, anchored at a real rail row on its own start. `'cells'`/`'rails'` stay declared,
+real alternatives; a saved pattern with no `oneEnded` key reads the default.
+
+**Self-caught bug, mid-implementation, via a 50-seed board-mode test (no boundary involved at all — this one had
+nothing to do with Parts 3's own bugs)**: a DOWNWARD one-ended stub (`jEnd = jStart - span`, so `jEnd < jStart`)
+tripped `_applyEndRule`'s own pre-existing degenerate-collapse safety net (`if (na >= nb) { the mid = (a+b)/2;
+na=nb=mid; }`) — since `aIsCrossing`/`bIsCrossing` are both `false` for this path, `na`/`nb` start equal to the
+ALREADY-descending `a`/`b`, tripping the guard on ENTRY, collapsing both ends to their shared midpoint (a real,
+reproduced zero-length tie at a fractional j, e.g. `4.5` between rail rows 3 and 6 — not a hypothetical). Fixed by
+ordering the pair ascending before construction (`Math.min`/`Math.max` — `a`/`b` are interchangeable labels
+everywhere downstream, so this costs nothing and matches every OTHER candidate-building path in this function,
+including the boundary-mode branch which already did this via its own `Math.min`/`max`).
+
+**Manifest wiring**: NO code changes needed — the EXISTING tie-on-rail wiring (`pointOnLatticeSegment`-driven,
+already generic) naturally emits a Coincident ONLY for whichever end genuinely touches a rail; a free end, by
+construction, simply doesn't match any rail and gets nothing, exactly as the dispatch itself asks — "declare the
+data correctly and the existing generic machinery does the right thing" rather than a new special case.
+
+**UI**: a new "one-ended ties" number stepper (0..count, step 1, matching the existing C1 style) in BOTH the box
+Lattice panel (`#latticeTiesOneEnded`) and the Shape Lattice panel (`#shapeLatticeTiesOneEnded` — confirmed they
+share the identical `PATTERN_DEFAULTS.ties`/`_tieSlotsByCount` mechanism, so both genuinely need it), wired
+read/write in `properties-lattice.js`/`properties-shape-lattice.js` following the exact existing convention every
+neighboring field already uses (`0` is a real, valid value — `|| 0` not `|| 1`, so a typed "0" isn't silently
+coerced back to the default).
+
+**Tests**: a dedicated `computePattern`-level test for `oneEnded` = 0/1/2 (50 seeds each) — exact free-ended count,
+never both-ends-floating; the box-lattice and shape-lattice amendment tests from Part 3 updated for "at least one
+end on a rail" instead of "both"; new DOM-level tests in both `properties-*.test.js` files (reads the default onto
+the field, Generate writes an edited value back into the pattern). Mutation-tested the UI write-back specifically
+(hardcode the pattern's own field instead of reading the DOM element) — 1 exact failure, restored MD5-clean.
+Render+view (a fresh SVG-from-manifest render, screenshotted, read): exactly one purple (intentional free-end)
+dot in each of the box and shape lattice defaults, zero red (both-ends-floating) dots.
+
+**Full JS suite across Parts 1-4**: 1028 passed (63 files), up from 1019 at T66. Python: 21/21 (pytest), 20/20
+(plain-`python3` fallback) — Parts 3/4 never touched the Python side at all (the tie-span/oneEnded work is
+entirely JS-side pattern generation).
+
+### Amendments 2 (parity checks) and 5 (shape contour as slots) — NOT STARTED, deliberately deferred
+
+Two more amendments landed while Part 4 was in progress (one via `handoff.py amendments`, one relayed by another
+session over the cross-session channel — both now confirmed via a final `amendments` poll before this commit):
+
+- **Amendment 2**: 5a — a JS test proving the app's own drawn layer (box AND shape, default + one non-default
+  seed) matches `buildSketchManifest`'s own entities 1:1, no extras/missing, 1e-6in tolerance. 5b — a NEW Python
+  `verify_sketch_against_manifest(sketch, manifest, tol=0.002)`, called automatically at the end of
+  `build_constrained_sketch`, reading back REAL sketch geometry (slot centerline ends, circle centres, contour
+  line ends, arc ends+radius, matching arc ends order-free since Fusion arcs are CCW) and adding
+  `summary["parity"] = {"maxErr", "mismatches"}`; logs a WARNING when non-empty. Shim test: a moved point reports,
+  an exact build reports none.
+- **Amendment 5**: the Shape Lattice's own CONTOUR (currently plain Line/Arc3Point entities) becomes SLOTS too —
+  a contour Line via `addCenterToCenterSlot`, a contour Arc3Point via `sketch.addThreePointArcSlot(p1, pMid, p2,
+  width, True)` (a DIFFERENT Fusion API method than anything built so far this turn, its own return shape
+  unverified — advisor's own measurement: "centerline arc through the 3 points, sides ±w/2, width dimension").
+  The centerline (not the visible slot body) gets registered under the segment's own id, `:S`/`:E` by the SAME
+  proximity technique as Fix 3 above, `:C` for the arc centre. Width expression = `stroke_width`. Every EXISTING
+  contour constraint (the Coincident chain, Tangent, H/V, Equal, the hourglass's own shoulder<->hip Radial) now
+  acts on the CENTERLINES instead of the plain entities — a real re-target, not additive. NO Fix, anywhere; if a
+  Tangent between two slot centerlines over-constrains, report which one rather than silently dropping it. A NEW
+  Fusion API surface (`addThreePointArcSlot`) needs its own fake-shim model from scratch (return shape unverified,
+  same disclosed-uncertainty posture as T64's own `addCenterToCenterSlot` before the advisor's own real
+  measurement corrected it) — genuinely new ground, not a variation on anything already built.
+
+**Why deferred, not rushed**: by the time both landed, this turn had already absorbed 5 mid-task amendments on
+top of 3 dispatched fixes (Parts 1-4 above), including TWO newly-discovered-and-fixed real bugs (Part 3) and a
+THIRD self-caught one (Part 4) — each requiring real investigation, not just porting a described fix. Amendment 5
+in particular is its own substantial, architecturally-significant piece of work: a brand-new Fusion API surface
+with an unverified return shape, a full re-target of every existing contour constraint onto new entities, and an
+explicit "report don't Fix" discipline for a genuinely new over-constraint risk (Tangent between two slot
+centerlines) — exactly the kind of geometry-correctness-critical change that deserves a fresh session's own full
+attention, not a rushed tail end after this turn's own already-large scope. Per this project's own "capacity is
+a reportable fact" rule: flagging this now, honestly, as unstarted and scoped for next time, rather than
+delivering a shallow or under-tested version of either amendment.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+

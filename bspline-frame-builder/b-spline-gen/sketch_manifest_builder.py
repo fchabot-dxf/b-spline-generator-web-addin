@@ -192,14 +192,34 @@ def _create_arc3_entity(ctx, curves, s_name, ent):
     entity in THIS module already uses — so this is a sibling, not a
     delegation, matching the module's own header: 'writes its own
     geometry-creation because fb_engine's own gaps don't fit this
-    manifest's shape')."""
+    manifest's shape').
+
+    T67 (advisor's own real Fusion run — "this alone fixed the shape
+    bbox"): `addByThreePoints` always normalizes its own result to run
+    COUNTER-CLOCKWISE — so `arc.startSketchPoint` is NOT reliably the
+    manifest's own `p1`; for a CLOCKWISE-ordered `(p1, pMid, p2)`, Fusion
+    hands back `startSketchPoint` == this function's own `p2` instead,
+    silently swapping S/E. That swap corrupted every downstream `:S`/`:E`-
+    suffixed constraint referencing this arc (tie-on-rail-style
+    continuity, node coincidences) without ever raising or logging
+    anything — which is exactly why it manifested as a wrong-looking bbox
+    (arcs still built, just mislabeled at their own two ends) rather than
+    a build failure. Fixed by labeling whichever of Fusion's own two
+    returned points is GEOMETRICALLY CLOSER to the manifest's own `p1` as
+    `:S` (and the other as `:E`) — correct regardless of which way
+    Fusion's own CCW normalization happened to run, since it's derived
+    from the ACTUAL resulting geometry, not assumed from call-argument
+    order."""
     p1 = _to_point3d(ent["p1"])
     p_mid = _to_point3d(ent["pMid"])
     p2 = _to_point3d(ent["p2"])
     arc = curves.sketchArcs.addByThreePoints(p1, p_mid, p2)
     ctx.set_id(arc, s_name, "arc", override_id=ent["id"])
-    ctx.set_id(arc.startSketchPoint, s_name, "point", override_id=f"{ent['id']}:S")
-    ctx.set_id(arc.endSketchPoint, s_name, "point", override_id=f"{ent['id']}:E")
+    sp, ep = arc.startSketchPoint, arc.endSketchPoint
+    if sp.geometry.distanceTo(p1) > ep.geometry.distanceTo(p1):
+        sp, ep = ep, sp
+    ctx.set_id(sp, s_name, "point", override_id=f"{ent['id']}:S")
+    ctx.set_id(ep, s_name, "point", override_id=f"{ent['id']}:E")
     ctx.set_id(arc.centerSketchPoint, s_name, "point", override_id=f"{ent['id']}:C")
     return arc
 
@@ -296,22 +316,35 @@ def _create_slot_entity(ctx, sketch, curves, s_name, ent, width_expression):
 
     T66 (Fred's own rule, "never use Fix"; advisor's own real Fusion run:
     ALL 63 relationship constraints on a real box fixture failed
-    VCS_SKETCH_OVER_CONSTRAINTS): T64's OWN anchoring — the API call's own
-    4th argument AND a post-hoc `isFixed = True` on both centerline
-    endpoints — is REMOVED entirely, on BOTH mechanisms, not just one; a
-    Fixed point already has 0 DOF, so ANY relationship constraint that
-    also touches it (Horizontal, Coincident) is automatically redundant.
-    The API call's own 4th argument is now always `False`. Pinning every
-    piece in place is now ENTIRELY the relationship constraints' own job
-    (`_apply_constraints`, fed by the manifest's own H/V/Coincident
-    declarations) — the advisor's own measured minimal example (2 rails +
-    1 tie, all slots, NO Fix) produced ZERO failures."""
+    VCS_SKETCH_OVER_CONSTRAINTS): T64's OWN post-hoc `isFixed = True` on
+    both centerline endpoints — the ACTUAL source of the Fix bug — is
+    REMOVED entirely, and never comes back regardless of what else this
+    function does. Pinning every piece in place is now ENTIRELY the
+    relationship constraints' own job (`_apply_constraints`, fed by the
+    manifest's own H/V/Coincident declarations) — the advisor's own
+    measured minimal example (2 rails + 1 tie, all slots, NO Fix) produced
+    ZERO failures.
+
+    T67 (advisor's own real Fusion run, corrects a T66 misdiagnosis): the
+    API call's own 4th argument is NOT an anchor/Fix flag at all — it's
+    CREATE-WIDTH-DIMENSION. T66 set it `False` on the (wrong) theory that
+    it was the SAME Fix mechanism as the post-hoc `isFixed` above; measured
+    live, `False` means the slot gets NO `SketchDiameterDimension` at all,
+    so `_drive_last_dimension` (below) finds nothing to re-drive — every
+    slot's own width dimension came back "DIM MISS" and `stroke_width`
+    drove nothing (34/35 constraint fails too, likely downstream: a
+    dimensionless slot's own geometry may not fully resolve). Reverted to
+    `True` — this is genuinely a DIFFERENT knob from Fix, not a re-
+    introduction of it; the two mechanisms happened to share one call
+    site's own boolean position, which is exactly what made T66's own
+    diagnosis plausible-but-wrong without a live measurement to check it
+    against."""
     p1 = _to_point3d(ent["p1"])
     p2 = _to_point3d(ent["p2"])
     width_in = ent.get("width", 0.07)
     value_input = adsk.core.ValueInput.createByReal(width_in * IN_TO_CM)
     line_count_before = curves.sketchLines.count
-    sketch.addCenterToCenterSlot(p1, p2, value_input, False)
+    sketch.addCenterToCenterSlot(p1, p2, value_input, True)
     centerline = _find_slot_centerline(curves, p1, p2, line_count_before)
     if not centerline:
         raise RuntimeError(f"could not identify the slot's own centerline for {ent['id']}")

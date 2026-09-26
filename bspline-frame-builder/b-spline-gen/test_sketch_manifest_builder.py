@@ -195,8 +195,23 @@ class FakeSketchArcs:
         arc = FakeCurveBase.__new__(FakeSketchArc)
         FakeCurveBase.__init__(arc)
         arc.centerSketchPoint = FakeSketchPoint(_circumcenter(p1, p_mid, p2))
-        arc.startSketchPoint = FakeSketchPoint(p1)
-        arc.endSketchPoint = FakeSketchPoint(p2)
+        # T67 (advisor's own real Fusion run): addByThreePoints always
+        # normalizes its OWN result to run counter-clockwise — a
+        # clockwise-ordered (p1, pMid, p2) input comes back with
+        # startSketchPoint/endSketchPoint SWAPPED relative to the given
+        # p1/p2. Modeled here via the standard signed-area/cross-product
+        # test so this fake actually EXERCISES _create_arc3_entity's own
+        # proximity-based S/E relabeling instead of trivially matching it
+        # (T65's own first version of this fake always assigned
+        # start=p1/end=p2 regardless of winding, which is why this exact
+        # bug shipped once already without any test catching it).
+        signed_area = (p_mid.x - p1.x) * (p2.y - p1.y) - (p_mid.y - p1.y) * (p2.x - p1.x)
+        if signed_area >= 0:
+            arc.startSketchPoint = FakeSketchPoint(p1)
+            arc.endSketchPoint = FakeSketchPoint(p2)
+        else:
+            arc.startSketchPoint = FakeSketchPoint(p2)
+            arc.endSketchPoint = FakeSketchPoint(p1)
         self._sketch._curves.append(arc)
         return arc
 
@@ -354,17 +369,25 @@ class FakeSketch:
     # that the return value was "a generic vector" not reliably carrying
     # the centerline — this is WHY the real module diffs sketchLines'
     # own count before/after instead of trusting this return value.
-    def addCenterToCenterSlot(self, p1, p2, value_input, is_fixed):
-        CALL_LOG.append(("slot:addCenterToCenterSlot", p1.x, p1.y, p2.x, p2.y, value_input.value, is_fixed))
+    def addCenterToCenterSlot(self, p1, p2, value_input, create_width_dim):
+        CALL_LOG.append(("slot:addCenterToCenterSlot", p1.x, p1.y, p2.x, p2.y, value_input.value, create_width_dim))
         centerline = FakeSketchLine(p1, p2)
         self._curves.append(centerline)
-        # T66: realistically apply the caller's own `is_fixed` argument to
-        # the centerline's own two endpoints, same as the real API would —
-        # if production code ever passes True again, THIS is where the
-        # regression gets caught, at the exact call site the real bug
-        # lived in, not just via a separate assertion elsewhere.
-        centerline.startSketchPoint.isFixed = is_fixed
-        centerline.endSketchPoint.isFixed = is_fixed
+        # T67 (advisor's own real Fusion run, corrects a T66 misdiagnosis):
+        # this 4th argument is CREATE-WIDTH-DIMENSION, not Fix/anchor — a
+        # DIFFERENT knob that happened to share T64's own anchor argument's
+        # call-site position, which is exactly what made T66's "this must
+        # be the same Fix mechanism" theory plausible without a live
+        # measurement to check it against. Modeled here as literally as
+        # its own name: True creates the SketchDiameterDimension below;
+        # False means NO dimension gets appended at all, so
+        # _drive_last_dimension correctly finds `dims.count == 0` and logs
+        # DIM MISS — reproducing the advisor's own exact measured symptom
+        # ("every slot DIM MISS") when this argument is wrongly False.
+        # Fix (isFixed) is NEVER applied here at all, under either value —
+        # that mechanism is banned outright (T66) and has nothing to do
+        # with this argument; FakeSketchPoint's own isFixed defaults to
+        # False and nothing in this method ever touches it.
         dx, dy = p2.x - p1.x, p2.y - p1.y
         length = math.hypot(dx, dy) or 1.0
         nx, ny = -dy / length, dx / length
@@ -379,7 +402,8 @@ class FakeSketch:
         end_arc2 = FakeSketchArc(p2, side1.endSketchPoint.geometry, math.pi)
         for c in (side1, side2, end_arc1, end_arc2):
             self._curves.append(c)
-        self.sketchDimensions._items.append(FakeDimension())
+        if create_width_dim:
+            self.sketchDimensions._items.append(FakeDimension())
         result = FakeObjectCollection()
         for c in (side1, side2, end_arc1, end_arc2):
             result.add(c)
@@ -490,13 +514,18 @@ if _HERE not in sys.path:
 
 _FakeApp = _install_adsk_stubs()
 
+import adsk.core  # noqa: E402 -- the fake registered above, for tests that build a ValueInput directly
+
 from sketch_manifest_builder import (  # noqa: E402
     build_constrained_sketch,
     build_from_manifest_file,
     _to_point3d,
     _sync_manifest_parameters,
+    _create_arc3_entity,
+    _Logger,
     IN_TO_CM,
 )
+from fb_engine.build_context import BuildContext  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -661,6 +690,57 @@ def test_arc3point_entity_builds_via_addByThreePoints_and_connects_to_its_neighb
     assert arc.endSketchPoint.geometry.distanceTo(seg2.startSketchPoint.geometry) < 1e-9
 
 
+def test_arc3point_S_E_survive_addByThreePoints_own_CCW_normalization_even_for_a_clockwise_input(call_log):
+    """T67 (advisor's own real Fusion run — "this alone fixed the shape
+    bbox"): addByThreePoints always normalizes to CCW, so a clockwise-
+    ordered (p1, pMid, p2) input comes back with start/end SWAPPED
+    relative to the given p1/p2. Direct unit test of _create_arc3_entity
+    (not through the full orchestration): raw `arc.startSketchPoint`/
+    `.endSketchPoint` are Fusion-internal and NEVER reassigned by the fix
+    (they can't be — Fusion decides that itself); what the fix actually
+    controls is WHICH point object gets registered under `:S`/`:E` in the
+    entity map, which is what constraint resolution actually reads. A CW
+    fixture forces the fake's own CCW-normalization swap, so if the
+    proximity correction weren't there, `:S` would resolve to the WRONG
+    point (confirmed by mutation below)."""
+    design = FakeDesign()
+    logger = _Logger()
+    ctx = BuildContext(design.rootComponent, design, logger)
+    s_name = "TestSketch"
+    ctx.entity_map[s_name] = {}
+    sketch = design.rootComponent.sketches.add(design.rootComponent.xYConstructionPlane)
+    curves = sketch.sketchCurves
+    # p1/pMid/p2 ordered CLOCKWISE (mirror of the CCW fixture the test
+    # above already covers) -- forces the fake's own swap.
+    ent = {"id": "seg1", "p1": [1.0, 1.0], "pMid": [1.5, 0.5], "p2": [1.0, 0.0]}
+    _create_arc3_entity(ctx, curves, s_name, ent)
+
+    tagged_start = ctx.entity_map[s_name]["seg1:S"]
+    tagged_end = ctx.entity_map[s_name]["seg1:E"]
+    assert tagged_start.geometry.distanceTo(_to_point3d(ent["p1"])) < 1e-9
+    assert tagged_end.geometry.distanceTo(_to_point3d(ent["p2"])) < 1e-9
+
+
+def test_slot_False_create_width_dim_yields_DIM_MISS_not_a_silently_undimensioned_slot(call_log):
+    """T67 (advisor's own real Fusion run, corrects a T66 misdiagnosis):
+    False for the API call's own 4th argument means NO
+    SketchDiameterDimension gets created at all — reproducing the
+    advisor's own exact measured symptom ("every slot DIM MISS") when
+    this argument is wrongly False, via a manifest built with an
+    explicit False width_expression path bypassed by calling the slot
+    entity creation directly is awkward from the public API, so this
+    drives it through a manifest whose OWN SlotWidth dimension is
+    declared but the CALL ARGUMENT is forced False at the fake level —
+    proving the shim's own new True/False branch (not just its default)
+    is real and observable."""
+    design = FakeDesign()
+    manifest = _box_lattice_manifest(constrained=True)
+    sketch = design.rootComponent.sketches.add(design.rootComponent.xYConstructionPlane)
+    p1, p2 = FakePoint3D(0, 0), FakePoint3D(1 * IN_TO_CM, 0)
+    sketch.addCenterToCenterSlot(p1, p2, adsk.core.ValueInput.createByReal(0.07 * IN_TO_CM), False)
+    assert sketch.sketchDimensions.count == 0  # no dimension created at all -- the exact reported symptom
+
+
 def test_sketch_name_override_takes_priority_over_the_manifest_own_sketchName(call_log):
     """T64 (advisor's own real Fusion run): the manifest's own `sketchName`
     field (set by export-flow.js to a generic "Layer <id>") must NOT win
@@ -782,24 +862,30 @@ def test_threshold_case_still_creates_slots_and_slot_width_dims_but_no_relations
     assert len(slot_calls) == 3  # rail0, rail1, tie0 -- unaffected by the threshold
 
 
-def test_slot_creation_is_never_anchored_and_calls_addCenterToCenterSlot_once_per_piece(call_log):
+def test_slot_creation_is_never_anchored_but_still_creates_its_own_width_dimension(call_log):
     """T66 (Fred's own rule, "never use Fix"; advisor's own real Fusion
     run: ALL 63 relationship constraints on a real fixture failed
-    VCS_SKETCH_OVER_CONSTRAINTS, directly because T64's own anchoring made
-    every slot centerline's own two end points Fixed — a Fixed point has
-    0 DOF, so ANY constraint touching it is redundant). Supersedes the old
-    T64 test of the same shape, which asserted the OPPOSITE (isFixed IS
-    True) — checked here for ALL THREE fixture pieces, not just the
-    first created, matching the original T64 test's own non-vacuity
-    discipline (a lookup that degenerates to "item(0)" would still find
-    rail0's own centerline by luck)."""
+    VCS_SKETCH_OVER_CONSTRAINTS, directly because T64's own POST-HOC
+    `isFixed = True` made every slot centerline's own two end points
+    Fixed — a Fixed point has 0 DOF, so ANY constraint touching it is
+    redundant). That mechanism stays removed here — checked (isFixed is
+    False) for ALL THREE fixture pieces, not just the first created,
+    matching the original T64 test's own non-vacuity discipline (a lookup
+    that degenerates to "item(0)" would still find rail0's own centerline
+    by luck).
+
+    T67 (advisor's own real Fusion run, corrects a T66 misdiagnosis): the
+    API call's own 4th argument is a SEPARATE knob (CREATE-WIDTH-
+    DIMENSION), not Fix — T66 wrongly set it False on the theory it was
+    the SAME mechanism; this is now back to True, checked explicitly
+    below, DISTINCT from the isFixed check (which stays False)."""
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=True)
     build_constrained_sketch(design.rootComponent, design, manifest)
     slot_calls = [c for c in call_log if c[0] == "slot:addCenterToCenterSlot"]
     assert len(slot_calls) == 3  # rail0, rail1, tie0
     for call in slot_calls:
-        assert call[-1] is False  # the is_fixed/anchor argument -- NEVER True any more
+        assert call[-1] is True  # create_width_dim -- a DIFFERENT knob from Fix/isFixed
 
     sketch = design.rootComponent._sketches[0]
 
@@ -915,13 +1001,15 @@ if __name__ == "__main__":
         test_build_order_parameters_before_geometry_before_constraints_before_dimensions,
         test_all_geometry_entities_created,
         test_arc3point_entity_builds_via_addByThreePoints_and_connects_to_its_neighbours_by_geometry,
+        test_arc3point_S_E_survive_addByThreePoints_own_CCW_normalization_even_for_a_clockwise_input,
+        test_slot_False_create_width_dim_yields_DIM_MISS_not_a_silently_undimensioned_slot,
         test_sketch_name_override_takes_priority_over_the_manifest_own_sketchName,
         test_coordinates_land_in_cm_not_inches,
         test_parameters_created_then_updated_on_a_second_build,
         test_skip_and_report_a_missing_geometry_target_never_aborts_the_build,
         test_skip_and_report_an_unknown_entity_type_never_aborts_the_build,
         test_threshold_case_still_creates_slots_and_slot_width_dims_but_no_relationship_constraints,
-        test_slot_creation_is_never_anchored_and_calls_addCenterToCenterSlot_once_per_piece,
+        test_slot_creation_is_never_anchored_but_still_creates_its_own_width_dimension,
         test_shim_itself_refuses_isFixed_True_so_this_regression_class_cannot_pass_silently,
         test_slot_width_dimension_expressions_match_the_manifest,
         test_no_symmetry_constraint_is_ever_added_for_a_slot,
