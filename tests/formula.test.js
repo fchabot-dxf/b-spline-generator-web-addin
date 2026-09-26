@@ -12,9 +12,12 @@ import {
   evaluate, tokenize, namesMatching, findName, isPlainNumber, FORMULA_ERRORS,
 } from '../bspline-frame-builder/b-spline-gen/html/core/formula.js';
 import {
-  attachFormula, wordAtCaret, isFormulaField,
+  attachFormula, wordAtCaret, isFormulaField, clampToField, declaredRange,
 } from '../bspline-frame-builder/b-spline-gen/html/core/formula-field.js';
-import { FORMULA_FIELDS, STOCK_SCOPE } from '../bspline-frame-builder/b-spline-gen/html/main/formula-fields.js';
+import {
+  FORMULA_FIELDS, FORMULA_SECTIONS, STOCK_SCOPE,
+} from '../bspline-frame-builder/b-spline-gen/html/main/formula-fields.js';
+import { P, INPUT_PAIRS } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 const SCOPE = [
   { name: 'width', label: 'Width', get: () => 6, unit: '"' },
@@ -320,10 +323,108 @@ describe('formula field binder', () => {
   });
 });
 
-describe('declared formula fields (item 5)', () => {
-  it('stock width/height are formula fields over the stock scope', () => {
-    expect(FORMULA_FIELDS.map((f) => f.id)).toEqual(['widthIn', 'heightIn']);
+describe('range: a formula result is clamped to the declared min/max (R2 item 1)', () => {
+  let input, applied;
+  const type = (text) => { input.value = text; input.dispatchEvent(new Event('input', { bubbles: true })); };
+  const enter = () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  const preview = () => document.querySelector('.formula-preview')?.textContent || '';
+  const mount = (attrs) => {
+    document.body.innerHTML = `<input type="number" id="r" value="7" ${attrs}>`;
+    input = document.getElementById('r');
+    applied = [];
+    input.addEventListener('input', (e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) applied.push(v); });
+    attachFormula(input, SCOPE);
+  };
+
+  it('declaredRange reads min/max attributes; blank/missing = unbounded', () => {
+    mount('min="0.1" max="96"');
+    expect(declaredRange(input)).toEqual([0.1, 96]);
+    mount('min="" ');
+    expect(declaredRange(input)).toEqual([-Infinity, Infinity]);
+    expect(clampToField(input, -1e9)).toEqual({ value: -1e9, bound: null });
+  });
+  it('above max -> committed as max, shown while typing and after commit', () => {
+    mount('min="0.1" max="96"');
+    type('width*20');
+    expect(preview()).toBe('= 120 → 96 (max)');
+    expect(applied).toEqual([]);
+    enter();
+    expect(input.value).toBe('96');
+    expect(applied).toEqual([96]);
+    expect(preview()).toMatch(/120 clamped to 96 \(max\)/);
+  });
+  it('below min -> committed as min', () => {
+    mount('min="0.1" max="96"');
+    type('width-10');
+    enter();
+    expect(input.value).toBe('0.1');
+    expect(applied).toEqual([0.1]);
+  });
+  it('negative results allowed where min is negative', () => {
+    mount('min="-0.45" max="0.45"');
+    type('-stroke');
+    enter();
+    expect(applied).toEqual([-0.25]);
+    type('-width');
+    enter();
+    expect(applied).toEqual([-0.25, -0.45]);
+  });
+  it('in range -> unchanged; no bounds -> unchanged', () => {
+    mount('min="0.1" max="96"');
+    type('width+1'); enter();
+    expect(applied).toEqual([7]);
+    mount('');
+    type('width*100'); enter();
+    expect(applied).toEqual([600]);
+  });
+  it('plain typed numbers are NOT clamped by the binder (behave as today)', () => {
+    mount('min="0.1" max="96"');
+    type('200');
+    expect(applied).toEqual([200]);
+    expect(input.value).toBe('200');
+  });
+});
+
+describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
+  const html = readFileSync(resolve(__dirname, '../bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html'), 'utf8');
+  // Only the markup matters here — drop <link>/<script> so happy-dom doesn't try to fetch them.
+  const doc = new DOMParser().parseFromString(
+    html.replace(/<link\b[^>]*>/gi, '').replace(/<script\b[\s\S]*?<\/script>/gi, ''), 'text/html');
+  const pKeyFor = (id) => Object.keys(P).find((k) => (INPUT_PAIRS[k] || k) === id);
+
+  it('stock scope + stock section', () => {
     expect(STOCK_SCOPE.map((d) => d.name)).toEqual(['width', 'height', 'depth']);
-    FORMULA_FIELDS.forEach((f) => expect(f.scope).toBe(STOCK_SCOPE));
+    expect(FORMULA_SECTIONS[0].ids).toEqual(['widthIn', 'heightIn', 'carveZ']);
+  });
+  it('every declared field is a sidebar number input on the bind()->applyParam path (a P key)', () => {
+    expect(FORMULA_FIELDS.length).toBeGreaterThan(20);
+    for (const { id, section } of FORMULA_FIELDS) {
+      const el = doc.getElementById(id);
+      expect(el, id).not.toBeNull();
+      expect(el.getAttribute('type'), id).toBe('number');
+      expect(pKeyFor(id), `${id} has no P key`).toBeTruthy();
+      const hdr = el.closest('.panel')?.querySelector('.panel-header')?.textContent || '';
+      expect(hdr, id).toContain(section);
+    }
+  });
+  it('never declares the excluded fields (seed id, FRAME, stamp transform, lattice/editor)', () => {
+    const ids = FORMULA_FIELDS.map((f) => f.id);
+    for (const bad of ['seed', 'frameBottomZ', 'stampTx', 'stampTy', 'stampRotation', 'stampScale',
+      'sculptTopHardness', 'sculptBotHardness']) expect(ids).not.toContain(bad);
+    expect(ids.filter((id) => /^(lattice|shapeLattice|editor|skel)/.test(id))).toEqual([]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+  it('each section scope = stock names + its own, unique names, every name reads a finite P value', () => {
+    for (const s of FORMULA_SECTIONS) {
+      const names = s.scope.map((d) => d.name);
+      expect(names.slice(0, 3)).toEqual(['width', 'height', 'depth']);
+      expect(new Set(names).size, s.section).toBe(names.length);
+      for (const d of s.scope) expect(Number.isFinite(d.get()), `${s.section}.${d.name}`).toBe(true);
+    }
+  });
+  it('a section scope evaluates against live P', () => {
+    const stamp = FORMULA_SECTIONS.find((s) => s.section === 'VECTOR STAMPING').scope;
+    expect(evaluate('plunge * 2', stamp)).toEqual({ ok: true, value: P.stampDepth * 2 });
+    expect(evaluate('angle / 2', stamp).value).toBe(P.stampVBitAngle / 2);
   });
 });
