@@ -1,21 +1,20 @@
-# NEXT (lane-b) — T72: SE15c threshold + deep-waist no-lattice bug + SE14c contour checkbox
+# NEXT (lane-b) — T73: SE14b — Shape Lattice contour as selectable, per-segment-colourable SEGMENTS
 
-**Ball: worker (seat B) · epoch 3 · T72.** NO FUSION. T71 (8566623) is being verified live by the advisor; if it needs a
-fix you get an `amend`. Three items, in this order, one commit each:
-## 1. SE15c — raise SKETCH_PIECE_THRESHOLD 60 → 300 (editor-sketch-manifest.js)
-Advisor MEASURED in Fusion, 16 rails / 97 pieces: plain (current) 61 s, drift 0.139" at stroke 0.5, rails visibly
-tilted; constrained 90 s, 0 fails, exact parity, drift 0.030". A 14-rail hourglass (101 pieces, 170 constraints) built
-with 0 constraint fails. Update the SE15 doc number + any test that pins 60.
-## 2. Bug — Shape Lattice, Hourglass with waistReach 0.8 + cornerRadius 0.4 generates NO rails/ties at all
-Advisor reproduced (headless, default 7x9 board, Hourglass preset, shapeParam-waistReach=0.8, shapeParam-cornerRadius=0.4,
-Generate): the contour draws correctly (deep waist), the layer has 0 rail/tie/node elements, manifest has only the 12
-contour segs. Find why (boundary resolution? inset polygon self-intersecting / empty? rails clipped to nothing?), fix
-the root cause, and add a test with these params that asserts rails > 0.
-## 3. SE14c — "Contour" checkbox in the Shape Lattice panel (Fred)
-Fred: "I'd want a checkbox for the actual contour, I still want rails and ties to be contoured but sometimes don't
-want the contour profile". Declared flag (e.g. contour.show, default true) + checkbox in the C1 style. OFF = the contour
-is still computed and still clips/fits rails & ties exactly as now, but its segments are not drawn, not in SVG export /
-Send to Fusion, and not in the manifest (no contour slots, no contour_width/height params/dims). Saved patterns without
-the key read true. Parity test covers both states. Render ON and OFF to PNG and view before passing.
-Pass back: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T72: SE15c + deep-waist fix + SE14c — <shas>, tests"`.
-SE14b (contour segments selectable/colourable) is the task after this.
+**Ball: worker (seat B) · epoch 4 · T73.** NO FUSION. T72 (57ab890) accepted pending the advisor's merge gate.
+Fred: "we should also represent those separations in the add-in preview, to be able to select segments and color them";
+"contour can have per segment colors within lattice right?" → yes, this task.
+Your own investigation is in WORK-LOG-lane-b.md (T70/SE14b section of the capacity report, b62fd4d): rendering
+pipeline, the boundary-resolution-reads-one-DOM-element hazard (lattice-fill clipping relies on it), the segment-tap
+interaction question, the colour-persistence design. Use it.
+- The contour is drawn as ONE ELEMENT PER SEGMENT (line / circular arc), round caps, stroke = the contour's width (auto
+  = lattice stroke width, T72 item 6), from the SAME segment list the manifest reads (seg ids + geometry). One
+  declaration, two consumers; the parity test covers segments.
+- Each segment selectable with the normal select tool and recolourable; the T72 contour colour is the default, a
+  per-segment colour overrides it (left ≠ right allowed). Store overrides keyed by segment id in the pattern.
+- The fill/clip boundary stays ONE closed loop DERIVED from the segments (not stored twice) — keep lattice clipping,
+  the show-contour checkbox (SE14c) and Border width auto working.
+- A regenerate with the same segment count keeps per-segment colours; a count change resets them (say so in the log).
+- SVG export / Send to Fusion / drape preview show per-segment colour.
+- Tests: N drawn segments = N manifest contour entities; recolour one → only it changes; regenerate keeps it; the
+  checkbox off hides all segments. Render hourglass + bottle with two segments recoloured, VIEW them before passing.
+Pass back: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 4 — T73: SE14b — <sha>, tests"`.
