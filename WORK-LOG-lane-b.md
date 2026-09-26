@@ -8944,3 +8944,80 @@ Rendered and viewed a 0.5in-stroke hourglass and bottle: corners are now visibly
 
 Verify: 1216/1216 vitest, 151/151 pytest. Amendments polled clean before commit. Commit 263c645, pushed. NO FUSION.
 
+## Process correction — handoff.py cwd
+
+Caught by the advisor: every `handoff.py` call this whole session (wait/amendments/sig/pass) had been running against the
+MAIN checkout's own handoff channel, not lane-b's own — no explicit `cd` in those specific bash commands, so they ran in
+whatever the tool's default cwd happened to be. This meant polling "no new amendments" was checking the WRONG file the
+entire time; every AMEND 1-4 I'd received arrived via direct cross-session messages instead, and my own turn-165 pass-
+back at the end of the prior SE14b session never reached lane-b's real channel either (lane-b's own `.handoff/worker.last`
+was still sitting at 165, un-advanced, confirmed by reading the file directly). Fixed going forward: every handoff.py
+call now runs with an explicit `cd` to the lane-b worktree in the SAME bash command. Also confirmed and corrected: the
+apparent turn-276 "ADD1" dispatch earlier in this session was main's own channel (seat A's task, already done by seat A
+per the advisor) — never mine, correctly left untouched.
+
+## T73 AMEND 3 (constraint) — Coincident from each rail/tie end to its contour segment
+
+Completes AMEND 3's own full ask (the geometry half landed as dc3c984): every rail/tie end `computePattern` already
+attributes to a contour crossing (`usesContourCenterline` mode) now gets a declared Coincident constraint in the
+manifest, wiring it to the specific contour segment (line or arc) it landed on.
+
+New `primitiveHitAt(pt, primitives, tol)` (editor-lattice-boundary.js, alongside `insideSpans`): given a point already
+known to sit on some primitive in the list, finds WHICH one and whether it's at that primitive's own S/E (a joint
+between two contour segments) or genuinely mid-primitive. This ALSO satisfies AMEND 3b's own "an end at a joint
+constrains to ONE segment only, never two point-on-curves" requirement by construction — the function returns the
+FIRST matching primitive with its own S/E flag already, so the emitted constraint is already point-to-point at that
+one segment; no separate dedup pass was needed.
+
+`computePattern` attributes each boundary-crossing rail/tie end (only when `endRule` is `'on-boundary'`) via a new
+`aContourHit`/`bContourHit` field, converting the scan-line's own scalar crossing position back to a world point
+first. `manifestFromLattice` reads it to emit the Coincident, reusing the SAME "point-to-point at an end, point-on-
+curve mid-primitive" convention `pieceEndOrCurveTarget` already established for tie-on-rail/node relations.
+
+**Self-caught bug** (a temporary debug trace, not guesswork): `computePattern`'s own final return re-mapped every
+segment down to a bare `{kind, a, b}` object before returning it, silently dropping the two new fields one line after
+they were correctly computed — the attribution itself was right the whole time; the return statement threw it away.
+Fixed by passing both fields through in that same map.
+
+New tests (`tests/shape-lattice-rails-on-contour.test.js`): for the dense vertical hourglass and bottle, every rail end
+has EXACTLY ONE Coincident to a `seg*` entity, independently verified against that constraint's own resolved point
+(not just its declared shape, and not by re-trusting `primitiveHitAt`); contour hidden emits zero `seg*` Coincidents.
+A manual sweep (ad hoc, not a committed test) across both presets x both orientations x 3 rail counts found zero
+duplicate or self-referencing Coincident constraints anywhere.
+
+**Disclosed, deferred scope**: AMEND 3b's own explicit near-tangent-angle threshold (dropping a Coincident whose
+crossing angle is under ~10°) and a dedicated `MIN_RAIL_PIECE` (a stricter drop-threshold than the existing
+`MIN_PIECE_LENGTH_IN`) are not implemented — relying on the existing length filter for now, a judgment call under
+real time constraints, not a silent gap.
+
+Verify: 1219/1219 vitest, 151/151 pytest. Amendments polled clean before commit (correct lane-b cwd this time). Commit
+fa878f1, pushed. NO FUSION.
+
+## T73 AMEND 3c — Collinear + railGroup for split same-rail/tie pieces
+
+Fred: "rails can have colinearity." When a boundary crossing splits one original rail/tie into several pieces (e.g. a
+vertical rail crossing the hourglass waist twice — AMEND 3b's own case (a), already handled for free by the existing
+multi-span `_clipToSpans` architecture once the boundary/endRule fix landed), giving every piece its own Horizontal/
+Vertical constraint over-constrains once a Collinear between them already fixes the later pieces' own direction.
+
+`computePattern` now tags every rail/tie segment with `railGroup` — the row `j` / column `i` it came from, already a
+stable, unique-per-row/column key, reused directly rather than declaring a second counter. `manifestFromLattice`
+declares it as plain DATA on the entity itself too (not just an internal bookkeeping key — "the relation is derived
+from data," the amend's own words), via `addSlotPieces`'s own new optional `railGroup` passthrough (harmless/absent
+for its other caller, the contour's own single-piece slot emission). Only the FIRST piece of each group gets its own
+axis constraint (`emitAxisOncePerGroup` — deliberately only marks a group "seen" once a REAL axis constraint actually
+fires, so a hypothetical non-axis-aligned piece could never silently poison the rest of its own group's chance at
+one); `collinearForGroups` links every group's own consecutive pieces (already position-sorted by construction —
+`_clipToSpans` emits spans ascending, never re-sorted downstream) with one Collinear constraint each, applied
+identically to both rails and ties.
+
+New tests confirm, on the dense vertical hourglass: every multi-piece group gets exactly (pieces-1) Collinear
+constraints in the correct consecutive order, axis constraints appear only on each group's own first piece, and an
+un-split rail is entirely unaffected by the dedup logic. A manual sweep (ad hoc) across both presets x both
+orientations x 3 rail counts confirmed the expected split-group/axis/Collinear pattern throughout, no anomalies.
+
+This closes out T73 AMEND 3's full scope (3 core, 3b's splitting behavior, 3c) except the two explicitly disclosed
+AMEND 3b items above (near-tangent-angle threshold, dedicated MIN_RAIL_PIECE).
+
+Verify: 1221/1221 vitest, 151/151 pytest. Amendments polled clean before commit. Commit 23f1584, pushed. NO FUSION.
+
