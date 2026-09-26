@@ -32,8 +32,8 @@ def _checklist(path, task, branch):
     subjects = _git(ROOT, "log", "--format=%s", "-300", "origin/" + branch) + _git(path, "log", "--format=%s", "-300")
     norm = lambda x: re.sub(r"[\s_-]+", " ", x).strip().lower()
     # advisor dispatch/doc commits mention the same tags — only real work commits count
-    subj = norm("
-".join(l for l in subjects.splitlines() if not re.match(r"\s*docs", l, re.I)))
+    work = [l for l in subjects.splitlines() if not re.match(r"\s*docs", l, re.I)]
+    subj = norm(" | ".join(work))
     # a tag counts when its words appear as a whole phrase in any commit subject ("T74-AMEND-0" ~ "T74 AMEND 0 ...")
     return sum(bool(re.search(r"(?<![a-z0-9])" + re.escape(norm(t)) + r"(?![a-z0-9])", subj)) for t in tags), len(tags)
 
