@@ -838,6 +838,14 @@ Above 60 pieces the manifest sends plain, unconstrained geometry (SE15 §8 guess
 pieces: plain 61 s, drift 0.139" at stroke 0.5 (0.013" not recovered), rails visibly tilted; CONSTRAINED 90 s, 0 fails,
 exact parity, drift 0.030" (0.0004" recovered). Raise the threshold (e.g. 300) so dense lattices stay constrained.
 
+## Queued — SE14d: remove "Pick shape…" from the Shape Lattice panel; a separate Fill-shape tool later (Fred 2026-09-26)
+Fred: "boundary pick shape isn't useful, it might just be another tool". Next task for seat B after T73. Remove the
+Boundary → Pick shape… affordance (and its edge-rule row if it only serves picked shapes) from the Shape Lattice panel;
+KEEP the boundary machinery (the generated silhouette runs through the same boundary/inset code). Removal is a sweep:
+button, its handler, panel state/strings, tests that only guard the picked-shape UI — each link removed or kept with a
+named reason. Saved patterns that have a picked boundary still load (read-only / detach) — decide and log.
+Later, optional: a standalone "Fill shape" tool (pick any drawn shape → lattice inside) if Fred wants it.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
