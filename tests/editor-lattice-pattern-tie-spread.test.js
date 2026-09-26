@@ -81,8 +81,11 @@ describe('computePattern: ties.spread (T57)', () => {
   });
 
   it('50 seeds: the tie count stays in [8,13] (the spread mechanism doesn\'t change T56\'s own count)', () => {
+    // T77 (TIE-GAP): minSpacing:0 -- this test's own purpose is the spread
+    // mechanism, independent of the new gap constraint (tested on its own
+    // merits in tests/editor-lattice-pattern-tie-gap.test.js).
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } }, { extent: EXTENT });
       const cols = tieColumns(result);
       expect(cols.length).toBeGreaterThanOrEqual(8);
       expect(cols.length).toBeLessThanOrEqual(13);
