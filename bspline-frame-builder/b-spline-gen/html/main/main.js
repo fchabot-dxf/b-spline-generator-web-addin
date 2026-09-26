@@ -33,6 +33,7 @@ import { initApp, initSvgEditor } from './app-init.js';
 import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
 import { initSkeletonEditor } from './skeleton-editor.js';
+import { initFramePanel } from './frame-panel.js';
 import { bindHeaderAndSettings } from './header-controls.js';
 import { wireGlobalEvents } from './global-events.js';
 import {
@@ -101,6 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 6. Skeleton (seed) editor — must run after bindControls so the
     //    sidebar's "Edit Skeleton" button exists and isn't double-wired.
     initSkeletonEditor();
+    // FB-APP S2 (F6): the sidebar FRAME section + the editor's cut-profile provider.
+    initFramePanel();
 
     // 7. Fusion 360 detection. Two RAFs to yield to browser paint so
     //    the palette has settled before we start polling.

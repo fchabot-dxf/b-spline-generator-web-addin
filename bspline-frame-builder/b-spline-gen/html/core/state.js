@@ -103,6 +103,9 @@ export const DEFAULT = {
     exportOrientation: 'z-up',
     // Flat border
     edgeMarginIn: 0,
+    // FB-APP S2 (F6): the persisted frame record (core/frame-record.js).
+    // null = no frame (Fred, Q2); every read goes through normalizeFrameRecord.
+    frame: null,
     // Vector Stamping (Multi-Layer Support)
     // SE4c: .svg/.mask retired from this shape — content lives only on
     // P.editorSvg / editor._layers[i]._mask now (SE4-MIRROR-RETIREMENT-

@@ -390,6 +390,32 @@
         </div>
       </div>
 
+      <!-- 2b. Frame (FB-APP S2, Fred F3 AMEND 4-6): the frame's SOLID-EXTRUSION
+           settings + template choice, second after Stock Dimensions. Options
+           are filled from data/frame-defs.js by main/frame-panel.js (never
+           typed here). With template "none" it stays collapsed to one line. -->
+      <div class="panel panel-frame">
+        <div class="panel-header collapsed" id="framePanelHeader" onclick="togglePanel(this)">🖼 FRAME <span id="frameSummary" style="font-weight:400; opacity:0.7;">— none</span></div>
+        <div class="panel-body hidden">
+          <label class="cad-label">Template</label>
+          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+            <select id="frameTemplate" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
+          </div>
+          <div id="frameSettings" style="display:none;">
+            <label class="cad-label">Frame bottom (z)</label>
+            <div class="cad-stepper" style="margin-bottom:12px;">
+              <input type="number" id="frameBottomZ" value="-1" step="0.125">
+            </div>
+            <label class="cad-label">Wood</label>
+            <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+              <select id="frameAppearance" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
+            </div>
+            <div id="frameFitWarning" style="display:none; color:#ff3b30; font-size:11px; margin-bottom:10px;"></div>
+            <button type="button" id="btnEditFrameShape" class="cad-btn cad-btn-secondary" style="width:100%;">Edit frame shape ✎</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 3. Seed (raw coarse-field generator — comes BEFORE the skeleton).
            Seed = the raw pattern. Skeleton = transforms applied to it.
            Filter = fine detail layered on top. Three panels = three jobs. -->

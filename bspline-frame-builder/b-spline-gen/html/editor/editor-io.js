@@ -15,6 +15,7 @@ import { resetPanState } from './editor-interaction.js';
 import { clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { dbg } from '../core/debug.js';
 import { OUTLINE_KINDS } from './editor-outline-preview.js';
+import { drawFrameProfile } from './editor-frame-profile.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -1026,6 +1027,9 @@ export function sync3DBackground(editor) {
           .fill('none')
           .stroke({ color: '#ff0000', width: 0.01, dasharray: '0.1,0.1' });
     }
+    // FB-APP S2 (F6): the board drawn as the chosen frame's cut profile
+    // (this function just cleared the background layer it lives in).
+    drawFrameProfile(editor);
 }
 
 export function getPointerPos(editor, e) {
