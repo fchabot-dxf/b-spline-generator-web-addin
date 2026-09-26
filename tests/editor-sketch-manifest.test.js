@@ -1063,6 +1063,33 @@ describe('buildSketchManifest — T71: the contour builds from the board region 
     // entities/dimensions shrink.
     expect(manifest.region).toEqual({ x: 0, y: 0, w: 7, h: 9 });
   });
+
+  it('T75 LAT-SIZE: an explicit pattern.size overrides the board-minus-1in default -- contour_width/contour_height come out to the DECLARED size, centered, not the auto fallback', () => {
+    const shapePattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      size: { width: 3, height: 4 },
+    };
+    const manifest = buildSketchManifest(shapePattern, REGION, {});
+    expect(manifest.parameters.find((p) => p.name === 'contour_width').value).toBeCloseTo(3, 9);
+    expect(manifest.parameters.find((p) => p.name === 'contour_height').value).toBeCloseTo(4, 9);
+    // non-vacuous: genuinely different from the auto 6x8 the previous test pins.
+    expect(manifest.parameters.find((p) => p.name === 'contour_width').value).not.toBeCloseTo(6, 9);
+    expect(manifest.parameters.find((p) => p.name === 'contour_height').value).not.toBeCloseTo(8, 9);
+  });
+
+  it('T75 LAT-SIZE: setting only ONE axis of pattern.size leaves the OTHER axis on its own auto (board-minus-1in) default -- per-axis fallback, not all-or-nothing', () => {
+    const shapePattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      size: { width: 3, height: null },
+    };
+    const manifest = buildSketchManifest(shapePattern, REGION, {});
+    expect(manifest.parameters.find((p) => p.name === 'contour_width').value).toBeCloseTo(3, 9);
+    expect(manifest.parameters.find((p) => p.name === 'contour_height').value).toBeCloseTo(8, 9); // untouched auto
+  });
 });
 
 describe('buildSketchManifest — T72: the default Bottle preset (and a deep-waist Hourglass) still generate a real lattice fill after T71\'s contour inset', () => {

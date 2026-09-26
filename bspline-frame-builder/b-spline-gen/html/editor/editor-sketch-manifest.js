@@ -1049,6 +1049,16 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // ORIGINAL, un-sized `region` — carve placement centers the WHOLE BOARD,
   // not just the contour.
   const contourRegion = hasShape ? sizedBoardRegion(region, pattern.size) : region;
+  // T75 item 2 (decided + logged, not escalated -- see WORK-LOG): Box
+  // Lattice's own fill area DOES honor `pattern.size` for PLACEMENT
+  // (resolveBoardExtent calls the same sizedBoardRegion internally), but
+  // exports NO matching Fusion parameter for it, unlike Shape Lattice's
+  // contour_width/height above. Those drive a REAL dimensioned entity (the
+  // contour outline's own Distance dim); Box Lattice has no such single
+  // entity representing its fill boundary -- every rail/tie is already its
+  // own dimensioned piece, so a `lattice_width`/`lattice_height` parameter
+  // would have nothing to drive, just an inert number in Fusion's
+  // parameter table.
   const extent = hasShape ? resolveShapeBoundaryExtent(pattern, contourRegion) : resolveBoardExtent(pattern, region);
   const lattice = manifestFromLattice(pattern, extent, widthMode);
   // T69: the contour's own slot width matches the layer's own REAL
