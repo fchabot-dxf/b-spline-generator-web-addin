@@ -56,7 +56,7 @@
 import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
-  primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetRegionForContour,
+  primitivesBBox, insetGeneratedPresetPathDToPrimitives, sizedBoardRegion,
 } from './editor-lattice-boundary.js';
 import { generateContourSilhouette, primitivesToPathD, PRESETS } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
@@ -799,20 +799,20 @@ function scalePrimitiveToLattice(prim, spacing) {
 }
 
 // Mirrors `_resolveExtent`'s own 'board' branch (editor-lattice-pattern.js)
-// exactly (same margin/toLattice math), parameterized by an already-
-// resolved `region` instead of `editor._mW/_mH` — this module's own "no
-// DOM, no editor object" contract (header comment) means it can't call
-// the DOM-touching original directly, so the SAME formula is reused here
-// rather than a divergent one (not a new algorithm, just its one DOM
-// dependency swapped for a plain argument).
+// exactly (T75: the SAME `sizedBoardRegion`/toLattice math), parameterized
+// by an already-resolved `region` instead of `editor._mW/_mH` — this
+// module's own "no DOM, no editor object" contract (header comment) means
+// it can't call the DOM-touching original directly, so the SAME formula
+// is reused here rather than a divergent one (not a new algorithm, just
+// its one DOM dependency swapped for a plain argument).
 function resolveBoardExtent(pattern, region) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
-  const margin = pattern.margin ?? PATTERN_DEFAULTS.margin;
-  const topLeft = toLattice({ x: region.x, y: region.y }, spacing);
-  const bottomRight = toLattice({ x: region.x + region.w, y: region.y + region.h }, spacing);
+  const sized = sizedBoardRegion(region, pattern.size);
+  const topLeft = toLattice({ x: sized.x, y: sized.y }, spacing);
+  const bottomRight = toLattice({ x: sized.x + sized.w, y: sized.y + sized.h }, spacing);
   return {
-    iMin: topLeft.i + margin, jMin: topLeft.j + margin,
-    iMax: bottomRight.i - margin, jMax: bottomRight.j - margin,
+    iMin: topLeft.i, jMin: topLeft.j,
+    iMax: bottomRight.i, jMax: bottomRight.j,
   };
 }
 
@@ -1035,19 +1035,20 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // copies of the same condition.
   const hasShape = hasGeneratedSilhouette(pattern);
   const widthMode = hasShape ? SKETCH_WIDTH_MODE.shapeLattice : SKETCH_WIDTH_MODE.boxLattice;
-  // T71: the contour's own region is the board region INSET by the
-  // declared contour-size margin (editor-lattice-boundary.js's own
-  // `insetRegionForContour`, the SAME helper `regenerateSilhouette` uses
-  // on the app side) — both the lattice-fill's own clip boundary
+  // T71/T75 (LAT-SIZE): the contour's own region is the board region sized
+  // to `pattern.size`, centred (editor-lattice-boundary.js's own
+  // `sizedBoardRegion`, the SAME helper `regenerateSilhouette` uses on the
+  // app side; null/unset falls back to the original board-minus-margin
+  // default) — both the lattice-fill's own clip boundary
   // (`resolveShapeBoundaryExtent`) AND the contour's own entities
-  // (`manifestFromShape`) build from this ONE inset region, so the fill
-  // never pokes past the new, smaller contour, and the contour's own
+  // (`manifestFromShape`) build from this ONE sized region, so the fill
+  // never pokes past the contour, and the contour's own
   // `contour_width`/`contour_height` parameter values (region.w/region.h,
-  // read inside `manifestFromShape`) land at board-minus-margin for free.
+  // read inside `manifestFromShape`) land at the declared Size for free.
   // `manifest.region` below and `applyCarvePlacement` both keep using the
-  // ORIGINAL, un-inset `region` — carve placement centers the WHOLE BOARD,
+  // ORIGINAL, un-sized `region` — carve placement centers the WHOLE BOARD,
   // not just the contour.
-  const contourRegion = hasShape ? insetRegionForContour(region) : region;
+  const contourRegion = hasShape ? sizedBoardRegion(region, pattern.size) : region;
   const extent = hasShape ? resolveShapeBoundaryExtent(pattern, contourRegion) : resolveBoardExtent(pattern, region);
   const lattice = manifestFromLattice(pattern, extent, widthMode);
   // T69: the contour's own slot width matches the layer's own REAL

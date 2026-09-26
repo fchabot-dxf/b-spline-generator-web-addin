@@ -39,7 +39,7 @@ import { lcgPoints } from '../core/terrain.js';
 // defers to "Slice 3's own live-wiring caller".
 import {
   insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives, shapeToPrimitives,
-  insetGeneratedPresetPathDToPrimitives, primitiveHitAt,
+  insetGeneratedPresetPathDToPrimitives, primitiveHitAt, sizedBoardRegion,
 } from './editor-lattice-boundary.js';
 // T73 (SE14b): the per-primitive <-> combined-d conversions the contour's
 // OWN N-segment rendering (properties-shape-lattice.js) and this file's
@@ -347,12 +347,18 @@ export const PATTERN_DEFAULTS = {
   // `{ ...PATTERN_DEFAULTS, ...PATTERN }` merge reads that as
   // 'horizontal' (today's only behavior), so no migration is needed.
   orientation: 'horizontal',
-  // SE7c: inset the 'board' extent by this many LATTICE CELLS on every
-  // side, so a generated rail/tie/node never sits exactly on the board
-  // edge (a live browser test found the first rail at y=0 and nodes at
-  // x=0, cut in half by the edge). Only 'board' mode is inset — a 'rect'
-  // extent is an explicit caller-given rectangle and is used as given.
-  margin: 1,
+  // T75 (LAT-SIZE): the declared OUTSIDE size (real inches, either axis
+  // nullable) BOTH lattice tools' own fill/contour area now share —
+  // null/unset auto-defaults to board-minus-CONTOUR_SIZE_INSET_IN,
+  // centred (`sizedBoardRegion`, editor-lattice-boundary.js). RETIRES the
+  // old `margin` field (SE7c: "inset the 'board' extent by this many
+  // LATTICE CELLS on every side, so a generated rail/tie/node never sits
+  // exactly on the board edge") as a driver — an old saved pattern's own
+  // margin converts to an equivalent `size` ONCE on read (app-init.js's
+  // own MIGRATIONS, 'box-lattice-margin-to-size'), so this never changes
+  // what an existing save actually renders. A 'rect' extent is still an
+  // explicit caller-given rectangle, used as given, unrelated to `size`.
+  size: { width: null, height: null },
   // T56 (Fred: "your usual lattice is much denser than what I need... I
   // want 6-7 rails and 8-10 ties"): `mode:'count'` is the new default —
   // a seeded pick within `count`, evenly distributed across the extent's
@@ -1684,8 +1690,11 @@ export function computePattern(PATTERN, opts = {}) {
 /** Resolve PATTERN.extent -> concrete lattice bounds. 'board' (the only
  *  mode slice 2 needs) derives from editor._mW/_mH — the same board-
  *  inches units toLattice/fromLattice already assume (their own doc
- *  comments) — inset by PATTERN.margin lattice cells on every side (SE7c)
- *  so nothing generated sits exactly on the board edge. 'rect' (declared
+ *  comments) — inset to PATTERN.size, centred (T75 LAT-SIZE;
+ *  `sizedBoardRegion`, editor-lattice-boundary.js — retires the old
+ *  PATTERN.margin lattice-cell inset, SE7c's own "nothing generated sits
+ *  exactly on the board edge" concern, now met by the SAME real-inches
+ *  default `sizedBoardRegion` falls back to when `size` is unset). 'rect' (declared
  *  in the shape for a future "pattern only in this region", design doc
  *  §1) is honored directly, UN-inset — its stored bounds are an explicit
  *  caller-given rectangle, not the board edge, so margin doesn't apply;
@@ -1739,12 +1748,12 @@ export function _resolveExtent(editor, PATTERN, boundaryPrimitives) {
       mode: 'boundary', primitives,
     };
   }
-  const margin = PATTERN.margin ?? PATTERN_DEFAULTS.margin;
-  const topLeft = toLattice({ x: 0, y: 0 }, spacing);
-  const bottomRight = toLattice({ x: editor._mW, y: editor._mH }, spacing);
+  const region = sizedBoardRegion({ x: 0, y: 0, w: editor._mW, h: editor._mH }, PATTERN.size);
+  const topLeft = toLattice({ x: region.x, y: region.y }, spacing);
+  const bottomRight = toLattice({ x: region.x + region.w, y: region.y + region.h }, spacing);
   return {
-    iMin: topLeft.i + margin, jMin: topLeft.j + margin,
-    iMax: bottomRight.i - margin, jMax: bottomRight.j - margin,
+    iMin: topLeft.i, jMin: topLeft.j,
+    iMax: bottomRight.i, jMax: bottomRight.j,
   };
 }
 

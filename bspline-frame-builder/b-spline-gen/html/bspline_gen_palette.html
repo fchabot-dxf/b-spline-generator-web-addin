@@ -1623,6 +1623,28 @@
               </div>
             </div>
 
+            <!-- T75 LAT-SIZE: same declared PATTERN.size {width,height}
+                 (real inches, outside size, centered on the board) as the
+                 Shape Lattice tool's own #shapeLatticeSizeWidth/Height row
+                 (properties-shape-lattice.js) -- blank means "auto" (the
+                 board minus CONTOUR_SIZE_INSET_IN per side, same fallback
+                 sizedBoardRegion already gives every caller). Immediate
+                 effect (like Orientation below), not deferred to Generate --
+                 changing the fill AREA itself needs a full re-layout of
+                 rails/ties, unlike Widths/Colors' own live re-style of
+                 already-owned pieces in place. -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Size</span>
+              <div style="display:flex; gap:6px;">
+                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
+                  <input id="latticeSizeWidth" type="number" min="0" step="0.25" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">height
+                  <input id="latticeSizeHeight" type="number" min="0" step="0.25" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+              </div>
+            </div>
+
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Grid &amp; rails</span>
               <!-- MOB3: Spacing folded in here (was its own standalone
@@ -1989,6 +2011,27 @@
                 </label>
               </div>
               <span style="font-size:9px; color:#888;">Mirrored side updates together.</span>
+            </div>
+
+            <!-- T75 (LAT-SIZE, Fred): a declared Size (width x height), the
+                 OUTSIDE of the contour/fill area (T74 AMEND 2's own rule),
+                 centred on the board. Blank/auto (placeholder text, same
+                 convention shapeLatticeContourWidth already uses) means
+                 board minus the existing 1in margin -- today's unchanged
+                 default. An explicit value regenerates the contour + fill
+                 at that size immediately (properties-shape-lattice.js's
+                 own regenerateSilhouetteAndFill), same as the Contour
+                 width field's own immediate-effect wiring. -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Size</span>
+              <div style="display:flex; gap:6px;">
+                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
+                  <input id="shapeLatticeSizeWidth" type="number" min="0" step="0.25" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">height
+                  <input id="shapeLatticeSizeHeight" type="number" min="0" step="0.25" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+              </div>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:3px;">

@@ -1597,9 +1597,10 @@ const shapeLatticeHandler = {
             editor._shapeLatticeDragOffsetY = rawPt.y - pt.y;
             return;
         }
-        const shape = currentShape(currentPattern(editor));
+        const p = currentPattern(editor);
+        const shape = currentShape(p);
         if (shape.source === 'generated' && Array.isArray(shape.segments)) {
-            const { primitives } = generateSilhouette(_shapeContourRegion(editor), shape);
+            const { primitives } = generateSilhouette(_shapeContourRegion(editor, p), shape);
             const tol = getDynamicTolerance(editor, 10, 'slopPx');
             const segIndex = hitTestSegment(primitives, shape.segments, rawPt, tol);
             if (segIndex != null) {

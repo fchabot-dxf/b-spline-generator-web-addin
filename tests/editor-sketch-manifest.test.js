@@ -16,7 +16,7 @@ import {
 import { computePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { fromLattice, toLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 import { generateSilhouette, generateContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
-import { primitivesBBox, insetRegionForContour } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
+import { primitivesBBox, insetRegionForContour, sizedBoardRegion } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 const REGION = { x: 0, y: 0, w: 7, h: 9 };
 
@@ -855,11 +855,13 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
   // re-run below uses the IDENTICAL extent the manifest itself actually
   // built against, not an arbitrarily-guessed one.
   function resolveBoardExtentForTest(pattern, region) {
+    // T75 (LAT-SIZE): mirrors resolveBoardExtent's own sizedBoardRegion
+    // formula exactly (PATTERN.margin retired as a driver).
     const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
-    const margin = pattern.margin ?? PATTERN_DEFAULTS.margin ?? 1;
-    const topLeft = toLattice({ x: region.x, y: region.y }, spacing);
-    const bottomRight = toLattice({ x: region.x + region.w, y: region.y + region.h }, spacing);
-    return { iMin: topLeft.i + margin, jMin: topLeft.j + margin, iMax: bottomRight.i - margin, jMax: bottomRight.j - margin };
+    const sized = sizedBoardRegion(region, pattern.size);
+    const topLeft = toLattice({ x: sized.x, y: sized.y }, spacing);
+    const bottomRight = toLattice({ x: sized.x + sized.w, y: sized.y + sized.h }, spacing);
+    return { iMin: topLeft.i, jMin: topLeft.j, iMax: bottomRight.i, jMax: bottomRight.j };
   }
 
   it('every rail Line lands at carve-space (x - W/2, H/2 - y), matching an independent natural-space re-run', () => {

@@ -83,6 +83,9 @@ export function initLatticeProperties(editor) {
     const widthLinkedRowEl = el('latticeWidthLinkedRow');
     const orientHorizontalEl = el('latticeOrientHorizontal');
     const orientVerticalEl = el('latticeOrientVertical');
+    // T75 LAT-SIZE
+    const sizeWidthEl = el('latticeSizeWidth');
+    const sizeHeightEl = el('latticeSizeHeight');
     const toolBtn = el('toolLattice');
     const addKindEls = {};
     for (const { value } of LATTICE_DRAW_KINDS) addKindEls[value] = el(`latticeAdd-${value}`);
@@ -170,6 +173,11 @@ export function initLatticeProperties(editor) {
         if (orientHorizontalEl) orientHorizontalEl.classList.toggle('active', orientation !== 'vertical');
         if (orientVerticalEl) orientVerticalEl.classList.toggle('active', orientation === 'vertical');
         if (spacingEl) spacingEl.value = String(p.spacing ?? PATTERN_DEFAULTS.spacing);
+        // T75 LAT-SIZE: null (unset) reads as blank ("auto"), same
+        // convention as the Shape Lattice tool's own Size fields.
+        const size = { ...PATTERN_DEFAULTS.size, ...p.size };
+        if (sizeWidthEl) sizeWidthEl.value = size.width == null ? '' : size.width;
+        if (sizeHeightEl) sizeHeightEl.value = size.height == null ? '' : size.height;
         // T56: same migration-aware fallback computePattern's own merge
         // uses (editor-lattice-pattern.js's own comment on this exact
         // point) — a saved `rails`/`ties` object from before `mode`
@@ -427,6 +435,29 @@ export function initLatticeProperties(editor) {
     }
     if (orientHorizontalEl) on(orientHorizontalEl, 'click', () => selectOrientation('horizontal'));
     if (orientVerticalEl) on(orientVerticalEl, 'click', () => selectOrientation('vertical'));
+
+    /** T75 LAT-SIZE: same "immediate re-projection with the current seed"
+     *  shape as selectOrientation above, not deferred to Generate like the
+     *  rest of this panel's structural fields -- changing the fill AREA
+     *  itself needs a full re-layout of rails/ties, so there's no "re-style
+     *  owned pieces in place" option the way Widths/Colors have. */
+    async function updateSize(field, value) {
+        const p = _currentPattern(editor);
+        p.size = { ...PATTERN_DEFAULTS.size, ...p.size, [field]: value };
+        const full = readFieldsIntoPattern();
+        await generatePattern(editor, full);
+        syncGenerateLabel();
+    }
+    if (sizeWidthEl) {
+        on(sizeWidthEl, 'change', () => {
+            updateSize('width', sizeWidthEl.value !== '' ? parseFloat(sizeWidthEl.value) : null);
+        });
+    }
+    if (sizeHeightEl) {
+        on(sizeHeightEl, 'change', () => {
+            updateSize('height', sizeHeightEl.value !== '' ? parseFloat(sizeHeightEl.value) : null);
+        });
+    }
 
     // T56: rails/ties MODE toggles — a settings field like Rails' own
     // every/offset or Ties' own density, NOT an immediate re-projection

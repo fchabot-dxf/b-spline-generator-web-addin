@@ -135,6 +135,8 @@ function fixtureHTML() {
       <input id="shapeSegBulge" type="range" min="0" max="0.99" step="0.01" value="0.5">
     </div>
 
+    <input id="shapeLatticeSizeWidth" type="number">
+    <input id="shapeLatticeSizeHeight" type="number">
     <select id="shapeLatticeSpacing"></select>
     <button id="shapeLatticeOrientHorizontal" class="editor-fillmode-btn active"></button>
     <button id="shapeLatticeOrientVertical" class="editor-fillmode-btn"></button>
@@ -491,6 +493,66 @@ describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () 
     p.contour = { show: false };
     initShapeLatticeProperties(editor);
     expect(document.getElementById('shapeLatticeEndRuleRow').style.display).not.toBe('none');
+  });
+});
+
+describe('initShapeLatticeProperties (T75 LAT-SIZE): "Size" width/height fields', () => {
+  it('blank (auto) by default; syncs to the pattern\'s own size on tool-open', () => {
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeSizeWidth').value).toBe('');
+    expect(document.getElementById('shapeLatticeSizeHeight').value).toBe('');
+  });
+
+  it('a saved pattern with an explicit size syncs onto the fields on tool-open', () => {
+    const p = currentPattern(editor);
+    p.size = { width: 3, height: 2.5 };
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeSizeWidth').value).toBe('3');
+    expect(document.getElementById('shapeLatticeSizeHeight').value).toBe('2.5');
+  });
+
+  it('editing width IMMEDIATELY writes PATTERN.size.width and regenerates -- no Generate click needed', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click(); // links a real contour path first
+    await flush();
+    const pathEl = editor._sketchLayer.children().find((e) => e.attr('d'));
+    const dBefore = pathEl.attr('d');
+
+    const widthEl = document.getElementById('shapeLatticeSizeWidth');
+    widthEl.value = '2'; // board is 4 wide; auto (board-minus-1in) is 3, so 2 is a genuine change
+    widthEl.dispatchEvent(new Event('change'));
+    await flush();
+
+    expect(activeLayerPattern(editor).size.width).toBe(2);
+    expect(pathEl.attr('d')).not.toBe(dBefore); // non-vacuous: boundary actually changed
+  });
+
+  it('editing height IMMEDIATELY writes PATTERN.size.height and regenerates -- no Generate click needed', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click();
+    await flush();
+    const pathEl = editor._sketchLayer.children().find((e) => e.attr('d'));
+    const dBefore = pathEl.attr('d');
+
+    const heightEl = document.getElementById('shapeLatticeSizeHeight');
+    heightEl.value = '2';
+    heightEl.dispatchEvent(new Event('change'));
+    await flush();
+
+    expect(activeLayerPattern(editor).size.height).toBe(2);
+    expect(pathEl.attr('d')).not.toBe(dBefore);
+  });
+
+  it('clearing a field back to blank writes null (back to auto)', async () => {
+    const p = currentPattern(editor);
+    p.size = { width: 3, height: 2.5 };
+    initShapeLatticeProperties(editor);
+    const widthEl = document.getElementById('shapeLatticeSizeWidth');
+    widthEl.value = '';
+    widthEl.dispatchEvent(new Event('change'));
+    await flush();
+    expect(activeLayerPattern(editor).size.width).toBe(null);
+    expect(activeLayerPattern(editor).size.height).toBe(2.5); // untouched
   });
 });
 

@@ -317,6 +317,101 @@ describe('initLatticeProperties (SE7h): orientation toggle', () => {
 });
 
 /**
+ * T75 LAT-SIZE: the same declared PATTERN.size {width,height} the Shape
+ * Lattice tool's own #shapeLatticeSizeWidth/Height row edits
+ * (properties-shape-lattice.js) -- this panel's own mirror of it, wired as
+ * an immediate re-projection (same shape as Orientation above), not
+ * deferred to Generate like the rest of this panel's structural fields.
+ */
+describe('initLatticeProperties (T75 LAT-SIZE): "Size" width/height fields', () => {
+  let container, editor;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    container.innerHTML = `
+      <input id="latticeRailsEvery" type="number" value="2">
+      <input id="latticeRailsOffset" type="number" value="0">
+      <input id="latticeTiesDensity" type="range" value="0">
+      <input id="latticeSeed" type="number" value="42">
+      <button id="latticeGenerate"></button>
+      <button id="latticeDetachAll"></button>
+      <button id="latticeColorRails"></button>
+      <button id="latticeColorTies"></button>
+      <button id="latticeColorNodes"></button>
+      <input id="latticeSizeWidth" type="number">
+      <input id="latticeSizeHeight" type="number">
+      <button id="toolLattice"></button>
+    `;
+    document.body.appendChild(container);
+    editor = makeMockEditor();
+  });
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  it('blank (auto) by default; syncs to the pattern\'s own size on tool-open', () => {
+    initLatticeProperties(editor);
+    expect(document.getElementById('latticeSizeWidth').value).toBe('');
+    expect(document.getElementById('latticeSizeHeight').value).toBe('');
+  });
+
+  it('a saved pattern with an explicit size syncs onto the fields on tool-open', () => {
+    editor._layers[0].pattern = {
+      ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
+      size: { width: 2, height: 2.5 },
+    };
+    initLatticeProperties(editor);
+    expect(document.getElementById('latticeSizeWidth').value).toBe('2');
+    expect(document.getElementById('latticeSizeHeight').value).toBe('2.5');
+  });
+
+  it('editing width IMMEDIATELY writes PATTERN.size.width and regenerates -- no Generate click needed', () => {
+    initLatticeProperties(editor);
+    const widthEl = document.getElementById('latticeSizeWidth');
+    widthEl.value = '2'; // board is 4x4; auto (board-minus-1in) is 3, so 2 is a genuine change
+    widthEl.dispatchEvent(new Event('change'));
+    expect(activeLayerPattern(editor).size.width).toBe(2);
+    expect(activeLayerPattern(editor).id).toBeTruthy(); // it DID generate, not just flip a flag
+  });
+
+  it('editing height IMMEDIATELY writes PATTERN.size.height and regenerates -- no Generate click needed', () => {
+    initLatticeProperties(editor);
+    const heightEl = document.getElementById('latticeSizeHeight');
+    heightEl.value = '2';
+    heightEl.dispatchEvent(new Event('change'));
+    expect(activeLayerPattern(editor).size.height).toBe(2);
+  });
+
+  it('non-vacuous: the rail geometry actually changes when the size shrinks (proves it really regenerated, not just relabeled)', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeGenerate').click();
+    const railBefore = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail');
+    const beforeGeom = { x1: railBefore.attr('x1'), y1: railBefore.attr('y1'), x2: railBefore.attr('x2'), y2: railBefore.attr('y2') };
+
+    const widthEl = document.getElementById('latticeSizeWidth');
+    widthEl.value = '1';
+    widthEl.dispatchEvent(new Event('change'));
+    const railAfter = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail');
+    const afterGeom = { x1: railAfter.attr('x1'), y1: railAfter.attr('y1'), x2: railAfter.attr('x2'), y2: railAfter.attr('y2') };
+    expect(afterGeom).not.toEqual(beforeGeom);
+  });
+
+  it('flipping a field back to blank writes null (back to auto) and leaves the other axis untouched', () => {
+    editor._layers[0].pattern = {
+      ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
+      size: { width: 2, height: 2.5 },
+    };
+    initLatticeProperties(editor);
+    const widthEl = document.getElementById('latticeSizeWidth');
+    widthEl.value = '';
+    widthEl.dispatchEvent(new Event('change'));
+    expect(activeLayerPattern(editor).size.width).toBe(null);
+    expect(activeLayerPattern(editor).size.height).toBe(2.5);
+  });
+});
+
+/**
  * SE7h ADD-ON 2 (Fred: "add a check box for nodes at rail end") — wired
  * exactly like latticeNodesEnds/Crossings: unchecked by default
  * (PATTERN_DEFAULTS.nodes.railEnds), read into PATTERN.nodes.railEnds on

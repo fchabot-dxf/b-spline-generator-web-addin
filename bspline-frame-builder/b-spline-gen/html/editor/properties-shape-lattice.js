@@ -26,7 +26,7 @@ import {
 } from './editor-lattice-pattern.js';
 import { PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD } from './editor-shape-lattice-generator.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
-import { insetRegionForContour, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
+import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { viewScale } from './editor-view.js';
@@ -120,19 +120,23 @@ export function currentShape(p) {
     return p.shape;
 }
 
-/** T71: the region a GENERATED shape's own silhouette actually builds
- *  from — the board region, inset by the declared contour-size margin
- *  (editor-lattice-boundary.js's own `insetRegionForContour`, the SAME
- *  helper `buildSketchManifest` uses on the manifest side) — every caller
- *  below that builds OR re-derives a generated silhouette must use this,
- *  never the raw `boardRegion`, so the drawn contour, its param handles,
- *  and the manifest's own contour entities always agree on where the
- *  shape actually sits. Exported (same underscore-kept-while-exported
- *  convention `_findBoundaryElements` already uses in this file) — editor-
- *  interaction.js's own segment-tap hit-test needs this SAME region too,
- *  not a second copy of the formula. */
-export function _shapeContourRegion(editor) {
-  return insetRegionForContour(boardRegion(editor));
+/** T71/T75 (LAT-SIZE): the region a GENERATED shape's own silhouette
+ *  actually builds from — the board region, sized to `pattern.size` and
+ *  centred (editor-lattice-boundary.js's own `sizedBoardRegion`, the SAME
+ *  helper `buildSketchManifest` uses on the manifest side; a missing/
+ *  null-fielded `pattern.size` falls back to the original board-minus-
+ *  margin default) — every caller below that builds OR re-derives a
+ *  generated silhouette must use this, never the raw `boardRegion`, so the
+ *  drawn contour, its param handles, and the manifest's own contour
+ *  entities always agree on where the shape actually sits. `pattern` is
+ *  optional (an omitted/patternless call keeps the old default region)
+ *  only so a caller with no pattern in hand yet doesn't need to fabricate
+ *  one; every REAL caller below passes its own. Exported (same
+ *  underscore-kept-while-exported convention `_findBoundaryElements`
+ *  already uses in this file) — editor-interaction.js's own segment-tap
+ *  hit-test needs this SAME region too, not a second copy of the formula. */
+export function _shapeContourRegion(editor, pattern) {
+  return sizedBoardRegion(boardRegion(editor), pattern && pattern.size);
 }
 
 /** The segments array a JUST-generated silhouette would use RIGHT NOW —
@@ -145,9 +149,9 @@ export function _shapeContourRegion(editor) {
  *  per-segment style controls work immediately on a fresh layer, matching
  *  how the Fill section's own fields already read optimistically off
  *  PATTERN_DEFAULTS before a first Generate. */
-function _effectiveSegments(editor, shape) {
+function _effectiveSegments(editor, shape, pattern) {
   if (Array.isArray(shape.segments)) return shape.segments;
-  return generateSilhouette(_shapeContourRegion(editor), shape).segments;
+  return generateSilhouette(_shapeContourRegion(editor, pattern), shape).segments;
 }
 
 /**
@@ -192,7 +196,7 @@ function _effectiveSegments(editor, shape) {
  */
 export function regenerateSilhouette(editor, p) {
     const shape = currentShape(p);
-    const region = _shapeContourRegion(editor);
+    const region = _shapeContourRegion(editor, p);
 
     const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
     p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
@@ -299,7 +303,7 @@ export async function regenerateSilhouetteAndFill(editor) {
 export async function writeSegmentStyle(editor, index, patch) {
     const p = currentPattern(editor);
     const shape = currentShape(p);
-    if (!Array.isArray(shape.segments)) shape.segments = _effectiveSegments(editor, shape);
+    if (!Array.isArray(shape.segments)) shape.segments = _effectiveSegments(editor, shape, p);
     const n = shape.segments.length;
     const cur = shape.segments[index] || { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
     const next = { ...cur, ...patch };
@@ -329,7 +333,7 @@ export function paramHandleRecords(editor) {
     const p = currentPattern(editor);
     const shape = currentShape(p);
     if (!hasGeneratedSilhouette(p)) return [];
-    const region = _shapeContourRegion(editor);
+    const region = _shapeContourRegion(editor, p);
     const { params: resolved } = generateSilhouette(region, shape);
     if (!resolved) return [];
     return computeParamHandles(shape.preset, region, resolved).map((h) => ({ ...h, hx: h.anchor.x, hy: h.anchor.y }));
@@ -406,7 +410,7 @@ export function detectShapeLatticeDetach(editor) {
     if (!p.boundary || !p.boundary.shapeId) return;
     const segEls = _findBoundaryElements(editor, p.boundary.shapeId);
     if (!segEls.length) return;
-    const region = _shapeContourRegion(editor);
+    const region = _shapeContourRegion(editor, p);
     // T74 AMEND 2/3: must match `regenerateSilhouette`'s OWN actually-drawn
     // geometry exactly (generateContourSilhouette's stroke-inset centerline,
     // not the raw outside line) — a bare `generateSilhouette` call here
@@ -515,6 +519,11 @@ export function initShapeLatticeProperties(editor) {
     const segDirOutEl = el('shapeSegDirOut');
     const segDirInEl = el('shapeSegDirIn');
     const segBulgeEl = el('shapeSegBulge');
+
+    // T75 (LAT-SIZE): the declared Size (width, height) — immediate
+    // effect, same "blank = auto" convention as shapeLatticeContourWidth.
+    const sizeWidthEl = el('shapeLatticeSizeWidth');
+    const sizeHeightEl = el('shapeLatticeSizeHeight');
 
     // ── Fill section (box Lattice's own controls, reused verbatim under
     //    shapeLattice*-prefixed ids — T58's own "Fill = the box Lattice's
@@ -695,7 +704,7 @@ export function initShapeLatticeProperties(editor) {
     function _refreshSegmentList(p) {
         if (!segmentIndexEl) return;
         const shape = currentShape(p);
-        const segs = _effectiveSegments(editor, shape);
+        const segs = _effectiveSegments(editor, shape, p);
         const labels = SEGMENT_LABELS[shape.preset] || [];
         const prevIndex = parseInt(segmentIndexEl.value, 10);
         segmentIndexEl.innerHTML = '';
@@ -743,6 +752,11 @@ export function initShapeLatticeProperties(editor) {
         }
         _refreshSegmentList(p);
 
+        // T75 (LAT-SIZE): blank means auto (null), matching how
+        // shapeLatticeContourWidth's own field already reads/writes.
+        const size = { ...PATTERN_DEFAULTS.size, ...p.size };
+        if (sizeWidthEl) sizeWidthEl.value = size.width == null ? '' : size.width;
+        if (sizeHeightEl) sizeHeightEl.value = size.height == null ? '' : size.height;
         const orientation = p.orientation ?? PATTERN_DEFAULTS.orientation;
         if (orientHorizontalEl) orientHorizontalEl.classList.toggle('active', orientation !== 'vertical');
         if (orientVerticalEl) orientVerticalEl.classList.toggle('active', orientation === 'vertical');
@@ -1049,6 +1063,24 @@ export function initShapeLatticeProperties(editor) {
                 ...p.contour,
                 width: contourWidthEl.value !== '' ? parseFloat(contourWidthEl.value) : null,
             };
+            await regenerateSilhouetteAndFill(editor);
+        });
+    }
+    // T75 (LAT-SIZE): same IMMEDIATE write+redraw convention as the
+    // Contour width field above — blank clears back to auto (board minus
+    // the existing margin, unchanged default), an explicit value
+    // regenerates the contour + fill at that declared size right away.
+    if (sizeWidthEl) {
+        on(sizeWidthEl, 'change', async () => {
+            const p = currentPattern(editor);
+            p.size = { ...PATTERN_DEFAULTS.size, ...p.size, width: sizeWidthEl.value !== '' ? parseFloat(sizeWidthEl.value) : null };
+            await regenerateSilhouetteAndFill(editor);
+        });
+    }
+    if (sizeHeightEl) {
+        on(sizeHeightEl, 'change', async () => {
+            const p = currentPattern(editor);
+            p.size = { ...PATTERN_DEFAULTS.size, ...p.size, height: sizeHeightEl.value !== '' ? parseFloat(sizeHeightEl.value) : null };
             await regenerateSilhouetteAndFill(editor);
         });
     }
