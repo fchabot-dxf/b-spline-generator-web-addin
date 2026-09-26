@@ -18,25 +18,44 @@ SEATS = [  # declared: which checkout is which seat, and its task file (checklis
     {"name": "Seat A", "key": "seatA", "path": ROOT, "branch": "main", "task": "NEXT-SESSION.md"},
     {"name": "Seat B", "key": "seatB", "path": ROOT + "-lane-b", "branch": "lane-b", "task": "NEXT-SESSION-lane-b.md"},
     {"name": "Seat C", "key": "seatC", "path": ROOT + "-fb-app", "branch": "fb-app", "task": "NEXT-SESSION-fb-app.md"},
+    # remote seat: its checkout is on another machine, so everything is read from origin (its HANDOFF.md never leaves it)
+    {"name": "Asus (reg-addin)", "key": "asus", "path": None, "branch": "main", "task": "NEXT-SESSION-reg-addin.md",
+     "commits": r"^(R\d|docs\(reg-addin\))"},
 ]
 
 
 def _checklist(path, task, branch):
     """(done, total): items are the task file's `[TAG]` checklist lines; an item is DONE when any commit on the
     seat's branch has `[TAG]` in its subject. Fully automatic — nobody ticks anything."""
-    f = os.path.join(path, task)
-    if not os.path.exists(f):
-        return 0, 0
-    tags = re.findall(r"^\s*- \[[ xX]\] \[([A-Za-z0-9_-]+)\]", open(f, encoding="utf-8", errors="replace").read(), re.M)
+    text = _task_text(path, task, branch)
+    tags = re.findall(r"^\s*- \[[ xX]\] \[([A-Za-z0-9_-]+)\]", text, re.M)
     if not tags:
         return 0, 0
-    subjects = _git(ROOT, "log", "--format=%s", "-300", "origin/" + branch) + _git(path, "log", "--format=%s", "-300")
+    subjects = _git(ROOT, "log", "--format=%s", "-300", "origin/" + branch) + (_git(path, "log", "--format=%s", "-300") if path else "")
     norm = lambda x: re.sub(r"[\s_-]+", " ", x).strip().lower()
     # advisor dispatch/doc commits mention the same tags — only real work commits count
     work = [l for l in subjects.splitlines() if not re.match(r"\s*docs", l, re.I)]
     subj = norm(" | ".join(work))
     # a tag counts when its words appear as a whole phrase in any commit subject ("T74-AMEND-0" ~ "T74 AMEND 0 ...")
     return sum(bool(re.search(r"(?<![a-z0-9])" + re.escape(norm(t)) + r"(?![a-z0-9])", subj)) for t in tags), len(tags)
+
+
+def _task_text(path, task, branch):
+    """A seat's task file: from its checkout, or (remote seat, path None) from origin."""
+    if path is None:
+        return _git(ROOT, "show", "origin/" + branch + ":" + task)
+    f = os.path.join(path, task)
+    return open(f, encoding="utf-8", errors="replace").read() if os.path.exists(f) else ""
+
+
+def _remote_state(s):
+    """What a remote seat's HANDOFF.md would say, reconstructed from origin: the task file's Ball line + its last commit."""
+    ball = re.search(r"\*\*Ball:\s*([^*]+)\*\*", _task_text(None, s["task"], s["branch"]))
+    last = next((l for l in _git(ROOT, "log", "--format=%cr|%s", "-100", "origin/" + s["branch"]).splitlines()
+                 if re.match(s["commits"], l.split("|", 1)[1])), "")
+    when, subj = (last.split("|", 1) + [""])[:2] if last else ("", "")
+    return {"turn": "-", "who": "remote (Asus)", "note": (ball.group(1).strip() if ball else "") +
+            (f"  | last: {subj}" if subj else ""), "updated": when}
 
 
 def _bar(done, total, width=10):
@@ -98,8 +117,12 @@ def collect():
     _git(ROOT, "fetch", "-q", "origin")
     seats = []
     for s in SEATS:
-        h = _handoff(s["path"])
-        who = "worker (working)" if h.get("to") == "worker" else "advisor (reviewing)"
+        if s["path"] is None:
+            r = _remote_state(s)
+            h, who = r, r["who"]
+        else:
+            h = _handoff(s["path"])
+            who = "worker (working)" if h.get("to") == "worker" else "advisor (reviewing)"
         d, t = _checklist(s["path"], s["task"], s["branch"])
         sd = os.path.join(SHOTS_DIR, s["key"])
         shots = sorted((f for f in (os.listdir(sd) if os.path.isdir(sd) else []) if f.lower().endswith((".png", ".jpg", ".jpeg"))),
