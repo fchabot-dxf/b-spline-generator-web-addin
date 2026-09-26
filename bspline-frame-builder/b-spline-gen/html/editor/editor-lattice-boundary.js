@@ -217,6 +217,34 @@ export function insetPathDToPrimitives(d, strokeHalfWidth) {
   return innerD ? _primitivesFromD(innerD) : [];
 }
 
+/** T72 (bug: the default Bottle preset generated 0 rails/ties after T71's
+ *  own contour-size inset): `insetPathDToPrimitives` above declines to `[]`
+ *  on a collapsed inner ring (self-intersection, or "thinner than
+ *  strokeWidth somewhere" — pathOutlinePathD's own T51 doc comment), and
+ *  BOTH its callers' own onward math treats an EMPTY inset boundary
+ *  exactly like a genuinely degenerate shape (an empty primitive list
+ *  bboxes to null), silently discarding the WHOLE lattice fill — the
+ *  CORRECT, deliberate behavior for a hand-picked boundary (a real thin
+ *  arm the user actually drew; using the raw, un-inset edge there would
+ *  put rails ON TOP of the drawn stroke — `editor-lattice-boundary.test.js`
+ *  own "the WHOLE shape declines... not a local trim" case documents
+ *  exactly this), but the WRONG one for a GENERATED preset silhouette:
+ *  measured live, Bottle's own near-zero-radius neck fillet self-
+ *  intersects at this half-stroke inset amount once the overall contour
+ *  shrinks by T71's own margin, even though the rest of the shape's own
+ *  interior offsets fine — a numerical artifact of curve-fitting math, not
+ *  a feature the user actually drew thin on purpose. This wrapper is for
+ *  that ONE narrower, generated-preset-only case: fall back to the RAW
+ *  (un-inset) boundary, the direct analog of `_closedSubpathD`'s own
+ *  'both'-mode fallback ("collapsed — drop the inner ring, don't emit a
+ *  bowtie", returning `outer.d` instead of nothing). Never call this for a
+ *  hand-picked boundary shape — that path keeps calling
+ *  `insetPathDToPrimitives` directly, unchanged. */
+export function insetGeneratedPresetPathDToPrimitives(d, strokeHalfWidth) {
+  const inset = insetPathDToPrimitives(d, strokeHalfWidth);
+  return inset.length ? inset : _primitivesFromD(d);
+}
+
 export async function shapeToPrimitives(el) {
   const type = el.type;
   if (type === 'rect') {

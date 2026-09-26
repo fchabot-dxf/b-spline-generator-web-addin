@@ -55,7 +55,9 @@
  */
 import { computePattern, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice } from './editor-lattice.js';
-import { primitivesBBox, insetPathDToPrimitives, SILHOUETTE_STROKE_WIDTH, insetRegionForContour } from './editor-lattice-boundary.js';
+import {
+  primitivesBBox, insetGeneratedPresetPathDToPrimitives, SILHOUETTE_STROKE_WIDTH, insetRegionForContour,
+} from './editor-lattice-boundary.js';
 import { generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
@@ -703,17 +705,22 @@ function shapeHalfInset(pattern) {
 // than a live DOM element's — "two tools sharing one engine" (T58 design)
 // without the DOM lookup `_resolveBoundaryPrimitives` needs for a
 // HAND-PICKED boundary shape. T68: now applies the SAME inward inset
-// `insetPathDToPrimitives` (editor-lattice-boundary.js, shared with the
-// app's own drawing — "one function, never two computations", the
-// advisor's own fix instruction) BEFORE scaling to lattice units, so the
-// lattice fill clips against the SAME effective boundary the app itself
-// draws against, not the silhouette's own raw, un-inset centerline.
+// (editor-lattice-boundary.js, shared with the app's own drawing — "one
+// function, never two computations", the advisor's own fix instruction)
+// BEFORE scaling to lattice units, so the lattice fill clips against the
+// SAME effective boundary the app itself draws against, not the
+// silhouette's own raw, un-inset centerline. T72: this function is ONLY
+// ever called for a GENERATED preset silhouette (buildSketchManifest's own
+// `hasShape` gate) — never a hand-picked boundary — so it uses the
+// generated-preset-only `insetGeneratedPresetPathDToPrimitives` (falls
+// back to the raw boundary if the inset collapses) rather than the plain
+// `insetPathDToPrimitives` a hand-picked shape still uses unchanged.
 function resolveShapeBoundaryExtent(pattern, region) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
   const { primitives } = generateSilhouette(region, pattern.shape);
   const halfInset = shapeHalfInset(pattern);
   const insetPrimitives = halfInset > 0
-    ? insetPathDToPrimitives(primitivesToPathD(primitives), halfInset)
+    ? insetGeneratedPresetPathDToPrimitives(primitivesToPathD(primitives), halfInset)
     : primitives;
   const scaled = insetPrimitives.map((p) => scalePrimitiveToLattice(p, spacing));
   const bbox = primitivesBBox(scaled);
@@ -812,6 +819,21 @@ function applyCarvePlacement(manifest, region) {
   return manifest;
 }
 
+/** T72: drop every parameter entry whose own `name` already appeared
+ *  earlier in the list — order-preserving, first occurrence wins. See
+ *  `buildSketchManifest`'s own call site for why a genuine duplicate can
+ *  occur at all (never a value CHOICE between two disagreeing numbers,
+ *  since the one real collision, `stroke_width`, is always declared with
+ *  the identical value on both sides). */
+function dedupeParametersByName(parameters) {
+  const seen = new Set();
+  return parameters.filter((p) => {
+    if (seen.has(p.name)) return false;
+    seen.add(p.name);
+    return true;
+  });
+}
+
 /**
  * §1's own top-level `buildSketchManifest(pattern, region, opts)` —
  * composes the two producers above exactly like a real Shape Lattice
@@ -874,7 +896,17 @@ export function buildSketchManifest(pattern, region, opts = {}) {
     region: { x: region.x, y: region.y, w: region.w, h: region.h },
     entities: [...shape.entities, ...lattice.entities],
     constraints: [...shape.constraints, ...lattice.constraints],
-    parameters: [...shape.parameters, ...lattice.parameters],
+    // T72 (advisor, measured on 8566623): `stroke_width` was declared
+    // TWICE when a shape's own contour and its lattice fill are BOTH
+    // linked to the SAME name — `manifestFromShape` always declares its
+    // own (T69's own doc comment: "this function has no visibility into
+    // [the lattice's link] state at all, so it always declares its own,
+    // by name"), and `manifestFromLattice` ALSO declares it whenever
+    // rails/ties are linked. Both sides always carry the identical
+    // value (the SAME `widths.rails` this function just merged above), so
+    // "keep the first occurrence, by name" is a safe, declared dedup —
+    // never a value CHOICE between two disagreeing numbers.
+    parameters: dedupeParametersByName([...shape.parameters, ...lattice.parameters]),
     dimensions: [...shape.dimensions, ...lattice.dimensions],
     groups: { ...shape.groups, ...lattice.groups },
     latticePieceCount: lattice.pieceCount,

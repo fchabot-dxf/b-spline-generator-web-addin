@@ -952,6 +952,47 @@ describe('buildSketchManifest — T71: the contour builds from the board region 
   });
 });
 
+describe('buildSketchManifest — T72: the default Bottle preset (and a deep-waist Hourglass) still generate a real lattice fill after T71\'s contour inset', () => {
+  it('the default Bottle preset generates rails/ties, not an empty lattice (advisor-measured regression: 0 pieces on 8566623)', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'bottle', seed: 42, params: {}, segments: null },
+    };
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    expect(manifest.entities.some((e) => e.id.startsWith('rail'))).toBe(true);
+    expect(manifest.entities.some((e) => e.id.startsWith('tie'))).toBe(true);
+    expect(manifest.latticePieceCount).toBeGreaterThan(0);
+  });
+
+  it('a deep-waist Hourglass (waistReach 0.8, cornerRadius 0.4 -- the dispatch\'s own reported repro params) still generates rails', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: { waistReach: 0.8, cornerRadius: 0.4 }, segments: null },
+    };
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    expect(manifest.entities.some((e) => e.id.startsWith('rail'))).toBe(true);
+    expect(manifest.latticePieceCount).toBeGreaterThan(0);
+  });
+
+  it('stroke_width is declared exactly ONCE in the manifest\'s own parameters when rails/ties are linked (advisor-measured regression: declared twice on 8566623)', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    // Non-vacuous: BOTH producers genuinely have their own reason to
+    // declare stroke_width here -- real lattice pieces (manifestFromLattice,
+    // linked by default) AND a real contour (manifestFromShape, always) --
+    // so without the dedup this would concretely be 2, not 1.
+    expect(manifest.entities.some((e) => e.id.startsWith('rail'))).toBe(true);
+    expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(true);
+    expect(manifest.parameters.filter((p) => p.name === 'stroke_width').length).toBe(1);
+  });
+});
+
 describe('buildSketchManifest — composition', () => {
   it('a box lattice (no shape) has empty shape-groups and a populated lattice', () => {
     const pattern = { ...PATTERN_DEFAULTS, spacing: 0.25 };

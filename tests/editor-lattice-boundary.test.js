@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   shapeToPrimitives, insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives,
+  insetPathDToPrimitives, insetGeneratedPresetPathDToPrimitives,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 // Minimal mock matching the SAME plain-DOM-adapter contract editor-io.js's
@@ -405,5 +406,23 @@ describe('shapeToInnerBoundaryPrimitives (T51 — the TRUE inward-offset boundar
     const d = 'M 0 0 L 10 0 L 10 10 L 0 10 L 0 6 L -5 6 L -5 5.7 L 0 5.7 Z';
     const el = mockEl('path', { d });
     expect(await shapeToInnerBoundaryPrimitives(el, 0.4)).toEqual([]); // strokeWidth 0.8, arm is 0.3 wide
+  });
+
+  it('T72: insetGeneratedPresetPathDToPrimitives falls back to the RAW boundary when the inset collapses, unlike plain insetPathDToPrimitives (same thin-arm fixture, non-vacuous: proven collapsed first)', () => {
+    const d = 'M 0 0 L 10 0 L 10 10 L 0 10 L 0 6 L -5 6 L -5 5.7 L 0 5.7 Z';
+    const plain = insetPathDToPrimitives(d, 0.4);
+    expect(plain).toEqual([]); // the collapse this fix works around actually happens here
+    const fallback = insetGeneratedPresetPathDToPrimitives(d, 0.4);
+    expect(fallback.length).toBeGreaterThan(0);
+    expect(fallback).toEqual(insetPathDToPrimitives(d, 0)); // exactly the RAW (un-inset) boundary, no fallback magic beyond that
+  });
+
+  it('T72: insetGeneratedPresetPathDToPrimitives is a pass-through (no fallback needed) when the inset does NOT collapse', () => {
+    const el = mockEl('rect', { x: '0', y: '0', width: '10', height: '6' });
+    const half = 1;
+    const viaPlain = insetPathDToPrimitives('M 0 0 L 10 0 L 10 6 L 0 6 Z', half);
+    const viaFallback = insetGeneratedPresetPathDToPrimitives('M 0 0 L 10 0 L 10 6 L 0 6 Z', half);
+    expect(viaPlain.length).toBeGreaterThan(0); // non-vacuous: a real inset happened, no collapse to mask
+    expect(viaFallback).toEqual(viaPlain);
   });
 });

@@ -37,7 +37,7 @@ import { lcgPoints } from '../core/terrain.js';
 // element (see BOUNDARY_REF_ATTR below) — the ONE place in this codebase
 // that actually does the async DOM lookup _resolveExtent's own doc comment
 // defers to "Slice 3's own live-wiring caller".
-import { insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives } from './editor-lattice-boundary.js';
+import { insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives, shapeToPrimitives } from './editor-lattice-boundary.js';
 
 // SE7k: `constrain` (direction-guessing) was removed from editor-lattice.js
 // — this file never called it (only re-exported it), and nothing imports
@@ -191,7 +191,21 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
   if (!boundaryEl) return { boundaryEl: null, primitives: [] };
   const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
   const halfWidth = edge === 'centerline' ? 0 : _effectiveBorderWidth(boundaryEl, boundary, widths) / 2;
-  const localPrimitives = await shapeToInnerBoundaryPrimitives(boundaryEl, halfWidth);
+  let localPrimitives = await shapeToInnerBoundaryPrimitives(boundaryEl, halfWidth);
+  // T72 (bug: the default Bottle preset generated 0 rails/ties after T71's
+  // own contour-size inset): a collapsed inner-offset boundary (self-
+  // intersection — see insetPathDToPrimitives's own T72 doc comment,
+  // editor-lattice-boundary.js) silently zeroed the ENTIRE lattice fill.
+  // Falling back to the raw, un-inset boundary is only safe for a
+  // GENERATED preset's own silhouette (a numerical curve-fitting artifact,
+  // never a feature the user actually drew thin on purpose) — a
+  // HAND-PICKED boundary shape keeps declining to `[]` on collapse
+  // unchanged (editor-lattice-boundary.test.js's own "thin arm... the
+  // WHOLE shape declines" case documents why: using the raw edge there
+  // would put rails ON TOP of a stroke the user genuinely drew that thin).
+  if (!localPrimitives.length && halfWidth > 0 && PATTERN.shape && PATTERN.shape.source === 'generated') {
+    localPrimitives = await shapeToPrimitives(boundaryEl);
+  }
   return { boundaryEl, primitives: _bakeWorldTransform(boundaryEl, localPrimitives) };
 }
 

@@ -234,3 +234,24 @@ describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManife
     expect(usedSegs.size).toBe(contourEntities.length); // vice versa: every manifest seg got claimed exactly once
   });
 });
+
+describe('parity: shape lattice (bottle) — T72 regression: the default Bottle generated 0 rails/ties after T71\'s contour inset', () => {
+  it('the default Bottle preset draws a REAL lattice fill (advisor-measured on 8566623: 0 rails/ties/nodes)', async () => {
+    const editor = makeMockEditor(7, 9);
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'bottle', seed: 42, params: {}, segments: null },
+    };
+    regenerateSilhouette(editor, pattern);
+    await generatePattern(editor, pattern);
+    const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
+    const drawn = editor._sketchLayer.children().toArray();
+    const drawnRails = drawn.filter((e) => e.attr('data-lattice') === 'rail');
+    const drawnTies = drawn.filter((e) => e.attr('data-lattice') === 'tie');
+    expect(drawnRails.length).toBeGreaterThan(0);
+    expect(drawnTies.length).toBeGreaterThan(0);
+    const manifest = buildSketchManifest(pattern, region, {});
+    checkLatticeParity(editor, manifest, region);
+  });
+});
