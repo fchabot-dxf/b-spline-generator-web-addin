@@ -59,8 +59,8 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
    move together (the default) or independently?
 5. **Stale-param cleanup**: a declared list of params the add-in owns (including the frame params), so Send removes
    parameters it created before and no longer uses. Coordinate the frame-param names with fb-app (FB-APP-DESIGN.md on branch fb-app).
-6. **RAIL-SPACING** (ROADMAP.md): Boundary becomes the FIRST panel section; Rails [Spacing | Count] laid out from the
-   boundary with exact equal gaps; one grid (the editor's). Old saved patterns keep their geometry.
+6. **RAIL-SPACING** (ROADMAP.md): Boundary becomes the FIRST panel section; Rails: Anchor [Top|Center|Bottom] + Spacing + optional Count,
+   laid out from the boundary; one grid (the editor's). Old saved patterns keep their geometry.
    Do it after seat B's TIE-GAP lands (same panels).
 7. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
 8. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
