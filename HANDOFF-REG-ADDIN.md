@@ -49,7 +49,7 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
    The rail and tie ends should stay coincident to the contour through a `stroke_width` edit (small drift is accepted).
    Hide one kind and it shouldn't be sent. Change the lattice Size and `contour_width`/`contour_height` should follow.
    Give one piece a width override and it should get a hardcoded dim. Inspect `last_send.json` when something looks off.
-2. **Live check of the Frame Builder F4 fixes** (merged 6dfdcaf): build a frame with the standalone Frame Builder; the
+2. ✅ **DONE (Fred 2026-09-26: "frame builder looks fine")** **Live check of the Frame Builder F4 fixes** (merged 6dfdcaf): build a frame with the standalone Frame Builder; the
    log should show NO "FALLING BACK to a NON-parametric offset"; changing frame_thickness must move the frame; a
    unit value like 0.75 in resolves (no FAIL RESOLVE). If the offset lands OUTSIDE, report it (OFFSET_SIDE sign).
 3. **Live check of UI5** once merged: override one piece → only that piece changes; Regenerate clears the override; Undo restores it.
