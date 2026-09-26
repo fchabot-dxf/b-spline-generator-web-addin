@@ -73,18 +73,31 @@ import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-
 export const SKETCH_PIECE_THRESHOLD = 60;
 
 /** T64 (5 mid-turn amendments, final state): every rail/tie piece becomes
- *  a Fusion-native anchored SLOT (`addCenterToCenterSlot`), for BOTH a
- *  plain box Lattice layer AND a Shape Lattice layer's own fill — Fred's
- *  own final call ("box lattice needs to be slots too"), after first
- *  asking only to remove the OLD offset+cap mechanism (now deleted
- *  entirely, not kept as a dead third option) from the box tool. Kept as
- *  a declared per-LAYER-TYPE table, not a single hardcoded string,
- *  because `'centerline'` (a bare, undimensioned line) is EXPLICITLY
- *  named as still a real, available value for later — just not the
- *  default for either type any more. `buildSketchManifest` picks the
- *  mode from the SAME `hasShape` discriminator it already computes;
- *  declared here so both that call site and any direct
- *  `manifestFromLattice` caller share the identical constants. */
+ *  a Fusion-native SLOT (`addCenterToCenterSlot`), for BOTH a plain box
+ *  Lattice layer AND a Shape Lattice layer's own fill — Fred's own final
+ *  call ("box lattice needs to be slots too"), after first asking only
+ *  to remove the OLD offset+cap mechanism (now deleted entirely, not
+ *  kept as a dead third option) from the box tool. Kept as a declared
+ *  per-LAYER-TYPE table, not a single hardcoded string, because
+ *  `'centerline'` (a bare, undimensioned line) is EXPLICITLY named as
+ *  still a real, available value for later — just not the default for
+ *  either type any more. `buildSketchManifest` picks the mode from the
+ *  SAME `hasShape` discriminator it already computes; declared here so
+ *  both that call site and any direct `manifestFromLattice` caller share
+ *  the identical constants.
+ *
+ *  T66 (Fred's own rule, "never use Fix", after the advisor's own live
+ *  Fusion run: ALL 63 relationship constraints on a real box fixture
+ *  failed VCS_SKETCH_OVER_CONSTRAINTS because T64's own anchoring made
+ *  the slot centerline's own two end points Fixed): the slot is NO
+ *  LONGER anchored at all, on either the API call's own 4th argument or
+ *  via a post-hoc `isFixed`. Relationship constraints ALONE (Horizontal/
+ *  Vertical + Coincident) now carry the FULL job of pinning each piece in
+ *  place — the advisor's own measured minimal example (2 rails + 1 tie,
+ *  all slots, NO Fix: rails Horizontal, tie Vertical, tie ends Coincident
+ *  to their rail's own centerline) produced ZERO failures and a stable,
+ *  reversible width-parameter round-trip (0.07in -> 0.2in moved
+ *  centerlines only 0.005in; 0.2in -> 0.07in returned EXACTLY). */
 export const SKETCH_WIDTH_MODE = { boxLattice: 'slot', shapeLattice: 'slot' };
 
 const EPS = 1e-9;
@@ -128,11 +141,34 @@ function pointOnLatticeSegment(pt, seg) {
   return false;
 }
 
+/** T66 (advisor's own live Fusion run + Fred's own rule, "never use Fix"):
+ *  a Coincident targeting a piece exactly at one of its own two ENDS must
+ *  be POINT-TO-POINT (`id:S`/`id:E`), not point-on-curve against the bare
+ *  id — the advisor's own measured working scheme (2 rails + 1 tie, ZERO
+ *  failures) uses point-to-point at each tie end specifically. Previously
+ *  only `nodePieceCoincidences` (below) made this 3-way end/mid-span/none
+ *  distinction; the tie-on-rail wiring used a cruder 2-way check (on-
+ *  segment-anywhere -> always bare id) that happened to still work when
+ *  every piece's own centerline ends were Fixed (over-constraint from the
+ *  redundant curve-vs-point ambiguity was masked by the SAME Fix that
+ *  caused the 63 reported failures) — now that Fix is gone entirely, this
+ *  precision is worth having consistently on BOTH call sites rather than
+ *  leaving one cruder than the other. Returns the target STRING (`id`,
+ *  `id:S`, or `id:E`) or null if `pt` isn't on `seg` at all. */
+function pieceEndOrCurveTarget(pt, seg, id) {
+  if (pt.i === seg.a.i && pt.j === seg.a.j) return `${id}:S`;
+  if (pt.i === seg.b.i && pt.j === seg.b.j) return `${id}:E`;
+  if (pointOnLatticeSegment(pt, seg)) return id;
+  return null;
+}
+
 /** T64 CHANGE (Fred, via the advisor: "box lattice needs to be slots too"
  *  — the FINAL design after 5 mid-turn amendments superseded the offset+
  *  cap mechanism above entirely): every rail/tie piece becomes a
  *  `type:'Slot'` entity, built in Fusion via the NATIVE
- *  `sketchLines.addCenterToCenterSlot(p1, p2, width, isFixed)` — ONE call
+ *  `sketch.addCenterToCenterSlot(p1, p2, width, isFixed)` (T65: lives on
+ *  Sketch, not SketchLines; T66: `isFixed` is now always False — see
+ *  SKETCH_WIDTH_MODE's own doc comment above for why) — ONE call
  *  produces the whole rounded-rect body (2 side lines + 2 end arcs + an
  *  internal construction centerline + ONE width dimension) as a single,
  *  already-correct, already-symmetric unit. No JS-side offset math, no
@@ -181,17 +217,33 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   // T64 CHANGE: 'centerline' (a bare, undimensioned line — legacy/
   // available but no longer the default for either layer type per
   // Fred's own "box lattice needs to be slots too") vs 'slot' (the new
-  // default for BOTH: a Fusion-native anchored center-to-center slot,
-  // see addSlotPieces above). Entity TYPE is decided per-piece here;
-  // isFixed (anchoring the slot's own two end points, per the advisor's
-  // own measurement that an anchored slot grows evenly while an
-  // unanchored one drifts lopsided) is the Python builder's own job.
+  // default for BOTH: a Fusion-native center-to-center slot, see
+  // addSlotPieces above). Entity TYPE is decided per-piece here; T66:
+  // NO anchoring/isFixed at all any more (see SKETCH_WIDTH_MODE's own
+  // doc comment) — pinning each piece in place is now entirely the
+  // relationship constraints' own job (below), not the Python builder's.
   const isSlotMode = widthMode !== 'centerline';
+
+  // T66 (advisor's own live Fusion run: one tie's own Slot failed with
+  // "InternalValidationError : isSuccessful", root cause DIAGNOSED here —
+  // NOT independently confirmed against real Fusion this turn, per NO
+  // FUSION — as a boundary-clip landing a tie's own two ends at the SAME
+  // lattice point, an exactly-zero-length centerline. `addCenterToCenterSlot`/
+  // `addByTwoPoints` both need a real, non-degenerate direction to build
+  // from; a zero-length piece has none. Reproduced directly against a
+  // DEFAULT hourglass fixture (no exotic params needed) via a real run of
+  // this module — see WORK-LOG-lane-b.md T66. Filtered out here, at the
+  // SOURCE, rather than left for the Python builder to catch — a piece
+  // this short was never going to be a real, buildable slot/line for
+  // EITHER width mode, so there's no id worth reserving for it at all.
+  const MIN_PIECE_LENGTH = 1e-6;
+  const pieceLength = (p1, p2) => Math.hypot(p2.x - p1.x, p2.y - p1.y);
 
   const railPieces = [];
   railsCanon.forEach((seg, idx) => {
     const id = toEntityId('rail', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
+    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH) return;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
     groups.rails.push(id);
     railPieces.push({ id, p1, p2 });
@@ -205,6 +257,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   tiesCanon.forEach((seg, idx) => {
     const id = toEntityId('tie', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
+    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH) return;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
     groups.ties.push(id);
     tiePieces.push({ id, p1, p2 });
@@ -213,15 +266,21 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
       if (axis) constraints.push({ type: axis, targets: [id] });
       // "tie-end-on-rail" (ROADMAP.md:765) — a plain equality check on the
       // already-computed lattice coordinates, §3's own doc comment; no
-      // geometric search needed. Targets the rail/tie by BARE id either
-      // way (resolves to the slot's own internal centerline in 'slot'
-      // mode, sketch_manifest_builder.py's own registration) — this
-      // declaration doesn't change between width modes at all.
+      // geometric search needed. T66: now uses the SAME 3-way end/mid-
+      // span/none distinction `nodePieceCoincidences` already used
+      // (`pieceEndOrCurveTarget`) — point-to-point when the tie's own end
+      // lands EXACTLY on the rail's own end, point-on-curve only for a
+      // genuine mid-span landing — matching the advisor's own measured
+      // working scheme precisely (previously always used the bare id,
+      // which happened to still validate while every centerline end was
+      // Fixed; T66 removes Fix entirely, so this precision is now worth
+      // having on both call sites, not just the node one).
       ['a', 'b'].forEach((end) => {
         const railIdx = railsCanon.findIndex((r) => pointOnLatticeSegment(seg[end], r));
         if (railIdx >= 0) {
           const suffix = end === 'a' ? 'S' : 'E';
-          constraints.push({ type: 'Coincident', targets: [`${id}:${suffix}`, toEntityId('rail', railIdx)] });
+          const railTarget = pieceEndOrCurveTarget(seg[end], railsCanon[railIdx], toEntityId('rail', railIdx));
+          if (railTarget) constraints.push({ type: 'Coincident', targets: [`${id}:${suffix}`, railTarget] });
         }
       });
     }
@@ -247,10 +306,8 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     const out = [];
     const check = (canonList, kindPrefix) => {
       canonList.forEach((seg, i) => {
-        const id = toEntityId(kindPrefix, i);
-        if (pt.i === seg.a.i && pt.j === seg.a.j) out.push(`${id}:S`);
-        else if (pt.i === seg.b.i && pt.j === seg.b.j) out.push(`${id}:E`);
-        else if (pointOnLatticeSegment(pt, seg)) out.push(id);
+        const target = pieceEndOrCurveTarget(pt, seg, toEntityId(kindPrefix, i));
+        if (target) out.push(target);
       });
     };
     check(railsCanon, 'rail');

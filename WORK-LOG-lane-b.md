@@ -7669,3 +7669,124 @@ a byte-for-byte replay of the advisor's own real run.
 
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 
+## T66 — SE15: never use Fix anywhere, relationship constraints carry the FULL job; a real zero-length-piece bug found and fixed; the shape bbox blowup investigated but NOT reproduced
+
+T65 was NOT merged either — the advisor's own real Fusion run of that exact commit found the slot mechanism itself
+now WORKS (every slot built, in both box and shape fixtures) but is fully OVER-CONSTRAINED: all 63 relationship
+constraints on the box fixture failed VCS_SKETCH_OVER_CONSTRAINTS, root-caused by T64's own anchoring — a Fixed
+point has 0 DOF, so ANY constraint that also touches it (Horizontal, Coincident) is automatically redundant. Fred's
+own rule, relayed through the advisor: never use Fix, anywhere, full stop.
+
+**Fix 1 — remove Fix entirely, on BOTH of T64's own mechanisms.** `_create_slot_entity`'s `addCenterToCenterSlot`
+call now always passes `False` as its own 4th argument (was `True`); the post-hoc
+`centerline.startSketchPoint.isFixed = True` / `endSketchPoint.isFixed = True` block is deleted outright, not
+just left unreachable. Pinning every piece in place is now ENTIRELY the relationship constraints' own job — the
+advisor's own measured minimal example (2 rails + 1 tie, all slots, NO Fix: rails Horizontal, tie Vertical, tie
+ends Coincident to their rail's own centerline) produced ZERO failures, plus a stable, REVERSIBLE width-parameter
+round-trip (0.07in -> 0.2in moved centerlines only 0.005in; 0.2in -> 0.07in returned EXACTLY) — evidence that an
+unanchored, purely-relationship-constrained slot is not just "not over-constrained" but genuinely well-behaved.
+
+**Fix 2 — tie-on-rail Coincident precision, brought in line with the node-wiring's own existing 3-way
+distinction.** The dispatch's own described scheme explicitly distinguishes "tie ends Coincident point-on-curve
+to their rail centerline (OR point-point Coincident when on a rail END)" — a distinction `nodePieceCoincidences`
+already made (end-match -> `:S`/`:E`, mid-span match -> bare id) but the SEPARATE, older tie-on-rail wiring never
+did (it always used the bare rail id, even when the tie's own end landed EXACTLY on the rail's own end). This
+crude 2-way check happened to still validate while every centerline end was Fixed (any ambiguity from
+point-on-curve vs point-to-point was moot against a 0-DOF point) — with Fix now gone entirely, the SAME precision
+is worth having on both call sites, not just the node one. Extracted the shared 3-way check into
+`pieceEndOrCurveTarget(pt, seg, id)` (JS), used by both `nodePieceCoincidences` and the tie-on-rail loop now —
+removes a small duplicated-logic smell as a side effect, not the primary point of the change.
+
+**Fix 3 — a REAL, reproducible bug: exactly-zero-length rail/tie pieces.** The advisor's own shape fixture hit
+"InternalValidationError : isSuccessful" building one tie's own Slot. Reproduced directly (not guessed) via a
+real run of `buildSketchManifest` against the DEFAULT hourglass preset, no exotic params needed — `tie3` (in my
+own run) comes out at EXACTLY 0.0 length, because the Shape Lattice boundary clip lands a tie's own two ends at
+the identical lattice point. `addCenterToCenterSlot`/`addByTwoPoints` both need a real, non-degenerate direction
+to build from; a zero-length piece has none. Fixed at the SOURCE (`manifestFromLattice`'s own rail/tie piece
+loops), not left for the Python builder to catch defensively: any piece whose own computed length is below
+`MIN_PIECE_LENGTH = 1e-6` inches (a tight, exact-coordinate-collision threshold, not a "merely short piece"
+cutoff) is filtered out before it becomes any entity at all, for EITHER width mode
+(a degenerate LINE would be equally meaningless). ids are simply not reserved for a filtered piece (gaps in the
+numbering are fine — nothing downstream assumes contiguity).
+
+**The shape bbox blowup — investigated thoroughly, NOT reproduced, disclosed honestly rather than guessed at.**
+The advisor's own real run reported bbox −13.29..21.87 × −39.39..38.30 on a 7×9 board (T65's own report, before
+this fix, was −6.38..5.19 — a DIFFERENT, larger kind of wrong, suggesting T65's own arc fix didn't simply fail to
+help but may have introduced or exposed something new). Checked, with a real script run against THIS module's
+own actual functions (not reasoned about blind, per this project's own "measure, don't re-reason" habit):
+- `manifestFromShape`/`applyCarvePlacement`/`toCarveArc3Point`/`buildSketchManifest` re-read line by line for a
+  units mismatch, a double-applied transform, or a segment computed in the wrong (lattice vs board-inches)
+  space — found none; `region` is the SAME object passed to every call site, never mutated or recomputed between
+  the shape producer and the carve-placement pass.
+- A default hourglass fixture (region 7×9, spacing 0.25) produces a bbox of EXACTLY ±3.5/±4.5 — board-sized,
+  correct.
+- A param sweep (hourglass at waistReach 0.05/0.95, cornerRadius 0.02/0.98; bottle at neckWidth 0.02, neckLength
+  0.98) found every silhouette arc's own circumscribed-circle radius stayed well under board scale (max ~3.08) —
+  no near-collinear/shallow-arc numerical instability, the one JS-side failure mode that COULD plausibly explain
+  an out-of-proportion derived circle from otherwise-reasonable points.
+- The SAME sweep is what surfaced Fix 3's own zero-length piece — in the DEFAULT config, with no exotic params
+  at all.
+Given the zero-length piece is CONFIRMED and reproducible, and a degenerate `addCenterToCenterSlot` call
+(direction vector normalized from a zero-length delta) is a well-known source of exactly this kind of numerical
+blowup in constructed geometry — my own fakes explicitly guard against dividing by zero here (`length = ... or
+1.0`) specifically because a raw zero-length delta is unsafe to normalize, but nothing guarantees REAL Fusion's
+own internal math has (or needs) the identical guard — my WORKING HYPOTHESIS is that Fix 3 is the same root cause
+behind the bbox blowup too, or at least a major contributor: a degenerate slot call failing partway through
+could leave partial/garbage geometry in the sketch before raising, which would corrupt the reported bbox without
+needing a separate JS-side bug. This is NOT independently confirmed against real Fusion this turn (NO FUSION) —
+flagged explicitly for the advisor's own next live run: if the bbox is still wrong even with Fix 3 in place,
+the fixture files (`m_shape.json` or equivalent) or the raw entity list would help pin down whatever's left,
+since exhaustive review of this module's own code, plus targeted param sweeps, found nothing else.
+
+**Shim fixes (dispatch's own explicit ask: "assert the builder never sets isFixed... model over-constraint...
+as a failure so this class can't pass again").** `FakeSketchPoint.isFixed` is now a real property whose SETTER
+RAISES `AssertionError` if ever set to `True` — a structural guard, not a passive assertion checked after the
+fact: if any future change reintroduces `.isFixed = True` anywhere production code runs, the very first test that
+exercises that path fails immediately, at the exact call site, with a message naming Fred's own rule directly.
+`FakeSketch.addCenterToCenterSlot` now realistically applies its own `is_fixed` argument to the centerline's own
+two endpoints (previously ignored it entirely) — so a reintroduced `True` 4th-argument is caught at the SAME
+place the real bug lived, not just via a separate check bolted on elsewhere.
+
+**Tests**:
+- Python (`test_sketch_manifest_builder.py`, now 19): the old T64 anchoring test is REWRITTEN (not just renamed)
+  to assert the OPPOSITE — every slot centerline's own `isFixed` is `False`, and the API call's own 4th argument
+  is `False`, checked across ALL THREE fixture pieces (matching the original's own non-vacuity discipline); a new
+  DIRECT test proves the shim's own `isFixed` setter raises on `True` and still accepts `False`. Both pytest
+  (19/19) and the plain-`python3` fallback (18/18) green.
+- JS (`tests/editor-sketch-manifest.test.js`, now 34): a new tie-on-rail precision test independently re-derives,
+  for every declared tie-on-rail Coincident, whether the tie's own end matches the rail's own end EXACTLY or
+  lands mid-span, and asserts the target string matches (`rail:S`/`:E` vs bare `rail`) — non-vacuous for BOTH
+  branches on the existing `PATTERN`/`EXTENT` fixture; a new zero-length-piece test reproduces the SAME default-
+  hourglass degenerate tie directly (independently re-deriving the RAW `computePattern` segments to confirm the
+  fixture genuinely contains one, not just trusting the filter's own absence-of-evidence) and asserts no built
+  Slot/Line entity ever has near-zero length. Full JS suite: 1018 passed (63 files).
+
+**Mutation-tested all three JS/shim fixes** (backup, mutate, run, confirm the EXACT expected failure, restore,
+MD5-verified byte-identical restore each time):
+1. `MIN_PIECE_LENGTH` changed from `1e-6` to `-1` (the filter never triggers) — exactly 1 failure (the new
+   zero-length test), 33/34 JS tests passed. Restored, MD5-verified.
+2. Tie-on-rail's own `pieceEndOrCurveTarget` call reverted to the old always-bare-id behavior — exactly 1 failure
+   (the new precision test, `expected 'rail3' to be 'rail3:S'`), 33/34 passed. Restored, MD5-verified.
+3. The Python call site's own `False` reverted back to `True` (simulating a future regression reintroducing T64's
+   own mistake, with the now-fixed shim in place) — 8 of 19 tests failed, cascading from the shim's own raising
+   setter through `_create_geometry`'s per-entity try/except (caught as a GEOM FAIL, corrupting entity/dimension
+   counts downstream) PLUS the direct `assert call[-1] is False` check. Strongly non-vacuous — confirms the shim
+   would have caught T64's own original mistake outright, not just this turn's own new test for it specifically.
+   Restored, MD5-verified.
+
+**Disclosed, unverified against real Fusion this turn** (NO FUSION held throughout): whether Fix 3 (the
+zero-length-piece filter) actually resolves the bbox blowup, per the working hypothesis above — genuinely
+unconfirmed, not claimed as fact; whether the relationship-constraint scheme is FULLY free of redundancy once
+Fix is removed — specifically, a NODE that coincides with a tie's own end that is ALSO wired via tie-on-rail
+could produce three separate Coincident constraints among the same 3 mutually-linked points/curves (node-to-rail,
+node-to-tie-end, tie-end-to-rail), where the third is transitively implied by the other two. `computePattern`'s
+own `addNode` calls confirm nodePoints DOES structurally overlap tie/rail endpoints (called at every tie's own
+end, at every rail joint). NOT fixed this turn: the advisor's own measured "ZERO failures" example was
+deliberately minimal (no node in it at all), so this specific triangle was never actually exercised either way,
+and NO FUSION means I can't confirm whether Fusion's own solver tolerates it (the way several OTHER
+correct-by-construction redundancies already are elsewhere in this codebase) or flags it. Flagged for the
+advisor's own next live run rather than speculatively removing a constraint relation I can't verify is safe to
+drop.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+

@@ -16,6 +16,7 @@ import {
 import { computePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { fromLattice, toLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 import { generateSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+import { primitivesBBox } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 const REGION = { x: 0, y: 0, w: 7, h: 9 };
 
@@ -52,6 +53,26 @@ function pointOf(entities, target) {
   }
   if (e.type === 'Circle') return { x: e.center[0], y: e.center[1] };
   return null;
+}
+
+// Mirrors editor-sketch-manifest.js's own `resolveShapeBoundaryExtent`/
+// `scalePrimitiveToLattice` exactly (neither is exported) — needed so a
+// test's own INDEPENDENT `computePattern` call resolves the SAME extent
+// `buildSketchManifest` itself would, for a Shape Lattice pattern.
+function resolveShapeBoundaryExtentForTest(pattern, region) {
+  const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
+  const { primitives } = generateSilhouette(region, pattern.shape);
+  const scalePt = (p) => ({ x: p.x / spacing, y: p.y / spacing });
+  const scaled = primitives.map((p) => (p.type === 'L'
+    ? { type: 'L', p0: scalePt(p.p0), p1: scalePt(p.p1) }
+    : { type: 'A', cx: p.cx / spacing, cy: p.cy / spacing, rx: p.rx / spacing, ry: p.ry / spacing, phi: p.phi, theta1: p.theta1, dTheta: p.dTheta }));
+  const bbox = primitivesBBox(scaled);
+  if (!bbox) return { iMin: 0, jMin: 0, iMax: -1, jMax: -1, mode: 'boundary', primitives: [] };
+  return {
+    iMin: Math.floor(bbox.xMin), jMin: Math.floor(bbox.yMin),
+    iMax: Math.ceil(bbox.xMax), jMax: Math.ceil(bbox.yMax),
+    mode: 'boundary', primitives: scaled,
+  };
 }
 
 describe('manifestFromLattice — box lattice (no shape)', () => {
@@ -149,6 +170,60 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
       }
     }
     expect(uncoveredChecked).toBeGreaterThan(0); // non-vacuous: some free ends actually exist to check
+  });
+
+  it('T66: a tie-on-rail Coincident is point-to-point (rail:S/:E) when the tie lands EXACTLY on the rail\'s own end, point-on-curve (bare rail id) only for a genuine mid-span landing — matching the advisor\'s own measured working scheme precisely', () => {
+    const manifest = manifestFromLattice(PATTERN, EXTENT);
+    const railEntities = manifest.entities.filter((e) => e.id.match(/^rail\d+$/));
+    const tieEntities = manifest.entities.filter((e) => e.id.match(/^tie\d+$/));
+    const pointsEqual = (a, b) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
+
+    let endMatches = 0, curveMatches = 0;
+    for (const tie of tieEntities) {
+      for (const [suffix, pt] of [['S', { x: tie.p1[0], y: tie.p1[1] }], ['E', { x: tie.p2[0], y: tie.p2[1] }]]) {
+        const c = manifest.constraints.find((cc) => cc.type === 'Coincident' && cc.targets[0] === `${tie.id}:${suffix}`);
+        if (!c) continue; // this end doesn't touch any rail at all -- covered by the test above
+        const railTarget = c.targets[1];
+        const rail = railEntities.find((r) => r.id === railTarget.split(':')[0]);
+        const railP1 = { x: rail.p1[0], y: rail.p1[1] }, railP2 = { x: rail.p2[0], y: rail.p2[1] };
+        if (pointsEqual(pt, railP1)) { expect(railTarget).toBe(`${rail.id}:S`); endMatches++; }
+        else if (pointsEqual(pt, railP2)) { expect(railTarget).toBe(`${rail.id}:E`); endMatches++; }
+        else { expect(railTarget).toBe(rail.id); curveMatches++; }
+      }
+    }
+    expect(endMatches).toBeGreaterThan(0); // non-vacuous: real end-matches exist in this fixture
+    expect(curveMatches).toBeGreaterThan(0); // non-vacuous: real mid-span matches exist too
+  });
+
+  it('T66: no rail/tie/node ever has an exactly-zero-length piece (a real bug: the advisor\'s own live Fusion run hit "InternalValidationError : isSuccessful" on a degenerate slot) — reproduced here with the SAME default hourglass shape, no exotic params needed', () => {
+    const shapePattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25,
+      rails: { mode: 'every', every: 2, offset: 0 },
+      ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
+      nodes: { ends: false, crossings: false, railEnds: false },
+      widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      seed: 42,
+    };
+    // Independent re-derivation: recompute the RAW (pre-filter) segments
+    // directly, to confirm this fixture genuinely contains a degenerate
+    // piece -- otherwise "no zero-length Slot exists" would be trivially
+    // true regardless of whether the filter does anything at all.
+    const extent = resolveShapeBoundaryExtentForTest(shapePattern, REGION);
+    const { segments } = computePattern(shapePattern, { extent, occupied: null });
+    const rawHasDegenerate = segments.some((s) => {
+      const a = fromLattice(s.a, shapePattern.spacing), b = fromLattice(s.b, shapePattern.spacing);
+      return Math.hypot(b.x - a.x, b.y - a.y) < 1e-6;
+    });
+    expect(rawHasDegenerate).toBe(true); // non-vacuous: this fixture genuinely has one to filter
+
+    const manifest = buildSketchManifest(shapePattern, REGION, {});
+    for (const e of manifest.entities) {
+      if (e.type !== 'Slot' && e.type !== 'Line') continue;
+      const len = Math.hypot(e.p2[0] - e.p1[0], e.p2[1] - e.p1[1]);
+      expect(len).toBeGreaterThan(1e-6);
+    }
   });
 
   it('T64 ADD-ON (amendment #1): every node sitting on a rail/tie gets an explicit Coincident to it — end-match uses :S/:E, mid-span match uses the bare (point-on-curve) id', () => {

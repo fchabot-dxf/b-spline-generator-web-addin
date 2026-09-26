@@ -64,8 +64,30 @@ class FakeSketchPoint:
 
     def __init__(self, geometry):
         self.geometry = geometry
+        self._isFixed = False
         FakeSketchPoint._next_token[0] += 1
         self.entityToken = f"pt-{FakeSketchPoint._next_token[0]}"
+
+    @property
+    def isFixed(self):
+        return self._isFixed
+
+    @isFixed.setter
+    def isFixed(self, value):
+        # T66 (Fred's own rule, "never use Fix"): the advisor's own real
+        # Fusion run measured 63/63 relationship constraints failing
+        # VCS_SKETCH_OVER_CONSTRAINTS, directly caused by T64's own
+        # anchoring -- a Fixed point already has 0 DOF, so ANY constraint
+        # touching it is redundant. The shim ITSELF refuses Fix here,
+        # rather than leaving it to a separate assertion that checks for
+        # its absence after the fact -- if a future change reintroduces
+        # `.isFixed = True` anywhere production code runs, the very first
+        # test that exercises that path fails immediately and loudly,
+        # which is what "so this class can't pass again" (the dispatch's
+        # own wording) means in practice.
+        if value:
+            raise AssertionError("isFixed set to True -- Fix is banned (Fred's own rule, T66)")
+        self._isFixed = value
 
 
 class FakeAttributes:
@@ -336,6 +358,13 @@ class FakeSketch:
         CALL_LOG.append(("slot:addCenterToCenterSlot", p1.x, p1.y, p2.x, p2.y, value_input.value, is_fixed))
         centerline = FakeSketchLine(p1, p2)
         self._curves.append(centerline)
+        # T66: realistically apply the caller's own `is_fixed` argument to
+        # the centerline's own two endpoints, same as the real API would —
+        # if production code ever passes True again, THIS is where the
+        # regression gets caught, at the exact call site the real bug
+        # lived in, not just via a separate assertion elsewhere.
+        centerline.startSketchPoint.isFixed = is_fixed
+        centerline.endSketchPoint.isFixed = is_fixed
         dx, dy = p2.x - p1.x, p2.y - p1.y
         length = math.hypot(dx, dy) or 1.0
         nx, ny = -dy / length, dx / length
@@ -753,21 +782,24 @@ def test_threshold_case_still_creates_slots_and_slot_width_dims_but_no_relations
     assert len(slot_calls) == 3  # rail0, rail1, tie0 -- unaffected by the threshold
 
 
-def test_slot_creation_is_anchored_and_calls_addCenterToCenterSlot_once_per_piece(call_log):
-    """T64 (final design): every rail/tie becomes ONE addCenterToCenterSlot
-    call, with the anchoring argument True (per the advisor's own literal
-    example and instruction) — measured live: an anchored slot grows
-    EVENLY on a width change; an unanchored one drifts lopsided. Also
-    verifies the registered centerline's own two endpoints get
-    isFixed=True explicitly (belt-and-suspenders, since which of the two
-    mechanisms actually anchors it is itself unverified this turn)."""
+def test_slot_creation_is_never_anchored_and_calls_addCenterToCenterSlot_once_per_piece(call_log):
+    """T66 (Fred's own rule, "never use Fix"; advisor's own real Fusion
+    run: ALL 63 relationship constraints on a real fixture failed
+    VCS_SKETCH_OVER_CONSTRAINTS, directly because T64's own anchoring made
+    every slot centerline's own two end points Fixed — a Fixed point has
+    0 DOF, so ANY constraint touching it is redundant). Supersedes the old
+    T64 test of the same shape, which asserted the OPPOSITE (isFixed IS
+    True) — checked here for ALL THREE fixture pieces, not just the
+    first created, matching the original T64 test's own non-vacuity
+    discipline (a lookup that degenerates to "item(0)" would still find
+    rail0's own centerline by luck)."""
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=True)
     build_constrained_sketch(design.rootComponent, design, manifest)
     slot_calls = [c for c in call_log if c[0] == "slot:addCenterToCenterSlot"]
     assert len(slot_calls) == 3  # rail0, rail1, tie0
     for call in slot_calls:
-        assert call[-1] is True  # the is_fixed/anchor argument
+        assert call[-1] is False  # the is_fixed/anchor argument -- NEVER True any more
 
     sketch = design.rootComponent._sketches[0]
 
@@ -781,19 +813,31 @@ def test_slot_creation_is_anchored_and_calls_addCenterToCenterSlot_once_per_piec
                 return c
         return None
 
-    # Checked for ALL THREE pieces, not just the first created — a lookup
-    # that degenerates to "return sketchLines.item(0)" would still find
-    # rail0's own centerline by luck (it's the very first line the fake
-    # ever appends) but would silently mis-anchor rail1/tie0's own
-    # centerlines, which this loop is what actually catches (confirmed by
-    # mutation: item(0) passed rail0 alone, failed here on rail1).
     for ent in manifest["entities"]:
         if ent["type"] != "Slot":
             continue
         centerline = find_by_endpoints(ent["p1"], ent["p2"])
         assert centerline is not None, f"{ent['id']}'s own centerline is genuinely findable"
-        assert centerline.startSketchPoint.isFixed is True, f"{ent['id']} start anchored"
-        assert centerline.endSketchPoint.isFixed is True, f"{ent['id']} end anchored"
+        assert centerline.startSketchPoint.isFixed is False, f"{ent['id']} start NOT fixed"
+        assert centerline.endSketchPoint.isFixed is False, f"{ent['id']} end NOT fixed"
+
+
+def test_shim_itself_refuses_isFixed_True_so_this_regression_class_cannot_pass_silently(call_log):
+    """T66 (dispatch's own explicit ask): 'assert the builder never sets
+    isFixed... model over-constraint... as a failure so this class can't
+    pass again.' Directly proves the FakeSketchPoint.isFixed setter is a
+    real, structural guard, not a decoration -- if any future change
+    reintroduces `.isFixed = True` anywhere (the exact T64 mistake this
+    turn removes), the very first test that exercises that code path
+    fails immediately with this same AssertionError, rather than silently
+    re-passing the way a plain missing-attribute duck-typed field would
+    have."""
+    pt = FakeSketchPoint(FakePoint3D(0, 0))
+    assert pt.isFixed is False
+    pt.isFixed = False  # still legal -- explicitly setting False is not banned
+    assert pt.isFixed is False
+    with pytest.raises(AssertionError):
+        pt.isFixed = True
 
 
 def test_slot_width_dimension_expressions_match_the_manifest(call_log):
@@ -877,7 +921,8 @@ if __name__ == "__main__":
         test_skip_and_report_a_missing_geometry_target_never_aborts_the_build,
         test_skip_and_report_an_unknown_entity_type_never_aborts_the_build,
         test_threshold_case_still_creates_slots_and_slot_width_dims_but_no_relationship_constraints,
-        test_slot_creation_is_anchored_and_calls_addCenterToCenterSlot_once_per_piece,
+        test_slot_creation_is_never_anchored_and_calls_addCenterToCenterSlot_once_per_piece,
+        test_shim_itself_refuses_isFixed_True_so_this_regression_class_cannot_pass_silently,
         test_slot_width_dimension_expressions_match_the_manifest,
         test_no_symmetry_constraint_is_ever_added_for_a_slot,
         test_centerline_width_mode_still_builds_a_plain_line_with_no_slot_mechanism,

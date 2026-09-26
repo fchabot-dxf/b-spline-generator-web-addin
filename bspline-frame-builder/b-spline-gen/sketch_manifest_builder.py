@@ -265,10 +265,10 @@ def _drive_last_dimension(ctx, sketch, expression, semantic_name):
 
 def _create_slot_entity(ctx, sketch, curves, s_name, ent, width_expression):
     """T64 (5 mid-turn amendments, final design): a rail/tie piece becomes
-    a Fusion-native ANCHORED center-to-center slot — ONE
-    `addCenterToCenterSlot` call produces the whole rounded-rect body
-    (2 side lines + 2 end arcs) PLUS an internal construction centerline
-    and its own width dimension, all at once. This function:
+    a Fusion-native center-to-center slot — ONE `addCenterToCenterSlot`
+    call produces the whole rounded-rect body (2 side lines + 2 end arcs)
+    PLUS an internal construction centerline and its own width dimension,
+    all at once. This function:
     1. Creates the slot with a SEED width (`ent['width']`, the manifest's
        own resolved value in inches) — a real, usable starting number,
        later re-driven by `width_expression` (e.g. "stroke_width"), same
@@ -279,14 +279,7 @@ def _create_slot_entity(ctx, sketch, curves, s_name, ent, width_expression):
        rail, node coincidences) all target rails/ties by bare id, and per
        the advisor's own instruction, those constraints act on the slot's
        own centerline.
-    3. ANCHORS the centerline's own two end points (`isFixed = True`) —
-       measured live: an anchored slot grows EVENLY on a width change; an
-       unanchored one drifts lopsided. Passed BOTH as the API call's own
-       4th argument (per the advisor's own literal example) AND set
-       explicitly on the endpoints afterward (belt-and-suspenders,
-       since which of the two actually does the anchoring is itself
-       unverified this turn).
-    4. Re-drives the width dimension via `width_expression`.
+    3. Re-drives the width dimension via `width_expression`.
     NO symmetry constraint is added (measured: the slot is already
     symmetric by construction; an explicit one over-constrains).
 
@@ -299,24 +292,32 @@ def _create_slot_entity(ctx, sketch, curves, s_name, ent, width_expression):
     `Sketch` also exposes `addThreePointArcSlot`/`addCenterPointArcSlot`/
     `addCenterPointSlot`/`addOverallSlot` alongside it — none used here,
     named only because they confirm the METHOD FAMILY lives on Sketch, not
-    a coincidence specific to this one method."""
+    a coincidence specific to this one method.
+
+    T66 (Fred's own rule, "never use Fix"; advisor's own real Fusion run:
+    ALL 63 relationship constraints on a real box fixture failed
+    VCS_SKETCH_OVER_CONSTRAINTS): T64's OWN anchoring — the API call's own
+    4th argument AND a post-hoc `isFixed = True` on both centerline
+    endpoints — is REMOVED entirely, on BOTH mechanisms, not just one; a
+    Fixed point already has 0 DOF, so ANY relationship constraint that
+    also touches it (Horizontal, Coincident) is automatically redundant.
+    The API call's own 4th argument is now always `False`. Pinning every
+    piece in place is now ENTIRELY the relationship constraints' own job
+    (`_apply_constraints`, fed by the manifest's own H/V/Coincident
+    declarations) — the advisor's own measured minimal example (2 rails +
+    1 tie, all slots, NO Fix) produced ZERO failures."""
     p1 = _to_point3d(ent["p1"])
     p2 = _to_point3d(ent["p2"])
     width_in = ent.get("width", 0.07)
     value_input = adsk.core.ValueInput.createByReal(width_in * IN_TO_CM)
     line_count_before = curves.sketchLines.count
-    sketch.addCenterToCenterSlot(p1, p2, value_input, True)
+    sketch.addCenterToCenterSlot(p1, p2, value_input, False)
     centerline = _find_slot_centerline(curves, p1, p2, line_count_before)
     if not centerline:
         raise RuntimeError(f"could not identify the slot's own centerline for {ent['id']}")
     ctx.set_id(centerline, s_name, "line", override_id=ent["id"])
     ctx.set_id(centerline.startSketchPoint, s_name, "point", override_id=f"{ent['id']}:S")
     ctx.set_id(centerline.endSketchPoint, s_name, "point", override_id=f"{ent['id']}:E")
-    try:
-        centerline.startSketchPoint.isFixed = True
-        centerline.endSketchPoint.isFixed = True
-    except Exception as e:
-        ctx.logger.log(f"SLOT ANCHOR FAIL: {ent['id']}: {e}", "WARNING")
     if width_expression:
         _drive_last_dimension(ctx, sketch, width_expression, f"{ent['id']}_width")
     return centerline
@@ -552,7 +553,7 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     constraint_issues = _summarize_issues(
         logger.records, markers=("CONSTRAINT SKIP", "CONSTRAINT FAIL", "CONSTRAINT MISS", "CONSTRAINT WRAP FAIL"))
     dim_issues = _summarize_issues(
-        logger.records, markers=("DIM MISS", "DIM CRASH", "DIM NODIM", "DIM EXPR FAIL", "DIM WRAP FAIL", "DIM NAME FAIL", "SLOT ANCHOR FAIL"))
+        logger.records, markers=("DIM MISS", "DIM CRASH", "DIM NODIM", "DIM EXPR FAIL", "DIM WRAP FAIL", "DIM NAME FAIL"))
 
     return {
         "sketchName": s_name,
