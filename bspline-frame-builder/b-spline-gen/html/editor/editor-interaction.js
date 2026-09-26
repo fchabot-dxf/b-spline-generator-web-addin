@@ -35,7 +35,7 @@ import {
     isLatticePoint, moveRailAlongAxis, translateTie,
     nearestEndWithin, stretchRailEnd, stretchTieEnd,
 } from './editor-lattice.js';
-import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent } from './editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, resolvePatternLayer } from './editor-lattice-pattern.js';
 import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
     shouldCancelDrawOnPointerDown, isPinching,
@@ -974,10 +974,26 @@ function _existingRailRows(editor, spacing, orientation) {
 function _collectLatticeElements(editor, spacing, excludeEl = null) {
     if (!editor._sketchLayer) return [];
     const activeLayer = getActiveLayer(editor);
+    // T76 (SE17): gather across ALL of this pattern's own rail/tie/node
+    // kind-layers, not just whichever ONE is currently active — a rail
+    // living on the Rails layer must still find its own ties on the Ties
+    // layer for "move connected" to work at all. Resolved from `excludeEl`
+    // itself when given (the piece already being dragged — the most
+    // specific context available, and correct even when the active layer
+    // hasn't caught up to it yet); else the active layer. Falls back to
+    // `[activeLayer]` alone for a pre-SE17 pattern with no `.layers` map
+    // yet (every kind still resolves to that one shared layer, unchanged
+    // from before this turn).
+    const anchorLayerId = excludeEl ? getElementLayer(excludeEl) : activeLayer;
+    const patternLayer = resolvePatternLayer(editor, anchorLayerId);
+    const pattern = patternLayer && patternLayer.pattern;
+    const layerIds = pattern && pattern.layers
+        ? new Set([pattern.layers.rails, pattern.layers.ties, pattern.layers.nodes].filter(Boolean))
+        : new Set([activeLayer]);
     const out = [];
     for (const ch of editor._sketchLayer.children().toArray()) {
         if (!ch || !ch.node || ch === excludeEl) continue;
-        if (getElementLayer(ch) !== activeLayer) continue;
+        if (!layerIds.has(getElementLayer(ch))) continue;
         const kind = ch.node.getAttribute(LATTICE_ATTR);
         if (kind === 'rail' || kind === 'tie') {
             const x1 = parseFloat(ch.node.getAttribute('x1'));

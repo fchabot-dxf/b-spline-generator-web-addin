@@ -24,7 +24,7 @@ import {
   LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
-import { getActiveLayer } from './layers.js';
+import { getActiveLayer, addLayer, setActiveLayer } from './layers.js';
 import { lcgPoints } from '../core/terrain.js';
 // T48 (SE13 Slice 2): the pure boundary-cutting engine (T47) — computePattern's
 // 'boundary' extent branch calls insideSpans directly (no re-derivation of
@@ -1849,12 +1849,16 @@ function _elementIdentityLatticePoints(el, kind, spacing) {
  *  OWNED (about to be removed and regenerated in the same call) are
  *  excluded here, not because they aren't real, but because they won't
  *  exist by the time the fresh pattern is emitted. */
-function _collectOccupied(editor, layerId, spacing) {
+function _collectOccupied(editor, layerIds, spacing) {
+  // T76 (SE17): `layerIds` is now an ARRAY (one entry per kind-layer:
+  // rails/ties/nodes each hand-drawable independently on their OWN layer)
+  // rather than the single shared layer every kind used to draw on.
+  const ids = Array.isArray(layerIds) ? layerIds : [layerIds];
   const occupied = new Set();
   if (!editor._sketchLayer) return occupied;
   editor._sketchLayer.children().toArray().forEach((ch) => {
     if (!ch || !ch.node) return;
-    if (ch.node.getAttribute('data-layer') !== layerId) return;
+    if (!ids.includes(ch.node.getAttribute('data-layer'))) return;
     const kind = ch.node.getAttribute(LATTICE_ATTR);
     if (!kind) return;
     if (ch.node.hasAttribute(OWNERSHIP_ATTR)) return;
@@ -1911,7 +1915,12 @@ export async function generatePattern(editor, PATTERN) {
   if (!editor || !editor._sketchLayer) return null;
   if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
 
-  const targetLayer = getActiveLayer(editor);
+  // T76 (SE17): rails/ties/nodes each draw onto their OWN kind-layer now
+  // (contour's own layer, when this pattern has one, is ensured
+  // separately by regenerateSilhouette — the function that actually draws
+  // it). Ensured before anything below (occupancy/clear-before-redraw)
+  // resolves per kind-layer.
+  const kindLayerIds = _ensureKindLayers(editor, PATTERN, getActiveLayer(editor), ['rails', 'ties', 'nodes']);
 
   // SE7g AMEND: emitSegment/emitNode (editor-lattice.js) paint from
   // editor._color — the general drawing-tool color, shared with the
@@ -1945,16 +1954,18 @@ export async function generatePattern(editor, PATTERN) {
   } else {
     extent = _resolveExtent(editor, PATTERN);
   }
-  const occupied = _collectOccupied(editor, targetLayer, spacing);
+  const kindLayerList = [kindLayerIds.rails, kindLayerIds.ties, kindLayerIds.nodes];
+  const occupied = _collectOccupied(editor, kindLayerList, spacing);
 
-  // Remove every element the ACTIVE LAYER already owns — the "replace",
+  // Remove every element EACH kind-layer already owns — the "replace",
   // not "diff", half of one-way generation, now scoped by layer rather
   // than by matching PATTERN.id (SE7i: "clears every generated piece in
   // that layer... including pieces moved by hand since" — ownership is
   // "has OWNERSHIP_ATTR at all", not "has THIS id", since a layer only
-  // ever holds one pattern's generated content at a time).
+  // ever holds one pattern's generated content at a time). T76 (SE17):
+  // one pattern now spans THREE such layers (rails/ties/nodes), not one.
   editor._sketchLayer.children().toArray().forEach((ch) => {
-    if (ch && ch.node && ch.node.getAttribute('data-layer') === targetLayer && ch.node.hasAttribute(OWNERSHIP_ATTR)) {
+    if (ch && ch.node && kindLayerList.includes(ch.node.getAttribute('data-layer')) && ch.node.hasAttribute(OWNERSHIP_ATTR)) {
       ch.remove();
     }
   });
@@ -1971,6 +1982,18 @@ export async function generatePattern(editor, PATTERN) {
   // mismatch measured live at an extreme waistReach.
   const pieceLength = (p1, p2) => Math.hypot(p2.x - p1.x, p2.y - p1.y);
 
+  // T76 (SE17): emitSegment/emitNode (editor-lattice.js) always stamp
+  // `data-layer` from `ensureActiveLayer(editor)` — a shared contract with
+  // the hand-drawn Lattice tool this function deliberately doesn't touch —
+  // so targeting each kind's OWN layer means switching `_activeLayer`
+  // (a raw assignment, not `setActiveLayer`, which would re-render the
+  // layers panel and fire `editorLayersChanged` — expensive side effects
+  // with nothing useful to show mid-loop) immediately before that kind's
+  // own emit loop, exactly the recovered SE7b design's own technique. The
+  // PRE-generate active layer is deliberately never restored — see the
+  // `setActiveLayer(editor, kindLayerIds.rails)` call and its own doc
+  // comment below.
+  editor._activeLayer = kindLayerIds.rails;
   editor._color = colors.rails;
   for (const seg of segments) {
     if (seg.kind !== 'rail') continue;
@@ -1978,6 +2001,7 @@ export async function generatePattern(editor, PATTERN) {
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
     tagOwned(emitSegment(editor, 'rail', p1, p2, widths.rails));
   }
+  editor._activeLayer = kindLayerIds.ties;
   editor._color = colors.ties;
   for (const seg of segments) {
     if (seg.kind !== 'tie') continue;
@@ -1985,6 +2009,7 @@ export async function generatePattern(editor, PATTERN) {
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
     tagOwned(emitSegment(editor, 'tie', p1, p2, widths.ties));
   }
+  editor._activeLayer = kindLayerIds.nodes;
   editor._color = colors.nodes;
   for (const p of nodePoints) {
     // emitNode dedupes against an existing node at the same lattice cell
@@ -1994,6 +2019,18 @@ export async function generatePattern(editor, PATTERN) {
     tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeDiameter / 2));
   }
   editor._color = previousColor;
+  // T76 (SE17): land on the RAILS layer — real, editable, generated
+  // content — rather than restoring whatever was active before Generate
+  // ran (on a from-scratch pattern, that's the SAME layer that just
+  // became Rails anyway; see `_ensureKindLayers`'s own doc comment on why
+  // the ORIGINAL layer becomes Rails directly, not a fourth, orphaned
+  // container). A real `setActiveLayer` call (not the raw assignment
+  // above) so the layers panel and both property panels correctly
+  // refresh — this directly avoids the recovered SE7b design's own
+  // "generated layers were never the active one, so pieces were
+  // unclickable" bug, on top of (not instead of) `editor-interaction.js`'s
+  // own click-to-activate-that-layer behavior for every OTHER kind-layer.
+  setActiveLayer(editor, kindLayerIds.rails);
 
   // T74 AMEND 1 (Fred: "if draw boundary is off I shouldn't see it at
   // all"): the separate "Border" clone piece (T49 SE13 §7) — a SECOND,
@@ -2083,6 +2120,16 @@ export function refreshBoundaryPatterns(editor) {
  *  the same kind names the rest of the Colors panel does. */
 const COLOR_KIND_TO_LATTICE_ATTR = { rails: 'rail', ties: 'tie', nodes: 'node' };
 
+/** T76 (SE17): `kind` ('rails'/'ties'/'nodes'/'contour') to the ACTUAL
+ *  layer id its own pieces live on — `pattern.layers[kind]` when the
+ *  pattern has already been split across kind-layers (`_ensureKindLayers`
+ *  has run at least once), else `fallbackLayerId` (a pre-SE17 pattern with
+ *  no `.layers` map yet — every kind still resolves to that one shared
+ *  layer, unchanged from before this turn). */
+function _kindLayerId(pattern, fallbackLayerId, kind) {
+  return (pattern && pattern.layers && pattern.layers[kind]) || fallbackLayerId;
+}
+
 /** SE7i: every OWNED element (has OWNERSHIP_ATTR) sitting on `layerId` —
  *  the shared filter `recolorOwnedKind`/`rewidthOwnedKind`/`detachAllOwned`
  *  all apply, now that ownership is layer-scoped rather than id-matched
@@ -2156,10 +2203,18 @@ export function latticeOwnedElementsOnLayer(editor, layerId, pattern) {
  * @returns below, just left alone here.
  */
 export function recolorOwnedKind(editor, layerId, kind, color) {
+  // T76 (SE17): `layerId` is whichever of the pattern's own FOUR kind-
+  // layers happens to be active — read the pattern from wherever it
+  // ACTUALLY lives (`resolvePatternLayer`), then resolve THIS kind's own
+  // layer id from `pattern.layers[kind]` (falling back to `layerId` itself
+  // for a pre-SE17 pattern with no `.layers` map yet — every kind still
+  // resolves to that one shared layer, unchanged from before this turn).
+  const patternLayer = resolvePatternLayer(editor, layerId);
+  const pattern = patternLayer && patternLayer.pattern;
+  const targetLayerId = _kindLayerId(pattern, layerId, kind);
   if (kind === 'contour') {
-    const layer = Array.isArray(editor?._layers) ? editor._layers.find((l) => l.id === layerId) : null;
-    const shapeId = layer?.pattern?.boundary?.shapeId;
-    const segmentColors = layer?.pattern?.contour?.segmentColors;
+    const shapeId = pattern?.boundary?.shapeId;
+    const segmentColors = pattern?.contour?.segmentColors;
     const segEls = shapeId ? _findBoundaryElements(editor, shapeId) : [];
     if (!segEls.length) return 0;
     for (let i = 0; i < segEls.length; i++) {
@@ -2172,7 +2227,7 @@ export function recolorOwnedKind(editor, layerId, kind, color) {
   }
   const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
   if (!latticeKind) return 0;
-  const owned = _ownedOnLayer(editor, layerId, latticeKind);
+  const owned = _ownedOnLayer(editor, targetLayerId, latticeKind);
   for (const ch of owned) {
     if (latticeKind === 'node') {
       ch.fill(color);
@@ -2204,7 +2259,10 @@ export function recolorOwnedKind(editor, layerId, kind, color) {
 export function rewidthOwnedKind(editor, layerId, kind, value) {
   const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
   if (!latticeKind) return 0;
-  const owned = _ownedOnLayer(editor, layerId, latticeKind);
+  // T76 (SE17): see recolorOwnedKind's own identical comment above.
+  const patternLayer = resolvePatternLayer(editor, layerId);
+  const targetLayerId = _kindLayerId(patternLayer && patternLayer.pattern, layerId, kind);
+  const owned = _ownedOnLayer(editor, targetLayerId, latticeKind);
   for (const ch of owned) {
     if (latticeKind === 'node') {
       ch.attr('r', value / 2);
@@ -2236,11 +2294,16 @@ export function rewidthOwnedKind(editor, layerId, kind, value) {
  * @returns {number} total elements re-widthed, across all kinds.
  */
 export function rewidthOwnedKinds(editor, layerId, kindValuePairs) {
+  // T76 (SE17): resolved ONCE, outside the per-kind loop -- every kind in
+  // `kindValuePairs` shares the SAME pattern, so its own `.layers` map
+  // never changes mid-loop.
+  const patternLayer = resolvePatternLayer(editor, layerId);
+  const pattern = patternLayer && patternLayer.pattern;
   let total = 0;
   for (const [kind, value] of kindValuePairs) {
     const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
     if (!latticeKind) continue;
-    const owned = _ownedOnLayer(editor, layerId, latticeKind);
+    const owned = _ownedOnLayer(editor, _kindLayerId(pattern, layerId, kind), latticeKind);
     for (const ch of owned) {
       if (latticeKind === 'node') ch.attr('r', value);
       else ch.attr('stroke-width', value);
@@ -2269,13 +2332,109 @@ export function rewidthOwnedKinds(editor, layerId, kindValuePairs) {
  *   there was nothing to do).
  */
 export function detachAllOwned(editor, layerId) {
-  const owned = _ownedOnLayer(editor, layerId, null);
-  const count = detachOwnership(owned);
+  // T76 (SE17, "Detach acts on all of them"): detaches across ALL of this
+  // pattern's own rails/ties/nodes kind-layers, not just whichever one
+  // happens to be active -- contour pieces never carry OWNERSHIP_ATTR at
+  // all (a separate, `_findBoundaryElements`-based mechanism), so they
+  // were never part of "detach all owned" even before this turn. Falls
+  // back to the single `layerId` for a pre-SE17 pattern with no `.layers`
+  // map yet (every kind still resolves to that one shared layer).
+  const patternLayer = resolvePatternLayer(editor, layerId);
+  const pattern = patternLayer && patternLayer.pattern;
+  const layerIds = pattern && pattern.layers
+    ? new Set(['rails', 'ties', 'nodes'].map((k) => _kindLayerId(pattern, layerId, k)))
+    : new Set([layerId]);
+  let count = 0;
+  for (const id of layerIds) {
+    count += detachOwnership(_ownedOnLayer(editor, id, null));
+  }
   if (count > 0) {
     if (typeof editor.pushState === 'function') editor.pushState();
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   }
   return count;
+}
+
+/**
+ * T76 (SE17): the ACTUAL layer holding `.pattern` for a given layer id —
+ * either that layer itself (the PRIMARY kind-layer, currently always
+ * whichever layer holds `rails`, since every lattice has rails/ties/nodes
+ * but a Box Lattice pattern has no contour at all) or, for any of its
+ * SIBLING kind-layers (`layer.patternOwner` pointing back at the primary),
+ * the primary layer itself. An ordinary, non-lattice layer has neither
+ * field and resolves to null, same as `getLayerPattern`'s own pre-SE17
+ * contract for a layer with no pattern at all.
+ *
+ * Kept as its own small function (not inlined into `getLayerPattern`)
+ * because `recolorOwnedKind`/`rewidthOwnedKind`/`detachAllOwned` etc. all
+ * need the SAME resolution starting from an arbitrary layer id, not just
+ * the active one — one function neither can drift from the other's own
+ * copy of this same lookup.
+ */
+export function resolvePatternLayer(editor, layerId) {
+  const layers = Array.isArray(editor._layers) ? editor._layers : [];
+  const layer = layers.find((l) => l.id === layerId);
+  if (!layer) return null;
+  if (layer.pattern) return layer;
+  if (layer.patternOwner) return layers.find((l) => l.id === layer.patternOwner) || null;
+  return null;
+}
+
+/**
+ * T76 (SE17): ensure `pattern` has a real layer for every kind in `kinds`
+ * (a subset of LATTICE_FUSION_BUILD_ORDER — `generatePattern` asks for
+ * `['rails','ties','nodes']`, `regenerateSilhouette` for `['contour']`),
+ * creating whichever ones don't exist yet, and return `pattern.layers`
+ * (`{kind: layerId}`) — the SAME map every "act on everything" helper
+ * above (`_kindLayerId`) reads to find a specific kind's own layer.
+ *
+ * `rails` is ALWAYS ensured first, regardless of what `kinds` actually
+ * asked for — every OTHER kind-layer's own `patternOwner` points back at
+ * it (the pattern ITSELF only ever lives on the rails layer's `.pattern`;
+ * see `resolvePatternLayer`'s own doc comment for why), so it must exist
+ * before anything else can reference it. This matters because
+ * `regenerateSilhouette` (drawing the contour) can run BEFORE
+ * `generatePattern` ever has (Shape Lattice's own Generate handler calls
+ * regenerateSilhouette first) — without this, a from-scratch Shape
+ * Lattice pattern's very first Contour layer would be created with no
+ * valid rails layer yet to point back to.
+ *
+ * On the VERY FIRST split for this pattern (no `rails` id recorded yet),
+ * `currentLayerId` — wherever the pattern object is ALREADY living,
+ * `currentPattern`'s own lazy-create having put it there — BECOMES the
+ * rails layer directly (renamed, same id) rather than creating a fresh
+ * layer and leaving the original one an orphaned, empty "container" (the
+ * recovered SE7b design's own three-kind precursor to this feature always
+ * created three brand new layers, even when the user's current layer had
+ * nothing else on it — simpler to avoid than to inherit here).
+ */
+export function _ensureKindLayers(editor, pattern, currentLayerId, kinds) {
+  pattern.layers = pattern.layers || {};
+  const ids = pattern.layers;
+  const layerExists = (id) => id && editor._layers.some((l) => l.id === id);
+  if (!layerExists(ids.rails)) {
+    ids.rails = currentLayerId;
+    const currentLayer = editor._layers.find((l) => l.id === currentLayerId);
+    if (currentLayer) currentLayer.name = LATTICE_KIND_LAYER_DEFAULTS.rails.name;
+  }
+  // Always keep the rails layer's own `.pattern` pointing at THIS pattern
+  // object -- the one authoritative place it lives (every sibling kind-
+  // layer only ever holds a `patternOwner` reference to it, never its own
+  // copy — see `resolvePatternLayer`'s own doc comment). A no-op for the
+  // normal panel flow (`currentPattern`'s own lazy-create already put it
+  // there before Generate ever runs); makes this function — and therefore
+  // generatePattern/regenerateSilhouette — self-contained and correct even
+  // called directly, not only via the panel.
+  const railsLayer = editor._layers.find((l) => l.id === ids.rails);
+  if (railsLayer) railsLayer.pattern = pattern;
+  for (const kind of kinds) {
+    if (kind === 'rails') continue; // ensured, unconditionally, above
+    if (layerExists(ids[kind])) continue;
+    const layer = addLayer(editor, { ...LATTICE_KIND_LAYER_DEFAULTS[kind], skipUndo: true });
+    layer.patternOwner = ids.rails;
+    ids[kind] = layer.id;
+  }
+  return ids;
 }
 
 /** SE7i: the ACTIVE layer's own Pattern settings — the one per-layer
@@ -2285,9 +2444,12 @@ export function detachAllOwned(editor, layerId) {
  *  active layer doesn't exist yet, or hasn't been given settings (a fresh
  *  layer starts with no `.pattern` at all — PATTERN_DEFAULTS fills the
  *  gap at every read site, same "missing = defaults" convention this file
- *  already uses for a legacy saved PATTERN missing a newer field). */
+ *  already uses for a legacy saved PATTERN missing a newer field).
+ *
+ *  T76 (SE17): resolved via `resolvePatternLayer` — the active layer may
+ *  now be any one of a pattern's own FOUR kind-layers (Contour/Rails/
+ *  Ties/Nodes), not just the one actually holding `.pattern`. */
 export function getLayerPattern(editor) {
-  const layers = Array.isArray(editor._layers) ? editor._layers : [];
-  const layer = layers.find((l) => l.id === getActiveLayer(editor));
+  const layer = resolvePatternLayer(editor, getActiveLayer(editor));
   return (layer && layer.pattern) || null;
 }

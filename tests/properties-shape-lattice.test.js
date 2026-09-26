@@ -755,6 +755,18 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
       detectShapeLatticeDetach(editor);
       expect(currentShape(p).source).toBe('picked');
     });
+
+    it('T76 (SE17): still detects a hand-edit even when the ACTIVE layer is the Contour sibling layer, not the rails/primary one holding .pattern directly', () => {
+      const p = currentPattern(editor);
+      const pathEls = regenerateSilhouette(editor, p);
+      const contourLayerId = p.layers && p.layers.contour;
+      expect(contourLayerId).toBeTruthy(); // non-vacuous: the contour really did get its own layer
+      editor._activeLayer = contourLayerId; // simulates clicking a contour segment
+      const seg = pathEls[0];
+      seg.attr('d', seg.attr('d') + ' L 0.01 0.01');
+      detectShapeLatticeDetach(editor);
+      expect(currentShape(p).source).toBe('picked');
+    });
   });
 
   describe('openSegmentStyleBar', () => {

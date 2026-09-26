@@ -643,3 +643,52 @@ describe('initLatticeProperties (T58 ADD-ON): linked Rails & ties width', () => 
     expect(document.getElementById('latticeWidthLinked').value).toBe('0.08');
   });
 });
+
+/**
+ * T76 (SE17, item 2) — the critical fix: after Generate splits a pattern
+ * across its own kind-layers, activating a SIBLING one (Ties/Nodes/
+ * Contour — exactly what clicking a piece of that kind does,
+ * editor-interaction.js) must NOT fork a brand-new default pattern onto
+ * it. Before this fix, `_currentPattern`'s own "no `.pattern`? lazily
+ * create one" fallback fired unconditionally, since a sibling kind-layer
+ * only ever carries `patternOwner`, never its own `.pattern` — so simply
+ * clicking a tie would have silently split "one pattern record" into two
+ * diverging copies.
+ */
+describe('initLatticeProperties (T76 item 2): activating a sibling kind-layer never forks the pattern', () => {
+  let container, editor;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    container.innerHTML = `
+      <select id="latticeSpacing"></select>
+      <input id="latticeSeed" type="number" value="42">
+      <button id="latticeGenerate"></button>
+      <button id="toolLattice"></button>
+    `;
+    document.body.appendChild(container);
+    editor = makeMockEditor();
+  });
+
+  afterEach(() => { container.remove(); });
+
+  it('switching the active layer to the Ties layer keeps the SAME pattern object (by reference), not a fresh default one', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeGenerate').click();
+    const pattern = activeLayerPattern(editor);
+    expect(pattern).toBeTruthy();
+    expect(editor._layers).toHaveLength(3); // rails (reused '0') + new Ties + new Nodes
+    const tiesLayer = editor._layers.find((l) => l.name === 'Ties');
+    expect(tiesLayer).toBeTruthy();
+    expect(tiesLayer.pattern).toBeUndefined(); // NOT its own copy -- only patternOwner
+
+    editor._activeLayer = tiesLayer.id; // simulates clicking a tie
+    document.dispatchEvent(new CustomEvent('editorLayersChanged', { detail: { editor } }));
+
+    // still no fork: the Ties layer itself never gained its own .pattern.
+    expect(tiesLayer.pattern).toBeUndefined();
+    // and the panel's own field still reflects the ORIGINAL pattern's seed
+    // (a freshly-forked default would read back PATTERN_DEFAULTS.seed instead).
+    expect(document.getElementById('latticeSeed').value).toBe(String(pattern.seed));
+  });
+});

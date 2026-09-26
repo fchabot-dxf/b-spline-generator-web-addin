@@ -23,6 +23,7 @@ import { GRID_SPACINGS } from './editor-grid.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
+    _ensureKindLayers, resolvePatternLayer,
 } from './editor-lattice-pattern.js';
 import { PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD } from './editor-shape-lattice-generator.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
@@ -109,7 +110,13 @@ function _activeLayerObj(editor) {
 export function currentPattern(editor) {
     const layer = _activeLayerObj(editor);
     if (!layer) return JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
-    if (!layer.pattern) layer.pattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
+    // T76 (SE17): see properties-lattice.js's own `_currentPattern` --
+    // the identical fix, needed here for the same reason (the active
+    // layer may be any of the pattern's own FOUR kind-layers now, not
+    // just the one holding `.pattern`).
+    const patternLayer = resolvePatternLayer(editor, layer.id);
+    if (patternLayer) return patternLayer.pattern;
+    layer.pattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
     return layer.pattern;
 }
 /** Lazily materializes `p.shape` the same way `currentPattern` itself
@@ -237,7 +244,14 @@ export function regenerateSilhouette(editor, p) {
     }
     shape.segments = segments;
 
-    const layerId = ensureActiveLayer(editor);
+    // T76 (SE17): the contour draws onto its OWN kind-layer now, ensured
+    // (created, or reused if it already exists) HERE -- 'rails' is always
+    // ensured as a side effect too (see `_ensureKindLayers`'s own doc
+    // comment), even when this runs BEFORE `generatePattern` ever has
+    // (Shape Lattice's own Generate handler calls this function first).
+    // `ensureActiveLayer` (not bare `getActiveLayer`) guarantees a valid
+    // layer id even when NO layer exists yet at all.
+    const layerId = _ensureKindLayers(editor, p, ensureActiveLayer(editor), ['contour']).contour;
     const segEls = primitives.map((prim, i) => {
         const d = primitiveToPathD(prim);
         if (countMatches) return existing[i].attr('d', d);
@@ -403,7 +417,14 @@ export function detectShapeLatticeDetach(editor) {
     // after ANY commit, because this call used to materialize one. A
     // read-only lookup that returns nothing for a layer that's never
     // touched EITHER Lattice tool is the fix.
-    const layer = _activeLayerObj(editor);
+    // T76 (SE17): read-only, same as before — `resolvePatternLayer` (unlike
+    // `currentPattern`) never MATERIALIZES a pattern, so a layer genuinely
+    // unrelated to any lattice still correctly finds nothing here. It DOES
+    // now also find the pattern when the active layer is one of its own
+    // SIBLING kind-layers (Ties/Nodes/Contour — exactly what's active right
+    // after clicking one of those pieces), which a bare `layer.pattern`
+    // read never could (only the rails/primary layer holds it directly).
+    const layer = resolvePatternLayer(editor, getActiveLayer(editor));
     const p = layer && layer.pattern;
     const shape = p && p.shape;
     if (!shape || shape.source !== 'generated') return;

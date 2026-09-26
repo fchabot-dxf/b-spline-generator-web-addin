@@ -107,14 +107,29 @@ describe('generatePattern: first Generate', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
 
-  it('writes rails/ties/nodes into the ACTIVE layer — no new layer is created (SE7i)', () => {
+  it('T76 (SE17, supersedes SE7i): creates/uses ONE layer per kind (rails/ties/nodes) -- the CURRENT layer becomes Rails directly, Ties/Nodes are new siblings', () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 1, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.5 } };
     generatePattern(editor, pattern);
 
-    expect(editor._layers).toHaveLength(1); // still just Layer 1 — Generate never creates one
+    expect(editor._layers).toHaveLength(3); // the original layer (now Rails) + new Ties + new Nodes
+    const [railsLayer, tiesLayer, nodesLayer] = editor._layers;
+    expect(railsLayer.id).toBe('0'); // the ORIGINAL layer -- reused, not left an orphaned empty container
+    expect(railsLayer.name).toBe('Rails');
+    expect(tiesLayer.name).toBe('Ties');
+    expect(nodesLayer.name).toBe('Nodes');
+    expect(pattern.layers).toEqual({ rails: railsLayer.id, ties: tiesLayer.id, nodes: nodesLayer.id });
+
     const emitted = editor._sketchLayer.children();
     expect(emitted.length).toBeGreaterThan(0); // non-vacuous: something WAS generated
-    for (const el of emitted) expect(el.attr('data-layer')).toBe('0');
+    for (const el of emitted) {
+      const kind = el.attr('data-lattice');
+      const expectedLayer = kind === 'rail' ? railsLayer.id : kind === 'tie' ? tiesLayer.id : nodesLayer.id;
+      expect(el.attr('data-layer')).toBe(expectedLayer);
+    }
+    // Lands on the Rails layer -- real, editable, generated content --
+    // rather than some other layer (the recovered SE7b design's own
+    // "generated layers were never active" bug, avoided here directly).
+    expect(editor._activeLayer).toBe(railsLayer.id);
   });
 
   it('assigns PATTERN.id when absent, and every emitted element carries both data-lattice and the ownership tag', async () => {
