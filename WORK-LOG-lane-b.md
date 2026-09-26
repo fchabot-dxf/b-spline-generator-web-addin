@@ -9905,3 +9905,45 @@ panel's Ties section, visible and non-zero-sized, reading back "0.5", zero conso
 `..._shape-lattice-min-spacing.png`.
 
 Verify: 1346/1346 vitest (3 new). Commit 3977d71, pushed. NO FUSION this whole turn.
+
+## T77 item 2 — generator enforces minSpacing (span overlap-or-touch rule)
+
+New `_enforceTieMinSpacing(tieSlots, minSpacingIn, spacing)` (editor-lattice-pattern.js), wired into `computePattern`
+right after `tieSlots` is finalized — after boundary-intactness filtering (count mode) and per-column generation
+(density mode) both already converge to one `{i, jStart, jEnd, ...}` array, so ONE filter covers count mode,
+density mode, one-ended stub ties, and Shape Lattice boundary-clipped ties, with no per-mode branch.
+
+**Decide + log** (the roadmap's own explicit open point — "same rail gap; and adjacent gaps where they'd visually
+pair"): two candidates conflict when their own `[jStart,jEnd]` spans OVERLAP OR TOUCH, AND their column (`i`)
+distance is under `minSpacing`. This single range-intersection rule covers both named cases at once — two ties in
+the exact same gap trivially have identical (fully overlapping) spans; two ties in adjacent gaps have spans that
+just touch at the one rail row they share — while correctly EXCLUDING two ties that are nowhere near each other
+vertically, however close their columns happen to be, since those could never visually "pair". Checked against the
+spans as drawn by the seeded selection, before any later boundary-clip shortens them further — a clip can only ever
+shrink a span, never grow one, so this is a conservative (never under-restrictive) proxy for the final drawn
+geometry. Candidates are accepted greedily in their own existing (seeded) draw order — the first-drawn of any
+conflicting pair wins — so which tie survives a conflict stays fully seed-deterministic, not an arbitrary tie-break.
+
+Own test file `tests/editor-lattice-pattern-tie-gap.test.js` (14 tests): 6 direct unit tests against
+`_enforceTieMinSpacing` itself (no-op at minSpacing:0, later-candidate-dropped, non-overlapping-spans-both-kept,
+overlapping-but-far-enough-kept, adjacent-gaps-touching-still-conflict, a 3+-way greedy-chain case) plus an
+independent oracle (`findViolation`, re-deriving the same overlap-or-touch+distance rule directly from
+`computePattern`'s own returned segments, never trusting the function under test's own bookkeeping) driving: a
+50-seed no-violation sweep at the default 0.5in; a non-vacuous control proving the SAME 50 seeds genuinely DO
+violate 0.5in with the filter turned off (minSpacing:0) — proving the filter does real work, not passing by
+coincidence; a "spacing wins over count" test (minSpacing:2in on a 12-column board) proving fewer-than-declared-
+minimum ties generate without throwing or overlapping; one-ended ties; density mode (using a fixed `rails.every`
+stride, mirroring an existing precedent test, to guarantee non-vacuous candidates every seed); an old-saved-pattern-
+with-no-minSpacing-key case; and 20 seeds against a real clipped rectangular boundary (Shape Lattice mode).
+
+Adding the new 0.5in default legitimately changed `computePattern`'s own output for the UNMODIFIED
+`PATTERN_DEFAULTS` fixture at the default 0.25in spacing (some existing adjacent-column ties, 0.25in apart, now
+violate the new minimum and get dropped) — 7 pre-existing tests across
+`editor-lattice-pattern-density-count.test.js` (×3), `editor-lattice-pattern-tie-spread.test.js` (×1), and
+`editor-sketch-manifest.test.js` (×2) got an explicit `minSpacing: 0` override added to their own pattern fixtures,
+isolating each from the new variable since their own documented purpose (count range, oneEnded placement, tie-rail
+coincidence, node-dedup-triangle) is orthogonal to spacing — same "variable conflation" fix precedent T74 AMEND3
+already established. `editor-sketch-manifest.test.js`'s shared `PATTERN` fixture itself was left untouched (only the
+one call site that needed isolating got a spread override), so no other test in that describe block was affected.
+
+Verify: 1360/1360 vitest (14 new). Commit 9862107, pushed. NO FUSION this whole turn.
