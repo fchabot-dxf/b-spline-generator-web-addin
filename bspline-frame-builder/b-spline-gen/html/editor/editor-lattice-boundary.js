@@ -99,6 +99,33 @@ export function insetRegionForContour(region) {
   };
 }
 
+/**
+ * T75 (LAT-SIZE, Fred: a declared Size field in BOTH lattice tools'
+ * panels): `size` ({width,height}, either axis nullable) is the OUTSIDE
+ * of the contour/fill area, in real inches (T74 AMEND 2's own rule) —
+ * CENTERED on `region` (normally the board itself). A null/unset axis
+ * auto-defaults to `insetRegionForContour`'s own board-minus-
+ * CONTOUR_SIZE_INSET_IN margin — the SAME default the Shape Lattice
+ * tool's own 'boundary' mode has always used, now shared by the box
+ * Lattice tool's own 'board' mode too (previously a SEPARATE, lattice-
+ * CELL-based margin, `PATTERN.margin` — an old saved pattern's own
+ * margin converts to an equivalent `size` ONCE on read, see app-init.js's
+ * own MIGRATIONS 'box-lattice-margin-to-size', so this unification never
+ * changes what an existing save actually renders).
+ *
+ * Declared HERE (not per-tool) for the SAME "one declaration, two
+ * consumers" reason `CONTOUR_SIZE_INSET_IN` already is — the app's own
+ * `_resolveExtent`/`regenerateSilhouette` and the manifest's own
+ * `resolveBoardExtent`/`manifestFromShape` region resolution must never
+ * compute this centering independently.
+ */
+export function sizedBoardRegion(region, size) {
+  const auto = insetRegionForContour(region);
+  const w = size && size.width != null ? size.width : auto.w;
+  const h = size && size.height != null ? size.height : auto.h;
+  return { x: region.x + (region.w - w) / 2, y: region.y + (region.h - h) / 2, w, h };
+}
+
 /** Same plain-DOM-element adapter contract OUTLINE_KINDS' own callers use
  *  (editor-io.js's `_outlineAdapter`) — `el.attr(name)` / `el.array()` /
  *  `el.type`. Accepts either that adapter shape directly, or a live

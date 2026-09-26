@@ -948,6 +948,25 @@ Ties section of BOTH lattice panels): Generate never places two ties closer than
 can't fit, generate FEWER (spacing wins over count). Hand-added / dragged ties are exempt. Sweep test: no pair of
 generated ties closer than minSpacing across seeds/counts/presets; parity unchanged.
 
+## Queued (Fred's queue, Asus) — RAIL-SPACING: "Spacing" means rail-to-rail distance (Fred 2026-09-26)
+Fred: "to me spacing isn't that" / "rail to rail, yes". Today `PATTERN.spacing` (the "Spacing" select in Grid & rails,
+both lattice panels) is the lattice's GRID STEP, a second grid next to the editor's toolbar grid (both default 0.25").
+Change: (1) the lattice grid step comes from the editor grid (GRID_DEFAULTS / toolbar), one grid, no lattice-side
+setting; (2) a declared `rails.spacing` (inches, rail-to-rail) becomes the "Spacing" field, a rails mode next to
+Count ('spacing' | 'count'; 'every' folds into 'spacing'); the rail count follows from the lattice size. (The exclusive [Spacing | Count] toggle was superseded by RAIL ANCHOR below.) Fred: "on generate it is evenly spaced" + "if we have boundary size fields we need another solution" -> option A (advisor recommendation, recorded on Fred's "first section should be boundary"): GENERATED RAILS ARE LAID OUT FROM THE BOUNDARY, NOT THE GRID. RAIL ANCHOR (Fred: "no margin" / "an origin" / "origin anchor is top center bottom edge"): a declared `rails.anchor` = start | center | end, shown as [Top | Center | Bottom] for horizontal rails and [Left | Center | Right] for vertical ones. Top/Bottom: the first rail sits ON that boundary edge and the rails repeat toward the other edge until the boundary ends (whatever is left over lands at the far side: Fred sizes the box). Center: a rail on the boundary centre line, repeating symmetrically both ways. SPACING + COUNT TOGETHER (Fred: "so count and spacing can both be used at the same time now"): the step is always the Spacing value; Count is OPTIONAL: N rails from the anchor (Center: N rails centred on the centre line); empty Count = fill the boundary. Rails that would fall outside the boundary are dropped. This SUPERSEDES the earlier exclusive [Spacing | Count] toggle. No margin field. Off-grid is fine. Fred: "no need to make it parametric in Fusion": rails are sent at their computed positions, no step expression. The grid is only for hand-drawing / dragging. This supersedes "rails on the grid by nature" for GENERATED rails. PANEL ORDER (Fred): the FIRST section of both lattice panels is BOUNDARY (Size W x H, contour on/off, its stroke), then Rails [Spacing|Count], Ties, Nodes. Test: every generated gap identical, the first rail exactly on the chosen anchor (top/bottom edge or centre line), both panels, sizes, orientations, presets. Spacing must be a
+whole number of grid steps (round to one, show the result), which gives exactly even gaps. Both panels. MIGRATION:
+a saved pattern's old `spacing` is read as its grid step and keeps its exact geometry (no silent re-layout). Tests:
+spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
+the one grid.
+
+## Queued (Fred's queue, Asus) — FORMULA-FIELDS: type a formula in a number field (Fred 2026-09-26)
+Fred: "if I want a rail exactly on the boundary I just math it out" / "can we enter formula in the fields". Today no
+field accepts expressions. ONE shared parser module used by every numeric input (declared, not per-field): + - * /
+( ) and decimals, plus named values from the current context (lattice: width, height, stroke, count; declared per
+panel). A small safe arithmetic parser, NEVER eval / new Function. Evaluated on Enter/blur; the field stores the
+NUMBER (not parametric, Fred: "no need to make parametric in Fusion"); a bad formula shows an inline error and keeps
+the old value. Tests: precedence, parentheses, names, errors, and that no eval path exists.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):

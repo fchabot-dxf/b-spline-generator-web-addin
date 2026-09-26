@@ -36,6 +36,21 @@ _UNITLESS_PREFIXES = ('en_', 'is_', 'ck_')
 # string literals that could silently drift apart.
 _BOARD_OWNED_PARAMS = ('widthIn', 'heightIn')
 
+# FB-FIX (F4): the ONE unit table for parsing a unit-suffixed value
+# ('0.75 in', '19 mm', '0.75"') to Fusion's internal cm. Before this,
+# BuildContext.resolve_val did float('0.75 in'), which raised and was swallowed
+# as a silent 0 cm, so the frame got no bars (measured F3).
+_UNIT_TO_CM = {
+    'cm': 1.0, 'mm': 0.1, 'm': 100.0,
+    'in': 2.54, 'inch': 2.54, 'inches': 2.54, '"': 2.54,
+    'ft': 30.48,
+}
+
+
+class ResolveError(ValueError):
+    """A value that cannot be resolved. The build reports it; it is never
+    silently turned into 0."""
+
 
 class ParameterSchema:
     """Stateless registry for Fusion userParameter unit/validation rules.
@@ -98,6 +113,43 @@ class ParameterSchema:
         if cls.is_unitless(name):
             return ''
         return cls.name_based_unit(name)
+
+    UNIT_TO_CM = _UNIT_TO_CM
+
+    @classmethod
+    def to_cm(cls, value, default_unit):
+        """Parse a number or a unit-suffixed string to cm.
+
+        A bare number takes ``default_unit`` (a param's declared unit, e.g.
+        'in'). Unitless (``default_unit == ''``) returns the float as-is.
+        Raises :class:`ResolveError` for anything it cannot parse: never 0.
+        """
+        if isinstance(value, bool):
+            raise ResolveError(f"cannot resolve boolean {value!r}")
+        if isinstance(value, (int, float)):
+            number, unit = float(value), default_unit
+        else:
+            text = str(value).strip()
+            unit = None
+            for suffix in sorted(cls.UNIT_TO_CM, key=len, reverse=True):
+                if text.lower().endswith(suffix) and suffix:
+                    head = text[: -len(suffix)].strip()
+                    try:
+                        number = float(head)
+                    except ValueError:
+                        continue
+                    unit = suffix
+                    break
+            if unit is None:
+                try:
+                    number, unit = float(text), default_unit
+                except ValueError:
+                    raise ResolveError(f"cannot resolve {value!r}: not a number with a known unit")
+        if not unit:
+            return number
+        if unit not in cls.UNIT_TO_CM:
+            raise ResolveError(f"cannot resolve {value!r}: unknown unit {unit!r}")
+        return number * cls.UNIT_TO_CM[unit]
 
     # ------------------------------------------------------------------
     # Expression construction helpers

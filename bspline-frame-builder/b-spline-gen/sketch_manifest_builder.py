@@ -755,7 +755,72 @@ def _sync_manifest_parameters(ctx, parameters):
 # ---------------------------------------------------------------------------
 # Orchestration — §5's own build sequence
 # ---------------------------------------------------------------------------
-def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui_data=None, log_fn=None, sketch_name_override=None):
+def _apply_projections(ctx, sketch, s_name, projections, kind_to_sketch):
+    """T76 (SE17, item 5): resolves each `{sourceKind, sourceId, targetId}`
+    projection reference (splitManifestByKind's own declared shape, JS
+    side, editor-sketch-manifest.js) by finding `sourceId` in whichever
+    EARLIER kind's own sketch `kind_to_sketch` names, calling
+    `sketch.project(...)` on it, and registering the result under
+    `targetId` in THIS sketch's own entity_map -- so a later constraint
+    targeting `targetId` resolves exactly like any other same-sketch
+    entity, via the SAME `ctx.resolve_entity` every other constraint/
+    dimension already uses.
+
+    Mirrors frame-builder's OWN already-proven `project_step`
+    (fb_engine/projections.py) almost exactly -- real, shipped code in
+    this same repo, not a first attempt -- the ONE difference being that
+    the source sketch is looked up by KIND (`kind_to_sketch`) rather than
+    a raw, template-authored sketch-name key, since a "sketch" here IS a
+    declared kind (contour/rails/ties/nodes), not an arbitrary name.
+
+    Fusion refuses a constraint directly between two different sketches'
+    own entities ('sketch == msketch', advisor-measured, ROADMAP.md's own
+    SE17 entry) -- this is the ONE step that makes a cross-kind
+    constraint possible at all: project FIRST, constrain against the
+    projected copy after (`_apply_constraints`, called right after this
+    in `build_constrained_sketch`, needs no changes of its own — a
+    projected id resolves through the exact same `ctx.resolve_entity`
+    path as any other).
+
+    Every step is wrapped so ONE bad/missing projection is skipped and
+    logged, never aborts the rest of the sketch — the same "skip +
+    report" discipline this whole module already applies everywhere
+    else."""
+    for proj in projections or []:
+        source_kind = proj.get('sourceKind')
+        source_id = proj.get('sourceId')
+        target_id = proj.get('targetId')
+        try:
+            src_sketch_name = kind_to_sketch.get(source_kind) if kind_to_sketch else None
+            if not src_sketch_name:
+                ctx.logger.log(
+                    f"PROJECTION MISS: source kind '{source_kind}' has no built sketch yet "
+                    f"(for {target_id} in {s_name})", "WARNING")
+                continue
+            src_ent = ctx.resolve_entity(src_sketch_name, source_id)
+            if not src_ent:
+                continue  # ctx.resolve_entity already logged its own RESOLVE MISS
+            result = sketch.project(src_ent)
+            if not getattr(result, 'count', 0):
+                ctx.logger.log(f"PROJECTION FAIL: {target_id} in {s_name}: project() returned nothing", "ERROR")
+                continue
+            projected = result.item(0)
+            ctx.entity_map[s_name][target_id] = projected
+            # Register the projected copy's OWN :S/:E/:C endpoints too --
+            # mirrors project_step's own _register_endpoints exactly, so a
+            # constraint targeting `{targetId}:S` etc. also resolves.
+            if hasattr(projected, 'startSketchPoint'):
+                ctx.entity_map[s_name][f"{target_id}:S"] = projected.startSketchPoint
+            if hasattr(projected, 'endSketchPoint'):
+                ctx.entity_map[s_name][f"{target_id}:E"] = projected.endSketchPoint
+            if hasattr(projected, 'centerSketchPoint'):
+                ctx.entity_map[s_name][f"{target_id}:C"] = projected.centerSketchPoint
+        except Exception as e:
+            ctx.logger.log(f"PROJECTION FAIL: {target_id} in {s_name}: {e}", "ERROR")
+
+
+def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui_data=None, log_fn=None,
+                              sketch_name_override=None, ctx=None, kind_to_sketch=None):
     """§5's own build sequence — the add-in side of SE15 (design doc §5,
     T61's own JS-side manifest producer). `sketch_target` is a Component
     (matching _import_single_layer_svg's own contract —
@@ -781,6 +846,23 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     (the dev-entry-point path), the manifest's own field is used exactly
     as before.
 
+    T76 (SE17, item 5): `ctx`/`kind_to_sketch` let SEVERAL calls share ONE
+    build -- a pattern's own kind-layers (contour/rails/ties/nodes),
+    built in LATTICE_FUSION_BUILD_ORDER by the caller
+    (`_import_all_svg_layers`, b-spline-gen.py), pass the SAME `ctx` and
+    the SAME `kind_to_sketch` dict across their own successive calls, so
+    a LATER kind's own manifest.projections can resolve an EARLIER kind's
+    own entities (`ctx.entity_map` accumulates across calls) and project
+    them (`sketch.project`) rather than constraining against them
+    directly, which Fusion refuses across two different sketches. Both
+    default to `None` for a single, standalone build (the dev entry
+    point, every existing test, and any layer that isn't part of a
+    kind-split pattern) -- behavior for that case is unchanged from
+    before this turn. When `ctx` IS given, this function still assigns it
+    a FRESH logger for this one call (so the returned summary's own issue
+    counts reflect only THIS sketch's build, never accumulating an
+    earlier kind's own issues too).
+
     Order (§5, matching fb_engine's own _build_blocks convention): all
     PARAMETERS first (so an expression can reference one by name), then
     ALL geometry, then constraints, inside one deferred-compute window; a
@@ -802,7 +884,13 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     """
     t0 = time.time()
     logger = _Logger(log_fn)
-    ctx = BuildContext(sketch_target, design, logger, prefix="SE15", ui_data=ui_data)
+    if ctx is None:
+        ctx = BuildContext(sketch_target, design, logger, prefix="SE15", ui_data=ui_data)
+    else:
+        # T76 (SE17, item 5): reusing a ctx across a pattern's own kind-
+        # layers -- still a FRESH logger per call, see this function's own
+        # doc comment on why.
+        ctx.logger = logger
 
     plane = placement or sketch_target.xYConstructionPlane
     sketch = sketch_target.sketches.add(plane)
@@ -817,11 +905,20 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     # for free, with zero changes to fb_engine's own shared resolver.
     ctx.entity_map[s_name]["origin"] = sketch.originPoint
 
+    # T76 (SE17, item 5): register THIS sketch under its own declared kind
+    # (splitManifestByKind's own new field, JS side) so a LATER kind built
+    # into the SAME kind_to_sketch dict can resolve a projection's own
+    # `sourceKind` back to the actual sketch it needs to project FROM.
+    kind = manifest.get('kind')
+    if kind_to_sketch is not None and kind:
+        kind_to_sketch[kind] = s_name
+
     p_created, p_updated, p_failed = _sync_manifest_parameters(ctx, manifest.get("parameters"))
 
     entities = manifest.get("entities", [])
     constraints = manifest.get("constraints", [])
     dimensions = manifest.get("dimensions", [])
+    projections = manifest.get("projections")
 
     # T64 (final design, 5 mid-turn amendments): a Slot entity creates its
     # OWN width dimension as a side effect of geometry creation itself
@@ -833,6 +930,12 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     sketch.isComputeDeferred = True
     try:
         e_created, e_skipped = _create_geometry(ctx, sketch, s_name, entities, dimensions)
+        # T76 (SE17, item 5): projections resolve BEFORE constraints -- a
+        # cross-kind constraint's own target is the PROJECTED copy, which
+        # must exist first. A no-op (nothing to project) for every
+        # standalone/pre-SE17 build, which never has a `projections` list.
+        if projections:
+            _apply_projections(ctx, sketch, s_name, projections, kind_to_sketch)
         _apply_constraints(ctx, sketch, s_name, constraints)
     finally:
         sketch.isComputeDeferred = False

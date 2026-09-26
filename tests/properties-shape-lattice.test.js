@@ -135,6 +135,8 @@ function fixtureHTML() {
       <input id="shapeSegBulge" type="range" min="0" max="0.99" step="0.01" value="0.5">
     </div>
 
+    <input id="shapeLatticeSizeWidth" type="number">
+    <input id="shapeLatticeSizeHeight" type="number">
     <select id="shapeLatticeSpacing"></select>
     <button id="shapeLatticeOrientHorizontal" class="editor-fillmode-btn active"></button>
     <button id="shapeLatticeOrientVertical" class="editor-fillmode-btn"></button>
@@ -174,9 +176,12 @@ function fixtureHTML() {
     <button id="shapeLatticeWidthLinkToggle" class="editor-fillmode-btn active"></button>
     <input id="shapeLatticeWidthNodes" type="number">
 
-    <div role="group" id="shapeLatticeEndRule"></div>
+    <div id="shapeLatticeEndRuleRow">
+      <div role="group" id="shapeLatticeEndRule"></div>
+    </div>
     <input id="shapeLatticeContourShow" type="checkbox" checked>
     <input id="shapeLatticeContourWidth" type="number">
+    <div id="editorStatusHint"></div>
   `;
 }
 
@@ -248,6 +253,38 @@ describe('initShapeLatticeProperties: Shape section', () => {
     expect(activeLayerPattern(editor).shape.seed).toBe(seedBefore);
     const dAfter = editor._sketchLayer.children().find((e) => e.attr('d'))?.attr('d');
     expect(dAfter).not.toBe(dBefore);
+  });
+
+  it('SIL-RESOLVE (F5): slider min/max follow the declared feasible range and show the resolved value', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click();
+    await flush();
+    const set = async (id, v) => {
+      const el = document.getElementById(id); el.value = String(v); el.dispatchEvent(new Event('change')); await flush();
+    };
+    // A deep, off-centre waist leaves little vertical room: the corner-radius
+    // range shrinks below the static HTML max (0.6).
+    await set('shapeParam-waistCenterY', 0.6);
+    await set('shapeParam-waistReach', 0.9);
+    const cr = document.getElementById('shapeParam-cornerRadius');
+    expect(parseFloat(cr.max)).toBeLessThan(0.6);
+    expect(parseFloat(cr.max)).toBeGreaterThanOrEqual(parseFloat(cr.min));
+    expect(editor._shapeOutlineDefects).toEqual([]);
+  });
+
+  it('SIL-RESOLVE (F5): an outline that would loop is never drawn; the last valid one stays and the user is told', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click();
+    await flush();
+    const segEls = () => editor._sketchLayer.children().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR)).map((e) => e.attr('d'));
+    const before = segEls();
+    const shape = activeLayerPattern(editor).shape;
+    // A user-styled shoulder kinked so far inward it crosses the other side.
+    shape.segments = shape.segments.map((s, i) => (i === 1 || i === 9 ? { style: 'kink', bulge: 40, dir: 'in', cornerRadius: 0, user: true } : s));
+    regenerateSilhouette(editor, activeLayerPattern(editor));
+    expect(editor._shapeOutlineDefects.map((d) => d.kind)).toContain('selfIntersection');
+    expect(segEls()).toEqual(before);
+    expect(document.getElementById('editorStatusHint').textContent).toMatch(/would loop/);
   });
 
   it('T73: regenerating updates the SAME per-segment elements in place (N segments, not a growing pile)', async () => {
@@ -466,6 +503,90 @@ describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () 
     expect(activeLayerPattern(editor).contour).toEqual({ show: true, width: null, segmentColors: [] });
     expect(pathEl.attr('display')).not.toBe('none');
   });
+
+  it('T75 item 4: the "Rail ends" row is hidden while the contour is shown (the DEFAULT), and revealed the moment it\'s turned off -- immediate, no Generate needed', async () => {
+    initShapeLatticeProperties(editor);
+    const row = document.getElementById('shapeLatticeEndRuleRow');
+    expect(row.style.display).toBe('none'); // non-vacuous: checked by default (PATTERN_DEFAULTS.contour.show), so hidden from the start
+
+    const cb = document.getElementById('shapeLatticeContourShow');
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    expect(row.style.display).not.toBe('none');
+
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    expect(row.style.display).toBe('none');
+  });
+
+  it('T75 item 4: a saved pattern with contour.show already false shows the row on tool-open, without needing to toggle the checkbox first', () => {
+    const p = currentPattern(editor);
+    p.contour = { show: false };
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeEndRuleRow').style.display).not.toBe('none');
+  });
+});
+
+describe('initShapeLatticeProperties (T75 LAT-SIZE): "Size" width/height fields', () => {
+  it('blank (auto) by default; syncs to the pattern\'s own size on tool-open', () => {
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeSizeWidth').value).toBe('');
+    expect(document.getElementById('shapeLatticeSizeHeight').value).toBe('');
+  });
+
+  it('a saved pattern with an explicit size syncs onto the fields on tool-open', () => {
+    const p = currentPattern(editor);
+    p.size = { width: 3, height: 2.5 };
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeSizeWidth').value).toBe('3');
+    expect(document.getElementById('shapeLatticeSizeHeight').value).toBe('2.5');
+  });
+
+  it('editing width IMMEDIATELY writes PATTERN.size.width and regenerates -- no Generate click needed', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click(); // links a real contour path first
+    await flush();
+    const pathEl = editor._sketchLayer.children().find((e) => e.attr('d'));
+    const dBefore = pathEl.attr('d');
+
+    const widthEl = document.getElementById('shapeLatticeSizeWidth');
+    widthEl.value = '2'; // board is 4 wide; auto (board-minus-1in) is 3, so 2 is a genuine change
+    widthEl.dispatchEvent(new Event('change'));
+    await flush();
+
+    expect(activeLayerPattern(editor).size.width).toBe(2);
+    expect(pathEl.attr('d')).not.toBe(dBefore); // non-vacuous: boundary actually changed
+  });
+
+  it('editing height IMMEDIATELY writes PATTERN.size.height and regenerates -- no Generate click needed', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click();
+    await flush();
+    const pathEl = editor._sketchLayer.children().find((e) => e.attr('d'));
+    const dBefore = pathEl.attr('d');
+
+    const heightEl = document.getElementById('shapeLatticeSizeHeight');
+    heightEl.value = '2';
+    heightEl.dispatchEvent(new Event('change'));
+    await flush();
+
+    expect(activeLayerPattern(editor).size.height).toBe(2);
+    expect(pathEl.attr('d')).not.toBe(dBefore);
+  });
+
+  it('clearing a field back to blank writes null (back to auto)', async () => {
+    const p = currentPattern(editor);
+    p.size = { width: 3, height: 2.5 };
+    initShapeLatticeProperties(editor);
+    const widthEl = document.getElementById('shapeLatticeSizeWidth');
+    widthEl.value = '';
+    widthEl.dispatchEvent(new Event('change'));
+    await flush();
+    expect(activeLayerPattern(editor).size.width).toBe(null);
+    expect(activeLayerPattern(editor).size.height).toBe(2.5); // untouched
+  });
 });
 
 /**
@@ -664,6 +785,18 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
       const pathEls = regenerateSilhouette(editor, p);
       const seg = pathEls[0];
       seg.attr('d', seg.attr('d') + ' L 0.01 0.01'); // simulate a hand node-drag mutating the live d
+      detectShapeLatticeDetach(editor);
+      expect(currentShape(p).source).toBe('picked');
+    });
+
+    it('T76 (SE17): still detects a hand-edit even when the ACTIVE layer is the Contour sibling layer, not the rails/primary one holding .pattern directly', () => {
+      const p = currentPattern(editor);
+      const pathEls = regenerateSilhouette(editor, p);
+      const contourLayerId = p.layers && p.layers.contour;
+      expect(contourLayerId).toBeTruthy(); // non-vacuous: the contour really did get its own layer
+      editor._activeLayer = contourLayerId; // simulates clicking a contour segment
+      const seg = pathEls[0];
+      seg.attr('d', seg.attr('d') + ' L 0.01 0.01');
       detectShapeLatticeDetach(editor);
       expect(currentShape(p).source).toBe('picked');
     });

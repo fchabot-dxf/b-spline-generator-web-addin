@@ -107,14 +107,29 @@ describe('generatePattern: first Generate', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
 
-  it('writes rails/ties/nodes into the ACTIVE layer — no new layer is created (SE7i)', () => {
+  it('T76 (SE17, supersedes SE7i): creates/uses ONE layer per kind (rails/ties/nodes) -- the CURRENT layer becomes Rails directly, Ties/Nodes are new siblings', () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 1, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.5 } };
     generatePattern(editor, pattern);
 
-    expect(editor._layers).toHaveLength(1); // still just Layer 1 — Generate never creates one
+    expect(editor._layers).toHaveLength(3); // the original layer (now Rails) + new Ties + new Nodes
+    const [railsLayer, tiesLayer, nodesLayer] = editor._layers;
+    expect(railsLayer.id).toBe('0'); // the ORIGINAL layer -- reused, not left an orphaned empty container
+    expect(railsLayer.name).toBe('Rails');
+    expect(tiesLayer.name).toBe('Ties');
+    expect(nodesLayer.name).toBe('Nodes');
+    expect(pattern.layers).toEqual({ rails: railsLayer.id, ties: tiesLayer.id, nodes: nodesLayer.id });
+
     const emitted = editor._sketchLayer.children();
     expect(emitted.length).toBeGreaterThan(0); // non-vacuous: something WAS generated
-    for (const el of emitted) expect(el.attr('data-layer')).toBe('0');
+    for (const el of emitted) {
+      const kind = el.attr('data-lattice');
+      const expectedLayer = kind === 'rail' ? railsLayer.id : kind === 'tie' ? tiesLayer.id : nodesLayer.id;
+      expect(el.attr('data-layer')).toBe(expectedLayer);
+    }
+    // Lands on the Rails layer -- real, editable, generated content --
+    // rather than some other layer (the recovered SE7b design's own
+    // "generated layers were never active" bug, avoided here directly).
+    expect(editor._activeLayer).toBe(railsLayer.id);
   });
 
   it('assigns PATTERN.id when absent, and every emitted element carries both data-lattice and the ownership tag', async () => {
@@ -302,11 +317,11 @@ describe('detachAllOwned: the bulk "Detach all" panel action (SE7i: layer-scoped
   });
 });
 
-describe('PATTERN.margin (SE7c): the board extent is inset so nothing sits on the edge', () => {
+describe('PATTERN.size (SE7c retired the old lattice-cell PATTERN.margin; T75 LAT-SIZE): the board extent is inset so nothing sits on the edge', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); }); // _mW = 4, _mH = 4
 
-  it('with the default margin (1), no rail/tie endpoint or node centre sits at x/y = 0 or the board size', () => {
+  it('with the default size (unset -- board minus CONTOUR_SIZE_INSET_IN, centred), no rail/tie endpoint or node centre sits at x/y = 0 or the board size', () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 24, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 } };
     generatePattern(editor, pattern);
 
@@ -329,16 +344,19 @@ describe('PATTERN.margin (SE7c): the board extent is inset so nothing sits on th
     }
   });
 
-  it('non-vacuous: margin 0 DOES reproduce the original edge-touching rail (proves the default margin is what excludes it, not something else)', () => {
+  it('non-vacuous: an explicit size matching the FULL board DOES reproduce an edge-touching rail (proves the default inset comes from the declared Size, not something else -- T75 replaces the old "margin 0" case, PATTERN.margin retired as a driver)', () => {
     const edgeEditor = _makeMockEditor();
-    const edgePattern = { ...PATTERN_DEFAULTS, seed: 24, margin: 0, rails: { every: 2, offset: 0 } };
+    const edgePattern = {
+      ...PATTERN_DEFAULTS, seed: 24, rails: { every: 2, offset: 0 },
+      size: { width: edgeEditor._mW, height: edgeEditor._mH }, // the FULL board -- zero inset
+    };
     generatePattern(edgeEditor, edgePattern);
     const edgeRails = edgeEditor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
     const hasEdgeRail = edgeRails.some((el) => el.attr('y1') === 0 || el.attr('y1') === edgeEditor._mH);
-    expect(hasEdgeRail).toBe(true); // j=0 and j=mH/spacing are both "every 2" rows when margin doesn't exclude them
+    expect(hasEdgeRail).toBe(true); // j=0 and j=mH/spacing are both "every 2" rows when size doesn't exclude them
 
     const insetEditor = _makeMockEditor();
-    const insetPattern = { ...PATTERN_DEFAULTS, seed: 24, rails: { every: 2, offset: 0 } }; // margin defaults to 1
+    const insetPattern = { ...PATTERN_DEFAULTS, seed: 24, rails: { every: 2, offset: 0 } }; // size unset -- the default inset
     generatePattern(insetEditor, insetPattern);
     const insetRails = insetEditor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
     const hasEdgeRailInset = insetRails.some((el) => el.attr('y1') === 0 || el.attr('y1') === insetEditor._mH);

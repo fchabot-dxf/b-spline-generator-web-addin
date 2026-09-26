@@ -56,7 +56,7 @@ _SHARED_ENGINE_MODULES = (
     "fb_engine.parameter_schema", "fb_engine.diagnostics", "fb_engine.inner_corners",
     "fb_engine.document_discovery", "fb_engine.template_resolver",
     "fb_engine.timeline_order", "fb_engine.frame_engine", "fb_engine.parametric_engine",
-    "fb_engine.template_factory", "frame_engine", "parametric_engine",
+    "fb_engine.template_factory", "fb_engine.frame_definition", "frame_engine", "parametric_engine",
 )
 
 
@@ -303,3 +303,150 @@ class TestFrameParamsSingleDeclaration:
         declared = {p["Name"] for s in template["Sketches"] for p in s.get("Parameters", [])}
         for name in _ENGINE_REFERENCED_PARAMS:
             assert name in declared
+
+
+
+# ---------------------------------------------------------------------
+# FB-FIX (F4), engine parts: resolve_val through the ONE resolver (never a
+# silent 0), addOffset2 given the curve LIST it requires, and the declared
+# frame-fit warning in the build.
+# ---------------------------------------------------------------------
+from fb_engine.build_context import BuildContext
+from fb_engine.parameter_schema import ResolveError
+from fb_engine import offsets
+
+
+class _RecLogger(FakeLogger):
+    def __init__(self):
+        self.entries = []
+
+    def log(self, msg, level=None):
+        self.entries.append((level, str(msg)))
+
+    def log_error(self, msg):
+        self.entries.append(("ERROR", str(msg)))
+
+
+def _ctx(ui_data=None, evaluate=None):
+    ctx = BuildContext.__new__(BuildContext)
+    ctx.active_vars = ui_data or {}
+    ctx.logger = _RecLogger()
+
+    def _eval(expr, unit):
+        if evaluate and expr in evaluate:
+            return evaluate[expr]
+        raise RuntimeError(f"no such parameter {expr!r}")
+
+    ctx.design = types.SimpleNamespace(unitsManager=types.SimpleNamespace(evaluateExpression=_eval))
+    return ctx
+
+
+class TestResolveValUnits:
+    def test_unit_suffixed_ui_value_resolves(self):
+        assert _ctx({"frame_thickness": "0.75 in"}).resolve_val("frame_thickness") == pytest.approx(1.905)
+
+    def test_bare_ui_number_is_inches_not_cm(self):
+        assert _ctx({"frame_thickness": 0.75}).resolve_val("frame_thickness") == pytest.approx(1.905)
+
+    def test_toggle_stays_unitless(self):
+        assert _ctx({"ck_arc_hip_weld": 1.0}).resolve_val("ck_arc_hip_weld") == 1.0
+
+    def test_unresolvable_ui_value_raises(self):
+        ctx = _ctx({"frame_thickness": "thick"})
+        with pytest.raises(ResolveError):
+            ctx.resolve_val("frame_thickness")
+        assert any(level == "ERROR" and "FAIL RESOLVE" in m for level, m in ctx.logger.entries)
+
+    def test_unresolvable_expression_raises_not_zero(self):
+        with pytest.raises(ResolveError):
+            _ctx().resolve_val("no_such_param")
+
+    def test_expressions_still_go_to_fusion(self):
+        assert _ctx(evaluate={"widthIn/2": 8.89}).resolve_val("widthIn/2") == 8.89
+
+
+class _Coll:
+    def __init__(self, items):
+        self._items = list(items)
+
+    @property
+    def count(self):
+        return len(self._items)
+
+    def item(self, i):
+        return self._items[i]
+
+
+def _boom(*a):
+    raise RuntimeError("boom")
+
+
+class TestParametricOffsetCall:
+    def _sketch(self, seen):
+        def create(curves, value):
+            # Mirrors the SWIG signature: std::vector<Ptr<SketchCurve>> means a
+            # Python list; an ObjectCollection raised "argument 2 of type ..." live.
+            if not isinstance(curves, list):
+                raise TypeError("in method GeometricConstraints_createOffsetInput, argument 2 "
+                                "of type std::vector< adsk::core::Ptr< adsk::fusion::SketchCurve > >")
+            seen.append(curves)
+            return "input"
+
+        param = types.SimpleNamespace(expression="")
+        constraint = types.SimpleNamespace(isValid=True, offsetCurves=None,
+                                           dimension=types.SimpleNamespace(parameter=param))
+        gc = types.SimpleNamespace(createOffsetInput=create, addOffset2=lambda inp: constraint)
+        return types.SimpleNamespace(geometricConstraints=gc), constraint
+
+    def _patch(self, monkeypatch):
+        monkeypatch.setattr(offsets.adsk.fusion, "SketchCurve",
+                            types.SimpleNamespace(cast=lambda e: e), raising=False)
+        monkeypatch.setattr(offsets.adsk.core, "ValueInput",
+                            types.SimpleNamespace(createByString=lambda s: s), raising=False)
+
+    def test_add_offset2_gets_a_curve_list_and_links_the_param(self, monkeypatch):
+        self._patch(monkeypatch)
+        seen = []
+        sketch, constraint = self._sketch(seen)
+        ctx = _ctx()
+        offsets._try_parametric_offset(ctx, sketch, _Coll(["c1", "c2"]), "frame_thickness", "T1_3")
+        assert seen == [["c1", "c2"]]
+        assert constraint.dimension.parameter.expression == "frame_thickness"
+        assert any("OFFSET PARAMETRIC OK" in m for _, m in ctx.logger.entries)
+
+    def test_a_failed_parametric_offset_is_a_warning_not_debug(self, monkeypatch):
+        self._patch(monkeypatch)
+        gc = types.SimpleNamespace(createOffsetInput=_boom, addOffset2=None)
+        ctx = _ctx()
+        result = offsets._try_parametric_offset(ctx, types.SimpleNamespace(geometricConstraints=gc),
+                                                _Coll(["c"]), "frame_thickness", "T1_3")
+        assert result is None
+        assert any(level == "WARNING" and "NON-parametric" in m for level, m in ctx.logger.entries)
+
+
+class _ValParam(FakeUserParam):
+    def __init__(self, name, value_cm):
+        super().__init__(name)
+        self.value = value_cm
+
+
+class TestFrameFitInTheBuild:
+    def _fb(self, w_in, h_in):
+        fb = frame_engine.FrameBuilder.__new__(frame_engine.FrameBuilder)
+        fb.fit = None
+        fb.logger = _RecLogger()
+        fb.user_params = FakeUserParams([
+            _ValParam("widthIn", w_in * 2.54), _ValParam("heightIn", h_in * 2.54),
+            _ValParam("frame_thickness", 0.75 * 2.54), _ValParam("boundingboxoffset", 0.25 * 2.54)])
+        return fb
+
+    def test_too_small_board_warns_and_reports(self):
+        fb = self._fb(5.51, 1.97)
+        fit = fb._check_frame_fit()
+        assert fit["ok"] is False and fb.fit is fit
+        assert any(level == "WARNING" and "Board too small" in m for level, m in fb.logger.entries)
+
+    def test_normal_board_is_quiet(self):
+        fb = self._fb(7, 9)
+        assert fb._check_frame_fit()["ok"] is True
+        assert not any(level == "WARNING" for level, _ in fb.logger.entries)

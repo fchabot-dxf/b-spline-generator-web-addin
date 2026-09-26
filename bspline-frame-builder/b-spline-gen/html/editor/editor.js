@@ -19,7 +19,7 @@ import { snapFor, applyGrid, loadGridPrefs, saveGridPrefs } from './editor-grid.
 import { LATTICE_DEFAULTS } from './editor-lattice.js';
 import { initDrawer, initHeaderOverflowMenu, syncDrawerForMode } from './editor-drawer.js';
 import { refreshOutlinePreview } from './editor-outline-preview.js';
-import { refreshBoundaryPatterns, CONTOUR_SEG_INDEX_ATTR } from './editor-lattice-pattern.js';
+import { refreshBoundaryPatterns, CONTOUR_SEG_INDEX_ATTR, resolvePatternLayer } from './editor-lattice-pattern.js';
 import { detectShapeLatticeDetach } from './properties-shape-lattice.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
@@ -67,11 +67,16 @@ function _shortCaller() {
 // above is — setColor is called via `VectorEditor.prototype.setColor.call`
 // against lightweight test mocks (editor-color.test.js) that never carry
 // every instance method, only the ones a test explicitly re-attaches.
-function _storeContourSegmentColor(layers, el, color) {
+function _storeContourSegmentColor(editor, el, color) {
     if (!el.node || !el.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR)) return;
     const segIndex = Number(el.node.getAttribute(CONTOUR_SEG_INDEX_ATTR));
+    // T76 (SE17): the contour segment's own layer (Contour) may not be the
+    // one actually holding `.pattern` any more — `resolvePatternLayer`
+    // finds whichever one does (the rails/primary layer, when this
+    // pattern has already been split across kind-layers; the segment's
+    // OWN layer otherwise, unchanged from before this turn).
     const layerId = el.attr('data-layer');
-    const layer = Array.isArray(layers) ? layers.find((l) => l.id === layerId) : null;
+    const layer = resolvePatternLayer(editor, layerId);
     if (!layer || !layer.pattern) return;
     if (!layer.pattern.contour) layer.pattern.contour = { show: true, segmentColors: [] };
     if (!Array.isArray(layer.pattern.contour.segmentColors)) layer.pattern.contour.segmentColors = [];
@@ -298,7 +303,7 @@ export class VectorEditor {
         for (const el of sel) {
             if (!el || typeof el.stroke !== 'function') continue;
             el.stroke({ color });
-            _storeContourSegmentColor(this._layers, el, color);
+            _storeContourSegmentColor(this, el, color);
             if (typeof el.fill !== 'function') continue;
             if (el.type === 'text') {
                 el.fill(color);

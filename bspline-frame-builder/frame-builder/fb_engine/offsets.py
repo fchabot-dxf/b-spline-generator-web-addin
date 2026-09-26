@@ -8,6 +8,7 @@ FIX: Uses addOffset2 (parametric) as primary method with centroid-based
 direction, falling back to sketch.offset() with proper direction point.
 """
 import adsk.core, adsk.fusion, traceback
+from fb_engine.parameter_schema import ResolveError
 
 
 def offset_step(ctx, sketch, s_name, off):
@@ -96,6 +97,11 @@ def offset_step(ctx, sketch, s_name, off):
             ctx.logger.log(f"OFFSET EMPTY: No curves returned for {s_name}", "WARNING")
 
 
+    except ResolveError:
+        # FB-FIX (F4): an unresolvable distance is a build error, reported by
+        # the sketch-level handler, never an empty offset that quietly gives
+        # a frame with no bars.
+        raise
     except Exception:
         ctx.logger.log_error(f"OFFSET CRASH in {s_name}")
 
@@ -164,7 +170,14 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name):
     """
     try:
         val_input = adsk.core.ValueInput.createByString(str(d_expr))
-        offset_input = sketch.geometricConstraints.createOffsetInput(coll, val_input)
+        # FB-FIX (F4): createOffsetInput takes a Python LIST of SketchCurve
+        # (SWIG std::vector<Ptr<SketchCurve>>), not an ObjectCollection.
+        # Passing `coll` failed on every build ("argument 2 of type
+        # std::vector<...SketchCurve...>", measured F3), so every offset fell
+        # back to the non-parametric sketch.offset and frame_thickness /
+        # boundingboxoffset never drove it live.
+        curves = _as_curve_list(coll)
+        offset_input = sketch.geometricConstraints.createOffsetInput(curves, val_input)
         offset_constraint = sketch.geometricConstraints.addOffset2(offset_input)
 
         if offset_constraint and offset_constraint.isValid:
@@ -180,16 +193,56 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name):
             except Exception as name_e:
                 ctx.logger.log(f"OFFSET LINK FAIL: Could not set expression: {name_e}", "WARNING")
 
+            result = offset_constraint.offsetCurves if hasattr(offset_constraint, 'offsetCurves') else None
+            _ensure_inward(ctx, offset_constraint, coll, result, d_expr, s_name)
             ctx.logger.log(f"OFFSET PARAMETRIC OK: addOffset2 succeeded for {s_name}")
-            if hasattr(offset_constraint, 'offsetCurves'):
-                return offset_constraint.offsetCurves
-            return None
+            return result
 
     except Exception as e:
+        # FB-FIX (F4): no longer DEBUG. Falling back to a non-parametric
+        # offset is a reported last resort (frame_thickness won't drive it).
         ctx.logger.log(
-            f"OFFSET PARAMETRIC FAIL: addOffset2 not available or failed for {s_name}: {e}",
-            "DEBUG")
+            f"OFFSET PARAMETRIC FAIL: addOffset2 failed for {s_name}: {e} -- "
+            f"FALLING BACK to a NON-parametric offset", "WARNING")
     return None
+
+
+def _as_curve_list(coll):
+    """ObjectCollection (or any iterable) of sketch curves -> a list of
+    SketchCurve, the type createOffsetInput's curves argument requires."""
+    items = [coll.item(i) for i in range(coll.count)] if hasattr(coll, "item") else list(coll)
+    return [adsk.fusion.SketchCurve.cast(e) or e for e in items]
+
+
+# Declared: every template offset goes INWARD (the BB safe zone in sketch 1,
+# the frame's inner edge in sketch 3), which the non-parametric fallback has
+# always enforced (centroid direction + abs distance).
+OFFSET_SIDE = "inward"
+
+
+def _bbox_span(entities):
+    xs, ys = [], []
+    for i in range(entities.count):
+        bb = entities.item(i).boundingBox
+        xs += [bb.minPoint.x, bb.maxPoint.x]
+        ys += [bb.minPoint.y, bb.maxPoint.y]
+    return (max(xs) - min(xs), max(ys) - min(ys)) if xs else None
+
+
+def _ensure_inward(ctx, offset_constraint, source, result, d_expr, s_name):
+    """If addOffset2 put the curves OUTSIDE the source (a bigger bbox),
+    flip the driving expression's sign so the offset lands inward, still
+    parametric. UNVERIFIED live which sign Fusion picks by default."""
+    try:
+        src, res = _bbox_span(source), _bbox_span(result) if result is not None else None
+        if not src or not res:
+            return
+        if res[0] > src[0] + 1e-6 or res[1] > src[1] + 1e-6:
+            flipped = f"-({d_expr})"
+            offset_constraint.dimension.parameter.expression = flipped
+            ctx.logger.log(f"OFFSET SIDE: {s_name} went outward; driving expression flipped to '{flipped}'")
+    except Exception as e:
+        ctx.logger.log(f"OFFSET SIDE CHECK FAILED in {s_name}: {e}", "WARNING")
 
 
 # ------------------------------------------------------------------
