@@ -66,6 +66,7 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
    evaluated on Enter, stores the number. Typing a name opens an autocomplete dropdown showing each value.
 8. **BOUNDARY-GUIDE** (ROADMAP.md): the lattice boundary box shows in the editor as a guide, hidden in the 3D preview. Remove the "Draw boundary"
    toggle (always drawn); the Shape Lattice Contour checkbox stays.
+   In Fusion the boundary is sent as CONSTRUCTION geometry.
 9. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
 10. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
 

@@ -974,7 +974,7 @@ layer), never rendered/stamped in the 3D preview. Declare it as guide geometry (
 renderer and the 3D/stamp path), not a special case in the 3D code. Fred: "don't toggle draw boundary, it's by default": the boundary
 is ALWAYS drawn in the editor, so REMOVE the "Draw boundary" toggle (a removal: sweep the whole chain, field -> pattern key ->
 readers -> tests; old saved patterns read it as ignored). The Shape Lattice "Contour" checkbox (SE14c, real exported geometry) is a
-separate thing and stays.
+separate thing and stays. IN FUSION (Fred: "it's geometry but construction geometry in Fusion"): the boundary box IS sent, as CONSTRUCTION geometry (isConstruction = True) in the lattice sketch: never a profile, never extruded, still usable for constraints/dims. Declared as a role on the manifest entity (e.g. `construction: true`), read by the builder; not a special case.
 Test: boundary present in editor DOM, absent from the 3D input; export unchanged.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
