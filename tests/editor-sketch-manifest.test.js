@@ -234,7 +234,9 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
   });
 
   it('T67 AMEND 3+4 (Fred: "ties needs to be coincident to their rails" -> refined to "one setting: number of one ended ties"): for the DEFAULT pattern (PATTERN_DEFAULTS.ties, unmodified), every tie has AT LEAST ONE end on a rail, exactly `oneEnded` (1) ties have their OTHER end free (no constraint at all), and every rail-touching end gets its own tie-on-rail Coincident', () => {
-    const defaultPattern = { ...PATTERN_DEFAULTS, spacing: 0.25 };
+    // T77 (TIE-GAP): minSpacing:0 -- this test's own purpose is oneEnded
+    // coincidence, independent of the new gap constraint.
+    const defaultPattern = { ...PATTERN_DEFAULTS, spacing: 0.25, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } };
     const extent = { iMin: 0, jMin: 0, iMax: 8, jMax: 8 };
     const manifest = manifestFromLattice(defaultPattern, extent);
     const railIds = manifest.entities.filter((e) => e.id.match(/^rail\d+$/)).map((e) => e.id);
@@ -296,7 +298,12 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
   });
 
   it('T64 ADD-ON (amendment #1) / T67: every node sitting on a rail/tie gets an explicit Coincident FROM ITS OWN :C (centre) point to it — end-match uses :S/:E, mid-span match uses the bare (point-on-curve) id — except where T67\'s own dedup correctly drops a rail-match already implied transitively via a tie-end this node ALSO matches', () => {
-    const manifest = manifestFromLattice(PATTERN, EXTENT);
+    // T77 (TIE-GAP): minSpacing:0 -- this shared PATTERN fixture's own
+    // density:1 (a tie on EVERY column) is exactly what this test's own
+    // dedup-triangle scenario needs; the new gap constraint would
+    // otherwise thin it out, independent of what's actually being tested
+    // here.
+    const manifest = manifestFromLattice({ ...PATTERN, ties: { ...PATTERN.ties, minSpacing: 0 } }, EXTENT);
     const nodeEntities = manifest.entities.filter((e) => e.id.match(/^node\d+$/));
     expect(nodeEntities.length).toBeGreaterThan(0); // non-vacuous: this pattern actually produces nodes
 

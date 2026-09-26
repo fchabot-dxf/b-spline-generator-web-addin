@@ -448,3 +448,204 @@ knob. Raising it rounds the waist but moves the switch point, so more existing s
 generator, the handles module and the Shape Lattice panel.
 
 **Processes:** clean. Capacity is fine.
+
+## Turn 10 — F6: S2 part 1 — editor board = frame cut profile, frame record, sidebar FRAME section — DONE — NO FUSION
+
+Gate 3.2 = (c) per the dispatch: no shape handles. Palette and editor edits are kept small and
+additive, and I pushed a checkpoint mid-turn, since Fred now owns the regular add-in.
+
+**item 1: the app reads the generated definition.**
+- `tools/gen_frame_defs.py` now also writes `html/data/frame-defs.js` (`export default {...}`): the
+  SAME render as the JSON. The Fusion palette runs from file://, where fetch() of a JSON file is
+  unreliable but ES-module imports already work.
+- `--check` and the Python freshness tests cover both files.
+- New `tests/frame-defs.test.js`: version 1, no default frame, the 5 woods with Ash, frameBottomZ =
+  a -1 in Z position, each template's preset exists in PRESETS with matching shapeParams keys,
+  params complete, and JS module == JSON.
+- **New declared data:** `FRAME_SHAPE_PARAMS` per template (gate (c): the frame's shape = template +
+  declared params), FITTED to the S4 7x9 goldens:
+  - T1 hourglass {waistReach 0.32, cornerRadius 0.19, waistCenterY 0};
+  - T2 bottle {neckWidth 0.618, skeletonX 0.83, neckLength 0.16}.
+  - **MEASURED:** the T1 pinch is 0.0013 in off at 7x9 (shoulder r 0.6175 vs 0.6242). At 12x6 it is
+    **0.44 in** off (shoulder r 1.09 vs 0.42), because Fusion's solve is not scale-invariant. Closing
+    that at every size is S4's parity job; it is asserted at 7x9 only and stated in the test.
+  - I first wrote "~0.002" into that test comment before measuring. I caught it, measured, and
+    replaced it.
+
+**item 2: the frame record** (`core/frame-record.js`).
+- `{recordVersion, templateId (null = none), params (overrides only), frameBottomZ, appearance}`.
+  `normalizeFrameRecord` is the ONE gate (an unknown template, an undeclared wood, junk numbers, or
+  board-owned / undeclared params all resolve to the defaults); `setFrameRecord` is the ONE write.
+- `P.frame: null` in DEFAULT, so it rides the existing `persistableP` serializer (session, undo,
+  projects). `updateP` was not used because it `parseFloat`s objects to NaN.
+- **Old projects:** `applySnapshot` copies P keys but never resets missing ones, so a pre-frame
+  project would have KEPT the current session's frame. Now a missing `frame` key sets null
+  (2 lines + `syncFramePanel`).
+- Tests: normalize cases, JSON project round trip, localStorage session round trip, and 2
+  `snapshot-manager` load tests (an old project reads as none; a saved frame restores).
+
+**item 3: the sidebar FRAME section** (`main/frame-panel.js` + ~20 lines of palette HTML), second
+after STOCK DIMENSIONS, collapsed with a one-line "— none" summary:
+- Template (None + defs templates), Frame bottom (z) (-1), Wood (the 5 declared), a fit warning,
+  and [Edit frame shape ✎] (a stub that opens the SVG editor, gate (c));
+- every option comes from the definition; the summary shows the template name;
+- `initFramePanel()` sits after `initSkeletonEditor()` in main.js.
+
+**item 4: HEADLINE, the cut profile** (`editor/editor-frame-profile.js`).
+- A pure `frameCutProfile(defs, record, board)`: the safe-zone region (board minus
+  boundingboxoffset), the template's preset + shapeParams through the SAME `generateSilhouette` the
+  Shape Lattice uses, the F5 `outlineDefects` guard, and the declared fit rule (`frameFit`, mirrors
+  Python FRAME_FIT, agrees with all 6 goldens).
+- `drawFrameProfile(editor)` draws into `editor._bgLayer`: an even-odd shaded cut-away (the board
+  minus the outline) plus the green profile.
+  - The background layer is never exported and sits under the grid and the artwork, so the
+    **artwork is untouched by construction** (tested: nothing added to the sketch layer).
+  - It redraws in place, is removed on "none", and is **never drawn if the guard fails**.
+  - Called from the end of `sync3DBackground` (which clears that layer) and on every record change.
+  - Decoupled via `setFrameProfileProvider`; the editor module never imports app state.
+
+**Tests / gates.** 21 new JS tests + 2 in snapshot-manager + 1 Python. Mutations, each restored:
+- an unknown template kept → 1 red;
+- the guard not gating the draw → 1 red;
+- drawn into the artwork layer → 2 red;
+- an old project keeps the current frame → 1 red;
+- no redraw-in-place → 1 red.
+
+Full vitest: **1380 passed / 74 files, 0 failed** (with the F6 tests). Python frame-builder:
+120 pass. Checkpoint commit `9173fbd` (18 files) pushed before the shots.
+
+**item 5: shots** (`shots/seatC/1814_F6_{T1,T2}_{desktop,mobile}_{sidebar,editor}.png`, 8 files).
+- The styled server (the `bspline-frame-builder` folder), driven by the new
+  `tools/repro/frame_profile_shots.mjs` (CDP). The template is picked through the real `<select>`.
+- It read back, for all 4 runs: profile drawn, 0 defects, fit ok, 7x9, no page errors.
+- T2's narrow neck is at the top, matching Fusion.
+- The server and Chrome were stopped after.
+
+**Not in this stage (stated, not silently skipped):**
+- grid / snap / fit-to-view do not yet follow the outline (AMEND 1 mentions it; F6 item 4 did not
+  require it);
+- the 3D trimmed panel + bars is S3;
+- "Edit frame shape" is a stub;
+- the round trip is tested via P / JSON / localStorage + applySnapshot, not via a real cloud
+  save/load click-through.
+
+**Processes:** clean. Capacity is fine.
+
+## Turn 12 — F7: S3 — 3D trimmed panel + wood bars; editor grid/snap/fit follow the outline — DONE — NO FUSION
+
+**Mapping (measured, not re-derived):** `drape-svg.js` DRAPE_TEXTURE_FLIPY's own measurement says
+SVG y=0 (the top) samples v=1, i.e. world +H/2. So editor (x, y) → world (x − W/2, H/2 − y). Two
+existing helpers disagree about row 0 (`buildHeightField` vs `buildLiveBrushColours`); I followed the
+measured drape, not either comment. It is tested: T2's narrow neck lands at world +y, as in Fusion.
+
+**item 1: trimmed panel** (`core/preview/frame-mesh.js`, pure arrays + thin THREE wrappers).
+- Panel triangles whose (x, y) centroid is outside the cut profile are dropped by an **index filter**.
+  The untrimmed index is kept in `geometry.userData.fullIndex` and restored for "none". The drape
+  overlay SHARES this geometry, so it is trimmed for free.
+- An **edge wall** along the exact outline, from the bilinear-sampled underside to the top surface,
+  hides the ≤ one-cell jag. It uses a clone of the panel material.
+- TerrainPreview additions, small and additive: a `setFrameProvider((W, H) → spec)` +
+  `refreshFrame()` + `_applyFrame()` called at the end of `update()`, and meshes disposed in
+  `_dispose()`.
+- **The provider is asked with the grid size actually drawn.** A pushed spec would go stale when
+  Fusion's `sync_board` sets widthIn without a DOM change.
+- **One source:** `frameSolidSpec` (editor-frame-profile.js) samples the SAME `frameCutProfile` the
+  editor draws. Tested: `spec.outline == sampleOutline(profile.primitives)`.
+
+**item 2: bars.**
+- The ring between the outline and the frame's inner edge is a **quad strip between corresponding
+  samples**. Same template, safe zone inset by frame_thickness, so the primitive topology is the same
+  (fixed fractions per primitive); the corner pairs are the miter lines. That avoids needing a
+  polygon triangulator: `three` isn't in node_modules.
+- Straight, no taper, from frame-bottom z up to the underside.
+- **Honest limit:** the inner edge is exact on the straight runs (matching F2's measured ±2.5 in)
+  and an approximation of Fusion's true offset on the arcs.
+- **Wood colours:** `APPEARANCE_PREVIEW_COLORS` is declared in `frame_definition.py` beside the wood
+  list and emitted as `appearance.previewColors`. A Python test fails if a wood lacks one.
+- **Live:** a wood or record change calls `refreshFrame()` (no terrain rebuild).
+
+**item 3: F6 leftovers (AMEND 1).**
+- **Grid:** the grid layer is clip-pathed to the profile, so there is no grid in the cut-away. It is
+  replaced (not stacked) and unclipped for "none".
+- **Snap:** `_snap` is wrapped by `frameSnapGate`. A snap landing in the cut-away returns the raw
+  point; inside, snapping is unchanged.
+- **Fit:** `fitView` frames the profile region, aspect preserved (the limiting side fits exactly).
+- Editor edits are one line each in editor.js and editor-view.js.
+- **Behaviour note:** with a frame, the fit zoom is ~1.06, not 1 (the file's comment says "zoom 1 =
+  fit"). That comment holds with no frame.
+
+**item 4: tests + shots.**
+- **Tests:** `tests/frame-3d.test.js`, 15 tests, covering:
+  - one source; T1/T2 correspondence; no frame → null;
+  - the world mapping;
+  - every kept triangle inside, some cut, T1+T2;
+  - no frame restores the exact index;
+  - bars' z = {frame bottom, underside}; the wood colour applied and changing live; frame_thickness
+    moving the inner edge only;
+  - the snap gate; the fit region; grid clip / unclip / replace.
+  Plus the Python previewColors check.
+- **Mutations**, each restored (15/15 green after):
+  - no trim → 2 red;
+  - bars top not the underside → 1;
+  - world y not flipped → 1;
+  - snap always → 1;
+  - fit ignores the frame → 1;
+  - wood colour ignored → 1;
+  - grid not clipped → 1.
+- One wrong expectation of mine, the fit width, was caught by the test: the aspect-preserving fit is
+  correct; the assertion was fixed.
+- **Shots** (`shots/seatC/1827_F7_*`, driven by the new `tools/repro/frame_3d_shots.mjs`, which
+  reads the preview's own state back through the page's shared modules):
+  - t1_desktop_3d, t1_mobile_3d, t2_desktop_3d, t2_mobile_3d: trimmed panel + Ash bars. Read back:
+    2 frame meshes; T1 kept 253,983 / 306,240 index entries, T2 241,689; no page errors.
+  - **Live proof on one page, no reload:** `_live-wood` (Ash → Mahogany through the real `<select>`;
+    bar colour read back `#d9c9a3` → `#7a3b2e`), `_live-thickness` (frame_thickness 0.75 → 0.4 via
+    the record; the inner edge moves and the outline/trim is unchanged, as expected).
+  - Desktop vs mobile kept-counts differ slightly (253,983 vs 255,156). My read: the thickened
+    underside offsets bottom vertices along the normals, and each fresh session's terrain differs,
+    so the centroid test shifts a little. Stated, not proven further.
+- Gates: vitest touched specs green; Python 120 pass; `gen --check` fresh. Checkpoint `481c4cc` pushed
+  before the shots.
+
+**Not in this stage:** grid snapping ONTO the outline itself (only gating); the bars are one ring,
+not 4 separate bodies (the miter lines are implicit at the corner correspondences); the handles/Frame
+tab is gated (3.2).
+
+**Processes:** the server and Chrome were stopped (127 = my kill). Clean. Capacity is fine.
+
+**Amendments absorbed (4; the 4th superseded the 3rd).**
+- **Bar tops follow the SCULPTED underside.** `samplePairedOutlines(outer, inner, cell)` gives both
+  loops the same step count per primitive pair, each step <= one terrain cell, and `ringArrays` adds
+  rows ACROSS the ring width (<= one cell). Every top vertex is the bilinear underside z.
+  - My first ring had only edge samples: a straight edge sampled its start point only, so a 6.5 in
+    top edge was ONE flat quad. Fixed.
+  - The edge wall is also always densified.
+- **"Code it right + prove it by tests", no runtime guards.**
+  `tests/frame-3d-sweep.test.js`:
+  - a sweep over 2 templates × 5 boards (7x9, 9x7, 12x6, 5x5, 4x3.5) × 3 frame bottoms (-2, -1,
+    -0.25) × 3 sculpts (flat, waves, tilt), at least 40 frames checked: every bar vertex finite,
+    inside the board, every top above the bottom and ON the underside (1e-4);
+  - the top sampled at least every cell along both loops;
+  - at least ceil(0.75/0.1) = 8 rows across the ring;
+  - the frame is never rebuilt on render ticks (the real `_startLoop` driven 20 ticks → provider 0
+    calls), and `refreshFrame` rebuilds it once.
+  - Mutations: no rows across → 1 red; coarse along the loop → 3; top not on the underside → 2;
+    rebuilt every tick → 1; restored 23/23.
+- **Loose volume sanity vs the Fusion goldens** (flat core, bottom -1 → volume = ring area × 1 in).
+  MEASURED app vs Fusion: T1 7x9 **-11.1%**, T1 12x6 **-18.9%**, T2 7x9 **-5.4%**, T2 12x6
+  **-10.3%**.
+  - Always smaller: the inner edge is the template solved on the inset safe zone, shallower at the
+    arcs than a true offset. At 12x6 the outline itself carries S4's known 0.44 in gap.
+  - The amendment's "e.g. within 10%" was an example and Fred said no precision chase, so the bound
+    is **20%** with these numbers in the test: a way-wrong detector (half or double), stated rather
+    than tuned. **Flag for the advisor:** tighten when S4 lands a true offset.
+- **Close-up acceptance shot:** `1833_F7_t1_closeup-bar-meets-underside.png`. A low camera at the
+  T1 waist; the Ash bar meets the panel along a wavy seam, which is the sculpted underside, and the
+  cut-edge wall follows the sculpted top.
+- **Timing, measured in-page** (the superseded amendment asked; cheap to report): `refreshFrame()`
+  takes **156 ms with a frame vs 1 ms without** (mean of 10, 7x9 at 0.05 in, about 102k panel
+  triangles through point-in-polygon against the dense outline).
+  - It runs only on frame-input or panel changes (tested), never per tick, but it adds that to each
+    terrain rebuild while a frame is on.
+  - Not optimised (not asked). A bbox prefilter or a raster mask would cut it if it matters.
+- Full vitest: **1403 passed / 76 files, 0 failed**. Python 120 pass, frame-defs fresh.

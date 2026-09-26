@@ -15,6 +15,7 @@ import { setupEditorToolbar } from './editor-controls.js';
 import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
 import { createEditorCanvas } from './init.js';
 import { fitView as _fitView } from './editor-view.js';
+import { frameSnapGate } from './editor-frame-profile.js';
 import { snapFor, applyGrid, loadGridPrefs, saveGridPrefs } from './editor-grid.js';
 import { LATTICE_DEFAULTS } from './editor-lattice.js';
 import { initDrawer, initHeaderOverflowMenu, syncDrawerForMode } from './editor-drawer.js';
@@ -429,7 +430,8 @@ export class VectorEditor {
     // `phase` ('start' | 'move') plus `this._currentMode` pick the policy;
     // bypass is Alt-held (ignored by policies that don't honour it).
     _snap(pt, bypass = false, phase = 'start') {
-        return snapFor(pt, this._grid, this._currentMode, phase, bypass);
+        // FB-APP F7: snapping follows the frame outline (no grid in the cut-away).
+        return frameSnapGate(this, snapFor(pt, this._grid, this._currentMode, phase, bypass), pt);
     }
 
     /** One setter for the grid toolbar: merge a patch, persist, redraw,

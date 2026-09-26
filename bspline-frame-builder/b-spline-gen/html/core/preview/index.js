@@ -38,6 +38,7 @@ import { DRAPE_TEXTURE_FLIPY } from './drape-svg.js';
 import { ViewCube } from './view-cube.js';
 import { GroundGrid } from './ground-grid.js';
 import { LeaderLineOverlay } from './leader-lines.js';
+import { applyFrameToPanel } from './frame-mesh.js';
 import { OrbitController } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
 import { renderTopView } from './top-view.js';
@@ -80,6 +81,11 @@ export class TerrainPreview {
     this._worstPts    = [];
     this._showLeaders = true;
     this._solidMeshes = []; // wireframe lines added when thickenWireframe is on
+    // FB-APP S3 (F7): the frame-spec provider ((W, H) -> spec | null) + the
+    // meshes it adds (outline edge wall, wood bars). Asked with the grid size
+    // actually drawn, at the end of update() and on every refreshFrame().
+    this._frameProvider = null;
+    this._frameMeshes = [];
 
     // SE11: the drape texture, if any — survives mesh rebuilds (re-applied
     // in update(), same pattern as _heatColours) since it's independent of
@@ -224,6 +230,10 @@ export class TerrainPreview {
       this._lastW = W;
       this._lastH = H;
     }
+
+    // FB-APP S3 (F7): trim the panel to the frame + add the bars.
+    this._lastGrid = { W, H, nx, nz, topPos: pos, botPos: showSolid ? offsetPts : null };
+    this._applyFrame();
 
     this._sculpt.reapplySelection(heights, nx, nz, W, H);
     this._leaders.setData(this._worstPts, this._showLeaders);
@@ -510,7 +520,37 @@ export class TerrainPreview {
 
   // ── Internal ────────────────────────────────────────────────────────
 
+  /** FB-APP S3 (F7): `fn(widthIn, heightIn) -> frameSolidSpec | null`. */
+  setFrameProvider(fn) { this._frameProvider = fn || null; this.refreshFrame(); }
+
+  /** Re-apply the frame live (record / wood change), without a terrain rebuild. */
+  refreshFrame() {
+    this._applyFrame();
+    this._needsRender = true;
+  }
+
+  _clearFrameMeshes() {
+    for (const obj of this._frameMeshes) {
+      this._scene.remove(obj);
+      obj.geometry?.dispose();
+      obj.material?.dispose();
+    }
+    this._frameMeshes = [];
+  }
+
+  _applyFrame() {
+    this._clearFrameMeshes();
+    if (!this._mesh || !this._lastGrid) return;
+    const g = this._lastGrid;
+    const spec = this._frameProvider ? this._frameProvider(g.W, g.H) : null;
+    for (const m of applyFrameToPanel(this._THREE, this._mesh, g, spec)) {
+      this._scene.add(m);
+      this._frameMeshes.push(m);
+    }
+  }
+
   _dispose() {
+    this._clearFrameMeshes();
     if (this._mesh)   { this._scene.remove(this._mesh);   this._mesh.geometry.dispose();  this._mesh.material.dispose(); }
     // SE11e: the drape mesh SHARES this geometry (just disposed above) —
     // remove it and dispose only its own material, never the geometry a

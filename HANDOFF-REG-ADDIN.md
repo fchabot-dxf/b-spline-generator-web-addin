@@ -63,9 +63,12 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
    laid out from the boundary; one grid (the editor's). Old saved patterns keep their geometry.
    Do it after seat B's TIE-GAP lands (same panels).
 7. **FORMULA-FIELDS** (ROADMAP.md): number fields accept + - * / ( ) and names (width, height, stroke, count);
-   evaluated on Enter, stores the number.
-8. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
-9. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
+   evaluated on Enter, stores the number. Typing a name opens an autocomplete dropdown showing each value.
+8. **BOUNDARY-GUIDE** (ROADMAP.md): the lattice boundary box shows in the editor as a guide, hidden in the 3D preview. Remove the "Draw boundary"
+   toggle (always drawn); the Shape Lattice Contour checkbox stays.
+   In Fusion the boundary is sent as CONSTRUCTION geometry.
+9. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
+10. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
 
 ## 4. How to work on it
 
@@ -87,3 +90,13 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
   checkouts, so your Asus commits won't show there. It tracks seats A/B/C only.
 - **Handoff loop files**: `HANDOFF.md` / `NEXT-SESSION.md` / `WORK-LOG.md` on main belong to seat A's loop until it
   stops. After that you can reuse them or ignore them.
+
+## 5. Starting your loop on the Asus
+
+- `HANDOFF.md` / `.handoff/` are LOCAL to each machine (not in git), by design, so your loop and the home PC's seats never
+  share a marker. On the Asus, from the repo root: `python ~/.claude/skills/multi-agent-handoff/handoff.py init` (epoch 1),
+  then run the advisor/worker loop as usual with section 3 as the task list.
+- The live Fusion checks (items 1-3) are Fred's own. The first worker task should be one that doesn't touch seat A's files
+  (section 2) until the UI5 merge lands. FORMULA-FIELDS is a good first pick (a new shared module).
+- Leave fb-app and the silhouette solver to the home PC.
+- The home PC also pushes to main (merges): always `git pull --rebase` before pushing.

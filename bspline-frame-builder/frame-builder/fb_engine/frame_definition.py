@@ -36,6 +36,16 @@ APPEARANCE_OPTIONS = (
     "3D Maple - Unfinished",
 )
 DEFAULT_APPEARANCE = APPEARANCE_OPTIONS[0]
+# F7: the colour the app's 3D preview paints each wood with (a preview tint,
+# not Fusion's material). Declared beside the list so a new wood cannot ship
+# without one (test_frame_defs checks the keys match).
+APPEARANCE_PREVIEW_COLORS = {
+    "3D Ash - Unfinished": "#d9c9a3",
+    "3D Mahogany - Unfinished": "#7a3b2e",
+    "3D Pine - Unfinished": "#e3c07a",
+    "3D Cherry - Unfinished": "#9c4a2f",
+    "3D Maple - Unfinished": "#ead7ad",
+}
 
 # Fred (Q3, "it's a position, not a value"): frame_height_offset is the Z of
 # the frame's bottom relative to the frame sketch plane (negative = below).
@@ -134,6 +144,7 @@ def build_frame_defs(source_hash):
             "name": spec["Name"],
             "prefix": prefix,
             "silhouettePreset": frame.get("silhouettePreset"),
+            "shapeParams": frame.get("shapeParams"),
             "params": params,
             "regions": frame.get("regions"),
             "features": frame.get("features"),
@@ -144,7 +155,8 @@ def build_frame_defs(source_hash):
         "sourceHash": source_hash,
         "units": "in",
         "defaultTemplate": DEFAULT_TEMPLATE,
-        "appearance": {"default": DEFAULT_APPEARANCE, "options": list(APPEARANCE_OPTIONS)},
+        "appearance": {"default": DEFAULT_APPEARANCE, "options": list(APPEARANCE_OPTIONS),
+                       "previewColors": dict(APPEARANCE_PREVIEW_COLORS)},
         "extrusion": [dict(s) for s in EXTRUSION_SETTINGS],
         "fit": dict(FRAME_FIT),
         "templates": templates,

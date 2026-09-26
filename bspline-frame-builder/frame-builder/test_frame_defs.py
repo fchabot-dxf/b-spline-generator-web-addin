@@ -55,12 +55,22 @@ def test_checked_in_file_is_fresh():
     assert on_disk == gen.render(), "frame-defs.json is stale: run python tools/gen_frame_defs.py"
 
 
+def test_checked_in_js_module_is_fresh():
+    gen = _gen()
+    with open(gen.OUT_JS_PATH, encoding="utf-8") as f:
+        on_disk = f.read().replace("\r\n", "\n")
+    assert on_disk == gen.render_js(), "frame-defs.js is stale: run python tools/gen_frame_defs.py"
+
+
 # ------------------------------------------------------------------ schema
 def test_top_level_schema(defs):
     assert defs["frameDefsVersion"] == 1
     assert defs["units"] == "in"
     assert defs["defaultTemplate"] is None  # Fred Q2: no frame by default
-    assert defs["appearance"] == {"default": "3D Ash - Unfinished", "options": list(APPEARANCE_OPTIONS)}
+    assert defs["appearance"]["default"] == "3D Ash - Unfinished"
+    assert defs["appearance"]["options"] == list(APPEARANCE_OPTIONS)
+    # F7: every declared wood has a preview colour, and nothing else does
+    assert sorted(defs["appearance"]["previewColors"]) == sorted(APPEARANCE_OPTIONS)
     assert len(defs["sourceHash"]) == 64
 
 
@@ -76,7 +86,7 @@ def test_every_template_entry_is_complete(defs):
     ids = [t["value"] for t in get_available_templates()]
     assert [t["id"] for t in defs["templates"]] == ids and ids  # discovered, not hand-listed
     for t in defs["templates"]:
-        for key in ("id", "name", "prefix", "silhouettePreset", "params", "regions", "features", "sketches"):
+        for key in ("id", "name", "prefix", "silhouettePreset", "shapeParams", "params", "regions", "features", "sketches"):
             assert t.get(key), (t["id"], key)
         for p in t["params"]:
             assert {"name", "unit", "default", "owner"} <= set(p), (t["id"], p)
