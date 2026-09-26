@@ -1,38 +1,33 @@
-# NEXT (reg-addin, Asus) — R1: FORMULA-FIELDS stage 1 (shared parser + autocomplete widget)
+# NEXT (reg-addin, Asus) — R2: lockfile + FORMULA-FIELDS stage 2 (range + non-lattice fields)
 
-**Ball: worker (reg-addin) · epoch 1 · R1.** NO FUSION this turn. Plan of record = HANDOFF-REG-ADDIN.md §3 + ROADMAP.md
-"FORMULA-FIELDS". Your log = **WORK-LOG-reg-addin.md** (create it; NOT WORK-LOG.md / NEXT-SESSION.md — those are seat A's).
-Start each work-commit subject with the item tag ("R1 item 2: …").
+**Ball: worker (reg-addin) · epoch 1 · R2.** NO FUSION. R1 (3bff20e) ACCEPTED. Plan of record = HANDOFF-REG-ADDIN.md §3 +
+ROADMAP "FORMULA-FIELDS". Log = WORK-LOG-reg-addin.md. Commit subjects start with the tag ("R2 item 1: …").
 
-## Hands off (conflict zones — other machines push to main)
-- Seat A (UI5, uncommitted on home PC): `editor-lattice-pattern.js`, `editor-ui.js`, `editor.js`, `editor-piece-override.js`,
-  and treat `properties-lattice.js` / `properties-shape-lattice.js` as frozen this turn too (UI5 shows override
-  controls in the Select properties). Wiring into the lattice panels is R2, after UI5 lands.
-- Seat C / fb-app: `editor-shape-lattice-generator.js` (silhouette solver) and anything on branch fb-app.
+## Hands off (home-PC advisor, 2026-09-26; other machines push to main)
+- Seat A (UI5, NOT finished, resolving a merge): `editor-lattice-pattern.js`, `editor-ui.js`, `editor.js`,
+  `editor-piece-override.js`, `tools/repro/select_drag_shape.mjs`, AND `properties-lattice.js` /
+  `properties-shape-lattice.js`. Lattice-panel formulas = R3, after the home advisor says "UI5 merged".
+- Seat C (fb-app F8): `core/frame-record.js`, `editor/editor-frame-profile.js`, `core/preview/frame-mesh.js`,
+  `editor-shape-lattice-generator.js` (silhouette solver), `frame-builder/` (Python), FB-APP-DESIGN.md, the editor
+  [Frame | Artwork] tabs, the sidebar FRAME section. `bspline_gen_palette.html`: avoid; if unavoidable, tiny + push at once.
+- If you need anything above → STOP and say so in the pass-back, don't edit.
 
 ## Checklist
-- [ ] [R1-item-1] ONE shared pure module (e.g. `html/core/formula.js`): tokenizer + recursive-descent parser for
-      + - * / ( ), unary minus, decimals, and NAMES resolved from a passed-in scope. NEVER eval / new Function / Function().
-      Returns `{ok, value}` or `{ok:false, error, pos}`. Division by zero / unknown name / trailing junk = error.
-- [ ] [R1-item-2] DECLARED names, one source for parser + dropdown: a scope is a declaration
-      `[{name, label?, get: () => number, unit?}]` (the panel declares it; the module never knows about lattices).
-      Names case-insensitive; exported helper to filter by prefix for the dropdown.
-- [ ] [R1-item-3] ONE shared UI binder (e.g. `html/core/formula-field.js`): `attachFormula(input, scopeDecl)` — makes the
-      input accept text (switch type=number → text + inputmode="decimal" as needed), evaluates on Enter/blur, writes the
-      NUMBER back and fires the input's normal change/input events so existing handlers run unchanged; bad formula →
-      inline error, old value kept; live result preview beside the field while typing; typing letters opens a dropdown of
-      matching names with CURRENT values (e.g. `height  6.000"`), arrows + Enter/Tab insert, Esc closes, tap works on mobile.
-      Idempotent (attaching twice is harmless). Plain numbers behave exactly as today.
-- [ ] [R1-item-4] Tests (vitest): precedence, parentheses, unary minus, names, every error kind, a static check that the
-      modules contain no `eval(` / `new Function` / `Function(`; binder: Enter commits number + fires change, bad formula
-      keeps old value, dropdown filters + inserts from the declared names, Esc closes, plain number unchanged.
-- [ ] [R1-item-5] Prove it on ONE non-frozen field so it's visible: pick a stock-dimension or similar sidebar number field
-      whose handler is outside the frozen files, declare a small scope (e.g. width, height), screenshot desktop + mobile
-      with the dropdown open (tools/serve_app.py). Say in the WORK-LOG which field and why.
+- [ ] [R2-item-0] LOCKFILE (home advisor assigned it to us): `npm install` to regenerate package-lock.json (expect
+      @emnapi/core + @emnapi/runtime 1.11.3 added), prove `npm ci` now passes, commit ONLY package-lock.json in its OWN
+      commit, pull --rebase, push. Put the sha in the pass-back note (I relay it to the home PC).
+- [ ] [R2-item-1] RANGE: a committed formula result respects the field's declared min/max (the steppers' attributes) —
+      clamp or reject, pick one, state which + why; plain typed numbers behave as today. Tests.
+- [ ] [R2-item-2] Extend the DECLARED list (`main/formula-fields.js`) to the other generic sidebar number fields that go
+      through the bind()/applyParam path — STOCK DIMENSIONS complete, plus other non-lattice, non-FRAME sections you can
+      reach without the frozen files. Declaration only (a scope per section), no per-field code. Name the added fields +
+      the ones you skipped and why in the WORK-LOG.
+- [ ] [R2-item-3] Tests for items 1-2 + extend tools/repro/formula_field_shots.mjs to one new field; desktop + mobile
+      screenshots to shots/reg-addin/.
 
 ## Gate (fast tier)
-`npx vitest run` for touched/new specs + a smoke of the full vitest run if quick. No Fusion.
+Touched/new specs + full `npx vitest run` smoke (after `npm ci`). No Fusion.
 
 ## Finish
-Commit by path. `git pull --rebase` (the home PC pushes merges to main), then push main. Then, FROM THE REPO ROOT:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R1 — <shas>"`.
+Commit by path. `git pull --rebase`, push main (never force). From the REPO ROOT:
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R2 — <shas> (lockfile <sha>)"`.
