@@ -1343,9 +1343,10 @@ function _spawnTieBetweenRails(editor, clickCanon, orientation, spacing) {
 // SNAP toggle (SNAP_POLICY's 'always' row exists for the hover cursor/
 // other callers of _snap, not for this handler's own point resolution).
 const latticeHandler = {
-    start(editor, pt) {
+    start(editor, pt, e) {
         const spacing = editor._grid.spacing || 0.25;
         editor._latticeSpacing = spacing;
+        const drawKind = editor._lattice.drawKind || 'rail';
 
         // SE7i (Section 3, connected editing): drag ON an existing rail/
         // tie/node moves it, structure-aware; drag on empty space (or on
@@ -1359,15 +1360,39 @@ const latticeHandler = {
         const hit = editor._getNearbyElement(pt, tol);
         const hitKind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
         if (hitKind === 'rail' || hitKind === 'tie' || hitKind === 'node') {
-            editor._deselect();
+            // UI3 AMEND 1/3 (Fred): Select sub-mode also SELECTS the
+            // grabbed piece (reusing editor._select/_selectAdd — the same
+            // whole-selection state editor.setColor/deleteSelected read —
+            // not a second selection system) — move/stretch below is
+            // already unconditional on drawKind and needs no change: a
+            // bare tap (no movement) leaves the piece selected with
+            // nothing moved (_finishLatticeMove's own no-op check), and a
+            // real drag moves/stretches it exactly as every other drawKind
+            // already does.
+            if (drawKind === 'select') {
+                const shift = !!(e && e.shiftKey);
+                if (shift) editor._selectAdd(hit);
+                else if (!(editor._selectedElements || []).includes(hit)) editor._select(hit);
+            } else {
+                editor._deselect();
+            }
             editor._isDrawing = true;
             const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;
             editor._latticeMove = _beginLatticeMove(editor, hit, hitKind, pt, spacing, orientation);
             return;
         }
 
+        // UI3 AMEND 1: Select sub-mode on empty space just (de)selects —
+        // never falls into the rail/tie/node ADD behaviour below (matches
+        // selectHandler.start's own "click empty space deselects" shape,
+        // minus the marquee/pan — a lattice-panel Select tap is for
+        // picking an existing piece, not drawing a new selection box).
+        if (drawKind === 'select') {
+            if (!(e && e.shiftKey)) editor._deselect();
+            return;
+        }
+
         editor._deselect();
-        const drawKind = editor._lattice.drawKind || 'rail';
 
         if (drawKind === 'node') {
             // SE7k: Node mode places immediately — "no drag needed" — the

@@ -25,7 +25,7 @@
  * narrow or coarse-pointer viewport — this module never touches the
  * drawer's own DOM at all.
  */
-import { el } from './dom.js';
+import { el, on } from './dom.js';
 
 // =========================================================================
 // 1. Section colour-coding (Fred picked option B from the mockup).
@@ -265,17 +265,231 @@ function _syncMount(mode) {
 }
 
 // =========================================================================
+// 4. UI3 (Fred: "like in main side bar, make lattice section collapsible")
+//    — collapsible sections, reusing the EXACT mechanism editor-drawer.js
+//    used to own privately (bold-span-first-child sections, a real DOM-
+//    node chevron, localStorage persistence keyed by title) — moved HERE
+//    and un-gated from mobile-only, since this module already owns every
+//    other "what counts as a lattice panel section" concern (_tagSections/
+//    _wireLiveColors/_hideSectionByTitle above); collapsing is the SAME
+//    declared pattern applied on BOTH desktop and mobile now, not a
+//    second one. editor-drawer.js no longer wires this itself.
+// =========================================================================
+const SECTION_STATE_PREFIX = 'bspline.editor.drawerSection.'; // unchanged key: desktop and mobile share one remembered state per section title.
+
+function _loadSectionOpen(label, defaultOpen) {
+  try {
+    const raw = localStorage.getItem(SECTION_STATE_PREFIX + label);
+    return raw === null ? defaultOpen : raw === '1';
+  } catch (_) {
+    return defaultOpen;
+  }
+}
+function _saveSectionOpen(label, open) {
+  try { localStorage.setItem(SECTION_STATE_PREFIX + label, open ? '1' : '0'); } catch (_) { /* same as above */ }
+}
+
+/** Wires one section's label as a click-to-collapse toggle for the rest
+ *  of its own children — shared tail for both `_makeSectionsCollapsible`
+ *  (a real bold-span section) and `_makeLayersCollapsible` (the Layers
+ *  header + list, a different DOM shape but the same behaviour). `title`
+ *  is the persistence key; `label` gets the chevron + click handler;
+ *  `body` is the list of sibling nodes the toggle shows/hides. */
+function _wireCollapse(title, label, body) {
+  // Captured BEFORE any toggle ever runs — most of these rows declare
+  // their own layout inline (`style="display:flex; ..."`, no CSS class
+  // backing it), so `node.style.display = ''` does NOT restore "flex" the
+  // way it would for a class-driven display; it just clears the inline
+  // override entirely and the element falls back to its TAG's own
+  // default (`block` for a bare `<div>`). Restoring the ORIGINAL captured
+  // value (not bare '') is what editor-drawer.js's own prior version of
+  // this already had to fix (MOB5: the Colors row's 3 swatches silently
+  // stacked into a column on the very first render otherwise).
+  const bodyOriginalDisplay = body.map((node) => node.style.display);
+  const chevron = document.createElement('span');
+  chevron.className = 'lattice-section-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = '▾';
+  label.style.cursor = 'pointer';
+  label.style.display = 'flex';
+  label.style.alignItems = 'center';
+  label.style.justifyContent = 'space-between';
+  label.appendChild(chevron);
+
+  const applyOpen = (open) => {
+    body.forEach((node, i) => { node.style.display = open ? bodyOriginalDisplay[i] : 'none'; });
+    chevron.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
+  };
+  let open = _loadSectionOpen(title, true);
+  applyOpen(open);
+  on(label, 'click', () => {
+    open = !open;
+    applyOpen(open);
+    _saveSectionOpen(title, open);
+  });
+}
+
+/** Walks every direct child of `bodyEl` and makes the ones matching the
+ *  bold-span-first-child section shape collapsible. `data-no-collapse`
+ *  opts a section out — AMEND 1's new icon tool row (replacing Add:) must
+ *  always stay visible, same as Add: itself always was. */
+function _makeSectionsCollapsible(bodyEl) {
+  if (!bodyEl) return;
+  for (const section of Array.from(bodyEl.children)) {
+    if (section.hasAttribute('data-no-collapse')) continue;
+    const label = section.firstElementChild;
+    if (!label || label.tagName !== 'SPAN' || !/font-weight:\s*600/.test(label.getAttribute('style') || '')) continue;
+    const title = label.textContent.trim();
+    if (!title || section.dataset.collapsibleInit) continue;
+    section.dataset.collapsibleInit = '1';
+    _wireCollapse(title, label, Array.from(section.children).filter((c) => c !== label));
+  }
+}
+
+/** UI3: "the Layers block in the side column is collapsible too" — same
+ *  mechanism, applied to #editorLayersPanel's own static header+list
+ *  (bspline_gen_palette.html markup — can't be edited) instead of a
+ *  bold-span section: the header's own `<span>Layers</span>` becomes the
+ *  clickable/chevron-bearing label, collapsing the SIBLING `.layers-list`.
+ *  Scoped to the label itself (not the whole `.layers-header`), so
+ *  `#editorAddLayer`'s own `+` button, a header SIBLING of the label,
+ *  keeps its own click handler completely undisturbed. */
+function _makeLayersCollapsible(layersPanelEl) {
+  if (!layersPanelEl) return;
+  const header = layersPanelEl.querySelector('.layers-header');
+  const label = header ? header.querySelector('span') : null;
+  const list = layersPanelEl.querySelector('.layers-list');
+  if (!header || !label || !list || header.dataset.collapsibleInit) return;
+  header.dataset.collapsibleInit = '1';
+  _wireCollapse('Layers', label, [list]);
+}
+
+// =========================================================================
+// 5. UI3 AMEND 1 + AMEND 2 (Fred) — icon tool row replacing the Lattice
+//    panel's text "Add" row: [Select] [Rail] [Tie] [Node] (Shape Lattice:
+//    "if it has add modes (else just Select)" — it has none, so [Select]
+//    alone). Select reuses the main Select tool's own selection/colour/
+//    delete path (editor._select/_selectAdd, wired into latticeHandler
+//    directly — editor-interaction.js — and editor.setColor/
+//    deleteSelected, both already whole-selection-generic) — no second
+//    selection system. Rail/Tie/Node proxy-click the ORIGINAL (now-
+//    hidden) latticeAdd-* buttons, so properties-lattice.js's existing
+//    selectDrawKind stays the ONE place drawKind actually gets written.
+// =========================================================================
+const LATTICE_ICON_MUTED = '#9aa0a6'; // AMEND 2d: "Grey = one declared muted grey."
+
+const LATTICE_KIND_ICON_TOOLTIPS = {
+  select: 'Select — tap a piece to select it; colour/delete work like the main Select tool.',
+  rail: 'Drag along the rail axis.',
+  tie: 'Drag across the rails — snaps to them.',
+  node: 'Click to place a node.',
+};
+
+/** AMEND 2/2b/2c/2d: ONE parameterised inline SVG glyph, not three hand-
+ *  drawn icons. Rail/Tie share an orientation-neutral diagonal-ladder
+ *  shape (two long ~45deg lines + a short crossbar, since rails/ties can
+ *  run horizontally OR vertically) and differ only in WHICH part is drawn
+ *  in that kind's own live colour (the rest stays muted grey); Node is a
+ *  plain dot, not the ladder (Fred: "Node is just a point"); Select is a
+ *  plain pointer (reuses #toolSelect's own cursor path). Colours are CSS
+ *  custom properties (`var(--kind-rails)` etc.) inherited from bodyEl —
+ *  the SAME ones _wireLiveColors (section 1, above) already keeps live-
+ *  synced to the Colors row swatches via a MutationObserver — one colour-
+ *  sync mechanism, not a second (AMEND 2c): these icons update live the
+ *  instant a swatch changes, with zero JS wiring of their own. */
+function _buildLatticeIconSVG(kind) {
+  if (kind === 'select') {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+      + '<path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" style="fill: currentColor;" /></svg>';
+  }
+  if (kind === 'node') {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+      + `<circle cx="12" cy="12" r="5" style="fill: var(--kind-nodes, ${LATTICE_ICON_MUTED});" /></svg>`;
+  }
+  const railColor = kind === 'rail' ? `var(--kind-rails, ${LATTICE_ICON_MUTED})` : LATTICE_ICON_MUTED;
+  const tieColor = kind === 'tie' ? `var(--kind-ties, ${LATTICE_ICON_MUTED})` : LATTICE_ICON_MUTED;
+  return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+    + `<line x1="6" y1="20" x2="11" y2="4" style="stroke: ${railColor}; stroke-width: 2; stroke-linecap: round;" />`
+    + `<line x1="13" y1="20" x2="18" y2="4" style="stroke: ${railColor}; stroke-width: 2; stroke-linecap: round;" />`
+    + `<line x1="8" y1="14" x2="16" y2="10" style="stroke: ${tieColor}; stroke-width: 2; stroke-linecap: round;" /></svg>`;
+}
+
+/** Replaces `bodyEl`'s "Add" row (if any — Shape Lattice has none) with a
+ *  new icon tool row for the given `kinds` (declared order: select first,
+ *  then whichever of rail/tie/node the panel supports). `data-no-collapse`
+ *  on the new row too — same "always visible, never a collapsible
+ *  section" exemption Add always had (and keeps editor-drawer.js's own
+ *  measuredPeekFloorPx mobile-peek measurement working unchanged, since
+ *  it queries generically for `[data-no-collapse]`, not Add's own id). */
+function _buildLatticeIconRow(editor, bodyEl, kinds) {
+  if (!bodyEl) return;
+  const oldAddRow = bodyEl.querySelector('[data-no-collapse]');
+  if (oldAddRow) oldAddRow.style.display = 'none';
+
+  const row = document.createElement('div');
+  row.dataset.noCollapse = '';
+  row.className = 'lattice-icon-tool-row';
+
+  const buttons = {};
+  for (const kind of kinds) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tool-btn lattice-icon-tool-btn';
+    btn.title = LATTICE_KIND_ICON_TOOLTIPS[kind];
+    btn.innerHTML = _buildLatticeIconSVG(kind);
+    buttons[kind] = btn;
+    row.appendChild(btn);
+  }
+
+  function setActive(kind) {
+    for (const k of kinds) buttons[k].classList.toggle('active', k === kind);
+  }
+  setActive(editor._lattice.drawKind || 'select');
+
+  for (const kind of kinds) {
+    on(buttons[kind], 'click', () => {
+      if (kind === 'select') {
+        editor._lattice.drawKind = 'select';
+      } else {
+        const oldBtn = el(`latticeAdd-${kind}`);
+        if (oldBtn) oldBtn.click();
+      }
+      setActive(kind);
+    });
+  }
+
+  if (oldAddRow) oldAddRow.insertAdjacentElement('afterend', row);
+  else bodyEl.insertBefore(row, bodyEl.firstChild);
+}
+
+// =========================================================================
 // Init
 // =========================================================================
 export function initLatticeSideColumn(editor) {
+  // Hide Fill seed BEFORE any section gets wired collapsible below —
+  // _wireCollapse appends a chevron INTO the label, which would corrupt
+  // this title-text match (`label.textContent` stops being exactly
+  // "Fill seed" once a "▾" child is appended to it).
+  const latticeBody = el(TOOL_PANEL_MOUNTS.lattice.bodyId);
+  const shapeBody = el(TOOL_PANEL_MOUNTS.shapeLattice.bodyId);
+  if (shapeBody) _hideSectionByTitle(shapeBody, 'Fill seed');
+
   for (const cfg of Object.values(TOOL_PANEL_MOUNTS)) {
     const bodyEl = el(cfg.bodyId);
     if (!bodyEl) continue;
     _tagSections(bodyEl);
     _wireLiveColors(cfg.panelId, bodyEl);
+    _makeSectionsCollapsible(bodyEl);
   }
-  const shapeBody = el(TOOL_PANEL_MOUNTS.shapeLattice.bodyId);
-  if (shapeBody) _hideSectionByTitle(shapeBody, 'Fill seed');
+  _makeLayersCollapsible(el('editorLayersPanel'));
+
+  // AMEND 1: Shape Lattice "has [no] add modes" of its own — Select
+  // alone; its existing shapeLatticeHandler already falls back to
+  // selectHandler.start for any click that isn't on a param handle or a
+  // segment (editor-interaction.js), so this button needs no state wiring
+  // beyond looking the part — it's always the only, always-active choice.
+  _buildLatticeIconRow(editor, latticeBody, ['select', 'rail', 'tie', 'node']);
+  _buildLatticeIconRow(editor, shapeBody, ['select']);
 
   let lastMode = null;
   document.addEventListener('editorModeChanged', (e) => {
