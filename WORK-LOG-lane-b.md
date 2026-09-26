@@ -8862,3 +8862,85 @@ brittleness this whole AMEND exists to fix.
 Verify: 1210/1210 vitest (1208 + 2 new), 151/151 pytest. Amendments polled clean before commit. Commit 65545ef,
 pushed. NO FUSION.
 
+## T73 AMEND 2 — confirmed already satisfied (no code change), verification test added
+
+Delivered via cross-session message, not the dispatch file (advisor DMing the worker mid-task, an established
+pattern from earlier lanes). Claim: the visible contour segments (not just the optional Border clone) should draw
+at the lattice stroke width, auto — measured against main 660f417 (pre-SE14b), where the silhouette was still a
+fixed 0.02 hairline. Checked against THIS session's own already-committed SE14b rewrite (859eb70) before writing
+any code: `regenerateSilhouette` already sets every segment's own `contourWidth = widths.rails` unconditionally, so
+the claim was already true here, just unverified. Added the exact parity test the amend asked for
+(`tests/parity-app-manifest.test.js`) instead of leaving it an assumption. 1211/1211 vitest. Commit 8447247, pushed.
+
+## T73 AMEND 3 (geometry half) — rails/ties reach the contour's raw centerline
+
+Fred, from 2 Fusion screenshots of a rail stopping short of the contour, unconnected: "I need rails to coincide to
+contour." Root-caused by reading the code first: a rail/tie end used to stop half the CONTOUR's own stroke-width
+short of centerline (`_resolveBoundaryPrimitives`'s own boundary-edge inset) AND THEN half the RAIL's own
+stroke-width short of THAT already-shrunk boundary (the default `'inset'` endRule) — a real, compounding, visible
+gap on both counts.
+
+New `usesContourCenterline(pattern)` (editor-lattice-pattern.js) declares, once, exactly when this applies: a
+generated silhouette whose contour is shown. `_resolveBoundaryPrimitives` (app) and `shapeHalfInset` (manifest, T71)
+both force zero inset in that case; `computePattern` forces `endRule:'on-boundary'` (an EXISTING, already-tested
+rule — "the crossing point IS the final endpoint," never built before because nothing needed it) instead of the
+default `'inset'`. Rail/tie centerlines now reach the contour's own centerline exactly, deliberately overlapping its
+stroke ("the slot caps then overlap the contour slot," Fred's own words) rather than stopping short. "Contour
+checkbox OFF: keep today's behaviour" per the amend — untouched.
+
+**Self-caught bug, before committing:** the fix's own zero-inset case exposed a pre-existing, previously-masked
+precision asymmetry between app and manifest. Both sides round-trip contour coordinates through a `d`-string when
+insetting by a POSITIVE amount (the app via its drawn segments' own already-string-rounded `d` attrs;
+the manifest via `primitivesToPathD`) — but the manifest's own `resolveShapeBoundaryExtent` had a
+`halfInset > 0 ? ... : primitives` shortcut that used FULL double-precision primitives directly whenever inset was
+exactly 0, while the app's own equivalent path (`insetGeneratedPresetPathDToPrimitives`'s own `strokeHalfWidth<=0`
+branch) still reparses from a string even at zero inset. The two sides only disagreed by ~0.001in — invisible
+normally, but enough to flip whether a rail/tie piece exists at all right at a razor's-edge extreme param. Caught by
+running the FULL test suite immediately (not just the new geometry test): 108 failures, every one at a deep-waist-
+style extreme in the T72 AMEND 5 sweep. Fixed by removing the manifest's own shortcut — it now always round-trips
+through the same `d`-string path the app structurally always has to (its geometry lives in DOM string attributes;
+there is no way for it to be more precise than that).
+
+**Also superseded** T72 SE14c's own "contour.show toggle changes nothing about the lattice fill" invariant, which
+this amend explicitly overrides for the ON case (a wider boundary now genuinely fits more pieces) — updated the 2
+tests that asserted ON===OFF to assert the intended new relationship (ON >= OFF, strictly more somewhere) instead,
+and repointed one T66 regression fixture (a specific historical degenerate-piece case, unrelated to this amend) at
+`contour.show:false` so it keeps reproducing the exact geometry it always has.
+
+New `tests/shape-lattice-rails-on-contour.test.js`: an independent point-on-line/point-on-arc oracle (no re-use of
+production crossing code) confirms every rail's own two ends land within ~1e-3in (the contour's own known
+`_fmt`-rounding ceiling, not exact double precision) of the RAW contour primitives, on the dense vertical hourglass
+(12 rails, the amend's own named case) and the bottle — plus a non-vacuous baseline proving a real, larger gap
+exists with the contour hidden (so the ON case is a genuine change, not always-true regardless of the toggle).
+Rendered and viewed both shapes: rails now visibly reach and overlap the contour, correctly splitting into 2 pieces
+where a rail crosses the hourglass waist twice (AMEND 3b's own "vertical rails through the waist" case — the
+existing multi-span architecture handled the SPLIT for free once the boundary/endRule fix landed; only the
+CONSTRAINT side of that case is still open, see below).
+
+**Deferred to a follow-up commit** (explicitly staged, matching this project's own "land what's solid, commit, then
+continue" precedent for oversized asks): the Coincident CONSTRAINT declaration in the manifest (wiring each
+contour-touching rail/tie end to its specific `segN`) — this commit is the geometry only. AMEND 3b's own edge cases
+(near-tangent grazes dropped below a declared minimum, an end exactly at a segment JOINT constraining to one segN
+only, not two point-on-curves) and AMEND 3c (Collinear + `railGroup` membership between same-rail split pieces) are
+also queued there, since they're refinements of the same constraint-emission work, not the geometry.
+
+Verify: 1214/1214 vitest, 151/151 pytest. Amendments polled clean before commit. Commit dc3c984, pushed. NO FUSION.
+
+## T73 AMEND 4 — round caps/joins on every drawn contour element
+
+Fred, live screenshot: "these corners need to be rounded since they are slots." Declared once
+(`CONTOUR_STROKE_STYLE`, editor-lattice-boundary.js — the same neutral home `SILHOUETTE_STROKE_WIDTH`/
+`CONTOUR_SIZE_INSET_IN` already use): `{linecap:'round', linejoin:'round'}`, applied to BOTH drawn contour element
+kinds — the SE14b per-segment elements (already had `linecap` alone; now the shared full style) and the Border
+clone (previously had neither). Root cause, found before touching anything: the Border clone is a SINGLE combined
+closed-loop path (`joinSegmentPathsIntoClosedD`) with a real internal vertex at every contour segment joint — unlike
+the per-segment elements (each a lone L or A, no internal joint of its own) — so a default miter join there
+genuinely does show as a sharp/pointed corner on a thick stroke, exactly the reported symptom; `linejoin` is a
+no-op on the per-segment elements specifically, but applying the identical full style everywhere avoids reasoning
+about which attribute matters at which call site for one declared constant.
+
+Tests confirm every contour segment and the Border clone both carry `stroke-linecap=round`/`stroke-linejoin=round`.
+Rendered and viewed a 0.5in-stroke hourglass and bottle: corners are now visibly rounded.
+
+Verify: 1216/1216 vitest, 151/151 pytest. Amendments polled clean before commit. Commit 263c645, pushed. NO FUSION.
+
