@@ -1249,13 +1249,16 @@
    in the panel. Covers ALL SIX Nodes checkboxes (box Lattice + T58's
    Shape Lattice, which never got the box Lattice's own touch-enlargement
    pass at all — 16px inline, unfixed until now) plus Shape Lattice's own
-   Border checkbox; the box Lattice's OWN `#latticeBorderEnabled` no
+   Contour checkbox; the box Lattice's OWN `#latticeBorderEnabled` no
    longer exists in the DOM (T58 moved Border to Shape Lattice entirely),
-   so that dead selector is dropped rather than carried forward. */
+   so that dead selector is dropped rather than carried forward. T74
+   AMEND 1 retired Shape Lattice's own separate `#shapeLatticeBorderEnabled`
+   too (merged into `#shapeLatticeContourShow`), so the selector below
+   follows the same checkbox under its new id. */
 @media (pointer: coarse) {
     #latticeNodesEnds, #latticeNodesCrossings, #latticeNodesRailEnds,
     #shapeLatticeNodesEnds, #shapeLatticeNodesCrossings, #shapeLatticeNodesRailEnds,
-    #shapeLatticeBorderEnabled {
+    #shapeLatticeContourShow {
         width: 24px !important;
         height: 24px !important;
     }
@@ -1265,7 +1268,7 @@
     label:has(> #shapeLatticeNodesEnds),
     label:has(> #shapeLatticeNodesCrossings),
     label:has(> #shapeLatticeNodesRailEnds),
-    label:has(> #shapeLatticeBorderEnabled) {
+    label:has(> #shapeLatticeContourShow) {
         height: 44px !important;
     }
 }

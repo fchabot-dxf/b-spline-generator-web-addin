@@ -14,7 +14,7 @@
  * emit/update the ONE linked silhouette `<path>` (§6: in-place `d` update
  * when this tool already owns the link, a fresh element + a fresh
  * `stampBoundaryRef` when it doesn't — e.g. the very first Generate);
- * (2) the Fill/Boundary/Ending/Border sections are the SAME fields the
+ * (2) the Fill/Boundary/Ending/Contour sections are the SAME fields the
  * box Lattice panel used to carry for Boundary mode, now living here
  * instead (T58's own "the box # Lattice loses its Boundary row").
  */
@@ -187,16 +187,17 @@ export function regenerateSilhouette(editor, p) {
     const { primitives, segments } = generateSilhouette(region, shape);
 
     const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
-    // T73: "stroke = the contour's width (auto = lattice stroke width,
-    // T72 item 6)" — the contour's OWN drawn width is now widths.rails
-    // (the SAME value rails/ties/the manifest's stroke_width already use),
-    // replacing the old fixed SILHOUETTE_STROKE_WIDTH hairline. See
-    // editor-sketch-manifest.js's own shapeHalfInset, updated in lockstep
-    // so the lattice-fill's own default (Border-off) inset amount still
-    // agrees between the app and the manifest.
-    const contourWidth = widths.rails;
-    const contourColor = ({ ...PATTERN_DEFAULTS.colors, ...p.colors }).contour;
     p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
+    // T73: "stroke = the contour's width (auto = lattice stroke width,
+    // T72 item 6)" — the contour's OWN drawn width defaults to widths.rails
+    // (the SAME value rails/ties/the manifest's stroke_width already use),
+    // replacing the old fixed SILHOUETTE_STROKE_WIDTH hairline. T74 AMEND 1:
+    // `p.contour.width` (was `boundary.border.width`) is an explicit
+    // override when set. See editor-sketch-manifest.js's own
+    // shapeHalfInset, updated in lockstep so the lattice-fill's own default
+    // inset amount still agrees between the app and the manifest.
+    const contourWidth = p.contour.width != null ? p.contour.width : widths.rails;
+    const contourColor = ({ ...PATTERN_DEFAULTS.colors, ...p.colors }).contour;
     const contourShow = p.contour.show !== false;
 
     const reuseExisting = shape.source === 'generated' && p.boundary && p.boundary.shapeId;
@@ -539,9 +540,17 @@ export function initShapeLatticeProperties(editor) {
     const fillSeedEl = el('shapeLatticeSeed');
     const detachAllBtn = el('shapeLatticeDetachAll');
 
-    // ── Boundary / Ending / Border (moved here from the box Lattice
+    // ── Boundary / Ending / Contour (moved here from the box Lattice
     //    panel — no Board/Shape toggle: this tool is ALWAYS boundary
-    //    mode). ────────────────────────────────────────────────────────
+    //    mode). T74 AMEND 1 (Fred: "if draw boundary is off I shouldn't
+    //    see it at all"): the old separate "show contour" checkbox
+    //    (SE14c) and the Border section's own "draw boundary" checkbox
+    //    were two independent on/off switches for what reads as ONE
+    //    thing; merged into the ONE `shapeLatticeContourShow` checkbox +
+    //    `shapeLatticeContourWidth` width field below (colour stays the
+    //    Colors row's own `shapeLatticeColorContour` swatch, never
+    //    duplicated here). The separate Border section's own enabled/
+    //    color/color-auto controls are RETIRED along with it. ──────────
     const boundaryStatusEl = el('shapeLatticeBoundaryStatus');
     const endRuleEl = el('shapeLatticeEndRule');
     // T72 (SE14c): show/hide the contour's own drawn segments (rails/ties
@@ -549,10 +558,7 @@ export function initShapeLatticeProperties(editor) {
     // wired for an IMMEDIATE effect (below), not deferred to Generate,
     // since toggling it changes nothing about the fill geometry itself.
     const contourShowEl = el('shapeLatticeContourShow');
-    const borderEnabledEl = el('shapeLatticeBorderEnabled');
-    const borderWidthEl = el('shapeLatticeBorderWidth');
-    const borderColorEl = el('shapeLatticeBorderColor');
-    const borderColorAutoEl = el('shapeLatticeBorderColorAuto');
+    const contourWidthEl = el('shapeLatticeContourWidth');
 
     if (spacingEl) {
         spacingEl.innerHTML = '';
@@ -747,22 +753,19 @@ export function initShapeLatticeProperties(editor) {
         const boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary };
         if (boundaryStatusEl) boundaryStatusEl.textContent = boundary.shapeId ? 'Shape linked' : 'No shape picked';
         setEndRule(boundary.endRule);
-        if (contourShowEl) contourShowEl.checked = ({ ...PATTERN_DEFAULTS.contour, ...p.contour }).show !== false;
-        const border = { ...PATTERN_DEFAULTS.boundary.border, ...boundary.border };
-        if (borderEnabledEl) borderEnabledEl.checked = !!border.enabled;
-        if (borderWidthEl) borderWidthEl.value = border.width == null ? '' : border.width;
-        if (borderColorEl) borderColorEl.style.background = border.color || '#ffffff';
-        if (borderColorAutoEl) borderColorAutoEl.classList.toggle('active', border.color == null);
+        const contour = { ...PATTERN_DEFAULTS.contour, ...p.contour };
+        if (contourShowEl) contourShowEl.checked = contour.show !== false;
+        if (contourWidthEl) contourWidthEl.value = contour.width == null ? '' : contour.width;
 
         syncGenerateLabel();
     }
 
-    /** The Fill/Boundary/Ending/Border half of the pattern, read from the
+    /** The Fill/Boundary/Ending/Contour half of the pattern, read from the
      *  panel into `p` — the SAME shape properties-lattice.js's own
      *  readFieldsIntoPattern has, minus Board/Shape (this tool is ALWAYS
-     *  boundary mode — `p.extent`/`p.boundary.endRule`/`.border` are
-     *  ALWAYS written here, unlike box Lattice's own version, which now
-     *  leaves them untouched). `p.shape.*` is NOT read here — the Shape
+     *  boundary mode — `p.extent`/`p.boundary.endRule`/`p.contour.width`
+     *  are ALWAYS written here, unlike box Lattice's own version, which
+     *  now leaves them untouched). `p.shape.*` is NOT read here — the Shape
      *  section writes it immediately, on its own field changes (see
      *  `_regenerateSilhouetteAndFill` above), not deferred to Generate. */
     function readFieldsIntoPattern() {
@@ -822,13 +825,17 @@ export function initShapeLatticeProperties(editor) {
             ...PATTERN_DEFAULTS.boundary,
             ...p.boundary,
             endRule: endRuleEl ? getEndRule() : (p.boundary?.endRule ?? PATTERN_DEFAULTS.boundary.endRule),
-            border: {
-                ...PATTERN_DEFAULTS.boundary.border,
-                ...p.boundary?.border,
-                enabled: borderEnabledEl ? !!borderEnabledEl.checked : (p.boundary?.border?.enabled ?? false),
-                width: borderWidthEl && borderWidthEl.value !== '' ? parseFloat(borderWidthEl.value) : null,
-                color: p.boundary?.border?.color ?? null,
-            },
+        };
+        // T74 AMEND 1: the ONE contour width (replaces the retired
+        // `boundary.border.width`) — `contourShowEl`'s own immediate-effect
+        // handler (below) already writes `p.contour.show` directly, so it
+        // is read back here rather than re-derived, matching every other
+        // field in this function that preserves an already-written value
+        // when its own element is absent.
+        p.contour = {
+            ...PATTERN_DEFAULTS.contour,
+            ...p.contour,
+            width: contourWidthEl && contourWidthEl.value !== '' ? parseFloat(contourWidthEl.value) : null,
         };
         return p;
     }
@@ -844,32 +851,6 @@ export function initShapeLatticeProperties(editor) {
                 recolorOwnedKind(editor, getActiveLayer(editor), kind, hex);
             });
         });
-    }
-    function wireBorderColorSwatch(btnEl, autoEl) {
-        if (!btnEl) return;
-        on(btnEl, 'click', (e) => {
-            e.stopPropagation();
-            const p = currentPattern(editor);
-            openColorMosaic(btnEl, (hex) => {
-                p.boundary = {
-                    ...PATTERN_DEFAULTS.boundary, ...p.boundary,
-                    border: { ...PATTERN_DEFAULTS.boundary.border, ...p.boundary?.border, color: hex },
-                };
-                btnEl.style.background = hex;
-                if (autoEl) autoEl.classList.remove('active');
-            });
-        });
-        if (autoEl) {
-            on(autoEl, 'click', () => {
-                const p = currentPattern(editor);
-                p.boundary = {
-                    ...PATTERN_DEFAULTS.boundary, ...p.boundary,
-                    border: { ...PATTERN_DEFAULTS.boundary.border, ...p.boundary?.border, color: null },
-                };
-                btnEl.style.background = '#ffffff';
-                autoEl.classList.add('active');
-            });
-        }
     }
     function wireWidthStepper(inputEl, field, kind) {
         if (!inputEl) return;
@@ -1013,7 +994,24 @@ export function initShapeLatticeProperties(editor) {
     if (contourShowEl) {
         on(contourShowEl, 'change', async () => {
             const p = currentPattern(editor);
-            p.contour = { show: !!contourShowEl.checked };
+            // T74 AMEND 1: spread the EXISTING contour object rather than
+            // replacing it outright — `width` and `segmentColors` must
+            // survive a plain checkbox toggle, not just `show`.
+            p.contour = { ...PATTERN_DEFAULTS.contour, ...p.contour, show: !!contourShowEl.checked };
+            await regenerateSilhouetteAndFill(editor);
+        });
+    }
+    // T74 AMEND 1: same IMMEDIATE write+redraw as the show checkbox above
+    // — the width field replaces the retired Border section's own width
+    // field, which had the same immediate-effect behavior.
+    if (contourWidthEl) {
+        on(contourWidthEl, 'change', async () => {
+            const p = currentPattern(editor);
+            p.contour = {
+                ...PATTERN_DEFAULTS.contour,
+                ...p.contour,
+                width: contourWidthEl.value !== '' ? parseFloat(contourWidthEl.value) : null,
+            };
             await regenerateSilhouetteAndFill(editor);
         });
     }
@@ -1043,7 +1041,6 @@ export function initShapeLatticeProperties(editor) {
     wireWidthStepper(widthNodesEl, 'nodeDiameter', 'nodes');
     wireLinkedWidthStepper();
     wireWidthLinkToggle();
-    wireBorderColorSwatch(borderColorEl, borderColorAutoEl);
 
     if (detachAllBtn) {
         on(detachAllBtn, 'click', () => {

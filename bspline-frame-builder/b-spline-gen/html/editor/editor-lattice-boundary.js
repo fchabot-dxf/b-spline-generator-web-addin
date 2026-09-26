@@ -42,7 +42,7 @@ const TAU = Math.PI * 2;
  *  already fixed for once: "a live browser test found a 0.5in board-wide
  *  stroke on a 0.5in rail pitch" — found again live once, this project's
  *  own history: a 0.5in default stroke on the silhouette's own pinched
- *  waist inset the boundary's own inner-fill cut (`_effectiveBorderWidth`/
+ *  waist inset the boundary's own inner-fill cut (`_effectiveContourWidth`/
  *  `edge:'inner-stroke'`, editor-lattice-pattern.js) far enough inward to
  *  leave ZERO room for any rail/tie at all — confirmed live (0 rails/0
  *  ties after Generate), not assumed from reading the code alone.

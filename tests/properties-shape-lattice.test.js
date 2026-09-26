@@ -1,14 +1,15 @@
 /**
  * T58 (SE14 Slice 3) — wires the Shape Lattice tool's own panel
  * (#editorShapeLatticePanel): Shape (preset/seed/params), Segments
- * (per-segment style + mirroring), and the Fill/Boundary/Ending/Border
+ * (per-segment style + mirroring), and the Fill/Boundary/Ending/Contour
  * section this tool now OWNS (moved here from properties-lattice.js's
  * own panel — "the box # Lattice loses its Boundary row"). Same
  * lightweight-but-real `_sketchLayer` mock shape as
  * tests/properties-lattice.test.js's own (so generatePattern/
  * generateSilhouette actually run, not stubs), extended with `.path()`
  * (the silhouette's own element kind, which the box-Lattice mock never
- * needed) and `.clone()` (generatePattern's own Border-piece branch).
+ * needed) and `.clone()` (SVG.js's own real API, mirrored here for parity
+ * with the other mocks in this test suite).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
@@ -176,10 +177,7 @@ function fixtureHTML() {
     <span id="shapeLatticeBoundaryStatus"></span>
     <div role="group" id="shapeLatticeEndRule"></div>
     <input id="shapeLatticeContourShow" type="checkbox" checked>
-    <input id="shapeLatticeBorderEnabled" type="checkbox">
-    <input id="shapeLatticeBorderWidth" type="number">
-    <button id="shapeLatticeBorderColor"></button>
-    <button id="shapeLatticeBorderColorAuto" class="editor-fillmode-btn active"></button>
+    <input id="shapeLatticeContourWidth" type="number">
   `;
 }
 
@@ -387,28 +385,12 @@ describe('initShapeLatticeProperties: Fill + Generate', () => {
     expect(activeLayerPattern(editor).boundary.endRule).toBe('loose');
   });
 
-  it('Border enabled/width checkboxes write PATTERN.boundary.border on Generate', async () => {
+  it('T74 AMEND 1: the Contour width field writes PATTERN.contour.width on Generate', async () => {
     initShapeLatticeProperties(editor);
-    document.getElementById('shapeLatticeBorderEnabled').checked = true;
-    document.getElementById('shapeLatticeBorderWidth').value = '0.1';
+    document.getElementById('shapeLatticeContourWidth').value = '0.1';
     document.getElementById('shapeLatticeGenerate').click();
     await flush();
-    const border = activeLayerPattern(editor).boundary.border;
-    expect(border.enabled).toBe(true);
-    expect(border.width).toBe(0.1);
-  });
-
-  it('the Border color swatch: picking a color sets an explicit override; clicking "auto" resets it to null', () => {
-    initShapeLatticeProperties(editor);
-    document.getElementById('shapeLatticeBorderColor').click();
-    const targetHex = '#1a237e';
-    document.querySelector(`.color-mosaic-cell[title="${targetHex}"]`).click();
-    expect(activeLayerPattern(editor).boundary.border.color).toBe(targetHex);
-    expect(document.getElementById('shapeLatticeBorderColorAuto').classList.contains('active')).toBe(false);
-
-    document.getElementById('shapeLatticeBorderColorAuto').click();
-    expect(activeLayerPattern(editor).boundary.border.color).toBeNull();
-    expect(document.getElementById('shapeLatticeBorderColorAuto').classList.contains('active')).toBe(true);
+    expect(activeLayerPattern(editor).contour.width).toBe(0.1);
   });
 });
 
@@ -464,7 +446,7 @@ describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () 
     cb.dispatchEvent(new Event('change'));
     await flush();
 
-    expect(activeLayerPattern(editor).contour).toEqual({ show: false, segmentColors: [] });
+    expect(activeLayerPattern(editor).contour).toEqual({ show: false, width: null, segmentColors: [] });
     expect(pathEl.attr('display')).toBe('none'); // SAME element, still live -- just hidden
   });
 
@@ -482,7 +464,7 @@ describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () 
     cb.checked = true;
     cb.dispatchEvent(new Event('change'));
     await flush();
-    expect(activeLayerPattern(editor).contour).toEqual({ show: true, segmentColors: [] });
+    expect(activeLayerPattern(editor).contour).toEqual({ show: true, width: null, segmentColors: [] });
     expect(pathEl.attr('display')).not.toBe('none');
   });
 });

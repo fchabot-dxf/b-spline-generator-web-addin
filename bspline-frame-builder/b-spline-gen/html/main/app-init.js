@@ -266,6 +266,58 @@ export const MIGRATIONS = [
       }
     },
   },
+  {
+    id: 'border-to-contour-width',
+    // T74 AMEND 1 (Fred: "if draw boundary is off I shouldn't see it at
+    // all"): the separate "Border" clone feature (`pattern.boundary.border
+    // = {enabled, width, color}`) is retired — its ONE surviving concept,
+    // width, moves to `pattern.contour.width` (colour was already
+    // redundant with `pattern.colors.contour`, dropped here, never
+    // migrated). The old "show contour" checkbox (`contour.show`) and
+    // Border's own "draw boundary" checkbox (`border.enabled`) become the
+    // ONE `contour.show` — since Border's clone was "the thing actually
+    // drawn" whenever it was on (even if the SE14b contour segments
+    // themselves were hidden), an enabled Border wins the merge so a
+    // saved document that used to show something visually keeps showing
+    // it. Same "gate on current shape" / data-editor-layers JSON
+    // round-trip convention as node-radius-to-diameter above.
+    when: (p) => {
+      if (!p.editorSvg) return false;
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return false;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        return Array.isArray(layers) && layers.some((l) => l && l.pattern && l.pattern.boundary
+          && l.pattern.boundary.border !== undefined);
+      } catch (_) {
+        return false;
+      }
+    },
+    apply: (p) => {
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        if (!Array.isArray(layers)) return;
+        layers.forEach((l) => {
+          const pat = l && l.pattern;
+          if (!pat || !pat.boundary || pat.boundary.border === undefined) return;
+          const border = pat.boundary.border || {};
+          const contour = pat.contour || {};
+          const mergedShow = !!border.enabled || contour.show !== false;
+          const mergedWidth = contour.width !== undefined
+            ? contour.width
+            : (border.width != null ? border.width : null);
+          pat.contour = { ...contour, show: mergedShow, width: mergedWidth };
+          delete pat.boundary.border;
+        });
+        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
+      } catch (e) {
+        console.warn('[migration] border-to-contour-width failed:', e);
+      }
+    },
+  },
 ];
 
 export function runMigrations(p = P) {

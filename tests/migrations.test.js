@@ -268,3 +268,92 @@ describe('runMigrations: node-radius-to-diameter', () => {
     expect(P.editorSvg).toBe(first);
   });
 });
+
+/**
+ * T74 AMEND 1 — border-to-contour-width. The separate "Border" clone
+ * feature (`.pattern.boundary.border = {enabled, width, color}`) is
+ * retired; its ONE surviving concept, width, becomes `.pattern.contour.
+ * width` (colour was already redundant with `.pattern.colors.contour`,
+ * dropped here). The merged on/off toggle is `.pattern.contour.show`:
+ * since an enabled Border was "the thing actually drawn" even when the
+ * SE14b contour segments themselves were hidden, an enabled old Border
+ * wins the merge, so a document that used to show something visually
+ * keeps showing it after migration.
+ */
+describe('runMigrations: border-to-contour-width', () => {
+  function editorSvgWithLayers(roster) {
+    const attr = JSON.stringify(roster).replace(/"/g, '&quot;');
+    return `<svg xmlns="http://www.w3.org/2000/svg" data-editor-layers="${attr}"></svg>`;
+  }
+  function rosterOf(p) {
+    const root = new DOMParser().parseFromString(p.editorSvg, 'image/svg+xml').documentElement;
+    return JSON.parse(root.getAttribute('data-editor-layers'));
+  }
+
+  it('Border ON with an explicit width becomes contour.width, contour.show forced true, boundary.border removed', () => {
+    const P = {
+      editorSvg: editorSvgWithLayers([{
+        id: '0', name: 'Layer 1',
+        pattern: { boundary: { border: { enabled: true, width: 0.3, color: '#ff0000' } }, contour: { show: false, segmentColors: [] } },
+      }]),
+    };
+    runMigrations(P);
+    const pat = rosterOf(P)[0].pattern;
+    expect(pat.contour.width).toBe(0.3);
+    expect(pat.contour.show).toBe(true); // Border was the thing actually drawn -- wins the merge
+    expect(pat.contour.segmentColors).toEqual([]); // untouched, non-border fields survive
+    expect(pat.boundary.border).toBeUndefined();
+  });
+
+  it('Border OFF with contour.show already true: stays shown, width stays auto (null)', () => {
+    const P = {
+      editorSvg: editorSvgWithLayers([{
+        id: '0', name: 'Layer 1',
+        pattern: { boundary: { border: { enabled: false, width: null, color: null } }, contour: { show: true } },
+      }]),
+    };
+    runMigrations(P);
+    const pat = rosterOf(P)[0].pattern;
+    expect(pat.contour.width).toBeNull();
+    expect(pat.contour.show).toBe(true);
+    expect(pat.boundary.border).toBeUndefined();
+  });
+
+  it('Border OFF with contour.show already false: nothing was visibly drawn before, stays hidden', () => {
+    const P = {
+      editorSvg: editorSvgWithLayers([{
+        id: '0', name: 'Layer 1',
+        pattern: { boundary: { border: { enabled: false, width: null, color: null } }, contour: { show: false } },
+      }]),
+    };
+    runMigrations(P);
+    const pat = rosterOf(P)[0].pattern;
+    expect(pat.contour.show).toBe(false);
+    expect(pat.boundary.border).toBeUndefined();
+  });
+
+  it('a layer with no boundary.border at all (already-current shape) is left untouched, no throw', () => {
+    const P = { editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { contour: { show: true, width: 0.2, segmentColors: [] } } }]) };
+    expect(() => runMigrations(P)).not.toThrow();
+    expect(rosterOf(P)[0].pattern.contour).toEqual({ show: true, width: 0.2, segmentColors: [] });
+  });
+
+  it('a layer with no pattern (a plain non-lattice layer) is left untouched, no throw', () => {
+    const P = { editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1' }]) };
+    expect(() => runMigrations(P)).not.toThrow();
+    expect(rosterOf(P)[0].pattern).toBeUndefined();
+  });
+
+  it('is idempotent — running twice does not change the result', () => {
+    const P = {
+      editorSvg: editorSvgWithLayers([{
+        id: '0', name: 'Layer 1',
+        pattern: { boundary: { border: { enabled: true, width: 0.3, color: '#ff0000' } }, contour: { show: false } },
+      }]),
+    };
+    runMigrations(P);
+    const first = P.editorSvg;
+    runMigrations(P);
+    expect(P.editorSvg).toBe(first);
+  });
+});

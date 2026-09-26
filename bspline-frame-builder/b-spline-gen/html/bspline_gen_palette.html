@@ -2141,21 +2141,27 @@
               </div>
             </div>
 
-            <!-- T58: this tool's own Boundary/Ending/Border section — moved
-                 from the box Lattice panel, minus the Board/Shape toggle
-                 (this tool is ALWAYS boundary mode). SE14d (Fred: "boundary
-                 pick shape isn't useful, it might just be another tool")
-                 removed the "Pick shape…" button that used to let it fill a
-                 HAND-drawn shape instead of the generated one (T49
-                 mechanism) — the underlying boundary machinery stays, since
-                 the GENERATED silhouette runs through the exact same code;
-                 a saved pattern with an old hand-picked boundary still
-                 loads and fills correctly, just with no UI to create a new
-                 one. `shapeLatticeBoundaryStatus` stays: regenerateSilhouette
-                 and syncFieldsFromPattern both still report "Shape linked"
-                 once Generate has run. -->
+            <!-- T58: this tool's own Boundary/Ending section — moved from
+                 the box Lattice panel, minus the Board/Shape toggle (this
+                 tool is ALWAYS boundary mode). SE14d removed the "Pick
+                 shape…" button (the underlying boundary machinery stays,
+                 since the GENERATED silhouette runs through the exact same
+                 code). T74 AMEND 1 (Fred: "if draw boundary is off I
+                 shouldn't see it at all"): the OLD "show contour" checkbox
+                 (SE14c) and the separate "Border" section's own "draw
+                 boundary" checkbox were two independent on/off switches for
+                 what reads as ONE thing — turning Border off left the
+                 SE14b contour segments themselves still visible. Merged
+                 into ONE declared control below: the checkbox, the ended
+                 width row is now the CONTOUR's own width (auto = lattice
+                 stroke width; the Colors row's own existing Contour swatch,
+                 unchanged, still sets its colour — never duplicated here).
+                 Section kept titled "Contour" (was "Boundary") so seat A's
+                 own title-based TOOL_PANEL_MOUNTS tint on main still
+                 applies. `shapeLatticeBoundaryStatus` stays: it reports
+                 "Shape linked" independent of this toggle. -->
             <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Boundary</span>
+              <span style="font-weight:600;">Contour</span>
               <span id="shapeLatticeBoundaryStatus" style="font-size:10px; color:#666;"></span>
             </div>
 
@@ -2167,32 +2173,12 @@
                  read/written changed (whichever button has .active). -->
             <div role="group" class="segmented-group" id="shapeLatticeEndRule" style="height:26px;"></div>
 
-            <!-- T72 (SE14c, Fred: "I'd want a checkbox for the actual
-                 contour, I still want rails and ties to be contoured but
-                 sometimes don't want the contour profile"): OFF still
-                 computes/clips against the contour exactly as ON does —
-                 only its own drawn segments/manifest entities disappear. -->
             <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-              <input id="shapeLatticeContourShow" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> show contour
+              <input id="shapeLatticeContourShow" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> Contour
             </label>
-
-            <div style="display:flex; flex-direction:column; gap:4px;">
-              <span style="font-weight:600;">Border</span>
-              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-                <input id="shapeLatticeBorderEnabled" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> draw boundary
-              </label>
-              <div style="display:flex; gap:6px;">
-                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
-                  <input id="shapeLatticeBorderWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-                </label>
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">color
-                  <div style="display:flex; gap:4px; width:100%;">
-                    <button id="shapeLatticeBorderColor" type="button" title="Border color" aria-label="Border color" aria-haspopup="true" aria-expanded="false" style="flex:1; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
-                    <button id="shapeLatticeBorderColorAuto" type="button" class="editor-fillmode-btn active" title="Inherit the boundary shape's own stroke" style="height:22px; font-size:9px; padding:0 4px;">auto</button>
-                  </div>
-                </label>
-              </div>
-            </div>
+            <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">width
+              <input id="shapeLatticeContourWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+            </label>
 
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Fill seed</span>

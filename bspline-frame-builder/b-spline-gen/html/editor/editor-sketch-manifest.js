@@ -792,30 +792,30 @@ function resolveBoardExtent(pattern, region) {
 // — this WORK-LOG's own T61 entry had already disclosed this exact gap
 // as "a real, named follow-up, not built this turn"; now built): the
 // SAME half-inset the app's own drawing applies before clipping the
-// lattice fill (`_effectiveBorderWidth` + `boundary.edge`, editor-
+// lattice fill (`_effectiveContourWidth` + `boundary.edge`, editor-
 // lattice-pattern.js's own `_resolveBoundaryPrimitives`) — DOM-free here,
 // since a GENERATED shape's own drawn boundary element(s) are ALWAYS
 // stroked at `widths.rails` (T73: `regenerateSilhouette`'s per-segment
-// contour width, "auto = lattice stroke width" per T72 item 6) regardless
-// of whether the separate Border FEATURE is enabled; the only way this
-// differs from what a live element's own stroke-width would report is an
-// EXPLICIT `boundary.border.width` override, which is plain DATA already
+// contour width, "auto = lattice stroke width" per T72 item 6); the only
+// way this differs from what a live element's own stroke-width would
+// report is an EXPLICIT `contour.width` override (T74 AMEND 1, replaces
+// the retired `boundary.border.width`), which is plain DATA already
 // available here, no DOM read needed for it either.
 function shapeHalfInset(pattern) {
   // T73 AMEND 3 (Fred: "I need rails to coincide to contour"): a shown
   // contour clips the lattice fill to the contour's own RAW centerline —
   // see usesContourCenterline's own doc comment (editor-lattice-
-  // pattern.js) for why this is unconditional (never Border-width-gated)
-  // and why "contour hidden" alone keeps today's inset behavior below.
+  // pattern.js) for why this is unconditional (never gated on the
+  // now-retired Border feature) and why "contour hidden" alone keeps
+  // today's inset behavior below.
   if (usesContourCenterline(pattern)) return 0;
   const boundary = { ...PATTERN_DEFAULTS.boundary, ...(pattern.boundary || {}) };
   const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
   if (edge === 'centerline') return 0;
   const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
-  const borderWidth = (boundary.border && boundary.border.enabled && boundary.border.width != null)
-    ? boundary.border.width
-    : widths.rails;
-  return borderWidth / 2;
+  const contour = { ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) };
+  const contourWidth = contour.width != null ? contour.width : widths.rails;
+  return contourWidth / 2;
 }
 
 // Mirrors `_resolveExtent`'s own 'boundary' branch, fed the silhouette's

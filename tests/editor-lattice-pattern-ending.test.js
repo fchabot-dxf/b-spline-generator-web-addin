@@ -1,10 +1,12 @@
 /**
  * SE13 Slice 3 (T49) — two pure-logic pieces of computePattern's boundary
  * mode: the "fix first" edge-collinear-row product decision (a boundary
- * edge drawn exactly on a snapped grid line must not silently vanish,
- * unless the Border piece already draws that same edge), and §5's
- * ending-rule table (on-boundary / inset / joint / loose, loose's own
- * degrade-to-inset case).
+ * edge drawn exactly on a snapped grid line must not silently vanish) and
+ * §5's ending-rule table (on-boundary / inset / joint / loose, loose's own
+ * degrade-to-inset case). T74 AMEND 1: "fix first" used to be gated off
+ * whenever the (now-retired) Border piece already drew that same edge
+ * itself, to avoid a double stroke -- Border is gone, so the edge-
+ * collinear row/column is now ALWAYS kept, unconditionally.
  */
 import { describe, it, expect } from 'vitest';
 import { computePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
@@ -34,7 +36,7 @@ describe('computePattern: "fix first" -- an edge-collinear rail/tie must not sil
     boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' }, // isolate from the inset pull-back
   };
 
-  it('Border OFF (default): the jMin/jMax rail rows and iMin/iMax tie columns are KEPT, spanning the full edge', () => {
+  it('the jMin/jMax rail rows and iMin/iMax tie columns are KEPT, spanning the full edge', () => {
     const { segments } = computePattern(basePattern, {
       extent: { iMin, jMin, iMax, jMax, mode: 'boundary', primitives },
     });
@@ -53,33 +55,10 @@ describe('computePattern: "fix first" -- an edge-collinear rail/tie must not sil
     expect(rightTie).toBeDefined();
   });
 
-  it('Border ON: the SAME edge-collinear rail/tie is dropped instead (the Border piece already draws that line -- no double stroke)', () => {
-    const pattern = {
-      ...basePattern,
-      boundary: { ...basePattern.boundary, border: { enabled: true, width: null, color: null } },
-    };
-    const { segments } = computePattern(pattern, {
-      extent: { iMin, jMin, iMax, jMax, mode: 'boundary', primitives },
-    });
-    const rails = segments.filter((s) => s.kind === 'rail');
-    expect(rails.find((s) => s.a.j === jMin)).toBeUndefined();
-    expect(rails.find((s) => s.a.j === jMax)).toBeUndefined();
-
-    const ties = segments.filter((s) => s.kind === 'tie');
-    expect(ties.find((s) => s.a.i === iMin)).toBeUndefined();
-    expect(ties.find((s) => s.a.i === iMax)).toBeUndefined();
-  });
-
-  it('an INTERIOR rail row (not collinear with any edge) is present and unaffected by the Border toggle either way', () => {
-    const off = computePattern(basePattern, { extent: { iMin, jMin, iMax, jMax, mode: 'boundary', primitives } });
-    const on = computePattern(
-      { ...basePattern, boundary: { ...basePattern.boundary, border: { enabled: true, width: null, color: null } } },
-      { extent: { iMin, jMin, iMax, jMax, mode: 'boundary', primitives } },
-    );
-    const interiorOff = off.segments.filter((s) => s.kind === 'rail' && s.a.j === 4);
-    const interiorOn = on.segments.filter((s) => s.kind === 'rail' && s.a.j === 4);
-    expect(interiorOff).toEqual(interiorOn);
-    expect(interiorOff.length).toBeGreaterThan(0);
+  it('an INTERIOR rail row (not collinear with any edge) is present alongside the kept edge rows', () => {
+    const { segments } = computePattern(basePattern, { extent: { iMin, jMin, iMax, jMax, mode: 'boundary', primitives } });
+    const interior = segments.filter((s) => s.kind === 'rail' && s.a.j === 4);
+    expect(interior.length).toBeGreaterThan(0);
   });
 });
 
