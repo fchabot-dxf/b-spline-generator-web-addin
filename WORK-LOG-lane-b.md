@@ -9455,3 +9455,35 @@ not just a UI relabel.
 
 Verify: 1252/1252 vitest, 40/40 pytest (untouched by this item, still green). Commit 95dfd82, pushed. NO FUSION this
 whole turn.
+
+## T75 item 2 — LAT-SIZE Fusion: verify contour_width/height derive from pattern.size; decide + log Box Lattice's own export
+
+**Verification.** Item 1's own plumbing already threaded `pattern.size` through to `manifestFromShape`'s own
+`contour_width`/`contour_height` parameter VALUES (via `contourRegion = sizedBoardRegion(region, pattern.size)`,
+editor-sketch-manifest.js), and an existing test already covered the AUTO case (7x9 board, no explicit size, comes
+out to 6x8 — "a new pattern gives board - 1in", exactly the advisor's own spec). What was missing was the EXPLICIT-
+size case itself. Added two: a `pattern.size = {width:3, height:4}` case (asserts the params land on the DECLARED
+size, explicitly checked as genuinely different from the 6x8 auto default, not just "some value"), and a per-axis
+case (`{width:3, height:null}`) confirming the OTHER axis keeps its own independent auto fallback rather than the
+whole size object being all-or-nothing.
+
+**Decision (logged here, not escalated).** The dispatch's own text flagged this as a "decide + log" item, not a
+"decide + log OR escalate" one — a materially different risk shape from item 1's own margin/size unification (that
+one could silently resize EXISTING saved files, this one is purely additive: whether to add a NEW, never-before-
+existing Fusion parameter). Box Lattice's fill area already honors `pattern.size` for its own PLACEMENT math
+(`resolveBoardExtent`'s own `sizedBoardRegion` call, same as everything else in item 1) — the open question was only
+whether to ALSO export a matching `lattice_width`/`lattice_height` parameter to Fusion, the way Shape Lattice exports
+`contour_width`/`contour_height`.
+
+Decided **no**. `contour_width`/`contour_height` exist because they drive a REAL Distance dimension on a REAL
+entity — the contour outline's own two extreme corners (T71). Box Lattice has no equivalent single entity
+representing its own fill boundary at all; every rail and tie is already its own independently-dimensioned piece,
+with no shared "outer rectangle" entity a width/height parameter could attach to. Declaring the parameter anyway
+would leave it completely inert in Fusion's own parameter table — editable there, but wired to nothing, changing
+it would do nothing. Logged as a one-line code comment at the exact branch point (editor-sketch-manifest.js, right
+above the `hasShape ? resolveShapeBoundaryExtent(...) : resolveBoardExtent(...)` split) so a future reader asking
+"why does only one branch export a size parameter" finds the answer in place, not just in this log. If Box Lattice
+ever needs Fusion-side size editing to match Shape Lattice's own, that's a real feature request needing its own
+dimensioned construction rectangle first, not implied by this housekeeping item.
+
+Verify: 1254/1254 vitest, 40/40 pytest. Commit 0bd50e2, pushed. NO FUSION this whole turn.
