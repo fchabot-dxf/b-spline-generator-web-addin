@@ -814,5 +814,4 @@ Plan (default = slot chain, Fred: "some of it is already slot parts" / "slot has
 segments = center-to-center slots, shoulder/waist/hip = 3-point arc slots, centerline END points anchored, widths =
 border_width (or stroke_width), joints = separate points + explicit Coincident + Tangent on the centerlines, a vertical
 construction line + Symmetry for left/right, a few named params (waist_depth, waist_height, corner_radius).
-Open: slot joints OVERLAP (fine for a carved groove; for a resin-inlay POCKET a single closed-loop Offset band is
-cleaner) — ask Fred which use dominates before choosing the alternative. After T64.
+DECIDED (Fred: "it can be separate slot parts"): slot chain, overlapping joints accepted; no closed-loop offset. After T64.
