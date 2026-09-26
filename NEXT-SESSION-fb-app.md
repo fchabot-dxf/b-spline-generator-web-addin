@@ -1,20 +1,17 @@
-# NEXT (fb-app) — F3: fix FB-ORDER's missed solid features + S1 (generated frame-defs.json)
+# NEXT (fb-app) — F4: FB-FIX — two live Frame Builder bugs + "board too small" warning
 
-**Ball: worker (seat C) · epoch 1 · F3.** F2 (1615d59) accepted. Fusion still ALLOWED for you only (same hygiene rules as
-F2: scratch doc, never touch/save Fred's design, purge sys.path/modules you add). PROGRESS automatic ("F3 item N: …").
-Screenshots → C:\Users\danse\.bspline-status\shots\seatC\.
+**Ball: worker (seat C) · epoch 1 · F4.** F3 (c060eaf) accepted. Spec: ROADMAP.md on main "FB-FIX". PROGRESS automatic
+("F4 item N: …"). FUSION: NOT yet — do items 1-3 with the shim first; ask the advisor for a Fusion window for item 4
+(Fred may be using Fusion). GATE 3.2 (shape handles) is with Fred — don't build handles.
 
 ## Checklist
-- [ ] [F3-item-1] FB-ORDER bug you measured: the frame block move misses the SOLID features (extrudes/trim). Fix in
-      frame-builder/fb_engine/timeline_order.py (+ its Fusion glue) so occurrence + sketches + planes + extrudes + trim move
-      as ONE unit in order; any canReorder refusal -> move nothing + warn (existing rule). Unit test in the shim + verify
-      live in a scratch doc (screenshot the timeline before/after). NOTE: this file is also on main (seat A doesn't touch
-      it); your fix lands on main when fb-app merges — keep the change self-contained.
-- [ ] [F3-item-2] S1: declare FRAME_REGIONS / FRAME_FEATURES in the templates' own data (template_data.py), a generator
-      tools/gen_frame_defs.py -> frame-defs.json (templates, params with units/defaults, features, appearance options =
-      the 5 woods with Ash default, frame_height_offset = frame-bottom Z position, 'none' = default frame).
-- [ ] [F3-item-3] template_catalog.py (no consumers, your gate): if it's the natural template list, make it the
-      generator's source; otherwise delete it as a sweep. State which + why in the WORK-LOG.
-- [ ] [F3-item-4] Tests: freshness (frame-defs.json == generator output), schema, declaration (every template has its
-      regions/features), red on a renamed id; mutation check.
-Commit by path, push origin fb-app, pass back from the fb-app root with handoff.py pass --to advisor.
+- [ ] [F4-item-1] resolve_val: unit-suffixed values ('0.75 in', '19 mm') resolve correctly via ONE declared resolver
+      (Fusion expression/unit evaluation when available; a tested parser in the shim); never silently 0 — a failed
+      resolve is an error the build reports.
+- [ ] [F4-item-2] addOffset2: fix the call (correct curve collection type/API) so the offset for sketch 1/3 is
+      PARAMETRIC (driven by frame_thickness); keep the non-parametric fallback only as a reported, logged last resort.
+- [ ] [F4-item-3] "Board too small for this frame": declared check (safe-zone < 2 x frame_thickness -> 0 bars) surfaced
+      as a clear warning (engine log + a value the app can show); unit tests incl. the 5.51x1.97 golden.
+- [ ] [F4-item-4] (Fusion window, ask first) verify live: '0.75 in' resolves; changing frame_thickness in Fusion
+      updates the frame; re-record the 4 healthy goldens if anything moved.
+Commit by path, push origin fb-app, pass back from the fb-app root.
