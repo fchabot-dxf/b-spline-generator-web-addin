@@ -34,6 +34,30 @@ export function sampleOutline(primitives, arcSteps = 12) {
   return pts;
 }
 
+const _primLength = (p) => (p.type === 'L'
+  ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y)
+  : Math.abs(p.dTheta) * p.rx);
+const _primPoint = (p, t) => (p.type === 'L'
+  ? { x: p.p0.x + (p.p1.x - p.p0.x) * t, y: p.p0.y + (p.p1.y - p.p0.y) * t }
+  : { x: p.cx + p.rx * Math.cos(p.theta1 + p.dTheta * t), y: p.cy + p.ry * Math.sin(p.theta1 + p.dTheta * t) });
+
+/**
+ * F7 AMEND (Fred: the bar top must meet the SCULPTED underside): sample two
+ * loops of the same topology with the SAME number of steps per primitive pair,
+ * each step no longer than `maxStep` (the terrain cell), so a bar top vertex
+ * exists at least every cell along the ring and can follow the underside.
+ */
+export function samplePairedOutlines(outerPrims, innerPrims, maxStep) {
+  if (outerPrims.length !== innerPrims.length) throw new Error('samplePairedOutlines: topologies differ');
+  const outer = [], inner = [];
+  outerPrims.forEach((po, i) => {
+    const pi = innerPrims[i];
+    const n = Math.max(1, Math.ceil(Math.max(_primLength(po), _primLength(pi)) / maxStep));
+    for (let k = 0; k < n; k++) { outer.push(_primPoint(po, k / n)); inner.push(_primPoint(pi, k / n)); }
+  });
+  return { outer, inner };
+}
+
 export const toWorld = (pts, W, H) => pts.map((p) => ({ x: p.x - W / 2, y: H / 2 - p.y }));
 
 export function pointInPolygon(x, y, poly) {
@@ -82,17 +106,28 @@ export function wallArrays(poly, zBot, zTop) {
 
 /** The bar ring between corresponding `outer`/`inner` loops: top (at the
  *  underside), bottom (at zBottom), outer wall and inner wall. */
-export function ringArrays(outer, inner, zBottom, zTop) {
+export function ringArrays(outer, inner, zBottom, zTop, maxStep = Infinity) {
   const n = outer.length;
   if (inner.length !== n) throw new Error(`ringArrays: loops do not correspond (${n} vs ${inner.length})`);
   const positions = [], index = [];
   const v = (p, z) => { positions.push(p.x, p.y, z); return positions.length / 3 - 1; };
-  const oT = outer.map((p) => v(p, zTop(p))), iT = inner.map((p) => v(p, zTop(p)));
+  // Rows across the ring width (outer -> inner), so the TOP follows the
+  // underside across the bar too, not just along its edges.
+  let widest = 0;
+  for (let k = 0; k < n; k++) widest = Math.max(widest, Math.hypot(outer[k].x - inner[k].x, outer[k].y - inner[k].y));
+  const rows = Math.max(1, Math.ceil(widest / maxStep));
+  const at = (k, r) => ({ x: outer[k].x + (inner[k].x - outer[k].x) * (r / rows), y: outer[k].y + (inner[k].y - outer[k].y) * (r / rows) });
+  const top = [];
+  for (let r = 0; r <= rows; r++) top.push(Array.from({ length: n }, (_, k) => { const p = at(k, r); return v(p, zTop(p)); }));
   const oB = outer.map((p) => v(p, zBottom)), iB = inner.map((p) => v(p, zBottom));
   for (let k = 0; k < n; k++) {
     const m = (k + 1) % n;
-    index.push(oT[k], oT[m], iT[k], iT[k], oT[m], iT[m]); // top
-    index.push(oB[k], iB[k], oB[m], iB[k], iB[m], oB[m]); // bottom
+    for (let r = 0; r < rows; r++) {
+      const a = top[r], b = top[r + 1];
+      index.push(a[k], a[m], b[k], b[k], a[m], b[m]); // top, row r
+    }
+    index.push(oB[k], iB[k], oB[m], iB[k], iB[m], oB[m]); // bottom (flat, at frame-bottom z)
+    const oT = top[0], iT = top[rows];
     index.push(oB[k], oB[m], oT[k], oT[k], oB[m], oT[m]); // outer wall
     index.push(iB[k], iT[k], iB[m], iT[k], iT[m], iB[m]); // inner wall
   }
@@ -120,7 +155,11 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
   if (!full) return [];
   if (!spec) { geom.setIndex(full.slice()); return []; }
   const { W, H, nx, nz, topPos, botPos } = grid;
-  const outer = toWorld(spec.outline, W, H);
+  const cell = Math.min(W / Math.max(1, nx - 1), H / Math.max(1, nz - 1));
+  // The edge wall needs grid-fine sampling even without bars (a long straight
+  // edge must follow the terrain top), so the outline is always densified.
+  const paired = samplePairedOutlines(spec.outerPrimitives, spec.innerPrimitives || spec.outerPrimitives, cell);
+  const outer = toWorld(paired.outer, W, H);
   geom.setIndex(trimIndices(full, geom.attributes.position.array, outer));
   const extra = [];
   if (topPos && botPos) {
@@ -130,10 +169,10 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
     wallMat.vertexColors = false;
     wallMat.side = THREE.DoubleSide;
     extra.push(_mesh(THREE, wallArrays(outer, bot, top), wallMat));
-    if (spec.inner) {
-      const inner = toWorld(spec.inner, W, H);
+    if (spec.innerPrimitives) {
+      const inner = toWorld(paired.inner, W, H);
       const barMat = new THREE.MeshPhongMaterial({ color: spec.color || '#d9c9a3', side: THREE.DoubleSide, shininess: 12 });
-      const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot), barMat);
+      const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
       bars.name = 'frame-bars';
       extra.push(bars);
     }

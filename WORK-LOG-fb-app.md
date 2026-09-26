@@ -530,3 +530,122 @@ Full vitest: **1380 passed / 74 files, 0 failed** (with the F6 tests). Python fr
   save/load click-through.
 
 **Processes:** clean. Capacity is fine.
+
+## Turn 12 — F7: S3 — 3D trimmed panel + wood bars; editor grid/snap/fit follow the outline — DONE — NO FUSION
+
+**Mapping (measured, not re-derived):** `drape-svg.js` DRAPE_TEXTURE_FLIPY's own measurement says
+SVG y=0 (the top) samples v=1, i.e. world +H/2. So editor (x, y) → world (x − W/2, H/2 − y). Two
+existing helpers disagree about row 0 (`buildHeightField` vs `buildLiveBrushColours`); I followed the
+measured drape, not either comment. It is tested: T2's narrow neck lands at world +y, as in Fusion.
+
+**item 1: trimmed panel** (`core/preview/frame-mesh.js`, pure arrays + thin THREE wrappers).
+- Panel triangles whose (x, y) centroid is outside the cut profile are dropped by an **index filter**.
+  The untrimmed index is kept in `geometry.userData.fullIndex` and restored for "none". The drape
+  overlay SHARES this geometry, so it is trimmed for free.
+- An **edge wall** along the exact outline, from the bilinear-sampled underside to the top surface,
+  hides the ≤ one-cell jag. It uses a clone of the panel material.
+- TerrainPreview additions, small and additive: a `setFrameProvider((W, H) → spec)` +
+  `refreshFrame()` + `_applyFrame()` called at the end of `update()`, and meshes disposed in
+  `_dispose()`.
+- **The provider is asked with the grid size actually drawn.** A pushed spec would go stale when
+  Fusion's `sync_board` sets widthIn without a DOM change.
+- **One source:** `frameSolidSpec` (editor-frame-profile.js) samples the SAME `frameCutProfile` the
+  editor draws. Tested: `spec.outline == sampleOutline(profile.primitives)`.
+
+**item 2: bars.**
+- The ring between the outline and the frame's inner edge is a **quad strip between corresponding
+  samples**. Same template, safe zone inset by frame_thickness, so the primitive topology is the same
+  (fixed fractions per primitive); the corner pairs are the miter lines. That avoids needing a
+  polygon triangulator: `three` isn't in node_modules.
+- Straight, no taper, from frame-bottom z up to the underside.
+- **Honest limit:** the inner edge is exact on the straight runs (matching F2's measured ±2.5 in)
+  and an approximation of Fusion's true offset on the arcs.
+- **Wood colours:** `APPEARANCE_PREVIEW_COLORS` is declared in `frame_definition.py` beside the wood
+  list and emitted as `appearance.previewColors`. A Python test fails if a wood lacks one.
+- **Live:** a wood or record change calls `refreshFrame()` (no terrain rebuild).
+
+**item 3: F6 leftovers (AMEND 1).**
+- **Grid:** the grid layer is clip-pathed to the profile, so there is no grid in the cut-away. It is
+  replaced (not stacked) and unclipped for "none".
+- **Snap:** `_snap` is wrapped by `frameSnapGate`. A snap landing in the cut-away returns the raw
+  point; inside, snapping is unchanged.
+- **Fit:** `fitView` frames the profile region, aspect preserved (the limiting side fits exactly).
+- Editor edits are one line each in editor.js and editor-view.js.
+- **Behaviour note:** with a frame, the fit zoom is ~1.06, not 1 (the file's comment says "zoom 1 =
+  fit"). That comment holds with no frame.
+
+**item 4: tests + shots.**
+- **Tests:** `tests/frame-3d.test.js`, 15 tests, covering:
+  - one source; T1/T2 correspondence; no frame → null;
+  - the world mapping;
+  - every kept triangle inside, some cut, T1+T2;
+  - no frame restores the exact index;
+  - bars' z = {frame bottom, underside}; the wood colour applied and changing live; frame_thickness
+    moving the inner edge only;
+  - the snap gate; the fit region; grid clip / unclip / replace.
+  Plus the Python previewColors check.
+- **Mutations**, each restored (15/15 green after):
+  - no trim → 2 red;
+  - bars top not the underside → 1;
+  - world y not flipped → 1;
+  - snap always → 1;
+  - fit ignores the frame → 1;
+  - wood colour ignored → 1;
+  - grid not clipped → 1.
+- One wrong expectation of mine, the fit width, was caught by the test: the aspect-preserving fit is
+  correct; the assertion was fixed.
+- **Shots** (`shots/seatC/1827_F7_*`, driven by the new `tools/repro/frame_3d_shots.mjs`, which
+  reads the preview's own state back through the page's shared modules):
+  - t1_desktop_3d, t1_mobile_3d, t2_desktop_3d, t2_mobile_3d: trimmed panel + Ash bars. Read back:
+    2 frame meshes; T1 kept 253,983 / 306,240 index entries, T2 241,689; no page errors.
+  - **Live proof on one page, no reload:** `_live-wood` (Ash → Mahogany through the real `<select>`;
+    bar colour read back `#d9c9a3` → `#7a3b2e`), `_live-thickness` (frame_thickness 0.75 → 0.4 via
+    the record; the inner edge moves and the outline/trim is unchanged, as expected).
+  - Desktop vs mobile kept-counts differ slightly (253,983 vs 255,156). My read: the thickened
+    underside offsets bottom vertices along the normals, and each fresh session's terrain differs,
+    so the centroid test shifts a little. Stated, not proven further.
+- Gates: vitest touched specs green; Python 120 pass; `gen --check` fresh. Checkpoint `481c4cc` pushed
+  before the shots.
+
+**Not in this stage:** grid snapping ONTO the outline itself (only gating); the bars are one ring,
+not 4 separate bodies (the miter lines are implicit at the corner correspondences); the handles/Frame
+tab is gated (3.2).
+
+**Processes:** the server and Chrome were stopped (127 = my kill). Clean. Capacity is fine.
+
+**Amendments absorbed (4; the 4th superseded the 3rd).**
+- **Bar tops follow the SCULPTED underside.** `samplePairedOutlines(outer, inner, cell)` gives both
+  loops the same step count per primitive pair, each step <= one terrain cell, and `ringArrays` adds
+  rows ACROSS the ring width (<= one cell). Every top vertex is the bilinear underside z.
+  - My first ring had only edge samples: a straight edge sampled its start point only, so a 6.5 in
+    top edge was ONE flat quad. Fixed.
+  - The edge wall is also always densified.
+- **"Code it right + prove it by tests", no runtime guards.**
+  `tests/frame-3d-sweep.test.js`:
+  - a sweep over 2 templates × 5 boards (7x9, 9x7, 12x6, 5x5, 4x3.5) × 3 frame bottoms (-2, -1,
+    -0.25) × 3 sculpts (flat, waves, tilt), at least 40 frames checked: every bar vertex finite,
+    inside the board, every top above the bottom and ON the underside (1e-4);
+  - the top sampled at least every cell along both loops;
+  - at least ceil(0.75/0.1) = 8 rows across the ring;
+  - the frame is never rebuilt on render ticks (the real `_startLoop` driven 20 ticks → provider 0
+    calls), and `refreshFrame` rebuilds it once.
+  - Mutations: no rows across → 1 red; coarse along the loop → 3; top not on the underside → 2;
+    rebuilt every tick → 1; restored 23/23.
+- **Loose volume sanity vs the Fusion goldens** (flat core, bottom -1 → volume = ring area × 1 in).
+  MEASURED app vs Fusion: T1 7x9 **-11.1%**, T1 12x6 **-18.9%**, T2 7x9 **-5.4%**, T2 12x6
+  **-10.3%**.
+  - Always smaller: the inner edge is the template solved on the inset safe zone, shallower at the
+    arcs than a true offset. At 12x6 the outline itself carries S4's known 0.44 in gap.
+  - The amendment's "e.g. within 10%" was an example and Fred said no precision chase, so the bound
+    is **20%** with these numbers in the test: a way-wrong detector (half or double), stated rather
+    than tuned. **Flag for the advisor:** tighten when S4 lands a true offset.
+- **Close-up acceptance shot:** `1833_F7_t1_closeup-bar-meets-underside.png`. A low camera at the
+  T1 waist; the Ash bar meets the panel along a wavy seam, which is the sculpted underside, and the
+  cut-edge wall follows the sculpted top.
+- **Timing, measured in-page** (the superseded amendment asked; cheap to report): `refreshFrame()`
+  takes **156 ms with a frame vs 1 ms without** (mean of 10, 7x9 at 0.05 in, about 102k panel
+  triangles through point-in-polygon against the dense outline).
+  - It runs only on frame-input or panel changes (tested), never per tick, but it adds that to each
+    terrain rebuild while a frame is on.
+  - Not optimised (not asked). A bbox prefilter or a raster mask would cut it if it matters.
+- Full vitest: **1403 passed / 76 files, 0 failed**. Python 120 pass, frame-defs fresh.

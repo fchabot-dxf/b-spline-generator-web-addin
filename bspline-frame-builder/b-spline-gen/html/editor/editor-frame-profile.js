@@ -78,6 +78,8 @@ export function frameSolidSpec(defs, record, board) {
   return {
     outline: sampleOutline(prof.primitives),
     inner: innerOk ? sampleOutline(inner.primitives) : null,
+    outerPrimitives: prof.primitives,
+    innerPrimitives: innerOk ? inner.primitives : null,
     frameBottomZ: record.frameBottomZ,
     color: defs.appearance?.previewColors?.[record.appearance] || null,
   };
