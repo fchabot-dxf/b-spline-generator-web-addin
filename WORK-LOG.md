@@ -10465,3 +10465,49 @@ live script is kept, per their instruction, AS the test for this scenario, match
 
 No edits to `bspline_gen_palette.html`. `tools/repro/select_drag_shape.mjs` itself untouched (kept exactly as
 the advisor committed it, per "keep the script as a test").
+
+## Turn 288 — UI5 AMEND 2 (item 0 continued): Shape Lattice piece drag now uses the SAME constrained move as box Lattice — DONE — NO FUSION
+
+The advisor's own live re-run of the prior fix (e3949be) found the piece DID now persist, but via the GENERIC
+Select move (`translateSelection`) — no grid snap, ties left behind when their rail moved, a tie dragged off
+its own rails, and an end-drag translating the whole tie instead of stretching it. Their own instruction: "It
+must use the SAME constrained lattice-move path as the box Lattice (one code path)."
+
+**Root cause.** `shapeLatticeHandler.start`'s own lattice-piece branch (added the previous turn to fix the
+contour-hit-priority bug) called `selectHandler.start(editor, pt, e, latticeHit)` — the box Lattice tool's own
+`latticeHandler.start` instead calls `_beginLatticeMove` for the SAME kind of hit, the function with ALL the
+constrained-move logic (grid snap, ties-follow-rails, end-vs-body detection, end-stretch). Two entirely
+different move implementations for what's supposed to be the same gesture on the same kind of piece.
+
+**Fix.** Replicated `latticeHandler.start`'s own existing-piece branch inside `shapeLatticeHandler.start`
+instead of delegating to `selectHandler`: select the piece (same `editor._select`/`_selectAdd` calls, for
+colour/delete via the generic mechanism), then call the SAME `_beginLatticeMove(editor, hit, kind, pt,
+spacing, orientation)` box Lattice uses, setting `editor._isDrawing = true` + `editor._latticeMove`. The
+harder half: `handleMove`/`handleEnd` dispatch per-mode (`getModeHandler(editor._currentMode)`), so setting
+`_latticeMove` from `shapeLatticeHandler.start` alone does nothing — the NEXT frame's `shapeLatticeHandler.
+update`/`.finish` would run instead of `latticeHandler`'s own, and neither knew `_latticeMove` existed. Added
+the identical one-line dispatch `latticeHandler.update`/`.finish` already have
+(`if (editor._latticeMove) { _updateLatticeMove/_finishLatticeMove(editor); return; }`) to the TOP of
+`shapeLatticeHandler.update`/`.finish`, falling through to the existing param-handle logic otherwise — now
+BOTH tools' own mode handlers dispatch into the ONE shared constrained-move implementation whenever
+`editor._latticeMove` is active, regardless of which tool's mode is current. (Bonus, unplanned: since
+`_finishLatticeMove` calls `editor._onChange()` directly rather than `_notifyChange('commit')`, this move ALSO
+never reaches `refreshBoundaryPatterns` at all now — the exact over-triggering this turn's own earlier
+`_skipBoundaryRefillOnce` flag was built to suppress no longer even applies to this gesture; that flag stays,
+unused by this particular path but still needed for a contour-piece selection via the generic Select tool.)
+
+**Verification**: the advisor's own unmodified script, run 4 times — every trial now shows: the rail snaps to
+a clean grid value (`dy(model)=0.500`, not the prior raw `0.442`); every tie attached to that rail follows it
+by the identical shift (before/after `y1` differs by exactly the rail's own move, in every attached tie,
+every trial); a tie's own body-drag also snaps and stays connected; a tie's END-drag moves ONLY that end
+(`y1` changes, `y2` stays fixed) rather than translating the whole piece. Full suite: `npx vitest run` ->
+**1269 passed**, zero regressions.
+
+**Not yet addressed**: the dispatch's own "rail ends stay on the contour per T73 where applicable" — the
+shared `_beginLatticeMove`/end-stretch logic has no knowledge of the silhouette boundary at all (it's a pure
+grid-snap operation), so stretching a rail/tie's end PAST where the contour would visually allow isn't
+constrained today. The advisor's own AMEND 2 text didn't re-flag this as still broken (their own repro/ask
+focused on snap+ties-follow+end-stretch specifically), so left as a candidate follow-up pending their own live
+check rather than guessed at.
+
+No edits to `bspline_gen_palette.html`.

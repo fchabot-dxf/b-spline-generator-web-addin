@@ -1757,7 +1757,31 @@ const shapeLatticeHandler = {
         const latticeTol = getDynamicTolerance(editor, 10, 'slopPx');
         const latticeHit = _getNearbyLatticePiece(editor, rawPt, latticeTol);
         if (latticeHit) {
-            selectHandler.start(editor, pt, e, latticeHit);
+            // UI5 AMEND 2 (advisor, live: the earlier fix moved the piece
+            // but with the GENERIC Select move — no grid snap, ties left
+            // behind a moved rail, a tie dragged off its own rails, an
+            // end-drag translating the whole tie instead of stretching):
+            // "the SAME constrained lattice-move path as the box Lattice
+            // (one code path)" — this is EXACTLY latticeHandler.start's
+            // own existing-piece branch (below), replicated here rather
+            // than falling back to selectHandler's plain translate. Tap
+            // (no movement) still selects via the same editor._select/
+            // _selectAdd the box tool's own Select sub-mode uses;
+            // update()/finish() below dispatch into the SAME
+            // _updateLatticeMove/_finishLatticeMove machinery whenever
+            // editor._latticeMove is active, regardless of which tool's
+            // own mode is current — see their own new top line each.
+            const shift = !!(e && e.shiftKey);
+            if (shift) editor._selectAdd(latticeHit);
+            else if (!(editor._selectedElements || []).includes(latticeHit)) editor._select(latticeHit);
+            editor._isDrawing = true;
+            const spacing = editor._grid.spacing || 0.25;
+            const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;
+            const hitKind = latticeHit.node.getAttribute(LATTICE_ATTR);
+            // pt (this function's own 2nd param), not rawPt -- _beginLatticeMove
+            // is designed against the touch-offset-adjusted point, matching
+            // latticeHandler.start's own identical call exactly.
+            editor._latticeMove = _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation);
             return;
         }
         const shape = currentShape(currentPattern(editor));
@@ -1785,6 +1809,12 @@ const shapeLatticeHandler = {
      *  the data). Never calls `generatePattern` per frame (T59's own
      *  dispatch: "regenerates the path + refills ON RELEASE"). */
     update(editor, pt) {
+        // UI5 AMEND 2: a lattice-piece move/stretch started above dispatches
+        // through the SAME _updateLatticeMove the box Lattice tool's own
+        // latticeHandler.update uses — same check, same order, so both
+        // tools' Select-mode piece drags share ONE constrained-move
+        // implementation rather than diverging.
+        if (editor._latticeMove) { _updateLatticeMove(editor, pt); return; }
         const key = editor._shapeLatticeDragKey;
         if (!key) return;
         const rawPt = { x: pt.x, y: pt.y + (editor._shapeLatticeDragOffsetY || 0) };
@@ -1800,6 +1830,10 @@ const shapeLatticeHandler = {
      *  single `pushState`/`commit` — T59's own fixed double-pushState bug
      *  makes this genuinely ONE undo step now, not two). */
     finish(editor) {
+        // UI5 AMEND 2: same dispatch as update() above, for the SAME reason
+        // (_finishLatticeMove already sets editor._isDrawing = false itself,
+        // matching latticeHandler.finish's own identical one-line dispatch).
+        if (editor._latticeMove) { _finishLatticeMove(editor); return; }
         editor._isDrawing = false;
         editor._shapeLatticeDragKey = null;
         editor._shapeLatticeDragOffsetY = 0;
