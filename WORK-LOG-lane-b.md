@@ -8300,3 +8300,100 @@ fallback — the SAME single pre-existing gap noted at T69 remains, still unrela
 Amendments polled clean before this commit; will poll once more immediately before passing, then continue into
 T70 (SE14b) proper, folding in AMEND 1 (the node-parity gap) as part of that turn's own parity-test extension.
 
+## T69-FIX-2 — the mirror axes were free-floating, and the contour had no overall size at all
+
+**How this arrived**: while investigating T70 (SE14b) proper, two MORE cross-session amendments landed in quick
+succession (peer session relaying the advisor's own live-Fusion re-measurements of the T69-FIX commit,
+2e56151), both explicitly asking for their own T69-fix-2 commit before continuing SE14b — a THIRD round of the
+same "measure live, report back, fix before moving on" cycle T69/T69-FIX already went through twice.
+
+### AMEND 4 — the mirror axis itself was unanchored
+
+**Measured**: at stroke_width 0.5, the WHOLE right half slid to x=353.9in (left half stayed put) and never came
+back. Root cause: Symmetry pins the two halves TO EACH OTHER, but nothing pinned the AXIS itself to any fixed
+absolute position — the entire two-halves-plus-axis assembly could translate/rotate as a rigid body.
+
+**Fix**: one relationship per axis, never Fix — `Coincident(sketch's own origin point, axis)`, a point-ON-line
+constraint using Fusion's own ALWAYS-fixed origin point as the anchor. Declared in the manifest as
+`{type:'Coincident', targets:['origin', axisId]}`; the Python builder resolves `'origin'` by registering
+`sketch.originPoint` directly into `ctx.entity_map[s_name]` at build start — the EXISTING generic `resolve_entity`
+lookup finds it for free, zero changes to fb_engine's own shared resolver needed.
+
+**Also dropped 2 measured OVER_CONSTRAINTS** (both re-checked by hand before touching anything, not applied
+blind):
+- `Equal(['seg1','seg9'])` (the shoulder mirror pair): once BOTH its 2 endpoints (via the pre-existing Coincident
+  chain) AND its center (via the Symmetry T69-FIX already added) are fixed, a circle through 2 known points with
+  a known center has no remaining freedom — the mirror-Equal is a duplicate of an already-fully-implied fact.
+  Deliberately NOT generalized to hip (seg3<->seg7) or the waist (seg2<->seg8), even though the SAME argument
+  seems to apply equally to them — hand-tracing could not produce a confident reason those two are ALSO safe
+  (and the advisor's own measurement didn't flag them either), so they keep their own mirror-Equal rather than
+  risk under-constraining on a guess neither reasoning nor measurement actually confirmed.
+- `Symmetry(['seg4:E','seg6:S'])`: redundant once its own sibling Symmetry pair (declared for the SAME line pair)
+  plus each line's own Vertical constraint plus the Coincident chain to their shared self-mirroring, Horizontal
+  neighbor (seg5, the bottom edge) already close the loop. Declared off `mirrorSegmentIndex`/`segMap` adjacency,
+  not a raw index literal — but empirically NARROWER than a first read suggests: the rule only ever inspects the
+  "E" side of a pair (never "S"), so it selects EXACTLY the one pair the advisor measured (seg4<->seg6, closing
+  via seg5) and leaves seg0<->seg10 alone (its own closing happens on the "S" side, via seg11, which this rule
+  doesn't inspect) — confirmed empirically by running the tests, not assumed: an earlier hand-derivation wrongly
+  predicted BOTH pairs would drop, and the test written to prove that generalization caught the mistake before
+  it shipped (see "measure, don't re-reason" — exactly the discipline this project's own memory already names).
+
+### AMEND 5 — nothing set the contour's own overall size at all
+
+**Measured** (with AMEND 4's origin anchor already in place — the arcs hold now): the straight EDGES still
+stretch at stroke_width 0.5 — the side lines move apart (7.0in -> ~7.4in) and the top/bottom edges slide in Y,
+because the contour's own mirror-symmetry + per-piece H/V pin its SHAPE but never its ABSOLUTE SCALE.
+
+**Fix**: param-driven Distance dimensions, never Fix, referencing `widthIn`/`heightIn` — the BOARD's own
+PRE-EXISTING Fusion document parameters (`b-spline-gen.py`'s own `_sync_user_parameters`, confirmed by reading
+that file directly rather than assumed) — this module only ever REFERENCES them by name, never re-declares them
+(the same "declare, don't hand-roll a duplicate" reasoning `stroke_width` already gets, just for a parameter this
+module doesn't own at all).
+- A horizontal Distance dim between the FIRST Line mirror pair encountered (`widthPairIds`, already
+  Symmetry-linked and each individually Vertical — pins their ABSOLUTE separation, not just their relative one)
+  = `widthIn`.
+- The two SELF-mirroring Horizontal segments (top/bottom edges — never processed by the mirror-pair loop at all,
+  since `mi === i` skips a self-mirror entirely) get a vertical Distance dim between them = `heightIn`, PLUS a
+  NEW Symmetry of the two edges (as whole curves, not points — Fusion's own `addSymmetry` accepts either) about a
+  SECOND new construction axis (`horizontalAxis`, also Coincident-anchored to the origin for the identical AMEND
+  4 reason) — the width/height dims alone only fix SEPARATION, not WHERE the pair sits relative to the origin.
+- `Distance` is a DIMENSION (`fb_engine.dimension_step`), not a geometric constraint — caught and fixed BEFORE
+  committing (first draft declared it into `constraints[]`, which only ever reaches `constraint_step`, a type
+  system that has no such thing): moved to `dimensions[]`, the SAME array `Radial`/`SlotWidth` already use.
+  `dimension_step`'s own existing `Targets`+`Orientation` branch (`addDistanceDimension`) already supported this
+  — a previously-unused existing path, not new fb_engine surface (unlike `Symmetry`, T69-FIX, which genuinely was
+  new). `_apply_radial_dimensions` renamed to `_apply_declared_dimensions`, reflecting its now-broader real scope.
+
+**A real fake-shim gap found while writing the Python test**: `adsk.fusion.DimensionOrientations` (the enum
+`_create_dimension`'s own Distance branch reads directly) was never stubbed — no prior manifest, in this
+module's whole history, had ever exercised that specific code path. Added with the 3 real values
+(Horizontal/Vertical/AlignedDimensionOrientation), same "opaque sentinel, never rendered" convention every other
+fb_engine enum stub in this shim already uses. Also added `originPoint` to `FakeSketch` (a real Fusion sketch's
+own always-(0,0,0) point) and a `dim:Distance` CALL_LOG entry to `addDistanceDimension` (matching
+`addRadialDimension`'s own existing logging convention, previously missing).
+
+### Tests and verification
+
+**JS**: 5 new tests (both axes Coincident-anchored; the horizontal axis's own geometry; the shoulder-Equal drop
+with its Symmetry surviving; hip/waist EXPLICITLY confirmed NOT dropped; the seg4/seg6-vs-seg0/seg10 asymmetry
+made an explicit, named fact rather than a silent side effect; the width/height dims + horizontal-axis symmetry).
+3 existing tests' own scope narrowed (the generic Coincident/Symmetry coordinate checks now explicitly exclude
+`'origin'`-involving and `horizontalAxis`-involving constraints, which need their own dedicated tests instead of
+a one-size-fits-all coordinate check). Mutation-tested all 3 new production behaviors (shoulder-Equal drop,
+width/height dim block) separately, MD5-restored each time — each disabled EXACTLY its own test(s), nothing else.
+Full suite: 1051/1051 (up from 1045 — 6 net new tests).
+
+**Python**: origin registration + `Distance` dispatch both mutation-tested (disabling each broke exactly the one
+new end-to-end test built to catch it). Full suite: 150/150 (`pytest`).
+
+**Disclosed, not independently re-verified this turn** (NO FUSION): whether hip/waist's own mirror-Equal are
+ALSO safe to drop (structurally they look similar to the dropped shoulder pair, but neither hand-tracing nor the
+advisor's own measurement confirms it) and whether seg0/seg10's own second Symmetry is ALSO genuinely redundant
+(the rule's own asymmetry is a real, disclosed limitation, not a proven boundary) are BOTH left as open questions
+for the advisor's own next live check, exactly as flagged in the previous T69-FIX entry — this turn added NO new
+unconfirmed generalizations beyond what was already flagged, and corrected one specific wrong hand-derivation
+(seg0/seg10) with an empirical test before it could ship silently wrong.
+
+Amendments polled clean before this commit; will poll once more immediately before passing, then continue into
+T70 (SE14b) proper.
+

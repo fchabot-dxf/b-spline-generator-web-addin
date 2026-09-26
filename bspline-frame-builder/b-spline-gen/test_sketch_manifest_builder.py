@@ -346,6 +346,10 @@ class FakeSketchDimensions:
         return d
 
     def addDistanceDimension(self, src, tgt, orient, text_pt):
+        # T70 AMEND 5: logged now (matching addRadialDimension's own
+        # existing convention) so a test can observe it fired, not just
+        # that its own dimension object landed in self._items.
+        CALL_LOG.append(("dim:Distance",))
         d = FakeDimension()
         self._items.append(d)
         return d
@@ -381,6 +385,12 @@ class FakeSketch:
         self._curves = []
         self.isComputeDeferred = False
         self.name = "TestSketch"
+        # T70 AMEND 4: a real Fusion sketch's own ALWAYS-fixed origin point
+        # (local (0,0,0), same for any sketch on any construction plane) —
+        # the manifest's own mirror-axis Coincident constraints target this
+        # (via entity_map['origin'], registered in build_constrained_sketch)
+        # to anchor an axis's absolute position without an isFixed flag.
+        self.originPoint = FakeSketchPoint(FakePoint3D(0, 0, 0))
 
     # T65 (advisor's own real Fusion run, verified via dir()): the slot
     # methods (addCenterToCenterSlot, addThreePointArcSlot,
@@ -593,6 +603,19 @@ def _install_adsk_stubs():
             return x if isinstance(x, FakeDesign) else None
 
     adsk_fusion.Design = _DesignCast
+
+    # T70 AMEND 5: a real enum (adsk.fusion.DimensionOrientations) that
+    # `_create_dimension`'s own Distance branch (fb_engine/dimensions.py)
+    # reads directly -- never needed by any test before this, since no
+    # prior manifest exercised that specific DimType. Values are opaque
+    # sentinels here (this fake never renders anything), matching every
+    # other fb_engine enum reference this shim already stubs out.
+    class _DimensionOrientations:
+        HorizontalDimensionOrientation = "Horizontal"
+        VerticalDimensionOrientation = "Vertical"
+        AlignedDimensionOrientation = "Aligned"
+
+    adsk_fusion.DimensionOrientations = _DimensionOrientations
 
     adsk.core = adsk_core
     adsk.fusion = adsk_fusion
@@ -1404,6 +1427,62 @@ def test_mirror_symmetry_constraint_dispatches_via_constraint_step_with_zero_par
     assert summary["parity"]["maxErr"] < 1e-6
 
 
+# ---------------------------------------------------------------------------
+# T70 AMEND 4/5 — the mirror axis anchored to the sketch origin (never
+# Fix), and param-driven overall-size Distance dims (referencing the
+# board's own PRE-EXISTING widthIn/heightIn parameters, never re-declared)
+# ---------------------------------------------------------------------------
+def _mirror_anchor_and_size_manifest():
+    """A construction mirror axis Coincident to the origin (AMEND 4), 2
+    mirrored Line segments tied to it via Symmetry (AMEND 3's own
+    mechanism, unchanged), and a Distance dim between them driven by
+    'widthIn' (AMEND 5) -- proves the full anchor+size chain end-to-end,
+    not just origin-Coincident in isolation."""
+    return {
+        "version": 1, "layerId": "1", "sketchName": "Test Mirror Anchor Size",
+        "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9}, "widthMode": "centerline",
+        "entities": [
+            {"id": "axis", "type": "Line", "isConstruction": True, "p1": [0.0, -1.0], "p2": [0.0, 2.0]},
+            {"id": "segR", "type": "Line", "p1": [2.0, 0.0], "p2": [3.0, 1.0]},
+            {"id": "segL", "type": "Line", "p1": [-2.0, 0.0], "p2": [-3.0, 1.0]},
+        ],
+        "constraints": [
+            {"type": "Coincident", "targets": ["origin", "axis"]},
+            {"type": "Symmetry", "targets": ["segR:S", "segL:S", "axis"]},
+            {"type": "Symmetry", "targets": ["segR:E", "segL:E", "axis"]},
+        ],
+        "parameters": [],
+        "dimensions": [
+            {"type": "Distance", "targets": ["segR", "segL"], "orientation": "Horizontal", "expression": "widthIn"},
+        ],
+        "groups": {"silhouette": ["segR", "segL"]},
+        "latticePieceCount": 0,
+        "latticeConstrained": True,
+    }
+
+
+def test_origin_anchor_and_distance_dim_dispatch_end_to_end_with_zero_parity_mismatches(call_log):
+    """End-to-end via build_constrained_sketch: Coincident(['origin','axis'])
+    dispatches (resolving 'origin' via the entity_map registration in
+    build_constrained_sketch, zero fb_engine changes), the Distance dim
+    dispatches through dimension_step's own pre-existing Targets/
+    Orientation branch (a previously-unused existing path, not new
+    surface), and the parity check reads back an untouched build clean."""
+    design = FakeDesign()
+    manifest = _mirror_anchor_and_size_manifest()
+    summary = build_constrained_sketch(design.rootComponent, design, manifest)
+    assert summary["entities"]["created"] == 3
+    assert summary["entities"]["skipped"] == []
+    kinds = [entry[0] for entry in call_log]
+    assert kinds.count("constraint:Coincident") == 1
+    assert kinds.count("constraint:Symmetry") == 2
+    assert kinds.count("dim:Distance") == 1
+    assert summary["constraints"]["count"] == 0
+    assert summary["dimensions"]["count"] == 0
+    assert summary["parity"]["mismatches"] == []
+    assert summary["parity"]["maxErr"] < 1e-6
+
+
 if __name__ == "__main__":
     # Plain-Python fallback (no pytest needed), same dual-mode convention
     # frame-builder/test_templates.py already documents.
@@ -1439,6 +1518,7 @@ if __name__ == "__main__":
         test_shape_contour_as_slots_end_to_end_builds_dimensions_and_reports_zero_parity_mismatches,
         test_line_entity_isConstruction_flag_sets_the_real_attribute_when_declared,
         test_mirror_symmetry_constraint_dispatches_via_constraint_step_with_zero_parity_mismatches,
+        test_origin_anchor_and_distance_dim_dispatch_end_to_end_with_zero_parity_mismatches,
     ]
     passed, failed = 0, 0
     for t in tests:

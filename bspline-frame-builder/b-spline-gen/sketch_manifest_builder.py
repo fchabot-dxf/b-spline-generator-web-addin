@@ -526,22 +526,36 @@ def _apply_constraints(ctx, sketch, s_name, constraints):
 
 
 # ---------------------------------------------------------------------------
-# Radial dimensions — straight feed into fb_engine's own dimension_step
+# Radial/Distance dimensions — straight feed into fb_engine's own dimension_step
 # ---------------------------------------------------------------------------
-def _apply_radial_dimensions(ctx, sketch, s_name, dimensions):
+def _apply_declared_dimensions(ctx, sketch, s_name, dimensions):
     """The manifest's Radial dimension entries ({target, expression}) map
     onto dimension_step's own {"DimType":"Radius", "Target", "Expression"}
     shape — already implemented there for both Radius/Diameter (T60's own
-    research). SlotWidth entries are handled separately, during geometry
-    creation itself (_create_slot_entity) — dimension_step itself has NO
-    "SlotWidth" DimType branch, and a slot's own width dimension is a side
-    effect of `addCenterToCenterSlot`, not a standalone dimension_step
-    call the way Radial is."""
+    research). T70 AMEND 5: Distance entries ({targets:[a,b], orientation,
+    expression}) map onto dimension_step's own {"DimType":"Distance",
+    "Targets":[a,b], "Orientation", "Expression"} shape — ALSO already
+    implemented there (`_create_dimension`'s own "Targets... len>=2" branch
+    -> `addDistanceDimension`), not new fb_engine surface, just a
+    previously-unused existing one. SlotWidth entries are handled
+    separately, during geometry creation itself (_create_slot_entity) —
+    dimension_step itself has NO "SlotWidth" DimType branch, and a slot's
+    own width dimension is a side effect of `addCenterToCenterSlot`, not a
+    standalone dimension_step call the way Radial/Distance are."""
     for d in dimensions or []:
-        if d.get("type") != "Radial":
+        dtype = d.get("type")
+        if dtype == "Radial":
+            target = d.get("target")
+            dim_spec = {"DimType": "Radius", "Target": target, "Expression": d.get("expression"), "Name": f"dim_{target}"}
+        elif dtype == "Distance":
+            targets = d.get("targets") or []
+            target = "_".join(targets)
+            dim_spec = {
+                "DimType": "Distance", "Targets": targets, "Orientation": d.get("orientation"),
+                "Expression": d.get("expression"), "Name": f"dim_{target}",
+            }
+        else:
             continue
-        target = d.get("target")
-        dim_spec = {"DimType": "Radius", "Target": target, "Expression": d.get("expression"), "Name": f"dim_{target}"}
         try:
             dimension_step(ctx, sketch, s_name, dim_spec)
         except Exception as e:
@@ -758,9 +772,8 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     Order (§5, matching fb_engine's own _build_blocks convention): all
     PARAMETERS first (so an expression can reference one by name), then
     ALL geometry, then constraints, inside one deferred-compute window; a
-    manual Pulse; then Radial dimensions and width offsets+caps (which do
-    their OWN internal Pulse per offset — offsets.py's own established
-    reason) in a second window.
+    manual Pulse; then Radial/Distance dimensions (T70 AMEND 5 added
+    Distance) in a second window.
 
     Failure handling: every step is wrapped so ONE bad entity/constraint/
     dimension/offset is skipped and reported, never aborts the rest of the
@@ -785,6 +798,12 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     s_name = sketch.name
     ctx.entity_map[s_name] = {}
     ctx.sketches[s_name] = sketch
+    # T70 AMEND 4: the manifest's own mirror-axis Coincident constraints
+    # target a special 'origin' id -- registered here (not a real manifest
+    # ENTITY, so it never goes through _create_geometry) so the EXISTING
+    # generic resolve_entity lookup (a plain entity_map dict get) finds it
+    # for free, with zero changes to fb_engine's own shared resolver.
+    ctx.entity_map[s_name]["origin"] = sketch.originPoint
 
     p_created, p_updated, p_failed = _sync_manifest_parameters(ctx, manifest.get("parameters"))
 
@@ -806,16 +825,16 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     finally:
         sketch.isComputeDeferred = False
 
-    # Manual Pulse — Radial dimensions below may reference points/curves
-    # the geometry/constraint pass just created (offsets.py's own
-    # documented reason, Ground truth #5, reused here for the same
+    # Manual Pulse — Radial/Distance dimensions below may reference
+    # points/curves the geometry/constraint pass just created (offsets.py's
+    # own documented reason, Ground truth #5, reused here for the same
     # structural reason even though the offset mechanism itself is gone).
     sketch.isComputeDeferred = True
     sketch.isComputeDeferred = False
 
     sketch.isComputeDeferred = True
     try:
-        _apply_radial_dimensions(ctx, sketch, s_name, dimensions)
+        _apply_declared_dimensions(ctx, sketch, s_name, dimensions)
     finally:
         sketch.isComputeDeferred = False
 

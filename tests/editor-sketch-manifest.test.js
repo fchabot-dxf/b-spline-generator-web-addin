@@ -527,7 +527,11 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
   it('every Coincident constraint is a genuinely shared point (independent coordinate check)', () => {
     const shape = { preset, seed: 42, params: {} };
     const manifest = manifestFromShape(shape, REGION);
-    const coincidents = manifest.constraints.filter((c) => c.type === 'Coincident');
+    // T70 AMEND 4: a Coincident(['origin', <axis>]) targets Fusion's own
+    // sketch origin point, which has no manifest entity/coordinate at all
+    // at this (natural-space, pre-carve) level -- out of scope for this
+    // check; covered instead by the dedicated origin-anchor test below.
+    const coincidents = manifest.constraints.filter((c) => c.type === 'Coincident' && !c.targets.includes('origin'));
     expect(coincidents.length).toBeGreaterThan(0);
     for (const c of coincidents) {
       const [ptA, ptB] = c.targets.map((t) => pointOf(manifest.entities, t));
@@ -637,10 +641,13 @@ describe('manifestFromShape — T70 AMEND 3: mirror Symmetry (never Fix, replace
     expect(axis.p2[0]).toBeCloseTo(REGION.x + REGION.w / 2, 9);
   });
 
-  it('every Symmetry constraint targets exactly 2 points + the mirror axis, and its own 2 points are genuine mirror images about that axis (independent coordinate check)', () => {
+  it('every Symmetry constraint about the mirror axis targets exactly 2 points + the axis itself, and its own 2 points are genuine mirror images about that axis (independent coordinate check)', () => {
     const shape = { preset: 'hourglass', seed: 42, params: {} };
     const manifest = manifestFromShape(shape, REGION);
-    const symmetries = manifest.constraints.filter((c) => c.type === 'Symmetry');
+    // T70 AMEND 5 also declares a Symmetry about a SEPARATE horizontalAxis
+    // (top/bottom edges, whole curves not points) -- out of scope for this
+    // mirrorAxis-specific check; covered by its own dedicated test below.
+    const symmetries = manifest.constraints.filter((c) => c.type === 'Symmetry' && c.targets[2] === 'mirrorAxis');
     expect(symmetries.length).toBeGreaterThan(0); // non-vacuous
     const axisX = REGION.x + REGION.w / 2;
     for (const c of symmetries) {
@@ -693,6 +700,71 @@ describe('manifestFromShape — T70 AMEND 3: mirror Symmetry (never Fix, replace
     expect(waistRadiusParam.unit).toBe('in');
     const dim = manifest.dimensions.find((d) => d.target === 'seg2' && d.type === 'Radial');
     expect(dim.expression).toBe('waist_radius');
+  });
+});
+
+describe('manifestFromShape — T70 AMEND 4/5: the mirror axes are anchored to the sketch origin, redundant constraints dropped, overall size is param-driven', () => {
+  it('both the mirror axis (vertical) and the horizontal axis get Coincident([\'origin\', axisId]) -- a point-on-line anchor, never Fix', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    expect(manifest.constraints.some((c) => c.type === 'Coincident' && c.targets[0] === 'origin' && c.targets[1] === 'mirrorAxis')).toBe(true);
+    expect(manifest.constraints.some((c) => c.type === 'Coincident' && c.targets[0] === 'origin' && c.targets[1] === 'horizontalAxis')).toBe(true);
+  });
+
+  it('the horizontal axis is a construction Line at natural-space y = region.y + region.h/2, spanning the board\'s own width', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const axis = manifest.entities.find((e) => e.id === 'horizontalAxis');
+    expect(axis).toBeDefined();
+    expect(axis.type).toBe('Line');
+    expect(axis.isConstruction).toBe(true);
+    expect(axis.p1[1]).toBeCloseTo(REGION.y + REGION.h / 2, 9);
+    expect(axis.p2[1]).toBeCloseTo(REGION.y + REGION.h / 2, 9);
+  });
+
+  it('Equal([\'seg1\',\'seg9\']) (the shoulder mirror pair, advisor-measured OVER_CONSTRAINTS) is dropped, but the pair\'s own Symmetry-on-center survives -- position stays pinned, only the now-redundant radius-equality is gone', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const hasOldEqual = manifest.constraints.some((c) => c.type === 'Equal' && c.targets.includes('seg1') && c.targets.includes('seg9'));
+    expect(hasOldEqual).toBe(false);
+    const hasSymmetryOnCenter = manifest.constraints.some((c) => c.type === 'Symmetry' && c.targets.includes('seg1:C') && c.targets.includes('seg9:C'));
+    expect(hasSymmetryOnCenter).toBe(true);
+  });
+
+  it('the hip (seg3<->seg7) and waist (seg2<->seg8) mirror-Equal pairs are NOT dropped -- only the ONE measured shoulder exception, never generalized without evidence', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    expect(manifest.constraints.some((c) => c.type === 'Equal' && c.targets.includes('seg3') && c.targets.includes('seg7'))).toBe(true);
+    expect(manifest.constraints.some((c) => c.type === 'Equal' && c.targets.includes('seg2') && c.targets.includes('seg8'))).toBe(true);
+  });
+
+  it('Symmetry([\'seg4:E\',\'seg6:S\',...]) (advisor-measured OVER_CONSTRAINTS) is dropped -- EXACTLY the one measured pair, not generalized to seg0/seg10\'s own analogous-looking pair, since the declarative rule only ever inspects the "E" side (seg0/seg10\'s own closing happens on its "S" side, structurally undetected)', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const symmetries = manifest.constraints.filter((c) => c.type === 'Symmetry' && c.targets[2] === 'mirrorAxis');
+    const has46 = symmetries.filter((c) => c.targets.some((t) => t.startsWith('seg4:')) && c.targets.some((t) => t.startsWith('seg6:'))).length;
+    const has010 = symmetries.filter((c) => c.targets.some((t) => t.startsWith('seg0:')) && c.targets.some((t) => t.startsWith('seg10:'))).length;
+    expect(has46).toBe(1); // one of its own two dropped
+    expect(has010).toBe(2); // both kept -- the rule's own real, disclosed asymmetry
+  });
+
+  it('a horizontal Distance dim (=widthIn) ties the first Line mirror pair\'s own absolute separation, and a vertical Distance dim (=heightIn) plus a Symmetry-about-horizontalAxis ties the top/bottom self-mirroring edges', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const widthDim = manifest.dimensions.find((c) => c.type === 'Distance' && c.orientation === 'Horizontal');
+    expect(widthDim).toBeDefined();
+    expect(widthDim.expression).toBe('widthIn');
+    expect(widthDim.targets.length).toBe(2);
+    const heightDim = manifest.dimensions.find((c) => c.type === 'Distance' && c.orientation === 'Vertical');
+    expect(heightDim).toBeDefined();
+    expect(heightDim.expression).toBe('heightIn');
+    const [topId, bottomId] = heightDim.targets;
+    expect(new Set(heightDim.targets)).toEqual(new Set(['seg5', 'seg11']));
+    const hasHorizAxisSymmetry = manifest.constraints.some((c) => c.type === 'Symmetry'
+      && c.targets.includes(topId) && c.targets.includes(bottomId) && c.targets.includes('horizontalAxis'));
+    expect(hasHorizAxisSymmetry).toBe(true);
+    // widthIn/heightIn are REFERENCED, never re-declared as this module's own parameters.
+    expect(manifest.parameters.some((p) => p.name === 'widthIn' || p.name === 'heightIn')).toBe(false);
   });
 });
 
