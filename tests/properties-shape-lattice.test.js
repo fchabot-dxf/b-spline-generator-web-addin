@@ -543,7 +543,7 @@ describe('initShapeLatticeProperties (T58 ADD-ON): linked Rails & ties width', (
   it('an EXISTING pattern with rails !== ties (no linkRailsTies key) loads UNLINKED — "no silent change"', () => {
     editor._layers[0].pattern = {
       ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
-      widths: { rails: 0.1, ties: 0.04, nodeRadius: 0.075 },
+      widths: { rails: 0.1, ties: 0.04, nodeDiameter: 0.15 },
     };
     initShapeLatticeProperties(editor);
     expect(document.getElementById('shapeLatticeWidthLinkToggle').classList.contains('active')).toBe(false);

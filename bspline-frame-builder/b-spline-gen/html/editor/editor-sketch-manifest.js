@@ -443,7 +443,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   nodePoints.forEach((pt, idx) => {
     const id = toEntityId('node', idx);
     const p = fromLattice(pt, spacing);
-    entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: widths.nodeRadius });
+    entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: widths.nodeDiameter / 2 });
     groups.nodes.push(id);
     if (constrained) {
       for (const target of nodePieceCoincidences(pt)) {
@@ -471,7 +471,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   // supported) — `linked` is true whenever EITHER the link flag is on OR
   // the two widths just happen to already match, so "separate names"
   // is reserved for the one case that actually NEEDS two numbers.
-  // node_radius is untouched either way (never linked to rail/tie width).
+  // node_diameter is untouched either way (never linked to rail/tie width).
   const strokeWidthLinked = widths.linkRailsTies !== false || widths.rails === widths.ties;
   if (strokeWidthLinked) {
     if (railPieces.length || tiePieces.length) {
@@ -490,8 +490,13 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     }
   }
   if (nodePoints.length) {
-    parameters.push({ name: 'node_radius', value: widths.nodeRadius, unit: 'in' });
-    groups.nodes.forEach((id) => dimensions.push({ type: 'Radial', target: id, expression: 'node_radius' }));
+    // NODE-D (Fred: "node size should be entered as diameter not radius"):
+    // node_diameter replaces node_radius; each Circle entity's own
+    // `radius` field is STILL a true radius (Fusion's own Circle geometry
+    // needs one) — only the declared PARAMETER + its DRIVING dimension
+    // are diameter-based now, matching what the panel's stepper edits.
+    parameters.push({ name: 'node_diameter', value: widths.nodeDiameter, unit: 'in' });
+    groups.nodes.forEach((id) => dimensions.push({ type: 'Diameter', target: id, expression: 'node_diameter' }));
   }
 
   return { entities, constraints, parameters, dimensions, groups, pieceCount, constrained };

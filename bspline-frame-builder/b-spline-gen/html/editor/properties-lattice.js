@@ -220,7 +220,7 @@ export function initLatticeProperties(editor) {
         if (widthRailsEl) widthRailsEl.value = widths.rails;
         if (widthTiesEl) widthTiesEl.value = widths.ties;
         if (widthLinkedEl) widthLinkedEl.value = widths.rails;
-        if (widthNodesEl) widthNodesEl.value = widths.nodeRadius;
+        if (widthNodesEl) widthNodesEl.value = widths.nodeDiameter;
         // T58 ADD-ON: migration-aware, same shape rails.mode/ties.mode
         // already use above — an EXISTING saved pattern from before this
         // field existed has no `linkRailsTies` key at all (checked on the
@@ -310,7 +310,7 @@ export function initLatticeProperties(editor) {
         p.widths = {
             rails: railsValue,
             ties: tiesValue,
-            nodeRadius: widthNodesEl ? (parseFloat(widthNodesEl.value) || PATTERN_DEFAULTS.widths.nodeRadius) : (p.widths?.nodeRadius ?? PATTERN_DEFAULTS.widths.nodeRadius),
+            nodeDiameter: widthNodesEl ? (parseFloat(widthNodesEl.value) || PATTERN_DEFAULTS.widths.nodeDiameter) : (p.widths?.nodeDiameter ?? PATTERN_DEFAULTS.widths.nodeDiameter),
             linkRailsTies: widthLinked,
         };
 
@@ -357,7 +357,7 @@ export function initLatticeProperties(editor) {
      *  [field] AND re-widths the ACTIVE layer's already-owned pieces of
      *  that kind in place (rewidthOwnedKind), same "no reseed, just a
      *  live rewrite" contract as Colors. `field` is the PATTERN.widths key
-     *  ('rails'/'ties'/'nodeRadius'); `kind` is recolorOwnedKind's own
+     *  ('rails'/'ties'/'nodeDiameter'); `kind` is recolorOwnedKind's own
      *  kind name ('rails'/'ties'/'nodes') — rewidthOwnedKind shares that
      *  same kind vocabulary. */
     function wireWidthStepper(inputEl, field, kind) {
@@ -475,7 +475,7 @@ export function initLatticeProperties(editor) {
     wireColorSwatch(colorNodesEl, 'nodes');
     wireWidthStepper(widthRailsEl, 'rails', 'rails');
     wireWidthStepper(widthTiesEl, 'ties', 'ties');
-    wireWidthStepper(widthNodesEl, 'nodeRadius', 'nodes');
+    wireWidthStepper(widthNodesEl, 'nodeDiameter', 'nodes');
     wireLinkedWidthStepper();
     wireWidthLinkToggle();
 

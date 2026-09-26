@@ -87,7 +87,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     rails: { mode: 'every', every: 2, offset: 0 },
     ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
     nodes: { ends: true, crossings: true, railEnds: false },
-    widths: { rails: 0.07, ties: 0.05, nodeRadius: 0.075, linkRailsTies: false },
+    widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
     seed: 42,
   };
   const EXTENT = { iMin: 0, jMin: 0, iMax: 8, jMax: 8 };
@@ -201,7 +201,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
       rails: { mode: 'every', every: 2, offset: 0 },
       ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
       nodes: { ends: false, crossings: false, railEnds: false },
-      widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
+      widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
       extent: { mode: 'boundary' },
       shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
       // T73 AMEND 3: a shown contour now clips the lattice to the RAW
@@ -423,7 +423,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
   it('T63: linked rail/tie widths (linkRailsTies true, the default) share ONE stroke_width param, not rail_width+tie_width', () => {
     const linkedPattern = {
       ...PATTERN,
-      widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
+      widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
     };
     const manifest = manifestFromLattice(linkedPattern, EXTENT);
     expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(true);
@@ -441,7 +441,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
   it('T63: an UNLINKED layer whose rail/tie widths genuinely differ still gets separate rail_width/tie_width (non-vacuous: verified against the SAME fixture the default-linked test above uses, just with the flag flipped)', () => {
     const unlinkedPattern = {
       ...PATTERN,
-      widths: { rails: 0.07, ties: 0.05, nodeRadius: 0.075, linkRailsTies: false },
+      widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
     };
     const manifest = manifestFromLattice(unlinkedPattern, EXTENT);
     expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(false);
@@ -452,7 +452,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
   it('T63: an UNLINKED layer whose rail/tie widths happen to be EQUAL still uses stroke_width (the "linked OR equal" rule, not "linked flag alone")', () => {
     const unlinkedButEqual = {
       ...PATTERN,
-      widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: false },
+      widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: false },
     };
     const manifest = manifestFromLattice(unlinkedButEqual, EXTENT);
     expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(true);
@@ -820,7 +820,7 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
     rails: { mode: 'every', every: 2, offset: 0 },
     ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
     nodes: { ends: false, crossings: false, railEnds: false },
-    widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
+    widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
     seed: 42,
   };
   // buildSketchManifest resolves its OWN board extent internally

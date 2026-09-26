@@ -1284,7 +1284,7 @@ function _emitStyled(editor, kind, a, b) {
     const previousColor = editor._color;
     editor._color = colors[styleKey];
     const el = kind === 'node'
-        ? emitNode(editor, a, widths.nodeRadius)
+        ? emitNode(editor, a, widths.nodeDiameter / 2)
         : emitSegment(editor, kind, a, b, widths[styleKey]);
     editor._color = previousColor;
     return el;

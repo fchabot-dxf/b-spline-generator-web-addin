@@ -451,9 +451,16 @@ export const PATTERN_DEFAULTS = {
   // default spacing (0.25), computed once here rather than re-derived from
   // the CURRENT spacing on every read: changing Spacing later must not
   // silently re-widen an already-tuned Widths value (same "declared once,
-  // independently editable" shape PATTERN.colors already has). `nodeRadius`
-  // matches emitNode's own internal `r` (a radius, not a diameter) — the
-  // panel's "Node size" stepper edits this same value directly.
+  // independently editable" shape PATTERN.colors already has). NODE-D
+  // (Fred: "node size should be entered as diameter not radius"):
+  // `nodeDiameter` is what the panel's "Node size" stepper edits directly
+  // and what the manifest's own `node_diameter` parameter/Diameter
+  // dimension use — every DRAWING call site (emitNode's own `r` param) is
+  // a real radius, so each one divides by 2 at the one point it reads
+  // this field, rather than emitNode itself changing contract. A saved
+  // pattern's own OLD `nodeRadius` value is converted once on read (app-
+  // init.js's own MIGRATIONS array, doubled — the same physical node
+  // size, just re-expressed).
   // T58 ADD-ON (Fred: "I normally want ties and rails to be the same
   // width"): `linkRailsTies` (default true, a NEW layer's own starting
   // point) ties widths.ties to widths.rails in the panel's own UI (one
@@ -474,7 +481,7 @@ export const PATTERN_DEFAULTS = {
   widths: {
     rails: 0.25,
     ties: 0.25,
-    nodeRadius: LATTICE_STYLE.node.radiusFactor * 0.25,  // 0.075
+    nodeDiameter: LATTICE_STYLE.node.radiusFactor * 0.25 * 2,  // 0.15
     linkRailsTies: true,
   },
   seed: 42,
@@ -1928,7 +1935,7 @@ export async function generatePattern(editor, PATTERN) {
     // (findNodeAt, editor-lattice.js:99) — a belt-and-suspenders no-op if
     // occupied-detection already steered clear of it; returns null if so,
     // which tagOwned's own null-check handles.
-    tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeRadius));
+    tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeDiameter / 2));
   }
   editor._color = previousColor;
 
@@ -2118,10 +2125,12 @@ export function recolorOwnedKind(editor, layerId, kind, color) {
  * above — re-widths every element the given LAYER owns of ONE kind, IN
  * PLACE, no reseed. Rails/ties: `stroke-width` (inches, same unit
  * PATTERN.widths.rails/ties already stores). Nodes: `r` (the circle's own
- * radius attribute) — PATTERN.widths.nodeRadius is already a radius, so
- * no ×2/÷2 conversion here; only emitNode's OWN construction call needs
- * `r*2` (svg.js's circle() takes a diameter), a detail that stays local
- * to that one call site. One undo step, skipped when nothing was owned.
+ * RADIUS attribute) — NODE-D: `value` here is PATTERN.widths.nodeDiameter
+ * (the panel's own stepper writes it as a diameter directly), so this is
+ * the ONE place that divides by 2 for the live re-width, mirroring
+ * emitNode's OWN construction call (editor-lattice.js, `r*2` since
+ * svg.js's `circle()` takes a diameter) — the SAME diameter-in/radius-
+ * out conversion, just at the two different points each one needs it.
  *
  * @returns {number} how many elements were re-widthed.
  */
@@ -2131,7 +2140,7 @@ export function rewidthOwnedKind(editor, layerId, kind, value) {
   const owned = _ownedOnLayer(editor, layerId, latticeKind);
   for (const ch of owned) {
     if (latticeKind === 'node') {
-      ch.attr('r', value);
+      ch.attr('r', value / 2);
     } else {
       ch.attr('stroke-width', value);
     }

@@ -738,7 +738,7 @@ export function initShapeLatticeProperties(editor) {
         if (widthRailsEl) widthRailsEl.value = widths.rails;
         if (widthTiesEl) widthTiesEl.value = widths.ties;
         if (widthLinkedEl) widthLinkedEl.value = widths.rails;
-        if (widthNodesEl) widthNodesEl.value = widths.nodeRadius;
+        if (widthNodesEl) widthNodesEl.value = widths.nodeDiameter;
         // T58 ADD-ON: same migration-aware inference properties-lattice.js's
         // own panel uses (see that file's own comment on this exact point).
         const widthLinked = 'linkRailsTies' in rawWidths ? rawWidths.linkRailsTies : widths.rails === widths.ties;
@@ -813,7 +813,7 @@ export function initShapeLatticeProperties(editor) {
         p.widths = {
             rails: railsValue,
             ties: tiesValue,
-            nodeRadius: widthNodesEl ? (parseFloat(widthNodesEl.value) || PATTERN_DEFAULTS.widths.nodeRadius) : (p.widths?.nodeRadius ?? PATTERN_DEFAULTS.widths.nodeRadius),
+            nodeDiameter: widthNodesEl ? (parseFloat(widthNodesEl.value) || PATTERN_DEFAULTS.widths.nodeDiameter) : (p.widths?.nodeDiameter ?? PATTERN_DEFAULTS.widths.nodeDiameter),
             linkRailsTies: widthLinked,
         };
         // T58: this tool is ALWAYS boundary mode — no Board/Shape toggle.
@@ -1040,7 +1040,7 @@ export function initShapeLatticeProperties(editor) {
     wireColorSwatch(colorContourEl, 'contour'); // T72 (AMEND 2): recolorOwnedKind's own 'contour' special case
     wireWidthStepper(widthRailsEl, 'rails', 'rails');
     wireWidthStepper(widthTiesEl, 'ties', 'ties');
-    wireWidthStepper(widthNodesEl, 'nodeRadius', 'nodes');
+    wireWidthStepper(widthNodesEl, 'nodeDiameter', 'nodes');
     wireLinkedWidthStepper();
     wireWidthLinkToggle();
     wireBorderColorSwatch(borderColorEl, borderColorAutoEl);

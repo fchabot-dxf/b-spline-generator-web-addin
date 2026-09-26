@@ -385,7 +385,7 @@ describe('PATTERN_DEFAULTS.colors (SE7g amend)', () => {
  * pattern.js's own comment on why these are absolute inches, not factors.
  */
 describe('PATTERN_DEFAULTS.widths (SE7i)', () => {
-  it('declares the three default kind widths -- rails/ties a plain 0.25in (T71), nodeRadius still derived from LATTICE_STYLE × the default spacing (0.25)', () => {
+  it('declares the three default kind widths -- rails/ties a plain 0.25in (T71), nodeDiameter still derived from LATTICE_STYLE × the default spacing (0.25), doubled (NODE-D)', () => {
     // T71 (Fred: "Stroke width default to .25"): rails/ties raised from
     // 0.07 (LATTICE_STYLE.rail.widthFactor*0.25) to a plain 0.25in --
     // covers rails, ties, and (since T69) the Shape Lattice contour's own
@@ -397,7 +397,7 @@ describe('PATTERN_DEFAULTS.widths (SE7i)', () => {
     // disclosed default-VALUE change, matching widths.linkRailsTies's own
     // default of true for a new layer.
     expect(PATTERN_DEFAULTS.widths.ties).toBeCloseTo(0.25, 10);
-    expect(PATTERN_DEFAULTS.widths.nodeRadius).toBeCloseTo(0.075, 10);
+    expect(PATTERN_DEFAULTS.widths.nodeDiameter).toBeCloseTo(0.15, 10);
     expect(PATTERN_DEFAULTS.widths.linkRailsTies).toBe(true);
   });
 });
@@ -468,12 +468,12 @@ describe('generatePattern: per-kind widths (SE7i)', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
 
-  it('sizes rails/ties stroke-width and node radius from PATTERN.widths', () => {
+  it('sizes rails/ties stroke-width and node radius (half of PATTERN.widths.nodeDiameter, NODE-D) from PATTERN.widths', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 34,
       rails: { every: 2, offset: 0 },
       ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 },
-      widths: { rails: 0.11, ties: 0.09, nodeRadius: 0.2 },
+      widths: { rails: 0.11, ties: 0.09, nodeDiameter: 0.4 },
     };
     generatePattern(editor, pattern);
 
@@ -640,13 +640,13 @@ describe('rewidthOwnedKind (SE7i): re-width owned pieces in place, no reseed', (
     for (const el of tiesBefore) expect(el.attr('stroke-width')).toBe(tieWidthBefore); // untouched
   });
 
-  it('re-widths nodes via the `r` (radius) attribute', () => {
+  it('re-widths nodes via the `r` (radius) attribute -- NODE-D: `value` is a DIAMETER (matching the panel\'s own stepper), so `r` ends up HALF of it', () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 51, rails: { every: 2, offset: 0 } };
     generatePattern(editor, pattern);
     const nodesBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'node');
     expect(nodesBefore.length).toBeGreaterThan(0);
 
-    rewidthOwnedKind(editor, editor._activeLayer, 'nodes', 0.25);
+    rewidthOwnedKind(editor, editor._activeLayer, 'nodes', 0.5);
     for (const el of nodesBefore) expect(el.attr('r')).toBe(0.25);
   });
 

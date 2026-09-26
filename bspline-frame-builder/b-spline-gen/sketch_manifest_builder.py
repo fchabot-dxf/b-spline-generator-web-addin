@@ -526,13 +526,17 @@ def _apply_constraints(ctx, sketch, s_name, constraints):
 
 
 # ---------------------------------------------------------------------------
-# Radial/Distance dimensions — straight feed into fb_engine's own dimension_step
+# Radial/Diameter/Distance dimensions — straight feed into fb_engine's own
+# dimension_step
 # ---------------------------------------------------------------------------
 def _apply_declared_dimensions(ctx, sketch, s_name, dimensions):
     """The manifest's Radial dimension entries ({target, expression}) map
     onto dimension_step's own {"DimType":"Radius", "Target", "Expression"}
     shape — already implemented there for both Radius/Diameter (T60's own
-    research). T70 AMEND 5: Distance entries ({targets:[a,b], orientation,
+    research). NODE-D: Diameter entries map onto the identical shape with
+    "DimType":"Diameter" instead — the FIRST real manifest entry to
+    exercise that branch (node_diameter, replacing node_radius). T70
+    AMEND 5: Distance entries ({targets:[a,b], orientation,
     expression}) map onto dimension_step's own {"DimType":"Distance",
     "Targets":[a,b], "Orientation", "Expression"} shape — ALSO already
     implemented there (`_create_dimension`'s own "Targets... len>=2" branch
@@ -547,6 +551,14 @@ def _apply_declared_dimensions(ctx, sketch, s_name, dimensions):
         if dtype == "Radial":
             target = d.get("target")
             dim_spec = {"DimType": "Radius", "Target": target, "Expression": d.get("expression"), "Name": f"dim_{target}"}
+        elif dtype == "Diameter":
+            # NODE-D (Fred: "node size should be entered as diameter not
+            # radius") — same shape as Radial above, dimension_step's own
+            # "Diameter" DimType already builds addDiameterDimension
+            # (T60's own research, never previously exercised by a real
+            # manifest entry until this).
+            target = d.get("target")
+            dim_spec = {"DimType": "Diameter", "Target": target, "Expression": d.get("expression"), "Name": f"dim_{target}"}
         elif dtype == "Distance":
             targets = d.get("targets") or []
             target = "_".join(targets)

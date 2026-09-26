@@ -77,7 +77,7 @@ await evalJS(`(() => {
   const layer = editor._layers.find(l => l.id === editor._activeLayer);
   layer.pattern = layer.pattern || {};
   layer.pattern.colors = { rails: '#123456', ties: '#654321', nodes: '#00ff00' };
-  layer.pattern.widths = { rails: 0.31, ties: 0.19, nodeRadius: 0.13 };
+  layer.pattern.widths = { rails: 0.31, ties: 0.19, nodeDiameter: 0.26 };
   true;
 })()`);
 
@@ -213,7 +213,7 @@ report.nodeResult = await evalJS(`(() => {
   return n ? { r: +n.getAttribute('r'), color: n.getAttribute('fill'), totalNodes: nodes.length } : { totalNodes: nodes.length };
 })()`);
 report.nodePlacedOnClick = !!report.nodeResult.r;
-report.nodeRadiusFromPattern = report.nodeResult.r != null && Math.abs(report.nodeResult.r - 0.13) < 1e-6;
+report.nodeRadiusFromPattern = report.nodeResult.r != null && Math.abs(report.nodeResult.r - 0.13) < 1e-6; // NODE-D: pattern stores nodeDiameter=0.26, drawn r is half of it
 report.nodeColorFromPattern = report.nodeResult.color && report.nodeResult.color.toLowerCase() === '#00ff00';
 const countAfterFirstClick = report.nodeResult.totalNodes;
 await dragFromTo({ x: 6, y: 6 }, { x: 6, y: 6 }, 1); // click the SAME spot again
