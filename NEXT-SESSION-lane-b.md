@@ -67,3 +67,17 @@ free. UI: one number stepper "One-ended ties" (0..count, step 1) in the Lattice 
 its neighbours; Shape Lattice gets the same field if it generates ties the same way. Saved patterns without the key read
 the default. Manifest: rail ends Coincident on their rail; the free end gets nothing.
 Tests: for oneEnded = 0, 1, 2: exactly that many ties have a free end, all others have both ends on rails; render + view.
+
+## AMEND 5 (Fred: shape contour must be made of SLOTS — SE15b pulled into T67; the app-side SE14b stays queued)
+The manifest already emits the contour per segment (seg0..seg11: Line / Arc3Point). Build them as SLOTS:
+- contour Line → `sketch.addCenterToCenterSlot(p1, p2, ValueInput(width), True)` (same as rails/ties).
+- contour Arc3Point → `sketch.addThreePointArcSlot(p1, pMid, p2, ValueInput(width), True)` (advisor measured it
+  inserts correctly: centerline arc through the 3 points, sides ±w/2, width dimension whose .parameter.expression can be
+  set). Register the slot's CENTERLINE (construction line / construction arc) under the seg id, with :S/:E by PROXIMITY
+  to p1/p2 (fix #3) and :C for the arc centre.
+- Width expression = `stroke_width` (same param as rails/ties).
+- Existing seg constraints (Coincident chain, Tangent, H/V, Equal, the Radial dim) now act on the CENTERLINES.
+- NO Fix anywhere. If Tangent between two slot centerlines over-constrains, report which one, don't Fix around it.
+- Emit it as a declared manifest flag (e.g. contour `widthMode:'slot'`), not a builder special case.
+- Shim: model addThreePointArcSlot (returns centerline arc + 2 side arcs + 2 caps + width dim). Parity check (5b)
+  reads the contour from the CENTERLINES.
