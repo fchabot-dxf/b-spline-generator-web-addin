@@ -36,3 +36,15 @@ and stop.
    Tests: for the default pattern, EVERY tie endpoint lies on a rail (|y - railY| < 1e-9 within the rail's x-extent),
    and the manifest has exactly 2 tie-on-rail Coincidents per tie. Render the default box + shape lattice to PNG and
    VIEW it before passing (no floating ties).
+
+## AMEND 2 (Fred: "make sure the drawing in the addin matches the one we insert in fusion") — declare PARITY as a check
+Advisor measured it today: app SVG ↔ manifest = identical (box: 14/14 lines, 16/16 nodes); Fusion ↔ manifest = all
+52 shape pieces within 0.00034" (read back from the real sketch). Make both links permanent:
+5a. JS test (box AND shape, default patterns + one non-default seed): every drawn lattice/contour piece in the layer
+    has exactly one manifest entity with the same geometry (lines: endpoints; nodes: centre; contour arcs: ends +
+    radius), and vice versa — no extras, none missing. Tolerance 1e-6 in.
+5b. Python `verify_sketch_against_manifest(sketch, manifest, tol=0.002)` in sketch_manifest_builder.py, called at the
+    end of build_constrained_sketch; the summary gains `"parity": {"maxErr": …, "mismatches": [ids]}`. It reads back
+    slot centerline ends, circle centres, contour line ends, arc ends + radius (match arc ends order-free — Fusion
+    arcs are CCW). Log a WARNING when mismatches is non-empty. Shim test: a moved point is reported, an exact build
+    reports none.
