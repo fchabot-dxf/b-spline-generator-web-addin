@@ -16,10 +16,16 @@
  * two point-on-curves" case, satisfied by construction: `primitiveHitAt`
  * returns the FIRST matching primitive with its own S/E flag already).
  *
+ * The third describe block covers AMEND 3c: when a boundary crossing
+ * splits one original rail/tie into several pieces, consecutive pieces of
+ * the SAME row/column (`railGroup`) get a Collinear constraint between
+ * them, and only the FIRST piece in each group keeps its own Horizontal/
+ * Vertical constraint (Collinear already fixes the rest's direction).
+ *
  * AMEND 3b's own near-tangent-angle threshold and MIN_RAIL_PIECE (a
  * SEPARATE, stricter drop-threshold than the existing MIN_PIECE_LENGTH_IN)
- * and AMEND 3c's Collinear/railGroup are still queued as a follow-up --
- * see WORK-LOG-lane-b.md for the disclosed scope decision.
+ * are still queued as a follow-up -- see WORK-LOG-lane-b.md for the
+ * disclosed scope decision.
  */
 import { describe, it, expect } from 'vitest';
 import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
@@ -259,5 +265,63 @@ describe('T73 AMEND 3 (constraint): every contour-touching rail end gets exactly
     const anySegCoincident = manifest.constraints.some((c) => c.type === 'Coincident'
       && c.targets.some((t) => t.split(':')[0].match(/^seg\d+$/)));
     expect(anySegCoincident).toBe(false);
+  });
+});
+
+describe('T73 AMEND 3c: split same-rail pieces get Collinear, and only the FIRST piece per group keeps its own Horizontal/Vertical', () => {
+  function groupsOf(entities) {
+    const byGroup = new Map();
+    for (const e of entities) {
+      if (e.railGroup == null) continue;
+      if (!byGroup.has(e.railGroup)) byGroup.set(e.railGroup, []);
+      byGroup.get(e.railGroup).push(e.id);
+    }
+    return byGroup;
+  }
+
+  it('dense vertical hourglass: every multi-piece rail group gets exactly (pieces-1) Collinear constraints, in row order, and axis constraints only on the first piece of each group', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      orientation: 'vertical',
+      rails: { mode: 'count', count: [12, 12] },
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    const rails = railEntities(manifest);
+    const byGroup = groupsOf(rails);
+    const splitGroups = [...byGroup.values()].filter((ids) => ids.length > 1);
+    expect(splitGroups.length).toBeGreaterThan(0); // non-vacuous: this fixture genuinely splits some rails (the waist)
+
+    for (const ids of byGroup.values()) {
+      const collinear = manifest.constraints.filter((c) => c.type === 'Collinear' && ids.includes(c.targets[0]) && ids.includes(c.targets[1]));
+      expect(collinear.length).toBe(ids.length - 1);
+      // Consecutive pairs in emission order (already position-sorted) --
+      // never e.g. [ids[0],ids[2]] skipping a middle piece.
+      for (let k = 1; k < ids.length; k++) {
+        expect(collinear.some((c) => c.targets[0] === ids[k - 1] && c.targets[1] === ids[k])).toBe(true);
+      }
+      const axisCounts = ids.map((id) => manifest.constraints.filter((c) => (c.type === 'Horizontal' || c.type === 'Vertical') && c.targets[0] === id).length);
+      expect(axisCounts[0]).toBe(1); // first piece: constrained
+      for (let k = 1; k < axisCounts.length; k++) expect(axisCounts[k]).toBe(0); // rest: deduped, relies on Collinear
+    }
+  });
+
+  it('a rail that never splits still gets its own Horizontal/Vertical (unaffected by the dedup)', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      orientation: 'vertical',
+      rails: { mode: 'count', count: [12, 12] },
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    const rails = railEntities(manifest);
+    const byGroup = groupsOf(rails);
+    const singlePieceGroup = [...byGroup.values()].find((ids) => ids.length === 1);
+    expect(singlePieceGroup).toBeDefined(); // non-vacuous: some rows are never split
+    const id = singlePieceGroup[0];
+    const axisCount = manifest.constraints.filter((c) => (c.type === 'Horizontal' || c.type === 'Vertical') && c.targets[0] === id).length;
+    expect(axisCount).toBe(1);
   });
 });

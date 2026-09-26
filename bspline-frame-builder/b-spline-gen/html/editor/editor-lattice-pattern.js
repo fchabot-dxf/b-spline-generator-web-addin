@@ -1358,6 +1358,11 @@ export function computePattern(PATTERN, opts = {}) {
         kind: 'rail', a: { i: a, j }, b: { i: b, j },
         aContourHit: rowScan ? contourHit(rowScan, a, piece.aIsCrossing) : undefined,
         bContourHit: rowScan ? contourHit(rowScan, b, piece.bIsCrossing) : undefined,
+        // T73 AMEND 3c: every piece of the SAME row is one original rail,
+        // split by a boundary crossing mid-row (e.g. a vertical rail
+        // crossing the hourglass waist twice) -- `j` is already a stable,
+        // unique-per-row key, reused directly rather than a second counter.
+        railGroup: j,
       });
       if (aJoint && !_occupiedHas(occupied, a, j, 'node')) addNode(a, j);
       if (bJoint && !_occupiedHas(occupied, b, j, 'node')) addNode(b, j);
@@ -1544,6 +1549,9 @@ export function computePattern(PATTERN, opts = {}) {
         kind: 'tie', a: { i, j: a }, b: { i, j: b },
         aContourHit: colScan ? contourHit(colScan, a, piece.aIsCrossing) : undefined,
         bContourHit: colScan ? contourHit(colScan, b, piece.bIsCrossing) : undefined,
+        // T73 AMEND 3c: same "one original piece, split mid-column" idea
+        // as the rails loop above — `i` is unique per tie slot already.
+        railGroup: i,
       });
 
       if (nodes.ends) {
@@ -1591,6 +1599,9 @@ export function computePattern(PATTERN, opts = {}) {
       // points — orientation-independent, passed through unchanged.
       aContourHit: s.aContourHit,
       bContourHit: s.bContourHit,
+      // T73 AMEND 3c: a row/column key, not a lattice point — also
+      // orientation-independent, passed through unchanged.
+      railGroup: s.railGroup,
     })),
     nodePoints: nodePoints.map((p) => orient(p, orientation)),
   };

@@ -207,8 +207,16 @@ function pieceEndOrCurveTarget(pt, seg, id) {
  *  expression" pattern this module already uses for every other
  *  dimensioned quantity). */
 function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
-  for (const { id, p1, p2 } of pieces) {
-    entities.push({ id, type: 'Slot', p1: [p1.x, p1.y], p2: [p2.x, p2.y], width: widthValue });
+  for (const { id, p1, p2, railGroup } of pieces) {
+    const entity = { id, type: 'Slot', p1: [p1.x, p1.y], p2: [p2.x, p2.y], width: widthValue };
+    // T73 AMEND 3c (Fred: "rails can have colinearity"): a piece's OWN
+    // railGroup (only rail/tie pieces carry one — the contour's own
+    // single-piece call site below never passes it) is plain DATA here,
+    // not just an internal bookkeeping key — declared once, so a future
+    // consumer never needs to re-derive "which pieces were originally one
+    // rail" from the Collinear constraints below.
+    if (railGroup !== undefined) entity.railGroup = railGroup;
+    entities.push(entity);
     dimensions.push({ type: 'SlotWidth', target: id, expression: paramName });
   }
 }
@@ -290,21 +298,54 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     constraints.push({ type: 'Coincident', targets: [`${pieceId}:${suffix}`, hit.end ? `${segId}:${hit.end}` : segId] });
   };
 
+  // T73 AMEND 3c (Fred: "rails can have colinearity"): when a boundary
+  // crossing mid-row/column splits one original rail/tie into several
+  // pieces (`railGroup`, computePattern's own row/column key), giving
+  // EVERY piece its own Horizontal/Vertical constraint over-constrains —
+  // an H/V on the first piece plus a Collinear to the next already fixes
+  // the second piece's own direction. `emitAxisOncePerGroup` (below)
+  // tracks which groups already got theirs; `collinearForGroup` (after
+  // both loops) links each group's own consecutive pieces, in the SAME
+  // order they were pushed (already position-sorted — `_clipToSpans`
+  // iterates spans ascending, so pieces of one row/column emit in that
+  // order already, never re-sorted here).
+  function emitAxisOncePerGroup(seenGroups, railGroup, axis, id) {
+    if (railGroup != null && seenGroups.has(railGroup)) return;
+    if (!axis) return; // never mark a group "seen" on a no-op -- a genuinely
+    // diagonal piece (shouldn't happen for a rail/tie, but never assumed)
+    // leaves the group's direction UNconstrained, so the next piece must
+    // still get its own attempt rather than being silently skipped too.
+    if (railGroup != null) seenGroups.add(railGroup);
+    constraints.push({ type: axis, targets: [id] });
+  }
+  function collinearForGroups(pieces) {
+    const byGroup = new Map();
+    for (const p of pieces) {
+      if (p.railGroup == null) continue;
+      if (!byGroup.has(p.railGroup)) byGroup.set(p.railGroup, []);
+      byGroup.get(p.railGroup).push(p.id);
+    }
+    for (const ids of byGroup.values()) {
+      for (let k = 1; k < ids.length; k++) constraints.push({ type: 'Collinear', targets: [ids[k - 1], ids[k]] });
+    }
+  }
+
+  const railAxisGroupsSeen = new Set();
   const railPieces = [];
   railsCanon.forEach((seg, idx) => {
     const id = toEntityId('rail', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
-    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
+    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.rails.push(id);
-    railPieces.push({ id, p1, p2 });
+    railPieces.push({ id, p1, p2, railGroup: seg.railGroup });
     if (constrained) {
-      const axis = axisConstraintType(p1, p2);
-      if (axis) constraints.push({ type: axis, targets: [id] });
+      emitAxisOncePerGroup(railAxisGroupsSeen, seg.railGroup, axisConstraintType(p1, p2), id);
       contourHitConstraint(id, 'S', seg.aContourHit);
       contourHitConstraint(id, 'E', seg.bContourHit);
     }
   });
+  if (constrained) collinearForGroups(railPieces);
 
   // T67 (advisor's own real Fusion run — a box-lattice shape run hit a
   // "node24:C + tie12:S over-constrained" failure mid-run, not seen again
@@ -321,17 +362,17 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   // redundant leg of the same triangle rather than declaring all three.
   const tieEndToRailTarget = {};
 
+  const tieAxisGroupsSeen = new Set();
   const tiePieces = [];
   tiesCanon.forEach((seg, idx) => {
     const id = toEntityId('tie', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
-    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
+    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.ties.push(id);
-    tiePieces.push({ id, p1, p2 });
+    tiePieces.push({ id, p1, p2, railGroup: seg.railGroup });
     if (constrained) {
-      const axis = axisConstraintType(p1, p2);
-      if (axis) constraints.push({ type: axis, targets: [id] });
+      emitAxisOncePerGroup(tieAxisGroupsSeen, seg.railGroup, axisConstraintType(p1, p2), id);
       // "tie-end-on-rail" (ROADMAP.md:765) — a plain equality check on the
       // already-computed lattice coordinates, §3's own doc comment; no
       // geometric search needed. T66: now uses the SAME 3-way end/mid-
@@ -358,6 +399,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
       contourHitConstraint(id, 'E', seg.bContourHit);
     }
   });
+  if (constrained) collinearForGroups(tiePieces);
 
   // T64 CHANGE (amendment #1's own "NODES: node circle CENTER coincident
   // to the slot centerline END point... crossing nodes: center
