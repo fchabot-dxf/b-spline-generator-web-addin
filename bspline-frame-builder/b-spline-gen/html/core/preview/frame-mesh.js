@@ -10,14 +10,19 @@
  * World mapping (MEASURED, drape-svg.js DRAPE_TEXTURE_FLIPY): editor/SVG
  * (x, y-down from the top) -> world (x - W/2, H/2 - y), z up.
  *
- * Trim: panel triangles whose centroid lies outside the outline are dropped
- * (index filter, geometry otherwise untouched; the drape overlay shares the
- * geometry so it is trimmed too), and a wall is built along the exact outline
- * from the underside to the top surface, hiding the <= one-cell jag.
+ * Trim (exact since F8): panel triangles wholly inside the outline stay in the
+ * panel index (the drape overlay shares that geometry, so it is trimmed too);
+ * the triangles the outline crosses are clipped to it into a separate rim mesh
+ * (every attribute interpolated), so the panel ends exactly on the outline.
+ * A wall runs along the outline from the underside to the top, in the
+ * panel's own colours (as the panel's own side walls are).
  * Bars: the ring between the outline and the frame's inner edge, as a quad
  * strip between CORRESPONDING samples of the two (same primitive topology,
  * same fractions), extruded straight (no taper) from frame-bottom z up to the
  * panel underside. The corner correspondences are the miter lines.
+ * Heights (F8 BLOCKER) come from the DRAWN panel triangles (panelSurface),
+ * never from the grid arrays: the thickened underside is offset along the
+ * surface normal, so its vertices are not on the x,y grid.
  */
 
 /** Sample a closed primitive loop (editor coords) at fixed fractions per
@@ -69,28 +74,225 @@ export function pointInPolygon(x, y, poly) {
   return inside;
 }
 
-/** Keep only triangles whose (x, y) centroid is inside `poly` (world). */
-export function trimIndices(index, positions, poly) {
-  const out = [];
+/**
+ * The DRAWN panel surface at (x, y): every panel triangle above/below that
+ * point (bucketed by grid cell), `lo` = the lowest (the underside, or the
+ * panel's slanted side wall where the offset underside pulled in), `hi` = the
+ * highest (the top). Each hit carries its triangle and barycentric weights so
+ * any attribute can be read at that point (lerpAttr). Zero-area (vertical)
+ * triangles have no height at a point and are skipped.
+ */
+export function panelSurface(positions, index, W, H, nx, nz) {
+  const cw = W / Math.max(1, nx - 1), ch = H / Math.max(1, nz - 1);
+  const ci = (x) => Math.floor((x + W / 2) / cw), cj = (y) => Math.floor((y + H / 2) / ch);
+  const buckets = new Map();
+  const P = positions, E = 1e-9;
   for (let t = 0; t < index.length; t += 3) {
     const a = index[t] * 3, b = index[t + 1] * 3, c = index[t + 2] * 3;
-    const cx = (positions[a] + positions[b] + positions[c]) / 3;
-    const cy = (positions[a + 1] + positions[b + 1] + positions[c + 1]) / 3;
-    if (pointInPolygon(cx, cy, poly)) out.push(index[t], index[t + 1], index[t + 2]);
+    const i0 = ci(Math.min(P[a], P[b], P[c]) - E), i1 = ci(Math.max(P[a], P[b], P[c]) + E);
+    const j0 = cj(Math.min(P[a + 1], P[b + 1], P[c + 1]) - E), j1 = cj(Math.max(P[a + 1], P[b + 1], P[c + 1]) + E);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+      const k = i * 1048576 + j;
+      let list = buckets.get(k);
+      if (!list) buckets.set(k, (list = []));
+      list.push(t);
+    }
   }
+  return {
+    at(x, y) {
+      let lo = null, hi = null;
+      for (const t of buckets.get(ci(x) * 1048576 + cj(y)) || []) {
+        const h = baryHit(P, index, t, x, y);
+        if (!h) continue;
+        if (!lo || h.z < lo.z) lo = h;
+        if (!hi || h.z > hi.z) hi = h;
+      }
+      return lo ? { lo, hi } : null;
+    },
+  };
+}
+
+/** Barycentric hit of triangle `t` (offset into `index`) at (x, y), with its z; null if outside or zero-area. */
+export function baryHit(P, index, t, x, y, tol = 1e-7) {
+  const a = index[t] * 3, b = index[t + 1] * 3, c = index[t + 2] * 3;
+  const d = (P[b + 1] - P[c + 1]) * (P[a] - P[c]) + (P[c] - P[b]) * (P[a + 1] - P[c + 1]);
+  if (Math.abs(d) < 1e-14) return null;
+  const u = ((P[b + 1] - P[c + 1]) * (x - P[c]) + (P[c] - P[b]) * (y - P[c + 1])) / d;
+  const v = ((P[c + 1] - P[a + 1]) * (x - P[c]) + (P[a] - P[c]) * (y - P[c + 1])) / d;
+  const w = 1 - u - v;
+  if (u < -tol || v < -tol || w < -tol) return null;
+  return { t, u, v, w, z: u * P[a + 2] + v * P[b + 2] + w * P[c + 2] };
+}
+
+/** Attribute `arr` (itemSize n) of `index`'s triangle at a hit's barycentric weights. */
+export function lerpAttr(arr, n, index, h) {
+  const a = index[h.t] * n, b = index[h.t + 1] * n, c = index[h.t + 2] * n, out = [];
+  for (let k = 0; k < n; k++) out.push(h.u * arr[a + k] + h.v * arr[b + k] + h.w * arr[c + k]);
   return out;
 }
 
-/** Bilinear z of a heightfield grid laid out as buildHeightField does:
- *  vertex (i, j) at x = -W/2 + i/(nx-1)*W, y = -H/2 + j/(nz-1)*H. */
-export function sampleGridZ(pos, nx, nz, W, H, x, y) {
-  const fi = Math.min(nx - 1, Math.max(0, ((x + W / 2) / W) * (nx - 1)));
-  const fj = Math.min(nz - 1, Math.max(0, ((y + H / 2) / H) * (nz - 1)));
-  const i0 = Math.min(nx - 2, Math.floor(fi)), j0 = Math.min(nz - 2, Math.floor(fj));
-  const u = fi - i0, v = fj - j0;
-  const z = (i, j) => pos[(j * nx + i) * 3 + 2];
-  return (1 - u) * (1 - v) * z(i0, j0) + u * (1 - v) * z(i0 + 1, j0)
-    + (1 - u) * v * z(i0, j0 + 1) + u * v * z(i0 + 1, j0 + 1);
+const _area2 = (pts) => { let s = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; s += p.x * q.y - q.x * p.y; } return s; };
+
+/**
+ * triangle ∩ polygon (Weiler-Atherton against a convex clip): the CCW polygon
+ * `poly` is walked; each run of it inside the CCW triangle `tri` is a chain
+ * from an entry to an exit point on the triangle's boundary; every region is
+ * closed by going from a chain's exit CCW along the triangle to the next entry.
+ * Returns simple CCW loops (one per separate piece; a concave outline can
+ * enter one triangle twice). No crossing: the whole triangle or nothing.
+ */
+function _trianglePolygonPieces(tri, poly) {
+  const n = poly.length;
+  const planes = [0, 1, 2].map((e) => ({ A: tri[e], B: tri[(e + 1) % 3] }));
+  const side = (pl, X) => (pl.B.x - pl.A.x) * (X.y - pl.A.y) - (pl.B.y - pl.A.y) * (X.x - pl.A.x);
+  const perim = (e, X) => { // position along the triangle boundary, 0..3
+    const { A, B } = planes[e], dx = B.x - A.x, dy = B.y - A.y;
+    return e + Math.max(0, Math.min(1, ((X.x - A.x) * dx + (X.y - A.y) * dy) / (dx * dx + dy * dy)));
+  };
+  let start = -1;
+  for (let k = 0; k < n && start < 0; k++) if (planes.some((pl) => side(pl, poly[k]) < 0)) start = k;
+  if (start < 0) return [poly.slice()]; // the polygon lies inside the triangle
+  const chains = [];
+  let cur = null;
+  for (let m = 0; m < n; m++) {
+    const P = poly[(start + m) % n], Q = poly[(start + m + 1) % n], d = { x: Q.x - P.x, y: Q.y - P.y };
+    let te = 0, tx = 1, ee = -1, ex = -1, empty = false;
+    planes.forEach((pl, e) => { // Cyrus-Beck
+      const f0 = side(pl, P), fd = (pl.B.x - pl.A.x) * d.y - (pl.B.y - pl.A.y) * d.x;
+      if (fd === 0) { if (f0 < 0) empty = true; return; }
+      const t = -f0 / fd;
+      // ties count: a chain may enter / leave exactly at a polygon vertex on the boundary
+      if (fd > 0) { if (t >= te) { te = t; ee = e; } } else if (t <= tx) { tx = t; ex = e; }
+    });
+    if (empty || te >= tx) continue; // outside, or only touching the triangle at one point
+    const at = (t) => ({ x: P.x + d.x * t, y: P.y + d.y * t });
+    if (ee >= 0 && !cur) { const X = at(te); cur = { entry: perim(ee, X), pts: [X] }; }
+    if (!cur) continue;
+    if (ex >= 0) { const X = at(tx); cur.pts.push(X); cur.exit = perim(ex, X); chains.push(cur); cur = null; } else cur.pts.push(Q);
+  }
+  // A chain lying ON the triangle's boundary with the polygon's interior on the
+  // far side (the outline running along a triangle edge the other way) has no
+  // area inside: every segment's left side is outside the triangle. Drop it.
+  const strictlyIn = (X) => planes.every((pl) => side(pl, X) > 0);
+  const live = chains.filter((c) => c.pts.some((p, i) => {
+    const q = c.pts[i + 1];
+    if (!q) return false;
+    const dx = q.x - p.x, dy = q.y - p.y, l = Math.hypot(dx, dy);
+    if (!(l > 0)) return false;
+    const e = 1e-4 * l;
+    return strictlyIn({ x: (p.x + q.x) / 2 - (dy / l) * e, y: (p.y + q.y) / 2 + (dx / l) * e });
+  }));
+  if (!live.length) return null; // no crossing: decided by the caller
+  const fwd = (from, to) => ((to - from) % 3 + 3) % 3; // CCW distance along the boundary
+  const loops = [], used = new Set();
+  for (const c0 of live) {
+    if (used.has(c0)) continue;
+    const loop = [];
+    let c = c0;
+    do {
+      used.add(c);
+      loop.push(...c.pts);
+      let next = null;
+      for (const o of live) if (!next || fwd(c.exit, o.entry) < fwd(c.exit, next.entry)) next = o;
+      for (const v of [0, 1, 2].filter((v) => fwd(c.exit, v) > 0 && fwd(c.exit, v) < fwd(c.exit, next.entry)).sort((u, v) => fwd(c.exit, u) - fwd(c.exit, v))) {
+        loop.push(tri[v]);
+      }
+      c = next;
+    } while (c !== c0 && !used.has(c));
+    loops.push(loop);
+  }
+  return loops;
+}
+
+/** Ear-clip a CCW polygon into triangles (index triples into `pts`). */
+function _earClip(pts) {
+  const idx = pts.map((_, i) => i), tris = [];
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const inTri = (p, a, b, c) => cross(a, b, p) > 1e-12 && cross(b, c, p) > 1e-12 && cross(c, a, p) > 1e-12;
+  while (idx.length > 3) {
+    let cut = -1;
+    for (let k = 0; k < idx.length && cut < 0; k++) {
+      const i0 = idx[(k + idx.length - 1) % idx.length], i1 = idx[k], i2 = idx[(k + 1) % idx.length];
+      if (cross(pts[i0], pts[i1], pts[i2]) < -1e-12) continue; // reflex
+      if (idx.some((j) => j !== i0 && j !== i1 && j !== i2 && inTri(pts[j], pts[i0], pts[i1], pts[i2]))) continue;
+      cut = k;
+    }
+    if (cut < 0) cut = 0; // only degenerate (zero-area) corners are left
+    tris.push([idx[(cut + idx.length - 1) % idx.length], idx[cut], idx[(cut + 1) % idx.length]]);
+    idx.splice(cut, 1);
+  }
+  tris.push(idx);
+  return tris;
+}
+
+/**
+ * Exact trim of the panel to `poly` (world, closed). Triangles wholly inside
+ * stay (`kept`, indices into the panel); the ones the outline crosses become
+ * `rim` geometry: triangle ∩ polygon, re-triangulated with the source winding,
+ * each new vertex's z and attributes (`attrs`: {name: {array, itemSize}})
+ * interpolated in its source triangle. A zero-area (vertical) triangle has no
+ * area to clip: it is kept whole when its centroid is inside.
+ */
+export function clipPanelToOutline(positions, index, poly, attrs = {}, cell = 0.1) {
+  const P = positions, n = poly.length;
+  const inside = new Int8Array(P.length / 3).fill(-1);
+  const isIn = (v) => (inside[v] < 0 ? (inside[v] = pointInPolygon(P[v * 3], P[v * 3 + 1], poly) ? 1 : 0) : inside[v]) === 1;
+  // outline segments bucketed by cell, to find the triangles the outline crosses
+  const segs = new Map(), key = (i, j) => i * 1048576 + j, cx = (x) => Math.floor(x / cell);
+  for (let k = 0; k < n; k++) {
+    const a = poly[k], b = poly[(k + 1) % n];
+    for (let i = cx(Math.min(a.x, b.x)); i <= cx(Math.max(a.x, b.x)); i++) {
+      for (let j = cx(Math.min(a.y, b.y)); j <= cx(Math.max(a.y, b.y)); j++) {
+        let l = segs.get(key(i, j));
+        if (!l) segs.set(key(i, j), (l = []));
+        l.push(k);
+      }
+    }
+  }
+  const crossed = (x0, x1, y0, y1) => {
+    for (let i = cx(x0); i <= cx(x1); i++) for (let j = cx(y0); j <= cx(y1); j++) {
+      for (const k of segs.get(key(i, j)) || []) {
+        const a = poly[k], b = poly[(k + 1) % n];
+        if (Math.max(a.x, b.x) >= x0 && Math.min(a.x, b.x) <= x1 && Math.max(a.y, b.y) >= y0 && Math.min(a.y, b.y) <= y1) return true;
+      }
+    }
+    return false;
+  };
+  const kept = [], rim = { position: [], index: [] };
+  const names = Object.keys(attrs);
+  for (const nm of names) rim[nm] = [];
+  const subjectCCW = _area2(poly) > 0 ? poly : poly.slice().reverse();
+  for (let t = 0; t < index.length; t += 3) {
+    const ia = index[t], ib = index[t + 1], ic = index[t + 2];
+    const a = { x: P[ia * 3], y: P[ia * 3 + 1] }, b = { x: P[ib * 3], y: P[ib * 3 + 1] }, c = { x: P[ic * 3], y: P[ic * 3 + 1] };
+    const hitsOutline = crossed(Math.min(a.x, b.x, c.x), Math.max(a.x, b.x, c.x), Math.min(a.y, b.y, c.y), Math.max(a.y, b.y, c.y));
+    if (!hitsOutline) { if (isIn(ia) && isIn(ib) && isIn(ic)) kept.push(ia, ib, ic); continue; }
+    const s2 = _area2([a, b, c]);
+    if (Math.abs(s2) < 1e-14) {
+      if (pointInPolygon((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, poly)) kept.push(ia, ib, ic);
+      continue;
+    }
+    const tri = s2 > 0 ? [a, b, c] : [a, c, b];
+    let pieces = _trianglePolygonPieces(tri, subjectCCW);
+    if (!pieces) { // nothing crosses it: wholly in or out, decided at a strictly interior point
+      if (pointInPolygon((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, poly)) kept.push(ia, ib, ic);
+      continue;
+    }
+    for (const piece of pieces) {
+      if (piece.length < 3 || Math.abs(_area2(piece)) < 1e-14) continue;
+      const base = rim.position.length / 3;
+      for (const q of piece) {
+        const h = baryHit(P, index, t, q.x, q.y, Infinity);
+        rim.position.push(q.x, q.y, h.z);
+        for (const nm of names) rim[nm].push(...lerpAttr(attrs[nm].array, attrs[nm].itemSize, index, h));
+      }
+      for (const [i, j, k] of _earClip(piece)) {
+        if (s2 > 0) rim.index.push(base + i, base + j, base + k);
+        else rim.index.push(base + i, base + k, base + j); // keep the source triangle's facing
+      }
+    }
+  }
+  return { kept, rim };
 }
 
 /** A vertical strip along closed `poly` from zBot(p) to zTop(p). */
@@ -162,18 +364,40 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
   const full = geom.userData.fullIndex;
   if (!full) return [];
   if (!spec) { geom.setIndex(full.slice()); return []; }
-  const { W, H, nx, nz, topPos, botPos } = grid;
+  const { W, H, nx, nz, botPos } = grid;
   // Grid-fine loops: the edge wall must follow the terrain top even without bars.
   const { cell, outer, inner } = frameLoopsWorld(spec, grid);
-  geom.setIndex(trimIndices(full, geom.attributes.position.array, outer));
+  const pos = geom.attributes.position.array;
+  const attrs = {};
+  for (const nm of ['color', 'uv', 'normal']) if (geom.attributes[nm]) attrs[nm] = geom.attributes[nm];
+  const { kept, rim } = clipPanelToOutline(pos, full, outer, attrs, cell);
+  geom.setIndex(kept);
   const extra = [];
-  if (topPos && botPos) {
-    const top = (p) => sampleGridZ(topPos, nx, nz, W, H, p.x, p.y);
-    const bot = (p) => sampleGridZ(botPos, nx, nz, W, H, p.x, p.y);
+  if (rim.index.length) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(rim.position, 3));
+    for (const nm of Object.keys(attrs)) g.setAttribute(nm, new THREE.Float32BufferAttribute(rim[nm], attrs[nm].itemSize));
+    g.setIndex(rim.index);
+    if (!attrs.normal) g.computeVertexNormals();
+    const m = new THREE.Mesh(g, panelMesh.material.clone());
+    m.name = 'frame-panel-rim';
+    extra.push(m);
+  }
+  if (botPos) { // a solid panel (thickened): the outline wall and the bars
+    const surf = panelSurface(pos, full, W, H, nx, nz);
+    const top = (p) => surf.at(p.x, p.y).hi.z;
+    const bot = (p) => surf.at(p.x, p.y).lo.z;
     const wallMat = panelMesh.material.clone();
-    wallMat.vertexColors = false;
     wallMat.side = THREE.DoubleSide;
-    extra.push(_mesh(THREE, wallArrays(outer, bot, top), wallMat));
+    const w = wallArrays(outer, bot, top);
+    const wall = _mesh(THREE, w, wallMat);
+    if (attrs.color) { // the panel's own colours at the top edge, as its own side walls
+      const col = [];
+      for (const p of outer) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
+      wall.geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    }
+    wall.name = 'frame-panel-wall';
+    extra.push(wall);
     if (inner) {
       const barMat = new THREE.MeshPhongMaterial({ color: spec.color || '#d9c9a3', side: THREE.DoubleSide, shininess: 12 });
       const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);

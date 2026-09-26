@@ -15,36 +15,13 @@ import { readFileSync } from 'node:fs';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameSolidSpec } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
-import { applyFrameToPanel, sampleGridZ, samplePairedOutlines, toWorld } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
-import { buildHeightField } from '../bspline-frame-builder/b-spline-gen/html/core/preview/terrain-mesh.js';
+import { applyFrameToPanel, samplePairedOutlines, toWorld } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
+import { FakeTHREE, carvedPanel, drawnFaces } from './helpers/drawn-panel.js';
 
-const FakeTHREE = {
-  DoubleSide: 2,
-  BufferGeometry: class {
-    constructor() { this.attributes = {}; this.index = null; this.userData = {}; }
-    setAttribute(k, a) { this.attributes[k] = a; }
-    setIndex(ix) { this.index = { array: Array.isArray(ix) ? ix : Array.from(ix) }; }
-    computeVertexNormals() {}
-  },
-  Float32BufferAttribute: class { constructor(arr, n) { this.array = Float32Array.from(arr); this.itemSize = n; } },
-  Mesh: class { constructor(g, m) { this.geometry = g; this.material = m; } },
-  MeshPhongMaterial: class { constructor(o) { Object.assign(this, o); } },
-};
-
-/** A sculpted panel: underside z = f(x,y) >= 0, top = underside + 0.6. */
-function sculptedPanel(W, H, nx, nz, f) {
-  const under = new Float32Array(nx * nz), top = new Float32Array(nx * nz);
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const x = -W / 2 + (i / (nx - 1)) * W, y = -H / 2 + (j / (nz - 1)) * H;
-    under[j * nx + i] = f(x, y); top[j * nx + i] = f(x, y) + 0.6;
-  }
-  const topF = buildHeightField(top, nx, nz, W, H), botF = buildHeightField(under, nx, nz, W, H);
-  const g = new FakeTHREE.BufferGeometry();
-  g.setAttribute('position', new FakeTHREE.Float32BufferAttribute(topF.pos, 3));
-  g.setIndex(topF.indices);
-  const mat = { clone() { return { ...this }; } };
-  return { mesh: new FakeTHREE.Mesh(g, mat), grid: { W, H, nx, nz, topPos: topF.pos, botPos: botF.pos } };
-}
+/** A sculpted panel as the app builds it: top z = f(x,y) + 0.6, the underside
+ *  0.6 in below it along the surface normal (so near f, but off the x,y grid,
+ *  as the thicken step makes it). */
+const sculptedPanel = (W, H, nx, nz, f) => carvedPanel(W, H, nx, nz, (x, y) => f(x, y) + 0.6, 0.6);
 
 const SCULPTS = {
   flat: () => 0.2,
@@ -63,7 +40,8 @@ describe('sweep: every bar is valid', () => {
         for (const z0 of BOTTOMS) {
           for (const [sname, f] of Object.entries(SCULPTS)) {
             const nx = Math.round(W / 0.1) + 1, nz = Math.round(H / 0.1) + 1;
-            const { mesh, grid } = sculptedPanel(W, H, nx, nz, f);
+            const { mesh, solid, grid } = sculptedPanel(W, H, nx, nz, f);
+            const solidZ = drawnFaces([solid]);
             const spec = frameSolidSpec(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id, frameBottomZ: z0 }), { widthIn: W, heightIn: H });
             if (!spec || !spec.innerPrimitives) continue; // board too small for this frame: no bars, by the declared fit rule
             const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
@@ -75,7 +53,7 @@ describe('sweep: every bar is valid', () => {
               if (Math.abs(x) > W / 2 + 1e-6 || Math.abs(y) > H / 2 + 1e-6) { bad.push(`${tag}: outside the board`); break; }
               if (Math.abs(z - z0) < 1e-9) continue; // a bottom vertex
               if (z <= z0) { bad.push(`${tag}: top not above bottom`); break; }
-              if (Math.abs(z - sampleGridZ(grid.botPos, nx, nz, W, H, x, y)) > 1e-4) { bad.push(`${tag}: top off the underside`); break; }
+              if (Math.abs(z - Math.min(...solidZ(x, y))) > 1e-4) { bad.push(`${tag}: top off the DRAWN underside`); break; }
             }
             checked++;
           }
