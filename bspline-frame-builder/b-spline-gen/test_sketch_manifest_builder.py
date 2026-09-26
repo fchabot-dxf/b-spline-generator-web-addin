@@ -642,6 +642,30 @@ _HERE = os.path.dirname(os.path.realpath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
+# FB-ORDER cross-file gotcha (found running the whole bspline-frame-builder
+# tree together): sketch_manifest_builder.py imports fb_engine.build_context
+# and friends — the SAME shared modules frame-builder's own tests import,
+# each behind its OWN incompatible adsk stub. Python caches each module on
+# first import, so whichever test file's stub wins does so for the REST of
+# the process; this file's own BuildContext ended up bound to a frame-
+# builder test's more minimal stub (missing .userInterface) when both ran
+# in one pytest invocation. Evicting every fb_engine.* module (plus this
+# file's own target, sketch_manifest_builder) before installing THIS file's
+# stub forces a fresh import under it every time, regardless of collection
+# order — see bspline-frame-builder/frame-builder/fb_engine/
+# test_board_params_ownership.py's own matching comment for the other side.
+for _mod in (
+    "fb_engine", "fb_engine.build_context", "fb_engine.geometry",
+    "fb_engine.constraints", "fb_engine.dimensions", "fb_engine.projections",
+    "fb_engine.offsets", "fb_engine.miters", "fb_engine.fb_value_resolver",
+    "fb_engine.parameter_schema", "fb_engine.diagnostics", "fb_engine.inner_corners",
+    "fb_engine.document_discovery", "fb_engine.template_resolver",
+    "fb_engine.timeline_order", "fb_engine.frame_engine", "fb_engine.parametric_engine",
+    "fb_engine.template_factory", "frame_engine", "parametric_engine",
+    "sketch_manifest_builder",
+):
+    sys.modules.pop(_mod, None)
+
 _FakeApp = _install_adsk_stubs()
 
 import adsk.core  # noqa: E402 -- the fake registered above, for tests that build a ValueInput directly

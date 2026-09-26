@@ -9891,3 +9891,81 @@ Node size drops cleanly to its own full-width line below, nothing clipped).
   assertion inside an existing test).
 - No edits to `bspline_gen_palette.html` — confirmed via `git status --short` before commit: only
   `lattice-side-column.js`, `editor.css`, and `tests/lattice-side-column.test.js`.
+
+## Turn 280 — FB-ORDER: board-param ownership + frame-before-inlay timeline reorder, AMEND 1 (Clean) — DONE — NO FUSION, advisor verifies live
+
+Two independent requirements, dispatched together: **OWNERSHIP** (widthIn/heightIn are Send to Fusion's
+alone — the frame builder must skip them and refuse to build without them) and **ORDER** (move the frame's
+own timeline block before the earliest inlay item, as a unit, never partially). "NO FUSION" this turn — the
+pure algorithm is unit-tested; the real-Fusion glue is explicitly flagged UNVERIFIED below for the advisor's
+own live check, same split this engine already uses elsewhere.
+
+**OWNERSHIP.** Declared ONCE — `ParameterSchema.BOARD_OWNED_PARAMS = ('widthIn', 'heightIn')` +
+`ParameterSchema.is_board_owned(name)` (`parameter_schema.py`) — rather than hand-rolling the same two string
+literals at each call site (this codebase's own `_bare_module_names` "a hand-typed list missed 8 names"
+precedent is exactly the failure mode a declared table avoids). `parametric_engine.py`'s
+`_sync_user_parameters` now `continue`s past any board-owned name as the FIRST check in its per-param loop —
+never created, never updated, even if a UI snapshot happens to carry a value for it. `frame_engine.py` adds
+`_require_board_params(builder)`, called right after `FrameBuilder(external_logger)` in BOTH
+`build_sketch_logic_v3` and `build_frame_logic`, raising `RuntimeError("Run Send to Fusion first — board
+size (…) isn't set yet.")` naming whichever of the two is actually missing — placed OUTSIDE any
+swallow-and-log try/except so it propagates straight to `_build_fn`'s own status-setting except block, with
+NO Fusion object touched before the check (build aborts before any component/sketch call).
+
+**ORDER.** Pure/impure split in the new `timeline_order.py`: `reorder_frame_before_inlay(timeline,
+is_frame_item, is_inlay_item, logger=None)` is the pure algorithm (no adsk import, plain `.count`/`.item(i)`
+shape) — checks EVERY frame item currently after the earliest inlay item's index for `canReorder` FIRST, and
+moves NOTHING if any refuses (the dispatch's own explicit rule), else moves each, in original relative
+order, to an advancing target index starting at the inlay's own original position. Handles multi-inlay
+(moves before the EARLIEST of all inlay items) and interleaved frame/inlay items correctly — both have
+dedicated tests. `reorder_frame_before_inlay_in_design(design, frame_component_name, logger)` is the
+real-Fusion glue: names the inlay by the declared `INLAY_NAME_PREFIXES = ("Plane for L", "Source - L")`
+(main/export-flow.js's own per-layer naming) and the frame block by
+`is_frame_timeline_item`/`_component_name_for_entity`, which reads `.component` (the occurrence-creation
+item itself) or `.parentComponent` (everything built inside it — sketches, planes, features) off each
+timeline item's `.entity`. **UNVERIFIED, flagged for the advisor's live check**: which of these two
+properties Fusion actually exposes can differ by real `TimelineObject.entity` type beyond what the docs say —
+this function itself has zero unit-test coverage of the real API by construction ("NO FUSION"). Wired into
+`frame_engine.py`'s `run_sketch_only` (after `build_template`) and `run_full_synthesis` (after
+`_create_assembly_joints`) — a non-"moved" result that isn't `"no inlay present"`/`"already in order"` logs a
+WARNING rather than raising (a reorder refusal is a degraded-but-working state, not a build failure).
+
+**AMEND 1 (Fred, mid-task): "the frame's extrude needs the 'Clean' body (a green timeline group)."** Target
+order: `[comp creations] -> [Clean] -> [Frame_1 block] -> [inlay]` — the frame block must insert immediately
+before the earliest inlay item, never before Clean or anything the frame's own features consume. Analysis:
+Clean is neither a frame item (not in `Frame_1`'s own component) nor an inlay item (its name matches neither
+declared prefix) — `reorder_frame_before_inlay` never touches anything that's in neither `frame_items` nor
+`inlay_items`, so Clean simply stays exactly where it already sits, and the frame block only ever moves to
+directly before the inlay, never before Clean. Concluded the EXISTING algorithm already satisfies this with
+**no code change** — confirmed (not just argued) with two new tests in `test_timeline_order.py`:
+`test_amend_1_a_frame_extrude_depending_on_clean_stays_after_it` (asserts the exact target order with Clean
+present) and `test_amend_1_clean_present_does_not_defeat_the_any_refusal_safety_net` (same Clean scenario,
+but the extrude itself refuses reorder — proves "any refusal -> move nothing" still holds with Clean in the
+mix, not just in the simpler no-Clean tests). **Mutation-tested non-vacuous, separately for each**: (1)
+narrowed the refusal-check loop to `to_move[:1]` (only checks the first item) — exactly the 2 refusal tests
+failed (the pre-existing one AND the new Clean one), 11 stayed green; (2) shifted `target` by +1 (a plausible
+off-by-one) — 4 tests failed, including the new "stays after Clean" test, alongside the 3 pre-existing
+ordering tests it would equally break; both mutations restored, re-ran, all 13 green again.
+
+**Cross-file `sys.modules` collision (found running the whole tree together, not just the new files).**
+`pytest bspline-frame-builder/ -q` initially showed 31 failures, ALL inside the PRE-EXISTING
+`test_sketch_manifest_builder.py` (b-spline-gen), despite that file passing standalone. Root cause: it and
+the new `test_board_params_ownership.py` both transitively import the SAME shared `fb_engine.build_context`
+etc. modules (genuinely shared between the b-spline-gen and frame-builder tools inside the one add-in, put on
+`sys.path` at real-Fusion runtime) — Python caches each module on FIRST import for the rest of the process,
+so whichever test file's adsk stub installs first silently "wins" that shared module for every OTHER test
+file too, producing unrelated-looking `AttributeError`s. First eviction attempt used a `"fb_engine."` prefix
+match, which crashed with a NEW `KeyError` — `fb_engine/` is a real package (`__init__.py` exists), so pytest
+registers the test file ITSELF as `fb_engine.test_board_params_ownership`, and the prefix match deleted that
+in-progress import out from under importlib mid-import. Fixed by switching to an EXPLICIT list of the real
+shared engine module names (`_SHARED_ENGINE_MODULES` in both files), evicted before each file installs its
+own stub — added to the new file AND (necessarily) to the pre-existing `test_sketch_manifest_builder.py`.
+Re-ran the combined suite in BOTH collection orderings (new file first, and old file first) to confirm the
+fix isn't order-dependent: both green.
+- `python -m pytest bspline-frame-builder/ -q` -> **182 passed** (180 pre-existing + the 2 new AMEND-1
+  Clean tests; the 9-test `test_board_params_ownership.py` and 11-test `test_timeline_order.py` base suite
+  were already counted from earlier in this same turn's own session).
+- No edits to `bspline_gen_palette.html` this entire turn either — confirmed via `git status --short` before
+  commit: only `parameter_schema.py`, `parametric_engine.py`, `frame_engine.py`, the new `timeline_order.py`
+  + its test, `test_board_params_ownership.py`, and the pre-existing `test_sketch_manifest_builder.py`'s own
+  eviction-list addition.

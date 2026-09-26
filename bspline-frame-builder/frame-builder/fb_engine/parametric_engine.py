@@ -268,8 +268,23 @@ class ParametricSketchBuilder:
             params = design.userParameters
             
             for name, val in ui_data.items():
+                # FB-ORDER (Fred: "only Send to Fusion can create"
+                # widthIn/heightIn): ui_data carries the frame builder's
+                # OWN form snapshot, which includes widthIn/heightIn
+                # purely for the resolver's own expression math (see
+                # fb_value_resolver.py) — never write them back to
+                # Fusion here. Send to Fusion (b-spline-gen) is the ONLY
+                # thing that ever creates/updates these two; skipping
+                # them (not just "don't overwrite if present") means a
+                # frame build can never accidentally CREATE them either,
+                # which is what run_sketch_only's own pre-flight check
+                # (frame_engine.py) depends on to detect "Send to Fusion
+                # hasn't run yet" in the first place.
+                if ParameterSchema.is_board_owned(name):
+                    continue
+
                 p = params.itemByName(name)
-                
+
                 # Create if missing. Unit comes from ParameterSchema so the
                 # stub respects the schema (ReadOnly inches params like
                 # widthIn no longer get silently demoted to cm) and stays

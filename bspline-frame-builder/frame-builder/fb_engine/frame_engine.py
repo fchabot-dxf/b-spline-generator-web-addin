@@ -19,6 +19,7 @@ try:
         parameter_schema,
         template_resolver,
         document_discovery,
+        timeline_order,
     )
     from fb_engine.parameter_schema import ParameterSchema
     from fb_engine.template_resolver import (
@@ -27,11 +28,13 @@ try:
         get_template_spec,
     )
     from fb_engine.document_discovery import DocumentDiscovery
+    from fb_engine.timeline_order import reorder_frame_before_inlay_in_design
     from fb_utils import fb_logger
     logger = fb_logger.DebugLogger(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
     importlib.reload(parameter_schema)
     importlib.reload(template_resolver)
     importlib.reload(document_discovery)
+    importlib.reload(timeline_order)
     importlib.reload(parametric_engine)
     importlib.reload(fb_value_resolver)
 except Exception as e:
@@ -49,15 +52,35 @@ except Exception as e:
 
 
 
+def _require_board_params(builder):
+    """FB-ORDER (Fred: "only Send to Fusion can create" widthIn/heightIn):
+    the frame builder must never create the board dimensions itself —
+    only Send to Fusion (b-spline-gen) does. If they're missing, the
+    user hasn't run Send to Fusion for this document yet; raise BEFORE
+    any Fusion object exists (no incremental component, no sketch — no
+    partial frame) with a clear, actionable message. Called from the two
+    module-level entry points below, OUTSIDE run_sketch_only/
+    run_full_synthesis's own try/except (which logs and swallows —
+    exactly what would otherwise hide this from the user)."""
+    params = builder.user_params
+    missing = [name for name in ParameterSchema.BOARD_OWNED_PARAMS
+               if not (params and params.itemByName(name))]
+    if missing:
+        raise RuntimeError(
+            "Run Send to Fusion first — board size (" + "/".join(missing) + ") isn't set yet."
+        )
+
+
 def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
     """Entry point version 3 (Signature Immune)."""
     external_logger = kwargs.get('external_logger', None)
     if not external_logger and len(args) > 0:
         external_logger = args[0]
-        
+
     if external_logger:
         external_logger.log(f"BUILD ENTRY: build_sketch_logic_v3(style_id='{style_id}')")
     builder = FrameBuilder(external_logger)
+    _require_board_params(builder)
     data_dict = kwargs.get('data', {})
     # Unify session state (ui_state) and button snapshot (ui_data)
     ui_state = data_dict.get('ui_state', {}) if isinstance(data_dict, dict) else {}
@@ -78,6 +101,7 @@ def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwar
         external_logger = args[0]
 
     builder = FrameBuilder(external_logger)
+    _require_board_params(builder)
     data_dict = kwargs.get('data', {})
     ui_state = data_dict.get('ui_state', {}) if isinstance(data_dict, dict) else {}
     ui_snapshot = data_dict.get('ui_data', {}) if isinstance(data_dict, dict) else {}
@@ -163,6 +187,18 @@ class FrameBuilder:
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver, max_phase=max_phase)
             builder.build_template(template)
+
+            # FB-ORDER: move the whole frame block (this occurrence,
+            # its sketches/planes/features) to just before the earliest
+            # inlay item, so the inlay can reference frame geometry.
+            # No-op if there's no inlay yet, or nothing refuses reorder
+            # to move (see timeline_order.py's own doc comment for what
+            # this DOES vs. what "NO FUSION" leaves for the advisor to
+            # verify live).
+            if frame_comp:
+                result = reorder_frame_before_inlay_in_design(self.design, frame_comp.name, self.logger)
+                if not result["moved"] and result["reason"] not in ("no inlay present", "already in order"):
+                    self.logger.log(f"FB-ORDER: frame NOT reordered before inlay — {result['reason']}", "WARNING")
         except Exception as e:
             self.logger.log_error(f"CRASH in run_sketch_only: {e}")
             self.logger.log_error(traceback.format_exc())
@@ -191,6 +227,15 @@ class FrameBuilder:
             
             if target_body and frame_comp:
                 self._create_assembly_joints(target_body, frame_comp, joint_prefix)
+
+            # FB-ORDER: same reorder as run_sketch_only — see that
+            # method's own comment. Runs AFTER the assembly joints above
+            # so the moved block includes everything full synthesis just
+            # built from the frame, not only its sketches.
+            if frame_comp:
+                result = reorder_frame_before_inlay_in_design(self.design, frame_comp.name, self.logger)
+                if not result["moved"] and result["reason"] not in ("no inlay present", "already in order"):
+                    self.logger.log(f"FB-ORDER: frame NOT reordered before inlay — {result['reason']}", "WARNING")
         except Exception as e:
             self.logger.log_error(f"CRASH in run_full_synthesis: {e}")
             self.logger.log_error(traceback.format_exc())

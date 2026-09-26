@@ -25,6 +25,17 @@ backward-compat shims that delegate here; new code should import
 # regardless of whether a schema dict is available.
 _UNITLESS_PREFIXES = ('en_', 'is_', 'ck_')
 
+# FB-ORDER (Fred: "only Send to Fusion can create" widthIn/heightIn):
+# the board dimensions are created/updated EXCLUSIVELY by Send to Fusion
+# (b-spline-gen) — the frame builder only ever READS them (via Fusion
+# expressions, e.g. template_factory.py's "widthIn/2 - boundingboxoffset").
+# Declared once here (the same "one source of truth" reasoning this
+# module's own docstring already gives for unit defaulting) so every
+# frame-builder call site that touches userParameters checks against
+# this SAME list rather than each hand-rolling its own widthIn/heightIn
+# string literals that could silently drift apart.
+_BOARD_OWNED_PARAMS = ('widthIn', 'heightIn')
+
 
 class ParameterSchema:
     """Stateless registry for Fusion userParameter unit/validation rules.
@@ -34,6 +45,13 @@ class ParameterSchema:
     """
 
     UNITLESS_PREFIXES = _UNITLESS_PREFIXES
+    BOARD_OWNED_PARAMS = _BOARD_OWNED_PARAMS
+
+    @classmethod
+    def is_board_owned(cls, name):
+        """True for a param the frame builder must never create or
+        write — only Send to Fusion (b-spline-gen) owns these."""
+        return name in cls.BOARD_OWNED_PARAMS
 
     # ------------------------------------------------------------------
     # Unit resolution
