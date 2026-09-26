@@ -25,15 +25,6 @@ class FBValueResolver:
         self.logger = logger
         self.units_manager = design.unitsManager
 
-    def get_base_frame_requirements(self):
-        """Returns the standardized metric defaults for every frame."""
-        return {
-            'frame_thickness':      -1.905, # -0.75 in (XY Inset)
-            'Skel_Slot_Tolerance':   0.635, #  0.25 in
-            'boundingboxoffset':     0.635, #  0.25 in
-            'Skel_Frame_Taper':      0.0,
-        }
-
     def resolve_dna_parameter(self, p_info, active_vars=None):
         """
         Resolves a Template parameter spec into a Fusion-safe (expression, unit).

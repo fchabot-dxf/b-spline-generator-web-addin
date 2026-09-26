@@ -230,3 +230,76 @@ class TestRequireBoardParams:
     def test_does_not_raise_once_both_exist(self):
         builder = FakeBuilder(FakeUserParams(existing=[FakeUserParam("widthIn"), FakeUserParam("heightIn")]))
         frame_engine._require_board_params(builder)  # no raise
+
+
+# ---------------------------------------------------------------------
+# FB-APP S0: the template is the ONE declaration of every frame param.
+# _create_skeletal_parameters must not create the two dead params
+# (Skel_Slot_Tolerance / Skel_Frame_Taper — nothing reads them; the
+# extrude hard-codes 0 deg) nor write an existing param's raw .value
+# (the old hard-coded base requirements set frame_thickness to -1.905 cm
+# on EVERY build before the template overwrote it).
+# ---------------------------------------------------------------------
+from fb_engine.fb_value_resolver import FBValueResolver
+from fb_engine.template_resolver import resolve_template
+
+_DEAD_PARAMS = ("Skel_Slot_Tolerance", "Skel_Frame_Taper")
+# Params the engine's own phases / template_factory reference by name —
+# with the base requirements gone, each template must declare them.
+_ENGINE_REFERENCED_PARAMS = ("frame_thickness", "boundingboxoffset")
+
+
+class RecordingParam(FakeUserParam):
+    def __init__(self, name, expression=""):
+        super().__init__(name, expression)
+        self.value_writes = []
+
+    @property
+    def value(self):
+        return 0.0
+
+    @value.setter
+    def value(self, v):
+        self.value_writes.append(v)
+
+
+def _skeletal_builder(existing):
+    design = types.SimpleNamespace(userParameters=FakeUserParams(existing), unitsManager=None)
+    fb = frame_engine.FrameBuilder.__new__(frame_engine.FrameBuilder)
+    fb.design = design
+    fb.user_params = design.userParameters
+    fb.logger = FakeLogger()
+    fb.resolver = FBValueResolver(design, fb.logger)
+    return fb
+
+
+class TestFrameParamsSingleDeclaration:
+    @pytest.mark.parametrize("style_id", ["Template 1", "Template 2"])
+    def test_dead_params_are_never_created(self, style_id):
+        fb = _skeletal_builder([FakeUserParam("widthIn", "7"), FakeUserParam("heightIn", "9")])
+        fb._create_skeletal_parameters(None, style_id, {})
+        added = [name for name, *_ in fb.user_params.added]
+        for dead in _DEAD_PARAMS:
+            assert dead not in added
+        assert "frame_thickness" in added  # the template's own declaration still creates it
+
+    def test_an_existing_frame_param_never_gets_a_raw_value_write(self):
+        ft = RecordingParam("frame_thickness", "0.75 in")
+        bbo = RecordingParam("boundingboxoffset", "0.25 in")
+        fb = _skeletal_builder([FakeUserParam("widthIn", "7"), FakeUserParam("heightIn", "9"), ft, bbo])
+        fb._create_skeletal_parameters(None, "Template 1", {})
+        assert ft.value_writes == []
+        assert bbo.value_writes == []
+        assert ft.expression == "0.75"  # set once, from the template's declared Val (unit comes from the param)
+
+    def test_taper_is_no_longer_a_unit_rule(self):
+        assert ParameterSchema.name_based_unit("Skel_Frame_Taper") == "in"
+
+    @pytest.mark.parametrize("style_id", ["Template 1", "Template 2"])
+    def test_every_template_declares_the_engine_referenced_params(self, style_id):
+        # Pins a fact that is ALREADY true (both templates declare both) —
+        # it guards the removal: nothing else creates these params now.
+        template, _ = resolve_template(style_id)
+        declared = {p["Name"] for s in template["Sketches"] for p in s.get("Parameters", [])}
+        for name in _ENGINE_REFERENCED_PARAMS:
+            assert name in declared

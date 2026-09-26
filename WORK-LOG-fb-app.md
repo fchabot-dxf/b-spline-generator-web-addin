@@ -62,3 +62,90 @@ candidate trap for the advisor to add on main: discovery's `"clean solid"` rung
 
 **Processes.** None spawned beyond two read-only Explore agents, both finished. Capacity is fine; this
 was a read-and-write turn with plenty of room left.
+
+## Turn 2 — F2: FB-APP's UNVERIFIED items measured live + S0 clean-up — DONE — FUSION (scratch doc only)
+
+**Fusion hygiene: how it was kept.**
+- **No module or path swapping.** Before touching anything I diffed the installed add-in's
+  `fb_engine/` and `sketches/` against this worktree with `diff -rq --strip-trailing-cr`: **identical**,
+  CRLF only. So I called the already-loaded `frame_engine_core` / `fb_engine.*` directly, with **zero
+  sys.path or sys.modules changes**, and afterwards confirmed no worktree path or module was present.
+- **Fred's document was only read.** The only open doc (unsaved "Untitled", B-Spline Set + inlay) was
+  used read-only: face normals, and a `TemporaryBRepManager.copy` of its Clean panel so the
+  measurements use a real Send body.
+- **Scratch document.** All building happened in a new scratch doc. It was closed via the one handle
+  I created (`close(False)`, never saved), and my temporary `builtins` attrs were deleted.
+- **Fred's document afterwards:** still 1 occurrence and the same 6 timeline items as before.
+
+**Measured** (T1, 7×11 in board, `frame_thickness` 0.75):
+- **item 1, face.** All 6 panel faces are NURBS, none planar.
+  - Extruding to the underside (n.z = −0.99), the bars stop at the panel: its volume is 187.5 cm³
+    after the trim.
+  - Extruding to the top face (n.z = +0.99), each long bar is +21 cm³ bigger (211.7 vs 190.3), and
+    that extra runs through the panel's edge.
+  - Fred's "bottom face" is confirmed. The declared name is now `core.underside`. The resolver picks
+    by normal, not "planar face".
+- **item 2, re-Send.**
+  - Deleting the body (as `_remove_last_import` does) puts the 4 BAR extrudes in warning ("Face 1
+    missing … cached geometry"), `TRIM_CUT` vanishes, and nothing rebinds.
+  - Deleting `Frame_1` and rebuilding gives `Frame_1` again, all features healthy, and bar volumes
+    identical to the first build (190.28 / 92.40 / 81.14 / 189.69).
+  - Per AMEND 1, S7 = delete the frame by attribute, then rebuild.
+- **item 3, bar height.** Bar bottoms sit at exactly z = −2.54 cm (= `frame_height_offset` −1 in),
+  and the tops follow the sculpted underside (0.99–1.65 cm). Per AMEND 3d it is a Z position; name
+  and value are kept. The panel's lowest point is −0.113 cm, not exactly 0.
+- **item 4, FB-ORDER.** It moved `Frame_1` + its 3 sketches before `Plane for L1` as a unit. **But**
+  the solid build's extrudes + `TRIM_CUT` land AFTER the inlay, because FB-ORDER runs only at the end
+  of the sketch build. That is added to S6.
+- **Bonus 1.** `find_aesthetic_core_body()` returns `None` on Send's real structure. The dead
+  `"clean solid"` rung is confirmed live, so full synthesis makes no joints.
+- **Bonus 2.** `FrameBuilder()` without `external_logger` crashes (`frame_engine.py:124`: calls
+  `.DebugLogger` on an instance). Not fixed (out of scope); noted for S5.
+- **Screenshots:** `~/.bspline-status/shots/seatC/1644_F2_bottomface-bars.png`,
+  `1646_F2_resend-rebuild-timeline.png`.
+
+**S0 (item 5):**
+- **Removed** `FBValueResolver.get_base_frame_requirements` and its loop in
+  `_create_skeletal_parameters`, and the `'Taper'`→`'deg'` unit rule.
+- **Sweep, every link accounted for:**
+  - Callers of `get_base_frame_requirements`: the only one is removed (repo-wide `grep -a`).
+  - The `'Taper'` unit rule's only beneficiary was `Skel_Frame_Taper`.
+  - Params persisted in existing Fusion docs are **kept, with reason**: no cleanup exists, and user
+    documents are not touched.
+  - UI / HTML / JS references: none (grep).
+  - Docs: `parameter_schema`'s docstrings updated. Its module-history docstring still mentions the
+    old base-requirements path; left as history.
+- **Behaviour change, stated:** a `boundingboxoffset` edited in an existing doc is no longer reset
+  to 0.635 cm on every build. The template's ReadOnly master is created only when missing. Net effect
+  on `frame_thickness`: none (the template's expression won anyway).
+- **Tests.** 6 new tests in `test_board_params_ownership.py`, reusing its fake-adsk scaffold and
+  eviction fix. Against the pre-change engine files, restored from my scratch copy (not from HEAD),
+  **4/6 fail**. The 2 that pass are the "every template declares `frame_thickness` +
+  `boundingboxoffset`" guards: they pin something already true, which guards the removal.
+- **Fast tier:** `pytest frame-builder + test_bspline_frame_builder + b-spline-gen` gives
+  **109 passed, 0 failed** (baseline 58 before adding b-spline-gen to the run, all green).
+- **Stale docs:** STALE banners added to both templates' semantic-phase `.md` files. Not rewritten.
+- **GATE, not done:** `template_catalog.py` has **no consumer at all** (grep), so the whole module is
+  dead. Option A: delete it. Option B: keep it and fix the T3/T4 + "Metric" text. Recommendation: A.
+  The advisor decides.
+
+**Amendments absorbed (8):**
+- **Q1:** re-Send = delete + rebuild.
+- **Q2:** `defaultTemplate: null`, frame none by default.
+- **Q3 (3 → 3d, final):** `frame_height_offset` is the Z position of the frame bottom. Name and
+  negative value kept, labelled "Frame bottom (z)".
+- **Q4 / 4b:** appearance default `3D Ash - Unfinished`, 5 woods declared once. Measured: **three**
+  divergent lists exist today (the palette's 5 woods; `APPEARANCE_PRESETS`, which has no Mahogany or
+  Cherry but has Enamel / Aluminum / Brass; the `'Polished Chrome'` fallback). I corrected my F1 doc's
+  "Polished Chrome default" error.
+- **Optional:** tint the bars in the 3D preview by the chosen wood (noted).
+- All §5.4 answers are marked ANSWERED, and S7 is shrunk.
+
+**Not measured:** whether the solved T1 geometry keeps the seeds' L/R shoulder asymmetry. That needs
+a curve dump, so it stays with the S4 parity fixture, still marked UNVERIFIED in the doc.
+
+**Processes / capacity.** No processes left behind (checked below). Capacity is fine.
+- **AMEND 5 (Q5), absorbed after the entry above.** The frame and the inlay artwork are unrelated,
+  with no clipping. Q5 is marked ANSWERED. The design's "bonus reuse" (a Shape Lattice filling the
+  frame's inner edge) is **dropped**, since it contradicted this. The 3D-preview trim clip is kept: it
+  previews the real Fusion `TRIM_CUT`, not the artwork.

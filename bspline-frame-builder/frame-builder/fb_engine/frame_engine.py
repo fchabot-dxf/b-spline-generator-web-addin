@@ -273,20 +273,17 @@ class FrameBuilder:
             self.logger.log("Skeletal parameter abort: No resolver", "ERROR")
             return
 
-        # 1. Base Requirements (Frame Architecture)
-        # Unit defaults flow through ParameterSchema so this site, the
-        # parametric_engine UI sync, and the sketch_builder_ui param sync
-        # all share one source of truth.
-        requirements = self.resolver.get_base_frame_requirements()
-        for name, val in requirements.items():
-            existing = self.user_params.itemByName(name)
-            if not existing:
-                unit = ParameterSchema.default_unit(name)
-                self.user_params.add(name, adsk.core.ValueInput.createByReal(val), unit, 'Frame Builder Requirement')
-            else:
-                existing.value = val
+        # FB-APP S0: the template's own SKETCH_N_PARAMETERS are the ONE
+        # declaration of every frame param (frame_thickness,
+        # boundingboxoffset, ...). The former hard-coded "base
+        # requirements" duplicated two of them (and re-wrote
+        # frame_thickness to -1.905 cm on every build before the template
+        # overwrote it) and created two params nothing read
+        # (Skel_Slot_Tolerance, Skel_Frame_Taper) — removed.
+        # test_board_params_ownership.py guards that every template
+        # declares the params the engine's phases reference.
 
-        # 2. Template-Specific Parameter Initialization (DNA Sync)
+        # Template-Specific Parameter Initialization (DNA Sync)
         # NOTE: ReadOnly parameters (e.g. widthIn, heightIn) are owned by the bspline add-in
         # and must never be written here — they are only referenced as Fusion expressions.
         template, _ = _resolve_template(style_id, ui_data)

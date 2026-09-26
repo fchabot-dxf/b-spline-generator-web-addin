@@ -65,15 +65,15 @@ class ParameterSchema:
 
     @classmethod
     def name_based_unit(cls, name):
-        """Pure name-based unit guess. ``'deg'`` for Taper params,
-        ``'in'`` for everything else (length).
+        """Pure name-based unit guess: ``'in'`` (length).
 
         Length params display in inches to match the imperial-authoring
         convention used by ``template_data.py`` and the b-spline add-in;
-        Fusion still stores everything in cm internally.
+        Fusion still stores everything in cm internally. (The former
+        ``'deg'``-for-Taper rule existed only for ``Skel_Frame_Taper``,
+        which nothing read — the extrude hard-codes 0° — and was
+        removed with it in FB-APP S0.)
         """
-        if 'Taper' in name:
-            return 'deg'
         return 'in'
 
     @classmethod
@@ -87,8 +87,7 @@ class ParameterSchema:
              and must NOT fall through to the name-based guess.
           2. Boolean-toggle prefixes (``en_``, ``is_``, ``ck_``) → ``''``
              (unitless floats).
-          3. Fall back to :py:meth:`name_based_unit` — ``'deg'`` for Taper,
-             ``'in'`` for length.
+          3. Fall back to :py:meth:`name_based_unit` — ``'in'`` (length).
 
         Replaces three copy-pasted hardcodes that defaulted to ``'cm'``
         and silently demoted ReadOnly inches params (``widthIn``,
