@@ -11,7 +11,7 @@
  * engine the Shape Lattice uses solves it (no second copy of the math), and
  * the F5 outline guard must pass before anything is drawn.
  */
-import { generateSilhouette, outlineDefects, primitivesToPathD } from './editor-shape-lattice-generator.js';
+import { generateSilhouette, outlineDefects, primitivesToPathD, paramsFromShapeModel } from './editor-shape-lattice-generator.js';
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
@@ -24,6 +24,9 @@ export function frameFit(widthIn, heightIn, frameThickness, bboxOffset) {
   const need = 2 * frameThickness;
   return { ok: need < safe, safeZoneIn: safe, requiredIn: need };
 }
+
+/** The template's shape params for this region (the fitted model, F8). */
+const _shapeParams = (tpl, region) => paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region);
 
 const _param = (tpl, record, name) => {
   if (record?.params && name in record.params) return record.params[name];
@@ -42,7 +45,7 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
   const bbo = _param(tpl, record, 'boundingboxoffset') ?? 0;
   const ft = _param(tpl, record, 'frame_thickness') ?? 0;
   const region = { x: bbo, y: bbo, w: widthIn - 2 * bbo, h: heightIn - 2 * bbo };
-  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: tpl.shapeParams || {} });
+  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: _shapeParams(tpl, region) });
   const defects = outlineDefects(sil.primitives);
   return {
     templateId: tpl.id, name: tpl.name, region, primitives: sil.primitives,
@@ -64,7 +67,7 @@ export function frameInnerProfile(defs, record, { widthIn, heightIn }) {
   const inset = (_param(tpl, record, 'boundingboxoffset') ?? 0) + (_param(tpl, record, 'frame_thickness') ?? 0);
   const region = { x: inset, y: inset, w: widthIn - 2 * inset, h: heightIn - 2 * inset };
   if (!(region.w > 0 && region.h > 0)) return null;
-  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: tpl.shapeParams || {} });
+  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: _shapeParams(tpl, region) });
   return { region, primitives: sil.primitives, defects: outlineDefects(sil.primitives) };
 }
 

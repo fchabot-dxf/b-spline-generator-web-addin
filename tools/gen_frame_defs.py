@@ -9,6 +9,7 @@ Source: fb_engine/frame_definition.py (common declarations) + every template
 folder template_resolver discovers (its template_data.py + phase blocks).
 Plain Python, with no Fusion / adsk import.
 """
+import glob
 import hashlib
 import json
 import os
@@ -17,6 +18,8 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 FRAME_BUILDER = os.path.join(REPO, "bspline-frame-builder", "frame-builder")
 OUT_PATH = os.path.join(REPO, "bspline-frame-builder", "b-spline-gen", "html", "data", "frame-defs.json")
+# F8: the recorded Fusion goldens the shape models are fitted from (part of the source).
+GOLDENS_DIR = os.path.join(REPO, "tests", "fixtures", "frame-parity")
 # The same render as an ES module: the Fusion palette runs from file://, where
 # fetch() of a JSON file is unreliable but module imports already work.
 OUT_JS_PATH = OUT_PATH[:-len(".json")] + ".js"
@@ -31,6 +34,8 @@ def source_files():
     for root, dirs, names in os.walk(sketches):
         dirs[:] = sorted(d for d in dirs if d != "__pycache__")
         files += [os.path.join(root, n) for n in sorted(names) if n.endswith(".py")]
+    files.append(os.path.join(FRAME_BUILDER, "fb_engine", "frame_shape_fit.py"))
+    files += sorted(glob.glob(os.path.join(GOLDENS_DIR, "*.json")))
     return files
 
 
@@ -39,7 +44,7 @@ def source_hash():
     endings never make the file look stale."""
     h = hashlib.sha256()
     for path in source_files():
-        rel = os.path.relpath(path, FRAME_BUILDER).replace("\\", "/")
+        rel = os.path.relpath(path, REPO).replace("\\", "/")
         with open(path, "rb") as f:
             h.update(rel.encode() + b"\0" + f.read().replace(b"\r\n", b"\n") + b"\0")
     return h.hexdigest()
@@ -49,7 +54,7 @@ def render():
     if FRAME_BUILDER not in sys.path:
         sys.path.insert(0, FRAME_BUILDER)
     from fb_engine.frame_definition import build_frame_defs
-    defs = build_frame_defs(source_hash())
+    defs = build_frame_defs(source_hash(), GOLDENS_DIR)
     return json.dumps(defs, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 

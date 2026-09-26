@@ -9,7 +9,7 @@ import {
   frameCutProfile, frameSolidSpec, frameSnapGate, frameFitRegion,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import {
-  sampleOutline, toWorld, pointInPolygon, trimIndices, sampleGridZ, ringArrays, applyFrameToPanel,
+  sampleOutline, toWorld, pointInPolygon, trimIndices, sampleGridZ, ringArrays, applyFrameToPanel, frameLoopsWorld,
 } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 import { buildHeightField } from '../bspline-frame-builder/b-spline-gen/html/core/preview/terrain-mesh.js';
 import { fitView } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-view.js';
@@ -68,7 +68,7 @@ describe('trimmed panel', () => {
     const { mesh, grid } = panel(7, 9, 71, 91);
     const full = mesh.geometry.index.array.length;
     const extra = applyFrameToPanel(FakeTHREE, mesh, grid, frameSolidSpec(FRAME_DEFS, rec(id), BOARD));
-    const poly = toWorld(frameSolidSpec(FRAME_DEFS, rec(id), BOARD).outline, 7, 9);
+    const poly = frameLoopsWorld(frameSolidSpec(FRAME_DEFS, rec(id), BOARD), grid).outer; // the SAME loop the trim uses
     const ix = mesh.geometry.index.array, pos = mesh.geometry.attributes.position.array;
     expect(ix.length).toBeLessThan(full);
     for (let t = 0; t < ix.length; t += 3) {

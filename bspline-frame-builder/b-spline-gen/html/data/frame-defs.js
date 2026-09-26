@@ -56,7 +56,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "46c4730dc0f4ea5f0a34df078db916dcc7be103238d2be2cdeb9ad44db44fbb4",
+  "sourceHash": "f8546fdae500455666529eabb60adb86abb23c4c65a0462cf62e14e8d85ebd33",
   "templates": [
     {
       "features": [
@@ -219,10 +219,67 @@ export default {
         ],
         "surround": "surround_rect"
       },
-      "shapeParams": {
-        "cornerRadius": 0.19,
-        "waistCenterY": 0.0,
-        "waistReach": 0.32
+      "shapeModel": {
+        "features": {
+          "cornerR": {
+            "hh": 0.142066,
+            "hw": 0.005992
+          },
+          "depth": {
+            "hh": 0.106231,
+            "hw": 0.185089
+          },
+          "notch": {
+            "hh": 0.305363,
+            "hw": -0.007805
+          },
+          "waistCy": {
+            "hh": -0.009779,
+            "hw": 0.01363
+          },
+          "waistR": {
+            "hh": 0.147077,
+            "hw": 0.016953
+          }
+        },
+        "fit": {
+          "exactAtFittedSizes": false,
+          "excluded": [],
+          "fittedFrom": [
+            "12x6",
+            "5.51x1.97",
+            "7x9"
+          ],
+          "maxResidualIn": 0.0832,
+          "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+          "residualsIn": {
+            "cornerR": [
+              0.0093,
+              -0.0174,
+              -0.003
+            ],
+            "depth": [
+              -0.0443,
+              0.0832,
+              0.0143
+            ],
+            "notch": [
+              0.0236,
+              -0.0443,
+              -0.0076
+            ],
+            "waistCy": [
+              -0.0069,
+              0.013,
+              0.0022
+            ],
+            "waistR": [
+              0.0051,
+              -0.0096,
+              -0.0016
+            ]
+          }
+        }
       },
       "silhouettePreset": "hourglass",
       "sketches": [
@@ -1538,10 +1595,55 @@ export default {
         ],
         "surround": "surround_rect"
       },
-      "shapeParams": {
-        "neckLength": 0.16,
-        "neckWidth": 0.618,
-        "skeletonX": 0.83
+      "shapeModel": {
+        "features": {
+          "bodyR": {
+            "hh": 0.088479,
+            "hw": 0.091091
+          },
+          "neckHalfW": {
+            "hh": -0.145899,
+            "hw": 0.808985
+          },
+          "neckR": {
+            "hh": 0.215074,
+            "hw": -0.069872
+          },
+          "neckTop": {
+            "hh": 0.320963,
+            "hw": -0.000406
+          }
+        },
+        "fit": {
+          "exactAtFittedSizes": true,
+          "excluded": [
+            "5.51x1.97"
+          ],
+          "fittedFrom": [
+            "12x6",
+            "7x9"
+          ],
+          "maxResidualIn": 0.0,
+          "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+          "residualsIn": {
+            "bodyR": [
+              0.0,
+              0.0
+            ],
+            "neckHalfW": [
+              0.0,
+              0.0
+            ],
+            "neckR": [
+              -0.0,
+              -0.0
+            ],
+            "neckTop": [
+              -0.0,
+              0.0
+            ]
+          }
+        }
       },
       "silhouettePreset": "bottle",
       "sketches": [

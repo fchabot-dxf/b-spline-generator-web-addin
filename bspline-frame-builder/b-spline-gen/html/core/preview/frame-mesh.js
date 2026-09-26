@@ -134,6 +134,14 @@ export function ringArrays(outer, inner, zBottom, zTop, maxStep = Infinity) {
   return { positions, index };
 }
 
+/** The grid-fine world-space loops the trim, wall and bars all use (one place). */
+export function frameLoopsWorld(spec, grid) {
+  const { W, H, nx, nz } = grid;
+  const cell = Math.min(W / Math.max(1, nx - 1), H / Math.max(1, nz - 1));
+  const paired = samplePairedOutlines(spec.outerPrimitives, spec.innerPrimitives || spec.outerPrimitives, cell);
+  return { cell, outer: toWorld(paired.outer, W, H), inner: spec.innerPrimitives ? toWorld(paired.inner, W, H) : null };
+}
+
 function _mesh(THREE, { positions, index }, material) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -155,11 +163,8 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
   if (!full) return [];
   if (!spec) { geom.setIndex(full.slice()); return []; }
   const { W, H, nx, nz, topPos, botPos } = grid;
-  const cell = Math.min(W / Math.max(1, nx - 1), H / Math.max(1, nz - 1));
-  // The edge wall needs grid-fine sampling even without bars (a long straight
-  // edge must follow the terrain top), so the outline is always densified.
-  const paired = samplePairedOutlines(spec.outerPrimitives, spec.innerPrimitives || spec.outerPrimitives, cell);
-  const outer = toWorld(paired.outer, W, H);
+  // Grid-fine loops: the edge wall must follow the terrain top even without bars.
+  const { cell, outer, inner } = frameLoopsWorld(spec, grid);
   geom.setIndex(trimIndices(full, geom.attributes.position.array, outer));
   const extra = [];
   if (topPos && botPos) {
@@ -169,8 +174,7 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
     wallMat.vertexColors = false;
     wallMat.side = THREE.DoubleSide;
     extra.push(_mesh(THREE, wallArrays(outer, bot, top), wallMat));
-    if (spec.innerPrimitives) {
-      const inner = toWorld(paired.inner, W, H);
+    if (inner) {
       const barMat = new THREE.MeshPhongMaterial({ color: spec.color || '#d9c9a3', side: THREE.DoubleSide, shininess: 12 });
       const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
       bars.name = 'frame-bars';

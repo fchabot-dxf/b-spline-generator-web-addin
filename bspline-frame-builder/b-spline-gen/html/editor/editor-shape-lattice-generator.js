@@ -198,6 +198,60 @@ function _bottleRange(key, region, stroke, v) {
   return _range(lo, hi, (stroke + horn) / (2 * hh), top);
 }
 
+/**
+ * F8 (S4 parity): the ONE degree of freedom each construction was missing
+ * versus Fusion's own solve (MEASURED on the S4 goldens):
+ *   - hourglass `waistRadius`: Fusion's waist radius is independent (7x9: 0.68
+ *     in vs the derived max(d - Rs, 0.5d) = 0.52);
+ *   - bottle `bodyRadius`: Fusion's neck and body arc centres are NOT on one
+ *     column (7x9: 2.696 vs 2.578 in).
+ * Both are OPTIONAL (fraction of hw): absent means the original rule, so the
+ * Shape Lattice presets are unchanged; the frame's fitted shape model sets them.
+ * Resolved after PARAM_ORDER, inside these ranges.
+ */
+export const OPTIONAL_RADIUS_PARAM = { hourglass: 'waistRadius', bottle: 'bodyRadius' };
+
+/**
+ * F8: a frame template's fitted shape MODEL (frame-defs `shapeModel`, fitted
+ * from the Fusion goldens by frame_shape_fit.py) evaluated for one region,
+ * turned into this preset's own params. The feature -> param mapping encodes
+ * the constructions above, so it lives beside them:
+ *   hourglass: notch, cornerR, waistR, waistCy (+ depth to pick the tangency root)
+ *              ->  waistReach, cornerRadius, waistRadius, waistCenterY
+ *   bottle:    neckHalfW, neckR, neckTop, bodyR ->  neckWidth, skeletonX, neckLength, bodyRadius
+ */
+export function paramsFromShapeModel(preset, model, region) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const f = {};
+  for (const [name, c] of Object.entries(model.features)) f[name] = c.hw * hw + c.hh * hh;
+  if (preset === 'bottle') {
+    return { neckWidth: f.neckHalfW / hw, skeletonX: (f.neckHalfW + f.neckR) / hw,
+      neckLength: f.neckTop / (2 * hh), bodyRadius: f.bodyR / hw };
+  }
+  // Depth from the construction's own tangency: d = S +/- sqrt(S^2 - notch^2); the
+  // fitted depth only picks the root (minor when the waist centre is outside the
+  // shoulder column, major inside: Fusion's T1 is minor at 7x9, major at 12x6).
+  const S = f.cornerR + f.waistR;
+  const disc = Math.sqrt(Math.max(0, S * S - f.notch * f.notch));
+  const depth = Math.abs(S - disc - f.depth) <= Math.abs(S + disc - f.depth) ? S - disc : S + disc;
+  return { waistReach: depth / hw, cornerRadius: f.cornerR / hw, waistRadius: f.waistR / hw, waistCenterY: f.waistCy / hh };
+}
+
+function _optionalRange(preset, region, stroke, v) {
+  const hw = region.w / 2, hh = region.h / 2, horn = HORN_MIN_OF_HALF_HEIGHT * hh, eps = EPS_FRAC * hw;
+  if (preset === 'hourglass') {
+    const d = hw * v.waistReach, rs = hw * v.cornerRadius;
+    const H = hh - stroke - Math.abs(v.waistCenterY) * hh - horn;
+    const sMax = (H * H / d + d) / 2; // dy = sqrt(d(2S - d)) <= H
+    return _range(0, Infinity, Math.max(d / 2 - rs, eps) / hw, (sMax - rs) / hw); // 2S >= d for a real tangency
+  }
+  const nhw = hw * v.neckWidth, skel = hw * v.skeletonX, rN = skel - nhw, a = hw - skel;
+  const nC = -hh + 2 * hh * v.neckLength;
+  const lMax = hh - stroke - horn - nC; // hip centre stays above the bottom edge
+  const rbMax = (lMax * lMax - rN * rN + a * a) / (2 * (rN + a)); // from L^2 = (rN+rB)^2 - (rB-a)^2
+  return _range(0, 1, Math.max(stroke + eps, (a - rN) / 2 + eps) / hw, rbMax / hw);
+}
+
 /** `{ param: {min, max} }` for `preset` on `region`, each conditional on the
  *  params resolved before it (PARAM_ORDER). `params` supplies those earlier
  *  values (e.g. a solver's own `params` output). */
@@ -205,6 +259,8 @@ export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0)
   const fn = preset === 'bottle' ? _bottleRange : _hourglassRange;
   const out = {};
   for (const key of PARAM_ORDER[preset]) out[key] = fn(key, region, strokeHalfWidth, params);
+  const opt = OPTIONAL_RADIUS_PARAM[preset];
+  if (params && params[opt] != null) out[opt] = _optionalRange(preset, region, strokeHalfWidth, params);
   return out;
 }
 
@@ -219,6 +275,11 @@ function _resolveParams(preset, region, params, seed, strokeHalfWidth) {
     const r = fn(key, region, strokeHalfWidth, v);
     v[key] = _jitteredParam(params[key], p[key], j[key], seed, salt[key], r.min, r.max);
   }
+  const opt = OPTIONAL_RADIUS_PARAM[preset];
+  if (params[opt] != null) {
+    const r = _optionalRange(preset, region, strokeHalfWidth, v);
+    v[opt] = Math.max(r.min, Math.min(r.max, params[opt]));
+  }
   return v;
 }
 
@@ -231,7 +292,9 @@ export function hourglassConstruction(region, resolved) {
   const depth = hw * resolved.waistReach;
   const cornerRadius = hw * resolved.cornerRadius;
   const waistCenterY = hh * resolved.waistCenterY;
-  const radiusWaist = Math.max(depth - cornerRadius, WAIST_MIN_RADIUS_OF_DEPTH * depth);
+  const radiusWaist = resolved.waistRadius != null
+    ? hw * resolved.waistRadius
+    : Math.max(depth - cornerRadius, WAIST_MIN_RADIUS_OF_DEPTH * depth);
   const sumR = cornerRadius + radiusWaist;
   const shoulderCx = hw - cornerRadius;
   const waistCx = hw - depth + radiusWaist;
@@ -272,9 +335,11 @@ function _jitteredParam(explicitValue, defaultValue, jitterHalf, seed, salt, lo,
  *  each solver's own doc comment) — losing precision on a case this
  *  common, in a design whose whole point is "exact tangent arcs", isn't
  *  acceptable. */
-function _bulgeFromRadius(R, halfChord) {
+function _bulgeFromRadius(R, halfChord, major = false) {
   const disc = Math.max(0, R * R - halfChord * halfChord); // clamp: float noise can push this just under 0 at R===h
-  return (R - Math.sqrt(disc)) / halfChord;
+  // F8: the PLUS root is the major arc (sweep > 180 deg, bulge > 1) — Fusion's
+  // own T1 waist at 12x6 wraps 244 deg; the minor root alone could not draw it.
+  return (R + (major ? 1 : -1) * Math.sqrt(disc)) / halfChord;
 }
 
 /** SE14 §4's `kink` construction (unchanged from T53): two `L`s meeting
@@ -323,9 +388,12 @@ function _arcPrimitive(a, b, signedBulge, cx) {
   // SIL-RESOLVE (F5): was +/-0.999, which rebuilt near-semicircle arcs (bulge
   // 0.999..1-1e-6) with a visibly wrong radius and centre (0.013 off on a
   // 200-wide board): exactly the generalized waist arc just below a semicircle.
-  const bClamped = Math.max(-(1 - 1e-9), Math.min(1 - 1e-9, signedBulge));
+  // F8: |bulge| > 1 is a MAJOR arc (same side, same sweep flag, large-arc
+  // flag set); only the exact-semicircle case above is special-cased.
+  const large = Math.abs(signedBulge) > 1 ? 1 : 0;
+  const bClamped = large ? signedBulge : Math.max(-(1 - 1e-9), Math.min(1 - 1e-9, signedBulge));
   const R = Math.abs(((len / 2) * (1 + bClamped * bClamped)) / (2 * bClamped));
-  const param = arcCenterParam(a.x, a.y, R, R, 0, 0, sweep, b.x, b.y);
+  const param = arcCenterParam(a.x, a.y, R, R, 0, large, sweep, b.x, b.y);
   if (!param) return { type: 'L', p0: a, p1: b };
   const { cx: ccx, cy: ccy, rx, ry, phi, theta1, dTheta } = param;
   return { type: 'A', cx: ccx, cy: ccy, rx, ry, phi, theta1, dTheta };
@@ -358,9 +426,9 @@ function _segmentToPrimitives(a, b, seg, cx) {
  *  the known center sits, not re-derived from `od`/`perpLeftIsOutward`
  *  (those are `_arcPrimitive`'s own internal, reused only to BUILD the
  *  final primitive, not to classify direction here). */
-function _curveSegment(a, b, radius, outward) {
+function _curveSegment(a, b, radius, outward, major = false) {
   const halfChord = Math.hypot(b.x - a.x, b.y - a.y) / 2;
-  const bulge = _bulgeFromRadius(radius, halfChord);
+  const bulge = _bulgeFromRadius(radius, halfChord, major);
   return { style: 'curve', bulge, dir: outward ? 'out' : 'in', cornerRadius: 0 };
 }
 const STRAIGHT_SEGMENT = { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
@@ -419,15 +487,18 @@ const STRAIGHT_SEGMENT = { style: 'straight', bulge: 0, dir: 'out', cornerRadius
 function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
   // SIL-RESOLVE (F5): params resolved in declared order inside their
   // declared feasible ranges (see feasibleParamRanges).
-  const { waistReach, cornerRadius: cornerRadiusFrac, waistCenterY: waistCenterYFrac } =
-    _resolveParams('hourglass', region, params, seed, strokeHalfWidth);
+  const resolvedAll = _resolveParams('hourglass', region, params, seed, strokeHalfWidth);
+  const { waistReach, cornerRadius: cornerRadiusFrac, waistCenterY: waistCenterYFrac } = resolvedAll;
 
   const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
   // Waist radius = the original shared-column value (depth - cornerRadius)
   // while above the declared floor; below it the centres separate and the
   // arcs stay externally tangent instead of going negative (Fred's loop).
   const { hw, hh, cornerRadius, radiusWaist, shoulderCx, shoulderY, hipY, ux, uy } =
-    hourglassConstruction(region, { waistReach, cornerRadius: cornerRadiusFrac, waistCenterY: waistCenterYFrac });
+    hourglassConstruction(region, resolvedAll);
+  // F8: the waist centre sits INSIDE the shoulder column (ux < 0) exactly when
+  // Rs + Rw < depth; the concave waist then wraps the far side: a major arc.
+  const waistMajor = ux < 0;
 
   // The ACTUAL drawn radii/walls (§ (2)/(1) above) -- everything from here
   // down uses these, never the raw params computed above directly.
@@ -468,13 +539,13 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const fresh = [
     STRAIGHT_SEGMENT, // rTop -> rShoulderHorn (horn)
     _curveSegment(rShoulderHorn, rShoulderWaistJct, cornerRadiusDrawn, true), // shoulder, convex
-    _curveSegment(rShoulderWaistJct, rWaistHipJct, radiusWaistDrawn, false), // waist, concave
+    _curveSegment(rShoulderWaistJct, rWaistHipJct, radiusWaistDrawn, false, waistMajor), // waist, concave
     _curveSegment(rWaistHipJct, rHipHorn, cornerRadiusDrawn, true), // hip, convex
     STRAIGHT_SEGMENT, // rHipHorn -> rBottom (horn)
     STRAIGHT_SEGMENT, // bottom edge: rBottom -> lBottom
     STRAIGHT_SEGMENT, // lBottom -> lHipHorn (horn)
     _curveSegment(lHipHorn, lWaistHipJct, cornerRadiusDrawn, true), // hip, convex
-    _curveSegment(lWaistHipJct, lShoulderWaistJct, radiusWaistDrawn, false), // waist, concave
+    _curveSegment(lWaistHipJct, lShoulderWaistJct, radiusWaistDrawn, false, waistMajor), // waist, concave
     _curveSegment(lShoulderWaistJct, lShoulderHorn, cornerRadiusDrawn, true), // shoulder, convex
     STRAIGHT_SEGMENT, // lShoulderHorn -> lTop (horn)
     STRAIGHT_SEGMENT, // top edge: lTop -> rTop
@@ -490,6 +561,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // `PATTERN.shape.params` itself stores (0-1, not the `hw`-scaled real-
   // unit values computed just above).
   const resolvedParams = { waistReach, cornerRadius: cornerRadiusFrac, waistCenterY: waistCenterYFrac };
+  if (resolvedAll.waistRadius != null) resolvedParams.waistRadius = resolvedAll.waistRadius;
 
   return { keypoints, segments, cx: cxWorld, params: resolvedParams, hasUserSegments };
 }
@@ -564,16 +636,22 @@ function _mergeSegments(fresh, override) {
 // from the ADJUSTED `radiusNeck`.
 function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
   // SIL-RESOLVE (F5): declared-order resolution inside feasible ranges.
-  const { neckWidth, skeletonX: skeletonXFrac, neckLength: neckLengthFrac } =
-    _resolveParams('bottle', region, params, seed, strokeHalfWidth);
+  const resolvedAll = _resolveParams('bottle', region, params, seed, strokeHalfWidth);
+  const { neckWidth, skeletonX: skeletonXFrac, neckLength: neckLengthFrac } = resolvedAll;
 
   const hw = region.w / 2, hh = region.h / 2, cx0 = region.x + hw, cy0 = region.y + hh;
   const neckHalfW = hw * neckWidth;
   const skelX = hw * skeletonXFrac; // arc-center column X -- NEVER shifted
   const radiusNeck = skelX - neckHalfW; // concave (upper) arc
-  const radiusBody = hw - skelX; // convex (lower) arc
+  // F8: the body radius is the shared-column value unless the (optional)
+  // bodyRadius sets it; then the body centre sits at hw - rB, off the neck
+  // column, and the external tangency gives the vertical offset.
+  const radiusBody = resolvedAll.bodyRadius != null ? hw * resolvedAll.bodyRadius : hw - skelX; // convex (lower) arc
+  const bodyCx = hw - radiusBody;
   const neckCenterY = -hh + hh * 2 * neckLengthFrac; // local Y-down; top edge at -hh -- an arc CENTER's own Y, never shifted
-  const hipCenterY = neckCenterY + radiusNeck + radiusBody; // derived (tangency) -- an arc CENTER's own Y, never shifted
+  const sumNB = radiusNeck + radiusBody;
+  const hipCenterY = neckCenterY + Math.sqrt(Math.max(0, sumNB * sumNB - (bodyCx - skelX) ** 2)); // derived (tangency)
+  const bux = (bodyCx - skelX) / sumNB, buy = (hipCenterY - neckCenterY) / sumNB; // unit neck-centre -> body-centre
 
   // The ACTUAL drawn radii/walls -- everything from here down uses these.
   const radiusNeckDrawn = radiusNeck + strokeHalfWidth; // concave: grows
@@ -581,19 +659,21 @@ function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 
   const hwDrawn = hw - strokeHalfWidth;
   const hhDrawn = hh - strokeHalfWidth;
   const neckHalfWDrawn = neckHalfW - strokeHalfWidth;
-  const junctionY = neckCenterY + radiusNeckDrawn; // shared tangent point, on x=skelX -- moves with the drawn radius
+  // Shared tangent point: on the centre line, the drawn neck radius out from the neck centre.
+  const junctionX = skelX + bux * radiusNeckDrawn;
+  const junctionY = neckCenterY + buy * radiusNeckDrawn;
 
   const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
   const M = (x, y) => ({ x: cx0 - x, y: cy0 + y });
 
   const rTop = P(neckHalfWDrawn, -hhDrawn);
   const rNeckHorn = P(neckHalfWDrawn, neckCenterY);
-  const rJunction = P(skelX, junctionY);
+  const rJunction = P(junctionX, junctionY);
   const rHipHorn = P(hwDrawn, hipCenterY);
   const rBottom = P(hwDrawn, hhDrawn);
   const lBottom = M(hwDrawn, hhDrawn);
   const lHipHorn = M(hwDrawn, hipCenterY);
-  const lJunction = M(skelX, junctionY);
+  const lJunction = M(junctionX, junctionY);
   const lNeckHorn = M(neckHalfWDrawn, neckCenterY);
   const lTop = M(neckHalfWDrawn, -hhDrawn);
 
@@ -618,6 +698,7 @@ function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 
 
   // T59: see _solveHourglass's own doc comment on why this is returned.
   const resolvedParams = { neckWidth, skeletonX: skeletonXFrac, neckLength: neckLengthFrac };
+  if (resolvedAll.bodyRadius != null) resolvedParams.bodyRadius = resolvedAll.bodyRadius;
 
   return { keypoints, segments, cx: cx0, params: resolvedParams, hasUserSegments };
 }
@@ -715,8 +796,8 @@ function _arcPointAt(prim, theta) {
  * detector). Shared by the Shape Lattice preview and the future frame preview:
  * a silhouette is drawable only if this returns []. Checks, on the closed
  * primitive loop:
- *   - every arc has a positive radius and sweeps less than a full half-turn
- *     (+ float slack), so no reversed or looped arc;
+ *   - every arc has a positive radius and sweeps less than a full turn
+ *     (a major arc is legitimate: F8, Fusion's own T1 waist at 12x6);
  *   - every joint that touches an ARC is tangent (a joint between two
  *     straight lines may be a sharp corner, which is how the bounding-box
  *     corners are built). `requireTangency: false` skips this when the user
@@ -739,7 +820,10 @@ export function outlineDefects(primitives, { samplesPerArc = 10, tangentTol = 1e
   primitives.forEach((p, i) => {
     if (p.type !== 'A') return;
     if (!(p.rx > 0) || !(p.ry > 0)) defects.push({ kind: 'nonPositiveRadius', index: i, detail: p.rx });
-    if (Math.abs(p.dTheta) > Math.PI + 1e-6) defects.push({ kind: 'reversedArc', index: i, detail: p.dTheta });
+    // F8: a MAJOR arc (> 180 deg) is legitimate (Fusion's own T1 waist at 12x6
+    // wraps 244 deg); only a full turn or more is a loop. Loops that cross
+    // themselves are the selfIntersection check below (Fred's F5 fish).
+    if (Math.abs(p.dTheta) >= 2 * Math.PI - 1e-6) defects.push({ kind: 'reversedArc', index: i, detail: p.dTheta });
   });
   primitives.forEach((p, i) => {
     if (p.type === 'L' && Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) < 1e-9) {

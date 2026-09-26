@@ -130,10 +130,11 @@ def _param_entry(p_info):
     return entry
 
 
-def build_frame_defs(source_hash):
+def build_frame_defs(source_hash, goldens_dir=None):
     """The dict frame-defs.json is serialized from. Templates come from
     template_resolver's own folder discovery, not a hand-kept list."""
     from fb_engine.template_resolver import get_available_templates, resolve_template
+    from fb_engine.frame_shape_fit import fit_shape_model
     templates = []
     for t in get_available_templates():
         spec, prefix = resolve_template(t["value"])
@@ -144,7 +145,8 @@ def build_frame_defs(source_hash):
             "name": spec["Name"],
             "prefix": prefix,
             "silhouettePreset": frame.get("silhouettePreset"),
-            "shapeParams": frame.get("shapeParams"),
+            # F8: fitted from the recorded Fusion goldens (frame_shape_fit.py)
+            "shapeModel": fit_shape_model(t["value"], frame.get("silhouettePreset"), goldens_dir) if goldens_dir else None,
             "params": params,
             "regions": frame.get("regions"),
             "features": frame.get("features"),
