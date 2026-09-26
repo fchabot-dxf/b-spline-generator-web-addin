@@ -9587,3 +9587,75 @@ layer stacking order) because later sketches PROJECT curves from earlier ones fo
 direct cross-sketch constraint is refused — advisor-measured); hidden kind-layers are not exported and their
 dependents keep exact geometry but lose the cross-kind link; migration of pre-SE17 single-layer lattices is an
 explicit decide+log.
+
+## T76 item 1 — declared kind→layer defaults + Fusion sketch build order
+
+Dispatched research (Explore agent) into the current layer/pattern/manifest architecture BEFORE writing anything,
+given the size of what SE17 asks for. Most important finding: this codebase already had a "one pattern, one layer
+per kind" model once — SE7b built it, SE7i retired it (Fred: "I don't mind if all lattice geometry is in one
+layer") — recovered directly from git history (`git show c2b59b4^:...`) as a real, already-tuned precedent to build
+on rather than re-derive from scratch, rather than guessing tooling numbers.
+
+`LATTICE_FUSION_BUILD_ORDER` (`['contour','rails','ties','nodes']`) and `LATTICE_KIND_LAYER_DEFAULTS`
+(editor-lattice-pattern.js) — the ONE table both the per-kind layer creation (item 2) and the Fusion sketch build
+sequencing (item 5) read from. Order here is the FIXED Fusion dependency order, deliberately NOT the app's own
+layer stacking order (user-drag-reorderable, independent, per the roadmap's own text). rails/ties/nodes tooling is
+the recovered SE7b starting point (0.15/vbit rails, 0.08/vbit ties, 0.12/ballnose nodes); contour — a genuinely new
+kind-layer, no SE7b precedent — left at `addLayer`'s own generic tooling defaults rather than inventing a tuned
+number with no basis.
+
+Verify: 1310/1310 vitest (7 new). Commit f787c24, pushed. NO FUSION this whole turn.
+
+## T76 item 2 — a generated lattice splits across FOUR kind-layers (Contour/Rails/Ties/Nodes), one shared pattern record
+
+**The core design question**: SE7i's own retirement of the three-layer split happened because ONE pattern used to
+live on ONE layer, `layer.pattern` — with FOUR kind-layers now sharing ONE pattern, exactly where does that shared
+record live, given persistence (`editor-io.js`'s own per-layer `JSON.stringify`) and undo (`editor.js`'s own
+per-layer deep-clone) both already assume `layer.pattern` is that ONE layer's own, independent copy? A shared OBJECT
+REFERENCE across all four layers' own `.pattern` fields would silently fork into four diverged copies on the very
+first save+reload or undo/redo — a real, easy-to-miss correctness trap, not just an awkwardness.
+
+Resolved: `rails` is the pattern's own designated PRIMARY kind-layer (always present in both tools; `contour` is the
+only ever-absent one, for a Box Lattice pattern) — it alone holds the real `.pattern` object. Every OTHER kind-layer
+holds only `layer.patternOwner` (a plain layer-id STRING), which survives JSON-serialization and shallow-copy
+undo/redo trivially, no special-casing needed anywhere in either mechanism. `resolvePatternLayer(editor, layerId)`
+is the ONE place that walks this indirection; every "act on everything" helper and both panels' own pattern
+accessor now go through it.
+
+**Two bugs found only by testing, not by inspection** (both would have silently corrupted the "one pattern record"
+invariant this whole item exists to guarantee):
+1. `currentPattern`/`_currentPattern` (both panels) lazily materialize a fresh DEFAULT pattern onto any layer with
+   no `.pattern` of its own — which, after this item's own split, is every SIBLING kind-layer, always. Since
+   clicking a tie/node/contour piece ACTIVATES that piece's own layer (an existing, pre-SE17 mechanism,
+   editor-interaction.js), simply clicking a tie would have forked a second, diverging pattern onto the Ties layer
+   the very next time the panel re-synced. Caught by a from-scratch regression test built specifically to probe this
+   (`tests/editor-lattice-kind-layers.test.js`, `tests/properties-lattice.test.js`) — the existing 1310-test suite
+   never exercised "switch active layer to a sibling, then re-read the pattern" at all, so this shipped invisibly
+   until deliberately tested for.
+2. `_storeContourSegmentColor` (editor.js) and `detectShapeLatticeDetach` (properties-shape-lattice.js) read
+   `layer.pattern` directly, unconditionally, for the exact same reason — silently no-opped (never wrote a
+   segment-colour override; never detected a hand-edit) the instant the active layer was a sibling. Both fixed via
+   the SAME `resolvePatternLayer`, kept deliberately READ-ONLY for `detectShapeLatticeDetach` (whose own pre-existing
+   contract, a prior measured regression's fix, explicitly forbids materializing a phantom pattern here).
+
+**A third, related gap**: `_collectLatticeElements` (the "drag a rail, its attached ties follow" mechanism) was
+scoped to the single active layer — with rails/ties now on separate layers, a rail could never again find its own
+ties. Fixed to gather across all three of the pattern's own rail/tie/node kind-layers, anchored on whichever piece
+is actually being dragged (not just the active layer, which may lag behind a fast successive drag). This overlaps
+item 3's own explicit scope ("Select/move keeps working across kind-layers") but was fixed here rather than left
+broken, since an item-2 "it generates correctly" that can't then be edited isn't a coherent stopping point. A fuller
+live-drag verification (real CDP pointer events, not just this fix's own code-level correctness) is still owed as
+part of item 3's own pass.
+
+**Live-verified** (headless Chrome/CDP, screenshot saved per the new convention:
+`C:\Users\danse\.bspline-status\shots\seatB\1650_T76-item-2_layers.png`) — a real, non-mocked bug was found and
+fixed ALONG THE WAY: the first attempt read stale content from a duplicate/orphaned `python -m http.server` process
+still bound to the port from an earlier command in this same turn (multiple simultaneous listeners on Windows can
+each still answer requests) — Generate appeared to do nothing at all. Diagnosed by grepping the SERVED file for the
+new function name (absent) vs the file on disk (present), not by re-guessing the app logic; fixed by killing every
+stray listener on that port and relaunching exactly one, from an explicit, verified working directory, before
+re-testing. With the correct server: Generate on a fresh layer produces exactly Rails (the original layer, renamed,
+same id) + Ties + Nodes, `pattern.layers` recorded correctly, active layer lands on Rails, zero console errors.
+
+Verify: 1322/1322 vitest (11 new), 45/45 b-spline-gen pytest + 189/189 frame-builder pytest (both untouched).
+Commit ce57bc3, pushed. NO FUSION this whole turn.
