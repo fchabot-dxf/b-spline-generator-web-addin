@@ -698,6 +698,37 @@ def verify_sketch_against_manifest(ctx, sketch, manifest, tol=0.002):
     return {"maxErr": round(max_err, 6), "mismatches": mismatches}
 
 
+def _stamp_bspline_owner_on_create(ctx, param, name):
+    """STALE-PARAMS R4 item 2 (advisor ruling 5): stamp ``Bspline.owner = '1'``
+    on a FRESHLY-CREATED lattice/constrained-sketch parameter — CREATE only,
+    deliberately NOT called on the update branch below. This differs from
+    board params' own `_ensure_bspline_param_tag` (b-spline-gen.py:660-676,
+    which stamps on every touch, create AND update) because a pre-existing,
+    same-named param here could be one Fred typed himself before ever
+    running a lattice build (unlike widthIn/heightIn, which are always in
+    every Send payload and can therefore never be a stale-delete candidate
+    either way — see STALE-PARAMS-DESIGN.md). Stamping only at create means
+    an update NEVER promotes a Fred-owned param to "ours" merely by being
+    synced; a pre-existing unstamped param of this name stays permanently
+    unmanaged (named explicitly in the pass-back log, not silently).
+
+    Not imported from b-spline-gen.py's own tag helper: that module imports
+    THIS one (build_constrained_sketch), so importing back would be
+    circular; the two helpers stamp the same group/attribute pair by
+    convention (kept deliberately tiny and easy to eyeball side by side)
+    rather than sharing code across that boundary.
+
+    Wrapped in try/except for the same reason b-spline-gen.py's own tag
+    helper is: UserParameter.attributes is occasionally flaky across Fusion
+    versions, and tagging is never worth failing the sync over."""
+    try:
+        if not param or not hasattr(param, "attributes"):
+            return
+        param.attributes.add("Bspline", "owner", "1")
+    except Exception as tag_err:
+        ctx.logger.log(f"PARAM TAG SKIP on {name}: {tag_err}", "WARNING")
+
+
 # ---------------------------------------------------------------------------
 # User parameters — create-or-update, arbitrary manifest-declared names
 # ---------------------------------------------------------------------------
@@ -744,7 +775,11 @@ def _sync_manifest_parameters(ctx, parameters):
                     value_input = adsk.core.ValueInput.createByString(f"{value} {unit}")
                 else:
                     value_input = adsk.core.ValueInput.createByReal(float(value))
-                user_params.add(name, value_input, unit, "SE15 constrained sketch parameter")
+                new_param = user_params.add(name, value_input, unit, "SE15 constrained sketch parameter")
+                # STALE-PARAMS R4 item 2 (ruling 5): stamp at CREATE only — see
+                # _stamp_bspline_owner_on_create's own docstring for why the
+                # update branch above deliberately never calls this.
+                _stamp_bspline_owner_on_create(ctx, new_param, name)
                 created += 1
         except Exception as e:
             failed.append(f"{name}: {e}")

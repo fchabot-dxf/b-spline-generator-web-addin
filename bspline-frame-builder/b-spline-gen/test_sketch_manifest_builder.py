@@ -325,6 +325,7 @@ class FakeParameter:
     def __init__(self, name):
         self.name = name
         self.expression = "0"
+        self.attributes = FakeAttributes()  # STALE-PARAMS R4 item 2: stamp-at-create target
 
 
 class FakeDimension:
@@ -1031,6 +1032,53 @@ def test_length_parameters_created_with_unit_bearing_expression(call_log):
     real_calls = [c for c in call_log if c[0] == "valueinput:real"]
     assert real_calls == []
     assert string_calls == [("valueinput:string", "0.07 in")]
+
+
+def test_a_freshly_created_lattice_param_is_stamped_bspline_owner(call_log):
+    """STALE-PARAMS R4 item 2 (ruling 5): a param CREATED by
+    _sync_manifest_parameters carries the Bspline.owner=1 attribute — the
+    cleanup pass (R4 item 3) reads this to prove "we made this"."""
+    design = FakeDesign()
+    ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
+    _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.07, "unit": "in"}])
+    p = design.userParameters.itemByName("rail_width")
+    tag = p.attributes.itemByName("Bspline", "owner")
+    assert tag is not None and tag.value == "1"
+
+
+def test_updating_an_existing_UNSTAMPED_param_does_not_stamp_it(call_log):
+    """A param that already exists with this name but was never stamped
+    (e.g. Fred typed a parameter called 'rail_width' himself before ever
+    running a lattice build) must NOT be retroactively marked "ours" just
+    because a later Send happens to sync its value — stamping is CREATE
+    only. This is the one behaviour asymmetry vs. the board params'
+    stamp-on-every-touch (documented in _stamp_bspline_owner_on_create's
+    own docstring, and flagged as an open question in
+    STALE-PARAMS-DESIGN.md for the two NEW groups)."""
+    design = FakeDesign()
+    fred_owned = design.userParameters.add("rail_width", types.SimpleNamespace(value=0.05), "in", "Fred's own param")
+    assert fred_owned.attributes.itemByName("Bspline", "owner") is None  # sanity: add() alone never stamps
+
+    ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
+    created, updated, failed = _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.09, "unit": "in"}])
+
+    assert (created, updated, failed) == (0, 1, [])
+    assert fred_owned.expression == "0.09"  # the value still syncs — only the stamp is withheld
+    assert fred_owned.attributes.itemByName("Bspline", "owner") is None
+
+
+def test_a_second_sync_of_the_same_param_keeps_its_create_time_stamp(call_log):
+    """The normal create-then-update-on-rebuild path (already covered by
+    test_parameters_created_then_updated_on_a_second_build) must still
+    carry the stamp after the SECOND (update) call — proving the stamp
+    isn't somehow cleared on update, only that update never WRITES it."""
+    design = FakeDesign()
+    ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
+    _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.07, "unit": "in"}])
+    _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.09, "unit": "in"}])
+    p = design.userParameters.itemByName("rail_width")
+    assert p.attributes.itemByName("Bspline", "owner").value == "1"
+    assert p.expression == "0.09"
 
 
 def test_unitless_parameters_created_with_createByReal(call_log):
