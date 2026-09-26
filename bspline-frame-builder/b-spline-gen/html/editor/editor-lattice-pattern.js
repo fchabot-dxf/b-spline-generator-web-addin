@@ -342,7 +342,14 @@ export const PATTERN_DEFAULTS = {
   // fully described by one hex per kind. Persisted with the rest of
   // PATTERN (editor-io.js's data-lattice-pattern is a whole-object
   // JSON.stringify, no field whitelist, so this needs no changes there).
-  colors: { rails: '#c62828', ties: '#f9c80e', nodes: '#1a237e' },
+  // T72 (AMEND 2, Fred: "I want the contour to be colored too"): `contour`
+  // joins the SAME declared table — a distinct hue (green), never black,
+  // so a freshly-Generated contour never looks like an unstyled default
+  // stroke. Shape-Lattice-only (a plain box Lattice layer has no contour
+  // to color); SE14b's own later per-segment color overrides this per
+  // segment once built, same "whole-kind default, per-piece override"
+  // shape rails/ties/nodes already establish.
+  colors: { rails: '#c62828', ties: '#f9c80e', nodes: '#1a237e', contour: '#2e7d32' },
   // SE7i: absolute INCH values (not factors) — "0.05" steppers" per the
   // dispatch, so a user nudges a real physical width, not a proportion of
   // spacing. Defaults are LATTICE_STYLE's own proportions × this file's
@@ -1824,8 +1831,26 @@ function _ownedOnLayer(editor, layerId, latticeKind) {
  *   of this kind yet, e.g. the color was changed before the first
  *   Generate — the caller still keeps the new color in PATTERN.colors
  *   for the NEXT Generate to use).
+ *
+ * T72 (AMEND 2): `kind === 'contour'` is a genuinely different shape, not
+ * a 4th `COLOR_KIND_TO_LATTICE_ATTR` entry — the contour is ONE linked
+ * `<path>`, found by `PATTERN.boundary.shapeId` (the exact lookup
+ * `regenerateSilhouette` itself uses), never a `data-lattice`/
+ * OWNERSHIP_ATTR-marked piece the rails/ties/nodes filter can see. SE14b's
+ * own later per-segment split will need its own recolor path when that
+ * lands; this one recolors today's single-path contour.
  */
 export function recolorOwnedKind(editor, layerId, kind, color) {
+  if (kind === 'contour') {
+    const layer = Array.isArray(editor?._layers) ? editor._layers.find((l) => l.id === layerId) : null;
+    const shapeId = layer?.pattern?.boundary?.shapeId;
+    const pathEl = shapeId ? _findBoundaryElement(editor, shapeId) : null;
+    if (!pathEl) return 0;
+    pathEl.stroke({ color });
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+    return 1;
+  }
   const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
   if (!latticeKind) return 0;
   const owned = _ownedOnLayer(editor, layerId, latticeKind);

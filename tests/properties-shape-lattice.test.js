@@ -169,6 +169,7 @@ function fixtureHTML() {
     <button id="shapeLatticeColorRails"></button>
     <button id="shapeLatticeColorTies"></button>
     <button id="shapeLatticeColorNodes"></button>
+    <button id="shapeLatticeColorContour"></button>
     <div id="shapeLatticeWidthUnlinkedFields" style="display:none;">
       <input id="shapeLatticeWidthRails" type="number">
       <input id="shapeLatticeWidthTies" type="number">
@@ -588,6 +589,21 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
     const paths = editor._sketchLayer.children().filter((e) => e.attr('d'));
     expect(paths.length).toBe(1);
     expect(paths[0]).toBe(first);
+  });
+
+  it('T72 (AMEND 2): a freshly-minted contour draws in PATTERN.colors.contour, not the general drawing tool\'s current color', () => {
+    const p = currentPattern(editor);
+    editor._color = '#ff00ff'; // a DIFFERENT color -- proves the contour does NOT inherit this
+    const pathEl = regenerateSilhouette(editor, p);
+    expect(pathEl.attr('stroke')).toBe(PATTERN_DEFAULTS.colors.contour);
+    expect(pathEl.attr('stroke')).not.toBe('#ff00ff');
+  });
+
+  it('T72 (AMEND 2): a custom PATTERN.colors.contour is honored for a freshly-minted path', () => {
+    const p = currentPattern(editor);
+    p.colors = { ...PATTERN_DEFAULTS.colors, contour: '#ab12cd' };
+    const pathEl = regenerateSilhouette(editor, p);
+    expect(pathEl.attr('stroke')).toBe('#ab12cd');
   });
 
   it('regenerateSilhouetteAndFill fills AND dispatches SHAPE_CHANGED_EVENT', async () => {

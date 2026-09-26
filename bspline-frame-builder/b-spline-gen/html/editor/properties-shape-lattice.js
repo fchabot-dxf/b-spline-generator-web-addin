@@ -182,10 +182,16 @@ export function regenerateSilhouette(editor, p) {
     if (pathEl) {
         pathEl.attr('d', d);
     } else {
+        // T72 (AMEND 2, Fred: "I want the contour to be colored too"): a
+        // freshly-minted contour draws in PATTERN.colors.contour, the SAME
+        // declared per-kind color rails/ties/nodes already use — never the
+        // general drawing tool's own CURRENT color (editor._color), which
+        // was this path's only color source before this turn.
+        const contourColor = ({ ...PATTERN_DEFAULTS.colors, ...p.colors }).contour;
         pathEl = editor._sketchLayer
             .path(d)
             .fill('none')
-            .stroke({ color: editor._color || '#000000', width: SILHOUETTE_STROKE_WIDTH })
+            .stroke({ color: contourColor, width: SILHOUETTE_STROKE_WIDTH })
             .attr('data-layer', ensureActiveLayer(editor));
         const id = stampBoundaryRef(pathEl);
         p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
@@ -475,6 +481,7 @@ export function initShapeLatticeProperties(editor) {
     const colorRailsEl = el('shapeLatticeColorRails');
     const colorTiesEl = el('shapeLatticeColorTies');
     const colorNodesEl = el('shapeLatticeColorNodes');
+    const colorContourEl = el('shapeLatticeColorContour'); // T72 (AMEND 2)
     const widthRailsEl = el('shapeLatticeWidthRails');
     const widthTiesEl = el('shapeLatticeWidthTies');
     const widthNodesEl = el('shapeLatticeWidthNodes');
@@ -681,6 +688,7 @@ export function initShapeLatticeProperties(editor) {
         if (colorRailsEl) colorRailsEl.style.background = colors.rails;
         if (colorTiesEl) colorTiesEl.style.background = colors.ties;
         if (colorNodesEl) colorNodesEl.style.background = colors.nodes;
+        if (colorContourEl) colorContourEl.style.background = colors.contour;
         const rawWidths = p.widths || {};
         const widths = { ...PATTERN_DEFAULTS.widths, ...rawWidths };
         if (widthRailsEl) widthRailsEl.value = widths.rails;
@@ -1012,6 +1020,7 @@ export function initShapeLatticeProperties(editor) {
     wireColorSwatch(colorRailsEl, 'rails');
     wireColorSwatch(colorTiesEl, 'ties');
     wireColorSwatch(colorNodesEl, 'nodes');
+    wireColorSwatch(colorContourEl, 'contour'); // T72 (AMEND 2): recolorOwnedKind's own 'contour' special case
     wireWidthStepper(widthRailsEl, 'rails', 'rails');
     wireWidthStepper(widthTiesEl, 'ties', 'ties');
     wireWidthStepper(widthNodesEl, 'nodeRadius', 'nodes');

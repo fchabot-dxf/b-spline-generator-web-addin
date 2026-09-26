@@ -23,7 +23,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   generatePattern, detachAllOwned, detachOwnership, OWNERSHIP_ATTR, PATTERN_DEFAULTS,
-  nextSeed, recolorOwnedKind, rewidthOwnedKind,
+  nextSeed, recolorOwnedKind, rewidthOwnedKind, BOUNDARY_REF_ATTR,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { save, _migrateLegacyPatternOntoLayers } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 
@@ -372,8 +372,10 @@ describe('nextSeed (SE7g)', () => {
  * defaults, generatePattern paints each kind from its own entry.
  */
 describe('PATTERN_DEFAULTS.colors (SE7g amend)', () => {
-  it('declares the three default kind colors', () => {
-    expect(PATTERN_DEFAULTS.colors).toEqual({ rails: '#c62828', ties: '#f9c80e', nodes: '#1a237e' });
+  it('declares the four default kind colors -- rails/ties/nodes plus (T72) a distinct, non-black contour', () => {
+    expect(PATTERN_DEFAULTS.colors).toEqual({ rails: '#c62828', ties: '#f9c80e', nodes: '#1a237e', contour: '#2e7d32' });
+    expect(PATTERN_DEFAULTS.colors.contour).not.toBe('#000000');
+    expect(new Set(Object.values(PATTERN_DEFAULTS.colors)).size).toBe(4); // non-vacuous: all 4 genuinely distinct
   });
 });
 
@@ -577,6 +579,32 @@ describe('recolorOwnedKind (SE7g amend, SE7i: layer-scoped): recolor owned piece
 
   it('does nothing (no undo push) when nothing of that kind is owned yet on that layer', () => {
     const count = recolorOwnedKind(editor, 'layer-nonexistent', 'rails', '#101010');
+    expect(count).toBe(0);
+    expect(editor.pushStateCalls).toBe(0);
+    expect(editor.notifyChangeCalls).toEqual([]);
+  });
+
+  // T72 (AMEND 2): the contour is a genuinely different shape from
+  // rails/ties/nodes -- ONE linked element, found by PATTERN.boundary.
+  // shapeId (BOUNDARY_REF_ATTR), never the OWNERSHIP_ATTR/data-lattice
+  // filter the kinds above go through. `.line()` stands in for the real
+  // `<path>` here -- recolorOwnedKind's own 'contour' branch never checks
+  // element type, just recolors whatever _findBoundaryElement finds.
+  it("recolors the contour's own linked element via its boundary.shapeId, not the rails/ties/nodes ownership filter", () => {
+    const contourEl = editor._sketchLayer.line(0, 0, 1, 0).attr(BOUNDARY_REF_ATTR, 'b-1').stroke({ color: '#000000' });
+    editor._layers[0].pattern = { boundary: { shapeId: 'b-1' } };
+
+    const count = recolorOwnedKind(editor, editor._activeLayer, 'contour', '#2e7d32');
+
+    expect(count).toBe(1);
+    expect(contourEl.attr('stroke')).toBe('#2e7d32');
+    expect(editor.pushStateCalls).toBe(1);
+    expect(editor.notifyChangeCalls).toEqual(['commit']);
+  });
+
+  it('contour: returns 0 (no undo push) when no contour is linked yet on that layer', () => {
+    editor._layers[0].pattern = { boundary: { shapeId: null } };
+    const count = recolorOwnedKind(editor, editor._activeLayer, 'contour', '#2e7d32');
     expect(count).toBe(0);
     expect(editor.pushStateCalls).toBe(0);
     expect(editor.notifyChangeCalls).toEqual([]);
