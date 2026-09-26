@@ -953,7 +953,7 @@ Fred: "to me spacing isn't that" / "rail to rail, yes". Today `PATTERN.spacing` 
 both lattice panels) is the lattice's GRID STEP, a second grid next to the editor's toolbar grid (both default 0.25").
 Change: (1) the lattice grid step comes from the editor grid (GRID_DEFAULTS / toolbar), one grid, no lattice-side
 setting; (2) a declared `rails.spacing` (inches, rail-to-rail) becomes the "Spacing" field, a rails mode next to
-Count ('spacing' | 'count'; 'every' folds into 'spacing'); the rail count follows from the lattice size. Spacing must be a
+Count ('spacing' | 'count'; 'every' folds into 'spacing'); the rail count follows from the lattice size. Fred: "it's either set spacing or count": ONE toggle [Spacing | Count], only the chosen field shown; the other value is derived, never both set. Spacing must be a
 whole number of grid steps (round to one, show the result), which gives exactly even gaps. Both panels. MIGRATION:
 a saved pattern's old `spacing` is read as its grid step and keeps its exact geometry (no silent re-layout). Tests:
 spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
