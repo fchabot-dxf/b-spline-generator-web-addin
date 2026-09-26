@@ -1,20 +1,16 @@
-# NEXT (lane-b) — T73: SE14b — Shape Lattice contour as selectable, per-segment-colourable SEGMENTS
+# NEXT (lane-b) — T74: close AMEND 3b thresholds + SE14d (remove Pick shape) + NODE-D (node size as diameter)
 
-**Ball: worker (seat B) · epoch 4 · T73.** NO FUSION. T72 (57ab890) accepted pending the advisor's merge gate.
-Fred: "we should also represent those separations in the add-in preview, to be able to select segments and color them";
-"contour can have per segment colors within lattice right?" → yes, this task.
-Your own investigation is in WORK-LOG-lane-b.md (T70/SE14b section of the capacity report, b62fd4d): rendering
-pipeline, the boundary-resolution-reads-one-DOM-element hazard (lattice-fill clipping relies on it), the segment-tap
-interaction question, the colour-persistence design. Use it.
-- The contour is drawn as ONE ELEMENT PER SEGMENT (line / circular arc), round caps, stroke = the contour's width (auto
-  = lattice stroke width, T72 item 6), from the SAME segment list the manifest reads (seg ids + geometry). One
-  declaration, two consumers; the parity test covers segments.
-- Each segment selectable with the normal select tool and recolourable; the T72 contour colour is the default, a
-  per-segment colour overrides it (left ≠ right allowed). Store overrides keyed by segment id in the pattern.
-- The fill/clip boundary stays ONE closed loop DERIVED from the segments (not stored twice) — keep lattice clipping,
-  the show-contour checkbox (SE14c) and Border width auto working.
-- A regenerate with the same segment count keeps per-segment colours; a count change resets them (say so in the log).
-- SVG export / Send to Fusion / drape preview show per-segment colour.
-- Tests: N drawn segments = N manifest contour entities; recolour one → only it changes; regenerate keeps it; the
-  checkbox off hides all segments. Render hourglass + bottle with two segments recoloured, VIEW them before passing.
-Pass back: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 4 — T73: SE14b — <sha>, tests"`.
+**Ball: worker (seat B) · epoch 4 · T74.** NO FUSION. T73 accepted pending the advisor's live Fusion run (if it fails
+you get an `amend`). Three items, one commit each, in order:
+1. AMEND 3b leftovers: a declared near-tangent threshold (no Coincident when a rail/tie crosses a contour segment at
+   < ~10 deg — leave that end free) and a declared MIN_RAIL_PIECE (drop split pieces shorter than ~2x stroke width).
+   Tests incl. a deep-waist hourglass with vertical rails.
+2. SE14d (ROADMAP.md on main, "## Queued — SE14d"): remove "Pick shape…" from the Shape Lattice panel as a SWEEP
+   (button, handler, panel state/strings, tests guarding only that UI — each link removed or kept with a named reason);
+   KEEP the boundary machinery the generated silhouette uses; saved patterns with a picked boundary still load (decide
+   + log). NOTE: seat A's UI2 (on main, merged later) mounts this panel into a side column via TOOL_PANEL_MOUNTS in
+   editor/lattice-side-column.js and decorates sections by title — don't rename section titles.
+3. NODE-D (ROADMAP.md "## Queued — NODE-D"): Node size entered as DIAMETER in both lattice panels (default 0.15);
+   Fusion param `node_diameter` + a DIAMETER dimension per node circle (replaces node_radius + radial dims); old saved
+   radius values convert once on read.
+Pass back: `cd <lane-b worktree> && python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 4 — T74 — <shas>"`.
