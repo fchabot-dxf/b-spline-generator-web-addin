@@ -921,6 +921,15 @@ wood, [Edit frame]) + the full-screen editor with [Frame | Artwork] tabs; the fr
 and re-editable any time; Frame and Shape Lattice are separate records sharing one silhouette engine.
 Fred confirmed no tapers: `Skel_Frame_Taper` exists but extrusion_engine hard-codes 0° — drop the param, don't port it.
 
+## Queued (seat C, F4, after F3) — FB-FIX: two live Frame Builder bugs found by seat C's parity recording (2026-09-26)
+Affect frames built TODAY with the standalone Frame Builder. (1) BuildContext.resolve_val does float(ui_data[name]);
+a unit-suffixed value ('0.75 in') fails silently (FAIL RESOLVE) and the offset becomes 0 — parse via Fusion's
+expression/unit evaluation (one declared resolver), never silently 0. (2) sketch.addOffset2 fails ('argument 2
+vector<SketchCurve>') and the build falls back to a NON-parametric offset for sketch 1/3 in most cases, so
+frame_thickness may not drive the frame in Fusion — fix the call (correct curve collection type / API), verify live
+that changing frame_thickness updates the frame. Plus an app/engine sanity warning when the board is too small for
+the frame (5.51x1.97: safe-zone 1.47in < 2x0.75in -> 0 bars). Verify in a short Fusion window; goldens re-recorded.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
