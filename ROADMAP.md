@@ -1118,6 +1118,17 @@ whether T1's phases force the two corners equal (ck_skel_shoulder_equal / arc we
 which constraint and the options before changing the Frame Builder template. Bottle has no hip: unchanged. Tests:
 independent shoulder/hip in preview + payload + (frame) the live Fusion outline parity per handle; F5 sweep stays green.
 
+## Queued (seat C, F21, after F20) — CONTOUR-FROM-FRAME: an "Offset from frame" toggle on the Shape Lattice contour (Fred 2026-09-27)
+Fred: "add a way in art to match the frame outline concentrically" -> "I only meant the single contour to have a toggle
+for 'offset from frame'". In the Shape Lattice Contour section: [ ] Offset from frame + a Distance field (formula field,
+default 0.25 in). ON: the contour = the frame's INNER edge offset inward by Distance (the F8 true offset: lines shifted +
+concentric arcs, one shared offset function, not a copy); the Shape preset/sliders/handles are disabled while on (the
+frame drives the shape); the lattice fills inside it as usual; it stays LINKED (frame template/handles/Trim offset/thickness
+change -> contour follows, via the declared refill inputs from F17 P2). Disabled with a hint when no frame is chosen.
+Saved in the pattern (contour.fromFrame: {on, distance}); old patterns = off. Fusion: the contour sketch is sent as drawn
+(slots, as today). Tests: contour == offset(frame inner edge, d) within tolerance for T1/T2 x boards; linked updates;
+toggle off restores the preset shape; F5-style validity (simple, tangent) holds; live parity on Ranchy.
+
 ## Closed — UI4 0b (Clear then Regenerate does nothing) — NOT REPRODUCIBLE on main (advisor, 2026-09-27)
 Fred clarified: "Shape Lattice using the shape even once cleared". Headless check on main (611490e): Shape Lattice
 Generate = 12 contour segs + 7 rails/7 ties/14 nodes -> Clear = 0 -> Regenerate = 12 contour segs + 7/7/14 (the
