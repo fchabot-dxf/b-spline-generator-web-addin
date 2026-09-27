@@ -1,21 +1,17 @@
-# NEXT (fb-app) — F12: SHAPE-PARAMS (+ the wood-name fix)
+# NEXT (fb-app) — F13: FRAME-GEN — a [Generate] button for the frame shape, then tweak with handles
 
-**Ball: worker (seat C) · epoch 1 · F12.** F10 + F11 ACCEPTED (live-proven on Ranchy), being merged to main. The regular
-add-in is back home (seat A on H1 SNAP-SPLIT: drag/snap paths, the toolbar; not your files). R7's Shape Lattice panel is on
-main (Boundary, Contour, Rails, Ties, Nodes; lattice seed hidden): merge origin/main first (regenerate frame-defs via
-tools/gen_frame_defs.py, never hand-resolve). PROGRESS automatic ("F12 item N: …"); shots -> shots\seatC\ as items land.
-Fusion: ask the advisor for a window if an item needs a live check (item 1 does: short, scratch-tagged, same rules as F11).
+**Ball: worker (seat C) · epoch 1 · F13.** F12 ACCEPTED (52649ec 6074fd9 630ef38), being merged to main. NO FUSION needed
+(seeds already proven live in F11). Spec: ROADMAP.md "FRAME-GEN". Fred's rules: no guard logic (code it right + tests),
+no new Fusion params. Seat A (regular add-in) is on H1 SNAP-SPLIT (drag/snap paths, the toolbar): not your files.
+PROGRESS automatic ("F13 item N: …"); shots -> shots\seatC\ as items land; push each item.
 
 ## Checklist
-- [ ] [F12-item-1] WOOD NAMES: the declared wood list must name REAL Fusion library appearances. Look up the actual
-      library names live (short window: read-only listing of the Fusion Material/appearance library, no doc edits), fix the
-      declared list (Ash default, Mahogany, Pine, Cherry, Maple -> the closest real appearance each, state the mapping),
-      and make an unknown name an explicit error in tests (the declared list is validated against a recorded library-name
-      fixture), not a silent fallback.
-- [ ] [F12-item-2] SHAPE-PARAMS (ROADMAP.md): hourglass WAIST RADIUS (independent of the corner radius), hourglass TOP
-      and BOTTOM corner radius separately (old cornerRadius migrates to both), bottle BODY SHOULDER radius. Each declared in
-      PARAM_ORDER + BASE_RANGES + feasibleParamRanges, with a handle (computeParamHandles) and a slider in the Shape Lattice
-      "Shape" section. Old patterns keep their exact shape (migration test). The F5 dense sweep stays green (simple outline,
-      tangent joints). Shape Lattice only: frames do NOT get these params.
-- [ ] [F12-item-3] Tests + shots (each new handle before/after drag, hourglass + bottle, desktop + mobile).
-Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F12 — <shas>"`.
+- [ ] [F13-item-1] Frame tab [Generate]: a new seeded random shape each press (the frame seed is stored in the frame record,
+      so a shape is reproducible). Every declared frame handle value is drawn inside its feasibleParamRanges (the F5 +
+      F12 range holes included), and the results are written as the handles' SEEDS (F9/F11 path), so [Send frame] builds
+      exactly what's shown.
+- [ ] [F13-item-2] Handles tweak the generated shape; a tweak persists until the next Generate; Undo restores the previous
+      shape (generate and tweak are both undoable steps); a template change still resets.
+- [ ] [F13-item-3] Tests: N=200 generates per template are all valid outlines, same seed -> same shape, tweak -> save ->
+      reload keeps it, undo; payload seeds == shown shape. Shots: 3 generated shapes + 1 tweaked, T1 + T2, desktop + mobile.
+Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F13 — <shas>"`.
