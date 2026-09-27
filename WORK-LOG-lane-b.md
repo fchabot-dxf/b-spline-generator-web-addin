@@ -10790,3 +10790,30 @@ Shots: shots/seatB/t81-shape-lattice-handle-hover.png (idle vs hover, real geome
 pixel-sampled: idle (255,255,255) -> hover (30,111,234) = #1e6fea), shots/seatB/t81-frame-handle-hover.png (idle
 vs hover, real handle data: 0.18 -> 0.234 diameter = x1.3).
 Verify: 2230/2230 vitest. Commit 5990330. NO FUSION.
+
+## T81 item 2 — Boundary gets its own section colour; Rail ends no longer clips
+
+Fred screenshot 1: "boundary and contour have the same color code". Cause: `SECTION_KIND_BY_TITLE`
+(lattice-side-column.js) mapped 'Boundary' to the SAME 'contour' kind as Contour/Shape/Border, so both got the
+identical green bar/tint. Fix: 'Boundary' is now its own 'boundary' kind, coloured from the dashed-black guide's
+own declared colour -- `GUIDE_STROKE` (editor-guides.js, "Fred (L1 ruling): dashed BLACK") exported for this,
+converted via a new shared `_hexToRgb` (factored out of `_readSwatchRgb`'s own hex branch -- one parse, not a
+second). New `[data-lattice-section="boundary"]` CSS rule (editor.css), same shape as the existing rails/ties/
+nodes/contour ones. Applies to both panels for free (the one shared `_wireLiveColors` call already runs for both).
+
+Fred screenshot 2: the Contour section's "Rail ends" segmented control (Boundary/Inset/Joint/Loose) clipped at
+the 236px panel width. Measured with the REAL CSS in headless Chrome (not eyeballed): at the old `flex:1`, the 4
+buttons total right at the container's own edge with no margin to spare -- the real panel's own vertical
+scrollbar (`overflow-y:auto`) most likely tips that into an actual clip, which this isolated measurement (no
+scrollbar in the harness) doesn't reproduce byte-for-byte; documented as a measured, not assumed, finding.
+Fixed with a wide safety margin either way: `#shapeLatticeEndRule` wraps to 2 rows (editor.css `flex-wrap`), and
+each button's own `flex-basis` moves from `1` to `1 1 45%` (properties-shape-lattice.js) -- 2 per row, ~107px
+each in the same measured harness, comfortable room for "Boundary". Scoped to this one control (the only
+4-option segmented group in the app) -- every other segmented-group keeps its established single-row look.
+
+Tests: lattice-side-column.test.js (+1 new, 3 existing updated -- they encoded the old shared-with-contour
+mapping, which is exactly the bug this item fixes); properties-shape-lattice.test.js (+1, the flex-basis).
+Mutation: reverting either fix fails 3 tests.
+Shots (real headless renders against the app's own CSS, not mockups): shots/seatB/t81-boundary-section-
+colour.png, shots/seatB/t81-endrule-wrap.png.
+Verify: 2231/2231 vitest. Commit f4c5bb3. NO FUSION.
