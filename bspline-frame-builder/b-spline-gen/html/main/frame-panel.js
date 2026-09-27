@@ -184,12 +184,22 @@ export function syncFramePanel() {
  * the handle's declared binding and redraws the editor profile, and the release
  * refreshes everything else (the 3D preview) once.
  */
+/**
+ * F9 handle drags, F18 (FRAME-TAB-ZOOM, Fred on his phone: no pinch/pan in the Frame tab): the shield no longer
+ * swallows every gesture. It is inert (pointer-events:none), and a CAPTURE listener on its parent (the canvas
+ * container) takes ONLY a pointerdown that starts on a frame handle. Everything else reaches the editor, which in
+ * the Frame tab (artwork locked) pans on one finger and pinch-zooms on two (editor-interaction.js).
+ */
 function _wireHandleDrag() {
   const shield = $('editorFrameShield');
-  if (!shield) return;
+  if (!shield || !shield.parentElement) return;
+  shield.style.pointerEvents = 'none';
+  const surface = shield.parentElement;
   let dragKey = null;
   const editor = () => (typeof window !== 'undefined' ? window.svgEditor : null);
-  shield.addEventListener('pointerdown', (e) => {
+  const inFrameTab = () => _editorTab === 'frame';
+  surface.addEventListener('pointerdown', (e) => {
+    if (!inFrameTab()) return;
     const ed = editor();
     if (!ed || !ed._frameProfile || !(ed._frameHandles || []).length) return;
     const pt = ed._getMousePoint(e);
@@ -202,10 +212,11 @@ function _wireHandleDrag() {
     if (!best || bestD > Math.abs(edge.x - pt.x)) return;
     dragKey = best.key;
     pushFrameHistory(); // F13: a tweak is one undoable step
-    if (shield.setPointerCapture && e.pointerId != null) { try { shield.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
+    if (surface.setPointerCapture && e.pointerId != null) { try { surface.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
     e.preventDefault();
-  });
-  shield.addEventListener('pointermove', (e) => {
+    e.stopPropagation(); // the editor never sees a handle drag
+  }, true);
+  surface.addEventListener('pointermove', (e) => {
     if (!dragKey) return;
     const ed = editor();
     const h = (ed?._frameHandles || []).find((q) => q.key === dragKey);
@@ -213,10 +224,11 @@ function _wireHandleDrag() {
     setFrameRecord(handleDragPatch(getFrameRecord(), h, ed._getMousePoint(e), ed._frameProfile.region));
     drawFrameProfile(ed);
     e.preventDefault();
-  });
-  const end = () => { if (!dragKey) return; dragKey = null; syncFramePanel(); };
-  shield.addEventListener('pointerup', end);
-  shield.addEventListener('pointercancel', end);
+    e.stopPropagation();
+  }, true);
+  const end = (e) => { if (!dragKey) return; dragKey = null; e.stopPropagation(); syncFramePanel(); };
+  surface.addEventListener('pointerup', end, true);
+  surface.addEventListener('pointercancel', end, true);
 }
 
 export function initFramePanel() {

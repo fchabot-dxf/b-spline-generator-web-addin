@@ -158,14 +158,25 @@ function handlePointerDown(editor, e) {
     }
     if (count !== 1) return; // 3rd+ finger — tracked, no gesture
 
+    // FB-APP F18 (FRAME-TAB-ZOOM): in the Frame tab the artwork is locked, so a one-finger drag (that did not
+    // start on a frame handle: the frame panel takes those first) PANS the canvas; pinch is above. No tool starts.
+    if (editor._artworkLocked) { _startPan(editor, e); return; }
+
     handleStart(editor, e);
 }
 
+function _startPan(editor, e) {
+    e.preventDefault();
+    editor._isPanning = true;
+    editor._panStart = { clientX: e.clientX, clientY: e.clientY, cx: editor._view.cx, cy: editor._view.cy };
+    const c = el('editorSVGContainer');
+    if (c) c.classList.add('panning');
+}
+
 function handlePointerMove(editor, e) {
-    // FB-APP F9: in the Frame tab the pointer belongs to the frame (its shield
-    // drags the shape handles); the editor shows no hover/snap feedback there.
-    if (editor._artworkLocked) return;
     if (!editor._activePointers.has(e.pointerId)) {
+        // FB-APP F9/F18: in the Frame tab (artwork locked) there is no hover/snap feedback
+        if (editor._artworkLocked) return;
         // A move from a pointer we never saw go down (e.g. a mouse move
         // with no button held, which still fires pointermove on some
         // UAs) — treat exactly like the old mousemove-with-no-drag path.
@@ -200,6 +211,8 @@ function handlePointerMove(editor, e) {
         return;
     }
     if (count > 2) return; // 3rd+ finger moving — ignored, matches pointerdown
+    // FB-APP F18: locked (Frame tab) = pan/pinch only
+    if (editor._artworkLocked) { if (editor._isPanning) handleMove(editor, e); return; }
 
     handleMove(editor, e);
 }
