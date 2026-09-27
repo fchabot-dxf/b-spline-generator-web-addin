@@ -15,7 +15,8 @@ if a field is needed to test in the browser, drive the pattern record directly.
    start/end: first rail ON that boundary edge, repeat toward the other edge; center: a rail ON the centre line,
    repeating symmetrically. Rails outside the boundary are dropped.
 2. `rails.spacing` (inches, rail-to-rail) is always the step; `rails.count` OPTIONAL (N from the anchor; center = N
-   centred); empty = fill the boundary.
+   centred); empty = fill the boundary. **Fred: Center + EVEN count → rails STRADDLE the centre symmetrically, NO rail on
+   the centre line** (odd count → one on the line). **New-pattern defaults (Fred): anchor = center, spacing = 1 in.**
 3. **CONFIRMED (Fred): off-grid is fine — NO rounding of spacing to grid steps. BUT TIES MUST SNAP TO RAILS:** every
    generated tie end lies EXACTLY on its rail (same coordinate as the off-grid rail, not the nearest grid row).
 4. The lattice GRID STEP comes from the editor grid (one grid); the old lattice-side `spacing` stops being a setting.
