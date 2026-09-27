@@ -10683,3 +10683,20 @@ documented rail grid-snap artifact (ON 5 rails vs OFF 7) decides the totals. The
 
 New tests: tests/editor-lattice-tie-count.test.js (4). Verify: 2152/2152 vitest, 87/87 + 201/2-skipped pytest.
 Commit 7c5c30b. NO FUSION.
+
+## T80 item 4 — reopening Shape Lattice adopts its layers (no second set)
+
+Fred: after reopening, a new Ties/Contour/Rails set appeared over the existing one (3D off, eye on). Cause: a
+sibling kind-layer finds its lattice through `layer.patternOwner`, which is runtime-only (not in
+editor-io's _PERSISTED_LAYER_FIELDS). After save + reopen, with a sibling (Ties/Contour/Nodes) as the saved
+active layer, resolvePatternLayer returned null. currentPattern then made a fresh pattern, and Generate's
+_ensureKindLayers added a second set. The 3D toggle itself isn't the trigger: it stops propagation and doesn't
+change the active layer. It only matters in that Fred's last clicked row was a sibling.
+Fix: resolvePatternLayer falls back to the layer whose saved `pattern.layers` map names the id. That map is the
+declared identity, and it survives 3D/eye toggles, rename and reorder. It's the only reader of patternOwner, so
+every caller gets it. Existing duplicate documents are left alone: each set resolves to its own owner, with no merge.
+
+REPRODUCED FIRST: tests/shape-lattice-reopen-layers.test.js (7) round-trips through the real save() and restores
+the roster the way open() does. Before the fix, 5 failed (7 layers instead of 4). Covers Fred's case, each kind
+active, eye hidden + renamed + reordered, and an already-duplicated document. Verify: 2159/2159 vitest.
+Commit 3bb9af5. NO FUSION. (Correction to the item 1 entry above: its commit is 3c0975a, not 7c5c30b.)
