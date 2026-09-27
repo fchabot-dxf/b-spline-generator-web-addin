@@ -23,7 +23,7 @@ import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds } from '../editor/frame-handles.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
 import { frameCutProfile } from '../editor/editor-frame-profile.js';
-import { setHandleCursor } from '../editor/editor-transform-handles.js';
+import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 
 /** F9: how close (screen px) a press must land to grab a frame shape handle (finger-sized). */
 export const HANDLE_HIT_PX = 16;
@@ -205,10 +205,10 @@ export function syncFramePanel() {
  * container) takes ONLY a pointerdown that starts on a frame handle. Everything else reaches the editor, which in
  * the Frame tab (artwork locked) pans on one finger and pinch-zooms on two (editor-interaction.js).
  */
-/** F27 item 2 follow-up: a Frame handle's drag axis ('x'/'y'), for its hover/drag cursor. */
+/** F27 item 2 follow-up: a Frame handle's cursor axis (paramHandleCursorAxis: its drag axis, or 'plain' for a radius). */
 function _frameHandleAxis(ed, key) {
   const h = key && ed ? (ed._frameHandles || []).find((q) => q.key === key) : null;
-  return h ? h.axis : null;
+  return paramHandleCursorAxis(h);
 }
 
 /** F9 hit-test, factored out (T81 item 1) so pointerdown's grab check and
@@ -265,7 +265,7 @@ function _wireHandleDrag() {
     if (!best) return;
     dragKey = best.key;
     ed._frameHandleDrag = dragKey; // T81 item 1: the SAME hover/press look for the whole drag
-    setHandleCursor('active', best.axis);
+    setHandleCursor('active', paramHandleCursorAxis(best));
     drawFrameProfile(ed); // show it immediately -- a bare press with no movement yet (Touch has no hover at all) must not wait for the first move tick
     pushFrameHistory(); // F13: a tweak is one undoable step
     if (surface.setPointerCapture && e.pointerId != null) { try { surface.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }

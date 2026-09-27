@@ -3056,3 +3056,6 @@ Full vitest 2384/2384. Shot: scratchpad shots/handles-v3.
   for an up-down one, on hover and while dragging. Radius handles keep their axis cursor (ew-resize): there is
   no standard "radius" cursor (CSS has none; CAD apps rely on the handle's look), and it is accurate -- the
   circle slides sideways, moving the arc centre.
+- Radius handle cursor, Fred: "For radius ... No just a normal cursor": `paramHandleCursorAxis` gives a radius
+  handle 'plain' (class `handle-axis-plain` -> cursor: default, hover and drag); position handles keep ew/ns-resize.
+  The handle itself still grows + turns accent blue on hover.

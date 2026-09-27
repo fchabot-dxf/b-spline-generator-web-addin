@@ -274,10 +274,11 @@ export function drawParamHandle(layer, vis, x, y, strokeWidth) {
  *  the canvas container, so a Shape Lattice handle and a Frame handle set the
  *  cursor the SAME way. `state`: null (idle), 'hover' or 'active' (mid-drag).
  *  `axis` (F27 item 2 follow-up, Fred: "Use updown for one and left right the
- *  other ... Changing cursor on hover"): the handle's own drag axis -- 'x'
- *  shows the left-right resize cursor, 'y' the up-down one, for hover AND the
- *  drag; no axis (a rail end) keeps grab/grabbing. Distinct class names from
- *  the pre-existing `pan-ready`/`panning` (Space-pan) so the two never fight. */
+ *  other ... Changing cursor on hover"): 'x' shows the left-right resize
+ *  cursor, 'y' the up-down one, for hover AND the drag; 'plain' keeps the
+ *  normal pointer (a radius handle, Fred: "For radius ... just a normal
+ *  cursor"); no axis keeps grab/grabbing. Distinct class names from the
+ *  pre-existing `pan-ready`/`panning` (Space-pan) so the two never fight. */
 export function setHandleCursor(state, axis = null) {
     const c = typeof document !== 'undefined' ? document.getElementById('editorSVGContainer') : null;
     if (!c) return;
@@ -285,6 +286,15 @@ export function setHandleCursor(state, axis = null) {
     c.classList.toggle('handle-hover-active', state === 'active');
     c.classList.toggle('handle-axis-x', !!state && axis === 'x');
     c.classList.toggle('handle-axis-y', !!state && axis === 'y');
+    c.classList.toggle('handle-axis-plain', !!state && axis === 'plain');
+}
+
+/** The cursor axis for a param handle (Frame tab or Shape Lattice): a
+ *  position handle shows its drag direction ('x'/'y'); a radius handle keeps
+ *  the normal pointer ('plain', Fred). */
+export function paramHandleCursorAxis(h) {
+    if (!h) return null;
+    return h.handleKind === 'radius' ? 'plain' : h.axis;
 }
 
 /** True if `m`'s linear part carries any rotation/skew (b or c nonzero) —

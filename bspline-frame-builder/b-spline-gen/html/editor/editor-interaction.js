@@ -26,7 +26,7 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { haptic, resetHapticSnap } from '../core/haptics.js';
 import {
     renderTransformHandles, hitTestHandle,
-    beginTransform, applyTransformDrag, setHandleCursor,
+    beginTransform, applyTransformDrag, setHandleCursor, paramHandleCursorAxis,
 } from './editor-transform-handles.js';
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
@@ -2230,7 +2230,7 @@ const shapeLatticeHandler = {
             editor._shapeLatticeDragKey = hit.key;
             // T81 item 1: the SAME visual a hover shows, held for the whole
             // drag (Touch has no hover at all, so this is its only cue).
-            setHandleCursor('active', hit.axis);
+            setHandleCursor('active', paramHandleCursorAxis(hit));
             if (typeof editor._updateHandles === 'function') editor._updateHandles();
             // `update(editor, pt)` below only ever gets the OFFSET point
             // (handleMove's own signature has no `e`) — capture the
@@ -2421,15 +2421,15 @@ const shapeLatticeHandler = {
         // there grabs the handle first, start()'s own priority).
         const railEnd = key ? null : _railEndUnder(editor, pt);
         setRailEndHover(editor, railEnd);
-        setHandleCursor(key || railEnd ? 'hover' : null, key ? hit.axis : railEndAxis(railEnd));
+        setHandleCursor(key || railEnd ? 'hover' : null, key ? paramHandleCursorAxis(hit) : railEndAxis(railEnd));
         if (selectHandler.hover) selectHandler.hover(editor, pt);
     },
 };
 
-/** F27 item 2 follow-up: a Shape Lattice param handle's drag axis ('x'/'y'), for its hover/drag cursor. */
+/** F27 item 2 follow-up: a Shape Lattice param handle's cursor axis (its drag axis, or 'plain' for a radius). */
 function _paramHandleAxis(editor, key) {
     const h = key ? (editor._paramHandles || []).find((r) => r.key === key) : null;
-    return h ? h.axis : null;
+    return paramHandleCursorAxis(h);
 }
 
 const modeHandlers = {

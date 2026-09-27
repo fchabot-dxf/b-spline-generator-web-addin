@@ -23,7 +23,7 @@ import { normalizeFrameRecord, setFrameRecord, framePayload } from '../bspline-f
 import { frameCutProfile, frameInnerProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameHandles, handleDragPatch } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import {
-  HANDLE_KINDS, HANDLE_HOVER_FILL, APP_HANDLE_STROKE, handleKindVisual, drawParamHandle, setHandleCursor,
+  HANDLE_KINDS, HANDLE_HOVER_FILL, APP_HANDLE_STROKE, handleKindVisual, drawParamHandle, setHandleCursor, paramHandleCursorAxis,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 import { initFramePanel, sendFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 
@@ -250,8 +250,13 @@ describe('(b) handle kinds are declared data, and render distinct', () => {
     expect(cls()).toEqual(['handle-axis-y', 'handle-hover-active']);
     setHandleCursor('hover'); // no axis (a rail end): plain grab
     expect(cls()).toEqual(['handle-hover-ready']);
+    setHandleCursor('hover', 'plain'); // a radius handle: the normal pointer (Fred: "For radius ... just a normal cursor")
+    expect(cls()).toEqual(['handle-axis-plain', 'handle-hover-ready']);
     setHandleCursor(null, 'x');
     expect(cls()).toEqual([]);
+    expect(paramHandleCursorAxis({ handleKind: 'position', axis: 'y' })).toBe('y');
+    expect(paramHandleCursorAxis({ handleKind: 'radius', axis: 'x' })).toBe('plain');
+    expect(paramHandleCursorAxis(null)).toBe(null);
     for (const id of Object.keys(ARC_RADIUS_HANDLE)) {
       for (const h of handlesOf(normalizeFrameRecord({ templateId: id }))) expect(h.axis, `${id} ${h.key}`).toMatch(/^[xy]$/);
     }

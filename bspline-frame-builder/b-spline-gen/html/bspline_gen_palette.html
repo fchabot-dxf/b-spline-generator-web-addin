@@ -1579,6 +1579,8 @@
        hover"): a param handle's own drag axis picks the cursor, hover and drag alike. */
     #editorSVGContainer.handle-axis-x.handle-hover-ready, #editorSVGContainer.handle-axis-x.handle-hover-active { cursor: ew-resize; }
     #editorSVGContainer.handle-axis-y.handle-hover-ready, #editorSVGContainer.handle-axis-y.handle-hover-active { cursor: ns-resize; }
+    /* a radius handle keeps the normal pointer (Fred: "For radius ... just a normal cursor") */
+    #editorSVGContainer.handle-axis-plain.handle-hover-ready, #editorSVGContainer.handle-axis-plain.handle-hover-active { cursor: default; }
     /* SE7a: SNAP dimmed for modes whose policy is 'none' (nothing to
        snap) or 'always' (already always on) — declared here, not
        styles/base.css, for the same reason as the cursor rules above. */
