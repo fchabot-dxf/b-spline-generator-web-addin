@@ -1,15 +1,14 @@
-# NEXT (fb-app) — F24: frame handles stay ON the outline + the bottle neckLength floor
+# NEXT (fb-app) — F25: Tool Profile + V-Bit Angle on one line (small sidebar layout)
 
-**Ball: worker (seat C) · epoch 3 · F24.** F23 ACCEPTED (4dbaab3, being merged). NO FUSION unless a live parity check needs it.
-PROGRESS automatic ("F24 item N: …"); shots -> shots\seatC\; push each item.
+**Ball: worker (seat C) · epoch 3 · F25.** F24 ACCEPTED + merged (c9cac56). Fred: "tool profile and vbit angle can be on the same line".
+In the Vector Stamping section: Tool Profile (select) and V-Bit Angle (stepper, shown for V-bit profiles) side by side, like seat A's
+Width (X) / Height (Y) row (reuse seat A's paired-row pattern from H10/H11-item-0 + the H12 inline label pattern; don't invent a
+new one). When the profile has no angle field, the select takes the full row. Seat A is on H13 haptics (JS modules), seat B on
+core/noise: small, additive HTML/CSS only here. NO FUSION. PROGRESS automatic ("F25 item N: …").
 
 ## Checklist
-- [ ] [F24-item-1] HANDLE PLACEMENT: with the wider F23 range, the Shoulder/Hip handles land OFF the board (0935_F23reach_after_hip.png:
-      circles in the canvas gutter at top-left/bottom-left) because they sit at the arc's centre, which runs away as the radius grows.
-      Put every frame handle ON the outline (e.g. the arc's midpoint / the corner's tangent point), dragging along its declared axis,
-      so it's always visible and reachable at any radius; same for the Shape Lattice handles if they share the placement. Test:
-      each handle's anchor lies on the drawn outline and inside the board rect at the range extremes.
-- [ ] [F24-item-2] T2 bottle neckLength floor: the same leftover-declared-band artifact you flagged; re-derive the neckWidth branch's
-      cross-reference so neckLength's floor is the true geometric one. Tests + the F5 sweep green.
-- [ ] [F24-item-3] Real-input drag repro (desktop + touch) at the extremes; shots.
-Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — F24 — <shas>"`.
+- [ ] [F25-item-1] Tool Profile + V-Bit Angle on one line at 390 / 768 / 834 / 1024 / 1366 (value fully visible; seat A's multi-width
+      check script extended to this row); the angle's own show/hide per profile unchanged.
+- [ ] [F25-item-2] While there: list (in the WORK-LOG, don't change) any OTHER label/field pairs in the sidebar that could share a line
+      the same way, for Fred to pick. Shots before/after at 390 + 834.
+Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — F25 — <shas>"`.
