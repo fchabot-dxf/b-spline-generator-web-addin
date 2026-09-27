@@ -1062,7 +1062,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             from fb_utils.fb_logger import DebugLogger
             design = adsk.fusion.Design.cast(app.activeProduct)
             result = fb_send.send_frame(
-                design, payload, _find_bspline_core_body(design), DebugLogger(_frame_builder_dir()),
+                design, payload, lambda: _find_bspline_core_body(design), DebugLogger(_frame_builder_dir()),
                 resolve_template=resolve_template,
                 build_sketch=frame_engine.build_sketch_logic_v3,
                 build_solid=solid_coordinator.build_solid_logic_v3)

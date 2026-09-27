@@ -78,7 +78,8 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(bsg.adsk.fusion, 'Design', types.SimpleNamespace(cast=lambda x: x), raising=False)
     calls = {}
 
-    def fake_send_frame(design_, payload, core_body, logger, **kw):
+    def fake_send_frame(design_, payload, find_core_body, logger, **kw):
+        core_body = find_core_body()
         calls.update(design=design_, payload=payload, core_body=core_body, logger=logger, **kw)
         return {'ok': core_body is not None, 'error': None if core_body is not None else 'No B-spline body', 'frame': 'Frame_1'}
 

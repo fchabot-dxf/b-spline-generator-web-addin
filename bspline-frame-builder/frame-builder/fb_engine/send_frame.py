@@ -99,9 +99,15 @@ def underside_face(body):
     return best if best is not None and best_z <= UNDERSIDE_MAX_NORMAL_Z else None
 
 
-def send_frame(design, payload, core_body, logger, *, resolve_template, build_sketch, build_solid):
-    """Run [Send frame]. Returns {ok, error, deleted, frame, fit, seeds}; never
-    raises for a user-facing reason (it is reported as `error`)."""
+def send_frame(design, payload, find_core_body, logger, *, resolve_template, build_sketch, build_solid):
+    """Run [Send frame]. `find_core_body()` returns the B-spline body (or None);
+    it is asked TWICE: up front (refuse without one) and again right before the
+    solid build. MEASURED live (F11): a BRepFace taken before the delete + sketch
+    build + reorder was invalid by the time the bars extruded to it
+    ("InternalValidationError : face" on every bar, 0 bars built), so the target
+    face is resolved fresh at the moment it is used.
+    Returns {ok, error, deleted, frame, fit, seeds}; never raises for a
+    user-facing reason (it is reported as `error`)."""
     log = lambda msg, level="INFO": logger.log(msg, level)
     seeds = dict(payload.get("seeds") or {})
     result = {"ok": False, "error": None, "deleted": [], "frame": None, "fit": None,
@@ -110,6 +116,7 @@ def send_frame(design, payload, core_body, logger, *, resolve_template, build_sk
         template_id = payload.get("templateId")
         if not template_id:
             raise SendFrameError("No frame chosen: pick a template in the FRAME section.")
+        core_body = find_core_body()
         if core_body is None:
             raise SendFrameError("No B-spline body in this document: press Send B-spline first "
                                  "(the frame's bars extrude up to its underside).")
@@ -128,6 +135,12 @@ def send_frame(design, payload, core_body, logger, *, resolve_template, build_sk
         if not frames:
             raise SendFrameError("The frame sketch build created no frame (see the Frame Builder log).")
         result["frame"] = frames[-1].name
+        early_face_valid = getattr(face, "isValid", True)
+        core_body = find_core_body()
+        face = underside_face(core_body) if core_body is not None else None
+        if face is None:
+            raise SendFrameError("The B-spline body is gone after the frame sketch build (see the log).")
+        log(f"SEND FRAME: underside face resolved fresh for the solid build (the early one valid: {early_face_valid})")
         z = payload.get("frameBottomZ")
         build_solid(to_face=face, start_offset_expr=f"{float(z)} in" if z is not None else DEFAULT_FRAME_BOTTOM_EXPR,
                     appearance_name=payload.get("appearance"), external_logger=logger)

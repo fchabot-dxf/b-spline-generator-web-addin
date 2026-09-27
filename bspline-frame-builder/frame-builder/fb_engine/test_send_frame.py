@@ -185,7 +185,8 @@ def payload(**kw):
 
 def run(w, pl, body="default"):
     b = Builds(w)
-    r = sf.send_frame(w, pl, Body() if body == "default" else body, Log(), resolve_template=resolve_template,
+    b_obj = Body() if body == "default" else body
+    r = sf.send_frame(w, pl, lambda: b_obj, Log(), resolve_template=resolve_template,
                       build_sketch=b.sketch, build_solid=b.solid)
     return r, b
 
@@ -274,3 +275,21 @@ class TestSendFrame:
         assert r["ok"] and r["seeds"] == {"count": 1, "applied": False, "reason": sf.SEEDS_NOT_APPLIED}
         r, _ = run(w, payload(seeds={}))
         assert r["seeds"] == {"count": 0, "applied": False, "reason": None}
+
+
+class TestTheTargetFaceIsResolvedWhenUsed:
+    def test_the_solid_gets_a_face_resolved_after_the_sketch_build(self):
+        # MEASURED live (F11): a face taken up front went invalid by the solid build.
+        w = World()
+        send_bspline(w)
+        bodies = [Body(), Body()]  # the body object as found before, and as found after the sketch build
+        calls = []
+
+        def find():
+            calls.append(len(calls))
+            return bodies[min(len(calls) - 1, 1)]
+        b = Builds(w)
+        r = sf.send_frame(w, payload(), find, Log(), resolve_template=resolve_template,
+                          build_sketch=b.sketch, build_solid=b.solid)
+        assert r["ok"] and len(calls) == 2
+        assert b.solid_calls[0]["to_face"] is bodies[1].faces[2]  # the fresh one, not the early one
