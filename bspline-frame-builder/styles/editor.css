@@ -1041,7 +1041,7 @@
        than on empty scrollable track. WRAPPING removes the gesture
        entirely: once the header's own fixed height is freed (below), the
        actions group simply drops to its own full-width second row
-       whenever it doesn't fit the first, so Apply Stencils is always
+       whenever it doesn't fit the first, so Apply is always
        just THERE, no scroll needed. */
     #svgEditorHeader {
         flex-direction: row;

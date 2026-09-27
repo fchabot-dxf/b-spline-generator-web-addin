@@ -1,5 +1,5 @@
 // H4 MOB-STEPPERS + editor header acceptance, at the real 390px breakpoint:
-// the header wraps to its own second row (Cancel/Apply Stencils always
+// the header wraps to its own second row (Cancel/Apply always
 // visible, no scroll gesture needed) with the "Active Layer" text label
 // gone (the layer-name pill itself stays); every numeric stepper's own
 // button/input hits the shared 44px touch size (sidebar .cad-stepper, the
@@ -39,7 +39,7 @@ await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints
 await send('Page.navigate', { url: URL }); await sleep(9000);
 await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms)); document.getElementById('btnStampEdit').click(); await W(3000); })()`);
 
-// 1) Header: Cancel + Apply Stencils visible without any scroll, no page overflow.
+// 1) Header: Cancel + Apply visible without any scroll, no page overflow.
 const headerInfo = await evalJS(`(()=>{
   const cancel = document.getElementById('editorCancel');
   const apply = document.getElementById('editorApply');
@@ -54,7 +54,7 @@ const headerInfo = await evalJS(`(()=>{
 console.log('header:', headerInfo);
 const h = JSON.parse(headerInfo);
 check(h.cancelRect.right <= 390 && h.cancelRect.right > 0, `H4: Cancel is fully within the 390px viewport without scrolling (right=${h.cancelRect.right})`);
-check(h.applyRect.right <= 390 && h.applyRect.right > 0, `H4: Apply Stencils is fully within the 390px viewport without scrolling (right=${h.applyRect.right})`);
+check(h.applyRect.right <= 390 && h.applyRect.right > 0, `H4: Apply is fully within the 390px viewport without scrolling (right=${h.applyRect.right})`);
 check(h.docScrollWidth <= 390, `H4: no page-level horizontal overflow (scrollWidth=${h.docScrollWidth})`);
 check(!h.activeLayerLabelExists, 'H4: the "Active Layer" text label is gone');
 check(!!h.pill, `H4: the layer-name pill itself still exists and shows a value (got "${h.pill}")`);

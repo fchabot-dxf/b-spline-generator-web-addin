@@ -1975,3 +1975,69 @@ def test_isConstruction_is_generic_not_line_only(call_log):
     build_constrained_sketch(design.rootComponent, design, manifest)
     circles = [c for c in design.rootComponent._sketches[0]._curves if isinstance(c, FakeSketchCircle)]
     assert [c.isConstruction for c in circles] == [True, False]
+
+
+# ---------------------------------------------------------------------------
+# F27 (Fred: "the scissors tool doesn't cut contour, it should" -- FINAL
+# RULING: a contour cut is a colour boundary only). The JS side sends the
+# cut contour "AS DRAWN" (editor-sketch-manifest.js's own manifestFromShape,
+# fed the LIVE post-cut primitive list) -- one more Slot/Arc3PointSlot per
+# cut piece plus a Coincident at the new seam, via the SAME generic per-
+# adjacent-primitive pass `test_shape_contour_as_slots_end_to_end_...`
+# above already proves for the UNCUT case. This fixture is the CUT case:
+# one original semicircular arc (centre (2,0), radius 1, 0deg->180deg) now
+# drawn as its own two colour-cut halves (seg1/seg2, split at 90deg, the
+# arc's own top point (2,1)) between two closing Slot lines -- "one slot
+# per contour piece" (the amendments' own FUSION EXPORT ruling), no new
+# Fusion-side machinery: same dispatch, same Coincident constraint, one
+# more of each.
+# ---------------------------------------------------------------------------
+def _cut_arc_contour_manifest():
+    return {
+        "version": 1, "layerId": "1", "sketchName": "Test Cut Arc Contour",
+        "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9}, "widthMode": "slot",
+        "entities": [
+            {"id": "seg0", "type": "Slot", "p1": [0.0, 0.0], "p2": [3.0, 0.0], "width": 0.07},
+            {"id": "seg1", "type": "Arc3PointSlot", "p1": [3.0, 0.0], "pMid": [2.7071, 0.7071], "p2": [2.0, 1.0], "width": 0.07},
+            {"id": "seg2", "type": "Arc3PointSlot", "p1": [2.0, 1.0], "pMid": [1.2929, 0.7071], "p2": [1.0, 0.0], "width": 0.07},
+            {"id": "seg3", "type": "Slot", "p1": [1.0, 0.0], "p2": [0.0, 0.0], "width": 0.07},
+        ],
+        "constraints": [
+            {"type": "Coincident", "targets": ["seg0:E", "seg1:S"]},
+            {"type": "Coincident", "targets": ["seg1:E", "seg2:S"]},
+            {"type": "Coincident", "targets": ["seg2:E", "seg3:S"]},
+            {"type": "Coincident", "targets": ["seg3:E", "seg0:S"]},
+        ],
+        "parameters": [{"name": "stroke_width", "value": 0.07, "unit": "in"}],
+        "dimensions": [
+            {"type": "SlotWidth", "target": "seg0", "expression": "stroke_width"},
+            {"type": "SlotWidth", "target": "seg1", "expression": "stroke_width"},
+            {"type": "SlotWidth", "target": "seg2", "expression": "stroke_width"},
+            {"type": "SlotWidth", "target": "seg3", "expression": "stroke_width"},
+        ],
+        "groups": {"silhouette": ["seg0", "seg1", "seg2", "seg3"]},
+        "latticePieceCount": 0,
+        "latticeConstrained": True,
+    }
+
+
+def test_cut_arc_contour_sends_one_slot_per_piece_with_zero_parity_mismatches(call_log):
+    """4 pieces (was 3 pre-cut: one Slot line collapsed here into two
+    closing lines plus the ORIGINAL single arc split into seg1/seg2) all
+    create, dispatch correctly (2 Slot lines, 2 arc slots -- 'one slot per
+    contour piece', no new machinery), every declared Coincident
+    (including the NEW seam between seg1/seg2, the cut itself) lands with
+    zero parity mismatches -- the two cut arc halves genuinely meet where
+    declared, not just two independently-floating arcs that happen to
+    share an id naming convention."""
+    design = FakeDesign()
+    manifest = _cut_arc_contour_manifest()
+    summary = build_constrained_sketch(design.rootComponent, design, manifest)
+    assert summary["entities"]["created"] == 4
+    assert summary["entities"]["skipped"] == []
+    kinds = [entry[0] for entry in call_log]
+    assert kinds.count("slot:addCenterToCenterSlot") == 2
+    assert kinds.count("slot:addThreePointArcSlot") == 2
+    assert kinds.count("constraint:Coincident") == 4
+    assert summary["parity"]["mismatches"] == []
+    assert summary["parity"]["maxErr"] < 1e-6

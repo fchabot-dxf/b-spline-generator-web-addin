@@ -12598,3 +12598,385 @@ scratch copy of `layers.js` — both tests correctly FAILED (one on the thrown e
 never reached `removeLayer`). Restored, re-ran clean.
 
 `npx vitest run` -> **2181 passed** (up from 2179), zero regressions.
+
+## H20 item 6 (PRIORITY, with item 4) — deleted lattice layers were coming back
+
+Fred: "I've been trying to delete layers and after a few layers they just come back." Delegated the
+architecture survey (marquee — no, wrong file; the actual target: `removeLayer`, the Lattice/Shape-Lattice
+pattern system, `_ensureKindLayers`, the identity scheme) to an Explore agent first.
+
+**REPRODUCED FIRST, measured live — not trusted from the report.** Generated a Shape Lattice (Rails/Contour/
+Ties/Nodes, 4 layers), deleted Ties then Nodes via the REAL delete button: `["Rails","Contour","Ties","Nodes"]`
+→ `["Rails","Contour","Nodes"]` → `["Rails","Contour"]` — both correctly stayed gone at the time of deletion,
+matching the checklist's own note that Fred saw them come back LATER, not immediately. Deleted Contour too:
+`["Rails"]` — still clean. Then, per the investigation's own finding that resurrection needs a SUBSEQUENT
+"commit" (not the delete itself), toggled Rails' visibility (an ordinary, unrelated action) — Ties and Nodes
+both reappeared with brand-new ids: `["Rails","Ties","Nodes"]`. This is the measured, live-confirmed bug —
+the dispatch's "EXACT TRIGGER" hypothesis (delete Contour specifically) turned out to be ONE path to the same
+root cause, not the only one; the actual trigger is ANY later refill, and this repro found a simpler one.
+
+**Root cause** (found via the Explore agent, confirmed by reading the actual current code — post seat B's
+T80 item 4 merge — myself): `removeLayer` (`layers.js`) never told the owning pattern a kind-layer was gone.
+`_ensureKindLayers` (`editor-lattice-pattern.js`, called by both `generatePattern`'s refill and
+`regenerateSilhouette`) treats "no layer exists for this kind" as "never created yet" and recreates it —
+correct for a brand-new pattern, wrong for one the user just deleted from. `refreshBoundaryPatterns` (a
+`_notifyChange('commit')` hook — fires on undo/redo, a visibility toggle, recolor, cut, or a Select-mode
+commit, per `editor.js`) detects the geometry mismatch a delete leaves behind and calls `generatePattern`,
+which calls `_ensureKindLayers(['rails','ties','nodes'])` — silently refilling whatever's missing.
+
+**Declared identity used, per the coordination amendment.** Seat B's T80 item 4 (merged to main mid-turn,
+`git pull --rebase` picked it up) declared `pattern.layers` (the `{kind: layerId}` map saved WITH the
+pattern) as the identity scheme — it survives 3D/eye toggles, renames and reordering, unlike the runtime-only
+`patternOwner`. Used THAT identity for this fix; no second scheme.
+
+**The fix.** `layers.js` gains a small, generic `onLayerRemoved(fn)` hook list, fired by `removeLayer` right
+BEFORE it splices the doomed layer out (so a handler can still see the owning layer's `pattern.layers` map
+with the about-to-be-invalid id still in it) — a deliberate architectural choice: `layers.js` stays the
+LOWER-level module (`editor-lattice-pattern.js` already imports FROM it), so rather than reaching back UP
+into lattice concepts here (a circular import), it exposes a generic "a layer was removed" event that a
+higher-level module can subscribe to.
+`editor-lattice-pattern.js` registers its own handler, `_markLatticeKindRemoved`: finds which pattern (via
+`pattern.layers`) owned the deleted id, sets `pattern.removedKinds[kind] = true`, drops the stale
+`pattern.layers[kind]` entry, and — "deleting the set's last layer removes the lattice entirely" — once
+EVERY non-rails kind (contour/ties/nodes) is marked removed, deletes `.pattern` from the rails layer
+entirely, turning it back into a plain layer rather than an empty shell a stray refill could still
+"generate" into.
+`_ensureKindLayers` now skips creating any kind present in `removedKinds` — this alone fixes the VERIFIED
+resurrection path (`generatePattern`'s ties/nodes refill) with no other change needed there. `generatePattern`
+itself needed two small additional guards since `kindLayerIds.ties`/`.nodes` can now be legitimately absent:
+its emit loops for those two kinds are now wrapped in `if (kindLayerIds.ties) {...}` (previously an absent id
+would set `editor._activeLayer = undefined`, and `emitSegment`'s own `ensureActiveLayer` fallback would have
+spun up a STRAY new layer to emit into — resurrecting the deleted kind under a different mechanism than the
+one being fixed), and `kindLayerList` (used for occupancy + "clear before redraw") is now `.filter(Boolean)`.
+`regenerateSilhouette` (draws Contour) gets the matching guard: if `_ensureKindLayers(['contour'])` declined
+to create the layer (because it's marked removed), the function returns the existing (empty) elements array
+immediately, before it would otherwise stamp fresh `<path>` elements with `data-layer=undefined` — geometry
+belonging to no real layer, invisible in the panel and impossible to select or delete again.
+
+**What I verified live vs. what I could NOT reproduce.** The dispatch's original hypothesis specifically
+named deleting CONTOUR (via a `contour.fromFrame.on` / frame-linked-contour refresh hook,
+`refreshFrameLinkedContours`) as a trigger that fires WITHOUT any separate later action, immediately during
+the same delete gesture. My repro used no frame at all (`contour.fromFrame` never set), so this specific path
+was never exercised live — I relied on the SAME `_ensureKindLayers`/`removedKinds` guard protecting it too
+(verified by reading `refreshFrameLinkedContours`'s own code path, which also funnels through
+`regenerateSilhouette` → `_ensureKindLayers(['contour'])`), but flagging this honestly as code-level
+confidence, not a live-measured one, since I could not get Offset-from-Frame's specific trigger to fire in my
+own repro session (no frame chosen) and didn't want to overstate what was actually observed.
+
+**Tests** (`tests/h20-lattice-layer-resurrection.test.js`, 5 tests, same `makeMockEditor()` shape as the
+existing `tests/editor-lattice-kind-layers.test.js`, extended with a REAL rendered delete button per
+`tests/h20-layer-delete-undo.test.js`'s own technique — `removeLayer` runs for real, not reimplemented):
+deleting Ties then re-running `_ensureKindLayers` doesn't recreate it; the full repro sequence (delete Ties,
+delete Nodes, refill) resurrects neither; the SAME guard protects Contour's own `_ensureKindLayers(['contour'])`
+call; deleting every non-rails kind drops the pattern entirely; deleting an unrelated non-lattice layer is a
+clean no-op for the hook. Mutation-tested TWICE — once disabling `_ensureKindLayers`'s own `removedKinds`
+check (3 of 5 tests correctly failed, reproducing the exact resurrection), once disabling the `removeLayer`→
+`onLayerRemoved` hook firing entirely (4 of 5 correctly failed) — proving both halves of the fix are load-
+bearing, not just one. Restored both, re-ran clean each time. Also re-ran the ORIGINAL live repro script
+after the fix: the exact same delete-Ties/delete-Nodes/delete-Contour/toggle-visibility sequence now stays
+at `["Rails"]` throughout — the actual bug, fixed, not just a unit-test proxy for it.
+
+**Amendment absorbed mid-fix**: a follow-up hint change tagged directly to this item (Fred: "this specific
+message is useless to me") — `regenerateSilhouette`'s "Offset from frame: no frame is chosen, so the Shape
+preset is drawn." status hint is now REMOVED entirely (not merely gated to contour-AND-offset-on, the earlier
+superseded wording), since drawing the Shape preset with no frame chosen is the obvious, expected outcome,
+not worth interrupting the user about. The "frame opening is too small for this distance" hint (a genuine,
+actionable surprise) stays. Swept for leftover references: the only OTHER "no frame is chosen" hits in the
+repo (`tests/frame-send.test.js`, `ROADMAP.md`) are the unrelated [Send frame] button's own disabled-hint
+text, confirmed by reading context, not just the grep match — nothing to update there.
+
+No shots requested for this item (checklist).
+
+`npx vitest run` -> **2215 passed** (up from 2210 — the jump includes seat B's T80 merge landing mid-turn),
+zero regressions.
+
+## H20 item 7 — Geometry snap ON by default (without flipping anyone's saved choice)
+
+Fred: "make snap to geometry on by default." `editor/editor-grid.js`'s `GRID_DEFAULTS.geometrySnap`:
+`false` -> `true` — the one declared default the GEOM toolbar button, and every snap consumer, reads.
+
+**Checked persistence first, per the dispatch.** `GRID_DEFAULTS` is merged with whatever's in
+`localStorage['bsg.editorGrid']` via `mergeGridPrefs` (`{ ...GRID_DEFAULTS, ...stored }`) — a per-BROWSER
+editor preference, not saved per-project/session file. This is the exact same mechanism `gridSnap`'s own H1
+migration already relies on for the identical safety property the dispatch asked for here: a spread merge
+only ever FILLS IN a key that's missing from the stored record — it can't overwrite one that's already
+there. So flipping the bare default requires no new migration code at all: a genuinely fresh browser (nothing
+in `bsg.editorGrid` yet) gets `true`; anyone who already has grid prefs on disk — with `geometrySnap` either
+explicitly `false` or explicitly `true` — keeps exactly that value, untouched.
+
+**Tests** (`tests/editor-grid.test.js`): updated the 2 existing tests that pinned the OLD default (both feed
+`mergeGridPrefs`/`loadGridPrefs` a record with NO `geometrySnap` key at all, so they now correctly expect the
+NEW default, `true`, not a hardcoded old value) — mutation-tested by reverting the default in a scratch copy:
+these 2, plus a new dedicated "fresh session gets ON" test, correctly FAILED; the 2 new tests asserting an
+EXISTING explicit `false`/`true` stays put both correctly stayed green under that same mutation (proving the
+persistence-safety guarantee is independent of whatever the bare default happens to be — the actual point of
+this item). Restored, re-ran clean. `tests/cut-tool.test.js`'s own `geometrySnap: false` is a hardcoded mock
+fixture for testing cut-tool behaviour independent of geometry snap, not a pinned default — confirmed by
+reading it, left untouched.
+
+No shots requested for this item (checklist).
+
+`npx vitest run` -> **2218 passed** (up from 2215), zero regressions.
+
+## H20 item 5 — Layer select is a brief ~1s flash, not a lasting highlight
+
+Fred: "selecting a layer should signal or highlight what geometry it is momentarily but not forever, since it
+is distracting if I'm working on the canvas."
+
+**Checked for a persistent highlight/dim to remove FIRST, per the dispatch.** None exists today:
+`applyLayerState`'s `.inactive-layer` class (the only per-layer visual state) has carried NO opacity/dimming
+since Fred already removed it on 2026-09-24 — confirmed directly from `styles/editor.css`'s own comment at
+that class ("shown layers keep FULL opacity even when not active — no dimming; the active layer is marked in
+the layer list instead"); today the class is `pointer-events: none` only. So this item is a pure ADDITION,
+not a removal — named explicitly here since there was nothing to cut.
+
+**Declared once** (`flashLayerGeometry`, `layers.js`, alongside its two exported constants
+`LAYER_FLASH_COLOR` (`#ffcc00`, the SAME yellow the element-selection halo already uses,
+`editor-ui.js`'s `updateSelectionHighlight`) and `LAYER_FLASH_DURATION_MS` (1000)) — the row-click handler is
+its only caller today, but any future one (e.g. a "jump to layer" command) could call the same function.
+Deliberately does NOT reuse `editor-ui.js`'s own private `_renderHighlight` (the selection-halo drawer) even
+though it does almost exactly this: that module already imports FROM `layers.js`
+(`getElementLayer`/`setActiveLayer`), so importing its helper back here would be a circular import. Instead
+this is a small, self-contained clone-and-thicken-the-stroke routine using the same colour for visual
+consistency, with its own lifecycle: clones every element whose `data-layer` matches, adds them to the
+existing `_highlightLayer` (the same layer selection halos already live in), fades them out over 1s via a
+plain CSS `transition` (skipped entirely under `prefers-reduced-motion` — the highlight then just sits at
+full opacity until the same timer removes it abruptly, matching the dispatch's exact "show briefly, no fade
+animation" rule), and tracks its own timer + highlight list on the editor object so a re-click or a
+different-layer click can tear down whatever's currently flashing before starting fresh.
+Wired into the ONE row-click handler (`layers.js`): fires unconditionally on every click, even re-selecting
+the already-active layer (where `setActiveLayer` itself is skipped) — the flash is a separate, always-
+retriggerable signal, independent of whether the active layer actually changed. Never touches
+`_selectedElement(s)` — element selection is untouched, per the dispatch.
+
+**Tests** (`tests/h20-layer-flash.test.js`, 9 tests, `vi.useFakeTimers()`): clones only the target layer's
+elements in the flash colour; the highlight is gone at exactly the duration and NOT gone one tick before it
+(non-vacuous — proves the timer length itself matters, not just that SOME timer exists); re-clicking the
+SAME layer mid-flash tears down the old highlight and resets the timer (proven by advancing the OLD timer's
+remaining time and confirming the NEW flash survives it — a weaker test would only check a new highlight
+appeared, not that the old timer was actually cancelled); switching to a DIFFERENT layer mid-flash cancels
+the first; `prefers-reduced-motion` suppresses the CSS transition (contrasted directly against a test proving
+the transition IS set without it, so this isn't just "transition is always undefined in this mock"); element
+selection is never touched; a layer with no geometry is a clean no-op. Mutation-tested twice: removing the
+"cancel previous flash" block correctly failed exactly the 2 re-trigger/switch tests (others correctly
+stayed green, since they don't exercise that path); ignoring `reduceMotion` correctly failed exactly the
+reduced-motion test. Restored both, re-ran clean each time.
+
+**Live-verified** via real CDP mouse interaction (not simulated): drew a rectangle on Layer 1, added Layer 2
+with a circle, clicked Layer 1's row, and screenshotted ~120ms later (well inside the 1s window) and again
+1.2s later. The first shot shows a clear yellow glow outline around the rectangle only (the circle on Layer 2
+is untouched); the second shows the canvas back to exactly its plain state — visually confirms the effect
+end-to-end, not just the unit-tested timer mechanics.
+Shots in `shots\seatA\` (`H20-item5_layer-flash-during`, `H20-item5_layer-flash-after`).
+
+`npx vitest run` -> **2227 passed** (up from 2218), zero regressions.
+
+## H21 item 1 — Editor "Apply Stencils" button renamed to "Apply"
+
+Fred, screenshot: "this button reads wrong now that we have frame, should be Apply only" — with a Frame tab
+now sitting alongside Artwork (H20 item 3 and earlier), "Apply Stencils" reads like it only applies to the
+sketch/stamp side, when it actually commits whichever tab (Frame or Artwork) is being edited.
+
+`bspline_gen_palette.html`'s `#editorApply` button had no separate `title`/`aria-label` to update — its
+visible label was the only text. Swept the whole repo for every OTHER "Apply Stencils" mention and sorted
+by whether it's a LIVE, ongoing reference (update) or a comment directly quoting Fred's own PAST words about
+a bug already fixed (leave — the checklist's own carve-out):
+- **Updated** (live, present-tense references to the button, not history): `styles/editor.css`'s own header-
+  wrap layout comment; `tools/repro/mob_steppers_shots.mjs` (a header comment + 2 check-message strings);
+  `tools/repro/boundary_guide_shots.mjs` (2 comments); `scripts/smoke-mob2.mjs` (1 comment). None of these
+  assert on the button's TEXT itself (they reference `#editorApply` by id, or just narrate what a shot/check
+  is doing), so none needed a functional change — just kept their own prose accurate.
+- **Left alone** (the checklist's explicit carve-out — a direct quote of Fred's own past words describing a
+  bug already fixed, T45): `main/app-init.js`, `main/snapshot-manager.js`, and `tests/snapshot-manager.test.js`
+  all quote "Fred: 'on open, a loaded project doesn't have the SVG until I open the editor and Apply
+  Stencils'" verbatim as the ORIGIN of that fix — renaming the button doesn't change what Fred said back then.
+  `NEXT-SESSION.md`/`ROADMAP.md`/`BUGS_OPEN.md` (advisor-owned/historical docs, never edited by the worker)
+  and `WORK-LOG.md`/`WORK-LOG-lane-b.md` (append-only logs) also still name the old label in their own past
+  entries — correctly untouched.
+- Confirmed no vitest test asserts the button's label text anywhere (`tests/h20-clear-scoped.test.js`'s own
+  mock `#editorApply` element only needs the id present for `bindClick` wiring, never reads `.textContent`).
+- `bspline-frame-builder/dist/` and `stamp-editor/` were checked and left alone: `dist/` has zero commits
+  touching it anywhere in this repo's visible history (a separate, not per-commit-maintained build snapshot,
+  consistent with how every other HTML/JS edit this entire session left it untouched too); `stamp-editor/`
+  has no "Apply Stencils" reference at all (a different UI, confirmed by grep, not assumed).
+
+Live-verified: `#editorApply.textContent === 'Apply'`, confirmed via a real headless-Chrome read, not just
+the source diff. Shot in `shots\seatA\` (`H21-item1_editor-header-apply`).
+
+`npx vitest run` -> **2227 passed** (unchanged — a pure rename, no test exercised the old text), zero
+regressions.
+
+## H22 item 1 — Layer drag-to-reorder replaced with Pointer Events (native HTML5 drag-and-drop never worked)
+
+Fred, screenshot of the Shape Lattice's Contour/Nodes/Ties/Rails rows with drag grips: "can't drag a layer
+in an order I choose." Dispatch: reproduce with real pointer events, work out whether the drag itself breaks
+or something (e.g. a lattice sync) re-sorts the list afterwards; the user's order must win and survive
+Regenerate and reopen.
+
+**Reproduced live via CDP, not assumed** — three separate scratch scripts, each measuring one hypothesis:
+- **Touch (mouse + touch, Fusion palette too if it differs, per dispatch)**: a real touch gesture
+  (touchstart -> 5x touchmove -> touchend) on the grip fired **zero** `dragstart`/`dragover`/`drop` events —
+  confirmed by instrumenting every `.layer-row` before the gesture and counting what fired. This matches the
+  documented WebKit/Chromium platform behaviour: `draggable="true"` never initiates native HTML5
+  drag-and-drop from touch input without a JS polyfill. Not a maybe — measured as exactly zero.
+- **Mouse**: the same instrumentation on a real mouse gesture (mousedown -> 8x mousemove -> mouseup) fired
+  `dragstart`/`dragover` but **never** `drop` (`dragend` fired instead, implying the browser cancelled it).
+  Left this explicitly ambiguous at the time — could be a genuine bug, or `Input.dispatchMouseEvent` alone
+  being insufficient to fully drive native DnD (CDP has a separate `Input.dispatchDragEvent` for that,
+  not tried) — rather than overclaiming "mouse is broken" from a synthetic-input limitation.
+- **The "something re-sorts it afterward" hypothesis** (a lattice/shape-lattice sync enforcing kind order,
+  or a render rebuilding from a fixed order): refuted. Bypassed the broken drag UI entirely by manipulating
+  `editor._layers` directly (splice + unshift, matching a successful reorder), then called pushState() the
+  same way `reorderLayer` does, then clicked Shape Lattice's Regenerate and did a full save/open round trip.
+  The manually-set order (`Nodes, Rails, Contour, Ties`) survived **both** unchanged, at every checkpoint.
+
+Conclusion: `reorderLayer()` itself (the splice/reinsert + DOM z-order re-sync + pushState + renderLayersPanel
++ _onChange, all pre-existing) was never the problem, and nothing downstream re-sorts an achieved reorder.
+The entire bug was the **gesture** never successfully invoking `reorderLayer` in the first place.
+
+**Fix** (`editor/layers.js`, `_makeLayerRow`): replaced the row's native `draggable`/`dragstart`/`dragover`/
+`dragleave`/`drop`/`dragend` wiring with Pointer Events on the grip (`.layer-handle`) only — `pointerdown`
+captures the pointer, `pointermove` hit-tests via `document.elementFromPoint` and toggles the existing
+`drop-before`/`drop-after` CSS classes on whichever row is under the pointer, `pointerup` reads the marked
+row and calls the same, unmodified `reorderLayer(editor, sourceId, targetId, side)`; `pointercancel` tears
+down cleanly. `setPointerCapture`/`releasePointerCapture` wrapped in try/catch, matching
+`editor-interaction.js`'s own established defensive pattern for the same calls. `touch-action: none` on the
+grip so a touch-drag doesn't also scroll the panel. This matches `editor-interaction.js`'s own one-pointer-
+path convention already used for every other canvas gesture (mouse/touch/pen unified) — the old native-DnD
+mechanism was the outlier, not the established pattern. The grip-only trigger (not the whole row, as before)
+means a plain click elsewhere on the row still activates+flashes the layer (H20 item 5) untouched.
+
+Grabbing the row via `_makeLayerRow` also means this fix applies identically to **both** consumers of the one
+shared `renderLayerList` — the editor's own Layers panel (`#editorLayersList`) and the Vector Stamping
+sidebar's compact layer browser (`#stampLayersList`) — confirmed via `styles/editor.css`'s own de-scoping
+comment that both intentionally share this exact row markup.
+
+**Debug logging** (mid-task amendment, Fred: "you can use debugging logs too... including in the Fusion
+palette if needed"): added a `LAYER-DRAG` category to the existing `core/debug.js` gate (`dbg('LAYER-DRAG',
+...)` at drag start / hover-over / drop / cancel) — off by default like every other category, switched on via
+`window.__editorDebug = 'LAYER-DRAG'`. Kept (not removed) since it directly serves the one requirement this
+session structurally cannot verify itself (below): if Fred hits a different result inside Fusion's embedded
+webview, this shows immediately whether the pointer gesture is firing there at all, narrowing "our code never
+ran" from "something else about that environment is different." Live-confirmed the category actually fires
+(8 `[LAYER-DRAG]` console lines for one full drag: 1 start, 6 over, 1 drop) and stays silent when unset
+(every earlier verification run above had zero console output).
+
+**What layer order controls, per surface** (researched via a read-only sub-agent trace, file:line cited) —
+the dispatch's own requirement to state this explicitly:
+- **SVG canvas draw order**: confirmed directly in `reorderLayer` itself — re-appends each layer's DOM
+  children in `_layers` order (first = bottom of z-stack).
+- **3D preview color**: order-dependent. `core/preview/drape-svg.js` (`buildDrapeSvg`) walks the saved SVG's
+  DOM order (which mirrors `_layers` via `reorderLayer`'s own re-sync) and paints later layers over earlier
+  ones in overlaps — a painter's algorithm baked onto the 3D top surface.
+- **3D preview height/z**: order affects *blend sequence*, not depth directly. `core/engine/rebuild.js`
+  (`_collectStampPasses`) builds an ordered, carve-filtered pass list from `_layers`;
+  `core/engine/apply-stamp-layers.js` (`applyStampLayers`) mutates one running heights buffer per pass in
+  that order, and each pass's suppression step blends the *already-accumulated* heights toward smoothed
+  terrain before adding its own contribution — so a later layer's suppression can partially erase an earlier
+  layer's contribution where they overlap.
+- **Stamp pipeline**: same accumulation-order dependency as 3D height, above (same code path). The trace also
+  surfaced a **separate, pre-existing bug**, out of scope here and NOT touched: `apply-stamp-layers.js`
+  computes `eLayer` by indexing into the full, unfiltered `_layers` array using an index from the *filtered*
+  (carved-only) `passes` array — if any earlier-in-`_layers` layer is hidden/non-carved, this silently reads
+  another layer's depth/profile/suppression settings. Flagging for the advisor to decide whether this becomes
+  its own item; did not fix it as part of a drag-reorder bug.
+- **Fusion/CAM build order**: order-dependent, and self-documented in `b-spline-gen.py`'s own
+  `_ordered_svg_layer_import_plan` docstring — "the APP stacking order is independent of the FUSION sketch
+  build order" for most steps (stable-sorted to original position), **except** grouped kind-layer pattern
+  steps (Shape Lattice's Rails/Contour/Ties/Nodes among them), which get explicitly reordered by a separate
+  `manifest['buildOrder']`, not by `_layers` order — later sketches in that build can `project()` earlier
+  ones' already-built curves, so build order there determines whether cross-sketch projections resolve.
+- **Save/serialize**: confirmed faithful (already knew this from the live reopen test above) —
+  `editor-io.js` maps `_layers` directly into `data-editor-layers` in array order and restores it unchanged.
+
+**Fusion palette caveat**: could not test inside an actual Fusion-embedded webview from this environment (no
+direct access). Not left as a bare gap — Pointer Events is the exact event model `editor-interaction.js`
+already uses for every canvas gesture, proven working in Fusion's embedded Chromium for the length of this
+project; no new API surface is introduced. The `LAYER-DRAG` debug category above exists specifically so this
+can be checked live in Fusion without another code change if it ever does differ there.
+
+**Tests** (`tests/editor-layer-list.test.js`, +7): a pointer-driven drag actually mutates `_layers` (not just
+`reorderLayer`'s own already-tested math) and produces the exact before/after-in-display-order result; the
+same gesture works for `pointerType: 'touch'` (the confirmed failure case); dropping in a row's bottom half
+reorders "after" it, the mirror of "before"; the re-rendered panel visibly reflects the new order; drop-
+before/drop-after classes appear on the hovered row during the drag and are fully cleared after; self-drop
+and no-target-drop are no-ops with no undo step recorded. Mutation-tested: stashed just the `layers.js` fix
+and re-ran — **5 of 7 new tests fail** against the pre-fix native-DnD code (exactly the ones asserting an
+actual reorder/DOM-order/highlight outcome); the other 2 ("self-drop no-op", "never left own row no-op")
+pass against *both* versions, since "nothing changed" is true whether the mechanism works or is completely
+broken — noted honestly rather than counted as proof, per the non-vacuous-test discipline. Restored, reran
+clean.
+
+**Live-verified** end-to-end via real CDP gestures against the running app (not just unit tests): a real
+mouse drag (mousedown/8x mousemove/mouseup on the last row's grip, dropped onto the first row) now
+successfully reorders (`Rails,Contour,Ties,Nodes` -> `Contour,Ties,Nodes,Rails`), with the DOM directly
+queried mid-drag confirming `drop-after`/`drop-before` tracks the pointer's position within the target row
+and all markers clear after drop. That same order survived clicking Regenerate, and survived a full
+save/open round trip, unchanged both times. A real touch drag on the freshly-regenerated set then also
+succeeded (`Contour,Ties,Nodes,Rails` -> `Ties,Nodes,Rails,Contour`) — the exact gesture that fired zero
+events before this fix.
+Shots in `shots\seatA\`: `h22i1_01_before_drag`, `h22i1_02_mid_drag_highlight`,
+`h22i1_02b_hover_before_release`, `h22i1_03_after_mouse_drag`, `h22i1_04_after_reopen`.
+
+`npx vitest run` -> **2234 passed** (up from 2227), zero regressions.
+
+## H22 item 2 — apply-stamp-layers.js's filtered-index-into-unfiltered-array fix
+
+Flagged in H22 item 1's WORK-LOG: `applyStampLayers` (`core/engine/apply-stamp-layers.js`) matched each
+stamp pass to "its" editor layer via `editorLayers[layerIdx]` — a POSITION in the full, unfiltered
+`window.svgEditor._layers` — using `layerIdx`, which is actually the forEach index within `passes`, the
+ALREADY-FILTERED (`isCarved`-only) list `_collectStampPasses` (`core/engine/rebuild.js`) builds. Once any
+earlier-in-`_layers` layer was hidden/non-carved, every subsequent pass silently read a DIFFERENT layer's
+depth/profile/suppression/smoothing/edgeFilletRadius — a stamp's actual cut could use a completely wrong
+layer's tool settings with no error or visible sign anything was wrong.
+
+**Fix**: `_collectStampPasses` now stamps each pass with `id: layer.id` (its stable identity — the same one
+H22 item 1's drag-to-reorder already keys off of), and `applyStampLayers` now builds a `Map` from
+`window.svgEditor._layers` keyed by id (`editorById`) and resolves each pass's matching editor layer via
+`editorFor(pass)` — an id join — replacing the old positional `editorAt(idx)`. Every downstream field
+(`effectiveDepth`/`effectiveSuppression`/`effectiveSmoothing`/`effectiveProfile`) is unchanged; only how
+`eLayer` itself is found changed.
+
+**Tests** (`tests/apply-stamp-layers.test.js`, 4 new): (1) a hidden layer ahead of two carved ones no longer
+causes the carved passes to borrow each other's/the hidden layer's depth — asserted against exact
+Float32-representable depths (0.5/0.25/0.875) so no float-rounding noise; (2) the same correctness holds
+when `_layers` has since been REORDERED relative to when the pass list was built (guards against a lesser
+"skip N hidden layers before this index" fix, not just a true id join — H22 item 1's own drag-to-reorder is
+exactly the kind of event that could reorder `_layers` between pass-collection and a later rebuild); (3) the
+pre-existing "no matching id -> fall back to the pass's own snapshotted depth" chain still works under the
+new join; (4) no `window.svgEditor` at all still falls back cleanly to each pass's own fields.
+Mutation-tested: stashed both source files and reran — **3 of 4 fail** against the pre-fix code (the 4th,
+no-`svgEditor` case, was never on the buggy path either way — noted honestly, not counted as proof). Restored,
+reran clean.
+
+**Sweep for the same pattern elsewhere** (dispatched as a read-only research pass, file:line verified):
+- **A second, related but distinct instance found and NAMED, not fixed here** —
+  `main/stamp-mask-manager.js:76`: `const lLayer = P.stampLayers?.[idx] || {};` where `idx` is the position
+  within the FULL `editorLayers.forEach` (correct against `editorLayers` itself — this file's own `idx` isn't
+  reindexed by filtering, unlike `_collectStampPasses`), but is then used to index `P.stampLayers` — a
+  separate, static legacy array (`core/state.js`, ~3 fixed entries, predates per-layer tooling) that never
+  tracks additions/deletions/reorders of editor layers. Past 3 editor layers, or after any reorder/delete,
+  `P.stampLayers[idx]` names the wrong or nonexistent legacy entry. Lower blast radius than the bug just
+  fixed — `eLayer.field ?? lLayer.field` always prefers the real editor layer first, so `lLayer` is only
+  consulted when an editor layer's OWN field is genuinely `undefined` (per SE4b, `P.stampLayers` content is
+  already "retired" and editor layers are "the single tooling store now," so this fallback may rarely fire
+  on current documents) — but it is a real, live latent bug for any field an editor layer legitimately
+  leaves unset, especially on older/legacy documents. **Flagging for the advisor to decide whether this
+  becomes its own item** — deciding whether `P.stampLayers` should be joined by id, retired outright, or
+  left as a legacy fallback is a design call, not a drive-by fix, and out of scope for the bug actually
+  dispatched here.
+- **Adjacent, not clearly broken, named for awareness**: `main/stamp/_shared.js` and `core/state.js` both use
+  `P.activeLayerIdx` to index `window.svgEditor._layers` directly — correct only as long as
+  `activeLayerIdx` is kept as a true live position in `_layers` (appears to be, via `main/stamp/layer.js`'s
+  `syncFromEditor`), so not confirmed broken, but the same "position, not id" design smell —
+  `core/state.js` itself already says so ("Position-based mapping until each stamp pass formally points at
+  an editor layer id").
+- **Checked and clean** (id-based, or a single array's own index reused consistently against itself, no
+  cross-array mismatch): `core/preview/drape-svg.js` (joins by `data-layer` id); `main/export-flow.js`
+  (`_stampExportCandidates`/`sendToFusion`/`downloadFiles` all `.map()` the SAME array in one pass, indices
+  stay aligned; `editorLayerFor` is already `.find(id)`-based); `editor/layers.js`'s `removeLayer` (`idx`
+  from the same, post-splice array); `main/stamp/layer.js`'s `idxOfEditorLayer`/`syncFromEditor` (idx derived
+  and consumed against the same `_layers` array); `main/app-init.js`'s legacy migration loops (both iterate
+  the same `P.stampLayers` array).
+
+`npx vitest run` -> **2238 passed** (up from 2234), zero regressions.

@@ -56,6 +56,7 @@
  */
 import { el, on } from './dom.js';
 import { refreshOutlinePreview } from './editor-outline-preview.js';
+import { dbg } from '../core/debug.js';
 
 /**
  * SE12 T36: which geometry a layer's Fusion export uses — an EXPLICIT
@@ -266,10 +267,105 @@ export function addLayer(editor, opts = {}) {
   return layer;
 }
 
+// H20 item 6 (Fred: "after a few layers they just come back"): layers.js
+// stays the lower-level module (editor-lattice-pattern.js already imports
+// FROM it) — rather than reaching back UP into lattice-pattern concepts
+// here (a circular import), this declares a generic "a layer is about to
+// be removed" hook that any higher-level module can subscribe to. The
+// Lattice/Shape-Lattice pattern system registers ITS OWN handler (see
+// editor-lattice-pattern.js's own onLayerRemoved(...) call) to mark that
+// kind permanently removed from its pattern, rather than layers.js needing
+// to know anything about kinds/patterns at all.
+const _removeHooks = [];
+export function onLayerRemoved(fn) { _removeHooks.push(fn); }
+
+/**
+ * H20 item 5 (Fred: "selecting a layer should signal or highlight what
+ * geometry it is momentarily but not forever, since it is distracting if
+ * I'm working on the canvas"). Checked for a persistent active-layer
+ * highlight/dim to remove first: NONE exists — `applyLayerState`'s own
+ * `.inactive-layer` class (below) has carried no opacity/dimming since
+ * Fred 2026-09-24 (`styles/editor.css`'s own comment: "shown layers keep
+ * FULL opacity even when not active — no dimming; the active layer is
+ * marked in the layer list instead"); today it's `pointer-events: none`
+ * only. So this is a pure addition, not a replacement of anything.
+ *
+ * Declared once — duration, colour and the prefers-reduced-motion rule
+ * all live HERE, in the one function any caller (today: the row click
+ * handler, below) uses. Deliberately does NOT reuse editor-ui.js's own
+ * `_renderHighlight` (the element-selection halo) — that module already
+ * imports FROM this one (`getElementLayer`/`setActiveLayer`), so pulling
+ * its private helper back in here would be a circular import; this is a
+ * small, self-contained clone-and-thicken-the-stroke routine instead,
+ * using the SAME `#ffcc00` selection colour for visual consistency.
+ */
+export const LAYER_FLASH_COLOR = '#ffcc00';
+export const LAYER_FLASH_DURATION_MS = 1000;
+const LAYER_FLASH_EXTRA_STROKE_IN = 0.05;
+
+export function flashLayerGeometry(editor, layerId) {
+  if (!editor || !editor._sketchLayer || !editor._highlightLayer || layerId == null) return;
+
+  // Re-clicking the SAME layer restarts the flash; clicking a DIFFERENT
+  // one mid-flash cancels the old one first — both are just "always tear
+  // down whatever's currently flashing before starting the new one."
+  if (editor._layerFlashTimer) {
+    clearTimeout(editor._layerFlashTimer);
+    editor._layerFlashTimer = null;
+  }
+  for (const h of editor._layerFlashHighlights || []) {
+    try { h.remove(); } catch (_) {}
+  }
+  editor._layerFlashHighlights = [];
+
+  const key = String(layerId);
+  const targets = editor._sketchLayer.children().toArray()
+    .filter((el) => el && el.node && el.node.getAttribute && el.node.getAttribute('data-layer') === key);
+  if (!targets.length) return;
+
+  const reduceMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  for (const el of targets) {
+    let clone;
+    try { clone = el.clone(); } catch (_) { continue; }
+    if (!clone) continue;
+    const sw = (el.attr && parseFloat(el.attr('stroke-width'))) || 0.02;
+    clone
+      .fill('none')
+      .stroke({ color: LAYER_FLASH_COLOR, width: sw + LAYER_FLASH_EXTRA_STROKE_IN * 2, opacity: 0.6 })
+      .attr('pointer-events', 'none');
+    editor._highlightLayer.add(clone);
+    if (typeof clone.back === 'function') clone.back();
+    editor._layerFlashHighlights.push(clone);
+
+    // Fade over the flash duration — skipped for prefers-reduced-motion,
+    // which per the dispatch shows briefly then disappears abruptly
+    // instead of animating out.
+    if (!reduceMotion && clone.node && clone.node.style) {
+      clone.node.style.transition = `opacity ${LAYER_FLASH_DURATION_MS}ms ease-out`;
+      const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
+      raf(() => { clone.node.style.opacity = '0'; });
+    }
+  }
+
+  editor._layerFlashTimer = setTimeout(() => {
+    for (const h of editor._layerFlashHighlights || []) {
+      try { h.remove(); } catch (_) {}
+    }
+    editor._layerFlashHighlights = [];
+    editor._layerFlashTimer = null;
+  }, LAYER_FLASH_DURATION_MS);
+}
+
 function removeLayer(editor, id) {
   if (!Array.isArray(editor._layers)) return;
   const idx = editor._layers.findIndex(l => String(l.id) === String(id));
   if (idx === -1) return;
+
+  // Fired BEFORE the splice below, so a hook can still see the full roster
+  // (including whichever OTHER layer owns this one's pattern, if any).
+  for (const fn of _removeHooks) fn(editor, id);
 
   // Remove SVG elements on this layer.
   if (editor._sketchLayer) {
@@ -622,49 +718,91 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   const row = document.createElement('div');
   row.className = 'layer-row' + (compact ? ' compact' : '') + (isActive ? ' active' : '');
   row.dataset.layerId = layer.id;
-  row.draggable = true;
-
-  // Drag-to-reorder. Top of the list = top of z-order = rendered last in
-  // the SVG (which renders later children on top). _layers stores layers
-  // in render order (first = bottom), so the display list reverses it.
-  // A drag from display position D_from to D_to maps to array indices
-  // (n-1-D_from) and (n-1-D_to).
-  row.addEventListener('dragstart', (e) => {
-    row.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(layer.id));
-  });
-  row.addEventListener('dragend', () => {
-    row.classList.remove('dragging');
-    document.querySelectorAll('.layer-row.drop-before, .layer-row.drop-after')
-      .forEach(r => r.classList.remove('drop-before', 'drop-after'));
-  });
-  row.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = row.getBoundingClientRect();
-    const isAbove = (e.clientY - rect.top) < rect.height / 2;
-    row.classList.toggle('drop-before', isAbove);
-    row.classList.toggle('drop-after', !isAbove);
-  });
-  row.addEventListener('dragleave', () => {
-    row.classList.remove('drop-before', 'drop-after');
-  });
-  row.addEventListener('drop', (e) => {
-    e.preventDefault();
-    const sourceId = e.dataTransfer.getData('text/plain');
-    const rect = row.getBoundingClientRect();
-    const isAbove = (e.clientY - rect.top) < rect.height / 2;
-    row.classList.remove('drop-before', 'drop-after');
-    if (sourceId && sourceId !== String(layer.id)) {
-      reorderLayer(editor, sourceId, layer.id, isAbove ? 'before' : 'after');
-    }
-  });
 
   const handle = document.createElement('span');
   handle.className = 'layer-handle';
   handle.textContent = '⋮⋮';
   handle.title = 'Drag to reorder';
+
+  // Drag-to-reorder, via Pointer Events (not native HTML5 draggable/
+  // dragstart/drop): matches editor-interaction.js's own one-pointer-path
+  // convention for canvas gestures, and — unlike native drag-and-drop —
+  // actually fires from touch input. H22 item 1 (Fred: "can't drag a layer
+  // into an order I choose"): native drag never initiated from touch at
+  // all (no browser support without a polyfill) and was unreliable from
+  // mouse too; reorderLayer() itself was always correct (order survives
+  // Regenerate and reopen) so only the gesture is replaced here.
+  //
+  // Top of the list = top of z-order = rendered last in the SVG (which
+  // renders later children on top). _layers stores layers in render order
+  // (first = bottom), so the display list reverses it; reorderLayer()
+  // itself accounts for that.
+  handle.style.touchAction = 'none';
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    const pointerId = e.pointerId;
+    try { handle.setPointerCapture(pointerId); } catch (_) { /* defensive: capture can fail on some UAs/synthetic events */ }
+    row.classList.add('dragging');
+    dbg('LAYER-DRAG', 'start', { layerId: layer.id, pointerType: e.pointerType, pointerId });
+
+    const clearDropMarkers = () => {
+      document.querySelectorAll('.layer-row.drop-before, .layer-row.drop-after')
+        .forEach(r => r.classList.remove('drop-before', 'drop-after'));
+    };
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      clearDropMarkers();
+      const target = document.elementFromPoint(ev.clientX, ev.clientY);
+      const targetRow = target ? target.closest('.layer-row') : null;
+      if (!targetRow || targetRow === row) return;
+      const rect = targetRow.getBoundingClientRect();
+      const isAbove = (ev.clientY - rect.top) < rect.height / 2;
+      targetRow.classList.toggle('drop-before', isAbove);
+      targetRow.classList.toggle('drop-after', !isAbove);
+      dbg('LAYER-DRAG', 'over', { targetLayerId: targetRow.dataset.layerId, side: isAbove ? 'before' : 'after' });
+    };
+
+    const finish = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onCancel);
+      try { handle.releasePointerCapture(pointerId); } catch (_) { /* see setPointerCapture above */ }
+      row.classList.remove('dragging');
+    };
+
+    const onUp = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      const dropBeforeRow = document.querySelector('.layer-row.drop-before');
+      const dropAfterRow = document.querySelector('.layer-row.drop-after');
+      clearDropMarkers();
+      finish();
+      const targetRow = dropBeforeRow || dropAfterRow;
+      if (targetRow) {
+        const targetId = targetRow.dataset.layerId;
+        if (targetId && targetId !== String(layer.id)) {
+          dbg('LAYER-DRAG', 'drop', { sourceLayerId: layer.id, targetLayerId: targetId, side: dropBeforeRow ? 'before' : 'after' });
+          reorderLayer(editor, layer.id, targetId, dropBeforeRow ? 'before' : 'after');
+        } else {
+          dbg('LAYER-DRAG', 'drop onto self — no-op', { layerId: layer.id });
+        }
+      } else {
+        dbg('LAYER-DRAG', 'drop with no target row under the pointer — no-op', { layerId: layer.id });
+      }
+    };
+
+    const onCancel = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      dbg('LAYER-DRAG', 'cancel', { layerId: layer.id });
+      clearDropMarkers();
+      finish();
+    };
+
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onCancel);
+  });
 
   const vis = document.createElement('button');
   vis.type = 'button';
@@ -780,6 +918,10 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
     if (getActiveLayer(editor) !== String(layer.id)) {
       setActiveLayer(editor, layer.id);
     }
+    // H20 item 5: fires on EVERY click, including re-selecting the
+    // already-active layer (setActiveLayer above is skipped then, but the
+    // flash itself is a separate, always-re-triggerable signal).
+    flashLayerGeometry(editor, layer.id);
   });
 
   // Double-click name → inline rename.

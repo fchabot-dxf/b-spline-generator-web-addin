@@ -34,6 +34,7 @@ import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundar
 import { openColorMosaic, randomSegmentColorSet } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
 import { contourSilhouette, contourFromFrameOf, hasFrame, CONTOUR_FROM_FRAME_DEFAULTS } from './contour-from-frame.js';
+import { primitiveFromContourD, collapseContourCuts } from './editor-contour-cut.js';
 import { frameContext, onFrameProfileDrawn } from './editor-frame-profile.js';
 import { viewScale } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
@@ -236,10 +237,14 @@ export function regenerateSilhouette(editor, p) {
     // F21: the ONE contour source (contour-from-frame.js): the preset, or the frame's inner edge offset inward.
     const sil = contourSilhouette(p, region, contourWidth, frameContext(editor));
     const { primitives, segments, hasUserSegments } = sil;
-    if (sil.fromFrameError) {
-        setEditorStatusHint(sil.fromFrameError === 'noFrame'
-            ? 'Offset from frame: no frame is chosen, so the Shape preset is drawn.'
-            : 'Offset from frame: the frame opening is too small for this distance, so the Shape preset is drawn.');
+    // H20 item 6 hint change (Fred: "this specific message is useless to
+    // me"): the noFrame case is silent now -- drawing the Shape preset when
+    // no frame is chosen is the obvious, expected behavior, not something
+    // worth interrupting the user about. The "frame opening is too small"
+    // case is a genuine, actionable surprise (the user DID choose a frame),
+    // so it still gets a hint.
+    if (sil.fromFrameError && sil.fromFrameError !== 'noFrame') {
+        setEditorStatusHint('Offset from frame: the frame opening is too small for this distance, so the Shape preset is drawn.');
     }
     // SIL-RESOLVE (F5): the shared outline guard. The solver resolves every
     // slider combination to a clean outline; this is the safety net for
@@ -285,6 +290,14 @@ export function regenerateSilhouette(editor, p) {
     // `ensureActiveLayer` (not bare `getActiveLayer`) guarantees a valid
     // layer id even when NO layer exists yet at all.
     const layerId = _ensureKindLayers(editor, p, ensureActiveLayer(editor), ['contour']).contour;
+    // H20 item 6 (Fred: "after a few layers they just come back"): the user
+    // deleted the Contour layer -- _ensureKindLayers just declined to
+    // recreate it (p.removedKinds.contour). Without this guard, the code
+    // below would draw fresh `<path>` elements stamped `data-layer` with
+    // this undefined id -- geometry belonging to no real layer, invisible
+    // in the panel and impossible to select/delete again. Stays gone until
+    // Undo, matching every other kind.
+    if (!layerId) return existing;
     const segEls = primitives.map((prim, i) => {
         const d = primitiveToPathD(prim);
         if (countMatches) return existing[i].attr('d', d);
@@ -591,12 +604,37 @@ export function detectShapeLatticeDetach(editor) {
     // hand-edit of ANY one of them (a NODE-mode drag moving its endpoint,
     // now that a segment is a real, selectable element) is still real
     // divergence and still flips this to 'picked', same as a single-path
-    // hand-edit always did; a segment COUNT mismatch is unconditionally a
-    // divergence too (regenerateSilhouette always keeps the two in sync,
-    // so this can only mean something ELSE touched the DOM).
+    // hand-edit always did. The SAME-COUNT case keeps the exact original
+    // string comparison unconditionally (a hand-edit that APPENDS an extra
+    // subcommand rather than moving the existing one's endpoint changes
+    // the `d` string without changing the element count at all --
+    // `primitiveFromContourD` only ever reads a segment's OWN first command,
+    // so a primitive-level compare alone would miss exactly this hand-edit;
+    // caught by this file's own pre-existing test the first time this was
+    // tried, not assumed).
     const expected = primitives.map((prim) => primitiveToPathD(prim));
-    const diverged = segEls.length !== expected.length
-      || segEls.some((segEl, i) => segEl.attr('d') !== expected[i]);
+    let diverged;
+    if (segEls.length === expected.length) {
+      diverged = segEls.some((segEl, i) => segEl.attr('d') !== expected[i]);
+    } else {
+      // F27 (Fred: "the scissors tool doesn't cut contour, it should" --
+      // FINAL RULING: a contour cut is a colour boundary only, never a
+      // detach): a segment COUNT mismatch alone is no longer unconditional
+      // proof of a hand-edit -- a live-caught bug
+      // (tools/repro/contour_cut_acceptance.mjs: Regenerate silently
+      // stopped clearing cuts, because this exact "count changed" read was
+      // flipping shape.source to 'picked' right after a cut, which then
+      // makes regenerateSilhouette's own reuseExisting check false,
+      // orphaning the cut pieces instead of replacing them) is a SANCTIONED
+      // way for the count to differ now, so every outstanding cut is
+      // undone first (`collapseContourCuts`, the SAME merge math a real
+      // Join tap uses) before comparing -- a genuine hand-edit still fails
+      // this (its own pieces don't merge back into the fresh generator's
+      // own primitives), a mere cut doesn't.
+      const collapsed = collapseContourCuts(segEls.map((segEl) => primitiveFromContourD(segEl.attr('d'))))
+        .map((prim) => primitiveToPathD(prim));
+      diverged = collapsed.length !== expected.length || collapsed.some((d, i) => d !== expected[i]);
+    }
     if (diverged) shape.source = 'picked';
 }
 

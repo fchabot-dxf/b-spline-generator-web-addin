@@ -18,7 +18,9 @@ import {
   paramHandleRecords, renderShapeLatticeHandles, detectShapeLatticeDetach, openSegmentStyleBar,
   currentPattern, currentShape,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
-import { PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR, stampBoundaryRef } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR, stampBoundaryRef } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { primitiveFromContourD, splitContourPrimitive } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-contour-cut.js';
+import { primitiveToPathD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 
 function makeMockEditor() {
   let elements = [];
@@ -821,6 +823,33 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
       seg.attr('d', seg.attr('d') + ' L 0.01 0.01');
       detectShapeLatticeDetach(editor);
       expect(currentShape(p).source).toBe('picked');
+    });
+
+    // F27 (Fred: "the scissors tool doesn't cut contour, it should" -- FINAL RULING: a contour cut is a colour
+    // boundary only, never a detach): a real, LIVE-CAUGHT bug (tools/repro/contour_cut_acceptance.mjs) -- this
+    // hook used to treat a segment-COUNT mismatch as unconditional proof of a hand-edit, which was true before
+    // F27 (the only way the count could change) but wrong now that a cut is a sanctioned way for it to differ.
+    // The false 'picked' then made regenerateSilhouette's own reuseExisting check fail, ORPHANING the cut
+    // pieces on the next Regenerate instead of replacing them (Regenerate silently stopped clearing cuts).
+    it('F27: a genuine CUT (segment count N -> N+1, simulated the same way SE16\'s own _cutContourAt splits a piece) does NOT flip to \'picked\' -- Regenerate must still be able to reuse/replace this boundary', () => {
+      const p = currentPattern(editor);
+      const pathEls = regenerateSilhouette(editor, p);
+      const n0 = pathEls.length;
+      const seg = pathEls[0];
+      const prim = primitiveFromContourD(seg.attr('d'));
+      const mid = prim.type === 'L'
+        ? { x: (prim.p0.x + prim.p1.x) / 2, y: (prim.p0.y + prim.p1.y) / 2 }
+        : (() => { const t = prim.theta1 + prim.dTheta * 0.5; return { x: prim.cx + prim.rx * Math.cos(t), y: prim.cy + prim.ry * Math.sin(t) }; })();
+      const [first, second] = splitContourPrimitive(prim, mid);
+      const boundaryRef = seg.attr(BOUNDARY_REF_ATTR);
+      seg.attr('d', primitiveToPathD(first));
+      const secondEl = editor._sketchLayer.path(primitiveToPathD(second));
+      secondEl.attr(BOUNDARY_REF_ATTR, boundaryRef);
+      secondEl.attr(CONTOUR_SEG_INDEX_ATTR, 1);
+      for (let i = 1; i < pathEls.length; i++) pathEls[i].attr(CONTOUR_SEG_INDEX_ATTR, Number(pathEls[i].attr(CONTOUR_SEG_INDEX_ATTR)) + 1);
+      expect(editor._sketchLayer.children().toArray().filter((e) => e.node.hasAttribute(BOUNDARY_REF_ATTR)).length).toBe(n0 + 1); // non-vacuous
+      detectShapeLatticeDetach(editor);
+      expect(currentShape(p).source).toBe('generated');
     });
   });
 

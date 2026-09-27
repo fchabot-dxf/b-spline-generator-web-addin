@@ -198,8 +198,14 @@ function buildHeights(nx, nz) {
  * editor is the only content store now.
  *
  * The returned shape matches what applyStampLayers expects:
- *   { enabled, svg, mask, depth, profile, suppression, smoothing,
+ *   { id, enabled, svg, mask, depth, profile, suppression, smoothing,
  *     edgeFilletRadius, filletPower, name? }
+ *
+ * H22 item 2: `id` is the layer's own stable identity — applyStampLayers
+ * joins back to window.svgEditor._layers BY ID, never by array position.
+ * This list is already filtered (isCarved), so its own index never lines
+ * up with the full, unfiltered _layers array once any earlier layer is
+ * hidden/non-carved.
  */
 function _collectStampPasses() {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
@@ -220,6 +226,7 @@ function _collectStampPasses() {
             // `!layer.svg` doesn't reject the pass — the rasterizer has
             // already consumed the real svg into `mask` by this point.
             passes.push({
+                id: layer.id,
                 name: layer.name,
                 enabled: true,
                 svg: '1',

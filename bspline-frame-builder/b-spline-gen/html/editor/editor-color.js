@@ -20,6 +20,15 @@ export const VECTOR_COLORS = [
   ['#ffffff', '#bdbdbd', '#616161', '#000000'], // Neutral
 ];
 
+// T81 item 8 (Fred's ruling, incoming): BOTH of the two "pick unlike its
+// neighbours" helpers below drew from the app's 32-colour VECTOR_COLORS
+// palette -- against Fred's ruling that the pool should instead be the
+// lattice's own Rails/Ties/Nodes colours. Kept both here, UNCHANGED, only
+// to land this merge without breaking either existing caller (seat B's
+// randomizeSegmentColors, T81 item 3; seat A's F27 recolour-on-cut) --
+// consolidating them onto ONE shared helper with the correct (lattice)
+// pool is T81 item 8's own job, not folded into this merge commit.
+
 /** T81 item 3 (Fred: "add a randomize segment color button"): `n` random
  *  colours from the app's ONE declared palette (VECTOR_COLORS above), no
  *  two CYCLICALLY adjacent equal (index i vs i-1, and the last vs the
@@ -42,6 +51,28 @@ export function randomSegmentColorSet(n, rng = Math.random) {
     out.push(c);
   }
   return out;
+}
+
+/** F27 item 1 ADD (Fred: "when cutting with scissors, I'd like the colour of one segment to change right away
+ *  ... it also helps to know where I cut" — the SAME "differs from its neighbours" pool/rule the advisor's
+ *  T81 item 3 randomize-segment-colours button also needs, on seat B's own lane-b branch, not yet merged to
+ *  main as of this declaration: DECLARED HERE per the dispatch's own "if seat B hasn't landed it, declare the
+ *  helper yourself" instruction, so a later merge has ONE shared primitive to reconcile onto rather than two
+ *  independent "pick unlike its neighbours" implementations): one colour draw from the app's ONE declared
+ *  palette (VECTOR_COLORS above) that differs from every colour in `neighbours` (null/undefined entries are
+ *  "no constraint there" — a true free end, or a first draw with nothing to differ from yet). `rng` defaults
+ *  to Math.random, injectable for a reproducible test sequence — same convention this module's own
+ *  `openColorMosaic`/recent-colors code already uses for its own randomness-adjacent bits. `guard` is a
+ *  defensive cap only (the palette, 32 colours, is always far larger than 2 neighbours, so the reject-and-
+ *  redraw loop settles in a handful of tries; a pathological rng could in principle stall it). */
+export function pickColorDiffering(neighbours, rng = Math.random) {
+  const palette = VECTOR_COLORS.flat();
+  let c, guard = 0;
+  do {
+    c = palette[Math.floor(rng() * palette.length)];
+    guard++;
+  } while (guard < 100 && neighbours.some((n) => n != null && n === c));
+  return c;
 }
 
 /** T28: the color mosaic's "recent" row — last RECENT_COLORS_CAP colors

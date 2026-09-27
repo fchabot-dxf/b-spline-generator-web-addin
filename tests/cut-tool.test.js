@@ -15,6 +15,15 @@ import { cutAt, join, jointAt, snapOnLine, cutIntent } from '../bspline-frame-bu
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { drawnFromPattern } from './helpers/drawn-lattice.js';
 import { moveRailAlongAxis, orient, fromLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
+import { VECTOR_COLORS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js';
+
+// F27 item 1 ADD: a simple seeded LCG wherever a cut-recolour test needs a REPRODUCIBLE draw, same convention
+// tests/shape-lattice-segment-color.test.js already uses for T81 item 3's own randomize button.
+function seededRng(seed) {
+  let s = seed >>> 0;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+const PALETTE = VECTOR_COLORS.flat();
 
 // ── a minimal svg.js-shaped element + editor (worldPoint = identity: no matrix()) ──
 function makeEl(type, attrs, layer) {
@@ -98,13 +107,21 @@ describe('U2 cutAt / join', () => {
   let ed, rail;
   beforeEach(() => { ed = makeEditor({ spacing: 0.25, colors: { rails: '#333' } }); rail = ed.line(0, 1, 4, 1, RAIL); });
 
-  it('cutAt splits a rail into two segments with IDENTICAL joint numbers, every attribute copied, one undo step', () => {
-    const [a, b] = cutAt(ed, rail, { x: 1.5, y: 1 });
+  it('cutAt splits a rail into two segments with IDENTICAL joint numbers, every attribute copied except colour (F27 item 1 ADD), one undo step', () => {
+    const originalStroke = rail.store.stroke;
+    const [a, b] = cutAt(ed, rail, { x: 1.5, y: 1 }, seededRng(5));
     expect(pts(a)).toEqual([0, 1, 1.5, 1]);
     expect(pts(b)).toEqual([1.5, 1, 4, 1]);
-    for (const k of ['data-lattice', 'data-lattice-gen', 'data-layer', 'stroke', 'stroke-width']) expect(b.store[k]).toBe(a.store[k]);
+    for (const k of ['data-lattice', 'data-lattice-gen', 'data-layer', 'stroke-width']) expect(b.store[k]).toBe(a.store[k]);
+    // F27 item 1 ADD (Fred: "the colour of one segment to change right away ... it also helps to know where I
+    // cut"): `a` (the piece touching the ORIGINAL start) keeps its own colour unchanged; `b` (the far side of
+    // the cut) is immediately recoloured to a real palette colour that differs from it -- a real, visible cue,
+    // not the old "clone every attribute including colour" behaviour.
+    expect(a.store.stroke).toBe(originalStroke);
+    expect(PALETTE).toContain(b.store.stroke);
+    expect(b.store.stroke).not.toBe(a.store.stroke);
     expect(ed.layer.list.indexOf(b)).toBe(ed.layer.list.indexOf(a) + 1);
-    expect(ed.commits).toBe(1);
+    expect(ed.commits).toBe(1); // still ONE undo step -- the recolour rides along with the cut, not a second commit
     expect(chainOf(ed, a).segments.map((s) => s.el)).toEqual([a, b]); // still ONE rail by derivation
   });
 
@@ -113,6 +130,19 @@ describe('U2 cutAt / join', () => {
     expect(ed.commits).toBe(0);
     const plain = ed.line(0, 3, 1, 3, { stroke: '#000' });
     expect(cutAt(ed, plain, { x: 0.05, y: 3 })).not.toBeNull();
+  });
+
+  // F27 item 1 ADD, the dispatch's own acceptance criterion verbatim: "after a cut the two sides differ in
+  // colour and neither equals its other neighbour." `rail` alone only proves "differs from its cut sibling" --
+  // this proves the SECOND constraint too, by giving the far side a REAL third neighbour of a known colour.
+  it('the recoloured (far) side differs from BOTH its cut sibling AND whatever already touches its own far end', () => {
+    // `rail` spans x:0->4 (the fixture); a real third piece continues the chain from its own far end, x=4.
+    const next = ed.line(4, 1, 6, 1, { ...RAIL, stroke: '#c62828' });
+    const [a, b] = cutAt(ed, rail, { x: 1.5, y: 1 }, seededRng(11));
+    expect(a.store.stroke).toBe(RAIL.stroke); // '#333', unchanged
+    expect(next.store.stroke).toBe('#c62828'); // unaffected by the cut
+    expect(b.store.stroke).not.toBe(a.store.stroke);
+    expect(b.store.stroke).not.toBe(next.store.stroke);
   });
 
   it('join undoes a cut: the original geometry back, the colour overrides of BOTH cleared (Q4)', () => {
