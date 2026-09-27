@@ -95,6 +95,9 @@ bspline-frame-builder/stamp-editor/html/core/gaussian.js
 *-debug.log
 *.bak
 *.bak[0-9]
+# T78: filter_shots.mjs's own throwaway headless-Chrome profile dirs (the
+# committed shots\seatB\*.png screenshots themselves are NOT ignored)
+shots/**/.chrome-*/
 /diff_*.txt
 /pytest_run_output.txt
 
