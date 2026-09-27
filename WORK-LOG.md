@@ -12285,3 +12285,64 @@ shots all used `seedOffsetX=0` (formula identical at offset 0), and item 2's off
 `mapZoom=1` (formula identical at zoom 1, since dividing by 1 is a no-op either way).
 
 `npx vitest run` -> **2094 passed** (up from 2093), zero regressions.
+
+## H18 item 1 — Three new terrain filters: Sandstone Waves, Draped Silk, Eroded Hills
+
+Fred: "all 5 are good, go on all five" (seat B builds the other 4 — N3/N5/N6/N7 — in parallel on lane-b).
+Built N1/N2/N4 from the Fred-approved prototypes in `C:/Users/danse/.bspline-status/proto-filters/`
+(`N1_protoStrata.js`, `N2_protoSilk.js`, `N4_protoEroded.js`), approved look at seed 42 in `ids/N1_*.png` /
+`N2_*.png` / `N4_*.png`.
+
+**New modules** (`core/noise/sandstone.js`, `silk.js`, `eroded.js`), each following the exact declared
+shape every other filter uses (`id`, `label`, `cMultiplier`, `tweaks`, `fn(su, sv, aspect, params,
+noiseRefs)`) — kept every prototype's math BYTE-IDENTICAL at each tweak's default value, only:
+- Dropped the unused `octaves` destructure each prototype carried but never actually read (hardcoding a
+  fixed octave count directly in every `fbm()` call instead) — the dispatch flagged `params.octaves` as
+  undefined in-app, and grepping each prototype's body confirmed `octaves` was dead in all three already.
+- Exposed exactly the 3 named tweaks per filter as real, declared knobs (`params.tweaks?.<key> ?? <default>`,
+  the same pattern `dunes.js` and `reef.js` already use), replacing a prototype literal each time: N1
+  `layerCount`/`layerDepth`/`hillSoftness` (strata rib count, how strongly they carve, and the rib-profile
+  exponent inverted so higher = softer/wider bands); N2 `foldSpacing`/`foldDepth`/`foldSweep` (fold
+  frequency inverted so higher spacing = farther apart, how strongly folds carve, and how much the fold
+  direction bends — the `bend` term's own multiplier); N4 `gullyDepth`/`gullyDensity`/`slopeBias` (overall
+  carve strength, the ridge-noise threshold multiplier, and the flat-vs-steep favoring blend, rewritten from
+  the prototype's hardcoded `0.35 + 0.65*slope` to `(1-slopeBias) + slopeBias*slope`).
+- Registered all 3 in `core/noise/index.js`'s `_all` array immediately after `chest`, per the dispatch —
+  the file's own doc-comment says this is the ONLY other place a new mode needs touching (no HTML changes:
+  confirmed live that the noiseType dropdown and the Edit-Filter tweaks panel are BOTH already fully
+  generic — `tweaks-ui.js`'s `renderTweaksPanel()` reads `NoiseTweaks[filterId]`, built from each module's
+  own `tweaks` export by `index.js`, so declaring the array was the entire UI wiring).
+
+**The "never re-fold" warning.** Checked all three prototypes for any code that re-derives a fold from `su`/
+`sv` (e.g. a second `Math.abs()`, a wraparound, anything singular exactly at `su=0`) — none of the three do
+this; each only ever multiplies/offsets `su`/`sv` through smooth (noise, cosine, pow) functions, so the
+mirror-fold `terrain.js` already applies upstream (`su = Math.abs(zu - mx) * 2`) is the ONLY fold in the
+pipeline. Verified this isn't just a read of the code: since basic left-right mirroring is guaranteed by the
+fold math itself for ANY function of `su` (fn never receives raw `u`, only the already-folded `su`), the
+real risk is a VISUAL crease — a derivative discontinuity in `fn` exactly at `su=0` (e.g. a `Math.sqrt`-like
+singularity or a hard branch) that would show up as a sharp seam distinct from the surrounding organic
+noise. Added a dedicated continuity test per filter for this (below) and mutation-tested it by injecting an
+artificial jump at `su=0` into a scratch copy of `sandstone.js` — the continuity test correctly failed
+(`0.069 >= 0.05`), confirming it actually catches this class of defect rather than passing vacuously.
+
+**Tests** (`tests/noise-sandstone.test.js`, `noise-silk.test.js`, `noise-eroded.test.js`, 7 tests each, 21
+total): tweak defaults match the prototype's own literals exactly; determinism (same seed+params -> same
+output); no NaN and a sane output range across seeds 1/42/7/123; the centre-line continuity check described
+above; and one effect test per tweak (each changes the output; the "depth" tweak's zero-value case is
+checked against a hand-derived closed form of the base-only formula, not just "differs from nonzero", for a
+tighter guarantee). Mutation-tested the tweak-wiring tests too: hardcoded all 3 of `sandstone.js`'s tweaks
+to ignore their `params.tweaks` overrides in a scratch copy — all 3 corresponding tests correctly failed;
+restored, re-ran clean.
+
+Live-verified end-to-end via headless CDP: the dropdown lists `sandstone`/`silk`/`eroded` immediately after
+`chest` with the correct display labels; selecting each filter auto-populates the Edit-Filter panel with
+exactly its 3 declared tweak rows (zero HTML/JS changes needed beyond the module's own `tweaks` export,
+confirming the panel is fully generic as `tweaks-ui.js`'s own doc-comment claims). Rendered all three at
+seed 42 via `tools/repro/filter_shots.mjs` (no source changes needed — it already accepts an arbitrary
+`noiseType`) and compared side-by-side against the approved `ids/N1_Sandstone_Waves.png` / `N2_Draped_Silk.png`
+/ `N4_Eroded_Hills.png` references: all three match essentially exactly, as expected since the tweak
+defaults reproduce each prototype's literals byte-for-byte. Also rendered at seeds 7 and 123 — same
+character, different terrain, zero console errors.
+Shots in `shots\seatA\` (`H18-item1_sandstone/silk/eroded_seed42/7/123`, 9 files).
+
+`npx vitest run` -> **2124 passed**, zero regressions.
