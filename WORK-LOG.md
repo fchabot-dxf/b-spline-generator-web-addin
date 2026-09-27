@@ -11903,3 +11903,111 @@ in `shots\seatA\` (`h14_seed_390.png`, `h14_seed_834.png`, `h14_symmetry_834.png
 `h14_skeleditor_834.png`). No "lattice panel" shot: confirmed none of the 4 declared pairs live in the SVG
 editor's own Lattice/Shape-Lattice panels (same `#editorLatticePanelBody` line-range grep H12 already ran,
 zero `cad-label`/pair-id hits there), so there's nothing this turn's change touches to show there.
+
+---
+
+Dispatch: epoch 3 — H15: REMOVE the seed controls + the Seed Editor. NEXT-SESSION.md, Fred: "I feel like the
+whole seed section is redundant" / "I know, but I don't use them." Advisor pre-verified: the Seed Editor
+(`main/skeleton-editor.js`, "Edit Seed fullscreen 2D") mirrors the sidebar SEED section — same P keys,
+extra only its own contour-lines preview. A REMOVAL: sweep the whole chain, every link removed or kept
+with a named reason.
+
+**H15 item 1 — SURVEY, done before any deletion.** Delegated an exhaustive repo-wide trace (every
+DOM id, every P key, every importer, every test, every CSS rule) rather than deleting from memory of the
+dispatch alone.
+
+- **`main/skeleton-editor.js` (336 lines) is a fully self-contained UI module** — its own header comment
+  already says so ("pure UI... produces no shared state"). Its ONLY external caller is `main/main.js`
+  (one import, one `initSkeletonEditor()` call). Nothing in the surviving Skeleton sidebar panel, the 3D
+  preview, or `core/preview/*.js` depends on it — the Skeleton panel's own controls are wired through the
+  fully generic `Object.keys(P)` binder in `main/ui-bindings.js`, never through this file. **Safe to delete
+  wholesale.**
+- **Every `skel*` DOM id (the modal) and the sidebar's own seed-panel ids are referenced in exactly 3
+  places**: the HTML (markup), `skeleton-editor.js` (wiring), and `tools/repro/h10_multiwidth_shots.mjs`
+  (a manual QA script, not test-suite-gated) — confirmed by repo-wide grep, zero other consumers.
+- **"Generate New Seed" (`#btnRandomSeed`) is fully independent, confirmed line-by-line**: lives in
+  `.sticky-actions` at the TOP of the sidebar, physically outside the panel being deleted; its handler
+  (`main/header-controls.js`) calls only `applyParam('seed', ...)`, touching none of the other 5
+  keys/controls on the removal list. `P.seed` itself has a SECOND, unrelated consumer
+  (`editor/editor-lattice-pattern.js`'s own PRNG seeding for lattice patterns) — one more reason the STATE
+  KEY must survive even though its UI doesn't.
+- **The P keys (`seedType`, `seed`, `macroScale`, `seedOffsetX`, `seedOffsetY`, `seedRotation`) and the
+  entire generation pipeline that reads them are completely independent of the UI**: `core/terrain.js`
+  reads all 6 directly off the `params` object `core/engine/rebuild.js` feeds it as `{ ...P, nx, nz,
+  edgeMargin }` — nothing UI-specific in that path. `core/seed/index.js` (the seed-type registry
+  `SeedTypes`/`SeedList`) is SHARED with the pipeline's own dispatch — the module stays; only the sidebar's
+  and modal's OWN calls to `populateSeedDropdown()` go. Save/load (`persistableP`/`saveLastSession`/
+  `loadLastSession`, `cloud-project-manager.js`/`snapshot-manager.js`'s `applySnapshot`) are all GENERIC
+  over whatever keys `P` happens to have — verified none of them special-case any of these 6 keys, so a
+  project saved before this removal restores every value exactly, with zero code changes needed there.
+- **Peak Shape + Density: the dispatch's "move into the Skeleton section" instruction is ALREADY SATISFIED
+  by the current file** — direct read confirms both already live inside `panel-skeleton`'s own
+  `panel-body` (never in `panel-seed`), alongside Clustering/Symmetry/Flat Border/Smoothing. There was
+  nothing to move; noting this explicitly rather than silently skipping a checklist line, since the
+  premise (based on an older file state, or a miscommunication) no longer holds.
+- **Tests**: zero `tests/*.test.js` files reference any of the removed ids/module (grep confirmed) — none
+  needed rewriting. `tools/repro/h10_multiwidth_shots.mjs` (H14's own multi-width script) DOES reference
+  `seedOffsetX/Y` and the whole `skelOffsetX/Y`-via-modal flow, and would throw once the ids are gone —
+  fixed as part of item 2, below, not left as a known-broken tool.
+- **CSS**: no `#skel*`/`.skel-editor-*` selector exists in any of the 3 shared stylesheets — it's ALL
+  inline in the palette's own `<style>` block, immediately preceding the modal markup, so deleting the
+  modal's `<div>` and its one preceding `<style>` block removes 100% of it in one motion. The one CSS rule
+  that must survive, `#btnRandomSeed:hover`, lives elsewhere in the same file, untouched.
+
+**H15 item 2 — the removal itself.**
+- Deleted `main/skeleton-editor.js` outright (336 lines).
+- `main/main.js`: removed the `populateSeedDropdown`/`initSkeletonEditor` imports, the
+  `populateSeedDropdown(document.getElementById('seedType'))` call, the `initSkeletonEditor()` call + its
+  own "6. Skeleton (seed) editor" comment, and the doc-header's own line naming the file. Confirmed each
+  import was used at exactly one call site before removing both together.
+- `bspline_gen_palette.html`: removed the whole `.panel-seed` sidebar panel (its own leading "3. Seed..."
+  comment through its closing tag) and the Seed Editor modal (its own leading comment, its dedicated
+  `<style>` block, and the modal markup, ~200 lines in one contiguous block) — verified the exact start/end
+  boundaries by direct read before deleting, not by line-count arithmetic alone. Renumbered the Skeleton
+  panel's own "4. Skeleton" comment to "3." (the direct, minimal consequence of removing item 3 from the
+  list) — which, as a side effect, also resolves a PRE-EXISTING duplicate "4." shared with the Filter
+  panel's own comment (not something I set out to fix, just an accidental byproduct of the one deliberate
+  renumber; left every panel from Filter onward untouched).
+- Swept the orphans my own removal created, each with its own reason: `main/formula-fields.js`'s SEED
+  section (its `names` array is scoped ONLY to its own section's formula fields — confirmed via how
+  `FORMULA_SECTIONS` builds each section's `scope`, so deleting it cannot affect the surviving SKELETON
+  section's own formulas); `core/state.js`'s 4 now-dead `SLIDER_PAIRS` entries (`macroScale`,
+  `seedOffsetX`, `seedOffsetY`, `seedRotation` — the `symOffsetX`/`symOffsetY` entries right below them are
+  a DIFFERENT feature, Skeleton's own Symmetry Offset, and stay); a stale comment in `editor/editor.js`
+  that used `skeleton-editor.js`'s own resize-debounce as a naming example for an unrelated throttle-vs-
+  debounce explanation (reworded to drop the now-dead file reference, kept the actual teaching point).
+- **`tools/repro/h10_multiwidth_shots.mjs`** (not test-suite-gated, but a real tool Fred and I both use):
+  removed the `seedOffset` entry from its `PAIRS` list, deleted the whole
+  open-modal/check-skelOffset/close-modal block, deleted the old `#seed`-stays-hidden check, and replaced
+  it with a positive removal-confirmation check — `.panel-seed`, `#seed`, `#seedType`, `#btnEditSeed`, and
+  `#skeletonEditorModal` are all confirmed GONE, `#btnRandomSeed` confirmed still present — at all 5
+  widths, so a future accidental re-add of any of these would be caught immediately.
+
+**H15 item 3 — tests + shots.**
+New `tests/h15-seed-removal.test.js` (3 tests), built around `core/terrain.js`'s `generateHeightmap`
+directly (a pure function — no DOM, no `P` global needed) rather than simulating the full UI:
+1. Confirms the 5 removed-UI keys still meaningfully affect the output at all (not vacuous).
+2. **The exact scenario item 3 asks for**: a `persistableP` round-trip (the real save serializer) of a
+   params object with every one of the 5 keys pushed away from its default (`voronoi`/0.42/0.8/-0.6/37 vs.
+   `perlin`/0.65/0/0/0) regenerates a BYTE-IDENTICAL heightmap to the pre-save one.
+3. Each of the 5 keys individually still changes the output (none silently went dead).
+
+One real mistake caught and fixed while writing this test, via direct measurement rather than assumption:
+my first draft built a minimal params object (just the 5 seed keys) and got an all-zero heightmap back —
+looked like a real bug until I traced it (`node`-scripted, not guessed) to `core/terrain.js`'s own noise-
+mode functions (e.g. `simplex.js`) reading `scale`/`octaves`/`roughness`/`warpIntensity` straight off the
+passed `params` object, NOT off `generateHeightmap`'s own internally-defaulted local variables — so a
+partial params object silently NaNs out, which line 175's own `isNaN(finalH) ? 0 : finalH` guard converts
+to a flat zero field instead of throwing. This is an existing, unrelated property of the real function
+(the live app never hits it because `P` always has every key filled from `DEFAULT`), not something this
+turn should "fix" — the correct move was building the test's own params as `{ ...DEFAULT, ...overrides }`,
+exactly mirroring the real call site (`core/engine/rebuild.js`'s `{ ...P, nx, nz, edgeMargin }`), which
+resolved it immediately. Mutation-tested afterward: commented out `terrain.js`'s own `seedRotation` read
+and confirmed ONLY the `seedRotation` sub-assertion failed (not the others), restored to green after.
+
+`npx vitest run` -> **2010 passed** (up from 2007), zero regressions. Live-verified via CDP: zero console
+errors on load; `.panel-seed`/`#seedType`/`#btnEditSeed`/`#skeletonEditorModal` all confirmed absent;
+`#btnRandomSeed` present and clickable with no throw; Skeleton panel correctly opens straight to Peak
+Shape/Density/Clustering/Symmetry (its pre-existing order, unchanged). Shots of the sidebar (top,
+Generate New Seed -> Stock Dimensions -> Frame with no Seed panel in between) and the Skeleton panel
+(Peak Shape first) in `shots\seatA\`.

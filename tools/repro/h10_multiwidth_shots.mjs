@@ -187,13 +187,15 @@ for (const { w, h, name } of WIDTHS) {
   }
 
   // H14 (Fred: "can be only sliders side by side... does it need a
-  // precise input?"): the 4 declared X/Y "feel" pairs -- each must render
+  // precise input?"): the declared X/Y "feel" pairs -- each must render
   // as two sliders side by side with a plain value readout (no +/-
-  // buttons) beside each. 3 of the 4 live on the main page; the 4th
-  // (skelOffsetX/Y) lives inside the Skeleton-Editor modal, checked
-  // separately below since it needs opening first.
+  // buttons) beside each.
+  // H15 (Fred: "the whole seed section is redundant"): the Seed panel's
+  // own pair (seedOffsetX/Y) and the Skeleton-Editor modal it mirrored
+  // (skelOffsetX/Y, its own pair, checked here as a 4th entry until now)
+  // are both REMOVED entirely, not just unwired -- dropped from this list
+  // rather than left pointing at ids that no longer exist.
   const PAIRS = [
-    { name: 'seedOffset', x: 'seedOffsetX', y: 'seedOffsetY' },
     { name: 'symOffset', x: 'symOffsetX', y: 'symOffsetY' },
     { name: 'stampT', x: 'stampTx', y: 'stampTy' },
   ];
@@ -224,43 +226,26 @@ for (const { w, h, name } of WIDTHS) {
     check(info.noStepper, `H14@${name}: ${pair.name} stepper buttons dropped (readout only)`);
   }
 
-  // H14's 4th pair (skelOffsetX/Y) lives inside the Skeleton-Editor modal
-  // -- open it, check, then close, so later checks this same width start
-  // from the same page state as before.
-  await evalJS(`[...document.querySelectorAll('button')].find(b => /edit seed/i.test(b.textContent))?.click()`);
-  await sleep(500);
-  const skelInfo = JSON.parse(await evalJS(`(()=>{
-    const xInput = document.getElementById('skelOffsetX'), yInput = document.getElementById('skelOffsetY');
-    if (!xInput || !yInput || xInput.getBoundingClientRect().width === 0) return JSON.stringify({ visible: false });
-    const xr = xInput.getBoundingClientRect(), yr = yInput.getBoundingClientRect();
-    const xSlider = document.getElementById('skelOffsetXSlider').getBoundingClientRect();
-    const ySlider = document.getElementById('skelOffsetYSlider').getBoundingClientRect();
+  // H15: the Seed section + Seed Editor modal (and their #seed/#seedType/
+  // #skel* ids) are gone entirely -- confirm the removal is clean rather
+  // than just silently dropping the old checks.
+  const seedGone = JSON.parse(await evalJS(`(()=>{
     return JSON.stringify({
-      visible: true, sameRow: Math.abs((xr.top + xr.height / 2) - (yr.top + yr.height / 2)) < 5,
-      xReadoutVisible: xr.width > 0, yReadoutVisible: yr.width > 0,
-      xSliderW: Math.round(xSlider.width), ySliderW: Math.round(ySlider.width),
-      noStepper: !xInput.closest('.cad-stepper') && !yInput.closest('.cad-stepper'),
+      panelSeed: !document.querySelector('.panel-seed'),
+      seedInput: !document.getElementById('seed'),
+      seedType: !document.getElementById('seedType'),
+      btnEditSeed: !document.getElementById('btnEditSeed'),
+      skeletonEditorModal: !document.getElementById('skeletonEditorModal'),
+      btnRandomSeedStillThere: !!document.getElementById('btnRandomSeed'),
     });
   })()`));
-  console.log(`pair skelOffset@${name}:`, JSON.stringify(skelInfo));
-  check(skelInfo.visible, `H14@${name}: skelOffset modal opened and pair visible`);
-  if (skelInfo.visible) {
-    check(skelInfo.sameRow, `H14@${name}: skelOffset X/Y readouts on the same row`);
-    check(skelInfo.xReadoutVisible && skelInfo.yReadoutVisible, `H14@${name}: skelOffset both readouts visible`);
-    check(skelInfo.xSliderW >= 20 && skelInfo.ySliderW >= 20, `H14@${name}: skelOffset both sliders have real width (${skelInfo.xSliderW}, ${skelInfo.ySliderW})`);
-    check(skelInfo.noStepper, `H14@${name}: skelOffset stepper buttons dropped (readout only)`);
-  }
-  await evalJS(`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Done')?.click()`);
-  await sleep(300);
-
-  // H10: the main Seed number field is hidden (not deleted) -- Generate
-  // New Seed is the only way to re-roll now.
-  const seedInfo = JSON.parse(await evalJS(`(()=>{
-    const seed = document.getElementById('seed');
-    return JSON.stringify({ seedVisible: seed.getBoundingClientRect().width > 0, seedInDom: !!seed });
-  })()`));
-  console.log(`seed@${name}:`, JSON.stringify(seedInfo));
-  check(seedInfo.seedInDom && !seedInfo.seedVisible, `H10@${name}: #seed stays in the DOM but hidden (${JSON.stringify(seedInfo)})`);
+  console.log(`seedRemoval@${name}:`, JSON.stringify(seedGone));
+  check(seedGone.panelSeed, `H15@${name}: the Seed sidebar panel is gone`);
+  check(seedGone.seedInput, `H15@${name}: #seed is gone (not just hidden)`);
+  check(seedGone.seedType, `H15@${name}: #seedType is gone`);
+  check(seedGone.btnEditSeed, `H15@${name}: #btnEditSeed is gone`);
+  check(seedGone.skeletonEditorModal, `H15@${name}: the Skeleton-Editor modal is gone`);
+  check(seedGone.btnRandomSeedStillThere, `H15@${name}: Generate New Seed (#btnRandomSeed) still there`);
 
   await evalJS(`document.getElementById('carveZ').scrollIntoView({block:'center'})`);
   await sleep(150);

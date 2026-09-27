@@ -9,7 +9,6 @@
  *   - main/header-controls.js     header + settings buttons
  *   - main/global-events.js       keyboard shortcuts + sculpt buttons
  *   - main/export-flow.js         export wizard + STEP / Fusion send
- *   - main/skeleton-editor.js     fullscreen seed editor
  *   - core/noise/tweaks-ui.js     per-filter knob panel
  *   - core/ui-utils.js            resizer + mobile viewport
  *   - core/fusion-bridge.js       Python ↔ palette bridge
@@ -24,7 +23,6 @@ import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_LABEL, requestDesignParams, setFusionStatus } from '../core/fusion-bridge.js';
 import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
-import { populateSeedDropdown } from '../core/seed/index.js';
 import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { AppState } from './app-state.js';
 import { applyParam } from './param-manager.js';
@@ -32,7 +30,6 @@ import { updateStampMasks } from './stamp-mask-manager.js';
 import { initApp, initSvgEditor } from './app-init.js';
 import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
-import { initSkeletonEditor } from './skeleton-editor.js';
 import { initFramePanel, onFrameResult, syncFramePanel } from './frame-panel.js';
 import { bindHeaderAndSettings } from './header-controls.js';
 import { wireGlobalEvents } from './global-events.js';
@@ -81,7 +78,6 @@ document.addEventListener('DOMContentLoaded', () => {
     //    <select>s are populated when the listeners attach).
     const noiseSelect = document.getElementById('noiseType');
     populateNoiseDropdown(noiseSelect);
-    populateSeedDropdown(document.getElementById('seedType'));
 
     // 4. Edit-Filter slider panel — per-filter knobs from each mode's
     //    `tweaks` schema.
@@ -111,9 +107,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     if (window.initBsplineTheme) window.initBsplineTheme();
 
-    // 6. Skeleton (seed) editor — must run after bindControls so the
-    //    sidebar's "Edit Skeleton" button exists and isn't double-wired.
-    initSkeletonEditor();
     // FB-APP S2 (F6): the sidebar FRAME section + the editor's cut-profile provider.
     initFramePanel();
 

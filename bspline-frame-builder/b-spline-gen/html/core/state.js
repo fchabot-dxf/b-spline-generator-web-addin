@@ -144,7 +144,6 @@ export const INPUT_PAIRS = {
 
 export const SLIDER_PAIRS = {
     scale: 'scaleSlider',
-    macroScale: 'macroSlider',
     carveZ: 'carveZSlider',
     smoothIntensity: 'smoothIntensitySlider',
     smoothRadius: 'smoothRadiusSlider',
@@ -153,9 +152,6 @@ export const SLIDER_PAIRS = {
     peakShape: 'peakShapeSlider',
     density: 'densitySlider',
     clustering: 'clusteringSlider',
-    seedOffsetX: 'seedOffsetXSlider',
-    seedOffsetY: 'seedOffsetYSlider',
-    seedRotation: 'seedRotationSlider',
     symOffsetX: 'symOffsetXSlider',
     symOffsetY: 'symOffsetYSlider',
     thickness: 'thickenOffsetSlider',
