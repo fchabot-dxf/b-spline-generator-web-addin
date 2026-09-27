@@ -241,14 +241,18 @@ export function updateToolbarVisibility(editor, mode, el) {
     const currentMode = editor._currentMode || mode;
     applyToolbarGroups(mode, el, currentMode);
 
-    // Dim SNAP where it can't apply — 'none' (erase/expand: nothing to
-    // snap) and 'always' (lattice: already always on, the toggle couldn't
-    // turn it off) both make the button misleading if left live.
-    const snapBtn = getEl('editorGridSnap');
-    if (snapBtn) {
-        const policy = SNAP_POLICY[currentMode] || 'point';
-        snapBtn.classList.toggle('disabled', policy === 'none' || policy === 'always');
-    }
+    // Dim GRID/GEOMETRY where they can't apply — 'none' (erase/expand:
+    // nothing to snap) and 'always' (lattice: already always grid-snapped,
+    // neither toggle could change that) both make the buttons misleading
+    // if left live. H1: both toggles share the same dim condition (the
+    // POLICY gate is about whether snapping applies at all, not which
+    // kind), so one check drives both buttons.
+    const policy = SNAP_POLICY[currentMode] || 'point';
+    const snapDisabled = policy === 'none' || policy === 'always';
+    const gridSnapBtn = getEl('editorSnapGrid');
+    if (gridSnapBtn) gridSnapBtn.classList.toggle('disabled', snapDisabled);
+    const geometrySnapBtn = getEl('editorSnapGeometry');
+    if (geometrySnapBtn) geometrySnapBtn.classList.toggle('disabled', snapDisabled);
 
     // SA-DEAD-4: `#editorSelectPanel`'s "selection details" lookup/toggle
     // removed — the id doesn't exist in the palette markup (a documented

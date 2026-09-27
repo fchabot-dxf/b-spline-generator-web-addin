@@ -438,7 +438,7 @@ export class VectorEditor {
     // bypass is Alt-held (ignored by policies that don't honour it).
     _snap(pt, bypass = false, phase = 'start') {
         // FB-APP F7: snapping follows the frame outline (no grid in the cut-away).
-        return frameSnapGate(this, snapFor(pt, this._grid, this._currentMode, phase, bypass), pt);
+        return frameSnapGate(this, snapFor(pt, this, this._currentMode, phase, bypass), pt);
     }
 
     /** One setter for the grid toolbar: merge a patch, persist, redraw,
