@@ -11,6 +11,7 @@ import { buildDrapeSvg, nextPow2 } from '../core/preview/drape-svg.js';
 import { dbg, isDebugEnabled } from '../core/debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
+import { frameContext } from '../editor/editor-frame-profile.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 
 // SE3a: snapshot of the unified editor document (P.editorSvg) captured
@@ -639,7 +640,7 @@ export function initSvgEditor(preview) {
       return null;
     }
     const manifest = buildSketchManifest(layer.pattern || {}, boardRegion(editor), {
-      layerId: layer.id, sketchName: `Layer ${layer.id}`,
+      layerId: layer.id, sketchName: `Layer ${layer.id}`, frame: frameContext(editor),
     });
     console.log(`[SE15] manifest for layer ${layer.id}:`, manifest);
     return manifest;

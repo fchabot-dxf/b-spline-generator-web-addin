@@ -156,12 +156,29 @@ let _provider = null;
  *  so this editor module never imports app state directly. */
 export function setFrameProfileProvider(fn) { _provider = fn; }
 
+/** F21: the frame as the contour-from-frame consumers need it: `{ defs, record, board }`, or null. */
+export function frameContext(editor) {
+  const spec = _provider ? _provider() : null;
+  return spec && editor ? { ...spec, board: { widthIn: editor._mW, heightIn: editor._mH } } : null;
+}
+
+/** F21: called after every frame (re)draw (a template / handle / Trim offset / thickness change all redraw),
+ *  so something linked to the frame (the Shape Lattice's offset-from-frame contour) can follow it. */
+const _drawnHooks = [];
+export function onFrameProfileDrawn(fn) { if (!_drawnHooks.includes(fn)) _drawnHooks.push(fn); }
+
 /**
  * (Re)draw the cut profile into `editor._bgLayer`. Called at the end of
  * sync3DBackground (which clears that layer) and whenever the frame record
  * changes. A profile that fails the outline guard is NOT drawn.
  */
 export function drawFrameProfile(editor) {
+  const out = _drawFrameProfile(editor);
+  if (editor && editor._bgLayer) for (const fn of _drawnHooks) fn(editor);
+  return out;
+}
+
+function _drawFrameProfile(editor) {
   if (!editor || !editor._bgLayer) return null;
   const old = editor._bgLayer.findOne ? editor._bgLayer.findOne('#' + FRAME_PROFILE_GROUP_ID) : null;
   if (old) old.remove();

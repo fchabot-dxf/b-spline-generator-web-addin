@@ -59,6 +59,7 @@ import {
   primitivesBBox, insetGeneratedPresetPathDToPrimitives, sizedBoardRegion, latticeBoundaryGuide, GUIDE_ROLE,
 } from './editor-lattice-boundary.js';
 import { generateContourSilhouette, primitivesToPathD, PRESETS } from './editor-shape-lattice-generator.js';
+import { contourSilhouette } from './contour-from-frame.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
 /** §6: below this many rails+ties+nodes, every piece gets its own H/V +
@@ -661,8 +662,12 @@ export function manifestFromShape(shape, region, opts = {}) {
   // entities/dims built below already sit on the contour's own true
   // centerline (outside/declared size minus stroke), never the raw,
   // un-inset outside line itself.
-  const result = generateContourSilhouette(region, shape, strokeWidth);
+  // F21: `opts.silhouette` = the caller's already-resolved contour (contour-from-frame.js contourSilhouette);
+  // a frame-offset contour carries its own OUTSIDE region and its merged `corners`.
+  const result = opts.silhouette || generateContourSilhouette(region, shape, strokeWidth);
+  if (result.region) region = result.region;
   const { preset, segments, primitives, params } = result;
+  const corners = result.corners || [];
   const n = segments.length;
   const segMap = primitiveSegmentMap(segments);
 
@@ -734,7 +739,8 @@ export function manifestFromShape(shape, region, opts = {}) {
     constraints.push({ type: 'Coincident', targets: [`${idA}:E`, `${idB}:S`] });
     const isKinkJoint = segments[segMap[i]].style === 'kink' || segments[segMap[j]].style === 'kink';
     const eitherArc = primitives[i].type === 'A' || primitives[j].type === 'A';
-    if (eitherArc && !isKinkJoint) constraints.push({ type: 'Tangent', targets: [idA, idB] });
+    // F21: a merged corner of a frame-offset contour is sharp on purpose (Fred: "merge in corner not a problem")
+    if (eitherArc && !isKinkJoint && !corners.includes(i)) constraints.push({ type: 'Tangent', targets: [idA, idB] });
   }
 
   // Mirror-Equal (§2's own "every right-side entity <-> its LEFT mirror"),
@@ -965,9 +971,9 @@ function shapeHalfInset(pattern) {
 // declared outside size, matching the app's own drawing (properties-shape-
 // lattice.js's own `regenerateSilhouette`) and the manifest's own entities
 // (`manifestFromShape`) exactly — one shared computation, never three.
-function resolveShapeBoundaryExtent(pattern, region) {
+function resolveShapeBoundaryExtent(pattern, region, frame) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
-  const { primitives } = generateContourSilhouette(region, pattern.shape, _effectiveContourStrokeWidth(pattern));
+  const { primitives } = contourSilhouette(pattern, region, _effectiveContourStrokeWidth(pattern), frame);
   const halfInset = shapeHalfInset(pattern);
   // T73 AMEND 3: ALWAYS round-trip through the d-string (even at
   // halfInset===0, insetGeneratedPresetPathDToPrimitives's own
@@ -1131,9 +1137,9 @@ function manifestFromGuide(guide) {
 
 /** The lattice extent `buildSketchManifest` fills (the Shape Lattice's sized contour boundary, else the board
  *  extent), declared once. F17: the drawn-pieces tests read the SAME geometry the generator draws through it. */
-export function latticeExtentFor(pattern, region) {
+export function latticeExtentFor(pattern, region, frame = null) {
   return hasGeneratedSilhouette(pattern)
-    ? resolveShapeBoundaryExtent(pattern, sizedBoardRegion(region, pattern.size))
+    ? resolveShapeBoundaryExtent(pattern, sizedBoardRegion(region, pattern.size), frame)
     : resolveBoardExtent(pattern, region);
 }
 
@@ -1176,7 +1182,7 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // own dimensioned piece, so a `lattice_width`/`lattice_height` parameter
   // would have nothing to drive, just an inert number in Fusion's
   // parameter table.
-  const extent = latticeExtentFor(pattern, region);
+  const extent = latticeExtentFor(pattern, region, opts.frame || null);
   const lattice = manifestFromLattice(pattern, extent, widthMode, opts.drawn || null);
   // T69: the contour's own slot width matches the layer's own REAL
   // rails/ties width (`pattern.widths.rails`, merged over
@@ -1199,7 +1205,8 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   const contourVisible = hasShape && ({ ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) }).show !== false;
   const contourWidthMode = contourVisible ? SKETCH_CONTOUR_WIDTH_MODE : null;
   const shape = contourVisible
-    ? manifestFromShape(pattern.shape, contourRegion, { widthMode: contourWidthMode, strokeWidth: _effectiveContourStrokeWidth(pattern) })
+    ? manifestFromShape(pattern.shape, contourRegion, { widthMode: contourWidthMode, strokeWidth: _effectiveContourStrokeWidth(pattern),
+      silhouette: contourSilhouette(pattern, contourRegion, _effectiveContourStrokeWidth(pattern), opts.frame || null) })
     : { entities: [], constraints: [], parameters: [], dimensions: [], groups: {} };
   // BOUNDARY-GUIDE: the Size box, always sent (both tools, contour on or
   // off), as construction geometry — the SAME record the editor draws.
