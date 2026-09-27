@@ -970,6 +970,17 @@
 }
 
 @media (max-width: 720px) {
+    /* H4 (Fred, phone shot 11:09: "can't scroll the header"): the RIGHT
+       group's own overflow-x:auto (below) already technically scrolls
+       (proven live: scrollLeft moves Cancel/Apply fully into view) -- the
+       real problem is a narrow strip packed edge-to-edge with tappable
+       buttons is a bad swipe target on a real phone, since a touch-start
+       naturally lands ON a button (consuming the gesture as a tap) rather
+       than on empty scrollable track. WRAPPING removes the gesture
+       entirely: once the header's own fixed height is freed (below), the
+       actions group simply drops to its own full-width second row
+       whenever it doesn't fit the first, so Apply Stencils is always
+       just THERE, no scroll needed. */
     #svgEditorHeader {
         flex-direction: row;
         align-items: center !important;
@@ -977,7 +988,9 @@
         padding: 12px 10px;
         gap: 12px;
         width: 100%;
-        flex-wrap: nowrap;
+        flex-wrap: wrap !important;
+        height: auto !important;
+        row-gap: 8px;
     }
 
     #svgEditorHeader h3 {
@@ -994,17 +1007,23 @@
         align-items: center;
     }
 
-    /* MOB2: the button cluster, not the whole header, scrolls when it
-       doesn't fit — Cancel/Apply (the one commit action, per Fred) must
-       always land in the visible portion without the user scrolling, so
-       `order` pins them first while Download/Clear may scroll off to the
-       right. Higher specificity than `#svgEditorHeader>div` above
-       (ID+class beats ID+type) so this overrides its flex:0 0 auto
-       without needing !important. */
+    /* MOB2/H4: the button cluster gets its OWN full-width row instead of
+       squeezing onto the first line — `flex: 1 1 auto` with `min-width:0`
+       (the original MOB2 fix) technically COULD scroll when it doesn't
+       fit, but a flex item is free to shrink all the way to a sliver
+       first, so it never actually wrapped; a narrow scrollable strip
+       packed edge-to-edge with tappable buttons is also a bad swipe
+       target on a real phone (a touch-start lands ON a button, not empty
+       track), which is what Fred's own "can't scroll" report was
+       hitting. `flex: 0 0 100%` forces its own row every time at this
+       breakpoint, so Cancel/Apply are simply always visible, no gesture
+       required; `overflow-x: auto` + `order` below stay as a fallback for
+       whatever narrower device still can't fit them all on one row. */
     #svgEditorHeader > .editor-header-actions {
-        flex: 1 1 auto;
+        flex: 0 0 100%;
         min-width: 0;
         overflow-x: auto;
+        justify-content: flex-end;
     }
 
     #svgEditorHeader > .editor-header-actions > #editorCancel,
@@ -1120,6 +1139,84 @@
        Its sibling `.tool-btn { width: 40px; ... }` rule is removed for the
        same reason (SA-MOBILE-4): consolidated into the single
        @media (pointer: coarse) rule near .tool-btn's base declaration. */
+}
+
+/* =========================================================================
+   H4 (MOB-STEPPERS, Fred: "in general steppers can be bigger on mobile"):
+   ONE declared touch size for every numeric stepper's own −/+ buttons and
+   input, regardless of which of the app's own stepper markups it happens
+   to use — a shared token (`--cad-stepper-touch`), not per-field
+   overrides, applied through three separate selectors because the app has
+   three separate stepper shapes (confirmed by direct inspection, not
+   guessed): `.cad-stepper` (the auto-wrapped sidebar/Lattice-panel/Frame-
+   section/formula-field steppers — `main/ui-bindings.js`'s own
+   `attachNumberSteppers`), `.stepper-container` (the hand-wired main-
+   toolbar Stroke/Font/Expand-Detail steppers, deliberately skipped by
+   that same auto-wrap pass since they already have their own buttons),
+   and `.lattice-piece-width` (the Selected-piece panel's own bare number
+   input, explicitly named in the dispatch even though it has no +/−
+   buttons at all — "a matching input height" still applies to it).
+   `!important` throughout: several of these inputs carry their own
+   inline `style="height:..."` (higher specificity than any bare class
+   selector short of `!important`), matching this file's own established
+   convention for every other mobile override that beats an inline style.
+   ========================================================================= */
+@media (max-width: 720px), (pointer: coarse) {
+    :root {
+        --cad-stepper-touch: 44px;
+    }
+
+    /* .cad-stepper's own base height (24px) is what its button/input
+       `height:100%` rules key off (palette's own inline <style>) — raising
+       just the wrapper's height already cascades to both, EXCEPT for a
+       formula-switched field (core/formula-field.js flips
+       type="number" -> type="text"), which drops out of the palette's own
+       `.cad-stepper input[type="number"]` selector entirely and falls
+       back to base.css's plain text-input rule instead. `.cad-stepper
+       input` (no type qualifier) covers both cases directly, rather than
+       relying on inheritance that only works for one of them. */
+    .cad-stepper {
+        height: var(--cad-stepper-touch) !important;
+    }
+    /* flex: 0 0 <touch>, not a bare width -- a formula-switched input's own
+       flex-grow drops to its 0 1 auto default (its own base rule only
+       targets [type="number"]), so without an explicit flex-shrink:0 here
+       the button and that input compete for the wrapper's space and BOTH
+       shrink below the declared touch size (measured live: 30.5px, not
+       44px, until this was added). */
+    .cad-stepper button {
+        flex: 0 0 var(--cad-stepper-touch) !important;
+        width: var(--cad-stepper-touch) !important;
+        height: var(--cad-stepper-touch) !important;
+        font-size: 18px !important;
+    }
+    .cad-stepper input {
+        flex: 1 1 auto !important;
+        height: var(--cad-stepper-touch) !important;
+        font-size: 14px !important;
+    }
+
+    /* The main toolbar's own Stroke/Font/Expand-Detail steppers: a
+       different, hand-wired markup (`.stepper-container` +
+       `.cad-icon-btn.small`), not touched by the auto-wrap pass above. */
+    .stepper-container {
+        height: var(--cad-stepper-touch) !important;
+    }
+    .stepper-container button {
+        width: var(--cad-stepper-touch) !important;
+        height: var(--cad-stepper-touch) !important;
+        font-size: 18px !important;
+    }
+    .stepper-container input {
+        height: var(--cad-stepper-touch) !important;
+        font-size: 14px !important;
+    }
+
+    /* Selected-piece panel (lattice-piece-panel.js): a bare input, no
+       buttons at all — only "a matching input height" applies. */
+    .lattice-piece-width {
+        height: var(--cad-stepper-touch) !important;
+    }
 }
 
 /* =========================================================================

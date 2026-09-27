@@ -11035,3 +11035,65 @@ freshly-drawn pattern (never had the attribute) and an old saved one still carry
 
 `npx vitest run` -> **1842 passed** (net -1 from 1843 post-F17-merge: one override-identity test retired
 per the reasoning above, three others rewritten in place). Zero regressions elsewhere.
+
+## Turn 300 — epoch 3 — H4: mobile pass (44px steppers, scrollable/wrapping editor header, no ACTIVE LAYER label) — DONE — NO FUSION
+
+Dispatch: Fred, phone screenshot of the Frame section: "in general steppers can be bigger on mobile"; a
+second phone shot (11:09): "can't scroll the header, also no need for the active layer label." Spec:
+ROADMAP.md "MOB-STEPPERS + editor header". Pure HTML/CSS, no JS logic touched — seat C's own F18 work
+(editor-interaction.js) never came close.
+
+**Item 1 — ONE declared touch size for every numeric stepper.** Delegated the markup/CSS survey to a
+research agent first rather than guessing — the app has exactly THREE stepper shapes, not one:
+`.cad-stepper` (the auto-wrapped sidebar/both-Lattice-panels/Frame-section/formula-field steppers —
+`main/ui-bindings.js`'s own `attachNumberSteppers` wraps every `input[type=number]` not marked
+`no-stepper` at boot), `.stepper-container` (the hand-wired main-toolbar Stroke/Font/Expand-Detail
+steppers, deliberately skipped by that auto-wrap pass since they already have their own buttons), and the
+Selected-piece panel's own bare `.lattice-piece-width` input (no buttons at all, explicitly named in the
+dispatch anyway — "a matching input height" still applies). One shared token,
+`--cad-stepper-touch: 44px`, declared inside `@media (max-width: 720px), (pointer: coarse)` in
+`styles/editor.css` (not per-field overrides) and referenced by three targeted selector groups, one per
+shape, all `!important` (several of these inputs carry their own inline `height:` — matching this file's
+own established convention for beating an inline style on mobile).
+
+Real bug found and fixed while verifying live, not by inspection: the FIRST version left `.cad-stepper
+button` sized correctly on paper but measuring **30.5px wide live, not 44px** — a formula-switched field
+(`core/formula-field.js` flips `type="number"` -> `type="text"`) drops out of the palette's own
+`.cad-stepper input[type="number"]` rule (its `flex:1`) entirely, so its `flex` fell back to the default
+`0 1 auto`; with NEITHER the button NOR that input holding a fixed flex-basis, the wrapper's own limited
+width let them compete and both shrink. Fixed with `flex: 0 0 var(--cad-stepper-touch)` (explicit
+`flex-shrink:0`) on the buttons and `flex: 1 1 auto` on `.cad-stepper input` (no type qualifier, so it
+covers a formula-switched field too) — confirmed live, exact 44×44.
+
+**Item 2 — the editor header.** Verified LIVE before touching anything (not assumed): the RIGHT button
+cluster's existing `overflow-x:auto` (a prior MOB2/MOB3 pass) technically already scrolls — setting
+`scrollLeft` programmatically moved Cancel/Apply fully into view — so the mechanism itself isn't broken.
+The real problem: a 116px-wide strip packed edge-to-edge with tappable buttons (undo, redo, ⋯, Cancel,
+Apply) is a bad real-phone swipe target, since a touch-start naturally lands ON a button (consuming the
+gesture as a tap) rather than empty scrollable track — exactly Fred's own "can't scroll" report. Fix:
+`#svgEditorHeader` now wraps (`flex-wrap: wrap`, its own fixed `height:48px` freed to `auto`) and
+`.editor-header-actions` is forced onto its own full-width second row (`flex: 0 0 100%`) instead of
+squeezing onto the first — Cancel/Apply are simply always visible, no gesture required at all. The prior
+`overflow-x:auto` + `order` stay in place as a fallback for an even narrower device.
+
+**Item 3 — remove the "ACTIVE LAYER" label.** The plain caption `<span>Active Layer</span>` in
+`bspline_gen_palette.html`'s header markup, gone — the VALUE pill right next to it (`#editorActiveLayerLabel`,
+showing e.g. "Rails", kept live by `layers.js`'s own `_syncActiveLabel`) is "the layer picker" the dispatch
+says stays; it already names the active layer on its own without the caption. Confirmed before removing:
+no CSS selector, id, or test anywhere in the repo targets this specific `<span>` (it carried no id/class of
+its own) — a clean removal, nothing orphaned. Removed everywhere (desktop included, not gated to the
+mobile breakpoint), matching Fred's own "no need for" framing rather than just hiding it under 720px.
+
+**Item 4 — shots.** New `tools/repro/mob_steppers_shots.mjs` (always 390px mobile-emulated — this feature
+has no separate desktop-facing behaviour to shoot) verifies live: header wraps, Cancel/Apply within the
+viewport with zero horizontal scroll needed, the label gone, the pill intact; a `.cad-stepper` button/input
+and a toolbar `.stepper-container` button both measure >= 44px; the Selected-piece panel's own input
+matches; no `document.documentElement.scrollWidth` overflow past 390px anywhere checked (header, lattice
+panel, Frame section). A separate before-H4 baseline was captured first (`git stash` the label-removal edit
+just long enough to shoot the TRUE pre-turn state, then restored) for an honest before/after comparison,
+matching the checklist's own explicit ask. A separate desktop-viewport check confirms zero effect there:
+the `--cad-stepper-touch` token doesn't even exist outside the media query, stepper button widths measure
+their original small sizes, Cancel/Apply were already visible as before.
+
+`npx vitest run` -> **1842 passed**, unchanged (pure HTML/CSS, no JS logic touched, so no test file needed
+updating either) — zero regressions.
