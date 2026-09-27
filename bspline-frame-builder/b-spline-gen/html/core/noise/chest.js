@@ -2,7 +2,7 @@
  * Anatomical (Chest) 🧘‍♂️🧬
  * A lean torso, skin stretched over bone — a visible ribcage, sternum
  * ridge + xiphoid, costal margin, clavicles, a sunken abdomen with faint
- * ab lines and hip bones, and a real skin layer (fine creases + subtle
+ * ab lines, and a real skin layer (fine creases + subtle
  * pore texture) on top. Front-facing only (this is a height field, not a
  * full 3D body).
  *
@@ -40,27 +40,20 @@
  * half regardless of what the board does with it afterwards).
  *
  * Local coordinates:
- *   dx = su  -- 0 at the sternum centreline, 1 at the torso edge/flank
- *   dy = sv  -- 0 at the neck/top, 1 at the waist/bottom
+ *   dx = su^build  -- 0 at the sternum centreline, 1 at the torso edge/flank
+ *   dy = 1 - sv    -- 0 at the neck, 1 at the waist (sv=0 is the bottom
+ *                     edge of the board as rendered, so the neck end is
+ *                     measured from sv=1 to put it at the top)
  *
- * Composition (skeleton -> skin):
- *   1. Silhouette   — neck, clavicles, deltoids (structural shape only,
- *                     not muscle mass).
- *   2. Sternum ridge — a raised centreline strip, tapering to the xiphoid.
- *   3. Ribcage       — 6-9 curved raised bands (count varies per seed)
- *                      sweeping down-and-out from the sternum, strongest
- *                      at the flanks, fading to near-zero at the centre;
- *                      intercostal grooves are the natural gaps between
- *                      adjacent bands. Angle, spacing, and lateral reach
- *                      also vary per seed (see the T78 AMEND note below).
- *   4. Costal margin — one more prominent arc (curving the OPPOSITE way
- *                      from the ribs -- upward toward the sides) marking
- *                      where the ribcage ends.
- *   5. Abdomen       — SUNKEN (concave), faint ab lines, a hollow navel.
- *   6. Iliac crest   — two ridges jutting at the waist sides.
- *   7. Skin layer    — fine creases/folds across the bands + a subtle
- *                      pore/stretch-texture FBM grain, smoothing every
- *                      transition rather than leaving hard edges.
+ * Composition (skeleton -> skin), in three stacked canvas sections:
+ *   1. Shoulders     — neck, clavicles, deltoids.
+ *   2. Ribcage       — sternum (raised or carved), curved rib bands
+ *                      (strongest at the flanks, fading toward the centre),
+ *                      and the costal margin where the ribcage ends.
+ *   3. Abdomen       — SUNKEN (concave), faint ab lines, a hollow navel.
+ *                      No hip bones (Fred removed them in T78 AMEND 8).
+ *   Skin layer on top of everything — fine creases/folds + a subtle
+ *   pore/stretch-texture FBM grain, smoothing every transition.
  */
 export const id = 'chest';
 export const label = 'Anatomical';
@@ -83,18 +76,9 @@ function gaussianBand(d, width) {
   return Math.exp(-(d * d) / (2 * width * width));
 }
 
-// T78 AMEND (Fred: "I want the structure to reshuffle" -- "angle of ribs,
-// size, extent"): the skeleton was near-fully deterministic across seeds
-// (only fine skin texture varied), which is wrong for a filter that's
-// meant to reroll like every other one. `hashInt`/`seedRandom` (the same
-// integer-bit-mixing technique craterField.js already uses for Moon/Mars,
-// duplicated here rather than shared since chest.js has no natural import
-// relationship with that file) derive a few per-seed structural draws from
-// the caller's own already-seeded `noiseFine`, so the SKELETON itself
-// (not just its surface grain) now varies with the terrain's own seed:
-// rib angle (how steeply they sweep down toward the flank), rib size
-// (spacing between adjacent ribs, i.e. how "long" the ribcage reads), and
-// rib extent (how many ribs / how far down the torso the ribcage runs).
+// Per-seed structural draws from the caller's own seeded noiseFine (raw
+// Perlin output isn't uniform, so it's bit-mixed first -- the same
+// technique craterField.js uses for Moon/Mars).
 function hashInt(x) {
   x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
   x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
@@ -106,6 +90,202 @@ function seedRandom(noiseFine, salt) {
   return hashInt(Math.floor((f * 0.5 + 0.5) * 0xffffffff) | 0) / 4294967296;
 }
 
+// T78 AMEND 8 (Fred): every part varies per seed, in three stacked canvas
+// sections -- shoulders, ribcage, abdomen. A section starts where the one
+// above ends and every part is faded to its own section's window, so no part
+// can draw inside another section. Each section has one LEAD angle; only
+// ANGLES follow a neighbour (costal margin <- ribs),
+// every other parameter is its own independent draw. Levels and tilts are
+// fractions of the section's own height; a part may reach its section's edge
+// and fade there, but never crosses into the next section.
+//
+// name: [salt, min, max]. Salts are fixed per row so adding a row never
+// reshuffles the others. Per-rib rows add the rib index to the salt.
+const VARY = {
+  shouldersHeight:   [1, 0.18, 0.32],
+  ribcageHeight:     [2, 0.60, 0.85],   // fraction of the board left below the shoulders (abdomen gets the rest)
+  build:             [3, 0.65, 1.55],   // lateral power curve: lean .. broad
+
+  // 1. SHOULDERS -- lead angle: clavicle
+  clavicleLevel:     [4, 0.35, 0.65],   // fraction of section, at the centreline
+  clavicleTilt:      [5, -0.60, 0.60],  // fraction of section, centre -> flank
+  clavicleCurve:     [25, 0.6, 2.0],    // tilt shape across the width (dx^p)
+  clavicleWidth:     [6, 0.06, 0.15],   // fraction of section
+  clavicleReach:     [7, 0.2, 1.4],     // lateral decay rate, lower = reaches further
+  clavicleStrength:  [31, 0.5, 1.5],
+  // Fred: keep the current long band, but also allow the look of the old
+  // hip-bone bump -- a short bold bar from partway out to the shoulder.
+  // 0 = long band, 1 = bump; pushed toward the ends so most seeds are one
+  // clear style rather than a blend.
+  clavicleBump:      [46, 0, 1],
+  clavicleBumpStart: [47, 0.15, 0.50],  // dx where the bump bar begins
+  neckWidth:         [8, 20, 70],       // lateral falloff, higher = thinner
+  neckLength:        [9, 0.3, 0.9],     // fraction of section
+  neckStrength:      [30, 0.4, 1.3],
+  deltoidPos:        [10, 0.60, 0.98],
+  deltoidLevel:      [11, 0.20, 0.90],  // fraction of section
+  deltoidSize:       [12, 0.08, 0.32],
+  deltoidStrength:   [32, 0.3, 1.4],
+
+  // 2. RIBCAGE -- lead angle: ribs
+  ribCount:          [13, 3, 8],        // floored -> 3..7 (Fred), capped by the room left
+  // Absolute (board fraction), not a share of the ribcage. Ranges marked
+  // (Fred) below are narrowed to the seeds he approved: seeds 2/3/42/77
+  // ("love these ribs") vs 6/18/11/1/123.
+  ribBend:           [14, -0.07, 0.07], // rise/drop at the flank (Fred)
+  ribCurve:          [26, 1.3, 3.0],    // bend shape across the width (dx^p)
+  ribFan:            [27, -0.25, 0.25], // lower ribs bend more (+) or less (-)
+  ribReach:          [15, 0.05, 0.70],  // dx where ribs reach full strength
+  ribProminence:     [34, 1.0, 1.4],    // (Fred)
+  ribSize:           [41, 0.18, 0.34],  // band width as a fraction of its gap (Fred)
+  // Fred: "a lot more gradual variation". Rib to rib, gaps and thickness
+  // follow a smooth trend down the stack with only a little per-rib jitter;
+  // along each rib, height and thickness swell and thin gradually.
+  ribGapTrend:       [42, -0.45, 0.45], // gaps grow (+) or shrink (-) down the stack
+  ribSizeTrend:      [43, -0.35, 0.35], // ribs thicken (+) or thin (-) down the stack
+  ribGap:            [100, -1, 1],      // per rib: small jitter on the gap trend
+  ribThickness:      [120, -1, 1],      // per rib: small jitter on the size trend
+  ribSwing:          [44, 0.10, 0.55],  // height/thickness change along each rib
+  ribWaves:          [45, 1.5, 2.5],    // swells along each rib (Fred)
+  marginBendJitter:  [16, -0.05, 0.05], // costal margin = lowest rib's bend + this (fraction of section)
+  marginWidth:       [17, 0.012, 0.032],
+  marginStrength:    [35, 0.6, 1.7],
+  // Sternum: depth is an absolute height, negative = carved into the
+  // surface. The range's midpoint is below zero (Fred: "allow the range
+  // median depth to be below surface to look carved").
+  sternumDepth:      [37, -0.20, 0.12],
+  sternumDepthSwing: [38, 0.02, 0.12],  // depth change along its length
+  sternumWidthSwing: [40, 0.0, 0.5],    // width change along its length
+  sternumWaves:      [39, 1.5, 5.0],    // bumps along its length
+  sternumWidth:      [18, 0.015, 0.05],
+  sternumStart:      [19, 0.3, 1.0],    // fraction of the shoulders section
+  sternumEnd:        [20, 0.4, 1.0],    // fraction of the ribcage section
+
+  // 3. ABDOMEN -- lead angle: ab lines (no hip bones, Fred)
+  abLineTilt:        [22, -0.70, 0.35], // fraction of section, centre -> flank
+  navelLevel:        [24, 0.10, 0.60],  // fraction of section
+  navelSize:         [29, 0.6, 1.6],
+};
+
+// Fred: "more spaced". The ribs claim this much room each first; whatever is
+// left is what the bend may use. Every seed Fred marked bad had a mean rib
+// gap <= 0.072; every seed he loved or passed had >= 0.075.
+const MIN_RIB_SPACING = 0.075;
+// Relief reads through slope, so a wide rib at the same height looks flat.
+// Rib height scales with width around this reference, within these limits.
+const RIB_REFERENCE_WIDTH = 0.015;
+const RIB_HEIGHT_LIMITS = [0.8, 3.0];
+
+function vary(noiseFine, [salt, lo, hi], index = 0) {
+  return lo + seedRandom(noiseFine, salt + index) * (hi - lo);
+}
+
+const layoutCache = new WeakMap();
+function layout(noiseFine) {
+  const cached = layoutCache.get(noiseFine);
+  if (cached) return cached;
+  const v = (name, index) => vary(noiseFine, VARY[name], index);
+
+  const h1 = v('shouldersHeight');
+  const h2 = (1 - h1) * v('ribcageHeight');
+  const top2 = h1;
+  const top3 = h1 + h2;
+  const h3 = 1 - top3;
+
+  const clavicleLevel = v('clavicleLevel');
+  const clavicleTilt = v('clavicleTilt');
+  const clavicleCurve = v('clavicleCurve');
+
+  // The ribs claim their spacing first; the bend gets the room that's left,
+  // scaled (not clamped) so the whole bend range shrinks for a crowded
+  // ribcage instead of piling seeds up at a limit. The stack then gives up
+  // exactly as much height as its most-bent rib needs, so every rib's full
+  // curve stays inside the ribcage section. The last slot of the stack is
+  // the costal margin.
+  const ribFan = v('ribFan');
+  const ribCount = Math.max(3, Math.min(Math.floor(v('ribCount')), Math.floor((h2 * 0.92) / MIN_RIB_SPACING) - 1));
+  const bendRoom = Math.max(0, h2 * 0.92 - (ribCount + 1) * MIN_RIB_SPACING);
+  const maxReserve = VARY.ribBend[2] * (1 + Math.abs(ribFan));
+  const ribBend = v('ribBend') * Math.min(1, bendRoom / maxReserve);
+  const reserve = Math.abs(ribBend) * (1 + Math.abs(ribFan));
+  const usable = h2 * 0.92 - reserve;
+  const ribStart = top2 + Math.max(0, -ribBend) * (1 + Math.abs(ribFan));
+  const stackPos = (i) => (i / ribCount) * 2 - 1; // -1 top rib .. +1 costal margin
+  const gapTrend = v('ribGapTrend');
+  const sizeTrend = v('ribSizeTrend');
+  const gaps = [];
+  for (let i = 0; i <= ribCount; i++) gaps.push(Math.max(0.4, 1 + gapTrend * stackPos(i) + 0.12 * v('ribGap', i)));
+  const gapTotal = gaps.reduce((a, b) => a + b, 0);
+  const ribSize = v('ribSize');
+  const ribs = [];
+  let acc = 0;
+  for (let i = 0; i <= ribCount; i++) {
+    acc += gaps[i];
+    const thickness = 1 + sizeTrend * stackPos(i) + 0.08 * v('ribThickness', i);
+    const width = usable * (gaps[i] / gapTotal) * ribSize * thickness;
+    ribs.push({
+      y0: ribStart + usable * (acc - 0.3 * gaps[i]) / gapTotal,
+      width,
+      height: Math.min(RIB_HEIGHT_LIMITS[1], Math.max(RIB_HEIGHT_LIMITS[0], width / RIB_REFERENCE_WIDTH)),
+      bend: ribBend * (1 + ribFan * stackPos(i)),
+      swellRow: 40 + i * 7.1,
+    });
+  }
+  const margin = ribs.pop();
+
+  const sternumStart = h1 * v('sternumStart');
+  const sternumEnd = top2 + h2 * v('sternumEnd');
+  const sternumDepth = v('sternumDepth');
+  const sternumDepthSwing = v('sternumDepthSwing');
+  const sternumWidth = v('sternumWidth');
+  const sternumWidthSwing = v('sternumWidthSwing');
+  const sternumFreq = v('sternumWaves') / (sternumEnd - sternumStart);
+  const alongSternum = (dy, offset) => noiseFine.noise2((dy - sternumStart) * sternumFreq, offset) * 1.4;
+
+  const L = {
+    h1, top2, h2, top3, h3,
+    build: v('build'),
+    clavicleY: (dx) => h1 * (clavicleLevel + clavicleTilt * Math.pow(dx, clavicleCurve)),
+    clavicleWidth: h1 * v('clavicleWidth'),
+    clavicleReach: v('clavicleReach'),
+    clavicleStrength: v('clavicleStrength'),
+    clavicleBump: smoothstep01(0.3, 0.7, v('clavicleBump')),
+    clavicleBumpStart: v('clavicleBumpStart'),
+    neckWidth: v('neckWidth'),
+    neckEnd: h1 * v('neckLength'),
+    neckStrength: v('neckStrength'),
+    deltoidPos: v('deltoidPos'),
+    deltoidY: h1 * v('deltoidLevel'),
+    deltoidSize: v('deltoidSize'),
+    deltoidStrength: v('deltoidStrength'),
+    ribs, ribCount, ribBend, ribFan,
+    ribCurve: v('ribCurve'),
+    ribSwing: v('ribSwing'),
+    ribWaves: v('ribWaves'),
+    ribReach: v('ribReach'),
+    ribProminence: v('ribProminence'),
+    marginApex: margin.y0,
+    marginBend: margin.bend + v('marginBendJitter') * h2,
+    marginWidth: v('marginWidth'),
+    marginStrength: v('marginStrength'),
+    sternumStart, sternumEnd, sternumDepth,
+    sternumDepthAt: (dy) => sternumDepth + sternumDepthSwing * alongSternum(dy, 17.3),
+    sternumWidthAt: (dy) => sternumWidth * Math.max(0.3, 1 + sternumWidthSwing * alongSternum(dy, 29.1)),
+    abLineTilt: v('abLineTilt') * h3,
+    navelY: top3 + h3 * v('navelLevel'),
+    navelSize: v('navelSize'),
+  };
+  layoutCache.set(noiseFine, L);
+  return L;
+}
+export const _layout = layout;
+
+const SECTION_EDGE = 0.025;
+function sectionWindow(dy, from, to) {
+  return smoothstep01(from - SECTION_EDGE, from + SECTION_EDGE, dy)
+    * (1 - smoothstep01(to - SECTION_EDGE, to + SECTION_EDGE, dy));
+}
+
 export const fn = (su, sv, aspect, params, noiseRefs) => {
   const { scale, octaves, roughness, warpIntensity } = params;
   const { noiseFine, noiseWarp } = noiseRefs;
@@ -115,123 +295,60 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   const ribStrength = t.ribStrength ?? 0.14;
   const skinDetail = t.skinDetail ?? 0.06;
 
-  // T78 AMEND (Fred: "I want the structure to reshuffle" -- rib angle/
-  // size/extent/count, then "clavicular same size, extent, angle"; then,
-  // after seeing the first pass, "Thats not a variation palette / They
-  // still look the same" -- the first ranges were real but too narrow to
-  // read as genuinely different bodies at a glance). Per-seed structural
-  // draws, NOT tweaks (they're not user-facing controls, just what makes
-  // the skeleton itself vary with the terrain's own seed instead of only
-  // its surface texture) -- widened substantially, and extended to the
-  // overall torso BUILD (not just the ribs/clavicle), so seeds produce
-  // visibly distinct body types, not the same template with small dials
-  // nudged.
-  const ribCount = 5 + Math.floor(seedRandom(noiseFine, 1) * 8); // 5..12 ribs
-  // Angle allows the OPPOSITE sign too (Fred) -- some seeds curve the ribs
-  // UP toward the flank instead of down, not just varying how steeply they
-  // slope in the one anatomically-typical direction.
-  const ribAngle = -0.38 + seedRandom(noiseFine, 2) * 0.76; // -0.38..0.38, sign varies per seed
-  const ribSize = 0.035 + seedRandom(noiseFine, 3) * 0.065; // spacing between ribs (also scales each rib's own band width)
-  const ribBandWidth = ribSize * 0.26; // stays well under half the spacing (see the T78 tuning note below) regardless of ribSize
-  const ribExtent = 0.16 + seedRandom(noiseFine, 4) * 0.50; // how far laterally ribs must reach before hitting full strength -- smaller = ribs cover MORE of the flank
-  const ribStartY = 0.09 + seedRandom(noiseFine, 5) * 0.14; // where the ribcage begins, just below the clavicles
+  const L = layout(noiseFine);
+  const dx = Math.pow(su, L.build);
+  const dy = 1 - sv;
 
-  // T78 AMEND (Fred: "ribs do go both ways but not clavicul"): the old
-  // range (-0.16..0.16) was too small AND the exp(-dx*clavicleExtent)
-  // decay concentrates the clavicle's own VISIBILITY right near dx=0,
-  // exactly where dx*clavicleAngle is smallest -- the slope had no room
-  // to read before the line faded out. Widened to match rib angle's own
-  // magnitude, and clavicleExtent's own range lowered (slower decay) so
-  // the clavicle stays visible far enough out for the angle to show.
-  const clavicleAngle = -0.35 + seedRandom(noiseFine, 6) * 0.70; // slope from neck to shoulder -- sign varies per seed too
-  const clavicleSize = 7.0 + seedRandom(noiseFine, 7) * 14.0; // band sharpness -- LOWER reads as a bigger/thicker clavicle
-  const clavicleExtent = 0.3 + seedRandom(noiseFine, 8) * 0.9; // lateral decay rate -- LOWER reaches further toward the shoulder
+  // ── 1. SHOULDERS ────────────────────────────────────────────────────
+  const neck = Math.exp(-(dx * dx) * L.neckWidth) * Math.max(0, 1 - dy / L.neckEnd) * 0.20 * L.neckStrength;
+  const bandReach = Math.exp(-dx * L.clavicleReach);
+  const bumpReach = smoothstep01(L.clavicleBumpStart, L.clavicleBumpStart + 0.25, dx);
+  const clavicleReach = bandReach + (bumpReach - bandReach) * L.clavicleBump;
+  const clavicle = gaussianBand(dy - L.clavicleY(dx), L.clavicleWidth) * clavicleReach * 0.24 * L.clavicleStrength;
+  const deltoid = gaussianBand(dx - L.deltoidPos, L.deltoidSize) * gaussianBand(dy - L.deltoidY, L.h1 * 0.22) * 0.18 * L.deltoidStrength;
+  const shoulders = (neck + clavicle + deltoid) * sectionWindow(dy, -1, L.top2);
 
-  // Overall torso BUILD -- a lean build (build<1) pulls the ribcage/
-  // deltoid/sternum features INWARD toward the centreline; a broad build
-  // (build>1) pushes them OUTWARD toward the flank -- a genuinely
-  // different-looking silhouette, not just a rib-count tweak.
-  const build = 0.65 + seedRandom(noiseFine, 9) * 0.9; // 0.65 (lean) .. 1.55 (broad)
-  const sternumWidth = 0.035 + seedRandom(noiseFine, 10) * 0.055; // thin/precise vs broad/soft sternum ridge
-  const deltoidPos = 0.72 + seedRandom(noiseFine, 11) * 0.22; // how far out the shoulder cap sits
-  const deltoidSize = 0.12 + seedRandom(noiseFine, 12) * 0.16; // narrow/defined vs broad/soft shoulder
+  // ── 2. RIBCAGE ──────────────────────────────────────────────────────
+  // The sternum is a centreline strip running from the shoulders into the
+  // ribcage; it can't collide with anything, so it isn't windowed. Its
+  // width is measured on su, not dx: build>1 flattens dx near the centre
+  // and turned it into a wide block.
+  const sternumLength = smoothstep01(L.sternumStart, L.sternumStart + 0.04, dy)
+    * (1 - smoothstep01(L.sternumEnd - 0.06, L.sternumEnd, dy));
+  const sternum = sternumLength > 0
+    ? gaussianBand(su, L.sternumWidthAt(dy)) * sternumLength * L.sternumDepthAt(dy)
+    : 0;
 
-  // su arrives already fold-mirrored by terrain.js (default symmetry:'x'):
-  // 0 at the board centreline, 1 at the board edge. No internal re-fold.
-  // `build` reshapes the lateral distribution itself (a power curve on
-  // su), not just a downstream multiplier, so it changes WHERE features
-  // sit, not only their amplitude.
-  const dx = Math.pow(su, build); // 0 at sternum centreline, 1 at torso edge/flank
-  const dy = sv; // 0 at neck, 1 at waist
-
-  // ── 1. SILHOUETTE (structural shape, not muscle) ────────────────────
-  const neck = Math.exp(-(dx * dx) * 40.0) * Math.max(0, 1.0 - dy * 7.0) * 0.30;
-  // T78 AMEND 3 (Fred: "None of the clavicule are actually going
-  // opposite"): NOT a stale-image issue (confirmed by directly computing
-  // the actual per-seed angle values) -- a real bug. The clavicle line's
-  // own target position is `clavicleBaseY + dx*clavicleAngle`; with the
-  // old base (0.12, close to the board's own dy=0 top edge), a NEGATIVE
-  // angle pushes that target BELOW dy=0 well before dx=1 -- dy can't go
-  // negative, so the line simply clips and fades out near the board edge
-  // instead of visibly curving upward, while a POSITIVE angle has the
-  // entire dy=0..1 range to curve into and reads clearly. The two
-  // directions were never symmetric. Raised the base so there's real room
-  // on BOTH sides for the full clavicleAngle range to curve into.
-  const clavicleBaseY = 0.30;
-  const clavicle = Math.max(0, 1.0 - Math.abs(dy - (clavicleBaseY + dx * clavicleAngle)) * clavicleSize) * Math.exp(-dx * clavicleExtent) * 0.18;
-  const deltoid = gaussianBand(dx - deltoidPos, deltoidSize) * gaussianBand(dy - 0.22, 0.14) * 0.30;
-
-  // ── 2. STERNUM RIDGE + XIPHOID ──────────────────────────────────────
-  // A raised centreline strip from just below the clavicles down to
-  // where the ribcage ends, tapering off (the xiphoid point) rather than
-  // stopping abruptly.
-  const sternumBand = gaussianBand(dx, sternumWidth);
-  const sternumLengthMask = smoothstep01(0.10, 0.16, dy) * (1 - smoothstep01(0.46, 0.58, dy));
-  const sternumRidge = sternumBand * sternumLengthMask * 0.22;
-
-  // ── 3. RIBCAGE (curved bands, strongest at the flanks) ──────────────
-  // Each rib sweeps DOWN and OUT from the sternum (a quadratic arc in dx)
-  // -- ribFrontFade suppresses the whole ribcage near the centreline
-  // (per the reference: "fading toward the front") and the sternum ridge
-  // covers that same region instead.
-  const ribFrontFade = smoothstep01(0.06, ribExtent, dx);
-  const ribJitter = noiseFine.noise2(su * 6.0, sv * 6.0) * 0.012; // organic irregularity, not a perfect arc
+  // A short ramp left a hard vertical edge on wide ribs; keep it gradual.
+  const ribFrontFade = smoothstep01(0.02, L.ribReach + 0.15, dx);
+  const ribJitter = noiseFine.noise2(su * 6.0, sv * 6.0) * 0.012;
+  const bendShape = Math.pow(dx, L.ribCurve);
   let ribcage = 0;
-  for (let k = 0; k < ribCount; k++) {
-    const ribY = ribStartY + k * ribSize + ribAngle * dx * dx + ribJitter;
-    ribcage += gaussianBand(dy - ribY, ribBandWidth);
+  for (const rib of L.ribs) {
+    const swell = 1 + L.ribSwing * noiseFine.noise2(dx * L.ribWaves, rib.swellRow) * 1.4;
+    ribcage += gaussianBand(dy - (rib.y0 + rib.bend * bendShape + ribJitter), rib.width * Math.max(0.4, 1 + 0.6 * (swell - 1)))
+      * Math.max(0, swell) * rib.height;
   }
-  // Ribs fade out again near the very bottom of the ribcage span (the
-  // costal margin below takes over there instead of another plain rib).
-  const ribSpanFade = 1 - smoothstep01(0.50, 0.60, dy);
-  ribcage *= ribFrontFade * ribSpanFade * ribStrength;
+  ribcage *= ribFrontFade * ribStrength * L.ribProminence;
+  const marginY = L.marginApex + L.marginBend * bendShape + ribJitter;
+  const costalMargin = gaussianBand(dy - marginY, L.marginWidth) * ribFrontFade * ribStrength * 1.25 * L.marginStrength;
+  const ribcageSection = (ribcage + costalMargin) * sectionWindow(dy, L.top2, L.top3);
 
-  // ── 4. COSTAL MARGIN (the lower rib-cage arch) ──────────────────────
-  // One more prominent band curving the OPPOSITE way from the ribs above
-  // it (upward toward the flanks), marking the classic inverted-V where
-  // the ribcage ends and the abdomen begins.
-  const marginBaseY = ribStartY + ribCount * ribSize;
-  const marginY = marginBaseY - 0.12 * dx * dx + ribJitter;
-  const costalMargin = gaussianBand(dy - marginY, 0.020) * ribFrontFade * ribStrength * 1.25;
-
-  // ── 5. ABDOMEN (sunken, faint ab lines, hollow navel) ───────────────
-  const abdomenMask = smoothstep01(marginBaseY - 0.02, marginBaseY + 0.10, dy);
+  // ── 3. ABDOMEN (sunken, faint ab lines, hollow navel) ───────────────
+  const abdomenMask = smoothstep01(L.top3 - 0.02, L.top3 + 0.10, dy);
   const abdomenConcavity = -absStrength * abdomenMask * (1 - dx * 0.55);
   const abLineWarp = noiseFine.noise2(su * 3.0, sv * 3.0) * 1.2;
-  const abLines = Math.sin((dy + abLineWarp * 0.03) * 11.0) * absStrength * 0.10 * abdomenMask * (1 - dx * 0.6);
-  const navelDx = dx; const navelDy = dy - 0.80;
-  const navelDist2 = navelDx * navelDx * 30.0 + navelDy * navelDy * 90.0;
-  const navel = -Math.exp(-navelDist2) * absStrength * 0.6;
-  const abdomen = abdomenConcavity + abLines + navel;
+  const abLineDy = dy - L.abLineTilt * dx;
+  const abLines = Math.sin((abLineDy + abLineWarp * 0.03) * 11.0) * absStrength * 0.10 * abdomenMask * (1 - dx * 0.6);
+  const navelDy = dy - L.navelY;
+  const navelSize2 = L.navelSize * L.navelSize;
+  const navel = -Math.exp(-(dx * dx * 30.0 + navelDy * navelDy * 90.0) / navelSize2) * absStrength * 0.6;
+  const abdomenSection = (abdomenConcavity + abLines + navel) * sectionWindow(dy, L.top3, 2);
 
-  // ── 6. ILIAC CREST (hip bones jutting at the waist) ─────────────────
-  const iliacY = 0.90 - dx * 0.16;
-  const iliacCrest = gaussianBand(dy - iliacY, 0.022) * smoothstep01(0.22, 0.55, dx) * ribStrength * 1.1;
-
-  // ── 7. SOFT TISSUE (a gentle flesh layer, not a muscle mound) ───────
+  // ── SOFT TISSUE (a gentle flesh layer, not a muscle mound) ──────────
   const softTissueLayer = gaussianBand(dx - 0.25, 0.55) * gaussianBand(dy - 0.35, 0.45) * softTissue;
 
-  // ── 8. SKIN LAYER (fine creases + pore/stretch texture) ─────────────
+  // ── SKIN LAYER (fine creases + pore/stretch texture) ────────────────
   // T78 tuning: a first attempt used a much higher spatial frequency
   // (26x) which, even at a tiny nominal amplitude, produced a steep
   // per-vertex slope that flat mesh shading turned into a dominant,
@@ -254,6 +371,6 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   const wz = noiseWarp.noise2(su * 2.5 + 5, sv * 2.5 + 2) * swarp;
   const drape = (noiseFine.fbm((su + wx) * f * aspect, (sv + wz) * f, octaves ?? 4, 2.0, roughness ?? 0.5) + 1.0) * 0.5;
 
-  return neck + clavicle + deltoid + sternumRidge + ribcage + costalMargin
-    + abdomen + iliacCrest + softTissueLayer + folds + pores + (drape - 0.5) * 0.08;
+  return shoulders + sternum + ribcageSection + abdomenSection
+    + softTissueLayer + folds + pores + (drape - 0.5) * 0.08;
 };
