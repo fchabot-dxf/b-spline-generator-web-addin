@@ -152,6 +152,10 @@ export const SLIDER_PAIRS = {
     peakShape: 'peakShapeSlider',
     density: 'densitySlider',
     clustering: 'clusteringSlider',
+    // H16 item 4: back after H15 removed them with the whole Seed panel --
+    // the control returns (now in Filter), the P keys never left.
+    seedOffsetX: 'seedOffsetXSlider',
+    seedOffsetY: 'seedOffsetYSlider',
     symOffsetX: 'symOffsetXSlider',
     symOffsetY: 'symOffsetYSlider',
     thickness: 'thickenOffsetSlider',

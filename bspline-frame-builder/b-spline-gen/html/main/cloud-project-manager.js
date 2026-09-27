@@ -172,24 +172,29 @@ export function bindProjectManager(preview) {
     }
   });
 
-  // Unsaved-changes dot in the header (UX1).
-  onDirtyChange((d) => {
-    const el = document.getElementById('dirty-dot');
-    if (el) el.hidden = !d;
+  // H16 (Fred: "no, just a colour vs grey" -- replaces UX1's dirty-dot):
+  // the Save button itself IS the unsaved-changes signal. `.disabled`
+  // (base.css: light grey bg/text/border, `history.js`'s own established
+  // "looks disabled, isn't" pattern for Undo/Redo) toggled by CLASS only
+  // -- never the `disabled` ATTRIBUTE -- so it stays fully clickable
+  // either way. onDirtyChange fires immediately with the current value on
+  // subscription (core/dirty.js), so this also sets the correct initial
+  // state with no separate init call needed.
+  onDirtyChange((dirty) => {
+    const btn = document.getElementById('btnQuickSave');
+    if (!btn) return;
+    btn.classList.toggle('disabled', !dirty);
+    btn.title = dirty ? 'Save' : 'Saved';
   });
 }
 
 function updateNavbarSaveLabel() {
+  // H16: the button's own `title` is now owned entirely by the
+  // onDirtyChange handler above ("Save" / "Saved") -- this function only
+  // sets the visible LABEL text (the filename, or the "Save…" fallback).
   const labelEl = document.getElementById('btnQuickSaveLabel');
-  const btn     = document.getElementById('btnQuickSave');
-  if (!labelEl || !btn) return;
-  if (_currentFile) {
-    labelEl.textContent = _currentFile;
-    btn.title = `Save (overwrite "${_currentFile}") · Ctrl+S`;
-  } else {
-    labelEl.textContent = 'Save…';
-    btn.title = 'No file associated yet — click to choose a name';
-  }
+  if (!labelEl) return;
+  labelEl.textContent = _currentFile || 'Save…';
 }
 
 // ─── Open / Close ─────────────────────────────────────────────────────────────

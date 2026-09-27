@@ -12011,3 +12011,81 @@ errors on load; `.panel-seed`/`#seedType`/`#btnEditSeed`/`#skeletonEditorModal` 
 Shape/Density/Clustering/Symmetry (its pre-existing order, unchanged). Shots of the sidebar (top,
 Generate New Seed -> Stock Dimensions -> Frame with no Seed panel in between) and the Skeleton panel
 (Peak Shape first) in `shots\seatA\`.
+
+## H16 — Save button IS the unsaved-changes signal; #dirty-dot removed; Seed Offset X/Y back in Filter
+
+**Channel note (read this first).** Two corrections arrived as cross-session messages during this turn,
+ahead of `NEXT-SESSION.md`/`amendments` catching up, matching the established precedent from H11/H14 of
+trusting the most-recent live correction: (1) Fred: "no, just a colour vs grey" — replaced the item-1
+badge-dot design with a colour-vs-grey Save button before any dot was ever built; NEXT-SESSION.md's
+checklist text already reflects this. (2) Fred: "sorry, it should go in filter" — item 4's Offset X/Y pair
+goes in **Filter**, not Skeleton. At the time I implemented this, NEXT-SESSION.md's item-4 text still read
+"SEED OFFSET back in the SKELETON section" (unchanged from before the correction) — I followed the
+cross-session message, not the file, and placed the pair in `.panel-filter`. Flagging this explicitly so
+the advisor can correct immediately if the file text is actually the authoritative one and the message was
+stale.
+
+**Items 1-2 — the Save button replaces the dot.**
+- `bspline_gen_palette.html`: removed `#dirty-dot` entirely (was inside `.cad-nav-titlebox`); kept
+  `#fmCurrentFileLabel`. Gave `#btnQuickSave` a `disabled` CSS class + `title="Saved"` in its static markup
+  as the pre-JS fallback, matching `core/dirty.js`'s clean-by-default initial state.
+- `main/cloud-project-manager.js`: the `onDirtyChange` subscriber now toggles `.disabled` (CLASS only,
+  never the `disabled` ATTRIBUTE, so the button stays fully clickable either way) and sets
+  `title = dirty ? 'Save' : 'Saved'`. Reused `.cad-btn.disabled` as-is — an existing, already-declared
+  "looks disabled, isn't" pattern (`base.css`: light grey bg/text/border) already used by
+  `core/history.js`'s Undo/Redo and `editor/editor-ui.js`'s snap toggles — rather than inventing new CSS.
+  `onDirtyChange` fires immediately with the current value on subscription, so this also sets the correct
+  initial state with no separate init call needed. `updateNavbarSaveLabel()` now only sets the label text;
+  the button's `title` is owned solely by the dirty handler. The 2 existing `markClean()` call sites
+  (save-success, load-success) needed no change.
+- `tools/repro/h9_splash_shots.mjs`: its `#dirty-dot` presence check (from H9) would now always read
+  "gone" vacuously since the element no longer exists at all — replaced with an explicit
+  `dirtyDotGone: !document.getElementById('dirty-dot')` check kept as a removal-confirmation assertion
+  (same pattern H15 used for its own removed ids), not silently dropped.
+
+**Item 3 — tests + shots.**
+New `tests/h16-save-dirty-badge.test.js` (5 tests): `#dirty-dot` absent from the DOM; starts clean
+(`.disabled` present, title "Saved"); `markDirty()` turns the badge on (`.disabled` removed, title "Save",
+`disabled` attribute never set); `markClean()` after a save turns it back off; `markClean()` after a load
+does the same. Mutation-tested: commented out the `.disabled` toggle and hardcoded `title = 'Save'` ->
+4 of 5 tests correctly failed; restored to green.
+Live-verified via headless CDP at 390/1366/834px: clean state shows `.disabled` + "Saved" + not actually
+disabled; `markDirty()` flips to no-`.disabled` + "Save" + still not actually disabled; `#dirty-dot` absent
+at every width. Shots in `shots\seatA\` (`H16-item1-3_save-clean_390/1366`,
+`H16-item1-3_save-dirty_390/1366`).
+
+**Discovered but OUT OF SCOPE — flagging for the advisor/Fred, not fixed here.** Live verification first
+failed with the Save button showing dirty ("Save", no `.disabled`) on a completely FRESH page load, before
+any user edit. Traced to `main/param-manager.js:80` — `applyParam()` calls `markDirty()`
+unconditionally, including during the app's OWN boot/init sequence, so every fresh load already reads as
+dirty. Confirmed via a `git stash`-based isolation test (reverting all H16 changes and re-running the same
+check) that this is PRE-EXISTING and unrelated to this turn's work — very likely the actual root cause of
+Fred's original "why is the dot always on" complaint. H16's stated scope is replacing the visual indicator,
+not fixing why the dirty flag fires too eagerly, so I did not touch `param-manager.js`; my own live-
+verification script now calls `markClean()` explicitly right after the splash clears to get a known
+baseline before asserting the clean/dirty cycle. Worth a dedicated follow-up task: guard `applyParam`'s
+`markDirty()` so it doesn't fire during `AppState.isInitializing`.
+
+**Item 4 — Seed Offset X/Y, now in Filter (per the live correction, see channel note above).**
+- `bspline_gen_palette.html`: inserted a `.cad-paired-steppers` Offset X/Y slider pair into
+  `.panel-filter`, right after the Noise Type `<select>`, before Fine Scale — the exact H14 side-by-side
+  slider shape (declared class, reused verbatim: `.cad-label-inline`, `.cad-slider-readout`+`no-stepper`),
+  bound to the same `seedOffsetXSlider`/`seedOffsetYSlider`/`seedOffsetX`/`seedOffsetY` ids H15 had
+  removed. No new params — same P keys the pipeline never stopped reading.
+- `core/state.js`: restored the 2 `SLIDER_PAIRS` entries (`seedOffsetX`, `seedOffsetY`) H15 had removed,
+  now that their DOM ids exist again, placed next to the pre-existing `symOffsetX`/`symOffsetY` entries.
+- Live-verified at 390/834px: the pair resolves inside `.panel-filter` (not `.panel-skeleton`), X/Y sit on
+  one row, both readouts visible, both sliders have real rendered width, no stepper buttons. Shots in
+  `shots\seatA\` (`H16-item4_filter-offset-pair_390/834`).
+
+**Peer FYI absorbed (seat B, H15-removal-chain sweep).** A cross-session message flagged that
+`tools/repro/filter_shots.mjs` still set the seed via `document.getElementById('seed').value = ...`
+(H15 removed that input, so this silently did nothing since H15 landed). Fixed: now calls
+`applyParam('seed', N)` via a dynamic `import('./main/param-manager.js')`, the same mechanism
+`header-controls.js`'s own `btnRandomSeed` handler uses — confirmed `seed` is in `param-manager.js`'s
+`immediateRebuildParams` list, so this still triggers an immediate rebuild exactly like the old DOM-input
+path did. Grepped all of `tools/repro/` for `#seed`/`getElementById('seed'`/`seedType`/`seedOffset`:
+`h10_multiwidth_shots.mjs`'s matches are all H15 removal-CONFIRMATION checks (asserting the ids are gone),
+not stale seed-setting code — left as-is.
+
+`npx vitest run` -> **2083 passed**, zero regressions.
