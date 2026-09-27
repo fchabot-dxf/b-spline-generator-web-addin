@@ -805,6 +805,18 @@
 }
 #latticeWidthUnlinkedFields, #shapeLatticeWidthUnlinkedFields {
     min-width: 120px;
+    /* T81 item 4: Rails/Ties now get their own -/+ stepper (each a real
+       .cad-stepper, min-width:75px, this file's own inline <style>) inside
+       this shared 120px-floor container -- measured live in headless
+       Chrome (with that inline stylesheet loaded, not just editor.css/
+       base.css, or .cad-stepper's own floor is silently missing from the
+       measurement): the row's own flex-wrap below already gives this
+       container more than 120px in practice, so this doesn't currently
+       fire, but it's the same defensive fallback the outer row already
+       uses one level up -- wrap Rails under Ties rather than ever
+       squeezing either below its own floor, if a narrower future context
+       ever left less room than measured today. */
+    flex-wrap: wrap;
 }
 .panel-row-3:has(#latticeWidthNodes),
 .panel-row-3:has(#shapeLatticeWidthNodes) {

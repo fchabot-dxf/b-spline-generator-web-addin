@@ -447,7 +447,18 @@ const _iconRowSetters = [];
 
 function _buildLatticeIconRow(editor, bodyEl, kinds) {
   if (!bodyEl) return;
-  const oldAddRow = bodyEl.querySelector('[data-no-collapse]');
+  // T81 item 4 (Fred screenshot: the OLD "Add [Rail|Tie|Node]" text row
+  // was STILL VISIBLE alongside the new icon row): a panel body can carry
+  // MULTIPLE `[data-no-collapse]` sections (Seed, Fill seed, Add) — a bare
+  // `querySelector('[data-no-collapse]')` matched whichever came FIRST in
+  // the markup (the box Lattice panel's own Seed section, already
+  // display:none from the markup itself), never the real Add row, which
+  // was left completely untouched. Found via the Add row's own stable,
+  // already-unique id (#latticeAddKindGroup) instead of a generic
+  // attribute match; Shape Lattice has no such id, so this still
+  // correctly resolves to null there (unchanged: its icon row becomes the
+  // panel's first child, it never had an Add row of its own to hide).
+  const oldAddRow = bodyEl.querySelector('#latticeAddKindGroup')?.closest('[data-no-collapse]') || null;
   if (oldAddRow) oldAddRow.style.display = 'none';
 
   const row = document.createElement('div');

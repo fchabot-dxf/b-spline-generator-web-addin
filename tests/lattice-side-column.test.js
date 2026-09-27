@@ -67,6 +67,20 @@ function buildFixture() {
     <aside id="editorLatticePanel">
       <div id="editorLatticePanelHeader"><span>Lattice Pattern</span></div>
       <div id="editorLatticePanelBody">
+        <!-- T81 item 4: data-no-collapse AND placed BEFORE Add, matching
+             the REAL page's own order exactly (Seed, then Add) -- this is
+             what let a bare querySelector on that attribute match Seed
+             instead of Add and silently leave Add visible; the fixture
+             used to have only ONE such element (Add), which could never
+             reproduce that collision. -->
+        <div data-no-collapse>
+          <span style="font-weight:600;">Seed</span>
+        </div>
+        ${section('Grid & rails')}
+        ${section('Ties')}
+        ${section('Nodes')}
+        ${section('Colors', '<button id="latticeColorRails" style="background:#c62828;"></button><button id="latticeColorTies" style="background:#f9c80e;"></button><button id="latticeColorNodes" style="background:#1a237e;"></button>')}
+        ${section('Widths')}
         <div data-no-collapse>
           <span style="font-weight:600;">Add</span>
           <div role="group" id="latticeAddKindGroup" class="segmented-group">
@@ -75,12 +89,6 @@ function buildFixture() {
             <button type="button" id="latticeAdd-node" class="editor-fillmode-btn">Node</button>
           </div>
         </div>
-        ${section('Grid & rails')}
-        ${section('Ties')}
-        ${section('Nodes')}
-        ${section('Colors', '<button id="latticeColorRails" style="background:#c62828;"></button><button id="latticeColorTies" style="background:#f9c80e;"></button><button id="latticeColorNodes" style="background:#1a237e;"></button>')}
-        ${section('Widths')}
-        ${section('Seed')}
       </div>
       <div id="editorLatticePanelFooter">
         <button id="latticeGenerate">Generate</button>
@@ -143,17 +151,35 @@ describe('initLatticeSideColumn', () => {
     initLatticeSideColumn(editor);
     // AMEND 1 inserts a new (untagged -- no bold-span first child) icon
     // row: right after the (hidden) old Add div in the Lattice panel
-    // (which HAS one to hide), and as the very first child of the Shape
-    // Lattice panel (which has none).
+    // (which HAS one to hide, found by its own stable id -- T81 item 4 --
+    // not by DOM order, so this holds regardless of where Add sits relative
+    // to Seed/Fill seed, both ALSO `[data-no-collapse]`), and as the very
+    // first child of the Shape Lattice panel (which has no Add row at all).
     const latticeBody = document.getElementById('editorLatticePanelBody');
     const kinds = Array.from(latticeBody.children).map((c) => c.dataset.latticeSection);
-    expect(kinds).toEqual(['neutral', undefined, 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'neutral']);
+    expect(kinds).toEqual(['neutral', 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'neutral', undefined]);
 
     const shapeBody = document.getElementById('editorShapeLatticePanelBody');
     const shapeKinds = Array.from(shapeBody.children).map((c) => c.dataset.latticeSection);
     // T81 item 2: the LAST 'contour' here is the Boundary section -- now its
     // own 'boundary' kind, not an alias for Shape's 'contour' (index 1).
     expect(shapeKinds).toEqual([undefined, 'contour', 'neutral', 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'boundary', 'neutral']);
+  });
+
+  it("T81 item 4 (Fred screenshot: the OLD 'Add [Rail|Tie|Node]' row was still visible alongside the new icon row): the REAL Add row is hidden even though Seed ALSO carries data-no-collapse and comes first in the DOM", () => {
+    initLatticeSideColumn(editor);
+    const latticeBody = document.getElementById('editorLatticePanelBody');
+    const addRow = document.getElementById('latticeAddKindGroup').closest('[data-no-collapse]');
+    expect(addRow.style.display).toBe('none');
+    // non-vacuous: Seed is a DIFFERENT [data-no-collapse] element, earlier
+    // in the DOM, and must NOT be the one a bare attribute-only query would
+    // have matched first -- it stays exactly as the fixture declared it.
+    const seedRow = Array.from(latticeBody.children).find((c) => c.textContent.trim() === 'Seed');
+    expect(seedRow).not.toBe(addRow);
+    expect(seedRow.style.display).not.toBe('none');
+    // the new icon row lands right after the (now-hidden) Add row, not
+    // after Seed.
+    expect(addRow.nextElementSibling.className).toBe('lattice-icon-tool-row');
   });
 
   it('hides the Shape Lattice "Fill seed" section only — the box Lattice Seed section stays visible', () => {

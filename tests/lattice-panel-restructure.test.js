@@ -303,3 +303,42 @@ describe('R7 wiring — Shape Lattice panel (same guarantees, its own ids)', () 
     expect(seed.value).not.toBe(before);
   });
 });
+
+// T81 item 4 (Fred screenshot of the Widths section: "width should have
+// steppers"). main/ui-bindings.js's own attachNumberSteppers auto-wraps
+// every `input[type=number]` in a `.cad-stepper` UNLESS the input (or its
+// closest <label>) carries `no-stepper` -- real markup assertion (same
+// technique this file's own "R7: real markup" describe block above already
+// uses), not a re-test of attachNumberSteppers' own DOM-mutation logic
+// (unchanged, already exercised elsewhere by every OTHER stepper in the app).
+describe('T81 item 4: Widths get the app\'s standard -/+ steppers, in BOTH panels', () => {
+  const WIDTH_INPUT_IDS = [
+    'latticeWidthRails', 'latticeWidthTies', 'latticeWidthLinked', 'latticeWidthNodes',
+    'shapeLatticeWidthRails', 'shapeLatticeWidthTies', 'shapeLatticeWidthLinked', 'shapeLatticeWidthNodes',
+  ];
+
+  it('none of the Widths inputs (or their label) opt out of the stepper any more', () => {
+    for (const id of WIDTH_INPUT_IDS) {
+      const input = DOC.getElementById(id);
+      expect(input, id).toBeTruthy();
+      expect(input.classList.contains('no-stepper'), id).toBe(false);
+      expect(input.closest('label')?.classList.contains('no-stepper'), id).toBeFalsy();
+    }
+  });
+
+  it('non-vacuous: the link toggle itself is not a number input, and a genuinely-opted-out field elsewhere in the same panel still is', () => {
+    // Seed's own field keeps ITS opt-out (RAIL-SPACING R7: hidden, not
+    // stepper-related) -- proves the check above can actually FAIL, not
+    // just vacuously pass because no-stepper was removed everywhere.
+    const seed = DOC.getElementById('latticeSeed');
+    expect(seed.closest('[data-no-collapse]')).toBeTruthy();
+  });
+
+  it('step stays 0.05in and the existing min="0" clamp is kept on every one', () => {
+    for (const id of WIDTH_INPUT_IDS) {
+      const input = DOC.getElementById(id);
+      expect(input.getAttribute('step'), id).toBe('0.05');
+      expect(input.getAttribute('min'), id).toBe('0');
+    }
+  });
+});
