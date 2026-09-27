@@ -11,12 +11,13 @@
  * engine the Shape Lattice uses solves it (no second copy of the math), and
  * the F5 outline guard must pass before anything is drawn.
  */
-import { generateSilhouette, outlineDefects, primitivesToPathD, paramsFromShapeModel } from './editor-shape-lattice-generator.js';
+import { generateSilhouette, outlineDefects, primitivesToPathD, primitiveToPathD, paramsFromShapeModel } from './editor-shape-lattice-generator.js';
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { offsetOutlineInward } from './outline-offset.js';
 import { shapeParamOverrides, frameHandles } from './frame-handles.js';
 import { frameColorFor } from '../core/color-utils.js';
-import { handleKindVisual, drawParamHandle } from './editor-transform-handles.js';
+import { handleKindVisual, drawParamHandle, drawSegmentHighlight } from './editor-transform-handles.js';
+import { controlledSegments } from './editor-shape-lattice-interaction.js';
 
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
 export const FRAME_GRID_CLIP_ID = 'frame-grid-clip';
@@ -239,6 +240,15 @@ function _drawFrameProfile(editor) {
   if (editor._editorTab === 'frame') {
     const tpl = (spec.defs.templates || []).find((t) => t.id === prof.templateId);
     editor._frameHandles = frameHandles(tpl, prof, _param(tpl, spec.record, 'frame_thickness') ?? 0);
+    // T81 item 1 look, now in the Frame tab too (Fred: "How about highlighting the geometry it control"):
+    // the hovered/held handle's own outline segment and its mirror, under the handles.
+    const activeKey = editor._frameHandleDrag || editor._frameHandleHover;
+    if (activeKey && tpl) {
+      for (const i of controlledSegments(tpl.silhouettePreset, activeKey, prof.primitives.length)) {
+        const d = primitiveToPathD(prof.primitives[i]); // OPEN, no closing Z (a chord would show)
+        if (d) drawSegmentHighlight(g, d, FRAME_HANDLE_RADIUS * 1.2).addClass('frame-handle-highlight');
+      }
+    }
     for (const h of editor._frameHandles) {
       // T81 item 1: the SAME declared hover/press look Shape Lattice's own
       // param handles use (editor-transform-handles.js) -- frame-panel.js

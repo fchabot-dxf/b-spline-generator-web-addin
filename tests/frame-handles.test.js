@@ -224,6 +224,19 @@ describe('Frame tab: dragging a handle through the shield', () => {
     expect(getFrameRecord().seeds).toEqual({}); // a hover writes nothing
   });
 
+  it('hovering a handle highlights the outline it controls, both sides (Fred: "How about highlighting the geometry it control")', () => {
+    setEditorTab('frame');
+    const g0 = ed._bgLayer.findOne('#frame-profile');
+    const idlePaths = g0.children.filter((c) => !c.isCircle && !c.isSquare).length;
+    const h = ed._frameHandles.find((q) => q.key === 'waistRadius');
+    fire('pointermove', h.anchor.x, h.anchor.y);
+    expect(ed._frameHandleHover).toBe('waistRadius');
+    const g = ed._bgLayer.findOne('#frame-profile');
+    expect(g.children.filter((c) => !c.isCircle && !c.isSquare).length).toBe(idlePaths + 2); // the waist arc + its mirror
+    fire('pointermove', h.anchor.x + 5, h.anchor.y + 5);
+    expect(ed._bgLayer.findOne('#frame-profile').children.filter((c) => !c.isCircle && !c.isSquare).length).toBe(idlePaths);
+  });
+
   it('moving off a handle clears the hover look', () => {
     setEditorTab('frame');
     const h = ed._frameHandles.find((q) => q.key === 'waistReach');

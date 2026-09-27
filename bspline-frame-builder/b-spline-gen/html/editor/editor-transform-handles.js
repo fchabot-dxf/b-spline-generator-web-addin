@@ -269,6 +269,16 @@ export function drawParamHandle(layer, vis, x, y, strokeWidth) {
     return layer.circle(vis.radius * 2).center(x, y).fill(vis.fill).stroke({ color: vis.stroke, width: strokeWidth });
 }
 
+/** T81 item 1: the hover highlight on the geometry a handle controls -- ONE
+ *  declared look (accent blue, translucent, round caps) drawn by both handle
+ *  systems (Shape Lattice, Frame tab) over the path `d`, `width` wide. */
+export const HANDLE_SEGMENT_HIGHLIGHT_OPACITY = 0.45;
+export function drawSegmentHighlight(layer, d, width) {
+    return layer.path(d).fill('none')
+        .stroke({ color: HANDLE_HOVER_FILL, width, opacity: HANDLE_SEGMENT_HIGHLIGHT_OPACITY, linecap: 'round' })
+        .attr('pointer-events', 'none');
+}
+
 /** The shared handle cursor for whichever handle system is hovered or
  *  being dragged -- ONE set of classes (bspline_gen_palette.html) toggled on
  *  the canvas container, so a Shape Lattice handle and a Frame handle set the

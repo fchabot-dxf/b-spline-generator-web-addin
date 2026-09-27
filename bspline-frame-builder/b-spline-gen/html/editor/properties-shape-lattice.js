@@ -28,8 +28,8 @@ import {
     PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges, SHAPE_PARAM_KEYS,
 } from './editor-shape-lattice-generator.js';
 import { setEditorStatusHint } from './editor-ui.js';
-import { boardRegion, computeParamHandles, mirrorSegmentIndex, HANDLE_SEGMENT_INDEX } from './editor-shape-lattice-interaction.js';
-import { handleKindVisual, drawParamHandle, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
+import { boardRegion, computeParamHandles, mirrorSegmentIndex, controlledSegments } from './editor-shape-lattice-interaction.js';
+import { handleKindVisual, drawParamHandle, drawSegmentHighlight } from './editor-transform-handles.js';
 import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
 import { openColorMosaic, pickColorDiffering } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
@@ -486,6 +486,16 @@ export function paramHandleRecords(editor) {
  *  for shapeLatticeHandler.start's own segment-tap branch (editor-
  *  interaction.js) to select the SAME element it just resolved a segment
  *  index for -- one lookup, not a second copy of this same find(). */
+/** The number of drawn contour segments (the highest stamped index + 1). */
+function _contourSegmentCount(editor) {
+    if (!editor._sketchLayer) return 0;
+    let n = 0;
+    for (const ch of editor._sketchLayer.children().toArray()) {
+        if (ch && ch.node && ch.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR)) n = Math.max(n, Number(ch.node.getAttribute(CONTOUR_SEG_INDEX_ATTR)) + 1);
+    }
+    return n;
+}
+
 export function _contourSegmentEl(editor, index) {
     if (!editor._sketchLayer) return null;
     // Number(), not a bare `===` -- same convention hasContourSegmentColor
@@ -535,13 +545,12 @@ export function renderShapeLatticeHandles(editor) {
     for (const r of records) {
         const active = editor._shapeHandleHover === r.key || editor._shapeLatticeDragKey === r.key;
         if (active) {
-            const segIndex = HANDLE_SEGMENT_INDEX[preset]?.[r.key];
-            const segEl = segIndex != null ? _contourSegmentEl(editor, segIndex) : null;
-            const d = segEl ? segEl.attr('d') : null;
-            if (d) {
-                editor._handleLayer.path(d).fill('none')
-                    .stroke({ color: HANDLE_HOVER_FILL, width: strokeW * 6, opacity: 0.45, linecap: 'round' })
-                    .attr('pointer-events', 'none');
+            // the segment it controls AND its mirror (Fred: "How about
+            // highlighting the geometry it control" -- the param moves both sides)
+            for (const segIndex of controlledSegments(preset, r.key, _contourSegmentCount(editor))) {
+                const segEl = _contourSegmentEl(editor, segIndex);
+                const d = segEl ? segEl.attr('d') : null;
+                if (d) drawSegmentHighlight(editor._handleLayer, d, strokeW * 6);
             }
         }
         // F27 item 2: the handle's declared KIND picks its mark (radius =

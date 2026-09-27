@@ -278,3 +278,14 @@ export function mirrorSegmentIndex(i, n) {
   if (i === n / 2 - 1 || i === n - 1) return i;
   return n - 2 - i;
 }
+
+/** The contour segments a handle's drag reshapes, for its hover highlight
+ *  (T81 item 1; Fred: "How about highlighting the geometry it control"): its
+ *  HANDLE_SEGMENT_INDEX segment AND that segment's mirror (the param drives
+ *  both sides), deduped for a self-mirrored one. `n` = segment count. */
+export function controlledSegments(preset, key, n) {
+  const i = HANDLE_SEGMENT_INDEX[preset]?.[key];
+  if (i == null || !(n > 0)) return [];
+  const m = mirrorSegmentIndex(i, n);
+  return m === i ? [i] : [i, m];
+}

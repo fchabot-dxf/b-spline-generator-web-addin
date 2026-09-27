@@ -147,12 +147,14 @@ describe("T81 item 1: hovering a Shape Lattice handle", () => {
     // the LIVE waist segment's own drawn `d` (segment index 2). (F27 item 2:
     // these look tests use the Waist reach, a POSITION handle -- a white
     // square when idle; the Shoulder is a blue radius circle, see below.)
-    const waistSeg = editor._sketchLayer.children().toArray().find((e) => e.attr('data-contour-seg') === 2);
-    expect(waistSeg).toBeTruthy();
+    // Fred: "How about highlighting the geometry it control" -- the param moves BOTH sides, so the
+    // waist AND its mirror (hourglass: segment 2 and 8) light up.
+    const seg = (i) => editor._sketchLayer.children().toArray().find((e) => e.attr('data-contour-seg') === i);
+    expect(seg(2)).toBeTruthy();
+    expect(seg(8)).toBeTruthy();
     const overlays = overlayPaths(editor);
-    expect(overlays.length).toBe(1);
-    expect(overlays[0].store.d).toBe(waistSeg.attr('d'));
-    expect(overlays[0].store.stroke).toBe(HANDLE_HOVER_FILL);
+    expect(overlays.map((o) => o.store.d).sort()).toEqual([seg(2).attr('d'), seg(8).attr('d')].sort());
+    for (const o of overlays) expect(o.store.stroke).toBe(HANDLE_HOVER_FILL);
   });
 
   it('moving off the handle clears the hover look and the overlay', async () => {
@@ -195,7 +197,7 @@ describe("T81 item 1: hovering a Shape Lattice handle", () => {
     const rec = editor._paramHandles.find((r) => r.key === 'cornerRadiusBottom');
     h.hover(editor, { x: rec.hx, y: rec.hy });
     const hipSeg = editor._sketchLayer.children().toArray().find((e) => e.attr('data-contour-seg') === 3);
-    expect(overlayPaths(editor)[0].store.d).toBe(hipSeg.attr('d'));
+    expect(overlayPaths(editor).map((o) => o.store.d)).toContain(hipSeg.attr('d'));
   });
 
   it('switching mode away from Shape Lattice clears the hover and the cursor (same rule as the snap/grid hover)', async () => {

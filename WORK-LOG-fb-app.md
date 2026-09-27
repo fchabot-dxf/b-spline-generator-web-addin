@@ -3059,3 +3059,9 @@ Full vitest 2384/2384. Shot: scratchpad shots/handles-v3.
 - Radius handle cursor, Fred: "For radius ... No just a normal cursor": `paramHandleCursorAxis` gives a radius
   handle 'plain' (class `handle-axis-plain` -> cursor: default, hover and drag); position handles keep ew/ns-resize.
   The handle itself still grows + turns accent blue on hover.
+- Hover highlight of the controlled geometry, Fred: "How about highlighting the geometry it control". The
+  Shape Lattice already drew T81 item 1's accent overlay on the ONE segment a handle reshapes; now (a) the Frame
+  tab does too (it had none), and (b) both highlight the segment AND its mirror, since every param moves both
+  sides (`controlledSegments`, editor-shape-lattice-interaction.js). One declared look, `drawSegmentHighlight`
+  (editor-transform-handles.js). Frame segments use `primitiveToPathD` (open) -- the closing Z of
+  `primitivesToPathD` drew a chord across the arc (caught in the headless shot). Shots: scratchpad handles-v5.
