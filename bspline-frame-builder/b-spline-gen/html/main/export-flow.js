@@ -35,7 +35,8 @@ import {
 } from '../editor/editor-sketch-manifest.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
-import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer } from '../editor/editor-lattice-pattern.js';
+import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer, _findBoundaryElements } from '../editor/editor-lattice-pattern.js';
+import { primitiveFromContourD } from '../editor/editor-contour-cut.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -180,6 +181,20 @@ function _drawnPiecesForLayer(editor, pattern, layerId) {
     return { rails: lines('rail', 'rails'), ties: lines('tie', 'ties'), nodes };
 }
 
+/** F27 (Fred: "the scissors tool doesn't cut contour, it should"): the contour's own pieces AS DRAWN --
+ *  the SAME "send as drawn" reasoning as `_drawnPiecesForLayer` above (a rail/tie drag writes the DOM only;
+ *  a contour CUT does too, via editor-cut-tool.js), applied to the boundary's own N per-segment `<path>`
+ *  elements (T73/SE14b, `_findBoundaryElements`, in their own `CONTOUR_SEG_INDEX_ATTR` order) instead of the
+ *  generator's fresh, un-cut output. `null` when there is no boundary shape at all (buildSketchManifest then
+ *  falls back to its own existing regenerate-fresh path, unchanged). */
+function _drawnContourPrimitives(editor, shapeId) {
+    if (!shapeId) return null;
+    const els = _findBoundaryElements(editor, shapeId);
+    if (!els.length) return null;
+    const primitives = els.map((el) => primitiveFromContourD(el.attr('d')));
+    return primitives.every(Boolean) ? primitives : null; // decline gracefully on an unreadable d, never throw
+}
+
 export function _fusionLayerManifest(editor, l) {
     if (!editor || l.id == null) return null;
     // T76 (SE17): the pattern may live on a DIFFERENT layer than `l` itself
@@ -200,6 +215,7 @@ export function _fusionLayerManifest(editor, l) {
     if (kind) {
         const perKind = splitManifestByKind(pattern, boardRegion(editor), {
             drawn: _drawnPiecesForLayer(editor, pattern, l.id),
+            drawnContour: _drawnContourPrimitives(editor, pattern.boundary && pattern.boundary.shapeId),
             frame: frameContext(editor), // F21: an offset-from-frame contour follows the frame
         });
         const manifest = perKind[kind];
@@ -209,6 +225,7 @@ export function _fusionLayerManifest(editor, l) {
     return buildSketchManifest(pattern, boardRegion(editor), {
         layerId: l.id, sketchName: `Layer ${l.id}`,
         drawn: _drawnPiecesForLayer(editor, pattern, l.id),
+        drawnContour: _drawnContourPrimitives(editor, pattern.boundary && pattern.boundary.shapeId),
         frame: frameContext(editor),
     });
 }

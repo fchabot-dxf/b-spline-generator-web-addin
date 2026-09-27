@@ -2627,3 +2627,194 @@ Shots: `shots/seatC/1035_F26item2_{web-disabled,fusion-ready,fusion-sending,fusi
 - **Cleanup:** the static server (8096) and its headless Chrome profiles stopped; `proc_health.py watch` clean.
 - **Capacity:** OK, small item, finished in the same wake as item 1 per the amendment's own instruction
   (landed as an amendment to poll, not a fresh dispatch to wait for).
+
+## F27 item 1 -- scissors cuts the contour -- 2026-09-27
+
+**Ball: worker (seat C) - epoch 3 - F27.**
+
+**RESUME HERE (usage-limit-cutoff warning, absorbed as an amendment mid-turn):** item 1 is COMPLETE --
+implemented, tested at every level (JS unit/DOM/manifest, Python manifest, real-Chrome acceptance, live
+Fusion), documented (CUT-TOOL-DESIGN.md section 12), full suite green (2260/2260), committing now.
+F27-item-2 (frame radius handles) and F27-item-3 (stripe tool, + its own ADD amendment) are NEW checklist
+items pushed to NEXT-SESSION-fb-app.md mid-turn -- NOT started, next wake's own task, one-task-per-wake.
+
+### The model actually built (Fred corrected it live, mid-turn, through a chain of amendments)
+The dispatch first asked for the SAME model as rails (closed loop: first cut "opens" it, second "splits" it).
+I built that model first (own header framing in editor-contour-cut.js, a "closed loop stays connected through
+1st/2nd cut" test). Fred corrected it through 7 amendments (each superseding the last, relayed live) down to a
+FINAL RULING: any contour cut (line or arc) is a COLOUR BOUNDARY ONLY -- the ring's own shape/connectivity
+never changes, cutting only ever splits ONE segment's own primitive into two selectable/colourable curves at
+the exact point it was always drawn through. A CLARIFICATION then narrowed "structure never changes"
+correctly: the GEOMETRY does split into two real entities; what's invariant is that neither half becomes an
+independently-draggable piece (the contour has no chain-drag machinery at all, deliberately). A SIMPLIFY
+ruling settled the arc case: "they're simply arcs sharing their center point" -- no new machinery. Rewrote the
+wrong "opens/splits the loop" framing (editor-contour-cut.js's own header, one test file's describe-block
+titles) to the corrected model before committing -- a stale WRONG design narrative left in the codebase is
+worse than none. Full amendment text kept in this session's own transcript, not re-quoted here.
+
+### What's ALREADY correct despite the wrong first model
+The mechanics (split one primitive into two sharing a point; merge two adjacent primitives back) are IDENTICAL
+under both models -- only the DESCRIPTION was wrong, not the code. No rework needed for: `_cutContourAt`/
+`_joinContour`'s split/merge/reindex/segmentColors bookkeeping (editor-cut-tool.js), `splitContourPrimitive`/
+`mergeContourPrimitives` (editor-contour-cut.js, new file), the Fusion "send as drawn" wiring (below). The
+contour was ALREADY N per-segment `<path>` elements before any cut (T73/SE14b) -- there was never a "closed
+loop that needs opening"; that framing was purely wrong narrative, never wrong behaviour.
+
+### Declared, not hand-rolled
+`CUT_KIND` (editor-cut-tool.js): `{ rail: 'structural', tie: 'structural', line: 'structural', contour:
+'colour' }` -- names the distinction Fred's ruling draws, rather than leaving it implicit in the
+`isContourPath` dispatch branch. `cutKindOf(el)` reads it.
+
+### Fusion: "send as drawn" -- needed ZERO new machinery for the cut geometry itself
+`manifestFromShape` (editor-sketch-manifest.js) already builds one Slot/ArcCenterSlot entity per PRIMITIVE plus
+a Coincident at every adjacent-primitive boundary (wraparound included) -- a cut segment becoming two DOM
+pieces is just one more primitive in that SAME list, so it earns its own entity + its own new Coincident for
+free ("one slot per contour piece", the FUSION EXPORT ruling). An arc's two cut halves are two ordinary
+ArcCenterSlots sharing the SAME centre/radius/width (SIMPLIFY ruling) -- ArcCenterSlot already carries its own
+startAngleDeg/sweepDeg, confirmed by reading the code, not assumed.
+- `main/export-flow.js`: new `_drawnContourPrimitives(editor, shapeId)` reads the LIVE boundary elements
+  (`_findBoundaryElements`) and parses each one's own `d` (`primitiveFromContourD`, new) -- the SAME "P1 send
+  as drawn" gap CUT-TOOL-DESIGN.md's own P1 item already fixed for rails/ties, mirrored here for the contour.
+  Wired into `opts.drawnContour` at both `_fusionLayerManifest` call sites.
+- `editor-sketch-manifest.js`: `_drawnContourSilhouette(freshSil, drawnPrimitives)` -- byte-identical to
+  `freshSil` (same object) when the count matches (the common, uncut case: zero risk, zero cost); otherwise
+  substitutes primitives, synthesizes plain segments, clears `corners`. `opts.noMirror` (new) skips the
+  Mirror-Equal pass for a cut contour -- its post-cut primitive count/positions no longer match the
+  generator's own symmetric index pairing (decline rather than guess, same shape as the existing kink-pairing
+  narrowing). `buildSketchManifest` wires `cut = drawnContour.length !== freshSil.primitives.length` and picks
+  the drawn silhouette + `noMirror` only then.
+
+### A real, live-caught bug this surfaced (not inferred from reading code)
+`properties-shape-lattice.js`'s `detectShapeLatticeDetach` (T59, pre-F27) used to treat ANY segment-count
+mismatch as unconditional proof of a hand-edit (`shape.source` -> 'picked', so Regenerate/Shape-panel edits
+never touch that boundary again) -- true before F27, wrong now that a cut is a sanctioned way for the count to
+differ. The false 'picked' silently broke "Regenerate clears cuts": `regenerateSilhouette`'s own
+`reuseExisting` check then read false, so a cut contour's OLD pieces were left orphaned in the DOM (never
+removed) while 12 brand-new ones were minted alongside them -- caught by running my own acceptance script
+against the real app (`tools/repro/contour_cut_acceptance.mjs`: `regenerateClearsCuts.backToOriginal: false`,
+count 25 not 12), then root-caused with 5 throwaway debug scripts (deleted, not committed) tracing
+`existing.length`/`countMatches`/`shape.source` at each step, down to a `console.log` planted directly in
+`regenerateSilhouette`'s own removal loop (also removed before committing). Fixed: the equal-count case keeps
+the ORIGINAL exact string comparison unconditionally (so a hand-edit that appends an extra subcommand without
+changing element count is still caught -- `primitiveFromContourD` only ever reads a segment's own FIRST
+command, so a primitive-only compare alone would have missed exactly this, caught by a pre-existing test the
+first time a blanket replacement was tried); the count-mismatch case undoes every outstanding cut first
+(`collapseContourCuts`, new, editor-contour-cut.js -- repeated adjacent `mergeContourPrimitives` until stable,
+the SAME merge math a real Join already uses) before comparing against the fresh generator output.
+
+### F27 item 1 ADD (mid-turn amendment, Fred: "I'd like the colour of one segment to change right away ... it
+also helps to know where I cut"): every scissors cut (contour AND rails/ties) immediately recolours the piece
+on the FAR side of the cut from the segment's own start (declared consistently: `cutAt`/`_cutContourAt` always
+hand `[first, second]` in that order; `second` always wins) to a colour differing from BOTH its new cut sibling
+AND whatever already touches its own far end (a true free end has no second constraint). Part of the SAME
+undo step (called before `_commit`).
+- **Shared colour-pick helper, as instructed**: `pickColorDiffering(neighbours, rng)` -- checked origin/main
+  first for seat B's own T81 item 3 (randomize segment colours); it exists only on `origin/lane-b`
+  (`79b58cc`), not yet merged to main. Per the dispatch's own "if seat B hasn't landed it, declare the helper
+  yourself and tell me so B reuses it": declared `pickColorDiffering` in `editor-color.js` (draws from the
+  app's ONE declared palette, `VECTOR_COLORS.flat()`) as the single-pick primitive; did NOT build
+  `randomSegmentColorSet` myself (that's seat B's own T81 item 3 feature, out of my scope) -- flagging for
+  the advisor: when lane-b merges, seat B's own `randomSegmentColorSet` should be refactored onto THIS
+  `pickColorDiffering` rather than keeping two independent "pick unlike its neighbours" implementations.
+- Merged `origin/main` into `fb-app` mid-turn (clean, no conflicts, +11 files: layer drag-to-reorder H22,
+  etc.) to check for T81 item 3 before declaring my own copy.
+- `_touchingColorAt(editor, point, exclude)` (new, editor-cut-tool.js): the current colour of whatever OTHER
+  cuttable piece's own end sits at a point -- kind-agnostic, used to find the "far neighbour" a rail/tie's cut
+  must also differ from (a contour's far neighbour is resolved by array-order sibling lookup instead, captured
+  BEFORE the reindex loop shifts numeric indices, never by this geometric scan).
+- Contour: writes BOTH the live DOM stroke and `segmentColors[]` (the field `regenerateSilhouette`'s own
+  per-segment repaint already reads) -- no second colour store. Rail/tie: the existing override mechanism
+  (`applyColorOverride`, editor-piece-override.js) -- so a later "recolour all rails" sweep still skips it,
+  same as a manual pick. A plain (non-lattice) line: a direct stroke write (no "layer default" to preserve
+  behind it, matching Direct-edit's own `setColor`).
+
+### Tests (mutation-tested throughout -- stash/disable, confirm red, restore; see each file for exact counts)
+- `tests/editor-contour-cut.test.js` (new, 10 tests): pure primitive math against REAL generated primitives
+  (round-trip through `primitiveToPathD`, split/merge exactness, non-vacuous refusal checks). Two real findings
+  documented in-file: the `_fmt` 3-decimal rounding floor, and arc-CENTRE reconstruction's own numerical
+  instability for a large-radius near-flat arc (measured, not assumed -- a first version failed by 0.03in at
+  5-decimal precision; fixed by checking ENDPOINTS instead, which `arcCenterParam` reproduces exactly).
+- `tests/editor-cut-tool-contour.test.js` (new, 12 tests incl. the 2 F27-item-1-ADD "differs from both
+  neighbours" tests added this pass): DOM-level cut/join/snap/cutIntent, closed-loop invariance through
+  multiple cuts (reworded off the wrong "opens/splits" framing), the recolour behaviour with a seeded rng.
+- `tests/cut-tool.test.js` (+2 rewritten for the ADD, +1 new "differs from both neighbours"): rail cutAt no
+  longer asserts stroke is copied verbatim (it's now intentionally recoloured) -- fixed to assert the NEW
+  correct behaviour, with a seeded rng for determinism, not weakened.
+- `tests/editor-sketch-manifest.test.js` (+2, M1/M2): a cut contour's manifest gets exactly one more seg
+  entity, one new Coincident at the cut, mirror-Equal skipped (M1, via `buildSketchManifest`); a cut ARC
+  becomes two ArcCenterSlot entities sharing centre/radius/width whose sweeps partition the original exactly
+  plus a Coincident (M2, via `manifestFromShape` directly -- carve placement reduces ArcCenterSlot to a
+  3-point Arc3PointSlot with no separate centre/radius fields left to compare). Cut at a DELIBERATELY
+  non-midpoint fraction (0.3, not 0.5) -- a midpoint cut would let a "always halves the sweep" mutation pass
+  by coincidence; measured this directly (the first draft used 0.5 and a real mutation slipped through).
+- `tests/properties-shape-lattice.test.js` (+1): `detectShapeLatticeDetach` tolerates a genuine cut
+  (count-mismatch, collapses back to the fresh primitives) but still catches a genuine hand-edit at EQUAL
+  count (the exact regression the naive fix introduced and this test caught before it shipped).
+- `bspline-frame-builder/b-spline-gen/test_sketch_manifest_builder.py` (+1, Python, the REAL builder, fake
+  adsk): `_cut_arc_contour_manifest` -- 4 pieces (2 Slot lines + 2 Arc3PointSlot, the cut arc's own two
+  halves), `addCenterToCenterSlot` x2 + `addThreePointArcSlot` x2, 4 Coincident, zero parity mismatches.
+- Full JS suite: 130 files / 2260 passed (net +18 vs the post-origin/main-merge baseline of 2242: my own new
+  tests, net of the origin/main merge's own +16).
+- Full Python suite (test_sketch_manifest_builder.py): 44/44.
+
+### Real-input acceptance (Chrome, real pointer events) + live Fusion
+`tools/repro/contour_cut_acceptance.mjs` (new): Shape Lattice hourglass, Generate, real cut-tool taps (not
+simulated events) on a LINE and an ARC contour segment -- each split proven SHAPE-PRESERVING (every untouched
+sibling's own `d` byte-identical; the two new halves reconstruct the original's exact start/end) -- real taps
+re-JOIN both, colour the re-cut line's two halves differently via the real `setColor` path, undo/redo each
+verified, Regenerate clears every cut back to N=12. `ok:true`. This is the run that CAUGHT the
+`detectShapeLatticeDetach` bug (see above) -- built BEFORE the fix, red, fixed, green again, re-run clean
+after the item-1-ADD amendment landed too (colours differ post-cut, in-band with the rest of the script's own
+assertions).
+Shots: `shots/seatC/1050_F27contourcut_*.png` (0_generated, 1_line_cut, 2_arc_cut, 3_line_joined,
+4_both_joined, 5_recoloured, 6_regenerated).
+
+**Live Fusion (Fred's own rule: clean origin/main scratch worktree only for a full DEPLOY -- not needed here,
+reasoning below):** `sketch_manifest_builder.py` was NOT modified by F27 at all -- the entity-dispatch code
+this feature exercises (Slot/Arc3PointSlot/Coincident) is long-established, pre-F27, and was ALREADY the
+currently-deployed version at `%AppData%\...\API\AddIns\bspline-frame-builder\`. Verified this first
+(`sys.modules['sketch_manifest_builder'].__file__`) before treating a direct call as safe. Called
+`build_constrained_sketch` directly against the CURRENTLY-OPEN (pre-existing, not mine) Fusion document with
+the exact `_cut_arc_contour_manifest()` fixture -- REAL Fusion API, not the Python test's fakes: 4 entities
+created, 0 skipped, 0 parity mismatches, maxErr 0.0. Screenshot confirms a clean, continuous band (2 line
+slots + 2 arc slots), no gap/overlap at the cut seam. Deleted the one sketch I added afterward (the document
+itself pre-existed this session, not mine to close). No deploy step at all -- nothing of mine ever touched
+the AddIns folder, satisfying the "never leave a deployed add-in on your branch code" rule trivially (there
+was nothing to leave). Shot: `shots/seatC/1051_F27_live_fusion_cut_arc_contour_top.png`.
+
+### Docs
+`CUT-TOOL-DESIGN.md`: fixed the now-false "Contour paths ... are not cut by this tool" line; added section 12
+(the full corrected model, the amendment chain summarized, the `detectShapeLatticeDetach` bug, the Fusion
+reasoning, disclosed out-of-scope).
+
+### Out of scope, disclosed (not silently narrowed)
+Chain-drag semantics for the contour (joint-slide, stretch) -- the contour has no independent position to drag
+at all, on purpose (never wired into editor-lattice-chains.js); nothing in the checklist or any amendment
+asked for it. Rail/tie-to-contour attachment survival through a cut (`aContourHit`/`bContourHit`,
+`_resolveBoundaryPrimitives`) was REASONED as safe (it re-joins ALL live boundary segments' own `d` into one
+combined path before insetting, agnostic to how many pieces there currently are) but not given its OWN
+dedicated new test this turn -- pre-existing T51/T73 machinery, untouched by F27's own diff.
+
+### Amendments absorbed this turn (recorded here per the usage-limit-cutoff instruction, not just consumed
+from the mailbox)
+1. MODEL CORRECTION -- drop closed-loop/opens-it framing, already-N-pieces.
+2. ARC SLOTS (superseded by #3).
+3. ARC RULING -- arc colour-only, lines structural (superseded by #4).
+4. FINAL RULING -- ALL contour cuts (line+arc) colour-only; rails/ties stay structural. (#2/#3 superseded.)
+5. CLARIFICATION -- geometry DOES split into two curves; structure/draggability is what's invariant.
+6. FUSION EXPORT -- one slot per contour piece, arc pieces split too, verify live.
+7. SIMPLIFY -- a cut arc = two ordinary centre-point arc slots sharing one centre; no new arc-angle primitive.
+8. F27-item-1 ADD -- immediate recolour of the far side, shared colour-pick helper. Built, tested, this entry.
+9. F27-item-2 (frame radius handles) and F27-item-3 (+ its own ADD, stripe tool) -- NEW checklist items,
+   pushed to NEXT-SESSION-fb-app.md, NOT started (next wake, one task at a time).
+10. Usage-limit-cutoff warning -- this entry's own RESUME HERE header, committing/pushing immediately.
+
+### Cleanup
+5 throwaway `/tmp/debug_regen*.mjs` root-cause scripts deleted (not committed). A temporary `console.log` in
+`regenerateSilhouette` (properties-shape-lattice.js) removed before committing. The static server (8097) and
+every headless Chrome profile (`chrome-contourcut-*`, `chrome-dbg*`) to be stopped after this commit/push.
+
+### Capacity
+Heavy turn (the wrong-model rebuild + the amendment chain + a real live-caught bug + the item-1-ADD amendment
+landing mid-turn), but finished cleanly in one wake -- no half-applied state. Given the usage-limit-cutoff
+warning, re-arming the waiter immediately after pass rather than starting F27-item-2/3.

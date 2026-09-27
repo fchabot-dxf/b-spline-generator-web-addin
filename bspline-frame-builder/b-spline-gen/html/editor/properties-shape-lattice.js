@@ -33,6 +33,7 @@ import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundar
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
 import { contourSilhouette, contourFromFrameOf, hasFrame, CONTOUR_FROM_FRAME_DEFAULTS } from './contour-from-frame.js';
+import { primitiveFromContourD, collapseContourCuts } from './editor-contour-cut.js';
 import { frameContext, onFrameProfileDrawn } from './editor-frame-profile.js';
 import { viewScale } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
@@ -526,12 +527,37 @@ export function detectShapeLatticeDetach(editor) {
     // hand-edit of ANY one of them (a NODE-mode drag moving its endpoint,
     // now that a segment is a real, selectable element) is still real
     // divergence and still flips this to 'picked', same as a single-path
-    // hand-edit always did; a segment COUNT mismatch is unconditionally a
-    // divergence too (regenerateSilhouette always keeps the two in sync,
-    // so this can only mean something ELSE touched the DOM).
+    // hand-edit always did. The SAME-COUNT case keeps the exact original
+    // string comparison unconditionally (a hand-edit that APPENDS an extra
+    // subcommand rather than moving the existing one's endpoint changes
+    // the `d` string without changing the element count at all --
+    // `primitiveFromContourD` only ever reads a segment's OWN first command,
+    // so a primitive-level compare alone would miss exactly this hand-edit;
+    // caught by this file's own pre-existing test the first time this was
+    // tried, not assumed).
     const expected = primitives.map((prim) => primitiveToPathD(prim));
-    const diverged = segEls.length !== expected.length
-      || segEls.some((segEl, i) => segEl.attr('d') !== expected[i]);
+    let diverged;
+    if (segEls.length === expected.length) {
+      diverged = segEls.some((segEl, i) => segEl.attr('d') !== expected[i]);
+    } else {
+      // F27 (Fred: "the scissors tool doesn't cut contour, it should" --
+      // FINAL RULING: a contour cut is a colour boundary only, never a
+      // detach): a segment COUNT mismatch alone is no longer unconditional
+      // proof of a hand-edit -- a live-caught bug
+      // (tools/repro/contour_cut_acceptance.mjs: Regenerate silently
+      // stopped clearing cuts, because this exact "count changed" read was
+      // flipping shape.source to 'picked' right after a cut, which then
+      // makes regenerateSilhouette's own reuseExisting check false,
+      // orphaning the cut pieces instead of replacing them) is a SANCTIONED
+      // way for the count to differ now, so every outstanding cut is
+      // undone first (`collapseContourCuts`, the SAME merge math a real
+      // Join tap uses) before comparing -- a genuine hand-edit still fails
+      // this (its own pieces don't merge back into the fresh generator's
+      // own primitives), a mere cut doesn't.
+      const collapsed = collapseContourCuts(segEls.map((segEl) => primitiveFromContourD(segEl.attr('d'))))
+        .map((prim) => primitiveToPathD(prim));
+      diverged = collapsed.length !== expected.length || collapsed.some((d, i) => d !== expected[i]);
+    }
     if (diverged) shape.source = 'picked';
 }
 
