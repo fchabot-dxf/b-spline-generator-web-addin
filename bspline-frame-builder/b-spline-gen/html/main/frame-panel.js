@@ -15,8 +15,9 @@
  * every shortcut, and the focus rule dims whichever side is not being edited
  * (editor-frame-profile.js setEditorFocus; display only).
  */
-import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam } from '../core/frame-record.js';
-import { P } from '../core/state.js';
+import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload } from '../core/frame-record.js';
+import { P, isFusionMode } from '../core/state.js';
+import { setFusionStatus } from '../core/fusion-bridge.js';
 import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
 import { handleDragPatch } from '../editor/frame-handles.js';
@@ -61,6 +62,39 @@ export function setEditorTab(tab) {
 }
 export const getEditorTab = () => _editorTab;
 
+/**
+ * FB-APP S5 (F10): the [Send frame] button's state, from the record. The
+ * "needs a B-spline body" check is the add-in's (it knows the document) and
+ * comes back in `frame_result`.
+ */
+export function frameSendState(defs, record, inFusion) {
+  if (!findFrameTemplate(defs, record?.templateId)) return { enabled: false, hint: 'Pick a frame template to send it.' };
+  if (!inFusion) return { enabled: false, hint: 'Open this app from the Fusion add-in to send the frame.' };
+  const seeded = Object.keys(record.seeds || {}).length;
+  return { enabled: true, hint: seeded
+    ? `Sends the frame to Fusion. ${seeded} handle shape change(s) are not sent yet: Fusion builds the template's own shape.`
+    : 'Sends the frame to Fusion (replaces the previous frame). Send B-spline first.' };
+}
+
+/** Press [Send frame]: the frame record as the payload [Send frame] reads (fb_engine/send_frame.py). */
+export function sendFrame() {
+  const payload = framePayload(FRAME_DEFS, getFrameRecord());
+  if (!payload) return false;
+  adsk.fusionSendData('send_frame', JSON.stringify(payload));
+  setFusionStatus('Sending the frame to Fusion...', 'busy');
+  return true;
+}
+
+/** The add-in's reply to [Send frame]. */
+export function onFrameResult(data) {
+  let r = {};
+  try { r = typeof data === 'string' ? JSON.parse(data || '{}') : (data || {}); } catch (_) { r = { ok: false, error: 'Unreadable reply from Fusion.' }; }
+  if (!r.ok) { setFusionStatus(r.error || 'The frame was not sent.', 'warn'); return r; }
+  const notApplied = r.seeds && r.seeds.count && !r.seeds.applied ? ` (${r.seeds.count} handle change(s) not applied)` : '';
+  setFusionStatus(`Frame built in Fusion: ${r.frame}${notApplied}`, notApplied ? 'warn' : 'ok');
+  return r;
+}
+
 /** Push the current record into the section (and the editor, if open). */
 export function syncFramePanel() {
   const rec = getFrameRecord();
@@ -82,6 +116,9 @@ export function syncFramePanel() {
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${tpl.name.split(' - ').pop()}` : '— none';
+  const send = frameSendState(FRAME_DEFS, rec, isFusionMode);
+  if ($('btnSendFrame')) $('btnSendFrame').disabled = !send.enabled;
+  if ($('frameSendHint')) $('frameSendHint').textContent = send.hint;
 
   const warn = $('frameFitWarning');
   if (warn) {
@@ -170,6 +207,7 @@ export function initFramePanel() {
   woodSel.addEventListener('change', () => { setFrameRecord({ appearance: woodSel.value }); syncFramePanel(); });
   $('frameBottomZ')?.addEventListener('change', (e) => { setFrameRecord({ frameBottomZ: parseFloat(e.target.value) }); syncFramePanel(); });
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
+  $('btnSendFrame')?.addEventListener('click', () => sendFrame());
   _wireHandleDrag();
   // The fit warning (and the editor's profile) depend on the board size.
   for (const id of ['widthIn', 'heightIn']) $(id)?.addEventListener('change', () => syncFramePanel());

@@ -790,6 +790,39 @@ def _ordered_svg_layer_import_plan(layers, design_available):
 
 
 # ── Palette HTML event handler ────────────────────────────────────────────────
+# ── FB-APP S5 (F10): [Send frame] ─────────────────────────────────────────────
+# The frame engine module the add-in root loads fresh and injects here, the
+# same way it injects it into the Frame Builder palettes (bspline-frame-builder.py).
+frame_engine = None
+
+# The body [Send frame] extrudes the bars to: the solid 'panel' in
+# "B-Spline Set" / "Clean", the hierarchy _handle_generate and
+# _normalize_occurrence build (their own literals, not re-declared there).
+BSPLINE_SET_NAME = "B-Spline Set"
+CLEAN_COMPONENT_NAME = "Clean"
+PANEL_BODY_NAME = "panel"
+
+
+def _find_bspline_core_body(design):
+    """The B-spline body in assembly context (its occurrence's proxy), or None."""
+    if design is None:
+        return None
+    for occ in design.rootComponent.occurrences:
+        if occ.component.name != BSPLINE_SET_NAME:
+            continue
+        for child in occ.childOccurrences:
+            if child.component.name != CLEAN_COMPONENT_NAME:
+                continue
+            for body in child.bRepBodies:
+                if body.name == PANEL_BODY_NAME and body.isSolid:
+                    return body
+    return None
+
+
+def _frame_builder_dir():
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frame-builder')
+
+
 class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
     def __init__(self):
         super().__init__()
@@ -881,6 +914,12 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 except Exception as e:
                     _log(f'ERROR: Failed to parse chunked JSON payload: {e}')
                     if ui: ui.messageBox('Failed to parse STEP payload.')
+                return
+
+            # ── send_frame — FB-APP S5 (F10): the frame on its own ───────────
+            if action == 'send_frame':
+                data = json.loads(htmlArgs.data) if htmlArgs.data else {}
+                self._handle_send_frame(data)
                 return
 
             # ── generate — single-shot (small payloads / legacy) ─────────────
@@ -1011,6 +1050,34 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _log(f'UNHANDLED EXCEPTION in palette handler:\n{tb}')
             if ui:
                 ui.messageBox('Palette HTML event failed:\n{}'.format(tb))
+
+    def _handle_send_frame(self, payload):
+        """FB-APP S5 (F10): fb_engine.send_frame does the work (delete the
+        previous frame by attribute, rebuild through the palettes' own entry
+        points); this finds the B-spline body this add-in created, records the
+        send in last_send.json and reports back to the palette."""
+        try:
+            from fb_engine import send_frame as fb_send, solid_coordinator
+            from fb_engine.template_resolver import resolve_template
+            from fb_utils.fb_logger import DebugLogger
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            result = fb_send.send_frame(
+                design, payload, _find_bspline_core_body(design), DebugLogger(_frame_builder_dir()),
+                resolve_template=resolve_template,
+                build_sketch=frame_engine.build_sketch_logic_v3,
+                build_solid=solid_coordinator.build_solid_logic_v3)
+        except Exception as e:
+            _log(f'SEND FRAME crashed: {e}\n{traceback.format_exc()}')
+            result = {'ok': False, 'error': f'Send frame failed: {e}', 'deleted': [], 'frame': None,
+                      'fit': None, 'seeds': None}
+        _log(f'SEND FRAME result: {result}')
+        _merge_last_send_key('frame', {'payload': payload, 'result': result})
+        try:
+            pal = app.userInterface.palettes.itemById(PALETTE_ID)
+            if pal:
+                pal.sendInfoToHTML('frame_result', json.dumps(result, default=str))
+        except Exception as e:
+            _log(f'SEND FRAME could not report back: {e}')
 
     def _handle_generate(self, data, step_text=None):
         """

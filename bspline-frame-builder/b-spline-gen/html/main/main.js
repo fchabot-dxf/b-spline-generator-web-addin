@@ -33,7 +33,7 @@ import { initApp, initSvgEditor } from './app-init.js';
 import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
 import { initSkeletonEditor } from './skeleton-editor.js';
-import { initFramePanel } from './frame-panel.js';
+import { initFramePanel, onFrameResult, syncFramePanel } from './frame-panel.js';
 import { bindHeaderAndSettings } from './header-controls.js';
 import { wireGlobalEvents } from './global-events.js';
 import {
@@ -122,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function onFusionDetected() {
     fusLog('Fusion 360 Mode Detected');
     document.body.classList.add('fusion-mode');
+    syncFramePanel(); // FB-APP S5: [Send frame] is enabled in Fusion mode only
     const dlBtn = document.getElementById('btnDownloadAddin');
     if (dlBtn) dlBtn.style.display = 'none';
     const headerBtn = document.getElementById('btnDownload');
@@ -167,6 +168,7 @@ function handleFusionHandshake(ev) {
         return;
     }
     if (action === 'import_success') { setFusionStatus('Imported into Fusion ✓', 'ok'); return; }
+    if (action === 'frame_result') { onFrameResult(ev.detail.data); return; } // FB-APP S5: [Send frame]
 
     if (action === 'pong') return;
 
