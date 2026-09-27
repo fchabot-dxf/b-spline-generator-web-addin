@@ -1220,8 +1220,14 @@
            keeps the 44px touch HEIGHT and only narrows the -/+ buttons'
            WIDTH, so it needs its own token, separate from
            --cad-stepper-touch (which every button/input height rule below
-           still keys off unchanged). */
-        --cad-stepper-btn-width: 32px;
+           still keys off unchanged).
+           H11 item 0 (Fred: "make the stepper even narrower"): 32px -> 24px,
+           so Stock Dimensions' Width/Height pair fits side by side even on
+           iPad's fixed 260px sidebar (2x24 + a 40px input floor + an 8px gap
+           = 96px per column x2 + gap = 200px, comfortably under the
+           sidebar's ~232px usable width) instead of needing
+           .cad-paired-steppers to wrap them onto separate rows. */
+        --cad-stepper-btn-width: 24px;
     }
 
     /* .cad-stepper's own base height (24px) is what its button/input
@@ -1260,14 +1266,16 @@
        .cad-stepper inside ONE of these instead of using .cad-stepper
        directly, with the exact same desktop-width-cap defect.
        H10: 128px was 2×44px buttons + a 40px input floor; now that the
-       buttons are --cad-stepper-btn-width (32px) wide, the real floor is
-       2×32+40=104px -- kept a little above that (112px) as a safety
-       margin against border/padding rounding, verified live rather than
-       trusted to arithmetic alone. */
+       buttons are --cad-stepper-btn-width wide, the real floor tracks that
+       token + the 40px input floor -- kept a little above the exact sum as
+       a safety margin against border/padding rounding, verified live
+       rather than trusted to arithmetic alone.
+       H11 item 0: --cad-stepper-btn-width dropped 32px -> 24px, so this
+       floor drops with it: 2×24+40=88px, +8px margin = 96px. */
     .cad-stepper,
     .cad-nested-input {
         height: var(--cad-stepper-touch) !important;
-        min-width: 112px !important;
+        min-width: 96px !important;
     }
     /* flex: 0 0 <btn-width>, not a bare width -- a formula-switched input's
        own flex-grow drops to its 0 1 auto default (its own base rule only
@@ -1308,8 +1316,13 @@
         flex-wrap: wrap;
     }
     .cad-paired-steppers > div {
-        flex: 1 1 112px;
-        min-width: 112px;
+        /* H11 item 0: kept in sync with .cad-stepper's own floor above --
+           at 96px+96px+8px gap=200px this now fits inside iPad's 260px
+           fixed sidebar (~232px usable) without ever needing to wrap, but
+           the wrap stays as a self-adapting safety net for any narrower
+           sidebar this hasn't been measured against. */
+        flex: 1 1 96px;
+        min-width: 96px;
     }
 
     /* The main toolbar's own Stroke/Font/Expand-Detail steppers: a

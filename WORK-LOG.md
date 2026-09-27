@@ -11576,3 +11576,54 @@ script — oneRow, stepper-clip, label-line, seed-hidden — mutation-tested thi
 the pre-H10 baseline tree (`git stash` of the HTML/CSS, scripts kept), all passing again after `stash pop`,
 confirmed byte-identical to the pre-stash files. `npx vitest run` -> **1973 passed**, unchanged (pure
 HTML/CSS, no JS logic touched). Shots at all 5 widths in `shots\seatA\`.
+
+---
+
+Dispatch: epoch 3 — H11: HANDLE-REACH (measure which bound stops Hip/Shoulder; manual drags to the true
+geometric limit; Generate keeps its 0.1-0.9 band). NEXT-SESSION.md, spec ROADMAP.md "HANDLE-REACH".
+
+**Items 1-3 REASSIGNED mid-task (amendment, "Fred: 'can't C pick up some?'"): HANDLE-REACH moved to seat C**
+(its own frame code — `frame-handles.js`, `feasibleParamRanges`, `FRAME_MIN_OPENING_IN`, the FRAME-GEN
+band). Reverted my uncommitted edit to `editor-shape-lattice-generator.js` (`git checkout --`) before this
+landed anywhere near a commit, and deleted my scratch measurement script — nothing from items 1-3 is in
+this turn's diff. For whoever on seat C picks this up: before landing on "the arbitrary UI slider bound
+`[0.04, 0.95]` in `BASE_RANGES.hourglass.cornerRadiusTop/cornerRadiusBottom` is the thing currently
+stopping Shoulder/Hip, not `FRAME_MIN_OPENING_IN` or the `[0.1, 0.9]` Generate band (confirmed: neither is
+referenced by the drag-clamp path for these two keys at all)" — measured live for template_1 on a 7x9
+board at the default record: `feasibleParamRanges(...).cornerRadiusTop = {min: 0.04, max: 0.95}` pre-fix,
+vs. the geometric formula's own `(sMax-rw)/hw` evaluating to ~2.57 at the same point — `waistRadius`
+already gets the correct geometry-only treatment two lines above it in the same function
+(`_optionalRange`'s `_range(0, Infinity, geoLo, geoHi)`, no arbitrary ceiling) and is proof the pattern is
+already known-good in this file; `cornerRadiusTop`/`cornerRadiusBottom` just never got it when F12 split
+them off the old shared `cornerRadius`. I did not commit or push any of this — a fresh `git diff` against
+this exact geometric fix would reproduce cleanly from the numbers above if it's still wanted.
+
+**My H11 is now ONLY layout item 0** (amendment, Fred from `h10_834.png`: "width and height can be on the
+same line no?" + "make the stepper even narrower"): H10's `.cad-paired-steppers` wrap (added because 32px-
+wide -/+ buttons needed 112px per column, and 2x112+8=232px didn't fit iPad's fixed 260px sidebar's ~236px
+usable width) was doing its job but Fred wants them on ONE line instead of stacked, given there's still
+room to shrink the buttons further. Dropped `--cad-stepper-btn-width` 32px -> 24px (height unchanged,
+still keyed off `--cad-stepper-touch`/44px — same H10 rule, just the token's value); the dependent floor
+(`.cad-stepper`/`.cad-nested-input` min-width, `.cad-paired-steppers > div`'s own floor) recomputed
+2x24+40(input)=88px, +8px margin = 96px, kept in sync between both rules exactly like H10 did.
+2x96+8(gap)=200px now fits comfortably inside the sidebar's ~236px (260px `--cad-sidebar-width` minus
+`--cad-panel-body-padding`'s 12px x2) — Width/Height stay side by side at every tested width.
+
+**"State that breakpoint" (amendment's own ask) — there isn't one in this app's actual layout regimes.**
+The sidebar is a FIXED 260px (`--cad-sidebar-width`) at every viewport from 700px up to any width tested
+(768/834/1024/1366 all use the identical fixed sidebar, not a viewport-scaled one) — its ~236px usable
+width already clears the 200px needed with room to spare, so nothing between 700px and 1366px (or wider)
+can ever trigger the wrap. Below the 700px stacking breakpoint the sidebar becomes viewport-width-driven
+instead (full width minus padding), which only gets MORE room the narrower it goes down to any realistic
+phone width. `.cad-paired-steppers`'s `flex-wrap` fix from H10 is kept in place regardless (self-adapting,
+costs nothing) as a safety net for a sidebar width this app doesn't currently render anywhere, rather than
+removed as dead code — a future `--cad-sidebar-width` change would just start using it again for free.
+
+**Verification.** Re-ran `tools/repro/h10_multiwidth_shots.mjs` (all 5 widths, unchanged since H10 — no
+script edits needed, its existing stepper-clip/label-line/seed-hidden/oneRow checks all still apply
+directly): ALL CHECKS PASSED, Width/Height both report `inputW:50` side by side at every iPad width
+(768-1366) instead of H10's `inputW:141` stacked. Re-ran `main_header_shots.mjs` too — unchanged, Carve
+Depth's buttons now read 24px (was 32px) confirming the token took effect there as well. `npx vitest run`
+-> **1973 passed**, unchanged (pure CSS, no JS logic touched). Shots at 390 and 834 in `shots\seatA\`
+(`h11_item0_390.png`, `h11_item0_834.png`) as requested; 768/1024/1366 also captured during the
+`h10_multiwidth_shots.mjs` re-run for the same reason H10 kept all five.
