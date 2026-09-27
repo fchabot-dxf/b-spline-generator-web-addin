@@ -10853,3 +10853,41 @@ template via setFrameProfileProvider, not a stub); a never-generated pattern no-
 adjacency constraint fails the adjacency test.
 Shot (real rendered before/after, seeded for reproducibility): shots/seatB/t81-randomize-segment-colors.png.
 Verify: 2241/2241 vitest. Commit 7641a86. NO FUSION.
+
+## T81 item 4 — Widths get steppers; the old Add row is now genuinely hidden
+
+Fred screenshot 1: "width should have steppers". Rails/Ties (linked and unlinked), the combined "Rails & ties"
+field and Node size all carried `no-stepper` in both panels -- an opt-out from a stale reason (MOB2: the panel
+was 220px wide then, no wrap fallback existed). Neither holds any more (widened to 236px; UI2-FIX already added
+a min-width/flex-wrap fallback for exactly this row). First measurement attempt loaded only editor.css/base.css
+and concluded 120px vs a "genuine 126px need" for the unlinked pair -- WRONG: `.cad-stepper`'s own base rule
+(min-width:75px, flex-shrink:0) lives in the PALETTE's own inline `<style>`, missing from that harness, so every
+stepper's real footprint was under-measured. Caught before it reached a permanent comment; re-measured with the
+real inline stylesheet loaded too: linked fits at exactly 216/216px, unlinked's own pair fits at 186px (each
+stepper 90px) inside its 186px-wide container -- zero clipping either way, no wrap actually needed today. Kept
+one more flex-wrap fallback on the unlinked-fields container anyway (same defensive shape the outer row already
+has one level up), documented as an unfired safety net, not a fabricated number.
+
+Fred screenshot 2 (same shot): the OLD "Add [Rail|Tie|Node]" text row was STILL VISIBLE under Widths, alongside
+the new icon row from T80 item 2. Root cause, found by direct source reading: a lattice panel body can carry
+MULTIPLE `[data-no-collapse]` sections (Seed, Fill seed, Add) -- `_buildLatticeIconRow`'s own `oldAddRow =
+bodyEl.querySelector('[data-no-collapse]')` matched whichever came FIRST in the DOM. In the box Lattice panel
+that's Seed (line-ordered before Add in the real markup, already display:none from ITS OWN inline style) -- so
+the code hid the already-hidden Seed row (a no-op) and inserted the new icon row right after IT, while the REAL
+Add row was never touched and stayed fully visible. Fix: find Add through its own already-unique, stable id
+(#latticeAddKindGroup -> .closest('[data-no-collapse]')) instead of DOM order. Shape Lattice has no such id, so
+its own behavior (icon row = first child, no Add row to hide) is unaffected. The existing "tags every real
+section" test's own fixture had only ONE `[data-no-collapse]` element total (Add) -- structurally unable to
+reproduce this collision; reordered to match the real page (Seed before Add, BOTH data-no-collapse) so it
+actually exercises the bug now, and a new dedicated regression test asserts the real Add row (found via its own
+id) is hidden and the icon row lands right after it, even with Seed ALSO data-no-collapse and coming first.
+
+Tests: lattice-panel-restructure.test.js (+3, real-markup assertions against the actual palette HTML -- same
+technique its own "R7: real markup" block already uses): no no-stepper on any of the 8 width inputs; Seed's own
+UNRELATED opt-out (RAIL-SPACING R7) stays untouched (a non-vacuous check the assertion can actually fail);
+step/min unchanged. lattice-side-column.test.js (+1 new, 2 existing updated for the corrected fixture + the new
+expected child order). Mutation: reverting the querySelector fix fails 11 tests; restoring `no-stepper` on one
+field fails 1.
+Shots (real headless renders, the REAL CSS incl. the palette's own inline stylesheet this time):
+shots/seatB/t81-widths-steppers-linked.png, -unlinked.png.
+Verify: 2245/2245 vitest. Commit 9a3eeae. NO FUSION.
