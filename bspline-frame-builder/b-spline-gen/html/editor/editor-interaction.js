@@ -1514,7 +1514,24 @@ function _geometryAxisSnap(editor, move, pt, axis) {
  *  Section 4: "a Lattice-mode move BAKES its result into the attrs"). Runs
  *  on every mousemove; the eventual undo step is a single pushState() at
  *  finish(), not one per tick. */
+// T81 item 5 (Fred: "the yellow highlight is persistent even after I
+// released a moved tie"): thin wrapper so EVERY exit of
+// _updateLatticeMoveGeometry (it has several — joint slide, a chained tie
+// translate, and the plain fall-through case) refreshes the SELECTION HALO
+// (editor-ui.js, #ffcc00) exactly once, rather than one-off calls sprinkled
+// at each `return` that a future added branch could forget. The halo is a
+// static clone taken at grab time (Select sub-mode selects the piece it
+// just grabbed); every write in the geometry function moves the REAL
+// element, never it. translateSelection/dragNode (this file's own Select/
+// Node-mode drag paths) already refresh it every move tick — this lattice
+// move path never did, so the halo stayed glued to the piece's PRE-drag
+// position for the whole gesture, "persistent" exactly as reported.
 function _updateLatticeMove(editor, pt) {
+    _updateLatticeMoveGeometry(editor, pt);
+    if (typeof editor._updateSelectionHighlight === 'function') editor._updateSelectionHighlight();
+}
+
+function _updateLatticeMoveGeometry(editor, pt) {
     const move = editor._latticeMove;
     const { spacing, orientation } = move;
     const canonPt = orient(toLattice(pt, spacing), orientation);
@@ -1619,6 +1636,16 @@ function _finishLatticeMove(editor) {
     const move = editor._latticeMove;
     editor._latticeMove = null;
     editor._isDrawing = false;
+    // T81 item 5: the ONE end-of-drag cleanup every exit path (pointerup,
+    // pointercancel, lost capture — all funnel into handleEnd -> this
+    // function) already runs through. Unconditional, before the `moved`
+    // check below: refreshes the selection halo to the piece's FINAL real
+    // position even on a no-op release (harmless — nothing changed, so the
+    // halo drawn at grab time is already correct) and is a plain no-op if
+    // `applyLayerState` below happens to deselect (its own doc comment: a
+    // piece that became non-editable by its layer) — that already clears
+    // every highlight itself.
+    if (typeof editor._updateSelectionHighlight === 'function') editor._updateSelectionHighlight();
     const nowAttrs = move.kind === 'node'
         ? { cx: move.el.attr('cx'), cy: move.el.attr('cy') }
         : { x1: move.el.attr('x1'), y1: move.el.attr('y1'), x2: move.el.attr('x2'), y2: move.el.attr('y2') };
