@@ -2041,3 +2041,49 @@ def test_cut_arc_contour_sends_one_slot_per_piece_with_zero_parity_mismatches(ca
     assert kinds.count("constraint:Coincident") == 4
     assert summary["parity"]["mismatches"] == []
     assert summary["parity"]["maxErr"] < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# F27 item 3 (the STRIPE tool, Fred: "if I wanted a line to become alternating
+# segments of colour, can we make a dedicated tool for that?"): a contour arc
+# striped into N equal stripes is N colour cuts on the SAME model as the
+# scissors' one (F27 item 1 above) -- so the JS side sends N arc slots on ONE
+# circle, a Coincident at every stripe seam, and nothing new on this side.
+# This fixture: the same semicircle (centre (2,0), radius 1) as
+# `_cut_arc_contour_manifest`, striped into 3 (seams at 60deg and 120deg).
+# ---------------------------------------------------------------------------
+_S3 = 0.8660254037844386  # sin(60deg)
+
+
+def _striped_arc_contour_manifest():
+    m = _cut_arc_contour_manifest()
+    m["sketchName"] = "Test Striped Arc Contour"
+    w = 0.07
+    m["entities"] = [
+        {"id": "seg0", "type": "Slot", "p1": [0.0, 0.0], "p2": [3.0, 0.0], "width": w},
+        {"id": "seg1", "type": "Arc3PointSlot", "p1": [3.0, 0.0], "pMid": [2.0 + _S3, 0.5], "p2": [2.5, _S3], "width": w},
+        {"id": "seg2", "type": "Arc3PointSlot", "p1": [2.5, _S3], "pMid": [2.0, 1.0], "p2": [1.5, _S3], "width": w},
+        {"id": "seg3", "type": "Arc3PointSlot", "p1": [1.5, _S3], "pMid": [2.0 - _S3, 0.5], "p2": [1.0, 0.0], "width": w},
+        {"id": "seg4", "type": "Slot", "p1": [1.0, 0.0], "p2": [0.0, 0.0], "width": w},
+    ]
+    ids = [e["id"] for e in m["entities"]]
+    m["constraints"] = [{"type": "Coincident", "targets": [f"{a}:E", f"{b}:S"]} for a, b in zip(ids, ids[1:] + ids[:1])]
+    m["dimensions"] = [{"type": "SlotWidth", "target": i, "expression": "stroke_width"} for i in ids]
+    m["groups"] = {"silhouette": ids}
+    return m
+
+
+def test_striped_arc_contour_sends_one_arc_slot_per_stripe_with_zero_parity_mismatches(call_log):
+    """3 stripes of one arc = 3 arc slots (one per colour piece) + the 2
+    closing lines, a Coincident at both stripe seams, zero parity
+    mismatches: the stripes meet exactly where declared."""
+    design = FakeDesign()
+    summary = build_constrained_sketch(design.rootComponent, design, _striped_arc_contour_manifest())
+    assert summary["entities"]["created"] == 5
+    assert summary["entities"]["skipped"] == []
+    kinds = [entry[0] for entry in call_log]
+    assert kinds.count("slot:addThreePointArcSlot") == 3
+    assert kinds.count("slot:addCenterToCenterSlot") == 2
+    assert kinds.count("constraint:Coincident") == 5
+    assert summary["parity"]["mismatches"] == []
+    assert summary["parity"]["maxErr"] < 1e-6

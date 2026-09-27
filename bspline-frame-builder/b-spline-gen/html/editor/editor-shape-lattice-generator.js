@@ -979,6 +979,7 @@ export function outlineDefects(primitives, { samplesPerArc = 10, tangentTol = 1e
 }
 
 const _fmt = (n) => (Math.round(n * 1000) / 1000).toString();
+const _fmtDigits = (n, digits) => { const k = 10 ** digits; return (Math.round(n * k) / k).toString(); };
 
 /**
  * SE14 §3's own primitive list -> one SVG path `d` string (`M`, then one
@@ -1048,9 +1049,15 @@ export function primitivesToPathD(primitives) {
  * trailing `Z` at the very end — never re-deriving the geometry a second
  * way.
  */
-export function primitiveToPathD(prim) {
+/* F27 item 3: `digits` (default 3, `_fmt`'s own grain, unchanged for every existing caller) -- the stripe tool
+ * writes its arc stripes at STRIPE_D_DIGITS (editor-stripe-tool.js): at 3 decimals a short sub-arc's centre,
+ * re-derived from its rounded endpoints by `arcCenterParam`, drifts (MEASURED on the hourglass's 90deg shoulder
+ * arc, r 0.848: ~1.6e-3 at 3 stripes, ~6e-3 at 10, ~1.2e-2 at 20), so N stripes of one arc would no longer share
+ * one centre in Fusion ("arc slots sharing a centre", the checklist) nor merge back for a re-stripe. */
+export function primitiveToPathD(prim, digits = 3) {
+  const f = digits === 3 ? _fmt : (n) => _fmtDigits(n, digits);
   if (prim.type === 'L') {
-    return `M ${_fmt(prim.p0.x)} ${_fmt(prim.p0.y)} L ${_fmt(prim.p1.x)} ${_fmt(prim.p1.y)}`;
+    return `M ${f(prim.p0.x)} ${f(prim.p0.y)} L ${f(prim.p1.x)} ${f(prim.p1.y)}`;
   }
   if (prim.type === 'A') {
     if (prim.rx <= 0 || prim.ry <= 0) return ''; // same defensive floor as primitivesToPathD
@@ -1059,7 +1066,7 @@ export function primitiveToPathD(prim) {
     const largeArc = Math.abs(prim.dTheta) > Math.PI ? 1 : 0;
     const sweep = prim.dTheta > 0 ? 1 : 0;
     const phiDeg = (prim.phi * 180) / Math.PI;
-    return `M ${_fmt(p0.x)} ${_fmt(p0.y)} A ${_fmt(prim.rx)} ${_fmt(prim.ry)} ${_fmt(phiDeg)} ${largeArc} ${sweep} ${_fmt(p1.x)} ${_fmt(p1.y)}`;
+    return `M ${f(p0.x)} ${f(p0.y)} A ${f(prim.rx)} ${f(prim.ry)} ${f(phiDeg)} ${largeArc} ${sweep} ${f(p1.x)} ${f(p1.y)}`;
   }
   return '';
 }

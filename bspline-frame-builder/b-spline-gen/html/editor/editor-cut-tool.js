@@ -50,9 +50,10 @@ const CUT_MARKER_ID = 'cut-marker';
 /** A contour segment: one of the N `<path>` pieces a generated boundary draws (T73/SE14b), never transformed
  *  (regenerateSilhouette writes its `d` directly in world/model coordinates on every param change) -- so unlike
  *  a lattice line, no `worldPoint` bake is needed here. */
-const isContourPath = (el) => !!(el && el.node && el.type === 'path' && el.node.hasAttribute(BOUNDARY_REF_ATTR));
-/** Every element the cut tool's own hover/tap may target: a line (rail/tie/plain) or a contour path segment. */
-const isCuttable = (el) => isLine(el) || isContourPath(el);
+export const isContourPath = (el) => !!(el && el.node && el.type === 'path' && el.node.hasAttribute(BOUNDARY_REF_ATTR));
+/** Every element the cut tool's own hover/tap may target: a line (rail/tie/plain) or a contour path segment.
+ *  F27 item 3: exported -- the stripe tool (editor-stripe-tool.js) targets exactly the same set. */
+export const isCuttable = (el) => isLine(el) || isContourPath(el);
 const contourPrim = (el) => primitiveFromContourD(el.attr('d'));
 
 /** F27 FINAL RULING (Fred, "All contour: colour only" — see editor-contour-cut.js's own header for the full
@@ -67,6 +68,7 @@ const contourPrim = (el) => primitiveFromContourD(el.attr('d'));
 export const CUT_KIND = { rail: 'structural', tie: 'structural', line: 'structural', contour: 'colour' };
 export function cutKindOf(el) { return isContourPath(el) ? CUT_KIND.contour : CUT_KIND[latticeKind(el)] || CUT_KIND.line; }
 
+/** F27 item 3: exported as `pieceEnds` for the stripe tool -- the SAME world endpoints the cut reads. */
 const ends = (el) => {
   if (isContourPath(el)) {
     const prim = contourPrim(el);
@@ -175,10 +177,24 @@ export function snapOnContourPiece(editor, el, pt, alt = false) {
   return proj;
 }
 
+/** F27 item 3 (Fred: "The only distance it should use is the stroke width."): the shortest piece a STRIPE may
+ *  leave -- the stroke width of the line being striped (its own `stroke-width` attribute, the same units as the
+ *  geometry), falling back to the plain-line floor when it has none. Declared here, next to the scissors' own
+ *  floors, so the scissors can switch to it later (Fred's follow-up; `_minPiece` below is deliberately NOT
+ *  changed in this item). */
+export function minPieceLength(el) {
+  const sw = parseFloat(el && el.node ? el.node.getAttribute('stroke-width') : NaN);
+  return Number.isFinite(sw) && sw > 0 ? sw : CUT_MIN_PLAIN_IN;
+}
+
 function _minPiece(editor, el) {
   if (!latticeKind(el)) return CUT_MIN_PLAIN_IN;
   return MIN_PIECE_CELLS * ((getLayerPattern(editor) || PATTERN_DEFAULTS).spacing || PATTERN_DEFAULTS.spacing);
 }
+
+/** F27 item 3: exported as `commitCutEdit` so the stripe tool's N cuts + colour writes land as ONE undo step
+ *  through the SAME commit a single cut uses (never a second commit path). */
+export function commitCutEdit(editor) { _commit(editor); }
 
 function _commit(editor) {
   if (typeof editor.pushState === 'function') editor.pushState();
@@ -222,16 +238,24 @@ function _recolorSecondAfterCut(editor, first, second, farNeighbourColor, rng) {
   const layer = resolvePatternLayer(editor, second.attr('data-layer'));
   const pool = layer && layer.pattern ? latticeColorPool(layer.pattern) : VECTOR_COLORS.flat();
   const hex = pickColorDiffering(pool, [first.attr('stroke'), farNeighbourColor], rng);
-  if (isContourPath(second)) {
-    const i = _contourIndex(second);
+  writePieceColor(editor, second, hex);
+}
+
+/** F27 item 3: the per-piece colour write, factored out of `_recolorSecondAfterCut` (unchanged behaviour) so the
+ *  stripe tool paints each stripe through the SAME per-target store: a contour segment -> the live stroke AND
+ *  `pattern.contour.segmentColors[its index]`; a rail/tie -> the UI5 override; a plain line -> its stroke. */
+export function writePieceColor(editor, el, hex) {
+  if (isContourPath(el)) {
+    const layer = resolvePatternLayer(editor, el.attr('data-layer'));
+    const i = _contourIndex(el);
     const colors = layer && layer.pattern && layer.pattern.contour && layer.pattern.contour.segmentColors;
     if (Array.isArray(colors)) colors[i] = hex;
-    second.stroke({ color: hex });
+    el.stroke({ color: hex });
     return;
   }
-  const kind = pieceKindOf(second);
-  if (kind) applyColorOverride(second, kind, hex);
-  else second.stroke({ color: hex });
+  const kind = pieceKindOf(el);
+  if (kind) applyColorOverride(el, kind, hex);
+  else el.stroke({ color: hex });
 }
 
 /**
@@ -241,10 +265,25 @@ function _recolorSecondAfterCut(editor, first, second, farNeighbourColor, rng) {
  * minimum (a lattice piece: one cell).
  */
 export function cutAt(editor, piece, point, rng = Math.random) {
-  if (isContourPath(piece)) return _cutContourAt(editor, piece, point, rng);
+  const pair = cutAtNoCommit(editor, piece, point, { rng });
+  if (pair) _commit(editor);
+  return pair;
+}
+
+/**
+ * F27 item 3: `cutAt` without the commit -- the ONE cut implementation, which `cutAt` (one cut, one undo step) and
+ * the stripe tool (N cuts, then one commit) both call. `opts.rng`: the recolour draw; `opts.recolor` (default
+ * true): the scissors' immediate recolour of the far piece (the stripe tool paints every piece itself, so it
+ * passes false); `opts.min`: the shortest piece allowed (default: the scissors' own floor, one lattice cell for a
+ * rail/tie, `CUT_MIN_PLAIN_IN` otherwise -- the stripe tool passes its own stroke-width floor, Fred's ruling);
+ * `opts.digits`: a contour piece's d-string precision (default `primitiveToPathD`'s own 3 decimals).
+ */
+export function cutAtNoCommit(editor, piece, point, opts = {}) {
+  if (isContourPath(piece)) return _cutContourAt(editor, piece, point, opts);
   if (!isLine(piece)) return null;
+  const { rng = Math.random, recolor = true } = opts;
   const [a, b] = ends(piece);
-  const min = _minPiece(editor, piece);
+  const min = opts.min != null ? opts.min : _minPiece(editor, piece);
   if (Math.hypot(point.x - a.x, point.y - a.y) < min - 1e-9 || Math.hypot(point.x - b.x, point.y - b.y) < min - 1e-9) return null;
   if (piece.attr('transform')) piece.attr({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, transform: null }); // bake, like a lattice move
   const second = piece.clone();
@@ -252,9 +291,7 @@ export function cutAt(editor, piece, point, rng = Math.random) {
   if (second.node.hasAttribute('id')) second.node.removeAttribute('id');
   piece.attr({ x2: point.x, y2: point.y });
   second.attr({ x1: point.x, y1: point.y });
-  const farColor = _touchingColorAt(editor, b, [piece, second]);
-  _recolorSecondAfterCut(editor, piece, second, farColor, rng);
-  _commit(editor);
+  if (recolor) _recolorSecondAfterCut(editor, piece, second, _touchingColorAt(editor, b, [piece, second]), rng);
   return [piece, second];
 }
 
@@ -274,11 +311,13 @@ const _contourIndex = (el) => { const raw = el.node.getAttribute(CONTOUR_SEG_IND
  * One undo step. Returns [first, second], or null when the point sits too close to either end (the SAME plain-
  * line floor, `CUT_MIN_PLAIN_IN` -- a contour has no lattice-cell concept of its own).
  */
-function _cutContourAt(editor, piece, point, rng = Math.random) {
+function _cutContourAt(editor, piece, point, opts = {}) {
+  const { rng = Math.random, recolor = true } = opts;
+  const min = opts.min != null ? opts.min : CUT_MIN_PLAIN_IN;
   const prim = contourPrim(piece);
   if (!prim) return null;
   const [a, b] = contourPrimitiveEnds(prim);
-  if (Math.hypot(point.x - a.x, point.y - a.y) < CUT_MIN_PLAIN_IN - 1e-9 || Math.hypot(point.x - b.x, point.y - b.y) < CUT_MIN_PLAIN_IN - 1e-9) return null;
+  if (Math.hypot(point.x - a.x, point.y - a.y) < min - 1e-9 || Math.hypot(point.x - b.x, point.y - b.y) < min - 1e-9) return null;
   const [first, second] = splitContourPrimitive(prim, point);
   if (!first || !second) return null;
   // F27 item 1 ADD: the array-ORDER "next" sibling (not a numeric index -- about to shift below), captured
@@ -295,14 +334,13 @@ function _cutContourAt(editor, piece, point, rng = Math.random) {
   const secondEl = piece.clone();
   secondEl.insertAfter(piece);
   if (secondEl.node.hasAttribute('id')) secondEl.node.removeAttribute('id');
-  piece.attr('d', primitiveToPathD(first));
-  secondEl.attr('d', primitiveToPathD(second));
+  piece.attr('d', primitiveToPathD(first, opts.digits));
+  secondEl.attr('d', primitiveToPathD(second, opts.digits));
   secondEl.attr(CONTOUR_SEG_INDEX_ATTR, i + 1);
   const layer = resolvePatternLayer(editor, piece.attr('data-layer'));
   const colors = layer && layer.pattern && layer.pattern.contour && layer.pattern.contour.segmentColors;
   if (Array.isArray(colors)) colors.splice(i + 1, 0, colors[i]);
-  _recolorSecondAfterCut(editor, piece, secondEl, farColor, rng);
-  _commit(editor);
+  if (recolor) _recolorSecondAfterCut(editor, piece, secondEl, farColor, rng);
   return [piece, secondEl];
 }
 
@@ -315,17 +353,24 @@ function _cutContourAt(editor, piece, point, rng = Math.random) {
  * then `clearContourSegmentColor` deletes whatever the SURVIVING index still held (own index untouched by that
  * shift, since it is always the lower of the two) and repaints the contour's own default. One undo step.
  */
-function _joinContour(editor, p, q) {
-  const primP = contourPrim(p), primQ = contourPrim(q);
-  if (!primP || !primQ) return null;
-  const [, pEnd] = contourPrimitiveEnds(primP), [qStart] = contourPrimitiveEnds(primQ);
-  const forward = Math.hypot(pEnd.x - qStart.x, pEnd.y - qStart.y) < JOINT_TOL;
-  const merged = forward ? mergeContourPrimitives(primP, primQ) : mergeContourPrimitives(primQ, primP);
+function _joinContour(editor, p, q, opts = {}) {
+  let forward, merged;
+  if (opts.merged) {
+    // F27 item 3: the stripe tool's re-stripe already KNOWS the run's merged primitive (the pre-stripe segment it
+    // recorded) and hands `p` before `q` -- no geometric re-derivation from the pieces' own rounded d-strings.
+    forward = true; merged = opts.merged;
+  } else {
+    const primP = contourPrim(p), primQ = contourPrim(q);
+    if (!primP || !primQ) return null;
+    const [, pEnd] = contourPrimitiveEnds(primP), [qStart] = contourPrimitiveEnds(primQ);
+    forward = Math.hypot(pEnd.x - qStart.x, pEnd.y - qStart.y) < JOINT_TOL;
+    merged = forward ? mergeContourPrimitives(primP, primQ) : mergeContourPrimitives(primQ, primP);
+  }
   if (!merged) return null;
   const [keepEl, dropEl] = forward ? [p, q] : [q, p];
   const dropIndex = _contourIndex(dropEl);
   const siblings = _contourSiblings(editor, p);
-  keepEl.attr('d', primitiveToPathD(merged));
+  keepEl.attr('d', primitiveToPathD(merged, opts.digits));
   dropEl.remove();
   for (const s of siblings) {
     if (s === dropEl) continue;
@@ -337,7 +382,6 @@ function _joinContour(editor, p, q) {
   if (Array.isArray(colors)) colors.splice(dropIndex, 1);
   const defaultColors = { ...PATTERN_DEFAULTS.colors, ...((getLayerPattern(editor) || {}).colors || {}) };
   clearContourSegmentColor(editor, keepEl, defaultColors.contour);
-  _commit(editor);
   return keepEl;
 }
 
@@ -347,6 +391,8 @@ function _joinContour(editor, p, q) {
  *  primitives actually merge (mergeContourPrimitives) -- an ORDINARY shape corner (say a horn meeting a
  *  shoulder arc) is also two adjacent segments touching there, but refuses to merge (different curve), so it
  *  never becomes a false Join target; only a genuine earlier CUT's own two halves do. */
+export { ends as pieceEnds };
+
 export function jointAt(editor, point, tol = JOINT_TOL) {
   const pieces = editor._sketchLayer.children().toArray().filter(isCuttable);
   // F27: a contour piece's own endpoint went through primitiveToPathD's `_fmt` rounding (3 decimals) on write,
@@ -392,10 +438,20 @@ export function jointAt(editor, point, tol = JOINT_TOL) {
  * default; width is always the general stroke width). One undo step. Returns the joined line, or null.
  */
 export function join(editor, joint) {
+  const joined = joinNoCommit(editor, joint);
+  if (joined) _commit(editor);
+  return joined;
+}
+
+/** F27 item 3: `join` without the commit -- the ONE join implementation (line or contour), which `join` and the
+ *  stripe tool's re-stripe (merging a striped run back into one piece before cutting it again, all inside ONE
+ *  undo step) both call. Contour only: `opts.merged` (the known merged primitive, `p` before `q`) and
+ *  `opts.digits` (the d-string precision, `primitiveToPathD`'s own). */
+export function joinNoCommit(editor, joint, opts = {}) {
   const pair = Array.isArray(joint) ? joint : jointAt(editor, joint);
   if (!pair) return null;
   const [p, q] = pair;
-  if (isContourPath(p) && isContourPath(q)) return _joinContour(editor, p, q);
+  if (isContourPath(p) && isContourPath(q)) return _joinContour(editor, p, q, opts);
   const [a, b] = ends(p), [c, d] = ends(q);
   const shared = [a, b].find((x) => [c, d].some((y) => Math.hypot(x.x - y.x, x.y - y.y) < JOINT_TOL));
   if (!shared) return null;
@@ -408,7 +464,6 @@ export function join(editor, joint) {
     const colors = { ...PATTERN_DEFAULTS.colors, ...((getLayerPattern(editor) || {}).colors || {}) };
     clearColorOverride(p, kind, colors[kind]);
   }
-  _commit(editor);
   return p;
 }
 
@@ -417,6 +472,8 @@ export function join(editor, joint) {
 /** The nearest cuttable piece under `pt` (visible layers) — a line (rail/tie/plain) or, F27, a contour path
  *  segment. A lattice node sitting on a rail (a tie contact, the very place a cut often goes) must not hide the
  *  rail from the tool. */
+export function cuttableUnder(editor, pt) { return _lineUnder(editor, pt); } // F27 item 3: the stripe tool's hit test
+
 function _lineUnder(editor, pt) {
   const tol = getDynamicTolerance(editor, 10, 'slopPx');
   // a line the point is INSIDE of beats one that merely ends there (a tie ending on a rail: tapping that contact cuts

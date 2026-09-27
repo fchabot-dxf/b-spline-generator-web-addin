@@ -14,6 +14,7 @@
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { cutHandler } from './editor-cut-tool.js'; // SE16 ✂
+import { stripeHandler } from './editor-stripe-tool.js'; // F27 item 3
 import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints, tieEndNodes } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer } from './layers.js';
@@ -2336,6 +2337,7 @@ const modeHandlers = {
     lattice: latticeHandler,
     shapeLattice: shapeLatticeHandler,
     cut:     cutHandler, // SE16 ✂ (editor-cut-tool.js)
+    stripe:  stripeHandler, // F27 item 3 (editor-stripe-tool.js)
 };
 
 export function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }

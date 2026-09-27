@@ -1789,6 +1789,8 @@
           <button id="toolShapeLattice" class="tool-btn" title="Shape Lattice (H) — generate or pick a silhouette, edit its per-segment style, then fill it like the Lattice tool." data-key="h"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M7 4h10M7 20h10M7 4c0 5.5 5 6 5 8s-5 2.5-5 8M17 4c0 5.5-5 6-5 8s5 2.5 5 8"/></svg></button>
           <!-- SE16 ✂: tap a line to cut it (snaps by GRID / GEOMETRY, Alt = exact); tap the cut again to join. -->
           <button id="toolCut" class="tool-btn" title="Cut — tap a line to split it; tap the cut again to join." data-key="x"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg></button>
+          <!-- F27 item 3: tap a line to split it into equal stripes cycling Colours A/B(/C); tap again to re-stripe. -->
+          <button id="toolStripe" class="tool-btn" title="Stripe (S) — tap a line to split it into equal stripes of alternating colours; tap it again to re-stripe." data-key="s"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M3 12h18" stroke-opacity="0.35"/><path d="M3 12h4M10 12h4M17 12h4" stroke-width="6"/></svg></button>
           <button id="toolExpand" class="tool-btn" title="Expand — offset and outline paths for CNC carving (opens Detail + EXPAND controls in the top bar)" style="color:var(--cad-accent);"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.5px;"><path d="M7 2h10M7 22h10M22 7v10M2 7v10m13 15 5 5" /></svg></button>
           <!-- Vector eraser: drag a stroke to clip filled shapes and
                split open strokes. Width follows the sidebar stroke
@@ -2615,6 +2617,49 @@
           <div id="editorShapeLatticePanelFooter" style="display:flex; flex-direction:column; gap:10px;">
             <button id="shapeLatticeGenerate" type="button" class="cad-btn cad-btn-primary" style="height:32px; border-radius:3px; font-weight:700; cursor:pointer;">Generate</button>
             <button id="shapeLatticeDetachAll" type="button" style="height:28px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Detach all</button>
+          </div>
+        </aside>
+
+        <!-- F27 item 3: the Stripe tool's panel (properties-stripe.js). Shown only while the stripe tool is active
+             (editor-ui.js TOOLBAR_GROUPS; a drawer tab on phones, editor-drawer.js TOOL_PANELS). Count / Length:
+             set one, the other follows (for the line under the pointer); stripes are always equal and never
+             shorter than the line's stroke width. Colours: the layer's lattice Rails/Ties/Nodes colours until
+             picked; C is optional. -->
+        <aside class="editor-lattice-panel hidden" id="editorStripePanel" style="width:236px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
+          <div id="editorStripePanelHeader" class="editor-lattice-panel-header" style="display:flex; align-items:center; width:100%; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.08em; color:#666;">
+            <span>Stripe</span>
+          </div>
+          <div id="editorStripePanelBody" style="display:flex; flex-direction:column; gap:10px;">
+            <div data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Size</span>
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">Count
+                  <input id="stripeCount" type="number" min="1" step="1" value="5" title="How many equal stripes (the Length follows)" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">Length (in)
+                  <input id="stripeLength" type="number" min="0" step="0.05" title="Each stripe's length: the nearest equal split (the Count follows)" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+              </div>
+            </div>
+            <div data-no-collapse style="display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-weight:600; flex:1;">Colours</span>
+                <label style="display:flex; flex-direction:row; align-items:center; gap:3px; white-space:nowrap;" title="A third colour, C"><input id="stripeThree" type="checkbox" style="margin:0;">Use C</label>
+                <button id="stripeColorsReset" type="button" title="Back to the lattice's Rails / Ties / Nodes colours" style="height:20px; border:1px solid #ccc; border-radius:3px; background:#f9f9f9; cursor:pointer;">&#8634;</button>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">A
+                  <button id="stripeColorA" type="button" aria-label="Colour A" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">B
+                  <button id="stripeColorB" type="button" aria-label="Colour B" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">C
+                  <button id="stripeColorC" type="button" aria-label="Colour C" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
+              </div>
+            </div>
+            <div style="color:#666;">Tap a rail, a contour segment or a line. Tap a striped line again to re-stripe it. A line with no lattice defaults to black / white.</div>
           </div>
         </aside>
 

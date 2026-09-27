@@ -308,3 +308,26 @@ it, since `primitiveFromContourD` only ever reads a segment's own first command)
 
 **Out of scope, disclosed:** chain-drag semantics for the contour (joint-slide, stretch) — the contour has no
 independent position to drag at all, on purpose; nothing in the checklist asked for it.
+
+## 13. F27 item 3 — the STRIPE tool, built on this cut (not a copy)
+
+Fred: "if I wanted a line to become alternating segments of colour, can we make a dedicated tool for that?"
+(picked: size by COUNT or LENGTH, 2 or 3 colours). `editor/editor-stripe-tool.js` + panel
+`editor/properties-stripe.js`; toolbar button `#toolStripe` right after ✂, shortcut **S**.
+
+- **A stripe = N cuts + the per-piece colour write.** The cut is `cutAtNoCommit` (the ONE cut; `cutAt` = it +
+  one commit), so `CUT_KIND` applies unchanged: a rail/tie/plain line gets structural cuts (one chain, a
+  Coincident per seam in Fusion), a contour segment colour cuts (the geometry splits, one Slot/ArcCenterSlot per
+  stripe, an arc's stripes on one centre). The colour is `writePieceColor` (factored out of the scissors'
+  recolour: UI5 override / `contour.segmentColors[i]` / stroke). One commit (`commitCutEdit`) = one undo step.
+- **Re-stripe:** every stripe of a run carries `data-stripe` (one id); a tap on any of them merges the
+  contiguous run back with `joinNoCommit` and stripes it again with the current settings. A contour run also
+  carries `data-stripe-src` (the pre-stripe `d`) and merges straight back to it (`joinNoCommit`'s `merged`
+  option), never re-deriving the arc from N rounded pieces.
+- **Precision:** contour stripes are written at 6 decimals (`primitiveToPathD(prim, digits)`); at the default 3
+  a short sub-arc's re-derived centre drifts (measured ~6e-3 at 10 stripes), so the stripes would stop sharing
+  a centre and stop merging.
+- **Fred's rulings (overriding the checklist):** no "end stripes are colour A" rule — the colours cycle from the
+  start ("I don't really care if colours don't end the same as start"); the ONLY minimum is the stroke width
+  ("The only distance it should use is the stroke width", `minPieceLength(el)`), so a rail's stripes may be
+  shorter than the scissors' one-cell minimum (which this item leaves unchanged; Fred switches it separately).
