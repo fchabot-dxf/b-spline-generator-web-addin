@@ -702,6 +702,10 @@
     #editorShapeLatticePanelHeader {
         display: none;
     }
+    /* F27 item 3: the Stripe tool's panel, a third TOOL_PANELS entry -- same redundant-header rule. */
+    #editorStripePanelHeader {
+        display: none;
+    }
     #editorShapeLatticePanelFooter {
         position: sticky;
         bottom: 0;

@@ -32,6 +32,7 @@ export const TOOL_PANELS = {
   // 'editorLatticePanel' since only one entry ever existed; a second entry
   // is what actually proves the table generic, not just declared that way).
   shapeLattice: { panelId: 'editorShapeLatticePanel', label: 'Shape Lattice' },
+  stripe: { panelId: 'editorStripePanel', label: 'Stripe' }, // F27 item 3
 };
 
 export const DRAWER_SNAP_STATES = ['peek', 'half', 'full'];

@@ -21,4 +21,6 @@ export function registerModeTools(editor) {
   bind('toolShapeLattice', () => editor.setMode('shapeLattice'));
   // SE16 ✂: split a line (rail, tie or plain) where tapped; tap the cut again to join.
   bind('toolCut', () => editor.setMode('cut'));
+  // F27 item 3: tap a line to split it into equal stripes cycling Colours A/B(/C); tap again to re-stripe.
+  bind('toolStripe', () => editor.setMode('stripe'));
 }

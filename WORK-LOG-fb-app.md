@@ -2818,3 +2818,102 @@ every headless Chrome profile (`chrome-contourcut-*`, `chrome-dbg*`) to be stopp
 Heavy turn (the wrong-model rebuild + the amendment chain + a real live-caught bug + the item-1-ADD amendment
 landing mid-turn), but finished cleanly in one wake -- no half-applied state. Given the usage-limit-cutoff
 warning, re-arming the waiter immediately after pass rather than starting F27-item-2/3.
+
+## F27 item 3 -- the STRIPE tool -- 2026-09-27
+
+**Ball: worker (seat C) - F27 item 3.** Complete: implemented, tested (JS unit + manifest, Python manifest,
+real-Chromium acceptance with shots), documented (CUT-TOOL-DESIGN.md section 13), full suite green
+(2342/2342 vitest; test_sketch_manifest_builder.py 45/45). Live Fusion check NOT done (cloud container, no
+Fusion) -- left for Fred, see below.
+
+### What it is
+Fred, with a black/white stripe image: "if I wanted a line to become alternating segments of colour, can we
+make a dedicated tool for that?" (picked: size by COUNT or LENGTH, 2 or 3 colours). New tool `#toolStripe`
+right after the scissors, shortcut **S** (was free; Ctrl+S is untouched, modifiers skip tool keys). Tap a rail,
+tie, plain `<line>` or contour segment (line or arc): it splits into equal stripes cycling Colours A, B (, C)
+from its start. Tap any stripe again: the whole run is re-striped with the current settings (its cuts
+replaced, not added to). One undo step either way. Panel `#editorStripePanel` (desktop side panel + a drawer
+tab on phones): Count / Length, Colours A/B/C (C off by default) + "Use C" + a reset-to-lattice button.
+Targets = exactly what the scissors cut (`isCuttable`); a plain non-contour `<path>` is not cuttable by
+item 1's machinery, so not stripeable either (disclosed, not a second cut system).
+
+### Built on item 1's machinery, not a copy
+- editor-cut-tool.js: `cutAt`/`join` split into `cutAtNoCommit`/`joinNoCommit` (the ONE implementation) + the
+  commit; `cutAt`/`join` behave exactly as before (every existing cut test green, unchanged). A stripe = N x
+  `cutAtNoCommit` (recolour off) + `writePieceColor` per stripe (factored out of `_recolorSecondAfterCut`,
+  same per-target store: rail/tie UI5 override, contour `segmentColors[i]` + stroke, plain line stroke) + ONE
+  `commitCutEdit`. So `CUT_KIND` applies as is: rail = structural cuts (still ONE chain; a Coincident + a
+  Collinear per seam in Fusion), contour = colour cuts (one Slot/ArcCenterSlot per stripe, an arc's stripes on
+  one centre, via the existing send-as-drawn path; no Fusion code changed).
+- Re-stripe: stripes carry `data-stripe` (one id per run); the contiguous run merges back via `joinNoCommit`.
+  A contour run also carries `data-stripe-src` (the pre-stripe `d`) and merges straight back to it
+  (`joinNoCommit`'s new `merged` option) instead of re-deriving the arc from N rounded pieces.
+- MEASURED problem, fixed: at `primitiveToPathD`'s 3 decimals a short sub-arc's re-derived centre drifts
+  (hourglass shoulder arc r 0.848: 1.6e-3 at 3 stripes, 6e-3 at 10, 1.2e-2 at 20) -> the stripes would not
+  share a centre in Fusion and would not merge back (the first contour re-stripe test was RED on exactly
+  this). `primitiveToPathD(prim, digits = 3)`: the stripe tool writes contour stripes at 6 decimals; every
+  other caller unchanged.
+
+### Fred's rulings (relayed mid-turn by the coordinator; they override the checklist text)
+1. "I don't really care if colours don't end the same as start." -> the checklist's "the two end stripes are
+   colour A" is DROPPED: exactly the Count set, colours cycle A B (C) from the line's start, wherever the last
+   stripe lands. No count snapping for colour reasons.
+2. First "stripes on a rail may be shorter than one lattice cell; keep only a tiny sanity floor", then
+   superseded by: "The only distance it should use is the stroke width." -> the shortest stripe = the stroke
+   width of the line being striped (`minPieceLength(el)`, exported from editor-cut-tool.js next to the
+   scissors' floors so the scissors can reuse it). The scissors' own `MIN_PIECE_CELLS`/`_minPiece` are
+   deliberately NOT changed here (Fred switches them in a separate commit).
+
+### Count / Length ("set one, the other follows")
+A stripe's size only exists relative to a line, so the panel keeps which field was set LAST (`drive`); the
+other one follows (greyed) for the line under the pointer, and after a tap for the line just striped.
+- Count drives: N = Count, capped at floor(L / stroke width).
+- Length drives: N = round(L / Length) (ties round up), Length floored to the stroke width, N >= 1, same cap.
+  Stripes are always EQUAL (L / N): a Length that does not divide the line gives the NEAREST equal split,
+  never a short last stripe.
+- Live example: the hourglass contour (stroke 0.25) shoulder arc, length ~0.95, Count 5 -> 3 stripes (the
+  stroke-width cap), Length follows 0.315.
+
+### Colour defaults
+A/B/C default to the stripe target's lattice Rails/Ties/Nodes colours (`latticeColorPool`, the T81 item 8
+shared pool), topped up to 3 with black/white/grey when the pool has fewer distinct colours. A plain line on a
+layer with NO lattice pattern: black / white (/ grey) -- Fred's stripe image; VECTOR_COLORS' Neutral row.
+Picked colours stick until the reset button; the swatches show the ACTIVE layer's defaults.
+
+### Tests
+- `tests/editor-stripe-tool.test.js` (19, new): count/length math (count, cap, length rounding + floor,
+  `minPieceLength`); the colour cycle and defaults (lattice pool, top-up, no-lattice black/white, C on/off,
+  a pick); a RAIL: 5 equal stripes A B A B A as UI5 overrides, bit-identical joints, still ONE chain, one
+  commit; rail stripes shorter than a lattice cell; re-stripe of the whole run from any stripe (5 -> 2 -> 7
+  with C), same id; only the CONTIGUOUS run (a scissors-split neighbour is not swept in); hover plan = tap
+  result; a plain line (black/white, stroke not override); a contour ARC: N sub-arcs on one centre, equal
+  sweeps, renumbered, colours in `segmentColors[]`; 10 arc stripes still share one centre (< 1e-4) and
+  re-striping to 1 restores the exact original `d`; a contour LINE; Fusion: a striped rail -> 5 rail Slots,
+  4 Coincident + 4 Collinear, stroke_width on all; a striped contour arc -> 3 ArcCenterSlots on one centre
+  (< 1e-4, = the original's), sweeps summing to the arc, a Coincident at both seams; the registration (button
+  right after ✂, S unique, TOOLBAR_GROUPS, TOOL_PANELS, SNAP_POLICY 'none').
+- `test_sketch_manifest_builder.py`: a semicircle striped into 3 -> 3 arc slots + 2 lines, 5 Coincidents,
+  zero parity mismatches (the FakeDesign rig; pytest installed in the container for this).
+
+### Shots (real Chromium, real pointer events + the S key)
+`tools/repro/stripe_tool_shots.mjs` (new; `CHROME=` and `OFFLINE_CDN=` overrides so it runs in a sandbox with
+no cdnjs route -- svg.js 3.2.0 / three r128 served from their npm packages via CDP Fetch). Result `ok:true`:
+mode 'stripe' via S, panel visible, 2 preview ticks on the hovered arc = 3 stripes, the arc's 3 pieces on one
+centre (5.77300, 2.71300) with 30deg each, a rail striped into 7 (A B A B A B A), re-striped with C on (still
+7, A B C A B C A), Length 0.5 -> Count follows 12, undo -> the 2-colour 7, undo -> the whole rail. Shots in
+the session scratchpad `shots/f27-3/f27_3_{0_generated,1_stripe_tool,2_arc_hover,3_arc_striped,4_rail_striped,
+5_rail_restriped_3_colours,6_length_drives,7_undone}.png`.
+
+### Live Fusion -- NOT done, left for Fred
+This session ran in a cloud container with no Fusion. Verified as far as possible without it: the JS manifest
+for a striped rail and a striped contour arc (tests above) and the Python builder against the FakeDesign rig.
+Fred: please check live (clean origin/main scratch worktree): stripe a rail (e.g. Count 5) and a contour arc
+(Count 3), Send; expect one slot per stripe, the rail's stripes collinear with a Coincident at each seam, the
+arc's stripes as arc slots on one centre.
+
+### Files
+editor/editor-stripe-tool.js (new), editor/properties-stripe.js (new), editor/editor-cut-tool.js (no-commit
+split, `writePieceColor`, `minPieceLength`, exports), editor/editor-shape-lattice-generator.js
+(`primitiveToPathD` digits), editor-interaction.js (+2 lines: import + `stripe` mode handler), editor-ui.js
+(hint + panel predicate), editor-drawer.js (TOOL_PANELS), editor-grid.js (SNAP_POLICY), tools/mode-tools.js,
+editor-controls.js, bspline_gen_palette.html (button + panel), styles/editor.css (drawer header rule).

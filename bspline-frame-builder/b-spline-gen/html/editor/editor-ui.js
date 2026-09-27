@@ -14,6 +14,7 @@ import { setHandleCursor } from './editor-transform-handles.js';
 // affordance is visible without hover. See BUG-02 and BUG-06.
 const MODE_HINTS = {
   cut:    'Cut — tap a line to split it there (snaps by GRID / GEOMETRY; Alt = exact). Tap a cut again to join.',
+  stripe: 'Stripe — tap a line to split it into equal stripes of Colours A / B (/ C). Tap it again to re-stripe with the current settings.',
   select: 'Select — click a shape to pick it up, drag to move. Hold Shift for additional…',
   node:   'Nodes — click a shape to edit its anchor points. Drag the diamond handles to reshape.',
   draw:   'Pen — Click to place anchors (double-click or Enter to commit, Esc to cancel). Or drag to freehand.',
@@ -235,6 +236,7 @@ export const TOOLBAR_GROUPS = {
   editorAutoNodesGroup: (rawMode, el, currentMode) => currentMode === 'lattice', // SE7a
   editorLatticePanel: (rawMode, el, currentMode) => currentMode === 'lattice', // SE7b slice 3
   editorShapeLatticePanel: (rawMode, el, currentMode) => currentMode === 'shapeLattice', // T58 (SE14 Slice 3)
+  editorStripePanel: (rawMode, el, currentMode) => currentMode === 'stripe', // F27 item 3
 };
 
 function _resolveGroupNode(key) {

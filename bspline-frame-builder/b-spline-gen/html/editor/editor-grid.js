@@ -118,6 +118,8 @@ export const SNAP_POLICY = {
   // SE16 ✂: the cut tool snaps ON the line itself (editor-cut-tool.js snapOnLine, the same H1 toggles and geometry
   // targets restricted to the line), so the generic point snap stays out of its way.
   cut: 'none',
+  // F27 item 3: the stripe tool places its cuts itself (equal division of the tapped line), never at the pointer.
+  stripe: 'none',
 };
 
 /**
