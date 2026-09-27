@@ -11702,3 +11702,128 @@ stacking, measured against a real un-nested stepper's own ~1px gap so the tolera
 failures (2 checks x 5 widths, `stampVBitAngle` specifically) confirmed, restored to green after popping
 the stash. Shots: V-Bit Angle before (`h12_vbit_before.png`, showing the empty box) and after
 (`h12_vbit_after.png`, flush) in `shots\seatA\`.
+
+---
+
+Dispatch: epoch 3 — H13: HAPTICS (one declared module; all events; iOS switch trick; settings toggle).
+NEXT-SESSION.md, spec ROADMAP.md "HAPTICS" (Fred: "all of them"). Seat B = core/noise; seat C = frame
+solver/handles (F24), out of scope here except for one shared file noted below.
+
+**H13 item 1 — the declared module.** New `core/haptics.js`: `HAPTIC_PATTERNS` (`{snap:5, limit:15,
+multiselect:[10,30,10], contextMenu:8, cutJoin:8}`) + `haptic(event)`. Backends: `navigator.vibrate(pattern)`
+when present (Android/Chrome); otherwise a hidden `<input type="checkbox" switch>`'s real `.click()` (not
+just setting `.checked`, which does NOT trigger the browser's own activation behaviour the OS haptic hook
+rides on) for iOS/iPadOS Safari 18+; `isFusionMode` (already-declared `core/state.js` flag) short-circuits
+both entirely inside the Fusion palette. iOS has no pattern control at all — every event feels the same
+single tap there, an accepted degradation, not a bug. **UNVERIFIED ON REAL HARDWARE** — this is the
+documented mechanism, not something I can confirm buzzes on an actual iPad from here (see the "Fred, please
+check" section below).
+
+Also exports `hapticSnap(isEngaged)` / `resetHapticSnap()` — the ENTERING-a-snap rate limit ROADMAP.md's
+own wording asks for lives here, not duplicated at each of `snapFor`'s several call sites: a call site
+reports "is a snap active THIS move" every move, and the module tracks the false->true transition itself
+(and needs an explicit reset at drag-start, since a drag that BEGINS already snapped — e.g. the previous
+one also ended snapped — would otherwise be missed by a bare transition check).
+
+Note re-reading the spec closely: the "only on ENTERING, rate-limited" language is written specifically
+about **snap** in both NEXT-SESSION.md and ROADMAP.md — 'limit' has no such qualifier. So 'limit' fires on
+literally every drag tick where the value is genuinely still at its bound (a firm bump repeating while you
+hold against a wall), not just once on first contact. That reads as the intended behaviour to me (arguably
+more informative than a single tick you can miss), but flagging the asymmetry explicitly in case Fred
+wants 'limit' rate-limited the same way once he's felt it.
+
+**H13 item 2 — wiring (everything outside seat C's own frame-handles.js).**
+- **snap** — `editor-grid.js`'s `updateSnapCursor` (the H1 SNAP-SPLIT resolver's own live per-move caller):
+  named the existing `snapped.x!==adjusted.x||snapped.y!==adjusted.y` comparison (it already computed this
+  for the `show` cursor-visibility flag) and fed it to `hapticSnap`, gated on `editor._isDragging ||
+  editor._isDrawing` (this function also runs on plain hover, which must never buzz). `resetHapticSnap()`
+  added to `editor-interaction.js`'s `handleStart` — the single funnel every drag/draw begins through,
+  regardless of mode. KNOWN GAP: lattice rail/tie/joint moves (`_updateLatticeMove`) snap via
+  `_geometryAxisSnap`/`snapToGrid` directly, NOT through `snapFor`/`updateSnapCursor` — those drags currently
+  don't tick on snap at all. Left unwired rather than guessing at a second hook under time pressure; noting
+  it here as a known, deliberate gap rather than a silent one.
+- **limit, Shape Lattice handles** — `editor-shape-lattice-interaction.js`'s `computeParamHandles` (the
+  PURE, no-DOM module both the generic Shape Lattice tool AND `frame-handles.js` share) now attaches each
+  handle's own already-computed feasible range (`range: R[key]`) alongside `valueFromWorld`, via a `withRange`
+  wrapper around both preset branches' `pick([...])` calls — deliberately NOT calling `haptic()` inside this
+  module itself, since its own header comment declares it "PURE math... no DOM" and haptic() reaches
+  navigator/document/localStorage. The actual `haptic('limit')` call lives at the DOM-touching consumer,
+  `editor-interaction.js`'s `shapeLatticeHandler.update`: fires when `value === handle.range.min/max`.
+  **Scope note for whoever reads `frame-handles.js` next:** `frameHandles()` also flows through
+  `computeParamHandles` and therefore ALSO receives this `.range` field via its own `{...h, ...}` spread —
+  but it immediately overwrites `valueFromWorld` with one that re-clamps against `frameParamRanges`'s OWN
+  (frame-narrowed) range, so `handle.range` on a FRAME handle reflects the GENERIC geometric bound, not the
+  frame-specific one (e.g. it would miss `FRAME_MIN_OPENING_IN`'s narrowing on the pinch). Confirmed this
+  causes no double-fire today: frame handle drags never actually reach `shapeLatticeHandler.update` at all —
+  they route through `frame-panel.js`'s own separate `_wireHandleDrag`/`handleDragPatch`, which never reads
+  `.range`. If seat C wires their own hook off `frameParamRanges`'s own `R[key]` (the correct source for
+  frame ranges), the two implementations coexist cleanly with no overlap; just don't reach for the shared
+  handle's `.range` field for a frame-specific clamp — it's the wrong number there.
+- **limit, joint slide / cut-joint push** — `editor-lattice-chains.js`'s `updateJointSlide` and
+  `pushTieJoints`: both already return a possibly-clamped value; `haptic('limit')` fires when the returned
+  value differs from what was requested, in each.
+- **limit, lip/trim range** — `core/frame-record.js`'s `normalizeFrameRecord`: fires when the committed
+  `panelLip` differs from the raw input, i.e. only on a genuine out-of-range WRITE, never on a plain reload
+  of an already-normalized saved record (verified: a fresh `it()` in `tests/panel-lip.test.js`, mutation-
+  tested — removing the call makes the "fires when clamped" test fail as expected, restored to green after).
+  This IS `core/frame-record.js`, a file outside `frame-handles.js` proper but frame-specific data — flagging
+  for the advisor/seat C per the same "which file counts as whose" caution as above, though panelLip's own
+  clamp has no relationship to `feasibleParamRanges`/`frameParamRanges` at all (a plain declared numeric
+  range from frame-defs), so there's no shared-function overlap risk here the way there is for handles.
+- **multiselect add/remove** — `editor-multiselect-gesture.js`'s `_fireHold`: one `haptic('multiselect')`
+  right after `_selectAdd`, covering both directions (add or remove) with the same double-tick pattern.
+- **context menu open** — `editor-context-menu.js`'s `openContextMenu`: fires only AFTER the
+  `items.length===0` early-return, so an empty/no-op menu attempt never buzzes.
+- **cut/join** — `editor-cut-tool.js`'s private `_commit()`, the ONE helper both `cutAt` and `join` call on
+  genuine success (both have their own early-return failure paths above it) — one `haptic('cutJoin')` call
+  covers both actions without touching either function's own body.
+
+**H13 item 3 — Settings toggle.** New "Haptic feedback" checkbox in the Settings panel
+(`bspline_gen_palette.html`, `#hapticEnabled`, same checkbox-label shape the file's own existing 5
+checkbox-labels use), wired in `main/header-controls.js` (already "Header / settings-panel button wiring"
+by its own doc comment) via `isHapticEnabled()`/`setHapticEnabled()`. Persisted under its own localStorage
+key (`bspline.editor.hapticEnabled`, `'1'`/`'0'`/absent), matching the smallest existing precedent in the
+codebase for a lone boolean flag (`editor-ui.js`'s `EXPAND_CALLOUT_KEY` pattern) rather than the
+whole-session blob or a per-feature JSON object — neither of which a single checkbox needs. Default (when
+nothing saved yet): `window.matchMedia('(pointer: coarse)').matches`, the codebase's own existing JS-side
+touch-detection precedent (`lattice-side-column.js`'s `_isDesktop`). **Note: "Undo Limit", the field I
+initially assumed had an identical existing persistence pattern to copy, turns out to have NONE — it's
+pure decoration with no JS reader/writer anywhere in the repo (confirmed by research, corrected before I
+wrote anything based on that wrong assumption).** Live-verified via CDP: touch-emulated 390px defaults the
+checkbox to checked; desktop 1400px defaults it to unchecked; toggling either writes the correct `'0'`/`'1'`
+and updates the checkbox state.
+
+**H13 item 4 — tests.** New `tests/haptics.test.js` (14 tests): the full `HAPTIC_PATTERNS` table; each event
+calls `navigator.vibrate` with its own declared pattern; an unknown event and a disabled toggle both no-op
+without throwing; `isFusionMode` no-ops even with the toggle on; the toggle persists to localStorage; the
+iOS fallback (`navigator.vibrate` absent) calls a REAL `.click()` on a cached, reused hidden `switch`
+checkbox rather than throwing. `hapticSnap`'s rate limit gets its own 4 tests: fires once on entering,
+does NOT fire again while held snapped, fires again after a disengage/re-engage cycle, and
+`resetHapticSnap()` correctly forces the next engaged call to fire even if the internal state was already
+`true`. Added 3 more integration-style tests to the EXISTING `tests/panel-lip.test.js` (fires when
+genuinely clamped; does not fire for an in-range value; does not fire on a plain old-record reload).
+EVERY new test mutation-tested: disabled the rate-limit condition (`hapticSnap` fired on every call instead
+of only the transition) -> the "does NOT fire again while remaining snapped" test correctly failed; removed
+the Fusion-mode gate -> the Fusion no-op test correctly failed; removed `frame-record.js`'s `haptic('limit')`
+call -> the panel-lip integration test correctly failed. All restored to green after. `npx vitest run` ->
+**2001 passed** (up from 1973 pre-turn; +14 haptics.test.js, +3 panel-lip.test.js, +11 from other seats'
+concurrent merges landed via this turn's rebases), zero regressions across cut-tool.test.js,
+editor-shape-lattice-interaction.test.js, properties-shape-lattice.test.js, and frame-gen.test.js — all the
+suites covering files this turn touched.
+
+**How Fred can check the FEEL (the one thing no headless test can verify):**
+- **Android/Chrome**: should feel a real, distinct buzz for every gesture below — vibrate is a standard,
+  well-supported API there.
+- **iPad/Safari**: the mechanism is real (Safari 18's own documented switch-haptic trick) but UNCONFIRMED
+  on his actual hardware/iOS version — if NOTHING buzzes there at all, that's the thing to report back,
+  since the whole iOS backend rests on this one trick working as documented.
+- Gestures to try, roughly least-to-most involved: (1) open **Settings > Haptic feedback** and confirm it's
+  ON by default on his phone/iPad (touch devices) but check what it shows on a desktop browser too, if he
+  has one handy, where it should default OFF; (2) drag any slider/stepper-backed value slowly toward its
+  extreme (Carve Depth, a Shape Lattice handle, Symmetry Offset) — a firm bump right as it stops moving,
+  repeating if held there; (3) drag near a grid line or another piece's edge with Snap on — a tiny tick the
+  instant it catches, nothing further while held snapped, another tick if you drag away and back; (4)
+  double-tap-and-hold a second piece while one is already selected — a double-tick; (5) long-press (or
+  right-click on desktop) any piece — a tick when the menu appears; (6) use the cut tool on a rail or tie,
+  then tap the same joint to join it back — a tick each time, only on a completed cut/join, not a rejected
+  one (e.g. too short to cut).

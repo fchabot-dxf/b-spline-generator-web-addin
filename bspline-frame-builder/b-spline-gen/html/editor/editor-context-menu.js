@@ -63,6 +63,7 @@ import { openColorMosaic } from './editor-color.js';
 import { cutAt, join, cutIntent } from './editor-cut-tool.js';
 import { copySelection, pasteClipboard, selectAllVisible } from './editor-interaction.js';
 import { applyLayerState, addLayer } from './layers.js';
+import { haptic } from '../core/haptics.js';
 
 const LATTICE_OWNED_KINDS = new Set(['rails', 'ties', 'nodes', 'contour']);
 
@@ -331,6 +332,7 @@ export function openContextMenu(editor, target, clientX, clientY, suppressDismis
     suppressDismissUntil,
   });
   _openMenu = menu;
+  haptic('contextMenu'); // H13: only after the items.length===0 guard above, so an empty menu never buzzes
   return menu;
 }
 

@@ -20,6 +20,7 @@
 import FRAME_DEFS from '../data/frame-defs.js';
 import { P, saveLastSession } from './state.js';
 import { markDirty } from './dirty.js';
+import { haptic } from './haptics.js';
 
 export const FRAME_RECORD_VERSION = 1;
 export { FRAME_DEFS };
@@ -65,7 +66,14 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
   if (tpl && Number.isInteger(raw.genSeed)) out.genSeed = raw.genSeed;
   // F22: the panel lip, inside its declared range (0 .. the record's own Trim offset); old records = the default 0
   const lip = Number(raw.panelLip);
-  if (tpl && Number.isFinite(lip)) { const r = panelLipRange(defs, out); out.panelLip = Math.min(r.max, Math.max(r.min, lip)); }
+  if (tpl && Number.isFinite(lip)) {
+    const r = panelLipRange(defs, out);
+    out.panelLip = Math.min(r.max, Math.max(r.min, lip));
+    // H13: fires only when this SPECIFIC value was actually out of range
+    // (a stored/reloaded record is already normalized, so a plain load
+    // never re-trips this -- only a fresh out-of-range write does).
+    if (out.panelLip !== lip) haptic('limit');
+  }
   if (tpl && raw.seeds && typeof raw.seeds === 'object') {
     const seeded = new Set((tpl.handles || []).filter((h) => h.binding === 'seeded').map((h) => h.key));
     // F20: a seed key the template split (frame-defs `handleMigrations`, e.g. the one corner radius -> Shoulder +

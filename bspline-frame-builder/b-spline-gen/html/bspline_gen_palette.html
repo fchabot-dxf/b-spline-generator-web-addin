@@ -1201,6 +1201,19 @@
 
         <div class="cad-status-divider" style="margin: 12px 0;"></div>
 
+        <!-- H13 HAPTICS: default ON on touch devices, persisted
+             (core/haptics.js's own localStorage key) -- main/header-
+             controls.js reads the checked default from isHapticEnabled()
+             and writes back through setHapticEnabled() on change. -->
+        <div class="cad-panel-section">
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="hapticEnabled">
+            <span>Haptic feedback</span>
+          </label>
+        </div>
+
+        <div class="cad-status-divider" style="margin: 12px 0;"></div>
+
         <div class="cad-panel-section">
           <label class="cad-label">Thicken Analysis</label>
           <div class="cad-slider-row">

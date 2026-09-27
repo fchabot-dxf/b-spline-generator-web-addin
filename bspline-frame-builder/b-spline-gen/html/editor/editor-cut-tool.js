@@ -22,6 +22,7 @@ import { chainOf, JOINT_TOL, MIN_PIECE_CELLS } from './editor-lattice-chains.js'
 import { clearColorOverride, pieceKindOf, OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import { getLayerPattern, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
 import { isOnVisibleLayer } from './layers.js';
+import { haptic } from '../core/haptics.js';
 
 /** The shortest piece a cut may leave: one lattice cell for a lattice rail/tie (the stretch minimum), a hair for a
  *  plain line. */
@@ -85,6 +86,7 @@ function _commit(editor) {
   if (typeof editor.pushState === 'function') editor.pushState();
   if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   else if (editor._onChange) editor._onChange();
+  haptic('cutJoin'); // H13: cutAt/join both route through here, only on genuine success
 }
 
 /**

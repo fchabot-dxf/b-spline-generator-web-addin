@@ -3,9 +3,10 @@
  * the frame record's panelLip (declared default 0, range 0 .. Trim offset), the panel's trim outline = the frame
  * outline offset OUTWARD by the lip (the F8 true offset, negative distance), the bars unchanged, lip 0 == today.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord, framePayload, panelLipRange } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
+import { HAPTIC_PATTERNS, setHapticEnabled } from '../bspline-frame-builder/b-spline-gen/html/core/haptics.js';
 import { frameCutProfile, frameSolidSpec, panelTrimPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { applyFrameToPanel, frameLoopsWorld, sampleOutline, pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 import { offsetOutlineInward } from '../bspline-frame-builder/b-spline-gen/html/editor/outline-offset.js';
@@ -51,6 +52,31 @@ describe('the record: declared default 0, range 0 .. the Trim offset, old record
     const p = framePayload(FRAME_DEFS, rec('template_2', { panelLip: 0.0625 }));
     expect(p.panelLip).toBe(0.0625);
     expect(Object.keys(p.params)).not.toContain('panelLip');
+  });
+
+  describe('H13: a genuinely out-of-range panelLip fires haptic(\'limit\')', () => {
+    let vibrate;
+    beforeEach(() => {
+      setHapticEnabled(true);
+      vibrate = vi.fn();
+      navigator.vibrate = vibrate;
+    });
+    afterEach(() => { delete navigator.vibrate; });
+
+    it('fires when the value actually gets clamped', () => {
+      rec('template_1', { panelLip: 5 }); // clamped to 0.25 (the template's Trim offset default)
+      expect(vibrate).toHaveBeenCalledWith(HAPTIC_PATTERNS.limit);
+    });
+
+    it('does NOT fire when the value is already inside range', () => {
+      rec('template_1', { panelLip: 0.0625 });
+      expect(vibrate).not.toHaveBeenCalled();
+    });
+
+    it('does NOT fire when reloading an already-normalized old record (panelLip absent, defaults to 0)', () => {
+      normalizeFrameRecord({ templateId: 'template_1', frameBottomZ: -1 });
+      expect(vibrate).not.toHaveBeenCalled();
+    });
   });
 });
 
