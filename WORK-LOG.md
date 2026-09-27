@@ -12717,3 +12717,56 @@ reading it, left untouched.
 No shots requested for this item (checklist).
 
 `npx vitest run` -> **2218 passed** (up from 2215), zero regressions.
+
+## H20 item 5 — Layer select is a brief ~1s flash, not a lasting highlight
+
+Fred: "selecting a layer should signal or highlight what geometry it is momentarily but not forever, since it
+is distracting if I'm working on the canvas."
+
+**Checked for a persistent highlight/dim to remove FIRST, per the dispatch.** None exists today:
+`applyLayerState`'s `.inactive-layer` class (the only per-layer visual state) has carried NO opacity/dimming
+since Fred already removed it on 2026-09-24 — confirmed directly from `styles/editor.css`'s own comment at
+that class ("shown layers keep FULL opacity even when not active — no dimming; the active layer is marked in
+the layer list instead"); today the class is `pointer-events: none` only. So this item is a pure ADDITION,
+not a removal — named explicitly here since there was nothing to cut.
+
+**Declared once** (`flashLayerGeometry`, `layers.js`, alongside its two exported constants
+`LAYER_FLASH_COLOR` (`#ffcc00`, the SAME yellow the element-selection halo already uses,
+`editor-ui.js`'s `updateSelectionHighlight`) and `LAYER_FLASH_DURATION_MS` (1000)) — the row-click handler is
+its only caller today, but any future one (e.g. a "jump to layer" command) could call the same function.
+Deliberately does NOT reuse `editor-ui.js`'s own private `_renderHighlight` (the selection-halo drawer) even
+though it does almost exactly this: that module already imports FROM `layers.js`
+(`getElementLayer`/`setActiveLayer`), so importing its helper back here would be a circular import. Instead
+this is a small, self-contained clone-and-thicken-the-stroke routine using the same colour for visual
+consistency, with its own lifecycle: clones every element whose `data-layer` matches, adds them to the
+existing `_highlightLayer` (the same layer selection halos already live in), fades them out over 1s via a
+plain CSS `transition` (skipped entirely under `prefers-reduced-motion` — the highlight then just sits at
+full opacity until the same timer removes it abruptly, matching the dispatch's exact "show briefly, no fade
+animation" rule), and tracks its own timer + highlight list on the editor object so a re-click or a
+different-layer click can tear down whatever's currently flashing before starting fresh.
+Wired into the ONE row-click handler (`layers.js`): fires unconditionally on every click, even re-selecting
+the already-active layer (where `setActiveLayer` itself is skipped) — the flash is a separate, always-
+retriggerable signal, independent of whether the active layer actually changed. Never touches
+`_selectedElement(s)` — element selection is untouched, per the dispatch.
+
+**Tests** (`tests/h20-layer-flash.test.js`, 9 tests, `vi.useFakeTimers()`): clones only the target layer's
+elements in the flash colour; the highlight is gone at exactly the duration and NOT gone one tick before it
+(non-vacuous — proves the timer length itself matters, not just that SOME timer exists); re-clicking the
+SAME layer mid-flash tears down the old highlight and resets the timer (proven by advancing the OLD timer's
+remaining time and confirming the NEW flash survives it — a weaker test would only check a new highlight
+appeared, not that the old timer was actually cancelled); switching to a DIFFERENT layer mid-flash cancels
+the first; `prefers-reduced-motion` suppresses the CSS transition (contrasted directly against a test proving
+the transition IS set without it, so this isn't just "transition is always undefined in this mock"); element
+selection is never touched; a layer with no geometry is a clean no-op. Mutation-tested twice: removing the
+"cancel previous flash" block correctly failed exactly the 2 re-trigger/switch tests (others correctly
+stayed green, since they don't exercise that path); ignoring `reduceMotion` correctly failed exactly the
+reduced-motion test. Restored both, re-ran clean each time.
+
+**Live-verified** via real CDP mouse interaction (not simulated): drew a rectangle on Layer 1, added Layer 2
+with a circle, clicked Layer 1's row, and screenshotted ~120ms later (well inside the 1s window) and again
+1.2s later. The first shot shows a clear yellow glow outline around the rectangle only (the circle on Layer 2
+is untouched); the second shows the canvas back to exactly its plain state — visually confirms the effect
+end-to-end, not just the unit-tested timer mechanics.
+Shots in `shots\seatA\` (`H20-item5_layer-flash-during`, `H20-item5_layer-flash-after`).
+
+`npx vitest run` -> **2227 passed** (up from 2218), zero regressions.
