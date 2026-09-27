@@ -52,6 +52,10 @@ def test_the_lip_ring_is_no_feature_the_trim_still_cuts_and_the_bars_are_unchang
     assert feat["region"] == "surround-minus-outline"
     # the ring between the outline and the lip loop: the panel keeps it
     assert classify(lip + reg["outline"], frame) == (None, None)
+    # MEASURED live (F22): the miters split the ring at the outline corners, so a ring piece also touches miters
+    from fb_engine.declared_profiles import miter_curve_id
+    corner = [miter_curve_id(*reg["miters"][0]), miter_curve_id(*reg["miters"][1])]
+    assert classify(lip[:3] + reg["outline"][:3] + corner, frame) == (None, None)
     # a bar is classified exactly as before
     m0 = reg["miters"][0]
     bar = [reg["outline"][0], reg["inner"][0], m0[0].split(":")[0]]

@@ -26,6 +26,12 @@ SURROUND_REGION = "surround-minus-outline"
 BAR_REGION = "outline-minus-inner"
 
 
+def miter_curve_id(src_id, tgt_id):
+    """The FrameBuilder.ID of the miter line from `src_id` to `tgt_id` (a template's `miters` pair). The ONE naming
+    rule: fb_engine/miters.py names the line with it, the lip rule below derives the ids with it."""
+    return f"miter-{src_id}_{tgt_id}"
+
+
 class DeclaredProfileError(ValueError):
     """A profile the declaration can not place (logged; that profile is skipped)."""
 
@@ -60,9 +66,12 @@ def classify(curve_ids, frame):
     from fb_engine.panel_lip import lip_ids
     lip = set(lip_ids(regions["outline"]))
     if ids & lip:
-        stray = ids - lip - set(regions["outline"])
+        # MEASURED live (F22, T1 7x9): the miters meet the outline at its corners and split the ring into pieces,
+        # so a ring piece is bounded by lip + outline + miter curves
+        miters = {miter_curve_id(a, b) for a, b in regions["miters"]}
+        stray = ids - lip - set(regions["outline"]) - miters
         if stray:
-            raise DeclaredProfileError(f"lip profile curves {sorted(stray)} are not the outline or its lip")
+            raise DeclaredProfileError(f"lip profile curves {sorted(stray)} are not the outline, its lip or a miter")
         return None, None  # the lip ring: the panel keeps it
     outline = ids & set(regions["outline"])
     if outline:

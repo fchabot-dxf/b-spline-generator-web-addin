@@ -7,6 +7,7 @@ zero-length and overlap errors that crash the Fusion solver.
 """
 import adsk.core
 import math
+from fb_engine.declared_profiles import miter_curve_id
 
 
 def miter_step(ctx, sketch, s_name, m):
@@ -58,7 +59,7 @@ def miter_step(ctx, sketch, s_name, m):
 
         # Assign ID to miter line (e.g., miter-TR, miter-BL)
 
-        miter_id = f"miter-{src_id}_{tgt_id}"
+        miter_id = miter_curve_id(src_id, tgt_id)  # the one naming rule (declared_profiles)
         ctx.set_id(line, s_name, "miter", override_id=miter_id)
         # Assign IDs to miter endpoints (start = :S, end = :E)
         ctx.set_id(line.startSketchPoint, s_name, "miter", override_id=f"miter-{src_id}_{tgt_id}:S")
