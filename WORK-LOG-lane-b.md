@@ -10817,3 +10817,39 @@ Mutation: reverting either fix fails 3 tests.
 Shots (real headless renders against the app's own CSS, not mockups): shots/seatB/t81-boundary-section-
 colour.png, shots/seatB/t81-endrule-wrap.png.
 Verify: 2231/2231 vitest. Commit f4c5bb3. NO FUSION.
+
+## T81 item 3 — randomize segment colours button, Shape Lattice Contour section
+
+Fred: "in shape lattice contour, add a randomize segment color button". A dice-icon button (title "Randomize
+segment colours"), placed OUTSIDE shapeLatticeShapeBlock/shapeLatticeSegmentsBlock (both go `inert` under Offset
+from frame, per an existing comment) so it stays available whichever contour source is active, per the item's
+own "works whether Shape preset or Offset-from-frame."
+
+New `randomSegmentColorSet(n, rng)` (editor-color.js, pure): draws N colours from the app's ONE declared palette
+(VECTOR_COLORS, the same 32-swatch mosaic the toolbar's colour picker uses), rejecting-and-redrawing against a
+CYCLICAL adjacency constraint (index i vs i-1, and the last vs the first, since a contour is a closed loop).
+`rng` defaults to Math.random ("each click gives a new draw"); a test injects a seeded one for a reproducible
+sequence -- with 32 colours the reject loop settles fast even at typical segment counts.
+
+New `randomizeSegmentColors(editor, rng)` (properties-shape-lattice.js): gets the segment COUNT from
+`contourSilhouette` directly, using the exact SAME inputs (region/contourWidth/frameContext) `regenerateSilhouette`
+itself resolves them from -- correct for either contour source (contourSilhouette already dispatches on
+`contour.fromFrame.on`) and for a 'kink' segment (expands 1 topology segment to 2 drawn primitives; the count is
+`primitives.length`, matching what's actually drawn, not `shape.segments.length`). Writes the draw into
+`p.contour.segmentColors` -- the SAME field a manual per-segment pick already writes (`_storeContourSegmentColor`,
+editor.js) and `regenerateSilhouette`'s own per-segment recolour loop already reads on every call -- no second
+colour store, and this new function never touches a segment's DOM stroke directly. `regenerateSilhouetteAndFill`
+(unchanged) applies it and supplies the ONE commit (its own `generatePattern` call pushes/notifies) -- one undo
+step reverts all, the same shape `writeSegmentStyle` already uses for a segment-level change.
+
+Tests: shape-lattice-segment-color.test.js (+19). Pure algorithm: palette membership, no-adjacent-equal
+(wrap-around included) across seeds 1-20 x segment counts [1,2,3,5,12], determinism. Through the real per-segment
+path (regenerateSilhouette + randomizeSegmentColors, the same mock this file's own T73 tests already use --
+extended with `.center()`, which generatePattern's own node emission needed and this contour-only mock never had
+before): every drawn element's stroke matches segmentColors[i]; two consecutive clicks differ (real Math.random,
+not the seeded rng, deliberately, to prove it's actually wired); exactly one pushState/commit call; a KINK segment
+(count = primitives.length, verified genuinely +1 over topology count); Offset-from-frame (a REAL frame-defs
+template via setFrameProfileProvider, not a stub); a never-generated pattern no-ops. Mutation: removing the
+adjacency constraint fails the adjacency test.
+Shot (real rendered before/after, seeded for reproducibility): shots/seatB/t81-randomize-segment-colors.png.
+Verify: 2241/2241 vitest. Commit 7641a86. NO FUSION.
