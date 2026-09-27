@@ -10306,3 +10306,59 @@ multiplier.
 Verify: 2025/2025 vitest (10 new), 87/87 b-spline-gen pytest. Commit 3708fae, pushed. NO FUSION this whole turn.
 
 # T78 complete — all 7 items (the original 6 + the mid-turn Anatomical addition) landed. Passing back to the advisor.
+
+## T78 item 7 AMEND — fix mirror-fold double-torso bug, reshuffle skeleton per seed
+
+**URGENT correction from Fred (via the advisor, with phone-photo evidence of the bug)**: the board's default symmetry
+is 'x', so `terrain.js` ALREADY folds the surface coordinate before calling ANY filter's own `fn()` — `su` arrives
+pre-folded to `|u-0.5|*2` (0 at the board centreline, 1 at the edge). The just-shipped item 7 version re-folded that
+SAME value again (`dx = |su*2-1|`), which put the sternum at su=0.5 (a fold-of-a-fold) instead of su=0, and doubled
+the whole ribcage into a mirrored pair INSIDE what was already one half of the board — terrain.js's own outer mirror
+then doubled THAT again, so the rendered board showed FOUR repeats (two sternum lines, two rib fans, two clavicle
+V's), not one torso. Fixed by building only the half-torso terrain.js expects: `dx = su` directly, no internal
+re-fold at all. Verified under the default Mirror X symmetry: one clean, symmetric ribcage.
+
+This is a real lesson for any future front-facing/portrait-style filter in this codebase: `su` is NOT guaranteed to
+span the full board — under the (default!) symmetry:'x', it's already pre-folded to one half, and a filter with any
+"this specific coordinate means X" structural assumption (unlike the other 6 T78 filters, which are all
+statistically-symmetric noise fields with no such assumption) MUST account for that.
+
+**Two more rounds of Fred's own direction landed live during this fix**:
+
+1. "I want the structure to reshuffle" — "angle of ribs, size, extent", then "for ribs a number of ribs too", then
+   "clavicular same size, extent, angle": the skeleton was near-fully deterministic across seeds (only fine skin
+   texture varied) — wrong for a filter that's meant to reroll like every other one. New per-seed structural draws
+   (`hashInt`/`seedRandom`, the same integer-bit-mixing technique `craterField.js` already uses for Moon/Mars,
+   duplicated here since chest.js has no natural import relationship with that file) now vary: rib count (6-9), rib
+   angle, rib size (spacing), rib lateral extent, ribcage start position, and the clavicle's own angle/size/extent —
+   the bone structure itself now genuinely differs seed to seed. "It should allow opposite angle too": rib and
+   clavicle angle now range through zero (either sweep direction) — confirmed against a real render (seed 17) showing
+   the steep opposite-direction sweep Fred was pointing at in his own annotated screenshot; Fred's own reaction ("Oh
+   good you did it") confirmed the range already covered what he wanted, no further widening needed.
+
+2. **T78 item 7 GUARD** (Fred: "this is still a noise filter, right?"): added explicit tests proving chest.js stays a
+   real filter, not a fixed stamp — two different seeds give visibly different output at the same layout, a fixed
+   seed is deterministic, and scale/warpIntensity/roughness (the shared filter params every other noise mode also
+   reads) each measurably change the result.
+
+Re-rendered the official before/after shots + reference comparison with the corrected code, plus two new comparison
+images: `chest-mirror-fix-comparison.png` (before/iso/topview showing the fix) and `chest-multiseed-comparison.png` +
+`chest-batch2-comparison.png` (4+4 seeds showing the reshuffled rib count/angle/spacing/extent, including
+negative-angle examples).
+
+`tests/noise-chest.test.js`: fixed one test (ribStrength-as-main-control) that assumed the OLD fixed ribcage span —
+now measures via a pointwise `fn(high) - fn(low)` difference instead (cancels every term that doesn't depend on
+ribStrength, isolating its real effect regardless of where any given seed's own random ribcage span happens to sit)
+— more robust than the span-position-dependent range comparison it replaced (found flaky the moment the skeleton
+itself started varying per seed). Added 5 new GUARD tests per item 2 above.
+
+Verify: 2030/2030 vitest (5 new, 1 fixed), 87/87 b-spline-gen pytest. Commit 7e9a3e1, pushed. NO FUSION this whole
+turn.
+
+**NEW checklist item added mid-turn**: T78-item-8, BIOMECHANICAL (`core/noise/xeno.js`) — rework toward the
+biomechanical style in Fred's own reference photo (`shots/fred/biomechanical_reference.jpg`, style of forms only):
+bundles of ribbed tubes/hoses with segmented rings, vertebra-like chains of stacked segments, rib-cage ridges
+merging into piping/conduits, smooth glossy dome/plate calm zones between dense detail, sinewy stretched
+connections. Same mirror rule as chest.js (su arrives pre-folded under the default Mirror X — a central spine at
+su=0, ribs/tubes running outward to su=1, never re-fold). Must stay a real filter (seed-driven, honours
+scale/octaves/roughness/warpIntensity), keep its existing tweak keys. Before/after shots next to the reference.
