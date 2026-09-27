@@ -2347,6 +2347,14 @@
               <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">width
                 <input id="shapeLatticeContourWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
               </label>
+              <!-- T81 item 3 (Fred: "in shape lattice contour, add a randomize
+                   segment color button"): outside shapeLatticeShapeBlock/
+                   shapeLatticeSegmentsBlock (which go inert under Offset from
+                   frame) -- stays available either way, per its own dispatch. -->
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11px; color:#444; flex:1;">Segment colours</span>
+                <button type="button" id="shapeLatticeRandomizeSegmentColors" title="Randomize segment colours" style="height:26px; width:26px; flex-shrink:0; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">🎲</button>
+              </div>
               <!-- F21/F26 CONTOUR-FROM-FRAME (Fred: "offset from frame at 0 is clamped to the inside of frame
                    rather than outside, and doesn't accept negative value"): ON = the contour is the frame's
                    OUTER edge (its cut profile) offset by Distance -- 0 = on the outer edge, + = inward,

@@ -20,6 +20,30 @@ export const VECTOR_COLORS = [
   ['#ffffff', '#bdbdbd', '#616161', '#000000'], // Neutral
 ];
 
+/** T81 item 3 (Fred: "add a randomize segment color button"): `n` random
+ *  colours from the app's ONE declared palette (VECTOR_COLORS above), no
+ *  two CYCLICALLY adjacent equal (index i vs i-1, and the last vs the
+ *  first — a contour is a closed loop). Pure: `rng` defaults to
+ *  Math.random ("each click gives a new draw"), a test injects a seeded
+ *  one for a reproducible sequence. The palette (32 colours) is always
+ *  far larger than a realistic segment count, so the reject-and-redraw
+ *  loop settles in a handful of tries; `guard` is a defensive cap only
+ *  (n could theoretically exceed the palette, or n===2's own single
+ *  constraint could — in principle — stall a pathological rng). */
+export function randomSegmentColorSet(n, rng = Math.random) {
+  const palette = VECTOR_COLORS.flat();
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    let c, guard = 0;
+    do {
+      c = palette[Math.floor(rng() * palette.length)];
+      guard++;
+    } while (guard < 100 && ((i > 0 && c === out[i - 1]) || (i === n - 1 && n > 1 && c === out[0])));
+    out.push(c);
+  }
+  return out;
+}
+
 /** T28: the color mosaic's "recent" row — last RECENT_COLORS_CAP colors
  *  picked, per-viewer, most-recent-first, deduped (re-picking a color
  *  already in the list moves it to front rather than repeating it). Same

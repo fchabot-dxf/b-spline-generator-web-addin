@@ -13,14 +13,20 @@
  * `_updateSelectionHighlight` (editor-color.test.js's own requirement —
  * `VectorEditor.prototype.setColor` calls it unconditionally).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
-import { regenerateSilhouette, currentPattern, currentShape } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
+import {
+  regenerateSilhouette, regenerateSilhouetteAndFill, randomizeSegmentColors, currentPattern, currentShape,
+} from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
 import {
   PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR, hasContourSegmentColor, clearContourSegmentColor,
   resolvePatternLayer,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
+import { VECTOR_COLORS, randomSegmentColorSet } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js';
+import { setFrameProfileProvider } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
+import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 
 function makeMockEditor() {
   let elements = [];
@@ -47,6 +53,11 @@ function makeMockEditor() {
         return elObj;
       },
       fill(v) { if (v !== undefined) store.fill = v; return elObj; },
+      // T81 item 3: randomizeSegmentColors goes through regenerateSilhouetteAndFill
+      // -> generatePattern, which emits lattice nodes via emitNode's own
+      // .circle(d).center(x,y) chain -- this mock's own generator tests
+      // never needed .center() before (contour-only), so it's added here.
+      center(x, y) { store.cx = x; store.cy = y; return elObj; },
       addClass() { return elObj; },
       removeClass() { return elObj; },
       hasClass() { return false; },
@@ -232,5 +243,142 @@ describe('H2 (SEG-COLOR-PANEL): hasContourSegmentColor / clearContourSegmentColo
     expect(resolvePatternLayer(editor, 1)).toBe(editor._layers[0]); // numeric patternOwner-holder lookup
     expect(resolvePatternLayer(editor, '1')).toBe(editor._layers[0]); // string form still works
     expect(resolvePatternLayer(editor, 0)).toBe(editor._layers[0]); // numeric direct-pattern-holder lookup
+  });
+});
+
+// T81 item 3 (Fred: "in shape lattice contour, add a randomize segment
+// color button"). A simple seeded LCG, not Math.random, wherever a test
+// needs a REPRODUCIBLE sequence (the algorithm's own correctness); the
+// "each click gives a new draw" test uses the real default (Math.random)
+// on purpose, to prove that's actually wired through.
+function seededRng(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+const PALETTE = VECTOR_COLORS.flat();
+
+describe('T81 item 3: randomSegmentColorSet -- N palette colours, no two cyclically-adjacent equal', () => {
+  it('every colour comes from the app\'s ONE declared palette, never an arbitrary hex', () => {
+    const out = randomSegmentColorSet(12, seededRng(1));
+    expect(out.length).toBe(12);
+    for (const c of out) expect(PALETTE).toContain(c);
+  });
+
+  it('no two adjacent are equal, wrap-around included, for a range of segment counts', () => {
+    for (const n of [1, 2, 3, 5, 12]) {
+      for (let seed = 1; seed <= 20; seed++) {
+        const out = randomSegmentColorSet(n, seededRng(seed));
+        for (let i = 1; i < n; i++) expect(out[i], `n=${n} seed=${seed} i=${i}`).not.toBe(out[i - 1]);
+        if (n > 1) expect(out[n - 1], `n=${n} seed=${seed} wrap`).not.toBe(out[0]);
+      }
+    }
+  });
+
+  it('the same rng sequence gives the same draw (deterministic); a different one gives a different draw', () => {
+    expect(randomSegmentColorSet(12, seededRng(7))).toEqual(randomSegmentColorSet(12, seededRng(7)));
+    expect(randomSegmentColorSet(12, seededRng(7))).not.toEqual(randomSegmentColorSet(12, seededRng(8)));
+  });
+
+  it('a single segment has no neighbour to differ from -- any palette colour is valid', () => {
+    const out = randomSegmentColorSet(1, seededRng(1));
+    expect(out.length).toBe(1);
+    expect(PALETTE).toContain(out[0]);
+  });
+});
+
+describe('T81 item 3: randomizeSegmentColors -- through the EXISTING per-segment colour path', () => {
+  afterEach(() => setFrameProfileProvider(() => null));
+
+  it('assigns every drawn segment a palette colour, no two neighbours equal, applied to the LIVE elements', async () => {
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    regenerateSilhouette(editor, p);
+    const segEls = sortedSegs(editor);
+    expect(segEls.length).toBeGreaterThan(2); // non-vacuous
+
+    await randomizeSegmentColors(editor, seededRng(3));
+
+    expect(p.contour.segmentColors.length).toBe(segEls.length);
+    const segElsAfter = sortedSegs(editor);
+    for (let i = 0; i < segElsAfter.length; i++) {
+      expect(PALETTE).toContain(segElsAfter[i].attr('stroke'));
+      // the SAME field regenerateSilhouette's own per-segment loop reads --
+      // not a second, direct DOM write this function invented on its own.
+      expect(segElsAfter[i].attr('stroke')).toBe(p.contour.segmentColors[i]);
+    }
+    for (let i = 1; i < segElsAfter.length; i++) expect(segElsAfter[i].attr('stroke')).not.toBe(segElsAfter[i - 1].attr('stroke'));
+    expect(segElsAfter[segElsAfter.length - 1].attr('stroke')).not.toBe(segElsAfter[0].attr('stroke')); // wrap-around
+  });
+
+  it('each click gives a NEW draw (the real default, Math.random -- not a fixed sequence)', async () => {
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    regenerateSilhouette(editor, p);
+    expect(sortedSegs(editor).length).toBeGreaterThanOrEqual(10); // non-vacuous: (1/32)^10 chance of a false failure
+
+    await randomizeSegmentColors(editor);
+    const first = [...p.contour.segmentColors];
+    await randomizeSegmentColors(editor);
+    const second = [...p.contour.segmentColors];
+
+    expect(second).not.toEqual(first);
+  });
+
+  it('one undo step reverts all (ONE pushState/_notifyChange commit, not one per segment)', async () => {
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    regenerateSilhouette(editor, p);
+    let pushCount = 0, commitCount = 0;
+    editor.pushState = () => { pushCount++; };
+    editor._notifyChange = (kind) => { if (kind === 'commit') commitCount++; };
+
+    await randomizeSegmentColors(editor, seededRng(4));
+
+    expect(pushCount).toBe(1);
+    expect(commitCount).toBe(1);
+  });
+
+  it('a KINK segment (1 topology segment -> 2 drawn primitives) still gets exactly one colour per DRAWN segment, not per topology segment', async () => {
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    regenerateSilhouette(editor, p);
+    const shape = currentShape(p);
+    const topologyCount = shape.segments.length;
+    shape.segments[0] = { ...shape.segments[0], style: 'kink', bulge: 0.4, user: true };
+    regenerateSilhouette(editor, p);
+    const segEls = sortedSegs(editor);
+    expect(segEls.length).toBe(topologyCount + 1); // non-vacuous: the kink genuinely added one drawn primitive
+
+    await randomizeSegmentColors(editor, seededRng(5));
+
+    expect(p.contour.segmentColors.length).toBe(segEls.length);
+    for (const el of sortedSegs(editor)) expect(PALETTE).toContain(el.attr('stroke'));
+  });
+
+  it('works when the contour is Offset-from-frame, not just the Shape preset', async () => {
+    setFrameProfileProvider(() => ({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: 'template_1' }) }));
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    p.contour = { ...PATTERN_DEFAULTS.contour, fromFrame: { ...PATTERN_DEFAULTS.contour.fromFrame, on: true } };
+    regenerateSilhouette(editor, p);
+    const segEls = sortedSegs(editor);
+    expect(segEls.length).toBeGreaterThan(2); // non-vacuous: the frame-offset contour genuinely drew segments
+
+    await randomizeSegmentColors(editor, seededRng(6));
+
+    const segElsAfter = sortedSegs(editor);
+    expect(segElsAfter.length).toBe(segEls.length);
+    expect(p.contour.segmentColors.length).toBe(segEls.length);
+    for (const el of segElsAfter) expect(PALETTE).toContain(el.attr('stroke'));
+  });
+
+  it('a fresh, never-generated pattern is a no-op (nothing to colour yet)', async () => {
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    await expect(randomizeSegmentColors(editor, seededRng(1))).resolves.not.toThrow();
+    expect(p.contour?.segmentColors ?? []).toEqual([]);
   });
 });

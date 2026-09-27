@@ -31,7 +31,7 @@ import { setEditorStatusHint } from './editor-ui.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex, HANDLE_SEGMENT_INDEX } from './editor-shape-lattice-interaction.js';
 import { handleHoverVisual, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
 import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
-import { openColorMosaic } from './editor-color.js';
+import { openColorMosaic, randomSegmentColorSet } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
 import { contourSilhouette, contourFromFrameOf, hasFrame, CONTOUR_FROM_FRAME_DEFAULTS } from './contour-from-frame.js';
 import { frameContext, onFrameProfileDrawn } from './editor-frame-profile.js';
@@ -368,6 +368,41 @@ export async function regenerateSilhouetteAndFill(editor) {
     regenerateSilhouette(editor, p);
     await generatePattern(editor, p);
     _dispatchShapeChanged(editor);
+}
+
+/**
+ * T81 item 3 (Fred: "in shape lattice contour, add a randomize segment
+ * color button"): draws `randomSegmentColorSet` (editor-color.js's ONE
+ * declared palette, no two cyclically-adjacent segments equal) and writes
+ * it wholesale into `p.contour.segmentColors` -- the SAME field a manual
+ * per-segment pick already writes (editor.js's `_storeContourSegmentColor`,
+ * via `setColor` on a selected segment) and `regenerateSilhouette`'s own
+ * per-segment recolor loop already reads on every call. No second colour
+ * store, no direct DOM stroke write here at all: `regenerateSilhouetteAndFill`
+ * (unchanged) applies it and is the ONE undo step (its own `generatePattern`
+ * call is what actually pushes/commits) -- same shape `writeSegmentStyle`
+ * above already uses for a segment-level change.
+ *
+ * The segment COUNT comes from `contourSilhouette` directly (the SAME
+ * inputs -- region/contourWidth/frameContext -- `regenerateSilhouette`
+ * itself resolves them from), not the last-drawn DOM element count, so
+ * this is correct even before a first Generate has run. Works for either
+ * contour source (Shape preset or Offset-from-frame): both write through
+ * this one `p.contour.segmentColors` field, and `contourSilhouette` itself
+ * already picks whichever source is active.
+ */
+export async function randomizeSegmentColors(editor, rng = Math.random) {
+    const p = currentPattern(editor);
+    if (!hasGeneratedSilhouette(p)) return;
+    const region = _shapeContourRegion(editor, p);
+    const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
+    const contourWidth = p.contour?.width != null ? p.contour.width : widths.rails;
+    const { primitives } = contourSilhouette(p, region, contourWidth, frameContext(editor));
+    const n = primitives.length;
+    if (!n) return;
+    p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
+    p.contour.segmentColors = randomSegmentColorSet(n, rng);
+    await regenerateSilhouetteAndFill(editor);
 }
 
 /**
@@ -1273,6 +1308,11 @@ export function initShapeLatticeProperties(editor) {
             };
             await regenerateSilhouetteAndFill(editor);
         });
+    }
+    // T81 item 3 (Fred: "add a randomize segment color button").
+    const randomizeColorsEl = el('shapeLatticeRandomizeSegmentColors');
+    if (randomizeColorsEl) {
+        on(randomizeColorsEl, 'click', () => randomizeSegmentColors(editor));
     }
     // T75 (LAT-SIZE): same IMMEDIATE write+redraw convention as the
     // Contour width field above — blank clears back to auto (board minus
