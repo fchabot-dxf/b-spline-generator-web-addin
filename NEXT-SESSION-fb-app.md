@@ -1,16 +1,21 @@
-# NEXT (fb-app) — F8: S4 parity tune + the editor [Frame | Artwork] tabs
+# NEXT (fb-app) — F9: Trim offset (option A) + frame shape HANDLES
 
-**Ball: worker (seat C) · epoch 1 · F8.** F7 ACCEPTED (481c4cc, eadc87e), being merged to main. NO FUSION (Fusion is
-on Fred's other machine now; any live check becomes a step list for Fred). Fred owns the regular add-in on main: keep
-palette/editor edits small and additive, push often. Fred's rule for this work: "no special logic preventing anything,
-code it right and prove it by tests". PROGRESS automatic ("F8 item N: …"). Shots → shots\seatC\.
+**Ball: worker (seat C) · epoch 1 · F9.** F8 ACCEPTED (2a039a1 a9d6fc5 742ca5b 6f6f043), being merged to main. NO FUSION
+(Fusion is on Fred's machine: any live step is a list for Fred). Fred's rules: code it right + prove it by tests (no guard
+logic); frames never get NEW Fusion params. Merge origin/main first (regenerate frame-defs via tools/gen_frame_defs.py,
+never hand-resolve). Asus lane2 edits core/preview/index.js small+additive (BOUNDARY-GUIDE); keep your 3D work in
+frame-mesh.js. PROGRESS automatic ("F9 item N: …"). Shots -> shots\seatC\ AS EACH ITEM LANDS, push each item.
 
 ## Checklist
-- [ ] [F8-item-1] S4: app parity tests against the F3 goldens (§5.2): the JS cut profile vs the recorded Fusion outline
-      per template x board. Fix the 12x6 gap you flagged (0.44 in off) at its cause; state the tolerance used.
-- [ ] [F8-item-2] Editor [Frame | Artwork] tabs (approved UI, §3): Frame tab = the frame's template + shape params
-      (numeric fields only, gate 3.2 (c): no handles) with the live cut profile; Artwork tab = today's editor with the
-      profile as background. [Edit frame shape] in the sidebar opens the Frame tab (replaces the F6 stub).
-- [ ] [F8-item-3] Round trip: Frame -> Artwork -> Frame -> save -> reload, record intact, artwork untouched (test).
-- [ ] [F8-item-4] Shots: both tabs, T1 + T2, desktop + mobile.
-Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F8 — <shas>"`.
+- [ ] [F9-item-1] TRIM OFFSET, gate decided = option (A): boundingboxoffset becomes a normal (non-ReadOnly) template param
+      (template_data.py), so the resolver writes the payload value on every build; the standalone palette shows it as an
+      editable field too (intended). Sidebar FRAME field "Trim offset (in)" (formula-field compatible), in the frame
+      record, driving the editor cut profile + 3D trim + fit rule live, and carried in the payload. Python test: the
+      resolver writes a changed value; JS tests for the field. Live check = a step list for Fred.
+- [ ] [F9-item-2] Frame shape HANDLES in the Frame tab, per the ONE binding table (FB-APP-DESIGN.md + code): each handle is
+      PARAM-BOUND to an existing template param once proven by per-value goldens (write Fred's recording steps), else
+      SEEDED (value in the frame record, [Send frame] writes it as a plain dimension, no user param). Reuse
+      computeParamHandles / feasibleParamRanges. Template change resets the seeds.
+- [ ] [F9-item-3] Tests (binding table is the single source; seeded -> no param in payload; bound -> the param in payload;
+      drag -> record -> reload) + shots of the handles on T1 + T2, desktop + mobile.
+Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F9 — <shas>"`.

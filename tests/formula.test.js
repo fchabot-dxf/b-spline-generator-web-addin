@@ -18,6 +18,7 @@ import {
   FORMULA_FIELDS, FORMULA_SECTIONS, STOCK_SCOPE,
 } from '../bspline-frame-builder/b-spline-gen/html/main/formula-fields.js';
 import { P, INPUT_PAIRS } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { FRAME_PARAM_FIELDS } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 
 const SCOPE = [
   { name: 'width', label: 'Width', get: () => 6, unit: '"' },
@@ -402,7 +403,9 @@ describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
       const el = doc.getElementById(id);
       expect(el, id).not.toBeNull();
       expect(el.getAttribute('type'), id).toBe('number');
-      expect(pKeyFor(id), `${id} has no P key`).toBeTruthy();
+      // FB-APP F9: a FRAME field is bound to the frame record (FRAME_PARAM_FIELDS), not to a P key.
+      if (section === 'FRAME') expect(FRAME_PARAM_FIELDS.map((f) => f.id), id).toContain(id);
+      else expect(pKeyFor(id), `${id} has no P key`).toBeTruthy();
       const hdr = el.closest('.panel')?.querySelector('.panel-header')?.textContent || '';
       expect(hdr, id).toContain(section);
     }
@@ -415,12 +418,15 @@ describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
   it('each section scope = stock names + its own, unique names, every name reads a finite P value', () => {
+    // FRAME names read the frame record: finite once a frame is chosen (no frame = the section is hidden)
+    P.frame = { templateId: 'template_1', params: {} };
     for (const s of FORMULA_SECTIONS) {
       const names = s.scope.map((d) => d.name);
       expect(names.slice(0, 3)).toEqual(['width', 'height', 'depth']);
       expect(new Set(names).size, s.section).toBe(names.length);
       for (const d of s.scope) expect(Number.isFinite(d.get()), `${s.section}.${d.name}`).toBe(true);
     }
+    P.frame = null;
   });
   it('a section scope evaluates against live P', () => {
     const stamp = FORMULA_SECTIONS.find((s) => s.section === 'VECTOR STAMPING').scope;

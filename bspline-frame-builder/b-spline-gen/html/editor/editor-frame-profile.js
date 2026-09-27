@@ -14,6 +14,7 @@
 import { generateSilhouette, outlineDefects, primitivesToPathD, paramsFromShapeModel } from './editor-shape-lattice-generator.js';
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { offsetOutlineInward } from './outline-offset.js';
+import { shapeParamOverrides, frameHandles } from './frame-handles.js';
 
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
 export const FRAME_GRID_CLIP_ID = 'frame-grid-clip';
@@ -23,6 +24,8 @@ export const FRAME_OUTLINE_COLOR = '#5d4037';
 /** F8 (Fred): the symmetric focus rule: whichever of frame / artwork is NOT
  *  being edited is drawn at this opacity, the edited one at full. */
 export const INACTIVE_LAYER_OPACITY = 0.4;
+/** F9: the frame shape handles' drawn radius (board inches). */
+export const FRAME_HANDLE_RADIUS = 0.09;
 
 /**
  * The editor's two modes (design §3.1). 'frame': the frame is edited, the
@@ -50,8 +53,12 @@ export function frameFit(widthIn, heightIn, frameThickness, bboxOffset) {
   return { ok: need < safe, safeZoneIn: safe, requiredIn: need };
 }
 
-/** The template's shape params for this region (the fitted model, F8). */
-const _shapeParams = (tpl, region) => paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region);
+/** The template's shape params for this region: the fitted model (F8), with
+ *  the record's handle values on top (F9: seeds / bound params). */
+const _shapeParams = (tpl, region, record) => ({
+  ...paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region),
+  ...shapeParamOverrides(tpl, record, region),
+});
 
 const _param = (tpl, record, name) => {
   if (record?.params && name in record.params) return record.params[name];
@@ -70,10 +77,10 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
   const bbo = _param(tpl, record, 'boundingboxoffset') ?? 0;
   const ft = _param(tpl, record, 'frame_thickness') ?? 0;
   const region = { x: bbo, y: bbo, w: widthIn - 2 * bbo, h: heightIn - 2 * bbo };
-  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: _shapeParams(tpl, region) });
+  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: _shapeParams(tpl, region, record) });
   const defects = outlineDefects(sil.primitives);
   return {
-    templateId: tpl.id, name: tpl.name, region, primitives: sil.primitives,
+    templateId: tpl.id, name: tpl.name, region, primitives: sil.primitives, params: sil.params,
     pathD: primitivesToPathD(sil.primitives), polygon: sampleOutline(sil.primitives),
     defects, fit: frameFit(widthIn, heightIn, ft, bbo),
   };
@@ -177,6 +184,16 @@ export function drawFrameProfile(editor) {
     }
   }
   g.path(prof.pathD).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.04 }).addClass('frame-cut-profile');
+  // F9: the shape handles, in the Frame tab only (dragged through its shield, main/frame-panel.js).
+  editor._frameHandles = [];
+  if (editor._editorTab === 'frame') {
+    const tpl = (spec.defs.templates || []).find((t) => t.id === prof.templateId);
+    editor._frameHandles = frameHandles(tpl, prof);
+    for (const h of editor._frameHandles) {
+      g.circle(FRAME_HANDLE_RADIUS * 2).center(h.anchor.x, h.anchor.y).fill('#ffffff')
+        .stroke({ color: FRAME_OUTLINE_COLOR, width: 0.03 }).addClass('frame-handle').attr('data-key', h.key);
+    }
+  }
   return prof;
 }
 

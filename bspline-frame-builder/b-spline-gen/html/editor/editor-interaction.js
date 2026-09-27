@@ -161,6 +161,9 @@ function handlePointerDown(editor, e) {
 }
 
 function handlePointerMove(editor, e) {
+    // FB-APP F9: in the Frame tab the pointer belongs to the frame (its shield
+    // drags the shape handles); the editor shows no hover/snap feedback there.
+    if (editor._artworkLocked) return;
     if (!editor._activePointers.has(e.pointerId)) {
         // A move from a pointer we never saw go down (e.g. a mouse move
         // with no button held, which still fires pointermove on some

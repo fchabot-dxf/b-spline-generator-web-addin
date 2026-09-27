@@ -391,6 +391,40 @@ comment). So a waist dragged in the app **cannot reach Fusion parametrically** t
 
 One option is safe whatever Fred picks: (c) ships first and (a) follows it.
 
+#### 3.2.1 Frame shape handles: the binding table (F9, BUILT)
+
+Fred ruled that every handle ships, and **frames never get new Fusion params**. Each handle's
+binding is declared in **one table**: `FRAME_HANDLES` in each `sketches/template_N/template_data.py`,
+generated into frame-defs `templates[].handles`. The app (`editor/frame-handles.js`) and later S5
+read only that table. This section names the source and does not copy it; `test_frame_defs.py`
+checks every entry. Snapshot at F9:
+
+| template | handle key (app shape param) | label | basis | binding |
+|---|---|---|---|---|
+| template_1 (hourglass) | `waistReach` | Waist reach | hw | seeded |
+| template_1 | `cornerRadius` | Corner radius | hw | seeded |
+| template_1 | `waistCenterY` | Waist position | hh | seeded |
+| template_2 (bottle) | `neckWidth` | Neck width | hw | seeded |
+| template_2 | `skeletonX` | S-curve tightness | hw | seeded |
+| template_2 | `neckLength` | Shoulder height | h | seeded |
+
+- **seeded** (every handle today): no existing template param controls these features. The shape
+  comes from the literal seeds in `phases/p02_*` (e.g. `p02_02_anatomy.py`, the
+  `seed_rad_*` dimensions in `p02_09_radius_removal.py`).
+  - The dragged value (a fraction of `basis`) lives in the frame record's `seeds`.
+  - `framePayload()` (core/frame-record.js) carries it under `seeds`, never as a param.
+  - S5's [Send frame] must write it into the sketch as a plain seed value or position. **The
+    mapping from each key to its Fusion seed is S5 work and is UNVERIFIED:** it needs Fusion.
+- **`{ "param": name }`**: an EXISTING frame-owned template param. The handle writes
+  `params[name]` in inches (fraction × basis), and the payload carries it as that param. A handle
+  moves from seeded to param-bound only once per-value goldens prove the match (the preview at 2-3
+  values equals the Fusion outline at those values, the S4 tolerance).
+  - **No candidate param exists today**, so there is no recording step list for Fred yet. The day a
+    template gains a matching param, the steps are the S4 recorder (`tools/repro/record_frame_parity.py`)
+    run at 2-3 values of that param.
+- A template change resets the seeds (`setFrameRecord`). The gate (`normalizeFrameRecord`) keeps only
+  that template's declared seeded keys.
+
 ### 3.3 Geometry: one engine, one outline
 
 - **Outline:** `generateSilhouette(region, shape)` (`APP/editor/editor-shape-lattice-generator.js:517`,
@@ -519,7 +553,12 @@ PARAM_OWNERS (generated into frame-defs.json from ParameterSchema + template par
   board: widthIn, heightIn                      writer: Send only      tag Bspline.owner=1   (exists)
   frame: frame_thickness, boundingboxoffset,    writer: frame_engine   tag FrameBuilder.owner=1 (new)
          frame_height_offset, ck_*
+  lattice: stroke_width, rail_width, tie_width,  writer: Send (b-spline-gen sketch_manifest_builder
+         node_diameter, half_width,              _sync_manifest_parameters)   tag Bspline.owner=1
+         contour_width, contour_height           (R4: ParameterSchema _LATTICE_OWNED_PARAMS / is_lattice_owned)
 ```
+(F9: `boundingboxoffset` is a normal template param now, gate A. The build writes the sent value on
+every build; it was a ReadOnly master that was created once and never updated.)
 
 - **Send never writes a frame param directly.** It passes values in `ui_data`, and `frame_engine`
   stays the only writer, as today. One writer per param.

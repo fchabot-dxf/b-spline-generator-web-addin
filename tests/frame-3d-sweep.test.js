@@ -62,7 +62,7 @@ describe('sweep: every bar is valid', () => {
     }
     expect(bad).toEqual([]);
     expect(checked).toBeGreaterThan(40);
-  });
+  }, 30000); // ~90 real solids + a drawn-face lookup each: ~2.5 s alone, ~6 s under the full parallel run
 
   it('the bar top has rows ACROSS the ring width too, one per terrain cell', () => {
     const W = 7, H = 9, nx = 71, nz = 91; // 0.1 in cells

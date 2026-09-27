@@ -150,6 +150,7 @@ def build_frame_defs(source_hash, goldens_dir=None):
             "params": params,
             "regions": frame.get("regions"),
             "features": frame.get("features"),
+            "handles": frame.get("handles") or [],  # F9: the shape handle binding table
             "sketches": spec["Sketches"],
         })
     return {

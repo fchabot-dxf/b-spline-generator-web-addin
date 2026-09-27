@@ -406,6 +406,11 @@
             <div class="cad-stepper" style="margin-bottom:12px;">
               <input type="number" id="frameBottomZ" value="-1" step="0.125">
             </div>
+            <!-- FB-APP F9: the template's boundingboxoffset (the gap between the board edge and the frame). -->
+            <label class="cad-label">Trim offset (in)</label>
+            <div class="cad-stepper" style="margin-bottom:12px;">
+              <input type="number" id="frameTrimOffset" step="0.0625">
+            </div>
             <label class="cad-label">Wood</label>
             <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
               <select id="frameAppearance" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
@@ -1535,7 +1540,7 @@
           <div class="canvas-grid" style="position:absolute; top:0; left:0; right:0; bottom:0; background-image: radial-gradient(circle, #ccc 1.2px, transparent 1.2px); background-size: 20px 20px; opacity:0.7;"></div>
           <div id="editorSVGContainer" style="position:relative; z-index:2; width:100%; height:100%;"></div>
           <!-- FB-APP F8: in the Frame tab the artwork is view-only (no tool reaches it). -->
-          <div id="editorFrameShield" style="display:none; position:absolute; inset:0; z-index:3; cursor:default;"></div>
+          <div id="editorFrameShield" style="display:none; position:absolute; inset:0; z-index:3; cursor:default; touch-action:none;"></div>
           <!--
             Status hint bar — small, unobtrusive overlay at the bottom of the
             canvas. setMode() and the pen-tool anchor flow update its text so
@@ -2344,7 +2349,7 @@
             <label id="editorFrameWoodRow">Wood
               <select id="editorFrameWood" style="width:100%; margin-top:4px;"></select>
             </label>
-            <div id="editorFrameNote" style="color:#666;">The outline follows the template's shape fitted to Fusion. Shape handles come later.</div>
+            <div id="editorFrameNote" style="color:#666;">Drag the round handles on the outline to shape the frame. Changing the template resets them.</div>
           </div>
         </aside>
 

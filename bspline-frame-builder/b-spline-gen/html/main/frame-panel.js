@@ -19,8 +19,19 @@ import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, framePar
 import { P } from '../core/state.js';
 import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
+import { handleDragPatch } from '../editor/frame-handles.js';
+
+/** F9: how close (screen px) a press must land to grab a frame shape handle (finger-sized). */
+export const HANDLE_HIT_PX = 16;
 
 const $ = (id) => document.getElementById(id);
+
+/** The frame's numeric param fields: field id -> the template param it edits
+ *  (limits from the generated definition), plus the row hidden with no frame. */
+export const FRAME_PARAM_FIELDS = Object.freeze([
+  { id: 'editorFrameThickness', param: 'frame_thickness', row: 'editorFrameThicknessRow' },
+  { id: 'frameTrimOffset', param: 'boundingboxoffset' }, // F9: "Trim offset (in)"
+]);
 
 function _option(value, label) {
   const o = document.createElement('option');
@@ -43,7 +54,9 @@ export function setEditorTab(tab) {
   if ($('editorFrameShield')) $('editorFrameShield').style.display = frame ? '' : 'none';
   // Mobile: the editor's bottom drawer labels its side panel; name it for the mode.
   if ($('editorDrawerTab-layers')) $('editorDrawerTab-layers').textContent = frame ? 'Frame' : 'Layers';
-  setEditorFocus(typeof window !== 'undefined' ? window.svgEditor : null, _editorTab);
+  const ed = typeof window !== 'undefined' ? window.svgEditor : null;
+  setEditorFocus(ed, _editorTab);
+  if (ed) drawFrameProfile(ed); // F9: the shape handles show in the Frame tab only
   return _editorTab;
 }
 export const getEditorTab = () => _editorTab;
@@ -55,13 +68,15 @@ export function syncFramePanel() {
   // The editor's Frame tab mirrors the same record.
   if ($('editorFrameTemplate')) $('editorFrameTemplate').value = rec.templateId || '';
   if ($('editorFrameWood')) $('editorFrameWood').value = rec.appearance;
-  const th = $('editorFrameThickness');
-  if (th) {
-    const p = tpl?.params.find((q) => q.name === 'frame_thickness');
-    if (p) { th.min = p.min; th.max = p.max; }
-    if (document.activeElement !== th) th.value = tpl ? frameParam(FRAME_DEFS, rec, 'frame_thickness') : '';
+  for (const f of FRAME_PARAM_FIELDS) {
+    const el = $(f.id);
+    if (!el) continue;
+    const p = tpl?.params.find((q) => q.name === f.param);
+    for (const k of ['min', 'max']) { if (p && p[k] != null) el[k] = p[k]; else el.removeAttribute(k); }
+    if (document.activeElement !== el) el.value = tpl ? frameParam(FRAME_DEFS, rec, f.param) : '';
+    if (f.row && $(f.row)) $(f.row).style.display = tpl ? '' : 'none';
   }
-  for (const id of ['editorFrameThicknessRow', 'editorFrameWoodRow']) if ($(id)) $(id).style.display = tpl ? '' : 'none';
+  if ($('editorFrameWoodRow')) $('editorFrameWoodRow').style.display = tpl ? '' : 'none';
   if ($('frameTemplate')) $('frameTemplate').value = rec.templateId || '';
   if ($('frameBottomZ') && document.activeElement !== $('frameBottomZ')) $('frameBottomZ').value = rec.frameBottomZ;
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
@@ -78,6 +93,47 @@ export function syncFramePanel() {
   }
   if (typeof window !== 'undefined' && window.svgEditor) drawFrameProfile(window.svgEditor);
   AppState.preview?.refreshFrame?.(); // F7: the 3D trimmed panel + wood bars, live
+}
+
+/**
+ * F9: drag a frame shape handle in the Frame tab. The shield over the canvas is
+ * the Frame tab's own pointer surface (the artwork stays unreachable); a press
+ * within HANDLE_HIT_PX of a handle grabs it, each move writes the record through
+ * the handle's declared binding and redraws the editor profile, and the release
+ * refreshes everything else (the 3D preview) once.
+ */
+function _wireHandleDrag() {
+  const shield = $('editorFrameShield');
+  if (!shield) return;
+  let dragKey = null;
+  const editor = () => (typeof window !== 'undefined' ? window.svgEditor : null);
+  shield.addEventListener('pointerdown', (e) => {
+    const ed = editor();
+    if (!ed || !ed._frameProfile || !(ed._frameHandles || []).length) return;
+    const pt = ed._getMousePoint(e);
+    const edge = ed._getMousePoint({ clientX: e.clientX + HANDLE_HIT_PX, clientY: e.clientY });
+    let best = null, bestD = Infinity;
+    for (const h of ed._frameHandles) {
+      const d = Math.hypot(h.anchor.x - pt.x, h.anchor.y - pt.y);
+      if (d < bestD) { bestD = d; best = h; }
+    }
+    if (!best || bestD > Math.abs(edge.x - pt.x)) return;
+    dragKey = best.key;
+    if (shield.setPointerCapture && e.pointerId != null) { try { shield.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
+    e.preventDefault();
+  });
+  shield.addEventListener('pointermove', (e) => {
+    if (!dragKey) return;
+    const ed = editor();
+    const h = (ed?._frameHandles || []).find((q) => q.key === dragKey);
+    if (!h) return;
+    setFrameRecord(handleDragPatch(getFrameRecord(), h, ed._getMousePoint(e), ed._frameProfile.region));
+    drawFrameProfile(ed);
+    e.preventDefault();
+  });
+  const end = () => { if (!dragKey) return; dragKey = null; syncFramePanel(); };
+  shield.addEventListener('pointerup', end);
+  shield.addEventListener('pointercancel', end);
 }
 
 export function initFramePanel() {
@@ -97,11 +153,13 @@ export function initFramePanel() {
   }
   $('editorFrameTemplate')?.addEventListener('change', (e) => { setFrameRecord({ templateId: e.target.value || null, params: {} }); syncFramePanel(); });
   $('editorFrameWood')?.addEventListener('change', (e) => { setFrameRecord({ appearance: e.target.value }); syncFramePanel(); });
-  $('editorFrameThickness')?.addEventListener('change', (e) => {
-    const rec = getFrameRecord();
-    setFrameRecord({ params: { ...rec.params, frame_thickness: parseFloat(e.target.value) } });
-    syncFramePanel();
-  });
+  for (const f of FRAME_PARAM_FIELDS) {
+    $(f.id)?.addEventListener('change', (e) => {
+      const rec = getFrameRecord();
+      setFrameRecord({ params: { ...rec.params, [f.param]: parseFloat(e.target.value) } });
+      syncFramePanel();
+    });
+  }
   $('editorTabFrame')?.addEventListener('click', () => setEditorTab('frame'));
   $('editorTabArtwork')?.addEventListener('click', () => setEditorTab('artwork'));
   // Two doors, one room: "Edit frame shape" opens the editor on the Frame tab,
@@ -112,6 +170,7 @@ export function initFramePanel() {
   woodSel.addEventListener('change', () => { setFrameRecord({ appearance: woodSel.value }); syncFramePanel(); });
   $('frameBottomZ')?.addEventListener('change', (e) => { setFrameRecord({ frameBottomZ: parseFloat(e.target.value) }); syncFramePanel(); });
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
+  _wireHandleDrag();
   // The fit warning (and the editor's profile) depend on the board size.
   for (const id of ['widthIn', 'heightIn']) $(id)?.addEventListener('change', () => syncFramePanel());
   syncFramePanel();

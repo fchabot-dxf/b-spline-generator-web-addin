@@ -56,7 +56,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "a44f9bcb0c428f385f62782b1d368e9bf456dc75bbcb86d64361d0328732bb48",
+  "sourceHash": "bf089c94e18d5c4b35a029f786f6b2329e5b503fce5b47a8abf2991f4eac0752",
   "templates": [
     {
       "features": [
@@ -87,6 +87,26 @@ export default {
           "taper": "0 deg"
         }
       ],
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "waistReach",
+          "label": "Waist reach"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "cornerRadius",
+          "label": "Corner radius"
+        },
+        {
+          "basis": "hh",
+          "binding": "seeded",
+          "key": "waistCenterY",
+          "label": "Waist position"
+        }
+      ],
       "id": "template_1",
       "name": "Template 1 - Hourglass",
       "params": [
@@ -115,10 +135,11 @@ export default {
         {
           "category": "Frame Spec",
           "default": 0.25,
+          "expose": true,
           "label": "BBox Border",
+          "min": 0.0,
           "name": "boundingboxoffset",
           "owner": "frame",
-          "readOnly": true,
           "unit": "in"
         },
         {
@@ -380,9 +401,10 @@ export default {
             },
             {
               "Category": "Frame Spec",
+              "Expose": true,
               "Label": "BBox Border",
+              "Min": 0.0,
               "Name": "boundingboxoffset",
-              "ReadOnly": true,
               "Unit": "in",
               "Val": 0.25
             }
@@ -1503,6 +1525,26 @@ export default {
           "taper": "0 deg"
         }
       ],
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "neckWidth",
+          "label": "Neck width"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "skeletonX",
+          "label": "S-curve tightness"
+        },
+        {
+          "basis": "h",
+          "binding": "seeded",
+          "key": "neckLength",
+          "label": "Shoulder height"
+        }
+      ],
       "id": "template_2",
       "name": "Template 2 - Narrow Neck",
       "params": [
@@ -1531,10 +1573,11 @@ export default {
         {
           "category": "Frame Spec",
           "default": 0.25,
+          "expose": true,
           "label": "BBox Border",
+          "min": 0.0,
           "name": "boundingboxoffset",
           "owner": "frame",
-          "readOnly": true,
           "unit": "in"
         },
         {
@@ -1744,9 +1787,10 @@ export default {
             },
             {
               "Category": "Frame Spec",
+              "Expose": true,
               "Label": "BBox Border",
+              "Min": 0.0,
               "Name": "boundingboxoffset",
-              "ReadOnly": true,
               "Unit": "in",
               "Val": 0.25
             }

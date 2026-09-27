@@ -9,12 +9,15 @@ import { getFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/
 import { initFramePanel, setEditorTab, getEditorTab, syncFramePanel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { INACTIVE_LAYER_OPACITY } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { initInteraction } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-interaction.js';
+import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
+import { frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { FORMULA_FIELDS } from '../bspline-frame-builder/b-spline-gen/html/main/formula-fields.js';
 
 const FIXTURE = `
   <input id="widthIn" value="7"><input id="heightIn" value="9">
   <span id="frameSummary"></span><div id="framePanelHeader" class="collapsed"></div>
   <select id="frameTemplate"></select>
-  <div id="frameSettings"><input id="frameBottomZ"><select id="frameAppearance"></select>
+  <div id="frameSettings"><input id="frameBottomZ"><input id="frameTrimOffset" type="number"><select id="frameAppearance"></select>
     <div id="frameFitWarning"></div><button id="btnEditFrameShape"></button></div>
   <button id="btnStampEdit"></button>
   <button id="editorTabFrame"></button><button id="editorTabArtwork" class="active"></button>
@@ -111,6 +114,29 @@ describe('editor [Frame | Artwork] tabs', () => {
     ed._selectedElements = [{}];
     press('Delete'); press('p');
     expect([ed.deleteSelected.mock.calls.length, toolClick.mock.calls.length]).toEqual([1, 1]);
+    ed._artworkLocked = true; // initInteraction's window listeners outlive the test: leave this mock inert
+  });
+
+  it('the editor shows no hover/snap feedback in the Frame tab (its pointer handler reads nothing else)', () => {
+    // A recording editor: every property the editor's own handlers read is logged; anything
+    // missing is an inert chameleon (callable, any property), so no code path can throw.
+    const cham = new Proxy(function () {}, { get: (_, k) => (k === Symbol.toPrimitive ? () => 0 : cham), apply: () => cham });
+    const reads = [];
+    const target = { _artworkLocked: true };
+    const ed = new Proxy(target, {
+      get: (t, k) => { reads.push(k); return k in t ? t[k] : cham; },
+      set: (t, k, v) => { t[k] = v; return true; },
+    });
+    initInteraction(ed);
+    const move = () => window.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }));
+    reads.length = 0;
+    move();
+    expect(reads).toEqual(['_artworkLocked']); // locked (the Frame tab): returns at once
+    target._artworkLocked = false;
+    reads.length = 0;
+    move();
+    expect(reads.length).toBeGreaterThan(1); // unlocked (the Artwork tab): the hover path runs
+    target._artworkLocked = true; // leave this test's window listener inert
   });
 });
 
@@ -135,5 +161,42 @@ describe('round trip: Frame -> Artwork -> Frame -> save -> reload', () => {
     expect($('editorFrameThickness').value).toBe('0.625');
     expect(mock.artwork).toEqual(artworkBefore);
     expect(mock.writes.every(([k]) => k === 'opacity')).toBe(true);
+  });
+});
+
+describe('Trim offset field (F9 item 1: the template param boundingboxoffset)', () => {
+  it('shows the template default and its declared limit, and writes the SAME frame record', () => {
+    change('frameTemplate', 'template_1');
+    expect(Number($('frameTrimOffset').value)).toBe(0.25);
+    expect(Number($('frameTrimOffset').min)).toBe(0);
+    change('frameTrimOffset', '0.5');
+    expect(getFrameRecord().params.boundingboxoffset).toBe(0.5);
+  });
+
+  it('drives the cut profile and the fit rule live (one value, every consumer)', () => {
+    change('frameTemplate', 'template_2');
+    change('frameTrimOffset', '0.5');
+    const prof = frameCutProfile(FRAME_DEFS, getFrameRecord(), { widthIn: 7, heightIn: 9 });
+    expect(prof.region).toEqual({ x: 0.5, y: 0.5, w: 6, h: 8 });
+    expect(prof.fit.safeZoneIn).toBe(6); // min(7, 9) - 2 * 0.5
+  });
+
+  it('is kept by save -> reload, and a template change resets it to the new default', () => {
+    change('frameTemplate', 'template_1');
+    change('frameTrimOffset', '0.375');
+    const saved = JSON.parse(JSON.stringify({ P: persistableP() }));
+    P.frame = null; P.frame = saved.P.frame;
+    expect(getFrameRecord().params.boundingboxoffset).toBe(0.375);
+    change('frameTemplate', 'template_2');
+    expect(getFrameRecord().params.boundingboxoffset).toBeUndefined();
+    expect(Number($('frameTrimOffset').value)).toBe(0.25);
+  });
+
+  it('is a formula field of the FRAME section, with "trim" reading the record', () => {
+    const f = FORMULA_FIELDS.find((q) => q.id === 'frameTrimOffset');
+    expect(f.section).toBe('FRAME');
+    change('frameTemplate', 'template_1');
+    change('frameTrimOffset', '0.3');
+    expect(f.scope.find((n) => n.name === 'trim').get()).toBe(0.3);
   });
 });
