@@ -116,39 +116,64 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   const skinDetail = t.skinDetail ?? 0.06;
 
   // T78 AMEND (Fred: "I want the structure to reshuffle" -- rib angle/
-  // size/extent/count, then "clavicular same size, extent, angle"): per-
-  // seed structural draws, NOT tweaks (they're not user-facing controls,
-  // just what makes the skeleton itself vary with the terrain's own seed
-  // instead of only its surface texture).
-  const ribCount = 6 + Math.floor(seedRandom(noiseFine, 1) * 4); // 6..9 ribs
+  // size/extent/count, then "clavicular same size, extent, angle"; then,
+  // after seeing the first pass, "Thats not a variation palette / They
+  // still look the same" -- the first ranges were real but too narrow to
+  // read as genuinely different bodies at a glance). Per-seed structural
+  // draws, NOT tweaks (they're not user-facing controls, just what makes
+  // the skeleton itself vary with the terrain's own seed instead of only
+  // its surface texture) -- widened substantially, and extended to the
+  // overall torso BUILD (not just the ribs/clavicle), so seeds produce
+  // visibly distinct body types, not the same template with small dials
+  // nudged.
+  const ribCount = 5 + Math.floor(seedRandom(noiseFine, 1) * 8); // 5..12 ribs
   // Angle allows the OPPOSITE sign too (Fred) -- some seeds curve the ribs
   // UP toward the flank instead of down, not just varying how steeply they
   // slope in the one anatomically-typical direction.
-  const ribAngle = -0.22 + seedRandom(noiseFine, 2) * 0.44; // -0.22..0.22, sign varies per seed
-  const ribSize = 0.045 + seedRandom(noiseFine, 3) * 0.030; // spacing between ribs (also scales each rib's own band width)
+  const ribAngle = -0.38 + seedRandom(noiseFine, 2) * 0.76; // -0.38..0.38, sign varies per seed
+  const ribSize = 0.035 + seedRandom(noiseFine, 3) * 0.065; // spacing between ribs (also scales each rib's own band width)
   const ribBandWidth = ribSize * 0.26; // stays well under half the spacing (see the T78 tuning note below) regardless of ribSize
-  const ribExtent = 0.24 + seedRandom(noiseFine, 4) * 0.26; // how far laterally ribs must reach before hitting full strength -- smaller = ribs cover MORE of the flank
-  const ribStartY = 0.14 + seedRandom(noiseFine, 5) * 0.05; // where the ribcage begins, just below the clavicles
+  const ribExtent = 0.16 + seedRandom(noiseFine, 4) * 0.50; // how far laterally ribs must reach before hitting full strength -- smaller = ribs cover MORE of the flank
+  const ribStartY = 0.09 + seedRandom(noiseFine, 5) * 0.14; // where the ribcage begins, just below the clavicles
 
-  const clavicleAngle = -0.10 + seedRandom(noiseFine, 6) * 0.20; // slope from neck to shoulder -- sign varies per seed too
-  const clavicleSize = 10.0 + seedRandom(noiseFine, 7) * 8.0; // band sharpness -- LOWER reads as a bigger/thicker clavicle
-  const clavicleExtent = 1.0 + seedRandom(noiseFine, 8) * 1.2; // lateral decay rate -- LOWER reaches further toward the shoulder
+  // T78 AMEND (Fred: "ribs do go both ways but not clavicul"): the old
+  // range (-0.16..0.16) was too small AND the exp(-dx*clavicleExtent)
+  // decay concentrates the clavicle's own VISIBILITY right near dx=0,
+  // exactly where dx*clavicleAngle is smallest -- the slope had no room
+  // to read before the line faded out. Widened to match rib angle's own
+  // magnitude, and clavicleExtent's own range lowered (slower decay) so
+  // the clavicle stays visible far enough out for the angle to show.
+  const clavicleAngle = -0.35 + seedRandom(noiseFine, 6) * 0.70; // slope from neck to shoulder -- sign varies per seed too
+  const clavicleSize = 7.0 + seedRandom(noiseFine, 7) * 14.0; // band sharpness -- LOWER reads as a bigger/thicker clavicle
+  const clavicleExtent = 0.3 + seedRandom(noiseFine, 8) * 0.9; // lateral decay rate -- LOWER reaches further toward the shoulder
+
+  // Overall torso BUILD -- a lean build (build<1) pulls the ribcage/
+  // deltoid/sternum features INWARD toward the centreline; a broad build
+  // (build>1) pushes them OUTWARD toward the flank -- a genuinely
+  // different-looking silhouette, not just a rib-count tweak.
+  const build = 0.65 + seedRandom(noiseFine, 9) * 0.9; // 0.65 (lean) .. 1.55 (broad)
+  const sternumWidth = 0.035 + seedRandom(noiseFine, 10) * 0.055; // thin/precise vs broad/soft sternum ridge
+  const deltoidPos = 0.72 + seedRandom(noiseFine, 11) * 0.22; // how far out the shoulder cap sits
+  const deltoidSize = 0.12 + seedRandom(noiseFine, 12) * 0.16; // narrow/defined vs broad/soft shoulder
 
   // su arrives already fold-mirrored by terrain.js (default symmetry:'x'):
   // 0 at the board centreline, 1 at the board edge. No internal re-fold.
-  const dx = su; // 0 at sternum centreline, 1 at torso edge/flank
+  // `build` reshapes the lateral distribution itself (a power curve on
+  // su), not just a downstream multiplier, so it changes WHERE features
+  // sit, not only their amplitude.
+  const dx = Math.pow(su, build); // 0 at sternum centreline, 1 at torso edge/flank
   const dy = sv; // 0 at neck, 1 at waist
 
   // ── 1. SILHOUETTE (structural shape, not muscle) ────────────────────
   const neck = Math.exp(-(dx * dx) * 40.0) * Math.max(0, 1.0 - dy * 7.0) * 0.30;
   const clavicle = Math.max(0, 1.0 - Math.abs(dy - (0.12 + dx * clavicleAngle)) * clavicleSize) * Math.exp(-dx * clavicleExtent) * 0.18;
-  const deltoid = gaussianBand(dx - 0.9, 0.18) * gaussianBand(dy - 0.22, 0.14) * 0.30;
+  const deltoid = gaussianBand(dx - deltoidPos, deltoidSize) * gaussianBand(dy - 0.22, 0.14) * 0.30;
 
   // ── 2. STERNUM RIDGE + XIPHOID ──────────────────────────────────────
   // A raised centreline strip from just below the clavicles down to
   // where the ribcage ends, tapering off (the xiphoid point) rather than
   // stopping abruptly.
-  const sternumBand = gaussianBand(dx, 0.055);
+  const sternumBand = gaussianBand(dx, sternumWidth);
   const sternumLengthMask = smoothstep01(0.10, 0.16, dy) * (1 - smoothstep01(0.46, 0.58, dy));
   const sternumRidge = sternumBand * sternumLengthMask * 0.22;
 

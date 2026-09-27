@@ -131,11 +131,18 @@ describe('chest.js: item 7 -- a visible ribcage (distinct separated bands, not o
 });
 
 describe('chest.js: sternum ridge, sunken abdomen, iliac crest', () => {
-  it('the sternum centreline sits higher than a point just off-centre at the same height, within the ribcage span', () => {
+  it('the sternum centreline (su=0, the TRUE centreline regardless of build) sits higher than a point clearly off-centre, at the same height', () => {
+    // su=0 (not 0.5 -- that was never the centreline; dx=0 at su=0 is) and
+    // su=0.2, safely outside even the widest per-seed sternumWidth
+    // (0.035-0.09) so this isolates the sternum ridge itself rather than
+    // being dominated by whichever OTHER dx-dependent term (ribcage,
+    // deltoid, soft tissue -- all much more variable per seed after the
+    // T78 AMEND widening) happens to dominate at two arbitrary nearby
+    // points.
     const noiseFine = new PerlinNoise(42); const noiseWarp = new PerlinNoise(42 ^ 0x9e3779b9);
-    const centre = chest.fn(0.5, 0.3, ASPECT, PARAMS, { noiseFine, noiseWarp });
+    const centre = chest.fn(0, 0.3, ASPECT, PARAMS, { noiseFine, noiseWarp });
     const noiseFine2 = new PerlinNoise(42); const noiseWarp2 = new PerlinNoise(42 ^ 0x9e3779b9);
-    const offCentre = chest.fn(0.5 + 0.03, 0.3, ASPECT, PARAMS, { noiseFine: noiseFine2, noiseWarp: noiseWarp2 });
+    const offCentre = chest.fn(0.2, 0.3, ASPECT, PARAMS, { noiseFine: noiseFine2, noiseWarp: noiseWarp2 });
     expect(centre).toBeGreaterThan(offCentre);
   });
 
