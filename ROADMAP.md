@@ -1031,6 +1031,15 @@ previous shape. No new Fusion params (seeds stay plain sketch values). Tests: N 
 F5 sweep guarantees), the same seed gives the same shape, a tweak after generate persists through save/reload, undo
 works. Shots: 3 generated shapes + one tweaked, T1 + T2.
 
+## Queued (seat A, after H1) — SEG-COLOR-PANEL: contour segments in the "Selected piece" panel, COLOUR ONLY (Fred 2026-09-26)
+Fred: "when per segment color?" -> it exists since SE14b (toolbar COLOR on a selected contour segment, stored in
+PATTERN.contour.segmentColors[i], survives Regenerate, reaches Fusion), but the UI5 "Selected piece" panel
+(lattice-piece-panel.js) covers rails/ties/nodes only. Change: selecting a contour segment shows the same panel with
+COLOUR + Reset only (Fred: "only color", no width override for contour segments). One storage path: the panel writes the
+existing segmentColors[i] (keyed by primitive index, not a second schema), so the toolbar COLOR and the panel can't
+disagree. Tests: select segment -> panel colour == stored colour; set/reset; survives Regenerate + reload; Send carries it;
+no width control shown for a segment.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
