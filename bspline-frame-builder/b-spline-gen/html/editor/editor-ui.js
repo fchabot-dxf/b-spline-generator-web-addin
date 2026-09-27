@@ -41,6 +41,35 @@ export function restoreModeHint(editor) {
   setEditorStatusHint(MODE_HINTS[editor._currentMode] || '');
 }
 
+// H5 MULTI-SELECT item 3 (Fred: "add a hint when expressly selecting an
+// element"): declared strings, touch vs mouse, shown ONLY while exactly
+// one element is selected. A separate table from MODE_HINTS (never
+// reordering that one — a concurrent branch, seat C's own F18 cut tool,
+// adds its own entry there) reacting to the SAME editorSelectionChanged
+// event lattice-piece-panel.js already listens to, so no new signal is
+// needed. Module-level (registered exactly once, this module only ever
+// loads once per page) rather than threaded into _afterSelectionChange/
+// _deselect below, so it stays a single, self-contained addition
+// regardless of which of those two dispatches the event for a given
+// change. "Selected by tap" is read loosely as "exactly one element is
+// currently selected" — the event carries no how-it-got-selected signal,
+// and a marquee/paste that happens to leave exactly one element selected
+// showing the same hint is a harmless, unlikely edge case, not worth
+// threading provenance through every selection path to exclude.
+const SELECTION_HINT = {
+  touch: 'Double-tap and hold another piece to add it to the selection',
+  mouse: 'Shift+click to add',
+};
+document.addEventListener('editorSelectionChanged', (e) => {
+  const { editor, selected } = e.detail || {};
+  if (!editor || editor._anchorMode) return; // never steal the pen tool's own ANCHOR_HINT
+  if (selected && selected.length === 1) {
+    setEditorStatusHint(SELECTION_HINT[editor._pointerType === 'mouse' ? 'mouse' : 'touch']);
+  } else {
+    restoreModeHint(editor);
+  }
+});
+
 // ─── Expand onboarding callout (BUG-06) ────────────────────────────────
 //
 // Shows a one-time pointer at the Expand tool after the user finishes

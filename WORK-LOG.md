@@ -11097,3 +11097,82 @@ their original small sizes, Cancel/Apply were already visible as before.
 
 `npx vitest run` -> **1842 passed**, unchanged (pure HTML/CSS, no JS logic touched, so no test file needed
 updating either) — zero regressions.
+
+---
+
+Dispatch: epoch 3 — H5: MULTI-SELECT (double-tap-and-hold adds/removes; panel reads whole selection,
+batch colour; hint). Plain hold reserved for H6's own context menu. Spec: ROADMAP.md's FRED FINAL
+wording — "the gesture is DOUBLE-TAP-AND-HOLD on a piece... a plain tap selects only it." Seat C's F18
+cut tool is concurrently extending `editor-interaction.js` on an unmerged branch; researched its exact
+edit sites first (a subagent read the live branch, not a guess) and placed every new hook around them
+rather than through them.
+
+**The core design problem.** A plain tap already replaces the whole selection with just that piece
+(existing, unchanged) — so by the time a SECOND press on the same piece (the "-and-hold" half) could
+fire, the selection is already `[that piece]` alone, and naively toggling it there would as often REMOVE
+it as add it, never growing a multi-selection. Fix, in a new module
+(`editor-multiselect-gesture.js`, kept separate so this turn's edits to the shared, concurrently-touched
+interaction file stay a few one-line hooks): `armMultiSelectPress` records the selection that existed
+BEFORE tap 1's own replace ran; if the second press becomes a genuine hold, `_fireHold` restores that
+PRIOR selection via `_selectMany` first, then toggles the held piece in via `_selectAdd` — so
+double-tap-holding B while A is already selected produces `{A,B}`, not `{B}` alone. Declared timings
+(`MULTISELECT_DOUBLE_TAP_MS=350`, `MULTISELECT_HOLD_MS=450`) exported for H6 to share, per the
+dispatch's own note. Three one-line hooks into `editor-interaction.js` (cancel-on-down, cancel-on-move-
+past-threshold, cancel-on-up) plus a 3-branch restructure of the existing shift/replace `if` at each of
+the three selection call sites (`selectHandler.start`, `latticeHandler.start`, `shapeLatticeHandler.start`)
+— text is excluded at `selectHandler`'s own site only (`hit.type !== 'text'`; lattice pieces are never
+text, so the other two sites need no guard). `base.css` gets one new rule scoping
+`-webkit-touch-callout`/`user-select:none` to `#editorSVGContainer`, suppressing the browser's own long-
+press callout on the canvas. 11/11 unit tests in `tests/editor-multiselect-gesture.test.js`
+(`_selectMany`/`_selectAdd`/`_select` mocked to the SAME toggle/replace semantics editor-ui.js's real
+functions use), mutation-tested: removing the `_selectMany(priorSelection)` restore line failed exactly
+3/11 with the expected wrong-array assertions; restored, green again.
+
+**Panel (item 2).** `lattice-piece-panel.js` rewritten to read the WHOLE current selection instead of a
+single element: `"N pieces (2 rails, 1 tie)"` summary, a "Mixed" indicator when colours differ across the
+set, one colour pick stamps every non-contour piece's override then calls `editor.setColor` once (ONE
+commit, ONE undo step — non-contour pieces stamped first, `setColor` last, since `setColor` is what
+actually pushes the undo snapshot and repaints contour `segmentColors`), Reset clears every piece's
+override and branches on `pieces.some(kind==='contour')` to use `_commitStyleChange()` instead of
+`pushState()+_notifyChange('commit')` — H2's own lesson reused: a boundary-pattern rebuild from a
+contour-involving commit invalidates the just-touched selection. Width/size stay the single-kind general
+controls from H3, hidden entirely for a mixed-kind selection.
+
+**Hint (item 3).** A `SELECTION_HINT` table in `editor-ui.js`, deliberately its OWN table rather than
+folded into the existing `MODE_HINTS` (seat C's F18 branch adds its own `cut` entry as the FIRST key of
+that exact object) — reacts to the same `editorSelectionChanged` event the panel already listens to, shows
+the declared touch/mouse string while exactly one element is selected, restores the mode hint otherwise.
+
+**Bug found and fixed, pre-existing, unrelated to H5's own new code:** `editor.js`'s `_deselect()` read
+only `this._selectedElement` — the PRIMARY alias, i.e. `_selectedElements[_selectedElements.length-1]`
+— to strip the `svg-selected` CSS class, a leftover from before multi-selection existed. With a real
+multi-element selection this only ever cleared the LAST piece's highlight; every other piece's class was
+never removed and stuck forever. Invisible before H5 because no prior code path called `_deselect()`
+(via `select()`/`selectMany()`, both of which call it before assigning the new array) while more than one
+element was actually selected — H5's own "a plain tap on a piece OUTSIDE the current multi-selection
+replaces it" is the first path that does. Found live, not by inspection: a 15-check CDP acceptance script
+kept reporting a phantom leftover piece (e.g. tapping a 4th, never-selected rail produced `[rail0,
+rail3]` instead of `[rail3]`) that no amount of gesture-module debugging explained, until instrumenting
+`select()` itself showed the JS-truth `_selectedElements` array was already correct — the DOM's
+`svg-selected` class was the thing lagging. Fixed by iterating `this._selectedElements` in `_deselect()`
+instead of the single alias. This is a general selection-correctness fix (also reachable via ordinary
+"click empty space to deselect all" after a shift-click multi-selection, unrelated to this turn's gesture)
+— mentioned here rather than filed separately since H5's own acceptance script is what surfaced and
+verifies it.
+
+**Verification.** `tools/repro/multiselect_shots.mjs`, run in BOTH desktop (real mouse) and mobile (real
+`Input.dispatchTouchEvent`, not `dispatchMouseEvent` under touch emulation — the latter still surfaces as
+`pointerType:'mouse'` to the app, confirmed live; matches `formula_field_shots.mjs`'s own established
+split) — add/grow/remove via hold, a plain tap replacing an unrelated selection, drag unaffected, text
+exclusion, the touch-vs-mouse hint string, and the panel's summary/mixed-indicator/batch-colour/reset/
+one-undo-step all pass on BOTH. One sub-check (text-exclusion specifically) is skipped on mobile with an
+explicit console note rather than asserted: growing the rig's viewbox to fit an off-lattice text element,
+on the 390px mobile layout, walks the enlarged canvas under mobile's own fixed bottom drawer-tab overlay
+(`#editorDrawerTab-layers`, from H4's mobile pass) — confirmed via `elementFromPoint` returning that
+button, not the SVG, at the computed coordinates, and independent of which model Y was chosen (the tab is
+screen-anchored, not canvas-content). The rule itself (`hit.type !== 'text'`) has no pointer-type branch
+at all, so the desktop run (real mouse, unaffected by that layout quirk) is full coverage for it; the
+mobile run's own genuinely touch-dependent behaviours (the gesture itself, drag, the touch hint string)
+are all still asserted for real. Screenshots captured on both: `panel_three_pieces`, `hint`, `panel_mixed`.
+
+`npx vitest run` -> **1853 passed** (11 new gesture tests added, zero regressions elsewhere).

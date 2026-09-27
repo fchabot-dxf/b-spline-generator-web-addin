@@ -44,6 +44,10 @@ import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
     shouldCancelDrawOnPointerDown, isPinching,
 } from './editor-input.js';
+// H5 MULTI-SELECT: kept as its own module (not inlined here) so this
+// turn's edits to this shared, concurrently-extended file stay a few
+// one-line hooks — see editor-multiselect-gesture.js's own doc comment.
+import { armMultiSelectPress, cancelMultiSelectHoldIfMoved, cancelMultiSelectHold } from './editor-multiselect-gesture.js';
 // T59 (SE14's own deferred "Slice 3 editing model"): axis-locked param
 // handles + tap-a-segment. generateSilhouette/boardRegion/hitTestSegment
 // are pure; the properties-shape-lattice.js imports are its own MODULE-
@@ -140,6 +144,12 @@ export function initInteraction(editor) {
  *                 the count honest, but no gesture starts or changes).
  */
 function handlePointerDown(editor, e) {
+    // H5 MULTI-SELECT: a NEW press (including a 2nd finger landing) always
+    // invalidates a hold pending from a DIFFERENT, earlier press — same
+    // "a 2nd finger cancels an in-progress draw" reasoning just below. This
+    // runs before THIS press's own selection handling ever arms a new
+    // hold, so it can never cancel itself.
+    cancelMultiSelectHold();
     editor._pointerType = e.pointerType || 'mouse';
     editor._activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* defensive: capture can fail on some UAs/synthetic events */ }
@@ -176,6 +186,15 @@ function _startPan(editor, e) {
 }
 
 function handlePointerMove(editor, e) {
+    // H5 MULTI-SELECT: movement past the click threshold cancels a pending
+    // hold and falls through to a normal drag — first, before any other
+    // early return, so it's never skipped by a later one. NOT paired with
+    // a blanket `if (editor._artworkLocked) return` here (an earlier draft
+    // had one) — F18's own artwork-locked handling below (the untracked-
+    // pointer branch just below, and the pan-continuation branch further
+    // down) is more nuanced than that, and a blanket return here would
+    // have broken its pan-while-locked case.
+    cancelMultiSelectHoldIfMoved(e);
     if (!editor._activePointers.has(e.pointerId)) {
         // FB-APP F9/F18: in the Frame tab (artwork locked) there is no hover/snap feedback
         if (editor._artworkLocked) return;
@@ -220,6 +239,13 @@ function handlePointerMove(editor, e) {
 }
 
 function handlePointerUp(editor, e) {
+    // H5 MULTI-SELECT: releasing before the hold time elapses is just a
+    // quick second tap — a no-op, since the first tap already left the
+    // piece selected alone (there is nothing left to restore). Also
+    // reached via pointercancel (same handler, line above in
+    // initInteraction), which is exactly the other case that should cancel
+    // a pending hold.
+    cancelMultiSelectHold();
     editor._activePointers.delete(e.pointerId);
     try { e.target.releasePointerCapture(e.pointerId); } catch (_) {}
     const count = editor._activePointers.size;
@@ -633,8 +659,19 @@ const selectHandler = {
             if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
             editor._isDragging = true;
             editor._lastDragPt = pt;
-            if (shift) editor._selectAdd(hit);
-            else if (!(editor._selectedElements || []).includes(hit)) editor._select(hit);
+            // H5 MULTI-SELECT: text is excluded (double-tap already opens
+            // text editing there, handleDblClick above) — a plain, no-
+            // modifier press on anything else can be the first or second
+            // half of a double-tap-and-hold; armMultiSelectPress's own doc
+            // comment explains why the replace-select below is skipped
+            // (not run twice) when it returns true.
+            if (shift) {
+                editor._selectAdd(hit);
+            } else if (hit.type !== 'text' && armMultiSelectPress(editor, hit, e)) {
+                // second half of a double-tap: leave selection as tap 1 left it.
+            } else if (!(editor._selectedElements || []).includes(hit)) {
+                editor._select(hit);
+            }
             return;
         }
         // MOB5 (Fred: "pan and zoom doesn't work well in mobile") — a
@@ -1685,8 +1722,16 @@ const latticeHandler = {
             // already does.
             if (drawKind === 'select') {
                 const shift = !!(e && e.shiftKey);
-                if (shift) editor._selectAdd(hit);
-                else if (!(editor._selectedElements || []).includes(hit)) editor._select(hit);
+                // H5 MULTI-SELECT: same shape as selectHandler.start's own
+                // identical branch above (a lattice piece is never text,
+                // so no type check needed here).
+                if (shift) {
+                    editor._selectAdd(hit);
+                } else if (armMultiSelectPress(editor, hit, e)) {
+                    // second half of a double-tap: leave selection as tap 1 left it.
+                } else if (!(editor._selectedElements || []).includes(hit)) {
+                    editor._select(hit);
+                }
             } else {
                 editor._deselect();
             }
@@ -2028,8 +2073,16 @@ const shapeLatticeHandler = {
             // editor._latticeMove is active, regardless of which tool's
             // own mode is current — see their own new top line each.
             const shift = !!(e && e.shiftKey);
-            if (shift) editor._selectAdd(latticeHit);
-            else if (!(editor._selectedElements || []).includes(latticeHit)) editor._select(latticeHit);
+            // H5 MULTI-SELECT: same shape as selectHandler.start's own
+            // identical branch above (a lattice piece is never text, so no
+            // type check needed here).
+            if (shift) {
+                editor._selectAdd(latticeHit);
+            } else if (armMultiSelectPress(editor, latticeHit, e)) {
+                // second half of a double-tap: leave selection as tap 1 left it.
+            } else if (!(editor._selectedElements || []).includes(latticeHit)) {
+                editor._select(latticeHit);
+            }
             editor._isDrawing = true;
             const spacing = editor._grid.spacing || 0.25;
             const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;

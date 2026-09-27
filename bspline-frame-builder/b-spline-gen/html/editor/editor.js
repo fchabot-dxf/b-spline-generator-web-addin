@@ -653,7 +653,15 @@ export class VectorEditor {
      *  (Clear, open()) call this directly rather than a separate wrapper —
      *  it's already complete, so a second name over it would add nothing. */
     _deselect() {
-        if (this._selectedElement) this._selectedElement.removeClass('svg-selected');
+        // H5 MULTI-SELECT fix: this used to read only `_selectedElement`
+        // (the primary alias, i.e. the LAST of _selectedElements) — fine
+        // while selection was always <=1 element, but with a real multi-
+        // selection it left every OTHER piece's 'svg-selected' class stuck
+        // on forever (found live: a plain tap elsewhere after a 3-piece
+        // hold-selection left the FIRST piece visually selected with no
+        // way to clear it). Every selected element needs its class struck,
+        // not just the primary.
+        for (const el of this._selectedElements || []) { try { el.removeClass('svg-selected'); } catch (_) {} }
         this._selectedElement = null;
         this._selectedNodes = [];
         if (this._handleLayer) this._handleLayer.clear();

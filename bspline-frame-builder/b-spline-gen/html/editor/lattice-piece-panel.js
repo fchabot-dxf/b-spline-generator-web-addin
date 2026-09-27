@@ -35,6 +35,18 @@
  * button for width. A contour segment stays colour-only (no width row at
  * all, unchanged from H2).
  *
+ * H5 (MULTI-SELECT): the panel now reads the WHOLE selection, not just a
+ * single element — "N pieces (2 rails, 1 tie)", Colour shows "mixed" when
+ * they differ, one pick recolours all, Reset resets all, in one undo step
+ * each. The width/size control stays exactly what H3 built (it already
+ * edits every owned piece of a KIND, regardless of how many happen to be
+ * individually selected) — shown only when the WHOLE selection is a
+ * single, non-contour kind, since there is no one coherent "kind" to edit
+ * a general width for otherwise. A selected element this panel doesn't
+ * recognize at all (a plain hand-drawn shape, mixed into a marquee/Ctrl+A
+ * selection alongside lattice pieces) is simply left out of the count —
+ * this panel has never had anything to say about plain shapes.
+ *
  * Reacts to `editorSelectionChanged` (editor-ui.js's _afterSelectionChange
  * / editor.js's _deselect), the one selection-changed signal that feature
  * added.
@@ -51,6 +63,11 @@ import { getElementLayer } from './layers.js';
 import { attachFormula } from '../core/formula-field.js';
 
 const KIND_LABEL = { rails: 'Rail', ties: 'Tie', nodes: 'Node', contour: 'Contour segment' };
+// H5: singular/plural noun for the "N pieces (2 rails, 1 tie)" summary.
+const KIND_NOUN = {
+  rails: ['rail', 'rails'], ties: ['tie', 'ties'], nodes: ['node', 'nodes'],
+  contour: ['contour segment', 'contour segments'],
+};
 
 // H2 (SEG-COLOR-PANEL, Fred: "only color" — a contour segment has no width
 // control here): a segment carries no `data-lattice` value at all
@@ -61,6 +78,10 @@ const KIND_LABEL = { rails: 'Rail', ties: 'Tie', nodes: 'Node', contour: 'Contou
 // `CONTOUR_SEG_INDEX_ATTR` marker instead.
 function _isContourSegment(el) {
   return !!(el && el.node && el.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+}
+
+function _kindOf(el) {
+  return pieceKindOf(el) || (_isContourSegment(el) ? 'contour' : null);
 }
 
 /** The layer's own declared default colour/width for `kind` — exactly
@@ -85,6 +106,9 @@ function _currentWidth(el, kind) {
 function _currentColor(el, kind) {
   return kind === 'nodes' ? el.attr('fill') : el.attr('stroke');
 }
+function _hasOverride(editor, el, kind) {
+  return kind === 'contour' ? hasContourSegmentColor(editor, el) : hasColorOverride(el);
+}
 
 export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   if (!bodyEl) return;
@@ -98,6 +122,7 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
     <div class="lattice-piece-panel-kind" style="font-size:11px; color:#666; margin-bottom:6px;"></div>
     <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
       <label style="font-size:11px; flex:1;">Colour</label>
+      <span class="lattice-piece-color-mixed" style="font-size:10px; color:#888; display:none;">Mixed</span>
       <button type="button" class="panel-color-swatch lattice-piece-color" title="Piece colour"
         style="width:32px; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
       <button type="button" class="lattice-piece-color-reset" title="Reset to layer colour"
@@ -112,6 +137,7 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
 
   const kindEl = section.querySelector('.lattice-piece-panel-kind');
   const colorBtn = section.querySelector('.lattice-piece-color');
+  const colorMixedEl = section.querySelector('.lattice-piece-color-mixed');
   const colorResetBtn = section.querySelector('.lattice-piece-color-reset');
   const widthRow = section.querySelector('.lattice-piece-width-row');
   const widthLabel = section.querySelector('.lattice-piece-width-label');
@@ -122,39 +148,55 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   // fields).
   if (scope) attachFormula(widthInput, scope);
 
-  let current = null; // { el, kind, layerId }
+  let current = null; // { pieces: [{el, kind}], layerId } -- layerId is any one piece's own (rewidthOwnedKind/resolvePatternLayer both resolve through it to the shared pattern regardless of which kind-layer it names)
 
   function refresh() {
     if (!current) { section.style.display = 'none'; return; }
-    const { el, kind, layerId } = current;
-    const defaults = _kindDefaults(editor, layerId, kind);
-    const color = _currentColor(el, kind) || defaults.color;
-    kindEl.textContent = KIND_LABEL[kind] || kind;
-    colorBtn.style.background = color;
-    if (kind === 'contour') {
-      // H2: "only color" -- no width control for a contour segment.
-      colorResetBtn.style.visibility = hasContourSegmentColor(editor, el) ? 'visible' : 'hidden';
-      widthRow.style.display = 'none';
+    const { pieces, layerId } = current;
+    const kindCounts = {};
+    for (const { kind } of pieces) kindCounts[kind] = (kindCounts[kind] || 0) + 1;
+    const kinds = Object.keys(kindCounts);
+    const uniformKind = kinds.length === 1 ? kinds[0] : null;
+
+    if (pieces.length === 1) {
+      kindEl.textContent = KIND_LABEL[pieces[0].kind] || pieces[0].kind;
     } else {
-      // H3: this value is the lattice's GENERAL width/node_diameter for
-      // the kind, same as every other piece of it -- there is no per-piece
-      // reading to fall back from, so no `|| defaults.width` needed the
-      // way colour still has one.
-      widthLabel.textContent = kind === 'nodes' ? 'Size (all)' : 'Width (all)';
-      widthInput.value = _currentWidth(el, kind);
-      colorResetBtn.style.visibility = hasColorOverride(el) ? 'visible' : 'hidden';
+      const parts = kinds.map((k) => {
+        const [singular, plural] = KIND_NOUN[k] || [k, k];
+        const n = kindCounts[k];
+        return `${n} ${n === 1 ? singular : plural}`;
+      });
+      kindEl.textContent = `${pieces.length} pieces (${parts.join(', ')})`;
+    }
+
+    const colors = pieces.map(({ el, kind }) => _currentColor(el, kind) || _kindDefaults(editor, layerId, kind).color);
+    const mixed = colors.some((c) => c !== colors[0]);
+    colorMixedEl.style.display = mixed ? '' : 'none';
+    colorBtn.style.background = mixed ? '#fff' : colors[0];
+    colorBtn.style.backgroundImage = mixed
+      ? 'linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%), linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%)'
+      : 'none';
+    colorBtn.style.backgroundSize = mixed ? '8px 8px' : 'auto';
+    colorBtn.style.backgroundPosition = mixed ? '0 0, 4px 4px' : '0 0';
+    colorResetBtn.style.visibility = pieces.some(({ el, kind }) => _hasOverride(editor, el, kind)) ? 'visible' : 'hidden';
+
+    if (uniformKind && uniformKind !== 'contour') {
+      widthLabel.textContent = uniformKind === 'nodes' ? 'Size (all)' : 'Width (all)';
+      widthInput.value = _currentWidth(pieces[0].el, uniformKind);
       widthRow.style.display = 'flex';
+    } else {
+      widthRow.style.display = 'none';
     }
     section.style.display = '';
   }
 
   document.addEventListener('editorSelectionChanged', (e) => {
     if (!e.detail || e.detail.editor !== editor) return;
-    const { primary, selected } = e.detail;
-    const kind = selected && selected.length === 1
-      ? (pieceKindOf(primary) || (_isContourSegment(primary) ? 'contour' : null))
-      : null;
-    current = kind ? { el: primary, kind, layerId: getElementLayer(primary) } : null;
+    const { selected } = e.detail;
+    const pieces = (selected || [])
+      .map((el) => ({ el, kind: _kindOf(el) }))
+      .filter((p) => p.kind); // a plain shape mixed into the selection has nothing this panel shows
+    current = pieces.length ? { pieces, layerId: getElementLayer(pieces[0].el) } : null;
     refresh();
   });
 
@@ -162,41 +204,40 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
     e.stopPropagation();
     if (!current) return;
     openColorMosaic(colorBtn, (hex) => {
-      const { el, kind } = current;
-      if (kind === 'contour') {
-        // H2 item 2: ONE storage path -- the same helper (setColor's own
-        // internal _storeContourSegmentColor) the toolbar COLOR control
-        // already drives, not a second write into segmentColors[i].
-        // setColor already pushes state / notifies on its own.
-        editor.setColor(hex);
-      } else {
-        applyColorOverride(el, kind, hex);
-        if (typeof editor.pushState === 'function') editor.pushState();
-        if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+      // H5: stamp the override attribute on every non-contour piece FIRST
+      // (a bare DOM mutation, no commit of its own), THEN editor.setColor
+      // LAST — it repaints every selected element (including the just-
+      // stamped ones, redundantly but harmlessly, same value) AND stores
+      // each contour piece's own segmentColors[i] AND commits exactly
+      // once. Stamping first, committing last, means the ONE undo step
+      // captures everything together — reversed, calling setColor first
+      // would push its own snapshot BEFORE the override attributes existed.
+      for (const { el, kind } of current.pieces) {
+        if (kind !== 'contour') applyColorOverride(el, kind, hex);
       }
+      editor.setColor(hex);
       refresh();
     });
   });
 
   colorResetBtn.addEventListener('click', () => {
     if (!current) return;
-    const { el, kind, layerId } = current;
-    if (kind === 'contour') {
-      // H2: NOT pushState()+_notifyChange('commit') (the rails/ties/nodes
-      // branch's own idiom, below) -- editor.js's own 'commit' hook calls
-      // refreshBoundaryPatterns, which REBUILDS a Shape Lattice's contour
-      // segment elements (rails/ties/nodes never trigger this rebuild, so
-      // that branch never hits it), invalidating THIS segment's own
-      // selection out from under the very reset that just ran. setColor's
-      // own commit path (_commitStyleChange, no boundary refresh) is what
-      // the toolbar COLOR control already relies on for a plain segment
-      // recolor — Reset is the same kind of change, so it uses the same
-      // commit primitive, confirmed live: the rails/ties/nodes idiom
-      // deselects the segment (found building this turn's own CDP check).
-      clearContourSegmentColor(editor, el, _kindDefaults(editor, layerId, kind).color);
+    const { pieces, layerId } = current;
+    for (const { el, kind } of pieces) {
+      const defaultColor = _kindDefaults(editor, layerId, kind).color;
+      if (kind === 'contour') clearContourSegmentColor(editor, el, defaultColor);
+      else clearColorOverride(el, kind, defaultColor);
+    }
+    // H2's own lesson, generalized: _notifyChange('commit') triggers
+    // refreshBoundaryPatterns, which rebuilds a Shape Lattice's contour
+    // elements (rails/ties/nodes never trigger this) — invalidating the
+    // very selection this reset just cleared, the moment ANY contour piece
+    // is among them. _commitStyleChange (setColor's own commit path, no
+    // boundary refresh) is used whenever the selection includes one;
+    // otherwise the ordinary pushState+notifyChange idiom, unchanged.
+    if (pieces.some((p) => p.kind === 'contour')) {
       if (typeof editor._commitStyleChange === 'function') editor._commitStyleChange();
     } else {
-      clearColorOverride(el, kind, _kindDefaults(editor, layerId, kind).color);
       if (typeof editor.pushState === 'function') editor.pushState();
       if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
     }
@@ -204,8 +245,11 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   });
 
   widthInput.addEventListener('change', () => {
-    if (!current || current.kind === 'contour') return;
-    const { layerId, kind } = current;
+    if (!current) return;
+    const kinds = [...new Set(current.pieces.map((p) => p.kind))];
+    if (kinds.length !== 1 || kinds[0] === 'contour') return; // width row is hidden then; defensive no-op
+    const kind = kinds[0];
+    const { layerId } = current;
     const value = parseFloat(widthInput.value) || _kindDefaults(editor, layerId, kind).width;
     widthInput.value = value;
     // H3 (NO-PIECE-WIDTH): edits the lattice's GENERAL width/node_diameter

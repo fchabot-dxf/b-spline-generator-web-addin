@@ -90,6 +90,18 @@ body {
     touch-action: none;
 }
 
+/* H5 MULTI-SELECT: the browser's own long-press UI (text-selection
+   magnifier / callout menu) would otherwise pop up over a double-tap-and-
+   hold on a piece — same suppression `.editor-symbol-keyboard-grip`
+   already uses for its own drag handle, scoped to the canvas only (NOT
+   #previewCanvas/#resizer above, which have no hold gesture of their own
+   to protect). */
+#editorSVGContainer {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 input, select, textarea, button {
     font-family: var(--cad-font-family);
 }
