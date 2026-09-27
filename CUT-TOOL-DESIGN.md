@@ -1,9 +1,10 @@
 # SE16 ✂ CUT TOOL — design (F16, seat C, 2026-09-26)
 
-DESIGN ONLY: no product code yet. It is built after seat A's H1 SNAP-SPLIT merges, on top of H1's snap resolver.
+DESIGN ONLY: no product code yet. It builds on seat A's H1 SNAP-SPLIT, MERGED on main (`407e4cc`, merged into
+fb-app for this design).
 Spec: ROADMAP.md "SE16" and Fred's rulings there (lattice cut pieces move TOGETHER; direct edit on plain lines moves
 them INDEPENDENTLY).
-Mockups: PNG renders in `shotsseatC*_F16_*`; their source is `tools/repro/cut_tool_mockups.py` (SVGs are git-ignored).
+Mockups: PNG renders in `shots\seatC\*_F16_*`; their source is `tools/repro/cut_tool_mockups.py` (SVGs are git-ignored).
 
 ## 0. Questions for Fred (each has a recommendation; nothing is built until answered)
 
@@ -51,7 +52,7 @@ Mockups: PNG renders in `shotsseatC*_F16_*`; their source is `tools/repro/cut_to
   - **Change:** declare the commit kinds that refill (a boundary/contour change) instead of a one-shot skip flag. A
     cut/join/piece-move commit does not refill.
   - **Test:** cut in a Shape Lattice, then any unrelated commit: the cut is still there.
-- **P3 H1 merged:** the cut tool snaps through H1's `snapFor` (§5), so it lands after H1.
+- **P3 H1:** done (merged, `407e4cc`). The cut tool snaps through H1's resolver (§5).
 
 ## 3. Data: NO new schema; membership by DERIVATION
 
@@ -101,22 +102,31 @@ Mockups: PNG renders in `shotsseatC*_F16_*`; their source is `tools/repro/cut_to
 
 ## 5. Snapping: through H1's ONE resolver (no second resolver)
 
-- **H1's design** (seat A, `editor/editor-snap-resolver.js` + `editor-grid.js` `snapFor`, WIP in seat A's tree):
-  - `snapFor(pt, editor, mode, phase, bypass, excludeEl)` reads `SNAP_POLICY[mode]`;
-  - GEOMETRY targets come from `geometrySnapTargets` (every element's `getNodes`, per-segment midpoints, and line–line
-    intersections), with `GEOMETRY_SNAP_TOL_PX = 10`;
-  - geometry wins within its tolerance, else the grid.
-- **The cut tool adds a POLICY and a CONSTRAINT, not a resolver.**
-  - `SNAP_POLICY.cut = 'onLine'`.
-  - `snapFor(pt, editor, 'cut', 'start', altHeld, el, { onLine: el })` projects the pointer onto `el`.
+- **H1 as merged** (read on fb-app after merging main):
+  - `editor/editor-snap-resolver.js`: `geometrySnapTargets(editor, excludeEl)` (every visible element's `getNodes`,
+    per-segment midpoints, line–line intersections), `nearestGeometrySnap(pt, editor, tol, excludeEl)`,
+    `GEOMETRY_SNAP_TOL_PX = 10`.
+  - `editor-grid.js` `snapFor(pt, editor, mode, phase, bypass, excludeEl)` (:128): `SNAP_POLICY[mode]`, then
+    geometry wins within its tolerance, else the grid.
+  - Lattice axis-locked drags use `_geometryAxisSnap(editor, move, pt, axis)` (editor-interaction.js:1417): the
+    nearest geometry point as a canonical axis value, excluding `move.el`, else the caller's grid/row value.
+- **The cut tool adds a POLICY and one query, not a resolver.**
+  - `SNAP_POLICY.cut = 'onLine'`, and `snapFor` dispatches it to a new `snapOnLine(pt, editor, lineEl, bypass)` in
+    `editor-snap-resolver.js`, next to `nearestGeometrySnap`. It projects the pointer onto `lineEl`.
   - **Joints** = H1's geometry targets that lie ON `el` (within `JOINT_TOL` of the line): tie contacts, crossings,
     nodes, existing segment ends. The nearest one within `GEOMETRY_SNAP_TOL_PX` wins.
   - **Else the grid:** the line's crossings with the grid lines (for an axis-aligned rail, x = k·spacing), the nearest
     within the same tolerance.
   - **Else, or with Alt:** the projection itself (free).
   - Toggles are ignored for `'onLine'` (Q5).
-- **Coordination:** the `{ onLine }` option is an additive argument to H1's function. The implementer agrees it with
-  seat A at H1's merge, as a small H1 follow-up or the first SE16 commit. The same function is extended, never copied.
+- **Joint slides and chain drags** reuse `_geometryAxisSnap` unchanged except for one additive widening:
+  - `excludeEl` becomes "an element or a Set of elements", in `geometrySnapTargets` / `nearestGeometrySnap` /
+    `_geometryAxisSnap`, and a chain drag passes the whole chain.
+  - Without that, a cut rail's segment would snap onto its own sibling's joint (a self-snap that H1 guards against
+    for single pieces).
+  - Test: a chain move never snaps to one of its own joints.
+- **Seat A:** these are additive changes to seat A's merged H1 files, so the implementing turn should tell the
+  advisor, who routes it.
 
 ## 6. Drag rules
 
@@ -126,8 +136,8 @@ At drag start the grabbed piece expands to its CHAIN (§3), and the chain then b
 | Grab | Uncut rail today | Cut rail (SE16) |
 |---|---|---|
 | body of any segment | move: `moveRailAlongAxis` (editor-lattice.js:224) + attached ties stretch (`_writeRailMove`, editor-interaction.js:1289) | the SAME call on the chain's union extent (min..max along the axis), so attachment is derived against the whole rail; every segment is written |
-| a TRUE outer end (within the `nearestEndWithin` zone, editor-lattice.js:286) | stretch (`stretchRailEnd`, :307; min 1 cell; contour clamp :1355) | stretch that chain end only |
-| a JOINT ◇ | (does not exist) | **slide the joint along the axis (Q3):** both touching ends move together; clamp so each neighbour keeps ≥ 1 cell; ties are not moved |
+| a TRUE outer end (within the `nearestEndWithin` zone, editor-lattice.js:286) | stretch (`stretchRailEnd`, :307; min 1 cell; contour clamp; H1 `_geometryAxisSnap` 'i') | stretch that chain end only; the same snap, excluding the chain |
+| a JOINT ◇ | (does not exist) | **slide the joint along the axis (Q3):** both touching ends move together; target = `_geometryAxisSnap` 'i' (excluding the chain) else the grid; clamp so each neighbour keeps ≥ 1 cell; ties are not moved |
 | a tie on a cut rail | `translateTie` / attach (SE7i) | unchanged: attachment is derived against the chain, so a tie on ANY segment follows |
 
 - **Ties can be cut too:** the same rules on the tie's own axis.
@@ -213,7 +223,8 @@ colour/width.
 | A9 | undo/redo through A1–A5 on K | the state after each step = the recorded one; colours intact | same |
 | U1 | `latticeChains`: collinear + touching = 1; a gap of 1e-3 = 2; 1e-7 offset = 1; colour/width differ = still 1; different kind = 2 | the unit cases | `tests/cut-tool.test.js` |
 | U2 | `cutLine` / `joinAt`: identical joint numbers, attributes copied, join∘cut = the original (attribute-for-attribute), a non-joint tap is a no-op, a cut < 1 cell from an end is refused | the unit cases | same |
-| U3 | cut snapping (`snapFor` 'onLine'): a joint beats the grid; a grid crossing on an off-grid (RAIL-SPACING) rail; Alt = the projection; the toggles are ignored | against H1's resolver | H1's resolver spec (`tests/editor-grid.test.js`, seat A's file, extended at merge) |
+| U3 | cut snapping (`snapOnLine` via `snapFor` 'cut'): a joint beats the grid; a grid crossing on an off-grid (RAIL-SPACING) rail; Alt = the projection; the toggles are ignored | against H1's resolver | `tests/editor-grid.test.js` (where H1's resolver tests live; seat A's file, extended) |
+| U4 | chain self-snap: a chain move / joint slide never snaps to one of its own segments' points (the Set `excludeEl`) | the self-snap guard | same |
 | M1 | manifest of C: N Slots per chain, one H/V per chain, Collinear consecutive, one Coincident per joint, ties coincident to the right segment | after P1 | `tests/editor-sketch-manifest.test.js` |
 | P1 | a hand-dragged rail's Slot sits where it was drawn | RED today | same |
 | P2 | a cut in a Shape Lattice survives an unrelated commit | RED today | `tests/cut-tool-acceptance.test.js` |
