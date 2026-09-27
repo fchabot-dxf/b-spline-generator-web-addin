@@ -1094,6 +1094,17 @@ suppress the browser's own long-press (text selection / callout: -webkit-touch-c
 canvas) so it doesn't pop over the hold. Keep MOB5 double-tap and pinch unchanged. Tests: hold adds/removes,
 tap replaces, batch colour + reset, undo = one step; mobile CDP repro.
 
+## Queued (seat A, H6, after H5) — CONTEXT-MENU: tap-and-hold (touch) / right-click (mouse) opens a declared context menu (Fred 2026-09-26)
+Fred: "so tap and hold can host a sub menu in canvas?" -> "yes amazing". Plain tap-and-hold is free (multi-select =
+double-tap-and-hold, H5). ONE declared registry of actions: {id, label, icon, appliesTo(kind|'empty'), when(state),
+run(editor, target)}; the menu shows the entries whose appliesTo/when match the held element (or empty canvas). Starting
+set (Fred approved): on a piece: Colour… (the Selected-piece colour pick), ✂ Cut here (only when the SE16 cut tool
+exists: registered by it, not hard-coded), Duplicate, Select all <kind> (e.g. all rails), Delete; on empty canvas: Paste
+(when the clipboard has content), Select all, Fit view. Actions call the EXISTING commands (no second implementation);
+each is one undo step. Hold = still for the hold time without moving (a move = drag, unchanged); right-click on desktop;
+the browser's own long-press/contextmenu suppressed on the canvas only. Tests: registry filtering per kind/empty, each
+action = the existing command, undo, touch hold vs drag vs double-tap-hold; mobile + desktop shots of the menu.
+
 ## SE16 RULINGS (Fred 2026-09-26, answers to CUT-TOOL-DESIGN.md §0) — supersede the SE16 text below where they differ
 Q1 Send AS DRAWN (bug fix F17 P1). Q2 Regenerate CLEARS cuts (Undo restores). Q3 dragging a lattice joint SLIDES ALONG the
 rail. Q4 Join clears BOTH segments' overrides (the joined rail = lattice default colour/width). Q5 cutting snaps by the normal
