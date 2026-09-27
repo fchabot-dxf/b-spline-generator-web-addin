@@ -65,6 +65,7 @@ import { hitTestSegment } from './editor-shape-lattice-interaction.js';
 import {
     currentPattern, currentShape, regenerateSilhouette, regenerateSilhouetteAndFill,
     paramHandleRecords, renderShapeLatticeHandles, openSegmentStyleBar, _shapeContourRegion,
+    _contourSegmentEl,
 } from './properties-shape-lattice.js';
 
 function _strokeLog(msg) {
@@ -2218,6 +2219,31 @@ const shapeLatticeHandler = {
             const tol = getDynamicTolerance(editor, 10, 'slopPx');
             const segIndex = hitTestSegment(primitives, shape.segments, rawPt, tol);
             if (segIndex != null) {
+                // T81 item 6 (PRIORITY BUG, Fred: "I can't seem to select
+                // contour segment"): this branch used to ONLY open the
+                // style bar -- never editor._select/_selectAdd, so the
+                // segment never reached editor._selectedElements, the
+                // Selected-piece panel never showed it, and per-segment
+                // colour (which reads that panel's own selection) had no
+                // way to reach a segment via a plain tap at all. Same
+                // select dance the rail/tie/node branch above already
+                // uses (shift adds, a double-tap leaves selection alone,
+                // else replace + arm the context-menu hold) -- one
+                // declared "tap selects" behavior, not a second for
+                // contour. The style bar still opens on the SAME tap
+                // (unchanged); this only ADDS the missing selection.
+                const segEl = _contourSegmentEl(editor, segIndex);
+                if (segEl) {
+                    const shift = !!(e && e.shiftKey);
+                    if (shift) {
+                        editor._selectAdd(segEl);
+                    } else if (armMultiSelectPress(editor, segEl, e)) {
+                        // second half of a double-tap: leave selection as tap 1 left it.
+                    } else {
+                        if (!(editor._selectedElements || []).includes(segEl)) editor._select(segEl);
+                        armContextMenuHold(editor, { kind: targetKindOf(segEl), el: segEl, point: pt }, e);
+                    }
+                }
                 openSegmentStyleBar(editor, segIndex, e.clientX, e.clientY);
                 return;
             }

@@ -461,8 +461,11 @@ export function paramHandleRecords(editor) {
  *  controls (HANDLE_SEGMENT_INDEX), by its own stamped index -- reads the
  *  LIVE element's own `d` directly (whatever it currently draws, hand-edit
  *  divergence and all) rather than recomputing primitives, so the overlay
- *  can never disagree with what's actually on screen. */
-function _contourSegmentEl(editor, index) {
+ *  can never disagree with what's actually on screen. Exported (T81 item 6)
+ *  for shapeLatticeHandler.start's own segment-tap branch (editor-
+ *  interaction.js) to select the SAME element it just resolved a segment
+ *  index for -- one lookup, not a second copy of this same find(). */
+export function _contourSegmentEl(editor, index) {
     if (!editor._sketchLayer) return null;
     // Number(), not a bare `===` -- same convention hasContourSegmentColor
     // (editor-lattice-pattern.js) already uses for this exact attribute.
