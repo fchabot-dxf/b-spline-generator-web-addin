@@ -38,11 +38,11 @@ describe('frame record', () => {
   });
 
   it('round trip: set frame -> project snapshot (JSON) -> load -> record intact', () => {
-    setFrameRecord({ templateId: T2, frameBottomZ: -0.75, appearance: '3D Cherry - Unfinished' });
+    setFrameRecord({ templateId: T2, frameBottomZ: -0.75, appearance: 'Cherry' });
     const saved = JSON.parse(JSON.stringify({ P: persistableP() }));
     P.frame = null; // "new session"
     P.frame = saved.P.frame; // the project load's own restore loop (applySnapshot) writes P[k] back
-    expect(getFrameRecord()).toMatchObject({ templateId: T2, frameBottomZ: -0.75, appearance: '3D Cherry - Unfinished' });
+    expect(getFrameRecord()).toMatchObject({ templateId: T2, frameBottomZ: -0.75, appearance: 'Cherry' });
   });
 
   it('round trip through the last-session store (localStorage)', () => {

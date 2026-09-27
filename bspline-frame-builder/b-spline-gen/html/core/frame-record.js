@@ -48,7 +48,9 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
   out.templateId = tpl ? tpl.id : null;
   const z = Number(raw.frameBottomZ);
   if (Number.isFinite(z)) out.frameBottomZ = z;
-  if ((defs.appearance?.options || []).includes(raw.appearance)) out.appearance = raw.appearance;
+  // F12: a wood saved under its old (non-existent) name keeps its choice
+  const wood = (defs.appearance?.renamed || {})[raw.appearance] || raw.appearance;
+  if ((defs.appearance?.options || []).includes(wood)) out.appearance = wood;
   if (tpl && raw.params && typeof raw.params === 'object') {
     const declared = new Set(tpl.params.filter((p) => p.owner === 'frame').map((p) => p.name));
     for (const [k, v] of Object.entries(raw.params)) {

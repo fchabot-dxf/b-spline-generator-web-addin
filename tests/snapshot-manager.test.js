@@ -155,5 +155,8 @@ describe('applySnapshot — FB-APP S2 (F6): the frame record on project load', (
     const frame = { recordVersion: 1, templateId: 'template_2', params: {}, frameBottomZ: -0.5, appearance: '3D Maple - Unfinished' };
     await applySnapshot({ P: { widthIn: 7, frame } }, null, { source: 'load' });
     expect(P.frame).toEqual(frame);
+    // F12: the old (non-existent) wood name reads back as its real Fusion appearance
+    const { getFrameRecord } = await import('../bspline-frame-builder/b-spline-gen/html/core/frame-record.js');
+    expect(getFrameRecord().appearance).toBe('3D Maple - Painted');
   });
 });

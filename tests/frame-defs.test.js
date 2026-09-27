@@ -17,10 +17,19 @@ describe('frame-defs (generated) — schema', () => {
 
   it('declares the 5 woods with Ash as the default', () => {
     expect(FRAME_DEFS.appearance.default).toBe('3D Ash - Unfinished');
+    // F12: real Fusion library names (validated against the recorded listing in test_frame_defs.py)
     expect(FRAME_DEFS.appearance.options).toEqual([
       '3D Ash - Unfinished', '3D Mahogany - Unfinished', '3D Pine - Unfinished',
-      '3D Cherry - Unfinished', '3D Maple - Unfinished',
+      'Cherry', '3D Maple - Painted',
     ]);
+  });
+
+  it('F12: a wood saved under its old non-existent name keeps its choice (declared rename)', async () => {
+    const { normalizeFrameRecord } = await import('../bspline-frame-builder/b-spline-gen/html/core/frame-record.js');
+    expect(FRAME_DEFS.appearance.renamed).toEqual({ '3D Cherry - Unfinished': 'Cherry', '3D Maple - Unfinished': '3D Maple - Painted' });
+    expect(normalizeFrameRecord({ templateId: 'template_1', appearance: '3D Cherry - Unfinished' }).appearance).toBe('Cherry');
+    expect(normalizeFrameRecord({ templateId: 'template_1', appearance: '3D Maple - Unfinished' }).appearance).toBe('3D Maple - Painted');
+    expect(normalizeFrameRecord({ templateId: 'template_1', appearance: 'Balsa' }).appearance).toBe('3D Ash - Unfinished');
   });
 
   it('declares frame bottom as a Z position (negative, -1 in)', () => {

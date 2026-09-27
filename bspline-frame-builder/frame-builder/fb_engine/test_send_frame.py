@@ -178,7 +178,7 @@ class Builds:
 
 def payload(**kw):
     p = {"templateId": "template_1", "params": {"frame_thickness": 0.75, "boundingboxoffset": 0.5, "ck_arc_shoulder_weld": 1},
-         "seeds": {}, "frameBottomZ": -1.5, "appearance": "3D Cherry - Unfinished"}
+         "seeds": {}, "frameBottomZ": -1.5, "appearance": "Cherry"}
     p.update(kw)
     return p
 
@@ -266,7 +266,7 @@ class TestSendFrame:
         r, b = run(w, payload(), body=body)
         call = b.solid_calls[0]
         assert call["to_face"] is body.faces[2]  # n.z = -0.998, the downward face
-        assert (call["start"], call["wood"]) == ("-1.5 in", "3D Cherry - Unfinished")
+        assert (call["start"], call["wood"]) == ("-1.5 in", "Cherry")
 
     def test_seeds_are_reported_not_applied_never_dropped_silently(self):
         w = World()
@@ -351,3 +351,10 @@ class TestSeedGeometry:
         r, b = run(w, payload(seeds={"waistReach": 0.5}, seedGeometry={"nope": {"points": [[0, 0], [1, 1]]}}))
         assert not r["ok"] and "could not be seeded" in r["error"]
         assert b.sketch_calls == [] and w.frame_names() == ["Frame_1"]  # the previous frame is still there
+
+
+    def test_an_unknown_wood_is_refused_not_silently_replaced(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(appearance="3D Cherry - Unfinished"))
+        assert not r["ok"] and "Unknown wood" in r["error"] and b.sketch_calls == []

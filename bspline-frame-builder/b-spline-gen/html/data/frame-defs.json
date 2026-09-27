@@ -5,15 +5,19 @@
       "3D Ash - Unfinished",
       "3D Mahogany - Unfinished",
       "3D Pine - Unfinished",
-      "3D Cherry - Unfinished",
-      "3D Maple - Unfinished"
+      "Cherry",
+      "3D Maple - Painted"
     ],
     "previewColors": {
       "3D Ash - Unfinished": "#d9c9a3",
-      "3D Cherry - Unfinished": "#9c4a2f",
       "3D Mahogany - Unfinished": "#7a3b2e",
-      "3D Maple - Unfinished": "#ead7ad",
-      "3D Pine - Unfinished": "#e3c07a"
+      "3D Maple - Painted": "#ead7ad",
+      "3D Pine - Unfinished": "#e3c07a",
+      "Cherry": "#9c4a2f"
+    },
+    "renamed": {
+      "3D Cherry - Unfinished": "Cherry",
+      "3D Maple - Unfinished": "3D Maple - Painted"
     }
   },
   "defaultTemplate": null,
@@ -55,7 +59,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "38dedc1691fdb96eab33089bcfcce8f8b2ce740dfeabaa5cc43227dcbe8f8543",
+  "sourceHash": "8a78e540a79a17688b76a7381b555df98f7c94bbc7726ef0daf7f0434971725a",
   "templates": [
     {
       "features": [
