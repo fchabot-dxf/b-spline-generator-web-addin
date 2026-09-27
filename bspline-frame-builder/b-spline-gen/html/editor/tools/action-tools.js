@@ -1,6 +1,9 @@
 import { bindClick } from '../dom.js';
 import { endEditorSession } from '../editor-text-session.js';
 import { isUnexpandable, unexpand } from '../editor-expand-commit.js';
+import { resetArtworkToFresh, sync3DBackground } from '../editor-io.js';
+import { clearFrame } from '../editor-frame-profile.js';
+import { refreshGuides } from '../editor-guides.js';
 
 export function registerActionTools(editor) {
   const bind = (id, fn) => bindClick(id, fn);
@@ -17,16 +20,34 @@ export function registerActionTools(editor) {
   bind('toolResetTransform',   () => editor.resetSelectionTransform());
   bind('toolFlattenTransform', () => editor.flattenSelectionTransform());
 
+  // H20 item 3 (Fred: "Clear all doesn't clear all" -- the layer list,
+  // per-layer metadata and Lattice/Shape-Lattice pattern state all survived
+  // the old Clear, which only wiped _sketchLayer): scoped to whichever tab
+  // is active (live correction, Fred: "Clear scoped to the active tab --
+  // the Artwork tab clears only the artwork, the Frame tab only the
+  // frame" -- supersedes the original dispatch's "Does NOT touch the
+  // Frame" wording, which never made it into NEXT-SESSION.md's own text;
+  // see WORK-LOG for which channel this was confirmed through).
   bind('editorClear', () => {
-    if (confirm('Clear all?')) {
-      editor._sketchLayer.clear();
-      // T8: the cleared elements may still be selected — deselect so their
-      // highlight halo / transform handles (separate layers, untouched by
-      // _sketchLayer.clear()) don't ghost on screen.
-      if (typeof editor._deselect === 'function') editor._deselect();
-      editor.pushState();
-      if (editor._onChange) editor._onChange();
+    if (!confirm('Clear all?')) return;
+    if (editor._editorTab === 'frame') {
+      // The Frame tab's own undo (pushFrameHistory, inside the handler)
+      // is a completely separate stack from the artwork's -- Ctrl+Z here
+      // undoes the frame, never the artwork (F8's existing split).
+      clearFrame();
+      return;
     }
+    // Artwork tab: reset to EXACTLY a fresh session's artwork -- one
+    // default layer, no elements, no lattice/shape-lattice pattern state
+    // (resetArtworkToFresh is the SAME function open()'s own empty-session
+    // path uses, declared once in editor-io.js). editor.pushState() below
+    // is what makes this ONE undo step (resetArtworkToFresh's own internal
+    // addLayer call is skipUndo, by design).
+    resetArtworkToFresh(editor);
+    sync3DBackground(editor);
+    refreshGuides(editor);
+    editor.pushState();
+    if (editor._onChange) editor._onChange();
   });
 
   bind('editorDownload', async () => {

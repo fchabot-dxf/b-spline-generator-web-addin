@@ -18,7 +18,7 @@
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
-import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
+import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds } from '../editor/frame-handles.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
@@ -244,6 +244,15 @@ function _wireHandleDrag() {
 
 export function initFramePanel() {
   setFrameProfileProvider(() => ({ defs: FRAME_DEFS, record: getFrameRecord() }));
+  // H20 item 3: Clear, when the Frame tab is active, resets the frame to
+  // "None" — same reset a manual template-dropdown-to-"None" change does
+  // (setFrameRecord({templateId:null, params:{}})), with its own
+  // pushFrameHistory() step so Ctrl+Z on the Frame tab undoes it.
+  setFrameClearHandler(() => {
+    pushFrameHistory();
+    setFrameRecord({ templateId: null, params: {} });
+    syncFramePanel();
+  });
   // F7: the 3D preview asks with the grid size it is actually drawing.
   AppState.preview?.setFrameProvider?.((W, H) => frameSolidSpec(FRAME_DEFS, getFrameRecord(), { widthIn: W, heightIn: H }));
   const tplSel = $('frameTemplate');

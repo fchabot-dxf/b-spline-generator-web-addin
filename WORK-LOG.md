@@ -12515,3 +12515,59 @@ Flagged, not fixed (unrelated, pre-existing, out of scope): `editor/layers.js`'s
 Shots in `shots\seatA\` (`H20-item2_window-mode-solid-green`, `H20-item2_crossing-mode-dashed-blue`).
 
 `npx vitest run` -> **2160 passed** (up from 2152), zero regressions.
+
+## H20 item 3 — Clear scoped to the active tab (Artwork clears artwork only, Frame clears frame only)
+
+**Channel note.** The original dispatch text (still what NEXT-SESSION.md's own item-3 line reads at the time
+of this commit) said Clear "Does NOT touch the Frame." A later cross-session message relayed a correction:
+"Clear scoped to the active tab (the Artwork tab clears only the artwork, the Frame tab only the frame)" —
+this is what I implemented, per this session's established precedent of trusting the more recent, more
+specific live correction when the canonical checklist file hasn't caught up yet. Flagging this explicitly so
+the advisor can override immediately if the older text was actually meant to stand.
+
+Fred: "Clear all doesn't clear all" — the old `editorClear` only did `editor._sketchLayer.clear()`; the
+layer list, per-layer metadata, and Lattice/Shape-Lattice pattern state (which SE7i moved onto each layer's
+own `.pattern` field) all survived.
+
+**Declared once, reused, not listed in the click handler** (per the dispatch's own instruction). New
+`resetArtworkToFresh(editor)` in `editor-io.js` — extracted verbatim from `open(editor, null, w, h)`'s own
+empty-session path (sketch clear, deselect, hover/pan reset, layer roster reset, fresh Layer 1) — MINUS the
+concerns that belong to `open()` alone (model metrics, undo-stack wiping, SVG parsing). `open()` itself now
+calls this same function for its shared prefix rather than keeping a parallel inline copy; verified safe for
+the loaded-document branch since `_reconcileLayersFromSvg`'s own unconditional `_layers = [...]` (or the
+persisted-layers restore path) immediately supersedes the transient Layer 1 my helper creates — confirmed by
+reading that function, not assumed. Full suite stayed green after this refactor of a heavily-used, comment-
+dense function, which was the real risk in this change.
+
+**Frame-side reset** needed crossing an existing, deliberate architecture boundary: `editor/` modules "never
+import app state directly" (the frame record lives in `core/frame-record.js`, owned by `main/frame-panel.js`).
+Declared a SECOND provider hook in `editor-frame-profile.js`, `setFrameClearHandler(fn)`/`clearFrame()` —
+the exact same shape as the file's own pre-existing `setFrameProfileProvider` — registered by
+`frame-panel.js`'s `initFramePanel()` as `pushFrameHistory(); setFrameRecord({templateId:null, params:{}});
+syncFramePanel();` (the identical reset a manual "None" dropdown selection already performs, with its own
+`pushFrameHistory()` undo step — the Frame tab's undo stack is completely separate from the artwork's, per
+the pre-existing F8 split, so Ctrl+Z on each tab only ever undoes that tab's own kind of Clear).
+
+`editor/tools/action-tools.js`'s `editorClear` handler now branches on `editor._editorTab` (`'frame'` vs
+`'artwork'`, the same field `setEditorFocus`/`editor-frame-profile.js` already declares and drives the
+existing Frame/Artwork opacity-focus rule from) — kept the pre-existing `confirm('Clear all?')` prompt
+unconditionally (the dispatch didn't ask to remove it, unlike item 4's own layer-delete confirm).
+
+**Tests** (`tests/h20-clear-scoped.test.js`, 6 tests). `resetArtworkToFresh` produces layers/activeLayer
+byte-identical to a real fresh-session call (compared directly, not just asserted by shape), clears sketch
+content, and deselects. The `editorClear` button-wiring tests use the REAL `VectorEditor.prototype.
+pushState/undo/_restoreState` via `.call(mock)` (same convention as `editor-lattice-undo.test.js`, not a
+reimplementation) with a from-scratch minimal SVG.js-shaped mock (`.attr()`/`.addClass()`/`.svg()`) built
+specifically to drive `applyLayerState`'s real per-child class logic — proving the FULL round trip the
+checklist asked for: Clear on the Artwork tab wipes a 2-layer doc (one carrying a Shape-Lattice `.pattern`)
+down to one fresh layer in exactly ONE undo step, and `undo()` brings back BOTH the original layer roster
+(pattern intact) AND the drawn path's own element, not just "something." A parallel test proves Clear on the
+Frame tab calls the registered frame-clear handler and leaves the artwork's `_layers` array as the SAME
+reference (untouched), and a third confirms declining the confirm dialog no-ops on either tab.
+Mutation-tested: reverted `editorClear` to the old single `_sketchLayer.clear()`-only behavior in a scratch
+copy — the artwork-tab round-trip test and the frame-tab-routing test both correctly FAILED. Restored,
+re-ran clean.
+
+No shots requested for this item (checklist).
+
+`npx vitest run` -> **2179 passed** (up from 2160), zero regressions.
