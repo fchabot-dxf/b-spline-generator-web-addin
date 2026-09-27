@@ -405,3 +405,149 @@ describe('applyLayerState: showColor drives .layer-no-color on the SVG canvas', 
     expect(child._classes.has('layer-no-color')).toBe(true);
   });
 });
+
+// H22 item 1 (Fred, screenshot of the Shape Lattice's Contour/Nodes/Ties/
+// Rails rows: "can't drag a layer in an order I choose") — REPRODUCED live
+// via CDP before this fix: a real TOUCH gesture on the grip fired ZERO
+// drag events at all (native HTML5 draggable/dragstart never initiates
+// from touch input without a JS polyfill — a documented platform
+// limitation, not a maybe), and a real MOUSE gesture fired dragstart/
+// dragover but never drop. A direct reorderLayer() effect was separately
+// confirmed (live) to survive both Regenerate and a save/reopen round
+// trip unchanged, which isolates the bug entirely to the GESTURE never
+// invoking reorderLayer — nothing was found to re-sort the list
+// afterward. Fix: replace the native draggable/dragstart/dragover/drop
+// wiring on the row with a Pointer Events implementation on the grip
+// (matches editor-interaction.js's own one-pointer-path convention for
+// every other canvas gesture, and — unlike native drag-and-drop — does
+// fire for touch). reorderLayer() itself is untouched; only the gesture
+// that invokes it changed.
+describe('drag-to-reorder via Pointer Events on the grip (H22 item 1)', () => {
+  let container;
+  beforeEach(() => {
+    container = document.createElement('div');
+    container.id = 'editorLayersList'; // renderLayersPanel (called by reorderLayer) targets this id
+    document.body.appendChild(container);
+  });
+  afterEach(() => {
+    container.remove();
+    delete document.elementFromPoint;
+  });
+
+  function fireHandle(type, row, { pointerType = 'mouse', clientX = 10, clientY = 0 } = {}) {
+    const handle = row.querySelector('.layer-handle');
+    handle.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, cancelable: true, pointerId: 1, pointerType, button: 0, clientX, clientY,
+    }));
+  }
+
+  function stubRect(el, top, height) {
+    el.getBoundingClientRect = () => ({ top, bottom: top + height, height, left: 0, right: 100, width: 100 });
+  }
+
+  function findRow(id) {
+    return Array.from(container.querySelectorAll('.layer-row')).find(r => r.dataset.layerId === id);
+  }
+
+  // Drags `sourceId`'s row onto `targetId`'s row, entering the target's
+  // top half (drop-before) or bottom half (drop-after).
+  function dragRow(sourceId, targetId, { above, pointerType = 'mouse' } = {}) {
+    const sourceRow = findRow(sourceId);
+    const targetRow = findRow(targetId);
+    stubRect(targetRow, 100, 40);
+    document.elementFromPoint = () => targetRow;
+    fireHandle('pointerdown', sourceRow, { pointerType, clientY: 10 });
+    fireHandle('pointermove', sourceRow, { pointerType, clientY: above ? 105 : 130 });
+    fireHandle('pointerup', sourceRow, { pointerType, clientY: above ? 105 : 130 });
+  }
+
+  it('dragging a row onto another actually reorders _layers, matching reorderLayer\'s own before/after-in-display-order contract', () => {
+    const editor = mockEditor([mockLayer('0'), mockLayer('1'), mockLayer('2')], '0');
+    editor.pushState = vi.fn();
+    editor._onChange = vi.fn();
+    renderLayersPanel(editor);
+
+    dragRow('0', '2', { above: true }); // drop '0' BEFORE '2' in display order
+
+    expect(editor._layers.map(l => l.id)).toEqual(['1', '2', '0']);
+    expect(editor.pushState).toHaveBeenCalledTimes(1); // exactly one undo step per reorder
+    expect(editor._onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('the SAME gesture works for pointerType "touch" — the confirmed failure mode of the old native-HTML5-drag mechanism (zero drag events ever fired for a real touch gesture)', () => {
+    const editor = mockEditor([mockLayer('0'), mockLayer('1'), mockLayer('2')], '0');
+    editor.pushState = vi.fn();
+    renderLayersPanel(editor);
+
+    dragRow('0', '2', { above: true, pointerType: 'touch' });
+
+    expect(editor._layers.map(l => l.id)).toEqual(['1', '2', '0']);
+  });
+
+  it('dropping into the target\'s BOTTOM half reorders "after" it in display order, the opposite of the top-half case', () => {
+    const editor = mockEditor([mockLayer('0'), mockLayer('1'), mockLayer('2')], '0');
+    editor.pushState = vi.fn();
+    renderLayersPanel(editor);
+
+    dragRow('0', '2', { above: false }); // drop '0' AFTER '2' in display order
+
+    expect(editor._layers.map(l => l.id)).toEqual(['1', '0', '2']);
+  });
+
+  it('dropping a row onto itself is a no-op: no reorder, no undo step', () => {
+    const editor = mockEditor([mockLayer('0'), mockLayer('1'), mockLayer('2')], '0');
+    editor.pushState = vi.fn();
+    renderLayersPanel(editor);
+
+    dragRow('0', '0', { above: true });
+
+    expect(editor._layers.map(l => l.id)).toEqual(['0', '1', '2']);
+    expect(editor.pushState).not.toHaveBeenCalled();
+  });
+
+  it('the re-rendered panel reflects the new order (drag is visible, not just an internal array change)', () => {
+    const editor = mockEditor([mockLayer('0'), mockLayer('1'), mockLayer('2')], '0');
+    editor.pushState = vi.fn();
+    renderLayersPanel(editor);
+
+    dragRow('0', '2', { above: true });
+
+    const displayIds = Array.from(container.querySelectorAll('.layer-row')).map(r => r.dataset.layerId);
+    expect(displayIds).toEqual(['0', '2', '1']); // reverse of the new _layers array
+  });
+
+  it('shows drop-before/drop-after feedback on the hovered row while dragging, and clears it once the drag ends', () => {
+    const editor = mockEditor([mockLayer('0'), mockLayer('1'), mockLayer('2')], '0');
+    editor.pushState = vi.fn();
+    renderLayersPanel(editor);
+    const sourceRow = findRow('0');
+    const targetRow = findRow('2');
+    stubRect(targetRow, 100, 40);
+    document.elementFromPoint = () => targetRow;
+
+    fireHandle('pointerdown', sourceRow, { clientY: 10 });
+    expect(sourceRow.classList.contains('dragging')).toBe(true);
+
+    fireHandle('pointermove', sourceRow, { clientY: 105 }); // top half of targetRow -> drop-before
+    expect(targetRow.classList.contains('drop-before')).toBe(true);
+    expect(targetRow.classList.contains('drop-after')).toBe(false);
+
+    fireHandle('pointerup', sourceRow, { clientY: 105 });
+    expect(document.querySelectorAll('.dragging, .drop-before, .drop-after').length).toBe(0);
+  });
+
+  it('a drag that never moves onto another row (pointerup over its own start) changes nothing', () => {
+    const editor = mockEditor([mockLayer('0'), mockLayer('1'), mockLayer('2')], '0');
+    editor.pushState = vi.fn();
+    renderLayersPanel(editor);
+    const sourceRow = findRow('0');
+    document.elementFromPoint = () => sourceRow; // pointer stayed over its own row
+
+    fireHandle('pointerdown', sourceRow, { clientY: 10 });
+    fireHandle('pointermove', sourceRow, { clientY: 11 });
+    fireHandle('pointerup', sourceRow, { clientY: 11 });
+
+    expect(editor._layers.map(l => l.id)).toEqual(['0', '1', '2']);
+    expect(editor.pushState).not.toHaveBeenCalled();
+  });
+});

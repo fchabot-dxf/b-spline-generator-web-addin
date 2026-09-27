@@ -56,6 +56,7 @@
  */
 import { el, on } from './dom.js';
 import { refreshOutlinePreview } from './editor-outline-preview.js';
+import { dbg } from '../core/debug.js';
 
 /**
  * SE12 T36: which geometry a layer's Fusion export uses — an EXPLICIT
@@ -717,49 +718,91 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   const row = document.createElement('div');
   row.className = 'layer-row' + (compact ? ' compact' : '') + (isActive ? ' active' : '');
   row.dataset.layerId = layer.id;
-  row.draggable = true;
-
-  // Drag-to-reorder. Top of the list = top of z-order = rendered last in
-  // the SVG (which renders later children on top). _layers stores layers
-  // in render order (first = bottom), so the display list reverses it.
-  // A drag from display position D_from to D_to maps to array indices
-  // (n-1-D_from) and (n-1-D_to).
-  row.addEventListener('dragstart', (e) => {
-    row.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(layer.id));
-  });
-  row.addEventListener('dragend', () => {
-    row.classList.remove('dragging');
-    document.querySelectorAll('.layer-row.drop-before, .layer-row.drop-after')
-      .forEach(r => r.classList.remove('drop-before', 'drop-after'));
-  });
-  row.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = row.getBoundingClientRect();
-    const isAbove = (e.clientY - rect.top) < rect.height / 2;
-    row.classList.toggle('drop-before', isAbove);
-    row.classList.toggle('drop-after', !isAbove);
-  });
-  row.addEventListener('dragleave', () => {
-    row.classList.remove('drop-before', 'drop-after');
-  });
-  row.addEventListener('drop', (e) => {
-    e.preventDefault();
-    const sourceId = e.dataTransfer.getData('text/plain');
-    const rect = row.getBoundingClientRect();
-    const isAbove = (e.clientY - rect.top) < rect.height / 2;
-    row.classList.remove('drop-before', 'drop-after');
-    if (sourceId && sourceId !== String(layer.id)) {
-      reorderLayer(editor, sourceId, layer.id, isAbove ? 'before' : 'after');
-    }
-  });
 
   const handle = document.createElement('span');
   handle.className = 'layer-handle';
   handle.textContent = '⋮⋮';
   handle.title = 'Drag to reorder';
+
+  // Drag-to-reorder, via Pointer Events (not native HTML5 draggable/
+  // dragstart/drop): matches editor-interaction.js's own one-pointer-path
+  // convention for canvas gestures, and — unlike native drag-and-drop —
+  // actually fires from touch input. H22 item 1 (Fred: "can't drag a layer
+  // into an order I choose"): native drag never initiated from touch at
+  // all (no browser support without a polyfill) and was unreliable from
+  // mouse too; reorderLayer() itself was always correct (order survives
+  // Regenerate and reopen) so only the gesture is replaced here.
+  //
+  // Top of the list = top of z-order = rendered last in the SVG (which
+  // renders later children on top). _layers stores layers in render order
+  // (first = bottom), so the display list reverses it; reorderLayer()
+  // itself accounts for that.
+  handle.style.touchAction = 'none';
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    const pointerId = e.pointerId;
+    try { handle.setPointerCapture(pointerId); } catch (_) { /* defensive: capture can fail on some UAs/synthetic events */ }
+    row.classList.add('dragging');
+    dbg('LAYER-DRAG', 'start', { layerId: layer.id, pointerType: e.pointerType, pointerId });
+
+    const clearDropMarkers = () => {
+      document.querySelectorAll('.layer-row.drop-before, .layer-row.drop-after')
+        .forEach(r => r.classList.remove('drop-before', 'drop-after'));
+    };
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      clearDropMarkers();
+      const target = document.elementFromPoint(ev.clientX, ev.clientY);
+      const targetRow = target ? target.closest('.layer-row') : null;
+      if (!targetRow || targetRow === row) return;
+      const rect = targetRow.getBoundingClientRect();
+      const isAbove = (ev.clientY - rect.top) < rect.height / 2;
+      targetRow.classList.toggle('drop-before', isAbove);
+      targetRow.classList.toggle('drop-after', !isAbove);
+      dbg('LAYER-DRAG', 'over', { targetLayerId: targetRow.dataset.layerId, side: isAbove ? 'before' : 'after' });
+    };
+
+    const finish = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onCancel);
+      try { handle.releasePointerCapture(pointerId); } catch (_) { /* see setPointerCapture above */ }
+      row.classList.remove('dragging');
+    };
+
+    const onUp = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      const dropBeforeRow = document.querySelector('.layer-row.drop-before');
+      const dropAfterRow = document.querySelector('.layer-row.drop-after');
+      clearDropMarkers();
+      finish();
+      const targetRow = dropBeforeRow || dropAfterRow;
+      if (targetRow) {
+        const targetId = targetRow.dataset.layerId;
+        if (targetId && targetId !== String(layer.id)) {
+          dbg('LAYER-DRAG', 'drop', { sourceLayerId: layer.id, targetLayerId: targetId, side: dropBeforeRow ? 'before' : 'after' });
+          reorderLayer(editor, layer.id, targetId, dropBeforeRow ? 'before' : 'after');
+        } else {
+          dbg('LAYER-DRAG', 'drop onto self — no-op', { layerId: layer.id });
+        }
+      } else {
+        dbg('LAYER-DRAG', 'drop with no target row under the pointer — no-op', { layerId: layer.id });
+      }
+    };
+
+    const onCancel = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      dbg('LAYER-DRAG', 'cancel', { layerId: layer.id });
+      clearDropMarkers();
+      finish();
+    };
+
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onCancel);
+  });
 
   const vis = document.createElement('button');
   vis.type = 'button';
