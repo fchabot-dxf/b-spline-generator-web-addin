@@ -137,3 +137,14 @@ edit independent) · SNAP-SPLIT · UI4 item 0b (needs Fred's steps) · stamp-lay
 R2 note) · Fred's live checks: T75/T76 (after the projection fix), UI5 overrides, stale-params.
 **Known test note:** tests/frame-3d-sweep.test.js (F8) can time out at vitest's 5 s default on the Asus (passes with a
 longer timeout) — green in the final run above.
+
+### 5.2 Home advisor: live re-run on Ranchy (2026-09-26, main 10aab22 deployed)
+Real app Send payload (tools/repro/capture_send_payload.mjs, Shape Lattice) replayed through the add-in's own
+`_handle_generate` into a tagged scratch doc (closed after; Fred's doc untouched):
+- **SE17 projections: 0 PROJECTION FAIL / 0 MISS** (were all failing); all 5 sketches (Lattice Boundary, contour, rails,
+  ties, nodes) built with constraint_issues=0, dim_issues=0, parity maxErr <= 0.00035 in.
+- **Rail ends follow the contour:** 14/14 rail centerline ends stay on the contour centerline through stroke_width
+  0.25 -> 0.5 -> 0.25 in (worst 0.067 mm = the sampling resolution). T76's cross-sketch linking works live.
+- **Stale params:** `stale_params` now written to last_send.json ({deleted:[], kept_referenced:[], adopted:[], failed:[]}
+  on a fresh doc, as expected); no logger crash.
+Gate CLOSED. Still Fred's own: UI5 overrides live, and the stale-param deletes on a real re-send (a scratch doc first).
