@@ -758,7 +758,13 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   del.addEventListener('click', (e) => {
     e.stopPropagation();
     if (del.disabled) return;
-    _confirmAndRemove(editor, layer);
+    // H20 item 4 (Fred, screenshot of the "Delete... and its N elements?"
+    // confirm: "dont ask"): removed. removeLayer() already calls
+    // pushState() AFTER the removal, capturing the post-delete state on
+    // the undo stack the same way every other mutator here does — Ctrl+Z
+    // pops back to the PRE-delete snapshot, restoring the layer, its
+    // elements, its order and its per-layer settings in one step.
+    removeLayer(editor, layer.id);
   });
 
   // MOB4 layer-row AMEND ("C1"): grip, then the editable name (with its
@@ -783,19 +789,6 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   });
 
   return row;
-}
-
-function _confirmAndRemove(editor, layer) {
-  // Count elements that will be deleted.
-  let count = 0;
-  if (editor._sketchLayer) {
-    count = editor._sketchLayer.children().toArray().filter(c => getElementLayer(c) === String(layer.id)).length;
-  }
-  const msg = count > 0
-    ? `Delete "${layer.name}" and its ${count} element${count === 1 ? '' : 's'}?`
-    : `Delete "${layer.name}"?`;
-  if (!window.confirm(msg)) return;
-  removeLayer(editor, layer.id);
 }
 
 function _startRename(editor, row, nameEl, layer) {

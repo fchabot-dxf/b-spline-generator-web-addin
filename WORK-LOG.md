@@ -12571,3 +12571,30 @@ re-ran clean.
 No shots requested for this item (checklist).
 
 `npx vitest run` -> **2179 passed** (up from 2160), zero regressions.
+
+## H20 item 4 — Layer delete: no confirm, undo round-trip proven first
+
+Fred, screenshot of a `Delete "Ties" and its 3 elements?` confirm: "dont ask." Removed `window.confirm(msg)`
+from the delete button's click handler in `editor/layers.js`. `_confirmAndRemove` existed ONLY to build that
+message and gate the confirm — with both gone, it was a pure pass-through to `removeLayer(editor, layer.id)`,
+so deleted the now-dead function entirely and inlined the call at its one call site, rather than leaving a
+trivial wrapper (`getElementLayer`, the helper `_confirmAndRemove` also used for the element count, is still
+used 5 other places in the file — confirmed not orphaned).
+
+**Undo proven BEFORE trusting the removed safety net**, per the checklist's own explicit requirement.
+`removeLayer` already called `pushState()` unchanged (right after the removal — the same "push after
+mutation" convention every other mutator in this file follows), so no new undo plumbing was needed; the task
+was to PROVE it actually round-trips a real delete, not just assume it. `tests/h20-layer-delete-undo.test.js`
+(2 tests) renders the REAL layer row (`renderLayersPanel` → `_makeLayerRow`) into a real DOM container and
+clicks the REAL `.layer-delete` button — not a reimplementation of the click handler — then drives the REAL
+`VectorEditor.prototype.pushState/undo/_restoreState` via `.call(mock)` (same convention as
+`editor-lattice-undo.test.js` and this turn's own `h20-clear-scoped.test.js`). Confirms: (1) clicking delete
+removes the layer immediately with `window.confirm` wired to THROW if ever called — proving the safety net is
+genuinely gone, not just visually skipped; (2) `undo()` restores the deleted layer at its ORIGINAL array
+position (between its former neighbors, not appended), its own element back in the sketch layer, AND its
+per-layer settings (`pattern`, `carve`, `depth`, `showColor` — standing in for "3D relief, colour, lattice
+tag") all intact — in exactly one undo step. Mutation-tested: reintroduced the old `confirm()` call in a
+scratch copy of `layers.js` — both tests correctly FAILED (one on the thrown error, one because the click
+never reached `removeLayer`). Restored, re-ran clean.
+
+`npx vitest run` -> **2181 passed** (up from 2179), zero regressions.
