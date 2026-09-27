@@ -1099,7 +1099,10 @@ Fred: "so tap and hold can host a sub menu in canvas?" -> "yes amazing". Plain t
 double-tap-and-hold, H5). ONE declared registry of actions: {id, label, icon, appliesTo(kind|'empty'), when(state),
 run(editor, target)}; the menu shows the entries whose appliesTo/when match the held element (or empty canvas). Starting
 set (Fred approved): on a piece: Colour… (the Selected-piece colour pick), ✂ Cut here (only when the SE16 cut tool
-exists: registered by it, not hard-coded), Duplicate, Select all <kind> (e.g. all rails), Delete; on empty canvas: Paste
+exists: registered by it, not hard-coded), Duplicate, Select all <kind> (e.g. all rails), Delete, ⇄ Move to layer ▸ (Fred: "add move to layer too": a submenu of the layers + "New layer…"; the existing
+move-to-layer command, one undo step; with a multi-selection it moves them all). Move to layer applies to PLAIN elements
+only (line/rect/freeform/text/…): lattice-owned pieces live on their own kind-layer = their Fusion sketch (SE17), so
+the entry is HIDDEN for them (a declared appliesTo rule, not a greyed-out entry). On empty canvas: Paste
 (when the clipboard has content), Select all, Fit view. Actions call the EXISTING commands (no second implementation);
 each is one undo step. Hold = still for the hold time without moving (a move = drag, unchanged); right-click on desktop;
 the browser's own long-press/contextmenu suppressed on the canvas only. Tests: registry filtering per kind/empty, each
