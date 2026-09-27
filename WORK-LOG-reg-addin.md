@@ -497,3 +497,69 @@ behavior the interactive tool actually ships with today.
 **Hands off, respected:** `fb-app`, `editor-shape-lattice-generator.js`, frame files,
 `core/preview/frame-mesh.js`, both panel files, and lane 2's own files (`sketch_manifest_builder.py` et al. —
 its own BOUNDARY-GUIDE work) were not touched.
+
+## 2026-09-26 — turn 14 — R7 item 0: three LIVE Fusion bugs from R4/T76, found by the home advisor
+
+Lane2's L1 BOUNDARY-GUIDE merged before this turn started (confirmed in the R7 dispatch header), so
+`sketch_manifest_builder.py` is fair game again — this item was explicitly assigned there by the amendment.
+
+**(a) Every stale-params cleanup pass silently failed, every Send.** R4's own `_LogAdapter` (then just
+`types.SimpleNamespace(log=_log)`) passed `_log` (ONE positional arg, `b-spline-gen.py:134`, this file's
+established convention — bake any level into the message text) directly as `.log`, but
+`param_ownership.compute_stale_params` calls `logger.log(msg, level)` — a TWO-arg shape — on almost every
+branch that has anything to report. Fixed with a tiny declared adapter, `_LogAdapter`, folding `level` into
+the message the SAME way this file's own direct `_log(f"...")` calls already do (`[LEVEL] message`), rather
+than inventing a second logging convention. **Should have been caught in R4:** I explicitly flagged in that
+turn's own WORK-LOG that the `_handle_generate` wiring itself had no dedicated test ("felt like scope creep");
+this is exactly the gap that flag predicted, now real. R7 item 0 fixes it with an actual test this time.
+
+**(b) Every lattice parameter looked out-of-payload, on every Send.** `b-spline-gen.py`'s own payload-names
+loop read `layer.get('manifest')` — a key that has NEVER existed in a real payload. The app sends
+`layer['sketchManifest']` (`export-flow.js:472,484`; the ALREADY-correct reader,
+`_svg_layer_import_plan`, reads exactly that key). This is a plain copy-paste/naming slip from R4 — I never
+cross-checked the payload-names loop's key against the reader RIGHT NEXT TO IT in the same file. Declared ONE
+shared accessor, `_layer_manifest(layer)`, used by BOTH readers now, so the two literal-string copies that
+diverged once can never diverge again.
+
+**(c) SE17 cross-kind projections failed on every real Fusion build, proven live on Ranchy by the home
+advisor.** `build_constrained_sketch` called `_apply_projections` INSIDE the `sketch.isComputeDeferred = True`
+window (~sketch_manifest_builder.py:979-990) — a real Fusion API quirk: `sketch.project()` returns an EMPTY
+collection while the TARGET sketch has `isComputeDeferred=True`. `_apply_projections` itself already had a
+correct "project() returned nothing → skip + log" path (unchanged) — it was firing on EVERY projection live,
+not because of a genuine miss, but because of this ordering. **Fix:** moved the `_apply_projections` call to
+BEFORE the deferred window opens — it only ever needs the ALREADY-BUILT source sketches (`kind_to_sketch`,
+an earlier kind in the same manifest group), never this sketch's own not-yet-created entities, so there was
+no correctness reason it needed to be inside the window. Geometry + constraints stay in the SAME one deferred
+window as before; a constraint targeting a projected curve resolves through the exact same
+`ctx.resolve_entity`/`ctx.entity_map` path regardless of when the projection ran, since entity_map is
+populated before the window even opens.
+
+**The shim never modeled this, so the existing SE17 test passed even with the live bug.**
+`test_sketch_manifest_builder.py`'s own `FakeSketch.project()` always returned a valid projected copy,
+regardless of `isComputeDeferred` — the EXACT gap the amendment named. Added the missing behavior (`if
+self.isComputeDeferred: return FakeObjectCollection()`) to the shim itself, which makes the ALREADY-EXISTING
+test (`test_shared_ctx_lets_a_later_kind_project_an_earlier_kinds_entity_and_constrain_against_it`,
+written back in T76/SE17) a real regression guard for the first time. **Mutation-checked the fix directly:**
+reverting the reorder (moving `_apply_projections` back inside the deferred window) makes that exact test
+fail with `CONSTRAINT MISS: proj_rail0_S not found in Ties` — reproducing the live symptom byte-for-byte, not
+a synthetic stand-in. Restored after confirming.
+
+**New tests:** `test_b_spline_gen_stale_params_wiring.py` (7 tests) — drives the REAL `_layer_manifest` and
+`_LogAdapter` (not stand-ins), including a payload fixture shaped from `export-flow.js`'s own
+`sketchManifest` attachment (multiple layers, one with no manifest at all — a hand-drawn layer) proving every
+lattice param name is collected and the wrong `'manifest'` key is never read even when present. Needed the
+SAME minimal-adsk-stub-before-import idiom `frame-builder/fb_engine/test_board_params_ownership.py` already
+uses (b-spline-gen.py subclasses 4 `adsk.core.*` handler classes at class-definition time, so the stub needs
+those 4 as plain placeholder bases) — loaded by file path via `importlib.util.spec_from_file_location`
+since `b-spline-gen.py` isn't a valid Python module name. **Mutation-checked:** reverting `_LogAdapter.log`
+back to the buggy direct-pass-through fails exactly the 3 tests that exercise it (a bare `.log(msg, level)`
+call, the folding behavior itself, and the end-to-end `compute_stale_params` drive), restored after.
+
+**Gate:** `python -m pytest -q` in `bspline-frame-builder/`: **302/302 passed** (was 284 in R4; +7 this
+file, +11 from R7 item 1's own carry-over work already on main). Full `npx vitest run`: **88 files / 1630
+passed**. No Fusion (per the standing rule) — the home advisor's own live Fusion run is what surfaced these
+three bugs in the first place, and remains the one that will confirm the fix live.
+
+**Hands off, respected:** touched exactly the three files these bugs live in
+(`b-spline-gen.py`, `sketch_manifest_builder.py`, `test_sketch_manifest_builder.py`) plus one new test file
+— no panel/UI files, no frame files, nothing outside the scope the amendment named.
