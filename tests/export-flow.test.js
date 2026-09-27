@@ -22,6 +22,15 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines, _fusionLayerManifest, _boundarySketchManifests } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
 import { setLayerVisible } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
+// F17 (P1): the lattice manifest is built from the owned pieces AS DRAWN, so the mocks carry real geometry
+import { drawnFromPattern, ownedStores } from './helpers/drawn-lattice.js';
+const BOARD = { x: 0, y: 0, w: 7, h: 9 };
+/** A pattern's owned pieces as generatePattern draws them, all kinds on `layer` (or on its kind layers). */
+function ownedFor(pattern, layer, gen = 'anything') {
+  const layers = pattern.layers || { rails: layer, ties: layer, nodes: layer };
+  const st = ownedStores(drawnFromPattern(pattern, BOARD), { gen, layers });
+  return [...st.rails, ...st.ties, ...st.nodes];
+}
 
 /** Editor layer mock: tooling (depth/profile/visible) lives ON the layer
  *  object itself now, alongside content — matching what editor._layers
@@ -325,12 +334,9 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
       nodes: { ends: false, crossings: false, railEnds: false },
       widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
     };
-    const editor = mockEditor([{
-      id: '3', pattern,
-      owned: [
-        { 'data-layer': '3', 'data-lattice-gen': 'anything', 'data-lattice': 'rail', 'data-override-width': '0.5' },
-      ],
-    }]);
+    const owned = ownedFor(pattern, '3');
+    owned.find((o) => o['data-lattice'] === 'rail')['data-override-width'] = '0.5'; // the FIRST drawn rail
+    const editor = mockEditor([{ id: '3', pattern, owned }]);
     const manifest = _fusionLayerManifest(editor, { id: '3' });
     const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');
     expect(rail0Dim.expression).toBe('0.5 in');
@@ -357,15 +363,16 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
   });
 
   it('non-vacuous: looks up the layer by id, not by array position (a stale/wrong index would silently attach the WRONG layer\'s pattern)', () => {
-    const patternA = { spacing: 0.25, rails: { mode: 'every', every: 100, offset: 0 }, ties: { mode: 'density', density: 0 }, nodes: { ends: false, crossings: false, railEnds: false } };
+    // F17: every:20 (one drawn rail): a pattern that draws NOTHING is no longer sent at all
+    const patternA = { spacing: 0.25, rails: { mode: 'every', every: 20, offset: 0 }, ties: { mode: 'density', density: 0 }, nodes: { ends: false, crossings: false, railEnds: false } };
     const patternB = { spacing: 0.25, rails: { mode: 'every', every: 1, offset: 0 }, ties: { mode: 'density', density: 0 }, nodes: { ends: false, crossings: false, railEnds: false } };
     const editor = mockEditor([
-      { id: 'A', pattern: patternA, owned: [{ 'data-layer': 'A', 'data-lattice-gen': 'a' }] },
-      { id: 'B', pattern: patternB, owned: [{ 'data-layer': 'B', 'data-lattice-gen': 'b' }] },
+      { id: 'A', pattern: patternA, owned: ownedFor(patternA, 'A', 'a') },
+      { id: 'B', pattern: patternB, owned: ownedFor(patternB, 'B', 'b') },
     ]);
     const manifestB = _fusionLayerManifest(editor, { id: 'B' });
     const manifestA = _fusionLayerManifest(editor, { id: 'A' });
-    // every:1 (B) produces strictly more rails than every:100 (A) on the
+    // every:1 (B) produces strictly more rails than every:20 (A) on the
     // same 7x9 board — a real, checkable difference, not just "not null".
     const railCount = (m) => m.entities.filter((e) => e.id.match(/^rail\d+$/)).length;
     expect(railCount(manifestB)).toBeGreaterThan(railCount(manifestA));
@@ -389,10 +396,12 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
       widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
       layers: { rails: 'railsL', ties: 'tiesL', nodes: 'nodesL' },
     };
+    const owned = ownedFor(pattern, null, 'p');
+    const on = (layer) => owned.filter((o) => o['data-layer'] === layer);
     return mockEditor([
-      { id: 'railsL', pattern, owned: [{ 'data-layer': 'railsL', 'data-lattice-gen': 'p', 'data-lattice': 'rail' }] },
-      { id: 'tiesL', patternOwner: 'railsL', owned: [{ 'data-layer': 'tiesL', 'data-lattice-gen': 'p', 'data-lattice': 'tie' }] },
-      { id: 'nodesL', patternOwner: 'railsL', owned: [{ 'data-layer': 'nodesL', 'data-lattice-gen': 'p', 'data-lattice': 'node' }] },
+      { id: 'railsL', pattern, owned: on('railsL') },
+      { id: 'tiesL', patternOwner: 'railsL', owned: on('tiesL') },
+      { id: 'nodesL', patternOwner: 'railsL', owned: on('nodesL') },
     ]);
   }
 
@@ -469,10 +478,13 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
       widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
       layers: { rails: 'railsL', ties: 'tiesL', nodes: 'nodesL' },
     };
+    const owned = ownedFor(pattern, null, 'p');
+    owned.find((o) => o['data-lattice'] === 'rail')['data-override-width'] = '0.5';
+    const on = (layer) => owned.filter((o) => o['data-layer'] === layer);
     const editor = mockEditor([
-      { id: 'railsL', pattern, owned: [{ 'data-layer': 'railsL', 'data-lattice-gen': 'p', 'data-lattice': 'rail', 'data-override-width': '0.5' }] },
-      { id: 'tiesL', patternOwner: 'railsL', owned: [] },
-      { id: 'nodesL', patternOwner: 'railsL', owned: [] },
+      { id: 'railsL', pattern, owned: on('railsL') },
+      { id: 'tiesL', patternOwner: 'railsL', owned: on('tiesL') },
+      { id: 'nodesL', patternOwner: 'railsL', owned: on('nodesL') },
     ]);
     const manifest = _fusionLayerManifest(editor, { id: 'railsL' });
     const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');

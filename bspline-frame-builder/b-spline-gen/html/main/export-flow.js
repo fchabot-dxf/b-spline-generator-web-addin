@@ -149,29 +149,33 @@ export async function _fusionLayerSvg(editor, l, excludePattern) {
  *  SAME declared "does this layer really have lattice content" check the
  *  mixed-layer SVG exclusion below reuses), so a layer only ever earns a
  *  manifest when there's something real for it to represent. */
-/** T75 item 3 (OVR-FUSION): `{rails, ties, nodes}`, each an array of
- *  override-width-or-null, one entry per REAL owned element of that kind on
- *  the layer, in `_ownedOnLayer`'s own (DOM/creation) order — the SAME
- *  order `manifestFromLattice`'s own rail/tie/node loops emit their
- *  entities in (both walk the identical seeded `computePattern` output),
- *  so position N here lines up with the Nth entity of that kind by
- *  construction, with no separate id scheme needed. Seat A's own UI5-item-2
- *  writes the override VALUE directly into `data-override-width` (Fred:
- *  "rendered live" — the same attribute that already drives the piece's own
- *  visible stroke-width); a piece with none reads back `null`, same as
- *  every other "absent means default" field this codebase already uses. */
+/** F17 (P1): the lattice pieces AS DRAWN, `{rails, ties, nodes}` for
+ *  `latticeFromDrawn` (editor-sketch-manifest.js): every owned piece of each
+ *  kind with its own endpoints (a lattice drag writes the DOM only) and its
+ *  own width override. UI5-item-2 writes that override into
+ *  `data-override-width` (Fred: "rendered live"); a piece with none reads
+ *  `null`. Replaces the old positional width arrays (T75 item 3), which
+ *  lined DOM order up with computePattern order and broke on any hand move,
+ *  delete or add. */
 // T76 (SE17, item 4): each kind's own overrides now come from THAT KIND's
 // own layer (`pattern.layers[kind]`), not necessarily `layerId` itself --
 // rails/ties/nodes each got their own layer in item 2's own split. Falls
 // back to `layerId` for a pre-SE17 pattern with no `.layers` map yet
 // (every kind still resolves to that one shared layer, unchanged).
-function _overridesForLayer(editor, pattern, layerId) {
+function _drawnPiecesForLayer(editor, pattern, layerId) {
     const kindLayerId = (kind) => (pattern && pattern.layers && pattern.layers[kind]) || layerId;
-    const widthsOf = (latticeKind, patternKind) => _ownedOnLayer(editor, kindLayerId(patternKind), latticeKind).map((el) => {
+    const num = (el, k) => parseFloat(el.node.getAttribute(k));
+    const override = (el) => {
         const raw = el.node.getAttribute('data-override-width');
         return raw == null || raw === '' ? null : parseFloat(raw);
-    });
-    return { rails: widthsOf('rail', 'rails'), ties: widthsOf('tie', 'ties'), nodes: widthsOf('node', 'nodes') };
+    };
+    const lines = (latticeKind, patternKind) => _ownedOnLayer(editor, kindLayerId(patternKind), latticeKind).map((el) => ({
+        p1: { x: num(el, 'x1'), y: num(el, 'y1') }, p2: { x: num(el, 'x2'), y: num(el, 'y2') }, overrideWidth: override(el),
+    }));
+    const nodes = _ownedOnLayer(editor, kindLayerId('nodes'), 'node').map((el) => ({
+        c: { x: num(el, 'cx'), y: num(el, 'cy') }, overrideWidth: override(el),
+    }));
+    return { rails: lines('rail', 'rails'), ties: lines('tie', 'ties'), nodes };
 }
 
 export function _fusionLayerManifest(editor, l) {
@@ -193,7 +197,7 @@ export function _fusionLayerManifest(editor, l) {
     const kind = pattern.layers && Object.keys(pattern.layers).find((k) => pattern.layers[k] === l.id);
     if (kind) {
         const perKind = splitManifestByKind(pattern, boardRegion(editor), {
-            overrides: _overridesForLayer(editor, pattern, l.id),
+            drawn: _drawnPiecesForLayer(editor, pattern, l.id),
         });
         const manifest = perKind[kind];
         if (!manifest) return null; // e.g. this pattern's own contour is empty/off
@@ -201,7 +205,7 @@ export function _fusionLayerManifest(editor, l) {
     }
     return buildSketchManifest(pattern, boardRegion(editor), {
         layerId: l.id, sketchName: `Layer ${l.id}`,
-        overrides: _overridesForLayer(editor, pattern, l.id),
+        drawn: _drawnPiecesForLayer(editor, pattern, l.id),
     });
 }
 
