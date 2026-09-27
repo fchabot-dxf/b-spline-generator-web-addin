@@ -12346,3 +12346,43 @@ character, different terrain, zero console errors.
 Shots in `shots\seatA\` (`H18-item1_sandstone/silk/eroded_seed42/7/123`, 9 files).
 
 `npx vitest run` -> **2124 passed**, zero regressions.
+
+## H19 item 1 — Offset X/Y as -/+ steppers, matching Width/Height
+
+Fred: "these offset I want in steppers." Replaced the H14/H16-item-4 slider+readout "feel" pair with two
+plain `.cad-stepper` columns side by side in `.cad-paired-steppers` — the exact same component and layout
+Stock Dimensions' Width/Height already use, no slider, `step="0.05"`, same P keys (`seedOffsetX`/`Y`), no
+new params, "(screens)" sub-label kept inline.
+
+**Declared-registry confirmation before touching anything.** Read `main/ui-bindings.js`'s
+`attachNumberSteppers()`: it generically scans EVERY `input[type="number"]` in the document (excluding
+`.no-stepper`) and injects the −/+ buttons itself — the same mechanism Width/Height's own inputs rely on.
+So the fix was purely markup: drop the slider `<input type="range">`, drop the `no-stepper cad-slider-
+readout` classes from the number input (that combo was specifically for a slider-paired "feel" readout —
+irrelevant now that there's no slider to pair with), and change `step` from `0.01` to `0.05`. Zero new JS.
+- `bspline_gen_palette.html`: swapped the `.cad-slider-row` (range + readout) for a plain `.cad-stepper`
+  (matches Width/Height verbatim) for both `#seedOffsetX` and `#seedOffsetY`.
+- `core/state.js`: removed the now-orphaned `seedOffsetX: 'seedOffsetXSlider'` / `seedOffsetY: '...'`
+  `SLIDER_PAIRS` entries (that registry only exists to sync a stepper+slider PAIR — with no slider, there's
+  nothing to sync; the plain input is still picked up automatically by `ui-bindings.js`'s generic
+  `Object.keys(P)` binder, exactly like `widthIn`/`heightIn` always have been).
+- Swept for orphans: grepped the whole repo for `seedOffsetXSlider`/`seedOffsetYSlider` — no remaining
+  references outside this file's own history (WORK-LOG entries, append-only, left untouched); grepped
+  `tests/` and `tools/` specifically — the two existing tests that reference `seedOffsetX`/`Y`
+  (`h17-seed-offset-pan.test.js`, `h15-seed-removal.test.js`) both call `generateHeightmap` directly with
+  the PARAM name, never the DOM id, so neither needed any change. `.cad-slider-readout`/`no-stepper` CSS
+  stays — still used by `symOffsetX`/`Y`, `stampTx`/`Ty`, and many unrelated `no-stepper` labels.
+
+**Live-verified** at 390 + 834px: `#seedOffsetXSlider`/`#seedOffsetYSlider` confirmed gone from the DOM;
+both `#seedOffsetX`/`#seedOffsetY` now sit inside a real `.cad-stepper` wrapper with exactly 2 buttons
+each (auto-attached by the generic mechanism, not hand-wired); `step="0.05"`; X/Y still on one row, inside
+`.panel-filter`; typing `0.3` into the field updates `P.seedOffsetX` live (real wiring, not just visual).
+Mutation-tested the verification itself: stashed this turn's 2 changed files, re-ran against the pre-item-1
+tree — the 5 checks that actually distinguish stepper-vs-slider (`sliderGone` ×2, `buttons===2` ×2,
+`step===0.05`) all correctly FAILED (slider present, 0 buttons, step 0.01), the rest correctly stayed green
+(layout/position invariants that hold either way). Popped the stash, re-ran clean.
+Shots in `shots\seatA\` (`H19-item1_offset-steppers_390/834`).
+
+`npx vitest run` -> **2148 passed**, zero regressions (count includes lane-b's concurrent N3/N5/N6/N7 work
+that landed via `git pull --rebase` before this turn; no new test file needed for this item since neither
+of the 2 existing `seedOffsetX`/`Y`-touching tests reference the DOM at all).
