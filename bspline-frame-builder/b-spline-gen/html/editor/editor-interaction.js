@@ -606,15 +606,8 @@ const selectHandler = {
         // active one — see isOnVisibleLayer's own doc comment (layers.js).
         const hit = presetHit || editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
         editor._dragMoved = false;
-        // UI4 item 0 (Fred, live: a Select-mode drag on a Shape Lattice
-        // rail/tie/node "moved 0.000" and a tie drag REPLACED every
-        // piece with fresh elements): reset every gesture fresh — a
-        // stale `true` from an earlier no-op click (no _dragMoved, so
-        // refreshBoundaryPatterns never got to consume/clear it) must
-        // never leak into a LATER, unrelated commit. Set true below only
-        // when the hit is an actual rail/tie/node — never for a contour
-        // ('border') hit, where a boundary refill legitimately IS wanted.
-        editor._skipBoundaryRefillOnce = false;
+        // UI4 item 0's one-shot _skipBoundaryRefillOnce flag is gone (F17 P2): refreshBoundaryPatterns refills only
+        // when the fill's declared inputs changed (boundaryFillInputs), so a moved rail/tie/node survives any commit.
         if (hit) {
             // Clicking an element on a DIFFERENT layer makes that layer
             // the active one — the natural expectation that clicking
@@ -623,8 +616,6 @@ const selectHandler = {
             // sidebar just to select what you can already see and click.
             const hitLayer = getElementLayer(hit);
             if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
-            const hitKind = hit.node.getAttribute(LATTICE_ATTR);
-            editor._skipBoundaryRefillOnce = hitKind === 'rail' || hitKind === 'tie' || hitKind === 'node';
             editor._isDragging = true;
             editor._lastDragPt = pt;
             if (shift) editor._selectAdd(hit);

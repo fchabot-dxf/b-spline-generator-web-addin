@@ -2275,6 +2275,9 @@ export async function generatePattern(editor, PATTERN) {
   // `contour.show` (see usesContourCenterline / the emitter that draws
   // those segments); there is nothing left for this block to add.
 
+  // F17 (P2): what this fill was made from (boundaryFillInputs), stored before the undo snapshot so undo/redo
+  // restore it with the pieces it matches; refreshBoundaryPatterns refills only when it changes.
+  PATTERN.fillInputs = boundaryFillInputs(editor, PATTERN);
   if (typeof editor.pushState === 'function') editor.pushState();
   // T59 (a genuine, measured, PRE-EXISTING bug — confirmed live via CDP,
   // not assumed: 2 undo-stack entries per Generate press on a boundary-
@@ -2323,26 +2326,39 @@ export async function generatePattern(editor, PATTERN) {
  * contract (the `text` boundary kind awaits a font fetch), not something
  * this function can avoid.
  */
+/**
+ * F17 (P2, SE16 prerequisite): what a boundary refill depends on, DECLARED —
+ * the linked boundary elements' own geometry plus every pattern setting
+ * except the style-only ones. `generatePattern` stores it on the pattern
+ * (`fillInputs`) after each fill; `refreshBoundaryPatterns` refills only when
+ * it has changed. So a hand edit (a piece moved by the lattice tool or
+ * Select, a recolour, later a cut/join) survives any unrelated commit, while
+ * a boundary/contour edit or a geometry setting change (a width: the fill's
+ * inset depends on it) still refills. Replaces UI4 item 0's one-shot
+ * `_skipBoundaryRefillOnce` flag, which only covered a Select-grab of a piece
+ * (MEASURED F17: a panel recolour after a hand move regenerated and wiped
+ * the move).
+ */
+const BOUNDARY_GEOMETRY_ATTRS = Object.freeze(['d', 'x', 'y', 'width', 'height', 'cx', 'cy', 'r', 'rx', 'ry',
+  'x1', 'y1', 'x2', 'y2', 'points', 'transform', 'stroke-width', 'font-size', 'font-family']);
+export function boundaryFillInputs(editor, pattern) {
+  const shapeId = pattern && pattern.boundary && pattern.boundary.shapeId;
+  const geometry = _findBoundaryElements(editor, shapeId).map((el) => [el.type,
+    ...BOUNDARY_GEOMETRY_ATTRS.map((k) => el.node.getAttribute(k)), el.node.textContent ?? null]);
+  // style-only: colours (the kind colours, the contour's per-segment colours) never move a piece
+  const { colors, fillInputs, contour, ...settings } = pattern || {};
+  const contourGeometry = contour ? Object.fromEntries(Object.entries(contour).filter(([k]) => k !== 'segmentColors')) : contour;
+  return JSON.stringify({ geometry, settings: { ...settings, contour: contourGeometry } });
+}
+
 export function refreshBoundaryPatterns(editor) {
   if (_boundaryRefillInProgress) return;
   if (!editor) return;
-  // UI4 item 0 (Fred, live: dragging a rail/tie/node in Select mode
-  // "moved 0.000" / replaced every piece with fresh ones) — every Shape
-  // Lattice pattern IS boundary-linked to its own contour by design, so
-  // this function used to fire (and unconditionally regenerate, wiping
-  // the just-moved piece) on EVERY commit, including a plain piece move
-  // that never touched the boundary/contour at all.
-  // editor-interaction.js's selectHandler.start sets this flag ONLY when
-  // the just-grabbed element is a rail/tie/node (never a contour
-  // 'border' hit, where a refill legitimately IS still wanted) —
-  // consumed here, once, per gesture.
-  if (editor._skipBoundaryRefillOnce) {
-    editor._skipBoundaryRefillOnce = false;
-    return;
-  }
   const pattern = getLayerPattern(editor);
   if (!pattern || !pattern.extent || pattern.extent.mode !== 'boundary') return;
   if (!pattern.boundary || !pattern.boundary.shapeId) return;
+  // F17 (P2): nothing the fill depends on changed since the last fill -> keep the pieces as drawn
+  if (pattern.fillInputs === boundaryFillInputs(editor, pattern)) return;
   _boundaryRefillInProgress = true;
   generatePattern(editor, pattern)
     .catch((err) => console.warn('[editor-lattice-pattern] boundary refill failed:', err))
