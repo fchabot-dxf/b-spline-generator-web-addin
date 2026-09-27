@@ -114,11 +114,16 @@ def _underside(body):
     return sorted(body.faces, key=nz)[0]
 
 
-def record_case(template_id, w_in, h_in, shot_path=None):
+def record_case(template_id, w_in, h_in, shot_path=None, params=None, scratch_tag=None):
+    """``params``: template params to override (F14: {"boundingboxoffset": 0.5}),
+    plain inch numbers; recorded in meta. ``scratch_tag``: tag the scratch doc
+    (design attribute claude/scratch) so it is identifiable while open."""
     app = adsk.core.Application.get()
     doc = app.documents.add(adsk.core.DocumentTypes.FusionDesignDocumentType)
     try:
         d = adsk.fusion.Design.cast(doc.products.itemByProductType("DesignProductType"))
+        if scratch_tag:
+            d.attributes.add("claude", "scratch", scratch_tag)
         d.designType = adsk.fusion.DesignTypes.ParametricDesignType
         up = d.userParameters
         up.add("widthIn", adsk.core.ValueInput.createByString(f"{w_in} in"), "in", "parity golden")
@@ -131,7 +136,8 @@ def record_case(template_id, w_in, h_in, shot_path=None):
         # so a unit-suffixed value ('0.75 in') raises, is swallowed as FAIL
         # RESOLVE and zeroes the offset (measured F3). The template's own
         # declared default (0.75 in) is what the goldens record.
-        fe.build_frame_logic(template_id, "joint", external_logger=lg, data={"ui_data": {}})
+        ui_data = {k: float(v) for k, v in (params or {}).items()}
+        fe.build_frame_logic(template_id, "joint", external_logger=lg, data={"ui_data": ui_data})
         sys.modules["fb_engine.solid_coordinator"].build_solid_logic_v3(
             to_face=_underside(_core_proxy(d)), start_offset_expr=FRAME_BOTTOM, appearance_name=None,
             external_logger=lg)
@@ -158,6 +164,7 @@ def record_case(template_id, w_in, h_in, shot_path=None):
                 "units": "in / in^2 / in^3", "recorded": time.strftime("%Y-%m-%d"),
                 "recorder": "tools/repro/record_frame_parity.py",
                 "timelineHealthy": all(tl.item(i).healthState == 0 for i in range(tl.count)),
+                **({"params": dict(params)} if params else {}),
             },
             "sketch2_shape_outline": _curves(sk["2_shape_outline"]),
             "sketch3_frame_enclosure": _curves(sk3),

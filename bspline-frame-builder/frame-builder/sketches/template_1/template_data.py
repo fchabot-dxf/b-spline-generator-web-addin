@@ -2,6 +2,7 @@ import os
 
 from template_loader import TemplateLoader
 from fb_engine.frame_definition import COMMON_FRAME_FEATURES
+from fb_engine.seed_basis import seed_sketch
 
 # Per-template loader instance. State (caches, folder path) lives on the
 # instance so two templates can never share caches or step on each
@@ -185,6 +186,7 @@ def get_template_logic(ui_data=None):
 
     s2["Label"] = SKETCH_2_LABEL
     s2["Parameters"] = SKETCH_2_PARAMETERS
+    seed_sketch(s2)  # F14 (S8): the seeds follow the safe zone (fb_engine/seed_basis.py)
 
     s3["Label"] = SKETCH_3_LABEL
     s3["Parameters"] = SKETCH_3_PARAMETERS

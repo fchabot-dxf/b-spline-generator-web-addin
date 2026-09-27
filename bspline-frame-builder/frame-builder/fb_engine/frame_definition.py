@@ -86,8 +86,9 @@ EXTRUSION_SETTINGS = (
 )
 
 # The features every current template builds from sketch 3. The extruder
-# still classifies profiles by bounding box today (S6 switches it to read
-# this); the regions named here are each template's own FRAME_REGIONS.
+# reads these (F14 S6: fb_engine/declared_profiles.py); the regions named here
+# are each template's own FRAME_REGIONS. `bodyNames` follow the `miters` order
+# (each miter starts a bar).
 COMMON_FRAME_FEATURES = (
     {"id": "bars", "op": "newBody", "region": "outline-minus-inner", "splitBy": "miters",
      "start": FRAME_BOTTOM_PARAM, "extent": {"toFace": "core.underside", "offset": "0 in"},

@@ -118,6 +118,12 @@ The dependencies that matter:
   off-centre is BAR (`extrusion_engine.py:203-234`). Bar labels (TOP/BOTTOM/LEFT/RIGHT) come from the
   aspect ratio. The template already knows which regions are which (outline, `inner_*`, miters,
   surround), but it never says so.
+  **Resolved in F14 (S6):** the extruder now reads the template's declared `regions` + `features`
+  (`fb_engine/declared_profiles.py`). A profile is known by the FrameBuilder.ID of its curves:
+  - the surround curve → trim;
+  - an outline curve → a bar, named by the miter split;
+  - neither → the opening.
+  The bounding box is kept only for a frame without a `FrameBuilder.TemplateId` stamp.
 - **The target face** is picked by hand. It isn't declared.
 - **The core body** is found by guessing names. The name hint says `"clean solid"`
   (`document_discovery.py:46`), but Send now names the component `"Clean"` (`b-spline-gen.py:419`), so
@@ -215,8 +221,18 @@ Top-level shape, abridged from the real file:
 
 - **`sketches` is verbatim.** Everything else is declared data. Region IDs are copied from each
   template's own `p03_*` phases, and a test proves each one exists in the blocks (§2.2).
-- **The extruder reads `features` from S6 on.** Until then it still classifies profiles by bounding
-  box; the declaration exists before its consumer.
+- **The extruder reads `features` (F14, S6).**
+  - `frame_engine` stamps `FrameBuilder.TemplateId` on `Frame_N`, and `solid_coordinator` hands
+    that template's "Frame" block to the extruder.
+  - Op, start (`frame_height_offset` for bars, `0 in` for the trim), extent, taper and bar names all
+    come from the declaration.
+  - **MEASURED live:** on the flat-core goldens (T1/T2 × 7×9/12×6), every bar volume and the panel
+    volume is within 0.00000 in³ of the golden, and the declared role equals the old bounding-box
+    role on every profile (`tests/fixtures/frame-profiles-live.json`). The real app payload gives the
+    same result in both Send orders.
+  - **MEASURED:** the inner offset curves can lose their FrameBuilder.ID. At T2 12×6, Fusion
+    re-solves the offset later in the build, and the replacement curves carry no attribute. So the
+    opening is "touches neither the outline nor the surround", never "inner ids only".
 - **The bars lie inside the silhouette.** `region: "outline-minus-inner"` places them between the
   outline and `inner_*`. **MEASURED** (T1, 7×11 in board):
   - The outline sits at x = ±8.26 cm (3.5 in − 0.25 in `boundingboxoffset`) and the inner edge at
@@ -502,7 +518,7 @@ alone. There are exactly two buttons, no "Send all", and no separate "Send art":
     3 solid_coordinator.build_solid_logic_v3(to_face=<declared core.underside>, start=frame_height_offset)
     4 FB-ORDER ensure_frame_before_inlay (fixed in F3): the frame block lands before the inlay,
       whichever button was pressed first
-    5 inversion check on the SOLVED outline (§5.1 S8): a broken frame warns, and is not silently kept
+    5 (dropped, Fred F14: no runtime guard; the inversion is fixed in the templates' solve, §5.3 item 9)
 ```
 
 - **Order no longer depends on which button came first.** "Send frame" after "Send B-spline"
@@ -787,10 +803,27 @@ tolerance and it must go red.
       from `build_frame_logic` / `build_sketch_logic_v3`.
     - The rule predicts all 6 live goldens (0 bars ⇔ too small).
     - The hourglass waist can be stricter than this bounding-box rule; that is a known gap.
-9. **Waist arcs can invert (Fred, F3 AMEND 7), NOT reproduced yet.** All 12 waist arcs in the six F3
-   goldens pinch correctly (midpoint inside the ends, e.g. T1 7×9: 2.211 vs 2.754 in). The
-   parameters that trigger it are unknown. S8 declares the check and hunts for the reproduction.
-   Until then `[Send frame]` being re-sendable is the mitigation.
+9. **Waist arcs can invert (Fred, F3 AMEND 7): REPRODUCED and FIXED in F14 (S8).**
+   - **Reproduced live** with the app's own payload: T2 7×9, `boundingboxoffset` 0.5 (the F9 Trim
+     offset), `frame_thickness` 0.75, no seeds.
+     - The waist arcs cross and the top horns swap sides (`horn_TL` at x = +3.757).
+     - The timeline is healthy, so Fusion reports nothing.
+     - 0 bars were built: the declared extruder refused the fused profiles, where the old one would
+       have extruded two bogus "frame_top" bodies.
+   - **Cause:** the p02 seeds are fractions of the whole board, fit at the default 0.25 in offset. A
+     bigger offset shrinks the safe zone, but the seeds don't follow, so the solver lands in the
+     mirrored branch.
+   - **Fix:** `fb_engine/seed_basis.py` makes the seeds fractions of the *seed board*,
+     `widthIn − 2·(boundingboxoffset − 0.25 in)`. At 0.25 this is exactly the old seed at every size.
+   - **Sweep** (flat core; T1/T2 × 7×9, 12×6, 9×7, 6×6, 10×14 × bbox 0.25 / 0.4 / 0.5 / 0.75 / 1.0):
+     16 of 50 inverted before the fix, 0 of 50 after, all healthy.
+   - **Goldens:** the bbox-0.25 builds match the four fitting goldens with a 0.0 in point delta. The
+     inverted case is recorded as `tests/fixtures/frame-inversion/template_2_7x9_bbox0.5.json`:
+     red before the fix (inverted, 0 bars), green after (4 bars).
+   - **The check:** `fb_engine/outline_invariants.py`. Every left curve stays at x ≤ 0, every right
+     one at x ≥ 0, and every point stays inside the safe zone. It is applied to every golden a Send
+     can produce: FRAME_FIT-refused boards are skipped, since T2 5.51×1.97's arcs overshoot by
+     0.045 in with the sides intact.
 
 ### 5.4 Open questions for Fred
 

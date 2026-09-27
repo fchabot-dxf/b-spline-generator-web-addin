@@ -60,7 +60,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "8a78e540a79a17688b76a7381b555df98f7c94bbc7726ef0daf7f0434971725a",
+  "sourceHash": "4590704448ccb48e98c06a2bfa619e619c6ed33c058afa332bee0c1ca40a7963",
   "templates": [
     {
       "features": [
@@ -592,11 +592,11 @@ export default {
                   "Points": [
                     [
                       "0.001",
-                      "heightIn * 0.15042"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
                     ],
                     [
-                      "widthIn * 0.34996",
-                      "heightIn * 0.15042"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.34996",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
                     ]
                   ],
                   "StartID": "skel_shoulder_pin_R:S",
@@ -609,11 +609,11 @@ export default {
                   "Points": [
                     [
                       "-0.001",
-                      "heightIn * 0.15042"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
                     ],
                     [
-                      "-widthIn * 0.350521",
-                      "heightIn * 0.15042"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.350521",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
                     ]
                   ],
                   "StartID": "skel_shoulder_pin_L:S",
@@ -629,7 +629,7 @@ export default {
                       "0"
                     ],
                     [
-                      "widthIn * 0.35",
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.35",
                       "0"
                     ]
                   ],
@@ -646,7 +646,7 @@ export default {
                       "0"
                     ],
                     [
-                      "widthIn * -0.35",
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.35",
                       "0"
                     ]
                   ],
@@ -660,11 +660,11 @@ export default {
                   "Points": [
                     [
                       "0.001",
-                      "-heightIn * 0.151146"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
                     ],
                     [
-                      "widthIn * 0.34996",
-                      "-heightIn * 0.151146"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.34996",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
                     ]
                   ],
                   "StartID": "skel_hip_pin_R:S",
@@ -677,11 +677,11 @@ export default {
                   "Points": [
                     [
                       "-0.001",
-                      "-heightIn * 0.151146"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
                     ],
                     [
-                      "-widthIn * 0.34996",
-                      "-heightIn * 0.151146"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.34996",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
                     ]
                   ],
                   "StartID": "skel_hip_pin_L:S",
@@ -777,12 +777,12 @@ export default {
                   "ID": "top_edge",
                   "Points": [
                     [
-                      "-widthIn/2 + 0.001",
-                      "heightIn/2 - 0.001"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001"
                     ],
                     [
-                      "widthIn/2 - 0.001",
-                      "heightIn/2 - 0.001"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001"
                     ]
                   ],
                   "StartID": "top_edge:S",
@@ -793,12 +793,12 @@ export default {
                   "ID": "bottom_edge",
                   "Points": [
                     [
-                      "widthIn/2 - 0.001",
-                      "-heightIn/2 + 0.001"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001"
                     ],
                     [
-                      "-widthIn/2 + 0.001",
-                      "-heightIn/2 + 0.001"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001"
                     ]
                   ],
                   "StartID": "bottom_edge:S",
@@ -809,12 +809,12 @@ export default {
                   "ID": "horn_TR",
                   "Points": [
                     [
-                      "widthIn/2 - 0.001",
-                      "heightIn/2 - 0.001"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001"
                     ],
                     [
-                      "widthIn/2",
-                      "heightIn * 0.183"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.183"
                     ]
                   ],
                   "StartID": "horn_TR:S",
@@ -825,12 +825,12 @@ export default {
                   "ID": "horn_BR",
                   "Points": [
                     [
-                      "widthIn/2 - 0.001",
-                      "-heightIn/2 + 0.001"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001"
                     ],
                     [
-                      "widthIn/2",
-                      "-heightIn * 0.183"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.183"
                     ]
                   ],
                   "StartID": "horn_BR:S",
@@ -841,12 +841,12 @@ export default {
                   "ID": "horn_TL",
                   "Points": [
                     [
-                      "-widthIn/2 + 0.001",
-                      "heightIn/2 - 0.001"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001"
                     ],
                     [
-                      "-widthIn/2",
-                      "heightIn * 0.183"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.183"
                     ]
                   ],
                   "StartID": "horn_TL:S",
@@ -857,12 +857,12 @@ export default {
                   "ID": "horn_BL",
                   "Points": [
                     [
-                      "-widthIn/2 + 0.001",
-                      "-heightIn/2 + 0.001"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001"
                     ],
                     [
-                      "-widthIn/2",
-                      "-heightIn * 0.183"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.183"
                     ]
                   ],
                   "StartID": "horn_BL:S",
@@ -938,23 +938,23 @@ export default {
                   "ID": "arc_shoulder_R",
                   "Points": [
                     [
-                      "widthIn * 0.476432",
-                      "heightIn * 0.15042"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.476432",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
                     ],
                     [
-                      "widthIn * 0.452856",
-                      "heightIn * 0.099912"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.452856",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.099912"
                     ],
                     [
-                      "widthIn * 0.395939",
-                      "heightIn * 0.078992"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.078992"
                     ]
                   ],
                   "StartID": "arc_shoulder_R:S",
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "heightIn/14",
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
                   "Name": "seed_rad_shoulder_R",
                   "Target": "arc_shoulder_R",
                   "Type": "Radius"
@@ -964,23 +964,23 @@ export default {
                   "ID": "arc_waist_R",
                   "Points": [
                     [
-                      "widthIn * 0.395939",
-                      "-heightIn * 0.071429"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.071429"
                     ],
                     [
-                      "widthIn * 0.315446",
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.315446",
                       "0"
                     ],
                     [
-                      "widthIn * 0.395939",
-                      "heightIn * 0.071429"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.071429"
                     ]
                   ],
                   "StartID": "arc_waist_R:S",
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "heightIn/14",
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
                   "Name": "seed_rad_waist_R",
                   "Target": "arc_waist_R",
                   "Type": "Radius"
@@ -990,23 +990,23 @@ export default {
                   "ID": "arc_hip_R",
                   "Points": [
                     [
-                      "widthIn * 0.395939",
-                      "-heightIn * 0.079718"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.079718"
                     ],
                     [
-                      "widthIn * 0.452856",
-                      "-heightIn * 0.100638"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.452856",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.100638"
                     ],
                     [
-                      "widthIn * 0.476432",
-                      "-heightIn * 0.151146"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.476432",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
                     ]
                   ],
                   "StartID": "arc_hip_R:S",
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "heightIn/14",
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
                   "Name": "seed_rad_hip_R",
                   "Target": "arc_hip_R",
                   "Type": "Radius"
@@ -1016,23 +1016,23 @@ export default {
                   "ID": "arc_hip_L",
                   "Points": [
                     [
-                      "-widthIn * 0.395939",
-                      "-heightIn * 0.079718"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.079718"
                     ],
                     [
-                      "-widthIn * 0.452856",
-                      "-heightIn * 0.100638"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.452856",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.100638"
                     ],
                     [
-                      "-widthIn * 0.476432",
-                      "-heightIn * 0.151146"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.476432",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
                     ]
                   ],
                   "StartID": "arc_hip_L:S",
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "heightIn/14",
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
                   "Name": "seed_rad_hip_L",
                   "Target": "arc_hip_L",
                   "Type": "Radius"
@@ -1042,23 +1042,23 @@ export default {
                   "ID": "arc_waist_L",
                   "Points": [
                     [
-                      "-widthIn * 0.395939",
-                      "-heightIn * 0.071429"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.071429"
                     ],
                     [
-                      "-widthIn * 0.315446",
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.315446",
                       "0"
                     ],
                     [
-                      "-widthIn * 0.395939",
-                      "heightIn * 0.071429"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.071429"
                     ]
                   ],
                   "StartID": "arc_waist_L:S",
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "heightIn/14",
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
                   "Name": "seed_rad_waist_L",
                   "Target": "arc_waist_L",
                   "Type": "Radius"
@@ -1068,23 +1068,23 @@ export default {
                   "ID": "arc_shoulder_L",
                   "Points": [
                     [
-                      "-widthIn * 0.476432",
-                      "heightIn * 0.15042"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.476432",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
                     ],
                     [
-                      "-widthIn * 0.452856",
-                      "heightIn * 0.099912"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.452856",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.099912"
                     ],
                     [
-                      "-widthIn * 0.395939",
-                      "heightIn * 0.078992"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.078992"
                     ]
                   ],
                   "StartID": "arc_shoulder_L:S",
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "heightIn/14",
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
                   "Name": "seed_rad_shoulder_L",
                   "Target": "arc_shoulder_L",
                   "Type": "Radius"
@@ -2068,12 +2068,12 @@ export default {
                   "IsConstruction": true,
                   "Points": [
                     [
-                      "widthIn * 0.3721",
-                      "heightIn * 0.3308"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.3721",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.3308"
                     ],
                     [
-                      "widthIn * 0.0029",
-                      "heightIn * 0.3308"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.0029",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.3308"
                     ]
                   ],
                   "StartID": "p02_SketchLine:S",
@@ -2085,12 +2085,12 @@ export default {
                   "IsConstruction": true,
                   "Points": [
                     [
-                      "widthIn * -0.0029",
-                      "heightIn * 0.3308"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.0029",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.3308"
                     ],
                     [
-                      "widthIn * -0.3721",
-                      "heightIn * 0.3308"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.3721",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.3308"
                     ]
                   ],
                   "StartID": "p02_SketchLine_02:S",
@@ -2102,12 +2102,12 @@ export default {
                   "IsConstruction": true,
                   "Points": [
                     [
-                      "widthIn * -0.004",
-                      "heightIn * 0.1"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.004",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.1"
                     ],
                     [
-                      "widthIn * -0.3823",
-                      "heightIn * 0.1"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.3823",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.1"
                     ]
                   ],
                   "StartID": "p02_SketchLine_03:S",
@@ -2119,12 +2119,12 @@ export default {
                   "IsConstruction": true,
                   "Points": [
                     [
-                      "widthIn * 0.3817",
-                      "heightIn * 0.1"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.3817",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.1"
                     ],
                     [
-                      "widthIn * 0.0034",
-                      "heightIn * 0.1"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.0034",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.1"
                     ]
                   ],
                   "StartID": "p02_SketchLine_04:S",
@@ -2194,12 +2194,12 @@ export default {
                   "ID": "top_edge",
                   "Points": [
                     [
-                      "-widthIn * 0.294934",
-                      "heightIn * 0.469711"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.294934",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.469711"
                     ],
                     [
-                      "widthIn * 0.294934",
-                      "heightIn * 0.469711"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.294934",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.469711"
                     ]
                   ],
                   "StartID": "top_edge:S",
@@ -2210,12 +2210,12 @@ export default {
                   "ID": "bottom_edge",
                   "Points": [
                     [
-                      "widthIn * 0.464286",
-                      "(-heightIn * 0.472222) + 0.001"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222) + 0.001"
                     ],
                     [
-                      "-widthIn * 0.464286",
-                      "(-heightIn * 0.472222) + 0.001"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222) + 0.001"
                     ]
                   ],
                   "StartID": "bottom_edge:S",
@@ -2226,12 +2226,12 @@ export default {
                   "ID": "horn_TR",
                   "Points": [
                     [
-                      "widthIn * 0.294934",
-                      "heightIn * 0.469711"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.294934",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.469711"
                     ],
                     [
-                      "widthIn * 0.294934",
-                      "heightIn * 0.266667"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.294934",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.266667"
                     ]
                   ],
                   "StartID": "horn_TR:S",
@@ -2242,12 +2242,12 @@ export default {
                   "ID": "horn_BR",
                   "Points": [
                     [
-                      "widthIn * 0.464286",
-                      "(-heightIn * 0.472222) + 0.001"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222) + 0.001"
                     ],
                     [
-                      "widthIn * 0.464286",
-                      "heightIn * 0.127919"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.127919"
                     ]
                   ],
                   "StartID": "horn_BR:S",
@@ -2258,12 +2258,12 @@ export default {
                   "ID": "horn_TL",
                   "Points": [
                     [
-                      "-widthIn * 0.294934",
-                      "heightIn * 0.469711"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.294934",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.469711"
                     ],
                     [
-                      "-widthIn * 0.294934",
-                      "heightIn * 0.272222"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.294934",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.272222"
                     ]
                   ],
                   "StartID": "horn_TL:S",
@@ -2274,12 +2274,12 @@ export default {
                   "ID": "horn_BL",
                   "Points": [
                     [
-                      "-widthIn * 0.464286",
-                      "(-heightIn * 0.472222) + 0.001"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222) + 0.001"
                     ],
                     [
-                      "-widthIn * 0.464286",
-                      "heightIn * 0.136048"
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.136048"
                     ]
                   ],
                   "StartID": "horn_BL:S",
@@ -2362,16 +2362,16 @@ export default {
                   "ID": "arc_waist_L",
                   "Points": [
                     [
-                      "widthIn * -0.378",
-                      "heightIn * 0.2029"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.378",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.2029"
                     ],
                     [
-                      "widthIn * -0.3211",
-                      "heightIn * 0.2212"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.3211",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.2212"
                     ],
                     [
-                      "widthIn * -0.2976",
-                      "heightIn * 0.2654"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.2976",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.2654"
                     ]
                   ],
                   "StartID": "arc_waist_L:S",
@@ -2383,16 +2383,16 @@ export default {
                   "ID": "arc_hip_L",
                   "Points": [
                     [
-                      "widthIn * -0.3833",
-                      "heightIn * 0.2025"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.3833",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.2025"
                     ],
                     [
-                      "widthIn * -0.4401",
-                      "heightIn * 0.1842"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.4401",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.1842"
                     ],
                     [
-                      "widthIn * -0.4636",
-                      "heightIn * 0.14"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.4636",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.14"
                     ]
                   ],
                   "StartID": "arc_hip_L:S",
@@ -2404,16 +2404,16 @@ export default {
                   "ID": "arc_waist_R",
                   "Points": [
                     [
-                      "widthIn * 0.2976",
-                      "heightIn * 0.2612"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.2976",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.2612"
                     ],
                     [
-                      "widthIn * 0.3212",
-                      "heightIn * 0.217"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.3212",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.217"
                     ],
                     [
-                      "widthIn * 0.378",
-                      "heightIn * 0.1987"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.378",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.1987"
                     ]
                   ],
                   "StartID": "arc_waist_R:S",
@@ -2425,16 +2425,16 @@ export default {
                   "ID": "arc_hip_R",
                   "Points": [
                     [
-                      "widthIn * 0.4652",
-                      "heightIn * 0.1352"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.4652",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.1352"
                     ],
                     [
-                      "widthIn * 0.4417",
-                      "heightIn * 0.1794"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.4417",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.1794"
                     ],
                     [
-                      "widthIn * 0.3849",
-                      "heightIn * 0.1977"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.3849",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.1977"
                     ]
                   ],
                   "StartID": "arc_hip_R:S",

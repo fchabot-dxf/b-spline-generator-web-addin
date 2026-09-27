@@ -6,13 +6,18 @@ profiles -> extrude one at a time). The original ``extrude_profiles``
 inlined all three; the helpers below split them so each phase is
 independently testable and the per-profile body stays readable.
 
-Profile classification (BAR / SURROUND / VOID) lives in
-``_classify_profile`` and is unchanged from the pre-split code. Trim
-"SURROUND" cuts run last to ensure new bar bodies exist before the
-core gets vandalized -- sort order is enforced in ``_collect_profiles``.
+F14 (S6): which extrude a profile gets comes from the template's DECLARED
+frame features (fb_engine.declared_profiles: the profile's curve ids against
+the declared regions; op, start, extent, taper and bar names from the
+features). The bounding-box classifier (``_classify_profile``, unchanged)
+stays ONLY for a frame that declares no template (``declared=None``). Both
+paths produce the same per-profile plan; trim "SURROUND" cuts run last (the
+declared feature order, bars before trim) so the bars exist before the core
+gets vandalized.
 """
 import adsk.core, adsk.fusion, traceback
 from fb_engine.timeline_order import FRAME_MEMBER_ATTR
+from fb_engine import declared_profiles
 
 
 # Treat any of these spellings as "no start offset". Fusion accepts
@@ -30,10 +35,12 @@ class ExtrusionEngine:
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
-    def extrude_profiles(self, comp, sketch, prefix, to_face, start_offset_expr, end_offset_expr):
+    def extrude_profiles(self, comp, sketch, prefix, to_face, start_offset_expr, end_offset_expr, declared=None):
         """Extrude every closed frame-bar profile in the shape-outline
         sketch and apply the SURROUND trim cut.
 
+        ``declared``: the template's "Frame" block (regions + features), or
+        None for a frame without a declared template (bounding-box path).
         Returns the list of new BAR bodies (SURROUND produces no bodies,
         only a cut feature).
         """
@@ -46,80 +53,96 @@ class ExtrusionEngine:
         if total_profiles == 0:
             return []
 
-        extent_defs = self._build_extent_defs(to_face, start_offset_expr, end_offset_expr)
-        if extent_defs is None:
-            return []
-        to_def, start_def = extent_defs
-
-        to_process = self._collect_profiles(sketch)
+        if declared:
+            self.log.log("EXTRUDER: profiles from the template's DECLARED features")
+            to_process = self._collect_declared(sketch, declared, start_offset_expr)
+        else:
+            self.log.log("EXTRUDER: no declared template on this frame: bounding-box classifier")
+            to_process = self._collect_profiles(sketch, start_offset_expr, end_offset_expr)
         extrudes = comp.features.extrudeFeatures
 
         new_bodies = []
-        for prof, ctype, i in to_process:
+        for prof, plan, i in to_process:
             new_bodies.extend(
-                self._extrude_one_profile(extrudes, prof, ctype, i, prefix, to_def, start_def, comp.name)
+                self._extrude_one_profile(extrudes, prof, plan, i, prefix, to_face, comp.name)
             )
         return new_bodies
 
     # ------------------------------------------------------------------
-    # Phase 1 -- extent definitions
+    # Phase 1 -- classify + sort into per-profile plans
+    #   plan = {"kind": BAR|SURROUND, "name", "start", "extent", "taper"}
+    #   (declared_profiles.extrude_plan's shape)
     # ------------------------------------------------------------------
-    def _build_extent_defs(self, to_face, start_offset_expr, end_offset_expr):
-        """Build the (to_def, start_def) pair shared across every
-        profile in this run.
+    @staticmethod
+    def _profile_curve_ids(prof):
+        """The FrameBuilder.ID of every sketch curve bounding the profile."""
+        ids = set()
+        for loop in prof.profileLoops:
+            for pc in loop.profileCurves:
+                a = pc.sketchEntity.attributes.itemByName("FrameBuilder", "ID")
+                if a:
+                    ids.add(a.value)
+        return ids
 
-        Returns ``None`` on Fusion API failure (caller aborts the
-        synthesis). ``start_def`` is ``None`` when the start offset
-        evaluates to zero -- the caller skips ``ext_in.startExtent`` in
-        that case so Fusion uses its default profile-plane start.
-        """
-        try:
-            to_def = adsk.fusion.ToEntityExtentDefinition.create(
-                to_face, True,
-                adsk.core.ValueInput.createByString(end_offset_expr),
-            )
+    def _collect_declared(self, sketch, frame, start_offset_expr):
+        """Plans from the template's declared regions + features, in the
+        declared feature order (bars, then trim)."""
+        order = [f["id"] for f in frame["features"]]
+        candidates = []
+        for i in range(sketch.profiles.count):
+            prof = sketch.profiles.item(i)
+            ids = self._profile_curve_ids(prof)
+            try:
+                feat, name = declared_profiles.classify(ids, frame)
+            except declared_profiles.DeclaredProfileError as e:
+                self.log.log(f"  PROFILE {i}: NOT BUILT: {e}", "ERROR")
+                continue
+            if feat is None:
+                self.log.log(f"  PROFILE {i}: the frame opening (inner curves only)")
+                continue
+            plan = declared_profiles.extrude_plan(feat, name, start_offset_expr)
+            self.log.log(f"  PROFILE {i}: declared feature '{feat['id']}' {name or ''}")
+            candidates.append((prof, plan, i))
+        candidates.sort(key=lambda x: order.index(x[1]["order"]))
+        return candidates
 
-            start_def = None
-            if start_offset_expr.strip() not in _ZERO_OFFSET_SPELLINGS:
-                start_def = adsk.fusion.OffsetStartDefinition.create(
-                    adsk.core.ValueInput.createByString(start_offset_expr)
-                )
-            return to_def, start_def
-        except Exception as e:
-            self.log.log(f"EXTENT SETUP FAIL: {e}", "ERROR")
-            return None
-
-    # ------------------------------------------------------------------
-    # Phase 2 -- classify + sort
-    # ------------------------------------------------------------------
-    def _collect_profiles(self, sketch):
-        """Return ``[(profile, classification, index), ...]`` filtered
-        of VOIDs and sorted with SURROUND last so the trim cut always
-        runs after every BAR has been built.
+    def _collect_profiles(self, sketch, start_offset_expr, end_offset_expr):
+        """Bounding-box path (no declared template). Return
+        ``[(profile, plan, index), ...]`` filtered of VOIDs and sorted
+        with SURROUND last so the trim cut always runs after every BAR
+        has been built.
         """
         candidates = []
         for i in range(sketch.profiles.count):
             prof = sketch.profiles.item(i)
             ctype = self._classify_profile(prof)
-            if ctype != "VOID":
-                candidates.append((prof, ctype, i))
+            if ctype == "VOID":
+                continue
+            if ctype == "BAR":
+                plan = {"kind": "BAR", "name": f"frame_{self._profile_label(prof, i).lower()}",
+                        "start": start_offset_expr, "extent": ("toFace", end_offset_expr), "taper": "0 deg"}
+            else:
+                plan = {"kind": "SURROUND", "name": None, "start": "0 in",
+                        "extent": ("throughAll",), "taper": "0 deg"}
+            candidates.append((prof, plan, i))
 
         # SURROUND is the trim cut -- must run last so the bars exist
         # to receive (and survive) it.
-        candidates.sort(key=lambda x: 1 if x[1] == "SURROUND" else 0)
+        candidates.sort(key=lambda x: 1 if x[1]["kind"] == "SURROUND" else 0)
         return candidates
 
     # ------------------------------------------------------------------
     # Phase 3 -- single-profile extrusion
     # ------------------------------------------------------------------
-    def _extrude_one_profile(self, extrudes, prof, ctype, i, prefix, to_def, start_def, frame_comp_name=None):
-        """Build one extrude feature (BAR or SURROUND), name it,
-        clean up its faces, and return any new bodies.
+    def _extrude_one_profile(self, extrudes, prof, plan, i, prefix, to_face, frame_comp_name=None):
+        """Build one extrude feature (BAR or SURROUND) from its plan, name
+        it, clean up its faces, and return any new bodies.
 
         SURROUND returns an empty list -- its job is to cut, not to add
         geometry. Per-profile failures log and return empty so a single
         bad profile doesn't abort the whole synthesis.
         """
+        ctype = plan["kind"]
         area_str = f"{prof.area}" if hasattr(prof, "area") else "n/a"
         self.log.log(f"  PROFILE {i}: type={ctype} area={area_str}")
 
@@ -143,21 +166,24 @@ class ExtrusionEngine:
                 ext_in.isParticipantsAutomated = False
                 ext_in.participantBodies = []
 
-            # Only the BAR extrusions start at the frame offset height. The
-            # SURROUND trim cut must ALWAYS start at the profile plane (z=0)
-            # so it trims the full height — core panel + bars — no matter the
-            # offset. Applying the offset start to the cut would leave
-            # everything below the offset untrimmed.
-            if start_def and ctype == "BAR":
-                ext_in.startExtent = start_def
+            # The start comes from the plan: the bars start at the frame
+            # offset height; the trim cut ALWAYS starts at the profile plane
+            # (declared "0 in") so it trims the full height — core panel +
+            # bars — no matter the offset. A zero start keeps Fusion's
+            # default profile-plane start.
+            start = (plan["start"] or "0 in").strip()
+            if start not in _ZERO_OFFSET_SPELLINGS:
+                ext_in.startExtent = adsk.fusion.OffsetStartDefinition.create(
+                    adsk.core.ValueInput.createByString(start))
 
             positive_dir = adsk.fusion.ExtentDirections.PositiveExtentDirection
-            zero_taper = adsk.core.ValueInput.createByString("0 deg")
-            if ctype == "BAR":
-                ext_in.setOneSideExtent(to_def, positive_dir, zero_taper)
+            taper = adsk.core.ValueInput.createByString(plan["taper"])
+            if plan["extent"][0] == "toFace":
+                extent_def = adsk.fusion.ToEntityExtentDefinition.create(
+                    to_face, True, adsk.core.ValueInput.createByString(plan["extent"][1]))
             else:
-                all_def = adsk.fusion.ThroughAllExtentDefinition.create()
-                ext_in.setOneSideExtent(all_def, positive_dir, zero_taper)
+                extent_def = adsk.fusion.ThroughAllExtentDefinition.create()
+            ext_in.setOneSideExtent(extent_def, positive_dir, taper)
 
             feat = extrudes.add(ext_in)
             self.log.log(
@@ -165,13 +191,13 @@ class ExtrusionEngine:
                 f"bodies={feat.bodies.count} faces={feat.faces.count}"
             )
 
-            return self._finalize_feature(feat, prof, ctype, i, prefix, frame_comp_name)
+            return self._finalize_feature(feat, plan, i, prefix, frame_comp_name)
 
         except Exception as e:
             self.log.log(f"    EXTRUDE FAIL {i}: {e}", "ERROR")
             return []
 
-    def _finalize_feature(self, feat, prof, ctype, i, prefix, frame_comp_name=None):
+    def _finalize_feature(self, feat, plan, i, prefix, frame_comp_name=None):
         """Apply post-extrusion housekeeping: frame-membership stamp,
         feature name, body name, and (for SURROUND) face appearance
         cleanup. Returns the bodies the caller should accumulate."""
@@ -184,9 +210,8 @@ class ExtrusionEngine:
                 feat.attributes.add(FRAME_MEMBER_ATTR[0], FRAME_MEMBER_ATTR[1], frame_comp_name)
             except Exception as e:
                 self.log.log(f"    FRAME TAG FAIL {i}: {e}", "WARNING")
-        if ctype == "BAR":
-            label = self._profile_label(prof, i)
-            name_full = f"frame_{label.lower()}"
+        if plan["kind"] == "BAR":
+            name_full = plan["name"]
             feat.name = f"{prefix}_{name_full}_Extrude"
             bodies = []
             for b in feat.bodies:
