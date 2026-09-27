@@ -12770,3 +12770,38 @@ end-to-end, not just the unit-tested timer mechanics.
 Shots in `shots\seatA\` (`H20-item5_layer-flash-during`, `H20-item5_layer-flash-after`).
 
 `npx vitest run` -> **2227 passed** (up from 2218), zero regressions.
+
+## H21 item 1 — Editor "Apply Stencils" button renamed to "Apply"
+
+Fred, screenshot: "this button reads wrong now that we have frame, should be Apply only" — with a Frame tab
+now sitting alongside Artwork (H20 item 3 and earlier), "Apply Stencils" reads like it only applies to the
+sketch/stamp side, when it actually commits whichever tab (Frame or Artwork) is being edited.
+
+`bspline_gen_palette.html`'s `#editorApply` button had no separate `title`/`aria-label` to update — its
+visible label was the only text. Swept the whole repo for every OTHER "Apply Stencils" mention and sorted
+by whether it's a LIVE, ongoing reference (update) or a comment directly quoting Fred's own PAST words about
+a bug already fixed (leave — the checklist's own carve-out):
+- **Updated** (live, present-tense references to the button, not history): `styles/editor.css`'s own header-
+  wrap layout comment; `tools/repro/mob_steppers_shots.mjs` (a header comment + 2 check-message strings);
+  `tools/repro/boundary_guide_shots.mjs` (2 comments); `scripts/smoke-mob2.mjs` (1 comment). None of these
+  assert on the button's TEXT itself (they reference `#editorApply` by id, or just narrate what a shot/check
+  is doing), so none needed a functional change — just kept their own prose accurate.
+- **Left alone** (the checklist's explicit carve-out — a direct quote of Fred's own past words describing a
+  bug already fixed, T45): `main/app-init.js`, `main/snapshot-manager.js`, and `tests/snapshot-manager.test.js`
+  all quote "Fred: 'on open, a loaded project doesn't have the SVG until I open the editor and Apply
+  Stencils'" verbatim as the ORIGIN of that fix — renaming the button doesn't change what Fred said back then.
+  `NEXT-SESSION.md`/`ROADMAP.md`/`BUGS_OPEN.md` (advisor-owned/historical docs, never edited by the worker)
+  and `WORK-LOG.md`/`WORK-LOG-lane-b.md` (append-only logs) also still name the old label in their own past
+  entries — correctly untouched.
+- Confirmed no vitest test asserts the button's label text anywhere (`tests/h20-clear-scoped.test.js`'s own
+  mock `#editorApply` element only needs the id present for `bindClick` wiring, never reads `.textContent`).
+- `bspline-frame-builder/dist/` and `stamp-editor/` were checked and left alone: `dist/` has zero commits
+  touching it anywhere in this repo's visible history (a separate, not per-commit-maintained build snapshot,
+  consistent with how every other HTML/JS edit this entire session left it untouched too); `stamp-editor/`
+  has no "Apply Stencils" reference at all (a different UI, confirmed by grep, not assumed).
+
+Live-verified: `#editorApply.textContent === 'Apply'`, confirmed via a real headless-Chrome read, not just
+the source diff. Shot in `shots\seatA\` (`H21-item1_editor-header-apply`).
+
+`npx vitest run` -> **2227 passed** (unchanged — a pure rename, no test exercised the old text), zero
+regressions.
