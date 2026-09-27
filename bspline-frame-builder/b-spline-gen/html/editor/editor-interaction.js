@@ -14,7 +14,7 @@
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { cutHandler } from './editor-cut-tool.js'; // SE16 ✂
-import { withChain, writeChainRow, writeChainTranslate, updateJointSlide } from './editor-lattice-chains.js'; // SE16
+import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
@@ -1521,7 +1521,7 @@ function _updateLatticeMove(editor, pt) {
         // A rail moves only ACROSS its own direction — never slides
         // along its own length — so only the row (canonical j) tracks
         // the pointer; moveRailAlongAxis carries the i-range over as-is.
-        const targetJ = _geometryAxisSnap(editor, move, pt, 'j') ?? canonPt.j;
+        const targetJ = pushTieJoints(move, _geometryAxisSnap(editor, move, pt, 'j') ?? canonPt.j); // F19: cut ties' joints pushed ahead
         const result = moveRailAlongAxis(move.railCanon, targetJ, move.ties, move.nodes);
         _writeRailMove(move, result);
     } else if (move.kind === 'tie' && move.mode === 'stretch') {

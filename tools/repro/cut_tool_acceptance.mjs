@@ -12,6 +12,9 @@ import { dirname } from 'node:path';
 const [PREFIX, URL, MODE = 'desktop', PORTARG] = process.argv.slice(2);
 const PORT = Number(PORTARG || 9451);
 const MOBILE = MODE === 'mobile';
+// on touch a gesture commits at the MARKER, INPUT_PROFILE.touch.markerOffsetPx (40) ABOVE the finger (SE7m): a user
+// aims the marker, so the finger goes that far BELOW the target (F19: without it every mobile gesture hit 40 px up)
+const FINGER_DY = MOBILE ? 40 : 0;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PROFILE = `${dirname(PREFIX)}/chrome-cutacc-${PORT}`;
 mkdirSync(PROFILE, { recursive: true });
@@ -44,12 +47,12 @@ const shot = async (name) => { const r = await send('Page.captureScreenshot', { 
 const toScreen = async (p) => JSON.parse(await evalJS(`(()=>{ const m = window.svgEditor._draw.node.getScreenCTM();
   return JSON.stringify({ x: m.a * ${p.x} + m.c * ${p.y} + m.e, y: m.b * ${p.x} + m.d * ${p.y} + m.f }); })()`));
 async function press(s) {
-  if (MOBILE) await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x, y: s.y }] });
+  if (MOBILE) await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x, y: s.y + FINGER_DY }] });
   else { await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: s.x, y: s.y }); await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: s.x, y: s.y, button: 'left', clickCount: 1 }); }
   await sleep(60);
 }
 async function moveTo(s) {
-  if (MOBILE) await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: s.x, y: s.y }] });
+  if (MOBILE) await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: s.x, y: s.y + FINGER_DY }] });
   else await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: s.x, y: s.y, button: 'left', buttons: 1 });
   await sleep(25);
 }
@@ -116,10 +119,11 @@ for (const orientation of (MOBILE ? ['horizontal'] : ['horizontal', 'vertical'])
     const row = M.a[fx], lo = Math.min(M.a[ax], M.b[ax]), hi = Math.max(M.a[ax], M.b[ax]);
     const contacts = contactsOf(M);
     // cut 1 ON a tie contact (a joint where a tie meets the rail), cut 2 MID-RAIL at a plain grid point >= 3 cells away
+    // (6 on a phone: touch's end-grab zone at fit zoom is ~1.5 cells, and body grab #2 sits midway between the joints)
     let c1 = contacts.length ? contacts[Math.floor(contacts.length / 3)] : Math.round((lo + (hi - lo) / 3) / sp) * sp;
     let c2 = null;
     for (let u = Math.ceil((lo + 2 * sp) / sp) * sp; u <= hi - 2 * sp + 1e-9; u += sp) {
-      if (Math.abs(u - c1) >= 3 * sp && !contacts.some((c) => Math.abs(c - u) < 1e-9)) { c2 = u; if (u > c1) break; }
+      if (Math.abs(u - c1) >= ${MOBILE ? 6 : 3} * sp && !contacts.some((c) => Math.abs(c - u) < 1e-9)) { c2 = u; if (u > c1) break; }
     }
     if (c2 != null && c2 < c1) [c1, c2] = [c2, c1];
     const crossing = ties.find((t) => { const tl = Math.min(t.a[fx], t.b[fx]), th = Math.max(t.a[fx], t.b[fx]); return tl < row - 1e-9 && th > row + 1e-9; });
@@ -170,7 +174,7 @@ for (const orientation of (MOBILE ? ['horizontal'] : ['horizontal', 'vertical'])
   // every gesture / tap point must be ON the canvas (not under a panel or overlay)
   const pts = [...G.map((g) => g.from), ...G.map((g) => ({ x: g.from.x + g.by.x, y: g.from.y + g.by.y })), plan.cut1, plan.cut2, plan.tieCut].filter(Boolean);
   let onCanvas = 0;
-  for (const p of pts) { const q = await toScreen(p); if (await evalJS(`(()=>{ const e = document.elementFromPoint(${q.x}, ${q.y}); return !!e && document.getElementById('editorSVGContainer').contains(e); })()`)) onCanvas++; }
+  for (const p of pts) { const q = await toScreen(p); if (await evalJS(`(()=>{ const e = document.elementFromPoint(${q.x}, ${q.y + FINGER_DY}); return !!e && document.getElementById('editorSVGContainer').contains(e); })()`)) onCanvas++; }
   run.pointsOnCanvas = `${onCanvas}/${pts.length}`;
   const U0 = await canon();
   const resU = [];

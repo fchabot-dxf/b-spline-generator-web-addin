@@ -18,7 +18,7 @@ import { worldPoint } from './editor-coords.js';
 import { getDynamicTolerance } from './editor-hit.js';
 import { geometrySnapTargets, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
 import { GRID_DEFAULTS } from './editor-grid.js';
-import { chainOf, JOINT_TOL } from './editor-lattice-chains.js';
+import { chainOf, JOINT_TOL, MIN_PIECE_CELLS } from './editor-lattice-chains.js';
 import { clearColorOverride, pieceKindOf, OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import { getLayerPattern, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
 import { isOnVisibleLayer } from './layers.js';
@@ -78,7 +78,7 @@ export function snapOnLine(editor, el, pt, alt = false) {
 
 function _minPiece(editor, el) {
   if (!latticeKind(el)) return CUT_MIN_PLAIN_IN;
-  return (getLayerPattern(editor) || PATTERN_DEFAULTS).spacing || PATTERN_DEFAULTS.spacing;
+  return MIN_PIECE_CELLS * ((getLayerPattern(editor) || PATTERN_DEFAULTS).spacing || PATTERN_DEFAULTS.spacing);
 }
 
 function _commit(editor) {
@@ -164,7 +164,10 @@ export function join(editor, joint) {
 function _lineUnder(editor, pt) {
   const tol = getDynamicTolerance(editor, 10, 'slopPx');
   // a line the point is INSIDE of beats one that merely ends there (a tie ending on a rail: tapping that contact cuts
-  // the rail); among equals the topmost (last drawn) wins, the one the user sees
+  // the rail); among equals the topmost (last drawn) wins, the one the user sees. "At an end" = within a click's own
+  // jitter (clickThresholdPx), NOT the whole hit slop: on touch the slop spans more than a cell at phone zoom, and a
+  // tap ON a tie one cell from its rail must cut the tie (F19; the touch point is already the precise marker, SE7m)
+  const endR = getDynamicTolerance(editor, 3, 'clickThresholdPx');
   let best = null, bestScore = Infinity;
   for (const el of editor._sketchLayer.children().toArray()) {
     if (!isLine(el) || !isOnVisibleLayer(editor, el)) continue;
@@ -172,7 +175,7 @@ function _lineUnder(editor, pt) {
     const q = projectOnSegment(a, b, pt);
     const d = Math.hypot(q.x - pt.x, q.y - pt.y);
     if (d > tol) continue;
-    const atEnd = Math.min(Math.hypot(pt.x - a.x, pt.y - a.y), Math.hypot(pt.x - b.x, pt.y - b.y)) <= tol;
+    const atEnd = Math.min(Math.hypot(pt.x - a.x, pt.y - a.y), Math.hypot(pt.x - b.x, pt.y - b.y)) <= endR;
     const score = d + (atEnd ? tol : 0);
     if (score <= bestScore) { bestScore = score; best = el; }
   }
