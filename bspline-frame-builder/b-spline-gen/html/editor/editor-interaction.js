@@ -50,6 +50,12 @@ import {
 // turn's edits to this shared, concurrently-extended file stay a few
 // one-line hooks — see editor-multiselect-gesture.js's own doc comment.
 import { armMultiSelectPress, cancelMultiSelectHoldIfMoved, cancelMultiSelectHold } from './editor-multiselect-gesture.js';
+// T81 item 7: rail END handle + boundary limit + rider pruning for the
+// existing SE7k end-stretch -- own module, same reasoning as H5's above.
+import {
+    armRailEndStretch, railEndTarget, whenRailLimitReady, pruneAfterRailStretch,
+    endRailEndStretch, setRailEndHover, renderRailEndHandle,
+} from './editor-rail-end-stretch.js';
 // H6 CONTEXT-MENU: same reasoning, own module — see its own doc comment.
 import {
     armContextMenuHold, cancelContextMenuHoldIfMoved, cancelContextMenuHold,
@@ -1489,6 +1495,15 @@ function _updateLatticeStretch(editor, move, targetAxisValue, stretchFn) {
         const p = fromLattice(orient(stretched[move.end], orientation), spacing);
         move.endNode.center(p.x, p.y);
     }
+    if (move.railEnd && typeof editor._updateHandles === 'function') editor._updateHandles(); // T81 item 7: the end handle rides the end
+}
+
+/** T81 item 7 (Fred: "The only distance it should use is the stroke
+ *  width."): a rail end-drag's shortest length is the rail's own stroke
+ *  width (`move.railEnd.minLen`, armRailEndStretch), not one lattice cell. */
+function _railStretchFn(move) {
+    const minLen = move.railEnd ? move.railEnd.minLen : undefined;
+    return (canon, end, target) => stretchRailEnd(canon, end, target, minLen);
 }
 
 /** H1 (SNAP-SPLIT): the nearest existing geometry point to the RAW
@@ -1553,7 +1568,14 @@ function _updateLatticeMoveGeometry(editor, pt) {
         // raw target, same "snap first, then pull back inside the
         // contour" composition the tie-stretch branch below already uses.
         const targetI = _geometryAxisSnap(editor, move, pt, 'i') ?? canonPt.i;
-        _updateLatticeStretch(editor, move, _clampStretchToContour(editor, move, targetI), stretchRailEnd);
+        // T81 item 7: then the lattice boundary limit resolved at grab
+        // (board extent, or the row's clip span for a boundary pattern --
+        // the SAME clip a drawn rail gets), plus a GEOM snap onto that
+        // boundary crossing (editor-rail-end-stretch.js).
+        const geomOn = !!(editor._grid && editor._grid.geometrySnap);
+        const tolCells = getDynamicTolerance(editor, GEOMETRY_SNAP_TOL_PX, 'slopPx') / spacing;
+        const target = railEndTarget(move, _clampStretchToContour(editor, move, targetI), tolCells, geomOn);
+        _updateLatticeStretch(editor, move, target, _railStretchFn(move));
     } else if (move.kind === 'rail') {
         // A rail moves only ACROSS its own direction — never slides
         // along its own length — so only the row (canonical j) tracks
@@ -1638,6 +1660,23 @@ function _finishLatticeMove(editor) {
     const move = editor._latticeMove;
     editor._latticeMove = null;
     editor._isDrawing = false;
+    // T81 item 7: a rail end stretch whose boundary limit is still
+    // resolving (async boundary lookup) commits once it lands, re-applying
+    // the limit to the last target first -- the release is never allowed
+    // to commit an end past the boundary.
+    const pending = whenRailLimitReady(move);
+    if (pending) {
+        return pending.then(() => {
+            const r = move.railEnd;
+            if (r.lastRaw != null) _updateLatticeStretch(editor, move, railEndTarget(move, r.lastRaw, r.tolCells, r.geomOn), _railStretchFn(move));
+            _commitLatticeMove(editor, move);
+        });
+    }
+    _commitLatticeMove(editor, move);
+}
+
+function _commitLatticeMove(editor, move) {
+    endRailEndStretch(editor); // T81 item 7: drop the held end-handle look, every release
     // T81 item 5: the ONE end-of-drag cleanup every exit path (pointerup,
     // pointercancel, lost capture — all funnel into handleEnd -> this
     // function) already runs through. Unconditional, before the `moved`
@@ -1653,6 +1692,9 @@ function _finishLatticeMove(editor) {
         : { x1: move.el.attr('x1'), y1: move.el.attr('y1'), x2: move.el.attr('x2'), y2: move.el.attr('y2') };
     const moved = Object.keys(move.startAttrs).some((k) => move.startAttrs[k] !== nowAttrs[k]);
     if (!moved) return;
+    // T81 item 7: ties/nodes left past a stretched rail's new end go in
+    // THIS same undo step (before the one pushState below).
+    if (move.railEnd) move.railEndPruned = pruneAfterRailStretch(editor, move);
     applyLayerState(editor);
     if (typeof editor.pushState === 'function') editor.pushState();
     if (editor._onChange) editor._onChange();
@@ -1848,6 +1890,7 @@ const latticeHandler = {
             editor._isDrawing = true;
             const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;
             editor._latticeMove = withChain(editor, _beginLatticeMove(editor, hit, hitKind, pt, spacing, orientation));
+            armRailEndStretch(editor, editor._latticeMove); // T81 item 7
             return;
         }
 
@@ -1952,7 +1995,7 @@ const latticeHandler = {
         editor._latticePreview.attr({ x2: p2.x, y2: p2.y });
     },
     finish(editor) {
-        if (editor._latticeMove) { _finishLatticeMove(editor); return; }
+        if (editor._latticeMove) return _finishLatticeMove(editor); // T81 item 7: may be a promise (async boundary limit)
         editor._isDrawing = false;
         if (editor._latticePreview) { editor._latticePreview.remove(); editor._latticePreview = null; }
         const a = editor._latticeStart;
@@ -2019,8 +2062,56 @@ const latticeHandler = {
         const hit = editor._getNearbyElement(pt, tol);
         const kind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
         editor._setHover((kind === 'rail' || kind === 'tie' || kind === 'node') ? hit : null);
+        // T81 item 7: a rail END under the pointer shows its end handle +
+        // the shared grab cursor (a press there stretches, SE7k).
+        // Only clears a cursor it set itself (another handle system -- the
+        // Frame tab's -- may own it otherwise).
+        const railEnd = _railEndUnder(editor, pt);
+        const hadRailEnd = !!editor._railEndHover;
+        setRailEndHover(editor, railEnd);
+        if (railEnd || hadRailEnd) setHandleCursor(railEnd ? 'hover' : null);
     },
 };
+
+/** T81 item 7: which rail END (`{el, end}`) a press at `pt` would STRETCH,
+ *  or null -- the SAME decision `_beginLatticeMove` makes, read-only (no
+ *  transform bake): the piece `_getNearbyLatticePiece` picks, then either a
+ *  rail within its end-grab zone (handlePx) of one of its own ends, or a
+ *  node sitting exactly on a rail's end that isn't on a tie (a node on a
+ *  tie's column span resolves to that TIE first, tie priority). */
+function _railEndUnder(editor, pt) {
+    if (!editor._grid) return null;
+    const spacing = editor._grid.spacing || 0.25;
+    const hit = _getNearbyLatticePiece(editor, pt, getDynamicTolerance(editor, 10, 'slopPx'));
+    const kind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
+    if (kind !== 'rail' && kind !== 'node') return null;
+    const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;
+    const canon = (w) => orient(toLatticeFractional(w, spacing), orientation);
+    const ends = (el) => ({
+        a: worldPoint(el, { x: parseFloat(el.attr('x1')), y: parseFloat(el.attr('y1')) }),
+        b: worldPoint(el, { x: parseFloat(el.attr('x2')), y: parseFloat(el.attr('y2')) }),
+    });
+    if (kind === 'rail') {
+        const { a, b } = ends(hit);
+        const end = nearestEndWithin({ a: canon(a), b: canon(b) }, canon(pt), getDynamicTolerance(editor, 8, 'handlePx') / spacing);
+        return end ? { el: hit, end } : null;
+    }
+    const w = worldPoint(hit, { x: parseFloat(hit.attr('cx')), y: parseFloat(hit.attr('cy')) });
+    const nc = canon(w);
+    const cands = _collectLatticeElements(editor, spacing, null);
+    for (const c of cands) {
+        if (c.kind !== 'tie') continue;
+        const ta = canon(c.aWorld), tb = canon(c.bWorld);
+        if (Math.abs(ta.i - nc.i) > 1e-6) continue;
+        if (nc.j >= Math.min(ta.j, tb.j) - 1e-6 && nc.j <= Math.max(ta.j, tb.j) + 1e-6) return null;
+    }
+    for (const c of cands) {
+        if (c.kind !== 'rail') continue;
+        if (_sameWorldPoint(w, c.aWorld)) return { el: c.el, end: 'a' };
+        if (_sameWorldPoint(w, c.bWorld)) return { el: c.el, end: 'b' };
+    }
+    return null;
+}
 
 /** Point-to-segment distance — same standard formula
  *  editor-shape-lattice-interaction.js's own (module-private) _distToLine
@@ -2199,6 +2290,7 @@ const shapeLatticeHandler = {
             // is designed against the touch-offset-adjusted point, matching
             // latticeHandler.start's own identical call exactly.
             editor._latticeMove = withChain(editor, _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation));
+            armRailEndStretch(editor, editor._latticeMove); // T81 item 7
             return;
         }
         // T80 item 2 (Fred: "where are add geometry tools"): with Rail/Tie/
@@ -2295,7 +2387,7 @@ const shapeLatticeHandler = {
         // UI5 AMEND 2: same dispatch as update() above, for the SAME reason
         // (_finishLatticeMove already sets editor._isDrawing = false itself,
         // matching latticeHandler.finish's own identical one-line dispatch).
-        if (editor._latticeMove) { _finishLatticeMove(editor); return; }
+        if (editor._latticeMove) return _finishLatticeMove(editor); // T81 item 7: may be a promise
         if (editor._latticeStart) return latticeHandler.finish(editor); // T80 item 2: a rail/tie being drawn
         editor._isDrawing = false;
         editor._shapeLatticeDragKey = null;
@@ -2320,7 +2412,11 @@ const shapeLatticeHandler = {
             editor._shapeHandleHover = key;
             if (typeof editor._updateHandles === 'function') editor._updateHandles();
         }
-        setHandleCursor(key ? 'hover' : null);
+        // T81 item 7: a rail END (never under a param handle -- a press
+        // there grabs the handle first, start()'s own priority).
+        const railEnd = key ? null : _railEndUnder(editor, pt);
+        setRailEndHover(editor, railEnd);
+        setHandleCursor(key || railEnd ? 'hover' : null);
         if (selectHandler.hover) selectHandler.hover(editor, pt);
     },
 };
@@ -2530,8 +2626,10 @@ export function updateHandles(editor) {
     // handles only.
     if (editor._currentMode === 'shapeLattice') {
         editor._paramHandles = renderShapeLatticeHandles(editor);
+        renderRailEndHandle(editor); // T81 item 7
         return;
     }
+    if (editor._currentMode === 'lattice') { renderRailEndHandle(editor); return; } // T81 item 7 (lattice mode draws no selection handles)
     const sel = editor._selectedElements || [];
     if (!sel.length) return;
     if (editor._currentMode !== 'node' && editor._currentMode !== 'select') return;

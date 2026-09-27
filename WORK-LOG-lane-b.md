@@ -10960,3 +10960,66 @@ reasonable pick tolerance, which is exactly what made my first draft of this tes
 itself, not the production code) is selected too. Mutation: reverting the fix fails all 5.
 Shot (real rendered contour + halo geometry, not a mockup): shots/seatB/t81-contour-segment-select-fix.png.
 Verify: 2260/2260 vitest. Commit c78a110. NO FUSION.
+
+## T81 item 7 — grab a rail END to change its length (rect Lattice + Shape Lattice, [Select])
+
+Fred: "I'd like to be able to adjust length of rails in lattice tool, by grabbing the ends". Found first: the
+mechanic ALREADY existed and was already reachable from [Select] -- SE7k AMEND 4/5's end-stretch
+(`_beginLatticeMove` -> `mode:'stretch'` -> `_updateLatticeStretch`/`stretchRailEnd`, editor-interaction.js).
+`latticeHandler.start` runs its existing-piece branch BEFORE the drawKind branch, so a press in a rail end's
+end-grab zone (INPUT_PROFILE handlePx) stretches in every sub-mode incl. [Select]; `shapeLatticeHandler.start`
+replicates that branch (UI5 AMEND 2). So no second mechanic: this item adds what the ONE path lacked, as a new
+module `editor/editor-rail-end-stretch.js` + one-line hooks in editor-interaction.js (kept out of that shared
+file for the same reason H5's multi-select gesture was):
+- END HANDLE on hover: `_railEndUnder` (editor-interaction.js) makes the SAME decision `_beginLatticeMove` would
+  (rail within its end zone, or a node at a rail end that isn't on a tie -- tie priority), read-only; the handle
+  is drawn from updateHandles in both lattice modes with T81 item 1's ONE declaration (`handleHoverVisual`,
+  grown + accent fill, rail-colour idle stroke) and the shared `setHandleCursor` grab/grabbing. Held ("active")
+  for the whole drag and rides the end; released -> back to hover/idle. A Shape Lattice param handle under the
+  pointer wins (its press priority). Shown in every lattice sub-mode, since a press there stretches in every one.
+- LIMIT = the lattice boundary, resolved once at grab: rect Lattice -> `_resolveExtent` (the board extent
+  Generate + the Rail click-spawn use; never shrinks below a rail already outside it); boundary pattern (Shape
+  Lattice, or a rect Lattice with a picked boundary) -> `clipHandRailToBoundary` (T80 item 2 -- the SAME row clip,
+  span union + end rule a hand-DRAWN rail gets), keeping the piece that contains the fixed end. That lookup is
+  async, so the existing sync T73 `_clampStretchToContour` still covers the first ticks and finish() awaits the
+  span before committing (never commits past the boundary).
+- SNAPS: GRID = the lattice itself (unchanged); GEOM = `_geometryAxisSnap` (unchanged) + NEW: the boundary
+  crossing on the rail's own row (the contour curve isn't a `geometrySnapTargets` point, only its segment ends).
+- SHORTEST LENGTH -- Fred's ruling (via coordinator, mid-item): "The only distance it should use is the stroke
+  width." The rail end-drag clamp is now the rail's OWN stroke width (`stretchRailEnd`'s new `minLen`, passed
+  stroke-width/spacing), not one lattice cell. `stretchRailEnd` defaults to the old 1 cell for any other caller;
+  MIN_PIECE_CELLS and the scissors/joint-slide clamps deliberately NOT touched (coordinator converts those
+  separately after merge). Tie end-stretch unchanged (rails only, this item).
+- WHAT RIDES ON THE RAIL (frozen at grab): ties/nodes still on the new span keep their joints (SE7k AMEND 4,
+  unchanged). On release, a tie whose END sat on this rail and is now past the new end is REMOVED, with its end
+  nodes (`tieEndNodes`, T80 item 3's declared "owned children") unless a node is still a joint of something that
+  stays (on a remaining tie's end/body, or at a remaining rail's END -- merely lying on another rail's body is
+  exactly the removed tie's far joint, so it goes). A node that sat on the rail and is now past its end: same
+  test. The status hint SAYS SO: "Rail shortened: removed N tie(s) and M node(s) left past its new end (Undo
+  brings them back)." Lengthening removes nothing.
+- ONE UNDO STEP per drag: removal happens inside `_finishLatticeMove`'s commit, before its single pushState; a
+  bare click pushes nothing.
+- REGENERATE RULE FOR OVERRIDES (followed, not changed): SE7i's -- "Regenerate clears every OWNED piece in the
+  layer, including pieces moved by hand since" (generatePattern). A stretched generated rail keeps its
+  OWNERSHIP_ATTR (the stretch never touches it), so Regenerate replaces it with the generated one; Detach (panel
+  action, `detachOwnership`) is how a length override survives Regenerate. Hand-drawn rails (no mark) are never
+  touched by Regenerate (T80 item 2's rule).
+
+Tests: tests/lattice-rail-end-stretch.test.js (20), real canvas handlers for both tools: hover on end/body/
+leave, held look + rides the end + released; lengthen along axis only (off-axis wobble ignored), other end
+fixed, 1 pushState; shorten past a tie removes it + its now-orphan nodes, keeps the other tie's joints, hint
+text; a removed tie's node that is still another tie's joint is kept; lengthen removes nothing; board extent
+limit both ends; stroke-width minimum (0.1in < one 0.25 cell); bare click = no-op, no undo step; ownership kept;
+`railEndTarget` clamp + GEOM boundary snap; Shape Lattice: hover handle, can't pass the silhouette (contour shown
+AND contour hidden -- the latter has no T73 clamp, only the new clip), shortening removes exactly the ties past
+the new end, one undo step. Mutations: no limit -> 4 fail; no pruning -> 2 fail.
+Shots (real headless Chromium, real mouse events, tools/repro/rail_end_stretch_shots.mjs; this sandbox's policy
+blocks cdnjs, so three.js/svg.js were served from their npm tarballs via the script's CDN_LOCAL option): idle /
+hover end (handle shown) / mid-drag / after shorten (hint) / after dragging far past the boundary (stops at it),
+for rect Lattice and Shape Lattice. Report: stretch lengths, removed counts, one Undo reverts only the last drag.
+Seen in the shots: mid-drag, the held handle sits UNDER the selection halo (highlight-layer is above
+handle-layer in init.js), so it reads tinted rather than pure accent blue -- left as is (reordering the layers
+is outside this item).
+Verify: 2343/2343 vitest (with --testTimeout=60000: CPU-heavy frame/silhouette tests time out at 5 s only
+under this machine's concurrent load; they pass alone). NO FUSION. LIVE CHECKS REMAIN FOR FRED: the feel of the
+end grab zone on a real mouse and on the phone (touch marker offset), and the held handle under the halo.
