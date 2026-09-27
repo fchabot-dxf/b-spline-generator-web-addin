@@ -43,6 +43,18 @@ import {
 let preview = null;
 window.svgEditor = null; // exposed for editor.js
 
+// H9: fades out and removes #app-splash (bspline_gen_palette.html). Called
+// from the initApp callback in both onFusionDetected/onWebDetected below --
+// the app's real "ready" point (after session load, migrations, mesh
+// rebuild), not a fixed timer. Removing the element (not just hiding it)
+// means it can't reappear later this session.
+function hideSplashScreen() {
+    const splash = document.getElementById('app-splash');
+    if (!splash) return;
+    splash.classList.add('app-splash-hidden');
+    splash.addEventListener('transitionend', () => splash.remove(), { once: true });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     fusLog('[main.js] DOMContentLoaded: Initializing application');
 
@@ -132,7 +144,7 @@ async function onFusionDetected() {
     // never shows a stale in-progress state.
     setFusionActionState(FUSION_IDLE_LABEL, false);
 
-    initApp(preview, () => wireGlobalEvents(preview));
+    initApp(preview, () => { wireGlobalEvents(preview); hideSplashScreen(); });
     initSvgEditor(preview);
 
     // Ask Python for the design's widthIn/heightIn parameters. Python
@@ -148,7 +160,7 @@ async function onWebDetected() {
     fusLog('Web/Browser Mode Detected');
     const headerBtn = document.getElementById('btnDownload');
     if (headerBtn) headerBtn.textContent = 'STEP';
-    initApp(preview, () => wireGlobalEvents(preview));
+    initApp(preview, () => { wireGlobalEvents(preview); hideSplashScreen(); });
     initSvgEditor(preview);
 }
 

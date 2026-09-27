@@ -10,8 +10,8 @@
   <meta name="viewport"
     content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Symmetric B-Spline Generator ❤️</title>
-  <link rel="icon"
-    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,5 95,25 95,75 50,95 5,75 5,25%22 fill=%22%234f8ef7%22/></svg>">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/logo-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/logo-16.png">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"></script>
   <!-- Cloud preset sync: set window.BSPLINE_PRESETS_API_URL to your
@@ -225,43 +225,78 @@
     .cad-nav-version.build-stale   { color: #ffb300; }
     .cad-nav-version.build-unknown { color: var(--cad-text-muted); }
 
-    /* Mobile: bump nav buttons to the 44x44 touch-target minimum
-       (Apple HIG / WCAG 2.5.5). See BUG-13. */
+    /* Mobile: bump nav buttons to a touch target, and let the header wrap
+       onto a second row instead of demanding one 390px-wide line hold the
+       back button + title + all 7 action buttons (H9, Fred's phone shot:
+       "these icons are too big, I'd prefer not to scroll... the header may
+       be a bit too small"). Was a flat 44px (Apple HIG / WCAG 2.5.5, see
+       BUG-13) with no wrap — even after tightening every gap to its floor,
+       back+title+7×44px buttons cannot fit one 390px row at all, so the
+       row-1 fix alone (below) still couldn't reach "no scroll" on its own;
+       wrapping the action-button group onto its own full-width row is what
+       actually guarantees it regardless of the back button's own
+       (uncontrolled, injected by fred-host.js) width — 36px is the
+       DECLARED mobile nav-button size, still a comfortable tap target,
+       chosen only to keep row 2 comfortably clear of 358px (390 minus the
+       navbar's own 16px×2 padding), not because it alone would have fixed
+       the overflow. */
     @media (max-width: 600px), (pointer: coarse) {
-      /* Tighten the title group's default 24px gap so the header row still
-         fits once the nav buttons grow to 44px. */
+      :root {
+        --cad-navbar-touch: 36px;
+      }
+      .cad-navbar {
+        flex-wrap: wrap;
+        height: auto;
+        padding: 8px 16px;
+      }
+      /* Tighten the title group's default 24px gap; min-width:0 lets the
+         title box itself shrink/ellipsize rather than force row 1 wider
+         than the viewport in the (unlikely, since the injected back
+         button is normally icon-sized) case it's wider than expected. */
       .cad-navbar .cad-nav-group {
         gap: 8px;
+        min-width: 0;
+      }
+      .cad-nav-titlebox {
+        min-width: 0;
+        overflow: hidden;
+      }
+      /* The action-button group becomes row 2, full width, right-aligned —
+         same "wrap the header" idiom H4 already used for the SVG editor's
+         own header (#svgEditorHeader / .editor-header-actions). */
+      .cad-navbar-actions {
+        flex: 0 0 100%;
+        justify-content: flex-end;
+        margin-top: 6px;
       }
       .cad-navbar .cad-nav-btn {
-        width: 44px !important;
-        min-width: 44px !important;
-        max-width: 44px !important;
-        height: 44px !important;
-        min-height: 44px !important;
-        max-height: 44px !important;
-        flex: 0 0 44px !important;
+        width: var(--cad-navbar-touch) !important;
+        min-width: var(--cad-navbar-touch) !important;
+        max-width: var(--cad-navbar-touch) !important;
+        height: var(--cad-navbar-touch) !important;
+        min-height: var(--cad-navbar-touch) !important;
+        max-height: var(--cad-navbar-touch) !important;
+        flex: 0 0 var(--cad-navbar-touch) !important;
       }
       .cad-nav-btn > span {
-        font-size: 22px !important;
+        font-size: 18px !important;
       }
-      /* Narrow/touch: shrink the STEP export button to the same 44×44
-         footprint as its neighbor nav buttons so the header row fits.
-         Same id/handler/label — only the size changes. The ID+class
-         selector plus !important beats layout-app.css's
-         #btnDownload { min-width: 84px !important }. overflow:hidden +
-         nowrap keep a longer label ("Send to Fusion") from widening the
-         box; "STEP" stays readable at 11px. */
+      /* Narrow/touch: shrink the STEP export button to the same footprint
+         as its neighbor nav buttons so the row still fits. Same id/handler/
+         label — only the size changes. The ID+class selector plus
+         !important beats layout-app.css's #btnDownload { min-width: 84px
+         !important }. overflow:hidden + nowrap keep a longer label ("Send
+         to Fusion") from widening the box; "STEP" stays readable at 10px. */
       .cad-navbar #btnDownload {
-        width: 44px !important;
-        min-width: 44px !important;
-        max-width: 44px !important;
-        height: 44px !important;
-        min-height: 44px !important;
-        max-height: 44px !important;
+        width: var(--cad-navbar-touch) !important;
+        min-width: var(--cad-navbar-touch) !important;
+        max-width: var(--cad-navbar-touch) !important;
+        height: var(--cad-navbar-touch) !important;
+        min-height: var(--cad-navbar-touch) !important;
+        max-height: var(--cad-navbar-touch) !important;
         padding: 0 !important;
-        flex: 0 0 44px !important;
-        font-size: 11px !important;
+        flex: 0 0 var(--cad-navbar-touch) !important;
+        font-size: 10px !important;
         white-space: nowrap;
         overflow: hidden;
       }
@@ -280,24 +315,92 @@
     .fusion-status[data-kind="busy"] { color: var(--cad-text-muted); }
     .fusion-status[data-kind="ok"]   { color: var(--cad-accent-green); }
     .fusion-status[data-kind="warn"] { color: #ffb300; }
+
+    /* Splash screen (H9: Fred, "the title could go away, if we had a
+       splash screen for loading" -- carries the brand now that the header
+       no longer does). Shown until main.js's initApp callback fires --
+       the app's own real "ready" hook (session load + migrations + mesh
+       rebuild all done), never a fixed timer. hideSplashScreen() (main.js)
+       fades it out, then removes it from the DOM so it can't reappear
+       this session. Works identically in Fusion and standalone-web mode:
+       both onFusionDetected/onWebDetected route through the same hook. */
+    #app-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      /* Exact PNG background (not a theme token): the logo art's own
+         background is #161616, so this must match precisely or its square
+         edge is visible against the splash. */
+      background: #161616;
+      transition: opacity 0.3s ease;
+    }
+    #app-splash.app-splash-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #app-splash-logo {
+      width: 180px;
+      height: 180px;
+      object-fit: contain;
+    }
+    #app-splash-name {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: #f0f0f0;
+    }
+    #app-splash-spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(255, 255, 255, 0.15);
+      border-top-color: var(--cad-accent-blue);
+      border-radius: 50%;
+      animation: app-splash-spin 0.8s linear infinite;
+    }
+    @keyframes app-splash-spin {
+      to { transform: rotate(360deg); }
+    }
+    #app-splash-version {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+    }
   </style>
   <script src="https://apploader.pages.dev/fred-host.js" defer></script>
 </head>
 
 
 <body class="cad-app-shell">
+  <!-- Splash screen -- see the #app-splash CSS block above for the hide
+       hook + rationale. Declared logo slot: assets/logo-512.png (Fred's
+       neon wireframe art, no tile needed -- the splash bg IS the art's own
+       #161616 background). onerror just hides a broken image; the name
+       text below it is unconditional, so it already carries the brand if
+       the image ever fails to load. -->
+  <div id="app-splash">
+    <img id="app-splash-logo" src="assets/logo-512.png" alt=""
+      onerror="this.style.display='none';">
+    <span id="app-splash-name">B-SPLINE GENERATOR</span>
+    <div id="app-splash-spinner"></div>
+    <!-- Same 'v1.1.0' fallback literal as Settings > Version (build-badge)
+         -- keep both bumped together with package.json for the web build. -->
+    <span id="app-splash-version">v1.1.0</span>
+  </div>
+
   <!-- Navigation Header -->
   <header class="cad-navbar">
     <div class="cad-nav-group">
       <span data-fred-home-mount></span>
       <span class="cad-nav-titlebox">
-        <span class="cad-nav-title">B-SPLINE GENERATOR</span>
-        <!-- Version badge. In Fusion, Python pushes the DEPLOYED git SHA +
-             build time here via the 'build_info' handshake (main.js), with a
-             ✓/⚠ vs the source repo. The 'v1.1.0' literal is the web/fallback
-             shown until (or if) that push arrives — keep it bumped with
-             package.json for the web build. -->
-        <span id="build-badge" class="cad-nav-version" title="">v1.1.0</span>
+        <!-- Title text + version badge moved to the Settings panel (H9:
+             Fred, "the title could go away, if we had a splash screen for
+             loading") — the splash screen now carries the brand. dirty-dot
+             and fmCurrentFileLabel stay: functional file-state indicators,
+             not "the title". -->
         <span id="dirty-dot" class="cad-nav-version" title="Unsaved changes" hidden>●</span>
         <span id="fmCurrentFileLabel" class="cad-nav-version" style="display:none"></span>
       </span>
@@ -305,7 +408,7 @@
 
     <div style="flex:1;"></div>
 
-    <div style="display:flex; gap:8px; align-items:center;">
+    <div class="cad-navbar-actions" style="display:flex; gap:8px; align-items:center;">
       <!-- Undo/Redo (UX3: moved out of the sidebar sticky header). Ids
            unchanged — history.js's updateGlobalButtons finds them by id
            and the Ctrl+Z/Y wiring is untouched. -->
@@ -1082,6 +1185,19 @@
             <span style="opacity:0.7;">Node Edit (A)</span><kbd class="cad-status-text">A</kbd>
             <span style="opacity:0.7;">Select tool (V)</span><kbd class="cad-status-text">V</kbd>
             <span style="opacity:0.7;">Pen tool (F)</span><kbd class="cad-status-text">F</kbd>
+          </div>
+        </div>
+
+        <div class="cad-status-divider" style="margin: 12px 0;"></div>
+
+        <div class="cad-panel-section">
+          <label class="cad-label">Version</label>
+          <!-- Relocated from the main header (H9: Fred, "the title could go
+               away, if we had a splash screen for loading"). Same id, same
+               main.js 'build_info' wiring -- see that comment's original
+               note, moved here unchanged. -->
+          <div>
+            <span id="build-badge" class="cad-nav-version" title="">v1.1.0</span>
           </div>
         </div>
       </div>

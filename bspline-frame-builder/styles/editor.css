@@ -1225,8 +1225,36 @@
        back to base.css's plain text-input rule instead. `.cad-stepper
        input` (no type qualifier) covers both cases directly, rather than
        relying on inheritance that only works for one of them. */
-    .cad-stepper {
+    /* H9 (Fred's phone shot, live: the Carve Depth stepper showed NO
+       number and no "+" at 390px — a REGRESSION this same block caused).
+       Root cause: a "slider + stepper" row (.cad-slider-row) pins its own
+       .cad-stepper to a desktop-era width (e.g. inline style="width:75px",
+       sized so the SLIDER gets most of the row) so the stepper never
+       crowds out the slider on desktop. This block already bumps the
+       stepper's two buttons to 44px each (88px) but never touched that
+       width cap — 88px > 75px before the input is even counted, and with
+       the input's own flex:1 1 auto having no min-width, 100% of the
+       negative space landed on it, collapsing it to 0 (clipped by
+       .cad-stepper's own overflow:hidden, palette's inline <style>).
+       min-width ONLY (deliberately no `width` override at all) so this
+       is a pure FLOOR: a conflicting min-width always overrides a smaller
+       width, spec-guaranteed, regardless of the width's own origin/
+       specificity, so it correctly widens a `width:75px`/`80px` cap
+       without needing to fight it directly — and just as correctly does
+       NOTHING to the many OTHER `.cad-nested-input` rows declared
+       `width:100%` (most of them; a first attempt here also forced
+       `width:auto`, which would have shrunk every one of THOSE back down
+       to fit-content — caught before it shipped). !important only because
+       this is already how every other override in this block beats an
+       inline style. 128px = 2×44px buttons + a 40px floor for the number.
+       Applied to .cad-nested-input too (base.css's own `width:80px`) --
+       some rows (#seed, #thickenYellowOffset) nest a JS-injected
+       .cad-stepper inside ONE of these instead of using .cad-stepper
+       directly, with the exact same desktop-width-cap defect. */
+    .cad-stepper,
+    .cad-nested-input {
         height: var(--cad-stepper-touch) !important;
+        min-width: 128px !important;
     }
     /* flex: 0 0 <touch>, not a bare width -- a formula-switched input's own
        flex-grow drops to its 0 1 auto default (its own base rule only
@@ -1244,6 +1272,7 @@
         flex: 1 1 auto !important;
         height: var(--cad-stepper-touch) !important;
         font-size: 14px !important;
+        min-width: 40px !important; /* the other half of the H9 fix -- never collapse even if some OTHER ancestor still squeezes the wrapper */
     }
 
     /* The main toolbar's own Stroke/Font/Expand-Detail steppers: a

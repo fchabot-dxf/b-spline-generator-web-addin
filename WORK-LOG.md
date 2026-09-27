@@ -11393,3 +11393,94 @@ comment explains why each one differs from the base rule. Live-reread after each
 wood's rendered bar colour matches its own `FRAME_COLORS` entry exactly, board colour still unchanged
 throughout. Re-ran the full suite after each of the three rounds; final state 1908 passed. Shots:
 `h8_v2_isoedge_<wood>` for all 5 woods, in `shots\seatA\`.
+
+---
+
+Dispatch: epoch 3 — H9: mobile main header fits at 390px without scroll (smaller icons, compact title, a
+bit more header room) + fix Carve Depth stepper hiding its value (H4 regression) with a check across all
+steppers. NEXT-SESSION.md.
+
+**Item 1 — header fits at 390px.** Same wrapping idiom H4 already used for the SVG editor's own header:
+the action-button group (`.cad-navbar-actions`, newly classed — was a bare `display:flex` div) becomes a
+full-width row 2 at `max-width:600px, pointer:coarse`, so row 1 only needs to hold the back button + title.
+New `--cad-navbar-touch: 36px` token (declared inside a `:root {}` block nested in the media query — first
+draft wrote it as a bare custom-property declaration directly inside `@media {}`, which is invalid CSS;
+caught on re-read before testing) sizes every `.cad-nav-btn` + `#btnDownload`, smaller than the 44px H4
+touch target but still a comfortable tap size, chosen only to keep row 2 clear of 358px (390 minus the
+navbar's own padding) — the row-1/row-2 split is what actually gets to "no scroll," not the smaller buttons
+alone (back+title+7×44px still can't fit one 390px row even at 36px would have been tight without the
+split). `.cad-nav-titlebox`/`.cad-nav-title` get `overflow:hidden`/`ellipsis` so an unexpectedly-wide
+injected back button (fred-host.js) can't force row 1 wider than the viewport.
+
+**Item 2 — Carve Depth (and every stepper) keeps its number visible.** `.cad-stepper`/`.cad-nested-input`
+get `min-width:128px !important` (a floor, not `width:auto` — first draft added `width:auto !important`
+alongside it, then caught before testing that this would break every `.cad-nested-input` using
+`width:100%` elsewhere by forcing shrink-to-content; `min-width` alone correctly overrides only a SMALLER
+conflicting width per the CSS spec, leaving a larger existing width untouched). `.cad-stepper input` gets
+its own `min-width:40px !important` so the number field specifically can't be squeezed to nothing next to
+a slider — the exact H4 regression.
+
+**New `tools/repro/main_header_shots.mjs`** — checks `scrollWidth<=390`, the navbar box and every header
+button on-screen at ≤40px, AND (the general form the checklist asked for, so this can't regress again for
+ANY row) every `.cad-stepper`'s input+buttons ≥20px wide across the WHOLE sidebar, not just Carve Depth.
+First run reported ~40 false-positive failures — root cause was most steppers sitting inside
+`.panel-header.collapsed` accordion panels not yet expanded (0×0 via `getBoundingClientRect`, same as any
+undisplayed descendant, not a real defect) — fixed by clicking every collapsed panel header first. Confirmed
+the reported bug for real via `git stash -u` (pathspec'd to keep the new repro script) — pre-fix, Carve
+Depth's input measured 0px wide with no +/- visible; post-fix (`git stash pop`), ALL CHECKS PASSED. Original
+checklist's `npx vitest run` -> full suite green, unchanged (pure HTML/CSS, no JS logic touched).
+
+**Mid-task amendments (three, arrived while the above was already done/tested/screenshotted but not yet
+committed — incorporated before committing, per protocol):**
+
+**(a) Remove the header title + version badge; relocate to Settings.** Fred: "I think the title could go
+away, if we had a splash screen for loading." Removed `.cad-nav-title` ("B-SPLINE GENERATOR") and
+`#build-badge` (`v1.1.0`) from `.cad-nav-titlebox`, keeping `#dirty-dot`/`#fmCurrentFileLabel` in the
+header — these are functional file-state indicators, not "the title," per Fred's own stated reasoning
+(confirmed both are null-safe in their `main.js`/`cloud-project-manager.js` consumers before moving
+anything, so nothing could break). `#build-badge` (same id, same `main.js` `build_info` wiring, untouched)
+now lives in a new "Version" section in the Settings panel body, alongside Undo Limit / Thicken Analysis /
+Keyboard Shortcuts. Swept the orphan: the mobile media query's own `.cad-nav-title` override rule (ellipsis/
+overflow, page-local, not `base.css`'s shared class other pages still use) had nothing left to style once
+the element was gone — deleted it rather than leave a dead selector.
+
+**(b) Splash screen.** New `#app-splash` overlay (`bspline_gen_palette.html`, near the top of `<body>`):
+logo image, app name, version, a CSS spinner. Hides via `hideSplashScreen()` (new function, `main/main.js`)
+called from the SAME `initApp(preview, () => {...})` callback both `onFusionDetected` and `onWebDetected`
+already pass to `app-init.js`'s `initApp` — that callback fires at the very end of `initApp`'s own body,
+after session load, migrations, mesh rebuild, and snapshot seeding, so hiding the splash needs no fixed
+timer and can't show before the app is actually ready. `hideSplashScreen()` adds a `.app-splash-hidden`
+class (opacity fade via CSS transition) then **removes** the element from the DOM on `transitionend` — not
+just hides it — so it structurally cannot reappear later in the same session. Both Fusion-palette and
+standalone-web paths route through the identical hook, so one implementation covers both.
+
+**(c) Logo asset — three iterations, only the last one committed.** Fred supplied art twice more after the
+first drop, each an explicit supersede:
+  1. First drop: three SVGs (a light-tile, dark-tile, and a no-tile "mark"). Copied into a new
+     `bspline-frame-builder/b-spline-gen/html/assets/` (didn't exist before this turn).
+  2. "H9 LOGO FINAL" amendment: same three SVGs re-supplied with an XYZ axis triad added at the front
+     corner — re-copied over the first set.
+  3. "H9 LOGO REPLACED" amendment, arrived before the above was committed: Fred replaced the SVG concept
+     entirely with his own neon-cyan-wireframe-on-`#161616` art, as PNGs at 16/32/64/256/512/1024px. This
+     is the version actually committed — the SVGs were deleted, never committed (confirmed `git status`
+     showed them as untracked, so removing them left no trace to clean up).
+  Declared logo slot actually shipped: `bspline-frame-builder/b-spline-gen/html/assets/logo-<size>.png`
+  (512 for the splash at ~180px, 32+16 for the favicon via two `<link rel="icon">` tags). **Note for
+  whoever wires the Fusion toolbar icon next:** the amendment was explicit that the Fusion-side icon
+  (`resources/16|32|64`) stays untouched — this logo slot is web/palette-favicon + splash only, a
+  deliberately separate decision, not an oversight.
+  The `*.svg`/`*.step`/`*.dxf`/`*.pdf`/`*.docx` blanket `.gitignore` rule briefly needed a negated
+  exception for the SVG drop (source assets vs. the export-artifact patterns that rule actually targets);
+  reverted that exception once the SVGs were dropped in favour of PNGs, since PNG isn't covered by the
+  blanket rule and nothing needed it anymore — kept the `.gitignore` diff at zero.
+
+**Verification for the amendments:** new `tools/repro/h9_splash_shots.mjs` — splash present + not yet
+hidden immediately after navigate (both 1400×900 and 390px), the neon PNG's `naturalWidth` confirms it
+actually loaded (not a broken image), splash gone from the DOM once the app finishes loading, header has no
+`.cad-nav-title` element, `#dirty-dot` still present, `#build-badge` now inside `#settings-panel` and
+visible. Re-ran `main_header_shots.mjs` afterward too — ALL CHECKS PASSED unchanged, confirming the
+title/badge removal didn't regress the original H9 fit-at-390px or stepper-visibility checks. Shots (desktop
++ 390px splash, header without title at both sizes, Settings > Version) in `shots\seatA\`.
+
+No unit test file covers this turn's code (pure HTML/CSS/DOM-wiring, no JS logic a vitest spec would
+exercise) — verification is the live CDP scripts above, per the fast-tier gate for HTML/CSS-only changes.
