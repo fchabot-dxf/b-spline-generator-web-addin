@@ -2,7 +2,14 @@
  * SE16 ✂ CUT tool (F18): chains by derivation, cutAt / join, snapping on the line (the H1 toggles, Q5), the
  * chain-aware drag helpers, and the Fusion side (an explicit Coincident at every cut). CUT-TOOL-DESIGN.md U1-U4, M1.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// the hit tolerances at a given zoom / pointer type (null = the real helper: 0.1 in with no view, in these mocks)
+const TOL = vi.hoisted(() => ({ override: null }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-hit.js', async (orig) => {
+  const m = await orig();
+  return { ...m, getDynamicTolerance: (ed, px, key) => (TOL.override && key in TOL.override ? TOL.override[key] : m.getDynamicTolerance(ed, px, key)) };
+});
 import { latticeChains, splitLine, chainOf, withChain, writeChainRow, updateJointSlide, pushTieJoints, MIN_PIECE_CELLS, JOINT_TOL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
 import { cutAt, join, jointAt, snapOnLine, cutIntent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-cut-tool.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
@@ -322,4 +329,19 @@ describe('F19: a rail dragged across a CUT tie joint pushes the joint along (Fre
       expect(along(segs[3])).toEqual([2, 3]);
     });
   }
+});
+
+describe('F19: on touch, a tap ON a tie one cell from its rail cuts the TIE (the end rule = a click jitter, not the slop)', () => {
+  const TIE = { 'data-lattice': 'tie', 'data-lattice-gen': 'p' };
+  it('touch at phone zoom: slop 22 px ~ 0.4 in (> a cell), click jitter 3 px ~ 0.05 in', () => {
+    const ed = makeEditor({ spacing: 0.25 });
+    const rail = ed.line(0.5, 1, 4, 1, RAIL);
+    const tie = ed.line(2, 1, 2, 3, TIE);
+    TOL.override = { slopPx: 0.4, clickThresholdPx: 0.05 };
+    try {
+      expect(cutIntent(ed, { x: 2, y: 1.25 }).el).toBe(tie);   // on the tie, one cell up: the tie
+      expect(cutIntent(ed, { x: 2, y: 1 }).el).toBe(rail);     // on the contact itself: still the rail (F18)
+      expect(cutIntent(ed, { x: 2.01, y: 1.02 }).el).toBe(rail); // within a click's jitter of it: the rail
+    } finally { TOL.override = null; }
+  });
 });
