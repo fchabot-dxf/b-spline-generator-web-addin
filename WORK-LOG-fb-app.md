@@ -2060,3 +2060,112 @@ Fred's doc was never touched. No deploy: MAIN deployed, and the Python builder i
 - **Amendments polled:** none.
 - **Cleanup:** server stopped; no headless Chrome of mine; no Fusion doc of mine open.
 - **Capacity:** OK. It is a long session, but healthy.
+
+
+## 🔨 turn 42 — F22 (seat C, epoch 1): PANEL LIP — the panel trimmed a small offset OUTWARD from the frame outline
+
+**Commits (fb-app, pushed):**
+- `c67bd67` items 1-2 (app);
+- `5745f42` item 3 code (Python);
+- live fixes, each MEASURED on Ranchy: `d295f02` · `fd31223` · `49076f4` · `141b4f2` (this one left 1 test red) · `d1db0f9`
+  (it went green again here) · `a089adf` · `9cf23db`;
+- `6209f39` item 3 tools;
+- this commit: the log.
+
+**Fusion window (F11 rules):**
+- tagged scratch docs (`claude/scratch` F22 / F22probe), each closed by its tag;
+- Fred's "Untitled" was never touched, and it is the only doc open at the end;
+- every deploy came from a clean worktree of the fb-app commit under test;
+- at the end, clean MAIN (`3eb32f7`) was deployed from an `origin/main` worktree, both worktrees were removed, the
+  handshake links were repointed to the repo, and the add-in was restarted. Verified: MAIN modules are in memory, and
+  the log points at the repo.
+
+### Amendment absorbed: `panel_lip` is a Fusion user parameter
+Fred: "if needed add a param in fusion". The ONE exception to "frames never get new params".
+- **Registered:** `parameter_schema.PANEL_LIP_PARAM`, in a new FRAME group (`FRAME_OWNED_PARAMS`,
+  `is_frame_owned`). The declared setting `EXTRUSION_SETTINGS.panelLip` names its `param`.
+- **The B-spline Send's cleanup** (board + lattice groups) never touches it. MEASURED: a B-spline re-send left it in
+  place.
+- **One writer:** `send_frame.sync_panel_lip_param`, after the previous frame is deleted.
+  - lip > 0: create/update `"<lip> in"` and tag `FrameBuilder.owner`;
+  - lip 0: remove it when nothing references it (kept and logged otherwise).
+- **Live:** editing `panel_lip` in Fusion moves the trim (below).
+
+### Item 1 — the record + the field
+- **Declared once in Python** (frame-defs `extrusion`): `panelLip` default 0, range 0..`boundingboxoffset`.
+- **Record gate:** it keeps the value inside that range (`panelLipRange`); old records = 0. The payload carries it
+  as a plain value.
+- **Frame section "Panel lip (in)":** a formula field (name `lip`); its min/max follow the Trim offset.
+
+### Item 2 — the preview
+- **`panelTrimPrimitives`** = `offsetOutlineInward(outline, -lip)`: the F8 true offset at a negative distance, one
+  shared function.
+- **Fix inside that function:** its joint-candidate filter assumed inward. It is now signed (inside for t > 0,
+  character-for-character the old rule; outside for t < 0). T2 12×6 at lip 0.25 had broken (a 0.04 gap, 6
+  defects).
+- **3D:** `frameLoopsWorld.panel` is the lip loop (=== the outline loop at lip 0). The panel trim + its edge wall use
+  it; the bars keep outline/inner.
+- **Editor:** a subtle band just outside the outline.
+- **Tests** (`panel-lip.test.js`, 23):
+  - lip == offset(outline, −lip) for T1/T2 × 3 boards × 3 lips: outside, never closer than the lip, arcs exactly
+    concentric, straight pieces exactly lip;
+  - lip 0 gives the SAME trimmed mesh as a pre-F22 spec;
+  - lip 0.125 keeps a ring, bars identical, the wall on the lip loop.
+  - Mutations 8/8 killed.
+
+### Item 3 — Fusion (and what the live runs found)
+- **Design:**
+  - `fb_engine/panel_lip.py` (pure) appends ONE Offset block to the frame sketch (outline → `lip_<id>`, `DistanceExpr
+    panel_lip`, `Side outward`). Lip 0 returns the template itself.
+  - `declared_profiles.classify`: the ring between the outline and the lip loop is no feature (the panel keeps it).
+    The trim (surround + lip) still cuts.
+- **MEASURED traps, each fixed at its root:**
+  1. **The miters split the lip ring at the outline corners.** A ring piece touches lip + outline + miter curves.
+     `miter_curve_id` is now the one naming rule (`miters.py` names with it; the lip rule allows the declared
+     miters).
+  2. **`OffsetConstraint` has no `offsetCurves`** (it has `childCurves`). `_try_parametric_offset` therefore ALWAYS
+     returned None: the side check never ran, and every "parametric" offset ALSO fell back to a second,
+     non-parametric `sketch.offset`. That is the inner edge's untagged duplicate loop F14 noted. It now reads
+     `childCurves`.
+  3. **The side check read unsolved curves** (deferred compute: result bbox = source). A quick off/on pulse solved
+     nothing. The check now runs with compute ON, then restores the state, and it logs the spans it saw.
+  4. **`step_step` rebuilt the offset dict from a fixed key list and DROPPED `Side`.** It is now passed, default
+     inward. The test fails without it.
+  5. **For the frame outline, `addOffset2` lands inward and neither `+panel_lip` nor `-(panel_lip)` moves it**
+     (both signs tried on the built sketch; on a plain rectangle the sign does flip it). Probe: `sketch.offset`
+     toward a point outside the loop is deterministic. It creates an OffsetConstraint + dimension, and linked to
+     `panel_lip` it keeps its side when the parameter is edited. So OUTWARD uses that path +
+     `_link_offset_dimension`; its retries that would land inward are skipped. Inward is unchanged.
+- **Regression:** the goldens re-run live after the offset fixes. T1 7×9 and T2 12×6: every bar volume + the trimmed
+  panel volume == the recorded golden, healthy, 6 profiles.
+- **LIVE results** (T1 7×9 seeded, the real app payloads via `capture_send_payload --lip`, replayed into the real
+  handlers):
+
+| case | panel walls → frame outer edge | notes |
+|---|---|---|
+| lip 0.0625 | 0.0625 (lip loop exact, arcs concentric; sharp box corners at lip×√2 = 0.088, the same as the app) | 4 bars, healthy, `panel_lip` created + tagged |
+| `panel_lip` edited to 0.125 **in Fusion** | walls on the new lip loop (300 samples within 0.003; loop pieces 0.1250, arcs concentric) | the trim follows |
+| B-spline re-send → frame re-send (the other order) | 0.0625 min = median = 0.0625 | param updated, one frame |
+| lip 0 | 0.0000 (on the outline) | `panel_lip` removed, no lip curves, 6 profiles = today |
+
+- **Seen, not fixed:** after the in-Fusion edit, some of the panel's TOP perimeter edges (Fusion's approximated
+  wall ∩ NURBS-top curves) read up to 0.05 in off the lip loop. The walls themselves are exact.
+- **Shots:** `0830_F22_fusion_lip0125_edited_{top,iso}`, `0830_F22lip_{3d,frame_tab}` (lip 0.25 = the Trim offset:
+  the band reaches the board edge).
+
+### Gates
+- JS: the 20 affected spec files 279/279; frame-defs fresh.
+- Python fast tier 218 (`test_panel_lip` 9, `test_send_frame` +4 with a fake `userParameters`). Python mutations 8/8
+  killed.
+- My slip, recorded:
+  - `141b4f2` was committed in the same command that ran the tests (1 red: the offset test's fake sketch has no
+    `isComputeDeferred`); fixed in `d1db0f9`.
+  - A `git checkout` during a RED check restored `offsets.py` to HEAD, which also lacked the uncommitted fix. I
+    re-applied it and confirmed (count 0 → 1) before committing.
+
+### Notes
+- **Fred's header note** (mobile: the toolbar icons too big so the row scrolls, the header a bit small): relayed.
+  MAIN already has `3eb32f7` "H9 mobile main header".
+- **Amendments polled:** the panel_lip param one (absorbed above).
+- **Cleanup:** server stopped; no headless Chrome of mine; no Fusion doc of mine open.
+- **Capacity:** OK. This was a long turn; the next turn would do well in a fresh session.
