@@ -10459,3 +10459,95 @@ chest-grid-clavicle-styles.png).
 
 Verify: 2041/2041 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
 clean before the commit. Commit a0240a6. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 9 — Rib Angle slider, -20..+20 degrees around each seed's own angle
+
+Request came from the advisor relaying Fred (first "more angle range", then "not that much", then -30..+30), then Fred
+directly in this session: "30 is too much", "-15 to +15", "-20 to +20 sorry". Final: a `ribAngle` tweak, -20..+20,
+step 1, default 0. The per-seed spread is unchanged: the advisor's relay also asked for +/-30 per seed, but that would
+bring back the steep seeds Fred X'd on the grids (18-39 degrees), so it's left at the approved +/-0.07 bend (about
++/-10 degrees) pending Fred's word.
+
+How it works: the angle is measured sternum -> flank across the real half-width (slope = bend / (aspect / 2)), and the
+tweak turns the ribcage by exactly that many degrees around the seed's own angle. First attempt squeezed the extra
+turn into the fixed ribcage section; measured at +/-30 over 300 seeds it collapsed 95% of seeds to 3 ribs and 72% fell
+short of the angle (median 24 degrees, some 3 degrees). Replaced: the ribcage/abdomen boundary bends with the extra
+turn instead, so rib count, spacing and the exact angle all hold. A down-sweep drops the flank ends; an up-sweep keeps
+the flank ends and drops the centre (where ribs are faded), so the shoulders are never touched.
+
+Tests: 0 is identical to no tweak; every seed turns by exactly the slider amount with its rib count unchanged; at
++/-20 no rib draws in the shoulders and no abdomen part draws above the bent ribcage edge.
+
+Render-tool note: the merge of origin/main brought seat A's H15 (seed controls removed), so `#seed` no longer exists
+and my shot scripts' seed step threw silently (a thrown error returned by value reads as `{}`). Renders were
+pixel-identical across angles, which is how it was caught. Now the scripts call `applyParam('seed', n)` from
+`main/param-manager.js` and exit on any page exception.
+
+Before/after: `C:/Users/danse/.bspline-status/shots/seatB/rib-angle-before-after.png` (seeds 2, 42, 77 at -20/0/+20;
+each angle verified to differ from 0 by pixel diff).
+
+Verify: 2082/2082 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. Commit cc77b5e. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 10 — Rib Angle range -30..+10
+
+Fred, directly: "Actually -30 to +10". Changed only the `ribAngle` tweak bounds (default stays 0 = today's look) and the
+tests' bounds; mechanism unchanged from AMEND 9. Re-rendered seeds 2, 42, 77 at -30/0/+10 (each verified to differ
+from 0 by pixel diff): `C:/Users/danse/.bspline-status/shots/seatB/rib-angle-before-after.png`.
+
+Verify: 2082/2082 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. NO FUSION this whole turn.
+
+## T78 item 9 — each seed picks its own rib angle across the full -30..+10 range
+
+Amendment from the advisor (Fred's ruling: "Yes full range"). The Rib Angle is now absolute (degrees, sternum -> flank
+across the real half-width; + sweeps down). Untouched, each seed draws its own angle uniformly in -30..+10 (VARY row
+`ribAngle`, replacing the old +/-0.07 `ribBend`). The filter only receives `ribAngle` once the slider is moved
+(tweaks-ui writes overrides only; its reset deletes the key), so: untouched = seed's own angle, moved = exactly the
+slider value, reset = back to the seed's own. Known wrinkle: while untouched, the slider row still displays 0 (every
+tweak row shows its schema default until moved).
+
+Mechanism: as much of the bend as the room left after rib spacing allows goes inside the ribcage section; the rest
+bends the ribcage/abdomen boundary (AMEND 9's approach), so rib count, spacing and exact angle hold. Measured over 500
+seeds untouched: 5 reach the board's bottom edge at their steepest, 15 leave under 0.03 of abdomen somewhere.
+
+Tests: seed angles cover -30..+10 (min < -27, max > 7); untouched ribs follow the seed angle exactly; the slider sets
+the angle exactly and keeps the seed's rib count; setting the slider to the seed's own angle reproduces the untouched
+look exactly; no rib relief below the bent ribcage edge (a first version of that test sampled the board edge on seed
+33, where the ribcage reaches the edge; fixed to skip columns with no abdomen).
+
+Grid (slider untouched, 9 seeds picked so their own angles span -29..+8):
+`C:/Users/danse/.bspline-status/shots/seatB/chest-item9-grid.png`. Each render read back the page state (seed,
+noiseType chest, no ribAngle override) before capture.
+
+Verify: 2083/2083 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+before the commit (the item 9 amendment itself). Commit 6c333ba. NO FUSION this whole turn.
+
+## T78 item 8 — Biomechanical (xeno.js): two attempts, both reverted at Fred's call; item left OPEN
+
+Nothing committed for item 8; `xeno.js` is byte-identical to HEAD. Reference: `C:/Users/danse/.bspline-status/shots/fred/biomechanical_reference.jpg`
+(a Giger alien sculpture). "Before" renders: `shots/seatB/xeno-before-*.png`.
+
+Attempt 1 -- stamped parts (vertebra beads, ribbed hose bundles with ring grooves, rib tubes, round domes, sinew
+texture; declared per-seed VARY table like chest.js). Fred: "too sharp" (softened profiles), "more organic" / "shapes
+shouldn't repeat exactly" (added gradual per-part variation), then "doesn't look refined like xeno at all", "looks like
+a craft project", "still way too sharp". Diagnosis: identical stamped units read as craft, and the "sharpness" was lots
+of small tightly-curved features, not steep slopes -- measured p99 slope was no higher than the approved Anatomical
+filter's (0.02-0.03 vs 0.025-0.04).
+
+Attempt 2 -- everything a flowing strand (tapering spine, ribs arching out of it into a swaying conduit bundle,
+segments sized by local thickness and alternating ribbed/smooth stretches, broad calm swells, a few sinews; strands
+soft-joined and evaluated at X and -X so the mirror line is flat by construction; no near-identical neighbouring ribs
+across 2000 seeds). Renders: `shots/seatB/xeno-grid-9-v2.png`, `xeno-before-after.png`. Fred: "Aie aie aie, I think
+revert".
+
+Both versions are kept outside the repo (scratchpad `xeno-strands-backup/`) in case a piece is reusable. Useful
+findings for whoever picks item 8 up:
+- The browser's heuristic cache served a weeks-old xeno.js to headless renders (chest.js changed often enough to
+  dodge it). Render scripts must disable the cache (CDP `Network.setCacheDisabled`) and check the page's actual module
+  code, not just the tweak labels.
+- A centre-line crease can hide from a 1e-5 derivative probe: measure the slope over one mesh cell (~0.004 su). Rib
+  ends meeting at the centre in a V were the cause; blending each strand with its mirror image fixed it.
+- Suggest showing Fred a small mockup patch of the intended look before building, given two full rejections.
+
+Verify after the revert: 2083/2083 vitest. NO FUSION this whole turn.

@@ -64,9 +64,9 @@ describe('chest.js: T78 GUARD (Fred: "this is still a noise filter, right?") -- 
 });
 
 describe('chest.js: item 7 -- tweak keys kept (meaning changed), new skinDetail key added', () => {
-  it('still declares exactly the 3 original keys plus the new skinDetail key', () => {
+  it('declares the 3 original keys plus skinDetail and ribAngle', () => {
     const keys = chest.tweaks.map((t) => t.key).sort();
-    expect(keys).toEqual(['absStrength', 'pectoralStrength', 'ribStrength', 'skinDetail'].sort());
+    expect(keys).toEqual(['absStrength', 'pectoralStrength', 'ribAngle', 'ribStrength', 'skinDetail'].sort());
   });
 
   it('an old saved pattern with only the 3 original keys (no skinDetail) still runs and reads the declared default', () => {
@@ -170,16 +170,17 @@ describe('chest.js: T78 AMEND 8 -- three stacked canvas sections (shoulders, rib
     }
   });
 
-  it('rib bend stays in the range Fred approved: never past 0.07 of the board, both directions used', () => {
-    let up = 0; let down = 0;
+  it('T78 item 9: each seed\'s own rib angle covers the full slider range, -30..+10 degrees (Fred: "Yes full range")', () => {
+    const angles = [];
     for (let seed = 1; seed <= 200; seed++) {
-      const L = chest._layout(new PerlinNoise(seed));
-      expect(Math.abs(L.ribBend)).toBeLessThanOrEqual(0.07);
-      if (L.ribBend > 0.02) up++;
-      if (L.ribBend < -0.02) down++;
+      const a = chest._layout(new PerlinNoise(seed)).ribAngle;
+      expect(a).toBeGreaterThanOrEqual(-30);
+      expect(a).toBeLessThanOrEqual(10);
+      angles.push(a);
     }
-    expect(up).toBeGreaterThan(30);
-    expect(down).toBeGreaterThan(30);
+    expect(Math.min(...angles)).toBeLessThan(-27);
+    expect(Math.max(...angles)).toBeGreaterThan(7);
+    expect(angles.filter((a) => a > 0).length).toBeGreaterThan(20);
   });
 
   it('the clavicle is sometimes the long band, sometimes the hip-bone-style bump, mostly one clear style', () => {
@@ -223,7 +224,7 @@ describe('chest.js: T78 AMEND 8 -- three stacked canvas sections (shoulders, rib
     for (let seed = 1; seed <= 200; seed++) {
       const L = chest._layout(new PerlinNoise(seed));
       clav.push(L.clavicleY(1) - L.clavicleY(0));
-      ribs.push(L.ribBend);
+      ribs.push(L.ribAngle);
       abLines.push(L.abLineTilt);
     }
     for (const angles of [clav, ribs, abLines]) {
@@ -239,6 +240,60 @@ describe('chest.js: T78 AMEND 8 -- three stacked canvas sections (shoulders, rib
         counts.set(slot, (counts.get(slot) ?? 0) + 1);
       }
       expect(Math.max(...counts.values())).toBeLessThanOrEqual(12);
+    }
+  });
+});
+
+describe('chest.js: T78 AMEND 9/10 + item 9 -- Rib Angle, -30..+10 degrees (Fred)', () => {
+  const halfWidth = ASPECT / 2;
+  const degreesOf = (bend) => (Math.atan(bend / halfWidth) * 180) / Math.PI;
+
+  it('the slider is declared -30..+10', () => {
+    const t = chest.tweaks.find((x) => x.key === 'ribAngle');
+    expect([t.min, t.max]).toEqual([-30, 10]);
+  });
+
+  it('untouched, the drawn ribs follow the seed\'s own angle exactly', () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const L = chest._layout(new PerlinNoise(seed), undefined, ASPECT);
+      expect(degreesOf(L.ribBend + L.ribTurn)).toBeCloseTo(L.ribAngle, 6);
+    }
+  });
+
+  it('once moved, the slider sets the angle exactly whatever the seed, keeping the seed\'s rib count', () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const own = chest._layout(new PerlinNoise(seed), undefined, ASPECT);
+      for (const deg of [-30, -12, 0, 5, 10]) {
+        const L = chest._layout(new PerlinNoise(seed), deg, ASPECT);
+        expect(L.ribCount).toBe(own.ribCount);
+        expect(degreesOf(L.ribBend + L.ribTurn)).toBeCloseTo(deg, 6);
+      }
+    }
+  });
+
+  it('setting the slider to the seed\'s own angle reproduces the untouched look exactly', () => {
+    for (const seed of [1, 6, 42]) {
+      const own = chest._layout(new PerlinNoise(seed), undefined, ASPECT).ribAngle;
+      expect(sampleFlat(seed, 24, { ribAngle: own })).toEqual(sampleFlat(seed, 24));
+    }
+  });
+
+  it('at -30 and +10 the sections still never overlap: no rib in the shoulders, no abdomen above the bent ribcage edge', () => {
+    for (const deg of [-30, 10]) {
+      for (let seed = 1; seed <= 30; seed++) {
+        const L = chest._layout(new PerlinNoise(seed), deg, ASPECT);
+        const at = (su, dy, tweaks) => chest.fn(su, svAt(dy), ASPECT, { ...PARAMS, tweaks: { ribAngle: deg, ...tweaks } }, refs(seed));
+        for (const su of [0.1, 0.5, 0.9]) {
+          const shape = Math.pow(Math.pow(su, L.build), L.ribCurve);
+          const ribcageBottom = L.top3 + L.turnShift(shape);
+          for (let j = 0; j <= 10; j++) {
+            const shoulderDy = (j / 10) * (L.top2 - 0.03);
+            expect(at(su, shoulderDy, { ribStrength: 0.3 }) - at(su, shoulderDy, { ribStrength: 0 })).toBe(0);
+            const aboveDy = (j / 10) * Math.min(1, ribcageBottom - 0.03);
+            expect(at(su, aboveDy, { absStrength: 0.3 }) - at(su, aboveDy, { absStrength: 0 })).toBe(0);
+          }
+        }
+      }
     }
   });
 });
@@ -287,12 +342,14 @@ describe('chest.js: sternum ridge, sunken abdomen, iliac crest', () => {
     expect(deep).toBeLessThan(shallow);
   });
 
-  it('no hip bones (Fred): ribStrength has no effect anywhere in the abdomen section', () => {
+  it('no hip bones (Fred): ribStrength has no effect anywhere in the abdomen section (below the bent ribcage edge)', () => {
     for (let seed = 1; seed <= 50; seed++) {
       const L = chest._layout(new PerlinNoise(seed));
-      for (let j = 0; j <= 20; j++) {
-        const dy = L.top3 + 0.03 + (j / 20) * (L.h3 - 0.03);
-        for (const su of [0.3, 0.6, 0.9]) {
+      for (const su of [0.3, 0.6, 0.9]) {
+        const ribcageBottom = L.top3 + L.turnShift(Math.pow(Math.pow(su, L.build), L.ribCurve));
+        for (let j = 0; j <= 20; j++) {
+          if (ribcageBottom + 0.03 > 1) continue; // the ribcage reaches the board edge here: no abdomen in this column
+          const dy = ribcageBottom + 0.03 + (j / 20) * (1 - ribcageBottom - 0.03);
           const low = chest.fn(su, svAt(dy), ASPECT, { ...PARAMS, tweaks: { ribStrength: 0.0 } }, refs(seed));
           const high = chest.fn(su, svAt(dy), ASPECT, { ...PARAMS, tweaks: { ribStrength: 0.3 } }, refs(seed));
           expect(high - low).toBe(0);
