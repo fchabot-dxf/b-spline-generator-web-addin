@@ -4,7 +4,7 @@
 //   node tools/repro/frame_3d_shots.mjs <outPrefix> <paletteUrl> <template_1|template_2> [desktop|mobile] [port] [live]
 // Serve from the bspline-frame-builder folder so the CSS loads.
 // Writes <outPrefix>_3d.png (+ _live-wood.png, _live-thickness.png with "live";
-// + _closeup.png and refreshFrame timings with a 7th arg "closeup").
+// + _closeup.png and refreshFrame timings with a 7th arg "closeup"; F17: 7th arg "below" = _below.png + _iso-edge.png).
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -64,7 +64,15 @@ if (LIVE) {
   out.afterThickness = JSON.parse(await evalJS(STATE));
   await shot('live-thickness');
 }
-if (CLOSEUP) {
+if (CLOSEUP === 'below') {
+  // F17 item 4 (Fred's phone shot): the frame seen from BELOW, where the bars' hard edges show, then an iso close-up
+  const view = (euler, r, target) => evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
+    const { AppState } = await import('./main/app-state.js'); const p = AppState.preview, o = p._orbit, T = p._THREE;
+    o._targetOrb.q.setFromEuler(new T.Euler(${euler.join(',')}, 'ZXY')); o._targetOrb.r = ${r}; o._targetOrb.target.set(${target.join(',')});
+    p._needsRender = true; await W(2500); })()`);
+  await view([2.25, 0, 0.6], 12, [0, 0, -0.5]); await shot('below');
+  await view([1.05, 0, 0.7], 6, [2.2, 2.4, -0.4]); await shot('iso-edge');
+} else if (CLOSEUP) {
   // A low camera at the right-hand waist, where a bar meets the sculpted underside.
   await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
     const { AppState } = await import('./main/app-state.js'); const p = AppState.preview, o = p._orbit, T = p._THREE;
