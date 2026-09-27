@@ -71,3 +71,46 @@ migration once old saves no longer matter, which I would NOT do: the migration i
   `contour_width`/`contour_height` stay on the contour).
 - Builder: `isConstruction` becomes GENERIC. The Line-only branch moves to one post-create step in
   `_create_geometry`, for any entity type.
+
+### L1 items 2-4: built as designed above (`6825c8c`, `0018d0f`, `3ed999f`, merge `1d4b90b`)
+
+- **item 2** (`6825c8c`): `GUIDE_ROLE` + `latticeBoundaryGuide(pattern, region)` in `editor-lattice-boundary.js`;
+  new `editor/editor-guides.js` (`editorGuides` = which patterns get a box, `refreshGuides` = draw,
+  `installGuides` = the `editorLayersChanged` listener); 3 lines in `editor.js` (commit hook, `setModelMetrics`,
+  install). **No 3D, export or `core/preview` code touched** (amendment 1 satisfied by construction).
+  "Generated" = the pattern's layers hold lattice-owned pieces. A layer with a default pattern that nobody
+  generated (every active layer gets one lazily) shows no box.
+- **item 3** (`0018d0f`): `manifestFromGuide` emits `bnd0..3` (closed: 4 corner Coincidents + 2 H + 2 V; no dims,
+  no Fix) with `isConstruction` from the role, always (both tools, contour on or off). `_kindOfEntityId`: `bnd` ->
+  rails. Builder: the flag is applied once in `_create_geometry` for any entity type; the T70 test now goes
+  through `_create_geometry` (the contract moved there, rather than keeping a duplicate Line-only branch).
+  Two JS tests had their own copy of the id-prefix rule and were updated (split test helper, export-flow
+  "rails layer holds only rails").
+- **item 4** (`3ed999f`): `tools/repro/boundary_guide_shots.mjs` (serve on **8781**, CDP **9343/9344**, so it
+  can't collide with worker 1). Both tools, desktop + mobile, ALL CHECKS PASSED, before AND after the merge.
+  "Export unchanged" is proven the strict way: `save()` (persist + drape input), `saveForRasterization()` (stamp
+  input) and `saveWithTextCopies()` (download) are byte-identical with and without `#guide-layer` in the page.
+  Shots in `C:\Users\danse\.bspline-status\shots\lane2\` (`{box,shape}-{desktop,mobile}-{1-editor-guide,
+  2-editor-size-edit,3-3d-preview}.png`); I looked at them: dashed box in the editor, none in 3D.
+- **Found on the way (existing behaviour, not changed):** picking a Shape Lattice preset already generates the
+  whole lattice (rails/ties/nodes/contour) before Generate is pressed, so the box appears at preset pick.
+- Mutation-checked: removing the visibility filter, the "generated" filter, or the builder's generic
+  `isConstruction` line each fails its tests.
+
+**Gate** (merged tree): vitest 85/86 files, 1581/1582. The ONE failure is `tests/frame-3d-sweep.test.js`
+timing out at vitest's default 5 s. It passes (8/8) with `--testTimeout=120000` (~7 s), imports only frame modules
+(`frame-mesh.js`, `frame-record.js`, `editor-frame-profile.js`), none of which I touched. It's seat C's F8 sweep,
+new from the merge, slower than the default on the Asus. Frame files are hands-off, so it's flagged, not fixed
+(a per-test timeout in that file would fix it). pytest 287/287 (was 284 +3 new). Browser check green, both surfaces.
+
+**Flags for the advisor:**
+1. **L2 has almost nothing left:** the "Draw boundary" toggle was already retired by T74 AMEND 1 (see item 1). The
+   one remaining trace is the old-save migration, which should stay.
+2. **Field name:** `isConstruction`, not `construction` (reasons above).
+3. **The box goes in the rails sketch.** Hiding the Rails layer drops it from Fusion with the rails. In the editor
+   the box stays while ANY of the pattern's layers is visible.
+4. **The guide is faint** (0.01 in stroke, same as the board border) against the textured background. It's one
+   constant (`GUIDE_STROKE` in `editor-guides.js`) if Fred wants it bolder.
+5. **Not dimensioned in Fusion:** the box is a free rectangle (closed, H/V). Tying it to `contour_width`/
+   `contour_height` would be a follow-up.
+6. **Processes:** the 8781 app server was started for item 4 and is stopped before this pass.
