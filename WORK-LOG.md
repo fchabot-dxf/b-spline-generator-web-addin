@@ -11484,3 +11484,95 @@ title/badge removal didn't regress the original H9 fit-at-390px or stepper-visib
 
 No unit test file covers this turn's code (pure HTML/CSS/DOM-wiring, no JS logic a vitest spec would
 exercise) — verification is the live CDP scripts above, per the fast-tier gate for HTML/CSS-only changes.
+
+---
+
+Dispatch: epoch 3 — H10: one header row (back + unsaved dot + buttons on the same row, no empty first row,
+no scroll at 390px). H9 accepted (f36c343). Fred spotted it in H9's own acceptance shot
+(h9_amend_header-no-title-390.png): once the title moved to Settings, row 1 had almost nothing left in it
+(just back + dot) while the 7 action buttons still wrapped to their own row 2 — wasted height.
+
+**Item 1 — one row.** H9's fix wrapped the action-button group onto a full-width row 2 whenever it
+couldn't share row 1 with back+title+dot. With the title gone, row 1 has room again, so the fix is just to
+stop forcing that wrap: removed `.cad-navbar-actions`'s `flex:0 0 100%; margin-top:6px` and
+`.cad-navbar`'s `flex-wrap:wrap`, tightened `.cad-nav-group`'s gap 8px->6px and `.cad-navbar-actions`'s
+inline 8px gap to 6px (`!important`, since it's an inline style). Caught before testing, via a dedicated
+row-check script rather than trusting the existing width-only checks: my first edit dropped
+`.cad-navbar`'s `height:auto` override entirely while rewriting the block's comment, so the navbar stayed
+clamped to the DESKTOP fixed 36px height while its own 36px-tall buttons + 16px vertical padding needed
+~52px — buttons would have visually overflowed the bar. `main_header_shots.mjs`'s existing checks
+(width/offscreen/size) never measure row count or navbar height, so this would have shipped silently;
+added an explicit `oneRow` check (comparing `.cad-nav-group`'s and `.cad-navbar-actions`'s vertical
+centers) to the same script, mutation-tested against the H9 two-row CSS (fails: navHeight=101,
+oneRow=false; restored: navHeight=53, oneRow=true) so this specific regression can't recur silently again.
+
+**Amendments (four, arrived after item 1 shipped but before commit — incorporated per protocol; the
+iPad screenshot they were all drawn from surfaced two more layout bugs the 390px-only H9/H10 testing never
+exercised):**
+
+**(a) The same empty-row bug hits iPad too, at every width.** Turned out already fixed by item 1's own
+CSS, since it's gated on `pointer:coarse` (matches real iPads regardless of viewport width), not a width
+breakpoint — confirmed rather than assumed, via a new multi-width diagnostic across 390/768/834/1024/1366,
+all touch-emulated. Folded into a permanent `tools/repro/h10_multiwidth_shots.mjs`.
+
+**(b) Stock Dimensions' Width/Height steppers clip on iPad.** The SAME diagnostic surfaced a second, real,
+independent bug: iPad (768-1366px) stays on the DESKTOP fixed 260px sidebar (only `max-width:700` switches
+to a full-width stacked sidebar) while still matching the coarse-pointer block's stepper rules. Width+Height
+share one flex row as two `flex:1` columns with no explicit floor, while each `.cad-stepper` inside them
+carries a `min-width:128px !important` (2×44px buttons + a 40px input floor, from H9). 128+128+8(gap)=264px
+doesn't fit a 260px sidebar's ~232px usable width, so the second column (Height) overflowed the sidebar's
+right edge, clipping its value box and "+". Root cause was the column DIV having no floor of its own while
+its child refused to shrink below 128px — classic parent-can-shrink-child-can't. Fix: new
+`.cad-paired-steppers` class on the wrapper (bspline_gen_palette.html), `flex-wrap:wrap` on it plus giving
+each column the SAME floor as its own stepper (so the column can't shrink smaller than its child and force
+the clip internally) — the row now self-adapts: side-by-side wherever there's room, stacks to one column
+per row the instant there's not, rather than a hardcoded breakpoint. Verified only this ONE pair
+(Width/Height) exists in the whole page before scoping the fix narrowly — grepped every other paired
+flex/grid layout in the sidebar and confirmed they're all button groups, not numeric steppers.
+
+**(c) then (d) — two rounds correcting the stepper touch size, live.** Fred first asked to shrink the
+declared 44px touch size to ~36px overall; before that landed, a follow-up corrected it: keep the 44px
+touch HEIGHT, only narrow the -/+ buttons' WIDTH (~32px). Added a SEPARATE token,
+`--cad-stepper-btn-width: 32px`, distinct from `--cad-stepper-touch` (which every height rule still keys
+off unchanged) — `.cad-stepper button`'s width/flex-basis now reads the new token, its height rule is
+untouched. Recomputed the dependent floors: `.cad-stepper`/`.cad-nested-input`'s min-width 128px -> 112px
+(2×32+40=104, +8px safety margin against border/padding rounding, confirmed live rather than trusted to
+arithmetic alone) and `.cad-paired-steppers > div`'s matching floor 128px -> 112px. Net effect: Width/Height
+now fit SIDE BY SIDE even on iPad's 260px sidebar (141px input each, no clipping) — the wrap fix from (b)
+stays in place as a self-adapting safety net regardless, but no longer needs to actually trigger there.
+
+**(e) "width X and height Y aren't on the same line" — a real, independent third bug from the same
+screenshot.** Not a text-wrap issue: `base.css`'s GLOBAL `label { display:flex; flex-direction:column }`
+(the "label above its input" default nearly every other label in this panel wants) was rendering "Width"
+and "(X)" as two separate flex items stacked vertically, regardless of container width — confirmed by
+direct DOM/computed-style inspection (`label.cad-label`'s own computed `flexDirection` was `column`), not
+guessed. Exact same root cause SE7p already hit and fixed the same way elsewhere in this file (its own
+comment names it) — added `style="flex-direction:row; align-items:baseline; gap:4px;"` inline on the
+three affected labels (Width, Height, Carve Depth) rather than touching the global rule, which every OTHER
+label in the file (Offset X/Y, Peak Shape, etc.) actually wants for its own two-line "label / muted
+sub-label" shape.
+
+**(f) Hide the main Seed number field.** Fred, from the same iPad shot: "seed field isn't used there
+either, just keep the regenerate" — the field is also clipped there (no "+"), same as (b), but the fix is
+to hide it, not resize it, matching the EXISTING pattern already used for the lattice and shape seed
+fields elsewhere in this file. Wrapped `#seed`'s label + `.cad-nested-input` in a plain `display:none` div
+(no `data-no-collapse` — that attribute only matters to `editor-drawer.js`'s own SVG-editor-drawer sweep, a
+different UI surface this main sidebar panel doesn't use). Confirmed the id/wiring survive untouched:
+`header-controls.js`'s "Generate New Seed" handler still calls `applyParam('seed', ...)` on click, so
+re-rolling keeps working with the field hidden.
+
+**Verification.** Extended `tools/repro/h10_multiwidth_shots.mjs` to check, at all 5 widths: one row, no
+scroll, Width/Height not clipped, both labels stay on one line, `#seed` hidden but still in the DOM. The
+label check went through one self-caught false-positive: a first version used
+`label.getClientRects().length === 1` to detect wrapping, which is right for normal inline text but WRONG
+for a `display:flex` label — a flex container is always one block-level box, so `getClientRects()` returns
+exactly 1 rect whether its children sit side by side or stacked in a column. Ran it against the genuinely-
+broken pre-fix tree as a sanity check (the same mutation-test discipline applied to every other check) and
+it passed anyway — a vacuous check caught by its own required mutation test, not shipped. Replaced it with
+a check that compares the leading text node's own line position (via `Range.getClientRects()`) against the
+trailing span's; re-mutation-tested against the same pre-fix tree and it now correctly fails (`sameLine:
+false` at every width) with the corrected check, and passes clean on the fixed tree. Every check in the
+script — oneRow, stepper-clip, label-line, seed-hidden — mutation-tested this same way: 29 failures against
+the pre-H10 baseline tree (`git stash` of the HTML/CSS, scripts kept), all passing again after `stash pop`,
+confirmed byte-identical to the pre-stash files. `npx vitest run` -> **1973 passed**, unchanged (pure
+HTML/CSS, no JS logic touched). Shots at all 5 widths in `shots\seatA\`.

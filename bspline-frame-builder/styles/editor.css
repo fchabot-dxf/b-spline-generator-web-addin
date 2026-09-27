@@ -1214,6 +1214,14 @@
 @media (max-width: 720px), (pointer: coarse) {
     :root {
         --cad-stepper-touch: 44px;
+        /* H10 (Fred: "change just the WIDTH of the stepper" -- an earlier
+           same-turn amendment tried shrinking --cad-stepper-touch itself to
+           36px, which would have shrunk the HEIGHT too; Fred's correction
+           keeps the 44px touch HEIGHT and only narrows the -/+ buttons'
+           WIDTH, so it needs its own token, separate from
+           --cad-stepper-touch (which every button/input height rule below
+           still keys off unchanged). */
+        --cad-stepper-btn-width: 32px;
     }
 
     /* .cad-stepper's own base height (24px) is what its button/input
@@ -1250,21 +1258,27 @@
        Applied to .cad-nested-input too (base.css's own `width:80px`) --
        some rows (#seed, #thickenYellowOffset) nest a JS-injected
        .cad-stepper inside ONE of these instead of using .cad-stepper
-       directly, with the exact same desktop-width-cap defect. */
+       directly, with the exact same desktop-width-cap defect.
+       H10: 128px was 2×44px buttons + a 40px input floor; now that the
+       buttons are --cad-stepper-btn-width (32px) wide, the real floor is
+       2×32+40=104px -- kept a little above that (112px) as a safety
+       margin against border/padding rounding, verified live rather than
+       trusted to arithmetic alone. */
     .cad-stepper,
     .cad-nested-input {
         height: var(--cad-stepper-touch) !important;
-        min-width: 128px !important;
+        min-width: 112px !important;
     }
-    /* flex: 0 0 <touch>, not a bare width -- a formula-switched input's own
-       flex-grow drops to its 0 1 auto default (its own base rule only
+    /* flex: 0 0 <btn-width>, not a bare width -- a formula-switched input's
+       own flex-grow drops to its 0 1 auto default (its own base rule only
        targets [type="number"]), so without an explicit flex-shrink:0 here
        the button and that input compete for the wrapper's space and BOTH
-       shrink below the declared touch size (measured live: 30.5px, not
-       44px, until this was added). */
+       shrink below the declared size (measured live: 30.5px, not 44px,
+       until this was added). Height still keys off --cad-stepper-touch
+       (unchanged, H10) -- only the width token changed. */
     .cad-stepper button {
-        flex: 0 0 var(--cad-stepper-touch) !important;
-        width: var(--cad-stepper-touch) !important;
+        flex: 0 0 var(--cad-stepper-btn-width) !important;
+        width: var(--cad-stepper-btn-width) !important;
         height: var(--cad-stepper-touch) !important;
         font-size: 18px !important;
     }
@@ -1273,6 +1287,29 @@
         height: var(--cad-stepper-touch) !important;
         font-size: 14px !important;
         min-width: 40px !important; /* the other half of the H9 fix -- never collapse even if some OTHER ancestor still squeezes the wrapper */
+    }
+
+    /* H10 (Fred, iPad screenshot): Stock Dimensions' Width+Height share one
+       flex row as two flex:1 columns (bspline_gen_palette.html). Fine on
+       phone, where the sidebar itself goes full-width below max-width:700 --
+       but iPad (768-1366px) stays on the DESKTOP fixed 260px sidebar (only
+       that stacking breakpoint changes it) while STILL matching this
+       coarse-pointer block's .cad-stepper floor: two columns need more than
+       a 260px sidebar's ~232px after its own padding, so Height (the second
+       column) overflowed the sidebar's right edge, clipping its value box
+       and "+". Wrapping here, with each column given the SAME floor as the
+       stepper it contains (so the column can't shrink smaller than its own
+       child and force the clip internally, kept in sync with .cad-stepper's
+       own min-width above, H10's button-width follow-up), makes the row
+       self-adapt: stays side-by-side wherever there's room (phone), stacks
+       to one column per row the instant there's not (iPad's narrow fixed
+       sidebar) -- not a hardcoded breakpoint tied to one specific width. */
+    .cad-paired-steppers {
+        flex-wrap: wrap;
+    }
+    .cad-paired-steppers > div {
+        flex: 1 1 112px;
+        min-width: 112px;
     }
 
     /* The main toolbar's own Stroke/Font/Expand-Detail steppers: a

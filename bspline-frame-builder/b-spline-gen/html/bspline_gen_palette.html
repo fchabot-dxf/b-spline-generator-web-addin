@@ -225,27 +225,24 @@
     .cad-nav-version.build-stale   { color: #ffb300; }
     .cad-nav-version.build-unknown { color: var(--cad-text-muted); }
 
-    /* Mobile: bump nav buttons to a touch target, and let the header wrap
-       onto a second row instead of demanding one 390px-wide line hold the
-       back button + title + all 7 action buttons (H9, Fred's phone shot:
-       "these icons are too big, I'd prefer not to scroll... the header may
-       be a bit too small"). Was a flat 44px (Apple HIG / WCAG 2.5.5, see
-       BUG-13) with no wrap — even after tightening every gap to its floor,
-       back+title+7×44px buttons cannot fit one 390px row at all, so the
-       row-1 fix alone (below) still couldn't reach "no scroll" on its own;
-       wrapping the action-button group onto its own full-width row is what
-       actually guarantees it regardless of the back button's own
-       (uncontrolled, injected by fred-host.js) width — 36px is the
-       DECLARED mobile nav-button size, still a comfortable tap target,
-       chosen only to keep row 2 comfortably clear of 358px (390 minus the
-       navbar's own 16px×2 padding), not because it alone would have fixed
-       the overflow. */
+    /* Mobile: bump nav buttons to a touch target and keep the WHOLE header
+       (back + unsaved dot + all 7 action buttons) on ONE row at 390px.
+       H9 first shipped a two-row layout (action buttons wrapped onto their
+       own full-width row) to reach "no scroll" — that worked, but left the
+       back button + dot alone on an otherwise-empty row 1, wasting height
+       (H10, spotted in H9's own acceptance shot). Now that H9 also removed
+       the title text from row 1 (moved to Settings), row 1 has almost
+       nothing in it, so one tightened-gap row fits everything: 7×36px
+       buttons + 6 gaps + the back button + dot all inside 358px (390 minus
+       the navbar's own 16px×2 padding), no wrap needed. 36px stays the
+       DECLARED mobile nav-button floor (still a comfortable tap target,
+       H9's own reasoning) — this turn's only lever is gaps, not button
+       size. */
     @media (max-width: 600px), (pointer: coarse) {
       :root {
         --cad-navbar-touch: 36px;
       }
       .cad-navbar {
-        flex-wrap: wrap;
         height: auto;
         padding: 8px 16px;
       }
@@ -254,20 +251,19 @@
          than the viewport in the (unlikely, since the injected back
          button is normally icon-sized) case it's wider than expected. */
       .cad-navbar .cad-nav-group {
-        gap: 8px;
+        gap: 6px;
         min-width: 0;
+        flex-shrink: 0;
       }
       .cad-nav-titlebox {
         min-width: 0;
         overflow: hidden;
       }
-      /* The action-button group becomes row 2, full width, right-aligned —
-         same "wrap the header" idiom H4 already used for the SVG editor's
-         own header (#svgEditorHeader / .editor-header-actions). */
+      /* H10: stays on row 1 with .cad-nav-group now — tighten its own
+         8px gap (inline style on the element, so !important is needed to
+         beat it) to help everything fit one row. */
       .cad-navbar-actions {
-        flex: 0 0 100%;
-        justify-content: flex-end;
-        margin-top: 6px;
+        gap: 6px !important;
       }
       .cad-navbar .cad-nav-btn {
         width: var(--cad-navbar-touch) !important;
@@ -465,9 +461,16 @@
       <div class="panel panel-stock">
         <div class="panel-header" onclick="togglePanel(this)">📐 STOCK DIMENSIONS</div>
         <div class="panel-body">
-          <div style="display:flex; gap:8px; margin-bottom:12px;">
+          <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
             <div style="flex:1;">
-              <label class="cad-label">Width <span style="color:#ff3b30;font-weight:600;">(X)</span></label>
+              <!-- H10 (Fred, iPad: "width X and height Y aren't on the same
+                   line"): base.css's global `label { flex-direction: column }`
+                   (the "label ABOVE its input" default most labels in this
+                   panel want) was stacking "Width" and "(X)" as two flex
+                   items instead of flowing them as one line of text -- same
+                   root cause SE7p already hit and fixed the same way
+                   elsewhere in this file (see its own comment, below). -->
+              <label class="cad-label" style="flex-direction:row; align-items:baseline; gap:4px;">Width <span style="color:#ff3b30;font-weight:600;">(X)</span></label>
               <div class="cad-stepper">
                 <!-- min/max match the Ultimate Bee 96"×96" envelope.
                      step="any" so the browser doesn't reject "7.5";
@@ -476,14 +479,14 @@
               </div>
             </div>
             <div style="flex:1;">
-              <label class="cad-label">Height <span style="color:#34c759;font-weight:600;">(Y)</span></label>
+              <label class="cad-label" style="flex-direction:row; align-items:baseline; gap:4px;">Height <span style="color:#34c759;font-weight:600;">(Y)</span></label>
               <div class="cad-stepper">
                 <input type="number" id="heightIn" value="9" step="any" min="0.1" max="96">
               </div>
             </div>
           </div>
 
-          <label class="cad-label">Carve Depth <span style="color:#0a84ff;font-weight:600;">(Z)</span></label>
+          <label class="cad-label" style="flex-direction:row; align-items:baseline; gap:4px;">Carve Depth <span style="color:#0a84ff;font-weight:600;">(Z)</span></label>
           <div class="cad-slider-row">
             <input type="range" id="carveZSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.5">
             <div class="cad-stepper" style="width:75px;">
@@ -555,9 +558,19 @@
             </select>
           </div>
 
-          <label class="cad-label">Seed</label>
-          <div class="cad-nested-input" style="margin-bottom:12px;">
-            <input type="number" id="seed" value="42">
+          <!-- H10 (Fred, iPad: "seed field isn't used there either, just
+               keep the regenerate"): HIDDEN, not deleted -- same reasoning
+               already applied to the lattice/shape seed fields elsewhere
+               in this file. header-controls.js's "Generate New Seed"
+               handler still calls applyParam('seed', ...) on click, so
+               re-rolling keeps working; the id/wiring are untouched so
+               nothing that reads #seed (skeleton-editor.js's own
+               skelSeed<->seed sync, param-manager.js) breaks. -->
+          <div style="display:none;">
+            <label class="cad-label">Seed</label>
+            <div class="cad-nested-input" style="margin-bottom:12px;">
+              <input type="number" id="seed" value="42">
+            </div>
           </div>
 
           <label class="cad-label">Region Scale</label>

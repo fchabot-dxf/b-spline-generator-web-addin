@@ -48,12 +48,17 @@ const headerInfo = JSON.parse(await evalJS(`(()=>{
   const btns = [...nav.querySelectorAll('.cad-nav-btn, #btnDownload')];
   const offscreen = btns.filter(b => { const r = b.getBoundingClientRect(); return r.right > 390.5 || r.left < -0.5; }).map(b => b.id);
   const sizes = btns.map(b => { const r = b.getBoundingClientRect(); return Math.round(r.width); });
-  return JSON.stringify({ navRight: rect.right, offscreen, sizes });
+  const group = nav.querySelector('.cad-nav-group');
+  const actions = nav.querySelector('.cad-navbar-actions');
+  const gr = group.getBoundingClientRect(), ar = actions.getBoundingClientRect();
+  const oneRow = Math.abs((gr.top + gr.height / 2) - (ar.top + ar.height / 2)) < 5;
+  return JSON.stringify({ navRight: rect.right, navHeight: rect.height, offscreen, sizes, oneRow });
 })()`));
 console.log('header info:', JSON.stringify(headerInfo));
 check(headerInfo.navRight <= 390.5, `H9: the navbar's own box stays within 390px (right=${headerInfo.navRight})`);
 check(headerInfo.offscreen.length === 0, `H9: every header button is fully on-screen (offscreen: ${JSON.stringify(headerInfo.offscreen)})`);
 check(headerInfo.sizes.every((s) => s <= 40), `H9: header buttons are the smaller declared mobile size, not 44px (sizes: ${JSON.stringify(headerInfo.sizes)})`);
+check(headerInfo.oneRow, `H10: back+dot and the action buttons share ONE row, no leftover empty row (navHeight=${headerInfo.navHeight})`);
 await shot('header');
 
 // 2) Every stepper row (bare AND slider+stepper combo) keeps its buttons
