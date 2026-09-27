@@ -1080,8 +1080,11 @@ time, e.g. 450 ms, with a small visual cue) on a piece ADDS it to the selection;
 REMOVES it; a normal tap still selects just that piece; Shift+click = the same on desktop. Both the main Select and the
 lattice Select. (2) The Selected piece panel reads the WHOLE selection: "N pieces (2 rails, 1 tie)", Colour shows
 "mixed" when they differ, one pick recolours all (contour segments included, via segmentColors), Reset resets all;
-the general width/size controls (H3) stay general. FIRST check what touch-and-hold does today (drag start? context
-menu? MOB5 double-tap handle?) and state it; no gesture may lose its current meaning silently. Tests: hold adds/removes,
+the general width/size controls (H3) stay general. CHECKED by the advisor: no long-press handler exists in the editor today (only the 3D preview blocks contextmenu).
+The one overlap is Select-DRAG, separated by MOVEMENT: finger moves past the click threshold before the hold time -> drag
+(unchanged); stays still for the hold time -> hold (add/remove), which consumes the gesture (no drag after it). Also
+suppress the browser's own long-press (text selection / callout: -webkit-touch-callout:none, user-select:none on the
+canvas) so it doesn't pop over the hold. Keep MOB5 double-tap and pinch unchanged. Tests: hold adds/removes,
 tap replaces, batch colour + reset, undo = one step; mobile CDP repro.
 
 ## SE16 RULINGS (Fred 2026-09-26, answers to CUT-TOOL-DESIGN.md §0) — supersede the SE16 text below where they differ
