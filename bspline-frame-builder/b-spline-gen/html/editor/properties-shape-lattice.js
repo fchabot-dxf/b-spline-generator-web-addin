@@ -31,7 +31,9 @@ import { setEditorStatusHint } from './editor-ui.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
 import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
 import { openColorMosaic } from './editor-color.js';
-import { getActiveLayer, ensureActiveLayer } from './layers.js';
+import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
+import { contourSilhouette, contourFromFrameOf, hasFrame, CONTOUR_FROM_FRAME_DEFAULTS } from './contour-from-frame.js';
+import { frameContext, onFrameProfileDrawn } from './editor-frame-profile.js';
 import { viewScale } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
 import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
@@ -230,13 +232,21 @@ export function regenerateSilhouette(editor, p) {
     // OUTER edge lands exactly on the region, matching the manifest's own
     // parity (editor-sketch-manifest.js's manifestFromShape, called with
     // the SAME contourWidth as its own strokeWidth).
-    const { primitives, segments, hasUserSegments } = generateContourSilhouette(region, shape, contourWidth);
+    // F21: the ONE contour source (contour-from-frame.js): the preset, or the frame's inner edge offset inward.
+    const sil = contourSilhouette(p, region, contourWidth, frameContext(editor));
+    const { primitives, segments, hasUserSegments } = sil;
+    if (sil.fromFrameError) {
+        setEditorStatusHint(sil.fromFrameError === 'noFrame'
+            ? 'Offset from frame: no frame is chosen, so the Shape preset is drawn.'
+            : 'Offset from frame: the frame opening is too small for this distance, so the Shape preset is drawn.');
+    }
     // SIL-RESOLVE (F5): the shared outline guard. The solver resolves every
     // slider combination to a clean outline; this is the safety net for
     // anything it can't foresee (e.g. per-segment style overrides). A looped /
     // non-tangent outline is NEVER drawn: the last valid one stays, and the
     // user is told why.
-    const defects = outlineDefects(primitives, { requireTangency: !hasUserSegments });
+    // F21: a frame-offset contour was validated where it was made (its merged corners are sharp on purpose)
+    const defects = sil.fromFrame ? [] : outlineDefects(primitives, { requireTangency: !hasUserSegments });
     editor._shapeOutlineDefects = defects; // transient (never saved with the pattern)
     if (defects.length) {
         setEditorStatusHint(
@@ -263,7 +273,8 @@ export function regenerateSilhouette(editor, p) {
         p.contour.segmentColors = [];
         for (const oldEl of existing) oldEl.remove();
     }
-    shape.segments = segments;
+    // F21: the frame-offset contour never writes into the preset shape (toggling off restores the preset exactly)
+    if (!sil.fromFrame) shape.segments = segments;
 
     // T76 (SE17): the contour draws onto its OWN kind-layer now, ensured
     // (created, or reused if it already exists) HERE -- 'rails' is always
@@ -318,6 +329,39 @@ export function regenerateSilhouette(editor, p) {
  *  mounted panel (or future listener) re-syncs, regardless of which
  *  caller (this panel's own fields, a param-handle drag, a segment tap)
  *  triggered it. */
+/**
+ * F21 (LINKED): every Shape Lattice pattern with `contour.fromFrame.on` follows the frame. Runs after each
+ * frame redraw (editor-frame-profile.js onFrameProfileDrawn: a template / Shoulder / Hip / waist handle,
+ * Trim offset or thickness change); a pattern whose drawn contour already matches is left alone (no refill,
+ * no undo step), one that differs is regenerated and refilled (the refill follows the drawn contour, F17's
+ * declared fill inputs). The active layer is kept: the refill would otherwise switch to that pattern's rails.
+ */
+let _frameLinkRunning = false;
+export async function refreshFrameLinkedContours(editor) {
+    if (_frameLinkRunning || !editor || !Array.isArray(editor._layers)) return;
+    const frame = frameContext(editor);
+    const linked = editor._layers.map((l) => l && l.pattern)
+        .filter((p) => p && hasGeneratedSilhouette(p) && contourFromFrameOf(p).on && p.boundary && p.boundary.shapeId);
+    for (const p of linked) {
+        const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
+        const contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
+        const cw = contour.width != null ? contour.width : widths.rails;
+        const expected = contourSilhouette(p, _shapeContourRegion(editor, p), cw, frame).primitives.map((prim) => primitiveToPathD(prim));
+        const els = _findBoundaryElements(editor, p.boundary.shapeId);
+        if (els.length === expected.length && els.every((e, i) => e.attr('d') === expected[i])) continue;
+        _frameLinkRunning = true;
+        const active = editor._activeLayer;
+        try {
+            regenerateSilhouette(editor, p);
+            await generatePattern(editor, p);
+        } finally {
+            _frameLinkRunning = false;
+            if (active != null && editor._activeLayer !== active) setActiveLayer(editor, active);
+        }
+    }
+}
+onFrameProfileDrawn((editor) => { refreshFrameLinkedContours(editor); });
+
 export async function regenerateSilhouetteAndFill(editor) {
     const p = currentPattern(editor);
     regenerateSilhouette(editor, p);
@@ -370,6 +414,7 @@ export function paramHandleRecords(editor) {
     const p = currentPattern(editor);
     const shape = currentShape(p);
     if (!hasGeneratedSilhouette(p)) return [];
+    if (contourFromFrameOf(p).on) return []; // F21: the frame drives the shape, so its handles are off
     const region = _shapeContourRegion(editor, p);
     const { params: resolved } = generateSilhouette(region, shape);
     if (!resolved) return [];
@@ -464,7 +509,7 @@ export function detectShapeLatticeDetach(editor) {
     const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
     const contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
     const contourWidth = contour.width != null ? contour.width : widths.rails;
-    const { primitives } = generateContourSilhouette(region, shape, contourWidth);
+    const { primitives } = contourSilhouette(p, region, contourWidth, frameContext(editor)); // F21: the same source as the drawing
     // T73 (SE14b): the contour is N per-segment elements now — a genuine
     // hand-edit of ANY one of them (a NODE-mode drag moving its endpoint,
     // now that a segment is a real, selectable element) is still real
@@ -642,6 +687,12 @@ export function initShapeLatticeProperties(editor) {
     // since toggling it changes nothing about the fill geometry itself.
     const contourShowEl = el('shapeLatticeContourShow');
     const contourWidthEl = el('shapeLatticeContourWidth');
+    // F21: Offset from frame (+ Distance, a formula field); the Shape / Segments blocks go inert while it is on
+    const fromFrameEl = el('shapeLatticeContourFromFrame');
+    const fromFrameDistanceEl = el('shapeLatticeContourFromFrameDistance');
+    const fromFrameHintEl = el('shapeLatticeContourFromFrameHint');
+    const shapeBlockEl = el('shapeLatticeShapeBlock');
+    const segmentsBlockEl = el('shapeLatticeSegmentsBlock');
 
     // RAIL-SPACING R7 (ruling 4, "one grid"): the old grid-step Spacing
     // select this block used to populate is removed from the markup —
@@ -869,6 +920,7 @@ export function initShapeLatticeProperties(editor) {
         if (contourShowEl) contourShowEl.checked = contour.show !== false;
         if (contourWidthEl) contourWidthEl.value = contour.width == null ? '' : contour.width;
         _showEndRuleRow(contour.show !== false);
+        _syncFromFrame(p);
 
         syncGenerateLabel();
     }
@@ -1139,6 +1191,34 @@ export function initShapeLatticeProperties(editor) {
     // T74 AMEND 1: same IMMEDIATE write+redraw as the show checkbox above
     // — the width field replaces the retired Border section's own width
     // field, which had the same immediate-effect behavior.
+    // F21: immediate write+redraw, same convention as the show checkbox / width field
+    async function _writeFromFrame() {
+        const p = currentPattern(editor);
+        const d = parseFloat(fromFrameDistanceEl && fromFrameDistanceEl.value);
+        p.contour = { ...PATTERN_DEFAULTS.contour, ...p.contour, fromFrame: {
+            on: !!(fromFrameEl && fromFrameEl.checked),
+            distance: Number.isFinite(d) && d >= 0 ? d : CONTOUR_FROM_FRAME_DEFAULTS.distance } };
+        _syncFromFrame(p);
+        await regenerateSilhouetteAndFill(editor);
+    }
+    if (fromFrameEl) on(fromFrameEl, 'change', _writeFromFrame);
+    // a frame chosen / removed while this panel is open: the toggle's enabled state + hint follow (read-only lookup)
+    onFrameProfileDrawn(() => { const l = resolvePatternLayer(editor, getActiveLayer(editor)); _syncFromFrame((l && l.pattern) || {}); });
+    if (fromFrameDistanceEl) on(fromFrameDistanceEl, 'change', _writeFromFrame);
+    /** F21: the toggle needs a frame (disabled + hint without one); while it is on the frame drives the shape,
+     *  so the preset / sliders / segment styles are inert (and paramHandleRecords draws no handles). */
+    function _syncFromFrame(p) {
+        const ff = contourFromFrameOf(p);
+        const framed = hasFrame(frameContext(editor));
+        if (fromFrameEl) { fromFrameEl.checked = ff.on; fromFrameEl.disabled = !framed && !ff.on; }
+        if (fromFrameDistanceEl) { fromFrameDistanceEl.value = ff.distance; fromFrameDistanceEl.disabled = !ff.on; }
+        if (fromFrameHintEl) fromFrameHintEl.style.display = framed ? 'none' : 'block';
+        for (const b of [shapeBlockEl, segmentsBlockEl]) {
+            if (!b) continue;
+            b.inert = ff.on;
+            b.style.opacity = ff.on ? '0.45' : '';
+        }
+    }
     if (contourWidthEl) {
         on(contourWidthEl, 'change', async () => {
             const p = currentPattern(editor);
@@ -1235,5 +1315,6 @@ export function initShapeLatticeProperties(editor) {
         sizeWidthEl, sizeHeightEl, railsSpacingEl, railsSpacingCountEl,
         tiesCountMinEl, tiesCountMaxEl, tiesSpanMinEl, tiesSpanMaxEl, tiesRailSnapRowsEl,
         tiesOneEndedEl, tiesMinSpacingEl, widthRailsEl, widthTiesEl, widthNodesEl, widthLinkedEl, contourWidthEl,
+        fromFrameDistanceEl,
     ], shapeLatticeScopeThunk);
 }

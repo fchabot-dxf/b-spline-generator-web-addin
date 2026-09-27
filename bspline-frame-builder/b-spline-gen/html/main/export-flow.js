@@ -34,6 +34,7 @@ import {
     buildSketchManifest, splitManifestByKind, BOUNDARY_SKETCH_KIND, BOUNDARY_SKETCH_NAME,
 } from '../editor/editor-sketch-manifest.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
+import { frameContext } from '../editor/editor-frame-profile.js';
 import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer } from '../editor/editor-lattice-pattern.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
@@ -199,6 +200,7 @@ export function _fusionLayerManifest(editor, l) {
     if (kind) {
         const perKind = splitManifestByKind(pattern, boardRegion(editor), {
             drawn: _drawnPiecesForLayer(editor, pattern, l.id),
+            frame: frameContext(editor), // F21: an offset-from-frame contour follows the frame
         });
         const manifest = perKind[kind];
         if (!manifest) return null; // e.g. this pattern's own contour is empty/off
@@ -207,6 +209,7 @@ export function _fusionLayerManifest(editor, l) {
     return buildSketchManifest(pattern, boardRegion(editor), {
         layerId: l.id, sketchName: `Layer ${l.id}`,
         drawn: _drawnPiecesForLayer(editor, pattern, l.id),
+        frame: frameContext(editor),
     });
 }
 

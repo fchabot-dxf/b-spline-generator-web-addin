@@ -655,7 +655,8 @@ export const PATTERN_DEFAULTS = {
   // explicit override) — replaces the retired `boundary.border.width`.
   // Colour is NOT duplicated here: `colors.contour` (the Colors row's own
   // swatch) is already the ONE place for it.
-  contour: { show: true, width: null, segmentColors: [] },
+  // F21: `fromFrame` ON = the contour is the frame's inner edge offset inward by `distance` (contour-from-frame.js)
+  contour: { show: true, width: null, segmentColors: [], fromFrame: { on: false, distance: 0.25 } },
 };
 
 /** R7 carry-over 2 (RAIL-SPACING ruling 4, "one grid"): the ONE place a

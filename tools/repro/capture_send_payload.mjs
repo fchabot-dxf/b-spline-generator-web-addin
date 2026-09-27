@@ -3,7 +3,10 @@
 // reassembled exactly like b-spline-gen.py does. The payload can then be replayed into the add-in's own
 // _handle_generate inside Fusion (live checks without clicking in the palette).
 //   node tools/repro/capture_send_payload.mjs <out.json> <paletteUrl> [scenario] [port] [--drag]
-//   scenario: shape-lattice (default) | box-lattice
+//   scenario: shape-lattice (default) | box-lattice | shape-lattice-frame
+//   shape-lattice-frame (F21): T1 chosen in the Frame tab + its [Generate] (a SEEDED frame; unseeded, Fusion builds
+//          the template's literal shape, up to ~0.02 in off the app's fitted model, F8), Shape Lattice Generate, then its contour "Offset from frame"
+//          ON (distance 0.25); ALSO writes the [Send frame] payload to <out>.frame.json (replay: _handle_send_frame).
 //   --drag (F17, Send as drawn): after Generate, HAND-DRAG the middle rail down and one tie sideways with real mouse
 //          events through the lattice tool's own handlers, then write the pieces as drawn to <out>.drawn.json
 //          ({W, H, rails:[{x1,y1,x2,y2}], ties:[...], moved:{rail, tie}}), in canvas order = manifest id order.
@@ -59,6 +62,11 @@ const steps = {
      document.getElementById('shapeLatticeGenerate').click(); await W(3000);`,
   'box-lattice': `document.getElementById('toolLattice').click(); await W(900);
      document.getElementById('latticeGenerate').click(); await W(2500);`,
+  'shape-lattice-frame': `const t = document.getElementById('editorFrameTemplate'); t.value = 'template_1'; t.dispatchEvent(new Event('change')); await W(1500);
+     document.getElementById('editorFrameGenerate').click(); await W(1500); // SEEDED: Fusion follows the app's seeds exactly (F11)
+     document.getElementById('toolShapeLattice').click(); await W(900);
+     document.getElementById('shapeLatticeGenerate').click(); await W(3000);
+     const f = document.getElementById('shapeLatticeContourFromFrame'); f.checked = true; f.dispatchEvent(new Event('change')); await W(3000);`,
 }[SCENARIO];
 if (!steps) { console.log('unknown scenario', SCENARIO); chrome.kill(); process.exit(1); }
 const built = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
@@ -156,6 +164,12 @@ const single = (sends || []).find((s) => s[0] === 'generate');
 const payload = chunks.length ? chunks.join('') : single?.[1];
 if (!payload) { console.log('NO PAYLOAD captured'); chrome.kill(); process.exit(2); }
 writeFileSync(OUT, payload);
+if (SCENARIO === 'shape-lattice-frame') { // F21: the [Send frame] payload, the panel's own sendFrame()
+  await evalJS(`(async()=>{ window.__sends = []; (await import('./main/frame-panel.js')).sendFrame(); })()`);
+  const fs = (await evalJS('window.__sends') || []).find((q) => q[0] === 'send_frame');
+  if (fs) writeFileSync(OUT.replace(/\.json$/, '') + '.frame.json', fs[1]);
+  console.log('send_frame payload:', fs ? fs[1].length + ' bytes' : 'NONE');
+}
 const p = JSON.parse(payload);
 console.log('payload keys:', Object.keys(p).join(', '));
 console.log('bytes:', payload.length);
