@@ -12598,3 +12598,94 @@ scratch copy of `layers.js` — both tests correctly FAILED (one on the thrown e
 never reached `removeLayer`). Restored, re-ran clean.
 
 `npx vitest run` -> **2181 passed** (up from 2179), zero regressions.
+
+## H20 item 6 (PRIORITY, with item 4) — deleted lattice layers were coming back
+
+Fred: "I've been trying to delete layers and after a few layers they just come back." Delegated the
+architecture survey (marquee — no, wrong file; the actual target: `removeLayer`, the Lattice/Shape-Lattice
+pattern system, `_ensureKindLayers`, the identity scheme) to an Explore agent first.
+
+**REPRODUCED FIRST, measured live — not trusted from the report.** Generated a Shape Lattice (Rails/Contour/
+Ties/Nodes, 4 layers), deleted Ties then Nodes via the REAL delete button: `["Rails","Contour","Ties","Nodes"]`
+→ `["Rails","Contour","Nodes"]` → `["Rails","Contour"]` — both correctly stayed gone at the time of deletion,
+matching the checklist's own note that Fred saw them come back LATER, not immediately. Deleted Contour too:
+`["Rails"]` — still clean. Then, per the investigation's own finding that resurrection needs a SUBSEQUENT
+"commit" (not the delete itself), toggled Rails' visibility (an ordinary, unrelated action) — Ties and Nodes
+both reappeared with brand-new ids: `["Rails","Ties","Nodes"]`. This is the measured, live-confirmed bug —
+the dispatch's "EXACT TRIGGER" hypothesis (delete Contour specifically) turned out to be ONE path to the same
+root cause, not the only one; the actual trigger is ANY later refill, and this repro found a simpler one.
+
+**Root cause** (found via the Explore agent, confirmed by reading the actual current code — post seat B's
+T80 item 4 merge — myself): `removeLayer` (`layers.js`) never told the owning pattern a kind-layer was gone.
+`_ensureKindLayers` (`editor-lattice-pattern.js`, called by both `generatePattern`'s refill and
+`regenerateSilhouette`) treats "no layer exists for this kind" as "never created yet" and recreates it —
+correct for a brand-new pattern, wrong for one the user just deleted from. `refreshBoundaryPatterns` (a
+`_notifyChange('commit')` hook — fires on undo/redo, a visibility toggle, recolor, cut, or a Select-mode
+commit, per `editor.js`) detects the geometry mismatch a delete leaves behind and calls `generatePattern`,
+which calls `_ensureKindLayers(['rails','ties','nodes'])` — silently refilling whatever's missing.
+
+**Declared identity used, per the coordination amendment.** Seat B's T80 item 4 (merged to main mid-turn,
+`git pull --rebase` picked it up) declared `pattern.layers` (the `{kind: layerId}` map saved WITH the
+pattern) as the identity scheme — it survives 3D/eye toggles, renames and reordering, unlike the runtime-only
+`patternOwner`. Used THAT identity for this fix; no second scheme.
+
+**The fix.** `layers.js` gains a small, generic `onLayerRemoved(fn)` hook list, fired by `removeLayer` right
+BEFORE it splices the doomed layer out (so a handler can still see the owning layer's `pattern.layers` map
+with the about-to-be-invalid id still in it) — a deliberate architectural choice: `layers.js` stays the
+LOWER-level module (`editor-lattice-pattern.js` already imports FROM it), so rather than reaching back UP
+into lattice concepts here (a circular import), it exposes a generic "a layer was removed" event that a
+higher-level module can subscribe to.
+`editor-lattice-pattern.js` registers its own handler, `_markLatticeKindRemoved`: finds which pattern (via
+`pattern.layers`) owned the deleted id, sets `pattern.removedKinds[kind] = true`, drops the stale
+`pattern.layers[kind]` entry, and — "deleting the set's last layer removes the lattice entirely" — once
+EVERY non-rails kind (contour/ties/nodes) is marked removed, deletes `.pattern` from the rails layer
+entirely, turning it back into a plain layer rather than an empty shell a stray refill could still
+"generate" into.
+`_ensureKindLayers` now skips creating any kind present in `removedKinds` — this alone fixes the VERIFIED
+resurrection path (`generatePattern`'s ties/nodes refill) with no other change needed there. `generatePattern`
+itself needed two small additional guards since `kindLayerIds.ties`/`.nodes` can now be legitimately absent:
+its emit loops for those two kinds are now wrapped in `if (kindLayerIds.ties) {...}` (previously an absent id
+would set `editor._activeLayer = undefined`, and `emitSegment`'s own `ensureActiveLayer` fallback would have
+spun up a STRAY new layer to emit into — resurrecting the deleted kind under a different mechanism than the
+one being fixed), and `kindLayerList` (used for occupancy + "clear before redraw") is now `.filter(Boolean)`.
+`regenerateSilhouette` (draws Contour) gets the matching guard: if `_ensureKindLayers(['contour'])` declined
+to create the layer (because it's marked removed), the function returns the existing (empty) elements array
+immediately, before it would otherwise stamp fresh `<path>` elements with `data-layer=undefined` — geometry
+belonging to no real layer, invisible in the panel and impossible to select or delete again.
+
+**What I verified live vs. what I could NOT reproduce.** The dispatch's original hypothesis specifically
+named deleting CONTOUR (via a `contour.fromFrame.on` / frame-linked-contour refresh hook,
+`refreshFrameLinkedContours`) as a trigger that fires WITHOUT any separate later action, immediately during
+the same delete gesture. My repro used no frame at all (`contour.fromFrame` never set), so this specific path
+was never exercised live — I relied on the SAME `_ensureKindLayers`/`removedKinds` guard protecting it too
+(verified by reading `refreshFrameLinkedContours`'s own code path, which also funnels through
+`regenerateSilhouette` → `_ensureKindLayers(['contour'])`), but flagging this honestly as code-level
+confidence, not a live-measured one, since I could not get Offset-from-Frame's specific trigger to fire in my
+own repro session (no frame chosen) and didn't want to overstate what was actually observed.
+
+**Tests** (`tests/h20-lattice-layer-resurrection.test.js`, 5 tests, same `makeMockEditor()` shape as the
+existing `tests/editor-lattice-kind-layers.test.js`, extended with a REAL rendered delete button per
+`tests/h20-layer-delete-undo.test.js`'s own technique — `removeLayer` runs for real, not reimplemented):
+deleting Ties then re-running `_ensureKindLayers` doesn't recreate it; the full repro sequence (delete Ties,
+delete Nodes, refill) resurrects neither; the SAME guard protects Contour's own `_ensureKindLayers(['contour'])`
+call; deleting every non-rails kind drops the pattern entirely; deleting an unrelated non-lattice layer is a
+clean no-op for the hook. Mutation-tested TWICE — once disabling `_ensureKindLayers`'s own `removedKinds`
+check (3 of 5 tests correctly failed, reproducing the exact resurrection), once disabling the `removeLayer`→
+`onLayerRemoved` hook firing entirely (4 of 5 correctly failed) — proving both halves of the fix are load-
+bearing, not just one. Restored both, re-ran clean each time. Also re-ran the ORIGINAL live repro script
+after the fix: the exact same delete-Ties/delete-Nodes/delete-Contour/toggle-visibility sequence now stays
+at `["Rails"]` throughout — the actual bug, fixed, not just a unit-test proxy for it.
+
+**Amendment absorbed mid-fix**: a follow-up hint change tagged directly to this item (Fred: "this specific
+message is useless to me") — `regenerateSilhouette`'s "Offset from frame: no frame is chosen, so the Shape
+preset is drawn." status hint is now REMOVED entirely (not merely gated to contour-AND-offset-on, the earlier
+superseded wording), since drawing the Shape preset with no frame chosen is the obvious, expected outcome,
+not worth interrupting the user about. The "frame opening is too small for this distance" hint (a genuine,
+actionable surprise) stays. Swept for leftover references: the only OTHER "no frame is chosen" hits in the
+repo (`tests/frame-send.test.js`, `ROADMAP.md`) are the unrelated [Send frame] button's own disabled-hint
+text, confirmed by reading context, not just the grep match — nothing to update there.
+
+No shots requested for this item (checklist).
+
+`npx vitest run` -> **2215 passed** (up from 2210 — the jump includes seat B's T80 merge landing mid-turn),
+zero regressions.

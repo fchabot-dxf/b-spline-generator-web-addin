@@ -24,7 +24,7 @@ import {
   LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
-import { getActiveLayer, addLayer, setActiveLayer } from './layers.js';
+import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved } from './layers.js';
 import { OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import { lcgPoints } from '../core/terrain.js';
 import { setEditorStatusHint } from './editor-ui.js';
@@ -2244,7 +2244,11 @@ export async function generatePattern(editor, PATTERN) {
   } else {
     extent = _resolveExtent(editor, PATTERN);
   }
-  const kindLayerList = [kindLayerIds.rails, kindLayerIds.ties, kindLayerIds.nodes];
+  // H20 item 6: a removed kind's id is absent from kindLayerIds (see
+  // _ensureKindLayers) — filtered here so a deleted Ties/Nodes layer's old
+  // (now-gone) id, or an entry that was never created, is never matched
+  // against a live child's data-layer attribute.
+  const kindLayerList = [kindLayerIds.rails, kindLayerIds.ties, kindLayerIds.nodes].filter(Boolean);
   const occupied = _collectOccupied(editor, kindLayerList, spacing);
 
   // Remove every element EACH kind-layer already owns — the "replace",
@@ -2292,22 +2296,31 @@ export async function generatePattern(editor, PATTERN) {
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
     tagOwned(emitSegment(editor, 'rail', p1, p2, widths.rails));
   }
-  editor._activeLayer = kindLayerIds.ties;
-  editor._color = colors.ties;
-  for (const seg of segments) {
-    if (seg.kind !== 'tie') continue;
-    const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
-    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
-    tagOwned(emitSegment(editor, 'tie', p1, p2, widths.ties));
+  // H20 item 6: kindLayerIds.ties/.nodes is absent when the user deleted
+  // that layer (_ensureKindLayers skips recreating a removedKinds entry) —
+  // guarded so a removed kind's loop never runs (which would otherwise set
+  // _activeLayer to undefined and let ensureActiveLayer/emitSegment spin up
+  // a stray new layer to emit into, resurrecting the deleted kind anyway).
+  if (kindLayerIds.ties) {
+    editor._activeLayer = kindLayerIds.ties;
+    editor._color = colors.ties;
+    for (const seg of segments) {
+      if (seg.kind !== 'tie') continue;
+      const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
+      if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
+      tagOwned(emitSegment(editor, 'tie', p1, p2, widths.ties));
+    }
   }
-  editor._activeLayer = kindLayerIds.nodes;
-  editor._color = colors.nodes;
-  for (const p of nodePoints) {
-    // emitNode dedupes against an existing node at the same lattice cell
-    // (findNodeAt, editor-lattice.js:99) — a belt-and-suspenders no-op if
-    // occupied-detection already steered clear of it; returns null if so,
-    // which tagOwned's own null-check handles.
-    tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeDiameter / 2));
+  if (kindLayerIds.nodes) {
+    editor._activeLayer = kindLayerIds.nodes;
+    editor._color = colors.nodes;
+    for (const p of nodePoints) {
+      // emitNode dedupes against an existing node at the same lattice cell
+      // (findNodeAt, editor-lattice.js:99) — a belt-and-suspenders no-op if
+      // occupied-detection already steered clear of it; returns null if so,
+      // which tagOwned's own null-check handles.
+      tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeDiameter / 2));
+    }
   }
   editor._color = previousColor;
   // T76 (SE17): land on the RAILS layer — real, editable, generated
@@ -2807,12 +2820,56 @@ export function _ensureKindLayers(editor, pattern, currentLayerId, kinds) {
   for (const kind of kinds) {
     if (kind === 'rails') continue; // ensured, unconditionally, above
     if (layerExists(ids[kind])) continue;
+    // H20 item 6 (Fred: "after a few layers they just come back"): a kind
+    // the user DELETED (not one that's merely never existed yet) stays
+    // deleted until Undo — `removeLayer` (layers.js) marks it here when the
+    // delete happens. Without this, deleting e.g. the Ties layer and then
+    // triggering ANY later refill (a visibility toggle, undo/redo, a
+    // recolor, Contour's own boundary changing) silently recreated it from
+    // the pattern's own on/off-less "just fill whatever's missing" logic.
+    if (pattern.removedKinds && pattern.removedKinds[kind]) continue;
     const layer = addLayer(editor, { ...LATTICE_KIND_LAYER_DEFAULTS[kind], skipUndo: true });
     layer.patternOwner = ids.rails;
     ids[kind] = layer.id;
   }
   return ids;
 }
+
+/**
+ * H20 item 6 (Fred: "I've been trying to delete layers and after a few
+ * layers they just come back" — measured, live: deleting Ties then Nodes
+ * left them gone; the NEXT commit-triggering action — e.g. toggling a
+ * layer's visibility — resurrected both via `generatePattern`'s own
+ * refill, because nothing had ever told the pattern those kinds were
+ * gone). Registered below via `onLayerRemoved` (layers.js) — fired by
+ * `removeLayer` BEFORE it splices the doomed layer out, so the pattern
+ * that owns it (identified via `pattern.layers`, T80 item 4's own declared
+ * identity — the map survives 3D/eye toggles, renames and reordering,
+ * unlike the runtime-only `patternOwner`) can still be found here.
+ *
+ * Marks the kind `removedKinds[kind] = true` (read by `_ensureKindLayers`,
+ * above, and checked directly by `regenerateSilhouette` for contour) and
+ * drops `pattern.layers[kind]`. Once every non-rails kind is marked
+ * removed, the lattice itself is gone — drops `.pattern` from the rails
+ * layer entirely, turning it back into a plain layer, rather than leaving
+ * an empty shell a stray refill could still "generate" content into.
+ */
+function _markLatticeKindRemoved(editor, removedId) {
+  const key = String(removedId);
+  for (const l of editor._layers) {
+    if (!l.pattern || !l.pattern.layers) continue;
+    const kind = Object.keys(l.pattern.layers).find((k) => String(l.pattern.layers[k]) === key);
+    if (!kind) continue;
+    l.pattern.removedKinds = l.pattern.removedKinds || {};
+    l.pattern.removedKinds[kind] = true;
+    delete l.pattern.layers[kind];
+    if (['contour', 'ties', 'nodes'].every((k) => l.pattern.removedKinds[k])) {
+      delete l.pattern;
+    }
+    return;
+  }
+}
+onLayerRemoved(_markLatticeKindRemoved);
 
 /** SE7i: the ACTIVE layer's own Pattern settings — the one per-layer
  *  source of truth (retires the old file-level editor._latticePattern,

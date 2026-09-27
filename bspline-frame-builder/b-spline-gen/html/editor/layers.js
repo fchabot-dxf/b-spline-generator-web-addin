@@ -266,10 +266,26 @@ export function addLayer(editor, opts = {}) {
   return layer;
 }
 
+// H20 item 6 (Fred: "after a few layers they just come back"): layers.js
+// stays the lower-level module (editor-lattice-pattern.js already imports
+// FROM it) — rather than reaching back UP into lattice-pattern concepts
+// here (a circular import), this declares a generic "a layer is about to
+// be removed" hook that any higher-level module can subscribe to. The
+// Lattice/Shape-Lattice pattern system registers ITS OWN handler (see
+// editor-lattice-pattern.js's own onLayerRemoved(...) call) to mark that
+// kind permanently removed from its pattern, rather than layers.js needing
+// to know anything about kinds/patterns at all.
+const _removeHooks = [];
+export function onLayerRemoved(fn) { _removeHooks.push(fn); }
+
 function removeLayer(editor, id) {
   if (!Array.isArray(editor._layers)) return;
   const idx = editor._layers.findIndex(l => String(l.id) === String(id));
   if (idx === -1) return;
+
+  // Fired BEFORE the splice below, so a hook can still see the full roster
+  // (including whichever OTHER layer owns this one's pattern, if any).
+  for (const fn of _removeHooks) fn(editor, id);
 
   // Remove SVG elements on this layer.
   if (editor._sketchLayer) {
