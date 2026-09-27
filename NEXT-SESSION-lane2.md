@@ -38,3 +38,13 @@ Touched/new specs + full `npx vitest run` + `python -m pytest -q` in bspline-fra
 ## Finish
 Commit by path, push origin lane2. Then FROM THIS WORKTREE'S ROOT (it has its own HANDOFF.md):
 `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "L1 — <shas>"`.
+
+## Rulings added mid-turn (Fred 2026-09-26)
+- Editor guide = **DASHED BLACK**.
+- Fusion: **follow the Frame Builder protocol** — FB template sketch 1 is its own "Bounding Box" sketch
+  (frame-builder/sketches/template_1/template_data.py:25), geometry flagged `IsConstruction`, read generically by
+  fb_engine/geometry.py:71. Mirror it: the lattice boundary = its OWN first sketch ("Lattice Boundary"), sent before
+  contour/rails/ties/nodes, construction geometry via a declared per-entity flag read generically by
+  sketch_manifest_builder.py; later kinds relate to it through the existing projection path.
+- Home advisor: nothing in core/preview/frame-mesh.js; core/preview/index.js small + additive only. Merge origin/main
+  into lane2 before the pass-back (F8 landed, 4633cd2).
