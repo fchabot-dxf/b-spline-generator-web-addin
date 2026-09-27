@@ -115,13 +115,13 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
       valueFromWorld: (pt) => within('cornerRadius', (cx0 + hw - pt.x) / hw),
     },
     {
-      // F12: the top corner alone (its arc centre at hw - Rt, a pure horizontal move)
-      key: 'cornerRadiusTop', label: 'Top corner radius', axis: 'x',
+      // F12: the top corner alone (its arc centre at hw - Rt, a pure horizontal move); F20: Fred's "Shoulder"
+      key: 'cornerRadiusTop', label: 'Shoulder', axis: 'x',
       anchor: { x: cx0 + g.shoulderCx, y: cy0 + g.shoulderY },
       valueFromWorld: (pt) => within('cornerRadiusTop', (cx0 + hw - pt.x) / hw),
     },
     {
-      key: 'cornerRadiusBottom', label: 'Bottom corner radius', axis: 'x',
+      key: 'cornerRadiusBottom', label: 'Hip', axis: 'x',
       anchor: { x: cx0 + g.hipCx, y: cy0 + g.hipY },
       valueFromWorld: (pt) => within('cornerRadiusBottom', (cx0 + hw - pt.x) / hw),
     },
