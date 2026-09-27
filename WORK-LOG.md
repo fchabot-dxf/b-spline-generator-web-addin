@@ -12689,3 +12689,31 @@ No shots requested for this item (checklist).
 
 `npx vitest run` -> **2215 passed** (up from 2210 — the jump includes seat B's T80 merge landing mid-turn),
 zero regressions.
+
+## H20 item 7 — Geometry snap ON by default (without flipping anyone's saved choice)
+
+Fred: "make snap to geometry on by default." `editor/editor-grid.js`'s `GRID_DEFAULTS.geometrySnap`:
+`false` -> `true` — the one declared default the GEOM toolbar button, and every snap consumer, reads.
+
+**Checked persistence first, per the dispatch.** `GRID_DEFAULTS` is merged with whatever's in
+`localStorage['bsg.editorGrid']` via `mergeGridPrefs` (`{ ...GRID_DEFAULTS, ...stored }`) — a per-BROWSER
+editor preference, not saved per-project/session file. This is the exact same mechanism `gridSnap`'s own H1
+migration already relies on for the identical safety property the dispatch asked for here: a spread merge
+only ever FILLS IN a key that's missing from the stored record — it can't overwrite one that's already
+there. So flipping the bare default requires no new migration code at all: a genuinely fresh browser (nothing
+in `bsg.editorGrid` yet) gets `true`; anyone who already has grid prefs on disk — with `geometrySnap` either
+explicitly `false` or explicitly `true` — keeps exactly that value, untouched.
+
+**Tests** (`tests/editor-grid.test.js`): updated the 2 existing tests that pinned the OLD default (both feed
+`mergeGridPrefs`/`loadGridPrefs` a record with NO `geometrySnap` key at all, so they now correctly expect the
+NEW default, `true`, not a hardcoded old value) — mutation-tested by reverting the default in a scratch copy:
+these 2, plus a new dedicated "fresh session gets ON" test, correctly FAILED; the 2 new tests asserting an
+EXISTING explicit `false`/`true` stays put both correctly stayed green under that same mutation (proving the
+persistence-safety guarantee is independent of whatever the bare default happens to be — the actual point of
+this item). Restored, re-ran clean. `tests/cut-tool.test.js`'s own `geometrySnap: false` is a hardcoded mock
+fixture for testing cut-tool behaviour independent of geometry snap, not a pinned default — confirmed by
+reading it, left untouched.
+
+No shots requested for this item (checklist).
+
+`npx vitest run` -> **2218 passed** (up from 2215), zero regressions.

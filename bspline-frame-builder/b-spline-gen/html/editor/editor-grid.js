@@ -19,12 +19,18 @@ import { hapticSnap } from '../core/haptics.js';
  *  H1 (SNAP-SPLIT, Fred 2026-09-26): the old single `snap` boolean split
  *  into two independent toggles — `gridSnap` (what `snap` used to mean)
  *  and `geometrySnap` (new: snap to existing geometry instead of/as well
- *  as the grid). `geometrySnap` defaults OFF — a new capability, opt-in;
- *  `gridSnap` keeps the old `snap` default (true) so a FRESH install
+ *  as the grid). `gridSnap` keeps the old `snap` default (true) so a FRESH install
  *  behaves exactly as before. mergeGridPrefs (below) migrates an existing
  *  saved `snap` value onto `gridSnap` for anyone with prefs already on
  *  disk. */
-export const GRID_DEFAULTS = { visible: true, gridSnap: true, geometrySnap: false, spacing: 0.25 };
+// H20 item 7 (Fred: "make snap to geometry on by default"): geometrySnap
+// now defaults ON. mergeGridPrefs (below) only ever fills this in when
+// nothing at all was saved yet (bsg.editorGrid, a per-browser editor
+// preference, not per-project) -- anyone with grid prefs already on disk
+// keeps whatever value is there, the same safety property gridSnap's own
+// migration above already relies on. A truly fresh browser/session is the
+// only one that ever sees this new default.
+export const GRID_DEFAULTS = { visible: true, gridSnap: true, geometrySnap: true, spacing: 0.25 };
 
 /** The customisable spacing choices (inches). The toolbar select derives
  *  its options from this list — no hand-written <option>s to drift. */
