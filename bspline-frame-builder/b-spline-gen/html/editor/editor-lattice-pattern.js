@@ -398,15 +398,15 @@ export const PATTERN_DEFAULTS = {
   // explicit caller-given rectangle, used as given, unrelated to `size`.
   size: { width: null, height: null },
   // T56 (Fred: "your usual lattice is much denser than what I need... I
-  // want 6-7 rails and 8-10 ties"): `mode:'count'` is the new default —
-  // a seeded pick within `count`, evenly distributed across the extent's
-  // own rows (see `_railRowsByCount`) — declared alongside `every`/
-  // `offset` rather than replacing them, so `mode:'every'` (the ORIGINAL
-  // behavior) stays a real, supported alternative, not a removed one.
-  // `computePattern`'s own merge (below) is careful NOT to let an
+  // want 6-7 rails and 8-10 ties"): `mode:'count'` was the T56-era
+  // default — a seeded pick within `count`, evenly distributed across the
+  // extent's own rows (see `_railRowsByCount`) — declared alongside
+  // `every`/`offset` rather than replacing them, so `mode:'every'` (the
+  // ORIGINAL behavior) stays a real, supported alternative, not a removed
+  // one. `computePattern`'s own merge (below) is careful NOT to let an
   // EXISTING saved pattern's `rails` object (written before `mode`
-  // existed, so it never got serialized) silently inherit this new
-  // 'count' default — see that merge's own comment.
+  // existed, so it never got serialized) silently inherit whatever this
+  // default currently is — see that merge's own comment.
   // RAIL-SPACING (Fred: "spacing means rail-to-rail" / "origin anchor is
   // top center bottom edge" / "count and spacing can both be used at the
   // same time now"): `mode:'spacing'` — a NEW, DECLARED alternative
@@ -432,8 +432,16 @@ export const PATTERN_DEFAULTS = {
   // "declare it, don't infer it" convention exists to avoid). Null/unset
   // = fill the boundary; a number = exactly N rails from the anchor
   // ('center': N rails centred on the centre line, symmetric first).
+  // R7 carry-over 1 (Fred, advisor review): `mode:'spacing'` becomes the
+  // default for a BRAND-NEW pattern (this default is ONLY ever read by
+  // `freshPattern` below — `computePattern`'s own merge, unchanged, still
+  // reads an EXISTING saved pattern's own explicit `rails.mode`, or falls
+  // back to 'every' when `PATTERN.rails` exists but never serialized a
+  // `mode` at all — so this line change touches NOTHING about how an old
+  // pattern resolves; see that merge's own comment, and this file's own
+  // R7 WORK-LOG entry for the regression test that proves it).
   rails: {
-    mode: 'count', count: [6, 7], every: 2, offset: 0,
+    mode: 'spacing', count: [6, 7], every: 2, offset: 0,
     anchor: 'center', spacing: 1, spacingCount: null,
   },
   // T30 (Fred: "don't limit it to rails, but do snap to them"): default
@@ -649,6 +657,33 @@ export const PATTERN_DEFAULTS = {
   // swatch) is already the ONE place for it.
   contour: { show: true, width: null, segmentColors: [] },
 };
+
+/** R7 carry-over 2 (RAIL-SPACING ruling 4, "one grid"): the ONE place a
+ *  BRAND-NEW pattern is created from PATTERN_DEFAULTS — both lattice
+ *  panels' own lazy-creation point (`properties-lattice.js`'s
+ *  `_currentPattern` / `properties-shape-lattice.js`'s `currentPattern`,
+ *  the ONLY two call sites, confirmed by grepping every
+ *  `JSON.parse(JSON.stringify(PATTERN_DEFAULTS))` in this codebase — R7's
+ *  own WORK-LOG entry). PATTERN_DEFAULTS.spacing (0.25) is now purely the
+ *  fallback-of-fallback: a fresh pattern's own `.spacing` — the lattice's
+ *  GRID STEP, read everywhere in this file as `P.spacing` — is stamped
+ *  ONCE at creation from the EDITOR's own live toolbar grid
+ *  (`editor._grid.spacing`, editor-grid.js), not the lattice-side setting
+ *  this ruling retires. An EXISTING saved pattern never calls this at
+ *  all (it already has its own `.spacing`, read back by `computePattern`'s
+ *  own `{...PATTERN_DEFAULTS, ...PATTERN}` merge exactly as before) — so
+ *  migration needs no separate code path: "a saved pattern's own spacing
+ *  is still read as its grid step" falls out of the SAME merge that
+ *  already existed, untouched. `editor` is optional (defensive — the one
+ *  call site with no real layer yet, `_currentPattern`'s own "no layers
+ *  at all" branch, still has a real editor to read the grid from in
+ *  practice, but this never throws if it somehow doesn't). */
+export function freshPattern(editor) {
+  const p = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
+  const gridSpacing = editor && editor._grid && editor._grid.spacing;
+  if (gridSpacing) p.spacing = gridSpacing;
+  return p;
+}
 
 /** SE7g (Fred: "the generate button needs to automatically use a new
  *  seed"): the ONE seed-rolling function, used by Generate/Regenerate

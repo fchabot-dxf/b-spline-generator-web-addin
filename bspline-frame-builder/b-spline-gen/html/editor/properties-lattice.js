@@ -12,7 +12,7 @@ import { GRID_SPACINGS } from './editor-grid.js';
 import { LATTICE_DRAW_KINDS } from './editor-lattice.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
-    _findBoundaryElements, resolvePatternLayer,
+    _findBoundaryElements, resolvePatternLayer, freshPattern,
 } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
@@ -33,7 +33,7 @@ function _activeLayerObj(editor) {
 }
 function _currentPattern(editor) {
     const layer = _activeLayerObj(editor);
-    if (!layer) return JSON.parse(JSON.stringify(PATTERN_DEFAULTS)); // defensive: no layers at all yet
+    if (!layer) return freshPattern(editor); // defensive: no layers at all yet
     // T76 (SE17): the active layer may be any one of a pattern's own FOUR
     // kind-layers (Contour/Rails/Ties/Nodes) -- e.g. right after clicking a
     // tie, which activates the Ties layer (editor-interaction.js). Reading
@@ -44,7 +44,10 @@ function _currentPattern(editor) {
     // the pattern ACTUALLY lives first.
     const patternLayer = resolvePatternLayer(editor, layer.id);
     if (patternLayer) return patternLayer.pattern;
-    layer.pattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
+    // R7 carry-over 2: a brand-new pattern's own grid step comes from the
+    // LIVE editor grid, not PATTERN_DEFAULTS.spacing -- see freshPattern's
+    // own doc comment.
+    layer.pattern = freshPattern(editor);
     return layer.pattern;
 }
 // R5: exported under a clearer name for lattice-formula-fields.js (the

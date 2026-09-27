@@ -9,7 +9,7 @@
  * boundary) gives plenty of room to see several rails without edge effects dominating every test.
  */
 import { describe, it, expect } from 'vitest';
-import { computePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { computePattern, PATTERN_DEFAULTS, freshPattern } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
 const EXTENT = { iMin: 0, jMin: 0, iMax: 20, jMax: 40 }; // 10in tall at the default P.spacing=0.25
 
@@ -45,8 +45,9 @@ describe('PATTERN_DEFAULTS.rails — the new fields', () => {
     expect(PATTERN_DEFAULTS.rails.anchor).toBe('center');
     expect(PATTERN_DEFAULTS.rails.spacing).toBe(1);
     expect(PATTERN_DEFAULTS.rails.spacingCount).toBeNull();
-    expect(PATTERN_DEFAULTS.rails.mode).toBe('count'); // the default MODE is untouched by this feature
-    expect(PATTERN_DEFAULTS.rails.count).toEqual([6, 7]);
+    // R7 carry-over 1 (Fred, advisor review): the default MODE itself changed to 'spacing' AFTER this
+    // R6 test was first written — see the dedicated describe block below for that.
+    expect(PATTERN_DEFAULTS.rails.count).toEqual([6, 7]); // 'count' mode's OWN range is untouched
   });
 });
 
@@ -164,10 +165,15 @@ describe('RAIL-SPACING does not disturb the pre-existing rails.mode values (ruli
     expect(gapsOf(rows)[0]).toBe(3);
   });
 
-  it('rails.mode:\'count\' (the current real default) is completely untouched', () => {
-    const rows = railJs(computePattern({ ...PATTERN_DEFAULTS, seed: 42 }, { extent: EXTENT }));
+  it('an EXPLICIT rails.mode:\'count\' (no longer the default, still a real supported mode) is completely untouched', () => {
+    const rows = railJs(computePattern({ ...PATTERN_DEFAULTS, rails: { ...PATTERN_DEFAULTS.rails, mode: 'count' }, seed: 42 }, { extent: EXTENT }));
     expect(rows.length).toBeGreaterThanOrEqual(6);
     expect(rows.length).toBeLessThanOrEqual(7);
+  });
+
+  it('rails.mode:\'every\' explicitly requested is also completely untouched', () => {
+    const rows = railJs(computePattern({ ...PATTERN_DEFAULTS, rails: { ...PATTERN_DEFAULTS.rails, mode: 'every', every: 2, offset: 0 } }, { extent: EXTENT }));
+    expect(rows).toEqual(Array.from({ length: (EXTENT.jMax - EXTENT.jMin) / 2 + 1 }, (_, k) => EXTENT.jMin + k * 2));
   });
 });
 
@@ -279,5 +285,68 @@ describe('advisor AMEND (Fred, confirmed): off-grid stays unrounded; every tie e
   it('the OLDER ties.mode:\'density\' path is included in the same guarantee', () => {
     const P = pattern({ anchor: 'start', spacing: 0.3 }, { mode: 'density', anchor: 'rails', density: 1, spanMin: 1, spanMax: 1, minSpacing: 0 });
     assertTiesExactlyOnRails(computePattern(P, { extent: EXTENT }), 'density-mode');
+  });
+});
+
+describe('R7 carry-over 1 — a brand-new pattern defaults to rails.mode:\'spacing\' (Fred, advisor review)', () => {
+  it('PATTERN_DEFAULTS.rails.mode is \'spacing\' (anchor center, spacing 1in) — Fred\'s own defaults finally show', () => {
+    expect(PATTERN_DEFAULTS.rails.mode).toBe('spacing');
+    expect(PATTERN_DEFAULTS.rails.anchor).toBe('center');
+    expect(PATTERN_DEFAULTS.rails.spacing).toBe(1);
+  });
+
+  it('a genuinely brand-new pattern (no rails key at all) resolves through \'spacing\', not \'count\'', () => {
+    const fresh = { ...PATTERN_DEFAULTS };
+    delete fresh.rails;
+    const rows = railJs(computePattern({ ...fresh, seed: 7 }, { extent: EXTENT }));
+    // 'spacing' mode is UNSEEDED (no draw at all) -> changing the seed changes NOTHING, unlike 'count'
+    // mode's own seeded row count, which is exactly the property that distinguishes them here.
+    const rowsOtherSeed = railJs(computePattern({ ...fresh, seed: 999 }, { extent: EXTENT }));
+    expect(rows).toEqual(rowsOtherSeed);
+    expect(new Set(gapsOf(rows)).size).toBe(1); // evenly spaced throughout, 'spacing' mode's own signature
+  });
+
+  it('an old saved pattern with an explicit rails.mode:\'count\' (T56-era) is byte-identical, unaffected by the new default', () => {
+    const oldStyle = { ...PATTERN_DEFAULTS, rails: { mode: 'count', count: [6, 7], every: 2, offset: 0 } };
+    const rows = railJs(computePattern({ ...oldStyle, seed: 42 }, { extent: EXTENT }));
+    expect(rows.length).toBeGreaterThanOrEqual(6);
+    expect(rows.length).toBeLessThanOrEqual(7);
+  });
+
+  it('an old saved pattern with no mode key at all (pre-T56) still resolves to \'every\', never the new default', () => {
+    const oldStyle = { ...PATTERN_DEFAULTS, rails: { every: 3, offset: 1 } };
+    const rows = railJs(computePattern(oldStyle, { extent: EXTENT }));
+    expect(rows[0]).toBe(1);
+    expect(gapsOf(rows)[0]).toBe(3);
+  });
+});
+
+describe('R7 carry-over 2 — freshPattern: a NEW pattern\'s grid step comes from the editor grid, not the lattice-side default', () => {
+  it('with an editor grid set, a fresh pattern\'s own spacing matches it, not PATTERN_DEFAULTS.spacing', () => {
+    const editor = { _grid: { visible: true, snap: true, spacing: 0.5 } };
+    const p = freshPattern(editor);
+    expect(p.spacing).toBe(0.5);
+    expect(p.spacing).not.toBe(PATTERN_DEFAULTS.spacing);
+  });
+
+  it('with no editor grid available, falls back to PATTERN_DEFAULTS.spacing, never throws', () => {
+    expect(freshPattern(undefined).spacing).toBe(PATTERN_DEFAULTS.spacing);
+    expect(freshPattern({}).spacing).toBe(PATTERN_DEFAULTS.spacing);
+    expect(freshPattern({ _grid: {} }).spacing).toBe(PATTERN_DEFAULTS.spacing);
+  });
+
+  it('every OTHER field is untouched — freshPattern is a real clone of PATTERN_DEFAULTS, not a partial object', () => {
+    const p = freshPattern({ _grid: { spacing: 0.5 } });
+    expect(p.rails).toEqual(PATTERN_DEFAULTS.rails);
+    expect(p.ties).toEqual(PATTERN_DEFAULTS.ties);
+    expect(p).not.toBe(PATTERN_DEFAULTS); // a real clone, not the same object (mutation-safe)
+  });
+
+  it('a pattern created via freshPattern generates evenly-spaced rails at the STAMPED grid step, not the default one', () => {
+    const p = freshPattern({ _grid: { spacing: 0.5 } });
+    const rows = railJs(computePattern({ ...p, rails: { ...p.rails, anchor: 'start', spacing: 1 } }, { extent: EXTENT }));
+    // 1in spacing / 0.5in grid step (the STAMPED value, not PATTERN_DEFAULTS.spacing=0.25) -> 2 lattice
+    // rows/gap, not 4.
+    expect(gapsOf(rows)[0]).toBe(2);
   });
 });

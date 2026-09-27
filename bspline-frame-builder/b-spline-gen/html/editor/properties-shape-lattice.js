@@ -23,7 +23,7 @@ import { GRID_SPACINGS } from './editor-grid.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
-    _ensureKindLayers, resolvePatternLayer,
+    _ensureKindLayers, resolvePatternLayer, freshPattern,
 } from './editor-lattice-pattern.js';
 import {
     PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges,
@@ -114,14 +114,17 @@ function _activeLayerObj(editor) {
 }
 export function currentPattern(editor) {
     const layer = _activeLayerObj(editor);
-    if (!layer) return JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
+    if (!layer) return freshPattern(editor);
     // T76 (SE17): see properties-lattice.js's own `_currentPattern` --
     // the identical fix, needed here for the same reason (the active
     // layer may be any of the pattern's own FOUR kind-layers now, not
     // just the one holding `.pattern`).
     const patternLayer = resolvePatternLayer(editor, layer.id);
     if (patternLayer) return patternLayer.pattern;
-    layer.pattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
+    // R7 carry-over 2: see freshPattern's own doc comment (editor-lattice-
+    // pattern.js) -- a brand-new pattern's grid step comes from the live
+    // editor grid, not PATTERN_DEFAULTS.spacing.
+    layer.pattern = freshPattern(editor);
     return layer.pattern;
 }
 /** Lazily materializes `p.shape` the same way `currentPattern` itself
