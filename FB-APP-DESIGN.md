@@ -568,26 +568,47 @@ alone. There are exactly two buttons, no "Send all", and no separate "Send art":
   5. FB-ORDER: both builds already end with it.
 - **Why not `build_frame_logic`:** it calls a `_create_assembly_joints` method that doesn't exist.
 
-**UNVERIFIED until Fred's run** (none of these can be measured without Fusion):
-- The build runs directly inside the palette's HTML event handler, as Send B-spline does. The Frame
-  Builder palettes run theirs through a hidden command instead.
-- Deleting a Frame_N occurrence together with its tagged TRIM_CUT leaves the Clean body healthy.
-- The Clean occurrence's proxy body gives world-space face normals.
-- AestheticCore is **not** stamped. The body is passed directly, and the file fence keeps
-  `_handle_generate` unchanged.
+**MEASURED live (F11, this PC).** The real app payload was replayed into the deployed fb-app build,
+in a tagged scratch doc:
+- **No body:** the clear error, and nothing is created. This is also the "frame before B-spline"
+  order.
+- **B-spline, then frame:** `Frame_1`, 3 sketches, 4 bars and the TRIM_CUT, all healthy.
+  - `boundingboxoffset` 0.5" gives a frame extent of ±3.000 × ±4.000 in on the 7 × 9 board (the
+    0.5 in gap on every side).
+  - The bar bottoms sit at z = −1.000, and every bar is 0.00000 in from the panel (extruded to the
+    underside).
+  - The frame adds no user params beyond its template's own.
+- **Re-send:** exactly one `Frame_1` and one TRIM_CUT, all healthy.
+- **B-spline re-send (which breaks the frame, §4), then Send frame:** rebuilt, all healthy, in the
+  order body → `Frame_1` block → inlay.
+- **Direct call from the HTML handler:** works. The hidden command the palettes use isn't needed.
+- **Fixed on the way** (each red first in its tests):
+  1. FB-ORDER now checks each item right before its own move, with a rollback. A sketch inside
+     `Frame_N` refuses to move while `Frame_N`'s own occurrence is still after the inlay, so the old
+     up-front check never moved a frame built after the inlay.
+  2. The inlay prefixes are "Plane for " / "Source - ". The lattice plane is
+     "Plane for pattern lattice-…".
+  3. The underside face is resolved right before the solid build. The early face was invalid after
+     deleting a broken frame (measured).
+- **Still true:** AestheticCore is not stamped; the body is passed directly.
+- **Finding for Fred:** "3D Cherry - Unfinished" and "3D Maple - Unfinished" do **not exist** in this
+  Fusion's libraries. There, cherry is "Cherry" and maple is only "3D Maple - Painted". Those two
+  woods silently fall back to the body's material. Ash, Mahogany and Pine are fine (Mahogany is
+  proven live).
 
-**Seeds: GATE (not applied in Fusion).** The template phases have no dimension that can receive a
-seeded handle value: T1's `seed_rad_*` radius dims are deleted in `p02_09`, and T2 has none. The
-shape comes from literal seed points in an under-constrained sketch. So the handler reports
-`seeds.applied = false`, and the button's hint and the status line say so.
-- **(A)** Add plain driving dimensions to the phases, used only when a seed is present. For T1:
-  keep `seed_rad_shoulder_*` / `seed_rad_hip_*` at the seeded radius, and add dims for the waist
-  centre height and depth; the same for T2's neck. Each handle is proven by goldens recorded at 2-3
-  seeded values (the S4 recorder, S4 tolerance). No user params are created.
-- **(B)** Move only the literal seed points. It's cheap, but the solver can land anywhere nearby,
-  so parity can't be proven.
-- **(C)** Leave it as now: seeds shape the app preview only.
-- **Recommended:** (A), T1 first.
+**Seeds: option B, BUILT and PROVEN live (F11).** Fred's ruling was "simply seed it in position".
+- **How it works:** the app sends `seedGeometry`, its seeded outline expressed as the template's
+  **own** seed geometry. `FRAME_SEED_MAP` in `template_data.py` maps each line, Arc3Point, skeleton
+  pin and temporary seed radius to an app primitive and its S/E orientation, and every orientation
+  is checked against the literal seeds. `fb_engine/seed_geometry.py` moves only those seeds: no
+  dimension and no parameter is added.
+- **Proof:** 19 of 19 live cases match the app preview (S4 method, both ways, 0.1 in):
+  - every T1 and T2 handle at 20 / 50 / 80 % of its feasible range, plus a thickness change;
+  - max 0.005 / 0.010 in, which is the sampling floor;
+  - all healthy, and no user param created;
+  - negative control (a built value compared with another value's app outline): 0.26–1.70 in.
+- **Correction:** my F10 note said option B's parity "can't be proven". That was wrong. With every
+  seed of the outline moved together, the under-constrained solve stays where it is seeded.
 
 **Fred's live step list** (Fusion, his machine):
 0. **Deploy and reload.** Deploy fb-app, then restart Fusion. If the web palette shows the old UI,
@@ -614,9 +635,10 @@ shape comes from literal seed points in an under-constrained sketch. So the hand
 4. **No body.** New empty design → pick a template → **Send frame**.
    - Pass: the status line says "No B-spline body in this document: press Send B-spline first…",
      and nothing appears in the browser or the timeline.
-5. **Seeds.** Frame tab → drag a handle → the hint says the change isn't sent → **Send frame**.
-   - Pass: the status line ends "(1 handle change(s) not applied)", and Fusion builds the
-     template's own shape.
+5. **Seeds** (F11: sent as seed geometry). Frame tab → drag a handle (e.g. deepen the T1 waist) →
+   the hint says the change goes with the frame → **Send frame**.
+   - Pass: "Frame built in Fusion: Frame_1", Fusion's outline has the dragged shape (it matches the
+     editor), and no new user parameter appears.
 - **If any step fails, send back:**
   - `~/.bspline-frame-builder/last_send.json` (its `frame` key holds the payload and the result);
   - `frame-builder-debug.log` (next to the Frame Builder add-in);

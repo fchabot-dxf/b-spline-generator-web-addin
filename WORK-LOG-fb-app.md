@@ -1029,3 +1029,90 @@ So seeds are carried in the payload and reported `applied: false`, and the UI sa
 - frame-defs fresh.
 - Server and Chrome stopped.
 - Capacity fine.
+
+
+## 🔨 turn 20 — F11 (seat C, epoch 1): LIVE on Ranchy — [Send frame] proven + seeds option B
+
+Commits (fb-app, pushed): `3a55fd0` item 1 (live-found fixes) · `7241974` item 2 (seed geometry) · this
+commit: docs (FB-APP-DESIGN.md §4.1) + this log. **Fred's add-in is back on MAIN** (f3dd036), verified
+running with main's code.
+
+### Hygiene (all hard rules held)
+- **Docs:** each document I created was tagged `claude/scratch=F11` the moment it was created.
+  Every call asserted the ACTIVE doc carried that tag before touching anything, because both docs
+  were named "Untitled". The 19 case docs closed by their own handles in `finally`; at the end I
+  closed only the tagged docs.
+- **Fred's doc:** "Untitled" (untagged, modified) was left untouched; it is the only doc open now.
+- **Deploys:** stop → deploy from my worktree → delete the palette → `run()` in separate calls. The
+  palette was never open. The final MAIN deploy mirrored the folder, so no fb-app file is left in
+  AddIns.
+- **Modules:** nothing added to `sys.path` / `sys.modules`. Scripts ran via `exec` into a local
+  namespace, using the deployed add-in's own modules.
+- **Bridge:** one call (cases 1-3) timed out on the bridge side, but its results were written and
+  no doc was left open. Nothing else went wrong.
+
+### Item 1: [Send frame] live (payload from main's capture_send_payload.mjs, shape-lattice stencil)
+- No body → the clear error, nothing created (also "frame before B-spline").
+- **B-spline → frame:** `Frame_1` + 3 sketches + 4 bars + TRIM_CUT, all healthy.
+  - `boundingboxoffset` 0.5": frame extent ±3.000 × ±4.000 in on 7x9 (the gap measured).
+  - `frame_thickness` 0.75", `frame_height_offset` −1.0", bar bottoms z = −1.000.
+  - Every bar 0.00000 in from the panel (`measureMinimumDistance`).
+  - No frame user params beyond the template's own.
+- **Re-send:** exactly one `Frame_1` / one TRIM_CUT, healthy.
+- **B-spline re-send** (the extrudes go Warning, the TRIM_CUT goes with the body, as §4 says) → Send
+  frame → rebuilt, healthy, body → frame block → inlay.
+- **Three live-found bugs, each fixed at the cause, red first in tests:**
+  1. **FB-ORDER never moved a frame built after the inlay.** Measured: a sketch inside `Frame_1`
+     refuses `canReorder(<before the inlay>)` while `Frame_1`'s occurrence is still after it. The
+     old "check everything up front" could never pass.
+     - Now: each item is checked right before its own move. A refusal rolls back the already-moved
+       items (reverse order, each before its original successor, dependency-safe).
+     - Also measured: `reorder(beforeIndex)` lands the item before the item currently at that
+       index, in both directions, and Fusion drags dependencies along when moving an item earlier.
+       My probe did that to T1_3; I restored it and checked health.
+     - The fake now mirrors the measured semantics. The old pinned test ("checked at the inlay
+       index") was updated to the per-move meaning.
+  2. **Inlay prefixes** `"Plane for L"` / `"Source - L"` missed the lattice's
+     `"Plane for pattern lattice-…"` plane. Now `"Plane for "` / `"Source - "`, b-spline-gen's own
+     naming.
+  3. **0 bars after a B-spline re-send:** every bar failed "InternalValidationError : face".
+     - Now: `send_frame` takes a `find_core_body` callable and re-resolves the underside face right
+       before the solid build.
+     - Proved by measurement, not argued. The first rerun logged "early face valid: True" (a
+       different state), so I reproduced the exact failing sequence, which logged
+       "**early one valid: False**", and the fresh face built 4 bars.
+- **Wood finding (for Fred, not changed):** "3D Cherry - Unfinished" and "3D Maple - Unfinished" are
+  NOT in this Fusion's libraries (there: "Cherry", "3D Maple - Painted"). They silently fall back to
+  the body's material; Pine was seen on the first send. Mahogany proven.
+- Shot: `2044_F11live_T1_sendframe_iso.png`.
+
+### Item 2: seeds, option B (advisor/Fred: "simply seed it in position")
+- **`FRAME_SEED_MAP`** (template_data T1 24 entries, T2 14 → frame-defs `seedMap`): lines, Arc3Points,
+  skeleton pins (outer end = the arc centre) and T1's temporary seed radius dims ← app primitive +
+  S/E orientation.
+  - T2's arc ends were ambiguous by position, so I read them from its chain constraints.
+  - Every orientation is checked against the template's literal seeds; a flipped `arc_waist_R` flag
+    goes red (orientation error 2.64 vs 0.07).
+- **App:** `frameSeedGeometry()`; `sendFrame` adds `seedGeometry` when seeded.
+- **Add-in:**
+  - `fb_engine/seed_geometry.py` (pure, on a copy): only those seeds move, as plain values;
+  - `frame_engine` takes `data['seed_geometry']` (never ui_data);
+  - `send_frame` refuses a bad one BEFORE deleting anything (tested).
+- **Live parity:** 19/19 pass (S4 method, both ways, 0.1 in).
+  - Covered: T1 waistReach / cornerRadius / waistCenterY and T2 neckWidth / skeletonX / neckLength
+    at 20/50/80% of each feasible range, plus T1 seeded + `frame_thickness` 0.5.
+  - Max 0.005 / 0.010 in (the sampling floor). Every timeline healthy; params only the template's
+    own.
+  - Negative control: a built value vs another value's app outline gives 0.26–1.70 in, so the check
+    is sensitive.
+  - End to end through the real handler on the real body: `seeds.applied` true, healthy.
+  - Shot: `2059_F11live_T1_seeded-waist_top.png`.
+- **Every handle matched; none becomes app-only.**
+- My F10 claim "option B parity can't be proven" was WRONG; corrected in §4.1.
+
+### Gates / notes
+- Fast tier: JS 1592 / 88 files; Python 229; frame-defs fresh.
+- Server and Chrome stopped.
+- Amendment (queue): SHAPE-PARAMS is unblocked after F11 and rebases onto R7. No action here.
+- Not verified live: the palette UI click path itself (the payload was replayed into the same
+  handler the palette calls). The palette-side JS is covered by the headless shots and tests.
