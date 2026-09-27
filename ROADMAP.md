@@ -1108,6 +1108,16 @@ each is one undo step. Hold = still for the hold time without moving (a move = d
 the browser's own long-press/contextmenu suppressed on the canvas only. Tests: registry filtering per kind/empty, each
 action = the existing command, undo, touch hold vs drag vs double-tap-hold; mobile + desktop shots of the menu.
 
+## Queued (seat C, F20, after F19) — SHOULDER-HIP: separate Shoulder and Hip handles, Shape Lattice AND Frame (Fred 2026-09-27)
+Fred: "in frame and shape lattice I want two different handles for shoulder and hip". Shape Lattice hourglass already has
+cornerRadiusTop/cornerRadiusBottom handles (F12) PLUS the legacy combined cornerRadius handle: relabel the two as
+"Shoulder" (top) and "Hip" (bottom), REMOVE the combined cornerRadius handle + slider (a removal: the param stays only as
+a migration input -> both; old patterns keep their exact shape). Frame hourglass (T1) has ONE seeded cornerRadius handle:
+split it into Shoulder + Hip SEEDS (option B positions, no new Fusion params, Fred's rule). FIRST check live on Ranchy
+whether T1's phases force the two corners equal (ck_skel_shoulder_equal / arc weld constraints); if they do, report
+which constraint and the options before changing the Frame Builder template. Bottle has no hip: unchanged. Tests:
+independent shoulder/hip in preview + payload + (frame) the live Fusion outline parity per handle; F5 sweep stays green.
+
 ## Closed — UI4 0b (Clear then Regenerate does nothing) — NOT REPRODUCIBLE on main (advisor, 2026-09-27)
 Fred clarified: "Shape Lattice using the shape even once cleared". Headless check on main (611490e): Shape Lattice
 Generate = 12 contour segs + 7 rails/7 ties/14 nodes -> Clear = 0 -> Regenerate = 12 contour segs + 7/7/14 (the
