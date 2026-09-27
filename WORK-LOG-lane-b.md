@@ -10019,3 +10019,68 @@ genuinely does not carve deep enough to survive that clamp.
 
 Verify: 1973/1973 vitest (pre-existing suite, untouched by this item — a new tool file only). Commit e211689,
 pushed. NO FUSION this whole turn.
+
+**Mid-item-2 amendments** (Fred's own reference photos, incorporated before finishing Moon): T78 MOON REFERENCE
+(near/far-side photo) — maria are wide, lobed, LOWER, few-crater basins vs saturated overlapping-crater highlands
+(far side has almost none); crisp round raised rims, bowl floors, central peaks on the large ones; bright rays are
+ALBEDO not relief; add a `mariaAmount` tweak (0 = all highlands, far-side style). T78 MOON REFERENCE 2 (close-up
+photo) — crater types genuinely differ by size (small=bowl+rim, medium-large=COMPLEX with terraced walls + a central
+peak CLUSTER on a flatter floor, largest=flat-floored BASIN peppered with small fresh craters); doublets; partly
+buried/degraded older craters; check under low-angle light (rims should pop); put the best render next to the photo.
+
+## T78 item 2 — MOON: real crater morphology (rims, ejecta, peaks, power-law, maria)
+
+New shared `craterField.js` (imported by `moon.js` now, `mars.js` next per item 3's own "same crater model"
+wording, so the sharing happens where it's first needed rather than being speculatively pre-built): THREE named
+crater types by size — `simple` (small, bowl + rim), `complex` (medium-large, a FLATTER floor + terraced/slumped
+walls + a central PEAK CLUSTER of 2-3 bumps, not one point), `basin` (rare/giant, flat-floored, no peak) — each with
+a raised rim and an outward-fading ejecta apron, power-law per-cell radius (few large, many small), and a per-crater
+`freshness` roll that degrades older craters (shallower floor, softer rim, floored at 35% so nothing is fully
+erased) — "partly buried/degraded older craters" per the close-up reference. Different scales SUM (a small fresh
+crater on a big crater's own floor is real morphology, per the reference's own "peppered" basin), but WITHIN one
+scale's own cell neighborhood, overlap is resolved by picking whichever candidate the point sits most "inside" of
+(smallest normalized distance to its own site) and using that ONE candidate's full profile outright — see the
+second bug below for why this matters.
+
+`moon.js`: the existing maria/highlands relief field now also drives a `mariaGate` fed into `craterField` (near-side
+reference: wide, lower, few-crater maria vs saturated highlands/far side), via a NEW `mariaAmount` tweak (0 = all
+highlands, far-side style; old saved patterns read the declared default, 0.55, the near-side look every earlier
+render already showed). Rilles stay gated to maria only, unchanged. All 4 ORIGINAL tweak keys
+(highlandHeight/craterDepth/rimSharpness/rilleAmount) kept at their original defaults, per item 6.
+
+**Two real bugs found and fixed during tuning** — measured with a throwaway pure-Node stats script sampling `fn()`
+over a grid BEFORE ever touching the browser (much faster iteration than a full CDP render loop for numeric tuning):
+
+1. **Perlin `noise2()` is not uniform** — it's a smoothly-interpolated gradient product, concentrated near 0 (measured
+   min/max over 2000 samples landed inside [0.16, 0.89] after the `n*0.5+0.5` remap, nowhere near the edges). Using
+   it directly as a density-threshold gate silently broke the whole density parameter's own semantics: a
+   `density: 0.26` cell-occupancy check fired at ~3.5% of cells, not 26% — coverage across a 128x128 sample grid was
+   0.03%, i.e. craters were nearly invisible. Fixed with a proper integer bit-mixing hash (`hashInt`, the
+   MurmurHash3-style finalizer technique) seeded from a single `noiseFine.noise2()` sample folded in as a
+   "fingerprint" so crater placement still varies with the terrain's own seed, without depending on `noiseFine`'s
+   own private permutation table (same public-API-only access every other filter already uses).
+2. **The original overlap rule was backwards for positive relief.** "Whichever candidate's raw signed height is most
+   negative wins", initialized at 0, meant an ISOLATED crater's own positive rim/ejecta contribution could NEVER
+   beat that initial 0 with no competing candidate around to push it lower — every lone crater's rim was silently
+   discarded. Caught by the new `craterField` test file itself, not by inspection: "produces genuinely positive
+   values" failed with max exactly `0` across a 96x96 sweep. Fixed by choosing the dominant candidate by SMALLEST
+   NORMALIZED DISTANCE to its own site (computed BEFORE evaluating any height), then evaluating only that winner's
+   full profile — physically "whichever crater's interior you're standing in governs this point, rim included",
+   not a height-magnitude contest between candidates.
+
+**Verified against Fred's own two reference photos**: a far-side-style render (`mariaAmount:0`) shows saturated,
+heavily-overlapping craters matching the reference; a low-grazing-light render shows crisp rim highlights matching
+the close-up photo's own lighting exactly (Fred's own "rims should pop" check). Composite comparison:
+`shots/seatB/after-moon_vs_reference.png` (reference photos left, my renders right). Also
+`shots/seatB/after-moon_moon_seed42.png` (default iso, same seed as the committed "before" shot — a direct
+before/after pair) and the two named-variant shots.
+
+New `tests/noise-craterField.test.js` (8 tests: determinism, seed-dependence, non-vacuous coverage, real negative
+AND positive relief — the regression guard for bug 2 above — craterDepth/rimHeight as real multipliers, mariaGate
+suppression without elimination, saltOffset independence for Mars) and `tests/noise-moon.test.js` (7 tests: tweak
+keys preserved + mariaAmount added with a default, an old-pattern-with-no-mariaAmount-key case, determinism,
+mariaAmount's effect on overall variance, and a std-dev-vs-Simplex regression guard directly encoding item 6's
+"relief comparable to Simplex" requirement — moon's stdDev must stay above 50% of Simplex's across several seeds).
+
+Verify: 1988/1988 vitest (15 new), 87/87 b-spline-gen pytest, 378/378 frame-builder pytest (2 skipped, both
+pre-existing, untouched by this item). Commit 67f2ed0, pushed. NO FUSION this whole turn.
