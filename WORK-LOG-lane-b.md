@@ -10726,3 +10726,31 @@ outside the shape adds nothing; tie; node; Select adds nothing; a hand node surv
 the clip disabled, the 3 clip tests fail. The side-column "Select-only row" test encoded the old behaviour and
 was rewritten: same 4 titles as the box row, a pick proxies latticeAdd-* and shows in both rows.
 Shot: shots/seatB/t80-shape-lattice-add-tools.png. Verify: 2167/2167 vitest. Commit c5af5d2. NO FUSION.
+
+## T80 item 3 — duplicating a tie duplicates its end nodes
+
+Fred: "duplicating a tie should also duplicate its node". Declared once, per the checklist: a tie's OWNED
+CHILDREN = the node(s) sitting exactly at its own two endpoints (0, 1 or 2). New `tieEndNodes(editor, tieEl)`
+(editor-lattice-chains.js) answers it by reusing `nodesAt`, the SAME world-point-match primitive the chain
+tie-move already reads its own attached nodes through -- not a second, independent position-matching
+implementation for duplicate to drift from.
+`copySelection` (editor-interaction.js) now adds a selected tie's owned nodes into the copy set. A JS `Set`
+keyed by element identity is the dedup: a node shared by two selected ties (or a tie plus its own explicitly-
+selected end node) lands in the set once, so paste creates one copy, never a stacked double. Duplicate (context
+menu) = copySelection + pasteClipboard back to back, and a plain Ctrl+C/V shares that exact code -- both entry
+points get this for free, per the checklist's own "every entry point... copy/paste if it shares the path".
+tieEndNodes is a plain position match with no board/boundary branch, so it applies identically to a rect
+Lattice tie and a Shape Lattice tie anchored at a fractional contour crossing.
+Checked (per the checklist's own instruction) whether delete already had a node-cascade rule to reuse: it does
+not -- `deleteSelected` (editor.js) removes exactly the selected elements, nothing more. Item 3 is scoped to
+duplicate, Fred's own ask; delete's behavior is intentionally left unchanged (a node can be shared with a piece
+that survives the delete).
+
+Tests: shape-lattice-tie-duplicate.test.js (10), against a REAL happy-dom SVG subtree (outerHTML round-trip,
+not an attr-store mock) with a tiny svg.js stand-in (`window.SVG.adopt` routed through the SAME cached wrapper
+every other reference uses -- the first draft used a fresh wrapper per `.children()` call and silently broke
+the identity-based dedup: 5 nodes instead of 4. Fixed the mock, not the production Set logic, once real
+identity was confirmed stable). Covers tieEndNodes' own matching (a fractional endpoint, a rail no-op), single
++ multi-select duplicate, the shared-node dedup, and a tie+its own node both explicitly selected. Mutation:
+with the tie-node copy step removed, 4 tests fail.
+Shot: shots/seatB/t80-tie-duplicate-shared-node.png. Verify: 2177/2177 vitest. Commit e2aa9e9. NO FUSION.
