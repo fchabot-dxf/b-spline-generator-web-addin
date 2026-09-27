@@ -342,7 +342,10 @@ export function frameLoopsWorld(spec, grid) {
   const { W, H, nx, nz } = grid;
   const cell = Math.min(W / Math.max(1, nx - 1), H / Math.max(1, nz - 1));
   const paired = samplePairedOutlines(spec.outerPrimitives, spec.innerPrimitives || spec.outerPrimitives, cell);
-  return { cell, outer: toWorld(paired.outer, W, H), inner: spec.innerPrimitives ? toWorld(paired.inner, W, H) : null };
+  const outer = toWorld(paired.outer, W, H);
+  // F22: the panel's own trim loop (the outline offset outward by the panel lip); no lip = the outline itself
+  const panel = spec.panelPrimitives ? toWorld(samplePairedOutlines(spec.panelPrimitives, spec.panelPrimitives, cell).outer, W, H) : outer;
+  return { cell, outer, panel, inner: spec.innerPrimitives ? toWorld(paired.inner, W, H) : null };
 }
 
 /**
@@ -442,11 +445,11 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
   if (!spec) { geom.setIndex(full.slice()); return []; }
   const { W, H, nx, nz, botPos } = grid;
   // Grid-fine loops: the edge wall must follow the terrain top even without bars.
-  const { cell, outer, inner } = frameLoopsWorld(spec, grid);
+  const { cell, outer, inner, panel } = frameLoopsWorld(spec, grid);
   const pos = geom.attributes.position.array;
   const attrs = {};
   for (const nm of ['color', 'uv', 'normal']) if (geom.attributes[nm]) attrs[nm] = geom.attributes[nm];
-  const { kept, rim } = clipPanelToOutline(pos, full, outer, attrs, cell);
+  const { kept, rim } = clipPanelToOutline(pos, full, panel, attrs, cell); // F22: the lip, else the outline
   geom.setIndex(kept);
   const extra = [];
   if (rim.index.length) {
@@ -465,11 +468,11 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
     const bot = (p) => surf.at(p.x, p.y).lo.z;
     const wallMat = panelMesh.material.clone();
     wallMat.side = THREE.DoubleSide;
-    const w = wallArrays(outer, bot, top);
+    const w = wallArrays(panel, bot, top);
     const wallAttrs = {};
     if (attrs.color) { // the panel's own colours at the top edge, as its own side walls
       const col = [];
-      for (const p of outer) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
+      for (const p of panel) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
       wallAttrs.color = { array: col, itemSize: 3 };
     }
     const wall = _mesh(THREE, w, wallMat, wallAttrs);

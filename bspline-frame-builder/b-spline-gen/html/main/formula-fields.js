@@ -83,11 +83,12 @@ export const FORMULA_SECTIONS = Object.freeze([
   },
   {
     section: 'FRAME',
-    ids: ['frameTrimOffset', 'frameBottomZ', 'editorFrameThickness'],
+    ids: ['frameTrimOffset', 'frameBottomZ', 'editorFrameThickness', 'framePanelLip'],
     names: [
       { name: 'trim', label: 'Trim offset', get: () => frameParam(FRAME_DEFS, getFrameRecord(), 'boundingboxoffset'), unit: IN },
       { name: 'bottom', label: 'Frame bottom (z)', get: () => getFrameRecord().frameBottomZ, unit: IN },
       { name: 'thickness', label: 'Frame thickness', get: () => frameParam(FRAME_DEFS, getFrameRecord(), 'frame_thickness'), unit: IN },
+      { name: 'lip', label: 'Panel lip', get: () => getFrameRecord().panelLip ?? 0, unit: IN }, // F22
     ],
   },
   {

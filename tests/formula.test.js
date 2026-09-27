@@ -403,9 +403,9 @@ describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
       const el = doc.getElementById(id);
       expect(el, id).not.toBeNull();
       expect(el.getAttribute('type'), id).toBe('number');
-      // FB-APP F9/F15: a FRAME field is bound to the frame record (a FRAME_PARAM_FIELDS param, or frameBottomZ),
-      // not to a P key.
-      if (section === 'FRAME') expect([...FRAME_PARAM_FIELDS.map((f) => f.id), 'frameBottomZ'], id).toContain(id);
+      // FB-APP F9/F15: a FRAME field is bound to the frame record (a FRAME_PARAM_FIELDS param, frameBottomZ, or F22's
+      // panel lip), not to a P key.
+      if (section === 'FRAME') expect([...FRAME_PARAM_FIELDS.map((f) => f.id), 'frameBottomZ', 'framePanelLip'], id).toContain(id);
       else expect(pKeyFor(id), `${id} has no P key`).toBeTruthy();
       // F15: the frame thickness lives in the editor's Frame tab, every other field in its sidebar section
       if (id === 'editorFrameThickness') { expect(el.closest('#editorFramePanel'), id).not.toBeNull(); continue; }

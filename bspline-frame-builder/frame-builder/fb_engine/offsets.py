@@ -43,12 +43,26 @@ def offset_step(ctx, sketch, s_name, off):
         _audit_endpoint_topology(ctx, coll, s_name, label="source")
 
 
+        # F22: which side the offset goes, declared on the step (default inward, every offset before F22)
+        side = off.get("Side", OFFSET_SIDE)
+
         # --- Primary: addOffset2 (parametric) ---
-        offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name)
+        # F22 MEASURED live: for an OUTWARD offset of the frame outline (projected lines + arcs), addOffset2 lands
+        # inward and flipping its dimension's sign does NOT move it (both signs tried on the built sketch); on a
+        # plain rectangle the sign does flip it. The direction-point offset (sketch.offset toward a point outside
+        # the loop) is deterministic, creates an OffsetConstraint + dimension, and that dimension linked to the
+        # expression keeps its side when the parameter is edited (measured: panel_lip 0.0625 -> 0.125 moved it
+        # further out). So outward uses that path, then links the dimension; inward is unchanged.
+        if side == "outward":
+            offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side)
+            if offset_result:
+                _link_offset_dimension(ctx, sketch, offset_result, d_expr, s_name)
+        else:
+            offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Fallback: sketch.offset() (non-parametric) ---
-        if not offset_result:
-            offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name)
+        if not offset_result and side != "outward":
+            offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Tag results ---
         if offset_result and offset_result.count > 0:
@@ -119,6 +133,7 @@ def step_step(ctx, sketch, s_name, step):
             "SourceID": source or [],
             "DistanceExpr": step.get("DistanceExpr", "0"),
             "Direction": step.get("Direction"),
+            "Side": step.get("Side", OFFSET_SIDE),  # F22: the declared side (MEASURED: dropped here before, the lip went inward)
             "TargetIDs": step.get("TargetIDs", []),
             "TargetID": step.get("TargetID"),
             "CornerIDs": step.get("CornerIDs", {})
@@ -163,7 +178,7 @@ def _collect_source_curves(ctx, sketch, s_name, off):
 # ------------------------------------------------------------------
 # Primary: Parametric offset (addOffset2)
 # ------------------------------------------------------------------
-def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name):
+def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
     """
     Attempt the modern parametric offset via createOffsetInput + addOffset2.
     Returns the resulting curve collection or None.
@@ -193,8 +208,22 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name):
             except Exception as name_e:
                 ctx.logger.log(f"OFFSET LINK FAIL: Could not set expression: {name_e}", "WARNING")
 
-            result = offset_constraint.offsetCurves if hasattr(offset_constraint, 'offsetCurves') else None
-            _ensure_inward(ctx, offset_constraint, coll, result, d_expr, s_name)
+            # F22 MEASURED live: Fusion's OffsetConstraint exposes the new curves as `childCurves` (there is no
+            # `offsetCurves`), so this used to return None and EVERY parametric offset also fell back to a second,
+            # non-parametric sketch.offset (the inner edge's untagged duplicate loop). Wrapped as an
+            # ObjectCollection: the side check and the tagging read .count / .item().
+            result = _as_collection(getattr(offset_constraint, 'childCurves', None))
+            # F22 MEASURED live: inside the deferred-compute window the new curves are not solved yet (their bbox is
+            # the source's), so the side check saw nothing wrong and the lip landed inward. The check runs with
+            # compute ON (its reads force the solve), then the deferred state is restored.
+            was = getattr(sketch, 'isComputeDeferred', None)
+            try:
+                if was is not None:
+                    sketch.isComputeDeferred = False
+                _ensure_side(ctx, offset_constraint, coll, result, d_expr, s_name, side)
+            finally:
+                if was is not None:
+                    sketch.isComputeDeferred = was
             ctx.logger.log(f"OFFSET PARAMETRIC OK: addOffset2 succeeded for {s_name}")
             return result
 
@@ -205,6 +234,19 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name):
             f"OFFSET PARAMETRIC FAIL: addOffset2 failed for {s_name}: {e} -- "
             f"FALLING BACK to a NON-parametric offset", "WARNING")
     return None
+
+
+def _as_collection(curves):
+    """A curve sequence (SWIG vector / list) -> an ObjectCollection, or None when there are none."""
+    if curves is None:
+        return None
+    items = list(curves)
+    if not items:
+        return None
+    coll = adsk.core.ObjectCollection.create()
+    for c in items:
+        coll.add(c)
+    return coll
 
 
 def _as_curve_list(coll):
@@ -229,18 +271,27 @@ def _bbox_span(entities):
     return (max(xs) - min(xs), max(ys) - min(ys)) if xs else None
 
 
-def _ensure_inward(ctx, offset_constraint, source, result, d_expr, s_name):
-    """If addOffset2 put the curves OUTSIDE the source (a bigger bbox),
-    flip the driving expression's sign so the offset lands inward, still
-    parametric. UNVERIFIED live which sign Fusion picks by default."""
+def offset_went_wrong_side(src_span, res_span, side):
+    """Pure: did an offset land on the wrong side? Inward = the result's bbox is not bigger than the
+    source's; outward (F22, the panel lip) = it is not smaller."""
+    bigger = res_span[0] > src_span[0] + 1e-6 or res_span[1] > src_span[1] + 1e-6
+    smaller = res_span[0] < src_span[0] - 1e-6 or res_span[1] < src_span[1] - 1e-6
+    return smaller if side == "outward" else bigger
+
+
+def _ensure_side(ctx, offset_constraint, source, result, d_expr, s_name, side="inward"):
+    """If addOffset2 put the curves on the wrong side of the source (bbox
+    compare), flip the driving expression's sign so it lands on the declared
+    side, still parametric."""
     try:
         src, res = _bbox_span(source), _bbox_span(result) if result is not None else None
         if not src or not res:
             return
-        if res[0] > src[0] + 1e-6 or res[1] > src[1] + 1e-6:
+        ctx.logger.log(f"OFFSET SIDE CHECK: {s_name} declared {side}, source span {src}, result span {res}")
+        if offset_went_wrong_side(src, res, side):
             flipped = f"-({d_expr})"
             offset_constraint.dimension.parameter.expression = flipped
-            ctx.logger.log(f"OFFSET SIDE: {s_name} went outward; driving expression flipped to '{flipped}'")
+            ctx.logger.log(f"OFFSET SIDE: {s_name} landed on the wrong side (declared {side}); driving expression flipped to '{flipped}'")
     except Exception as e:
         ctx.logger.log(f"OFFSET SIDE CHECK FAILED in {s_name}: {e}", "WARNING")
 
@@ -248,13 +299,15 @@ def _ensure_inward(ctx, offset_constraint, source, result, d_expr, s_name):
 # ------------------------------------------------------------------
 # Fallback: Non-parametric offset (sketch.offset)
 # ------------------------------------------------------------------
-def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name):
+def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
     """
     Fallback using sketch.offset() which takes a numeric distance in cm.
     Uses centroid of source curves as the direction point.
     """
     d_val = ctx.resolve_val(d_expr)
     dir_pt = _compute_centroid_direction(ctx, coll, s_name)
+    if side == "outward":  # F22: a direction point OUTSIDE the loop (past its bbox)
+        dir_pt = _outside_direction(coll, dir_pt)
 
     ctx.logger.log(
         f"OFFSET RUN: {s_name} Distance={d_val:.3f} cm "
@@ -271,6 +324,9 @@ def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name):
             return result
     except Exception as e:
         ctx.logger.log(f"OFFSET ATTEMPT 1 FAIL: {e}", "WARNING")
+    if side == "outward":  # F22: the retries below flip the side (a negated distance, then the origin point)
+        ctx.logger.log(f"OFFSET OUTWARD FAILED for {s_name}: no retry that would land it inward", "ERROR")
+        return None
 
     # Attempt 2: flip distance sign
     try:
@@ -295,6 +351,34 @@ def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name):
 
     ctx.logger.log(f"OFFSET ALL ATTEMPTS EXHAUSTED for {s_name}", "ERROR")
     return None
+
+
+def _link_offset_dimension(ctx, sketch, offset_curves, d_expr, s_name):
+    """F22: drive a direction-point offset by `d_expr`: the OffsetConstraint whose child curves are `offset_curves`
+    gets its dimension's expression set (editing the parameter then moves the offset, measured live)."""
+    try:
+        first = offset_curves.item(0)
+        for c in sketch.geometricConstraints:
+            if not c.objectType.endswith('OffsetConstraint'):
+                continue
+            if any(k == first for k in c.childCurves):
+                c.dimension.parameter.expression = d_expr
+                ctx.logger.log(f"OFFSET LINK SUCCESS: {s_name} direction-point offset driven by '{d_expr}'")
+                return True
+        ctx.logger.log(f"OFFSET LINK MISSING: no OffsetConstraint owns the new curves in {s_name}", "WARNING")
+    except Exception as e:
+        ctx.logger.log(f"OFFSET LINK FAIL in {s_name}: {e}", "WARNING")
+    return False
+
+
+def _outside_direction(coll, centroid):
+    """F22: a point beyond the loop's bbox (to its right), for an OUTWARD non-parametric offset."""
+    xs = []
+    for i in range(coll.count):
+        b = coll.item(i).boundingBox
+        xs += [b.minPoint.x, b.maxPoint.x]
+    span = (max(xs) - min(xs)) if xs else 1.0
+    return adsk.core.Point3D.create(max(xs) + span if xs else centroid.x + 100, centroid.y, 0)
 
 
 def _compute_centroid_direction(ctx, coll, s_name):

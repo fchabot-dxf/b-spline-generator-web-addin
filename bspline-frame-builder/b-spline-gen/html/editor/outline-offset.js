@@ -112,7 +112,9 @@ function _intersect(a, b, ref, ctx) {
     cands = [add(L.pt, mul(L.dir, -B + s)), add(L.pt, mul(L.dir, -B - s))];
   }
   if (!cands.length) return ref;
-  const onOffset = (q) => _inside(q, ctx.poly) && ctx.prims.every((p) => _distTo(q, p) >= ctx.t - 1e-6);
+  // F22: a signed t: t > 0 inward (inside the outline), t < 0 OUTWARD (outside it, the panel lip); at least |t| from
+  // every piece either way (for t > 0 exactly the original rule)
+  const onOffset = (q) => _inside(q, ctx.poly) === (ctx.t >= 0) && ctx.prims.every((p) => _distTo(q, p) >= Math.abs(ctx.t) - 1e-6);
   const pool = cands.filter(onOffset).length ? cands.filter(onOffset) : cands;
   return pool.reduce((best, q) => (len(sub(q, ref)) < len(sub(best, ref)) ? q : best));
 }

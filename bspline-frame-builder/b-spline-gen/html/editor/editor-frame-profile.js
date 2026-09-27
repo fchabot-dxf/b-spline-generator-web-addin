@@ -109,6 +109,15 @@ export function frameInnerProfile(defs, record, board) {
 
 /** Everything the 3D preview needs (core/preview/frame-mesh.js), or null
  *  when there is no frame or the outline fails the guard. */
+/** F22: the panel's trim outline = the frame outline offset OUTWARD by the record's panel lip (the F8 true offset,
+ *  negative distance; a corner arc that collapses merges into a corner), or null when the lip is 0 (the panel is
+ *  trimmed on the outline itself, exactly as before). */
+export function panelTrimPrimitives(prof, record) {
+  const lip = Number(record && record.panelLip) || 0;
+  if (!prof || !(lip > 0)) return null;
+  return offsetOutlineInward(prof.primitives, -lip).filter((p) => !p.collapsed);
+}
+
 export function frameSolidSpec(defs, record, board) {
   const prof = frameCutProfile(defs, record, board);
   if (!prof || prof.defects.length) return null;
@@ -119,6 +128,7 @@ export function frameSolidSpec(defs, record, board) {
     inner: innerOk ? sampleOutline(inner.primitives) : null,
     outerPrimitives: prof.primitives,
     innerPrimitives: innerOk ? inner.primitives : null,
+    panelPrimitives: panelTrimPrimitives(prof, record), // F22: null = trimmed on the outline
     frameBottomZ: record.frameBottomZ,
     // H8 (Fred: "make frame colour a bit different than board, tiny bit"):
     // the frame's own declared colour, not the board's raw wood colour —
@@ -207,6 +217,11 @@ function _drawFrameProfile(editor) {
       g.path(`M${m.outer.x} ${m.outer.y} L${m.inner.x} ${m.inner.y}`).fill('none')
         .stroke({ color: FRAME_OUTLINE_COLOR, width: 0.025 }).addClass('frame-miter');
     }
+  }
+  const lipPrims = panelTrimPrimitives(prof, spec.record); // F22: the panel lip, a subtle band outside the outline
+  if (lipPrims) {
+    g.path(`${primitivesToPathD(lipPrims)} ${prof.pathD}`).fill({ color: FRAME_OUTLINE_COLOR, opacity: 0.25 })
+      .attr('fill-rule', 'evenodd').addClass('frame-panel-lip');
   }
   g.path(prof.pathD).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.04 }).addClass('frame-cut-profile');
   // F9: the shape handles, in the Frame tab only (dragged through its shield, main/frame-panel.js).

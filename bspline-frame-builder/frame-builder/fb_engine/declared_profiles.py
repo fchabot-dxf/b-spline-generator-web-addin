@@ -10,6 +10,8 @@ A profile is known by the FrameBuilder.ID of the sketch curves bounding it
   - else it touches an `outline` curve         -> region "outline-minus-inner";
     which bar it is follows the declared `miters` (each miter starts a bar at
     its outline curve's start, in outline order) and the feature's `bodyNames`
+  - F22: else it touches a panel-LIP curve (lip_<outline id>, fb_engine/panel_lip.py) -> the lip ring between
+    the outline and the lip loop: no feature (the panel keeps it; the trim follows the lip loop)
   - else it is the frame's opening (inside the inner edge)  -> no feature.
     Its curves' ids are NOT required: MEASURED F14 (T2 12x6), Fusion re-solves
     the inner offset later in the build and the replacement curves carry no
@@ -22,6 +24,12 @@ Pure: no adsk. extrusion_engine gathers the ids and builds from the plan.
 
 SURROUND_REGION = "surround-minus-outline"
 BAR_REGION = "outline-minus-inner"
+
+
+def miter_curve_id(src_id, tgt_id):
+    """The FrameBuilder.ID of the miter line from `src_id` to `tgt_id` (a template's `miters` pair). The ONE naming
+    rule: fb_engine/miters.py names the line with it, the lip rule below derives the ids with it."""
+    return f"miter-{src_id}_{tgt_id}"
 
 
 class DeclaredProfileError(ValueError):
@@ -55,6 +63,16 @@ def classify(curve_ids, frame):
     ids = set(curve_ids)
     if regions["surround"] in ids:
         return _feature_for(features, SURROUND_REGION), None
+    from fb_engine.panel_lip import lip_ids
+    lip = set(lip_ids(regions["outline"]))
+    if ids & lip:
+        # MEASURED live (F22, T1 7x9): the miters meet the outline at its corners and split the ring into pieces,
+        # so a ring piece is bounded by lip + outline + miter curves
+        miters = {miter_curve_id(a, b) for a, b in regions["miters"]}
+        stray = ids - lip - set(regions["outline"]) - miters
+        if stray:
+            raise DeclaredProfileError(f"lip profile curves {sorted(stray)} are not the outline, its lip or a miter")
+        return None, None  # the lip ring: the panel keeps it
     outline = ids & set(regions["outline"])
     if outline:
         feat = _feature_for(features, BAR_REGION)

@@ -15,7 +15,7 @@
  * every shortcut, and the focus rule dims whichever side is not being edited
  * (editor-frame-profile.js setEditorFocus; display only).
  */
-import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload } from '../core/frame-record.js';
+import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
@@ -158,6 +158,12 @@ export function syncFramePanel() {
   if ($('editorFrameWoodRow')) $('editorFrameWoodRow').style.display = tpl ? '' : 'none';
   if ($('frameTemplate')) $('frameTemplate').value = rec.templateId || '';
   if ($('frameBottomZ') && document.activeElement !== $('frameBottomZ')) $('frameBottomZ').value = rec.frameBottomZ;
+  if ($('framePanelLip')) { // F22: its declared range follows the Trim offset
+    const r = panelLipRange(FRAME_DEFS, rec);
+    $('framePanelLip').min = r.min;
+    if (Number.isFinite(r.max)) $('framePanelLip').max = r.max;
+    if (document.activeElement !== $('framePanelLip')) $('framePanelLip').value = rec.panelLip;
+  }
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${tpl.name.split(' - ').pop()}` : '— none';
@@ -276,6 +282,7 @@ export function initFramePanel() {
   tplSel.addEventListener('change', () => { pushFrameHistory(); setFrameRecord({ templateId: tplSel.value || null, params: {} }); syncFramePanel(); });
   woodSel.addEventListener('change', () => { setFrameRecord({ appearance: woodSel.value }); syncFramePanel(); });
   $('frameBottomZ')?.addEventListener('change', (e) => { setFrameRecord({ frameBottomZ: parseFloat(e.target.value) }); syncFramePanel(); });
+  $('framePanelLip')?.addEventListener('change', (e) => { setFrameRecord({ panelLip: parseFloat(e.target.value) }); syncFramePanel(); });
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
   $('btnSendFrame')?.addEventListener('click', () => sendFrame());
   _wireHandleDrag();
