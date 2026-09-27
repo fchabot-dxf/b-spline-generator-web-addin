@@ -383,20 +383,24 @@ describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice par
     const editorOn = makeMockEditor(7, 9);
     const patternOn = { ...shapePattern(), widths: narrowWidths };
     regenerateSilhouette(editorOn, patternOn);
-    await generatePattern(editorOn, patternOn);
+    const resOn = await generatePattern(editorOn, patternOn);
     const editorOff = makeMockEditor(7, 9);
     const patternOff = { ...shapePattern({ show: false }), widths: narrowWidths };
     regenerateSilhouette(editorOff, patternOff);
-    await generatePattern(editorOff, patternOff);
+    const resOff = await generatePattern(editorOff, patternOff);
     const countByKind = (editor, kind) => editor._sketchLayer.children().toArray().filter((e) => e.attr('data-lattice') === kind).length;
-    let sawStrictlyMore = false;
     for (const kind of ['rail', 'tie', 'node']) {
       expect(countByKind(editorOn, kind)).toBeGreaterThan(0); // non-vacuous
       expect(countByKind(editorOff, kind)).toBeGreaterThan(0);
       expect(countByKind(editorOn, kind)).toBeGreaterThanOrEqual(countByKind(editorOff, kind));
-      if (countByKind(editorOn, kind) > countByKind(editorOff, kind)) sawStrictlyMore = true;
     }
-    expect(sawStrictlyMore).toBe(true); // non-vacuous: ON's own wider boundary genuinely fits more, somewhere
+    // Non-vacuous: ON's own wider boundary genuinely reaches further -- its
+    // rails are longer in total. (This used to require strictly MORE pieces
+    // of some kind, which only held because the narrower OFF shape lost ties
+    // to filters applied after the tie count was chosen -- the T80 item 1
+    // bug; with the count now chosen from valid ties, both deliver it.)
+    const railLength = (res) => res.segments.filter((sg) => sg.kind === 'rail').reduce((t, sg) => t + Math.hypot(sg.b.i - sg.a.i, sg.b.j - sg.a.j), 0);
+    expect(railLength(resOn)).toBeGreaterThan(railLength(resOff));
   });
 });
 

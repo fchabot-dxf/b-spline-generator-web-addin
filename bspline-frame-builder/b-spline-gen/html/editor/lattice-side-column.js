@@ -374,9 +374,8 @@ function _makeLayersCollapsible(layersPanelEl) {
 
 // =========================================================================
 // 5. UI3 AMEND 1 + AMEND 2 (Fred) — icon tool row replacing the Lattice
-//    panel's text "Add" row: [Select] [Rail] [Tie] [Node] (Shape Lattice:
-//    "if it has add modes (else just Select)" — it has none, so [Select]
-//    alone). Select reuses the main Select tool's own selection/colour/
+//    panel's text "Add" row: [Select] [Rail] [Tie] [Node] (Shape Lattice
+//    too since T80 item 2 — same row, same drawKind). Select reuses the main Select tool's own selection/colour/
 //    delete path (editor._select/_selectAdd, wired into latticeHandler
 //    directly — editor-interaction.js — and editor.setColor/
 //    deleteSelected, both already whole-selection-generic) — no second
@@ -429,6 +428,8 @@ function _buildLatticeIconSVG(kind) {
  *  section" exemption Add always had (and keeps editor-drawer.js's own
  *  measuredPeekFloorPx mobile-peek measurement working unchanged, since
  *  it queries generically for `[data-no-collapse]`, not Add's own id). */
+const _iconRowSetters = [];
+
 function _buildLatticeIconRow(editor, bodyEl, kinds) {
   if (!bodyEl) return;
   const oldAddRow = bodyEl.querySelector('[data-no-collapse]');
@@ -453,6 +454,7 @@ function _buildLatticeIconRow(editor, bodyEl, kinds) {
     for (const k of kinds) buttons[k].classList.toggle('active', k === kind);
   }
   setActive(editor._lattice.drawKind || 'select');
+  _iconRowSetters.push(setActive);
 
   for (const kind of kinds) {
     on(buttons[kind], 'click', () => {
@@ -462,7 +464,7 @@ function _buildLatticeIconRow(editor, bodyEl, kinds) {
         const oldBtn = el(`latticeAdd-${kind}`);
         if (oldBtn) oldBtn.click();
       }
-      setActive(kind);
+      for (const set of _iconRowSetters) set(kind); // T80 item 2: both tools' rows show the one shared drawKind
     });
   }
 
@@ -491,13 +493,11 @@ export function initLatticeSideColumn(editor) {
   }
   _makeLayersCollapsible(el('editorLayersPanel'));
 
-  // AMEND 1: Shape Lattice "has [no] add modes" of its own — Select
-  // alone; its existing shapeLatticeHandler already falls back to
-  // selectHandler.start for any click that isn't on a param handle or a
-  // segment (editor-interaction.js), so this button needs no state wiring
-  // beyond looking the part — it's always the only, always-active choice.
+  // T80 item 2 (Fred: "where are add geometry tools"): Shape Lattice gets
+  // the same row -- one drawKind for both tools; shapeLatticeHandler hands
+  // Rail/Tie/Node presses on empty space to latticeHandler.
   _buildLatticeIconRow(editor, latticeBody, ['select', 'rail', 'tie', 'node']);
-  _buildLatticeIconRow(editor, shapeBody, ['select']);
+  _buildLatticeIconRow(editor, shapeBody, ['select', 'rail', 'tie', 'node']);
 
   let lastMode = null;
   document.addEventListener('editorModeChanged', (e) => {

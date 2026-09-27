@@ -99,6 +99,24 @@ function nodesAt(editor, points) {
   return out;
 }
 
+/** T80 item 3 (Fred: "duplicating a tie should also duplicate its node"): a
+ *  tie's OWNED CHILDREN -- the node(s), if any, sitting exactly at its own
+ *  two endpoints. Reuses `nodesAt` (the SAME "any layer, world-point match"
+ *  primitive the chain tie-move above already reads its own attached nodes
+ *  through), so this is the one declared place "which nodes belong to this
+ *  tie" is answered, rather than a second position-matching implementation
+ *  for a new consumer (duplicate, editor-interaction.js) to drift from.
+ *  Returns [{ el, world }], 0-2 entries (a bare tie: 0; both ends sitting on
+ *  a node: 2; two selected ties sharing one node each report it, but it's
+ *  the SAME el both times -- callers dedupe by identity, e.g. a Set). */
+export function tieEndNodes(editor, tieEl) {
+  if (!tieEl || !tieEl.node || tieEl.node.getAttribute(LATTICE_ATTR) !== 'tie') return [];
+  const n = (k) => parseFloat(tieEl.node.getAttribute(k));
+  const a = worldPoint(tieEl, { x: n('x1'), y: n('y1') });
+  const b = worldPoint(tieEl, { x: n('x2'), y: n('y2') });
+  return nodesAt(editor, [a, b]);
+}
+
 /**
  * `move` = what _beginLatticeMove built for a rail/tie grab. When the grabbed piece is one segment of a chain of
  * 2+, returns the chain-aware move (same shape, plus `chain` / `excludeSet`, and mode 'joint' for a joint grab);

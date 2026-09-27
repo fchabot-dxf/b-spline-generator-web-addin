@@ -10659,3 +10659,98 @@ would cover it anyway). Sweep: remaining "river" hits are the checklist lines an
 
 Verify: 2148/2148 vitest (2157 minus River Stones' 9), 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder
 pytest. Commit 9af292a. NO FUSION this whole turn.
+
+## T80 item 1 — ties honour Count's minimum (valid ties first, then choose)
+
+Fred: hourglass, Count 8-13, rails span, one-ended 1, min spacing 0.5 -> 4 ties. Cause as the checklist said:
+_tieSlotsByCount chose count + columns first; boundary-intactness (with its fallback scan), the real-rail check at
+the call site and _enforceTieMinSpacing dropped ties after. Fix, once for count mode: per-column tie builders
+(rail bridge / one-ended stub / cell stub, geometry unchanged) validated as they're built (the real-rail check now
+passed in as onRealRails); count drawn with the same seeded draw and chosen from the VALID pool with the same
+stratified spread; accepted against min spacing (shared _tiesTooClose), refilling from the rest of the pool in a
+seeded order. Shortfall (< Count min) returned as tieShortfall from computePattern and generatePattern and shown via
+setEditorStatusHint ("Ties: only N fit ..."); cleared only when the hint is still ours.
+
+Measured (seeds 1-20, Fred's config): before 15/20 below 8, seed 1 = 4 ties (his screenshot); after 0/20.
+Mutation check: the old order (choose from all columns, no refill) fails the new test at 5/20.
+Shot: shots/seatB/t80-tie-count-before-after.png (seed 1, 4 -> 10 ties).
+
+Existing tests that encoded the bug, rewritten to their intent: rail-spacing TIE-GAP (asserted fewer ties with a
+big gap -> now checks no two overlapping ties closer than the gap); parity "ON has strictly more pieces" and
+sketch-manifest "ON > OFF pieces" -- measured on the old code: ON 6 ties / OFF 5, both below 8; now both 8, so the
+documented rail grid-snap artifact (ON 5 rails vs OFF 7) decides the totals. They now check ON's rails are longer
+(101.3 vs 94.6) / the fills differ and both meet Count's min.
+
+New tests: tests/editor-lattice-tie-count.test.js (4). Verify: 2152/2152 vitest, 87/87 + 201/2-skipped pytest.
+Commit 7c5c30b. NO FUSION.
+
+## T80 item 4 — reopening Shape Lattice adopts its layers (no second set)
+
+Fred: after reopening, a new Ties/Contour/Rails set appeared over the existing one (3D off, eye on). Cause: a
+sibling kind-layer finds its lattice through `layer.patternOwner`, which is runtime-only (not in
+editor-io's _PERSISTED_LAYER_FIELDS). After save + reopen, with a sibling (Ties/Contour/Nodes) as the saved
+active layer, resolvePatternLayer returned null. currentPattern then made a fresh pattern, and Generate's
+_ensureKindLayers added a second set. The 3D toggle itself isn't the trigger: it stops propagation and doesn't
+change the active layer. It only matters in that Fred's last clicked row was a sibling.
+Fix: resolvePatternLayer falls back to the layer whose saved `pattern.layers` map names the id. That map is the
+declared identity, and it survives 3D/eye toggles, rename and reorder. It's the only reader of patternOwner, so
+every caller gets it. Existing duplicate documents are left alone: each set resolves to its own owner, with no merge.
+
+REPRODUCED FIRST: tests/shape-lattice-reopen-layers.test.js (7) round-trips through the real save() and restores
+the roster the way open() does. Before the fix, 5 failed (7 layers instead of 4). Covers Fred's case, each kind
+active, eye hidden + renamed + reordered, and an already-duplicated document. Verify: 2159/2159 vitest.
+Commit 3bb9af5. NO FUSION. (Correction to the item 1 entry above: its commit is 3c0975a, not 7c5c30b.)
+
+## T80 item 2 — Shape Lattice gets the [Select][Rail][Tie][Node] add tools
+
+Fred: "where are add geometry tools". lattice-side-column.js built [Select] alone for Shape Lattice. Both
+panels now build the same four-button row, which writes the one shared `editor._lattice.drawKind` through the
+original latticeAdd-* buttons (selectDrawKind stays the only writer); a pick highlights in both rows.
+shapeLatticeHandler.start hands a Rail/Tie/Node press on EMPTY space to latticeHandler.start. The order is
+param handle, then existing piece (move/select), then add mode, then segment tap, then select. update() and
+finish() route to latticeHandler while `_latticeStart` is set. start() clears it first, because
+_cancelDrawing never does; that's a pre-existing gap in the box tool too, not fixed there.
+Clip: new clipHandRailToBoundary (editor-lattice-pattern.js) runs the same _rowScanLine, insideSpans ∪
+collinearSpans, _clipToSpans and _applyEndRule computePattern uses for a generated rail. latticeHandler.finish
+applies it whenever the active pattern is boundary-mode, which also covers a box Lattice with a picked boundary.
+A rail click spawns ±∞ and clips to the whole inside row. Emission moved into _emitHandPieces (0..n pieces;
+none = no commit).
+REGENERATE RULE for hand-added pieces (the box Lattice rule, unchanged): hand pieces carry no OWNERSHIP_ATTR.
+generatePattern removes only owned pieces on the kind-layers, so hand pieces survive Regenerate. On a kind-layer,
+_collectOccupied keeps generation off their cells.
+Note, not changed: hand pieces land on the ACTIVE layer, as in the box tool, not on their own kind-layer.
+
+Tests: shape-lattice-add-tools.test.js (7) drives the real shapeLattice handler (getModeHandler now exported).
+A board-wide drag at the waist gets the generated waist rail's exact ends; a rail click gets the same; a rail
+outside the shape adds nothing; tie; node; Select adds nothing; a hand node survives Regenerate. Mutation: with
+the clip disabled, the 3 clip tests fail. The side-column "Select-only row" test encoded the old behaviour and
+was rewritten: same 4 titles as the box row, a pick proxies latticeAdd-* and shows in both rows.
+Shot: shots/seatB/t80-shape-lattice-add-tools.png. Verify: 2167/2167 vitest. Commit c5af5d2. NO FUSION.
+
+## T80 item 3 — duplicating a tie duplicates its end nodes
+
+Fred: "duplicating a tie should also duplicate its node". Declared once, per the checklist: a tie's OWNED
+CHILDREN = the node(s) sitting exactly at its own two endpoints (0, 1 or 2). New `tieEndNodes(editor, tieEl)`
+(editor-lattice-chains.js) answers it by reusing `nodesAt`, the SAME world-point-match primitive the chain
+tie-move already reads its own attached nodes through -- not a second, independent position-matching
+implementation for duplicate to drift from.
+`copySelection` (editor-interaction.js) now adds a selected tie's owned nodes into the copy set. A JS `Set`
+keyed by element identity is the dedup: a node shared by two selected ties (or a tie plus its own explicitly-
+selected end node) lands in the set once, so paste creates one copy, never a stacked double. Duplicate (context
+menu) = copySelection + pasteClipboard back to back, and a plain Ctrl+C/V shares that exact code -- both entry
+points get this for free, per the checklist's own "every entry point... copy/paste if it shares the path".
+tieEndNodes is a plain position match with no board/boundary branch, so it applies identically to a rect
+Lattice tie and a Shape Lattice tie anchored at a fractional contour crossing.
+Checked (per the checklist's own instruction) whether delete already had a node-cascade rule to reuse: it does
+not -- `deleteSelected` (editor.js) removes exactly the selected elements, nothing more. Item 3 is scoped to
+duplicate, Fred's own ask; delete's behavior is intentionally left unchanged (a node can be shared with a piece
+that survives the delete).
+
+Tests: shape-lattice-tie-duplicate.test.js (10), against a REAL happy-dom SVG subtree (outerHTML round-trip,
+not an attr-store mock) with a tiny svg.js stand-in (`window.SVG.adopt` routed through the SAME cached wrapper
+every other reference uses -- the first draft used a fresh wrapper per `.children()` call and silently broke
+the identity-based dedup: 5 nodes instead of 4. Fixed the mock, not the production Set logic, once real
+identity was confirmed stable). Covers tieEndNodes' own matching (a fractional endpoint, a rail no-op), single
++ multi-select duplicate, the shared-node dedup, and a tie+its own node both explicitly selected. Mutation:
+with the tie-node copy step removed, 4 tests fail.
+Shot: shots/seatB/t80-tie-duplicate-shared-node.png. Verify: 2177/2177 vitest. Commit e2aa9e9. NO FUSION.

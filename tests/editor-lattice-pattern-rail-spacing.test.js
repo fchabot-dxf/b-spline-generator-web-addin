@@ -223,10 +223,22 @@ describe('ruling 6 — ties/nodes attach correctly to OFF-GRID rails', () => {
     for (const p of result.nodePoints) expect([...railRowSet].some((j) => Math.abs(j - p.j) < 1e-9)).toBe(true);
   });
 
-  it('TIE-GAP (ties.minSpacing) still holds regardless of rails.mode', () => {
-    const withGap = computePattern(pattern(OFFGRID, { minSpacing: 5 }), { extent: EXTENT }); // a huge gap -> heavy thinning
-    const withoutGap = computePattern(pattern(OFFGRID, { minSpacing: 0 }), { extent: EXTENT });
-    expect(tieSegs(withGap).length).toBeLessThan(tieSegs(withoutGap).length);
+  it('TIE-GAP (ties.minSpacing) still holds regardless of rails.mode: no two ties sharing rows sit closer than the gap', () => {
+    // T80 item 1: this used to assert "a big gap gives FEWER ties" -- that
+    // was the bug itself (spacing dropped ties after the count was chosen).
+    // Count mode now refills from other valid columns, so what must hold is
+    // the spacing rule, checked directly.
+    const gapIn = 5;
+    const ties = tieSegs(computePattern(pattern(OFFGRID, { minSpacing: gapIn }), { extent: EXTENT }));
+    expect(ties.length).toBeGreaterThan(0);
+    const minCells = gapIn / 0.25; // default P.spacing (see EXTENT above)
+    for (let x = 0; x < ties.length; x++) {
+      for (let y = x + 1; y < ties.length; y++) {
+        const a = ties[x], b = ties[y];
+        const overlap = Math.min(a.a.j, a.b.j) <= Math.max(b.a.j, b.b.j) && Math.min(b.a.j, b.b.j) <= Math.max(a.a.j, a.b.j);
+        if (overlap) expect(Math.abs(a.a.i - b.a.i)).toBeGreaterThanOrEqual(minCells - 1e-9);
+      }
+    }
   });
 });
 
