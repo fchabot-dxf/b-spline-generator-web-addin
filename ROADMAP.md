@@ -1108,6 +1108,12 @@ each is one undo step. Hold = still for the hold time without moving (a move = d
 the browser's own long-press/contextmenu suppressed on the canvas only. Tests: registry filtering per kind/empty, each
 action = the existing command, undo, touch hold vs drag vs double-tap-hold; mobile + desktop shots of the menu.
 
+## Closed — UI4 0b (Clear then Regenerate does nothing) — NOT REPRODUCIBLE on main (advisor, 2026-09-27)
+Fred clarified: "Shape Lattice using the shape even once cleared". Headless check on main (611490e): Shape Lattice
+Generate = 12 contour segs + 7 rails/7 ties/14 nodes -> Clear = 0 -> Regenerate = 12 contour segs + 7/7/14 (the
+outline survives Clear); Box Lattice 42 -> 0 -> 39. Most likely fixed by the Regenerate/refill work (F17 P2 declared
+fill inputs). Reopen with a screenshot if seen again.
+
 ## SE16 RULINGS (Fred 2026-09-26, answers to CUT-TOOL-DESIGN.md §0) — supersede the SE16 text below where they differ
 Q1 Send AS DRAWN (bug fix F17 P1). Q2 Regenerate CLEARS cuts (Undo restores). Q3 dragging a lattice joint SLIDES ALONG the
 rail. Q4 Join clears BOTH segments' overrides (the joined rail = lattice default colour/width). Q5 cutting snaps by the normal
