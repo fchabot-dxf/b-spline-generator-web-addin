@@ -135,13 +135,6 @@ def _create_line_entity(ctx, curves, s_name, ent):
     p2 = _to_point3d(ent["p2"])
     line = curves.sketchLines.addByTwoPoints(p1, p2)
     ctx.set_id(line, s_name, "line", override_id=ent["id"])
-    # T70 AMEND 3: the shape contour's own new mirror-axis Line (declared
-    # `isConstruction: true` in the manifest so it never becomes a real,
-    # selectable profile edge) is the first Line entity that ever needs
-    # this — every OTHER Line entity omits the field, so `.get(...)`
-    # defaults False and this is a no-op for them.
-    if ent.get("isConstruction"):
-        line.isConstruction = True
     ctx.set_id(line.startSketchPoint, s_name, "point", override_id=f"{ent['id']}:S")
     ctx.set_id(line.endSketchPoint, s_name, "point", override_id=f"{ent['id']}:E")
     return line
@@ -482,21 +475,29 @@ def _create_geometry(ctx, sketch, s_name, entities, dimensions=None):
         eid = ent.get("id")
         try:
             if etype == "Line":
-                _create_line_entity(ctx, curves, s_name, ent)
+                curve = _create_line_entity(ctx, curves, s_name, ent)
             elif etype == "Circle":
-                _create_circle_entity(ctx, curves, s_name, ent)
+                curve = _create_circle_entity(ctx, curves, s_name, ent)
             elif etype == "ArcCenter":
-                _create_arc_center_entity(ctx, curves, s_name, ent)
+                curve = _create_arc_center_entity(ctx, curves, s_name, ent)
             elif etype == "Arc3Point":
-                _create_arc3_entity(ctx, curves, s_name, ent)
+                curve = _create_arc3_entity(ctx, curves, s_name, ent)
             elif etype == "Slot":
-                _create_slot_entity(ctx, sketch, curves, s_name, ent, slot_width_expr_by_id.get(eid))
+                curve = _create_slot_entity(ctx, sketch, curves, s_name, ent, slot_width_expr_by_id.get(eid))
             elif etype == "Arc3PointSlot":
-                _create_arc3_slot_entity(ctx, sketch, curves, s_name, ent, slot_width_expr_by_id.get(eid))
+                curve = _create_arc3_slot_entity(ctx, sketch, curves, s_name, ent, slot_width_expr_by_id.get(eid))
             else:
                 skipped.append({"id": eid, "type": etype, "reason": "unknown entity type"})
                 ctx.logger.log(f"GEOM SKIP: unknown type '{etype}' for {eid}", "WARNING")
                 continue
+            # BOUNDARY-GUIDE (L1): construction is a declared field on ANY
+            # entity (the manifest sets it from a guide's role, e.g. the
+            # lattice Size box) — applied here once, generically, not per
+            # type (T70 AMEND 3 first read it for Line only). Construction
+            # curves are never profiles, so never extruded, yet still take
+            # constraints and dims.
+            if ent.get("isConstruction") and curve is not None:
+                curve.isConstruction = True
             created += 1
         except Exception as e:
             skipped.append({"id": eid, "type": etype, "reason": str(e)})

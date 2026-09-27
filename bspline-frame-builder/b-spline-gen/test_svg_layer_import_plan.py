@@ -287,3 +287,25 @@ def test_ordered_plan_handles_two_independent_pattern_groups_without_mixing_them
         kinds_for_pid = [step['manifest']['kind'] for step in ordered if step['manifest']['patternId'] == pid]
         assert kinds_for_pid == ['rails', 'ties']
     assert set(pattern_ids_in_order) == {'pA', 'pB'}
+
+
+def test_lattice_boundary_entry_builds_FIRST_under_its_own_declared_name():
+    """BOUNDARY-GUIDE (L1 amend, mirroring Frame Builder's own sketch-1
+    'Bounding Box'): export-flow.js appends the pattern's 'Lattice
+    Boundary' manifest as a manifest-only entry (no svg) AFTER the
+    kind-layers; buildOrder 0 still sorts it first in its pattern group,
+    and it is named by its own declared `sketchName`, not 'L5 - flat'."""
+    layers = [
+        _kind_layer(1, 'contour', build_order=1),
+        _kind_layer(2, 'rails', build_order=2),
+        _kind_layer(3, 'ties', build_order=3),
+        _kind_layer(4, 'nodes', build_order=4),
+        {**_kind_layer(5, 'boundary', build_order=0), 'svg': '', 'sketchName': 'Lattice Boundary'},
+    ]
+    ordered = _ordered_svg_layer_import_plan(layers, design_available=True)
+    assert [step['manifest']['kind'] for step in ordered] == ['boundary', 'contour', 'rails', 'ties', 'nodes']
+    first = ordered[0]
+    assert first['sketch_name'] == 'Lattice Boundary'
+    assert first['build_constrained'] is True
+    assert first['import_svg'] is False
+    assert ordered[1]['sketch_name'].startswith('L1 - ')  # everyone else keeps the established scheme

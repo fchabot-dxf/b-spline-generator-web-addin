@@ -752,6 +752,7 @@ from sketch_manifest_builder import (  # noqa: E402
     _create_slot_entity,
     _create_circle_entity,
     _create_line_entity,
+    _create_geometry,
     _create_arc3_slot_entity,
     verify_sketch_against_manifest,
     _Logger,
@@ -1520,7 +1521,9 @@ def test_shape_contour_as_slots_end_to_end_builds_dimensions_and_reports_zero_pa
 def test_line_entity_isConstruction_flag_sets_the_real_attribute_when_declared():
     """The mirror-axis Line is the FIRST manifest Line that ever needs
     `isConstruction` -- every other Line entity omits the field entirely,
-    so this also proves the omission path stays a real, unchanged False."""
+    so this also proves the omission path stays a real, unchanged False.
+    BOUNDARY-GUIDE (L1): the flag is now applied generically by
+    `_create_geometry` (any entity type), so this goes through it."""
     design = FakeDesign()
     logger = _Logger()
     ctx = BuildContext(design.rootComponent, design, logger)
@@ -1530,11 +1533,11 @@ def test_line_entity_isConstruction_flag_sets_the_real_attribute_when_declared()
     curves = sketch.sketchCurves
 
     axis_ent = {"id": "axis", "type": "Line", "isConstruction": True, "p1": [0.0, -1.0], "p2": [0.0, 2.0]}
-    axis_line = _create_line_entity(ctx, curves, s_name, axis_ent)
-    assert axis_line.isConstruction is True
-
     plain_ent = {"id": "plain", "type": "Line", "p1": [0.0, 0.0], "p2": [1.0, 0.0]}
-    plain_line = _create_line_entity(ctx, curves, s_name, plain_ent)
+    created, skipped = _create_geometry(ctx, sketch, s_name, [axis_ent, plain_ent])
+    assert (created, skipped) == (2, [])
+    axis_line, plain_line = curves.sketchLines.item(0), curves.sketchLines.item(1)
+    assert axis_line.isConstruction is True
     assert plain_line.isConstruction is False
 
 
@@ -1907,3 +1910,57 @@ if __name__ == "__main__":
             failed += 1
     print(f"\n{passed} passed, {failed} failed")
     sys.exit(1 if failed else 0)
+
+
+# ---------------------------------------------------------------------------
+# BOUNDARY-GUIDE (L1): `isConstruction` is a generic, declared entity field
+# ---------------------------------------------------------------------------
+def _guide_manifest():
+    """The JS producer's shape for the lattice Size box (editor-sketch-
+    manifest.js `manifestFromGuide`): 4 closed construction Lines bnd0..3,
+    corner Coincidents + H/V — riding in the rails sketch next to a rail."""
+    corners = [[0.5, 0.5], [6.5, 0.5], [6.5, 8.5], [0.5, 8.5]]
+    ids = [f"bnd{i}" for i in range(4)]
+    guide = [{"id": ids[i], "type": "Line", "p1": corners[i], "p2": corners[(i + 1) % 4], "isConstruction": True}
+             for i in range(4)]
+    return {
+        "version": 1, "layerId": "1", "sketchName": "Guide", "units": "in",
+        "region": {"x": 0, "y": 0, "w": 7, "h": 9}, "widthMode": "centerline",
+        "entities": [{"id": "rail0", "type": "Line", "p1": [1.0, 1.0], "p2": [6.0, 1.0]}, *guide],
+        "constraints": [
+            *[{"type": "Coincident", "targets": [f"{ids[i]}:E", f"{ids[(i + 1) % 4]}:S"]} for i in range(4)],
+            *[{"type": "Vertical" if i % 2 else "Horizontal", "targets": [ids[i]]} for i in range(4)],
+        ],
+        "parameters": [], "dimensions": [], "groups": {"rails": ["rail0"]},
+    }
+
+
+def test_guide_lines_build_as_construction_and_the_rail_does_not(call_log):
+    design = FakeDesign()
+    summary = build_constrained_sketch(design.rootComponent, design, _guide_manifest())
+    assert summary["entities"]["created"] == 5
+    assert summary["entities"]["skipped"] == []
+    lines = [c for c in design.rootComponent._sketches[0]._curves if isinstance(c, FakeSketchLine)]
+    assert [ln.isConstruction for ln in lines] == [False, True, True, True, True]
+
+
+def test_guide_lines_still_take_their_constraints(call_log):
+    design = FakeDesign()
+    build_constrained_sketch(design.rootComponent, design, _guide_manifest())
+    kinds = [c[0] for c in call_log]
+    assert kinds.count("constraint:Coincident") == 4
+    assert kinds.count("constraint:Horizontal") == 2
+    assert kinds.count("constraint:Vertical") == 2
+
+
+def test_isConstruction_is_generic_not_line_only(call_log):
+    """The builder reads the declared field for ANY entity type, not just
+    Line (T70's original Line-only branch) — a Circle proves it."""
+    design = FakeDesign()
+    manifest = _guide_manifest()
+    manifest["entities"] = [{"id": "node0", "type": "Circle", "center": [3.0, 3.0], "radius": 0.1, "isConstruction": True},
+                            {"id": "node1", "type": "Circle", "center": [4.0, 3.0], "radius": 0.1}]
+    manifest["constraints"] = []
+    build_constrained_sketch(design.rootComponent, design, manifest)
+    circles = [c for c in design.rootComponent._sketches[0]._curves if isinstance(c, FakeSketchCircle)]
+    assert [c.isConstruction for c in circles] == [True, False]

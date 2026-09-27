@@ -126,6 +126,23 @@ export function sizedBoardRegion(region, size) {
   return { x: region.x + (region.w - w) / 2, y: region.y + (region.h - h) / 2, w, h };
 }
 
+/** BOUNDARY-GUIDE (Fred 2026-09-26): the role a GUIDE record declares —
+ *  drawn in the editor (always, dashed), never exported/stamped/shown in
+ *  3D, sent to Fusion as construction geometry. Every reader decides by
+ *  this role, never by which record it is: the editor renderer
+ *  (editor-guides.js) routes it into its own non-exported layer, the
+ *  manifest (editor-sketch-manifest.js) turns it into `isConstruction`
+ *  entities. */
+export const GUIDE_ROLE = 'guide';
+
+/** BOUNDARY-GUIDE: the lattice boundary box (the Size W x H rectangle,
+ *  `sizedBoardRegion`) declared as guide geometry — ONE record, two
+ *  consumers (editor renderer + Fusion manifest), same "declared here,
+ *  never recomputed per consumer" rule as `sizedBoardRegion` itself. */
+export function latticeBoundaryGuide(pattern, region) {
+  return { id: 'bnd', role: GUIDE_ROLE, rect: sizedBoardRegion(region, pattern && pattern.size) };
+}
+
 /** Same plain-DOM-element adapter contract OUTLINE_KINDS' own callers use
  *  (editor-io.js's `_outlineAdapter`) — `el.attr(name)` / `el.array()` /
  *  `el.type`. Accepts either that adapter shape directly, or a live

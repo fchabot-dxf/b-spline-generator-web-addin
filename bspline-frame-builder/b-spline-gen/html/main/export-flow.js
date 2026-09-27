@@ -30,7 +30,9 @@ import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 import { isCarved, isExported } from '../editor/layers.js';
-import { buildSketchManifest, splitManifestByKind } from '../editor/editor-sketch-manifest.js';
+import {
+    buildSketchManifest, splitManifestByKind, BOUNDARY_SKETCH_KIND, BOUNDARY_SKETCH_NAME,
+} from '../editor/editor-sketch-manifest.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer } from '../editor/editor-lattice-pattern.js';
 
@@ -201,6 +203,26 @@ export function _fusionLayerManifest(editor, l) {
         layerId: l.id, sketchName: `Layer ${l.id}`,
         overrides: _overridesForLayer(editor, pattern, l.id),
     });
+}
+
+/** BOUNDARY-GUIDE (L1 amend): one "Lattice Boundary" manifest per kind-split
+ *  pattern this Send carries — the boundary has no editor layer of its own,
+ *  so it rides as an extra, manifest-only payload entry (no svg). Python
+ *  groups it with the pattern's other sketches by `patternId` and builds it
+ *  FIRST (`buildOrder` 0, SKETCH_BUILD_ORDER). Only for patterns that are
+ *  actually being sent (one of their layers produced a manifest). */
+export function _boundarySketchManifests(editor, manifests) {
+    const out = [];
+    const seen = new Set();
+    for (const m of manifests) {
+        if (!m || !m.patternId || m.kind == null || seen.has(m.patternId)) continue;
+        seen.add(m.patternId);
+        const patternLayer = resolvePatternLayer(editor, m.layerId);
+        if (!patternLayer) continue;
+        const boundary = splitManifestByKind(patternLayer.pattern, boardRegion(editor))[BOUNDARY_SKETCH_KIND];
+        if (boundary) out.push({ ...boundary, layerId: null, sketchName: BOUNDARY_SKETCH_NAME });
+    }
+    return out;
 }
 
 /** T44: after "Send to Fusion" completes, tell the user when any element
@@ -451,6 +473,18 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             };
         }))
         : [];
+    // BOUNDARY-GUIDE: each sent pattern's own "Lattice Boundary" sketch (manifest only, no svg).
+    if (options.includeSVG) {
+        for (const bm of _boundarySketchManifests(editor, manifests)) {
+            bakedLayers.push({
+                index: bakedLayers.length + 1,
+                config: { profile: 'flat', depth: 0 },
+                svg: '',
+                sketchName: BOUNDARY_SKETCH_NAME,
+                sketchManifest: bm,
+            });
+        }
+    }
     const payload = JSON.stringify({
         params: { ...P },
         stepVariants,
