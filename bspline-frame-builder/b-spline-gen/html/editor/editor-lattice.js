@@ -303,12 +303,18 @@ export function nearestEndWithin(pieceCanon, ptCanon, tol) {
  * along. Returns the new {a,b}; the caller carries a rail-end NODE at
  * `whichEnd` along separately (this function only knows about the rail's
  * own two endpoints).
+ *
+ * T81 item 7 (Fred's ruling on minimum lengths: "The only distance it
+ * should use is the stroke width."): `minLen` (canonical cells, default 1 =
+ * the old one-step floor, kept for any caller that doesn't pass one) -- the
+ * hand end-drag passes the rail's OWN stroke width / spacing, so a rail can
+ * be shortened down to its own stroke width, not one lattice cell.
  */
-export function stretchRailEnd(railCanon, whichEnd, newI) {
+export function stretchRailEnd(railCanon, whichEnd, newI, minLen = 1) {
   const fixed = whichEnd === 'a' ? railCanon.b : railCanon.a;
   const original = railCanon[whichEnd];
   const sign = original.i >= fixed.i ? 1 : -1;
-  const clampedI = sign > 0 ? Math.max(newI, fixed.i + 1) : Math.min(newI, fixed.i - 1);
+  const clampedI = sign > 0 ? Math.max(newI, fixed.i + minLen) : Math.min(newI, fixed.i - minLen);
   const moved = { i: clampedI, j: railCanon.a.j };
   return whichEnd === 'a' ? { a: moved, b: railCanon.b } : { a: railCanon.a, b: moved };
 }
