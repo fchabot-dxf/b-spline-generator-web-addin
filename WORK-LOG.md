@@ -12386,3 +12386,81 @@ Shots in `shots\seatA\` (`H19-item1_offset-steppers_390/834`).
 `npx vitest run` -> **2148 passed**, zero regressions (count includes lane-b's concurrent N3/N5/N6/N7 work
 that landed via `git pull --rebase` before this turn; no new test file needed for this item since neither
 of the 2 existing `seedOffsetX`/`Y`-touching tests reference the DOM at all).
+
+## H20 item 1 — Editor terrain backdrop was vertically flipped vs the 3D TOP view
+
+Fred, screenshots: the SVG editor's terrain backdrop showed Anatomical's ribs at the TOP and the chest "V"
+at the BOTTOM; the real 3D TOP view (ground truth) shows ribs at the BOTTOM, V at the TOP. The frame outline
+agreed in both (it's drawn as separate vector paths, `editor-frame-profile.js`, never touching the raster
+backdrop at all).
+
+**MEASURED, not reasoned, before touching any code.** Set noiseType=chest, seed=42, symmetry=none, and
+grabbed BOTH images directly: the `#svgEditorTopView` canvas's own `toDataURL()` (exactly what Fred sees —
+no intermediate transform, confirmed by reading `sync3DBackground()`, which just embeds that canvas's
+pixels as an SVG `<image>` unmodified) and the REAL 3D camera's TOP view (`preview.animateTo(0, 0.001)`,
+the same theta/phi `view-cube.js`'s own TOP entry uses, snapped instantly the same way every other repro
+tool does, then `getSnapshot()`). Side by side, the two disagreed exactly as reported — confirmed
+empirically, not assumed from Fred's description alone.
+
+**Root cause, found by reading `core/render-topview.js`'s `updateEditorTopView`** (the function
+`core/engine/rebuild.js:85` calls after every rebuild, writing directly to `#svgEditorTopView`): its pixel
+loop read heightmap row `j` straight from canvas row `py` (`const k = py * nx + px`) — no flip. Compared
+against `core/preview/top-view.js`'s `renderTopView`, a DIFFERENT, separate function with an explicit,
+already-correct convention documented in its own comment ("Unified Top-is-Top: canvas py=0 is at the Back
+(j=nz-1), canvas py=h is at the Front (j=0)"), implemented via the declared `COORD_SYSTEM.rasterYToGridRow`
+utility (`core/coords.js`, "the single source of truth for all coordinate transforms"). Grepped for callers
+of `renderTopView`/`preview.updateTopView` — **zero**, anywhere in the codebase; it's dead code, never
+invoked (worth flagging, not deleting — out of scope for this bug). So two parallel top-view renderers
+existed: one correctly flipped and unused, one live and wrong. `updateEditorTopView`'s own header comment
+("Refactored from logic in rebuild.js") suggests it was pulled out of `rebuild.js`'s inline code at some
+point without ever picking up the flip the other renderer already had.
+
+**The fix.** `render-topview.js` now imports `COORD_SYSTEM` and computes `const j =
+COORD_SYSTEM.rasterYToGridRow(py, nz, nz)` — reusing the SAME central utility `top-view.js` already relied
+on, rather than re-deriving the flip a third way. All neighbour sampling for the lighting/gradient (`hL`,
+`hR`, `hU`, `hD`, the symmetry seam checks) stays entirely in heightmap-array (`j`) space, unchanged — only
+the FINAL pixel-buffer write address changed (`(py*nx+px)*4` instead of `(j*nx+px)*4`), so the fix is purely
+"which canvas row does this computed value land on," not a change to the shading itself.
+Re-measured after the fix with the identical seed/setup: the ribs now sit in the lower portion of the
+editor backdrop and the smooth "chest" area at the top — matching the 3D TOP view exactly.
+
+**Other editor overlays — checked, named, as the dispatch asked.**
+- **Drape texture** (`core/preview/index.js`'s `buildDrapeTexture` + `THREE.CanvasTexture.flipY =
+  DRAPE_TEXTURE_FLIPY`, `core/preview/drape-svg.js`): a completely SEPARATE pipeline (SVG → canvas → GPU
+  texture with an explicit `flipY`), not sharing `updateEditorTopView`'s array-to-canvas path at all.
+  Already correct — its own comment says `DRAPE_TEXTURE_FLIPY` was itself settled empirically via
+  `scripts/smoke-editor.mjs`'s `drape-align` mode "after two reasoned guesses... were each wrong at least
+  once," i.e. a prior instance of exactly the same measure-don't-reason lesson this bug reinforces.
+  Unaffected by this fix; correctly left alone.
+- **Stamp masks** (`core/stamp/index.js`): built directly in `nx*nz` heightmap-array index order (never
+  going through a canvas row-remap at all) and applied to `heights[]` via a direct index-for-index add
+  (`terrain.js`'s `applyVectorDrape`) — structurally can't have this class of bug, since there's no
+  raster-orientation step in that path to get backwards. Unaffected; correctly left alone.
+- Grepped the whole `editor/` module for any OTHER raster image embed (`toDataURL`/`.image(`) — exactly one
+  match, `sync3DBackground`'s own embed of `#svgEditorTopView`. No other overlay shares this path.
+
+**Test** (`tests/h20-editor-backdrop-orientation.test.js`, 4 tests). `canvas.getContext('2d')` returns null
+in this test environment (the same established gap `tests/stamp-mask-clear.test.js` already documented), so
+extracted the pure per-pixel computation into a new exported `computeTopViewPixels(heights, nx, nz,
+symmetry)` — no canvas involved, returns a plain `Uint8ClampedArray` that `updateEditorTopView` now hands
+straight to `ImageData.data.set(...)`. Tests build a step heightmap (two flat halves, a raised region at
+either high-j or low-j) and assert the raised half's brightness sum lands in the matching half of the
+output buffer, checked both with symmetry off and Mirror X on, for both quadrants (4 tests total).
+**A real measurement mistake, caught and fixed before trusting the test**: the FIRST draft used a small
+flat 3×3 "plateau" bump instead of a step, and it measured virtually no signal (110.8 vs 116 — noise-level)
+even AFTER the fix was already in place. Traced by computing the shading formula by hand: it's driven
+entirely by LOCAL GRADIENT and "cavity" (height minus the 4-neighbour average) — a flat plateau's interior
+has zero gradient and zero cavity relative to its own (also flat) neighbours, so it's indistinguishable
+from flat background everywhere except its own edge, which my probe window mostly missed. Fixed by using a
+step between two flat halves instead, concentrating the real signal at the one boundary row — verified this
+new design actually measures something by checking it against the ALREADY-known-good post-fix code first
+(it passed, unlike the flawed bump design), then confirming nonvacuousness properly via mutation.
+Mutation-tested: reverted `render-topview.js`'s `j = COORD_SYSTEM.rasterYToGridRow(...)` to the pre-fix
+`j = py` in a scratch copy — all 4 tests correctly FAILED (each half-sum comparison came out backwards).
+Restored, re-ran clean — 4/4 green, matching the checklist's explicit "must fail before the fix" requirement.
+
+Shots in `shots\seatA\`: `H20-item1_editor-backdrop-BEFORE_seed42` (the bug, ribs high), `H20-item1_editor-
+backdrop-AFTER_seed42` (fixed, ribs low, matching), `H20-item1_3d-top-view-groundtruth_seed42` (the real 3D
+TOP view both are compared against).
+
+`npx vitest run` -> **2152 passed** (up from 2148), zero regressions.

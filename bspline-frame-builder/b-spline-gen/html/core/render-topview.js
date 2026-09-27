@@ -5,6 +5,7 @@
 
 import { P, preDelta } from './state.js';
 import { generateHeightmap } from './terrain.js';
+import { COORD_SYSTEM } from './coords.js';
 
 /**
  * Smoothly interpolates values from a grid.
@@ -28,6 +29,81 @@ function bilinearSample(data, nx, nz, u, v) {
 }
 
 /**
+ * Pure per-pixel shading computation for the editor backdrop — no canvas/DOM
+ * involved, so it's directly unit-testable (this test environment's
+ * `canvas.getContext('2d')` returns null; see tests/stamp-mask-clear.test.js's
+ * own note on the same gap). Returns a flat RGBA Uint8ClampedArray, nx*nz*4
+ * long, ready to hand to an ImageData's own `.data`.
+ *
+ * H20 item 1 (Fred, screenshots: the editor backdrop showed Anatomical ribs
+ * at TOP / the chest V at BOTTOM, the OPPOSITE of the real 3D TOP view,
+ * ground truth): this loop used to write canvas row `py` straight from
+ * heightmap row `j=py`. `top-view.js`'s own (already-correct, via
+ * COORD_SYSTEM.rasterYToGridRow) renderTopView flips this ("canvas py=0 is
+ * at the Back (j=nz-1)"), so this reuses that SAME central utility instead
+ * of re-deriving the flip. All neighbour sampling below stays entirely in
+ * heightmap-array (j) space — only the FINAL pixel write target changes —
+ * so the lighting/gradient math is untouched.
+ *
+ * @param {Float32Array} heights - nx*nz heightmap, terrain.js's own row order
+ * @param {number} nx
+ * @param {number} nz
+ * @param {string} symmetry - P.symmetry ('x'/'y'/'radial'/'none')
+ */
+export function computeTopViewPixels(heights, nx, nz, symmetry) {
+    const data = new Uint8ClampedArray(nx * nz * 4);
+
+    const lx = -1.0, ly = 1.0, lz = 0.8;
+    const lmag = Math.sqrt(lx*lx + ly*ly + lz*lz);
+    const nlx = lx/lmag, nly = ly/lmag, nlz = lz/lmag;
+
+    for (let py = 0; py < nz; py++) {
+        const j = COORD_SYSTEM.rasterYToGridRow(py, nz, nz);
+        for (let px = 0; px < nx; px++) {
+            const k  = j * nx + px;
+            let dot = 0.5;
+            let cavity = 0;
+
+            if (px > 0 && px < nx - 1 && j > 0 && j < nz - 1) {
+                // Seam-Aware Gradient (Prevents sharp lines at the mirror axis)
+                let hL = heights[k - 1];
+                let hR = heights[k + 1];
+                let hU = heights[k - nx];
+                let hD = heights[k + nx];
+
+                const centerX = Math.floor(nx / 2);
+                const symX = symmetry === 'x' || symmetry === 'radial';
+                if (symX && px === centerX) hL = hR;
+
+                const centerY = Math.floor(nz / 2);
+                const symY = symmetry === 'y' || symmetry === 'radial';
+                if (symY && j === centerY) hU = hD;
+
+                const dzdx = (hR - hL) * 35.0;
+                const dzdy = (hD - hU) * 35.0;
+                const nx_ = -dzdx, ny_ = -dzdy, nz_ = 1.0;
+                const nmag = Math.sqrt(nx_*nx_ + ny_*ny_ + nz_*nz_);
+                dot = (nx_/nmag)*nlx + (ny_/nmag)*nly + (nz_/nmag)*nlz;
+
+                const h = heights[k];
+                const avg = (hL + hR + hU + hD) * 0.25;
+                cavity = (h - avg) * 30.0;
+            }
+
+            const off = (py * nx + px) * 4;
+            const shade = Math.max(0, Math.min(255, 25 + Math.max(0, dot) * 200 + cavity * 55));
+
+            data[off]     = Math.min(255, shade * 0.94);
+            data[off + 1] = Math.min(255, shade * 0.96);
+            data[off + 2] = Math.min(255, shade * 1.06);
+            data[off + 3] = 255;
+        }
+    }
+
+    return data;
+}
+
+/**
  * Renders the terrain preview into the hidden SVG Editor background canvas.
  * @param {Float32Array} heightsLow - The current 3D mesh heights (for sculpt sampling)
  * @param {number} nxLow - Grid width
@@ -39,9 +115,9 @@ export function updateEditorTopView(heightsLow, nxLow, nzLow) {
 
     const ctx = canvas.getContext('2d');
     const aspect = P.widthIn / P.heightIn;
-    
+
     // Target resolution (Decoupled from 3D resolution)
-    const target = 384; 
+    const target = 384;
     const nx = target;
     const nz = Math.round(target / aspect);
 
@@ -59,7 +135,7 @@ export function updateEditorTopView(heightsLow, nxLow, nzLow) {
         for (let k = 0; k < nx * nz; k++) {
             const u = (k % nx) / (nx - 1);
             const v = Math.floor(k / nx) / (nz - 1);
-            
+
             // Add Sculpting deltas if available
             if (preDelta) {
                 heights[k] += bilinearSample(preDelta, nxLow, nzLow, u, v);
@@ -68,53 +144,7 @@ export function updateEditorTopView(heightsLow, nxLow, nzLow) {
     }
 
     const imgData = ctx.createImageData(nx, nz);
-    const data = imgData.data;
-
-    const lx = -1.0, ly = 1.0, lz = 0.8; 
-    const lmag = Math.sqrt(lx*lx + ly*ly + lz*lz);
-    const nlx = lx/lmag, nly = ly/lmag, nlz = lz/lmag;
-
-    for (let py = 0; py < nz; py++) {
-        for (let px = 0; px < nx; px++) {
-            const k  = py * nx + px;
-            let dot = 0.5;
-            let cavity = 0; 
-            
-            if (px > 0 && px < nx - 1 && py > 0 && py < nz - 1) {
-                // Seam-Aware Gradient (Prevents sharp lines at the mirror axis)
-                let hL = heights[k - 1];
-                let hR = heights[k + 1];
-                let hU = heights[k - nx];
-                let hD = heights[k + nx];
-
-                const centerX = Math.floor(nx / 2);
-                const symX = P.symmetry === 'x' || P.symmetry === 'radial';
-                if (symX && px === centerX) hL = hR;
-
-                const centerY = Math.floor(nz / 2);
-                const symY = P.symmetry === 'y' || P.symmetry === 'radial';
-                if (symY && py === centerY) hU = hD;
-
-                const dzdx = (hR - hL) * 35.0;
-                const dzdy = (hD - hU) * 35.0;
-                const nx_ = -dzdx, ny_ = -dzdy, nz_ = 1.0;
-                const nmag = Math.sqrt(nx_*nx_ + ny_*ny_ + nz_*nz_);
-                dot = (nx_/nmag)*nlx + (ny_/nmag)*nly + (nz_/nmag)*nlz;
-
-                const h = heights[k];
-                const avg = (hL + hR + hU + hD) * 0.25;
-                cavity = (h - avg) * 30.0; 
-            }
-
-            const off = k * 4;
-            const shade = Math.max(0, Math.min(255, 25 + Math.max(0, dot) * 200 + cavity * 55));
-            
-            data[off]     = Math.min(255, shade * 0.94); 
-            data[off + 1] = Math.min(255, shade * 0.96); 
-            data[off + 2] = Math.min(255, shade * 1.06); 
-            data[off + 3] = 255;
-        }
-    }
+    imgData.data.set(computeTopViewPixels(heights, nx, nz, P.symmetry));
 
     ctx.putImageData(imgData, 0, 0);
 
