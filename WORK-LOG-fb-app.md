@@ -1800,3 +1800,83 @@ payload carries the new manifest.
 - **Shots:** `*_F18zoom_*`, `*_F18acc_*` (cut + joint, both orientations, mobile), `0013_F18_fusion_cut_rail`.
 - Server stopped; no headless Chrome of mine left.
 - **Capacity:** fine; the session is long but healthy.
+
+
+## 🔨 turn 36 — F19 (seat C, epoch 1): a rail dragged across a cut tie's joint PUSHES the joint (Fred, option b)
+
+Commits (fb-app, pushed): `072065b` item 1 · `a31253d` item 2 · this commit: the log. No Fusion (as dispatched).
+Seat A's H5/H6 gesture files untouched.
+
+### Item 1 — the push (`editor-lattice-chains.js`, one hook in `editor-interaction.js`)
+- **Declared once:** `MIN_PIECE_CELLS = 1`, the shortest segment of a cut lattice line. It is now the one number
+  behind the cut minimum (`editor-cut-tool.js` `_minPiece`), the joint-slide clamp (`updateJointSlide`, was a
+  literal 1) and the push.
+- **Where the push is set up:** `withChain` now also runs `withTiePush` for every rail BODY move, cut or not.
+  - The attachment rule is the same as `moveRailAlongAxis`: the tie end is on the rail's row, within its extent.
+  - An attached tie that is cut (by derivation, `chainOf`) gets a push record: the attached segment's other end is
+    the NEAREST joint (so 2 cuts push only that one), plus the far end of the segment beyond it.
+- **Per frame:** `pushTieJoints(move, targetJ)` runs in `_updateLatticeMove` before `moveRailAlongAxis`.
+  - Each joint stays MIN_PIECE_CELLS ahead of the rail, and never goes behind its own place. So it is a push: drag
+    back and the joint returns.
+  - **The ONE clamp:** the rail stops where the segment beyond would drop below MIN_PIECE_CELLS.
+  - Both joint ends are written from one number, so they stay coincident.
+- **Undo** stays one step: `_finishLatticeMove` pushes one state, as before.
+- **Unit tests** (`tests/cut-tool.test.js`, +10 across both orientations): push, clamp + return, 2 cuts → nearest
+  only, an uncut tie unchanged, and a cut tie on the row but past the rail's end not pushed.
+  - **Mutations 8/8 killed.** One survived at first (the rail-extent check dropped), which is why the "past the end"
+    case was added.
+  - The pre-F19 state (push = identity) fails 6 (the push cases); the uncut case stays green.
+
+### Item 2 — acceptance (`tools/repro/tie_push_acceptance.mjs`, real Chrome, real pointer / touch events)
+- **Scenario:** generate a lattice; cut the longest attached tie (≥ 4 cells) one cell from its rail with a real ✂
+  tap; drag the rail body 2 cells toward the tie's far end (past the joint).
+- **Checks:**
+  - the grab reports `rail:move:push1`;
+  - the rail reaches its row (not blocked);
+  - the joint is exactly one cell ahead;
+  - the near segment runs from the rail outward (not flipped);
+  - the far segment is ≥ 1 cell and still ends where it did;
+  - the two segments touch (same number);
+  - both are straight;
+  - an uncut attached tie on the same side just shrinks;
+  - ONE undo restores every lattice line exactly.
+- **Results:** desktop horizontal + vertical OK; mobile (touch) horizontal OK.
+- **RED on the pre-F19 files:**
+  - desktop H+V: the joint is left behind and the near segment is flipped. Mid-drag it is zero-length (4.75..4.75).
+  - mobile: the tie is never cut (see the bug below).
+  - My first `nearNotFlipped` sorted the ends, so it could not see a flip; it was tightened before the RED run above.
+- **Shots:** `0338_F19push_desktop_{horizontal,vertical}_{before,mid,after}`,
+  `0335_F19push_mobile_horizontal_{before,mid,after}`, and the RED set `0338_F19push_RED_pre*`.
+
+### A real touch bug found on the way (fixed; item 2 commit)
+- **Symptom:** on a phone, a ✂ tap ON a tie one cell from its rail cut the RAIL.
+- **Cause:** `_lineUnder`'s F18 "a line you're at the end of loses" rule measured "at the end" with the whole hit
+  slop. For touch that is 22 px, about 1.5 cells at fit zoom, so the tie always counted as "at its end".
+- **Fix:** "at an end" is now a click's own jitter, the declared `INPUT_PROFILE.clickThresholdPx` (3 px). The touch
+  point is already the precise marker (SE7m). A tap on the contact itself still cuts the rail, as in F18.
+- **Test:** a unit test with touch tolerances mocked through `getDynamicTolerance` fails 1/24 against the old rule.
+
+### ⚠ Correction to my F18 report: the F18 MOBILE acceptance was hollow
+- A touch gesture commits at the marker, `markerOffsetPx` (40 px) ABOVE the finger. Both acceptance scripts put the
+  finger ON the target, so every mobile tap and drag landed 40 px up.
+- F18's "mobile OK" therefore compared U and K on wrong points. The comparison was still like-for-like, which is
+  why it passed.
+- **Fixed in both scripts:** the finger goes 40 px below the target (`FINGER_DY`), and the on-canvas check tests
+  the finger point.
+- The F18 mobile rail cuts are now 6 cells apart (was 3). Touch's end-grab zone at fit zoom caught body grab #2
+  midway between the joints and made it a joint slide. That is the test's geometry, not a product fault.
+- **Re-run:** F18 acceptance desktop H+V OK; mobile OK twice, with 3 real cuts each (segments 18→21, 19→22).
+  - The mobile "attached tie" gesture is a `tie:stretch` (a short tie inside the touch end zone), identical in U and
+    K.
+- **Trap for the map:** any CDP touch test in this app must offset the finger by
+  `INPUT_PROFILE.touch.markerOffsetPx`.
+
+### Gates
+- JS: 18 affected spec files 493/493; cut-tool 24/24.
+- Python: no edits.
+- The full suite is the advisor's gate.
+
+### Notes
+- **Amendments polled:** F20 SHOULDER-HIP and F21 CONTOUR-FROM-FRAME are queued; no action taken.
+- Server stopped; no headless Chrome of mine left.
+- **Capacity:** OK.
