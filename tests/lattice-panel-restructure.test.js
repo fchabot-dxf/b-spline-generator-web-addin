@@ -48,18 +48,33 @@ describe('R7: real markup — panel section order', () => {
     const order = ['Boundary', 'Contour', 'Rails', 'Ties', 'Nodes'].map((t) => titles.indexOf(t));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    // Contour immediately follows Boundary — no other NAMED section between them (Shape/Segments,
-    // seat C's own territory, come BEFORE Boundary, never between Boundary and Contour).
+    // Contour immediately follows Boundary — no other NAMED section between them (F12: Shape and
+    // Segments are sub-blocks INSIDE Contour, not sections).
     const iBoundary = titles.indexOf('Boundary'), iContour = titles.indexOf('Contour');
     expect(iContour).toBe(iBoundary + 1);
   });
 
-  it('Shape/Segments (seat C\'s SHAPE-PARAMS territory) are untouched and still come before Boundary', () => {
+  it('F12 (Fred: "shape goes in contour", "segment too"): Shape + Segments are INSIDE Contour, not sections of their own', () => {
     const titles = sectionTitles('editorShapeLatticePanelBody');
-    expect(titles).toContain('Shape');
-    expect(titles).toContain('Segments');
-    expect(titles.indexOf('Shape')).toBeLessThan(titles.indexOf('Boundary'));
-    expect(titles.indexOf('Segments')).toBeLessThan(titles.indexOf('Boundary'));
+    expect(titles).not.toContain('Shape');
+    expect(titles).not.toContain('Segments');
+    const contour = [...DOC.getElementById('editorShapeLatticePanelBody').children]
+      .find((c) => c.querySelector(':scope > span[style*="font-weight:600"]')?.textContent.trim() === 'Contour');
+    // in Fred's order: the checkbox, the stroke, the shape preset + sliders, then Segments
+    const ids = ['shapeLatticeContourShow', 'shapeLatticeContourWidth', 'shapePresetHourglass', 'shapeParam-waistReach',
+      'shapeParam-cornerRadiusTop', 'shapeParam-bodyRadius', 'shapeSegmentIndex'];
+    const nodes = ids.map((id) => DOC.getElementById(id));
+    for (const [i, n] of nodes.entries()) expect(contour.contains(n), ids[i]).toBe(true);
+    for (let i = 1; i < nodes.length; i++) {
+      expect(nodes[i - 1].compareDocumentPosition(nodes[i]) & 4, `${ids[i - 1]} before ${ids[i]}`).toBeTruthy(); // FOLLOWING
+    }
+  });
+
+  it('F12 (Fred): the shape seed field is hidden (kept, saved, same id); the dice still rolls a new shape', () => {
+    const seed = DOC.getElementById('shapeSeed');
+    expect(seed).not.toBeNull();
+    expect(seed.closest('label').getAttribute('style')).toMatch(/display:\s*none/);
+    expect(DOC.getElementById('shapeReroll').getAttribute('style') || '').not.toMatch(/display:\s*none/);
   });
 
   it('the OLD grid-step Spacing select + Every/Offset + seeded count-range rail fields are REMOVED, in both panels', () => {

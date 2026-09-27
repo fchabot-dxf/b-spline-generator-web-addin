@@ -78,8 +78,8 @@ describe('editor [Frame | Artwork] tabs', () => {
     expect($('frameTemplate').value).toBe('template_2'); // the sidebar follows
     change('editorFrameThickness', '0.5');
     expect(getFrameRecord().params.frame_thickness).toBe(0.5);
-    change('frameAppearance', '3D Maple - Unfinished'); // sidebar -> the editor follows
-    expect($('editorFrameWood').value).toBe('3D Maple - Unfinished');
+    change('frameAppearance', '3D Maple - Painted'); // sidebar -> the editor follows
+    expect($('editorFrameWood').value).toBe('3D Maple - Painted');
     expect(Number($('editorFrameThickness').max)).toBe(1.5); // limits come from the definition
   });
 
@@ -146,11 +146,11 @@ describe('round trip: Frame -> Artwork -> Frame -> save -> reload', () => {
     $('btnEditFrameShape').click(); // Frame
     change('editorFrameTemplate', 'template_1');
     change('editorFrameThickness', '0.625');
-    change('editorFrameWood', '3D Cherry - Unfinished');
+    change('editorFrameWood', 'Cherry');
     $('editorTabArtwork').click(); // Artwork
     change('frameBottomZ', '-1.5'); // a sidebar edit meanwhile
     $('editorTabFrame').click(); // Frame again
-    const expected = { templateId: 'template_1', params: { frame_thickness: 0.625 }, frameBottomZ: -1.5, appearance: '3D Cherry - Unfinished' };
+    const expected = { templateId: 'template_1', params: { frame_thickness: 0.625 }, frameBottomZ: -1.5, appearance: 'Cherry' };
     expect(getFrameRecord()).toMatchObject(expected);
     // save -> reload (the project serializer, then the load's own P restore)
     const saved = JSON.parse(JSON.stringify({ P: persistableP() }));

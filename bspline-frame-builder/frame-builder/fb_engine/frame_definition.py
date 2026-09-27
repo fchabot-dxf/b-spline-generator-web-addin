@@ -28,13 +28,25 @@ DEFAULT_TEMPLATE = None
 # (ui/html/solid_builder_palette.html, guarded by a test to stay equal).
 # Read by appearance_manager.APPEARANCE_PRESETS, the palette's Python
 # fallback (solid_builder_ui) and the app.
+#
+# F12: every name is a REAL Fusion library appearance (validated against the
+# recorded library listing tests/fixtures/fusion-appearance-library.json by
+# test_frame_defs.py). MEASURED (F11/F12, Fusion 2705): there is no
+# "3D Cherry - Unfinished" nor "3D Maple - Unfinished"; the closest real ones
+# are "Cherry" (the only cherry) and "3D Maple - Painted" (the only maple).
 APPEARANCE_OPTIONS = (
     "3D Ash - Unfinished",
     "3D Mahogany - Unfinished",
     "3D Pine - Unfinished",
-    "3D Cherry - Unfinished",
-    "3D Maple - Unfinished",
+    "Cherry",
+    "3D Maple - Painted",
 )
+# F12: names saved before the fix -> their real appearance, so a saved project
+# keeps its wood (applied by the app's record gate, normalizeFrameRecord).
+APPEARANCE_RENAMED = {
+    "3D Cherry - Unfinished": "Cherry",
+    "3D Maple - Unfinished": "3D Maple - Painted",
+}
 DEFAULT_APPEARANCE = APPEARANCE_OPTIONS[0]
 # F7: the colour the app's 3D preview paints each wood with (a preview tint,
 # not Fusion's material). Declared beside the list so a new wood cannot ship
@@ -43,8 +55,8 @@ APPEARANCE_PREVIEW_COLORS = {
     "3D Ash - Unfinished": "#d9c9a3",
     "3D Mahogany - Unfinished": "#7a3b2e",
     "3D Pine - Unfinished": "#e3c07a",
-    "3D Cherry - Unfinished": "#9c4a2f",
-    "3D Maple - Unfinished": "#ead7ad",
+    "Cherry": "#9c4a2f",
+    "3D Maple - Painted": "#ead7ad",
 }
 
 # Fred (Q3, "it's a position, not a value"): frame_height_offset is the Z of
@@ -160,7 +172,8 @@ def build_frame_defs(source_hash, goldens_dir=None):
         "units": "in",
         "defaultTemplate": DEFAULT_TEMPLATE,
         "appearance": {"default": DEFAULT_APPEARANCE, "options": list(APPEARANCE_OPTIONS),
-                       "previewColors": dict(APPEARANCE_PREVIEW_COLORS)},
+                       "previewColors": dict(APPEARANCE_PREVIEW_COLORS),
+                       "renamed": dict(APPEARANCE_RENAMED)},
         "extrusion": [dict(s) for s in EXTRUSION_SETTINGS],
         "fit": dict(FRAME_FIT),
         "templates": templates,

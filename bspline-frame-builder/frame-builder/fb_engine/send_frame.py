@@ -32,7 +32,7 @@ Pure orchestration: the Fusion-touching collaborators are injected, so the
 fake-Fusion tests drive this exact code.
 """
 
-from fb_engine.frame_definition import DEFAULT_FRAME_BOTTOM_EXPR
+from fb_engine.frame_definition import DEFAULT_FRAME_BOTTOM_EXPR, APPEARANCE_OPTIONS
 from fb_engine.seed_geometry import apply_seed_geometry, SeedGeometryError
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
@@ -125,6 +125,9 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
         face = underside_face(core_body)
         if face is None:
             raise SendFrameError("The B-spline body has no downward face (core.underside) to extrude the bars to.")
+        wood = payload.get("appearance")
+        if wood is not None and wood not in APPEARANCE_OPTIONS:  # F12: never a silent fallback in Fusion
+            raise SendFrameError(f"Unknown wood {wood!r}: choose one of {', '.join(APPEARANCE_OPTIONS)}.")
         try:
             template, _prefix = resolve_template(template_id)
         except ValueError as e:

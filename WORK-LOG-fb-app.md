@@ -1116,3 +1116,103 @@ running with main's code.
 - Amendment (queue): SHAPE-PARAMS is unblocked after F11 and rebases onto R7. No action here.
 - Not verified live: the palette UI click path itself (the payload was replayed into the same
   handler the palette calls). The palette-side JS is covered by the headless shots and tests.
+
+
+## 🔨 turn 22 — F12 (seat C, epoch 1): real wood names + SHAPE-PARAMS + Fred's panel rulings
+
+Commits (fb-app, pushed):
+- `c648eca`: merge origin/main (clean; frame-defs fresh; full vitest 1656 green);
+- `52649ec`: item 1 (woods);
+- `6074fd9`: items 2-3 (SHAPE-PARAMS);
+- `630ef38`: the panel amendments;
+- this commit: the log.
+
+### Item 1: woods name REAL Fusion appearances (52649ec)
+- **Fusion window:** the advisor granted a read-only one. One bridge call listed `app.materialLibraries`
+  (Fusion 2705.1.15): no documents, no deploy, no add-in stop/start, Fred's Untitled untouched. I
+  messaged the advisor the moment it returned.
+- **Fixture:** `tests/fixtures/fusion-appearance-library.json` (4 non-empty libraries, 304 names).
+- **Mapping:**
+  - Ash, Mahogany and Pine stay "3D … - Unfinished" (they exist);
+  - Cherry "3D Cherry - Unfinished" → **"Cherry"** (the only cherry, in the Appearance and Material
+    libraries);
+  - Maple "3D Maple - Unfinished" → **"3D Maple - Painted"** (the only maple; it is PAINTED, flagged
+    for Fred: maybe a different wood fits better).
+- **Migration:** `APPEARANCE_RENAMED` (frame-defs `appearance.renamed`) lets a saved project keep its
+  wood; `normalizeFrameRecord` applies it. Tested in the real snapshot-load path too.
+- **Unknown names are errors:**
+  - `test_frame_defs` validates the declared list against the recorded library (red on the old
+    list);
+  - `send_frame` refuses an undeclared wood instead of Fusion silently keeping the body's material;
+  - the standalone Extrude palette lists the same names (the existing equality guard).
+- **Mutations:** old list 1 red, no rename in the gate 2, no wood check 1.
+
+### Items 2-3: SHAPE-PARAMS (6074fd9)
+**Design, chosen so nothing old can change:**
+- **Declared params:** hourglass `waistRadius`, `cornerRadiusTop`, `cornerRadiusBottom`; bottle
+  `bodyRadius`. They are in PARAM_ORDER, with ranges.
+- **Defaults** (`DERIVED_PARAM_DEFAULTS`, which replaces F8's `OPTIONAL_RADIUS_PARAM`): each defaults
+  to TODAY's rule:
+  - the old coupled waist, `max(d − Rs, 0.5d)`;
+  - the shared `cornerRadius` for both corners, so an old pattern's single corner migrates to both
+    at resolve time, with no stored-data migration;
+  - the shared column for the bottle body.
+- **Resolution:** absent → today's rule, unclamped (feasible by construction); explicit → clamped
+  into its range. The panel's sliders and handles come from `SHAPE_PARAM_KEYS`.
+- **Construction:** per-side tangency (each corner meets the waist arc on its own), with the
+  major-waist test generalised. `bottleConstruction` is extracted so the solver and the handles
+  share one copy of the algebra.
+
+**Frames: "never get the new params".** `computeParamHandles` takes the consumer's keys. The Shape
+Lattice passes `SHAPE_PARAM_KEYS`; frames pass their binding table's keys, so they still get
+`cornerRadius`. Frame outlines are unchanged: the migration fixture includes the frames' fitted
+inputs.
+
+**The sweep found two real holes in the new param space; both are fixed in the DECLARED ranges:**
+1. **Closed notch.** At 2S = d the notch half-span is 0 and the waist arc has no length (NaN
+   radius). The tangency floor is now strict (+ε), in the waist and corner ranges.
+2. **Keyhole.** A MAJOR waist (R + Rw < d) swings each corner arc past its own vertical extreme, so
+   the notch must hold both: dy ≥ R per side. This gives
+   - `Rw ≥ (d − Rs)²/2d`,
+   - `R ≥ d − sqrt(2d·Rw)` (while Rw ≤ 2d).
+
+   Today's derived rule always satisfies it (dy = sqrt(2d·Rs) ≥ Rs); the migration and the "resolved
+   inside range" test confirm it.
+
+**Tests:**
+- **Migration:** 128 cases recorded from the generator BEFORE the change reproduce to 1e-9.
+  - Covered: both presets, jitter-only, each old param pinned, random explicit params, 4 boards,
+    3 strokes, plus the frames' fitted inputs.
+  - A start angle is compared modulo 2π: 20 cases flipped exactly 2π at atan2's branch cut, the same
+    arc.
+- **New-param dense sweep** (together, and each ALONE): more than 10k hourglass combinations,
+  clean and honoured exactly.
+- The pinned handle/slider tests now read `SHAPE_PARAM_KEYS`. The F5 slider test moved to the
+  bottom corner, the one that actually loses room with a low waist, and checks top ≥ bottom.
+- **Mutations:** waist default 48 red; top-corner default 67; corner keyhole 1. The waist keyhole
+  **survived at first**: the sweep always set all three params, so the corner bound caught it. Adding
+  the single-param sweep (only the waist moved) makes it red.
+
+**Real drags** (PointerEvents on the canvas, desktop + mobile touch): every new handle moved its
+value, with no defects. Shots: `*_F12shape_*` (hourglass: before + after top corner / bottom corner
+/ waist radius; bottle: before + after body shoulder).
+
+**Swept:** `tools/repro/shape_lattice_fred_case.mjs` still drove the removed `shapeParam-cornerRadius`
+slider, so it now sets both corners to Fred's 0.432. No other caller of the retired id.
+
+### Fred's panel rulings (amendments; 630ef38)
+- **Order:** Boundary → Contour [checkbox, stroke, shape preset + sliders, Segments] → Rails → Ties
+  → Nodes.
+- **Markup moved only:** no id renamed, no wiring changed. The two blocks are sub-blocks of the ONE
+  Contour section, so the collapser doesn't treat them as sections.
+- **Shape seed:** the field is hidden (kept, saved, same id). **The dice button stays visible**: in
+  the code, the Generate button re-rolls only the FILL seed, so the dice is the only way to roll a
+  new shape. The amendment said "Generate still re-rolls it", which does not match the code. **Open
+  for Fred:** should Generate also roll the shape?
+- **R7's guard** ("Shape/Segments still come before Boundary") is INVERTED to the new ruling (red on
+  the pre-move markup, 2 of 15). Stale comments about the old position were fixed.
+- Shots: `*_F12panel_*`.
+
+### Gates / processes
+- Final: full vitest 1789 / 92 files; Python fast tier 242; frame-defs fresh.
+- Server and Chrome stopped. Capacity fine.

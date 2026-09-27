@@ -181,3 +181,21 @@ def test_every_handle_binding_is_declared_and_valid(defs):
             assert h["label"] and h["basis"] in ("hw", "hh", "h"), (t["id"], h)
             b = h["binding"]
             assert b == "seeded" or (isinstance(b, dict) and b.get("param") in frame_params), (t["id"], h)
+
+
+
+# ------------------------------------------------------------- F12 woods
+_LIBRARY_FIXTURE = os.path.join(_REPO, "tests", "fixtures", "fusion-appearance-library.json")
+
+
+def test_every_declared_wood_is_a_real_fusion_appearance():
+    """The declared woods are validated against Fusion's own library names
+    (recorded live, F12). An unknown name is an error HERE, not a silent
+    fallback to the body's material in Fusion (F11 measured that fallback)."""
+    import json
+    from fb_engine.frame_definition import APPEARANCE_OPTIONS, APPEARANCE_RENAMED
+    lib = json.load(open(_LIBRARY_FIXTURE, encoding="utf-8"))["libraries"]["Fusion Appearance Library"]
+    missing = [w for w in APPEARANCE_OPTIONS if w not in lib]
+    assert missing == [], f"not in the Fusion Appearance Library: {missing}"
+    assert set(APPEARANCE_RENAMED.values()) <= set(APPEARANCE_OPTIONS)
+    assert not set(APPEARANCE_RENAMED) & set(lib), "a renamed (old) name must be one Fusion does not have"

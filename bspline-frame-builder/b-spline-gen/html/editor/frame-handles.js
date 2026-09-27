@@ -39,8 +39,7 @@ export function shapeParamOverrides(tpl, record, region) {
  *  only those the table declares, each with its binding. */
 export function frameHandles(tpl, prof) {
   const table = new Map(frameHandleTable(tpl).map((h) => [h.key, h]));
-  return computeParamHandles(tpl.silhouettePreset, prof.region, prof.params)
-    .filter((h) => table.has(h.key))
+  return computeParamHandles(tpl.silhouettePreset, prof.region, prof.params, [...table.keys()])
     .map((h) => ({ ...h, label: table.get(h.key).label, binding: table.get(h.key).binding, basis: table.get(h.key).basis }));
 }
 

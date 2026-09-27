@@ -35,7 +35,7 @@
  * mirrored side follows" falls out of the existing generator, it isn't
  * built here.
  */
-import { PRESETS, feasibleParamRanges, hourglassConstruction } from './editor-shape-lattice-generator.js';
+import { PRESETS, feasibleParamRanges, hourglassConstruction, bottleConstruction, SHAPE_PARAM_KEYS } from './editor-shape-lattice-generator.js';
 
 /** SE14 §3 Q5 ruling default, duplicated from properties-shape-lattice.
  *  js's own `_boardRegion` (small, pure, state-free — same "duplicate
@@ -55,7 +55,7 @@ export function boardRegion(editor) {
  * drag a param into a range the generator would have silently re-clamped
  * anyway, so what's on screen always matches what gets written.
  */
-export function computeParamHandles(preset, region, resolvedParams) {
+export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE_PARAM_KEYS[preset]) {
   const hw = region.w / 2, hh = region.h / 2, cx0 = region.x + hw, cy0 = region.y + hh;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   // SIL-RESOLVE (F5): a handle clamps to the generator's own DECLARED
@@ -64,16 +64,17 @@ export function computeParamHandles(preset, region, resolvedParams) {
   // one that let the waist radius go negative).
   const R = feasibleParamRanges(preset, region, resolvedParams);
   const within = (key, v) => clamp(v, R[key].min, R[key].max);
+  // F12: the handles a consumer asks for (`keys`), in this catalogue's order:
+  // the Shape Lattice panel's SHAPE_PARAM_KEYS by default; a frame asks for its
+  // own binding table's keys (frames never get the new params).
+  const pick = (catalogue) => catalogue.filter((h) => keys.includes(h.key));
 
   if (preset === 'bottle') {
-    const { neckWidth, skeletonX, neckLength } = resolvedParams;
-    const neckHalfW = hw * neckWidth;
-    const skelX = hw * skeletonX;
-    const neckCenterY = -hh + hh * 2 * neckLength;
-    return [
+    const b = bottleConstruction(region, resolvedParams); // the generator's own construction
+    return pick([
       {
         key: 'neckWidth', label: 'Neck width', axis: 'x',
-        anchor: { x: cx0 + neckHalfW, y: cy0 + (-hh + neckCenterY) / 2 }, // midway down the top horn — off the neckLength handle, which sits AT the horn corner
+        anchor: { x: cx0 + b.neckHalfW, y: cy0 + (-hh + b.neckCenterY) / 2 }, // midway down the top horn — off the neckLength handle, which sits AT the horn corner
         valueFromWorld: (pt) => within('neckWidth', (pt.x - cx0) / hw),
       },
       {
@@ -82,37 +83,61 @@ export function computeParamHandles(preset, region, resolvedParams) {
         // the outer edge) is RETIRED along with the param itself — the
         // body always spans the full half-width now, nothing left to drag.
         key: 'skeletonX', label: 'S-curve tightness', axis: 'x',
-        anchor: { x: cx0 + skelX, y: cy0 + neckCenterY }, // the neck arc's own CENTER — pure horizontal move, same reasoning as hourglass's cornerRadius
+        anchor: { x: cx0 + b.skelX, y: cy0 + b.neckCenterY }, // the neck arc's own CENTER — pure horizontal move, same reasoning as hourglass's cornerRadius
         valueFromWorld: (pt) => within('skeletonX', (pt.x - cx0) / hw),
       },
       {
         key: 'neckLength', label: 'Shoulder height', axis: 'y',
-        anchor: { x: cx0 + neckHalfW, y: cy0 + neckCenterY }, // the neck horn corner itself
+        anchor: { x: cx0 + b.neckHalfW, y: cy0 + b.neckCenterY }, // the neck horn corner itself
         valueFromWorld: (pt) => within('neckLength', (pt.y - region.y) / region.h),
       },
-    ];
+      {
+        // F12: the body shoulder radius: its arc's own CENTRE sits at hw - rB
+        key: 'bodyRadius', label: 'Body shoulder radius', axis: 'x',
+        anchor: { x: cx0 + b.bodyCx, y: cy0 + b.hipCenterY },
+        valueFromWorld: (pt) => within('bodyRadius', (cx0 + hw - pt.x) / hw),
+      },
+    ]);
   }
 
   // hourglass (default).
   const g = hourglassConstruction(region, resolvedParams); // the generator's own construction, not a copy
-  const waistX = g.waistX, waistCenterYAbs = g.waistCenterY, skelX = g.shoulderCx, shoulderY = g.shoulderY;
-  return [
+  return pick([
     {
       key: 'waistReach', label: 'Waist reach', axis: 'x',
-      anchor: { x: cx0 + waistX, y: cy0 + waistCenterYAbs }, // the waist arc's own deepest point (the pinch)
+      anchor: { x: cx0 + g.waistX, y: cy0 + g.waistCenterY }, // the waist arc's own deepest point (the pinch)
       valueFromWorld: (pt) => within('waistReach', 1 - (pt.x - cx0) / hw),
     },
     {
+      // the shared corner (a frame's own `cornerRadius` handle): both corners
       key: 'cornerRadius', label: 'Corner radius', axis: 'x',
-      anchor: { x: cx0 + skelX, y: cy0 + shoulderY }, // the shoulder arc's own CENTER
+      anchor: { x: cx0 + g.shoulderCx, y: cy0 + g.shoulderY }, // the shoulder arc's own CENTER
       valueFromWorld: (pt) => within('cornerRadius', (cx0 + hw - pt.x) / hw),
     },
     {
+      // F12: the top corner alone (its arc centre at hw - Rt, a pure horizontal move)
+      key: 'cornerRadiusTop', label: 'Top corner radius', axis: 'x',
+      anchor: { x: cx0 + g.shoulderCx, y: cy0 + g.shoulderY },
+      valueFromWorld: (pt) => within('cornerRadiusTop', (cx0 + hw - pt.x) / hw),
+    },
+    {
+      key: 'cornerRadiusBottom', label: 'Bottom corner radius', axis: 'x',
+      anchor: { x: cx0 + g.hipCx, y: cy0 + g.hipY },
+      valueFromWorld: (pt) => within('cornerRadiusBottom', (cx0 + hw - pt.x) / hw),
+    },
+    {
       key: 'waistCenterY', label: 'Waist position', axis: 'y',
-      anchor: { x: cx0, y: cy0 + waistCenterYAbs }, // on the centerline (off the waistReach handle, which sits at the waistX apex)
+      anchor: { x: cx0, y: cy0 + g.waistCenterY }, // on the centerline (off the waistReach handle, which sits at the waistX apex)
       valueFromWorld: (pt) => within('waistCenterY', (pt.y - cy0) / hh),
     },
-  ];
+    {
+      // F12: the waist radius, independent of the corners: its arc's CENTRE,
+      // at the pinch + Rw on the pinch's own line (the pinch depth is fixed)
+      key: 'waistRadius', label: 'Waist radius', axis: 'x',
+      anchor: { x: cx0 + g.waistCx, y: cy0 + g.waistCenterY },
+      valueFromWorld: (pt) => within('waistRadius', (pt.x - (cx0 + g.waistX)) / hw),
+    },
+  ]);
 }
 
 /** An `A` primitive's own point at parameter `t` (0=start, 1=end) —
