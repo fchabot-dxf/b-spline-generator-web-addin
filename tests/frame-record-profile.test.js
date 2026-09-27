@@ -103,7 +103,7 @@ function mockEditor() {
       addClass(c) { n.cls.push(c); return n; },
       path(d) { const c = node('path'); c.attrs.d = d; n.children.push(c); calls.push('path'); return c; },
       circle(dia) { const c = node('circle'); c.attrs.r = dia / 2; n.children.push(c); return c; },
-      polygon(pts) { const c = node('polygon'); c.attrs.points = pts; n.children.push(c); return c; }, // F27 item 2
+      rect(w, h) { const c = node('rect'); c.attrs.width = w; c.attrs.height = h; c.move = () => c; n.children.push(c); return c; }, // F27 item 2: a position handle's square
       center(x, y) { n.attrs.cx = x; n.attrs.cy = y; return n; },
       group() { const c = node('g'); n.children.push(c); c.parent = n; return c; },
       remove() { if (n.parent) n.parent.children = n.parent.children.filter((x) => x !== n); },

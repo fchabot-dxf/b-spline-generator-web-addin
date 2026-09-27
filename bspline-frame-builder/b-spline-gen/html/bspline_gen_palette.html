@@ -1575,6 +1575,10 @@
        same class; same grab/grabbing values. */
     #editorSVGContainer.handle-hover-ready { cursor: grab; }
     #editorSVGContainer.handle-hover-active { cursor: grabbing; }
+    /* F27 item 2 follow-up (Fred: "Use updown for one and left right the other ... Changing cursor on
+       hover"): a param handle's own drag axis picks the cursor, hover and drag alike. */
+    #editorSVGContainer.handle-axis-x.handle-hover-ready, #editorSVGContainer.handle-axis-x.handle-hover-active { cursor: ew-resize; }
+    #editorSVGContainer.handle-axis-y.handle-hover-ready, #editorSVGContainer.handle-axis-y.handle-hover-active { cursor: ns-resize; }
     /* SE7a: SNAP dimmed for modes whose policy is 'none' (nothing to
        snap) or 'always' (already always on) — declared here, not
        styles/base.css, for the same reason as the cursor rules above. */

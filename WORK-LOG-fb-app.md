@@ -3034,3 +3034,21 @@ Tests: cut-tool.test.js (cut refusal, joint slide, F19 push x2 orientations) now
 tests/min-piece-stroke-width.test.js (the helper + both stretch clamps). Full vitest 2385/2385, pytest 380 passed.
 Not live-checked (cloud session): a very short piece in Fusion -- a Slot shorter than it is wide should still
 build, but worth one try on the real machine.
+
+## F27 item 2 follow-up -- radius handles at the arc CENTRE; squares/circles + direction cursor -- 2026-09-27
+
+Fred, on the new on-arc waist handle: "Is this handle not on the arc center?" / "please use center"; then
+"dont use diamond use circles", a position handle that "matches the style of app", and (asked whether a hover
+cursor is more standard than a drawn arrow) "Use updown for one and left right the other ... Changing cursor
+on hover i mean".
+- T1 `waistRadius` and T2 `bodyRadius` handles are back at their arc's CENTRE (as Shoulder/Hip always were),
+  a plain horizontal drag (axis 'x'). A flat waist's centre lies past the frame's outer edge, so its handle
+  PARKS on that edge on the pinch's line; a pointer at/past the edge keeps the value (no jump on grab), pulled
+  inward the pointer becomes the new centre. The on-arc solver (`radiusThroughPoint`) is removed.
+- HANDLE_KINDS: position = white SQUARE with the app's selection-handle blue border (`APP_HANDLE_STROKE`
+  #0066cc, the scale handles' own colours); radius = CIRCLE in the accent blue (HANDLE_HOVER_FILL).
+- Cursor: `setHandleCursor(state, axis)` adds `handle-axis-x` / `handle-axis-y`; CSS maps them to `ew-resize`
+  (left-right) / `ns-resize` (up-down) for hover and drag, in the Frame tab and Shape Lattice. No axis (the
+  T81 item 7 rail end) keeps grab/grabbing. Touch has no hover: the press still shows the grow + blue look.
+Tests updated (frame-radius-handles, frame-handles, shape-lattice-handle-hover, mocks) + a cursor test.
+Full vitest 2384/2384. Shot: scratchpad shots/handles-v3.

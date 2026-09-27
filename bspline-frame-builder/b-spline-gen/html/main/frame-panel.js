@@ -205,6 +205,12 @@ export function syncFramePanel() {
  * container) takes ONLY a pointerdown that starts on a frame handle. Everything else reaches the editor, which in
  * the Frame tab (artwork locked) pans on one finger and pinch-zooms on two (editor-interaction.js).
  */
+/** F27 item 2 follow-up: a Frame handle's drag axis ('x'/'y'), for its hover/drag cursor. */
+function _frameHandleAxis(ed, key) {
+  const h = key && ed ? (ed._frameHandles || []).find((q) => q.key === key) : null;
+  return h ? h.axis : null;
+}
+
 /** F9 hit-test, factored out (T81 item 1) so pointerdown's grab check and
  *  the idle-hover check below share the ONE nearest-handle-within-
  *  HANDLE_HIT_PX rule rather than two copies. */
@@ -249,7 +255,7 @@ function _wireHandleDrag() {
     if (_frameHoverKey === key) return;
     _frameHoverKey = key;
     if (ed) { ed._frameHandleHover = key; if (ed._frameProfile) drawFrameProfile(ed); }
-    setHandleCursor(key ? 'hover' : null);
+    setHandleCursor(key ? 'hover' : null, _frameHandleAxis(ed, key));
   };
   surface.addEventListener('pointerdown', (e) => {
     if (!inFrameTab()) return;
@@ -259,7 +265,7 @@ function _wireHandleDrag() {
     if (!best) return;
     dragKey = best.key;
     ed._frameHandleDrag = dragKey; // T81 item 1: the SAME hover/press look for the whole drag
-    setHandleCursor('active');
+    setHandleCursor('active', best.axis);
     drawFrameProfile(ed); // show it immediately -- a bare press with no movement yet (Touch has no hover at all) must not wait for the first move tick
     pushFrameHistory(); // F13: a tweak is one undoable step
     if (surface.setPointerCapture && e.pointerId != null) { try { surface.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
@@ -288,7 +294,7 @@ function _wireHandleDrag() {
       ed._frameHandleDrag = null;
       if (ed._frameProfile) drawFrameProfile(ed); // T81 item 1: drop the "active" look immediately, don't wait for the next move
     }
-    setHandleCursor(_frameHoverKey ? 'hover' : null); // likely still hovering the handle just released
+    setHandleCursor(_frameHoverKey ? 'hover' : null, _frameHandleAxis(ed, _frameHoverKey)); // likely still hovering the handle just released
     e.stopPropagation();
     syncFramePanel();
   };

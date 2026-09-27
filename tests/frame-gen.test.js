@@ -132,7 +132,7 @@ function mockCanvasEditor() {
       stroke: self(() => {}), addClass: self(() => {}), center: self(() => {}),
       path: () => { const c = node(); n.children.push(c); return c; },
       circle: () => { const c = node(); n.children.push(c); return c; },
-      polygon: () => { const c = node(); n.children.push(c); return c; }, // F27 item 2: a radius handle's diamond
+      rect: () => { const c = node(); c.move = () => c; n.children.push(c); return c; }, // F27 item 2: a position handle's square
       group: () => { const c = node(); c.parent = n; n.children.push(c); return c; },
       remove: () => { if (n.parent) n.parent.children = n.parent.children.filter((x) => x !== n); },
       findOne: (sel) => n.children.find((c) => '#' + c.attrs.id === sel) || null,

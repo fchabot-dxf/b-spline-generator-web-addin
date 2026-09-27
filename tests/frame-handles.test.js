@@ -132,11 +132,10 @@ function mockCanvasEditor() {
       addClass: self(() => {}), center: self((x, y) => { n.attrs.cx = x; n.attrs.cy = y; }),
       path: () => { const c = node(); n.children.push(c); return c; },
       circle: (d) => { const c = node(); c.isCircle = true; c.d = d; n.children.push(c); return c; },
-      // F27 item 2: a position handle's arrow (drawParamHandle): centre = midpoint of its two tips (points 0 and 5), size d = 2 x half-length / 2.2 (arrowHandlePoints)
-      polygon: (pts) => {
-        const c = node(); c.isArrow = true;
-        c.d = Math.hypot(pts[5][0] - pts[0][0], pts[5][1] - pts[0][1]) / 2.2;
-        c.attrs.cx = (pts[0][0] + pts[5][0]) / 2; c.attrs.cy = (pts[0][1] + pts[5][1]) / 2;
+      // F27 item 2: a position handle's square (drawParamHandle): rect(2r, 2r).move(x - r, y - r)
+      rect: (w, h) => {
+        const c = node(); c.isSquare = true; c.d = w;
+        c.move = (x, y) => { c.attrs.cx = x + w / 2; c.attrs.cy = y + h / 2; return c; };
         n.children.push(c); return c;
       },
       group: () => { const c = node(); c.parent = n; n.children.push(c); return c; },
@@ -176,8 +175,8 @@ describe('Frame tab: dragging a handle through the shield', () => {
     const handles = ed._frameHandles;
     expect(handles.map((h) => h.key)).toEqual(['waistReach', 'cornerRadiusTop', 'cornerRadiusBottom', 'waistCenterY', 'waistRadius']);
     const g = ed._bgLayer.findOne('#frame-profile');
-    // F27 item 2: the two position handles are arrows, the three radius handles circles
-    expect(g.children.filter((c) => c.isArrow)).toHaveLength(2);
+    // F27 item 2: the two position handles are squares, the three radius handles circles
+    expect(g.children.filter((c) => c.isSquare)).toHaveLength(2);
     expect(g.children.filter((c) => c.isCircle)).toHaveLength(3);
 
     const far = HANDLE_HIT_PX / ed.PX + 0.05;
@@ -202,7 +201,7 @@ describe('Frame tab: dragging a handle through the shield', () => {
   const cssState = () => Array.from(document.getElementById('editorSVGContainer').classList).filter((c) => c.startsWith('handle-hover'));
   const circleFor = (key) => {
     const h = ed._frameHandles.find((q) => q.key === key);
-    return ed._bgLayer.findOne('#frame-profile').children.find((c) => (c.isCircle || c.isArrow) && Math.abs(c.attrs.cx - h.anchor.x) < 1e-9 && Math.abs(c.attrs.cy - h.anchor.y) < 1e-9);
+    return ed._bgLayer.findOne('#frame-profile').children.find((c) => (c.isCircle || c.isSquare) && Math.abs(c.attrs.cx - h.anchor.x) < 1e-9 && Math.abs(c.attrs.cy - h.anchor.y) < 1e-9);
   };
 
   it('idle: base radius/colour, no cursor class', () => {

@@ -244,11 +244,11 @@ function _drawFrameProfile(editor) {
       // param handles use (editor-transform-handles.js) -- frame-panel.js
       // sets _frameHandleHover/_frameHandleDrag from its own pointer wiring.
       // F27 item 2: drawn by its declared KIND (radius = accent circle at the
-      // arc centre, position = app-style arrow along its drag axis), the ONE
-      // kind table the Shape Lattice reads too.
+      // arc centre, position = the app's white/blue square; the cursor shows
+      // the drag direction), the ONE kind table the Shape Lattice reads too.
       const active = editor._frameHandleHover === h.key || editor._frameHandleDrag === h.key;
       const vis = handleKindVisual(h.handleKind, FRAME_HANDLE_RADIUS, FRAME_OUTLINE_COLOR, active);
-      drawParamHandle(g, vis, h.anchor.x, h.anchor.y, 0.03, h.axis)
+      drawParamHandle(g, vis, h.anchor.x, h.anchor.y, 0.03)
         .addClass('frame-handle').attr('data-key', h.key).attr('data-kind', h.handleKind || 'position');
     }
   }

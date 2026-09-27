@@ -77,8 +77,8 @@ function makeMockEditor() {
   let handleElements = [];
   const handleLayer = {
     circle(d) { const e = makeElement('circle', { r: d / 2 }); handleElements.push(e); return e; },
-    // F27 item 2: a radius handle is drawn as a diamond (drawParamHandle)
-    polygon(pts) { const e = makeElement('polygon', { points: pts }); handleElements.push(e); return e; },
+    // F27 item 2: a position handle is drawn as a square (drawParamHandle)
+    rect(w, h) { const e = makeElement('rect', { width: w, height: h }); e.move = () => e; handleElements.push(e); return e; },
     clear() { handleElements = []; },
     children() { const arr = handleElements.slice(); arr.toArray = () => arr; return arr; },
   };
@@ -766,7 +766,7 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
       expect(records.map((r) => r.key).sort()).toEqual(['bodyRadius', 'neckLength', 'neckWidth', 'skeletonX']); // F12: + the body shoulder
     });
 
-    it('non-vacuous: renderShapeLatticeHandles draws exactly one mark (circle or F27 diamond) per record into _handleLayer', () => {
+    it('non-vacuous: renderShapeLatticeHandles draws exactly one mark (circle or F27 square) per record into _handleLayer', () => {
       regenerateSilhouette(editor, currentPattern(editor)); // T72: a real Generate must have run first
       const drawn = renderShapeLatticeHandles(editor);
       expect(drawn.length).toBe(SHAPE_PARAM_KEYS.hourglass.length);

@@ -545,11 +545,11 @@ export function renderShapeLatticeHandles(editor) {
             }
         }
         // F27 item 2: the handle's declared KIND picks its mark (radius =
-        // accent circle, position = app-style arrow along its axis) -- the
+        // accent circle, position = the app's white/blue square) -- the
         // SAME table and draw call the Frame tab's handles use
         // (editor-transform-handles.js).
         const vis = handleKindVisual(r.handleKind, sz, '#7b1fa2', active);
-        drawParamHandle(editor._handleLayer, vis, r.hx, r.hy, strokeW, r.axis)
+        drawParamHandle(editor._handleLayer, vis, r.hx, r.hy, strokeW)
             .attr('pointer-events', 'none')
             .attr('data-kind', r.handleKind || 'position');
         out.push({ ...r, hitR: sz * 1.8 });

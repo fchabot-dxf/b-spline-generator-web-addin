@@ -2229,7 +2229,7 @@ const shapeLatticeHandler = {
             editor._shapeLatticeDragKey = hit.key;
             // T81 item 1: the SAME visual a hover shows, held for the whole
             // drag (Touch has no hover at all, so this is its only cue).
-            setHandleCursor('active');
+            setHandleCursor('active', hit.axis);
             if (typeof editor._updateHandles === 'function') editor._updateHandles();
             // `update(editor, pt)` below only ever gets the OFFSET point
             // (handleMove's own signature has no `e`) — capture the
@@ -2400,7 +2400,7 @@ const shapeLatticeHandler = {
         // handle it just released) or idle -- the next hover() call
         // self-corrects if it isn't (no fresh pointer position here to
         // re-test against).
-        setHandleCursor(editor._shapeHandleHover ? 'hover' : null);
+        setHandleCursor(editor._shapeHandleHover ? 'hover' : null, _paramHandleAxis(editor, editor._shapeHandleHover));
         regenerateSilhouetteAndFill(editor);
     },
     /** T81 item 1: hover feedback for the param handles -- grows/fills the
@@ -2420,10 +2420,16 @@ const shapeLatticeHandler = {
         // there grabs the handle first, start()'s own priority).
         const railEnd = key ? null : _railEndUnder(editor, pt);
         setRailEndHover(editor, railEnd);
-        setHandleCursor(key || railEnd ? 'hover' : null);
+        setHandleCursor(key || railEnd ? 'hover' : null, key ? hit.axis : null);
         if (selectHandler.hover) selectHandler.hover(editor, pt);
     },
 };
+
+/** F27 item 2 follow-up: a Shape Lattice param handle's drag axis ('x'/'y'), for its hover/drag cursor. */
+function _paramHandleAxis(editor, key) {
+    const h = key ? (editor._paramHandles || []).find((r) => r.key === key) : null;
+    return h ? h.axis : null;
+}
 
 const modeHandlers = {
     select:  selectHandler,

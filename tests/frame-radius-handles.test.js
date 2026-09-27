@@ -11,9 +11,10 @@
  *     new Fusion parameter), and [Send frame] carries the new radius in the
  *     seed geometry.
  * (b) handle KINDS are declared data (HANDLE_KINDS, editor-transform-
- *     handles.js): position = a double-headed arrow along its drag axis,
- *     white with the app's blue selection-handle border; radius = a circle in
- *     the editor's existing blue accent (Fred's rulings).
+ *     handles.js): position = a white square with the app's blue selection-
+ *     handle border; radius = a circle in the editor's existing blue accent;
+ *     the drag direction is the CURSOR on hover, left-right or up-down by
+ *     the handle's axis (Fred's rulings).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
@@ -22,7 +23,7 @@ import { normalizeFrameRecord, setFrameRecord, framePayload } from '../bspline-f
 import { frameCutProfile, frameInnerProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameHandles, handleDragPatch } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import {
-  HANDLE_KINDS, HANDLE_HOVER_FILL, APP_HANDLE_STROKE, handleKindVisual, drawParamHandle, arrowHandlePoints,
+  HANDLE_KINDS, HANDLE_HOVER_FILL, APP_HANDLE_STROKE, handleKindVisual, drawParamHandle, setHandleCursor,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 import { initFramePanel, sendFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 
@@ -213,9 +214,9 @@ describe('(a) [Send frame]: a changed radius reaches Fusion in the seed geometry
 });
 
 describe('(b) handle kinds are declared data, and render distinct', () => {
-  it('the ONE table: position = app-style arrow (white, the selection handles\' blue border), radius = circle in the editor\'s existing blue accent (Fred)', () => {
+  it('the ONE table: position = the app\'s white/blue square, radius = circle in the editor\'s existing blue accent (Fred)', () => {
     expect(HANDLE_KINDS).toEqual({
-      position: { shape: 'arrow', fill: '#ffffff', stroke: APP_HANDLE_STROKE },
+      position: { shape: 'square', fill: '#ffffff', stroke: APP_HANDLE_STROKE },
       radius: { shape: 'circle', fill: HANDLE_HOVER_FILL },
     });
     expect(APP_HANDLE_STROKE).toBe('#0066cc');
@@ -229,21 +230,30 @@ describe('(b) handle kinds are declared data, and render distinct', () => {
     }
   });
 
-  it('drawParamHandle: a double-headed arrow along the drag axis for position, a circle for radius; hover keeps the shape', () => {
-    const el = (type, a) => { const e = { type, a, fill(v) { e.f = v; return e; }, stroke(v) { e.s = v; return e; }, center(x, y) { e.c = [x, y]; return e; } }; return e; };
-    const layer = { circle: (d) => el('circle', d), polygon: (pts) => el('polygon', pts) };
-    const pos = drawParamHandle(layer, handleKindVisual('position', 0.1, '#5d4037', false), 1, 2, 0.03, 'x');
-    expect(pos.type).toBe('polygon');
-    expect(pos.a).toEqual(arrowHandlePoints(1, 2, 0.1, 'x'));
-    expect([pos.f, pos.s.color]).toEqual(['#ffffff', APP_HANDLE_STROKE]); // the app's own handle colours, not the frame brown
-    // the two tips lie ON the drag axis, either side of the centre
-    expect(pos.a[0][1]).toBeCloseTo(2, 12); expect(pos.a[5][1]).toBeCloseTo(2, 12);
-    expect(pos.a[0][0]).toBeLessThan(1); expect(pos.a[5][0]).toBeGreaterThan(1);
-    const vert = arrowHandlePoints(1, 2, 0.1, 'y');
-    expect(vert[0][0]).toBeCloseTo(1, 12); expect(vert[5][0]).toBeCloseTo(1, 12); // a 'y' handle points up/down
-    const rad = drawParamHandle(layer, handleKindVisual('radius', 0.1, '#5d4037', false), 1, 2, 0.03, 'x');
+  it('drawParamHandle: a square for position, a circle for radius; hover keeps the shape', () => {
+    const el = (type, a) => { const e = { type, a, fill(v) { e.f = v; return e; }, stroke(v) { e.s = v; return e; }, center(x, y) { e.c = [x, y]; return e; }, move(x, y) { e.m = [x, y]; return e; } }; return e; };
+    const layer = { circle: (d) => el('circle', d), rect: (w, h) => el('rect', [w, h]) };
+    const pos = drawParamHandle(layer, handleKindVisual('position', 0.1, '#5d4037', false), 1, 2, 0.03);
+    expect([pos.type, pos.a, pos.m, pos.f, pos.s.color]).toEqual(['rect', [0.2, 0.2], [0.9, 1.9], '#ffffff', APP_HANDLE_STROKE]);
+    const rad = drawParamHandle(layer, handleKindVisual('radius', 0.1, '#5d4037', false), 1, 2, 0.03);
     expect([rad.type, rad.a, rad.c, rad.f, rad.s.color]).toEqual(['circle', 0.2, [1, 2], HANDLE_HOVER_FILL, '#5d4037']);
-    expect(handleKindVisual('position', 0.1, '#5d4037', true)).toMatchObject({ shape: 'arrow', fill: HANDLE_HOVER_FILL });
-    expect(handleKindVisual(undefined, 0.1, '#5d4037', false)).toMatchObject({ shape: 'arrow', fill: '#ffffff' }); // unknown -> position
+    expect(handleKindVisual('position', 0.1, '#5d4037', true)).toMatchObject({ shape: 'square', fill: HANDLE_HOVER_FILL });
+    expect(handleKindVisual(undefined, 0.1, '#5d4037', false)).toMatchObject({ shape: 'square', fill: '#ffffff' }); // unknown -> position
+  });
+
+  it('the cursor shows the drag direction (Fred: "Use updown for one and left right the other ... Changing cursor on hover")', () => {
+    document.body.innerHTML = '<div id="editorSVGContainer"></div>';
+    const cls = () => Array.from(document.getElementById('editorSVGContainer').classList).sort();
+    setHandleCursor('hover', 'x');
+    expect(cls()).toEqual(['handle-axis-x', 'handle-hover-ready']);
+    setHandleCursor('active', 'y');
+    expect(cls()).toEqual(['handle-axis-y', 'handle-hover-active']);
+    setHandleCursor('hover'); // no axis (a rail end): plain grab
+    expect(cls()).toEqual(['handle-hover-ready']);
+    setHandleCursor(null, 'x');
+    expect(cls()).toEqual([]);
+    for (const id of Object.keys(ARC_RADIUS_HANDLE)) {
+      for (const h of handlesOf(normalizeFrameRecord({ templateId: id }))) expect(h.axis, `${id} ${h.key}`).toMatch(/^[xy]$/);
+    }
   });
 });

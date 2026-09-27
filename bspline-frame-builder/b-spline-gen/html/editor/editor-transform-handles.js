@@ -226,12 +226,11 @@ export function handleHoverVisual(baseRadius, idleFill, idleStroke, active) {
 // Lattice, properties-shape-lattice.js) draw it through drawParamHandle
 // below, so a radius handle looks the same in both.
 //   position: moves a feature (the pinch, the waist line, the neck) -- a
-//             DOUBLE-HEADED ARROW along the handle's own drag axis (<-> for
-//             an 'x' handle, vertical for a 'y' one), white with the app's
-//             blue border, the SAME colours as the editor's own selection/
-//             scale handles above (Fred, F27 item 2 follow-up: "for the
-//             position handle ... make one that matches the style of app",
-//             with a <-> arrow image);
+//             white SQUARE with the app's blue border, the SAME look as the
+//             editor's own selection/scale handles above (Fred, F27 item 2
+//             follow-up: "make one that matches the style of app"). Which way
+//             it slides is shown by the CURSOR on hover, not drawn on the
+//             canvas (Fred: "Changing cursor on hover"): see setHandleCursor;
 //   radius:   sets an arc's radius -- a CIRCLE in the accent colour (Fred:
 //             "dont use diamond use circles"), sitting at the arc's CENTRE
 //             ("please use center"). The accent is the editor's EXISTING blue
@@ -246,7 +245,7 @@ export const APP_HANDLE_STROKE = '#0066cc';
 
 /** kind -> its idle mark. An unknown kind draws as 'position'. */
 export const HANDLE_KINDS = {
-    position: { shape: 'arrow', fill: '#ffffff', stroke: APP_HANDLE_STROKE },
+    position: { shape: 'square', fill: '#ffffff', stroke: APP_HANDLE_STROKE },
     radius: { shape: 'circle', fill: HANDLE_HOVER_FILL },
 };
 
@@ -257,43 +256,35 @@ export function handleKindVisual(kind, baseRadius, idleStroke, active) {
     return { shape: k.shape, ...handleHoverVisual(baseRadius, k.fill, k.stroke || idleStroke, active) };
 }
 
-/** The position handle's double-headed arrow, as a polygon centred on (x, y)
- *  for a handle of radius `r`: along x for axis 'x', along y for axis 'y'.
- *  Proportions (multiples of r): half-length 2.2, shaft half-thickness 0.3,
- *  head length 0.95, head half-width 0.85 -- about as tall as the old circle,
- *  twice as long, so it still reads as "a handle" and shows its direction. */
-export function arrowHandlePoints(x, y, r, axis = 'x') {
-    const L = 2.2 * r, t = 0.3 * r, hl = 0.95 * r, hw = 0.85 * r;
-    const pts = [[-L, 0], [-L + hl, -hw], [-L + hl, -t], [L - hl, -t], [L - hl, -hw],
-        [L, 0], [L - hl, hw], [L - hl, t], [-L + hl, t], [-L + hl, hw]];
-    return pts.map(([u, v]) => (axis === 'y' ? [x + v, y + u] : [x + u, y + v]));
-}
-
-/** Draw one param handle mark (arrow or circle) centred on (x, y) into an
+/** Draw one param handle mark (square or circle) centred on (x, y) into an
  *  svg.js container; returns the element. The two handle systems' ONE draw
- *  call, so neither can drift into its own shape for a kind. `axis` orients
- *  a position arrow along the handle's own drag axis. */
-export function drawParamHandle(layer, vis, x, y, strokeWidth, axis = 'x') {
-    if (vis.shape === 'arrow') {
-        return layer.polygon(arrowHandlePoints(x, y, vis.radius, axis))
-            .fill(vis.fill).stroke({ color: vis.stroke, width: strokeWidth, linejoin: 'round' });
+ *  call, so neither can drift into its own shape for a kind. A square's
+ *  half-side is the handle's radius, like the scale handles' `sz`. */
+export function drawParamHandle(layer, vis, x, y, strokeWidth) {
+    if (vis.shape === 'square') {
+        const r = vis.radius;
+        return layer.rect(r * 2, r * 2).move(x - r, y - r)
+            .fill(vis.fill).stroke({ color: vis.stroke, width: strokeWidth });
     }
     return layer.circle(vis.radius * 2).center(x, y).fill(vis.fill).stroke({ color: vis.stroke, width: strokeWidth });
 }
 
-/** The shared grab/grabbing cursor for whichever handle system is hovered
- *  or being dragged -- ONE pair of classes (styles/editor.css) toggled on
- *  the canvas container, so a Shape Lattice handle and a Frame handle set
- *  the cursor the SAME way rather than two independent toggles that could
- *  drift apart. `state`: null (idle), 'hover' (grab) or 'active' (grabbing,
- *  mid-drag) -- distinct class names from the pre-existing `pan-ready`/
- *  `panning` (also grab/grabbing, for Space-pan) so the two never fight
- *  over the same class. */
-export function setHandleCursor(state) {
+/** The shared handle cursor for whichever handle system is hovered or
+ *  being dragged -- ONE set of classes (bspline_gen_palette.html) toggled on
+ *  the canvas container, so a Shape Lattice handle and a Frame handle set the
+ *  cursor the SAME way. `state`: null (idle), 'hover' or 'active' (mid-drag).
+ *  `axis` (F27 item 2 follow-up, Fred: "Use updown for one and left right the
+ *  other ... Changing cursor on hover"): the handle's own drag axis -- 'x'
+ *  shows the left-right resize cursor, 'y' the up-down one, for hover AND the
+ *  drag; no axis (a rail end) keeps grab/grabbing. Distinct class names from
+ *  the pre-existing `pan-ready`/`panning` (Space-pan) so the two never fight. */
+export function setHandleCursor(state, axis = null) {
     const c = typeof document !== 'undefined' ? document.getElementById('editorSVGContainer') : null;
     if (!c) return;
     c.classList.toggle('handle-hover-ready', state === 'hover');
     c.classList.toggle('handle-hover-active', state === 'active');
+    c.classList.toggle('handle-axis-x', !!state && axis === 'x');
+    c.classList.toggle('handle-axis-y', !!state && axis === 'y');
 }
 
 /** True if `m`'s linear part carries any rotation/skew (b or c nonzero) —

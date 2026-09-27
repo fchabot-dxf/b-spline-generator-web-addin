@@ -64,11 +64,11 @@ function makeMockEditor(mW, mH) {
   }
   const handleLayer = {
     circle(d) { return makeHandleEl('circle', d); },
-    // F27 item 2: a position handle is an arrow (drawParamHandle): centre = midpoint of its two tips (points 0 and 5), size d = 2 x half-length / 2.2 (arrowHandlePoints)
-    polygon(pts) {
-      const el = makeHandleEl('polygon', Math.hypot(pts[5][0] - pts[0][0], pts[5][1] - pts[0][1]) / 2.2);
-      el.store.cx = (pts[0][0] + pts[5][0]) / 2; el.store.cy = (pts[0][1] + pts[5][1]) / 2;
-      el.center = () => el;
+    // F27 item 2: a position handle is a square (drawParamHandle): rect(2r, 2r).move(x - r, y - r);
+    // its centre and "diameter" (the side) read back off it
+    rect(w, h) {
+      const el = makeHandleEl('rect', w);
+      el.move = (x, y) => { el.store.cx = x + w / 2; el.store.cy = y + h / 2; return el; };
       return el;
     },
     path(d) { return makeHandleEl('path', d); },
@@ -103,11 +103,11 @@ async function shapeLatticeEditor() {
   return editor;
 }
 
-// F27 item 2: a handle's mark is an arrow polygon (position) or a circle (radius)
+// F27 item 2: a handle's mark is a square (position) or a circle (radius)
 const handleCircle = (editor, key) => {
   const rec = editor._paramHandles.find((r) => r.key === key);
   const near = (a, b) => Math.abs(a - b) < 1e-9;
-  return editor._handleLayer.items().find((e) => (e.type === 'circle' || e.type === 'polygon')
+  return editor._handleLayer.items().find((e) => (e.type === 'circle' || e.type === 'rect')
     && near(e.store.cx, rec.hx) && near(e.store.cy, rec.hy));
 };
 const overlayPaths = (editor) => editor._handleLayer.items().filter((e) => e.type === 'path');
@@ -125,7 +125,7 @@ describe("T81 item 1: hovering a Shape Lattice handle", () => {
     expect(editor._shapeHandleHover).toBeNull();
     const c = handleCircle(editor, 'waistReach');
     expect(c.store.fill).toBe('#ffffff');
-    expect(c.store.stroke).toBe(HANDLE_KINDS.position.stroke); // a position arrow wears the app's own handle border (Fred)
+    expect(c.store.stroke).toBe(HANDLE_KINDS.position.stroke); // a position square wears the app's own handle border (Fred)
     expect(cssState()).toEqual([]);
     expect(overlayPaths(editor).length).toBe(0);
   });
@@ -146,7 +146,7 @@ describe("T81 item 1: hovering a Shape Lattice handle", () => {
     // "the segment it controls" -- an overlay in the accent colour, matching
     // the LIVE waist segment's own drawn `d` (segment index 2). (F27 item 2:
     // these look tests use the Waist reach, a POSITION handle -- a white
-    // arrow when idle; the Shoulder is a blue radius circle, see below.)
+    // square when idle; the Shoulder is a blue radius circle, see below.)
     const waistSeg = editor._sketchLayer.children().toArray().find((e) => e.attr('data-contour-seg') === 2);
     expect(waistSeg).toBeTruthy();
     const overlays = overlayPaths(editor);
@@ -213,17 +213,17 @@ describe("T81 item 1: hovering a Shape Lattice handle", () => {
 });
 
 describe('F27 item 2: Shape Lattice handles are drawn by their declared KIND', () => {
-  it('radius handles (Shoulder, Hip, Waist radius) are accent circles; position handles (Waist reach, Waist position) white app-style arrows', async () => {
+  it('radius handles (Shoulder, Hip, Waist radius) are accent circles; position handles (Waist reach, Waist position) the app\'s white/blue squares', async () => {
     const editor = await shapeLatticeEditor();
     const kinds = Object.fromEntries(editor._paramHandles.map((r) => [r.key, r.handleKind]));
     expect(kinds).toEqual({ waistReach: 'position', cornerRadiusTop: 'radius', cornerRadiusBottom: 'radius',
       waistCenterY: 'position', waistRadius: 'radius' });
     expect(HANDLE_KINDS.radius.shape).toBe('circle');
-    expect(HANDLE_KINDS.position.shape).toBe('arrow');
+    expect(HANDLE_KINDS.position.shape).toBe('square');
     for (const r of editor._paramHandles) {
       const mark = handleCircle(editor, r.key);
       expect(mark, r.key).toBeTruthy();
-      expect(mark.type).toBe(r.handleKind === 'radius' ? 'circle' : 'polygon');
+      expect(mark.type).toBe(r.handleKind === 'radius' ? 'circle' : 'rect');
       expect(mark.store.fill).toBe(HANDLE_KINDS[r.handleKind].fill);
       expect(mark.store['data-kind']).toBe(r.handleKind);
     }
