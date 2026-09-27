@@ -2342,13 +2342,16 @@
               <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">width
                 <input id="shapeLatticeContourWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
               </label>
-              <!-- F21 CONTOUR-FROM-FRAME (Fred): ON = the contour is the frame's inner edge offset inward by Distance
-                   (to the contour's outside edge); the Shape / Segments blocks below go inert while it is on. -->
+              <!-- F21/F26 CONTOUR-FROM-FRAME (Fred: "offset from frame at 0 is clamped to the inside of frame
+                   rather than outside, and doesn't accept negative value"): ON = the contour is the frame's
+                   OUTER edge (its cut profile) offset by Distance -- 0 = on the outer edge, + = inward,
+                   - = outward (to the contour's outside edge); the Shape / Segments blocks below go inert
+                   while it is on. -->
               <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
                 <input id="shapeLatticeContourFromFrame" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> Offset from frame
               </label>
-              <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">distance (in)
-                <input id="shapeLatticeContourFromFrameDistance" type="number" min="0" step="0.05" value="0.25" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">distance from outer edge (in, +in/-out)
+                <input id="shapeLatticeContourFromFrameDistance" type="number" step="0.05" value="0.25" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
               </label>
               <span id="shapeLatticeContourFromFrameHint" style="display:none; font-size:11px; color:#777;">Choose a frame first (Frame panel).</span>
               <!-- F12 (Fred: "shape goes in contour", "segment too"): the silhouette's preset + sliders,

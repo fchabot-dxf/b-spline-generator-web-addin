@@ -14,6 +14,7 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
+import { FRAME_DEFS, frameParam } from '../core/frame-record.js';
 
 // SE3a: snapshot of the unified editor document (P.editorSvg) captured
 // when the SVG editor modal opens. The Cancel button restores it — reloads
@@ -386,6 +387,59 @@ export const MIGRATIONS = [
         p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
       } catch (e) {
         console.warn('[migration] box-lattice-margin-to-size failed:', e);
+      }
+    },
+  },
+  {
+    id: 'contour-from-frame-outer-edge',
+    // F26 (Fred, screenshot: "offset from frame at 0 is clamped to the
+    // inside of frame rather than outside, and doesn't accept negative
+    // value"): `pattern.contour.fromFrame.distance`'s reference point moved
+    // from the frame's INNER edge (the cut profile offset inward by
+    // `frame_thickness`) to its OUTER edge directly -- `distance=0` used to
+    // sit `frame_thickness` inward of the outline, now it sits ON the
+    // outline. `distanceRef: 'outer'` (contour-from-frame.js's own
+    // CONTOUR_FROM_FRAME_DEFAULTS, and editor-lattice-pattern.js's
+    // PATTERN_DEFAULTS) is the declared marker: present -> already in the
+    // new scheme (a fresh pattern, or already migrated); a `distance`
+    // present WITHOUT it -> pre-F26, needs `+= frame_thickness` once so the
+    // contour's ACTUAL drawn position does not move on load. `frame_thickness`
+    // is read from the ONE project-wide frame record (`p.frame`, `core/
+    // frame-record.js`'s own `frameParam`, the SAME helper every other frame
+    // reader uses) -- not per-layer, since the frame itself isn't -- falling
+    // back to T1/T2's own shared declared default (0.75) only if no frame is
+    // on record at all (a saved distance with no frame ever chosen has
+    // nothing more specific to convert against).
+    when: (p) => {
+      if (!p.editorSvg) return false;
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return false;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        return Array.isArray(layers) && layers.some((l) => l && l.pattern && l.pattern.contour
+          && l.pattern.contour.fromFrame && l.pattern.contour.fromFrame.distance !== undefined
+          && l.pattern.contour.fromFrame.distanceRef !== 'outer');
+      } catch (_) {
+        return false;
+      }
+    },
+    apply: (p) => {
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        if (!Array.isArray(layers)) return;
+        const t = frameParam(FRAME_DEFS, p.frame, 'frame_thickness') ?? 0.75;
+        layers.forEach((l) => {
+          const ff = l && l.pattern && l.pattern.contour && l.pattern.contour.fromFrame;
+          if (!ff || ff.distance === undefined || ff.distanceRef === 'outer') return;
+          ff.distance = Number(ff.distance) + t;
+          ff.distanceRef = 'outer';
+        });
+        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
+      } catch (e) {
+        console.warn('[migration] contour-from-frame-outer-edge failed:', e);
       }
     },
   },

@@ -849,9 +849,23 @@ export function _migrateLegacyPatternOntoLayers(editor, legacyPattern) {
     if (ownedLayerIds.size) _ioLog(`open: migrated legacy pattern onto layer(s) [${[...ownedLayerIds].join(',')}]`);
 }
 
-export function open(editor, svgString, w, h) {
-    _ioLog(`open() called  svgLen=${(svgString || '').length}  w=${w} h=${h}`);
-    editor.setModelMetrics(w, h);
+/**
+ * H20 item 3 (Fred: "Clear all doesn't clear all" — the layer list,
+ * per-layer metadata and Lattice/Shape-Lattice pattern state all survived
+ * the old Clear, which only wiped `_sketchLayer`): the ARTWORK half of a
+ * brand-new editor session — everything `open(editor, null, ...)` below
+ * builds when there's no document to load, minus the model-metrics/undo-
+ * stack/SVG-parsing concerns that belong to `open()` alone. Declared once
+ * here so both `open()`'s own empty-session path and the Clear action
+ * (editor/tools/action-tools.js) build EXACTLY the same fresh state,
+ * rather than each listing what to wipe.
+ *
+ * Does not touch: model metrics (board size), the undo/redo stacks (the
+ * caller decides — `open()` wipes them for a new session; Clear must NOT,
+ * so its own `pushState()` becomes one undoable step), or anything
+ * Frame-side (a completely separate record, `core/frame-record.js`).
+ */
+export function resetArtworkToFresh(editor) {
     editor._sketchLayer.clear();
     // T8: the wiped sketch layer's old selection (if any) would otherwise
     // leave its highlight halo / transform handles ghosted on screen — they
@@ -863,10 +877,37 @@ export function open(editor, svgString, w, h) {
     clearSnapCursor(editor);
     // T31: same reason for the grid hover highlight.
     clearGridHover(editor);
-    sync3DBackground(editor);
     // T6: a fresh session must never start pan-ready — the previous
     // session's Space/pan state has no meaning here.
     resetPanState(editor);
+
+    // Reset the layer roster — this is also where every layer's own
+    // Lattice/Shape-Lattice `.pattern` lives (SE7i moved it here from a
+    // legacy file-level `editor._latticePattern`, which no longer exists),
+    // so dropping the array clears pattern state and its layer tags too.
+    editor._layers = [];
+    editor._activeLayer = null;
+    // Same auto-create as initLayerControls (BUG-10) so a fresh editor
+    // session always has a Layer 1 ready to go, instead of showing an
+    // empty layers list and the user wondering where to draw. skipUndo so
+    // this doesn't pollute the undo stack — the CALLER's own pushState()
+    // (after this returns) is what makes the whole reset one undo step.
+    const layer = addLayer(editor, { skipUndo: true });
+    setActiveLayer(editor, layer.id);
+}
+
+export function open(editor, svgString, w, h) {
+    _ioLog(`open() called  svgLen=${(svgString || '').length}  w=${w} h=${h}`);
+    editor.setModelMetrics(w, h);
+    // H20 item 3: the shared "wipe the artwork" prefix (sketch layer,
+    // selection, hover/pan state, layer roster + a fresh Layer 1) now lives
+    // in resetArtworkToFresh() — reused as-is by Clear. For the LOADED-
+    // document branch below, the fresh Layer 1 this creates is immediately
+    // superseded by _reconcileLayersFromSvg's own unconditional
+    // `editor._layers = [...]` (or by the persisted-layers restore path),
+    // so it's harmlessly transient there, never visible to the user.
+    resetArtworkToFresh(editor);
+    sync3DBackground(editor);
 
     // Fresh editor session: wipe any leftover undo history from a previous
     // session so the user can't Ctrl+Z back into someone else's design.
@@ -875,19 +916,9 @@ export function open(editor, svgString, w, h) {
     // stroke in an empty session — is undoable.
     editor._undoStack = [];
     editor._redoStack = [];
-    // Reset the layer roster too so it can't bleed across sessions.
-    // _reconcileLayersFromSvg below will rebuild it from the loaded SVG.
-    editor._layers = [];
-    editor._activeLayer = null;
 
     if (!svgString) {
         _ioLog('open: no svgString -> empty editor');
-        // Same auto-create as initLayerControls (BUG-10) so a fresh
-        // editor session always has a Layer 1 ready to go, instead of
-        // showing an empty layers list and the user wondering where to
-        // draw. skipUndo so this doesn't pollute the undo stack.
-        const layer = addLayer(editor, { skipUndo: true });
-        setActiveLayer(editor, layer.id);
         if (typeof editor.pushState === 'function') editor.pushState();
         return;
     }

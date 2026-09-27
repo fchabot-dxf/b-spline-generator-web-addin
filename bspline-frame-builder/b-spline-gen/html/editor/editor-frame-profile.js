@@ -166,6 +166,15 @@ let _provider = null;
  *  so this editor module never imports app state directly. */
 export function setFrameProfileProvider(fn) { _provider = fn; }
 
+let _clearHandler = null;
+/** H20 item 3: `fn()` resets the frame record to "None" (with its own
+ *  pushFrameHistory() undo step) and re-syncs the Frame panel — same
+ *  provider pattern as setFrameProfileProvider, registered by
+ *  main/frame-panel.js, so Clear (editor/tools/action-tools.js) can reset
+ *  whichever tab is active without this module importing app state. */
+export function setFrameClearHandler(fn) { _clearHandler = fn; }
+export function clearFrame() { if (_clearHandler) _clearHandler(); }
+
 /** F21: the frame as the contour-from-frame consumers need it: `{ defs, record, board }`, or null. */
 export function frameContext(editor) {
   const spec = _provider ? _provider() : null;

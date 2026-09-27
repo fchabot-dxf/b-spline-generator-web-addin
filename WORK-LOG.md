@@ -12386,3 +12386,215 @@ Shots in `shots\seatA\` (`H19-item1_offset-steppers_390/834`).
 `npx vitest run` -> **2148 passed**, zero regressions (count includes lane-b's concurrent N3/N5/N6/N7 work
 that landed via `git pull --rebase` before this turn; no new test file needed for this item since neither
 of the 2 existing `seedOffsetX`/`Y`-touching tests reference the DOM at all).
+
+## H20 item 1 — Editor terrain backdrop was vertically flipped vs the 3D TOP view
+
+Fred, screenshots: the SVG editor's terrain backdrop showed Anatomical's ribs at the TOP and the chest "V"
+at the BOTTOM; the real 3D TOP view (ground truth) shows ribs at the BOTTOM, V at the TOP. The frame outline
+agreed in both (it's drawn as separate vector paths, `editor-frame-profile.js`, never touching the raster
+backdrop at all).
+
+**MEASURED, not reasoned, before touching any code.** Set noiseType=chest, seed=42, symmetry=none, and
+grabbed BOTH images directly: the `#svgEditorTopView` canvas's own `toDataURL()` (exactly what Fred sees —
+no intermediate transform, confirmed by reading `sync3DBackground()`, which just embeds that canvas's
+pixels as an SVG `<image>` unmodified) and the REAL 3D camera's TOP view (`preview.animateTo(0, 0.001)`,
+the same theta/phi `view-cube.js`'s own TOP entry uses, snapped instantly the same way every other repro
+tool does, then `getSnapshot()`). Side by side, the two disagreed exactly as reported — confirmed
+empirically, not assumed from Fred's description alone.
+
+**Root cause, found by reading `core/render-topview.js`'s `updateEditorTopView`** (the function
+`core/engine/rebuild.js:85` calls after every rebuild, writing directly to `#svgEditorTopView`): its pixel
+loop read heightmap row `j` straight from canvas row `py` (`const k = py * nx + px`) — no flip. Compared
+against `core/preview/top-view.js`'s `renderTopView`, a DIFFERENT, separate function with an explicit,
+already-correct convention documented in its own comment ("Unified Top-is-Top: canvas py=0 is at the Back
+(j=nz-1), canvas py=h is at the Front (j=0)"), implemented via the declared `COORD_SYSTEM.rasterYToGridRow`
+utility (`core/coords.js`, "the single source of truth for all coordinate transforms"). Grepped for callers
+of `renderTopView`/`preview.updateTopView` — **zero**, anywhere in the codebase; it's dead code, never
+invoked (worth flagging, not deleting — out of scope for this bug). So two parallel top-view renderers
+existed: one correctly flipped and unused, one live and wrong. `updateEditorTopView`'s own header comment
+("Refactored from logic in rebuild.js") suggests it was pulled out of `rebuild.js`'s inline code at some
+point without ever picking up the flip the other renderer already had.
+
+**The fix.** `render-topview.js` now imports `COORD_SYSTEM` and computes `const j =
+COORD_SYSTEM.rasterYToGridRow(py, nz, nz)` — reusing the SAME central utility `top-view.js` already relied
+on, rather than re-deriving the flip a third way. All neighbour sampling for the lighting/gradient (`hL`,
+`hR`, `hU`, `hD`, the symmetry seam checks) stays entirely in heightmap-array (`j`) space, unchanged — only
+the FINAL pixel-buffer write address changed (`(py*nx+px)*4` instead of `(j*nx+px)*4`), so the fix is purely
+"which canvas row does this computed value land on," not a change to the shading itself.
+Re-measured after the fix with the identical seed/setup: the ribs now sit in the lower portion of the
+editor backdrop and the smooth "chest" area at the top — matching the 3D TOP view exactly.
+
+**Other editor overlays — checked, named, as the dispatch asked.**
+- **Drape texture** (`core/preview/index.js`'s `buildDrapeTexture` + `THREE.CanvasTexture.flipY =
+  DRAPE_TEXTURE_FLIPY`, `core/preview/drape-svg.js`): a completely SEPARATE pipeline (SVG → canvas → GPU
+  texture with an explicit `flipY`), not sharing `updateEditorTopView`'s array-to-canvas path at all.
+  Already correct — its own comment says `DRAPE_TEXTURE_FLIPY` was itself settled empirically via
+  `scripts/smoke-editor.mjs`'s `drape-align` mode "after two reasoned guesses... were each wrong at least
+  once," i.e. a prior instance of exactly the same measure-don't-reason lesson this bug reinforces.
+  Unaffected by this fix; correctly left alone.
+- **Stamp masks** (`core/stamp/index.js`): built directly in `nx*nz` heightmap-array index order (never
+  going through a canvas row-remap at all) and applied to `heights[]` via a direct index-for-index add
+  (`terrain.js`'s `applyVectorDrape`) — structurally can't have this class of bug, since there's no
+  raster-orientation step in that path to get backwards. Unaffected; correctly left alone.
+- Grepped the whole `editor/` module for any OTHER raster image embed (`toDataURL`/`.image(`) — exactly one
+  match, `sync3DBackground`'s own embed of `#svgEditorTopView`. No other overlay shares this path.
+
+**Test** (`tests/h20-editor-backdrop-orientation.test.js`, 4 tests). `canvas.getContext('2d')` returns null
+in this test environment (the same established gap `tests/stamp-mask-clear.test.js` already documented), so
+extracted the pure per-pixel computation into a new exported `computeTopViewPixels(heights, nx, nz,
+symmetry)` — no canvas involved, returns a plain `Uint8ClampedArray` that `updateEditorTopView` now hands
+straight to `ImageData.data.set(...)`. Tests build a step heightmap (two flat halves, a raised region at
+either high-j or low-j) and assert the raised half's brightness sum lands in the matching half of the
+output buffer, checked both with symmetry off and Mirror X on, for both quadrants (4 tests total).
+**A real measurement mistake, caught and fixed before trusting the test**: the FIRST draft used a small
+flat 3×3 "plateau" bump instead of a step, and it measured virtually no signal (110.8 vs 116 — noise-level)
+even AFTER the fix was already in place. Traced by computing the shading formula by hand: it's driven
+entirely by LOCAL GRADIENT and "cavity" (height minus the 4-neighbour average) — a flat plateau's interior
+has zero gradient and zero cavity relative to its own (also flat) neighbours, so it's indistinguishable
+from flat background everywhere except its own edge, which my probe window mostly missed. Fixed by using a
+step between two flat halves instead, concentrating the real signal at the one boundary row — verified this
+new design actually measures something by checking it against the ALREADY-known-good post-fix code first
+(it passed, unlike the flawed bump design), then confirming nonvacuousness properly via mutation.
+Mutation-tested: reverted `render-topview.js`'s `j = COORD_SYSTEM.rasterYToGridRow(...)` to the pre-fix
+`j = py` in a scratch copy — all 4 tests correctly FAILED (each half-sum comparison came out backwards).
+Restored, re-ran clean — 4/4 green, matching the checklist's explicit "must fail before the fix" requirement.
+
+Shots in `shots\seatA\`: `H20-item1_editor-backdrop-BEFORE_seed42` (the bug, ribs high), `H20-item1_editor-
+backdrop-AFTER_seed42` (fixed, ribs low, matching), `H20-item1_3d-top-view-groundtruth_seed42` (the real 3D
+TOP view both are compared against).
+
+`npx vitest run` -> **2152 passed** (up from 2148), zero regressions.
+
+## H20 item 2 — Box select: WINDOW / CROSSING by drag direction (Fusion/CAD convention)
+
+Fred: "box select should have the 2 way select mode, include and exclude." Delegated the architecture survey
+to an Explore agent first (marquee lifecycle, existing hit test, shared-vs-duplicated implementations,
+reusable geometry helpers, pointer input path, CSS) before writing anything, per the dispatch's own "one
+marquee implementation reads a declared mode from drag direction, no per-tool copies" — confirmed there
+already IS exactly one: `editor/editor-marquee.js`, shared by the main Select tool AND Shape Lattice's
+Select fallback (it falls through to the same `selectHandler.start`). The Box Lattice tool's own Select
+sub-mode deliberately never starts a marquee at all (its own comment: "a lattice-panel Select tap is for
+picking an existing piece") — untouched, out of scope, since the dispatch says "wherever the editor's
+marquee/box select runs," not "add it somewhere it was deliberately left out."
+
+**The fix (`editor/editor-marquee.js`).** `updateMarquee` now re-evaluates the drag direction on EVERY move
+(`pt.x >= start.x` = WINDOW, else CROSSING) — not locked from the first movement, so dragging back past the
+start point flips it live — and restyles the rect to match: WINDOW gets a NEW solid-outline/light-fill
+green style (`#2ea043`), CROSSING keeps the pre-H20 dashed blue look (`#0066cc`) since that's the only style
+that existed before and needs no visual change to keep meaning what it always meant. `finalizeMarquee`
+captures `editor._marqueeMode` before `clearMarquee` resets it (the exact same "read before it's gone"
+pattern the file's own `additive` var already used, right above it), then branches the hit test:
+- **WINDOW**: full bbox containment only (`_aabbContains`), replacing the old single bbox-overlap test.
+- **CROSSING**: bbox overlap (fast reject) → if the box also fully encloses the bbox, done → otherwise
+  SHARPENED with an actual outline sample (exported `_sampleElement` from `editor-eraser.js` — reused
+  rather than re-implemented, the exact getTotalLength/getPointAtLength technique `editor-expand-shape`
+  already relies on) so a shape whose bbox merely shares empty corner-space with the box, but whose real
+  geometry never enters it, isn't picked just because two rectangles happen to touch. Elements that can't
+  be sampled (e.g. `<text>`, no `getTotalLength`) fall back to bbox overlap — the best available signal.
+
+**Test** (`tests/editor-marquee.test.js`, extended with 8 new tests, 12 total in the file): direction sets
+the right mode; direction flips mid-drag; WINDOW excludes a half-inside piece; CROSSING includes the SAME
+half-inside piece; CROSSING excludes a piece whose bbox corner touches the box but whose sampled outline
+never does (the false-positive the bbox-only test would have wrongly picked); a fully-enclosed piece is
+picked by both modes; `clearMarquee` resets the mode. Mutation-tested: reverted `finalizeMarquee`'s hit test
+to the old single bbox-overlap check in a scratch copy — the 2 tests that specifically exercise the NEW
+discriminating logic (full-containment-only, and bbox-vs-real-geometry) correctly FAILED; the others stayed
+green since they test properties BOTH implementations happen to share (not a flaw — different tests guard
+different things). Restored, re-ran clean.
+
+**Live-verified** via real CDP mouse drags (`Input.dispatchMouseEvent`, not synthetic function calls) in the
+actual editor: drew a rectangle, deselected, then dragged left-to-right and right-to-left over it, reading
+`window.svgEditor._marqueeMode` mid-drag both times and screenshotting the live rect. Confirmed visually
+distinct: WINDOW is solid green, CROSSING is dashed blue, exactly as designed — not just asserted by a unit
+test. (One CDP quirk hit and worked around: starting a drag ON TOP of an already-selected element moves it
+instead of starting a marquee — same as a real user would experience — so each drag now starts from empty
+canvas space after an explicit deselect click.)
+Flagged, not fixed (unrelated, pre-existing, out of scope): `editor/layers.js`'s own comment says
+`finalizeMarquee` uses `isOnVisibleLayer` for its layer-class filter — it actually uses a plain
+`class.includes('layer-hidden')` string check (unchanged by this turn). A stale comment, not a behavior bug.
+Shots in `shots\seatA\` (`H20-item2_window-mode-solid-green`, `H20-item2_crossing-mode-dashed-blue`).
+
+`npx vitest run` -> **2160 passed** (up from 2152), zero regressions.
+
+## H20 item 3 — Clear scoped to the active tab (Artwork clears artwork only, Frame clears frame only)
+
+**Channel note.** The original dispatch text (still what NEXT-SESSION.md's own item-3 line reads at the time
+of this commit) said Clear "Does NOT touch the Frame." A later cross-session message relayed a correction:
+"Clear scoped to the active tab (the Artwork tab clears only the artwork, the Frame tab only the frame)" —
+this is what I implemented, per this session's established precedent of trusting the more recent, more
+specific live correction when the canonical checklist file hasn't caught up yet. Flagging this explicitly so
+the advisor can override immediately if the older text was actually meant to stand.
+
+Fred: "Clear all doesn't clear all" — the old `editorClear` only did `editor._sketchLayer.clear()`; the
+layer list, per-layer metadata, and Lattice/Shape-Lattice pattern state (which SE7i moved onto each layer's
+own `.pattern` field) all survived.
+
+**Declared once, reused, not listed in the click handler** (per the dispatch's own instruction). New
+`resetArtworkToFresh(editor)` in `editor-io.js` — extracted verbatim from `open(editor, null, w, h)`'s own
+empty-session path (sketch clear, deselect, hover/pan reset, layer roster reset, fresh Layer 1) — MINUS the
+concerns that belong to `open()` alone (model metrics, undo-stack wiping, SVG parsing). `open()` itself now
+calls this same function for its shared prefix rather than keeping a parallel inline copy; verified safe for
+the loaded-document branch since `_reconcileLayersFromSvg`'s own unconditional `_layers = [...]` (or the
+persisted-layers restore path) immediately supersedes the transient Layer 1 my helper creates — confirmed by
+reading that function, not assumed. Full suite stayed green after this refactor of a heavily-used, comment-
+dense function, which was the real risk in this change.
+
+**Frame-side reset** needed crossing an existing, deliberate architecture boundary: `editor/` modules "never
+import app state directly" (the frame record lives in `core/frame-record.js`, owned by `main/frame-panel.js`).
+Declared a SECOND provider hook in `editor-frame-profile.js`, `setFrameClearHandler(fn)`/`clearFrame()` —
+the exact same shape as the file's own pre-existing `setFrameProfileProvider` — registered by
+`frame-panel.js`'s `initFramePanel()` as `pushFrameHistory(); setFrameRecord({templateId:null, params:{}});
+syncFramePanel();` (the identical reset a manual "None" dropdown selection already performs, with its own
+`pushFrameHistory()` undo step — the Frame tab's undo stack is completely separate from the artwork's, per
+the pre-existing F8 split, so Ctrl+Z on each tab only ever undoes that tab's own kind of Clear).
+
+`editor/tools/action-tools.js`'s `editorClear` handler now branches on `editor._editorTab` (`'frame'` vs
+`'artwork'`, the same field `setEditorFocus`/`editor-frame-profile.js` already declares and drives the
+existing Frame/Artwork opacity-focus rule from) — kept the pre-existing `confirm('Clear all?')` prompt
+unconditionally (the dispatch didn't ask to remove it, unlike item 4's own layer-delete confirm).
+
+**Tests** (`tests/h20-clear-scoped.test.js`, 6 tests). `resetArtworkToFresh` produces layers/activeLayer
+byte-identical to a real fresh-session call (compared directly, not just asserted by shape), clears sketch
+content, and deselects. The `editorClear` button-wiring tests use the REAL `VectorEditor.prototype.
+pushState/undo/_restoreState` via `.call(mock)` (same convention as `editor-lattice-undo.test.js`, not a
+reimplementation) with a from-scratch minimal SVG.js-shaped mock (`.attr()`/`.addClass()`/`.svg()`) built
+specifically to drive `applyLayerState`'s real per-child class logic — proving the FULL round trip the
+checklist asked for: Clear on the Artwork tab wipes a 2-layer doc (one carrying a Shape-Lattice `.pattern`)
+down to one fresh layer in exactly ONE undo step, and `undo()` brings back BOTH the original layer roster
+(pattern intact) AND the drawn path's own element, not just "something." A parallel test proves Clear on the
+Frame tab calls the registered frame-clear handler and leaves the artwork's `_layers` array as the SAME
+reference (untouched), and a third confirms declining the confirm dialog no-ops on either tab.
+Mutation-tested: reverted `editorClear` to the old single `_sketchLayer.clear()`-only behavior in a scratch
+copy — the artwork-tab round-trip test and the frame-tab-routing test both correctly FAILED. Restored,
+re-ran clean.
+
+No shots requested for this item (checklist).
+
+`npx vitest run` -> **2179 passed** (up from 2160), zero regressions.
+
+## H20 item 4 — Layer delete: no confirm, undo round-trip proven first
+
+Fred, screenshot of a `Delete "Ties" and its 3 elements?` confirm: "dont ask." Removed `window.confirm(msg)`
+from the delete button's click handler in `editor/layers.js`. `_confirmAndRemove` existed ONLY to build that
+message and gate the confirm — with both gone, it was a pure pass-through to `removeLayer(editor, layer.id)`,
+so deleted the now-dead function entirely and inlined the call at its one call site, rather than leaving a
+trivial wrapper (`getElementLayer`, the helper `_confirmAndRemove` also used for the element count, is still
+used 5 other places in the file — confirmed not orphaned).
+
+**Undo proven BEFORE trusting the removed safety net**, per the checklist's own explicit requirement.
+`removeLayer` already called `pushState()` unchanged (right after the removal — the same "push after
+mutation" convention every other mutator in this file follows), so no new undo plumbing was needed; the task
+was to PROVE it actually round-trips a real delete, not just assume it. `tests/h20-layer-delete-undo.test.js`
+(2 tests) renders the REAL layer row (`renderLayersPanel` → `_makeLayerRow`) into a real DOM container and
+clicks the REAL `.layer-delete` button — not a reimplementation of the click handler — then drives the REAL
+`VectorEditor.prototype.pushState/undo/_restoreState` via `.call(mock)` (same convention as
+`editor-lattice-undo.test.js` and this turn's own `h20-clear-scoped.test.js`). Confirms: (1) clicking delete
+removes the layer immediately with `window.confirm` wired to THROW if ever called — proving the safety net is
+genuinely gone, not just visually skipped; (2) `undo()` restores the deleted layer at its ORIGINAL array
+position (between its former neighbors, not appended), its own element back in the sketch layer, AND its
+per-layer settings (`pattern`, `carve`, `depth`, `showColor` — standing in for "3D relief, colour, lattice
+tag") all intact — in exactly one undo step. Mutation-tested: reintroduced the old `confirm()` call in a
+scratch copy of `layers.js` — both tests correctly FAILED (one on the thrown error, one because the click
+never reached `removeLayer`). Restored, re-ran clean.
+
+`npx vitest run` -> **2181 passed** (up from 2179), zero regressions.

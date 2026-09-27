@@ -18,7 +18,7 @@
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
-import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
+import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds } from '../editor/frame-handles.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
@@ -104,15 +104,20 @@ export const getEditorTab = () => _editorTab;
 /**
  * FB-APP S5 (F10): the [Send frame] button's state, from the record. The
  * "needs a B-spline body" check is the add-in's (it knows the document) and
- * comes back in `frame_result`.
+ * comes back in `frame_result` -- a real failure already surfaces through
+ * onFrameResult's own setFusionStatus call below, the existing status line,
+ * so it isn't re-explained here.
+ *
+ * F26 item 2 (Fred, screenshot: "remove these labels"): `hint` used to
+ * explain what the button DOES even while it's enabled and ready (a
+ * standing caption, always visible) -- now it's empty whenever the button
+ * can be pressed; only the two DISABLED cases (an actual reason it can't
+ * be) still carry one, since those are the ones a person needs telling.
  */
 export function frameSendState(defs, record, inFusion) {
   if (!findFrameTemplate(defs, record?.templateId)) return { enabled: false, hint: 'Pick a frame template to send it.' };
   if (!inFusion) return { enabled: false, hint: 'Open this app from the Fusion add-in to send the frame.' };
-  const seeded = Object.keys(record.seeds || {}).length;
-  return { enabled: true, hint: seeded
-    ? `Sends the frame to Fusion with your ${seeded} handle shape change(s) (replaces the previous frame). Send B-spline first.`
-    : 'Sends the frame to Fusion (replaces the previous frame). Send B-spline first.' };
+  return { enabled: true, hint: '' };
 }
 
 /** Press [Send frame]: the frame record as the payload [Send frame] reads (fb_engine/send_frame.py). */
@@ -239,6 +244,15 @@ function _wireHandleDrag() {
 
 export function initFramePanel() {
   setFrameProfileProvider(() => ({ defs: FRAME_DEFS, record: getFrameRecord() }));
+  // H20 item 3: Clear, when the Frame tab is active, resets the frame to
+  // "None" — same reset a manual template-dropdown-to-"None" change does
+  // (setFrameRecord({templateId:null, params:{}})), with its own
+  // pushFrameHistory() step so Ctrl+Z on the Frame tab undoes it.
+  setFrameClearHandler(() => {
+    pushFrameHistory();
+    setFrameRecord({ templateId: null, params: {} });
+    syncFramePanel();
+  });
   // F7: the 3D preview asks with the grid size it is actually drawing.
   AppState.preview?.setFrameProvider?.((W, H) => frameSolidSpec(FRAME_DEFS, getFrameRecord(), { widthIn: W, heightIn: H }));
   const tplSel = $('frameTemplate');

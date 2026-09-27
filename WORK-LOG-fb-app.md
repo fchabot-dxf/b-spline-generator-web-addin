@@ -2442,3 +2442,188 @@ so I didn't count it as belonging together just because both happen to be short 
   own overflow isn't observable via `scrollWidth`/`clientWidth` the way other elements are, so it took a
   genuine visual binary search, not just arithmetic) -- worth knowing if a future row-pairing task hits the
   same wall.
+
+## F26 item 1 -- Offset from frame: reference = the OUTER edge, negatives allowed -- 2026-09-27
+
+**Ball: worker (seat C) · epoch 3 · F26.** Fred, screenshot: "offset from frame at 0 is clamped to the inside
+of frame rather than outside, and doesn't accept negative value" (distance 0 put the contour against the
+frame's INNER edge). Dispatched with `git pull --rebase` + `git merge origin/main` first (merged clean, 65
+files, brought in H14-H19's own work + `runMigrations`' MIGRATIONS convention this item's own migration
+reuses) -- full suite 119/2148 green post-merge before touching anything.
+
+### The change
+`contour-from-frame.js`'s `frameContourSilhouette`: `out` (the contour's OUTSIDE edge, an offset from the
+frame) used to be `t + distance` (t = frame_thickness) -- the reference was the frame's INNER edge. Now
+`out = distance` directly -- the reference is the frame's OWN OUTER edge (its cut profile), `distance=0` sits
+on it. The centerline offset actually applied to `offsetOutlineInward` stays the SAME formula as before
+(`out + stroke/2`, a plain addition -- VERIFIED this holds regardless of `out`'s own sign with a concrete
+case, not assumed: out=-0.25, stroke=0.1 gives applied=-0.20, i.e. the centerline sits 0.20 outward, correctly
+INSIDE the 0.25-outward outside edge by the usual half-stroke). `offsetOutlineInward` already handles a
+negative amount (outward) -- F22's own panel lip proved that (`offsetOutlineInward(outline, -lip)`), not a new
+capability built here.
+
+**The validity check** (every centerline point must be at least the offset distance from the frame outline,
+on the correct side, or the offset "doesn't exist" -- collapsed/self-crossing) used to assume `out` was always
+positive (inward); it's now SIGNED: `applied > 0` checks the point is INSIDE the outer polygon, `applied < 0`
+checks OUTSIDE, `|applied| < 1e-9` (on the outline itself) skips the side check entirely (inside/outside of a
+loop that IS the loop isn't a meaningful question, and would be flaky under floating point).
+
+**Accept negatives everywhere**: `contourFromFrameOf` no longer clamps `distance < 0` to the default (only a
+genuinely non-finite value, e.g. a broken save, still falls back); the panel's `_writeFromFrame` — same; the
+HTML field's `min="0"` — removed. Label updated: "distance (in)" -> "distance from outer edge (in, +in/-out)".
+The F21 header comment (contour-from-frame.js) and the panel's own inline HTML comment both re-describe the
+new reference point.
+
+### MIGRATION (declared, not a version number)
+Saved patterns stored `distance` from the INNER edge; on load, `d_new = d_old + frame_thickness` once, so an
+existing contour's ACTUAL drawn position does not move. `distanceRef: 'outer'` (added to
+`CONTOUR_FROM_FRAME_DEFAULTS` and `PATTERN_DEFAULTS.contour.fromFrame`, contour-from-frame.js /
+editor-lattice-pattern.js) is the declared marker -- present means "already in the new scheme" (a fresh
+pattern, or already migrated), matching `main/app-init.js`'s own established "gate on current shape, not a
+version number" convention (its own header comment) every other MIGRATIONS entry already uses. Since the
+field NAME (`distance`) is unchanged (unlike e.g. `nodeRadius`->`nodeDiameter`, where the OLD key's absence
+alone was the completion signal), this migration genuinely needed an explicit marker -- the one case in this
+file's convention that does.
+
+`frame_thickness` is read via the SAME `frameParam(FRAME_DEFS, p.frame, ...)` helper every other frame reader
+uses (`core/frame-record.js`), from the ONE project-wide frame record (`P.frame`) -- not per-layer, since the
+frame itself isn't. No frame on record at all: falls back to the template's own shared declared default
+(0.75), tested explicitly (doesn't throw, doesn't silently use 0).
+
+**A correctness trap avoided**: `PATTERN_DEFAULTS.contour.fromFrame` (editor-lattice-pattern.js, a BRAND NEW
+pattern's own default) needed `distanceRef: 'outer'` too -- without it, a freshly-created pattern that was
+NEVER in the old scheme would still look "unmigrated" to the `when()` gate on its next load and get
+`+= frame_thickness` applied to a value that was never actually offset from the inner edge, corrupting it.
+
+### Tests
+- `tests/contour-from-frame.test.js`: the whole main describe block REWRITTEN to measure against
+  `frameCutProfile`'s own primitives (the outer edge) instead of `frameInnerProfile`'s (18 cases x board/
+  template/distance, unchanged coverage, new reference). The corner-merge test's own distance bumped
+  (0.25 -> 1.0) since the SAME qualitative collapse now needs roughly `old + frame_thickness` to reproduce
+  (measured, not guessed). The "follows the frame" test DROPS `frame_thickness` from its own "things that move
+  the contour" list -- a NEW, correct consequence of this redesign, not an oversight: `frameCutProfile`'s own
+  construction never reads `frame_thickness` at all (only `boundingboxoffset` + shape params), so an
+  outer-edge-referenced contour is thickness-independent BY CONSTRUCTION now, proven directly in its own test
+  rather than inferred from the formula.
+  - **+7 new**: distance 0 sits exactly on the outer edge; +0.5 sits 0.5+stroke/2 inward (unchanged
+    direction); -0.25 (the checklist's own case) sits 0.25-stroke/2 OUTWARD, proven via the SAME
+    sampleOutline/pointInPolygon the implementation's own validity check reads (every centerline point
+    genuinely outside the polygon, not assumed from the distance number alone); `contourFromFrameOf` no
+    longer clamps a negative distance, still falls back on NaN.
+  - **A real measurement trap, caught and fixed, not glossed over**: my first version of the +0.5/-0.25 tests
+    sampled every point along each line (matching the file's OWN existing convention for the positive-distance
+    sweep) and failed with a ~0.09in discrepancy. MEASURED the cause directly (a debug script dumping the raw
+    primitives) rather than loosening the tolerance to make it pass: an OUTWARD offset makes a line GROW past
+    its own original endpoints into the corner region (the corner arc grows too -- T1 9x12's own corner radius
+    0.8423 -> 1.0573 at -0.25, printed and checked), so a sample near a line's own END can have a genuinely
+    DIFFERENT nearest point on the outer outline (a neighbouring arc or corner, not "the same line shifted") --
+    real geometry, not a flaky test. An INWARD offset never hits this (a line shrinks safely within its own
+    span), which is why the file's existing positive-distance tests never needed to know. Fixed by sampling
+    only the middle 20% of each line for the tight exact check.
+- `tests/migrations.test.js` (+6, new describe `contour-from-frame-outer-edge`): an old distance converts
+  (+= frame_thickness, marked outer); no frame on record falls back to 0.75, no throw; an already-`outer`
+  pattern is left exactly as saved (proves the anti-double-migration marker actually works, not just that it
+  exists); a layer with no `fromFrame` at all is untouched; a mixed roster converts only the unmigrated layer;
+  idempotent (running twice is a no-op).
+- `tests/properties-shape-lattice.test.js`: 2 pre-existing, UNRELATED "show contour" tests asserted the FULL
+  `pattern.contour` shape via `toEqual`, which now includes `distanceRef` from PATTERN_DEFAULTS -- updated,
+  not weakened (still an exact `toEqual`).
+- **Mutation-tested**: reverted all 5 changed source files together (`git stash` of just those paths, every
+  test file kept) -- 32/130 tests in the 3 touched files fail there (the exact old-scheme values, e.g. a
+  fromFrame contour toEqual missing `distanceRef`, and every new F26/migration test failing outright), restored
+  clean, all green again.
+- Full JS suite: 119 files / 2162 passed (net +13 vs the post-merge baseline of 2148).
+
+### Shots + a real-input acceptance script
+`tools/repro/f26_offset_from_frame_shots.mjs` (new, extends `contour_from_frame_acceptance.mjs`'s own STATE-
+inspection pattern): through the REAL panels (Shape Lattice, Generate, choose T1 in the Frame tab, toggle
+"Offset from frame" on), Distance set to 0 / +0.5 / -0.25 via the real field, each measured against the
+frame's own outer edge LIVE (the same `contourSilhouette`/`frameCutProfile` modules the app itself calls, not
+a re-implementation) -- confirms the field itself accepts `-0.25` (not clamped to 0.25) and the drawn contour
+sits on the correct side of the outline at the correct distance. Hit the SAME corner-sampling wrinkle as the
+unit tests (near-corner samples read short); fixed by checking the MAXIMUM measured distance (the flattest,
+least-corner-affected sample) against the expected value, which matched to within floating-point at all three
+distances (0.125 / 0.625 / 0.125, exactly `stroke/2`, `0.5+stroke/2`, `0.25-stroke/2`). Mutation-tested the
+same way (stash the 5 source files): `ok:false` on the pre-fix tree (all 4 checks fail, field reads `"0.25"`
+not `"-0.25"`), `ok:true` restored. Shots: `shots/seatC/1030_F26offsetframe_distance_{0,0_5,neg0_25}.png`.
+
+### Gates
+- JS: full suite 119/2162, no regressions.
+- Fusion: not needed (the frame's own build/send path in Fusion is untouched; this only changes where the
+  Shape Lattice's OWN contour measures its offset from, a pure JS/editor concern).
+
+### Notes
+- **Amendments polled:** none affecting item 1 landed before I committed it (F26-item-2 was added to the
+  checklist doc mid-turn, then corrected by a second amendment -- both are ITEM 2's own scope; addressed in
+  its own commit/log entry, not folded into this one).
+- **Cleanup:** scratch measurement script (`scripts/scratch/debug_offset.mjs`) deleted, not committed. Static
+  server (8095) and its headless Chrome profile stopped; `proc_health.py watch` clean.
+- **Capacity:** OK, one turn (the origin/main merge + full suite re-verify added real time but no risk --
+  clean fast-forward, no conflicts).
+
+## F26 item 2 -- Frame panel: remove the standing help label under Send frame -- 2026-09-27
+
+**Ball: worker (seat C) · epoch 3 · F26.** Amendment mid-turn 1: original item 2 (Fred screenshot: "remove
+these labels and add a delete frame button") landed via `amend_item` while I was still on item 1. A SECOND
+amendment corrected it before I started: Fred: "we can use none then" -- **no Delete frame button** (Template
+= None already does the same thing); item 2 is ONLY removing the standing help label. Both absorbed here,
+mid-task, before touching any code for this item; noting per the amendment's own instruction that the delete
+button was dropped per Fred, not built and then cut.
+
+### The change
+`main/frame-panel.js`'s `frameSendState`: the `enabled: true` branch used to return a standing caption
+explaining what the button DOES ("Sends the frame to Fusion (replaces the previous frame). Send B-spline
+first.", plus a seeded-handle-count variant) -- shown UNCONDITIONALLY once the button was ready, not just when
+something needed explaining. Now `enabled: true` returns `hint: ''`; only the two genuinely DISABLED cases
+("Pick a frame template..." / "Open this app from the Fusion add-in...") still carry a hint, since those are
+actionable "why can't I press this" reasons.
+
+**The "Send B-spline first" ERROR case was never actually a local check** -- the function's own pre-existing
+comment already said so ("The 'needs a B-spline body' check is the add-in's... and comes back in
+`frame_result`"), and `onFrameResult` already calls `setFusionStatus(r.error || ..., 'warn')` on a real
+failure -- THE existing status line the dispatch names. So there was nothing new to build for the error path;
+removing the redundant standing reminder was the whole fix. **Live-verified, not assumed**: replayed a real
+Fusion `frame_result` failure (`{ok:false, error:'No B-spline body...'}`) through the actual
+`fusionJavaScriptHandler` and confirmed the message lands in the status banner exactly as before, while the
+button's own hint stays empty throughout (shot: `1035_F26item2_fusion-no-body`).
+
+**Swept the rest of the sidebar FRAME section** for other "sibling help/hint paragraphs" per the dispatch's
+own wording: `frameFitWarning` is ALREADY conditional (`display:none` unless the board is too small for the
+frame) -- a genuine error-state line, not a standing label, left untouched. Nothing else in that section is a
+static explanatory paragraph.
+
+### Tests
+`tests/frame-send.test.js`: the enabled-case assertion now expects `hint: ''` (was `stringContaining('Send
+B-spline first')`); the sidebar-DOM version now expects `$('frameSendHint').textContent` to be `''` (was
+`toContain('Send B-spline first')`). **Removed, not silently**: the test asserting the seeded-handle-count
+appeared IN THE HINT ("says the handle shape changes go with the frame") -- that specific surfacing is
+retired along with the standing caption it lived in. Swept for the underlying BEHAVIOR (seeds actually
+traveling in the send_frame payload) separately: still covered, untouched, by "sends the frame record as the
+send_frame payload" a few lines down in the same file -- confirmed before deleting the hint-text test, not
+assumed.
+Mutation-tested (`git stash` of just `frame-panel.js`): 2/5 fail in `frame-send.test.js` against the pre-fix
+source (the exact old caption text), restored clean. Full suite 119/2161 (net -1: one test removed, none
+weakened).
+
+### Shots (reused the EXISTING repro, not a new one)
+`tools/repro/frame_send_shots.mjs` already drove exactly this flow (web-disabled, Fusion-ready, a press, and
+BOTH a success and a real "no B-spline body" Fusion reply) -- ran it UNCHANGED against the fix rather than
+writing a new script. `fusionReady.hint` reads `""` (was the caption); `web`/`fusionNoFrame`'s own disabled-
+state hints are untouched; `replyNoBody.status` still carries the real Fusion error text, live-verified above.
+Shots: `shots/seatC/1035_F26item2_{web-disabled,fusion-ready,fusion-sending,fusion-built,fusion-no-body}.png`.
+
+### Gates
+- JS: full suite 119/2161.
+- Fusion: **not needed, and none of the shots above required a real Fusion connection either** -- the "Fusion
+  mode" pass fakes `window.adsk` (the same technique `frame_send_shots.mjs` already used before this turn),
+  since nothing Fusion-side (Python, the add-in) changed at all -- this is a pure sidebar-label removal.
+
+### Notes
+- **Delete Frame button: explicitly dropped per Fred's own correction**, not built. Template = None already
+  achieves the same outcome (frame set back to none, artwork untouched, undoable) -- no new button, no Python
+  delete path, no live Fusion check.
+- **Amendments polled:** both (the original item-2 dispatch, then its correction) absorbed before writing any
+  code for this item -- see the header above.
+- **Cleanup:** the static server (8096) and its headless Chrome profiles stopped; `proc_health.py watch` clean.
+- **Capacity:** OK, small item, finished in the same wake as item 1 per the amendment's own instruction
+  (landed as an amendment to poll, not a fresh dispatch to wait for).
