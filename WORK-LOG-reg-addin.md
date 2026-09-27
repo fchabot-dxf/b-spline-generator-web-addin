@@ -350,3 +350,150 @@ field's own units:
 read-only) or `frame-builder/`; `properties-shape-lattice.js`'s own edit is exactly two additive blocks (an
 import line + the attach call at the end of `initShapeLatticeProperties`), no restructuring, matching the
 dispatch's "keep it small" instruction for that file.
+
+## 2026-09-26 — turn 12 — R6: RAIL-SPACING engine (data + generator only; panel UI is R7)
+
+**Two confirming amendments from Fred landed mid-turn, both incorporated before their affected code was
+committed** (all three below are folded into the ONE commit, since nothing had been committed yet when they
+arrived):
+1. Off-grid confirmed with NO rounding (I never built a rounding option, so this was a no-op for the code —
+   just dropped it from my own doc-comment's "considered" list); but ties MUST land EXACTLY on the off-grid
+   rail coordinate. I already had this half-built (see item 2 below); added the explicit sweep test the
+   amendment asked for by name (anchors × sizes × orientations × board/rect + boundary).
+2. Center anchor + an EVEN `spacingCount`: rails straddle the centre symmetrically, NO rail on the centre line
+   (odd keeps one on it). New-pattern defaults: `anchor:'center'`, `spacing:1in`. Both required a real code
+   change (not just tests) — see item 2 below.
+
+### item 1 — SURVEY (facts, file:line)
+
+- **Rail placement today, three call sites, one shared engine.** `computePattern` (editor-lattice-pattern.js
+  :1343+) resolves `railRows` from `rails.mode`: `'every'` → `_railRows`/`_isRailRow` (:635-648, `(j-offset) %
+  every === 0`, grid-ROW modulo); `'count'` (current real default) → `_railRowsByCount` (:713-737, a seeded pick
+  within `[min,max]`, evenly spread, rounded to INTEGER rows). Both are grid-index-based by construction. ONE
+  shared function serves BOTH the box Lattice tool (board/rect extent) and the Shape Lattice tool (boundary
+  extent, `_resolveExtent`'s 'boundary' branch, bbox of the silhouette) — confirmed by reading `_resolveExtent`
+  (:1848-1872 after this turn's insert) itself: it returns `{iMin,jMin,iMax,jMax}` for EITHER mode, and
+  everything downstream (rail emission, `_occupiedHas`, ties, nodes) is extent-shape-agnostic. **This means the
+  new engine, declared once, reaches both panels for free** — no separate Shape Lattice code path exists to
+  duplicate it into.
+- **How ties find rails today — the actual survey ruling 6 asked for.** TWO structurally different
+  consumers, and only ONE of them was already coordinate-system-agnostic:
+  - `_tieSlotsByCount`'s `span.mode:'rails'` branch (T67 AMEND #4's default, `ties.mode:'count'`,
+    PATTERN_DEFAULTS.ties: `span:{mode:'rails',rails:1}` — **the actual default tie behavior since T67**) is
+    ALREADY pure ARRAY-INDEX arithmetic (`numGaps = railRows.length-1`, `railRows[startIdx]`/`railRows[s+g]` —
+    never a coordinate subtraction). **This path needed NO fix at all** — it was accidentally already correct
+    for off-grid rails, for an unrelated reason (T67's "bridge exactly ONE pair of ADJACENT rails" is naturally
+    an index concept, not a distance one).
+  - `_tieSpanForColumn`'s `anchor==='rails'` branch (:916-930 pre-fix; only reached via the OLDER
+    `ties.mode:'density'`, not the current default) measured the gap as `railRows[k] - jStart` — a raw
+    COORDINATE difference — compared against `spanMin`/`spanMax`, small declared INTEGERS meaning "how many
+    grid cells." **This is the one that breaks off-grid**: with `rails.spacing=0.3in` against the default
+    0.25in grid step, the real gap between adjacent rails is 1.2 lattice rows — never an integer — so
+    `spanMin<=d<=spanMax` (both small integers) matches NOTHING, and every column silently produces zero ties.
+    Reproduced and confirmed exactly this (a live failing assertion before the fix, restored after — see the
+    mutation-check note below).
+  - `_applyRailSnap`'s free-anchor "snap toward a nearby rail" bonus (used by BOTH `_tieSpanForColumn`'s
+    'free' branch and `_tieSlotsByCount`'s 'cells' span mode) is coordinate-distance-based too, but it's a
+    best-effort SNAP on top of an already-valid free span, not a hard attachment requirement — **deliberately
+    left unfixed this turn**, named explicitly rather than silently skipped (see "not built" below).
+  - Nodes: rail-end nodes read `railRows` directly (unaffected by fractional values — plain coordinates);
+    crossing nodes go through `latticeCrossings` (editor-lattice.js), which does real-number range
+    intersection, not grid-index matching — traced, not independently unit-tested from scratch, but covered
+    indirectly by this turn's own "nodes still form on off-grid rails" test.
+  - `_occupiedHas`'s dedup key is a template-string `${i},${j},${kind}` (:1175-1177) — works unmodified for a
+    fractional `j` (same float, same string, every time it's read back within one `computePattern` call).
+- **Where `PATTERN.spacing` is read** (`P.spacing` inside `computePattern`, :1344): the lattice's own GRID STEP
+  — used for `halfRail`, `_scalePrimitiveToLattice`, `_enforceTieMinSpacing`'s cm-conversion, `toLattice`, etc.
+  **Deliberately NOT touched this turn** (see the scoping decision below) — ruling 4's "grid step comes from
+  the editor grid" is a PANEL-level concern (removing the Spacing select, wiring the toolbar grid into a new
+  pattern at creation time), not an engine one; `computePattern` itself doesn't care WHERE `P.spacing` came
+  from, only that it's a number. Flagged for the advisor to confirm this scoping is right, rather than silently
+  assumed.
+- **TIE-GAP is on a different axis entirely.** `_enforceTieMinSpacing` (:984-993) filters by `slot.i` (the
+  COLUMN axis) — completely independent of `rails.spacing`/`anchor` (the ROW axis). Confirmed unaffected by
+  reading it, then by a dedicated test (`ties.minSpacing` still thins an off-grid pattern) and by rerunning the
+  seat-B TIE-GAP test files verbatim (168 tests, unchanged, all green).
+
+### item 2 — Declared `rails.anchor`/`spacing`/`spacingCount` + the generator
+
+**Naming decision, stated rather than guessed:** the dispatch's own wording says "optional `rails.count`," but
+`rails.count` ALREADY exists — a `[min,max]` SEEDED RANGE read only by `rails.mode:'count'`. Reusing that key
+for a completely different shape (a single optional integer) under `rails.mode:'spacing'` would make one field
+mean two different types depending on a sibling field — exactly what this file's own "declare it, don't infer
+it" convention exists to prevent. Declared **`rails.spacingCount`** instead. (Flagging the deviation, per the
+project's own "tell the other seat if you deviate" convention — there's no other seat on this file this turn,
+so it's logged here for the advisor/R7.)
+
+`_railRowsBySpacing(jMin, jMax, rails, gridSpacing)` (editor-lattice-pattern.js, new, next to
+`_railRowsByCount`): unseeded (Fred: "on generate it is evenly spaced" — anchor + a fixed step fully determine
+every row, so it's deterministic without needing a draw). `anchor:'start'|'end'` walk outward from that edge;
+`'center'` interleaves from the midpoint. **The even/odd center distinction (Fred's second amendment):** an
+explicit EVEN `spacingCount` uses a HALF-STEP lattice (`c ± 0.5·step, ±1.5·step, …` — no position ever exactly
+on centre); an ODD count, or no count at all (fill), uses the INTEGER lattice (`c ± 0·step, ±1·step, …` — centre
+always included). Wired into `computePattern`'s `railRows` resolution as a THIRD branch alongside `'every'`/
+`'count'` — purely additive, an old pattern's `rails.mode` (defaulting to `'every'` via the EXISTING `mode:
+PATTERN.rails.mode || 'every'` fallback, :1360-1362, unchanged) never reaches the new branch, which is exactly
+ruling 5's migration guarantee — **no separate migration code was needed**; the existing fallback already
+provides it, confirmed by a dedicated regression test (an old-style `{every,offset}` object with no `mode` key
+at all still resolves through `_railRows`, byte-identical math).
+
+**The tie-attachment fix (ruling 6):** `_tieSpanForColumn` gained one new parameter, `railsMode` (= `rails.mode`,
+passed from its one call site) — when it's `'spacing'`, the rails-anchor branch measures the gap as an
+ARRAY-INDEX distance (`k - startIdx`) instead of a coordinate difference; every other `railsMode` keeps the
+ORIGINAL coordinate check byte-for-byte. This is the "fix at the declaration, not per-case" ruling 6 asked
+for — one conditional, at the one place the mismatch could occur, gated on the SAME `rails.mode` that already
+discriminates everything else about rail generation.
+
+### item 3 — Tests (`tests/editor-lattice-pattern-rail-spacing.test.js`, new, 23 tests)
+
+Every generated gap identical (all three anchors); first rail exactly on the anchor (start edge, end edge,
+centre line); off-grid spacing honoured with NO rounding (0.3in against a 0.25in grid — genuinely non-integer,
+asserted directly); rails outside the boundary dropped; `spacingCount` limits correctly for all three anchors,
+including the even/odd centre distinction; degenerate extent/zero spacing never throws; unseeded (two different
+seeds, byte-identical rails); both orientations (a dedicated helper accounts for `orient()`'s i/j swap on the
+way out — caught a real test bug here: my first attempt compared vertical output against the WRONG extent size,
+fixed by computing the equivalent horizontal run over the swapped extent, not the original); old
+`rails.mode`/`'count'` behavior completely unaffected (regression tests) plus the FULL pre-existing
+`editor-lattice-pattern-*.test.js` + `tie-gap*` suites rerun verbatim (168 tests, all green, zero changes).
+**The amendment's own explicit ask** (tie endpoints == rail coordinate, tolerance 1e-9, across anchors × sizes ×
+orientations × board/rect + boundary/Shape-Lattice): its own dedicated describe block, sweeping 3 anchors × 3
+sizes × 2 orientations in board mode, the same 3×3 in boundary mode (a rectangle boundary primitive, proving
+the Shape Lattice code path specifically, not just board/rect), plus the older `ties.mode:'density'` path.
+**Mutation-checked:** reverting the index-distance fix fails exactly the "OLDER ties.mode:'density'" test (and
+only that one); reverting the even/odd straddle branch fails exactly the "EVEN count" test (and only that one);
+reverting `spacingCount` truncation fails exactly the 3 tests that exercise it.
+
+### item 4 — Fred's case, proven live
+
+`tools/repro/rail_spacing_shot.mjs` (new): opens the SVG editor, switches to the Lattice tool, writes
+`layer.pattern.rails = {mode:'spacing', anchor:'start', spacing:1}` DIRECTLY onto the active layer (R6 is
+engine+data only — no panel field exists yet to drive this from the UI, per the dispatch's own instruction to
+drive the pattern record directly), calls `generatePattern`, and reads back the rendered `<line data-lattice=
+"rail">` elements. Result on the real running app: **9 rails, first at y=0.5 (exactly the boundary's own
+auto-inset top edge), every gap exactly 1.000in** — screenshot at
+`C:\Users\danse\.bspline-status\shots\reg-addin\r6_fred_rail-on-boundary.png`. Desktop only, per the dispatch
+(mobile wasn't asked for here; a quick attempt hit an unrelated eval-serialization issue in the mobile layout
+and wasn't worth chasing for a one-off verification script when desktop already proves the point).
+
+**Gate:** `npx vitest run`: **85/86 files, 1588/1589 tests** passed. The ONE failure
+(`tests/frame-3d-sweep.test.js`) is **pre-existing, unrelated to this turn** — confirmed by stashing every R6
+change and rerunning it in isolation: identical failure on a clean tree. Not touched, not investigated further
+(out of scope — a frame-builder 3D sweep, nothing to do with lattice patterns). `select_drag_shape.mjs` rerun
+against the LOCAL build (not the deployed URL): **ALL CHECKS PASSED**, both lattice types — confirms the new
+`'spacing'` rail mode (opt-in, off by default) doesn't disturb the default `'count'`-mode drag-and-persist
+behavior the interactive tool actually ships with today.
+
+**Not built this turn, named rather than silently skipped:**
+- `_applyRailSnap`'s free-anchor snap-to-rail bonus stays coordinate-distance-based — a graceful-degradation
+  case (a free tie still gets a valid span either way; it just may snap onto a rail less precisely off-grid),
+  not the hard "ties must attach" requirement ruling 6 was actually worried about (that's the rails-anchor
+  path, fixed above). Flagged as a possible follow-up if Fred notices it in practice.
+- `PATTERN.spacing`/the editor-grid wiring (ruling 4) — a panel/UI-creation-time concern, scoped to R7. Flagged
+  explicitly for the advisor to confirm rather than assumed.
+- No panel UI changes anywhere (`properties-lattice.js`/`properties-shape-lattice.js` untouched this turn, per
+  the dispatch's own scope split) — Boundary-first ordering, Anchor/Spacing/Count fields, and the "Draw
+  boundary" toggle removal are all R7.
+
+**Hands off, respected:** `fb-app`, `editor-shape-lattice-generator.js`, frame files,
+`core/preview/frame-mesh.js`, both panel files, and lane 2's own files (`sketch_manifest_builder.py` et al. —
+its own BOUNDARY-GUIDE work) were not touched.
