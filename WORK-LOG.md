@@ -11299,3 +11299,53 @@ text or icon-column width).
 
 `npx vitest run` -> **1899 passed**, unchanged (pure CSS + one label string, no JS logic touched) — zero
 regressions.
+
+---
+
+Dispatch: epoch 3 — H8: the frame a tiny bit different in colour from the board. Fred: "make frame colour a
+bit different than board, tiny bit" — today's frame bars/band render in the EXACT raw wood colour, reading
+as barely distinguishable from the board next to it. Files named in the dispatch: `core/preview/frame-
+mesh.js` (3D bars) + `editor/editor-frame-profile.js` (2D frame band) — seat C's own files, but seat C is
+on F19 elsewhere in the interaction/lattice code, no overlap.
+
+**Item 1 — ONE declared offset, ONE function, two call sites.** Researched first rather than guessing:
+both files already read the SAME single source of truth (`defs.appearance.previewColors[record.appearance]`,
+generated from `frame_definition.py`'s `APPEARANCE_PREVIEW_COLORS`) — but as TWO independent inline
+lookups, not a shared reference, and the BOARD's own colour is a completely separate, hardcoded THREE
+constant (`0xd4b896` / white-in-vertex-color-mode, `terrain-mesh.js`) with no path anywhere near
+`previewColors` — so "board colour unchanged" was true by construction as long as I never touched that file
+(confirmed: didn't). New `core/color-utils.js` (no existing lighten/darken helper anywhere in the repo,
+confirmed by search) declares `FRAME_TINT = -0.08` (8% darker in HSL lightness — chosen over a hue shift
+because a lightness shift stays correct across every declared wood's own hue, where a fixed hue shift can
+look right on one wood and off on a very-differently-hued one) and the one `frameTintColor(hex)` function
+both files now call: `editor-frame-profile.js`'s `frameSolidSpec()` (feeds the 3D bars via `spec.color`)
+and its `drawFrameProfile()` (the 2D band's own separate inline lookup, line ~178) — same function, same
+constant, not just the same number copied twice. `frame-mesh.js` needed no colour logic of its own beyond
+tinting its own defensive `'#d9c9a3'` fallback the same way, for the rare case `spec.color` comes back
+null.
+
+**Item 2 — tests + shots.** One existing test (`tests/frame-3d.test.js`'s own bars test) hard-asserted
+`bars.material.color` equal to the RAW `previewColors` value — updated to assert equality with
+`frameTintColor(...)` instead (found by reading the test file before assuming, not by running and reacting
+to a failure). Added: a `color-utils.test.js` (declared negative, strictly darker without a hue change,
+deterministic, no two declared woods collapse to the same tinted value, degrades gracefully on a
+non-hex/null input); a `frame-3d.test.js` case iterating EVERY declared wood asserting `spec.color ===
+frameTintColor(rawWoodHex)` AND `!== rawWoodHex`; a `frame-record-profile.test.js` case asserting the SVG
+frame-band's own fill colour the same way. Mutation-tested `frameTintColor` back to a no-op passthrough —
+all 3 new assertion sites failed exactly as expected, restored, green again.
+
+Live: extended `tools/repro/frame_3d_shots.mjs`'s own state-readback (already read `barColor` via
+`bars.material.color.getHexString()`) to also read `boardColor` — a run's own printed numbers now prove
+BOTH that the bar colour changed for each wood AND that the board colour is identical to before regardless
+of which wood is selected. Before/after via `git stash -u` (H4's own established precedent for this exact
+comparison) around a shot pass covering Ash + a live wood-switch to Mahogany, iso + F17's own "from below"
+angle (Fred's phone-shot precedent) + the editor's Frame tab (`frame_tabs_shots.mjs`, unmodified — its own
+structural readback, e.g. `profileDrawn`/`shield`/`artLocked`, confirmed unaffected). Before: Ash bar
+`#d9c9a3` (== raw), Mahogany bar `#7a3b2e` (== raw). After: Ash bar `#cdb886`, Mahogany bar `#5c2d23` (both
+matching `frameTintColor()`'s own output exactly, cross-checked by calling the module directly), board
+colour `#ffffff` unchanged across every reading before AND after AND across the wood switch (the preview's
+current vertex-colour mode, unrelated to this turn — the important property is it never moved). Shots:
+`h8_before_3d/_below/_iso-edge/_live-wood/_frame-tab`, `h8_after_` (same set), in `shots\seatA\`.
+
+`npx vitest run` -> **1907 passed** (8 new: color-utils.test.js x6, frame-3d.test.js x1 new + 1 updated,
+frame-record-profile.test.js x1), zero regressions elsewhere.

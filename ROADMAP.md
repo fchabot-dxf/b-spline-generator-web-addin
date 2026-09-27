@@ -1108,6 +1108,33 @@ each is one undo step. Hold = still for the hold time without moving (a move = d
 the browser's own long-press/contextmenu suppressed on the canvas only. Tests: registry filtering per kind/empty, each
 action = the existing command, undo, touch hold vs drag vs double-tap-hold; mobile + desktop shots of the menu.
 
+## Queued (seat C, F20, after F19) — SHOULDER-HIP: separate Shoulder and Hip handles, Shape Lattice AND Frame (Fred 2026-09-27)
+Fred: "in frame and shape lattice I want two different handles for shoulder and hip". Shape Lattice hourglass already has
+cornerRadiusTop/cornerRadiusBottom handles (F12) PLUS the legacy combined cornerRadius handle: relabel the two as
+"Shoulder" (top) and "Hip" (bottom), REMOVE the combined cornerRadius handle + slider (a removal: the param stays only as
+a migration input -> both; old patterns keep their exact shape). Frame hourglass (T1) has ONE seeded cornerRadius handle:
+split it into Shoulder + Hip SEEDS (option B positions, no new Fusion params, Fred's rule). FIRST check live on Ranchy
+whether T1's phases force the two corners equal (ck_skel_shoulder_equal / arc weld constraints); if they do, report
+which constraint and the options before changing the Frame Builder template. Bottle has no hip: unchanged. Tests:
+independent shoulder/hip in preview + payload + (frame) the live Fusion outline parity per handle; F5 sweep stays green.
+
+## Queued (seat C, F21, after F20) — CONTOUR-FROM-FRAME: an "Offset from frame" toggle on the Shape Lattice contour (Fred 2026-09-27)
+Fred: "add a way in art to match the frame outline concentrically" -> "I only meant the single contour to have a toggle
+for 'offset from frame'". In the Shape Lattice Contour section: [ ] Offset from frame + a Distance field (formula field,
+default 0.25 in). ON: the contour = the frame's INNER edge offset inward by Distance (the F8 true offset: lines shifted +
+concentric arcs, one shared offset function, not a copy); the Shape preset/sliders/handles are disabled while on (the
+frame drives the shape); the lattice fills inside it as usual; it stays LINKED (frame template/handles/Trim offset/thickness
+change -> contour follows, via the declared refill inputs from F17 P2). Disabled with a hint when no frame is chosen.
+Saved in the pattern (contour.fromFrame: {on, distance}); old patterns = off. Fusion: the contour sketch is sent as drawn
+(slots, as today). Tests: contour == offset(frame inner edge, d) within tolerance for T1/T2 x boards; linked updates;
+toggle off restores the preset shape; F5-style validity (simple, tangent) holds; live parity on Ranchy.
+
+## Closed — UI4 0b (Clear then Regenerate does nothing) — NOT REPRODUCIBLE on main (advisor, 2026-09-27)
+Fred clarified: "Shape Lattice using the shape even once cleared". Headless check on main (611490e): Shape Lattice
+Generate = 12 contour segs + 7 rails/7 ties/14 nodes -> Clear = 0 -> Regenerate = 12 contour segs + 7/7/14 (the
+outline survives Clear); Box Lattice 42 -> 0 -> 39. Most likely fixed by the Regenerate/refill work (F17 P2 declared
+fill inputs). Reopen with a screenshot if seen again.
+
 ## SE16 RULINGS (Fred 2026-09-26, answers to CUT-TOOL-DESIGN.md §0) — supersede the SE16 text below where they differ
 Q1 Send AS DRAWN (bug fix F17 P1). Q2 Regenerate CLEARS cuts (Undo restores). Q3 dragging a lattice joint SLIDES ALONG the
 rail. Q4 Join clears BOTH segments' overrides (the joined rail = lattice default colour/width). Q5 cutting snaps by the normal
