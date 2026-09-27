@@ -59,7 +59,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "15fae2519493877a1265b49c5e475980af540b8a43cdcbd27a539b8cce646cac",
+  "sourceHash": "74495c8308c4837a1872a24fc6de6a04def9061bc0779b877842fc237b3d5d0c",
   "templates": [
     {
       "features": [
@@ -90,6 +90,12 @@ export default {
           "taper": "0 deg"
         }
       ],
+      "handleMigrations": {
+        "cornerRadius": [
+          "cornerRadiusTop",
+          "cornerRadiusBottom"
+        ]
+      },
       "handles": [
         {
           "basis": "hw",
@@ -100,8 +106,14 @@ export default {
         {
           "basis": "hw",
           "binding": "seeded",
-          "key": "cornerRadius",
-          "label": "Corner radius"
+          "key": "cornerRadiusTop",
+          "label": "Shoulder"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "cornerRadiusBottom",
+          "label": "Hip"
         },
         {
           "basis": "hh",
@@ -1668,6 +1680,7 @@ export default {
           "taper": "0 deg"
         }
       ],
+      "handleMigrations": {},
       "handles": [
         {
           "basis": "hw",

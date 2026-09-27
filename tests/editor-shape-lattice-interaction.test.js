@@ -11,6 +11,7 @@
  * including through a kink's own two-primitive split.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { generateSilhouette, PRESETS, SHAPE_PARAM_KEYS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import {
   boardRegion, computeParamHandles, hitTestSegment, primitiveSegmentMap, mirrorSegmentIndex,
@@ -141,5 +142,29 @@ describe('mirrorSegmentIndex', () => {
     for (const n of [10, 12]) {
       for (let i = 0; i < n; i++) expect(mirrorSegmentIndex(mirrorSegmentIndex(i, n), n)).toBe(i);
     }
+  });
+});
+
+describe('F20 SHOULDER-HIP: the Shape Lattice hourglass has a Shoulder and a Hip handle, no combined corner', () => {
+  it('handles: Shoulder (top corner) and Hip (bottom corner), independent; the combined cornerRadius is not offered', () => {
+    const out = generateSilhouette(REGION, { preset: 'hourglass', seed: 42 });
+    const hs = computeParamHandles('hourglass', REGION, out.params);
+    expect(hs.map((h) => h.key)).not.toContain('cornerRadius');
+    const by = Object.fromEntries(hs.map((h) => [h.key, h]));
+    expect(by.cornerRadiusTop.label).toBe('Shoulder');
+    expect(by.cornerRadiusBottom.label).toBe('Hip');
+    expect(by.cornerRadiusTop.anchor.y).toBeLessThan(by.cornerRadiusBottom.anchor.y); // shoulder above hip
+    // independent: a new shoulder leaves the hip where it was
+    const drag = { ...out.params, cornerRadiusTop: out.params.cornerRadiusTop + 0.08 };
+    const again = computeParamHandles('hourglass', REGION, generateSilhouette(REGION, { preset: 'hourglass', seed: 42, params: drag }).params);
+    const by2 = Object.fromEntries(again.map((h) => [h.key, h]));
+    expect(by2.cornerRadiusBottom.anchor).toEqual(by.cornerRadiusBottom.anchor);
+    expect(by2.cornerRadiusTop.anchor.x).not.toBeCloseTo(by.cornerRadiusTop.anchor.x, 6);
+  });
+  it('the panel sliders say "shoulder" and "hip"', () => {
+    const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf-8');
+    const label = (id) => html.match(new RegExp(`id="shapeParamRow-${id}"[^>]*>([^<]*)<`))[1].trim();
+    expect(label('cornerRadiusTop')).toBe('shoulder');
+    expect(label('cornerRadiusBottom')).toBe('hip');
   });
 });

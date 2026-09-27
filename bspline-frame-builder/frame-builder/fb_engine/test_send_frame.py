@@ -249,14 +249,14 @@ class TestSendFrame:
         w = World()
         send_bspline(w)
         pl = payload(params={"frame_thickness": 0.625, "boundingboxoffset": 0.5, "waistReach": 0.3, "bogus": 1},
-                     seeds={"waistReach": 0.4, "cornerRadius": 0.2})
+                     seeds={"waistReach": 0.4, "cornerRadiusTop": 0.2})
         r, b = run(w, pl)
         template, _ = resolve_template("template_1")
         declared = sf.declared_param_names(template)
         ui = b.sketch_calls[0]["data"]["ui_data"]
         assert ui == {"frame_thickness": "0.625", "boundingboxoffset": "0.5"}
         assert set(w.params) - {"frame_height_offset"} <= declared  # every param the build made is a declared one
-        assert "waistReach" not in w.params and "cornerRadius" not in w.params  # seeds never become params
+        assert "waistReach" not in w.params and "cornerRadiusTop" not in w.params  # seeds never become params
         assert b.sketch_calls[0]["style_id"] == "template_1"
 
     def test_the_solid_goes_to_the_underside_at_the_frame_bottom_in_the_chosen_wood(self):

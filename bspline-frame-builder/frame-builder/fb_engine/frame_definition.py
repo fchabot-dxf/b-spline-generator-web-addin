@@ -166,6 +166,7 @@ def build_frame_defs(source_hash, goldens_dir=None):
             "regions": frame.get("regions"),
             "features": frame.get("features"),
             "handles": frame.get("handles") or [],  # F9: the shape handle binding table
+            "handleMigrations": frame.get("handleMigrations") or {},  # F20: old seed key -> the keys it became
             "seedMap": frame.get("seedMap") or [],   # F11: where each outline seed comes from (option B)
             "sketches": spec["Sketches"],
         })
