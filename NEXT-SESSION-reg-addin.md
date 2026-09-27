@@ -1,51 +1,47 @@
-# NEXT (reg-addin, Asus) — R6: RAIL-SPACING engine (rails laid out from the boundary; panels UI = R7)
+# NEXT (reg-addin, Asus) — R7: lattice panel restructure (+ R6 carry-overs) — LAST task before hand-back
 
-**Ball: worker (reg-addin) · epoch 1 · R6.** NO FUSION. R5 (bf11571) ACCEPTED (advisor re-ran 151/151 on the 4 specs).
-Spec = ROADMAP "RAIL-SPACING" (read ALL of it — later rulings supersede earlier sentences). Log = WORK-LOG-reg-addin.md.
-Commit subjects "R6 item N: …", push after every item.
+**Ball: worker (reg-addin) · epoch 1 · R7.** NO FUSION. R6 (22fea84) ACCEPTED. Lane2's L1 BOUNDARY-GUIDE is MERGED on main
+(87ea3f1) — `git pull` first. Spec = ROADMAP "RAIL-SPACING" incl. the "RAIL-SPACING RULINGS" + "PANELS (R7)" paragraph
+(Fred's Q&A). Log = WORK-LOG-reg-addin.md. Commit subjects "R7 item N: …", push after every item.
+After R7 the Asus hands the regular add-in back to the home advisor (HANDOFF-REG-ADDIN.md §5) — finish clean.
 
-## Scope split (why)
-RAIL-SPACING restructures both lattice panels (Boundary first), and seat C's F9/SHAPE-PARAMS will also touch
-properties-shape-lattice.js — the advisor is sequencing that with the home PC. So **R6 = ENGINE + DATA ONLY**; the panel
-UI (Boundary-first order, Anchor/Spacing/Count fields, "Draw boundary" toggle removal) is R7. R6 may add NO visible UI;
-if a field is needed to test in the browser, drive the pattern record directly.
+## Rulings (Fred 2026-09-26)
+- Panel order — Box Lattice: **Boundary → Rails → Ties → Nodes**. Shape Lattice: **Boundary → Contour → Rails → Ties →
+  Nodes** (Contour is its OWN section right after Boundary — "contour isn't boundary").
+- Boundary section = Size W x H ONLY. Contour section = the Contour checkbox(es) + its stroke width.
+- Rails section: **Orientation** (moved here), **Anchor** [Top|Center|Bottom] (horizontal) / [Left|Center|Right]
+  (vertical) → `rails.anchor` start|center|end, **Spacing** (in, rail-to-rail) → `rails.spacing`, optional **Count**
+  → `rails.spacingCount` (empty = fill; show it as a placeholder).
+- **Seed field HIDDEN** (not deleted from the pattern); Generate still re-rolls as today.
+- Old grid-step "Spacing" select + Every/Offset + the old count-range rail fields: REMOVED from the UI. Old saved
+  patterns keep their exact geometry (their stored `rails.mode` still drives them — R6's fallback).
+- The "Draw boundary" toggle is already gone (L1 survey) — nothing to do; confirm in the log.
 
-## Rulings for R6
-1. `rails.anchor` = 'start' | 'center' | 'end' (UI later: Top/Center/Bottom or Left/Center/Right by orientation).
-   start/end: first rail ON that boundary edge, repeat toward the other edge; center: a rail ON the centre line,
-   repeating symmetrically. Rails outside the boundary are dropped.
-2. `rails.spacing` (inches, rail-to-rail) is always the step; `rails.count` OPTIONAL (N from the anchor; center = N
-   centred); empty = fill the boundary. **Fred: Center + EVEN count → rails STRADDLE the centre symmetrically, NO rail on
-   the centre line** (odd count → one on the line). **New-pattern defaults (Fred): anchor = center, spacing = 1 in.**
-3. **CONFIRMED (Fred): off-grid is fine — NO rounding of spacing to grid steps. BUT TIES MUST SNAP TO RAILS:** every
-   generated tie end lies EXACTLY on its rail (same coordinate as the off-grid rail, not the nearest grid row).
-4. The lattice GRID STEP comes from the editor grid (one grid); the old lattice-side `spacing` stops being a setting.
-5. MIGRATION: a saved pattern's old `spacing` is read as its grid step and keeps its EXACT geometry (no silent re-layout).
-   Declare it in the migrations path (tests/migrations.test.js pattern), not ad hoc in the generator.
-6. Ties / nodes must still attach correctly to off-grid rails (survey how ties find rails today — grid rows? — and
-   fix at the declaration, not per-case). Seat B's TIE-GAP (`ties.minSpacing`) must still hold.
+## R6 carry-overs (advisor review)
+1. **NEW patterns default to `rails.mode: 'spacing'`** (anchor center, spacing 1 in) — today PATTERN_DEFAULTS still says
+   `'count'`, so Fred's defaults never show. Change the default for NEW patterns only; prove an old saved pattern
+   (stored mode 'count' / 'every' / no mode) is byte-identical (extend R6's regression tests).
+2. **One grid (RAIL-SPACING ruling 4):** the lattice grid step comes from the EDITOR grid (GRID_DEFAULTS / toolbar),
+   not the lattice-side `pattern.spacing` setting. Migration: a saved pattern's own `spacing` is still read as ITS grid
+   step (geometry unchanged); new patterns take the editor's. Ties/nodes/drag all read the one resolved value.
 
 ## Hands off
-fb-app; `editor-shape-lattice-generator.js` (silhouette solver — if Shape Lattice rails need it, STOP and say so);
-frame files; `core/preview/frame-mesh.js`. Panels (`properties-lattice.js`, `properties-shape-lattice.js`): R7, not now.
-Lane 2 (b1, worktree -lane2) is on BOUNDARY-GUIDE: editor boundary drawing, 3D skip, manifest construction flag,
-sketch_manifest_builder.py — don't edit those.
+fb-app; `editor-shape-lattice-generator.js`; frame files; `core/preview/frame-mesh.js`. Seat C holds SHAPE-PARAMS until
+R7 is on main and will rebase onto your panel — keep the panel structure clean and declared (sections as data where
+the panels already do that), no drive-by changes to the Shape Lattice handles/sliders code.
 
 ## Checklist
-- [ ] [R6-item-1] SURVEY (WORK-LOG, file:line): today's rail placement (every/offset/count, `_isRailRow`, `_resolveExtent`),
-      how ties/nodes locate rails, where `pattern.spacing` is read, both Lattice + Shape Lattice paths.
-- [ ] [R6-item-2] Declare `rails.anchor` / `rails.spacing` / optional `rails.count` in the pattern defaults + migration
-      (ruling 5), and the boundary-anchored layout in the generator (rulings 1-4, 6).
-- [ ] [R6-item-3] Tests: every generated gap identical; first rail exactly on the anchor (start/end edge, centre line);
-      count honoured; out-of-boundary rails dropped; both orientations; box + Shape Lattice; several sizes/presets;
-      old saved patterns byte-identical geometry; ties/nodes attach to off-grid rails; TIE-GAP sweep still green;
-      select_drag_shape.mjs still passes.
-- [ ] [R6-item-4] Fred's case proven in the pattern: anchor start → a rail exactly on the top boundary edge
-      (screenshot via tools/serve_app.py after setting the pattern record, desktop).
+- [ ] [R7-item-1] Carry-over 1 (default mode 'spacing') + carry-over 2 (one grid) in the engine/defaults, with tests.
+- [ ] [R7-item-2] Box Lattice panel: new section order + fields per rulings; formula fields (R5) still attached to every
+      numeric field incl. the new Spacing/Count (update the declared scope: `spacing` = rail-to-rail now).
+- [ ] [R7-item-3] Shape Lattice panel: same, with the separate Contour section.
+- [ ] [R7-item-4] Tests (panel order, fields → pattern keys, seed hidden but Generate re-rolls, old patterns unchanged,
+      formula fields attached) + real-browser desktop + mobile screenshots of BOTH panels + `select_drag_shape.mjs` +
+      the rail-spacing shot (anchor Top → rail on the top edge, set via the UI this time).
 
-## Gate (fast tier)
-Touched/new specs + full `npx vitest run`. No Fusion.
+## Gate
+Full `npx vitest run` (frame-3d-sweep may time out at 5 s on the Asus — seat C's, known; note it) + pytest. No Fusion.
 
 ## Finish
 Commit by path, `git pull --rebase`, push main. From the REPO ROOT:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R6 — <shas>"`.
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R7 — <shas>"`.
