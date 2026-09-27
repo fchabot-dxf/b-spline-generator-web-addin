@@ -117,6 +117,46 @@ FRAME_HANDLES = [
     {"key": "cornerRadius", "label": "Corner radius",   "basis": "hw", "binding": "seeded"},
     {"key": "waistCenterY", "label": "Waist position",  "basis": "hh", "binding": "seeded"},
 ]
+# FB-APP F11 (option B, Fred: "simply seed it in position"): where each of
+# this template's shape-outline SEEDS comes from when the app sends seeded
+# handles: the app's own solved outline (editor-shape-lattice-generator
+# primitive `prim`, the order frameCutProfile returns). No dimension and no
+# parameter is added: only the seed geometry the phases already declare moves.
+#   kind "line": Points [S, E] = the primitive's ends ("reverse": E, S)
+#   kind "arc":  Points [S, mid, E] (Arc3Point) = the primitive's ends + its
+#                on-arc midpoint ("reverse" swaps S and E)
+#   kind "pin":  a skeleton pin: its `outer` end ("S"|"E") = the arc centre,
+#                the inner end on the Y axis at that height
+#   kind "radius": a temporary seed radius dim (deleted later by the phases)
+#                  = the primitive's radius
+# Orientation is checked against the template's own literal seeds
+# (tests/frame-seed-geometry.test.js).
+FRAME_SEED_MAP = [
+    {"id": "top_edge",       "kind": "line", "prim": 11, "reverse": False},
+    {"id": "bottom_edge",    "kind": "line", "prim": 5,  "reverse": False},
+    {"id": "horn_TR",        "kind": "line", "prim": 0,  "reverse": False},
+    {"id": "horn_BR",        "kind": "line", "prim": 4,  "reverse": True},
+    {"id": "horn_TL",        "kind": "line", "prim": 10, "reverse": True},
+    {"id": "horn_BL",        "kind": "line", "prim": 6,  "reverse": False},
+    {"id": "arc_shoulder_R", "kind": "arc",  "prim": 1,  "reverse": False},
+    {"id": "arc_waist_R",    "kind": "arc",  "prim": 2,  "reverse": True},
+    {"id": "arc_hip_R",      "kind": "arc",  "prim": 3,  "reverse": False},
+    {"id": "arc_hip_L",      "kind": "arc",  "prim": 7,  "reverse": True},
+    {"id": "arc_waist_L",    "kind": "arc",  "prim": 8,  "reverse": False},
+    {"id": "arc_shoulder_L", "kind": "arc",  "prim": 9,  "reverse": True},
+    {"id": "skel_shoulder_pin_R", "kind": "pin", "prim": 1, "outer": "E"},
+    {"id": "skel_shoulder_pin_L", "kind": "pin", "prim": 9, "outer": "E"},
+    {"id": "skel_waist_pin_R",    "kind": "pin", "prim": 2, "outer": "E"},
+    {"id": "skel_waist_pin_L",    "kind": "pin", "prim": 8, "outer": "E"},
+    {"id": "skel_hip_pin_R",      "kind": "pin", "prim": 3, "outer": "E"},
+    {"id": "skel_hip_pin_L",      "kind": "pin", "prim": 7, "outer": "E"},
+    {"id": "seed_rad_shoulder_R", "kind": "radius", "prim": 1},
+    {"id": "seed_rad_waist_R",    "kind": "radius", "prim": 2},
+    {"id": "seed_rad_hip_R",      "kind": "radius", "prim": 3},
+    {"id": "seed_rad_hip_L",      "kind": "radius", "prim": 7},
+    {"id": "seed_rad_waist_L",    "kind": "radius", "prim": 8},
+    {"id": "seed_rad_shoulder_L", "kind": "radius", "prim": 9},
+]
 FRAME_FEATURES = COMMON_FRAME_FEATURES
 # F8: this template's app shape is a MODEL fitted from the recorded Fusion
 # goldens (fb_engine/frame_shape_fit.py, run by tools/gen_frame_defs.py);
@@ -158,5 +198,6 @@ def get_template_logic(ui_data=None):
             "regions": FRAME_REGIONS,
             "features": [dict(f) for f in FRAME_FEATURES],
             "handles": [dict(h) for h in FRAME_HANDLES],
+            "seedMap": [dict(e) for e in FRAME_SEED_MAP],
         },
     }

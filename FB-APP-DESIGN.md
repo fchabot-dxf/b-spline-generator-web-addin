@@ -546,6 +546,105 @@ alone. There are exactly two buttons, no "Send all", and no separate "Send art":
   - Live result: `Frame_1` → 3 sketches → 4 extrudes → `TRIM_CUT` → `Plane for L1` →
     `Source - L1`, every feature healthy, bar volumes unchanged.
 
+### 4.1 [Send frame]: as built (F10, S5) and Fred's live check
+
+**As built.**
+- **Button:** sidebar FRAME, `#btnSendFrame`. `frameSendState()` in main/frame-panel.js decides
+  whether it is enabled and what hint it shows.
+- **Payload:** `framePayload()`, core/frame-record.js. It carries the template, every frame param
+  (incl. `boundingboxoffset`), `frameBottomZ`, the wood and the seeds.
+- **Transport:** palette action `send_frame` → b-spline-gen.py `_handle_send_frame` (additions only)
+  → `fb_engine/send_frame.py`. The reply is the palette action `frame_result`, and the send is also
+  saved in `last_send.json` under the key `frame`.
+- **Steps in send_frame.py:**
+  1. Refuse, with a clear message and nothing touched, when there is no B-spline body
+     (B-Spline Set / Clean / panel), no template, an unknown template, or no downward face.
+  2. Delete the previous frame **by attribute**: the `ComponentType=Frame` occurrences, and the
+     features it put in other components (the TRIM_CUT in Clean), found by `FrameComponent`.
+  3. `build_sketch_logic_v3` (full build). `ui_data` = the payload params, filtered to the
+     template's own declared params, because every `ui_data` key becomes a user parameter.
+  4. `build_solid_logic_v3` to `core.underside` (the face whose normal at `pointOnFace` has
+     n.z ≤ −0.9), starting at `frameBottomZ`, in the chosen wood.
+  5. FB-ORDER: both builds already end with it.
+- **Why not `build_frame_logic`:** it calls a `_create_assembly_joints` method that doesn't exist.
+
+**MEASURED live (F11, this PC).** The real app payload was replayed into the deployed fb-app build,
+in a tagged scratch doc:
+- **No body:** the clear error, and nothing is created. This is also the "frame before B-spline"
+  order.
+- **B-spline, then frame:** `Frame_1`, 3 sketches, 4 bars and the TRIM_CUT, all healthy.
+  - `boundingboxoffset` 0.5" gives a frame extent of ±3.000 × ±4.000 in on the 7 × 9 board (the
+    0.5 in gap on every side).
+  - The bar bottoms sit at z = −1.000, and every bar is 0.00000 in from the panel (extruded to the
+    underside).
+  - The frame adds no user params beyond its template's own.
+- **Re-send:** exactly one `Frame_1` and one TRIM_CUT, all healthy.
+- **B-spline re-send (which breaks the frame, §4), then Send frame:** rebuilt, all healthy, in the
+  order body → `Frame_1` block → inlay.
+- **Direct call from the HTML handler:** works. The hidden command the palettes use isn't needed.
+- **Fixed on the way** (each red first in its tests):
+  1. FB-ORDER now checks each item right before its own move, with a rollback. A sketch inside
+     `Frame_N` refuses to move while `Frame_N`'s own occurrence is still after the inlay, so the old
+     up-front check never moved a frame built after the inlay.
+  2. The inlay prefixes are "Plane for " / "Source - ". The lattice plane is
+     "Plane for pattern lattice-…".
+  3. The underside face is resolved right before the solid build. The early face was invalid after
+     deleting a broken frame (measured).
+- **Still true:** AestheticCore is not stamped; the body is passed directly.
+- **Finding for Fred:** "3D Cherry - Unfinished" and "3D Maple - Unfinished" do **not exist** in this
+  Fusion's libraries. There, cherry is "Cherry" and maple is only "3D Maple - Painted". Those two
+  woods silently fall back to the body's material. Ash, Mahogany and Pine are fine (Mahogany is
+  proven live).
+
+**Seeds: option B, BUILT and PROVEN live (F11).** Fred's ruling was "simply seed it in position".
+- **How it works:** the app sends `seedGeometry`, its seeded outline expressed as the template's
+  **own** seed geometry. `FRAME_SEED_MAP` in `template_data.py` maps each line, Arc3Point, skeleton
+  pin and temporary seed radius to an app primitive and its S/E orientation, and every orientation
+  is checked against the literal seeds. `fb_engine/seed_geometry.py` moves only those seeds: no
+  dimension and no parameter is added.
+- **Proof:** 19 of 19 live cases match the app preview (S4 method, both ways, 0.1 in):
+  - every T1 and T2 handle at 20 / 50 / 80 % of its feasible range, plus a thickness change;
+  - max 0.005 / 0.010 in, which is the sampling floor;
+  - all healthy, and no user param created;
+  - negative control (a built value compared with another value's app outline): 0.26–1.70 in.
+- **Correction:** my F10 note said option B's parity "can't be proven". That was wrong. With every
+  seed of the outline moved together, the under-constrained solve stays where it is seeded.
+
+**Fred's live step list** (Fusion, his machine):
+0. **Deploy and reload.** Deploy fb-app, then restart Fusion. If the web palette shows the old UI,
+   delete the palette first (the reload gotcha).
+1. **Order 1, B-spline then frame.** New design → open the app from the add-in → Stock 7x9 → **Send
+   to Fusion** (Send B-spline) and wait for "Imported". Then FRAME: Template Hourglass,
+   Trim offset 0.5, Wood Cherry → **Send frame**.
+   - Pass:
+     - the status line reads "Frame built in Fusion: Frame_1";
+     - the browser shows one `Frame_1`;
+     - the timeline reads B-Spline Set, Clean, the body feature, then `Frame_1`, its 3 sketches,
+       4 bar extrudes and `…TRIM_CUT`, then `Plane for L…` / `Source - L…` (the inlay last);
+     - Modify → Change Parameters shows `boundingboxoffset` 0.5 in, `frame_thickness` 0.75 in and
+       `frame_height_offset` −1 in, and no user parameter named `waistReach` or `cornerRadius`
+       (or any other handle key);
+     - the bars are cherry, and their tops meet the panel's underside.
+2. **Re-send.** Edit frame shape → Frame tab → thickness 0.5 → **Send frame** again.
+   - Pass: exactly one `Frame_1`, exactly one TRIM_CUT, thinner bars, and every feature healthy
+     (no red or yellow).
+3. **Other order.** Send to Fusion again with a new layer (append) or re-send the B-spline, then
+   **Send frame**.
+   - Pass: the frame block sits before every inlay item. A B-spline re-send without append deletes
+     the body, which breaks the frame (known, §4); pressing Send frame then rebuilds it.
+4. **No body.** New empty design → pick a template → **Send frame**.
+   - Pass: the status line says "No B-spline body in this document: press Send B-spline first…",
+     and nothing appears in the browser or the timeline.
+5. **Seeds** (F11: sent as seed geometry). Frame tab → drag a handle (e.g. deepen the T1 waist) →
+   the hint says the change goes with the frame → **Send frame**.
+   - Pass: "Frame built in Fusion: Frame_1", Fusion's outline has the dragged shape (it matches the
+     editor), and no new user parameter appears.
+- **If any step fails, send back:**
+  - `~/.bspline-frame-builder/last_send.json` (its `frame` key holds the payload and the result);
+  - `frame-builder-debug.log` (next to the Frame Builder add-in);
+  - `b_spline_gen_log.txt` (the `SEND FRAME` lines);
+  - a screenshot of the browser tree and the timeline.
+
 **Parameter ownership, one declared registry:**
 
 ```

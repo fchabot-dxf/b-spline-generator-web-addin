@@ -934,3 +934,185 @@ Commits (fb-app, pushed): `d074c49` merge origin/main · `56abaf1` item 1 · `72
   - the Frame tab shield still blocks canvas zoom/pan (pre-existing from F8);
   - S5 must map each seed to its Fusion sketch seed (UNVERIFIED, needs Fusion).
 - Capacity fine.
+
+
+## 🔨 turn 18 — F10 (seat C, epoch 1): S5 [Send frame], code + fake-Fusion tests; live = Fred
+
+Commits (fb-app, pushed): `6f9d2ec` items 1-3 · this commit: item 4 (FB-APP-DESIGN.md §4.1 + this log).
+
+### What the reading found (an Explore pass mapped the plumbing, file:line; the key facts)
+- **`frame_engine.build_frame_logic` is broken.** `frame_engine.py:231` calls
+  `self._create_assembly_joints`, which exists nowhere. The resulting AttributeError is swallowed as
+  "CRASH in run_full_synthesis" and skips FB-ORDER. It stays hidden only because no AestheticCore is
+  ever found.
+  - **Chosen:** `build_sketch_logic_v3`, the Sketch Builder palette's own full-build path. It ends
+    with FB-ORDER.
+  - Not fixed here (a separate item): the dead call in `build_frame_logic`.
+- **Every `ui_data` key becomes a USER PARAMETER** (`parametric_engine._sync_user_parameters`).
+  So the payload params are filtered to the template's own declared params (tested), and the seeds
+  never travel in `ui_data`.
+- **The R4 stale-param logger at b-spline-gen.py:1458 is already broken.** It passes
+  `SimpleNamespace(log=_log)`, but `_log` takes one argument and `compute_stale_params` calls
+  `log(msg, level)`; the TypeError is swallowed by its try. Fenced, **not touched**: this is for
+  the reg-addin seat.
+- **Nothing in production stamps AestheticCore**, and discovery's name hint "clean solid" never
+  matches "Clean". So the handler resolves the body from b-spline-gen's own hierarchy
+  (B-Spline Set / Clean / solid "panel", the literals `_handle_generate` builds) and passes it in.
+  - That is a mirror of those literals; editing `_handle_generate` to declare them was out of the
+    file fence. **Flagged.**
+
+### Item 1: the button (JS)
+- `#btnSendFrame` plus `#frameSendHint` in the FRAME section.
+- `frameSendState()` declares enabled / disabled and the hint:
+  - no frame: "Pick a frame template";
+  - outside Fusion: "Open this app from the Fusion add-in";
+  - seeds present: "N handle shape change(s) are not sent yet".
+- The press sends `framePayload()` as `send_frame`. The reply `frame_result` is a new branch in
+  main.js's handshake, and it goes to the one status line.
+- The panel re-syncs on Fusion detection; otherwise the button would stay disabled in Fusion,
+  because the mode is set after init.
+- Real app (fake `adsk` injected before load): the button sent exactly the frame record, and both
+  replies rendered. Shots: `2029_F10send_*` (web-disabled, fusion-ready, sending, built, no-body).
+
+### Item 2: the add-in side
+- **b-spline-gen.py, additions only:**
+  - `frame_engine = None`, injected by the root file (`_bs.frame_engine = _engine`, the palettes'
+    own pattern);
+  - `_find_bspline_core_body`;
+  - the `send_frame` dispatch plus `_handle_send_frame`. It merges `frame` into last_send.json and
+    replies `frame_result`; a crash is reported to the palette.
+- **`fb_engine/send_frame.py`** (pure, collaborators injected). Steps as in FB-APP-DESIGN.md §4.1:
+  - refuse clearly first;
+  - delete by attribute: the frame occurrences, plus the TRIM_CUT in Clean via `FrameComponent`;
+  - the sketch build with the filtered `ui_data`;
+  - the solid to `core.underside` (declared bound n.z ≤ −0.9) at `frameBottomZ`, in the wood.
+- **Dropped an extra `ensure_order` call I had first written:** both builds already run FB-ORDER, so
+  the extra call was untestable decoration.
+
+### Item 3: tests
+- **`fb_engine/test_send_frame.py` (9):** the real `ensure_frame_before_inlay` on the shared
+  FakeItem/FakeTimeline, with a world whose attributes and components delete with their owners.
+  - body → Frame_1 block → inlay;
+  - a re-send leaves exactly one Frame_1 and one TRIM_CUT;
+  - a later inlay then a re-send still lands before every inlay;
+  - no body / no template / unknown / no downward face are clear errors with nothing touched;
+  - `ui_data` holds only declared params, and no seed becomes a param;
+  - the solid gets the underside, the bottom and the wood;
+  - seeds are reported as not applied.
+- **`b-spline-gen/test_send_frame_handler.py` (8):** the real `notify` dispatch, the body finder,
+  the root-injected engine passed through, last_send.json, and a crash reported.
+- **`tests/frame-send.test.js` (6).**
+- **Mutations** (restored from my copies; pyc cleared): keep TRIM_CUT 2 red, `ui_data` unfiltered
+  1, delete before the body check 1, face ignored 1, no dispatch 3. The pre-change files fail all.
+- **Isolation fix:** in the combined Python run another test swaps the `adsk` stub, so the fixture
+  patches the `adsk` the module bound at import.
+
+### Item 4: Fred's live step list
+FB-APP-DESIGN.md §4.1 has the full list: deploy/reload; B-spline then frame; re-send; the other
+order; no body; seeds; and what to send back (`last_send.json` `frame` key,
+`frame-builder-debug.log`, `b_spline_gen_log.txt`, a screenshot of the browser tree and timeline).
+
+### GATE: seeds → Fusion (not built; your call)
+The dispatch said "map each declared seed to its phase dim". **There is no such dim:**
+- T1's only seed dims (`seed_rad_*`, `p02_03`) are radii, and `p02_09` deletes them;
+- T2 has none (`p02_04_arcs.py` is literal points only);
+- the Fusion outline is under-constrained after `p02_09`.
+
+So seeds are carried in the payload and reported `applied: false`, and the UI says so. Options
+(§4.1): (A) plain driving dims added only when a seed is present, proven per handle by goldens at
+2-3 values; (B) move the literal seed points only (unprovable); (C) leave it app-only. I recommend
+**(A), T1 first**.
+
+### Gates / processes
+- JS fast tier: 1587 / 87 files green.
+- Python fast tier: 222 green.
+- frame-defs fresh.
+- Server and Chrome stopped.
+- Capacity fine.
+
+
+## 🔨 turn 20 — F11 (seat C, epoch 1): LIVE on Ranchy — [Send frame] proven + seeds option B
+
+Commits (fb-app, pushed): `3a55fd0` item 1 (live-found fixes) · `7241974` item 2 (seed geometry) · this
+commit: docs (FB-APP-DESIGN.md §4.1) + this log. **Fred's add-in is back on MAIN** (f3dd036), verified
+running with main's code.
+
+### Hygiene (all hard rules held)
+- **Docs:** each document I created was tagged `claude/scratch=F11` the moment it was created.
+  Every call asserted the ACTIVE doc carried that tag before touching anything, because both docs
+  were named "Untitled". The 19 case docs closed by their own handles in `finally`; at the end I
+  closed only the tagged docs.
+- **Fred's doc:** "Untitled" (untagged, modified) was left untouched; it is the only doc open now.
+- **Deploys:** stop → deploy from my worktree → delete the palette → `run()` in separate calls. The
+  palette was never open. The final MAIN deploy mirrored the folder, so no fb-app file is left in
+  AddIns.
+- **Modules:** nothing added to `sys.path` / `sys.modules`. Scripts ran via `exec` into a local
+  namespace, using the deployed add-in's own modules.
+- **Bridge:** one call (cases 1-3) timed out on the bridge side, but its results were written and
+  no doc was left open. Nothing else went wrong.
+
+### Item 1: [Send frame] live (payload from main's capture_send_payload.mjs, shape-lattice stencil)
+- No body → the clear error, nothing created (also "frame before B-spline").
+- **B-spline → frame:** `Frame_1` + 3 sketches + 4 bars + TRIM_CUT, all healthy.
+  - `boundingboxoffset` 0.5": frame extent ±3.000 × ±4.000 in on 7x9 (the gap measured).
+  - `frame_thickness` 0.75", `frame_height_offset` −1.0", bar bottoms z = −1.000.
+  - Every bar 0.00000 in from the panel (`measureMinimumDistance`).
+  - No frame user params beyond the template's own.
+- **Re-send:** exactly one `Frame_1` / one TRIM_CUT, healthy.
+- **B-spline re-send** (the extrudes go Warning, the TRIM_CUT goes with the body, as §4 says) → Send
+  frame → rebuilt, healthy, body → frame block → inlay.
+- **Three live-found bugs, each fixed at the cause, red first in tests:**
+  1. **FB-ORDER never moved a frame built after the inlay.** Measured: a sketch inside `Frame_1`
+     refuses `canReorder(<before the inlay>)` while `Frame_1`'s occurrence is still after it. The
+     old "check everything up front" could never pass.
+     - Now: each item is checked right before its own move. A refusal rolls back the already-moved
+       items (reverse order, each before its original successor, dependency-safe).
+     - Also measured: `reorder(beforeIndex)` lands the item before the item currently at that
+       index, in both directions, and Fusion drags dependencies along when moving an item earlier.
+       My probe did that to T1_3; I restored it and checked health.
+     - The fake now mirrors the measured semantics. The old pinned test ("checked at the inlay
+       index") was updated to the per-move meaning.
+  2. **Inlay prefixes** `"Plane for L"` / `"Source - L"` missed the lattice's
+     `"Plane for pattern lattice-…"` plane. Now `"Plane for "` / `"Source - "`, b-spline-gen's own
+     naming.
+  3. **0 bars after a B-spline re-send:** every bar failed "InternalValidationError : face".
+     - Now: `send_frame` takes a `find_core_body` callable and re-resolves the underside face right
+       before the solid build.
+     - Proved by measurement, not argued. The first rerun logged "early face valid: True" (a
+       different state), so I reproduced the exact failing sequence, which logged
+       "**early one valid: False**", and the fresh face built 4 bars.
+- **Wood finding (for Fred, not changed):** "3D Cherry - Unfinished" and "3D Maple - Unfinished" are
+  NOT in this Fusion's libraries (there: "Cherry", "3D Maple - Painted"). They silently fall back to
+  the body's material; Pine was seen on the first send. Mahogany proven.
+- Shot: `2044_F11live_T1_sendframe_iso.png`.
+
+### Item 2: seeds, option B (advisor/Fred: "simply seed it in position")
+- **`FRAME_SEED_MAP`** (template_data T1 24 entries, T2 14 → frame-defs `seedMap`): lines, Arc3Points,
+  skeleton pins (outer end = the arc centre) and T1's temporary seed radius dims ← app primitive +
+  S/E orientation.
+  - T2's arc ends were ambiguous by position, so I read them from its chain constraints.
+  - Every orientation is checked against the template's literal seeds; a flipped `arc_waist_R` flag
+    goes red (orientation error 2.64 vs 0.07).
+- **App:** `frameSeedGeometry()`; `sendFrame` adds `seedGeometry` when seeded.
+- **Add-in:**
+  - `fb_engine/seed_geometry.py` (pure, on a copy): only those seeds move, as plain values;
+  - `frame_engine` takes `data['seed_geometry']` (never ui_data);
+  - `send_frame` refuses a bad one BEFORE deleting anything (tested).
+- **Live parity:** 19/19 pass (S4 method, both ways, 0.1 in).
+  - Covered: T1 waistReach / cornerRadius / waistCenterY and T2 neckWidth / skeletonX / neckLength
+    at 20/50/80% of each feasible range, plus T1 seeded + `frame_thickness` 0.5.
+  - Max 0.005 / 0.010 in (the sampling floor). Every timeline healthy; params only the template's
+    own.
+  - Negative control: a built value vs another value's app outline gives 0.26–1.70 in, so the check
+    is sensitive.
+  - End to end through the real handler on the real body: `seeds.applied` true, healthy.
+  - Shot: `2059_F11live_T1_seeded-waist_top.png`.
+- **Every handle matched; none becomes app-only.**
+- My F10 claim "option B parity can't be proven" was WRONG; corrected in §4.1.
+
+### Gates / notes
+- Fast tier: JS 1592 / 88 files; Python 229; frame-defs fresh.
+- Server and Chrome stopped.
+- Amendment (queue): SHAPE-PARAMS is unblocked after F11 and rebases onto R7. No action here.
+- Not verified live: the palette UI click path itself (the payload was replayed into the same
+  handler the palette calls). The palette-side JS is covered by the headless shots and tests.

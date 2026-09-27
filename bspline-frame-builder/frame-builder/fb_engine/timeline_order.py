@@ -54,10 +54,11 @@ def _declared_frame_member(entity):
 
 
 # Declared once (not hand-rolled per call site) — the inlay's own two
-# timeline item name prefixes, per the dispatch's own "Plane for L…" /
-# "Source - L…" naming (main/export-flow.js's own per-layer sketch/plane
-# naming on the b-spline-gen side).
-INLAY_NAME_PREFIXES = ("Plane for L", "Source - L")
+# timeline item name prefixes: b-spline-gen.py's own naming,
+# `f"Plane for {sketch_name}"` (_compute_artwork_plane) and
+# `f"Source - {sketch_name}"`. MEASURED live (F11): a shape-lattice layer's
+# plane is "Plane for pattern lattice-…", so the old "Plane for L" missed it.
+INLAY_NAME_PREFIXES = ("Plane for ", "Source - ")
 
 
 def is_inlay_item_name(name):
@@ -114,25 +115,30 @@ def reorder_frame_before_inlay(timeline, is_frame_item, is_inlay_item, logger=No
     if not to_move:
         return {"moved": False, "reason": "already in order"}
 
-    # Check EVERY item first — one refusal means moving nothing at all,
-    # never a partial reorder (the dispatch's own explicit rule).
-    # MEASURED live (F3): TimelineObject.canReorder is a METHOD taking the
-    # target beforeIndex (e.g. the trim cut: canReorder(<inlay>) True,
-    # canReorder(<before the body it cuts>) False). Reading it as a
-    # property gave a bound method — always truthy — so this safety net
-    # could never fire on real Fusion. The block lands right before the
-    # earliest inlay item, so that is the position each item is checked for.
-    for it in to_move:
-        if not it.canReorder(earliest_inlay_index):
-            _log(f"FB-ORDER: '{it.name}' refused reorder -- moving nothing.", "WARNING")
-            return {"moved": False, "reason": f"'{it.name}' refused reorder"}
-
     # Move each, in ORIGINAL relative order, to the (advancing) target
     # position -- lands the whole block, in its own original order,
     # immediately before the inlay's own original position.
+    # Each item is checked (`canReorder(beforeIndex)`, a METHOD, MEASURED F3)
+    # right before ITS move, not all up front: MEASURED live (F11), a sketch
+    # inside Frame_N refuses to go before the inlay while Frame_N's own
+    # occurrence is still after it, and only accepts once the occurrence
+    # (first in the block) has moved. One refusal still moves NOTHING in the
+    # end: the items already moved go back, in reverse order, each before its
+    # original successor (children first, so no item ever lands before the
+    # component it lives in).
+    items_before = [timeline.item(i) for i in range(timeline.count)]
+    successor = {id(it): (items_before[it.index + 1] if it.index + 1 < len(items_before) else None) for it in to_move}
     target = earliest_inlay_index
+    moved = []
     for it in to_move:
+        if not it.canReorder(target):
+            for m in reversed(moved):
+                nxt = successor[id(m)]
+                m.reorder(nxt.index if nxt is not None else timeline.count)
+            _log(f"FB-ORDER: '{it.name}' refused reorder -- moving nothing.", "WARNING")
+            return {"moved": False, "reason": f"'{it.name}' refused reorder"}
         it.reorder(target)
+        moved.append(it)
         target += 1
 
     _log(f"FB-ORDER: moved {len(to_move)} frame timeline item(s) before the inlay.")

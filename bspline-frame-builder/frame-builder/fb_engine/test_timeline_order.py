@@ -50,10 +50,18 @@ class FakeItem:
         return self._timeline.items.index(self)
 
     def reorder(self, new_index):
+        # MEASURED live (F11): reorder(beforeIndex) lands the item BEFORE the item
+        # currently at beforeIndex (moving later too: T1_3 at 13, reorder(15) -> 14);
+        # beforeIndex == count means the end.
         if not self._can_reorder:
             raise RuntimeError(f"'{self.name}' cannot be reordered")
-        self._timeline.items.remove(self)
-        self._timeline.items.insert(new_index, self)
+        items = self._timeline.items
+        before = items[new_index] if new_index < len(items) else None
+        items.remove(self)
+        if before is None or before is self:
+            items.insert(new_index if before is self else len(items), self)
+        else:
+            items.insert(items.index(before), self)
 
 
 class FakeTimeline:
@@ -102,7 +110,9 @@ class TestIsInlayItemName:
         assert not is_inlay_item_name(None)
 
     def test_prefixes_are_exactly_the_two_declared(self):
-        assert INLAY_NAME_PREFIXES == ("Plane for L", "Source - L")
+        assert INLAY_NAME_PREFIXES == ("Plane for ", "Source - ")
+        # MEASURED live (F11): a shape-lattice layer's plane
+        assert is_inlay_item_name("Plane for pattern lattice-muj36vgj")
 
 
 class TestReorderFrameBeforeInlay:
@@ -393,4 +403,62 @@ class TestFrameMembershipAndCanReorderShape:
         tl = FakeTimeline(["B-Spline Set", "Plane for L1", "Frame_1", "Frame_1_extrude"])
         reorder_frame_before_inlay(tl, _is_frame, _is_inlay)
         moved = [it for it in tl.items if it.name.startswith("Frame_1")]
-        assert all(it.checked_before == [1] for it in moved)
+        # F11: each item is asked, right before ITS move, for the position it moves to
+        assert [it.checked_before for it in moved] == [[1], [2]]
+
+
+
+# ---------------------------------------------------------------------
+# F11 (MEASURED live): a sketch inside Frame_N refuses canReorder(<before the
+# inlay>) while Frame_N's own occurrence is still after the inlay; it accepts
+# once the occurrence has moved. The whole block built AFTER the inlay
+# (Send frame after Send B-spline) must still move, in order.
+# ---------------------------------------------------------------------
+class DepItem(FakeItem):
+    """canReorder that knows a child can't go before its component's occurrence."""
+
+    def canReorder(self, before_index=-1):
+        self.checked_before.append(before_index)
+        if not self._can_reorder:
+            return False
+        parent = getattr(self.entity, "parentComponent", None)
+        for it in self._timeline.items:
+            comp = getattr(it.entity, "component", None)
+            if comp is not None and parent is not None and comp.name == parent.name:
+                occ_index = it.index
+                return before_index > occ_index  # must land after the occurrence
+        return True
+
+
+class DepTimeline(FakeTimeline):
+    def __init__(self, spec, refuses=()):
+        self.items = []
+        for name, entity in spec:
+            it = DepItem(name, self, can_reorder=(name not in refuses))
+            it.entity = entity
+            self.items.append(it)
+
+
+_WHOLE_BLOCK_AFTER_INLAY = [
+    _root(" B-Spline Set:1"), _root("Group1"), _root("Plane for pattern lattice-x"), _root("Source - L2 - vbit"),
+    (" Frame_1:1", _Entity(creates="Frame_1")),
+    _fr("T1_1_bounding_box"), _fr("T1_2_shape_outline"), _fr("T1_3_frame_enclosure"),
+    _fr("t1_frame_bottom_Extrude"), _trim("t1_TRIM_CUT"),
+]
+
+
+class TestWholeBlockAfterTheInlay:
+    def test_the_occurrence_moves_first_then_its_children_accept(self):
+        tl = DepTimeline(_WHOLE_BLOCK_AFTER_INLAY)
+        result = ensure_frame_before_inlay(types_ns(timeline=tl), "Frame_1")
+        assert result == {"moved": True, "reason": None}
+        assert tl.names() == [" B-Spline Set:1", "Group1", " Frame_1:1", "T1_1_bounding_box", "T1_2_shape_outline",
+                              "T1_3_frame_enclosure", "t1_frame_bottom_Extrude", "t1_TRIM_CUT",
+                              "Plane for pattern lattice-x", "Source - L2 - vbit"]
+
+    def test_a_refusal_mid_block_puts_every_moved_item_back(self):
+        tl = DepTimeline(_WHOLE_BLOCK_AFTER_INLAY, refuses=("t1_frame_bottom_Extrude",))
+        before = tl.names()
+        result = ensure_frame_before_inlay(types_ns(timeline=tl), "Frame_1")
+        assert result == {"moved": False, "reason": "'t1_frame_bottom_Extrude' refused reorder"}
+        assert tl.names() == before  # nothing moved in the end
