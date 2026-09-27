@@ -403,19 +403,26 @@ describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
       const el = doc.getElementById(id);
       expect(el, id).not.toBeNull();
       expect(el.getAttribute('type'), id).toBe('number');
-      // FB-APP F9: a FRAME field is bound to the frame record (FRAME_PARAM_FIELDS), not to a P key.
-      if (section === 'FRAME') expect(FRAME_PARAM_FIELDS.map((f) => f.id), id).toContain(id);
+      // FB-APP F9/F15: a FRAME field is bound to the frame record (a FRAME_PARAM_FIELDS param, or frameBottomZ),
+      // not to a P key.
+      if (section === 'FRAME') expect([...FRAME_PARAM_FIELDS.map((f) => f.id), 'frameBottomZ'], id).toContain(id);
       else expect(pKeyFor(id), `${id} has no P key`).toBeTruthy();
+      // F15: the frame thickness lives in the editor's Frame tab, every other field in its sidebar section
+      if (id === 'editorFrameThickness') { expect(el.closest('#editorFramePanel'), id).not.toBeNull(); continue; }
       const hdr = el.closest('.panel')?.querySelector('.panel-header')?.textContent || '';
       expect(hdr, id).toContain(section);
     }
   });
-  it('never declares the excluded fields (seed id, FRAME, stamp transform, lattice/editor)', () => {
+  it('never declares the excluded fields (seed id, lattice/editor panels); F15 covers the rest', () => {
     const ids = FORMULA_FIELDS.map((f) => f.id);
-    for (const bad of ['seed', 'frameBottomZ', 'stampTx', 'stampTy', 'stampRotation', 'stampScale',
-      'sculptTopHardness', 'sculptBotHardness']) expect(ids).not.toContain(bad);
-    expect(ids.filter((id) => /^(lattice|shapeLattice|editor|skel)/.test(id))).toEqual([]);
+    expect(ids).not.toContain('seed');
+    // the lattice panels have their own (R3); the only editor field is the Frame tab's thickness (F15)
+    expect(ids.filter((id) => /^(lattice|shapeLattice|editor|skel)/.test(id))).toEqual(['editorFrameThickness']);
     expect(new Set(ids).size).toBe(ids.length);
+    // F15: Frame bottom + thickness and the sculpt Strength / Hardness are formula fields now
+    for (const id of ['frameBottomZ', 'editorFrameThickness', 'sculptTopHardness', 'sculptBotHardness']) expect(ids).toContain(id);
+    // the stamp transform is per LAYER: not a sidebar P field, attached by its own binder (STAMP_TRANSFORM_FIELDS)
+    for (const id of ['stampTx', 'stampTy', 'stampRotation', 'stampScale']) expect(ids).not.toContain(id);
   });
   it('each section scope = stock names + its own, unique names, every name reads a finite P value', () => {
     // FRAME names read the frame record: finite once a frame is chosen (no frame = the section is hidden)

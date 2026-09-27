@@ -1392,3 +1392,95 @@ handle. Fred's "Untitled" was never touched. MAIN redeployed and verified at the
   files). The full suite is the advisor's gate.
 - **Shots:** `seatC/*_F14s6_*`, `*_F14s8_*`.
 - **Capacity:** fine.
+
+
+## 🔨 turn 28 — F15 (seat C, epoch 1): formula fields for the remaining numeric fields
+
+Commits (fb-app, pushed): `1c3b1ca` items 1-4 · this commit: the log. NO FUSION. No deploy.
+
+### Item 1: the stamp layer transform (tx / ty / rotation / scale)
+- **One attach path:** `bindLayerOnlyNumber(inputId, sliderId, field, { formulaScope })`
+  (`main/stamp/_dom-binders.js`) calls `attachFormula` on its number input. It is the same binder
+  every sidebar formula uses, not a copy.
+  - The binder's own `input`/`change` listeners stay unchanged: `attachFormula` holds formula text
+    back and commits a plain number through them, so the slider, the remask and the undo snapshot
+    all behave as they do for a typed number.
+- **Declared:** `STAMP_TRANSFORM_FIELDS` in `main/formula-fields.js` (id, layer field, name
+  x / y / rotation / scale).
+  - `transform.js` now builds its 4 binds FROM that table, so there is one source.
+  - `stampTransformScope(activeLayer)` = the stock names + the ACTIVE layer's own values, read live.
+    A layer switch changes what `x` means, which the test checks.
+- **Where the value lands (measured in Chrome):** in `window.svgEditor._layers[activeLayerIdx]`, the
+  single tooling store since SE5a. My first readback of `P.stampLayers` looked wrong for that
+  reason; the binder's own accessor is what the driver reads now.
+
+### Item 2: sculpt Strength / Hardness, which had NO write path
+- **Stated as asked:** there was no file:line that writes them.
+  - `bindControls` (`main/ui-bindings.js:29-40`) binds each P key to `INPUT_PAIRS[key] || key`.
+    The P keys are `sculptTopStrength` / `sculptBotStrength` (`core/state.js:88,94`, read by
+    `core/sculpt-interaction.js:55`).
+  - The CAD restyle `5842d90` (2026-04-20) renamed the inputs to `sculpt{Top,Bot}Hardness`, and
+    nothing aliased them. It also changed the range from 0.001–0.1 to 0–1, value 0.5.
+  - **Effect:** the field and slider did nothing. The brush always used 0.03 / 0.008 while the field
+    showed 0.5.
+- **Fix, declared (no new code path):**
+  - `INPUT_PAIRS` maps `sculptTopStrength → sculptTopHardness` (and bottom); `SLIDER_PAIRS` points
+    at the `…HardnessSlider` ids. `bind()` and `syncUItoParam` both read these.
+  - The markup takes the brush's real range, 0.001–0.1 step 0.001 (`dZ = -screenDY * strength`,
+    in/px; 0.5 would be enormous), defaulting to the P values.
+  - Then the fields are attached like the other SCULPT fields, with the name `strength`.
+- **Behaviour change for Fred:** the Strength field now actually changes the brush. It starts at the
+  brush's real default (0.03 top / 0.008 bottom), not the fake 0.5. Saved projects already carry
+  the P values, so nothing to migrate.
+
+### Item 3: Frame bottom (z) + Frame thickness
+- Both join the FRAME section, next to Trim offset. Names: `trim`, `bottom`, `thickness`, all
+  reading the frame record live.
+- Frame bottom commits through `frame-panel`'s own `change` handler (`frameBottomZ`). Thickness
+  commits through the `FRAME_PARAM_FIELDS` handler and clamps to the template's 0.25–1.5 (min/max
+  put on the input by `syncFramePanel`).
+- The thickness field is the editor Frame tab's `editorFrameThickness`, the only thickness field
+  there is.
+
+### Item 4: tests + shots
+- **`tests/formula-fields-f15.test.js`** (14 tests), through the real paths:
+  - `initTransform → bindLayerOnlyNumber` on a live active-layer accessor;
+  - `initFramePanel` + `attachFormulaFields`;
+  - the declared alias + `syncUItoParam`;
+  - the markup range.
+  - Per field: a formula evaluates, a result clamps (rotation 270 → 180, scale → 0.1, thickness →
+    1.5 / 0.25), a bad formula keeps the old value, and the dropdown lists the declared names.
+- **`tests/formula.test.js`:** the R2 guard "never declares frameBottomZ / stamp / hardness" could no
+  longer fail, so it is INVERTED. It now asserts the F15 fields ARE declared, that the stamp
+  transform is not a sidebar P field (it lives on the layer), and that the only `editor*` id is the
+  Frame tab's thickness.
+- **Real Chrome (`tools/repro/formula_f15_shots.mjs`, real key events, desktop + mobile touch):** every
+  check ok:
+  - stamp X = width/4 → layer tx 1.75;
+  - rotation+500 → 180;
+  - `x+*` kept;
+  - strength\*2: 0.03 → 0.06, and strength\*100 → 0.1;
+  - bottom = -height/9 - trim → -1.25, and a bad formula is kept;
+  - thickness width/10 → 0.7.
+- **Found by the mobile shot:** the formula dropdown ran off a 390 px screen's right edge, hiding the
+  values (`2229_F15_mobile_stamp`).
+  - Fixed in the shared binder: `popupLeft` keeps the preview and dropdown inside the viewport
+    (`core/formula-field.js`).
+  - This affects every formula field, and is an improvement for all of them.
+  - Shots after the fix: `2230_F15_mobile_*`, `2232_F15_desktop_*`.
+- **Mutations (restored from my copies), 9 of 9 killed:** transform passes no scope 5; binder never
+  attaches 5; layer scope not live 1; no hardness alias 2; old slider id 1; frame bottom not
+  declared 4; hardness not declared 2; popup not clamped 1; old hardness range 1.
+- **Pre-change tree:** the new test imports `STAMP_TRANSFORM_FIELDS`, which doesn't exist there.
+
+### Notes
+- **Sweep:** the formula-fields header comment is rewritten (the old "deliberately NOT here" list is
+  now covered). There are no other references to the old `sculptTopStrengthSlider` id.
+  `stamp-editor/` is generated and untracked.
+- **Seat A:** the edits are in `ui` files seat A doesn't hold for H1 (`state.js` INPUT_PAIRS,
+  `formula-*`, `stamp/*`, the sculpt and stamp markup). Not the toolbar, not the drag/snap paths,
+  not `lattice-piece-panel.js`.
+- **Gates:** the 21 spec files that import a touched module: 299/299. The full suite is the
+  advisor's gate.
+- Server stopped. My headless Chrome instances exited (none left with my profiles).
+- **Capacity:** fine.

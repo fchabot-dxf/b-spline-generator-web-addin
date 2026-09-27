@@ -7,12 +7,12 @@
  * Applied at rasterize time by core/stamp/transform.js — wraps the
  * SVG content in a `<g transform="...">` before rasterization.
  */
+import { STAMP_TRANSFORM_FIELDS, stampTransformScope } from '../formula-fields.js';
+
 export function initTransform(ctx) {
+  const formulaScope = stampTransformScope(ctx.activeLayer); // F15: formulas over the active layer's own values
   return ctx.registerSyncs('transform',
-    ctx.bindLayerOnlyNumber('stampTx',       'stampTxSlider',       'tx'),
-    ctx.bindLayerOnlyNumber('stampTy',       'stampTySlider',       'ty'),
-    ctx.bindLayerOnlyNumber('stampRotation', 'stampRotationSlider', 'rotation'),
-    ctx.bindLayerOnlyNumber('stampScale',    'stampScaleSlider',    'scale'),
+    ...STAMP_TRANSFORM_FIELDS.map((f) => ctx.bindLayerOnlyNumber(f.id, `${f.id}Slider`, f.field, { formulaScope })),
     ctx.bindLayerOnlyCheckbox('stampMirrorX', 'mirrorX'),
     ctx.bindLayerOnlyCheckbox('stampMirrorY', 'mirrorY'),
   );

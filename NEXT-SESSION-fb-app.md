@@ -1,22 +1,22 @@
-# NEXT (fb-app) — F14: S6 (extruder reads declared features) + S8 (waist inversion in the FUSION solve)
+# NEXT (fb-app) — F15: FORMULA-FIELDS for the remaining numeric fields (stamp transforms, sculpt hardness, Frame bottom)
 
-**Ball: worker (seat C) · epoch 1 · F14.** F13 ACCEPTED (a830598), being merged to main. Spec: FB-APP-DESIGN.md stage rows
-S6 + S8. **FUSION WINDOW GRANTED on Ranchy for this task**, same hard rules as F11 (scratch docs you create, tagged
-claude/scratch and closed by handle; never touch Fred's docs; claude-* names deleted; purge non-deployed imports;
-deploy your fb-app build to test, REDEPLOY MAIN when done; short bridge calls; if the bridge dies or a dialog appears,
-stop and report, don't click). PROGRESS automatic ("F14 item N: …"); shots -> shots\seatC\ as items land.
+**Ball: worker (seat C) · epoch 1 · F15.** F14 ACCEPTED + merged (6cb16a8). FB-APP S0–S8 are ALL DONE. You now take items
+from the regular add-in queue that don't collide with seat A (seat A = H1 SNAP-SPLIT: drag/snap paths + the toolbar;
+then SEG-COLOR-PANEL in lattice-piece-panel.js). NO FUSION. **Deploy rule (incident today): to put main into Fusion,
+ONLY deploy from a clean scratch worktree at origin/main, never from the main checkout (it holds seat A's WIP).**
+PROGRESS automatic ("F15 item N: …"); shots -> shots\seatC\ as items land; push each item.
 
-Fred's rule applies to S8: NO runtime guard ("warn and don't send" from the old S8 row is DROPPED). Code it right in the
-templates' solve and PROVE it by tests + goldens.
+Context: the Asus R1/R2/R5 FORMULA-FIELDS (core/formula.js, core/formula-field.js, main/formula-fields.js; declared
+scopes; min/max clamp; autocomplete dropdown) cover P-bound sidebar fields + both lattice panels + per-piece width. Its R2
+note (WORK-LOG-reg-addin.md ~l.30) lists what's left:
 
 ## Checklist
-- [ ] [F14-item-1] S6: the extruder reads the template's DECLARED features (frame-defs features: bars, trim, offsets) instead of
-      the bounding-box classifier; the classifier stays only where a template declares no features (stated). Live: T1 +
-      T2 build the same 4 bars + trim as before (volumes vs the recorded goldens), in both Send orders.
-- [ ] [F14-item-2] S8: reproduce a waist-INVERTED Fusion frame build live (search the template params/seeds space in a
-      scratch doc; record the exact params + a screenshot) -> a FAILING golden; fix the templates' solve (Python side,
-      phases) so it can't invert; the new golden goes green, and all existing goldens stay green. If no inversion can be
-      reproduced across a declared sweep, report that with the sweep as evidence (then S8 closes as "not reproducible,
-      guarded by the F5/F13 ranges").
-- [ ] [F14-item-3] Clean up (tagged docs closed, MAIN redeployed) + WORK-LOG + shots.
-Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F14 — <shas>"`.
+- [ ] [F15-item-1] Stamp layer transform fields stampTx/Ty/Rotation/Scale: they're written to the active layer by
+      bindLayerOnlyNumber (main/stamp/_dom-binders.js), not bind()/applyParam. Attach formula fields through THAT binder
+      with a declared per-layer scope (e.g. width, height, the layer's own current values); one attach path, not a copy.
+- [ ] [F15-item-2] sculptTopHardness / sculptBotHardness: find their real write path first (state the file:line), then attach.
+- [ ] [F15-item-3] Frame section: frameBottomZ + Frame thickness get formula fields like Trim offset (scope: widthIn,
+      heightIn, the frame params).
+- [ ] [F15-item-4] Tests (each field: a formula evaluates, clamps, a bad formula keeps the old value, the autocomplete
+      lists the declared names) + shots.
+Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F15 — <shas>"`.
