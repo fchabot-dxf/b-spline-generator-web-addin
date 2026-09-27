@@ -12980,3 +12980,50 @@ reran clean.
   the same `P.stampLayers` array).
 
 `npx vitest run` -> **2238 passed** (up from 2234), zero regressions.
+
+## H22 item 3 — fixed the second instance named in H22 item 2's sweep, tested and cleared the two adjacent ones
+
+`main/stamp-mask-manager.js`'s `updateStampMasks` looked up `P.stampLayers?.[idx]` where `idx` is an editor
+layer's raw POSITION in `editor._layers` (unlike item 2's bug, this file's own `idx` is never re-compacted by
+filtering — a hidden layer mid-list does NOT shift later positions here). The real mismatch: `P.stampLayers`
+is 3 FIXED legacy tooling-default slots (`core/state.js`) that predate per-layer editor tooling, each carrying
+its own internal `id` (`'layer0'`/`'layer1'`/`'layer2'`) that is never read as a join key anywhere in the
+codebase (confirmed by grep — dead data). The REAL correspondence these two systems share, per `app-init.js`'s
+own `MIGRATIONS` comment ("confirmed this is what `editor/layers.js`'s `_nextLayerId` actually generates for a
+fresh roster, `'0'`/`'1'`/... not `'layer0'`/`'layer1'`"): a fresh editor layer's own `id` — a plain, sequential,
+creation-order string — is numerically its legacy slot index. Position, not id, is what breaks: reordering
+(H22 item 1's drag-to-reorder) or deleting an earlier layer shifts a later layer's ARRAY POSITION without
+changing its `id`, so the old `P.stampLayers[idx]` silently read a different slot's depth/profile/blur/etc.
+
+**Fix**: added `resolveLegacyStampLayer(eLayer)` (`stamp-mask-manager.js`, exported for direct testing,
+matching this file's own `clearEmptyLayerMasks` precedent for pulling pure logic out for testability) —
+looks up `P.stampLayers[Number(eLayer.id)]`, returning `{}` for a non-numeric id or one outside the legacy
+array's range (a 4th+ layer, or any pattern-generated kind-layer id like `'rails'`). `updateStampMasks` now
+calls this instead of the positional read; `idx` itself is untouched everywhere else in the file (it's still
+correctly used to index `editorLayers`/`emptyIdxs`, the SAME array it came from — only the cross-array legacy
+lookup changed).
+
+**Tests** (`tests/resolve-legacy-stamp-layer.test.js`, 4 new): a layer whose position shifted (simulating an
+earlier layer's deletion) still resolves ITS OWN legacy slot by id, not whichever slot its new position would
+imply; an id outside the legacy range, a non-numeric (pattern) id, and an empty `P.stampLayers` all return `{}`
+cleanly. Mutation-tested: stashed the fix and reran — **all 4 fail** (`resolveLegacyStampLayer is not a
+function` — the function is new, the strongest possible non-vacuous signal). Restored, reran clean.
+
+**The two adjacent "not confirmed broken" lookups** (`main/stamp/_shared.js`'s `activeEditorLayer()`/
+`activeLayer()` and `core/state.js`'s `updateP` layer-sync, both reading
+`window.svgEditor._layers[P.activeLayerIdx]`) — tested empirically rather than re-argued from the source:
+traced that `main/stamp/layer.js`'s `syncFromEditor` recomputes `P.activeLayerIdx` fresh
+(`_layers.findIndex(id)`) on every `editorLayersChanged` event, which `editor/layers.js`'s
+`renderLayersPanel` — called by every layer mutator including `reorderLayer` — dispatches after every
+roster change, reorder included. Wrote `tests/stamp-active-layer-idx-reorder.test.js` (2 new): a REAL
+drag-to-reorder (same pointer-event gesture as H22 item 1's own tests, not a hand-edited array) that moves
+the active layer from array index 1 to index 0 without it being the dragged row, then asserts both
+`_shared.js`'s `ctx.activeLayer()` and `core/state.js`'s `updateP('stampDepth', ...)` still resolve/write the
+TRUE active layer, not whichever layer now sits at the stale index. **Both pass** — per the dispatch's "fix
+only if it fails, else leave and say so": leaving both unfixed. This is a live, drag-driven test of the exact
+"correct only as long as activeLayerIdx is kept as a true live position" condition flagged in item 2's
+WORK-LOG, not just a repeat of that same code-reading — it empirically closes that flag rather than leaving
+it as an assumption.
+
+`npx vitest run` -> **2320 passed** (up from 2238 before this item — the gap includes an unrelated lane-b
+merge pulled in between items, not just this item's own 6 new tests), zero regressions.

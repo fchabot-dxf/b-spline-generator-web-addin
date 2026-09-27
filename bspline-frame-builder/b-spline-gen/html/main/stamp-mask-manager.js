@@ -28,6 +28,27 @@ export function clearEmptyLayerMasks(editorLayers, emptyIdxs) {
 }
 
 /**
+ * H22 item 3: resolve the legacy P.stampLayers tooling-default entry (if
+ * any) for an editor layer, joined by the editor layer's own id — never
+ * by its current position in editor._layers.
+ *
+ * P.stampLayers is 3 fixed legacy slots predating per-layer editor
+ * tooling; a FRESH editor roster's ids are '0'/'1'/'2'/... in creation
+ * order (editor/layers.js's _nextLayerId — confirmed the same
+ * correspondence app-init.js's MIGRATIONS relies on), so a layer's own id
+ * IS its legacy slot index. Looking this up by ARRAY POSITION instead
+ * breaks the moment a layer is reordered (H22 item 1's drag-to-reorder)
+ * or an earlier layer is deleted — either shifts a later layer's position
+ * without changing its id, silently borrowing a different legacy slot's
+ * depth/profile/blur/etc.
+ */
+export function resolveLegacyStampLayer(eLayer) {
+  const legacyIdx = Number(eLayer && eLayer.id);
+  if (!Number.isInteger(legacyIdx) || legacyIdx < 0) return {};
+  return (P.stampLayers && P.stampLayers[legacyIdx]) || {};
+}
+
+/**
  * Step 3 unification: produce one stamp pass per editor layer. The
  * editor's sketch is the single SVG document; each layer's content is
  * a partition of it (children with `data-layer="<layer.id>"`).
@@ -68,12 +89,12 @@ export async function updateStampMasks(nx, nz) {
 
   if (work.length === 0) return myGeneration === _refreshGeneration;
 
-  const promises = work.map(async ({ idx, layer, svg }) => {
-    // Resolve tooling: editor wins, then P.stampLayers[idx] (still the one
-    // place tooling lives — this mirror isn't part of the content
-    // retirement), then global P.*
+  const promises = work.map(async ({ layer, svg }) => {
+    // Resolve tooling: editor wins, then the matching legacy P.stampLayers
+    // entry (H22 item 3: joined by id, not by idx — see
+    // resolveLegacyStampLayer above), then global P.*
     const eLayer = layer;
-    const lLayer = P.stampLayers?.[idx] || {};
+    const lLayer = resolveLegacyStampLayer(eLayer);
 
     const blurIn = eLayer.blur ?? lLayer.blur ?? 0;
     const stampProfile = eLayer.profile ?? lLayer.profile ?? P.stampProfile;
