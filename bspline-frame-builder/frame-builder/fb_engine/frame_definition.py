@@ -34,17 +34,19 @@ DEFAULT_TEMPLATE = None
 # test_frame_defs.py). MEASURED (F11/F12, Fusion 2705): there is no
 # "3D Cherry - Unfinished" nor "3D Maple - Unfinished"; the closest real ones
 # are "Cherry" (the only cherry) and "3D Maple - Painted" (the only maple).
+# F14 (Fred: "keep only 3D grain ones", "yes oak"): only "3D ..." appearances.
+# Cherry (a flat, non-3D appearance) is removed; a saved Cherry frame gets the
+# default, by the record gate's own rule for an unlisted wood. Oak is added.
 APPEARANCE_OPTIONS = (
     "3D Ash - Unfinished",
     "3D Mahogany - Unfinished",
     "3D Pine - Unfinished",
-    "Cherry",
     "3D Maple - Painted",
+    "3D Oak - Painted",
 )
 # F12: names saved before the fix -> their real appearance, so a saved project
 # keeps its wood (applied by the app's record gate, normalizeFrameRecord).
 APPEARANCE_RENAMED = {
-    "3D Cherry - Unfinished": "Cherry",
     "3D Maple - Unfinished": "3D Maple - Painted",
 }
 DEFAULT_APPEARANCE = APPEARANCE_OPTIONS[0]
@@ -55,8 +57,8 @@ APPEARANCE_PREVIEW_COLORS = {
     "3D Ash - Unfinished": "#d9c9a3",
     "3D Mahogany - Unfinished": "#7a3b2e",
     "3D Pine - Unfinished": "#e3c07a",
-    "Cherry": "#9c4a2f",
     "3D Maple - Painted": "#ead7ad",
+    "3D Oak - Painted": "#b88a55",
 }
 
 # Fred (Q3, "it's a position, not a value"): frame_height_offset is the Z of
@@ -86,8 +88,9 @@ EXTRUSION_SETTINGS = (
 )
 
 # The features every current template builds from sketch 3. The extruder
-# still classifies profiles by bounding box today (S6 switches it to read
-# this); the regions named here are each template's own FRAME_REGIONS.
+# reads these (F14 S6: fb_engine/declared_profiles.py); the regions named here
+# are each template's own FRAME_REGIONS. `bodyNames` follow the `miters` order
+# (each miter starts a bar).
 COMMON_FRAME_FEATURES = (
     {"id": "bars", "op": "newBody", "region": "outline-minus-inner", "splitBy": "miters",
      "start": FRAME_BOTTOM_PARAM, "extent": {"toFace": "core.underside", "offset": "0 in"},

@@ -1,0 +1,334 @@
+{
+ "cases": [
+  {
+   "golden": "template_1_7x9",
+   "profiles": [
+    {
+     "area": 4.3125,
+     "ids": [
+      "inner_proj_bottom_edge",
+      "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S",
+      "miter-proj_horn_BL:S_inner_proj_horn_BL:S",
+      "proj_bottom_edge"
+     ]
+    },
+    {
+     "area": 6.56386,
+     "ids": [
+      "inner_proj_arc_waist_R",
+      "inner_proj_horn_BR",
+      "inner_proj_horn_TR",
+      "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S",
+      "miter-proj_horn_TR:S_inner_proj_horn_TR:S",
+      "proj_arc_hip_R",
+      "proj_arc_shoulder_R",
+      "proj_arc_waist_R",
+      "proj_horn_BR",
+      "proj_horn_TR"
+     ]
+    },
+    {
+     "area": 30.7821,
+     "ids": [
+      "inner_proj_arc_waist_L",
+      "inner_proj_arc_waist_R",
+      "inner_proj_bottom_edge",
+      "inner_proj_horn_BL",
+      "inner_proj_horn_BR",
+      "inner_proj_horn_TL",
+      "inner_proj_horn_TR",
+      "inner_proj_top_edge"
+     ]
+    },
+    {
+     "area": 6.56386,
+     "ids": [
+      "inner_proj_arc_waist_L",
+      "inner_proj_horn_BL",
+      "inner_proj_horn_TL",
+      "miter-proj_horn_BL:S_inner_proj_horn_BL:S",
+      "miter-proj_top_edge:S_inner_proj_top_edge:S",
+      "proj_arc_hip_L",
+      "proj_arc_shoulder_L",
+      "proj_arc_waist_L",
+      "proj_horn_BL",
+      "proj_horn_TL"
+     ]
+    },
+    {
+     "area": 45.90269,
+     "ids": [
+      "proj_arc_hip_L",
+      "proj_arc_hip_R",
+      "proj_arc_shoulder_L",
+      "proj_arc_shoulder_R",
+      "proj_arc_waist_L",
+      "proj_arc_waist_R",
+      "proj_bottom_edge",
+      "proj_horn_BL",
+      "proj_horn_BR",
+      "proj_horn_TL",
+      "proj_horn_TR",
+      "proj_top_edge",
+      "surround_bottom",
+      "surround_left",
+      "surround_rect",
+      "surround_right"
+     ]
+    },
+    {
+     "area": 4.3125,
+     "ids": [
+      "inner_proj_top_edge",
+      "miter-proj_horn_TR:S_inner_proj_horn_TR:S",
+      "miter-proj_top_edge:S_inner_proj_top_edge:S",
+      "proj_top_edge"
+     ]
+    }
+   ],
+   "template": "template_1"
+  },
+  {
+   "golden": "template_1_12x6",
+   "profiles": [
+    {
+     "area": 8.0625,
+     "ids": [
+      "inner_proj_bottom_edge",
+      "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S",
+      "miter-proj_horn_BL:S_inner_proj_horn_BL:S",
+      "proj_bottom_edge"
+     ]
+    },
+    {
+     "area": 5.21158,
+     "ids": [
+      "inner_proj_arc_waist_R",
+      "inner_proj_horn_BR",
+      "inner_proj_horn_TR",
+      "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S",
+      "miter-proj_horn_TR:S_inner_proj_horn_TR:S",
+      "proj_arc_hip_R",
+      "proj_arc_shoulder_R",
+      "proj_arc_waist_R",
+      "proj_horn_BR",
+      "proj_horn_TR"
+     ]
+    },
+    {
+     "area": 34.35059,
+     "ids": [
+      "inner_proj_arc_waist_L",
+      "inner_proj_arc_waist_R",
+      "inner_proj_bottom_edge",
+      "inner_proj_horn_BL",
+      "inner_proj_horn_BR",
+      "inner_proj_horn_TL",
+      "inner_proj_horn_TR",
+      "inner_proj_top_edge"
+     ]
+    },
+    {
+     "area": 5.21158,
+     "ids": [
+      "inner_proj_arc_waist_L",
+      "inner_proj_horn_BL",
+      "inner_proj_horn_TL",
+      "miter-proj_horn_BL:S_inner_proj_horn_BL:S",
+      "miter-proj_top_edge:S_inner_proj_top_edge:S",
+      "proj_arc_hip_L",
+      "proj_arc_shoulder_L",
+      "proj_arc_waist_L",
+      "proj_horn_BL",
+      "proj_horn_TL"
+     ]
+    },
+    {
+     "area": 51.60125,
+     "ids": [
+      "proj_arc_hip_L",
+      "proj_arc_hip_R",
+      "proj_arc_shoulder_L",
+      "proj_arc_shoulder_R",
+      "proj_arc_waist_L",
+      "proj_arc_waist_R",
+      "proj_bottom_edge",
+      "proj_horn_BL",
+      "proj_horn_BR",
+      "proj_horn_TL",
+      "proj_horn_TR",
+      "proj_top_edge",
+      "surround_bottom",
+      "surround_left",
+      "surround_rect",
+      "surround_right"
+     ]
+    },
+    {
+     "area": 8.0625,
+     "ids": [
+      "inner_proj_top_edge",
+      "miter-proj_horn_TR:S_inner_proj_horn_TR:S",
+      "miter-proj_top_edge:S_inner_proj_top_edge:S",
+      "proj_top_edge"
+     ]
+    }
+   ],
+   "template": "template_1"
+  },
+  {
+   "golden": "template_2_7x9",
+   "profiles": [
+    {
+     "area": 4.3125,
+     "ids": [
+      "inner_proj_bottom_edge",
+      "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S",
+      "miter-proj_horn_BL:S_inner_proj_horn_BL:S",
+      "proj_bottom_edge"
+     ]
+    },
+    {
+     "area": 6.3084,
+     "ids": [
+      "inner_proj_arc_waist_R",
+      "inner_proj_horn_BR",
+      "inner_proj_horn_TR",
+      "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S",
+      "miter-proj_horn_TR:S_inner_proj_horn_TR:S",
+      "proj_arc_hip_R",
+      "proj_arc_waist_R",
+      "proj_horn_BR",
+      "proj_horn_TR"
+     ]
+    },
+    {
+     "area": 30.79759,
+     "ids": [
+      "inner_proj_arc_waist_L",
+      "inner_proj_arc_waist_R",
+      "inner_proj_bottom_edge",
+      "inner_proj_horn_BL",
+      "inner_proj_horn_BR",
+      "inner_proj_horn_TL",
+      "inner_proj_horn_TR",
+      "inner_proj_top_edge"
+     ]
+    },
+    {
+     "area": 6.3084,
+     "ids": [
+      "inner_proj_arc_waist_L",
+      "inner_proj_horn_BL",
+      "inner_proj_horn_TL",
+      "miter-proj_horn_BL:S_inner_proj_horn_BL:S",
+      "miter-proj_top_edge:S_inner_proj_top_edge:S",
+      "proj_arc_hip_L",
+      "proj_arc_waist_L",
+      "proj_horn_BL",
+      "proj_horn_TL"
+     ]
+    },
+    {
+     "area": 48.25942,
+     "ids": [
+      "proj_arc_hip_L",
+      "proj_arc_hip_R",
+      "proj_arc_waist_L",
+      "proj_arc_waist_R",
+      "proj_bottom_edge",
+      "proj_horn_BL",
+      "proj_horn_BR",
+      "proj_horn_TL",
+      "proj_horn_TR",
+      "proj_top_edge",
+      "surround_bottom",
+      "surround_left",
+      "surround_rect",
+      "surround_right"
+     ]
+    },
+    {
+     "area": 2.4512,
+     "ids": [
+      "inner_proj_top_edge",
+      "miter-proj_horn_TR:S_inner_proj_horn_TR:S",
+      "miter-proj_top_edge:S_inner_proj_top_edge:S",
+      "proj_top_edge"
+     ]
+    }
+   ],
+   "template": "template_2"
+  },
+  {
+   "golden": "template_2_12x6",
+   "profiles": [
+    {
+     "area": 4.53161,
+     "ids": [
+      "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S",
+      "miter-proj_horn_TR:S_inner_proj_horn_TR:S",
+      "proj_arc_hip_R",
+      "proj_arc_waist_R",
+      "proj_horn_BR",
+      "proj_horn_TR"
+     ]
+    },
+    {
+     "area": 8.0625,
+     "ids": [
+      "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S",
+      "miter-proj_horn_BL:S_inner_proj_horn_BL:S",
+      "proj_bottom_edge"
+     ]
+    },
+    {
+     "area": 52.32561,
+     "ids": [
+      "proj_arc_hip_L",
+      "proj_arc_hip_R",
+      "proj_arc_waist_L",
+      "proj_arc_waist_R",
+      "proj_bottom_edge",
+      "proj_horn_BL",
+      "proj_horn_BR",
+      "proj_horn_TL",
+      "proj_horn_TR",
+      "proj_top_edge",
+      "surround_bottom",
+      "surround_left",
+      "surround_rect",
+      "surround_right"
+     ]
+    },
+    {
+     "area": 5.81316,
+     "ids": [
+      "miter-proj_horn_TR:S_inner_proj_horn_TR:S",
+      "miter-proj_top_edge:S_inner_proj_top_edge:S",
+      "proj_top_edge"
+     ]
+    },
+    {
+     "area": 37.23552,
+     "ids": []
+    },
+    {
+     "area": 4.53161,
+     "ids": [
+      "miter-proj_horn_BL:S_inner_proj_horn_BL:S",
+      "miter-proj_top_edge:S_inner_proj_top_edge:S",
+      "proj_arc_hip_L",
+      "proj_arc_waist_L",
+      "proj_horn_BL",
+      "proj_horn_TL"
+     ]
+    }
+   ],
+   "template": "template_2"
+  }
+ ],
+ "note": "real Fusion sketch-3 profiles: the FrameBuilder.ID of each bounding curve + the profile area (in^2). Untagged curves are absent from ids.",
+ "recorded": "2026-09-26",
+ "recorder": "F14 live (seat C): scratchpad f14_live.py frame_report, flat-box core as the S4 goldens"
+}

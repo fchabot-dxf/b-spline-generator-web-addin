@@ -17,17 +17,25 @@ describe('frame-defs (generated) — schema', () => {
 
   it('declares the 5 woods with Ash as the default', () => {
     expect(FRAME_DEFS.appearance.default).toBe('3D Ash - Unfinished');
-    // F12: real Fusion library names (validated against the recorded listing in test_frame_defs.py)
+    // F12: real Fusion library names (validated against the recorded listing in test_frame_defs.py);
+    // F14 (Fred): only 3D grain ones, Cherry retired, Oak added
     expect(FRAME_DEFS.appearance.options).toEqual([
       '3D Ash - Unfinished', '3D Mahogany - Unfinished', '3D Pine - Unfinished',
-      'Cherry', '3D Maple - Painted',
+      '3D Maple - Painted', '3D Oak - Painted',
     ]);
+  });
+
+  it('F14: a saved Cherry frame migrates to the default Ash (an unlisted wood gets the default)', async () => {
+    const { normalizeFrameRecord } = await import('../bspline-frame-builder/b-spline-gen/html/core/frame-record.js');
+    expect(normalizeFrameRecord({ templateId: 'template_1', appearance: 'Cherry' }).appearance).toBe('3D Ash - Unfinished');
+    // the pre-F12 name too
+    expect(normalizeFrameRecord({ templateId: 'template_1', appearance: '3D Cherry - Unfinished' }).appearance).toBe('3D Ash - Unfinished');
+    expect(normalizeFrameRecord({ templateId: 'template_1', appearance: '3D Oak - Painted' }).appearance).toBe('3D Oak - Painted');
   });
 
   it('F12: a wood saved under its old non-existent name keeps its choice (declared rename)', async () => {
     const { normalizeFrameRecord } = await import('../bspline-frame-builder/b-spline-gen/html/core/frame-record.js');
-    expect(FRAME_DEFS.appearance.renamed).toEqual({ '3D Cherry - Unfinished': 'Cherry', '3D Maple - Unfinished': '3D Maple - Painted' });
-    expect(normalizeFrameRecord({ templateId: 'template_1', appearance: '3D Cherry - Unfinished' }).appearance).toBe('Cherry');
+    expect(FRAME_DEFS.appearance.renamed).toEqual({ '3D Maple - Unfinished': '3D Maple - Painted' });
     expect(normalizeFrameRecord({ templateId: 'template_1', appearance: '3D Maple - Unfinished' }).appearance).toBe('3D Maple - Painted');
     expect(normalizeFrameRecord({ templateId: 'template_1', appearance: 'Balsa' }).appearance).toBe('3D Ash - Unfinished');
   });

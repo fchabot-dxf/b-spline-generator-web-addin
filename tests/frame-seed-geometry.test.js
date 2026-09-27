@@ -23,11 +23,13 @@ function literalSteps(tpl) {
   }
   return out;
 }
-/** A literal seed expression in inches: widthIn/heightIn are inches; a bare number is cm (BuildContext). */
+/** A literal seed expression in inches: widthIn/heightIn/boundingboxoffset and "N in" are inches; a bare
+ * number is cm (BuildContext). F14: the seeds sit on the seed board (fb_engine/seed_basis.py). */
+const BBOX = 0.25; // the template default the records use
 const evalIn = (e) => {
-  const s = String(e);
+  const s = String(e).replace(/(\d*\.?\d+)\s*in\b/g, '($1)');
   if (/^[-+]?\d*\.?\d+$/.test(s.trim())) return Number(s) / CM;
-  return Function('widthIn', 'heightIn', `return (${s});`)(W, H);
+  return Function('widthIn', 'heightIn', 'boundingboxoffset', `return (${s});`)(W, H, BBOX);
 };
 const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 

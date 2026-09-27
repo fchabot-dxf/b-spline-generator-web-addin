@@ -9,6 +9,11 @@ from fb_engine.document_discovery import DocumentDiscovery
 from fb_engine.extrusion_engine import ExtrusionEngine
 from fb_engine import timeline_order
 
+# F14 (S6): the template a frame component was built from (stamped by
+# frame_engine._create_incremental_component), so the solid build reads that
+# template's declared frame features.
+TEMPLATE_ID_ATTR = ("FrameBuilder", "TemplateId")
+
 # --- VERSION STAMP (Diagnostic) ---
 FB_VERSION = "4.07.B"
 
@@ -137,7 +142,8 @@ class SolidCoordinator:
             # wins: every build overwrites the parameter with the typed value.
             start_expr = self._sync_offset_param(self.start_offset_expr)
             bodies = self.extrusion_engine.extrude_profiles(
-                comp, sketch, prefix, self.to_face, start_expr, self.offset_expr
+                comp, sketch, prefix, self.to_face, start_expr, self.offset_expr,
+                declared=self._declared_frame(comp),
             )
             self.log.log(f"Extrusion Phase: {time.time() - t_extrusion:.2f}s | created {len(bodies)} bar bodies")
 
@@ -163,6 +169,26 @@ class SolidCoordinator:
 
         except Exception:
             self.log.log(f"COORDINATOR CRASH:\n{traceback.format_exc()}", "ERROR")
+
+    def _declared_frame(self, comp):
+        """The "Frame" block (regions + features) of the template ``comp`` was
+        built from, or None (no stamp: built before S6; or a template that
+        declares no frame features) -> the extruder's bounding-box path."""
+        try:
+            a = comp.attributes.itemByName(*TEMPLATE_ID_ATTR)
+        except Exception:
+            a = None
+        if not a:
+            self.log.log(f"DECLARED FEATURES: '{comp.name}' carries no template id")
+            return None
+        from fb_engine.template_resolver import resolve_template
+        spec, _ = resolve_template(a.value)
+        frame = spec.get("Frame") or {}
+        if not (frame.get("regions") and frame.get("features")):
+            self.log.log(f"DECLARED FEATURES: template '{a.value}' declares none")
+            return None
+        self.log.log(f"DECLARED FEATURES: template '{a.value}': {[f['id'] for f in frame['features']]}")
+        return frame
 
     def _resolve_component(self, comp_name):
         """Locate the frame component to drop bars into.

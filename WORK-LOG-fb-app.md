@@ -1272,3 +1272,123 @@ Commit (fb-app, pushed): `a830598` items 1-3 · this commit: the log. No Fusion 
   not tracked, so nothing to keep in step here.
 - Gates: full vitest 1799 / 93 files; Python fast tier 242; frame-defs fresh.
 - Server and Chrome stopped. Capacity fine.
+
+
+## 🔨 turn 26 — F14 (seat C, epoch 1): S6 declared features + S8 waist inversion (live)
+
+Commits (fb-app, pushed): `5d2f541` S6 + S8 · `7b3df08` the wood amendment + dice ruling · this
+commit: the log. Fusion window used (F11 rules): tagged scratch docs only, each closed by its own
+handle. Fred's "Untitled" was never touched. MAIN redeployed and verified at the end.
+
+### Item 1: S6, the extruder reads the DECLARED features
+- **`fb_engine/declared_profiles.py`** (pure). A sketch-3 profile is known by the FrameBuilder.ID of
+  its curves (`profileLoops → profileCurves → sketchEntity`):
+  - it touches the declared `surround` curve → the `trim` feature;
+  - it touches an `outline` curve → a `bars` feature. The bar is the miter split in outline order
+    (each miter starts a bar), named by `bodyNames`;
+  - it touches neither → the opening, no feature.
+  - `extrude_plan` takes op, start (`frame_height_offset` → the synced parameter, else the literal),
+    extent (toFace + offset / throughAll), taper, and the build order from the feature.
+  - A profile the declaration can't place (two bars fused, stray ids, a missing feature) is logged
+    as NOT BUILT. It is never guessed.
+- **Wiring:**
+  - `frame_engine._create_incremental_component(style_id)` stamps `FrameBuilder.TemplateId`.
+  - `solid_coordinator._declared_frame` resolves that template's "Frame" block and passes it as
+    `extrude_profiles(..., declared=)`.
+  - The bbox classifier stays only when there is no stamp (stated, and logged).
+  - Both paths now build the same per-profile plan. `_build_extent_defs` is gone (it had no other
+    caller).
+- **MEASURED, why "neither" and not "inner ids only":** at T2 12x6 the opening's 10 inner curves
+  carry NO id. The offset step tags them (log: "Assigned ID=inner_…"), then Fusion re-solves the
+  offset later in the build and the replacement curves lose the attribute. The goldens' inner ids
+  are therefore not reliable per build.
+- **Live, flat core (the S4 goldens' declared core), T1/T2 × 7x9/12x6:**
+  - every bar volume and the panel volume equal the golden (ΔV 0.00000);
+  - the timeline is healthy;
+  - the declared role equals the old bbox role on every profile;
+  - the real profile ids + areas are recorded in `tests/fixtures/frame-profiles-live.json`, and
+    `test_declared_profiles_live` classifies them to the golden's bars (area × 1 in = volume).
+  - Unstamped fallback (stamp deleted before the solid build): also exact, and the log shows the
+    bbox path.
+- **Live, the real app payload (F11 capture), both Send orders:**
+  - T1: B-spline → frame, then B-spline re-send → frame. Identical bars, one Frame_1, one TRIM_CUT,
+    healthy, order body → frame block → inlay.
+  - T2: the same, at Trim offset 0.25 (0.5 inverts, see S8).
+- **My own slip, recorded:** I hid every body for a screenshot, and the next trims failed with "No
+  target body found": automated cut participants skip hidden bodies. I turned them back on and the
+  trims came back. It was not a code bug.
+
+### Item 2: S8, the waist inversion, REPRODUCED and FIXED
+- **Reproduced by accident with the app's own payload:** T2, 7x9, `boundingboxoffset` 0.5 (F9's Trim
+  offset), thickness 0.75, no seeds.
+  - The waist arcs cross into an X, and `horn_TL` ends up at x = +3.757 (outside the ±3.0 safe
+    zone).
+  - The timeline is HEALTHY.
+  - 0 bars: the declared extruder refused the 3-bar profiles. The old bbox path would have extruded
+    two bogus "frame_top" bodies.
+  - Shots: `2153_F14s8_T2_payload_sketch2`, `2204_…_PRE`.
+- **Declared sweep** (flat core, sketch only; T1/T2 × 7x9, 12x6, 9x7, 6x6, 10x14 × bbox 0.25 / 0.4 /
+  0.5 / 0.75 / 1.0):
+  - **16 of 50 inverted:** T2 from 0.5 on 4 boards (10x14 from 0.75), T1 at 1.0 on 7x9 and 12x6.
+  - 0.25 and 0.4 never inverted.
+- **Cause:** the p02 seeds are fractions of the whole board (`widthIn * 0.464286` = 3.25 = the
+  safe-zone corner on 7 in, at bbox 0.25). They were fit at 0.25 and don't follow a smaller safe
+  zone, so the coincident constraints drag points across and the solver takes the mirrored branch.
+- **Fix, declared:** `fb_engine/seed_basis.py`.
+  - The sketch-2 seeds (Line/Arc3Point Points, the temporary seed Radius) are fractions of the seed
+    board, `(widthIn − 2*(boundingboxoffset − 0.25 in))`. Both templates apply it in
+    `get_template_logic`.
+  - It references existing params only, and adds no Fusion param.
+  - At 0.25 it gives exactly the old seed at every size (unit-tested over 4 boards).
+  - Sketches 1 and 3 keep the board. F11's `seed_geometry` still overrides the mapped seeds after it.
+- **After the fix:**
+  - the sweep gives 0 of 50 inverted, all healthy;
+  - the post-fix bbox-0.25 builds match the goldens (T1/T2 × 7x9/12x6) with a point delta of 0.0 in.
+- **The failing golden:**
+  - `tests/fixtures/frame-inversion/template_2_7x9_bbox0.5.json` was recorded by
+    `record_frame_parity.py`, which now takes `params` (recorded in meta) and `scratch_tag`.
+  - Recorded PRE-fix, `test_frame_inversion` was red 2/2 (inverted; 0 bars).
+  - Re-recorded post-fix, it is green: 4 bars, healthy.
+  - The invariant (`fb_engine/outline_invariants.py`): left curves at x ≤ 0, right curves at x ≥ 0,
+    and every point inside the safe zone.
+  - It applies to the goldens a Send can produce. FRAME_FIT-refused boards are skipped with the
+    reason, because T2 5.51x1.97's arcs overshoot by 0.045 in with the sides intact (a known
+    degenerate case).
+- Per Fred's rule there is NO runtime guard. FB-APP-DESIGN §4 step 5 is marked dropped, and §5.3
+  item 9 is rewritten with the evidence.
+
+### Mutations (restored from my copies; pyc cleared)
+- **S6/S8, 10 mutations:** no surround rule 6 red; wrap to bar 0 1; multi-bar accepted 1; start
+  ignores the declaration 1; opening needs ids 3; coordinator never declares 2; no TemplateId stamp 1;
+  no seed board 3; seed fit bbox 0.3 1; radius seeds skipped 1.
+- **Woods, 4 mutations:** Cherry back on the list py 5 / js 2; an unlisted wood kept js 2; Oak colour
+  missing 1; Oak missing from the Extrude palette 1.
+- **Pre-change tree:** the new test modules import modules that don't exist yet. The S8 golden red
+  was shown on the recorded pre-fix build.
+
+### Amendments absorbed
+- **Woods (Fred: "keep only 3D grain ones", "yes oak"):** Ash (default), Mahogany, Pine,
+  "3D Maple - Painted", "3D Oak - Painted".
+  - Cherry is out. A saved Cherry frame gets Ash through the gate's existing unlisted→default rule
+    (migration test).
+  - I first built an `APPEARANCE_RETIRED` map, but mutation showed it changed nothing (the fallback
+    already lands on Ash), so I removed it. The old rename `3D Cherry - Unfinished → Cherry` went
+    with it.
+  - New tests: "3D " prefix + in the library, and Fred's exact list.
+  - Oak has a preview colour (#b88a55) and an Extrude palette option. Oak was applied live on all 4
+    bars.
+- **Dice (FYI):** recorded in FB-APP-DESIGN: keep it, the dice re-rolls the outline, Regenerate
+  re-rolls the fill.
+
+### Notes
+- **Sweep of Cherry references:** only migration text is left (the tests and the F12 history
+  comment).
+- **Bridge:** I sent 3 sweep chunks in parallel by mistake. All 3 replies timed out, but Fusion
+  finished all 50 cases (the JSONL is complete), no doc was left open, and the next call answered.
+  Lesson: one bridge call at a time.
+- **MAIN redeploy:** MAIN's worktree carries another seat's uncommitted editor work (the snap
+  resolver: `editor-snap-resolver.js`, editor-*.js), so that is what is deployed now.
+- **Gates:** Python fast tier 279 passed / 2 skipped; frame-defs fresh; frame JS specs 133/133 (13
+  files). The full suite is the advisor's gate.
+- **Shots:** `seatC/*_F14s6_*`, `*_F14s8_*`.
+- **Capacity:** fine.

@@ -477,3 +477,40 @@ class TestFrameFitInTheBuild:
         fb = self._fb(7, 9)
         assert fb._check_frame_fit()["ok"] is True
         assert not any(level == "WARNING" for level, _ in fb.logger.entries)
+
+
+# ---------------------------------------------------------------------
+# F14 (S6): the frame component carries the template it is built from, so
+# the solid build can read that template's declared frame features
+# (solid_coordinator.TEMPLATE_ID_ATTR).
+# ---------------------------------------------------------------------
+class TestTemplateIdStamp:
+    def _builder(self, monkeypatch):
+        # the adsk frame_engine bound at import (another test file may swap the stub)
+        monkeypatch.setattr(frame_engine.adsk.core, "Matrix3D",
+                            types.SimpleNamespace(create=lambda: None), raising=False)
+
+        class _Attrs:
+            def __init__(self):
+                self.added = {}
+
+            def add(self, group, name, value):
+                self.added[(group, name)] = value
+
+        class _Occs(list):
+            def addNewComponent(self, m):
+                occ = types.SimpleNamespace(component=types.SimpleNamespace(name="", attributes=_Attrs()))
+                self.append(occ)
+                return occ
+
+        fb = frame_engine.FrameBuilder.__new__(frame_engine.FrameBuilder)
+        fb.root = types.SimpleNamespace(occurrences=_Occs())
+        fb.logger = types.SimpleNamespace(log=lambda *a, **k: None)
+        return fb
+
+    def test_the_component_is_stamped_with_its_template(self, monkeypatch):
+        fb = self._builder(monkeypatch)
+        comp = fb._create_incremental_component("template_2")
+        assert comp.name == "Frame_1"
+        assert comp.attributes.added == {("FrameBuilder", "ComponentType"): "Frame",
+                                         ("FrameBuilder", "TemplateId"): "template_2"}

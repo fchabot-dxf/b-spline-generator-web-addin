@@ -186,7 +186,7 @@ class FrameBuilder:
             self.logger.log(f"target_body found: {'yes' if target_body else 'no'}")
             self._create_skeletal_parameters(target_body, style_id, ui_data)
             self._check_frame_fit()
-            frame_comp = self._create_incremental_component()
+            frame_comp = self._create_incremental_component(style_id)
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
             # Resolve template and prefix from registry
@@ -226,7 +226,7 @@ class FrameBuilder:
             self.logger.log(f"target_body found: {'yes' if target_body else 'no'}")
             self._create_skeletal_parameters(target_body, style_id, ui_data)
             self._check_frame_fit()
-            frame_comp = self._create_incremental_component()
+            frame_comp = self._create_incremental_component(style_id)
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
             # Resolve template and prefix from registry
@@ -252,7 +252,7 @@ class FrameBuilder:
             elapsed = time.time() - start_time
             self.logger.log(f"run_full_synthesis completed in {elapsed:.2f} seconds")
 
-    def _create_incremental_component(self):
+    def _create_incremental_component(self, style_id=None):
         # Scan all existing components in the root for the highest Frame_N index
         # We check comp.name instead of occ.name to avoid issues with ":1" suffixes
         existing_names = [occ.component.name for occ in self.root.occurrences if occ.component.name.startswith("Frame_")]
@@ -270,6 +270,10 @@ class FrameBuilder:
         # Keep the active component on root; do not activate the new frame component.
         try:
             comp.attributes.add('FrameBuilder', 'ComponentType', 'Frame')
+            # F14 (S6): the template it is built from, so the solid build reads
+            # that template's DECLARED frame features (solid_coordinator.TEMPLATE_ID_ATTR).
+            if style_id:
+                comp.attributes.add('FrameBuilder', 'TemplateId', style_id)
         except Exception as e:
             self.logger.log(f"Could not tag component '{name}' with FrameBuilder attribute: {e}", "WARNING")
         

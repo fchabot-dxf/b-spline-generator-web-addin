@@ -178,7 +178,7 @@ class Builds:
 
 def payload(**kw):
     p = {"templateId": "template_1", "params": {"frame_thickness": 0.75, "boundingboxoffset": 0.5, "ck_arc_shoulder_weld": 1},
-         "seeds": {}, "frameBottomZ": -1.5, "appearance": "Cherry"}
+         "seeds": {}, "frameBottomZ": -1.5, "appearance": "3D Oak - Painted"}
     p.update(kw)
     return p
 
@@ -266,7 +266,7 @@ class TestSendFrame:
         r, b = run(w, payload(), body=body)
         call = b.solid_calls[0]
         assert call["to_face"] is body.faces[2]  # n.z = -0.998, the downward face
-        assert (call["start"], call["wood"]) == ("-1.5 in", "Cherry")
+        assert (call["start"], call["wood"]) == ("-1.5 in", "3D Oak - Painted")
 
     def test_seeds_are_reported_not_applied_never_dropped_silently(self):
         w = World()
@@ -357,4 +357,6 @@ class TestSeedGeometry:
         w = World()
         send_bspline(w)
         r, b = run(w, payload(appearance="3D Cherry - Unfinished"))
+        assert not r["ok"] and "Unknown wood" in r["error"] and b.sketch_calls == []
+        r, b = run(w, payload(appearance="Cherry"))  # F14: retired (the app migrates it before sending)
         assert not r["ok"] and "Unknown wood" in r["error"] and b.sketch_calls == []

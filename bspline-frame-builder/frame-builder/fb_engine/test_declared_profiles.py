@@ -1,0 +1,120 @@
+"""F14 (S6): the extruder's profile -> feature choice comes from the template's
+DECLARED frame features (declared_profiles), not the bounding box. The
+profiles here are the real templates' declared curve ids; the live-recorded
+ones (tests/fixtures/frame-profiles-live.json) are checked in
+test_declared_profiles_live below."""
+import json
+import os
+import sys
+import types
+
+import pytest
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from fb_engine import declared_profiles as dp  # noqa: E402
+from fb_engine.frame_definition import FRAME_BOTTOM_PARAM  # noqa: E402
+from fb_engine.template_resolver import resolve_template  # noqa: E402
+
+_REPO = os.path.dirname(os.path.dirname(_ROOT))
+_LIVE = os.path.join(_REPO, "tests", "fixtures", "frame-profiles-live.json")
+_GOLDENS = os.path.join(_REPO, "tests", "fixtures", "frame-parity")
+
+
+def _frame(tid):
+    return resolve_template(tid)[0]["Frame"]
+
+
+def _bar_profiles(frame):
+    """The 4 bar profiles as the declaration draws them: the outline run
+    between two miter starts, its inner offsets, and the two miters."""
+    reg = frame["regions"]
+    outline = reg["outline"]
+    starts = [outline.index(m[0].split(":")[0]) for m in reg["miters"]]
+    out = []
+    for k, s in enumerate(starts):
+        e = starts[(k + 1) % len(starts)] or len(outline)
+        run = outline[s:e]
+        out.append(set(run) | {"inner_" + c for c in run} | {f"miter-{reg['miters'][k][0]}", "miter-next"})
+    return out
+
+
+@pytest.mark.parametrize("tid", ["template_1", "template_2"])
+def test_each_bar_profile_gets_its_declared_body_name(tid):
+    frame = _frame(tid)
+    bars = frame["features"][0]
+    names = [dp.classify(ids, frame) for ids in _bar_profiles(frame)]
+    assert [f["id"] for f, _ in names] == ["bars"] * 4
+    assert [n for _, n in names] == ["frame_top", "frame_right", "frame_bottom", "frame_left"] == bars["bodyNames"]
+
+
+@pytest.mark.parametrize("tid", ["template_1", "template_2"])
+def test_trim_and_opening(tid):
+    frame = _frame(tid)
+    reg = frame["regions"]
+    trim_ids = set(reg["outline"]) | {reg["surround"], "surround_right", "surround_bottom", "surround_left"}
+    feat, name = dp.classify(trim_ids, frame)
+    assert (feat["id"], name) == ("trim", None)
+    assert dp.classify(set(reg["inner"][:5]), frame) == (None, None)  # the opening: inner curves only
+    # MEASURED F14 (T2 12x6): the re-solved inner offset curves carry no id at all
+    assert dp.classify(set(), frame) == (None, None)
+
+
+def test_the_plan_reads_start_extent_and_op_from_the_declaration():
+    frame = _frame("template_1")
+    bars, trim = frame["features"]
+    assert bars["start"] == FRAME_BOTTOM_PARAM
+    p = dp.extrude_plan(bars, "frame_top", "frame_height_offset")
+    assert p == {"kind": "BAR", "name": "frame_top", "start": "frame_height_offset",
+                 "extent": ("toFace", "0 in"), "taper": "0 deg", "order": "bars"}
+    assert dp.extrude_plan(trim, None, "frame_height_offset") == {
+        "kind": "SURROUND", "name": None, "start": "0 in", "extent": ("throughAll",),
+        "taper": "0 deg", "order": "trim"}
+    # a template declaring another start / offset is honoured, not overridden
+    other = dict(bars, start="0.5 in", extent={"toFace": "core.underside", "offset": "0.1 in"})
+    assert dp.extrude_plan(other, "frame_top", "frame_height_offset")["start"] == "0.5 in"
+    assert dp.extrude_plan(other, "frame_top", "x")["extent"] == ("toFace", "0.1 in")
+
+
+def test_undescribed_profiles_are_errors_not_guesses():
+    frame = _frame("template_1")
+    with pytest.raises(dp.DeclaredProfileError, match="spans 2 bars"):
+        dp.classify({"proj_top_edge", "proj_horn_TR"}, frame)  # a miter missing: two bars fused
+    with pytest.raises(dp.DeclaredProfileError, match="not in the declared regions"):
+        dp.classify({"something_else"}, frame)
+    with pytest.raises(dp.DeclaredProfileError, match="no feature for region"):
+        dp.classify({"proj_top_edge"}, dict(frame, features=[frame["features"][1]]))
+
+
+def test_bar_index_wraps_before_the_first_miter():
+    reg = {"outline": ["a", "b", "c", "d"], "miters": [["b:S", "inner_b:S"], ["d:S", "inner_d:S"]]}
+    assert [dp.bar_index(c, reg) for c in "abcd"] == [1, 0, 0, 1]
+
+
+# ---------------------------------------------------------------- live-recorded profiles
+_live = json.load(open(_LIVE, encoding="utf-8")) if os.path.exists(_LIVE) else {"cases": []}
+
+
+def test_live_fixture_is_present():
+    assert len(_live["cases"]) >= 2
+
+
+@pytest.mark.parametrize("case", _live["cases"], ids=lambda c: c["golden"])
+def test_declared_profiles_live(case):
+    """The real Fusion profiles' curve ids (recorded live, F14) classify to
+    the golden's 4 bars (each bar's area x 1 in height = the golden volume)
+    + one trim + the opening."""
+    frame = _frame(case["template"])
+    golden = json.load(open(os.path.join(_GOLDENS, case["golden"] + ".json"), encoding="utf-8"))
+    got = {}
+    for prof in case["profiles"]:
+        feat, name = dp.classify(set(prof["ids"]), frame)
+        key = name or (feat["id"] if feat else "opening")
+        assert key not in got, key
+        got[key] = prof["area"]
+    assert sorted(got) == sorted(list(golden["bars"]) + ["trim", "opening"])
+    height = 1.0  # frame bottom -1 in to the core underside z = 0
+    for name, bar in golden["bars"].items():
+        assert got[name] * height == pytest.approx(bar["volume"], abs=1e-4), name
