@@ -10497,3 +10497,28 @@ from 0 by pixel diff): `C:/Users/danse/.bspline-status/shots/seatB/rib-angle-bef
 
 Verify: 2082/2082 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
 clean before the commit. NO FUSION this whole turn.
+
+## T78 item 9 — each seed picks its own rib angle across the full -30..+10 range
+
+Amendment from the advisor (Fred's ruling: "Yes full range"). The Rib Angle is now absolute (degrees, sternum -> flank
+across the real half-width; + sweeps down). Untouched, each seed draws its own angle uniformly in -30..+10 (VARY row
+`ribAngle`, replacing the old +/-0.07 `ribBend`). The filter only receives `ribAngle` once the slider is moved
+(tweaks-ui writes overrides only; its reset deletes the key), so: untouched = seed's own angle, moved = exactly the
+slider value, reset = back to the seed's own. Known wrinkle: while untouched, the slider row still displays 0 (every
+tweak row shows its schema default until moved).
+
+Mechanism: as much of the bend as the room left after rib spacing allows goes inside the ribcage section; the rest
+bends the ribcage/abdomen boundary (AMEND 9's approach), so rib count, spacing and exact angle hold. Measured over 500
+seeds untouched: 5 reach the board's bottom edge at their steepest, 15 leave under 0.03 of abdomen somewhere.
+
+Tests: seed angles cover -30..+10 (min < -27, max > 7); untouched ribs follow the seed angle exactly; the slider sets
+the angle exactly and keeps the seed's rib count; setting the slider to the seed's own angle reproduces the untouched
+look exactly; no rib relief below the bent ribcage edge (a first version of that test sampled the board edge on seed
+33, where the ribcage reaches the edge; fixed to skip columns with no abdomen).
+
+Grid (slider untouched, 9 seeds picked so their own angles span -29..+8):
+`C:/Users/danse/.bspline-status/shots/seatB/chest-item9-grid.png`. Each render read back the page state (seed,
+noiseType chest, no ribAngle override) before capture.
+
+Verify: 2083/2083 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+before the commit (the item 9 amendment itself). Commit 6c333ba. NO FUSION this whole turn.
