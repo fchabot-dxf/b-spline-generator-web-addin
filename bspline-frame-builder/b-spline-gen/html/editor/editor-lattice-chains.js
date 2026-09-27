@@ -16,6 +16,7 @@
 import { LATTICE_ATTR, orient, toLatticeFractional, fromLattice } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { getElementLayer } from './layers.js';
+import { haptic } from '../core/haptics.js';
 
 /** The one "same point" tolerance (model inches), SE7i's own attachment epsilon (editor-interaction.js
  *  _sameWorldPoint, editor-lattice.js sameRow). Both joint ends are written from one number, and lattice moves
@@ -167,6 +168,7 @@ export function updateJointSlide(move, target) {
   const far = move.joint.map((s) => s.canon[s.end === 'a' ? 'b' : 'a'][axis]);
   const lo = Math.min(...far) + MIN_PIECE_CELLS, hi = Math.max(...far) - MIN_PIECE_CELLS;
   const v = lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, target));
+  if (v !== target) haptic('limit'); // H13: a joint slide hit its clamp
   for (const s of move.joint) {
     const p = { ...s.canon[s.end], [axis]: v };
     const w = fromLattice(orient(p, orientation), spacing);
@@ -219,6 +221,7 @@ export function pushTieJoints(move, targetJ) {
     const cap = Math.max(p.d * p.from, p.d * p.far - 2 * MIN_PIECE_CELLS); // the rail's furthest row toward `far`
     if (p.d * j > cap) j = p.d * cap;
   }
+  if (j !== targetJ) haptic('limit'); // H13: a rail push against a cut tie's joint hit its clamp
   const { spacing, orientation } = move;
   for (const p of move.tiePush || []) {
     const v = p.d > 0 ? Math.max(p.joint, j + MIN_PIECE_CELLS) : Math.min(p.joint, j - MIN_PIECE_CELLS);

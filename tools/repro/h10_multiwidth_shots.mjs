@@ -163,27 +163,89 @@ for (const { w, h, name } of WIDTHS) {
       const textNode = [...label.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
       const range = document.createRange();
       range.selectNodeContents(textNode);
-      const textRect = range.getClientRects()[0];
+      const textRects = range.getClientRects();
+      const textRect = textRects[0];
       const spanRect = span.getBoundingClientRect();
       const sameLine = Math.abs((textRect.top + textRect.height / 2) - (spanRect.top + spanRect.height / 2)) < 5;
       const overflows = spanRect.right > sidebarRight + 0.5;
-      return { sameLine, overflows, text: label.textContent.trim() };
+      // H14 (Fred, iPad: "Symmetry Offset X" wrapped as "Symmetry" +
+      // "(fraction)" on row 1, "Offset X" alone on row 2 -- sameLine still
+      // passed, since it only compares the FIRST line of the (now
+      // multi-line) text node against the span, which happened to share
+      // that first line): the text node's own client rects reveal actual
+      // internal text wrapping directly, independent of the flex-row
+      // stacking sameLine already covers.
+      const textWrapped = textRects.length > 1;
+      return { sameLine, overflows, textWrapped, text: label.textContent.trim() };
     }));
   })()`));
   console.log(`labels@${name}: ${labelInfo.length} visible labels checked`, JSON.stringify(labelInfo));
   for (const l of labelInfo) {
+    check(!l.textWrapped, `H14@${name}: label "${l.text}" text doesn't wrap internally`);
     check(l.sameLine, `H12@${name}: label "${l.text}" stays on one line`);
     check(!l.overflows, `H12@${name}: label "${l.text}" doesn't overflow the sidebar`);
   }
 
-  // H10: the main Seed number field is hidden (not deleted) -- Generate
-  // New Seed is the only way to re-roll now.
-  const seedInfo = JSON.parse(await evalJS(`(()=>{
-    const seed = document.getElementById('seed');
-    return JSON.stringify({ seedVisible: seed.getBoundingClientRect().width > 0, seedInDom: !!seed });
+  // H14 (Fred: "can be only sliders side by side... does it need a
+  // precise input?"): the declared X/Y "feel" pairs -- each must render
+  // as two sliders side by side with a plain value readout (no +/-
+  // buttons) beside each.
+  // H15 (Fred: "the whole seed section is redundant"): the Seed panel's
+  // own pair (seedOffsetX/Y) and the Skeleton-Editor modal it mirrored
+  // (skelOffsetX/Y, its own pair, checked here as a 4th entry until now)
+  // are both REMOVED entirely, not just unwired -- dropped from this list
+  // rather than left pointing at ids that no longer exist.
+  const PAIRS = [
+    { name: 'symOffset', x: 'symOffsetX', y: 'symOffsetY' },
+    { name: 'stampT', x: 'stampTx', y: 'stampTy' },
+  ];
+  await evalJS(`[...document.querySelectorAll('details')].forEach(d => d.open = true)`); // Vector Stamping's Transform
+  await sleep(150);
+  for (const pair of PAIRS) {
+    const info = JSON.parse(await evalJS(`(()=>{
+      const xInput = document.getElementById('${pair.x}'), yInput = document.getElementById('${pair.y}');
+      if (!xInput || !yInput) return JSON.stringify({ found: false });
+      const xr = xInput.getBoundingClientRect(), yr = yInput.getBoundingClientRect();
+      if (xr.width === 0) return JSON.stringify({ found: true, visible: false });
+      const xSlider = document.getElementById('${pair.x}Slider').getBoundingClientRect();
+      const ySlider = document.getElementById('${pair.y}Slider').getBoundingClientRect();
+      return JSON.stringify({
+        found: true, visible: true,
+        sameRow: Math.abs((xr.top + xr.height / 2) - (yr.top + yr.height / 2)) < 5,
+        xReadoutVisible: xr.width > 0, yReadoutVisible: yr.width > 0,
+        xSliderW: Math.round(xSlider.width), ySliderW: Math.round(ySlider.width),
+        noStepper: !xInput.closest('.cad-stepper') && !yInput.closest('.cad-stepper'),
+      });
+    })()`));
+    if (info.visible === false) continue; // a collapsed panel elsewhere on the page this width -- not this pair's concern
+    console.log(`pair ${pair.name}@${name}:`, JSON.stringify(info));
+    check(info.found && info.visible, `H14@${name}: ${pair.name} pair found and visible`);
+    check(info.sameRow, `H14@${name}: ${pair.name} X/Y readouts on the same row`);
+    check(info.xReadoutVisible && info.yReadoutVisible, `H14@${name}: ${pair.name} both readouts visible`);
+    check(info.xSliderW >= 20 && info.ySliderW >= 20, `H14@${name}: ${pair.name} both sliders have real width (${info.xSliderW}, ${info.ySliderW})`);
+    check(info.noStepper, `H14@${name}: ${pair.name} stepper buttons dropped (readout only)`);
+  }
+
+  // H15: the Seed section + Seed Editor modal (and their #seed/#seedType/
+  // #skel* ids) are gone entirely -- confirm the removal is clean rather
+  // than just silently dropping the old checks.
+  const seedGone = JSON.parse(await evalJS(`(()=>{
+    return JSON.stringify({
+      panelSeed: !document.querySelector('.panel-seed'),
+      seedInput: !document.getElementById('seed'),
+      seedType: !document.getElementById('seedType'),
+      btnEditSeed: !document.getElementById('btnEditSeed'),
+      skeletonEditorModal: !document.getElementById('skeletonEditorModal'),
+      btnRandomSeedStillThere: !!document.getElementById('btnRandomSeed'),
+    });
   })()`));
-  console.log(`seed@${name}:`, JSON.stringify(seedInfo));
-  check(seedInfo.seedInDom && !seedInfo.seedVisible, `H10@${name}: #seed stays in the DOM but hidden (${JSON.stringify(seedInfo)})`);
+  console.log(`seedRemoval@${name}:`, JSON.stringify(seedGone));
+  check(seedGone.panelSeed, `H15@${name}: the Seed sidebar panel is gone`);
+  check(seedGone.seedInput, `H15@${name}: #seed is gone (not just hidden)`);
+  check(seedGone.seedType, `H15@${name}: #seedType is gone`);
+  check(seedGone.btnEditSeed, `H15@${name}: #btnEditSeed is gone`);
+  check(seedGone.skeletonEditorModal, `H15@${name}: the Skeleton-Editor modal is gone`);
+  check(seedGone.btnRandomSeedStillThere, `H15@${name}: Generate New Seed (#btnRandomSeed) still there`);
 
   await evalJS(`document.getElementById('carveZ').scrollIntoView({block:'center'})`);
   await sleep(150);

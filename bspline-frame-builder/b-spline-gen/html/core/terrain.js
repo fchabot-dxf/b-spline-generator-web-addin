@@ -20,6 +20,9 @@ export function generateHeightmap(params, stampParams = null) {
     seed           = 42,
     scale          = 1.2,
     macroScale     = 0.35,
+    mapZoom        = 1,
+    seedOffsetX    = 0,
+    seedOffsetY    = 0,
     octaves        = 4,
     roughness      = 0.5,
     edgeMargin     = 0,
@@ -53,14 +56,38 @@ export function generateHeightmap(params, stampParams = null) {
         const u = i / (nx - 1);
         const v = j / (nz - 1);
 
+        // H17 item 1 -- Map Zoom: a drawing-style zoom of the whole
+        // generated terrain, centred on the board. Remapped ONCE here, at
+        // the sampler's (u,v) entry, so every downstream layer that reads
+        // su/sv (fine noise, detail/cluster masks, coarse redistribution)
+        // scales together as one drawing. `u`/`v` themselves are left
+        // UNCHANGED below (edgeFade, Pass 3 smoothing, applyVectorDrape all
+        // intentionally still read the real board position) -- stamps,
+        // sculpt, the frame, edge fade and the board itself must not zoom.
+        // H17 item 2 (Fred: "the seed offset isnt what i wanted" -> "pan
+        // the whole map"): seedOffsetX/Y moved to this SAME entry point --
+        // previously they only shifted the coarse layer (cx/cz below),
+        // which panned the coarse SHAPE over a static fine texture instead
+        // of sliding the whole drawing. Added here instead, they're baked
+        // into su/sv before either the fine noise call or the coarse cx/cz
+        // math sees them, so fine texture and coarse shapes pan together.
+        // H17 item 3 (spec of item 2, missed): the offset must be added
+        // BEFORE dividing by mapZoom, not after -- otherwise it keeps its
+        // zoom=1 magnitude while the visible window shrinks around it, so
+        // at zoom 2 an offset of 0.5 was already panning a full (zoomed)
+        // screen instead of half one. Added inside the division, "1 unit of
+        // offset" is always exactly one board-width at the CURRENT zoom.
+        const zu = 0.5 + (u - 0.5 + seedOffsetX) / mapZoom;
+        const zv = 0.5 + (v - 0.5 + seedOffsetY) / mapZoom;
+
         // Mirror axis can be shifted by symOffsetX/Y. Default 0 = mirror
         // through center (legacy behavior). The fold output is scaled by 2
         // so the noise frequency stays consistent with the un-offset case.
-        let su = u, sv = v;
+        let su = zu, sv = zv;
         const mx = 0.5 + symOffsetX;
         const my = 0.5 + symOffsetY;
-        if (symmetry === 'x' || symmetry === 'radial') su = Math.abs(u - mx) * 2;
-        if (symmetry === 'y' || symmetry === 'radial') sv = Math.abs(v - my) * 2;
+        if (symmetry === 'x' || symmetry === 'radial') su = Math.abs(zu - mx) * 2;
+        if (symmetry === 'y' || symmetry === 'radial') sv = Math.abs(zv - my) * 2;
 
         // ── Pass 1: Fine Detail (Strategy Pattern) ──
         // Skeleton-isolation mode bypasses the filter with a flat 0.5,
@@ -86,9 +113,10 @@ export function generateHeightmap(params, stampParams = null) {
         let detailIntensity = 1.0;
         if (params.detailDensity < 0.99) {
             // Use folded coords (msu=su, msv=sv) when respecting symmetry,
-            // otherwise raw u,v so the mask breaks symmetry intentionally.
-            const msu = params.detailDensityRespectSymmetry ? su : u;
-            const msv = params.detailDensityRespectSymmetry ? sv : v;
+            // otherwise zoomed-but-unfolded zu,zv so the mask breaks symmetry
+            // intentionally (still zoomed -- it's part of the drawing).
+            const msu = params.detailDensityRespectSymmetry ? su : zu;
+            const msv = params.detailDensityRespectSymmetry ? sv : zv;
             const modFreq = 2.5;
             let mVal = (noiseCoarse.fbm(msu * modFreq, msv * modFreq, 2) * 1.5 + 1) * 0.5;
             mVal = Math.max(0, Math.min(1, mVal));
@@ -114,8 +142,11 @@ export function generateHeightmap(params, stampParams = null) {
         let cx = su * cFreq * aspect;
         let cz = sv * cFreq;
 
-        // Apply seed-panel rotation about the (su, sv) origin BEFORE offset.
-        // Keeps "spin the field" predictable: rotate first, then translate.
+        // Apply seed-panel rotation about the (su, sv) origin. (H17 item 2:
+        // seedOffsetX/Y no longer apply here -- they're baked into su/sv
+        // upstream, at the zu/zv pan -- so this only ever rotates the
+        // already-panned coordinate. seedRotation's own UI stays removed
+        // per H16 item 4, so params.seedRotation is always 0 in practice.)
         const rot = (params.seedRotation || 0) * Math.PI / 180;
         if (rot !== 0) {
           const cs = Math.cos(rot), sn = Math.sin(rot);
@@ -123,14 +154,6 @@ export function generateHeightmap(params, stampParams = null) {
           const rz = cx * sn + cz * cs;
           cx = rx; cz = rz;
         }
-        // Offset lets the user pan continuously through the seed field.
-        // We scale by cFreq so "1 unit of offset" = "pan by one screen-width"
-        // — the visible field only spans ~cFreq noise units, so adding raw
-        // offset values would jump past Perlin's correlation length almost
-        // immediately and feel like switching to a different seed.
-        cx += (params.seedOffsetX || 0) * cFreq * aspect;
-        cz += (params.seedOffsetY || 0) * cFreq;
-
         const seedType = params.seedType || 'perlin';
         const seedFn = SeedTypes[seedType] || SeedTypes['perlin'];
         const seedRefs = { noiseCoarse };

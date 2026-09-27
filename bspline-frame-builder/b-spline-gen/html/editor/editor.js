@@ -354,9 +354,8 @@ export class VectorEditor {
      * already-pending frame is left alone (ignored) rather than
      * cancelled-and-rescheduled, so a CONTINUOUS drag still gets the
      * pipeline running once every frame instead of being starved until
-     * the drag stops (a naive cancel-and-reschedule, the pattern
-     * main/skeleton-editor.js already uses elsewhere for a different
-     * purpose, would do exactly that here).
+     * the drag stops (a naive cancel-and-reschedule would do exactly
+     * that here).
      * 'commit' (handleEnd, once per gesture; every other discrete edit
      * already called _onChange directly — those default to 'commit' via
      * the callback's own parameter default, unaffected by this kind

@@ -34,16 +34,6 @@ export const STOCK_SCOPE = Object.freeze([
 export const FORMULA_SECTIONS = Object.freeze([
   { section: 'STOCK DIMENSIONS', ids: ['widthIn', 'heightIn', 'carveZ'], names: [] },
   {
-    section: 'SEED',
-    ids: ['macroScale', 'seedOffsetX', 'seedOffsetY', 'seedRotation'],
-    names: [
-      pname('region', 'macroScale', 'Region scale'),
-      pname('offsetx', 'seedOffsetX', 'Seed offset X'),
-      pname('offsety', 'seedOffsetY', 'Seed offset Y'),
-      pname('rotation', 'seedRotation', 'Seed rotation', DEG),
-    ],
-  },
-  {
     section: 'SKELETON',
     ids: ['peakShape', 'density', 'clustering', 'symOffsetX', 'symOffsetY', 'edgeMarginIn', 'smoothIntensity',
       'smoothRadius'],

@@ -69,9 +69,18 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
   // own binding table's keys (frames never get the new params).
   const pick = (catalogue) => catalogue.filter((h) => keys.includes(h.key));
 
+  // H13: each handle carries its own feasible range alongside
+  // valueFromWorld (already clamped INTO it) so a DOM-touching consumer
+  // (editor-interaction.js, frame-handles.js) can tell whether a given
+  // drag actually hit that clamp -- `value === range.min/max` -- and fire
+  // its own haptic('limit') there. Deliberately not done here: this
+  // module's own header comment declares it "PURE math... no DOM", and
+  // haptic() reaches navigator/document/localStorage.
+  const withRange = (handles) => handles.map((h) => ({ ...h, range: R[h.key] }));
+
   if (preset === 'bottle') {
     const b = bottleConstruction(region, resolvedParams); // the generator's own construction
-    return pick([
+    return withRange(pick([
       {
         key: 'neckWidth', label: 'Neck width', axis: 'x',
         anchor: { x: cx0 + b.neckHalfW, y: cy0 + (-hh + b.neckCenterY) / 2 }, // midway down the top horn — off the neckLength handle, which sits AT the horn corner
@@ -97,12 +106,12 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         anchor: { x: cx0 + b.bodyCx, y: cy0 + b.hipCenterY },
         valueFromWorld: (pt) => within('bodyRadius', (cx0 + hw - pt.x) / hw),
       },
-    ]);
+    ]));
   }
 
   // hourglass (default).
   const g = hourglassConstruction(region, resolvedParams); // the generator's own construction, not a copy
-  return pick([
+  return withRange(pick([
     {
       key: 'waistReach', label: 'Waist reach', axis: 'x',
       anchor: { x: cx0 + g.waistX, y: cy0 + g.waistCenterY }, // the waist arc's own deepest point (the pinch)
@@ -131,7 +140,7 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
       anchor: { x: cx0 + g.waistCx, y: cy0 + g.waistCenterY },
       valueFromWorld: (pt) => within('waistRadius', (pt.x - (cx0 + g.waistX)) / hw),
     },
-  ]);
+  ]));
 }
 
 /** An `A` primitive's own point at parameter `t` (0=start, 1=end) —

@@ -12,6 +12,7 @@ import { screenToModelDelta } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
 import { getDynamicTolerance } from './editor-hit.js';
 import { nearestGeometrySnap, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
+import { hapticSnap } from '../core/haptics.js';
 
 /** Board is in inches — spacing/coords here are all in the same model
  *  units as editor._mW/_mH (see editor-view.js's own note on this).
@@ -282,6 +283,7 @@ export function updateSnapCursor(editor, e) {
   let show = false;
   let snapped = null;
   let rawPt = null;
+  let isSnapped = false;
   if (policy !== 'none' && !bypass) {
     rawPt = editor._getMousePoint(e);
     // SE7m: the offset is applied BEFORE snapping — the marker and the
@@ -290,8 +292,15 @@ export function updateSnapCursor(editor, e) {
     // so the ring's position and the commit position can never disagree.
     const adjusted = applyTouchMarkerOffset(editor, rawPt);
     snapped = snapFor(adjusted, editor, editor._currentMode, 'start', bypass);
-    show = isTouch || snapped.x !== adjusted.x || snapped.y !== adjusted.y;
+    isSnapped = snapped.x !== adjusted.x || snapped.y !== adjusted.y;
+    show = isTouch || isSnapped;
   }
+
+  // H13: only during an actual drag/draw, never on plain hover (this
+  // function also runs there) -- hapticSnap tracks the engage/disengage
+  // transition itself, so a bare "is a snap active this move" report is
+  // all this call site needs to give it.
+  if (editor._isDragging || editor._isDrawing) hapticSnap(isSnapped);
 
   if (!show) {
     clearSnapCursor(editor);

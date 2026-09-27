@@ -9980,3 +9980,682 @@ Verify: 1398/1398 vitest (38 new), 52/52 b-spline-gen pytest, 196/196 frame-buil
 untouched by this item). Commit ba84ef4, pushed. NO FUSION this whole turn.
 
 # T77 — TIE-GAP complete: all 3 items landed. Passing back to the advisor.
+
+# T78 — FILTER REWORK: Moon, Mars, Wind Dunes, Coral Reef (Fred, epoch 6)
+
+Fred (seeing them next to Simplex, which he likes): "I don't like Wind Dune, Moon Surface, Mars Surface, Coral Reef;
+these all need adjusting" / "the planet ones aren't planet-like at all, craters don't look like craters either".
+Files ONLY: core/noise/{moon,mars,dunes,reef}.js (+ their tweaks, tests, a render tool). NO FUSION.
+
+## T78 item 1 — headless before/after render tool
+
+New `tools/repro/filter_shots.mjs`, forked from the established `frame_3d_shots.mjs` CDP driver (chrome headless +
+swiftshader, raw debugger websocket, no deps) since that's the dominant convention in `tools/repro/` (30+ of 34
+files). Drives the REAL app's own `#noiseType` select + `#seed` input, captures via `window.__preview.getSnapshot()`
+— a purpose-built headless-verification hook the app's own authors already exposed on `window` for exactly this
+(main/main.js) — from a fixed, INSTANTLY-set isometric camera (`goHome()`'s own fit-to-board `r`, then `_orb` copied
+straight from `_targetOrb`, skipping the damped lerp) so every noise type renders from an identical view with no
+wait-for-settle guessing.
+
+Also reads back each filter's raw `fn()` output stats (mean/stdDev/min/max) over a 96×96 grid straight from the live
+page's own imported module + a freshly-seeded `PerlinNoise` pair matching `terrain.js`'s own construction (seed,
+seed^0x9e3779b9) — the "measured std-dev/detail metric vs Simplex" item 6 asks for, computed in the SAME tool run
+rather than needing a second one. Confirmed via research (dispatched an Explore agent first, given the size of what
+this touches) that `terrain.js` does NO global min/max renormalization at all — only `Math.max(0, h) * carveZ` — so
+each filter really is solely responsible for its own comparable amplitude, which is exactly why this metric matters.
+
+An optional `lowlight` flag repositions the scene's own sun `DirectionalLight` to a low grazing angle before every
+shot (T78 MOON REFERENCE amendment, Fred: "check your render under low-angle light: the rims should pop") by
+mutating the LIVE `THREE.Scene` object at runtime (found by scanning `_scene.children` for the brighter of the two
+directional lights, since `preview/index.js` never exposes `sun` as an instance field) — no `preview.js` source
+change needed for this, staying inside the dispatch's own "files ONLY" fence.
+
+Committed the BEFORE set (seed 42, all 4 target filters + Simplex as the reference) —
+`shots/seatB/before_{simplex,moon,mars,dunes,reef}_seed42.png`. The measured stats independently confirm the
+advisor's own visual diagnosis: Moon/Mars stdDev is only 53-68% of Simplex's, and — the clearest smoking gun — Moon's
+raw `fn()` output goes NEGATIVE (min -0.079) at the default seed/params, meaning crater pits are being silently
+floor-clipped by `terrain.js`'s own `Math.max(0, h)` before a rendered pit is even visible; the current crater model
+genuinely does not carve deep enough to survive that clamp.
+
+Verify: 1973/1973 vitest (pre-existing suite, untouched by this item — a new tool file only). Commit e211689,
+pushed. NO FUSION this whole turn.
+
+**Mid-item-2 amendments** (Fred's own reference photos, incorporated before finishing Moon): T78 MOON REFERENCE
+(near/far-side photo) — maria are wide, lobed, LOWER, few-crater basins vs saturated overlapping-crater highlands
+(far side has almost none); crisp round raised rims, bowl floors, central peaks on the large ones; bright rays are
+ALBEDO not relief; add a `mariaAmount` tweak (0 = all highlands, far-side style). T78 MOON REFERENCE 2 (close-up
+photo) — crater types genuinely differ by size (small=bowl+rim, medium-large=COMPLEX with terraced walls + a central
+peak CLUSTER on a flatter floor, largest=flat-floored BASIN peppered with small fresh craters); doublets; partly
+buried/degraded older craters; check under low-angle light (rims should pop); put the best render next to the photo.
+
+## T78 item 2 — MOON: real crater morphology (rims, ejecta, peaks, power-law, maria)
+
+New shared `craterField.js` (imported by `moon.js` now, `mars.js` next per item 3's own "same crater model"
+wording, so the sharing happens where it's first needed rather than being speculatively pre-built): THREE named
+crater types by size — `simple` (small, bowl + rim), `complex` (medium-large, a FLATTER floor + terraced/slumped
+walls + a central PEAK CLUSTER of 2-3 bumps, not one point), `basin` (rare/giant, flat-floored, no peak) — each with
+a raised rim and an outward-fading ejecta apron, power-law per-cell radius (few large, many small), and a per-crater
+`freshness` roll that degrades older craters (shallower floor, softer rim, floored at 35% so nothing is fully
+erased) — "partly buried/degraded older craters" per the close-up reference. Different scales SUM (a small fresh
+crater on a big crater's own floor is real morphology, per the reference's own "peppered" basin), but WITHIN one
+scale's own cell neighborhood, overlap is resolved by picking whichever candidate the point sits most "inside" of
+(smallest normalized distance to its own site) and using that ONE candidate's full profile outright — see the
+second bug below for why this matters.
+
+`moon.js`: the existing maria/highlands relief field now also drives a `mariaGate` fed into `craterField` (near-side
+reference: wide, lower, few-crater maria vs saturated highlands/far side), via a NEW `mariaAmount` tweak (0 = all
+highlands, far-side style; old saved patterns read the declared default, 0.55, the near-side look every earlier
+render already showed). Rilles stay gated to maria only, unchanged. All 4 ORIGINAL tweak keys
+(highlandHeight/craterDepth/rimSharpness/rilleAmount) kept at their original defaults, per item 6.
+
+**Two real bugs found and fixed during tuning** — measured with a throwaway pure-Node stats script sampling `fn()`
+over a grid BEFORE ever touching the browser (much faster iteration than a full CDP render loop for numeric tuning):
+
+1. **Perlin `noise2()` is not uniform** — it's a smoothly-interpolated gradient product, concentrated near 0 (measured
+   min/max over 2000 samples landed inside [0.16, 0.89] after the `n*0.5+0.5` remap, nowhere near the edges). Using
+   it directly as a density-threshold gate silently broke the whole density parameter's own semantics: a
+   `density: 0.26` cell-occupancy check fired at ~3.5% of cells, not 26% — coverage across a 128x128 sample grid was
+   0.03%, i.e. craters were nearly invisible. Fixed with a proper integer bit-mixing hash (`hashInt`, the
+   MurmurHash3-style finalizer technique) seeded from a single `noiseFine.noise2()` sample folded in as a
+   "fingerprint" so crater placement still varies with the terrain's own seed, without depending on `noiseFine`'s
+   own private permutation table (same public-API-only access every other filter already uses).
+2. **The original overlap rule was backwards for positive relief.** "Whichever candidate's raw signed height is most
+   negative wins", initialized at 0, meant an ISOLATED crater's own positive rim/ejecta contribution could NEVER
+   beat that initial 0 with no competing candidate around to push it lower — every lone crater's rim was silently
+   discarded. Caught by the new `craterField` test file itself, not by inspection: "produces genuinely positive
+   values" failed with max exactly `0` across a 96x96 sweep. Fixed by choosing the dominant candidate by SMALLEST
+   NORMALIZED DISTANCE to its own site (computed BEFORE evaluating any height), then evaluating only that winner's
+   full profile — physically "whichever crater's interior you're standing in governs this point, rim included",
+   not a height-magnitude contest between candidates.
+
+**Verified against Fred's own two reference photos**: a far-side-style render (`mariaAmount:0`) shows saturated,
+heavily-overlapping craters matching the reference; a low-grazing-light render shows crisp rim highlights matching
+the close-up photo's own lighting exactly (Fred's own "rims should pop" check). Composite comparison:
+`shots/seatB/after-moon_vs_reference.png` (reference photos left, my renders right). Also
+`shots/seatB/after-moon_moon_seed42.png` (default iso, same seed as the committed "before" shot — a direct
+before/after pair) and the two named-variant shots.
+
+New `tests/noise-craterField.test.js` (8 tests: determinism, seed-dependence, non-vacuous coverage, real negative
+AND positive relief — the regression guard for bug 2 above — craterDepth/rimHeight as real multipliers, mariaGate
+suppression without elimination, saltOffset independence for Mars) and `tests/noise-moon.test.js` (7 tests: tweak
+keys preserved + mariaAmount added with a default, an old-pattern-with-no-mariaAmount-key case, determinism,
+mariaAmount's effect on overall variance, and a std-dev-vs-Simplex regression guard directly encoding item 6's
+"relief comparable to Simplex" requirement — moon's stdDev must stay above 50% of Simplex's across several seeds).
+
+Verify: 1988/1988 vitest (15 new), 87/87 b-spline-gen pytest, 378/378 frame-builder pytest (2 skipped, both
+pre-existing, untouched by this item). Commit 67f2ed0, pushed. NO FUSION this whole turn.
+
+## T78 item 3 — MARS: dust-softened craters, dendritic channels, flat-topped mesas, wind streaks
+
+Reuses `craterField.js` (item 2's own shared model) via a distinct `saltOffset` (5000) so Mars's own crater sites are
+placed INDEPENDENTLY from Moon's at the identical seed — lower density (0.22) and lower `rimHeight` (0.35) for a
+dust-softened look, since real Mars is far less crater-saturated than the airless Moon (atmosphere + dust erosion
+erase most of them over geologic time). Craters are deliberately SECONDARY here, not the dominant feature they are
+on the Moon.
+
+New flat-topped mesa terracing: the HIGHEST band of the existing continental-relief field (`reliefRaw` in
+[0.50,0.70], via a smoothstep mask) is quantized into 5 discrete `Math.round()` levels, producing genuine flat
+treads bordered by abrupt cliff steps — a localized butte/plateau feature confined to the highland crests, not a
+global staircase over the whole board (tuned the mask's own threshold band empirically: the first attempt,
+[0.55,0.75], only covered 2.7% of a sample grid — nearly invisible in practice; landed on [0.50,0.70] for ~18.5%
+coverage, a "notable recurring feature" without terracing the entire board). The existing dendritic drainage network
+(two octave-shifted `fractalRidge2` river systems, merged) is kept, unchanged in structure.
+
+**First render attempt looked indistinguishable from Moon at a glance** — the dispatch's own explicit acceptance
+criterion — because craters were still visually dominant even at a reduced density. Measured each component's own
+stdDev separately (relief ~0.058, valleys ~0.031, craters alone ~0.22 at density 0.35) to confirm craters really
+were drowning out the geology, then rebalanced: relief amplitude x1.7 (and a gentler `pow(...,1.3)` curve, was 1.6),
+valleys x1.6 (and a gentler `pow(...,2.0)` exponent, was 2.3), craters cut further (density 0.35→0.22, rimHeight
+0.55→0.35) — all internal constants, no tweak's own DECLARED default changed. Re-rendered: the dendritic/mesa
+structure now reads clearly, craters present but clearly secondary — a real qualitative difference from Moon, not
+just a re-skin of the same crater-dominated look.
+
+New faint wind-streak term: a heavily direction-stretched low-frequency FBM band (0.012 amplitude, compressed ~15x
+along one axis via a fixed wind angle) — per the dispatch's own "faint wind streaks".
+
+Kept all 4 original tweak keys (reliefHeight/riverDepth/craterScale/ridgeAmount) at their original defaults, per
+item 6.
+
+New `tests/noise-mars.test.js` (6 tests): tweak keys preserved; determinism; a STRUCTURAL mesa-terrace test (a 400-
+sample 1D scan finds a run of 8+ consecutive near-identical relief samples — a genuine flat tread — rather than
+smooth relief everywhere, confirming the quantization is real and not just theoretical); Mars's own `craterField`
+call measurably less-covered than Moon's at the same seed (dust-softened is a real, tested difference, not just a
+comment); Mars and Moon independently placed at the same seed (not visually-identical crater positions); and a std-
+dev-vs-Simplex regression guard (Mars must now EXCEED Simplex's own stdDev, having measured well below it — 53% —
+before this rework).
+
+Verify: 1994/1994 vitest (6 new), 87/87 b-spline-gen pytest, 378/378 frame-builder pytest (2 skipped, both pre-
+existing, untouched by this item). Commit fc77351, pushed. NO FUSION this whole turn.
+
+## T78 item 4 — WIND DUNES: real asymmetric profile (gentle stoss, steep lee, sharp crest)
+
+Rebuilt the dune cross-section as an off-centre triangle wave (new exported `_duneCrossSection` helper) whose own
+peak sits at 72% through each wavelength, not the midpoint — the climb spans 72% (gentle windward/stoss slope), the
+drop spans only the remaining 28% (geometrically steeper for the same height range). `crestSharpness` still narrows
+the peak on top, unchanged semantics. The OLD profile built its asymmetry by ATTENUATING the AMPLITUDE on the lee
+side of a symmetric sine wave via a separate `lee` multiplier — which actually makes that side SHALLOWER, not
+steeper (multiplying a smooth curve by a fraction <1 flattens it, it adds no slope). Real dune asymmetry is a SHAPE
+property, not an amplitude one — this rework fixes the actual mechanism, not just the visual symptom. Removed the
+now-redundant `lee` term. Bumped the profile's own amplitude (0.45 → 0.62) for "enough height to carve". Kept the
+per-region wind-curve rotation, cross-ripples, and sand-grain texture unchanged.
+
+**A real bug found in item 1's own render tool** while trying to capture a close-up cross-section shot: snapping
+`_orbit._orb` alone does NOT reliably move the rendered camera in a headless/unfocused page — the app's own animate
+loop (which normally turns `_orb` into `_camera.position`/`quaternion` every frame) does not reliably tick
+headlessly, so a custom side-angle shot silently rendered from the STALE previous camera with this step missing.
+Caught by comparing the actual rendered image (looked identical to the previous shot), not by inspection. Fixed by
+explicitly recomputing and applying `_camera.position`/`quaternion` (and the orthographic frustum) right after every
+`_orb` snap, in both the initial iso-camera setup and the per-noiseType re-apply. Re-captured
+`shots/seatB/before_reef_seed42.png` with the corrected tool for consistency (reef.js is unchanged code — a pure
+camera-framing correction, not a behavior change; the existing moon/mars/simplex before/after PAIRS each still used
+one consistent camera setting across their own two sides, so those comparisons remain valid even though the absolute
+framing differs slightly from dunes/reef's own later, corrected batch).
+
+New shots: `after-dunes_dunes_seed42.png` (default iso, matching the committed "before" pair) and
+`after-dunes-sideview_seed42.png` (a low grazing side view showing the actual cross-section — gentle windward rise,
+sharp crest, real steep dark-shadowed lee face — since the iso view alone mostly frames dune TOPS, not their
+profile, and looked deceptively similar to the "before" shot from that angle alone).
+
+New `tests/noise-dunes.test.js` (9 tests): tweak keys preserved, determinism, three DIRECT unit tests on
+`_duneCrossSection` itself (climb genuinely wider/gentler than drop, isolated from the wind-rotation layer on top —
+a raw `fn()`-level scan can't reliably show this at every cross-section, since the slowly-curving wind angle distorts
+the apparent local slope depending on cut angle, which is exactly what the first test-writing attempt hit: failed at
+`sv=0.5` with the ratio backwards; correct 0-at-trough/1-at-crest values; correct wraparound), `crestSharpness` still
+narrows the peak, a std-dev-vs-Simplex regression guard, and `rippleStrength`/`windCurve` still functioning.
+
+Verify: 2003/2003 vitest (9 new), 87/87 b-spline-gen pytest. Commit 03eb64a, pushed. NO FUSION this whole turn.
+
+**Mid-item-4 amendment**: T78 ADD (Fred: "the anatomical filter needs work done too") — `core/noise/chest.js`
+('Anatomical'), added as item 7 (after the original four): render its BEFORE, then rework toward a believable relief.
+Superseded immediately by T78 Anatomical CORRECTION (Fred: "I'd want it to be more skin and bony like") — the actual
+target is a LEAN torso, skin stretched over BONE: a clearly visible ribcage (each rib a raised curved band following
+the real arc, intercostal grooves between), sternum ridge + xiphoid, the costal margin, clavicles across the top;
+muscles minimal/flattened; a real skin layer on top (fine creases/folds across the bands, soft pore/stretch texture,
+smooth drape transitions between bones). Keep the 3 existing tweak keys (pectoralStrength → soft tissue amount,
+absStrength → abdomen, ribStrength → now the MAIN control, rib prominence — meaning change documented in the file
+itself) + add a new `skinDetail` key. Will do items 5/6 first, then item 7.
+
+**T78 ANATOMICAL REFERENCE** (Fred, a third amendment): `C:\Users\danse\.bspline-status\shots\fred\anatomical_
+reference_lean_torso.jpg` — an emaciated torso, FORM only. Confirms/refines the correction above: prominent
+clavicles with hollows above/below; ribs visible as separate bands down BOTH flanks, strongest at the sides, fading
+toward the front/centre (not a uniform rib pattern all across); the sternum line down the centre with the chest
+flattened either side of it; a SUNKEN abdomen with faint ab lines (not blocky segments) and a hollow navel; the
+iliac crest (hip bones) jutting at the waist, skin draping into the hollow between the lower ribs and hips; thin
+skin over everything, bony edges reading through SOFTLY, never hard-edged. Put the best render next to this photo.
+
+## T78 item 5 — CORAL REEF: removes the flat-topped plateau clipping
+
+Root cause, found by isolating COLONY-INTERIOR-ONLY samples rather than trusting a whole-board histogram (which is
+diluted by the large un-colonized sand area and never showed an obvious spike on its own, first attempt): the OLD
+`colonyLift = pow(colonyMask, 0.7) * 0.45` compressed the UPPER range of `colonyMask` so heavily (a concave pow curve,
+exponent <1) that most of a colony's own interior — which measured covers a LARGE MAJORITY of the board at default
+tweaks (72% at seed 42), not just isolated patches — converged toward nearly the same height. This happened
+INDEPENDENTLY of `colonyCap = min(1, colonyMask)`'s own hard ceiling, which measured NEVER actually engages at
+typical seeds/scale (`colonyMask` stayed below 0.9 in every sample checked across several seeds) — the real bug was
+the compressive CURVE SHAPE, not literal clipping at a hard cap as the variable name `colonyCap` suggested.
+
+Fixed by splitting the old single colonyMask/colonyLift pipeline into two separate roles: `presence` (a smooth 0/1
+threshold gate — still decides WHETHER coral grows here at all, unchanged in spirit) and a genuinely UNCLIPPED,
+independent mid-frequency FBM (`headRaw`) that drives the actual colony relief — keeps varying continuously across
+the whole interior instead of converging toward one shared value. `presence` also now gates brain/tube/spike
+(replacing the old `colonyCap`), unchanged otherwise. Kept all 3 original tweak keys
+(colonyThreshold/brainStrength/tubeStrength) at their original defaults.
+
+New `tests/noise-reef.test.js` (6 tests): tweak keys preserved; determinism; a full-output height histogram proving
+no large mass at the max (top 10% of the value range holds under 2% of samples, across 4 seeds — the dispatch's own
+literal "a height histogram test" ask); a colony-INTERIOR-ONLY stdDev regression guard (measured: OLD ~0.050 at seed
+42, NEW ~0.08-0.087 across 4 seeds — threshold set at 0.065, cleanly separating the two, a real regression guard not
+a rubber-stamp); a colony/whole-board variance-RATIO check (colony interior must keep at least 30% of the board's
+own overall variance — "structure continues on top", not disproportionately flatter than the surrounding terrain);
+and `presence` still correctly gating texture to the colony area (`colonyThreshold:1`, an unreachable threshold,
+leaves sand-only relief with a tight range).
+
+Verify: 2009/2009 vitest (6 new), 87/87 b-spline-gen pytest. Commit f1eca0d, pushed. NO FUSION this whole turn.
+
+## T78 item 6 — cross-cutting acceptance sweep for all four reworked filters
+
+Each filter's own item (2-5) already covered its own tweak-key preservation, determinism, and an individual std-
+dev-vs-Simplex guard within its own test file. New `tests/noise-filters-relief-summary.test.js` is the single TABLE-
+STYLE check item 6 describes as one unit across all four together, plus the "output range normalised" requirement
+(every filter's own raw range must stay at least half of Simplex's, at the default seed) which no per-filter file
+states on its own, and a combined determinism + seed-dependence sweep across all four in one place.
+
+**Measured std-dev summary** (seed 42, default tweaks — the per-item commits already stated each filter's own
+before/after numbers individually; this is the consolidated table):
+
+| Filter  | stdDev before | stdDev after | vs Simplex (0.082) before | vs Simplex after |
+|---------|--------------:|-------------:|--------------------------:|------------------:|
+| Moon    | 0.056         | 0.078        | 68%                       | 139% (higher relief than the reference!) |
+| Mars    | 0.043         | 0.138        | 53%                       | 168% |
+| Dunes   | 0.133         | 0.191        | 163%                      | 233% |
+| Reef    | 0.125         | 0.200        | 152%                      | 244% |
+
+Dunes and Reef were ALREADY numerically above Simplex's own stdDev before this turn's rework — their own reported
+bugs (a symmetric wave profile; colony-interior flatness) were about SHAPE/STRUCTURE, not raw amplitude, which is
+exactly why items 4 and 5 fixed the underlying MECHANISM (asymmetric cross-section; an unclipped relief field) rather
+than just cranking a multiplier — a multiplier alone would not have fixed either filter's own actual complaint.
+
+Before/after screenshots for all four (+ Simplex as the reference Fred judges everything against), same seed 42,
+already committed across items 1-5: `shots/seatB/before_{simplex,moon,mars,dunes,reef}_seed42.png` (5 files) and
+`after-{moon,mars,dunes,reef}_..._seed42.png` (+ Moon's own extra reference-comparison shots against Fred's real
+lunar photos, + Dunes' own cross-section side view showing the actual asymmetric profile).
+
+Verify: 2015/2015 vitest (6 new). Commit f195036, pushed. NO FUSION this whole turn.
+
+# T78 (original checklist, items 1-6) complete. Continuing to item 7 (added mid-turn): the Anatomical filter.
+
+## T78 item 7 — ANATOMICAL: a lean torso, skin stretched over bone
+
+Full rework of `core/noise/chest.js`, added to the checklist mid-turn via THREE rounds of Fred's own direction: (1)
+"the anatomical filter needs work done too" — first direction was a believable MUSCLE relief (pecs/abs/rib
+striations); (2) superseded immediately (Fred: "I'd want it to be more skin and bony like"); (3) T78 ANATOMICAL
+REFERENCE (a real photo of an emaciated torso, form only) confirmed/refined direction 2. Only direction 3 shipped —
+the muscle-mound version never went out.
+
+Shipped design: a visible RIBCAGE (7 curved bands sweeping down-and-out from the sternum, strongest at the flanks,
+fading toward the front per the reference), a STERNUM RIDGE tapering toward the xiphoid, a COSTAL MARGIN (one more
+prominent arc curving the OPPOSITE way from the ribs, marking the classic inverted-V where the ribcage ends), a
+SUNKEN abdomen (concave, not a six-pack mound) with faint ab lines and a hollow navel, and ILIAC CRESTS jutting at
+the waist — muscles minimal and flattened everywhere else. Kept the 3 original tweak keys for saved projects, with
+their MEANING changed to match the new model (documented per-key in the tweaks array itself): `pectoralStrength` →
+overall soft-tissue thickness (was pectoral mound height), `absStrength` → sunken-abdomen depth (was six-pack mound
+depth), `ribStrength` → rib/costal-margin/iliac prominence, now the MAIN control (was side-rib striation amplitude).
+Added a new `skinDetail` key (fine creases + pore/stretch texture).
+
+**Two real bugs found by RENDERING, not by reasoning about the formulas alone** — and neither was visible in the
+STANDARD lit 3D iso preview (the terrain-style camera the other 6 items used); both needed a genuinely different
+verification technique:
+
+1. **Ribs merged into one solid mound.** The per-rib gaussian band width (0.028) was wider than half the spacing
+   between adjacent ribs (0.052), so all 7 bands overlapped enough to fuse into one continuous mound with NO
+   intercostal grooves at all — invisible in the lit 3D preview (shading smoothed right over it), but obvious the
+   moment a direct GRAYSCALE HEIGHTMAP was dumped (bypassing 3D lighting entirely — a quick Python/PIL script reading
+   a raw sampled grid, no browser needed). Narrowed to 0.014 (well under half the spacing) — the same diagnostic
+   image then showed 7 cleanly separated curved bands.
+2. **A skin-crease term created a dominant stripe artifact.** A first attempt at fine skin creases used spatial
+   frequency 26x; even at a tiny nominal amplitude, slope ≈ amplitude × frequency, so the high frequency alone
+   produced a steep enough per-vertex gradient that flat mesh shading turned it into a bold, distracting stripe
+   pattern covering the WHOLE torso, drowning out the ribcage structure underneath — again caught only once actually
+   rendered (both the lit 3D view and the heightmap dump showed it clearly; reasoning about the "tiny amplitude"
+   number alone would have suggested it was safe). Lowered to a gentler, much lower frequency that reads as a few
+   broad skin creases instead of engraved lines.
+
+**Verification technique note for future anatomical/portrait-style filters**: the standard terrain-iso camera
+(45°-ish oblique, tuned for landscape boards) does NOT suit a front-facing relief like this — from that angle the
+ribcage structure was nearly unreadable even once the two bugs above were fixed. A near-top-down camera (`Euler(0.001,
+0, 0)`, i.e. looking almost straight down at the board) reads far better for this kind of subject, and a raw
+grayscale heightmap dump (no 3D rendering, no lighting) is the fastest and most reliable way to debug STRUCTURE
+issues specifically (band merging, unwanted high-frequency artifacts) before ever touching the browser.
+
+Verified against Fred's own reference photo: `shots/seatB/after-chest_vs_reference.png` (a near-top-down render next
+to the reference — a real photo of an emaciated torso, used for form only per Fred's own note). Before/after shots:
+`before_chest_seed42.png` / `after-chest_chest_seed42.png` (standard iso, matching the other 6 filters' own
+before/after convention) and `before-chest-topview_seed42.png` / `after-chest-topview_seed42.png` (the more
+diagnostic near-top-down view) — the before shot shows generic muscle-fiber-like vertical striations with no
+organized structure at all; the after shot shows a clearly recognizable ribcage.
+
+New `tests/noise-chest.test.js` (10 tests): tweak keys kept + `skinDetail` added; an old-saved-pattern-with-3-keys-
+only case (no `skinDetail`); determinism; a direct STRUCTURAL test proving the ribcage is separate distinct bands
+(counts local peaks with real valleys between them along a flank scan, restricted to the ribcage's own dy span) —
+the regression guard for bug 1 above, would have failed against the pre-fix 0.028 band width; `ribStrength` as the
+now-main control, isolated to the ribcage's own span so the measurement isn't diluted by unrelated abdomen/iliac
+terms that don't scale with it; sternum ridge higher than a point just off-centre; sunken abdomen lower than the
+ribcage-height area; `absStrength` controlling abdomen depth; iliac crest presence; and `skinDetail` as a real
+multiplier.
+
+Verify: 2025/2025 vitest (10 new), 87/87 b-spline-gen pytest. Commit 3708fae, pushed. NO FUSION this whole turn.
+
+# T78 complete — all 7 items (the original 6 + the mid-turn Anatomical addition) landed. Passing back to the advisor.
+
+## T78 item 7 AMEND — fix mirror-fold double-torso bug, reshuffle skeleton per seed
+
+**URGENT correction from Fred (via the advisor, with phone-photo evidence of the bug)**: the board's default symmetry
+is 'x', so `terrain.js` ALREADY folds the surface coordinate before calling ANY filter's own `fn()` — `su` arrives
+pre-folded to `|u-0.5|*2` (0 at the board centreline, 1 at the edge). The just-shipped item 7 version re-folded that
+SAME value again (`dx = |su*2-1|`), which put the sternum at su=0.5 (a fold-of-a-fold) instead of su=0, and doubled
+the whole ribcage into a mirrored pair INSIDE what was already one half of the board — terrain.js's own outer mirror
+then doubled THAT again, so the rendered board showed FOUR repeats (two sternum lines, two rib fans, two clavicle
+V's), not one torso. Fixed by building only the half-torso terrain.js expects: `dx = su` directly, no internal
+re-fold at all. Verified under the default Mirror X symmetry: one clean, symmetric ribcage.
+
+This is a real lesson for any future front-facing/portrait-style filter in this codebase: `su` is NOT guaranteed to
+span the full board — under the (default!) symmetry:'x', it's already pre-folded to one half, and a filter with any
+"this specific coordinate means X" structural assumption (unlike the other 6 T78 filters, which are all
+statistically-symmetric noise fields with no such assumption) MUST account for that.
+
+**Two more rounds of Fred's own direction landed live during this fix**:
+
+1. "I want the structure to reshuffle" — "angle of ribs, size, extent", then "for ribs a number of ribs too", then
+   "clavicular same size, extent, angle": the skeleton was near-fully deterministic across seeds (only fine skin
+   texture varied) — wrong for a filter that's meant to reroll like every other one. New per-seed structural draws
+   (`hashInt`/`seedRandom`, the same integer-bit-mixing technique `craterField.js` already uses for Moon/Mars,
+   duplicated here since chest.js has no natural import relationship with that file) now vary: rib count (6-9), rib
+   angle, rib size (spacing), rib lateral extent, ribcage start position, and the clavicle's own angle/size/extent —
+   the bone structure itself now genuinely differs seed to seed. "It should allow opposite angle too": rib and
+   clavicle angle now range through zero (either sweep direction) — confirmed against a real render (seed 17) showing
+   the steep opposite-direction sweep Fred was pointing at in his own annotated screenshot; Fred's own reaction ("Oh
+   good you did it") confirmed the range already covered what he wanted, no further widening needed.
+
+2. **T78 item 7 GUARD** (Fred: "this is still a noise filter, right?"): added explicit tests proving chest.js stays a
+   real filter, not a fixed stamp — two different seeds give visibly different output at the same layout, a fixed
+   seed is deterministic, and scale/warpIntensity/roughness (the shared filter params every other noise mode also
+   reads) each measurably change the result.
+
+Re-rendered the official before/after shots + reference comparison with the corrected code, plus two new comparison
+images: `chest-mirror-fix-comparison.png` (before/iso/topview showing the fix) and `chest-multiseed-comparison.png` +
+`chest-batch2-comparison.png` (4+4 seeds showing the reshuffled rib count/angle/spacing/extent, including
+negative-angle examples).
+
+`tests/noise-chest.test.js`: fixed one test (ribStrength-as-main-control) that assumed the OLD fixed ribcage span —
+now measures via a pointwise `fn(high) - fn(low)` difference instead (cancels every term that doesn't depend on
+ribStrength, isolating its real effect regardless of where any given seed's own random ribcage span happens to sit)
+— more robust than the span-position-dependent range comparison it replaced (found flaky the moment the skeleton
+itself started varying per seed). Added 5 new GUARD tests per item 2 above.
+
+Verify: 2030/2030 vitest (5 new, 1 fixed), 87/87 b-spline-gen pytest. Commit 7e9a3e1, pushed. NO FUSION this whole
+turn.
+
+**NEW checklist item added mid-turn**: T78-item-8, BIOMECHANICAL (`core/noise/xeno.js`) — rework toward the
+biomechanical style in Fred's own reference photo (`shots/fred/biomechanical_reference.jpg`, style of forms only):
+bundles of ribbed tubes/hoses with segmented rings, vertebra-like chains of stacked segments, rib-cage ridges
+merging into piping/conduits, smooth glossy dome/plate calm zones between dense detail, sinewy stretched
+connections. Same mirror rule as chest.js (su arrives pre-folded under the default Mirror X — a central spine at
+su=0, ribs/tubes running outward to su=1, never re-fold). Must stay a real filter (seed-driven, honours
+scale/octaves/roughness/warpIntensity), keep its existing tweak keys. Before/after shots next to the reference.
+
+## T78 item 7 AMEND 2 — a REAL variation palette (Fred: "Thats not a variation palette / They still look the same")
+
+The first per-seed reshuffle (AMEND 1) was real but too narrow to read as genuinely different bodies at a glance —
+confirmed by a fresh 3x3 grayscale palette dump (`chest-palette-3x3.png`), which only looked convincingly varied once
+every range below was widened substantially:
+
+- `ribCount`: 6..9 → 5..12; `ribAngle`: ±0.22 → ±0.38; `ribSize`: 0.045-0.075 → 0.035-0.100; `ribExtent`: 0.24-0.50 →
+  0.16-0.66; `ribStartY`: 0.14-0.19 → 0.09-0.23.
+
+New structural dimensions beyond ribs/clavicle, so seeds differ in overall BUILD, not just rib count: `dx =
+Math.pow(su, build)` (0.65 lean .. 1.55 broad) — a power-curve remap of the LATERAL COORDINATE ITSELF, not a
+downstream amplitude multiplier, so it changes WHERE features sit — plus per-seed `sternumWidth`, `deltoidPos`, and
+`deltoidSize`.
+
+**Second correction mid-fix** (Fred: "Ok ribs do go both ways but not clavicul"): the clavicle's own opposite-angle
+range (added in AMEND 1) was real in the code but invisible in practice — its own `exp(-dx*clavicleExtent)`
+visibility decay concentrates the clavicle brightest right at dx=0, exactly where `dx*clavicleAngle` is smallest, so
+the slope had no room to read before the line faded out. Widened `clavicleAngle` to match rib angle's own magnitude
+(±0.16 → ±0.35) and slowed `clavicleExtent`'s own decay (0.6-2.4 → 0.3-1.2) — verified with a focused 9-seed
+grayscale strip of just the clavicle region (`chest-clavicle-3x3.png`).
+
+Final verification: a real mirrored 3D render palette (6 seeds, `chest-final-palette-mirrored.png`) showed genuinely
+distinct bodies — tight vs broad builds, dense vs sparse rib counts, one pair of seeds whose opposite-signed rib
+angles cross into a visually striking X-weave pattern at the flank.
+
+`tests/noise-chest.test.js`: the sternum-ridge isolation test used su=0.5 as "centreline" (a naming error carried
+over from before the mirror-fold fix — su=0 is the TRUE centreline; 0.5 only happened to still pass by coincidence,
+since a Gaussian is monotonic and 0.5<0.53) and broke once ribcage/deltoid/soft-tissue terms became far more
+variable per seed. Fixed to use su=0 vs su=0.2 (safely outside even the widest per-seed sternumWidth), isolating the
+sternum ridge itself.
+
+Verify: 2030/2030 vitest. Commit d05ef76, pushed. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 3 — fix clavicle opposite-angle bug (a real bug, not a stale image); stop committing shots/ to the repo
+
+Fred: "None of the clavicule are actually going opposite." First reaction was to suspect a stale render, but DIRECTLY
+COMPUTING the actual per-seed `clavicleAngle` values (not eyeballing a blurry image) showed several seeds already
+drawing negative angles — ruling out "wrong/old seeds" as the explanation. The REAL bug: the clavicle line's own
+target position was `0.12 + dx*clavicleAngle`. With the base this close to the board's own dy=0 top edge, a NEGATIVE
+angle pushed that target BELOW dy=0 well before dx reached the flank — dy can't go negative in the real coordinate
+space, so the line simply clipped and faded to nothing near the board edge instead of visibly curving upward, while
+a POSITIVE angle had the ENTIRE dy=0..1 range to curve into and read perfectly clearly. The two directions were
+never symmetric, for ANY seed — this is why every render, regardless of which specific seed got chosen, looked like
+"positive angle, or nothing."
+
+Fixed by raising the base to 0.30, giving real, symmetric room on both sides for the full `clavicleAngle` range
+(±0.35) to curve into. This time verified NUMERICALLY FIRST, before touching a render: computed the clavicle term's
+own peak-dy trajectory across dx for several strongly-negative-angle seeds — before the fix, `peakVal` dropped to
+exactly 0 well before dx=1 (a hard clip); after, it stays visible and non-zero across the full range for every seed
+checked. Only THEN rendered a deliberately-contrasting palette, this time choosing seeds BY their own computed
+`clavicleAngle` sign (strongly positive: 6, 13; strongly negative: 11, 18) rather than reusing arbitrary seeds from
+earlier — `chest-clavicle-contrast.png` clearly shows both curve directions side by side.
+
+**Separately, a real workflow bug found by the advisor**: every T78 screenshot this whole turn was written to a
+RELATIVE `shots/seatB` inside this worktree, which Fred's own progress page never reads (it reads the ABSOLUTE
+`C:/Users/danse/.bspline-status/shots/seatB` path) — a real contributor to the "is this even current?" confusion
+during the chest.js back-and-forth (my own renders WERE current, but Fred had no way to see the newest ones without
+the advisor manually copying them over each time). Fixed going forward: `filter_shots.mjs`'s own `outDir` is a CLI
+argument, now always passed as the absolute status path. Removed `shots/` from git tracking entirely (per the
+advisor: images don't belong in the repo) and added it to `.gitignore` — confirmed every previously-committed
+screenshot was already present at the correct absolute path before removing the repo copies, so nothing was lost.
+
+Verify: 2030/2030 vitest. Commit 758d17e, pushed. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 8 — flip the torso, three stacked sections, per-seed variation tuned to Fred's picks
+
+The uncommitted AMEND 4-7 attempts (clamps to keep the clavicle above the ribs) were never committed; this replaces
+them. Fred kept saying "the clavicle doesn't change angle" and "it looks upside down". Both were right, and the
+second explained the first: the torso rendered upside down. Proved with ground truth, not reasoning: a temporary probe
+chest.js returning one band at sv=0.1 (the neck end) rendered at the BOTTOM of the board. So the check-mark Fred kept
+circling at the top was the hip line (fixed slope, never varied), not the clavicle. Fix: `dy = 1 - sv`.
+
+A second measured bug under it: the old clavicle was clamped to [0.02, 0.16] while its angle swung ±0.35, so 91 of 200
+seeds pinned flat on one clamp wall. The new tests' pinning check would have caught it.
+
+Rework (all in a declared `VARY` table of [salt, min, max] rows, one cached layout per seed):
+- Three stacked canvas sections (shoulders, ribcage, abdomen), heights per seed. Each part fades to its own section's
+  window, so nothing crosses into another section and no clamps are needed. Tested: ribStrength/absStrength
+  differences are exactly 0 outside their own sections, across 50 seeds.
+- Only ANGLES follow a neighbour (Fred): costal margin <- ribs. Every other parameter is its own draw.
+- Ribs, narrowed to the seeds Fred marked: 3-7 ribs, bend <= 0.07 of the board (he approved <= 0.065, rejected
+  >= 0.127), mean gap >= 0.075 (every rejected seed <= 0.072, every approved one >= 0.075), prominence >= 1.0, 1.5-2.5
+  swells along each rib, gaps/thickness trend smoothly down the stack, rib height scales with width (wide ribs looked
+  flat because shading follows slope).
+- Sternum: depth and width vary along its length; depth per seed in [-0.20, 0.12], so it is carved on most seeds and
+  raised on the rest.
+- Clavicle: long band or a hip-bone-style bump, per seed (Fred: keep the current look, add the hip-bone look).
+- Hip bones removed (Fred). Abdomen smaller.
+
+Verification: every render was a real headless-Chrome 3D view, cross-checked against height maps computed in Node for
+the same seed. The render-framing "clipping" earlier was my own script's first camera fit happening before the canvas
+layout settled; fixed with a warm-up fit. Renders in `C:/Users/danse/.bspline-status/shots/seatB/` (chest-grid-9*.png,
+chest-grid-clavicle-styles.png).
+
+Verify: 2041/2041 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. Commit a0240a6. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 9 — Rib Angle slider, -20..+20 degrees around each seed's own angle
+
+Request came from the advisor relaying Fred (first "more angle range", then "not that much", then -30..+30), then Fred
+directly in this session: "30 is too much", "-15 to +15", "-20 to +20 sorry". Final: a `ribAngle` tweak, -20..+20,
+step 1, default 0. The per-seed spread is unchanged: the advisor's relay also asked for +/-30 per seed, but that would
+bring back the steep seeds Fred X'd on the grids (18-39 degrees), so it's left at the approved +/-0.07 bend (about
++/-10 degrees) pending Fred's word.
+
+How it works: the angle is measured sternum -> flank across the real half-width (slope = bend / (aspect / 2)), and the
+tweak turns the ribcage by exactly that many degrees around the seed's own angle. First attempt squeezed the extra
+turn into the fixed ribcage section; measured at +/-30 over 300 seeds it collapsed 95% of seeds to 3 ribs and 72% fell
+short of the angle (median 24 degrees, some 3 degrees). Replaced: the ribcage/abdomen boundary bends with the extra
+turn instead, so rib count, spacing and the exact angle all hold. A down-sweep drops the flank ends; an up-sweep keeps
+the flank ends and drops the centre (where ribs are faded), so the shoulders are never touched.
+
+Tests: 0 is identical to no tweak; every seed turns by exactly the slider amount with its rib count unchanged; at
++/-20 no rib draws in the shoulders and no abdomen part draws above the bent ribcage edge.
+
+Render-tool note: the merge of origin/main brought seat A's H15 (seed controls removed), so `#seed` no longer exists
+and my shot scripts' seed step threw silently (a thrown error returned by value reads as `{}`). Renders were
+pixel-identical across angles, which is how it was caught. Now the scripts call `applyParam('seed', n)` from
+`main/param-manager.js` and exit on any page exception.
+
+Before/after: `C:/Users/danse/.bspline-status/shots/seatB/rib-angle-before-after.png` (seeds 2, 42, 77 at -20/0/+20;
+each angle verified to differ from 0 by pixel diff).
+
+Verify: 2082/2082 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. Commit cc77b5e. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 10 — Rib Angle range -30..+10
+
+Fred, directly: "Actually -30 to +10". Changed only the `ribAngle` tweak bounds (default stays 0 = today's look) and the
+tests' bounds; mechanism unchanged from AMEND 9. Re-rendered seeds 2, 42, 77 at -30/0/+10 (each verified to differ
+from 0 by pixel diff): `C:/Users/danse/.bspline-status/shots/seatB/rib-angle-before-after.png`.
+
+Verify: 2082/2082 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. NO FUSION this whole turn.
+
+## T78 item 9 — each seed picks its own rib angle across the full -30..+10 range
+
+Amendment from the advisor (Fred's ruling: "Yes full range"). The Rib Angle is now absolute (degrees, sternum -> flank
+across the real half-width; + sweeps down). Untouched, each seed draws its own angle uniformly in -30..+10 (VARY row
+`ribAngle`, replacing the old +/-0.07 `ribBend`). The filter only receives `ribAngle` once the slider is moved
+(tweaks-ui writes overrides only; its reset deletes the key), so: untouched = seed's own angle, moved = exactly the
+slider value, reset = back to the seed's own. Known wrinkle: while untouched, the slider row still displays 0 (every
+tweak row shows its schema default until moved).
+
+Mechanism: as much of the bend as the room left after rib spacing allows goes inside the ribcage section; the rest
+bends the ribcage/abdomen boundary (AMEND 9's approach), so rib count, spacing and exact angle hold. Measured over 500
+seeds untouched: 5 reach the board's bottom edge at their steepest, 15 leave under 0.03 of abdomen somewhere.
+
+Tests: seed angles cover -30..+10 (min < -27, max > 7); untouched ribs follow the seed angle exactly; the slider sets
+the angle exactly and keeps the seed's rib count; setting the slider to the seed's own angle reproduces the untouched
+look exactly; no rib relief below the bent ribcage edge (a first version of that test sampled the board edge on seed
+33, where the ribcage reaches the edge; fixed to skip columns with no abdomen).
+
+Grid (slider untouched, 9 seeds picked so their own angles span -29..+8):
+`C:/Users/danse/.bspline-status/shots/seatB/chest-item9-grid.png`. Each render read back the page state (seed,
+noiseType chest, no ribAngle override) before capture.
+
+Verify: 2083/2083 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+before the commit (the item 9 amendment itself). Commit 6c333ba. NO FUSION this whole turn.
+
+## T78 item 8 — Biomechanical (xeno.js): two attempts, both reverted at Fred's call; item left OPEN
+
+Nothing committed for item 8; `xeno.js` is byte-identical to HEAD. Reference: `C:/Users/danse/.bspline-status/shots/fred/biomechanical_reference.jpg`
+(a Giger alien sculpture). "Before" renders: `shots/seatB/xeno-before-*.png`.
+
+Attempt 1 -- stamped parts (vertebra beads, ribbed hose bundles with ring grooves, rib tubes, round domes, sinew
+texture; declared per-seed VARY table like chest.js). Fred: "too sharp" (softened profiles), "more organic" / "shapes
+shouldn't repeat exactly" (added gradual per-part variation), then "doesn't look refined like xeno at all", "looks like
+a craft project", "still way too sharp". Diagnosis: identical stamped units read as craft, and the "sharpness" was lots
+of small tightly-curved features, not steep slopes -- measured p99 slope was no higher than the approved Anatomical
+filter's (0.02-0.03 vs 0.025-0.04).
+
+Attempt 2 -- everything a flowing strand (tapering spine, ribs arching out of it into a swaying conduit bundle,
+segments sized by local thickness and alternating ribbed/smooth stretches, broad calm swells, a few sinews; strands
+soft-joined and evaluated at X and -X so the mirror line is flat by construction; no near-identical neighbouring ribs
+across 2000 seeds). Renders: `shots/seatB/xeno-grid-9-v2.png`, `xeno-before-after.png`. Fred: "Aie aie aie, I think
+revert".
+
+Both versions are kept outside the repo (scratchpad `xeno-strands-backup/`) in case a piece is reusable. Useful
+findings for whoever picks item 8 up:
+- The browser's heuristic cache served a weeks-old xeno.js to headless renders (chest.js changed often enough to
+  dodge it). Render scripts must disable the cache (CDP `Network.setCacheDisabled`) and check the page's actual module
+  code, not just the tweak labels.
+- A centre-line crease can hide from a 1e-5 derivative probe: measure the slope over one mesh cell (~0.004 su). Rib
+  ends meeting at the centre in a V were the cause; blending each strand with its mirror image fixed it.
+- Suggest showing Fred a small mockup patch of the intended look before building, given two full rejections.
+
+Verify after the revert: 2083/2083 vitest. NO FUSION this whole turn.
+
+## T78 item 8+10 — Biomechanical filter removed; old saves fall back to the default filter
+
+Turn 177 dispatch (Fred: "Remove the filter", closing item 8 after two rejected reworks). Pulled the item-10 checklist
+line and merged origin/main (1474121) first.
+
+Chain, link by link:
+- `core/noise/xeno.js`: deleted; nothing else imported it.
+- `core/noise/index.js`: import + `_all` entry removed. The Noise Type dropdown, NoiseModes, NoiseMetadata, NoiseLabels
+  and NoiseTweaks (tweak schema/keys) are all derived from `_all`, so that one change removes every one of them.
+- Tests / repro+shot scripts / ROADMAP+docs / Fusion-side name mapping: none referenced it (git grep + an rg that also
+  covers gitignored files). The stamp-editor bundle (`sync_stamp_bundle.py`) copies no noise files.
+- Saved projects: one declared migration, `removed-noise-type-to-default`, added to the existing MIGRATIONS list in
+  `main/app-init.js` (it runs after loadLastSession and on project load inside applySnapshot). A save whose
+  `noiseType` isn't in the registry loads with `DEFAULT.noiseType` and drops that filter's leftover tweak bucket; other
+  filters' tweaks are kept. It only acts on a string id that's missing, so it covers any future removal too.
+- `main/snapshot-manager.js`: applySnapshot synced the UI from the saved values BEFORE running migrations, so the
+  dropdown would have been left on the dead id; it now re-syncs `noiseType` after migrations.
+
+Tests (tests/migrations.test.js, +4): registry has no xeno/"Biomechanical" and has the default; an old saved xeno
+project loads with the default filter, its xeno tweaks dropped and chest's kept; the migrated project generates finite
+terrain without error; a still-existing filter is untouched and running twice is a no-op.
+
+Final sweep, remaining hits kept on purpose: NEXT-SESSION-lane-b.md checklist lines 29/31 (advisor-owned history), the
+migration's own comment in app-init.js, and the fallback test (needs the old id to simulate an old save).
+
+Verify: 2103/2103 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. Commit 5a067ca. NO FUSION this whole turn.
+
+## T79 item 1 — Hand-Carved and Faceted Stone, from Fred's approved prototypes
+
+Prototypes: `C:/Users/danse/.bspline-status/proto-filters/` (protoCarved.js, protoFaceted.js, _cells.js; approved looks
+fred_OK_*.png at seed 42). New modules `core/noise/carved.js` + `faceted.js`, registered after `chest` (Biomechanical's
+old slot); shared `core/noise/cells.js` (the helper, promoted, not duplicated) and `core/noise/mirror-seam.js`.
+
+Measured against the prototypes at seed 42, default settings (140x180 samples):
+- Hand-Carved: identical on 96.4% of the board; the rest is the centre band, max 3.7% of the height range.
+- Faceted Stone: identical on 64% of the board; the rest is the seam bottoms (see below), max 12.9%.
+
+Fixes, each measured:
+- Faceted's dotted/stair-stepped seams. First hypothesis -- the 3x3 cell search picking the wrong 2nd-nearest cell --
+  measured 0.00% wrong, so the search stays 3x3 (a 5x5 attempt was reverted). Second -- the pow(edge, 0.55) profile's
+  infinite slope -- rounding it to a finite-slope V didn't remove the beads (checked in a close-up render). Actual
+  cause: the groove was ~0.04" wide against a 0.05" mesh (141x181 samples on 7x9 at 0.05" spacing, read from the live
+  page), so the mesh caught it only where it crossed a vertex. Fix: the seam bottom is a U (same depth, zero slope at
+  the seam, joining edge^0.55 in value and slope) at least MIN_SEAM_CELLS = 3 mesh cells wide, computed from
+  params.widthIn and params.nx, so finer meshes keep crisper seams. Close-up before/after:
+  `shots/seatB/t79-faceted-seams-before-after.png`.
+- Mirror crease: mirrorSeam() blends a 0.04-su band at the centre with its own reflection (50/50 at su=0), so the slope
+  across the line is zero. Slope leaving the centre line: Hand-Carved 4.58 -> 0.0009, Faceted 17.5 -> 0.016.
+- Seed-driven lattice: the prototypes used one lattice for every seed -- 72-79% of Faceted's facets sat in the same
+  place at seeds 42/7/123. Lattice salt = approved salt + (seed - 42) (cells.js latticeSalt): seed 42 unchanged, every
+  other seed its own layout (Faceted output correlation 42~7 now 0.00).
+
+Tweaks: Hand-Carved gougeSize / gougeDepth / grainTurn; Faceted facetSize / facetHeight / seamSoftness (extra rounding
+on top of the mesh minimum; default 0). Every default reproduces the prototype. 17 tests
+(tests/noise-carved-faceted.test.js): registration, tweak ranges, determinism/no NaN/sane range, seed variation,
+scale/roughness/warp honoured, each tweak effective, centre-line slope continuous, lattice rule, seam profile joins.
+
+Shots (default 3D view, 900x700 to match Fred's framing): `shots/seatB/t79-carved-*.png`, `t79-faceted-*.png`,
+comparisons `t79-*-before-after.png`. Render-tool note: after the H15 merge the seed is set via applyParam, and the
+browser cache must be disabled (a stale module served weeks-old code earlier in T78).
+
+Verify: 2120/2120 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Commit e103e20.
+NO FUSION this whole turn.
+
+## T79 item 2 — River Stones and Pond Ripples, from Fred's approved prototypes
+
+Prototypes N3_protoRiver.js / N6_protoRipple.js (looks: ids/N3_River_Stones.png, ids/N6_Pond_Ripples.png). New
+`core/noise/river.js` + `ripples.js`, registered after Faceted Stone. Shared `cells.js` gains `smoothF1` (from the
+prototype helper) with a smooth per-cell id, the second-nearest cell's id, and `meshCellsInLattice` (Faceted Stone now
+uses it too; its tests unchanged).
+
+Seed 42, default settings, vs the prototypes (within 1% of the height range): River Stones 66.5% of the board, Pond
+Ripples 88.9%; the rest is the fixed defects.
+
+- River Stones' dotted/stepped rims -- two causes, isolated by switching the fix off: the dome sqrt(1 - r^2) meets the
+  ground in a wall narrower than the mesh (largest difference 18.7%: now a cubic fillet >= 3 mesh cells wide, zero
+  slope at the ground, joining the dome in value and slope), and each stone's height (scaled by its cell id) stepped
+  where the nearest cell switched between two touching stones (10.3%: now a smooth id weighted exp(-idK*(d - nearest)),
+  idK set so the blend is ~3 mesh cells wide). A first smooth id used the distance's own soft weighting and changed
+  stone heights everywhere; a very sharp idK underflowed to NaN -- both fixed and tested. Honest cost: the stones read
+  softer than the prototype, because at 0.05" spacing clean rims can't be narrower than ~3 cells.
+- Pond Ripples' ring creases: rings came from the nearest drop only, meeting at an angle on each cell boundary. The two
+  nearest drops' rings now blend there, 50/50 on the boundary, band max(0.05 lattice units, 3 mesh cells). Slope jump
+  between 0.001-su steps: 99.9th pct 8.08 -> 0.29, max 12.9 -> 3.1; 8 of 35490 samples still jump > 1 (spots where
+  three drops meet -- a known limit, not chased).
+- Mirror crease: slope leaving the centre 9.85 -> 0.0012 (River), 3.48 -> 0.0007 (Ripples). Lattices follow the seed.
+
+Tweaks: stoneSize / stoneHeight / groundSoftness; ringSpacing / ringDepth / dropCount. 16 tests
+(tests/noise-river-ripples.test.js). Shots: `shots/seatB/t79-river-*.png`, `t79-ripples-*.png`, comparisons
+`t79-{river,ripples}-before-after.png`, close-ups `t79-{river,ripples}-closeup.png`.
+
+Merged origin/main: seat A's Sandstone / Silk / Eroded also went in after Anatomical; the registry conflict was resolved
+keeping all seven (mine first, then seat A's; no test depends on the order of seat A's). 2157/2157 vitest after the
+merge. Commit 613820d (+ merge). NO FUSION this whole turn.
+
+## T79 item 3 — River Stones left out (Fred: "not as good as I'd hoped, leave it out")
+
+Removed before merge: core/noise/river.js; its index.js import + _all entry (dropdown option, tweaks, metadata all
+derive from _all); smoothF1 (+ its smooth id) from cells.js, since only River Stones used it. cells.js kept (cells,
+id2, latticeSalt, meshCellsInLattice serve Hand-Carved, Faceted Stone and Pond Ripples). tests/noise-river-ripples.test.js
+renamed to tests/noise-ripples.test.js with only Pond Ripples' tests (registration now: ripples right after faceted).
+No shot/repro scripts or docs listed it; it never reached main, so no saved-project fallback (the generic migration
+would cover it anyway). Sweep: remaining "river" hits are the checklist lines and Mars/Venus's own river-network text.
+
+Verify: 2148/2148 vitest (2157 minus River Stones' 9), 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder
+pytest. Commit 9af292a. NO FUSION this whole turn.

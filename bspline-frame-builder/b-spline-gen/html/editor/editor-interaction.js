@@ -22,6 +22,7 @@ import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallo
 import { on, el, _isTypingTarget } from './dom.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
+import { haptic, resetHapticSnap } from '../core/haptics.js';
 import {
     renderTransformHandles, hitTestHandle,
     beginTransform, applyTransformDrag,
@@ -463,6 +464,10 @@ function handleDblClick(editor, e) {
 
 function handleStart(editor, e) {
     dbg('TEXT-DBG', `handleStart fired: type=${e.type} mode=${editor._currentMode} hasEditingText=${!!editor._editingTextEl} ts=${Math.round(e.timeStamp)} target=<${e.target?.tagName}>`);
+    // H13: every drag starts fresh -- a drag that begins already snapped in
+    // place (e.g. the previous one also ended snapped) must still tick
+    // once, which a bare false->true transition would otherwise miss.
+    resetHapticSnap();
     // SE7m: the "second finger ignored" guard that used to live here
     // (e.type==='touchstart' && e.touches.length>1) is gone — handleStart
     // is now only ever called by handlePointerDown when
@@ -2164,7 +2169,13 @@ const shapeLatticeHandler = {
         const shape = currentShape(p);
         const handle = paramHandleRecords(editor).find((h) => h.key === key);
         if (!handle) return;
-        shape.params = { ...shape.params, [key]: handle.valueFromWorld(rawPt) };
+        const value = handle.valueFromWorld(rawPt);
+        // H13: valueFromWorld already clamped -- comparing against the
+        // handle's own declared range (editor-shape-lattice-interaction.js)
+        // tells us whether THIS drag tick actually hit the bound, without
+        // that pure module touching haptic()/navigator/document itself.
+        if (handle.range && (value === handle.range.min || value === handle.range.max)) haptic('limit');
+        shape.params = { ...shape.params, [key]: value };
         regenerateSilhouette(editor, p); // its own end calls editor._updateHandles(), re-rendering from the NEW params
         editor._notifyChange('live');
     },

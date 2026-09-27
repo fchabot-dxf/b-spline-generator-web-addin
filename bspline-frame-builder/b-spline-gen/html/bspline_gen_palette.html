@@ -169,6 +169,42 @@
       padding: 0;
     }
 
+    /* H14 (Fred: "can be only sliders side by side, no? ... does it need a
+       precise input?"): the 4 declared X/Y "feel" pairs (Seed pan, Skeleton
+       Symmetry Offset, Stamp layer Offset, the Skeleton-Editor's own pan)
+       drop their +/- stepper for a plain value readout beside the slider --
+       explored by feel, not typed to an exact number. `no-stepper` (main/
+       ui-bindings.js's attachNumberSteppers already checks for it) keeps
+       the JS auto-wrap from putting the buttons right back; deliberately
+       NOT `.cad-stepper`/`.cad-nested-input` so the H10/H11 mobile floor
+       rules sized for a button-bearing stepper (96px+) don't apply here --
+       a bare small number box needs far less room than that.
+       `input.cad-slider-readout`, not bare `.cad-slider-readout` --
+       base.css's own `input[type="number"] { width: 100% }` (a type +
+       attribute selector) OUTRANKS a plain class selector regardless of
+       source order (measured live: the plain class version lost, leaving
+       the readout stretched to fill the row and the slider squeezed to
+       its own 20px floor -- the opposite of the intended layout). Adding
+       the `input` type selector here matches that specificity so this
+       file's own later position in the cascade decides it, as intended. */
+    input.cad-slider-readout {
+      flex-shrink: 0;
+      width: 46px;
+      height: 24px;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: var(--cad-radius-sm);
+      background: #fff;
+      text-align: center;
+      font-size: 11px;
+      -moz-appearance: textfield;
+      outline: none;
+    }
+    input.cad-slider-readout::-webkit-outer-spin-button,
+    input.cad-slider-readout::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
     /* Generate New Seed — primary seed action. Higher specificity than
        .cad-btn:hover so the green doesn't get overridden on hover. */
     #btnRandomSeed:hover {
@@ -419,10 +455,12 @@
       <span class="cad-nav-titlebox">
         <!-- Title text + version badge moved to the Settings panel (H9:
              Fred, "the title could go away, if we had a splash screen for
-             loading") — the splash screen now carries the brand. dirty-dot
-             and fmCurrentFileLabel stay: functional file-state indicators,
-             not "the title". -->
-        <span id="dirty-dot" class="cad-nav-version" title="Unsaved changes" hidden>●</span>
+             loading") — the splash screen now carries the brand.
+             fmCurrentFileLabel stays: a functional file-state indicator,
+             not "the title". H16: dirty-dot REMOVED (Fred, phone, pointing
+             at it: "what is the point for?") -- the Save button's own
+             colour-vs-grey state (main/cloud-project-manager.js) is the
+             one unsaved-changes signal now. -->
         <span id="fmCurrentFileLabel" class="cad-nav-version" style="display:none"></span>
       </span>
     </div>
@@ -443,9 +481,16 @@
            (set after a successful Save/Load in the Project Manager). When
            set: silent overwrite. When not set: opens the Project Manager
            and starts a Save prompt. Label updates to show the active
-           file name so the user always sees what they're editing. -->
-      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnQuickSave"
-              title="Save (no file associated yet)">
+           file name so the user always sees what they're editing.
+           H16: the disk icon itself is the unsaved-changes signal --
+           normal colour when dirty, `.disabled` (CLASS only, never the
+           `disabled` ATTRIBUTE -- stays fully clickable either way) when
+           everything is saved, title "Save"/"Saved"
+           (main/cloud-project-manager.js's onDirtyChange handler owns
+           both; this static title is the pre-JS fallback, matching
+           core/dirty.js's own clean-by-default initial state). -->
+      <button class="cad-btn cad-btn-secondary cad-nav-btn disabled" id="btnQuickSave"
+              title="Saved">
         <span style="font-size:18px; line-height:1;">💾</span>
         <span id="btnQuickSaveLabel" class="cad-nav-label">Save…</span>
       </button>
@@ -560,79 +605,7 @@
         </div>
       </div>
 
-      <!-- 3. Seed (raw coarse-field generator — comes BEFORE the skeleton).
-           Seed = the raw pattern. Skeleton = transforms applied to it.
-           Filter = fine detail layered on top. Three panels = three jobs. -->
-      <div class="panel panel-seed">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🌱 SEED</div>
-        <div class="panel-body hidden">
-          <button type="button" id="btnEditSeed"
-                  style="width:100%; margin-bottom:12px; padding:8px 10px;
-                         background:#eaffea; border:1px solid #99cc99; border-radius:4px;
-                         font-weight:700; cursor:pointer; display:flex; align-items:center;
-                         justify-content:space-between; gap:8px;">
-            <span>🌱 Edit Seed</span>
-            <span style="font-size:10px; opacity:0.7; font-weight:500;">fullscreen 2D</span>
-          </button>
-
-          <label class="cad-label">Seed Type</label>
-          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
-            <select id="seedType" data-default="perlin"
-                    style="width:100%; border:none; background:transparent; font-size:11px;">
-              <!-- Options populated at runtime from core/seed/index.js → populateSeedDropdown() -->
-            </select>
-          </div>
-
-          <!-- H10 (Fred, iPad: "seed field isn't used there either, just
-               keep the regenerate"): HIDDEN, not deleted -- same reasoning
-               already applied to the lattice/shape seed fields elsewhere
-               in this file. header-controls.js's "Generate New Seed"
-               handler still calls applyParam('seed', ...) on click, so
-               re-rolling keeps working; the id/wiring are untouched so
-               nothing that reads #seed (skeleton-editor.js's own
-               skelSeed<->seed sync, param-manager.js) breaks. -->
-          <div style="display:none;">
-            <label class="cad-label">Seed</label>
-            <div class="cad-nested-input" style="margin-bottom:12px;">
-              <input type="number" id="seed" value="42">
-            </div>
-          </div>
-
-          <label class="cad-label">Region Scale</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="macroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="macroScale" value="0.65">
-            </div>
-          </div>
-
-          <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="seedOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="seedOffsetX" value="0" step="0.01">
-            </div>
-          </div>
-
-          <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="seedOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="seedOffsetY" value="0" step="0.01">
-            </div>
-          </div>
-
-          <label class="cad-label cad-label-inline">Rotation <span style="font-size:10px; opacity:0.6; font-weight:400;">(degrees)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="seedRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="seedRotation" value="0" step="1">
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 4. Skeleton (filter-independent host pipeline) -->
+      <!-- 3. Skeleton (filter-independent host pipeline) -->
       <div class="panel panel-skeleton">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🦴 SKELETON</div>
         <div class="panel-body hidden">
@@ -670,19 +643,27 @@
             </select>
           </div>
 
-          <label class="cad-label cad-label-inline">Symmetry Offset X <span style="font-size:10px; opacity:0.6;">(panel-width fraction)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:8px;">
-            <input type="range" id="symOffsetXSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="symOffsetX" value="0" step="0.01" min="-0.45" max="0.45">
+          <!-- H14: a declared "feel" pair -- see the Seed panel's Offset
+               X/Y above for the full rationale. "(panel-width/height
+               fraction)" shortened to "(fraction)" (X/Y already implies
+               the axis) to fit the halved column. "Symmetry Offset X/Y"
+               also shortened to "Offset X/Y" -- "Symmetry" was wrapping
+               it onto its own line at this width, and it's redundant
+               anyway sitting right under the Symmetry dropdown above. -->
+          <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6;">(fraction)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="symOffsetXSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
+                <input type="number" id="symOffsetX" class="no-stepper cad-slider-readout" value="0" step="0.01" min="-0.45" max="0.45">
+              </div>
             </div>
-          </div>
-
-          <label class="cad-label cad-label-inline">Symmetry Offset Y <span style="font-size:10px; opacity:0.6;">(panel-height fraction)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="symOffsetYSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="symOffsetY" value="0" step="0.01" min="-0.45" max="0.45">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6;">(fraction)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="symOffsetYSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
+                <input type="number" id="symOffsetY" class="no-stepper cad-slider-readout" value="0" step="0.01" min="-0.45" max="0.45">
+              </div>
             </div>
           </div>
 
@@ -728,6 +709,67 @@
             <select id="noiseType" data-default="simplex" style="width:100%; border:none; background:transparent; font-size:11px;">
               <!-- Options populated at runtime from core/noise/index.js → populateNoiseDropdown() -->
             </select>
+          </div>
+
+          <!-- H16 item 5 (Fred: "yes"): a "Map" group at the top of Filter
+               holding Region Scale + the item-4 Offset X/Y pair together --
+               the H15-removed Seed panel's own macroScale control, back
+               exactly as it was (slider + stepper, not a value-readout
+               "feel" pair, since it's a single knob not a pair). Bound to
+               the SAME P key (macroScale) H15 explicitly kept -- no new
+               params, saved values already show correctly. -->
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Map</label>
+          <label class="cad-label">Region Scale</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="macroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="macroScale" value="0.65">
+            </div>
+          </div>
+
+          <!-- H17 item 1 (Fred: "add it in filters, not replace region"): a
+               NEW slider, distinct from Region Scale above -- a drawing-
+               style zoom of the WHOLE generated terrain about the board
+               centre (bigger value = bigger features), implemented once at
+               terrain.js's (u,v) sampler entry so coarse shapes, fine
+               texture and detail/cluster masks all scale together. Does
+               NOT affect stamps/sculpt/frame/edge fade/the board. New P key
+               mapZoom, default 1 = today's terrain exactly. -->
+          <label class="cad-label">Map Zoom</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="mapZoomSlider" class="cad-slider" min="0.25" max="4" step="0.05" value="1">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="mapZoom" value="1">
+            </div>
+          </div>
+
+          <!-- H16 item 4 (Fred: "the seed offset could be surfaced in
+               skeleton if it was removed" -> correction: "sorry, it
+               should go in filter"): the H15-removed Seed panel's Offset
+               X/Y pair, back as a control, but here rather than Skeleton
+               per that correction. Bound to the SAME P keys
+               (seedOffsetX/seedOffsetY) H15 explicitly kept -- no new
+               params, a saved project's offsets already show correctly.
+               H19 item 1 (Fred: "these offset I want in steppers"): the
+               H14 slider+readout "feel" pair is gone -- two plain -/+
+               steppers side by side, same component + layout as Width/
+               Height in Stock Dimensions (.cad-paired-steppers wrapping
+               two .cad-stepper columns). No slider, no range clamp beyond
+               what already existed (the stepper input itself never had a
+               min/max; only the removed slider did). -->
+          <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
+              <div class="cad-stepper">
+                <input type="number" id="seedOffsetX" value="0" step="0.05">
+              </div>
+            </div>
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
+              <div class="cad-stepper">
+                <input type="number" id="seedOffsetY" value="0" step="0.05">
+              </div>
+            </div>
           </div>
 
           <label class="cad-label">Fine Scale</label>
@@ -911,18 +953,22 @@
           <details style="margin-bottom:12px;">
             <summary class="cad-label" style="cursor:pointer;">Transform</summary>
             <div style="margin-top:6px;">
-              <label class="cad-label" style="font-size:10px;">Offset X (in)</label>
-              <div class="cad-slider-row" style="margin-bottom:6px;">
-                <input type="range" id="stampTxSlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
-                <div class="cad-stepper" style="width:75px;">
-                  <input type="number" id="stampTx" value="0" step="0.05">
+              <!-- H14: a declared "feel" pair -- see the Seed panel's
+                   Offset X/Y for the full rationale. -->
+              <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:6px;">
+                <div style="flex:1;">
+                  <label class="cad-label" style="font-size:10px;">Offset X (in)</label>
+                  <div class="cad-slider-row">
+                    <input type="range" id="stampTxSlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
+                    <input type="number" id="stampTx" class="no-stepper cad-slider-readout" value="0" step="0.05">
+                  </div>
                 </div>
-              </div>
-              <label class="cad-label" style="font-size:10px;">Offset Y (in)</label>
-              <div class="cad-slider-row" style="margin-bottom:6px;">
-                <input type="range" id="stampTySlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
-                <div class="cad-stepper" style="width:75px;">
-                  <input type="number" id="stampTy" value="0" step="0.05">
+                <div style="flex:1;">
+                  <label class="cad-label" style="font-size:10px;">Offset Y (in)</label>
+                  <div class="cad-slider-row">
+                    <input type="range" id="stampTySlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
+                    <input type="number" id="stampTy" class="no-stepper cad-slider-readout" value="0" step="0.05">
+                  </div>
                 </div>
               </div>
               <label class="cad-label" style="font-size:10px;">Rotation (°)</label>
@@ -1252,6 +1298,19 @@
           <div class="cad-nested-input" style="width:100%;">
             <input type="number" id="undo-limit" value="10" min="1" max="100">
           </div>
+        </div>
+
+        <div class="cad-status-divider" style="margin: 12px 0;"></div>
+
+        <!-- H13 HAPTICS: default ON on touch devices, persisted
+             (core/haptics.js's own localStorage key) -- main/header-
+             controls.js reads the checked default from isHapticEnabled()
+             and writes back through setHapticEnabled() on change. -->
+        <div class="cad-panel-section">
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="hapticEnabled">
+            <span>Haptic feedback</span>
+          </label>
         </div>
 
         <div class="cad-status-divider" style="margin: 12px 0;"></div>
@@ -2624,211 +2683,6 @@
       <select id="editorLayerSelect" style="display:none;"></select>
     </div>
   </div>
-
-  <!-- Skeleton Editor Modal — fullscreen 2D editor for the host pipeline.
-       While open, P.isolateSkeleton = true (filter bypassed) so the canvas
-       shows only what the skeleton itself shapes. -->
-  <style>
-    #skeletonEditorModal .skel-editor-body {
-      display: flex;
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-    }
-    #skeletonEditorModal .skel-editor-canvas-wrap {
-      flex: 1;
-      min-width: 0;
-      min-height: 0;
-      background: #ececec;
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-    #skeletonEditorModal .skel-editor-canvas-wrap::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image: radial-gradient(circle, #ccc 1.2px, transparent 1.2px);
-      background-size: 20px 20px;
-      opacity: 0.5;
-      pointer-events: none;
-    }
-    #skelEditorCanvas {
-      max-width: 95%;
-      max-height: 95%;
-      width: auto;
-      height: auto;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.18);
-      border: 1px solid #aaa;
-      background: #555;
-      image-rendering: pixelated;
-      image-rendering: -moz-crisp-edges;
-      image-rendering: crisp-edges;
-      position: relative;
-      z-index: 2;
-    }
-    #skeletonEditorModal .skel-editor-sidebar {
-      width: 300px;
-      flex-shrink: 0;
-      background: #fdfdfd;
-      border-left: 1px solid var(--cad-border-standard);
-      overflow-y: auto;
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    #skeletonEditorModal .skel-editor-toolbar-left {
-      width: 44px;
-      flex-shrink: 0;
-      background: #fdfdfd;
-      border-right: 1px solid var(--cad-border-standard);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding-top: 12px;
-      gap: 6px;
-    }
-    #skeletonEditorModal .skel-tool-btn {
-      width: 32px;
-      height: 32px;
-      border: 1px solid #ddd;
-      background: #fff;
-      border-radius: 4px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #aaa;
-      font-size: 16px;
-    }
-    #skeletonEditorModal .skel-tool-btn.active {
-      background: #e8f1ff;
-      border-color: #4f8ef7;
-      color: #4f8ef7;
-    }
-    /* Mobile: stack canvas above scrollable sliders, hide left toolbar (no tools yet). */
-    @media (max-width: 720px) {
-      #skeletonEditorModal .skel-editor-body {
-        flex-direction: column;
-      }
-      #skeletonEditorModal .skel-editor-toolbar-left {
-        display: none;
-      }
-      #skeletonEditorModal .skel-editor-sidebar {
-        width: 100%;
-        max-height: 50vh;
-        border-left: none;
-        border-top: 1px solid var(--cad-border-standard);
-      }
-      #skeletonEditorModal .skel-editor-canvas-wrap {
-        min-height: 40vh;
-      }
-    }
-  </style>
-  <div id="skeletonEditorModal" class="cad-modal-overlay" style="display: none;">
-    <div class="cad-modal-window" style="width: 100vw; height: 100vh; max-width: none; max-height: none; display: flex; flex-direction: column; overflow: hidden; border-radius: 0;">
-
-      <!-- Header -->
-      <div class="cad-modal-header" style="flex-shrink: 0; height: 48px; padding: 0 16px; background: #f3f3f3; border-bottom: 1px solid var(--cad-border-standard); display: flex; align-items: center; justify-content: space-between;">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <span style="font-weight:700; font-size:13px;">🌱 Seed Editor</span>
-          <span style="font-size:10px; opacity:0.6; padding:2px 8px; background:#eaffea; border:1px solid #99cc99; border-radius:3px;">raw seed view</span>
-        </div>
-        <button id="skelEditorClose" class="cad-btn cad-btn-primary" style="font-size:11px; padding: 4px 14px;">Done</button>
-      </div>
-
-      <!-- Top toolbar (placeholder for future view-mode switching) -->
-      <div style="height: 32px; background: #fff; border-bottom: 1px solid var(--cad-border-standard); display: flex; align-items: center; padding: 0 12px; flex-shrink: 0; gap: 12px;">
-        <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">View</span>
-        <span id="skelEditorViewLabel" style="font-size:10px; color:#888;">Seed (shaded relief)</span>
-      </div>
-
-      <!-- Body: left tool sidebar | canvas | right slider panel -->
-      <div class="skel-editor-body">
-
-        <!-- Left toolbar (placeholder for future paint tools) -->
-        <div class="skel-editor-toolbar-left">
-          <button class="skel-tool-btn active" title="View (no tools yet)">👁</button>
-        </div>
-
-        <!-- Canvas -->
-        <div class="skel-editor-canvas-wrap">
-          <canvas id="skelEditorCanvas" width="384" height="288"></canvas>
-        </div>
-
-        <!-- Right: seed parameter sliders + view toggle -->
-        <aside class="skel-editor-sidebar">
-          <div style="font-weight:700; font-size:11px; color:#333; padding-bottom:6px; border-bottom:1px solid #eee;">Seed Parameters</div>
-          <div style="font-size:10px; color:#888; line-height:1.4;">
-            This shows the RAW seed only — skeleton transforms (peak shape,
-            density, clustering, smoothing) are not applied here.
-          </div>
-
-          <div>
-            <label class="cad-label">Seed Type</label>
-            <div class="cad-nested-input" style="width:100%;">
-              <select id="skelSeedType" data-default="perlin"
-                      style="width:100%; border:none; background:transparent; font-size:11px;">
-                <!-- Populated at runtime from core/seed/index.js → populateSeedDropdown() -->
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label class="cad-label">Seed</label>
-            <div class="cad-nested-input">
-              <input type="number" id="skelSeed" value="42">
-            </div>
-          </div>
-
-          <div>
-            <label class="cad-label">Region Scale</label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelMacroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelMacroScale" value="0.65">
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelOffsetX" value="0" step="0.01">
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelOffsetY" value="0" step="0.01">
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label class="cad-label cad-label-inline">Rotation <span style="font-size:10px; opacity:0.6;">(°)</span></label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelRotation" value="0" step="1">
-              </div>
-            </div>
-          </div>
-
-        </aside>
-      </div>
-    </div>
-  </div>
-
 
   <!-- Project Manager Styles — files-first redesign with tile / list views -->
   <style>

@@ -20,6 +20,12 @@ export const DEFAULT = {
     seed: 42,
     scale: 3.7,
     macroScale: 0.65,
+    // Map Zoom (H17): a drawing-style zoom of the whole generated terrain,
+    // centred on the board -- bigger value = bigger features. Implemented
+    // once at terrain.js's (u,v) sampler entry so coarse shapes, fine
+    // texture and detail/cluster masks all scale together; does not affect
+    // stamps/sculpt/frame/edge fade/the board. 1 = today's terrain exactly.
+    mapZoom: 1,
     warpIntensity: 1.0,
     symmetry: 'x',
     // Symmetry mirror-line offsets. 0 = mirror through panel center (legacy
@@ -59,9 +65,10 @@ export const DEFAULT = {
     // SEED panel — selects the underlying coarse-field generator.
     // Lives BEFORE the skeleton in the mental model: seed = raw pattern,
     // skeleton = transforms applied to it, filter = fine detail layered on top.
-    // seedOffsetX/Y let the user pan through the noise field continuously
-    // (Perlin seed integers are a hash, so adjacent integers are uncorrelated;
-    // offset gives smooth "browsing" within one chosen seed).
+    // seedOffsetX/Y pan the WHOLE generated map -- coarse shapes AND fine
+    // texture together, like sliding a picture under the board window (H17
+    // item 2; applied at terrain.js's zu/zv sampler entry, same spot as
+    // mapZoom, in "screens" = board-widths at the current zoomed size).
     // seedRotation rotates the sampling coordinates before the seed sees them.
     seedType: 'perlin',
     seedOffsetX: 0,
@@ -144,7 +151,11 @@ export const INPUT_PAIRS = {
 
 export const SLIDER_PAIRS = {
     scale: 'scaleSlider',
+    // H16 item 5: back after H15 removed it with the whole Seed panel --
+    // the control returns (now in Filter's "Map" group), the P key never left.
     macroScale: 'macroSlider',
+    // H17 item 1: new -- Filter's "Map" group.
+    mapZoom: 'mapZoomSlider',
     carveZ: 'carveZSlider',
     smoothIntensity: 'smoothIntensitySlider',
     smoothRadius: 'smoothRadiusSlider',
@@ -153,9 +164,9 @@ export const SLIDER_PAIRS = {
     peakShape: 'peakShapeSlider',
     density: 'densitySlider',
     clustering: 'clusteringSlider',
-    seedOffsetX: 'seedOffsetXSlider',
-    seedOffsetY: 'seedOffsetYSlider',
-    seedRotation: 'seedRotationSlider',
+    // H19 item 1: seedOffsetX/Y are plain steppers now (no slider to pair
+    // with) -- picked up automatically by the generic Object.keys(P)
+    // binder above, same as widthIn/heightIn.
     symOffsetX: 'symOffsetXSlider',
     symOffsetY: 'symOffsetYSlider',
     thickness: 'thickenOffsetSlider',
@@ -326,7 +337,7 @@ export function updateP(key, value) {
     }
     
     // Safety Floor: Prevent critical parameters from becoming 0
-    if (key === 'carveZ' || key === 'macroScale' || key === 'scale') {
+    if (key === 'carveZ' || key === 'macroScale' || key === 'scale' || key === 'mapZoom') {
         value = Math.max(0.001, parseFloat(value));
     }
     if (key === 'peakShape') {

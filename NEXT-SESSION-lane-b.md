@@ -1,15 +1,35 @@
-# NEXT (lane-b) — T77: TIE-GAP — minimum spacing between generated ties
+# NEXT (lane-b) — T78: FILTER REWORK — Moon, Mars, Wind Dunes, Coral Reef (Fred)
 
-**Ball: worker (seat B) · epoch 5 · T77.** NO FUSION. T76 (SE17) accepted, merging to main now. Spec: ROADMAP.md on
-main "TIE-GAP". It's an APP setting only (Fred: "in the add-in, not Fusion") — never a Fusion parameter.
-PROGRESS automatic ("T77 item N: …"). Screenshots (styled server) → shots\seatB\.
+**Ball: worker (seat B) · epoch 6 · T78.** You're back on (the regular add-in is home; seat A = the header/stepper pass + frame
+handle reach; seat C is stood down). Your files ONLY: core/noise/{moon,mars,dunes,reef}.js (+ their tweaks, tests, a render
+tool). NO FUSION. PROGRESS automatic ("T78 item N: …"); shots -> shots\seatB\ as each filter lands; push each item.
+
+Fred (seeing them next to Simplex, which he likes): "I don't like Wind Dune, Moon Surface, Mars Surface, Coral Reef; these all
+need adjusting" / "the planet ones aren't planet-like at all, craters don't look like craters either". Advisor's diagnosis
+(same seed, same board): all four have far less relief + detail than Simplex; Moon = near-flat shallow dents; Mars = soft
+blobby lumps; Dunes = a low flat slab with fine ripples, no real crests; Reef = large FLAT-TOPPED plateaus (clipped heights).
 
 ## Checklist
-- [ ] [T77-item-1] Declared `ties.minSpacing` (default 0.5 in) + a "Min spacing" field in the Ties section of BOTH lattice
-      panels (same C1 style; saved with the pattern; old patterns read the default).
-- [ ] [T77-item-2] Generator: never place two ties closer than minSpacing along the rail direction (same rail gap; and
-      adjacent gaps where they'd visually pair — decide + log); if the count range can't fit, generate FEWER. Works for
-      one-ended ties and the Shape Lattice (contour-clipped ties) too. Hand-added / dragged ties are exempt.
-- [ ] [T77-item-3] Sweep test across seeds x counts x presets x orientations: no generated pair closer than minSpacing;
-      parity app==manifest unchanged; kind-layer split (SE17) unaffected.
-Pass back from the lane-b root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 5 — T77 — <shas>"`.
+- [ ] [T78-item-1] A render tool first: tools/repro/filter_shots.mjs (headless, the #noiseType select, same seed, 3D iso) so every
+      change gets a before/after pair; commit the BEFORE set.
+- [ ] [T78-item-2] MOON: real crater morphology: bowl-shaped floor, RAISED RIM, ejecta apron fading outward; big craters get a
+      central peak + terraced/slumped walls; a power-law size distribution (few large, many small); overlap with newer craters
+      cutting older ones and older ones softened; highland roughness between. Tweaks for crater density / max size / rim height.
+- [ ] [T78-item-3] MARS: the same crater model but dust-softened, plus dry CHANNELS/valleys, flat-topped MESAS with cliff edges
+      (layered steps), and faint wind streaks. Distinct from Moon at a glance.
+- [ ] [T78-item-4] WIND DUNES: real dune profile: gentle windward (stoss) slope, STEEP slip face (lee), sharp crest, enough height
+      to carve; keep the fine cross-ripples on the flanks + curving crests.
+- [ ] [T78-item-5] CORAL REEF: remove the clipping (no flat plateaus): a height histogram test proves no large mass at the max;
+      structure continues on top.
+- [ ] [T78-item-6] Keep each filter's existing tweak KEYS (saved projects load; new keys get defaults); deterministic per seed;
+      output range normalised like the others; relief comparable to Simplex (state a measured std-dev/detail metric vs Simplex).
+      Before/after shots for all four, same seed, in shots\seatB\.
+- [ ] [T78-item-7] ANATOMICAL (chest.js): skin-and-bone lean torso per Fred's reference (shotsrednatomical_reference_lean_torso.jpg):
+      clavicles, ribs down the flanks, sternum line, sunken abdomen, iliac crest, thin skin; keep the tweak keys. Before/after shots.
+- [ ] [T78-item-8] BIOMECHANICAL (core/noise/xeno.js): rework toward the biomechanical style in Fred's reference (shots\fred\biomechanical_reference.jpg; use it for the STYLE of forms only): bundles of RIBBED tubes/hoses with segmented rings, VERTEBRA-like chains of stacked segments, rib-cage ridges merging into piping/conduits, smooth glossy DOME/plate areas as calm zones between dense detail, sinewy stretched connections. MIRROR RULE: the filter receives the folded su (su=0 = centre line, su=1 = board edge; Mirror X is the default), so a central spine at su=0 and ribs/tubes running outward come out symmetric: use that, never re-fold. Stay a real FILTER (seed-driven variation, honours scale/octaves/roughness/warp), keep its existing tweak keys. Before/after shots next to the reference.
+- [ ] [T78-item-9] Anatomical rib angle: the per-seed variation covers the FULL slider range (-30..+10 deg), not +/-10. Fred's ruling: 'Yes full range'. Generate New Seed can land anywhere in -30..+10; the slider still sets it exactly. Commit as 'T78 item 9: ...' with a 3x3 seed-grid shot to C:/Users/danse/.bspline-status/shots/seatB/.
+- [ ] [T78-item-10] REMOVE the Biomechanical filter entirely (Fred, after two rejected reworks: 'Remove the filter'). This CLOSES item 8. Removal is a sweep along the whole chain; account for every link (removed, or kept with a named reason): the noise registry entry + Noise Type dropdown option, core/noise/xeno.js and anything only it uses, its tweak schema/keys, NoiseMetadata entry, tests that exercise it, repro/shot scripts listing it, docs/ROADMAP mentions, any Fusion-side name mapping. SAVED PROJECTS: a session/project whose noiseType is the removed id must load with the DEFAULT filter (declare the fallback once in the load/migration path, not ad hoc) + a test proving an old saved 'xeno' project loads without error. grep the repo for the id and 'iomechanical' at the end: zero hits outside WORK-LOG/history. Commit as 'T78 item 8+10: ...'.
+- [ ] [T79-item-1] TWO NEW FILTERS from Fred-approved prototypes (Biomechanical's slot). Prototypes + Fred's OK'd renders in C:/Users/danse/.bspline-status/proto-filters/ (protoCarved.js = HAND-CARVED, protoFaceted.js = FACETED STONE, _cells.js helper; fred_OK_*.png = the approved look at seed 42). Build each as a proper filter module in core/noise/ (carved.js / faceted.js), registered in index.js where xeno was. KEEP THE APPROVED LOOK at seed 42 default settings (before/after next to fred_OK_*.png is the acceptance test) and only fix defects: the dotted/stair-stepped seams on Faceted Stone, and any crease on the mirror line (filter receives folded su, su=0 centre; never re-fold). Declare 2-3 tweaks each (Hand-Carved: gouge size, gouge depth, grain turn; Faceted: facet size, facet height, seam softness), seed-driven variation, honour scale/roughness/warp. Move the cell helper to a shared declared module (not duplicated). Tests: deterministic per seed, no NaN, output range sane, centre-line slope continuous. Shots of each at seeds 42/7/123 to C:/Users/danse/.bspline-status/shots/seatB/. Commit as 'T79 item 1: ...'.
+- [ ] [T79-item-2] After item 1: TWO MORE approved filters (Fred: 'all 5 are good'), reusing your shared cell module from item 1: N3 RIVER STONES (N3_protoRiver.js; look = ids/N3_River_Stones.png) and N6 POND RIPPLES (N6_protoRipple.js; look = ids/N6_Pond_Ripples.png), both in C:/Users/danse/.bspline-status/proto-filters/. Keep the look; fix the dotted/stepped stone rims on N3 and the cell-boundary creases on N6's rings, and any mirror-line crease. 2-3 tweaks each (N3: stone size, stone height, ground softness; N6: ring spacing, ring depth, drop count), seed-driven, tests as item 1, shots 42/7/123. Seat A is adding N1/N2/N4 to index.js on main in parallel: expect a one-line registry merge. Commit as 'T79 item 2: ...'.
+- [ ] [T79-item-3] LEAVE OUT N3 RIVER STONES (Fred: 'not as good as I'd hoped, leave it out'). Remove it along the whole chain on lane-b BEFORE merge: its module, the index.js registry entry, its tweaks, its tests (split tests/noise-river-ripples.test.js so Pond Ripples keeps its own tests), shot/repro script lists, docs mentions. Keep the shared cell module only if Faceted/Ripples/Carved still use it (they do: name it as kept). It never reached main, so no saved-project fallback needed. grep 'river' / 'River Stones' after: zero hits outside WORK-LOG. Commit as 'T79 item 3: ...'.
+Pass back from the lane-b root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — T78 — <shas>"`.

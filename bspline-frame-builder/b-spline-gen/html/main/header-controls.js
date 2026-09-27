@@ -5,6 +5,7 @@
  *   - The "Download Add-in" link.
  *   - The app-refresh (cache-bust) button.
  *   - The "Random seed" button.
+ *   - The Settings panel's "Haptic feedback" toggle.
  *
  * Takes onGenerate / onFusionApply as injected callbacks so the export
  * pipeline lives in its own module — header-controls just translates
@@ -12,6 +13,7 @@
  */
 import { isFusionMode } from '../core/state.js';
 import { applyParam } from './param-manager.js';
+import { isHapticEnabled, setHapticEnabled } from '../core/haptics.js';
 
 const ADDIN_RELEASE_URL = 'https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/bspline-frame-builder.zip';
 
@@ -57,6 +59,17 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
     if (btnRandomSeed) {
         btnRandomSeed.addEventListener('click', () => {
             applyParam('seed', Math.floor(Math.random() * 99999));
+        });
+    }
+
+    // H13 HAPTICS: isHapticEnabled() already resolves the persisted value,
+    // or the touch-device default when nothing was saved yet -- the
+    // checkbox just mirrors it and writes back on change.
+    const hapticCheckbox = document.getElementById('hapticEnabled');
+    if (hapticCheckbox) {
+        hapticCheckbox.checked = isHapticEnabled();
+        hapticCheckbox.addEventListener('change', () => {
+            setHapticEnabled(hapticCheckbox.checked);
         });
     }
 }

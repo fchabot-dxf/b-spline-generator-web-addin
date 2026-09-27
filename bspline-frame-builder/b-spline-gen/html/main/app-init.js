@@ -1,4 +1,5 @@
-import { P, loadLastSession, saveLastSession, lastResult } from '../core/state.js';
+import { P, DEFAULT, loadLastSession, saveLastSession, lastResult } from '../core/state.js';
+import { NoiseModes } from '../core/noise/index.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
@@ -127,6 +128,19 @@ function _editorSvgHasContent(svgText) {
  * applySnapshot too) is a no-op once a migration's own `when` stops matching.
  */
 export const MIGRATIONS = [
+  {
+    id: 'removed-noise-type-to-default',
+    // T78 item 10 (Fred: "Remove the filter"): the Biomechanical filter was
+    // removed after two rejected reworks. A save naming a filter that is no
+    // longer in the registry loads with the default filter, and that
+    // filter's leftover tweak settings are dropped. Covers any future
+    // removal the same way.
+    when: (p) => typeof p.noiseType === 'string' && !(p.noiseType in NoiseModes),
+    apply: (p) => {
+      if (p.filterTweaks) delete p.filterTweaks[p.noiseType];
+      p.noiseType = DEFAULT.noiseType;
+    },
+  },
   {
     id: 'legacy-stamp-svg',
     // Pre-SE4 saves carried each layer's drawing as a field on its own

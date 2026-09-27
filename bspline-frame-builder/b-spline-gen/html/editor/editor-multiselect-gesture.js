@@ -26,6 +26,7 @@
  * HOLD_MS is the ROADMAP's own suggested figure.
  */
 import { inputProfileFor } from './editor-input.js';
+import { haptic } from '../core/haptics.js';
 
 export const MULTISELECT_DOUBLE_TAP_MS = 350;
 export const MULTISELECT_HOLD_MS = 450;
@@ -78,6 +79,7 @@ function _fireHold() {
   _armed = null;
   editor._selectMany(priorSelection); // undo the first tap's own replace-to-[hit] before toggling
   editor._selectAdd(hit); // adds hit back in, or removes it if it was already part of priorSelection
+  haptic('multiselect'); // H13: double tick, whichever direction (add or remove)
   // A hold that fires never moved (cancelMultiSelectHoldIfMoved would have
   // cancelled it otherwise) and should never drag — neutralize whatever
   // handleStart's own hit branch already armed alongside the selection
