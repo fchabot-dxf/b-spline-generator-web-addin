@@ -87,3 +87,22 @@ def test_panel_lip_is_the_one_frame_owned_param_and_the_setting_names_it():
     assert not ParameterSchema.is_board_owned("panel_lip") and not ParameterSchema.is_lattice_owned("panel_lip")
     s = [x for x in EXTRUSION_SETTINGS if x["key"] == "panelLip"][0]
     assert s["param"] == PANEL_LIP_PARAM and s["default"] == 0.0 and s["max"] == "boundingboxoffset"
+
+
+def test_the_step_dispatcher_passes_the_declared_side_through(monkeypatch):
+    """MEASURED live: step_step rebuilt the offset dict from a fixed key list, dropping Side, so the lip went inward."""
+    import types, importlib
+    fake = types.ModuleType('adsk')
+    fake.core, fake.fusion = types.ModuleType('adsk.core'), types.ModuleType('adsk.fusion')
+    for k, v in (('adsk', fake), ('adsk.core', fake.core), ('adsk.fusion', fake.fusion)):
+        monkeypatch.setitem(sys.modules, k, v)
+    monkeypatch.delitem(sys.modules, 'fb_engine.offsets', raising=False)
+    offsets = importlib.import_module('fb_engine.offsets')
+    seen = []
+    monkeypatch.setattr(offsets, 'offset_step', lambda ctx, sk, name, off: seen.append(off))
+    t, _ = resolve_template('template_1')
+    step = [b for sk in apply_panel_lip(t, 0.0625)["Sketches"] for b in sk["Blocks"] if b["PhaseID"] == LIP_PHASE_ID][0]["Steps"][0]
+    offsets.step_step(types.SimpleNamespace(entity_map={}), None, 'T1_3', step)
+    assert seen[0]["Side"] == "outward"
+    offsets.step_step(types.SimpleNamespace(entity_map={}), None, 'T1_3', {**step, "Side": None} if False else {k: v for k, v in step.items() if k != "Side"})
+    assert seen[1]["Side"] == "inward"  # every template offset before F22: the default

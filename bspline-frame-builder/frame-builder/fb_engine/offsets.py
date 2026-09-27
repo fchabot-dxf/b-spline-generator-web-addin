@@ -122,6 +122,7 @@ def step_step(ctx, sketch, s_name, step):
             "SourceID": source or [],
             "DistanceExpr": step.get("DistanceExpr", "0"),
             "Direction": step.get("Direction"),
+            "Side": step.get("Side", OFFSET_SIDE),  # F22: the declared side (MEASURED: dropped here before, the lip went inward)
             "TargetIDs": step.get("TargetIDs", []),
             "TargetID": step.get("TargetID"),
             "CornerIDs": step.get("CornerIDs", {})
