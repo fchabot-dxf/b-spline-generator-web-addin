@@ -739,7 +739,9 @@ def _svg_layer_import_plan(layers, design_available):
         prof = cfg.get('profile', 'flat')
         depth = cfg.get('depth', 0)
         plan.append({
-            'sketch_name': f"L{idx} - {prof} ({depth}\")",
+            # BOUNDARY-GUIDE (L1): a manifest-only entry (the "Lattice
+            # Boundary" sketch, export-flow.js) declares its own name.
+            'sketch_name': layer.get('sketchName') or f"L{idx} - {prof} ({depth}\")",
             'manifest': manifest,
             'svg': svg,
             'build_constrained': bool(manifest and design_available),

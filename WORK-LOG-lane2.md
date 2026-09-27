@@ -114,3 +114,41 @@ new from the merge, slower than the default on the Asus. Frame files are hands-o
 5. **Not dimensioned in Fusion:** the box is a free rectangle (closed, H/V). Tying it to `contour_width`/
    `contour_height` would be a follow-up.
 6. **Processes:** the 8781 app server was started for item 4 and is stopped before this pass.
+
+### L1 AMEND (Fred's rulings, absorbed before the pass)
+
+**(a) Editor guide = dashed BLACK.** `GUIDE_STROKE.color = '#000000'` (`editor-guides.js`). Asserted in the unit
+test and in the browser script (`r.stroke === '#000000'`); in the shots it now reads clearly (flag 4 above is moot).
+
+**(b) Fusion: "follow the protocol we have with Frame Builder".** Surveyed FB (read-only):
+- `frame-builder/sketches/template_1/template_data.py:23` declares sketch 1 = **"Bounding Box"**, its own sketch,
+  first in the template, before "Shape Outline" / "Frame Enclosure".
+- `frame-builder/fb_engine/geometry.py:62-72` creates any geometry type, then applies `geom["IsConstruction"]`
+  **generically** (one post-create step, not per type).
+
+**What I mirrored:**
+1. **Own first sketch.** The boundary is now its own kind, `boundary`, and its own sketch, **"Lattice Boundary"**.
+   `SKETCH_BUILD_ORDER = ['boundary', ...LATTICE_FUSION_BUILD_ORDER]` in `editor-sketch-manifest.js`, so it is
+   `buildOrder` 0, built before contour/rails/ties/nodes. `LATTICE_FUSION_BUILD_ORDER` itself is UNCHANGED: it
+   is also the editor's kind-LAYER roster (a test pins it to `LATTICE_KIND_LAYER_DEFAULTS`), and a guide has no
+   editor layer. `_kindOfEntityId`: `bnd` -> `boundary` (replaces the earlier bnd -> rails).
+2. **Generic construction flag.** Already in place from item 3: `sketch_manifest_builder._create_geometry` applies
+   `isConstruction` after creating ANY entity type. That is FB's `geometry.py` pattern. Key name `isConstruction`
+   (the JSON-manifest casing; FB's template dicts use `IsConstruction`).
+3. **Transport.** The boundary has no editor layer, so `export-flow.js` `_boundarySketchManifests` appends ONE
+   manifest-only payload entry per SENT kind-split pattern (`svg: ''`, `sketchName: 'Lattice Boundary'`, same
+   `patternId`). Python's existing grouping (`_ordered_svg_layer_import_plan`: `patternId` + `buildOrder`) already
+   puts it first on the pattern's shared plane and build context. One Python change: `_svg_layer_import_plan`
+   uses a declared `sketchName` when the entry carries one.
+4. **Later kinds relate to it** through the existing projection path: `splitManifestByKind` turns any cross-kind
+   constraint into a projection of the earlier-built sketch, and the boundary is now earliest. No constraint crosses
+   today (the box has no dims and nothing snaps to it), so the path is available but unused.
+- A pre-SE17 single-layer pattern (no `pattern.layers`) still gets the 4 construction Lines inside its one
+  combined sketch. There's no kind split to separate them from.
+
+**Tests:** split tests now see `boundary` as its own kind (`buildOrder` 0, 4 construction Lines, 8 closure
+constraints, same `patternId`); export-flow: one "Lattice Boundary" manifest per pattern (two kind-layers of one
+pattern -> one), none when nothing is sent. The kind-split fixture got `id: 'p'` (real patterns always have one,
+`generatePattern` sets it; its owned pieces already said `data-lattice-gen: 'p'`). pytest: the "Lattice Boundary"
+entry, listed LAST in the payload, builds FIRST under its own name. **Gate:** vitest 1582/1583 (the same
+`frame-3d-sweep` 5 s timeout, seat C's, flagged above), pytest 288/288, browser ALL CHECKS PASSED desktop + mobile.

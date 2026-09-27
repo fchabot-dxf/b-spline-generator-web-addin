@@ -20,7 +20,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines, _fusionLayerManifest } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
+import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines, _fusionLayerManifest, _boundarySketchManifests } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
 import { setLayerVisible } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 
 /** Editor layer mock: tooling (depth/profile/visible) lives ON the layer
@@ -381,6 +381,7 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
 describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kind-layer)', () => {
   function makeKindSplitEditor() {
     const pattern = {
+      id: 'p', // matches the owned pieces' data-lattice-gen below (generatePattern always sets one)
       spacing: 0.25,
       rails: { mode: 'every', every: 2, offset: 0 },
       ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
@@ -401,11 +402,22 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
     expect(manifest).not.toBeNull();
     expect(manifest.layerId).toBe('railsL');
     expect(manifest.entities.length).toBeGreaterThan(0);
-    // BOUNDARY-GUIDE: plus the Size box's own 4 construction Lines (bnd0..3), which ride in the rails sketch.
-    const rails = manifest.entities.filter((e) => !e.id.startsWith('bnd'));
-    expect(rails.length).toBeGreaterThan(0);
-    expect(rails.every((e) => e.id.startsWith('rail'))).toBe(true);
-    expect(manifest.entities.filter((e) => e.id.startsWith('bnd')).map((e) => e.isConstruction)).toEqual([true, true, true, true]);
+    expect(manifest.entities.every((e) => e.id.startsWith('rail'))).toBe(true);
+  });
+
+  it('BOUNDARY-GUIDE: one "Lattice Boundary" manifest per sent pattern -- its own first sketch, construction Lines only', () => {
+    const editor = makeKindSplitEditor();
+    const manifests = ['railsL', 'tiesL'].map((id) => _fusionLayerManifest(editor, { id }));
+    const extra = _boundarySketchManifests(editor, manifests);
+    expect(extra).toHaveLength(1); // two kind-layers of ONE pattern -> one boundary sketch
+    const [b] = extra;
+    expect(b.kind).toBe('boundary');
+    expect(b.buildOrder).toBe(0);
+    expect(b.sketchName).toBe('Lattice Boundary');
+    expect(b.patternId).toBe(manifests[0].patternId);
+    expect(b.entities.map((e) => [e.id, e.type, e.isConstruction])).toEqual(
+      [0, 1, 2, 3].map((i) => [`bnd${i}`, 'Line', true]));
+    expect(_boundarySketchManifests(editor, [null])).toEqual([]); // nothing sent -> no boundary
   });
 
   it('the Ties layer\'s own manifest (a SIBLING with no .pattern of its own) still resolves the shared pattern and contains ONLY tie entities', () => {

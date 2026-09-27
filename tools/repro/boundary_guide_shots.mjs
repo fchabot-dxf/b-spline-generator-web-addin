@@ -64,7 +64,7 @@ const guideInfo = `(()=>{ const rs=[...document.querySelectorAll('#guide-layer r
   const layer=document.getElementById('guide-layer'); const sk=document.getElementById('sketch-layer');
   return JSON.stringify({ n: rs.length, inSketch, sibling: !!(layer && sk && layer.parentNode===sk.parentNode),
     rects: rs.map(r=>({x:+r.getAttribute('x'),y:+r.getAttribute('y'),w:+r.getAttribute('width'),h:+r.getAttribute('height'),
-      dash:r.getAttribute('stroke-dasharray'),fill:r.getAttribute('fill')})) }); })()`;
+      dash:r.getAttribute('stroke-dasharray'),fill:r.getAttribute('fill'),stroke:r.getAttribute('stroke')})) }); })()`;
 
 // Every serializer, with and without the guide layer present -> must be identical (export unchanged).
 const serializersSame = `(()=>{ const e=window.svgEditor; const run=()=>JSON.stringify([e.save(), e.saveForRasterization(), e.saveWithTextCopies()]);
@@ -97,7 +97,7 @@ async function run(tool) {
   check(g.n === 1, `${tool}: exactly one guide rect after Generate (got ${g.n})`);
   check(g.inSketch === 0 && g.sibling, `${tool}: guide lives in #guide-layer, a sibling of #sketch-layer, never inside it`);
   const r = g.rects[0] || {};
-  check(!!r.dash && r.fill === 'none', `${tool}: dashed (${r.dash}), unfilled`);
+  check(!!r.dash && r.fill === 'none' && r.stroke === '#000000', `${tool}: dashed black (${r.stroke} ${r.dash}), unfilled`);
   // auto Size = board minus 1in, centred
   check(Math.abs(r.w - (board[0] - 1)) < 1e-6 && Math.abs(r.h - (board[1] - 1)) < 1e-6 && Math.abs(r.x - 0.5) < 1e-6,
     `${tool}: auto Size = board ${board[0]}x${board[1]} minus 1in -> ${r.w}x${r.h} at (${r.x},${r.y})`);

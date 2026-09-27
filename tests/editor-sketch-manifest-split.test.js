@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  buildSketchManifest, splitManifestByKind,
+  buildSketchManifest, splitManifestByKind, SKETCH_BUILD_ORDER,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { PATTERN_DEFAULTS, LATTICE_FUSION_BUILD_ORDER } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
@@ -39,7 +39,7 @@ function entityKind(id) {
   if (base.startsWith('tie')) return 'ties';
   if (base.startsWith('node')) return 'nodes';
   if (base.startsWith('seg')) return 'contour';
-  if (base.startsWith('bnd')) return 'rails'; // BOUNDARY-GUIDE: the Size box rides in the rails sketch
+  if (base.startsWith('bnd')) return 'boundary'; // BOUNDARY-GUIDE: the Size box is its own first sketch
   return null;
 }
 
@@ -66,7 +66,7 @@ describe('splitManifestByKind — box lattice (no contour)', () => {
 
   it('every entity from the combined manifest lands in EXACTLY one kind, and every kind\'s entities are genuinely that kind\'s own', () => {
     const seen = new Set();
-    for (const kind of ['rails', 'ties', 'nodes']) {
+    for (const kind of ['boundary', 'rails', 'ties', 'nodes']) {
       for (const e of split[kind].entities) {
         expect(entityKind(e.id)).toBe(kind);
         expect(seen.has(e.id)).toBe(false); // never duplicated across kinds
@@ -203,7 +203,7 @@ describe('splitManifestByKind — shape lattice (with contour)', () => {
   });
 
   it('the split entity/constraint counts, summed across kinds, match the combined manifest exactly (nothing lost, nothing invented beyond the declared projections)', () => {
-    const totalEntities = LATTICE_FUSION_BUILD_ORDER.reduce((n, k) => n + (split[k]?.entities.length || 0), 0);
+    const totalEntities = SKETCH_BUILD_ORDER.reduce((n, k) => n + (split[k]?.entities.length || 0), 0);
     expect(totalEntities).toBe(combined.entities.length);
   });
 });

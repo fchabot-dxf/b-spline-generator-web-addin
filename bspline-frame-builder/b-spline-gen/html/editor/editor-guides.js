@@ -30,7 +30,8 @@ export const GUIDE_LAYER_ID = 'guide-layer';
 /** The DOM mark of a drawn guide (tests and DOM readers key off this). */
 export const GUIDE_ATTR = 'data-role';
 
-const GUIDE_STROKE = { color: '#0696D7', width: 0.01, dasharray: '0.1,0.06' };
+// Fred (L1 ruling): dashed BLACK.
+const GUIDE_STROKE = { color: '#000000', width: 0.01, dasharray: '0.1,0.06' };
 
 /** Every guide record the editor should draw right now:
  *  `[{ id, role, rect, layerId }]`. */

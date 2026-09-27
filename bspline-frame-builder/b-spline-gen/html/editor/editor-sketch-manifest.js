@@ -1174,16 +1174,27 @@ export function buildSketchManifest(pattern, region, opts = {}) {
 // rail{i}/tie{i}/node{i}/seg{i}) -- never re-derived from geometry or a
 // separate lookup table, since the prefix already IS the kind, by
 // construction, for every entity this module has ever emitted.
+/** BOUNDARY-GUIDE (L1 amend, Fred: "follow the protocol we have with Frame
+ *  Builder"): Frame Builder's template sketch 1 is its own "Bounding Box"
+ *  sketch, its geometry flagged IsConstruction and read generically by
+ *  fb_engine/geometry.py. Mirrored: the lattice boundary is its OWN first
+ *  sketch, "Lattice Boundary", built before contour/rails/ties/nodes; later
+ *  kinds relate to it through the existing projection path. It is a
+ *  Fusion-only kind (a guide has no editor layer), so it is prepended HERE
+ *  rather than added to LATTICE_FUSION_BUILD_ORDER, which is also the
+ *  editor's kind-layer roster (LATTICE_KIND_LAYER_DEFAULTS). */
+export const BOUNDARY_SKETCH_KIND = 'boundary';
+export const BOUNDARY_SKETCH_NAME = 'Lattice Boundary';
+export const SKETCH_BUILD_ORDER = Object.freeze([BOUNDARY_SKETCH_KIND, ...LATTICE_FUSION_BUILD_ORDER]);
+
 function _kindOfEntityId(rawId) {
   const base = rawId.split(':')[0];
   if (base.startsWith('rail')) return 'rails';
   if (base.startsWith('tie')) return 'ties';
   if (base.startsWith('node')) return 'nodes';
   if (base.startsWith('seg')) return 'contour';
-  // BOUNDARY-GUIDE: the Size box rides in the RAILS sketch — the one kind
-  // BOTH tools always build (Box Lattice has no contour sketch), and the
-  // box bounds the fill the rails belong to.
-  if (base.startsWith('bnd')) return 'rails';
+  // BOUNDARY-GUIDE: the Size box is its OWN first sketch (Fred's L1 ruling).
+  if (base.startsWith('bnd')) return BOUNDARY_SKETCH_KIND;
   return null;
 }
 
@@ -1226,9 +1237,9 @@ function _kindOfEntityId(rawId) {
  */
 export function splitManifestByKind(pattern, region, opts = {}) {
   const combined = buildSketchManifest(pattern, region, opts);
-  const buildOrderIndex = Object.fromEntries(LATTICE_FUSION_BUILD_ORDER.map((k, i) => [k, i]));
+  const buildOrderIndex = Object.fromEntries(SKETCH_BUILD_ORDER.map((k, i) => [k, i]));
   const perKind = {};
-  for (const kind of LATTICE_FUSION_BUILD_ORDER) {
+  for (const kind of SKETCH_BUILD_ORDER) {
     perKind[kind] = {
       // `kind` + `buildOrder`: the Python builder's own orchestration
       // (item 5) groups a pattern's own per-kind manifests and must build
@@ -1274,7 +1285,7 @@ export function splitManifestByKind(pattern, region, opts = {}) {
   }
 
   const projectionIdByConsumer = {};
-  for (const kind of LATTICE_FUSION_BUILD_ORDER) projectionIdByConsumer[kind] = new Map();
+  for (const kind of SKETCH_BUILD_ORDER) projectionIdByConsumer[kind] = new Map();
   function projectedId(consumingKind, sourceKind, sourceId) {
     const key = `${sourceKind}:${sourceId}`;
     const seen = projectionIdByConsumer[consumingKind];
@@ -1306,7 +1317,7 @@ export function splitManifestByKind(pattern, region, opts = {}) {
   }
 
   const result = {};
-  for (const kind of LATTICE_FUSION_BUILD_ORDER) {
+  for (const kind of SKETCH_BUILD_ORDER) {
     if (perKind[kind].entities.length === 0) continue; // e.g. no contour at all, or an empty kind
     result[kind] = perKind[kind];
   }

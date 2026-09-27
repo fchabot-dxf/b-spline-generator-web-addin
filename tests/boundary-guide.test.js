@@ -125,6 +125,7 @@ describe('BOUNDARY-GUIDE: the editor renderer', () => {
     expect([r.x, r.y, r.w, r.h]).toEqual([3, 2, 6, 4]);
     expect(r.fillArg).toBe('none');
     expect(r.strokeArg.dasharray).toBeTruthy();
+    expect(r.strokeArg.color).toBe('#000000'); // Fred: dashed black
     expect(r.attrs[GUIDE_ATTR]).toBe(GUIDE_ROLE);
     expect(r.attrs['data-guide-layer']).toBe('a');
   });
@@ -188,13 +189,16 @@ describe('BOUNDARY-GUIDE: Fusion manifest', () => {
       expect(m.entities.filter((e) => e.isConstruction).length).toBe(4);
     });
 
-    it(`${name}: split per kind, the box rides in the RAILS sketch only`, () => {
+    it(`${name}: split per kind, the box is its OWN first sketch (Frame Builder's Bounding Box protocol)`, () => {
       const split = splitManifestByKind(pattern, REGION, {});
       for (const [kind, km] of Object.entries(split)) {
-        expect(bnd(km).length).toBe(kind === 'rails' ? 4 : 0);
+        expect(bnd(km).length).toBe(kind === 'boundary' ? 4 : 0);
       }
-      const railsBoxConstraints = split.rails.constraints.filter((c) => c.targets.every((t) => t.startsWith('bnd')));
-      expect(railsBoxConstraints).toHaveLength(8); // 4 corner Coincidents + 2 Horizontal + 2 Vertical
+      expect(split.boundary.entities.every((e) => e.id.startsWith('bnd'))).toBe(true);
+      expect(split.boundary.buildOrder).toBe(0);
+      for (const [kind, km] of Object.entries(split)) if (kind !== 'boundary') expect(km.buildOrder).toBeGreaterThan(0);
+      expect(split.boundary.constraints).toHaveLength(8); // 4 corner Coincidents + 2 Horizontal + 2 Vertical
+      expect(split.boundary.patternId).toBe(pattern.id);
     });
   }
 });
