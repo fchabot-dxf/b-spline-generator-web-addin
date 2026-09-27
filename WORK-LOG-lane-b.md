@@ -10182,3 +10182,32 @@ toward the front/centre (not a uniform rib pattern all across); the sternum line
 flattened either side of it; a SUNKEN abdomen with faint ab lines (not blocky segments) and a hollow navel; the
 iliac crest (hip bones) jutting at the waist, skin draping into the hollow between the lower ribs and hips; thin
 skin over everything, bony edges reading through SOFTLY, never hard-edged. Put the best render next to this photo.
+
+## T78 item 5 — CORAL REEF: removes the flat-topped plateau clipping
+
+Root cause, found by isolating COLONY-INTERIOR-ONLY samples rather than trusting a whole-board histogram (which is
+diluted by the large un-colonized sand area and never showed an obvious spike on its own, first attempt): the OLD
+`colonyLift = pow(colonyMask, 0.7) * 0.45` compressed the UPPER range of `colonyMask` so heavily (a concave pow curve,
+exponent <1) that most of a colony's own interior — which measured covers a LARGE MAJORITY of the board at default
+tweaks (72% at seed 42), not just isolated patches — converged toward nearly the same height. This happened
+INDEPENDENTLY of `colonyCap = min(1, colonyMask)`'s own hard ceiling, which measured NEVER actually engages at
+typical seeds/scale (`colonyMask` stayed below 0.9 in every sample checked across several seeds) — the real bug was
+the compressive CURVE SHAPE, not literal clipping at a hard cap as the variable name `colonyCap` suggested.
+
+Fixed by splitting the old single colonyMask/colonyLift pipeline into two separate roles: `presence` (a smooth 0/1
+threshold gate — still decides WHETHER coral grows here at all, unchanged in spirit) and a genuinely UNCLIPPED,
+independent mid-frequency FBM (`headRaw`) that drives the actual colony relief — keeps varying continuously across
+the whole interior instead of converging toward one shared value. `presence` also now gates brain/tube/spike
+(replacing the old `colonyCap`), unchanged otherwise. Kept all 3 original tweak keys
+(colonyThreshold/brainStrength/tubeStrength) at their original defaults.
+
+New `tests/noise-reef.test.js` (6 tests): tweak keys preserved; determinism; a full-output height histogram proving
+no large mass at the max (top 10% of the value range holds under 2% of samples, across 4 seeds — the dispatch's own
+literal "a height histogram test" ask); a colony-INTERIOR-ONLY stdDev regression guard (measured: OLD ~0.050 at seed
+42, NEW ~0.08-0.087 across 4 seeds — threshold set at 0.065, cleanly separating the two, a real regression guard not
+a rubber-stamp); a colony/whole-board variance-RATIO check (colony interior must keep at least 30% of the board's
+own overall variance — "structure continues on top", not disproportionately flatter than the surrounding terrain);
+and `presence` still correctly gating texture to the colony area (`colonyThreshold:1`, an unreachable threshold,
+leaves sand-only relief with a tight range).
+
+Verify: 2009/2009 vitest (6 new), 87/87 b-spline-gen pytest. Commit f1eca0d, pushed. NO FUSION this whole turn.
