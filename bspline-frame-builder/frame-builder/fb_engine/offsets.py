@@ -204,12 +204,14 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             # F22 MEASURED live: inside the deferred-compute window the new curves are not solved yet (their bbox is
             # the source's), so the side check saw nothing wrong and the lip landed inward. The check runs with
             # compute ON (its reads force the solve), then the deferred state is restored.
-            was = sketch.isComputeDeferred
+            was = getattr(sketch, 'isComputeDeferred', None)
             try:
-                sketch.isComputeDeferred = False
+                if was is not None:
+                    sketch.isComputeDeferred = False
                 _ensure_side(ctx, offset_constraint, coll, result, d_expr, s_name, side)
             finally:
-                sketch.isComputeDeferred = was
+                if was is not None:
+                    sketch.isComputeDeferred = was
             ctx.logger.log(f"OFFSET PARAMETRIC OK: addOffset2 succeeded for {s_name}")
             return result
 
