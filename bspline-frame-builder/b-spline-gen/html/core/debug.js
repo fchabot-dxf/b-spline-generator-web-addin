@@ -11,8 +11,8 @@
  *
  * Categories used in code: TEXT-DBG, COORD_STD, EXPAND, STAMP DEBUG,
  * VertexColor, ERASER, EXPAND-COMMIT, EXPAND-SHAPE, EXPAND-ORCH,
- * EDITOR-IO, PERFORM-EXPAND, STAMP-RASTER, PERF, DRAPE. The category
- * prefix is preserved in the output so log greps still work.
+ * EDITOR-IO, PERFORM-EXPAND, STAMP-RASTER, PERF, DRAPE, LAYER-DRAG. The
+ * category prefix is preserved in the output so log greps still work.
  *
  * PERF (SE8b-2): per-step timing for editor._onChange's change pipeline
  * (main/app-init.js's runChangePipeline) — off by default like every

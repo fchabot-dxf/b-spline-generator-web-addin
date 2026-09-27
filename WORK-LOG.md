@@ -12805,3 +12805,117 @@ the source diff. Shot in `shots\seatA\` (`H21-item1_editor-header-apply`).
 
 `npx vitest run` -> **2227 passed** (unchanged — a pure rename, no test exercised the old text), zero
 regressions.
+
+## H22 item 1 — Layer drag-to-reorder replaced with Pointer Events (native HTML5 drag-and-drop never worked)
+
+Fred, screenshot of the Shape Lattice's Contour/Nodes/Ties/Rails rows with drag grips: "can't drag a layer
+in an order I choose." Dispatch: reproduce with real pointer events, work out whether the drag itself breaks
+or something (e.g. a lattice sync) re-sorts the list afterwards; the user's order must win and survive
+Regenerate and reopen.
+
+**Reproduced live via CDP, not assumed** — three separate scratch scripts, each measuring one hypothesis:
+- **Touch (mouse + touch, Fusion palette too if it differs, per dispatch)**: a real touch gesture
+  (touchstart -> 5x touchmove -> touchend) on the grip fired **zero** `dragstart`/`dragover`/`drop` events —
+  confirmed by instrumenting every `.layer-row` before the gesture and counting what fired. This matches the
+  documented WebKit/Chromium platform behaviour: `draggable="true"` never initiates native HTML5
+  drag-and-drop from touch input without a JS polyfill. Not a maybe — measured as exactly zero.
+- **Mouse**: the same instrumentation on a real mouse gesture (mousedown -> 8x mousemove -> mouseup) fired
+  `dragstart`/`dragover` but **never** `drop` (`dragend` fired instead, implying the browser cancelled it).
+  Left this explicitly ambiguous at the time — could be a genuine bug, or `Input.dispatchMouseEvent` alone
+  being insufficient to fully drive native DnD (CDP has a separate `Input.dispatchDragEvent` for that,
+  not tried) — rather than overclaiming "mouse is broken" from a synthetic-input limitation.
+- **The "something re-sorts it afterward" hypothesis** (a lattice/shape-lattice sync enforcing kind order,
+  or a render rebuilding from a fixed order): refuted. Bypassed the broken drag UI entirely by manipulating
+  `editor._layers` directly (splice + unshift, matching a successful reorder), then called pushState() the
+  same way `reorderLayer` does, then clicked Shape Lattice's Regenerate and did a full save/open round trip.
+  The manually-set order (`Nodes, Rails, Contour, Ties`) survived **both** unchanged, at every checkpoint.
+
+Conclusion: `reorderLayer()` itself (the splice/reinsert + DOM z-order re-sync + pushState + renderLayersPanel
++ _onChange, all pre-existing) was never the problem, and nothing downstream re-sorts an achieved reorder.
+The entire bug was the **gesture** never successfully invoking `reorderLayer` in the first place.
+
+**Fix** (`editor/layers.js`, `_makeLayerRow`): replaced the row's native `draggable`/`dragstart`/`dragover`/
+`dragleave`/`drop`/`dragend` wiring with Pointer Events on the grip (`.layer-handle`) only — `pointerdown`
+captures the pointer, `pointermove` hit-tests via `document.elementFromPoint` and toggles the existing
+`drop-before`/`drop-after` CSS classes on whichever row is under the pointer, `pointerup` reads the marked
+row and calls the same, unmodified `reorderLayer(editor, sourceId, targetId, side)`; `pointercancel` tears
+down cleanly. `setPointerCapture`/`releasePointerCapture` wrapped in try/catch, matching
+`editor-interaction.js`'s own established defensive pattern for the same calls. `touch-action: none` on the
+grip so a touch-drag doesn't also scroll the panel. This matches `editor-interaction.js`'s own one-pointer-
+path convention already used for every other canvas gesture (mouse/touch/pen unified) — the old native-DnD
+mechanism was the outlier, not the established pattern. The grip-only trigger (not the whole row, as before)
+means a plain click elsewhere on the row still activates+flashes the layer (H20 item 5) untouched.
+
+Grabbing the row via `_makeLayerRow` also means this fix applies identically to **both** consumers of the one
+shared `renderLayerList` — the editor's own Layers panel (`#editorLayersList`) and the Vector Stamping
+sidebar's compact layer browser (`#stampLayersList`) — confirmed via `styles/editor.css`'s own de-scoping
+comment that both intentionally share this exact row markup.
+
+**Debug logging** (mid-task amendment, Fred: "you can use debugging logs too... including in the Fusion
+palette if needed"): added a `LAYER-DRAG` category to the existing `core/debug.js` gate (`dbg('LAYER-DRAG',
+...)` at drag start / hover-over / drop / cancel) — off by default like every other category, switched on via
+`window.__editorDebug = 'LAYER-DRAG'`. Kept (not removed) since it directly serves the one requirement this
+session structurally cannot verify itself (below): if Fred hits a different result inside Fusion's embedded
+webview, this shows immediately whether the pointer gesture is firing there at all, narrowing "our code never
+ran" from "something else about that environment is different." Live-confirmed the category actually fires
+(8 `[LAYER-DRAG]` console lines for one full drag: 1 start, 6 over, 1 drop) and stays silent when unset
+(every earlier verification run above had zero console output).
+
+**What layer order controls, per surface** (researched via a read-only sub-agent trace, file:line cited) —
+the dispatch's own requirement to state this explicitly:
+- **SVG canvas draw order**: confirmed directly in `reorderLayer` itself — re-appends each layer's DOM
+  children in `_layers` order (first = bottom of z-stack).
+- **3D preview color**: order-dependent. `core/preview/drape-svg.js` (`buildDrapeSvg`) walks the saved SVG's
+  DOM order (which mirrors `_layers` via `reorderLayer`'s own re-sync) and paints later layers over earlier
+  ones in overlaps — a painter's algorithm baked onto the 3D top surface.
+- **3D preview height/z**: order affects *blend sequence*, not depth directly. `core/engine/rebuild.js`
+  (`_collectStampPasses`) builds an ordered, carve-filtered pass list from `_layers`;
+  `core/engine/apply-stamp-layers.js` (`applyStampLayers`) mutates one running heights buffer per pass in
+  that order, and each pass's suppression step blends the *already-accumulated* heights toward smoothed
+  terrain before adding its own contribution — so a later layer's suppression can partially erase an earlier
+  layer's contribution where they overlap.
+- **Stamp pipeline**: same accumulation-order dependency as 3D height, above (same code path). The trace also
+  surfaced a **separate, pre-existing bug**, out of scope here and NOT touched: `apply-stamp-layers.js`
+  computes `eLayer` by indexing into the full, unfiltered `_layers` array using an index from the *filtered*
+  (carved-only) `passes` array — if any earlier-in-`_layers` layer is hidden/non-carved, this silently reads
+  another layer's depth/profile/suppression settings. Flagging for the advisor to decide whether this becomes
+  its own item; did not fix it as part of a drag-reorder bug.
+- **Fusion/CAM build order**: order-dependent, and self-documented in `b-spline-gen.py`'s own
+  `_ordered_svg_layer_import_plan` docstring — "the APP stacking order is independent of the FUSION sketch
+  build order" for most steps (stable-sorted to original position), **except** grouped kind-layer pattern
+  steps (Shape Lattice's Rails/Contour/Ties/Nodes among them), which get explicitly reordered by a separate
+  `manifest['buildOrder']`, not by `_layers` order — later sketches in that build can `project()` earlier
+  ones' already-built curves, so build order there determines whether cross-sketch projections resolve.
+- **Save/serialize**: confirmed faithful (already knew this from the live reopen test above) —
+  `editor-io.js` maps `_layers` directly into `data-editor-layers` in array order and restores it unchanged.
+
+**Fusion palette caveat**: could not test inside an actual Fusion-embedded webview from this environment (no
+direct access). Not left as a bare gap — Pointer Events is the exact event model `editor-interaction.js`
+already uses for every canvas gesture, proven working in Fusion's embedded Chromium for the length of this
+project; no new API surface is introduced. The `LAYER-DRAG` debug category above exists specifically so this
+can be checked live in Fusion without another code change if it ever does differ there.
+
+**Tests** (`tests/editor-layer-list.test.js`, +7): a pointer-driven drag actually mutates `_layers` (not just
+`reorderLayer`'s own already-tested math) and produces the exact before/after-in-display-order result; the
+same gesture works for `pointerType: 'touch'` (the confirmed failure case); dropping in a row's bottom half
+reorders "after" it, the mirror of "before"; the re-rendered panel visibly reflects the new order; drop-
+before/drop-after classes appear on the hovered row during the drag and are fully cleared after; self-drop
+and no-target-drop are no-ops with no undo step recorded. Mutation-tested: stashed just the `layers.js` fix
+and re-ran — **5 of 7 new tests fail** against the pre-fix native-DnD code (exactly the ones asserting an
+actual reorder/DOM-order/highlight outcome); the other 2 ("self-drop no-op", "never left own row no-op")
+pass against *both* versions, since "nothing changed" is true whether the mechanism works or is completely
+broken — noted honestly rather than counted as proof, per the non-vacuous-test discipline. Restored, reran
+clean.
+
+**Live-verified** end-to-end via real CDP gestures against the running app (not just unit tests): a real
+mouse drag (mousedown/8x mousemove/mouseup on the last row's grip, dropped onto the first row) now
+successfully reorders (`Rails,Contour,Ties,Nodes` -> `Contour,Ties,Nodes,Rails`), with the DOM directly
+queried mid-drag confirming `drop-after`/`drop-before` tracks the pointer's position within the target row
+and all markers clear after drop. That same order survived clicking Regenerate, and survived a full
+save/open round trip, unchanged both times. A real touch drag on the freshly-regenerated set then also
+succeeded (`Contour,Ties,Nodes,Rails` -> `Ties,Nodes,Rails,Contour`) — the exact gesture that fired zero
+events before this fix.
+Shots in `shots\seatA\`: `h22i1_01_before_drag`, `h22i1_02_mid_drag_highlight`,
+`h22i1_02b_hover_before_release`, `h22i1_03_after_mouse_drag`, `h22i1_04_after_reopen`.
+
+`npx vitest run` -> **2234 passed** (up from 2227), zero regressions.
