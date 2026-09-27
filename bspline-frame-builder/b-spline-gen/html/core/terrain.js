@@ -21,6 +21,8 @@ export function generateHeightmap(params, stampParams = null) {
     scale          = 1.2,
     macroScale     = 0.35,
     mapZoom        = 1,
+    seedOffsetX    = 0,
+    seedOffsetY    = 0,
     octaves        = 4,
     roughness      = 0.5,
     edgeMargin     = 0,
@@ -62,8 +64,17 @@ export function generateHeightmap(params, stampParams = null) {
         // UNCHANGED below (edgeFade, Pass 3 smoothing, applyVectorDrape all
         // intentionally still read the real board position) -- stamps,
         // sculpt, the frame, edge fade and the board itself must not zoom.
-        const zu = 0.5 + (u - 0.5) / mapZoom;
-        const zv = 0.5 + (v - 0.5) / mapZoom;
+        // H17 item 2 (Fred: "the seed offset isnt what i wanted" -> "pan
+        // the whole map"): seedOffsetX/Y moved to this SAME entry point --
+        // previously they only shifted the coarse layer (cx/cz below),
+        // which panned the coarse SHAPE over a static fine texture instead
+        // of sliding the whole drawing. Added here instead, they're baked
+        // into su/sv before either the fine noise call or the coarse cx/cz
+        // math sees them, so fine texture and coarse shapes pan together.
+        // Units stay "screens" -- board-widths at the CURRENT zoomed size,
+        // since the offset is added after dividing by mapZoom.
+        const zu = 0.5 + (u - 0.5) / mapZoom + seedOffsetX;
+        const zv = 0.5 + (v - 0.5) / mapZoom + seedOffsetY;
 
         // Mirror axis can be shifted by symOffsetX/Y. Default 0 = mirror
         // through center (legacy behavior). The fold output is scaled by 2
@@ -127,8 +138,11 @@ export function generateHeightmap(params, stampParams = null) {
         let cx = su * cFreq * aspect;
         let cz = sv * cFreq;
 
-        // Apply seed-panel rotation about the (su, sv) origin BEFORE offset.
-        // Keeps "spin the field" predictable: rotate first, then translate.
+        // Apply seed-panel rotation about the (su, sv) origin. (H17 item 2:
+        // seedOffsetX/Y no longer apply here -- they're baked into su/sv
+        // upstream, at the zu/zv pan -- so this only ever rotates the
+        // already-panned coordinate. seedRotation's own UI stays removed
+        // per H16 item 4, so params.seedRotation is always 0 in practice.)
         const rot = (params.seedRotation || 0) * Math.PI / 180;
         if (rot !== 0) {
           const cs = Math.cos(rot), sn = Math.sin(rot);
@@ -136,14 +150,6 @@ export function generateHeightmap(params, stampParams = null) {
           const rz = cx * sn + cz * cs;
           cx = rx; cz = rz;
         }
-        // Offset lets the user pan continuously through the seed field.
-        // We scale by cFreq so "1 unit of offset" = "pan by one screen-width"
-        // — the visible field only spans ~cFreq noise units, so adding raw
-        // offset values would jump past Perlin's correlation length almost
-        // immediately and feel like switching to a different seed.
-        cx += (params.seedOffsetX || 0) * cFreq * aspect;
-        cz += (params.seedOffsetY || 0) * cFreq;
-
         const seedType = params.seedType || 'perlin';
         const seedFn = SeedTypes[seedType] || SeedTypes['perlin'];
         const seedRefs = { noiseCoarse };

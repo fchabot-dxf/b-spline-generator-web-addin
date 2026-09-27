@@ -65,9 +65,10 @@ export const DEFAULT = {
     // SEED panel — selects the underlying coarse-field generator.
     // Lives BEFORE the skeleton in the mental model: seed = raw pattern,
     // skeleton = transforms applied to it, filter = fine detail layered on top.
-    // seedOffsetX/Y let the user pan through the noise field continuously
-    // (Perlin seed integers are a hash, so adjacent integers are uncorrelated;
-    // offset gives smooth "browsing" within one chosen seed).
+    // seedOffsetX/Y pan the WHOLE generated map -- coarse shapes AND fine
+    // texture together, like sliding a picture under the board window (H17
+    // item 2; applied at terrain.js's zu/zv sampler entry, same spot as
+    // mapZoom, in "screens" = board-widths at the current zoomed size).
     // seedRotation rotates the sampling coordinates before the seed sees them.
     seedType: 'perlin',
     seedOffsetX: 0,

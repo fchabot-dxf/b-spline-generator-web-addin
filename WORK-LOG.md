@@ -12199,3 +12199,58 @@ enlarged," confirming the effect is real and matches Fred's description, not jus
 Shots in `shots\seatA\` (`H17-item1_zoom0.5/1/2_390`).
 
 `npx vitest run` -> **2088 passed** (up from 2083), zero regressions.
+
+## H17 item 2 — Seed Offset pans the WHOLE map (fine texture + coarse shapes together)
+
+Fred: "the seed offset isnt what i wanted" -> "pan the whole map". Previously `seedOffsetX/Y` only shifted
+`cx`/`cz` (the coarse-redistribution layer) — panning the coarse SHAPE over a static fine texture, which is
+why it didn't read as "the map" moving.
+
+**The fix (`core/terrain.js`).** Moved `seedOffsetX`/`Y` to the same `(u,v)` sampler entry as H17 item 1's
+Map Zoom: `zu = 0.5 + (u-0.5)/mapZoom + seedOffsetX` (same for `v`), added `seedOffsetX = 0, seedOffsetY =
+0` to the destructured params (they were previously read ad hoc via `params.seedOffsetX || 0` only at the
+old site) — then DELETED the old lines entirely: `cx += (params.seedOffsetX || 0) * cFreq * aspect;` /
+`cz += (params.seedOffsetY || 0) * cFreq;` and their now-obsolete "screen-width" comment, so the offset
+isn't applied twice. Because `zu`/`zv` already feed `su`/`sv` (which drives BOTH the fine noise call and
+`cx`/`cz`), the pan now reaches fine texture and coarse shapes through the exact same substitution H17
+item 1 set up — no separate wiring needed for "the whole map." The mirror fold (`su = Math.abs(zu - mx) *
+2`) still runs on the POST-pan `zu`, so the mirror line stays fixed at the board centre while the drawing
+slides underneath it — exactly the checklist's "fold happens after the pan," and it required no code
+change since the fold already ran after `zu`'s computation.
+Reworded two comments that described the OLD mechanism and would otherwise mislead a future reader:
+`state.js`'s `seedOffsetX/Y` doc-comment (was "pan through the noise field… browsing within one seed",
+implying coarse-only; now describes the whole-map pan) and `terrain.js`'s seed-rotation comment (was
+"…about the origin BEFORE offset"; offset no longer happens at that site at all, so noted that rotation now
+only ever acts on the already-panned coordinate, and that `seedRotation`'s own UI stays removed per H16
+item 4 so this is currently unreachable with a non-zero value in practice).
+
+**Tests** (`tests/h17-seed-offset-pan.test.js`, 5 tests, `{...DEFAULT, ...overrides}` per the H15 finding):
+(1) offset 0 explicit is byte-identical to offset omitted — 0 is a true no-op. (2) The checklist's exact
+scenario: symmetry off, a sample at `(u, v)` with `offsetX=dx` is IDENTICAL to a sample at `(u+dx, v)` with
+`offsetX=0` (5×5 grid sized so both land on exact grid points; verified this is a genuine black-box test of
+BOTH layers together, since the final `heights` value mixes fine and coarse nonlinearly — a mismatch in
+either layer would break the equality with near-certainty). (3) Proves it's not double-applied: offset 0.25
+matches exactly a +1-grid-step reference, not +2 steps (if the old coarse-only line had been left in place,
+the coarse layer would receive the offset twice while fine only got it once, breaking this exact identity).
+(4) `seedOffsetX` still has a real, non-dead effect. (5) Interacts correctly with Map Zoom: at `mapZoom=2`,
+the SAME raw offset value reaches a different `zu` than at zoom 1, confirming units are "screens at the
+CURRENT zoomed size" per the checklist, not an absolute unit.
+Mutation-tested: `git stash push -u -- core/terrain.js core/state.js` (back to the H17-item-1-only tree, where
+`seedOffsetX` still only touches the old coarse-only `cx`/`cz` lines). Re-ran: tests 2, 3 and 5 — every test
+that actually exercises "pans the whole map together" or the zoom interaction — correctly FAILED (all three
+failed on the exact same value mismatch, `0.9330... !== 0.9547...`, since they all key off the same
+identity). Tests 1 and 4 correctly stayed green (0-is-a-no-op and "has *some* effect" both still held true
+under the old, narrower mechanism too — they're not expected to catch this specific regression, they guard
+different failure modes). Popped the stash, re-ran full — 10/10 green across both H17 test files (confirms
+item 2's terrain.js edits didn't disturb item 1's own tests, since both share the same `zu`/`zv` lines).
+
+Live-verified via headless CDP at 390px (random high port per run, after finding the same zombie-Chrome
+port-collision trap H17 item 1 hit): dragging `#seedOffsetXSlider` still updates `P.seedOffsetX` without
+touching `P.mapZoom`/`P.macroScale`, the stepper mirrors it, and the control is still exactly where H16
+item 4 placed it (`.panel-filter`) — the backend refactor didn't disturb the existing UI wiring. Fixed the
+seed (4242) and noise type (simplex), rendered the SAME terrain via `getSnapshot()` at Offset X 0 / 0.25 /
+0.5: the fine-grain texture pattern visibly shifts together with the coarse peak/ridge shapes between
+shots — the whole drawing sliding, not the old "shape moves over static texture" look. Shots in
+`shots\seatA\` (`H17-item2_offsetX0/0.25/0.5_390`).
+
+`npx vitest run` -> **2093 passed** (up from 2088), zero regressions.
