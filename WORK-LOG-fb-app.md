@@ -824,3 +824,113 @@ amendments: one binding table, param-bound only once proven by goldens, seeded o
   is fine; no fresh session needed.
 
 - **F4 item 4: DONE, live-verified by Fred** on his machine ("frame builder looks fine"; unit resolver / addOffset2 / fit rule, merged 6dfdcaf). Noted: lane2 (BOUNDARY-GUIDE) edits core/preview/index.js; my 3D work stays in frame-mesh.js (this turn did not touch index.js).
+
+
+## 🔨 turn 16 — F9 (seat C, epoch 1): Trim offset (gate A) + frame shape handles
+
+Commits (fb-app, pushed): `d074c49` merge origin/main · `56abaf1` item 1 · `7276b23` items 2-3.
+
+### Merge of origin/main (d074c49)
+- frame-defs.js/.json conflicted. As the heads-up said, I regenerated them with
+  `tools/gen_frame_defs.py` (`--check` fresh), not hand-resolved.
+- The sweep test (`frame-3d-sweep`) timed out once in the full parallel run (5952 ms vs vitest's 5 s
+  default): F8 made it heavier, with real solids plus a drawn-face lookup per combination. It passes
+  alone (~2.5 s). I did not argue flake: its timeout is now declared (30 s, reason in the line).
+  Gate after the merge: 1566 / 85 files green.
+
+### Item 1: Trim offset, gate A (56abaf1)
+- **Python:** `boundingboxoffset` loses `ReadOnly` and gains `Expose: True` and `Min: 0.0` in both
+  `template_data.py`, the path `frame_thickness` already takes.
+  - The resolver (`_create_skeletal_parameters` PHASE 2) now writes the sent value on every build:
+    it updates an existing doc and gives a new doc the value at birth.
+  - The standalone palette shows it editable (intended). Its "ReadOnly params (widthIn, heightIn,
+    boundingboxoffset)" comment was corrected.
+- **App:**
+  - Sidebar FRAME section: "Trim offset (in)" (`#frameTrimOffset`).
+  - `FRAME_PARAM_FIELDS` (main/frame-panel.js) now declares the frame's numeric fields. My F8
+    thickness field moved into it, so there is one sync/wire loop instead of two copies.
+  - The field writes the frame record, so the cut profile, trim, fit rule, inner edge and 3D follow;
+    measured live: at 0.75 the safe zone goes 6.5x8.5 → 5.5x7.5 and T1 keeps 82,858 → 61,729
+    triangles.
+  - It is a formula field: `formula-fields.js` gains a FRAME section with the name "trim", read from
+    the record.
+  - **"Carried in the payload":** the value lives in `record.params` and `framePayload()` carries it
+    (items 2-3). [Send frame] itself is S5, not built.
+- **Registry contract:** `formula.test.js` (reg-addin's contract: "every field has a P key", "every
+  name reads a finite P value") would have been violated. Rather than weaken it, it now STATES the
+  FRAME binding: FRAME fields must be in `FRAME_PARAM_FIELDS`, and FRAME names are finite once a frame
+  is chosen.
+- **Tests:**
+  - Python: 3 × 2 templates (existing doc takes the sent value, a new doc is born with it, the
+    default without one); **6/6 fail on the old templates** (bytecode cleared first).
+  - JS: 4 (field → record, live profile + fit, save → reload + template reset, formula scope);
+    **4/9 fail on the old code**.
+- **Shots:** `1957_F9trim_T{1,2}_{default,0.75}.png`.
+- **Live check for Fred (Fusion, his machine):**
+  1. Reload the Frame Builder add-in (restart Fusion, and delete the palette first if it caches:
+     see the reload gotcha).
+  2. Open a board doc that already has a frame (so `boundingboxoffset` exists).
+  3. In the Sketch Builder palette the BBox Border field is now editable. Set it to 0.5 in and
+     rebuild.
+  4. Expected: `boundingboxoffset` = 0.5 in in Modify → Change Parameters, and the frame outline
+     sits 0.5 in from the board edge on every side.
+  5. Set it back to 0.25 and rebuild; expected back to 0.25.
+  6. If step 4 still shows 0.25: the existing doc's param was not updated. Report the log line
+     `DEPENDENT (Updated): boundingboxoffset -> …` (or its absence).
+
+### Items 2-3: frame shape handles (7276b23)
+- **Binding table:** `FRAME_HANDLES` in `template_data.py` (T1 waistReach / cornerRadius /
+  waistCenterY; T2 neckWidth / skeletonX / neckLength), generated into frame-defs `handles`.
+  - It lives in Python so the app now and S5 later read ONE source.
+  - `test_frame_defs.py` checks every entry: key in the app's PARAM_ORDER for that preset, basis
+    hw/hh/h, binding = "seeded" or `{param}` of an EXISTING frame-owned param.
+  - FB-APP-DESIGN.md §3.2.1 names the source and holds a snapshot.
+- **Every handle is SEEDED.** No Frame Builder param controls any shape feature: the shape comes from
+  the literal seeds in `phases/p02_*` (`p02_02_anatomy.py` pins, `p02_09` seed radius dims). So there
+  is nothing to bind, and no golden-recording step list for Fred until a template gains a matching
+  param (then: `record_frame_parity.py` at 2-3 values of it).
+- **Where each piece lives:**
+  - `editor/frame-handles.js`: pure; reuses the Shape Lattice's own `computeParamHandles`.
+  - `seeds` in the record: additive, still v1. The gate keeps declared seeded keys only, and a
+    template change resets them.
+  - `framePayload()`: seeds go out as plain values; frame params are the only params.
+  - `frameCutProfile`: seeds and bound params override the fitted model, so every consumer follows.
+- **Drag UI:** handles are drawn only in the Frame tab, and the drag goes through the Frame tab's
+  shield (`touch-action:none`, 16 px grab, pointer capture). The editor redraws per move and the 3D
+  refreshes once on release.
+- **File fence** (`properties-lattice.js`, `properties-shape-lattice.js`): not touched; I only
+  IMPORT `computeParamHandles` from `editor-shape-lattice-interaction.js`.
+- **Found in the shots:** the editor's own window-level `pointermove` drew its hover snap-crosshair
+  under the drag. `handlePointerMove` now returns first under the same declared lock
+  (`_artworkLocked`).
+  - Tested with a recording-proxy editor (the handler reads only `_artworkLocked` when locked, and
+    more when unlocked). My first attempt at that test was a chain of hand stubs, which was brittle,
+    so I replaced it.
+  - The root cause of the test noise: `initInteraction` window listeners outlive a test. The earlier
+    keyboard test now leaves its mock locked.
+- **Tests** (`tests/frame-handles.test.js`, 10):
+  - table single source (drawn == declared; a removed entry isn't drawn);
+  - seeded → seeds + payload.seeds, `params` untouched, payload param names == the template's frame
+    params;
+  - bound (a synthetic binding onto `frame_thickness`, only to exercise the path) → the param in
+    inches in the payload;
+  - drag → record → save/reload, and a template change resets;
+  - a real pointer drag through the shield (a far press does nothing).
+- **Mutation results:**
+  - Pre-change code: 9/9 red.
+  - Seeds ignored: 3 red. Gate open: 1 red.
+  - **No reset survived at first:** T1 and T2 keys are disjoint, so the gate already drops them. I
+    added a test where two templates share a key; the no-reset mutation now goes red.
+- **Real app** (desktop + mobile touch): the first handle was dragged with real PointerEvents
+  (board → screen via the SVG screen CTM). The handle landed exactly on target, `seeds` was written
+  and `params` was `{}` on T1 and T2. Shots: `2011_F9handles_T{1,2}_{desktop,mobile}_frame-tab{,-dragged}.png`.
+
+### Gates / processes / notes
+- Final fast tier: JS 1581 / 86 files green; Python fast tier 205; frame-defs fresh.
+- The http.server (8784) and my Chrome are stopped at pass.
+- **Not done / known:**
+  - no handles for the optional radii (`waistRadius`, `bodyRadius`): computeParamHandles has none,
+    and the dispatch said reuse it;
+  - the Frame tab shield still blocks canvas zoom/pan (pre-existing from F8);
+  - S5 must map each seed to its Fusion sketch seed (UNVERIFIED, needs Fusion).
+- Capacity fine.
