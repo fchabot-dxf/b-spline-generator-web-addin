@@ -1054,12 +1054,23 @@ manifest's per-piece hardcoded width DIMENSION (seat B T75 item 3 / OVR-FUSION) 
 to assert the new rule; don't delete silently). Old saved patterns carrying data-override-width: ignored on load
 (migration test). Live check (advisor, Ranchy): a Send has no per-piece width dims; stroke_width drives every slot.
 
-## Queued (seat A, H4, after H3) — MOB-STEPPERS: bigger −/+ steppers on mobile (Fred 2026-09-26)
+## Queued (seat A, H4, after H3) — MOB-STEPPERS + editor header: a mobile pass (Fred 2026-09-26)
 Fred (phone screenshot of the Frame section): "in general steppers can be bigger on mobile". ONE declared touch size for
 every numeric stepper (sidebar, both lattice panels, the Frame section, the Selected piece panel, formula fields): at the
 mobile breakpoint (and on coarse pointers: @media (pointer: coarse)), −/+ buttons >= 44 px square with a matching input
 height; desktop unchanged. A shared CSS token/class, not per-field overrides; check no row overflows at 390 px width.
 Shots: the Frame section + a lattice panel on mobile, before/after.
+EDITOR HEADER (Fred, phone screenshot 11:09: "can't scroll the header, also no need for the active layer label"): on mobile the
+editor's top row (layer picker, [Frame | Artwork], ⋮, Cancel, Download SVG, Apply Stencils) is clipped: Cancel is cut
+off and Apply Stencils is unreachable. Make that row horizontally scrollable (touch scroll, no page scroll) or wrap it,
+with Apply Stencils always reachable; REMOVE the "ACTIVE LAYER" label everywhere (the layer picker stays). Shots at 390 px.
+
+## Queued (seat C, F18 item 1, after F17) — FRAME-TAB-ZOOM: pinch-zoom + pan in the Frame tab (Fred 2026-09-26)
+Fred (phone): "we can't zoom in or out on the canvas in Frame, neither panning". The Frame tab's drag shield
+(touch-action:none + pointer capture, F9) swallows the MOB5 two-finger pinch/pan. Fix: the shield captures ONLY a
+gesture that starts on a handle (one finger); a two-finger gesture, or a one-finger gesture off a handle, goes to the
+canvas's normal pan/zoom (the same gestures as the Artwork tab). Test: pinch + pan work in the Frame tab and a handle
+drag still works; mobile CDP repro.
 
 ## SE16 RULINGS (Fred 2026-09-26, answers to CUT-TOOL-DESIGN.md §0) — supersede the SE16 text below where they differ
 Q1 Send AS DRAWN (bug fix F17 P1). Q2 Regenerate CLEARS cuts (Undo restores). Q3 dragging a lattice joint SLIDES ALONG the
