@@ -169,6 +169,42 @@
       padding: 0;
     }
 
+    /* H14 (Fred: "can be only sliders side by side, no? ... does it need a
+       precise input?"): the 4 declared X/Y "feel" pairs (Seed pan, Skeleton
+       Symmetry Offset, Stamp layer Offset, the Skeleton-Editor's own pan)
+       drop their +/- stepper for a plain value readout beside the slider --
+       explored by feel, not typed to an exact number. `no-stepper` (main/
+       ui-bindings.js's attachNumberSteppers already checks for it) keeps
+       the JS auto-wrap from putting the buttons right back; deliberately
+       NOT `.cad-stepper`/`.cad-nested-input` so the H10/H11 mobile floor
+       rules sized for a button-bearing stepper (96px+) don't apply here --
+       a bare small number box needs far less room than that.
+       `input.cad-slider-readout`, not bare `.cad-slider-readout` --
+       base.css's own `input[type="number"] { width: 100% }` (a type +
+       attribute selector) OUTRANKS a plain class selector regardless of
+       source order (measured live: the plain class version lost, leaving
+       the readout stretched to fill the row and the slider squeezed to
+       its own 20px floor -- the opposite of the intended layout). Adding
+       the `input` type selector here matches that specificity so this
+       file's own later position in the cascade decides it, as intended. */
+    input.cad-slider-readout {
+      flex-shrink: 0;
+      width: 46px;
+      height: 24px;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: var(--cad-radius-sm);
+      background: #fff;
+      text-align: center;
+      font-size: 11px;
+      -moz-appearance: textfield;
+      outline: none;
+    }
+    input.cad-slider-readout::-webkit-outer-spin-button,
+    input.cad-slider-readout::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
     /* Generate New Seed — primary seed action. Higher specificity than
        .cad-btn:hover so the green doesn't get overridden on hover. */
     #btnRandomSeed:hover {
@@ -606,19 +642,30 @@
             </div>
           </div>
 
-          <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="seedOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="seedOffsetX" value="0" step="0.01">
+          <!-- H14 (Fred: "can be only sliders side by side... does it need
+               a precise input?"): a declared "feel" pair -- explored by
+               dragging, not typed -- so the stepper's +/- buttons drop for
+               a plain readout, and the pair reuses H10's own
+               .cad-paired-steppers wrap-to-one-per-row-when-too-narrow
+               layout (same class as Width/Height; it wraps whatever pair
+               of half-width columns it's given, not just stepper ones).
+               "(pan, in screens)" shortened to "(screens)" to fit the now-
+               halved column width, matching the Skeleton-Editor modal's
+               own already-shorter copy of this exact field below. -->
+          <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="seedOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+                <input type="number" id="seedOffsetX" class="no-stepper cad-slider-readout" value="0" step="0.01">
+              </div>
             </div>
-          </div>
-
-          <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="seedOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="seedOffsetY" value="0" step="0.01">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="seedOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+                <input type="number" id="seedOffsetY" class="no-stepper cad-slider-readout" value="0" step="0.01">
+              </div>
             </div>
           </div>
 
@@ -670,19 +717,27 @@
             </select>
           </div>
 
-          <label class="cad-label cad-label-inline">Symmetry Offset X <span style="font-size:10px; opacity:0.6;">(panel-width fraction)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:8px;">
-            <input type="range" id="symOffsetXSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="symOffsetX" value="0" step="0.01" min="-0.45" max="0.45">
+          <!-- H14: a declared "feel" pair -- see the Seed panel's Offset
+               X/Y above for the full rationale. "(panel-width/height
+               fraction)" shortened to "(fraction)" (X/Y already implies
+               the axis) to fit the halved column. "Symmetry Offset X/Y"
+               also shortened to "Offset X/Y" -- "Symmetry" was wrapping
+               it onto its own line at this width, and it's redundant
+               anyway sitting right under the Symmetry dropdown above. -->
+          <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6;">(fraction)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="symOffsetXSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
+                <input type="number" id="symOffsetX" class="no-stepper cad-slider-readout" value="0" step="0.01" min="-0.45" max="0.45">
+              </div>
             </div>
-          </div>
-
-          <label class="cad-label cad-label-inline">Symmetry Offset Y <span style="font-size:10px; opacity:0.6;">(panel-height fraction)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="symOffsetYSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="symOffsetY" value="0" step="0.01" min="-0.45" max="0.45">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6;">(fraction)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="symOffsetYSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
+                <input type="number" id="symOffsetY" class="no-stepper cad-slider-readout" value="0" step="0.01" min="-0.45" max="0.45">
+              </div>
             </div>
           </div>
 
@@ -911,18 +966,22 @@
           <details style="margin-bottom:12px;">
             <summary class="cad-label" style="cursor:pointer;">Transform</summary>
             <div style="margin-top:6px;">
-              <label class="cad-label" style="font-size:10px;">Offset X (in)</label>
-              <div class="cad-slider-row" style="margin-bottom:6px;">
-                <input type="range" id="stampTxSlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
-                <div class="cad-stepper" style="width:75px;">
-                  <input type="number" id="stampTx" value="0" step="0.05">
+              <!-- H14: a declared "feel" pair -- see the Seed panel's
+                   Offset X/Y for the full rationale. -->
+              <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:6px;">
+                <div style="flex:1;">
+                  <label class="cad-label" style="font-size:10px;">Offset X (in)</label>
+                  <div class="cad-slider-row">
+                    <input type="range" id="stampTxSlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
+                    <input type="number" id="stampTx" class="no-stepper cad-slider-readout" value="0" step="0.05">
+                  </div>
                 </div>
-              </div>
-              <label class="cad-label" style="font-size:10px;">Offset Y (in)</label>
-              <div class="cad-slider-row" style="margin-bottom:6px;">
-                <input type="range" id="stampTySlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
-                <div class="cad-stepper" style="width:75px;">
-                  <input type="number" id="stampTy" value="0" step="0.05">
+                <div style="flex:1;">
+                  <label class="cad-label" style="font-size:10px;">Offset Y (in)</label>
+                  <div class="cad-slider-row">
+                    <input type="range" id="stampTySlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
+                    <input type="number" id="stampTy" class="no-stepper cad-slider-readout" value="0" step="0.05">
+                  </div>
                 </div>
               </div>
               <label class="cad-label" style="font-size:10px;">Rotation (°)</label>
@@ -2807,22 +2866,21 @@
             </div>
           </div>
 
-          <div>
-            <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelOffsetX" value="0" step="0.01">
+          <!-- H14: a declared "feel" pair -- see the Seed panel's Offset
+               X/Y for the full rationale. -->
+          <div class="cad-paired-steppers" style="display:flex; gap:8px;">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="skelOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+                <input type="number" id="skelOffsetX" class="no-stepper cad-slider-readout" value="0" step="0.01">
               </div>
             </div>
-          </div>
-
-          <div>
-            <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelOffsetY" value="0" step="0.01">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="skelOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+                <input type="number" id="skelOffsetY" class="no-stepper cad-slider-readout" value="0" step="0.01">
               </div>
             </div>
           </div>

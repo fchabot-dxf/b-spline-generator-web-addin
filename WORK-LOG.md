@@ -11827,3 +11827,79 @@ suites covering files this turn touched.
   right-click on desktop) any piece — a tick when the menu appears; (6) use the cut tool on a rail or tie,
   then tap the same joint to join it back — a tick each time, only on a completed cut/join, not a rejected
   one (e.g. too short to cut).
+
+---
+
+Dispatch: epoch 3 — H14: CONTROL-BY-PRECISION. NEXT-SESSION.md, Fred: "can be only sliders side by side,
+no? choice of slider or stepper depends on the param: does it need a precise input?" **SCOPE NARROWED
+mid-task** (Fred, direct: "only make this to the ones you found just now") from an app-wide param->control
+classification table down to ONLY seat C's own F25-listed 4 X/Y pairs — confirmed via both a cross-session
+message and the canonical `handoff.py amendments` channel before acting, and NEXT-SESSION.md itself was
+re-pulled to the narrowed checklist. No app-wide table was built; this turn is exactly the 4 pairs.
+
+**H14 item 1 — the 4 pairs, stepper dropped for a slider + plain readout.** Confirmed all 4 against seat
+C's own F25 list by grep before touching anything: Seed panel's Offset X/Y (`seedOffsetX/Y`, "pan, in
+screens"), Skeleton panel's Symmetry Offset X/Y (`symOffsetX/Y`), Vector Stamping's Transform Offset X/Y
+(`stampTx/Ty`, "in"), and the Skeleton-Editor modal's own duplicate pan Offset X/Y (`skelOffsetX/Y`) — the
+"SVG-editor drawer" the dispatch names. Each pair's `.cad-stepper` wrapper (buttons + input) is REMOVED
+from the static markup; the bare `<input type="number">` gets `class="no-stepper cad-slider-readout"`
+instead — `no-stepper` is an EXISTING escape hatch `main/ui-bindings.js`'s `attachNumberSteppers` already
+checks first, so the JS auto-wrap can never put the buttons back. New `input.cad-slider-readout` (page's
+own `<style>`) is a small fixed-width (46px) plain number box, deliberately NOT `.cad-nested-input`/
+`.cad-stepper` so H10/H11's mobile floor rules sized for a button-bearing stepper (96px+) don't apply to
+it — a bare readout needs far less room. Ids and all other attributes (min/max/step/value) untouched, so
+formula fields, saved projects, and anything else referencing these ids keeps working.
+
+**Each pair reuses H10's own `.cad-paired-steppers` wrap-to-one-per-row class** (two `flex:1` columns,
+self-adapting: side by side wherever there's room, stacks the instant there's not) rather than declaring a
+new one — confirmed first that seat C's own F25 work (`WORK-LOG-fb-app.md`,
+`tools/repro/f25_tool_profile_shots.mjs`) already depends on this exact class, so it's genuinely shared,
+cross-seat infrastructure now, not something to rename even though "steppers" is no longer literally
+accurate for a slider-pair's own use of it (its actual CSS behaviour — wrap two half-width columns — never
+assumed what's inside them).
+
+**Bug caught and fixed BEFORE it shipped: base.css's own `input[type="number"] { width: 100% }` (a type +
+attribute selector) outranks a plain `.cad-slider-readout` class selector on specificity, regardless of
+source order** — measured live: the first version of the CSS rule lost that fight, leaving the readout
+stretched to fill the whole row and the slider squeezed down to its own 20px floor (the opposite of the
+intended layout — screenshotted and diagnosed via `document.styleSheets` rule enumeration before guessing
+further, per this project's own "measure, don't re-reason" discipline). Fixed by adding the `input` type
+selector (`input.cad-slider-readout`), matching that specificity so this file's later position in the
+cascade decides it as intended.
+
+**Second bug caught live, at the SPECIFIC widths where it actually occurs: "Symmetry Offset X" wrapped as
+"Symmetry (fraction)" on row 1, "Offset X" alone on row 2, at the iPad widths (768-1366) where each halved
+column is narrow — but NOT at 390px, where the sidebar still goes full-width.** Root cause: at that width
+the label's own TEXT (not the flex-row-vs-span stacking H12's fix targeted) wraps internally, and the
+`(fraction)` span's `align-items:baseline` position happens to land on the text's own FIRST line — which is
+exactly why H12's existing `sameLine` check (comparing the text's first line to the span) stayed green
+throughout, never catching it. Fixed by shortening "Symmetry Offset X/Y" -> "Offset X/Y" (redundant anyway,
+sitting directly under the "Symmetry" dropdown already labelling the section) rather than fighting the
+width further. Also shortened "(pan, in screens)" -> "(screens)" for the Seed panel's pair (matching the
+Skeleton-Editor modal's own already-shorter copy of the identical field) and "(panel-width/height
+fraction)" -> "(fraction)" for Symmetry (X/Y already implies the axis) — both while building the pairs, not
+as an afterthought, since halving the column width made the full-length wording tight even before the
+wrap bug surfaced specifically on the Symmetry pair.
+
+**H14 item 2 — check + shots, mutation-tested.** Extended `tools/repro/h10_multiwidth_shots.mjs` (now
+covering H10 through H14 in one script) with two additions:
+1. A dedicated pair-check block for all 4 pairs at every width (390/768/834/1024/1366) — the 4th
+   (`skelOffsetX/Y`) needs the Skeleton-Editor modal opened first, so the script opens it, checks, and
+   closes it (Done) before continuing, leaving the page state clean for whatever runs next at that width.
+   Each pair asserts: same row, both readouts visible, both sliders have real (>=20px) width, and — a
+   direct regression guard for the `no-stepper` escape hatch — neither input is inside a `.cad-stepper`
+   any more.
+2. A `textWrapped` check on every `.cad-label-inline` (the label text node's own `Range.getClientRects()`
+   count > 1) — the check the SECOND bug above proved was missing; added specifically because the existing
+   `sameLine` check demonstrably could not have caught it (verified: reintroducing "Symmetry Offset X/Y"
+   temporarily reproduces `sameLine:true, textWrapped:true` at exactly 768-1366px and `textWrapped:false`
+   at 390px, an exact match to the original live bug's own width-dependence).
+Mutation-tested both: reverting the whole HTML file to pre-H14 fails all 4 pairs' "same row" and "stepper
+dropped" checks at every width (8 failures x 5 = 40); reintroducing the long Symmetry wording in isolation
+fails only the 2 `textWrapped` checks, only at 768-1366px, exactly reproducing the original bug's own
+footprint. Both restored to green after. `npx vitest run` -> **2007 passed**, unchanged (pure HTML/CSS, no
+JS logic touched). Shots: Seed panel at 390 + 834, Symmetry/Stamp Transform/Skeleton-Editor modal at 834,
+in `shots\seatA\` (`h14_seed_390.png`, `h14_seed_834.png`, `h14_symmetry_834.png`, `h14_stamp_834.png`,
+`h14_skeleditor_834.png`). No "lattice panel" shot: confirmed none of the 4 declared pairs live in the SVG
+editor's own Lattice/Shape-Lattice panels (same `#editorLatticePanelBody` line-range grep H12 already ran,
+zero `cad-label`/pair-id hits there), so there's nothing this turn's change touches to show there.

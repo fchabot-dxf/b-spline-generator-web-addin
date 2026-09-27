@@ -163,18 +163,95 @@ for (const { w, h, name } of WIDTHS) {
       const textNode = [...label.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
       const range = document.createRange();
       range.selectNodeContents(textNode);
-      const textRect = range.getClientRects()[0];
+      const textRects = range.getClientRects();
+      const textRect = textRects[0];
       const spanRect = span.getBoundingClientRect();
       const sameLine = Math.abs((textRect.top + textRect.height / 2) - (spanRect.top + spanRect.height / 2)) < 5;
       const overflows = spanRect.right > sidebarRight + 0.5;
-      return { sameLine, overflows, text: label.textContent.trim() };
+      // H14 (Fred, iPad: "Symmetry Offset X" wrapped as "Symmetry" +
+      // "(fraction)" on row 1, "Offset X" alone on row 2 -- sameLine still
+      // passed, since it only compares the FIRST line of the (now
+      // multi-line) text node against the span, which happened to share
+      // that first line): the text node's own client rects reveal actual
+      // internal text wrapping directly, independent of the flex-row
+      // stacking sameLine already covers.
+      const textWrapped = textRects.length > 1;
+      return { sameLine, overflows, textWrapped, text: label.textContent.trim() };
     }));
   })()`));
   console.log(`labels@${name}: ${labelInfo.length} visible labels checked`, JSON.stringify(labelInfo));
   for (const l of labelInfo) {
+    check(!l.textWrapped, `H14@${name}: label "${l.text}" text doesn't wrap internally`);
     check(l.sameLine, `H12@${name}: label "${l.text}" stays on one line`);
     check(!l.overflows, `H12@${name}: label "${l.text}" doesn't overflow the sidebar`);
   }
+
+  // H14 (Fred: "can be only sliders side by side... does it need a
+  // precise input?"): the 4 declared X/Y "feel" pairs -- each must render
+  // as two sliders side by side with a plain value readout (no +/-
+  // buttons) beside each. 3 of the 4 live on the main page; the 4th
+  // (skelOffsetX/Y) lives inside the Skeleton-Editor modal, checked
+  // separately below since it needs opening first.
+  const PAIRS = [
+    { name: 'seedOffset', x: 'seedOffsetX', y: 'seedOffsetY' },
+    { name: 'symOffset', x: 'symOffsetX', y: 'symOffsetY' },
+    { name: 'stampT', x: 'stampTx', y: 'stampTy' },
+  ];
+  await evalJS(`[...document.querySelectorAll('details')].forEach(d => d.open = true)`); // Vector Stamping's Transform
+  await sleep(150);
+  for (const pair of PAIRS) {
+    const info = JSON.parse(await evalJS(`(()=>{
+      const xInput = document.getElementById('${pair.x}'), yInput = document.getElementById('${pair.y}');
+      if (!xInput || !yInput) return JSON.stringify({ found: false });
+      const xr = xInput.getBoundingClientRect(), yr = yInput.getBoundingClientRect();
+      if (xr.width === 0) return JSON.stringify({ found: true, visible: false });
+      const xSlider = document.getElementById('${pair.x}Slider').getBoundingClientRect();
+      const ySlider = document.getElementById('${pair.y}Slider').getBoundingClientRect();
+      return JSON.stringify({
+        found: true, visible: true,
+        sameRow: Math.abs((xr.top + xr.height / 2) - (yr.top + yr.height / 2)) < 5,
+        xReadoutVisible: xr.width > 0, yReadoutVisible: yr.width > 0,
+        xSliderW: Math.round(xSlider.width), ySliderW: Math.round(ySlider.width),
+        noStepper: !xInput.closest('.cad-stepper') && !yInput.closest('.cad-stepper'),
+      });
+    })()`));
+    if (info.visible === false) continue; // a collapsed panel elsewhere on the page this width -- not this pair's concern
+    console.log(`pair ${pair.name}@${name}:`, JSON.stringify(info));
+    check(info.found && info.visible, `H14@${name}: ${pair.name} pair found and visible`);
+    check(info.sameRow, `H14@${name}: ${pair.name} X/Y readouts on the same row`);
+    check(info.xReadoutVisible && info.yReadoutVisible, `H14@${name}: ${pair.name} both readouts visible`);
+    check(info.xSliderW >= 20 && info.ySliderW >= 20, `H14@${name}: ${pair.name} both sliders have real width (${info.xSliderW}, ${info.ySliderW})`);
+    check(info.noStepper, `H14@${name}: ${pair.name} stepper buttons dropped (readout only)`);
+  }
+
+  // H14's 4th pair (skelOffsetX/Y) lives inside the Skeleton-Editor modal
+  // -- open it, check, then close, so later checks this same width start
+  // from the same page state as before.
+  await evalJS(`[...document.querySelectorAll('button')].find(b => /edit seed/i.test(b.textContent))?.click()`);
+  await sleep(500);
+  const skelInfo = JSON.parse(await evalJS(`(()=>{
+    const xInput = document.getElementById('skelOffsetX'), yInput = document.getElementById('skelOffsetY');
+    if (!xInput || !yInput || xInput.getBoundingClientRect().width === 0) return JSON.stringify({ visible: false });
+    const xr = xInput.getBoundingClientRect(), yr = yInput.getBoundingClientRect();
+    const xSlider = document.getElementById('skelOffsetXSlider').getBoundingClientRect();
+    const ySlider = document.getElementById('skelOffsetYSlider').getBoundingClientRect();
+    return JSON.stringify({
+      visible: true, sameRow: Math.abs((xr.top + xr.height / 2) - (yr.top + yr.height / 2)) < 5,
+      xReadoutVisible: xr.width > 0, yReadoutVisible: yr.width > 0,
+      xSliderW: Math.round(xSlider.width), ySliderW: Math.round(ySlider.width),
+      noStepper: !xInput.closest('.cad-stepper') && !yInput.closest('.cad-stepper'),
+    });
+  })()`));
+  console.log(`pair skelOffset@${name}:`, JSON.stringify(skelInfo));
+  check(skelInfo.visible, `H14@${name}: skelOffset modal opened and pair visible`);
+  if (skelInfo.visible) {
+    check(skelInfo.sameRow, `H14@${name}: skelOffset X/Y readouts on the same row`);
+    check(skelInfo.xReadoutVisible && skelInfo.yReadoutVisible, `H14@${name}: skelOffset both readouts visible`);
+    check(skelInfo.xSliderW >= 20 && skelInfo.ySliderW >= 20, `H14@${name}: skelOffset both sliders have real width (${skelInfo.xSliderW}, ${skelInfo.ySliderW})`);
+    check(skelInfo.noStepper, `H14@${name}: skelOffset stepper buttons dropped (readout only)`);
+  }
+  await evalJS(`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Done')?.click()`);
+  await sleep(300);
 
   // H10: the main Seed number field is hidden (not deleted) -- Generate
   // New Seed is the only way to re-roll now.
