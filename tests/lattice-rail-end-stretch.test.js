@@ -18,7 +18,7 @@ import { LATTICE_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/edi
 import { generatePattern, OWNERSHIP_ATTR, PATTERN_DEFAULTS, _resolveExtent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { regenerateSilhouette, currentPattern } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
 import { HANDLE_HOVER_FILL, HANDLE_HOVER_SCALE } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
-import { railEndTarget } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-rail-end-stretch.js';
+import { railEndTarget, railEndAxis } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-rail-end-stretch.js';
 
 function makeMockEditor(mW = 4, mH = 4) {
   let elements = [];
@@ -133,7 +133,7 @@ beforeEach(() => {
 });
 
 describe('T81 item 7 (rect Lattice, [Select]): hovering a rail END shows the shared end handle', () => {
-  it('on the end: one handle at the end, in the T81 item 1 hover look, grab cursor', () => {
+  it('on the end: one handle at the end, in the T81 item 1 hover look, a left-right cursor (the rail runs left-right)', () => {
     const { editor, rail } = rectFixture();
     getModeHandler('lattice').hover(editor, { x: 3, y: 1 });
     expect(editor._railEndHover).toEqual({ el: rail, end: 'b' });
@@ -143,6 +143,7 @@ describe('T81 item 7 (rect Lattice, [Select]): hovering a rail END shows the sha
     expect(hs[0].store.cy).toBeCloseTo(1, 9);
     expect(hs[0].store.fill).toBe(HANDLE_HOVER_FILL);
     expect(document.getElementById('editorSVGContainer').classList.contains('handle-hover-ready')).toBe(true);
+    expect(document.getElementById('editorSVGContainer').classList.contains('handle-axis-x')).toBe(true); // ew-resize
   });
 
   it('on the body (mid-rail): no end handle, no grab cursor', () => {
@@ -166,6 +167,7 @@ describe('T81 item 7 (rect Lattice, [Select]): hovering a rail END shows the sha
     const h = getModeHandler('lattice');
     h.start(editor, { x: 3, y: 1 }, { x: 3, y: 1 });
     expect(document.getElementById('editorSVGContainer').classList.contains('handle-hover-active')).toBe(true);
+    expect(document.getElementById('editorSVGContainer').classList.contains('handle-axis-x')).toBe(true); // held: still left-right
     h.update(editor, { x: 3.5, y: 1.1 });
     expect(endHandles(editor)[0].store.cx).toBeCloseTo(num(rail, 'x2'), 9);
     expect(endHandles(editor)[0].store.cx).toBeCloseTo(3.5, 9);
@@ -357,5 +359,14 @@ describe('T81 item 7 (Shape Lattice, [Select]): rail end drag', () => {
     for (const t of kept) expect(ties).toContain(t);
     expect(editor.pushes - before).toBe(1);
     expect(document.getElementById('editorStatusHint').textContent).toMatch(/Rail shortened: removed \d+ tie/);
+  });
+});
+
+describe('railEndAxis: the rail end cursor follows the rail\'s own direction (Fred: "Use updown for one and left right the other")', () => {
+  const line = (x1, y1, x2, y2) => ({ node: { getAttribute: (k) => String({ x1, y1, x2, y2 }[k]) }, attr: () => null, transform: () => ({}) });
+  it('a left-right rail -> x (ew-resize), an up-down rail -> y (ns-resize), nothing -> null', () => {
+    expect(railEndAxis({ el: line(0, 1, 4, 1), end: 'b' })).toBe('x');
+    expect(railEndAxis({ el: line(2, 0, 2, 5), end: 'a' })).toBe('y');
+    expect(railEndAxis(null)).toBe(null);
   });
 });

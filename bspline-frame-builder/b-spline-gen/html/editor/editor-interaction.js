@@ -54,7 +54,7 @@ import { armMultiSelectPress, cancelMultiSelectHoldIfMoved, cancelMultiSelectHol
 // existing SE7k end-stretch -- own module, same reasoning as H5's above.
 import {
     armRailEndStretch, railEndTarget, whenRailLimitReady, pruneAfterRailStretch,
-    endRailEndStretch, setRailEndHover, renderRailEndHandle,
+    endRailEndStretch, setRailEndHover, renderRailEndHandle, railEndAxis,
 } from './editor-rail-end-stretch.js';
 // H6 CONTEXT-MENU: same reasoning, own module — see its own doc comment.
 import {
@@ -2067,13 +2067,14 @@ const latticeHandler = {
         const kind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
         editor._setHover((kind === 'rail' || kind === 'tie' || kind === 'node') ? hit : null);
         // T81 item 7: a rail END under the pointer shows its end handle +
-        // the shared grab cursor (a press there stretches, SE7k).
+        // the shared handle cursor, left-right or up-down by the rail's own
+        // direction (a press there stretches, SE7k).
         // Only clears a cursor it set itself (another handle system -- the
         // Frame tab's -- may own it otherwise).
         const railEnd = _railEndUnder(editor, pt);
         const hadRailEnd = !!editor._railEndHover;
         setRailEndHover(editor, railEnd);
-        if (railEnd || hadRailEnd) setHandleCursor(railEnd ? 'hover' : null);
+        if (railEnd || hadRailEnd) setHandleCursor(railEnd ? 'hover' : null, railEndAxis(railEnd));
     },
 };
 
@@ -2420,7 +2421,7 @@ const shapeLatticeHandler = {
         // there grabs the handle first, start()'s own priority).
         const railEnd = key ? null : _railEndUnder(editor, pt);
         setRailEndHover(editor, railEnd);
-        setHandleCursor(key || railEnd ? 'hover' : null, key ? hit.axis : null);
+        setHandleCursor(key || railEnd ? 'hover' : null, key ? hit.axis : railEndAxis(railEnd));
         if (selectHandler.hover) selectHandler.hover(editor, pt);
     },
 };

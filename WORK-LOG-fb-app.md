@@ -3052,3 +3052,7 @@ on hover i mean".
   T81 item 7 rail end) keeps grab/grabbing. Touch has no hover: the press still shows the grow + blue look.
 Tests updated (frame-radius-handles, frame-handles, shape-lattice-handle-hover, mocks) + a cursor test.
 Full vitest 2384/2384. Shot: scratchpad shots/handles-v3.
+- Rail end (T81 item 7) cursor, agreed by Fred: `railEndAxis` picks ew-resize for a left-right rail, ns-resize
+  for an up-down one, on hover and while dragging. Radius handles keep their axis cursor (ew-resize): there is
+  no standard "radius" cursor (CSS has none; CAD apps rely on the handle's look), and it is accurate -- the
+  circle slides sideways, moving the arc centre.

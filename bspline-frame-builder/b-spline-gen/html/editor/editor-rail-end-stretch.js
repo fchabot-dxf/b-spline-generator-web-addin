@@ -82,6 +82,16 @@ function _canon(p, spacing, orientation) {
   return orient(toLatticeFractional(p, spacing), orientation);
 }
 
+/** The drag axis of a rail end handle, for its cursor (Fred: "Use updown for
+ *  one and left right the other ... Changing cursor on hover", agreed for the
+ *  rail end too): 'x' for a rail running left-right (ew-resize), 'y' for one
+ *  running up-down (ns-resize). `hit` = `{el, end}` or null. */
+export function railEndAxis(hit) {
+  if (!hit || !hit.el || !hit.el.node) return null;
+  const { a, b } = _lineEnds(hit.el);
+  return Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) ? 'x' : 'y';
+}
+
 /** Hover state writer: `hit` = `{el, end}` (a rail and which of its ends)
  *  or null. Re-renders the handle layer only when it actually changed. */
 export function setRailEndHover(editor, hit) {
@@ -104,7 +114,7 @@ export function renderRailEndHandle(editor) {
   // held look stuck: no live move -> no drag state.
   if (editor._railEndDrag && !editor._latticeMove) {
     editor._railEndDrag = null;
-    setHandleCursor(editor._railEndHover ? 'hover' : null);
+    setHandleCursor(editor._railEndHover ? 'hover' : null, railEndAxis(editor._railEndHover));
   }
   const target = editor._railEndDrag || editor._railEndHover;
   if (!target || !editor._handleLayer || !target.el || !target.el.node) return;
@@ -195,7 +205,7 @@ export function armRailEndStretch(editor, move) {
     } catch (_) { /* no resolvable board -> no extra limit */ }
   }
   editor._railEndDrag = { el: move.el, end: move.end };
-  setHandleCursor('active');
+  setHandleCursor('active', railEndAxis(editor._railEndDrag));
   if (typeof editor._updateHandles === 'function') editor._updateHandles();
 }
 
@@ -298,6 +308,6 @@ export function pruneAfterRailStretch(editor, move) {
 export function endRailEndStretch(editor) {
   if (!editor._railEndDrag) return;
   editor._railEndDrag = null;
-  setHandleCursor(editor._railEndHover ? 'hover' : null);
+  setHandleCursor(editor._railEndHover ? 'hover' : null, railEndAxis(editor._railEndHover));
   if (typeof editor._updateHandles === 'function') editor._updateHandles();
 }
