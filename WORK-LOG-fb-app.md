@@ -2169,3 +2169,98 @@ Fred: "if needed add a param in fusion". The ONE exception to "frames never get 
 - **Amendments polled:** the panel_lip param one (absorbed above).
 - **Cleanup:** server stopped; no headless Chrome of mine; no Fusion doc of mine open.
 - **Capacity:** OK. This was a long turn; the next turn would do well in a fresh session.
+
+## F23 HANDLE-REACH -- T1 Shoulder/Hip reach the true geometric limit (Generate stays banded) -- 2026-09-27
+
+Fred (iPad, Frame tab, Hourglass): "shouldn't the handle and geometry allow the handle to go further and make the
+arc wider" -> "hip and shoulder". Same bug as main's H11 (seat A), independently measured and fixed on fb-app's
+own copy of `editor-shape-lattice-generator.js` (a separate worktree/branch -- no code shared between the two).
+
+### Item 1 -- MEASURE: which bound stops a manual drag today
+`_hourglassRange`'s `cornerRadiusTop`/`cornerRadiusBottom` branch computed the real geometric bound (`geoLo`,
+`geoHi`, from the horn/tangency/keyhole algebra) but then clamped it into `BASE_RANGES.hourglass[key]`, a
+DECLARED [0.04, 0.95] pair -- the same "panel slider limit" this file's own header comment names, carried over
+verbatim from the pre-F12 shared `cornerRadius` and never re-derived once F20 split it into Shoulder/Hip. That
+declared pair, not F5's own geometry or F13 (`frameParamRanges` never narrows the corner keys at all -- only
+`waistReach`/`neckWidth`), is what stopped the drag. MEASURED live (T1's own board sizes, `frame-defs.json`
+defaults, bbo 0.25):
+
+| board | key | old band | true geometric range | ratio |
+|---|---|---|---|---|
+| 7x9  | cornerRadiusTop    | [0.04, 0.95] | [0.0010, 2.5655] | ceiling 2.70x wider, floor 40x tighter |
+| 7x9  | cornerRadiusBottom | [0.04, 0.95] | [0.0010, 2.5587] | ceiling 2.69x wider, floor 40x tighter |
+| 12x6 | cornerRadiusTop    | [0.04, 0.95] | [0.0377, 0.5019] | ceiling already inside 0.95; floor 1.1x looser |
+| 12x6 | cornerRadiusBottom | [0.04, 0.95] | [0.0377, 0.4676] | ceiling already inside 0.95; floor 1.1x looser |
+
+FRAME_GEN_BAND [0.1, 0.9] never touches a manual drag either way -- `frameHandles`' clamp reads
+`frameParamRanges` -> `feasibleParamRanges` directly; the band is only read inside `generateFrameSeeds`.
+Confirmed unaffected by this fix (test below).
+
+Also measured, per the checklist's "(and T2's handles)": T2 (bottle)'s "Shoulder height" (`neckLength`) has the
+SAME artifact on its FLOOR -- declared 0.08, true geometric floor 0.01 (8x tighter) -- but NOT fixed this turn:
+unlike T1's corner branch, `neckWidth`'s own floor formula reads the DECLARED `neckLength` lo constant directly
+(`const [nlLo] = BASE_RANGES.bottle.neckLength`, used inside `_bottleRange`'s `neckWidth` branch to derive
+`floorFromHeight`) -- widening `neckLength`'s exposed floor without re-deriving that cross-reference would leave
+a stale assumption baked into `neckWidth`'s own bound. A bigger, separate change than the T1 mirror fix;
+flagged here (and in the pass-back) as a follow-up for the advisor to queue, rather than forced in under this
+dispatch or written into ROADMAP myself (not mine to edit). `neckWidth`'s own ceiling
+has no geometric term at all (`geoHi = Infinity`) -- only the declared 0.85 ever bounds it -- not touched, not
+clearly a bug (no geometric ceiling formula exists to compare against; would need its own derivation).
+
+### Item 2 -- fix: clamp to the REAL limits only; what a wider arc needs
+Fix (mirrors `waistRadius`'s existing treatment via `_optionalRange`): the corner branch now returns
+`_range(0, Infinity, geoLo, geoHi)` -- geometry only, no BASE_RANGES pair -- and `BASE_RANGES.hourglass` drops
+the now-dead `cornerRadiusTop`/`cornerRadiusBottom` entries (`waistCenterY`'s own declared-only branch, and the
+generic `cornerRadius` derived-default entry, are untouched). Nothing else needed re-solving: `sMax` (the
+ceiling) and the keyhole/tangency floor are already functions of the CURRENT `waistRadius` (`rw`) and
+`waistReach` (`d`) -- the "waist arc re-solving along with it" Fred worried about is exactly what the existing
+formula already does; confirmed by direct construction (`hourglassConstruction`), not assumed.
+
+Proven, not argued (`hourglassConstruction` called directly, bypassing `_resolveParams`'s own re-clamp --
+`generateSilhouette`'s public `params` path clamps explicit overrides back into range, so it can't itself
+produce an out-of-range shape; the proof has to go one level under it):
+- **max side** (the one Fred actually wants wider): the corner's own straight "horn" segment length
+  (`shoulderY + hh` for the top, `hh - hipY` for the bottom) sits EXACTLY on its declared floor
+  (`HORN_MIN_OF_HALF_HEIGHT * hh`) at the new max, and drops measurably below it at `max * 1.01` -- an invalid
+  frame (the horn would need negative length past this), on both boards, both keys.
+- **min side** binds a DIFFERENT term depending on the board -- proven in its own currency, not forced into one
+  shape: at 7x9 the tangency/keyhole terms are slack and a trivial "radius stays positive" floor binds instead
+  (min ~0.001, i.e. `EPS_FRAC*hw`); at 12x6 the keyhole/tangency term binds, and `min * 0.9` makes the waist
+  tangency's own `dy = sqrt(d(2S-d))` go NaN (2S < d, no real tangent junction exists).
+
+### Item 3 -- tests + shots
+- `tests/editor-shape-lattice-generator.test.js` (+7): the new F5 range pinned per board/key (regression); the
+  max-side horn-floor breach proven at both boards; the min-side split proven per board (7x9 positivity floor,
+  12x6 tangency-NaN). Mutation-tested against the pre-fix source (`git stash` of just the source file, tests
+  kept): 7/49 fail, confirmed byte-identical restore after `stash pop`, 49/49 green again.
+- `tests/frame-gen.test.js` (+2): a manual drag on Shoulder/Hip now clamps past the old 0.95 (drag 4
+  board-widths left of the anchor -- cornerRadiusTop/Bottom increase as world x DECREASES, confirmed via
+  `computeParamHandles`'s own `valueFromWorld`, not assumed from the waistReach convention); 200 Generates still
+  keep both keys inside the declared 0.1-0.9 band regardless of the widened outline limit. Mutation-tested the
+  same way: 2/13 fail pre-fix, restored clean.
+- Real-input drag repro (`tools/repro/frame_handle_reach_shots.mjs`, new -- adapted from F20's
+  `frame_shoulder_hip_shots.mjs`, same CDP-mouse/touch pattern, but dragging to the handle's own MAX instead of
+  a fixed step): Shoulder and Hip each dragged via real CDP mouse (desktop) and touch (mobile) to `range.max`
+  (2.5655 / 2.5587 on T1 7x9, the app's own default board) -- past the old 0.95 ceiling, zero outline defects,
+  the other handle unmoved. Mutation-tested against the pre-fix source the same way: the repro itself reports
+  `pastOldBand: false` (clamps at exactly 0.95) on the pre-fix tree, `ok: true` (clamps at the new
+  2.5655/2.5587) on the fixed tree -- the harness genuinely exercises the fix, not a tautology. Shots:
+  `shots/seatC/0935_F23reach_{before,after_shoulder,after_hip}` (desktop) and `..._mobile_*` (touch); own
+  scratch static server (port 8091, this worktree's own files -- the port already open on 8080 belonged to
+  another seat/session, not reused to avoid touching stale content), stopped after; own headless Chrome
+  instances closed by the script itself (`chrome.kill()`); `proc_health.py watch` clean, no lingering ephemeral
+  processes.
+
+### Gates
+- JS: full suite 102 files / 1984 passed -- no regression, net +9 new tests.
+- Fusion: not needed -- reasoned, not skipped: this fix only WIDENS the feasible range; every existing default
+  and every saved record is byte-identical (no default is anywhere near the old artifact bounds), so F11/F20's
+  already-recorded live parity is untouched. No live check run.
+
+### Notes
+- T2 (bottle) follow-up queued: `neckLength`'s floor artifact (0.08 declared vs 0.01 geometric) -- needs
+  `neckWidth`'s own cross-referenced floor formula re-derived alongside it, not a one-line mirror; see item 1.
+- **Amendments polled:** none new (checked before this write-up and before the commit/pass).
+- **Cleanup:** scratch measurement scripts (`scripts/scratch/`) deleted, not committed. Static server (8091)
+  and both headless Chrome profiles stopped; `proc_health.py watch` clean.
+- **Capacity:** OK, one turn, nothing left mid-flight.
