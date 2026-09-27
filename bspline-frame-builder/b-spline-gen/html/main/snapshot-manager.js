@@ -59,6 +59,9 @@ export async function applySnapshot(snap, preview, { source } = {}) {
   // a no-op once P.editorSvg exists, so re-running it on every undo/redo
   // that also flows through this function costs nothing.
   runMigrations();
+  // The UI was synced from the saved values above; a migration can change
+  // the filter (removed-noise-type-to-default), so re-sync the dropdown.
+  syncUItoParam('noiseType', P.noiseType);
 
   // T45: 'load' also replaces the LIVE editor's own document — P.editorSvg
   // was already overwritten above (part of the P-restore loop), but
