@@ -4,13 +4,16 @@
  * should be a different color or shape than handle for radii").
  *
  * (a) every frame-shape arc's radius has a handle (the arc inventory below);
- *     the new ones (T1 waist, T2 body) sit ON their arc, a drag re-solves the
- *     radius whose arc passes under the pointer, clamped to the true
- *     geometric limit, seeded in the record (no new Fusion parameter), and
- *     [Send frame] carries the new radius in the seed geometry.
+ *     the new ones (T1 waist, T2 body) sit at their arc's CENTRE like Shoulder/
+ *     Hip (Fred: "please use center"; a flat waist's centre past the frame
+ *     edge parks the diamond on that edge), a horizontal drag moves the
+ *     centre, clamped to the true geometric limit, seeded in the record (no
+ *     new Fusion parameter), and [Send frame] carries the new radius in the
+ *     seed geometry.
  * (b) handle KINDS are declared data (HANDLE_KINDS, editor-transform-
- *     handles.js): position = round white, radius = diamond in the editor's
- *     existing blue accent (Fred's ruling).
+ *     handles.js): position = a double-headed arrow along its drag axis,
+ *     white with the app's blue selection-handle border; radius = a circle in
+ *     the editor's existing blue accent (Fred's rulings).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
@@ -18,9 +21,8 @@ import { P, setIsFusionMode } from '../bspline-frame-builder/b-spline-gen/html/c
 import { normalizeFrameRecord, setFrameRecord, framePayload } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile, frameInnerProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameHandles, handleDragPatch } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
-import { radiusThroughPoint } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-interaction.js';
 import {
-  HANDLE_KINDS, HANDLE_HOVER_FILL, HANDLE_DIAMOND_SCALE, handleKindVisual, drawParamHandle,
+  HANDLE_KINDS, HANDLE_HOVER_FILL, APP_HANDLE_STROKE, handleKindVisual, drawParamHandle, arrowHandlePoints,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 import { initFramePanel, sendFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 
@@ -69,33 +71,28 @@ describe('(a) the arc inventory: every frame arc has a radius handle', () => {
   });
 });
 
-describe('(a) the new radius handles sit ON their arc and drag the radius', () => {
+describe('(a) the new radius handles sit at their arc CENTRE (Fred: "please use center") and drag the radius', () => {
   const CASES = [['template_1', 'waistRadius', 2], ['template_2', 'bodyRadius', 2]];
 
-  it.each(CASES)('%s %s: the handle is on the arc (not its centre), clear of every other handle', (id, key, prim) => {
+  it.each(CASES)('%s %s: the handle is at the arc\'s centre (or, past the frame edge, parked ON the edge on the centre\'s line), a horizontal radius handle', (id, key, prim) => {
     for (const [W, H] of BOARDS) {
       const rec = normalizeFrameRecord({ templateId: id });
-      const a = prof(rec, W, H).primitives[prim];
-      const hs = handlesOf(rec, W, H), h = hs.find((q) => q.key === key);
-      expect(Math.hypot(h.anchor.x - a.cx, h.anchor.y - a.cy)).toBeCloseTo(a.rx, 9);
-      // inside the arc's own angular span
-      const t = Math.atan2(h.anchor.y - a.cy, h.anchor.x - a.cx);
-      let rel = t - a.theta1; rel -= 2 * Math.PI * Math.floor((rel + Math.PI) / (2 * Math.PI));
-      if (a.dTheta < 0) rel = -rel;
-      if (rel < 0) rel += 2 * Math.PI;
-      expect(rel).toBeGreaterThan(0);
-      expect(rel).toBeLessThan(Math.abs(a.dTheta));
-      for (const o of hs) if (o !== h) expect(Math.hypot(o.anchor.x - h.anchor.x, o.anchor.y - h.anchor.y)).toBeGreaterThan(0.1);
+      const p = prof(rec, W, H), a = p.primitives[prim];
+      const h = handle(rec, key, W, H);
+      expect(h.axis).toBe('x');
+      expect(h.handleKind).toBe('radius');
+      expect(h.anchor.y).toBeCloseTo(a.cy, 9);
+      const edge = p.region.x + p.region.w;
+      expect(h.anchor.x).toBeCloseTo(Math.min(a.cx, edge), 9);
     }
   });
 
-  it.each(CASES)('%s %s: a drag along the normal changes the radius, the arc passes under the pointer, only a seed is written', (id, key, prim) => {
+  it.each(CASES)('%s %s: a horizontal drag moves the centre (the radius changes, the arc stays valid), only a seed is written', (id, key, prim) => {
     const rec = normalizeFrameRecord({ templateId: id });
     const p0 = prof(rec), h = handle(rec, key), a = p0.primitives[prim];
-    const n = { x: (h.anchor.x - a.cx) / a.rx, y: (h.anchor.y - a.cy) / a.rx }; // the arc's normal at the handle (away from its centre)
     const radii = [];
     for (const d of [-0.15, 0.15]) {
-      const pt = { x: h.anchor.x + n.x * d, y: h.anchor.y + n.y * d };
+      const pt = { x: h.anchor.x + d, y: h.anchor.y };
       const patch = handleDragPatch(rec, h, pt, p0.region);
       expect(Object.keys(patch)).toEqual(['seeds']);
       const next = normalizeFrameRecord({ ...rec, ...patch });
@@ -103,40 +100,25 @@ describe('(a) the new radius handles sit ON their arc and drag the radius', () =
       expect(Object.keys(next.seeds)).toEqual([key]);
       const p1 = prof(next), a1 = p1.primitives[prim];
       expect(p1.defects).toEqual([]);
-      expect(Math.hypot(pt.x - a1.cx, pt.y - a1.cy)).toBeCloseTo(a1.rx, 6); // the arc follows the pointer
+      if (h.range && next.seeds[key] > h.range.min && next.seeds[key] < h.range.max) expect(a1.cx).toBeCloseTo(pt.x, 6); // the centre follows the pointer
       radii.push(a1.rx);
     }
-    // the two directions along the normal change the radius in OPPOSITE senses (a
-    // monotone pull, no dead zone): which sense is the arc's own geometry (the
-    // waist circles all pass through the fixed pinch; the body's centre also
-    // rides its tangency with the neck)
-    expect((radii[0] - a.rx) * (radii[1] - a.rx)).toBeLessThan(0);
-    expect(Math.min(Math.abs(radii[0] - a.rx), Math.abs(radii[1] - a.rx))).toBeGreaterThan(0.01);
+    expect((radii[0] - a.rx) * (radii[1] - a.rx)).toBeLessThan(0); // the two directions change the radius in opposite senses
   });
 
-  it.each(CASES)('%s %s: a continuous drag (the Frame tab loop: fresh handle each move) is monotone, with no branch jump', (id, key, prim) => {
-    for (const sense of [1, -1]) {
-      let rec = normalizeFrameRecord({ templateId: id });
-      const p0 = prof(rec), h0 = handle(rec, key), a = p0.primitives[prim];
-      const n = { x: (h0.anchor.x - a.cx) / a.rx, y: (h0.anchor.y - a.cy) / a.rx };
-      const radii = [a.rx];
-      for (let d = 0.02; d <= 0.4001; d += 0.02) {
-        const h = handle(rec, key); // frame-panel.js re-reads ed._frameHandles on every move
-        const pt = { x: h0.anchor.x + n.x * d * sense, y: h0.anchor.y + n.y * d * sense };
-        rec = normalizeFrameRecord({ ...rec, ...handleDragPatch(rec, h, pt, p0.region) });
-        const a1 = prof(rec).primitives[prim];
-        const v = rec.seeds[key];
-        // the arc stays under the pointer the whole way, until the drag reaches the true limit
-        if (v > h.range.min && v < h.range.max) expect(Math.hypot(pt.x - a1.cx, pt.y - a1.cy)).toBeCloseTo(a1.rx, 6);
-        radii.push(a1.rx);
-      }
-      // monotone over the first 0.2 in (further along a straight line the waist
-      // legitimately turns back: the smallest circle through the pinch that
-      // reaches the pointer's height is R = that height, so it cannot keep shrinking)
-      const steps = radii.slice(1, 11).map((r, i) => r - radii[i]);
-      const dir = Math.sign(steps.find((x) => Math.abs(x) > 1e-9));
-      expect(steps.every((x) => x * dir >= -1e-9), `${id} ${sense}: ${radii.map((r) => r.toFixed(3))}`).toBe(true);
-    }
+  it('T1 waist: a flat waist parks its diamond on the frame edge; grabbing it there is no jump, pulling it in tightens the waist', () => {
+    const rec0 = normalizeFrameRecord({ templateId: 'template_1' });
+    const h0 = handle(rec0, 'waistRadius');
+    const flat = normalizeFrameRecord({ ...rec0, seeds: { waistRadius: h0.range.max } });
+    const p = prof(flat), a = p.primitives[2], edge = p.region.x + p.region.w;
+    expect(a.cx).toBeGreaterThan(edge); // non-vacuous: the centre really is off the frame
+    const h = handle(flat, 'waistRadius');
+    expect(h.anchor.x).toBeCloseTo(edge, 9);
+    expect(h.valueFromWorld({ x: edge, y: h.anchor.y })).toBeCloseTo(flat.seeds.waistRadius, 9);
+    expect(h.valueFromWorld({ x: edge + 1, y: h.anchor.y })).toBeCloseTo(flat.seeds.waistRadius, 9);
+    const tighter = normalizeFrameRecord({ ...flat, ...handleDragPatch(flat, h, { x: edge - 0.5, y: h.anchor.y }, p.region) });
+    expect(prof(tighter).primitives[2].rx).toBeLessThan(a.rx);
+    expect(prof(tighter).defects).toEqual([]);
   });
 
   it.each(CASES)('%s %s: a drag past the geometry stops AT the true limit (not the Generate band), with a valid outline', (id, key) => {
@@ -161,22 +143,12 @@ describe('(a) the new radius handles sit ON their arc and drag the radius', () =
     const rec = normalizeFrameRecord({ templateId: 'template_1' });
     const pinch0 = handle(rec, 'waistReach').anchor;
     const h = handle(rec, 'waistRadius');
-    const next = normalizeFrameRecord({ ...rec, ...handleDragPatch(rec, h, { x: h.anchor.x + 0.2, y: h.anchor.y - 0.1 }, prof(rec).region) });
+    const next = normalizeFrameRecord({ ...rec, ...handleDragPatch(rec, h, { x: h.anchor.x - 0.2, y: h.anchor.y - 0.1 }, prof(rec).region) });
     expect(next.seeds.waistRadius).not.toBeCloseTo(prof(rec).params.waistRadius, 4);
     const pinch1 = handle(next, 'waistReach').anchor;
     expect(pinch1.x).toBeCloseTo(pinch0.x, 12);
     expect(pinch1.y).toBeCloseTo(pinch0.y, 12);
     expect(frameInnerProfile(FRAME_DEFS, next, { widthIn: 7, heightIn: 9 }).defects).toEqual([]);
-  });
-});
-
-describe('radiusThroughPoint', () => {
-  const circleAt = (v) => ({ cx: v, cy: 0, r: v }); // every circle through the origin, centred on +x
-  it('solves the circle through the point; out of range -> the nearer end', () => {
-    expect(radiusThroughPoint(circleAt, { min: 0.1, max: 10 }, 1, { x: 1, y: 1 })).toBeCloseTo(1, 9); // (1-1)^2 + 1 = 1
-    expect(radiusThroughPoint(circleAt, { min: 0.1, max: 10 }, 1, { x: 2, y: 0 })).toBeCloseTo(1, 9);
-    expect(radiusThroughPoint(circleAt, { min: 0.1, max: 10 }, 1, { x: 0.01, y: 5 })).toBe(10); // needs R = 1250
-    expect(radiusThroughPoint(circleAt, { min: 0.5, max: 10 }, 1, { x: 0.2, y: 0.1 })).toBe(0.5); // needs R = 0.125
   });
 });
 
@@ -229,8 +201,7 @@ describe('(a) [Send frame]: a changed radius reaches Fusion in the seed geometry
     setFrameRecord({ templateId: 'template_2' });
     const rec = normalizeFrameRecord(P.frame);
     const p0 = prof(rec), h = handle(rec, 'bodyRadius'), a = p0.primitives[2];
-    const n = { x: (h.anchor.x - a.cx) / a.rx, y: (h.anchor.y - a.cy) / a.rx };
-    setFrameRecord(handleDragPatch(rec, h, { x: h.anchor.x + n.x * 0.2, y: h.anchor.y + n.y * 0.2 }, p0.region));
+    setFrameRecord(handleDragPatch(rec, h, { x: h.anchor.x - 0.2, y: h.anchor.y }, p0.region)); // centre moves in: a bigger body arc
     const rb = normalizeFrameRecord(P.frame).seeds.bodyRadius * hwOf(p0);
     expect(Math.abs(rb - a.rx)).toBeGreaterThan(0.05);
     sendFrame();
@@ -242,8 +213,12 @@ describe('(a) [Send frame]: a changed radius reaches Fusion in the seed geometry
 });
 
 describe('(b) handle kinds are declared data, and render distinct', () => {
-  it('the ONE table: position = round white, radius = diamond in the editor\'s existing blue accent (Fred\'s ruling)', () => {
-    expect(HANDLE_KINDS).toEqual({ position: { shape: 'circle', fill: '#ffffff' }, radius: { shape: 'diamond', fill: HANDLE_HOVER_FILL } });
+  it('the ONE table: position = app-style arrow (white, the selection handles\' blue border), radius = circle in the editor\'s existing blue accent (Fred)', () => {
+    expect(HANDLE_KINDS).toEqual({
+      position: { shape: 'arrow', fill: '#ffffff', stroke: APP_HANDLE_STROKE },
+      radius: { shape: 'circle', fill: HANDLE_HOVER_FILL },
+    });
+    expect(APP_HANDLE_STROKE).toBe('#0066cc');
   });
 
   it('every frame handle declares its kind: the radius ones are exactly the arc inventory', () => {
@@ -254,18 +229,21 @@ describe('(b) handle kinds are declared data, and render distinct', () => {
     }
   });
 
-  it('drawParamHandle: a circle for position, a diamond (scaled half-diagonal) for radius; hover keeps the shape', () => {
-    const calls = [];
-    const el = (type, a) => { const e = { type, a, fill(v) { e.f = v; return e; }, stroke(v) { e.s = v; return e; }, center(x, y) { e.c = [x, y]; return e; } }; calls.push(e); return e; };
+  it('drawParamHandle: a double-headed arrow along the drag axis for position, a circle for radius; hover keeps the shape', () => {
+    const el = (type, a) => { const e = { type, a, fill(v) { e.f = v; return e; }, stroke(v) { e.s = v; return e; }, center(x, y) { e.c = [x, y]; return e; } }; return e; };
     const layer = { circle: (d) => el('circle', d), polygon: (pts) => el('polygon', pts) };
-    const pos = drawParamHandle(layer, handleKindVisual('position', 0.1, '#5d4037', false), 1, 2, 0.03);
-    expect([pos.type, pos.a, pos.c, pos.f, pos.s.color]).toEqual(['circle', 0.2, [1, 2], '#ffffff', '#5d4037']);
-    const rad = drawParamHandle(layer, handleKindVisual('radius', 0.1, '#5d4037', false), 1, 2, 0.03);
-    const r = 0.1 * HANDLE_DIAMOND_SCALE;
-    expect(rad.type).toBe('polygon');
-    expect(rad.a).toEqual([[1, 2 - r], [1 + r, 2], [1, 2 + r], [1 - r, 2]]);
-    expect(rad.f).toBe(HANDLE_HOVER_FILL);
-    expect(handleKindVisual('radius', 0.1, '#5d4037', true).shape).toBe('diamond');
-    expect(handleKindVisual(undefined, 0.1, '#5d4037', false)).toMatchObject({ shape: 'circle', fill: '#ffffff' }); // unknown -> position
+    const pos = drawParamHandle(layer, handleKindVisual('position', 0.1, '#5d4037', false), 1, 2, 0.03, 'x');
+    expect(pos.type).toBe('polygon');
+    expect(pos.a).toEqual(arrowHandlePoints(1, 2, 0.1, 'x'));
+    expect([pos.f, pos.s.color]).toEqual(['#ffffff', APP_HANDLE_STROKE]); // the app's own handle colours, not the frame brown
+    // the two tips lie ON the drag axis, either side of the centre
+    expect(pos.a[0][1]).toBeCloseTo(2, 12); expect(pos.a[5][1]).toBeCloseTo(2, 12);
+    expect(pos.a[0][0]).toBeLessThan(1); expect(pos.a[5][0]).toBeGreaterThan(1);
+    const vert = arrowHandlePoints(1, 2, 0.1, 'y');
+    expect(vert[0][0]).toBeCloseTo(1, 12); expect(vert[5][0]).toBeCloseTo(1, 12); // a 'y' handle points up/down
+    const rad = drawParamHandle(layer, handleKindVisual('radius', 0.1, '#5d4037', false), 1, 2, 0.03, 'x');
+    expect([rad.type, rad.a, rad.c, rad.f, rad.s.color]).toEqual(['circle', 0.2, [1, 2], HANDLE_HOVER_FILL, '#5d4037']);
+    expect(handleKindVisual('position', 0.1, '#5d4037', true)).toMatchObject({ shape: 'arrow', fill: HANDLE_HOVER_FILL });
+    expect(handleKindVisual(undefined, 0.1, '#5d4037', false)).toMatchObject({ shape: 'arrow', fill: '#ffffff' }); // unknown -> position
   });
 });

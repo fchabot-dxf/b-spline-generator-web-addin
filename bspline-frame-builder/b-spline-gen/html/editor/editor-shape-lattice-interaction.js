@@ -30,10 +30,8 @@
  * F27 item 2 (Fred: "handle for position should be a different color or
  * shape than handle for radii"): every handle also declares its KIND
  * (`handleKind`: 'position' | 'radius', drawn from the ONE kind table in
- * editor-transform-handles.js), and the two radius params whose handle sat at
- * an arc CENTRE with no arc of its own to grab (hourglass `waistRadius`,
- * bottle `bodyRadius`) now sit ON their arc (axis 'arc'): the drag re-solves
- * the radius whose arc passes under the pointer (radiusThroughPoint).
+ * editor-transform-handles.js). Every radius handle sits at its arc's CENTRE
+ * (Fred: "please use center"), a flat waist's parking on the frame edge.
  *
  * Mirroring is NOT a separate mechanic here (unlike per-segment style,
  * which genuinely needs one): both presets' own solvers build the LEFT
@@ -86,10 +84,6 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
   // module's own header comment declares it "PURE math... no DOM", and
   // haptic() reaches navigator/document/localStorage.
   const withRange = (handles) => handles.map((h) => ({ ...h, range: R[h.key] }));
-  // F27 item 2: an ON-ARC radius handle (axis 'arc'): the drag re-solves the
-  // radius whose arc passes under the pointer (radiusThroughPoint), inside the
-  // SAME declared feasible range as every other handle.
-  const throughPoint = (key, circleAt) => (pt) => within(key, radiusThroughPoint(circleAt, R[key], resolvedParams[key], pt));
 
   if (preset === 'bottle') {
     const b = bottleConstruction(region, resolvedParams); // the generator's own construction
@@ -116,19 +110,13 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         valueFromWorld: (pt) => within('neckLength', (pt.y - region.y) / region.h),
       },
       {
-        // F12: the body shoulder radius. F27 item 2 (Fred: "handle for position
-        // should be a different color or shape than handle for radii", a radius
-        // handle ON its arc): no longer at the arc's CENTRE (hw - rB) but ON the
-        // body arc, midway between its neck junction and its tangent point on the
-        // side (the bisector of the two directions from its centre). The body's
-        // centre and its tangency with the neck both move with rB, so the drag is
-        // the numeric radiusThroughPoint over the generator's own construction.
-        key: 'bodyRadius', label: 'Body shoulder radius', axis: 'arc', handleKind: 'radius',
-        anchor: _onArc({ x: cx0 + b.bodyCx, y: cy0 + b.hipCenterY }, b.radiusBody, { x: 1 - b.bux, y: -b.buy }),
-        valueFromWorld: throughPoint('bodyRadius', (v) => {
-          const c = bottleConstruction(region, { ...resolvedParams, bodyRadius: v });
-          return { cx: cx0 + c.bodyCx, cy: cy0 + c.hipCenterY, r: c.radiusBody };
-        }),
+        // F12: the body shoulder radius: its arc's own CENTRE sits at hw - rB. F27 item 2 FOLLOW-UP (Fred,
+        // screenshot of the on-arc waist handle: "Is this handle not on the arc center?" / "please use
+        // center"): every radius handle sits at its arc's CENTRE, same as Shoulder/Hip -- a blue diamond
+        // (handleKind 'radius'), a pure horizontal drag.
+        key: 'bodyRadius', label: 'Body shoulder radius', axis: 'x', handleKind: 'radius',
+        anchor: { x: cx0 + b.bodyCx, y: cy0 + b.hipCenterY },
+        valueFromWorld: (pt) => within('bodyRadius', (cx0 + hw - pt.x) / hw),
       },
     ]));
   }
@@ -158,110 +146,21 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
       valueFromWorld: (pt) => within('waistCenterY', (pt.y - cy0) / hh),
     },
     {
-      // F12: the waist radius, independent of the corners. F27 item 2 (Fred,
-      // Frame tab, Hourglass: the waist's arc radius "can never be set
-      // anywhere, it needs a handle"): the handle sits ON the waist arc, no
-      // longer at its CENTRE (off the board for a flat waist). Not at the apex:
-      // the apex IS the pinch, where the waistReach (position) handle already
-      // sits, so it sits on the upper part of the arc, WAIST_RADIUS_HANDLE_AT of
-      // the angle (about the waist centre) from the pinch to the shoulder
-      // junction. The pinch is fixed while the radius changes (every waist
-      // circle passes through it, centred on its horizontal line), so the drag
-      // is the circle through the pinch AND the pointer: pulled outward (along
-      // the normal, toward the board edge) the waist tightens, pushed inward it
-      // flattens.
-      key: 'waistRadius', label: 'Waist radius', axis: 'arc', handleKind: 'radius',
-      anchor: _onArc({ x: cx0 + g.waistCx, y: cy0 + g.waistCenterY }, g.radiusWaist,
-        _angleFraction({ x: -1, y: 0 }, { x: -g.ux, y: -g.uy }, WAIST_RADIUS_HANDLE_AT)),
-      valueFromWorld: throughPoint('waistRadius', (v) => ({ cx: cx0 + g.waistX + v * hw, cy: cy0 + g.waistCenterY, r: v * hw })),
+      // F12: the waist radius, independent of the corners: its arc's CENTRE, at the pinch + Rw on the pinch's
+      // own line (the pinch depth is fixed), a pure horizontal drag. F27 item 2 FOLLOW-UP (Fred: "please use
+      // center"): back at the centre like Shoulder/Hip, as a blue radius circle. A flat waist's centre lies
+      // past the frame's outer edge (Rw up to ~8 in at 7x9), so the handle PARKS on that edge, on the pinch's
+      // line; pulled inward it takes the pointer as the new centre (the waist tightens), and a pointer at or
+      // past the edge leaves a parked (flat) waist unchanged -- no jump just for grabbing it.
+      key: 'waistRadius', label: 'Waist radius', axis: 'x', handleKind: 'radius',
+      anchor: { x: Math.min(cx0 + g.waistCx, cx0 + hw), y: cy0 + g.waistCenterY },
+      valueFromWorld: (pt) => {
+        const edge = cx0 + hw, parked = cx0 + g.waistCx > edge;
+        if (parked && pt.x >= edge) return within('waistRadius', resolvedParams.waistRadius ?? g.radiusWaist / hw);
+        return within('waistRadius', (pt.x - (cx0 + g.waistX)) / hw);
+      },
     },
   ]));
-}
-
-/** F27 item 2: the point at radius `r` from `c` in direction `dir` (need not be unit). */
-function _onArc(c, r, dir) {
-  const l = Math.hypot(dir.x, dir.y);
-  const u = l > 1e-12 ? { x: dir.x / l, y: dir.y / l } : { x: 0, y: -1 };
-  return { x: c.x + r * u.x, y: c.y + r * u.y };
-}
-
-/**
- * F27 item 2: where the waist radius handle sits on its arc, as a fraction of
- * the angle from the pinch (0) to the shoulder junction (1). A design choice,
- * MEASURED in the first headless drag: at the midpoint (0.5) an 0.18 in drag
- * already threw the 7x9 waist radius to its limit (0.68 -> 8.4 in). Moving
- * the arc point at angle phi from the pinch by 1 along the normal changes the
- * radius by 1 / (1 - cos phi) (every waist circle passes through the fixed
- * pinch): 7.5x at 30 degrees, 2x at 60 -- so the handle sits well past the
- * middle, still clear of the junction.
- */
-export const WAIST_RADIUS_HANDLE_AT = 0.75;
-
-/** F27 item 2: the direction a fraction `f` (by angle) of the way from unit
- *  vector `a` to unit vector `b`, the sweep measured clockwise on screen
- *  (y-down) from `a` in (0, 2pi): the waist's upper part turns from the pinch
- *  (-1, 0) up toward -y, and a MAJOR waist (a span past a half-turn) still
- *  lands on the arc. */
-function _angleFraction(a, b, f) {
-  const base = Math.atan2(a.y, a.x);
-  let d = Math.atan2(b.y, b.x) - base;
-  while (d <= 0) d += 2 * Math.PI;
-  while (d > 2 * Math.PI) d -= 2 * Math.PI;
-  return { x: Math.cos(base + d * f), y: Math.sin(base + d * f) };
-}
-
-/**
- * F27 item 2: the radius (a param value, in `range`) whose circle passes
- * through `pt` -- the drag rule of an ON-ARC radius handle ("dragging along
- * the normal changes the radius"): the arc follows the pointer. `circleAt(v)`
- * is the generator's own construction for that value, `{cx, cy, r}`. Solved
- * numerically (sampled sign changes of |pt - centre| - r, then bisection), so
- * it needs no per-arc algebra; of several roots the one nearest `current`
- * wins (a drag never jumps to a far solution). No root inside the range =
- * the pointer is past the true geometric limit: the nearer end of the range
- * (a manual drag reaches the limit, it does not stop short of it).
- */
-export function radiusThroughPoint(circleAt, range, current, pt, samples = 64) {
-  const s = (v) => { const c = circleAt(v); return Math.hypot(pt.x - c.cx, pt.y - c.cy) - c.r; };
-  const lo = range.min;
-  const hi = Number.isFinite(range.max) ? range.max : Math.max(lo, Number(current) || 0) * 4 + 1;
-  if (!(hi > lo)) return lo;
-  const cur = Number.isFinite(current) ? Math.max(lo, Math.min(hi, current)) : (lo + hi) / 2;
-  // The family's own ORIENTATION at the current value: whether a growing value
-  // sweeps the current arc outward (s falls) or inward (s rises) near the
-  // pointer, taken at the current arc's point nearest the pointer. A root
-  // crossing the SAME way is on the current branch; one crossing the other way
-  // is a different sheet of the family (MEASURED, T2 body arc: its small
-  // radii fold back, so "nearest root" alone jumped branches mid-drag).
-  const c0 = circleAt(cur), l0 = Math.hypot(pt.x - c0.cx, pt.y - c0.cy) || 1;
-  const P0 = { x: c0.cx + c0.r * (pt.x - c0.cx) / l0, y: c0.cy + c0.r * (pt.y - c0.cy) / l0 };
-  const sP = (v) => { const c = circleAt(v); return Math.hypot(P0.x - c.cx, P0.y - c.cy) - c.r; };
-  const dv = (hi - lo) * 1e-4;
-  const orient = Math.sign(sP(Math.min(hi, cur + dv)) - sP(Math.max(lo, cur - dv)));
-  let best = null, bestAny = null;
-  const offer = (v, dir) => {
-    if (bestAny === null || Math.abs(v - cur) < Math.abs(bestAny - cur)) bestAny = v;
-    if ((dir === 0 || dir === orient) && (best === null || Math.abs(v - cur) < Math.abs(best - cur))) best = v;
-  };
-  let v0 = lo, s0 = s(lo);
-  for (let i = 1; i <= samples; i++) {
-    const v1 = lo + (hi - lo) * i / samples, s1 = s(v1);
-    if (s0 === 0) offer(v0, 0);
-    else if (s0 * s1 < 0) {
-      let a = v0, b = v1, sa = s0;
-      for (let k = 0; k < 60; k++) {
-        const m = (a + b) / 2, sm = s(m);
-        if (sm === 0) { a = b = m; break; }
-        if (sa * sm < 0) b = m; else { a = m; sa = sm; }
-      }
-      offer((a + b) / 2, Math.sign(s1 - s0));
-    }
-    v0 = v1; s0 = s1;
-  }
-  if (s0 === 0) offer(v0, 0);
-  if (best !== null) return best;
-  if (bestAny !== null) return bestAny;
-  return Math.abs(s(lo)) <= Math.abs(s(hi)) ? lo : hi;
 }
 
 /**

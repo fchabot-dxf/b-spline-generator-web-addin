@@ -225,43 +225,58 @@ export function handleHoverVisual(baseRadius, idleFill, idleStroke, active) {
 // both handle systems (the Frame tab, editor-frame-profile.js; the Shape
 // Lattice, properties-shape-lattice.js) draw it through drawParamHandle
 // below, so a radius handle looks the same in both.
-//   position: moves a feature (the pinch, the waist line, the neck) -- the
-//             round white handle, exactly as before;
-//   radius:   sets an arc's radius -- a diamond in the accent colour. Fred's
-//             ruling: the accent is the editor's EXISTING blue (the one the
-//             hover/selection highlight already uses, HANDLE_HOVER_FILL =
-//             `--cad-accent`), read from that constant, not a new literal.
-// The idle STROKE stays each system's own (the frame's outline brown, the
-// Shape Lattice's purple) so a handle still says which system it belongs to.
+//   position: moves a feature (the pinch, the waist line, the neck) -- a
+//             DOUBLE-HEADED ARROW along the handle's own drag axis (<-> for
+//             an 'x' handle, vertical for a 'y' one), white with the app's
+//             blue border, the SAME colours as the editor's own selection/
+//             scale handles above (Fred, F27 item 2 follow-up: "for the
+//             position handle ... make one that matches the style of app",
+//             with a <-> arrow image);
+//   radius:   sets an arc's radius -- a CIRCLE in the accent colour (Fred:
+//             "dont use diamond use circles"), sitting at the arc's CENTRE
+//             ("please use center"). The accent is the editor's EXISTING blue
+//             (HANDLE_HOVER_FILL = `--cad-accent`), not a new literal.
+// A kind with its own `stroke` uses it; otherwise the idle stroke stays each
+// system's own (the frame's outline brown, the Shape Lattice's purple).
 // Hover/press keeps the kind's SHAPE and applies T81 item 1's look on top
-// (grown, accent fill, white stroke): for the already-blue diamond the
-// growth and the white rim are the feedback.
+// (grown, accent fill, white stroke).
+
+/** The app's selection-handle border (the scale/rotate handles above). */
+export const APP_HANDLE_STROKE = '#0066cc';
 
 /** kind -> its idle mark. An unknown kind draws as 'position'. */
 export const HANDLE_KINDS = {
-    position: { shape: 'circle', fill: '#ffffff' },
-    radius: { shape: 'diamond', fill: HANDLE_HOVER_FILL },
+    position: { shape: 'arrow', fill: '#ffffff', stroke: APP_HANDLE_STROKE },
+    radius: { shape: 'circle', fill: HANDLE_HOVER_FILL },
 };
-/** A diamond's half-diagonal, as a multiple of the handle's radius: a square
- *  rotated 45 degrees reads smaller than the circle it replaces at the same
- *  half-width, so it is drawn a little larger. */
-export const HANDLE_DIAMOND_SCALE = 1.25;
 
 /** `{shape, radius, fill, stroke}` for one param handle of `kind` (T81 item
  *  1's hover look on top of the kind's own idle mark). */
 export function handleKindVisual(kind, baseRadius, idleStroke, active) {
     const k = HANDLE_KINDS[kind] || HANDLE_KINDS.position;
-    return { shape: k.shape, ...handleHoverVisual(baseRadius, k.fill, idleStroke, active) };
+    return { shape: k.shape, ...handleHoverVisual(baseRadius, k.fill, k.stroke || idleStroke, active) };
 }
 
-/** Draw one param handle mark (circle or diamond) centred on (x, y) into an
+/** The position handle's double-headed arrow, as a polygon centred on (x, y)
+ *  for a handle of radius `r`: along x for axis 'x', along y for axis 'y'.
+ *  Proportions (multiples of r): half-length 2.2, shaft half-thickness 0.3,
+ *  head length 0.95, head half-width 0.85 -- about as tall as the old circle,
+ *  twice as long, so it still reads as "a handle" and shows its direction. */
+export function arrowHandlePoints(x, y, r, axis = 'x') {
+    const L = 2.2 * r, t = 0.3 * r, hl = 0.95 * r, hw = 0.85 * r;
+    const pts = [[-L, 0], [-L + hl, -hw], [-L + hl, -t], [L - hl, -t], [L - hl, -hw],
+        [L, 0], [L - hl, hw], [L - hl, t], [-L + hl, t], [-L + hl, hw]];
+    return pts.map(([u, v]) => (axis === 'y' ? [x + v, y + u] : [x + u, y + v]));
+}
+
+/** Draw one param handle mark (arrow or circle) centred on (x, y) into an
  *  svg.js container; returns the element. The two handle systems' ONE draw
- *  call, so neither can drift into its own shape for a kind. */
-export function drawParamHandle(layer, vis, x, y, strokeWidth) {
-    if (vis.shape === 'diamond') {
-        const r = vis.radius * HANDLE_DIAMOND_SCALE;
-        return layer.polygon([[x, y - r], [x + r, y], [x, y + r], [x - r, y]])
-            .fill(vis.fill).stroke({ color: vis.stroke, width: strokeWidth });
+ *  call, so neither can drift into its own shape for a kind. `axis` orients
+ *  a position arrow along the handle's own drag axis. */
+export function drawParamHandle(layer, vis, x, y, strokeWidth, axis = 'x') {
+    if (vis.shape === 'arrow') {
+        return layer.polygon(arrowHandlePoints(x, y, vis.radius, axis))
+            .fill(vis.fill).stroke({ color: vis.stroke, width: strokeWidth, linejoin: 'round' });
     }
     return layer.circle(vis.radius * 2).center(x, y).fill(vis.fill).stroke({ color: vis.stroke, width: strokeWidth });
 }
