@@ -380,15 +380,30 @@ describe('UI3 AMEND 1/2 — icon tool row replacing Add', () => {
     expect(buttons[3].title).toMatch(/place a node/i);
   });
 
-  it('the Shape Lattice panel gets a Select-only icon row (no add modes to offer)', () => {
+  it('T80 item 2: the Shape Lattice panel gets the same [Select][Rail][Tie][Node] icon row as the box Lattice', () => {
     const editor = { _lattice: { drawKind: 'select' } };
     initLatticeSideColumn(editor);
     const shapeBody = document.getElementById('editorShapeLatticePanelBody');
     const iconRow = shapeBody.firstElementChild;
     expect(iconRow.dataset.noCollapse).toBe('');
-    const buttons = iconRow.querySelectorAll('button.tool-btn');
-    expect(buttons.length).toBe(1);
-    expect(buttons[0].title).toMatch(/Select/);
+    const titles = (row) => Array.from(row.querySelectorAll('button.tool-btn')).map((b) => b.title);
+    const boxRow = document.getElementById('latticeAddKindGroup').closest('[data-no-collapse]').nextElementSibling;
+    expect(titles(iconRow).length).toBe(4);
+    expect(titles(iconRow)).toEqual(titles(boxRow));
+  });
+
+  it('T80 item 2: a pick in the Shape Lattice row proxy-clicks the one latticeAdd-* button and shows in BOTH rows (one shared drawKind)', () => {
+    const editor = { _lattice: { drawKind: 'select' } };
+    initLatticeSideColumn(editor);
+    const shapeRow = document.getElementById('editorShapeLatticePanelBody').firstElementChild;
+    const boxRow = document.getElementById('latticeAddKindGroup').closest('[data-no-collapse]').nextElementSibling;
+    const proxied = vi.fn();
+    document.getElementById('latticeAdd-tie').addEventListener('click', proxied);
+    shapeRow.querySelectorAll('button.tool-btn')[2].click();
+    expect(proxied).toHaveBeenCalledTimes(1);
+    const actives = (row) => Array.from(row.querySelectorAll('button.tool-btn')).map((b) => b.classList.contains('active'));
+    expect(actives(shapeRow)).toEqual([false, false, true, false]);
+    expect(actives(boxRow)).toEqual([false, false, true, false]);
   });
 
   it('Select starts active (LATTICE_DEFAULTS\' new default), matching editor._lattice.drawKind at init', () => {

@@ -1455,6 +1455,30 @@ function _rowScanLine(j, orientation) {
   return { point: { x: p0.i, y: p0.j }, dir: { x: p1.i - p0.i, y: p1.j - p0.j } };
 }
 
+/** T80 item 2: clip ONE hand-drawn rail (canonical row `j`, from `iLo` to
+ *  `iHi`, ±Infinity = the whole row) to a boundary-mode pattern's shape --
+ *  the SAME scan line, inside/collinear span union, span clip and end rule
+ *  computePattern applies to a generated rail on that row. `spacing` is the
+ *  hand tool's own lattice step (its i/j units). Returns the inside pieces
+ *  as [{a, b}] canonical i values (0, 1 or many), or null when the pattern
+ *  has no boundary to clip to. */
+export async function clipHandRailToBoundary(editor, PATTERN, j, iLo, iHi, spacing) {
+  if (!PATTERN || !PATTERN.extent || PATTERN.extent.mode !== 'boundary') return null;
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(PATTERN.widths || {}) };
+  const boundary = { ...PATTERN_DEFAULTS.boundary, ...(PATTERN.boundary || {}) };
+  const orientation = PATTERN.orientation || PATTERN_DEFAULTS.orientation;
+  const resolved = await _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths);
+  const primitives = resolved.primitives.map((p) => _scalePrimitiveToLattice(p, spacing));
+  const rowScan = _rowScanLine(j, orientation);
+  const combined = _unionSpans(insideSpans(rowScan, primitives), collinearSpans(rowScan, primitives));
+  const endRule = usesContourCenterline(PATTERN) ? 'on-boundary' : (boundary.endRule || PATTERN_DEFAULTS.boundary.endRule);
+  const halfRail = widths.rails / 2 / spacing;
+  return _clipToSpans(Math.min(iLo, iHi), Math.max(iLo, iHi), combined).map((piece) => {
+    const { a, b } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfRail);
+    return { a, b };
+  });
+}
+
 /** T48: same as `_rowScanLine`, for a CANONICAL column `i` (a tie). */
 function _colScanLine(i, orientation) {
   const p0 = orient({ i, j: 0 }, orientation);

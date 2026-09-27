@@ -37,9 +37,9 @@ import {
     toLattice, toLatticeFractional, fromLattice, constrainToKind, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
     isLatticePoint, moveRailAlongAxis, translateTie,
-    nearestEndWithin, stretchRailEnd, stretchTieEnd,
+    nearestEndWithin, stretchRailEnd, stretchTieEnd, LATTICE_DRAW_KINDS,
 } from './editor-lattice.js';
-import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements, resolvePatternLayer } from './editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements, resolvePatternLayer, clipHandRailToBoundary } from './editor-lattice-pattern.js';
 import { insideSpans, insetGeneratedPresetPathDToPrimitives } from './editor-lattice-boundary.js';
 import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
@@ -1662,6 +1662,11 @@ function _emitStyled(editor, kind, a, b) {
  *  Returns {a,b} in CANONICAL coords. */
 function _spawnRailFullRow(editor, clickCanon, orientation) {
     const pattern = getLayerPattern(editor) ?? PATTERN_DEFAULTS;
+    // T80 item 2: a boundary-mode (Shape Lattice) row's extent IS the shape
+    // -- spawn the whole row and let finish()'s clip keep what's inside.
+    if (pattern.extent?.mode === 'boundary') {
+        return { a: { i: -Infinity, j: clickCanon.j }, b: { i: Infinity, j: clickCanon.j } };
+    }
     const rawExtent = _resolveExtent(editor, pattern);
     const extentMin = orient({ i: rawExtent.iMin, j: rawExtent.jMin }, orientation);
     const extentMax = orient({ i: rawExtent.iMax, j: rawExtent.jMax }, orientation);
@@ -1691,6 +1696,41 @@ function _spawnTieBetweenRails(editor, clickCanon, orientation, spacing) {
     const pattern = getLayerPattern(editor) ?? PATTERN_DEFAULTS;
     const spanMin = Math.max(1, pattern.ties?.spanMin ?? PATTERN_DEFAULTS.ties.spanMin);
     return { a: { i: clickCanon.i, j: clickCanon.j }, b: { i: clickCanon.i, j: clickCanon.j + spanMin } };
+}
+
+/** latticeHandler.finish's emit step: draw each CANONICAL {a, b} piece of
+ *  `kind`, auto-nodes at its crossings, then one commit. Pieces is one
+ *  segment normally; a Shape Lattice rail clipped by its shape (T80 item 2)
+ *  can give several, or none (drawn wholly outside -> nothing, no commit). */
+function _emitHandPieces(editor, kind, pieces, orientation, spacing) {
+    if (!pieces.length) return;
+    // Gathered BEFORE the new segment is emitted (unchanged from
+    // before SE7h) so it never crosses against itself — oriented into
+    // the canonical frame since the crossing math below is.
+    const existing = editor._lattice.autoNodes
+        ? _collectLatticeElements(editor, spacing)
+            .filter((s) => s.kind === 'rail' || s.kind === 'tie')
+            .map((s) => ({ kind: s.kind, a: orient(s.a, orientation), b: orient(s.b, orientation) }))
+        : [];
+    for (const { a: aCanon, b: bCanon } of pieces) {
+        // emitSegment draws the REAL a/b — only the crossing math below
+        // needs the canonical conjugation, same reasoning as
+        // computePattern's own crossings step. SE7k: styled from the
+        // active layer's own pattern (_emitStyled), not LATTICE_STYLE/the
+        // toolbar color.
+        _emitStyled(editor, kind, fromLattice(orient(aCanon, orientation), spacing), fromLattice(orient(bCanon, orientation), spacing));
+        if (editor._lattice.autoNodes) {
+            const crossingsCanon = latticeCrossings({ kind, a: aCanon, b: bCanon }, existing);
+            crossingsCanon.forEach((ptCanon) => {
+                const latPt = orient(ptCanon, orientation);
+                const p = fromLattice(latPt, spacing);
+                _emitStyled(editor, 'node', p, p);
+            });
+        }
+    }
+    applyLayerState(editor);
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (editor._onChange) editor._onChange();
 }
 
 // SE7k (Fred: "needs an add rail and add tie, add node button"): the Add:
@@ -1899,47 +1939,31 @@ const latticeHandler = {
         const rawDist = Math.hypot(rawLast.x - rawStart.x, rawLast.y - rawStart.y);
         const isClick = rawDist <= slopModel;
 
-        let aCanon, bCanon, emitA, emitB;
+        let aCanon, bCanon;
         if (isClick) {
             const clickCanon = orient(a, orientation);
             const spawned = kind === 'rail'
                 ? _spawnRailFullRow(editor, clickCanon, orientation)
                 : _spawnTieBetweenRails(editor, clickCanon, orientation, spacing);
             aCanon = spawned.a; bCanon = spawned.b;
-            emitA = orient(aCanon, orientation);
-            emitB = orient(bCanon, orientation);
         } else {
             aCanon = orient(a, orientation);
             bCanon = orient(b, orientation);
-            emitA = a; emitB = b;
             if (aCanon.i === bCanon.i && aCanon.j === bCanon.j) return; // defensive: a drag past the slop that still lands back on the SAME cell (e.g. a fast flick) draws nothing, matching the old "bare click does nothing" floor
         }
 
-        // Gathered BEFORE the new segment is emitted (unchanged from
-        // before SE7h) so it never crosses against itself — oriented into
-        // the canonical frame since the crossing math below is.
-        const existing = editor._lattice.autoNodes
-            ? _collectLatticeElements(editor, spacing)
-                .filter((s) => s.kind === 'rail' || s.kind === 'tie')
-                .map((s) => ({ kind: s.kind, a: orient(s.a, orientation), b: orient(s.b, orientation) }))
-            : [];
-        // emitSegment draws the REAL a/b — only the crossing math below
-        // needs the canonical conjugation, same reasoning as
-        // computePattern's own crossings step. SE7k: styled from the
-        // active layer's own pattern (_emitStyled), not LATTICE_STYLE/the
-        // toolbar color.
-        _emitStyled(editor, kind, fromLattice(emitA, spacing), fromLattice(emitB, spacing));
-        if (editor._lattice.autoNodes) {
-            const crossingsCanon = latticeCrossings({ kind, a: aCanon, b: bCanon }, existing);
-            crossingsCanon.forEach((ptCanon) => {
-                const latPt = orient(ptCanon, orientation);
-                const p = fromLattice(latPt, spacing);
-                _emitStyled(editor, 'node', p, p);
+        // T80 item 2: in a boundary-mode pattern (Shape Lattice) a hand rail
+        // is clipped to the shape exactly as a generated rail on that row is
+        // (clipHandRailToBoundary) -- 0, 1 or several inside pieces. The
+        // boundary resolve is async, so this branch returns its promise.
+        const pattern = getLayerPattern(editor);
+        if (kind === 'rail' && pattern?.extent?.mode === 'boundary') {
+            const j = aCanon.j;
+            return clipHandRailToBoundary(editor, pattern, j, aCanon.i, bCanon.i, spacing).then((pieces) => {
+                _emitHandPieces(editor, kind, pieces.map((p) => ({ a: { i: p.a, j }, b: { i: p.b, j } })), orientation, spacing);
             });
         }
-        applyLayerState(editor);
-        if (typeof editor.pushState === 'function') editor.pushState();
-        if (editor._onChange) editor._onChange();
+        _emitHandPieces(editor, kind, [{ a: aCanon, b: bCanon }], orientation, spacing);
     },
     // SE7i (Section 3: "Hover feedback: the piece under the pointer
     // highlights in Lattice mode, so grab vs draw is visible"): reuses
@@ -2058,6 +2082,10 @@ const shapeLatticeHandler = {
         // drawing gesture, and this session's own house rule is to re-
         // measure rather than re-derive the same wrong conclusion twice).
         const rawPt = editor._getMousePoint(e);
+        // T80 item 2: update()/finish() below route to latticeHandler while a
+        // rail/tie draw is in progress (_latticeStart set) -- a cancelled draw
+        // (_cancelDrawing never clears it) must not leak into this press.
+        editor._latticeStart = null;
         const hit = hitTestHandle(editor._paramHandles || [], rawPt);
         if (hit) {
             editor._isDrawing = true;
@@ -2127,6 +2155,15 @@ const shapeLatticeHandler = {
             editor._latticeMove = withChain(editor, _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation));
             return;
         }
+        // T80 item 2 (Fred: "where are add geometry tools"): with Rail/Tie/
+        // Node picked in the icon row, empty space draws through the box
+        // Lattice tool's own handler -- one add path, not a second (a rail
+        // is clipped to the shape in its finish(), see _emitHandPieces).
+        // Ahead of the segment tap: an add mode means "add here".
+        if (LATTICE_DRAW_KINDS.some((k) => k.value === editor._lattice.drawKind)) {
+            latticeHandler.start(editor, pt, e);
+            return;
+        }
         // T75 LAT-SIZE: kept as its own `p` (not inlined) -- the trailing
         // `_shapeContourRegion(editor, p)` call below needs the pattern
         // object too, not just its shape.
@@ -2162,6 +2199,7 @@ const shapeLatticeHandler = {
         // tools' Select-mode piece drags share ONE constrained-move
         // implementation rather than diverging.
         if (editor._latticeMove) { _updateLatticeMove(editor, pt); return; }
+        if (editor._latticeStart) { latticeHandler.update(editor, pt); return; } // T80 item 2: a rail/tie being drawn
         const key = editor._shapeLatticeDragKey;
         if (!key) return;
         const rawPt = { x: pt.x, y: pt.y + (editor._shapeLatticeDragOffsetY || 0) };
@@ -2187,6 +2225,7 @@ const shapeLatticeHandler = {
         // (_finishLatticeMove already sets editor._isDrawing = false itself,
         // matching latticeHandler.finish's own identical one-line dispatch).
         if (editor._latticeMove) { _finishLatticeMove(editor); return; }
+        if (editor._latticeStart) return latticeHandler.finish(editor); // T80 item 2: a rail/tie being drawn
         editor._isDrawing = false;
         editor._shapeLatticeDragKey = null;
         editor._shapeLatticeDragOffsetY = 0;
@@ -2209,7 +2248,7 @@ const modeHandlers = {
     cut:     cutHandler, // SE16 ✂ (editor-cut-tool.js)
 };
 
-function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }
+export function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }
 
 
 // ─── Shared helpers ────────────────────────────────────────────────
