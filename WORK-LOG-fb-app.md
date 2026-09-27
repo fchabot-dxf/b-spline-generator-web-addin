@@ -1968,3 +1968,95 @@ Commits (fb-app, pushed): `4ab0f9b` the origin/main merge (H8's FRAME_TINT kept)
 - **Amendments polled:** none new.
 - **Cleanup:** server stopped; no headless Chrome of mine left; no Fusion doc of mine open.
 - **Capacity:** OK.
+
+
+## 🔨 turn 40 — F21 (seat C, epoch 1): CONTOUR-FROM-FRAME, "Offset from frame" on the Shape Lattice contour
+
+Commits (fb-app, pushed): `5b6df15` the origin/main merge (H8 colours; frame-defs fresh) · `07d4bcb` items 1-2 ·
+`a0d78f4` item 3 · this commit: the log. Fusion window (F11 rules): 2 scratch docs, each tagged `claude/scratch/F21`
+and closed by that tag. ⚠ My scratch docs are ALSO named "Untitled", like Fred's, so only the tag tells them apart.
+Fred's doc was never touched. No deploy: MAIN deployed, and the Python builder is unchanged.
+
+### Design (declared; one source)
+- **`editor/contour-from-frame.js` (new, pure) is THE contour chokepoint** (`contourSilhouette`):
+  - OFF: the preset (`generateContourSilhouette`, unchanged);
+  - ON: the frame's inner edge offset inward by Distance, measured to the contour's OUTSIDE edge (T74: a contour's
+    size is its outside edge);
+  - it is ONE call to the F8 true offset (`offsetOutlineInward`) at thickness + Distance + stroke/2.
+- **Readers of the chokepoint:**
+  - `regenerateSilhouette` (the drawn contour, which the app's fill follows);
+  - `detectShapeLatticeDetach` (otherwise every frame contour would flip to 'picked');
+  - the Send manifest (`manifestFromShape` via `opts.silhouette`; `resolveShapeBoundaryExtent` / `latticeExtentFor`
+    with the frame). `export-flow` / `app-init` pass `frameContext(editor)`.
+- **Merged corners (MEASURED first).** At typical settings the true offset COLLAPSES T1's convex shoulder/hip arcs
+  (and T2's convex arcs): 12 → 8 pieces with sharp corners, Fusion's own "merged regime", the same as the frame's
+  inner edge. Fred ruled mid-turn: "merge in corner not a problem, just less segments".
+  - Collapsed pieces are dropped.
+  - Their joints are declared `corners`: the manifest emits no Tangent there; every other arc joint keeps its Tangent.
+  - The spec's "validity (simple, tangent)" therefore reads: simple everywhere, tangent except at declared merged
+    corners.
+- **Validity by definition.** Every centerline point must be inside the frame and at least the offset away from it.
+  - MEASURED why: past the feasible distance the offset joints fly off. T1 7×9 at 2 in produced a 12 in wide "loop"
+    on a 7 in board, and it PASSED `outlineDefects`.
+  - With no valid loop (or no frame), the preset is drawn and a status hint says why.
+- **Saved as `contour.fromFrame {on, distance}`,** declared in `PATTERN_DEFAULTS` (off, 0.25 in), so old patterns are
+  off. ON never writes into the preset shape, so OFF restores it byte for byte.
+- **Panel:**
+  - [ ] Offset from frame + distance (in), a formula field;
+  - disabled with "Choose a frame first (Frame panel)" when there is no frame, and it follows a frame chosen or
+    removed while the panel is open;
+  - while ON, the Shape and Segments blocks are `inert` (dimmed) and there are no param handles.
+- **LINKED:**
+  - `drawFrameProfile` (every template / handle / Trim offset / thickness change) runs the declared hook
+    `onFrameProfileDrawn` → `refreshFrameLinkedContours`;
+  - only a linked contour that no longer matches its frame is refitted + refilled (no refill, no undo step
+    otherwise);
+  - the user's active layer is kept (the refill would otherwise switch to that pattern's rails).
+
+### Tests
+- **`tests/contour-from-frame.test.js` (26):**
+  - contour == offset(inner edge, d + stroke/2): exact distance on every line piece, never closer anywhere;
+    T1/T2 × 7×9 / 12×6 / 9×12 × d 0.1 / 0.25 / 0.5;
+  - validity; merged corners (fewer segments, declared);
+  - follows a Shoulder seed / thickness / Trim offset;
+  - default off; OFF == preset; the shape is never touched; no-frame and too-far fallbacks;
+  - manifest: one slot per piece, no Tangent at a corner, `contour_width` = the outside width, no preset parameters;
+    the Send fill follows the contour; OFF is byte-identical with or without a frame.
+- **Mutations 10/10 killed.** One survived at first ("the manifest fill clip ignores the frame": my test only called
+  `latticeExtentFor` directly), so a `buildSketchManifest` rails check was added.
+- **Real Chrome** (`tools/repro/contour_from_frame_acceptance.mjs`, the real panels), 13/13:
+  - no frame → disabled + hint; T1 chosen in the Frame tab select → enabled;
+  - ON → drawn contour == expected, fill inside, blocks inert, 0 handles, not detached;
+  - a REAL Shoulder handle drag (CDP mouse) in the Frame tab → refit + refill;
+  - thickness 0.5 → refit; Trim offset 0.5 → refit; Distance 0.5 → refit; active layer kept;
+  - OFF → the preset exactly + handles back; Undo → the frame contour back.
+  - Shots `0415_F21_{1..9}_*`.
+- **Existing specs:** 2 `properties-shape-lattice` assertions compared the whole contour object and now include the
+  declared `fromFrame`. 51 affected spec files, 1126 tests pass.
+
+### Item 3 — LIVE on Ranchy (the real payloads, replayed into the deployed handlers)
+- `capture_send_payload.mjs shape-lattice-frame` captures the B-spline Send payload AND the [Send frame] payload
+  (the panel's own `sendFrame()`).
+- **Seeded T1 7×9** (the Frame tab's [Generate]):
+  - contour 12/12 slots, 0 issues, parity 0; frame ok, 4 seeds applied; healthy.
+  - **MEASURED:** the contour centerline sits **0.3750 in** from the frame's inner edge (sketch 3 `inner_proj_*`),
+    min = max = Distance 0.25 + stroke/2; the slot's outside edge sits **0.2500 in** = Distance.
+  - Shots `0425_F21_fusion_contour_from_frame_{top,iso}`.
+- **The first run, UNSEEDED:**
+  - 8 slots with merged corners (0 Tangent, correct); every straight piece exact.
+  - Near the waist the centerline gap was 0.357 vs 0.375. Traced to the FRAME: unseeded, Fusion builds the
+    template's literal shape while the app draws the F8 fitted model (waist centre x 2.8931 vs 2.9093, r 1.4318 vs
+    1.4302).
+  - The contour follows the app's frame, so it inherits that ≤ 0.02 in model error. The capture now seeds the
+    frame.
+  - **Worth knowing:** an unseeded frame's preview is only as exact as the F8 shape model (≤ ~0.02 in).
+- **Traps met (for the map):**
+  - `T1_3_frame_enclosure` also holds `surround_rect_diag1/2` and two unnamed lines through the origin, so a
+    distance-to-sketch-3 measure must filter to `inner_proj_*`;
+  - the B-spline Send makes BOTH "Source - L2 …" (plain SVG) and "Source - L2 … [constrained]" (the manifest)
+    sketches.
+
+### Notes
+- **Amendments polled:** none.
+- **Cleanup:** server stopped; no headless Chrome of mine; no Fusion doc of mine open.
+- **Capacity:** OK. It is a long session, but healthy.
