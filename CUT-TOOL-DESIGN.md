@@ -14,7 +14,11 @@ Mockups: PNG renders in `shots\seatC\*_F16_*`; their source is `tools/repro/cut_
 | Q1 | **Send as drawn.** Today Send rebuilds lattice rails/ties from the pattern's settings, not from what is on the canvas (§2 P1). So a hand-dragged rail, and any cut, reaches Fusion at its GENERATED position. Should Send send the pieces as drawn? | **Yes.** Done in F17 (P1). |
 | Q2 | **Regenerate after cutting.** Regenerate rebuilds every rail/tie from the settings, which clears cuts (as it already clears per-piece colours/widths). Keep that? | **Regenerate CLEARS cuts** (Undo restores). |
 | Q3 | **Dragging a joint** in a lattice: slide the cut ALONG the rail (the rail stays straight), or move it freely (bends the rail, so it stops being one rail)? | **Slides ALONG the rail** (mockup 4). |
-| Q4 | **Join**: the two segments may have different colours/widths. Which one does the joined rail keep? | **Neither: a Join clears BOTH segments' overrides.** The joined rail returns to the lattice default colour/width. |
+| Q4 | **Join**: the two segments may have different colours. Which one does the joined rail keep? | **Neither: a Join clears BOTH segments' overrides.** The joined rail returns to the lattice default colour. (Width is never per segment: ruling below.) |
+
+**Ruling (Fred, F17): "changing stroke width is never per segment, it's a general param."** A segment NEVER carries its
+own width: every segment uses the general `stroke_width`, and a Join has no width to reconcile. (Whether UI5's existing
+per-piece Width override is removed app-wide is a separate question for Fred; SE16 does not touch it.)
 | Q5 | **Snapping while cutting**: always "joints, then grid", or the normal GRID/GEOMETRY toggles? | **The normal H1 toggles, like every other gesture; Alt = exact.** The spec's "shared coincident points" meant FUSION: the two segment ends at a cut get an explicit Coincident WHEREVER the cut is (mid-rail or at a tie crossing). There is no forced joints-then-grid rule. |
 | Q6 | **Plain lines** (Direct edit, non-lattice): after a cut, grabbing the shared point moves ONE line's end (opens a gap), as you ruled ("normal mode is indiscriminate"). Confirm? | **Confirmed** (unchanged Direct-edit behaviour). |
 
@@ -60,15 +64,15 @@ Mockups: PNG renders in `shots\seatC\*_F16_*`; their source is `tools/repro/cut_
 - **What a segment is:** an ordinary owned piece, e.g. `<line data-lattice="rail" data-lattice-gen="<pattern id>"
   data-layer=…>`, exactly what `emitSegment` (editor/editor-lattice.js:408) draws today.
   - No parent id and no "cut" flag: a cut rail is simply several rail lines.
-  - Per-piece colour/width are the existing UI5 attributes on each segment (`data-override-color` /
-    `data-override-width`, editor/editor-piece-override.js:26-27).
+  - Per-segment COLOUR is the existing UI5 attribute on each segment (`data-override-color`,
+    editor/editor-piece-override.js:26). Width is never per segment (Fred's ruling, §0).
 - **The derivation, declared once** (new pure module `editor/editor-lattice-chains.js`):
 
 ```
  latticeChains(pieces, tol = JOINT_TOL) → [{ kind, axis, segments:[el…] (ordered along the axis),
                                             outerEnds:[p0, pN], joints:[p…] }]
    same kind (rail|tie)  AND  collinear (same row: |Δ⊥| ≤ tol)  AND  end-to-end touching (|end − start| ≤ tol)
-   → one chain.  A gap (> tol) = separate chains.  Colour / width are NOT inputs (they can't split a rail).
+   → one chain.  A gap (> tol) = separate chains.  Colour is NOT an input (it can't split a rail).
 ```
 
 - `JOINT_TOL` is ONE declared constant. It is the value SE7i's attachment already uses (`_sameWorldPoint` tol 1e-6,
@@ -96,7 +100,7 @@ Mockups: PNG renders in `shots\seatC\*_F16_*`; their source is `tools/repro/cut_
 - **`joinAt(p)`**
   - Finds the two same-kind segments of one chain that meet at `p` (within `JOINT_TOL`), and replaces them with one
     line from the first's start to the second's end.
-  - Clears BOTH segments' colour/width overrides (Q4): the joined line takes the lattice default.
+  - Clears BOTH segments' colour overrides (Q4): the joined line takes the lattice default.
   - One undo step.
   - A tap on a point that is not a joint (a line end, a tie contact) does nothing.
 - **Inverse:** `joinAt(cutLine(el, p))` restores `el`'s geometry and kind exactly; its overrides are cleared (Q4)
@@ -174,7 +178,7 @@ the lattice. Moving one piece, or the shared point, moves that piece only (Q6).
   - Layer-wide recolours already skip overridden pieces (`recolorOwnedKind`, editor-lattice-pattern.js:2440).
   - SEG-COLOR-PANEL (seat A) is the CONTOUR's segments (`pattern.contour.segmentColors[i]`): a different store for a
     different kind, and untouched by SE16.
-  - After P1, Send carries each segment's width override (already per piece). Per-piece colour does not reach Fusion
+  - Segments carry no width of their own (Fred's ruling): every segment's Slot uses `stroke_width`. Per-piece colour does not reach Fusion
     today for any piece (UNVERIFIED on the Python side); it is out of scope here.
 
 ## 9. Break risks → guards (ROADMAP's list, each a test in §10)
@@ -185,7 +189,7 @@ the lattice. Moving one piece, or the shared point, moves that piece only (Q6).
    chain outer ends stretch (A5).
 3. **Select free-move of one segment:** an intentional break (A7).
 4. **Deleting a middle segment:** two rails (A8).
-5. **Colour/width splitting a rail:** they are not chain inputs (A2, and the coloured variant of every A-case).
+5. **Colour splitting a rail:** it is not a chain input (A2, and the coloured variant of every A-case).
 
 ## 10. Acceptance test plan (concrete cases, where each lives)
 
@@ -204,19 +208,19 @@ The fixture is one pattern per orientation (horizontal, vertical): 3 rails × 4 
 Three copies are built:
 - **U**, uncut;
 - **C**, the middle rail cut at 2 joints plus one tie cut at 1 joint;
-- **K**, = C with EVERY segment a different colour and one a different width.
+- **K**, = C with EVERY segment a different colour.
 
 The same gesture list runs on each, (a) through `planLatticeDrag` and (b) through the handlers in Chrome. After
 every gesture it compares `canon(pieces)`: pieces merged by chain into canonical rails/ties plus node centres,
 sorted.
 
 **Pass** = `canon(U) == canon(C) == canon(K)` to 1e-9 after every gesture, and in K every segment keeps its own
-colour/width.
+colour.
 
 | id | gesture (both orientations) | expectation | file |
 |---|---|---|---|
 | A1 | drag each segment of the cut rail (grab its body) by +2 cells, then −1 | = dragging the uncut rail; every attached tie stretches identically | `tests/cut-tool-acceptance.test.js` |
-| A2 | A1 on K | = U; colours and the width override stay on their segments | same |
+| A2 | A1 on K | = U; colours stay on their segments | same |
 | A3 | 20 alternating drags, then chains re-derived | still one chain; every joint's two ends are bit-identical | same |
 | A4 | tie drags (slide along its rails, re-attach to another rail) with a tie on each segment | = U | same |
 | A5 | stretch each TRUE outer end ±2 cells; then grab a joint ◇ and slide it ±1 cell | the stretch = U; the slide moves both touching ends, rail extent unchanged, no gap, neighbours ≥ 1 cell | same |
@@ -224,7 +228,7 @@ colour/width.
 | A7 | Select free-move of ONE segment | the chain splits (expected difference from U, asserted as such) | same |
 | A8 | delete the middle segment | two chains; dragging either moves only it | same |
 | A9 | undo/redo through A1–A5 on K | the state after each step = the recorded one; colours intact | same |
-| U1 | `latticeChains`: collinear + touching = 1; a gap of 1e-3 = 2; 1e-7 offset = 1; colour/width differ = still 1; different kind = 2 | the unit cases | `tests/cut-tool.test.js` |
+| U1 | `latticeChains`: collinear + touching = 1; a gap of 1e-3 = 2; 1e-7 offset = 1; colours differ = still 1; different kind = 2 | the unit cases | `tests/cut-tool.test.js` |
 | U2 | `cutLine` / `joinAt`: identical joint numbers, attributes copied, join∘cut = the original geometry with overrides cleared (Q4), a non-joint tap is a no-op, a cut < 1 cell from an end is refused | the unit cases | same |
 | U3 | cut snapping (`snapOnLine` via `snapFor` 'cut'): GEOMETRY on = a joint on the line beats the grid; GRID only = a grid crossing on an off-grid (RAIL-SPACING) rail; both off, or Alt = the projection | against H1's resolver | `tests/editor-grid.test.js` (where H1's resolver tests live; seat A's file, extended) |
 | U4 | chain self-snap: a chain move / joint slide never snaps to one of its own segments' points (the Set `excludeEl`) | the self-snap guard | same |

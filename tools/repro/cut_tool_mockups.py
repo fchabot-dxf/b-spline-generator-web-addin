@@ -103,13 +103,13 @@ write('1_hover', b, '1  \u2702 Cut: tap a line where you want it split', [
 xs = [RAIL_X[0]] + CUTS + [RAIL_X[1]]
 b = grid() + ties() + outer_rails()
 for k in range(3):
-    b.append(line((xs[k], RAILS[1]), (xs[k + 1], RAILS[1]), SEG_COLORS[k], 15 if k == 1 else 10))
+    b.append(line((xs[k], RAILS[1]), (xs[k + 1], RAILS[1]), SEG_COLORS[k], 10))
 for x in CUTS:
     b += joint(x, RAILS[1])
-b.append(text(px(4, RAILS[1])[0], px(0, RAILS[1])[1] + 34, 'its own colour and width', 12, 'middle', color='#1565c0'))
+b.append(text(px(4, RAILS[1])[0], px(0, RAILS[1])[1] + 34, 'its own colour (width: the one stroke_width)', 12, 'middle', color='#1565c0'))
 write('2_cut_3_segments', b, '2  One rail, three segments (\u25c7 = joint), still ONE rail', [
     'Collinear + touching end-to-end = one rail, worked out at every drag (no stored parent).',
-    'Colour and width are per segment and never split the rail.'], 'cut')
+    'Colour is per segment and never splits the rail; width is always the general stroke_width.'], 'cut')
 
 # 3. drag the blue segment down: all three segments move together, the ties on both sides stretch
 dy = 0.75
@@ -118,7 +118,7 @@ b = grid() + ties(RAILS[1], '#cfd8dc', 'stroke-dasharray="6 5"')
 b.append(line((RAIL_X[0], RAILS[1]), (RAIL_X[1], RAILS[1]), '#cfd8dc', 10, 'stroke-dasharray="10 6"'))
 b += ties(y2) + outer_rails()
 for k in range(3):
-    b.append(line((xs[k], y2), (xs[k + 1], y2), SEG_COLORS[k], 15 if k == 1 else 10))
+    b.append(line((xs[k], y2), (xs[k + 1], y2), SEG_COLORS[k], 10))
 for x in CUTS:
     b += joint(x, y2)
 hx, hy = px(4, y2)
