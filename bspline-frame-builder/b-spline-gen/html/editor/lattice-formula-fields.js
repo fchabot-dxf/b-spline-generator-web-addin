@@ -55,8 +55,20 @@ function _resolvedSize(editor, currentPattern) {
  *   R2 excluded the SEED panel's own Seed field (main/formula-fields.js).
  * - Node ends/crossings/rail-ends: checkboxes, not number inputs —
  *   `attachFormula` only ever binds a number-shaped field to begin with.
- * - Rails/Ties MODE toggles, Ties Anchor, End Rule: segmented
- *   controls/selects, not numbers.
+ * - Ties MODE toggle, Ties Anchor, End Rule: segmented controls/selects,
+ *   not numbers. Rails Anchor (Top/Center/Bottom) is the same kind of
+ *   control — not declared as a NAME either, only its own field is
+ *   formula-capable (typing a formula still commits a plain number the
+ *   panel then reads as a segmented-control-style start/center/end via
+ *   its own `.active` state, same as every other segmented control here
+ *   — Anchor itself has no numeric field at all, so nothing to attach).
+ * - `railcountmin`/`railcountmax`/`railevery`/`railoffset` (R5's own
+ *   names for the OLD 'every'/'count' rail fields): REMOVED here in R7,
+ *   same turn those fields were removed from the UI (ruling) — the
+ *   PATTERN keys themselves still exist for an old saved pattern's own
+ *   geometry (R6/R7's migration fallback, unchanged), but nothing in
+ *   either panel can type a formula into them any more, so offering
+ *   these names in the dropdown would dangle.
  */
 export function latticeScope(editor, currentPattern, extra = []) {
   return [
@@ -72,18 +84,21 @@ export function latticeScope(editor, currentPattern, extra = []) {
       name: 'nodewidth', label: 'Node diameter', unit: IN,
       get: () => currentPattern(editor).widths?.nodeDiameter ?? w.nodeDiameter,
     },
-    { name: 'spacing', label: 'Grid spacing', unit: IN, get: () => currentPattern(editor).spacing ?? PATTERN_DEFAULTS.spacing },
+    // RAIL-SPACING R7 (advisor checklist: "update the declared scope:
+    // spacing = rail-to-rail now"): `spacing` used to mean the lattice's
+    // GRID STEP (`pattern.spacing`) — that concept is no longer a
+    // lattice-side setting at all (ruling 4, "one grid": the grid step
+    // comes from the editor's own toolbar grid, freshPattern stamps it
+    // once at creation) and has no field to read a formula FROM any more.
+    // `spacing` is repointed to the NEW user-facing concept with the same
+    // name in the UI's own "Spacing" field: `rails.spacing`, rail-to-rail
+    // inches. A formula like `spacing*2` in the new Count field, or
+    // `width/spacing` to estimate a fill count, now means what the field
+    // labeled "Spacing" actually says.
+    { name: 'spacing', label: 'Rail spacing (rail-to-rail)', unit: IN, get: () => currentPattern(editor).rails?.spacing ?? PATTERN_DEFAULTS.rails.spacing },
     {
       name: 'minspacing', label: 'Minimum tie spacing', unit: IN,
       get: () => currentPattern(editor).ties?.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing,
-    },
-    {
-      name: 'railcountmin', label: 'Rails count (min)',
-      get: () => (currentPattern(editor).rails?.count ?? PATTERN_DEFAULTS.rails.count)[0],
-    },
-    {
-      name: 'railcountmax', label: 'Rails count (max)',
-      get: () => (currentPattern(editor).rails?.count ?? PATTERN_DEFAULTS.rails.count)[1],
     },
     {
       name: 'tiecountmin', label: 'Ties count (min)',
@@ -94,8 +109,6 @@ export function latticeScope(editor, currentPattern, extra = []) {
       get: () => (currentPattern(editor).ties?.count ?? PATTERN_DEFAULTS.ties.count)[1],
     },
     { name: 'tiedensity', label: 'Ties density', get: () => currentPattern(editor).ties?.density ?? PATTERN_DEFAULTS.ties.density },
-    { name: 'railevery', label: 'Rails every (rows)', get: () => currentPattern(editor).rails?.every ?? PATTERN_DEFAULTS.rails.every },
-    { name: 'railoffset', label: 'Rails offset (rows)', get: () => currentPattern(editor).rails?.offset ?? PATTERN_DEFAULTS.rails.offset },
     ...extra,
   ];
 }

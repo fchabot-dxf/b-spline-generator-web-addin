@@ -19,7 +19,6 @@
  * instead (T58's own "the box # Lattice loses its Boundary row").
  */
 import { el, on } from './dom.js';
-import { GRID_SPACINGS } from './editor-grid.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
@@ -573,15 +572,14 @@ export function initShapeLatticeProperties(editor) {
     // ── Fill section (box Lattice's own controls, reused verbatim under
     //    shapeLattice*-prefixed ids — T58's own "Fill = the box Lattice's
     //    controls, reused, not retyped"). ──────────────────────────────
-    const spacingEl = el('shapeLatticeSpacing');
-    const railsModeCountEl = el('shapeLatticeRailsModeCount');
-    const railsModeEveryEl = el('shapeLatticeRailsModeEvery');
-    const railsCountFieldsEl = el('shapeLatticeRailsCountFields');
-    const railsEveryFieldsEl = el('shapeLatticeRailsEveryFields');
-    const railsCountMinEl = el('shapeLatticeRailsCountMin');
-    const railsCountMaxEl = el('shapeLatticeRailsCountMax');
-    const railsEveryEl = el('shapeLatticeRailsEvery');
-    const railsOffsetEl = el('shapeLatticeRailsOffset');
+    // RAIL-SPACING R7: same restructure as properties-lattice.js's own
+    // identical block — the old grid-step Spacing select + Every/Offset +
+    // seeded count-range fields are REMOVED from the UI.
+    const railsAnchorStartEl = el('shapeLatticeRailsAnchorStart');
+    const railsAnchorCenterEl = el('shapeLatticeRailsAnchorCenter');
+    const railsAnchorEndEl = el('shapeLatticeRailsAnchorEnd');
+    const railsSpacingEl = el('shapeLatticeRailsSpacing');
+    const railsSpacingCountEl = el('shapeLatticeRailsSpacingCount');
     const tiesModeCountEl = el('shapeLatticeTiesModeCount');
     const tiesModeDensityEl = el('shapeLatticeTiesModeDensity');
     const tiesCountFieldsEl = el('shapeLatticeTiesCountFields');
@@ -645,15 +643,18 @@ export function initShapeLatticeProperties(editor) {
     const contourShowEl = el('shapeLatticeContourShow');
     const contourWidthEl = el('shapeLatticeContourWidth');
 
-    if (spacingEl) {
-        spacingEl.innerHTML = '';
-        for (const spacing of GRID_SPACINGS) {
-            const opt = document.createElement('option');
-            opt.value = String(spacing);
-            opt.textContent = `${spacing}"`;
-            spacingEl.appendChild(opt);
-        }
+    // RAIL-SPACING R7 (ruling 4, "one grid"): the old grid-step Spacing
+    // select this block used to populate is removed from the markup —
+    // see properties-lattice.js's own identically-worded comment.
+
+    /** Anchor's own button LABELS swap Top/Center/Bottom <-> Left/Center/
+     *  Right with orientation — same helper shape as properties-
+     *  lattice.js's own `_updateAnchorLabels`. */
+    function _updateAnchorLabels(orientation) {
+        if (railsAnchorStartEl) railsAnchorStartEl.textContent = orientation === 'vertical' ? 'Left' : 'Top';
+        if (railsAnchorEndEl) railsAnchorEndEl.textContent = orientation === 'vertical' ? 'Right' : 'Bottom';
     }
+
     // UI1: `endRuleEl` is now the segmented GROUP div, not a <select> —
     // "its value" is whichever child button carries .active (get/set
     // helpers right below double as this control's own get/set, same
@@ -690,12 +691,9 @@ export function initShapeLatticeProperties(editor) {
         generateBtn.textContent = p.id ? 'Regenerate' : 'Generate';
     }
 
-    function _showRailsMode(mode) {
-        if (railsModeCountEl) railsModeCountEl.classList.toggle('active', mode !== 'every');
-        if (railsModeEveryEl) railsModeEveryEl.classList.toggle('active', mode === 'every');
-        if (railsCountFieldsEl) railsCountFieldsEl.style.display = mode === 'every' ? 'none' : 'flex';
-        if (railsEveryFieldsEl) railsEveryFieldsEl.style.display = mode === 'every' ? 'flex' : 'none';
-    }
+    // RAIL-SPACING R7: the rails mode toggle (Count/Every) + its own two
+    // field groups are gone — see properties-lattice.js's own identical
+    // comment.
     function _showTiesMode(mode) {
         if (tiesModeCountEl) tiesModeCountEl.classList.toggle('active', mode !== 'density');
         if (tiesModeDensityEl) tiesModeDensityEl.classList.toggle('active', mode === 'density');
@@ -820,20 +818,21 @@ export function initShapeLatticeProperties(editor) {
         const orientation = p.orientation ?? PATTERN_DEFAULTS.orientation;
         if (orientHorizontalEl) orientHorizontalEl.classList.toggle('active', orientation !== 'vertical');
         if (orientVerticalEl) orientVerticalEl.classList.toggle('active', orientation === 'vertical');
-        if (spacingEl) spacingEl.value = String(p.spacing ?? PATTERN_DEFAULTS.spacing);
-        const railsMode = p.rails ? (p.rails.mode || 'every') : PATTERN_DEFAULTS.rails.mode;
+        _updateAnchorLabels(orientation);
+        // RAIL-SPACING R7: anchor/spacing/spacingCount — same fallback
+        // shape as properties-lattice.js's own identical block.
+        const railsAnchor = p.rails?.anchor ?? PATTERN_DEFAULTS.rails.anchor;
+        if (railsAnchorStartEl) railsAnchorStartEl.classList.toggle('active', railsAnchor === 'start');
+        if (railsAnchorCenterEl) railsAnchorCenterEl.classList.toggle('active', railsAnchor !== 'start' && railsAnchor !== 'end');
+        if (railsAnchorEndEl) railsAnchorEndEl.classList.toggle('active', railsAnchor === 'end');
+        if (railsSpacingEl) railsSpacingEl.value = p.rails?.spacing ?? PATTERN_DEFAULTS.rails.spacing;
+        if (railsSpacingCountEl) railsSpacingCountEl.value = p.rails?.spacingCount == null ? '' : p.rails.spacingCount;
         const tiesMode = p.ties ? (p.ties.mode || 'density') : PATTERN_DEFAULTS.ties.mode;
-        _showRailsMode(railsMode);
         _showTiesMode(tiesMode);
         _showTieSpanMode(p.ties?.span?.mode || PATTERN_DEFAULTS.ties.span.mode);
-        const railsCount = p.rails?.count ?? PATTERN_DEFAULTS.rails.count;
-        if (railsCountMinEl) railsCountMinEl.value = railsCount[0];
-        if (railsCountMaxEl) railsCountMaxEl.value = railsCount[1];
         const tiesCount = p.ties?.count ?? PATTERN_DEFAULTS.ties.count;
         if (tiesCountMinEl) tiesCountMinEl.value = tiesCount[0];
         if (tiesCountMaxEl) tiesCountMaxEl.value = tiesCount[1];
-        if (railsEveryEl) railsEveryEl.value = p.rails?.every ?? PATTERN_DEFAULTS.rails.every;
-        if (railsOffsetEl) railsOffsetEl.value = p.rails?.offset ?? PATTERN_DEFAULTS.rails.offset;
         if (tiesDensityEl) tiesDensityEl.value = p.ties?.density ?? PATTERN_DEFAULTS.ties.density;
         if (tiesSpanMinEl) tiesSpanMinEl.value = p.ties?.spanMin ?? PATTERN_DEFAULTS.ties.spanMin;
         if (tiesSpanMaxEl) tiesSpanMaxEl.value = p.ties?.spanMax ?? PATTERN_DEFAULTS.ties.spanMax;
@@ -885,19 +884,27 @@ export function initShapeLatticeProperties(editor) {
     function readFieldsIntoPattern() {
         const p = currentPattern(editor);
         p.orientation = orientVerticalEl?.classList.contains('active') ? 'vertical' : 'horizontal';
-        if (spacingEl) p.spacing = parseFloat(spacingEl.value) || PATTERN_DEFAULTS.spacing;
-        const railsMode = railsModeEveryEl?.classList.contains('active') ? 'every' : 'count';
+        // RAIL-SPACING R7 (ruling 4, "one grid"): p.spacing (grid step)
+        // deliberately left UNTOUCHED — see properties-lattice.js's own
+        // identically-worded comment.
         const tiesMode = tiesModeDensityEl?.classList.contains('active') ? 'density' : 'count';
         const tieSpanMode = tiesSpanModeRailsEl?.classList.contains('active') ? 'rails' : 'cells';
-        const railsCountMin = railsCountMinEl ? (parseInt(railsCountMinEl.value, 10) || 1) : (p.rails?.count?.[0] ?? PATTERN_DEFAULTS.rails.count[0]);
-        const railsCountMax = railsCountMaxEl ? (parseInt(railsCountMaxEl.value, 10) || railsCountMin) : (p.rails?.count?.[1] ?? PATTERN_DEFAULTS.rails.count[1]);
         const tiesCountMin = tiesCountMinEl ? (parseInt(tiesCountMinEl.value, 10) || 1) : (p.ties?.count?.[0] ?? PATTERN_DEFAULTS.ties.count[0]);
         const tiesCountMax = tiesCountMaxEl ? (parseInt(tiesCountMaxEl.value, 10) || tiesCountMin) : (p.ties?.count?.[1] ?? PATTERN_DEFAULTS.ties.count[1]);
+        // RAIL-SPACING R7: this panel's own Generate always writes
+        // rails.mode:'spacing' now — see properties-lattice.js's own
+        // identical block for the full reasoning.
+        const railsAnchor = railsAnchorStartEl?.classList.contains('active') ? 'start'
+            : railsAnchorEndEl?.classList.contains('active') ? 'end' : 'center';
+        const railsSpacingCount = railsSpacingCountEl && railsSpacingCountEl.value !== ''
+            ? (parseInt(railsSpacingCountEl.value, 10) || null) : null;
         p.rails = {
-            mode: railsMode,
-            count: railsCountMin <= railsCountMax ? [railsCountMin, railsCountMax] : [railsCountMax, railsCountMin],
-            every: railsEveryEl ? (parseInt(railsEveryEl.value, 10) || 1) : (p.rails?.every ?? PATTERN_DEFAULTS.rails.every),
-            offset: railsOffsetEl ? (parseInt(railsOffsetEl.value, 10) || 0) : (p.rails?.offset ?? PATTERN_DEFAULTS.rails.offset),
+            ...PATTERN_DEFAULTS.rails,
+            ...p.rails,
+            mode: 'spacing',
+            anchor: railsAnchor,
+            spacing: railsSpacingEl ? (parseFloat(railsSpacingEl.value) || PATTERN_DEFAULTS.rails.spacing) : (p.rails?.spacing ?? PATTERN_DEFAULTS.rails.spacing),
+            spacingCount: railsSpacingCount,
         };
         p.ties = {
             ...PATTERN_DEFAULTS.ties,
@@ -1090,6 +1097,7 @@ export function initShapeLatticeProperties(editor) {
     async function selectOrientation(value) {
         if (orientHorizontalEl) orientHorizontalEl.classList.toggle('active', value === 'horizontal');
         if (orientVerticalEl) orientVerticalEl.classList.toggle('active', value === 'vertical');
+        _updateAnchorLabels(value);
         const p = readFieldsIntoPattern();
         await generatePattern(editor, p);
         syncGenerateLabel();
@@ -1097,8 +1105,16 @@ export function initShapeLatticeProperties(editor) {
     if (orientHorizontalEl) on(orientHorizontalEl, 'click', () => selectOrientation('horizontal'));
     if (orientVerticalEl) on(orientVerticalEl, 'click', () => selectOrientation('vertical'));
 
-    if (railsModeCountEl) on(railsModeCountEl, 'click', () => _showRailsMode('count'));
-    if (railsModeEveryEl) on(railsModeEveryEl, 'click', () => _showRailsMode('every'));
+    // RAIL-SPACING R7: Anchor — deferred to Generate, same as properties-
+    // lattice.js's own identical block.
+    const _setRailsAnchor = (value) => {
+        if (railsAnchorStartEl) railsAnchorStartEl.classList.toggle('active', value === 'start');
+        if (railsAnchorCenterEl) railsAnchorCenterEl.classList.toggle('active', value === 'center');
+        if (railsAnchorEndEl) railsAnchorEndEl.classList.toggle('active', value === 'end');
+    };
+    if (railsAnchorStartEl) on(railsAnchorStartEl, 'click', () => _setRailsAnchor('start'));
+    if (railsAnchorCenterEl) on(railsAnchorCenterEl, 'click', () => _setRailsAnchor('center'));
+    if (railsAnchorEndEl) on(railsAnchorEndEl, 'click', () => _setRailsAnchor('end'));
     if (tiesModeCountEl) on(tiesModeCountEl, 'click', () => _showTiesMode('count'));
     if (tiesModeDensityEl) on(tiesModeDensityEl, 'click', () => _showTiesMode('density'));
     if (tiesSpanModeCellsEl) on(tiesSpanModeCellsEl, 'click', () => _showTieSpanMode('cells'));
@@ -1216,7 +1232,7 @@ export function initShapeLatticeProperties(editor) {
     // `tiesDensityEl` (`#shapeLatticeTiesDensity` is `type="range"`, same
     // reason as the box Lattice panel).
     attachLatticeFormulaFields([
-        sizeWidthEl, sizeHeightEl, railsCountMinEl, railsCountMaxEl, railsEveryEl, railsOffsetEl,
+        sizeWidthEl, sizeHeightEl, railsSpacingEl, railsSpacingCountEl,
         tiesCountMinEl, tiesCountMaxEl, tiesSpanMinEl, tiesSpanMaxEl, tiesRailSnapRowsEl,
         tiesOneEndedEl, tiesMinSpacingEl, widthRailsEl, widthTiesEl, widthNodesEl, widthLinkedEl, contourWidthEl,
     ], shapeLatticeScopeThunk);

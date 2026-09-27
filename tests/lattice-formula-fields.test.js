@@ -81,15 +81,15 @@ function activeLayerPattern(editor) {
 }
 
 const LATTICE_DOM = `
-  <select id="latticeSpacing"></select>
   <input id="latticeSizeWidth" type="number" min="0" step="0.25" placeholder="auto">
   <input id="latticeSizeHeight" type="number" min="0" step="0.25" placeholder="auto">
-  <button id="latticeRailsModeCount"></button><button id="latticeRailsModeEvery"></button>
-  <div id="latticeRailsCountFields"></div><div id="latticeRailsEveryFields"></div>
-  <input id="latticeRailsCountMin" type="number" min="1" step="1" value="6">
-  <input id="latticeRailsCountMax" type="number" min="1" step="1" value="7">
-  <input id="latticeRailsEvery" type="number" min="1" step="1" value="2">
-  <input id="latticeRailsOffset" type="number" min="0" step="1" value="0">
+  <div role="group" id="latticeRailsAnchorGroup">
+    <button id="latticeRailsAnchorStart"></button>
+    <button id="latticeRailsAnchorCenter" class="active"></button>
+    <button id="latticeRailsAnchorEnd"></button>
+  </div>
+  <input id="latticeRailsSpacing" type="number" min="0" step="0.05" value="1">
+  <input id="latticeRailsSpacingCount" type="number" min="1" step="1" placeholder="fill">
   <button id="latticeTiesModeCount"></button><button id="latticeTiesModeDensity"></button>
   <div id="latticeTiesCountFields"></div><div id="latticeTiesDensityFields"></div>
   <input id="latticeTiesCountMin" type="number" min="1" step="1" value="8">
@@ -150,7 +150,7 @@ describe('lattice panels — formula fields (R5)', () => {
       expect(scope.find((d) => d.name === 'height').get()).toBe(5);
     });
 
-    it('stroke/railwidth/tiewidth/nodewidth/spacing/minspacing read the pattern live, falling back to PATTERN_DEFAULTS', () => {
+    it('stroke/railwidth/tiewidth/nodewidth/minspacing read the pattern live, falling back to PATTERN_DEFAULTS', () => {
       let pattern = {};
       const scope = latticeScope(editor, () => pattern);
       const get = (n) => scope.find((d) => d.name === n).get();
@@ -158,27 +158,35 @@ describe('lattice panels — formula fields (R5)', () => {
       expect(get('railwidth')).toBe(PATTERN_DEFAULTS.widths.rails);
       expect(get('tiewidth')).toBe(PATTERN_DEFAULTS.widths.ties);
       expect(get('nodewidth')).toBe(PATTERN_DEFAULTS.widths.nodeDiameter);
-      expect(get('spacing')).toBe(PATTERN_DEFAULTS.spacing);
       expect(get('minspacing')).toBe(PATTERN_DEFAULTS.ties.minSpacing);
 
-      pattern = { widths: { rails: 0.3, ties: 0.15, nodeDiameter: 0.4 }, spacing: 0.5, ties: { minSpacing: 0.75 } };
+      pattern = { widths: { rails: 0.3, ties: 0.15, nodeDiameter: 0.4 }, ties: { minSpacing: 0.75 } };
       expect(get('stroke')).toBe(0.3);
       expect(get('railwidth')).toBe(0.3);
       expect(get('tiewidth')).toBe(0.15);
       expect(get('nodewidth')).toBe(0.4);
-      expect(get('spacing')).toBe(0.5);
       expect(get('minspacing')).toBe(0.75);
     });
 
-    it('rails/ties count + every/offset/density read the [min,max] pair and scalars live', () => {
-      const pattern = { rails: { count: [3, 9], every: 4, offset: 1 }, ties: { count: [2, 5], density: 0.7 } };
+    it('R7: `spacing` is repointed to rails.spacing (rail-to-rail), not the retired grid-step pattern.spacing', () => {
+      let pattern = {};
       const scope = latticeScope(editor, () => pattern);
       const get = (n) => scope.find((d) => d.name === n).get();
-      expect([get('railcountmin'), get('railcountmax')]).toEqual([3, 9]);
+      expect(get('spacing')).toBe(PATTERN_DEFAULTS.rails.spacing);
+
+      pattern = { rails: { spacing: 2.5 }, spacing: 0.5 }; // pattern.spacing (grid step) present but IGNORED here
+      expect(get('spacing')).toBe(2.5);
+    });
+
+    it('R7: ties count + density read the [min,max] pair and scalar live (rail count/every/offset names retired with their UI)', () => {
+      const pattern = { ties: { count: [2, 5], density: 0.7 } };
+      const scope = latticeScope(editor, () => pattern);
+      const get = (n) => scope.find((d) => d.name === n).get();
       expect([get('tiecountmin'), get('tiecountmax')]).toEqual([2, 5]);
-      expect(get('railevery')).toBe(4);
-      expect(get('railoffset')).toBe(1);
       expect(get('tiedensity')).toBe(0.7);
+      expect(scope.map((d) => d.name)).not.toContain('railcountmin');
+      expect(scope.map((d) => d.name)).not.toContain('railevery');
+      expect(scope.map((d) => d.name)).not.toContain('railoffset');
     });
 
     it('an `extra` list is appended without disturbing the shared names', () => {
@@ -200,24 +208,24 @@ describe('lattice panels — formula fields (R5)', () => {
       expect(activeLayerPattern(editor).size.width).toBe(6);
     });
 
-    it('a formula in a DEFERRED field (Rails Count Min) commits to a plain number but waits for Generate, same as typing', () => {
+    it('a formula in a DEFERRED field (Rails Count, R7) commits to a plain number but waits for Generate, same as typing', () => {
       initLatticeProperties(editor);
-      const min = document.getElementById('latticeRailsCountMin');
-      type(min, 'railcountmax-1'); // 7-1 = 6, same as its own default -- prove it still goes through evaluate()
-      enter(min);
-      expect(min.value).toBe('6');
+      const count = document.getElementById('latticeRailsSpacingCount');
+      type(count, 'spacing*3'); // spacing defaults to 1in -> 3
+      enter(count);
+      expect(count.value).toBe('3');
       expect(editor._pushCount || 0).toBe(0); // no Generate yet -- deferred, exactly like a plain typed number today
       document.getElementById('latticeGenerate').click();
-      expect(activeLayerPattern(editor).rails.count[0]).toBe(6);
+      expect(activeLayerPattern(editor).rails.spacingCount).toBe(3);
     });
 
-    it('range clamp holds on a lattice field (Rails Count Min, min="1")', () => {
+    it('range clamp holds on a lattice field (Rails Count, R7, min="1")', () => {
       initLatticeProperties(editor);
-      const min = document.getElementById('latticeRailsCountMin');
-      type(min, 'railcountmax*-1'); // 7 * -1 = -7, below the declared min="1"
-      expect(preview().textContent).toMatch(/-7.*→.*1.*min/);
-      enter(min);
-      expect(min.value).toBe('1');
+      const count = document.getElementById('latticeRailsSpacingCount');
+      type(count, '-spacing'); // -1, below the declared min="1"
+      expect(preview().textContent).toMatch(/-1.*→.*1.*min/);
+      enter(count);
+      expect(count.value).toBe('1');
     });
 
     it('bad formula keeps the old value and never reaches the panel', () => {

@@ -1646,40 +1646,23 @@
           </div>
 
           <div id="editorLatticePanelBody" style="display:flex; flex-direction:column; gap:10px;">
-            <div data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Add</span>
-              <!-- SE7k (Fred: "needs an add rail and add tie, add node
-                   button"): explicit kind choice — the tool no longer
-                   guesses rail vs tie from drag direction. IDs/order/
-                   labels/titles come from editor-lattice.js's
-                   LATTICE_DRAW_KINDS (properties-lattice.js wires these
-                   from that table, same "declared table drives the
-                   button group" shape as layers.js's own FUSION_GEOMETRY)
-                   — a 4th kind would be one table entry plus one button
-                   here, not new JS. Same .editor-fillmode-btn segmented-
-                   control shape as Orientation/Style elsewhere in this
-                   panel; title carries the hint text (no separate hint
-                   row — this panel is only 220px wide, no room to spare,
-                   unlike FUSION_GEOMETRY's own wider sidebar). -->
-              <div role="group" id="latticeAddKindGroup" class="segmented-group">
-                <button type="button" id="latticeAdd-rail" class="editor-fillmode-btn active" style="flex:1;" title="Drag along the rail axis.">Rail</button>
-                <button type="button" id="latticeAdd-tie" class="editor-fillmode-btn" style="flex:1;" title="Drag across the rails — snaps to them.">Tie</button>
-                <button type="button" id="latticeAdd-node" class="editor-fillmode-btn" style="flex:1;" title="Click to place a node.">Node</button>
-              </div>
-            </div>
-
-            <!-- T75 LAT-SIZE: same declared PATTERN.size {width,height}
+            <!-- RAIL-SPACING R7 (Fred): "the FIRST section of both lattice
+                 panels is BOUNDARY (Size W x H...)" — Boundary is now the
+                 very first section in this panel, before even Add (moved
+                 to the end, below — a manual drawing tool, not a
+                 generation setting the ruling's own section list names).
+                 T75 LAT-SIZE: same declared PATTERN.size {width,height}
                  (real inches, outside size, centered on the board) as the
                  Shape Lattice tool's own #shapeLatticeSizeWidth/Height row
                  (properties-shape-lattice.js) -- blank means "auto" (the
                  board minus CONTOUR_SIZE_INSET_IN per side, same fallback
                  sizedBoardRegion already gives every caller). Immediate
-                 effect (like Orientation below), not deferred to Generate --
-                 changing the fill AREA itself needs a full re-layout of
-                 rails/ties, unlike Widths/Colors' own live re-style of
-                 already-owned pieces in place. -->
+                 effect, not deferred to Generate -- changing the fill AREA
+                 itself needs a full re-layout of rails/ties, unlike
+                 Widths/Colors' own live re-style of already-owned pieces
+                 in place. -->
             <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Size</span>
+              <span style="font-weight:600;">Boundary</span>
               <div style="display:flex; gap:6px;">
                 <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
                   <input id="latticeSizeWidth" type="number" min="0" step="0.25" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
@@ -1690,59 +1673,43 @@
               </div>
             </div>
 
+            <!-- RAIL-SPACING R7 (Fred): rails are now laid out from the
+                 BOUNDARY (anchor + a real rail-to-rail Spacing), not the
+                 grid -- the OLD grid-step "Spacing" select (#latticeSpacing)
+                 and the Every/Offset + seeded-count-range fields are
+                 REMOVED from the UI entirely (ruling: "REMOVED from the
+                 UI"). An old saved pattern's own stored `rails.every`/
+                 `.offset`/`.count` are UNCHANGED by this removal --
+                 properties-lattice.js's own readFieldsIntoPattern already
+                 falls back to "whatever the pattern already has" whenever
+                 a field is absent (the SAME defensive shape this file
+                 already used for every other optional field), so nothing
+                 here needed new preservation code, just fewer fields to
+                 read. Orientation MOVES here (was "Grid & rails" above) --
+                 same segmented-control shape/class as before, no ID
+                 change. Anchor's own button LABELS swap Top/Center/Bottom
+                 <-> Left/Center/Right with orientation (properties-
+                 lattice.js); the VALUE (start/center/end -> rails.anchor)
+                 never changes meaning, just its on-screen name. -->
             <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Grid &amp; rails</span>
-              <!-- MOB3: Spacing folded in here (was its own standalone
-                   field, directly under Add) — the dispatch's own
-                   collapsible-section list names "Grid & rails" as one
-                   section, not two; no field IDs/wiring changed
-                   (properties-lattice.js reads #latticeSpacing exactly as
-                   before), just its position in the DOM. -->
-              <!-- MOB5 ADD-ON: Spacing + Orientation + the rails mode
-                   toggle packed into ONE 3-column row on phones
-                   (.panel-row-3, styles/editor.css) instead of three
-                   separate full-width rows — desktop keeps the original
-                   stacked layout (the class is a no-op outside the mobile
-                   breakpoint). No field IDs moved out of this group, so
-                   properties-lattice.js's own wiring is untouched. -->
-              <div class="panel-row-3">
-                <label style="display:flex; flex-direction:column; gap:3px;">Spacing
-                  <select id="latticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-                </label>
-                <!-- SE7h (Fred: "invert rails and ties so rails are vertical"):
-                     orientation toggle, same segmented-control shape/class
-                     (.editor-fillmode-btn) as the Style STROKE/FILL/BOTH group
-                     above — no new CSS. Flipping this regenerates with the
-                     CURRENT seed (it's a re-projection, not a reshuffle — only
-                     Generate itself rolls a new one, per SE7g). -->
-                <div role="group" class="segmented-group" style="align-self:end;">
-                  <button type="button" id="latticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
-                  <button type="button" id="latticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
-                </div>
-                <!-- T56 (Fred: "I want 6-7 rails"): mode toggle, same
-                     segmented-control shape as Orientation above. Count
-                     (default) picks a seeded rail count, evenly spread; Every
-                     is the ORIGINAL fixed-stride control, kept as a real
-                     alternative, not removed. -->
-                <div role="group" class="segmented-group" style="align-self:end;">
-                  <button type="button" id="latticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
-                  <button type="button" id="latticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
-                </div>
+              <span style="font-weight:600;">Rails</span>
+              <div role="group" class="segmented-group">
+                <button type="button" id="latticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
+                <button type="button" id="latticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
               </div>
-              <div id="latticeRailsCountFields" style="display:flex; gap:6px;">
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count min
-                  <input id="latticeRailsCountMin" type="number" min="1" step="1" value="6" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              <label style="display:flex; flex-direction:column; gap:2px;">Anchor
+                <div role="group" id="latticeRailsAnchorGroup" class="segmented-group">
+                  <button type="button" id="latticeRailsAnchorStart" class="editor-fillmode-btn" style="flex:1;" title="The first rail sits ON that edge, repeating toward the other side">Top</button>
+                  <button type="button" id="latticeRailsAnchorCenter" class="editor-fillmode-btn active" style="flex:1;" title="A rail on the centre line, repeating symmetrically both ways">Center</button>
+                  <button type="button" id="latticeRailsAnchorEnd" class="editor-fillmode-btn" style="flex:1;" title="The first rail sits ON that edge, repeating toward the other side">Bottom</button>
+                </div>
+              </label>
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">Spacing (in)
+                  <input id="latticeRailsSpacing" type="number" min="0" step="0.05" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                 </label>
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count max
-                  <input id="latticeRailsCountMax" type="number" min="1" step="1" value="7" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-                </label>
-              </div>
-              <div id="latticeRailsEveryFields" style="display:none; gap:6px;">
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">every
-                  <input id="latticeRailsEvery" type="number" min="1" step="1" value="2" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-                </label>
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">offset
-                  <input id="latticeRailsOffset" type="number" min="0" step="1" value="0" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">Count
+                  <input id="latticeRailsSpacingCount" type="number" min="1" step="1" placeholder="fill" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                 </label>
               </div>
             </div>
@@ -1953,16 +1920,47 @@
                  field stays editable (a pattern can still be noted/hand-
                  set) but the title says plainly that Generate will
                  overwrite it anyway. -->
-            <!-- MOB3: wrapped in a div+bold-span (was a bare <label>) so
-                 it matches the other sections' own convention and picks
-                 up the generic collapsible-section behavior
-                 (editor-drawer.js) for free — the dispatch's own section
-                 list names "Seed" as one of the collapsible ones. -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <!-- RAIL-SPACING R7 (Fred): "Seed field HIDDEN (not deleted
+                 from the pattern); Generate still re-rolls as today." --
+                 the field/id/wiring are untouched (properties-lattice.js
+                 still writes a fresh value into it on every Generate
+                 click, same as before); only its own section is hidden,
+                 via `data-no-collapse` (so editor-drawer.js's collapsible-
+                 section sweep, which reads visible bold-span-first-child
+                 sections, leaves it alone entirely) + `display:none`. -->
+            <div data-no-collapse style="display:none;">
               <span style="font-weight:600;">Seed</span>
               <label style="display:flex; flex-direction:column; gap:3px;">
                 <input id="latticeSeed" type="number" step="1" value="42" title="Generate picks a new seed each time" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
               </label>
+            </div>
+
+            <!-- RAIL-SPACING R7: Add (the manual rail/tie/node drawing
+                 tool selector) moves to the END of this panel — the
+                 ruling's own section-order list (Boundary, Rails, Ties,
+                 Nodes) is about GENERATED-pattern settings; Add is a
+                 drawing-mode toggle, closer in kind to the Generate/
+                 Detach footer buttons right below it than to those 4. -->
+            <div data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Add</span>
+              <!-- SE7k (Fred: "needs an add rail and add tie, add node
+                   button"): explicit kind choice — the tool no longer
+                   guesses rail vs tie from drag direction. IDs/order/
+                   labels/titles come from editor-lattice.js's
+                   LATTICE_DRAW_KINDS (properties-lattice.js wires these
+                   from that table, same "declared table drives the
+                   button group" shape as layers.js's own FUSION_GEOMETRY)
+                   — a 4th kind would be one table entry plus one button
+                   here, not new JS. Same .editor-fillmode-btn segmented-
+                   control shape as Orientation/Style elsewhere in this
+                   panel; title carries the hint text (no separate hint
+                   row — this panel is only 220px wide, no room to spare,
+                   unlike FUSION_GEOMETRY's own wider sidebar). -->
+              <div role="group" id="latticeAddKindGroup" class="segmented-group">
+                <button type="button" id="latticeAdd-rail" class="editor-fillmode-btn active" style="flex:1;" title="Drag along the rail axis.">Rail</button>
+                <button type="button" id="latticeAdd-tie" class="editor-fillmode-btn" style="flex:1;" title="Drag across the rails — snaps to them.">Tie</button>
+                <button type="button" id="latticeAdd-node" class="editor-fillmode-btn" style="flex:1;" title="Click to place a node.">Node</button>
+              </div>
             </div>
           </div>
 
@@ -2077,8 +2075,13 @@
                  at that size immediately (properties-shape-lattice.js's
                  own regenerateSilhouetteAndFill), same as the Contour
                  width field's own immediate-effect wiring. -->
+            <!-- RAIL-SPACING R7 (Fred): "the FIRST section of both lattice
+                 panels is BOUNDARY" -- renamed from "Size" (same ids, same
+                 fields, just the section title + its new position: right
+                 after Shape/Segments, which stay exactly where they are
+                 -- seat C's own SHAPE-PARAMS territory, untouched). -->
             <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Size</span>
+              <span style="font-weight:600;">Boundary</span>
               <div style="display:flex; gap:6px;">
                 <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
                   <input id="shapeLatticeSizeWidth" type="number" min="0" step="0.25" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
@@ -2089,37 +2092,53 @@
               </div>
             </div>
 
+            <!-- RAIL-SPACING R7 (Fred): "Contour is its OWN section right
+                 after Boundary -- 'contour isn't boundary'" -- MOVED here
+                 from its old position near the end of this panel (right
+                 before Fill seed); no ids/wiring changed, just DOM
+                 position (properties-shape-lattice.js reads every one of
+                 these by id exactly as before). -->
             <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Grid &amp; rails</span>
-              <!-- MOB5 ADD-ON: same 3-column packing as the box Lattice
-                   panel's own Grid & rails (.panel-row-3, phones only). -->
-              <div class="panel-row-3">
-                <label style="display:flex; flex-direction:column; gap:3px;">Spacing
-                  <select id="shapeLatticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-                </label>
-                <div role="group" class="segmented-group" style="align-self:end;">
-                  <button type="button" id="shapeLatticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
-                  <button type="button" id="shapeLatticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
-                </div>
-                <div role="group" class="segmented-group" style="align-self:end;">
-                  <button type="button" id="shapeLatticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
-                  <button type="button" id="shapeLatticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
-                </div>
+              <span style="font-weight:600;">Contour</span>
+              <div id="shapeLatticeEndRuleRow" style="display:none; flex-direction:column; gap:3px;">
+                <span style="font-size:11px; color:#444;">Rail ends (contour off only)</span>
+                <div role="group" class="segmented-group" id="shapeLatticeEndRule" style="height:26px;"></div>
               </div>
-              <div id="shapeLatticeRailsCountFields" style="display:flex; gap:6px;">
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count min
-                  <input id="shapeLatticeRailsCountMin" type="number" min="1" step="1" value="6" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-                </label>
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count max
-                  <input id="shapeLatticeRailsCountMax" type="number" min="1" step="1" value="7" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-                </label>
+              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                <input id="shapeLatticeContourShow" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> Contour
+              </label>
+              <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">width
+                <input id="shapeLatticeContourWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              </label>
+            </div>
+
+            <!-- RAIL-SPACING R7: same restructure as the box Lattice panel
+                 -- Orientation + Anchor + Spacing + optional Count, the OLD
+                 grid-step Spacing select + Every/Offset + seeded count-
+                 range fields REMOVED from the UI (see properties-
+                 lattice.js's own identically-worded comment for the full
+                 reasoning -- this panel shares the SAME PATTERN.rails
+                 shape and the SAME computePattern engine, so nothing here
+                 is a second design). -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Rails</span>
+              <div role="group" class="segmented-group">
+                <button type="button" id="shapeLatticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
+                <button type="button" id="shapeLatticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
               </div>
-              <div id="shapeLatticeRailsEveryFields" style="display:none; gap:6px;">
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">every
-                  <input id="shapeLatticeRailsEvery" type="number" min="1" step="1" value="2" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              <label style="display:flex; flex-direction:column; gap:2px;">Anchor
+                <div role="group" id="shapeLatticeRailsAnchorGroup" class="segmented-group">
+                  <button type="button" id="shapeLatticeRailsAnchorStart" class="editor-fillmode-btn" style="flex:1;" title="The first rail sits ON that edge, repeating toward the other side">Top</button>
+                  <button type="button" id="shapeLatticeRailsAnchorCenter" class="editor-fillmode-btn active" style="flex:1;" title="A rail on the centre line, repeating symmetrically both ways">Center</button>
+                  <button type="button" id="shapeLatticeRailsAnchorEnd" class="editor-fillmode-btn" style="flex:1;" title="The first rail sits ON that edge, repeating toward the other side">Bottom</button>
+                </div>
+              </label>
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">Spacing (in)
+                  <input id="shapeLatticeRailsSpacing" type="number" min="0" step="0.05" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                 </label>
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">offset
-                  <input id="shapeLatticeRailsOffset" type="number" min="0" step="1" value="0" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">Count
+                  <input id="shapeLatticeRailsSpacingCount" type="number" min="1" step="1" placeholder="fill" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                 </label>
               </div>
             </div>
@@ -2247,81 +2266,14 @@
               </div>
             </div>
 
-            <!-- T58: this tool's own Boundary/Ending section — moved from
-                 the box Lattice panel, minus the Board/Shape toggle (this
-                 tool is ALWAYS boundary mode). SE14d removed the "Pick
-                 shape…" button (the underlying boundary machinery stays,
-                 since the GENERATED silhouette runs through the exact same
-                 code). T74 AMEND 1 (Fred: "if draw boundary is off I
-                 shouldn't see it at all"): the OLD "show contour" checkbox
-                 (SE14c) and the separate "Border" section's own "draw
-                 boundary" checkbox were two independent on/off switches for
-                 what reads as ONE thing — turning Border off left the
-                 SE14b contour segments themselves still visible. Merged
-                 into ONE declared control below: the checkbox, the ended
-                 width row is now the CONTOUR's own width (auto = lattice
-                 stroke width; the Colors row's own existing Contour swatch,
-                 unchanged, still sets its colour — never duplicated here).
-                 Section kept titled "Contour" (was "Boundary") so seat A's
-                 own title-based TOOL_PANEL_MOUNTS tint on main still
-                 applies.
-                 T74 AMEND 4 (Fred, live screenshot after the AMEND 1
-                 merge): two markup leftovers fixed. (1) `shapeLattice
-                 BoundaryStatus` ("Shape linked"/"No shape picked") was a
-                 Pick-shape-era readout — SE14d already removed the ONLY
-                 way to pick a NEW boundary shape, so this text could only
-                 ever read "Shape linked" once Generate has run (a
-                 generated silhouette always links itself); a status line
-                 that can only ever say one thing is not a status line,
-                 removed as a sweep (this element + both JS-side writes to
-                 it). (2) the endRule group / Contour checkbox+width used
-                 to sit as SIBLINGS of this section's own title div, not
-                 children of it — seat A's own side-column decorator tints
-                 a section by its CONTAINER div + title, so those controls
-                 rendered OUTSIDE the tinted block. All of it now lives
-                 inside this ONE container, matching every other section's
-                 own single-div convention in this panel (Widths, Fill
-                 seed, ...). -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Contour</span>
-
-              <!-- UI1: was a <select> — converted to the shared segmented
-                   look (properties-shape-lattice.js builds its 4 buttons
-                   from BOUNDARY_END_RULES, same declared-table shape
-                   FUSION_GEOMETRY already uses). Same id, so el() call
-                   sites needed no change; only how its "current value" is
-                   read/written changed (whichever button has .active).
-                   T74 AMEND 4 (audit, logged in WORK-LOG-lane-b.md):
-                   every option still does something genuinely different
-                   (Boundary=exact crossing, Inset=pulls back half a
-                   rail/tie stroke width, Joint=Boundary's own geometry
-                   PLUS a node dropped there, Loose=snaps back a full grid
-                   cell) — none removed. All four apply ONLY when the
-                   contour is off (or a legacy picked-boundary layer):
-                   T73 AMEND 3 forces Boundary's own exact-crossing
-                   behavior whenever the contour is shown, regardless of
-                   this control's own value — labelled below and in each
-                   option's own tooltip so that's no longer a surprise. -->
-              <!-- T75 item 4 (Fred, follows directly from the AMEND 4
-                   audit above: this row is a no-op whenever the contour
-                   is shown): hidden while shapeLatticeContourShow is
-                   checked, shown while it's unchecked -- derived from
-                   that ONE checkbox's own state, not a second stored
-                   flag, so the two can never drift apart. -->
-              <div id="shapeLatticeEndRuleRow" style="display:none; flex-direction:column; gap:3px;">
-                <span style="font-size:11px; color:#444;">Rail ends (contour off only)</span>
-                <div role="group" class="segmented-group" id="shapeLatticeEndRule" style="height:26px;"></div>
-              </div>
-
-              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-                <input id="shapeLatticeContourShow" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> Contour
-              </label>
-              <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">width
-                <input id="shapeLatticeContourWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-              </label>
-            </div>
-
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <!-- RAIL-SPACING R7 (Fred): "Seed field HIDDEN (not deleted
+                 from the pattern); Generate still re-rolls as today." --
+                 same treatment as the box Lattice panel's own Seed: field/
+                 id/wiring untouched, only the section hidden. (This is the
+                 FILL seed, `PATTERN.seed` -- distinct from the Shape
+                 section's own `#shapeSeed`, the SILHOUETTE's seed, seat
+                 C's SHAPE-PARAMS territory, untouched and still visible.) -->
+            <div data-no-collapse style="display:none;">
               <span style="font-weight:600;">Fill seed</span>
               <label style="display:flex; flex-direction:column; gap:3px;">
                 <input id="shapeLatticeSeed" type="number" step="1" value="42" title="Generate picks a new fill seed each time" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
