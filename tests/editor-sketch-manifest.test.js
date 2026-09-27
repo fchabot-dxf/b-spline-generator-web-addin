@@ -1183,10 +1183,18 @@ describe('buildSketchManifest — T72 (SE14c) + T73 AMEND 3: contour.show=false 
     expect(on.latticePieceCount).toBeGreaterThan(0); // non-vacuous
     expect(off.latticePieceCount).toBeGreaterThan(0);
     // ON's own boundary is strictly WIDER (reaches the raw centerline
-    // instead of stopping short by the contour's own half-stroke-width),
-    // so it has room for at least as many lattice pieces as OFF, and for
-    // this fixture strictly more.
-    expect(on.latticePieceCount).toBeGreaterThan(off.latticePieceCount);
+    // instead of stopping short by the contour's own half-stroke-width), so
+    // the two fills differ. This used to assert ON has strictly MORE
+    // pieces, which only held through the T80 item 1 bug: measured before
+    // the fix, ON drew 6 ties and OFF 5 -- both below Count's minimum of 8,
+    // the count lost to filters applied after it was chosen. Both now draw
+    // all 8, so the totals are decided by this fixture's rail grid-snap
+    // artifact (ON 5 rails vs OFF 7, documented in parity-app-manifest's own
+    // T74 AMEND 2 note), which points the other way.
+    expect(JSON.stringify(on.entities)).not.toBe(JSON.stringify(off.entities));
+    const ties = (m) => m.entities.filter((e) => e.id.startsWith('tie')).length;
+    expect(ties(on)).toBeGreaterThanOrEqual(PATTERN_DEFAULTS.ties.count[0]);
+    expect(ties(off)).toBeGreaterThanOrEqual(PATTERN_DEFAULTS.ties.count[0]);
   });
 
   it('a saved pattern with no `contour` key at all reads as shown (true) -- pre-T72 patterns are unaffected', () => {
