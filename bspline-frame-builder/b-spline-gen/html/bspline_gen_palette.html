@@ -711,6 +711,22 @@
             </select>
           </div>
 
+          <!-- H16 item 5 (Fred: "yes"): a "Map" group at the top of Filter
+               holding Region Scale + the item-4 Offset X/Y pair together --
+               the H15-removed Seed panel's own macroScale control, back
+               exactly as it was (slider + stepper, not a value-readout
+               "feel" pair, since it's a single knob not a pair). Bound to
+               the SAME P key (macroScale) H15 explicitly kept -- no new
+               params, saved values already show correctly. -->
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Map</label>
+          <label class="cad-label">Region Scale</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="macroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="macroScale" value="0.65">
+            </div>
+          </div>
+
           <!-- H16 item 4 (Fred: "the seed offset could be surfaced in
                skeleton if it was removed" -> correction: "sorry, it
                should go in filter"): the H15-removed Seed panel's Offset

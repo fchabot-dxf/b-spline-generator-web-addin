@@ -12089,3 +12089,46 @@ path did. Grepped all of `tools/repro/` for `#seed`/`getElementById('seed'`/`see
 not stale seed-setting code — left as-is.
 
 `npx vitest run` -> **2083 passed**, zero regressions.
+
+## H16 item 5 — Region Scale back in Filter, in a new "Map" group above Offset X/Y
+
+Fred: "yes" to putting Region Scale back alongside the item-4 seed offset, in Filter (not Skeleton).
+- `bspline_gen_palette.html`: restored the exact pre-H15 markup (`git show c185d7e` had it verbatim) —
+  a plain slider + stepper (`#macroSlider` / `#macroScale`, min 0.05 / max 2 / step 0.05 / default 0.65),
+  NOT the H14 value-readout "feel pair" shape item 4 uses, since Region Scale is a single knob, not an
+  X/Y pair. Added a `Map` group label above it, placed above the item-4 Offset X/Y pair per the checklist's
+  explicit ordering, inside `.panel-filter`. No new params — `macroScale` is the same P key H15 explicitly
+  kept (`core/terrain.js`'s `cFreq = (macroScale || 0.65) * cMultiplier`, `param-manager.js`'s
+  `immediateRebuildParams` list already includes it, unchanged since before H15).
+- `core/state.js`: restored the single `macroScale: 'macroSlider'` `SLIDER_PAIRS` entry H15 had removed
+  (`git show c185d7e` confirmed its exact prior position, right after `scale`).
+- Declare-over-hand-roll check: `main/ui-bindings.js`'s `bindControls()` already iterates `Object.keys(P)`
+  and binds any input whose id matches a P key, then binds every `SLIDER_PAIRS` entry generically — so
+  restoring the DOM ids + the one `SLIDER_PAIRS` entry was the ENTIRE fix; no new wiring code was written,
+  same declared-registry mechanism items 1-4 already relied on.
+- Did NOT restore `main/formula-fields.js`'s old `SEED` section entry for `macroScale` (H15 had deleted
+  a whole `{section:'SEED', ids:['macroScale','seedOffsetX','seedOffsetY','seedRotation'], ...}` block) —
+  consistent with item 4, which also left `seedOffsetX`/`seedOffsetY` out of formula-fields.js. Neither the
+  item-4 nor item-5 checklist text asked for formula-capable inputs back, so this stays out of scope for
+  both, not a one-off inconsistency.
+
+**Test.** No new unit test file — the underlying data-layer claim ("macroScale is a real filter input, and
+round-trips through save/load") is already proven generically by `tests/h15-seed-removal.test.js`'s
+`generateHeightmap`/`persistableP` round-trip (built before this turn, still green). What item 5 actually
+adds is UI wiring, verified live via headless CDP at 390 + 834px: DOM presence (`#macroScale`/`#macroSlider`
+found, inside `.panel-filter`, NOT `.panel-skeleton`, positioned above the Offset X/Y pair, default value
+0.65); dragging the slider to 1.4 updates `P.macroScale` directly (imported live from `core/state.js`) —
+the "real filter input" requirement, since `macroScale` being in `immediateRebuildParams` means this
+triggers a real rebuild, not just a UI-only change; a simulated save/load round trip (perturb `P.macroScale`
+to 0.2, then restore every P key from a `JSON.parse(JSON.stringify(P))` snapshot the way a real project load
+would, then call the real `syncUItoParam('macroScale', …)`) shows the restored value (1.4, not the
+perturbed 0.2) back in both the stepper and the slider.
+Mutation-tested the verification itself: stashed this turn's 2 changed files (`git stash push -u`), re-ran
+the same script against the pre-item-5 tree — 6 of 7 layout checks correctly FAILED (element not found /
+not in Filter / not positioned above the pair / no width / wrong default), and the drag-the-slider step
+correctly threw `TypeError: Cannot set properties of null` since the slider doesn't exist yet. Popped the
+stash, re-ran once more to confirm all-green after restore.
+Shots in `shots\seatA\` (`H16-item5_filter-map-group_390/834`).
+
+`npx vitest run` -> **2083 passed**, zero regressions (no unit-test file added this item, so the count is
+unchanged from H16 items 1-4).

@@ -144,6 +144,9 @@ export const INPUT_PAIRS = {
 
 export const SLIDER_PAIRS = {
     scale: 'scaleSlider',
+    // H16 item 5: back after H15 removed it with the whole Seed panel --
+    // the control returns (now in Filter's "Map" group), the P key never left.
+    macroScale: 'macroSlider',
     carveZ: 'carveZSlider',
     smoothIntensity: 'smoothIntensitySlider',
     smoothRadius: 'smoothRadiusSlider',
