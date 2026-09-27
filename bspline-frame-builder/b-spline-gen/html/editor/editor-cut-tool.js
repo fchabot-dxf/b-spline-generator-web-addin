@@ -21,6 +21,7 @@ import { GRID_DEFAULTS } from './editor-grid.js';
 import { chainOf, JOINT_TOL } from './editor-lattice-chains.js';
 import { clearColorOverride, pieceKindOf, OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import { getLayerPattern, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
+import { isOnVisibleLayer } from './layers.js';
 
 /** The shortest piece a cut may leave: one lattice cell for a lattice rail/tie (the stretch minimum), a hair for a
  *  plain line. */
@@ -158,10 +159,24 @@ export function join(editor, joint) {
 
 // ─── the tool (mode 'cut') ────────────────────────────────────────────────────────────────────────────────────
 
+/** The nearest LINE under `pt` (visible layers). Lines only: a lattice node sitting on a rail (a tie contact, the
+ *  very place a cut often goes) must not hide the rail from the tool. */
 function _lineUnder(editor, pt) {
   const tol = getDynamicTolerance(editor, 10, 'slopPx');
-  const hit = editor._getNearbyElement ? editor._getNearbyElement(pt, tol, { anyVisibleLayer: true }) : null;
-  return isLine(hit) ? hit : null;
+  // a line the point is INSIDE of beats one that merely ends there (a tie ending on a rail: tapping that contact cuts
+  // the rail); among equals the topmost (last drawn) wins, the one the user sees
+  let best = null, bestScore = Infinity;
+  for (const el of editor._sketchLayer.children().toArray()) {
+    if (!isLine(el) || !isOnVisibleLayer(editor, el)) continue;
+    const [a, b] = ends(el);
+    const q = projectOnSegment(a, b, pt);
+    const d = Math.hypot(q.x - pt.x, q.y - pt.y);
+    if (d > tol) continue;
+    const atEnd = Math.min(Math.hypot(pt.x - a.x, pt.y - a.y), Math.hypot(pt.x - b.x, pt.y - b.y)) <= tol;
+    const score = d + (atEnd ? tol : 0);
+    if (score <= bestScore) { bestScore = score; best = el; }
+  }
+  return best;
 }
 
 /** What a tap at `pt` would do: { action:'join', joint } on a joint, { action:'cut', el, at } on a line, or null. */
