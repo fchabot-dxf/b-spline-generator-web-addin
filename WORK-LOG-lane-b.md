@@ -10488,3 +10488,12 @@ each angle verified to differ from 0 by pixel diff).
 
 Verify: 2082/2082 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
 clean before the commit. Commit cc77b5e. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 10 — Rib Angle range -30..+10
+
+Fred, directly: "Actually -30 to +10". Changed only the `ribAngle` tweak bounds (default stays 0 = today's look) and the
+tests' bounds; mechanism unchanged from AMEND 9. Re-rendered seeds 2, 42, 77 at -30/0/+10 (each verified to differ
+from 0 by pixel diff): `C:/Users/danse/.bspline-status/shots/seatB/rib-angle-before-after.png`.
+
+Verify: 2082/2082 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. NO FUSION this whole turn.
