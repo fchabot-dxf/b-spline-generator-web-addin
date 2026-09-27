@@ -33,8 +33,9 @@ per-piece Width override is removed app-wide is a separate question for Fred; SE
  Alt (held)       → no snapping: the cut lands exactly under the finger (projected onto the line)
 ```
 
-- **Lines only:** a lattice rail, a lattice tie, or a plain `<line>`. Contour paths already have segments (SE14b) and
-  are not cut by this tool. Circles/nodes and paths are ignored, and the marker does not show on them.
+- **Lines, and (F27) the contour:** a lattice rail, a lattice tie, a plain `<line>`, or a lattice CONTOUR segment
+  (a rect Lattice border or Shape Lattice contour's own per-segment `<path>`, SE14b) — see §12. Circles/nodes are
+  still ignored, and the marker does not show on them.
 - **Mobile:** tap = cut. The joint diamond's grab target is the finger-sized `handlePx` tier (the same tolerance tier
   as today's end handles).
 
@@ -251,3 +252,59 @@ only the grabbed segment moves, so `canon(C) ≠ canon(U)`. The mutation list go
 6. Live L1 + shots.
 
 Each is its own commit, pushed as it lands.
+
+## 12. F27 — the contour, too (Fred: "the scissors tool doesn't cut contour, it should")
+
+The checklist's own dispatch first asked for the contour to cut on the SAME model as rails: a closed loop that a
+first cut "opens" and a second "splits". Fred corrected this through a chain of amendments (relayed live,
+mid-turn, each superseding the last) down to a FINAL RULING:
+
+> Any scissors cut on the CONTOUR (line or arc) is a COLOUR BOUNDARY ONLY. The contour's structure never
+> changes: its segments/pieces, joints, and Fusion geometry stay exactly as before (no new joint, no new
+> physical piece to drag) — the cut just lets the two sides of that segment take different colours. Structural
+> cuts (a genuinely separate, independently-draggable piece pinned back together by an explicit Coincident)
+> remain for rails/ties only.
+
+The CLARIFICATION that followed narrowed "structure never changes" to the right claim: the GEOMETRY does split
+into two real curves at the cut point (each independently selectable/colourable, together tracing exactly the
+original path) — what stays invariant is that neither half is ever a free-floating, draggable piece the way a
+cut rail piece is; the contour has no chain-drag machinery at all (deliberately, unlike rails/ties).
+
+**Why this needed no second cut system.** A contour is ALREADY N per-segment `<path>` elements (T73/SE14b),
+each one a single L or A primitive, sharing `data-boundary-ref` and ordered by `data-contour-seg` — a closed
+loop. `cutAt`/`join` (editor-cut-tool.js) dispatch to `_cutContourAt`/`_joinContour`, which split/merge ONE
+segment's own primitive (`editor-contour-cut.js`'s pure `splitContourPrimitive`/`mergeContourPrimitives`) and
+renumber later siblings — the exact same gesture as a rail's own `cutAt`, just on a `<path>` instead of a
+`<line>`, with `pattern.contour.segmentColors[]` (keyed by primitive index) growing/shrinking in step so a
+colour override survives on both halves (a cut) or clears entirely (a Join, Q4, unchanged).
+
+**Declared, not hand-rolled:** `CUT_KIND` (editor-cut-tool.js) names the distinction Fred's ruling draws —
+`{ rail: 'structural', tie: 'structural', line: 'structural', contour: 'colour' }` — rather than leaving it
+implicit in the `isContourPath` dispatch branch.
+
+**Fusion (editor-sketch-manifest.js's own "send as drawn" path, `opts.drawnContour`):** needed NO new machinery.
+`manifestFromShape` already builds one Slot/ArcCenterSlot entity per primitive plus a Coincident at every
+adjacent-primitive boundary (wraparound included) — a cut segment becoming two DOM pieces is just one more
+primitive in that same list, so it earns its own Slot/ArcCenterSlot entity and its own new Coincident for free
+("one slot per contour piece", the FUSION EXPORT ruling). An arc's two cut halves are two ordinary
+`ArcCenterSlot`s sharing the SAME centre/radius/width, split at the cut angle (the SIMPLIFY ruling, "they're
+simply arcs sharing their center point") — `ArcCenterSlot` already carries its own `startAngleDeg`/`sweepDeg`,
+so no "arc slot from angle a to b" primitive was needed. The one real code change: `opts.noMirror` skips the
+Mirror-Equal pass for a cut contour (its post-cut primitive count/positions no longer match the generator's own
+symmetric index pairing — declining rather than guessing, same as the existing kink-pairing narrowing already
+did).
+
+**A real bug this surfaced, not a hypothetical:** `properties-shape-lattice.js`'s `detectShapeLatticeDetach`
+(T59) used to treat ANY segment-count mismatch as unconditional proof of a hand-edit (`shape.source` →
+`'picked'`, so a later Regenerate/Shape-panel edit never touches it again) — true before F27 (the only way the
+count could change), wrong now that a cut is a sanctioned way for it to differ. A false `'picked'` silently
+broke "Regenerate clears cuts" (`regenerateSilhouette`'s own `reuseExisting` check then reads false, so the old
+cut pieces are orphaned instead of replaced — caught LIVE by `tools/repro/contour_cut_acceptance.mjs`, not
+inferred). Fixed by undoing every outstanding cut first (`collapseContourCuts`, the same merge math a Join
+uses) before comparing against the fresh generator output, but ONLY when the count actually differs — the
+equal-count case keeps the original exact string comparison unconditionally, so a hand-edit that appends an
+extra subcommand without changing the element count is still caught (a primitive-only comparison is blind to
+it, since `primitiveFromContourD` only ever reads a segment's own first command).
+
+**Out of scope, disclosed:** chain-drag semantics for the contour (joint-slide, stretch) — the contour has no
+independent position to drag at all, on purpose; nothing in the checklist asked for it.

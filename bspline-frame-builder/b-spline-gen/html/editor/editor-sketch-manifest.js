@@ -625,6 +625,27 @@ function resolveWidthExpr(preset, nameTable) {
 }
 
 /**
+ * F27 (Fred: "the scissors tool doesn't cut contour, it should"): a CUT contour's own `silhouette`, built from
+ * its LIVE DRAWN primitives (`drawnPrimitives`, main/export-flow.js's own `_drawnContourPrimitives`) instead of
+ * the freshly-regenerated ones -- byte-identical to `freshSil` (the SAME object, not a copy) when the count
+ * matches (the common, uncut case: zero risk, zero cost). `segments` is SYNTHESIZED (plain straight/curve,
+ * never 'kink') to stay the SAME length as the new `primitives`, since manifestFromShape's own segMap/kink-skip
+ * logic assumes `segments.length` primitives sum to exactly `primitives.length` -- disclosed trade-off, not a
+ * silent one: a cut never lands exactly on an EXISTING kink joint (a kink is a declared shape param, not
+ * something a cut ever introduces), so the ONLY behavior change is that a formerly-kink joint (if the cut
+ * contour had one) also gets the normal Tangent-if-arc-adjacent treatment post-cut, same as every other joint
+ * — the SAFE direction (an extra, still-geometrically-valid constraint), not a missing one. `corners` (F21's
+ * own "a merged corner is sharp on purpose" list) is cleared: a cut never merges a corner, so there is none to
+ * carry over, and a stale index into the OLD primitive list would be actively wrong against the NEW one.
+ */
+function _drawnContourSilhouette(freshSil, drawnPrimitives) {
+  if (!drawnPrimitives || drawnPrimitives.length === freshSil.primitives.length) return freshSil;
+  const segments = drawnPrimitives.map((p) => (p.type === 'A'
+    ? { style: 'curve', bulge: 0, dir: 'out', cornerRadius: 0 } : { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 }));
+  return { ...freshSil, primitives: drawnPrimitives, segments, corners: [] };
+}
+
+/**
  * §3's own `_manifestFromShape` — `shape` (a layer's own
  * `PATTERN.shape` object, `generateSilhouette`'s own 2nd arg) + `region`
  * (`{x,y,w,h}`, model inches, `generateSilhouette`'s own 1st arg) ->
@@ -763,8 +784,16 @@ export function manifestFromShape(shape, region, opts = {}) {
   // is picked doesn't affect the measured VALUE (a Horizontal/Vertical-
   // oriented Distance reads only the corresponding axis of the two
   // points), just which real SketchPoint anchors it.
+  // F27 (opts.noMirror): a CUT contour's own segment count/positions no
+  // longer match the generator's own symmetric layout the plain index
+  // formula `mirrorSegmentIndex(i, n)` assumes -- pairing by that formula
+  // post-cut would declare a WRONG Equal (or none at all, silently), not a
+  // disclosed scope-narrowing like the kink case just above. Skipped
+  // entirely for a cut contour, same "decline rather than guess" as the
+  // kink-pairing narrowing right above it; buildSketchManifest sets this
+  // only when it substituted the DRAWN (post-cut) primitives in.
   const seen = new Set();
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; !opts.noMirror && i < n; i++) {
     const mi = mirrorSegmentIndex(i, n);
     if (mi === i || seen.has(i) || seen.has(mi)) continue;
     seen.add(i); seen.add(mi);
@@ -1204,10 +1233,22 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // via the same merge every other field already uses.
   const contourVisible = hasShape && ({ ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) }).show !== false;
   const contourWidthMode = contourVisible ? SKETCH_CONTOUR_WIDTH_MODE : null;
-  const shape = contourVisible
-    ? manifestFromShape(pattern.shape, contourRegion, { widthMode: contourWidthMode, strokeWidth: _effectiveContourStrokeWidth(pattern),
-      silhouette: contourSilhouette(pattern, contourRegion, _effectiveContourStrokeWidth(pattern), opts.frame || null) })
-    : { entities: [], constraints: [], parameters: [], dimensions: [], groups: {} };
+  let shape = { entities: [], constraints: [], parameters: [], dimensions: [], groups: {} };
+  if (contourVisible) {
+    const contourStrokeWidth = _effectiveContourStrokeWidth(pattern);
+    const freshSil = contourSilhouette(pattern, contourRegion, contourStrokeWidth, opts.frame || null);
+    // F27 (Fred: "the scissors tool doesn't cut contour, it should"): AS DRAWN, the SAME "send as drawn"
+    // reasoning P1 already applied to rails/ties -- `opts.drawnContour` (main/export-flow.js's own
+    // `_drawnContourPrimitives`) is the boundary's own live DOM pieces, post-cut. A genuine cut is the ONLY
+    // thing that ever changes the primitive COUNT (a colour override, a frame-offset distance change, a param
+    // tweak -- none of them add or remove a piece), so that count differing from the freshly-generated one is
+    // the declared signal, not a separate "was this cut" flag threaded through every caller.
+    const cut = !!(opts.drawnContour && opts.drawnContour.length !== freshSil.primitives.length);
+    const silhouette = cut ? _drawnContourSilhouette(freshSil, opts.drawnContour) : freshSil;
+    shape = manifestFromShape(pattern.shape, contourRegion, {
+      widthMode: contourWidthMode, strokeWidth: contourStrokeWidth, silhouette, noMirror: cut,
+    });
+  }
   // BOUNDARY-GUIDE: the Size box, always sent (both tools, contour on or
   // off), as construction geometry — the SAME record the editor draws.
   const guide = manifestFromGuide(latticeBoundaryGuide(pattern, region));

@@ -17,6 +17,7 @@ import { computePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spl
 import { fromLattice, toLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 import { generateSilhouette, generateContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { primitivesBBox, insetRegionForContour, sizedBoardRegion } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
+import { splitContourPrimitive } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-contour-cut.js';
 
 const REGION = { x: 0, y: 0, w: 7, h: 9 };
 
@@ -1296,5 +1297,114 @@ describe('buildSketchManifest — composition', () => {
     const pattern = { ...PATTERN_DEFAULTS, spacing: 0.25 };
     const manifest = buildSketchManifest(pattern, REGION, {});
     expect(manifest.contourWidthMode).toBeNull();
+  });
+});
+
+// F27 (Fred: "the scissors tool doesn't cut contour, it should"): a cut contour is sent to Fusion AS DRAWN
+// (opts.drawnContour, main/export-flow.js's own `_drawnContourPrimitives`) -- the SAME "send as drawn" pattern
+// P1 already established for rails/ties. M1-style: mirrors tests/cut-tool.test.js's own "M1: Fusion side, a cut
+// rail sent AS DRAWN" test, but for the contour.
+describe('buildSketchManifest — F27: a cut contour sent to Fusion AS DRAWN (opts.drawnContour)', () => {
+  const shapePattern = {
+    ...PATTERN_DEFAULTS,
+    extent: { mode: 'boundary' },
+    shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    contour: { show: true },
+  };
+  // The SAME region buildSketchManifest itself derives internally (hasShape -> sizedBoardRegion), so the
+  // "fresh" primitives built here for the test's own cut line up with what buildSketchManifest recomputes.
+  const contourRegion = sizedBoardRegion(REGION, shapePattern.size);
+  const strokeWidth = PATTERN_DEFAULTS.widths.rails;
+
+  function cutPrimitiveAt(index) {
+    const { primitives: fresh } = generateContourSilhouette(contourRegion, shapePattern.shape, strokeWidth);
+    const prim = fresh[index];
+    const cutPoint = prim.type === 'L'
+      ? { x: (prim.p0.x + prim.p1.x) / 2, y: (prim.p0.y + prim.p1.y) / 2 }
+      : (() => {
+        const theta = prim.theta1 + prim.dTheta / 2;
+        return { x: prim.cx + prim.rx * Math.cos(theta), y: prim.cy + prim.ry * Math.sin(theta) };
+      })();
+    const [a, b] = splitContourPrimitive(prim, cutPoint);
+    return { fresh, prim, drawnContour: [...fresh.slice(0, index), a, b, ...fresh.slice(index + 1)] };
+  }
+  const cutFirstPrimitive = () => cutPrimitiveAt(0);
+
+  it('M1: one extra seg entity, one new Coincident joint at the cut, and mirror-Equal is skipped', () => {
+    const { fresh, drawnContour } = cutFirstPrimitive();
+    const uncut = buildSketchManifest(shapePattern, REGION, {});
+    const cut = buildSketchManifest(shapePattern, REGION, { drawnContour });
+
+    const segUncut = uncut.entities.filter((e) => e.id.startsWith('seg'));
+    const segCut = cut.entities.filter((e) => e.id.startsWith('seg'));
+    // non-vacuous: this fixture's own generator really does produce >1 primitive to begin with
+    expect(fresh.length).toBeGreaterThan(1);
+    expect(segCut.length).toBe(segUncut.length + 1);
+    expect(segCut.length).toBe(drawnContour.length);
+
+    const segCutIds = new Set(segCut.map((e) => e.id));
+    const segUncutIds = new Set(segUncut.map((e) => e.id));
+    const coincidentAmong = (constraints, ids) => constraints.filter(
+      (c) => c.type === 'Coincident' && c.targets.every((t) => ids.has(t.split(':')[0])),
+    ).length;
+    // a closed loop of m primitives gets exactly m Coincident joints (wraparound included) -- one more
+    // primitive after the cut means exactly one more joint, the new seam the cut itself introduced.
+    expect(coincidentAmong(cut.constraints, segCutIds)).toBe(coincidentAmong(uncut.constraints, segUncutIds) + 1);
+
+    // F27 (opts.noMirror): the cut breaks the generator's own symmetric primitive pairing, so mirror-Equal
+    // must be skipped entirely for the cut contour's own seg* entities...
+    const equalAmong = (constraints, ids) => constraints.filter(
+      (c) => c.type === 'Equal' && c.targets.every((t) => ids.has(t)),
+    ).length;
+    expect(equalAmong(cut.constraints, segCutIds)).toBe(0);
+    // ...non-vacuous: the SAME (uncut) preset genuinely has mirror-Equal pairs to begin with, so the
+    // assertion above is a real skip, not trivially true because this preset never had any.
+    expect(equalAmong(uncut.constraints, segUncutIds)).toBeGreaterThan(0);
+  });
+
+  // F27 SIMPLIFY ruling (Fred: "they're simply arcs sharing their center point"): a cut ARC segment sends to
+  // Fusion as two ordinary ArcCenterSlot entities on the SAME centre/radius/width, split at the cut angle --
+  // no new "arc slot from angle a to b" primitive, since ArcCenterSlot already carries its own
+  // startAngleDeg/sweepDeg (T69). Checked at the manifestFromShape level directly (pre-carve, the SAME
+  // `opts.silhouette`/`opts.noMirror` shape buildSketchManifest itself builds internally via its own private
+  // `_drawnContourSilhouette` -- replicated here rather than imported, since it's that function's own
+  // exported contract, not its private implementation, under test): carve placement (buildSketchManifest's
+  // own final pass) reduces ArcCenterSlot to a 3-point Arc3PointSlot with no separate centre/radius fields
+  // left to compare, so a direct centre/radius/sweep check needs the pre-carve shape, same as every other
+  // ArcCenterSlot assertion this file already makes (see the T69 describe.each block above).
+  it('M2 (arc): a cut ARC segment becomes two ArcCenterSlot entities sharing centre/radius/width, sweeps partitioning the original exactly, with a Coincident at the new seam', () => {
+    const fresh = generateContourSilhouette(REGION, shapePattern.shape, strokeWidth);
+    const prim = fresh.primitives[1];
+    expect(prim.type).toBe('A'); // non-vacuous: this really is an arc primitive, not accidentally a line
+    // deliberately NOT the midpoint (0.5) -- a mutation that ignores the actual cut point and always halves
+    // the sweep would otherwise pass by coincidence; this pins the split to the SPECIFIC point cut.
+    const theta = prim.theta1 + prim.dTheta * 0.3;
+    const cutPoint = { x: prim.cx + prim.rx * Math.cos(theta), y: prim.cy + prim.ry * Math.sin(theta) };
+    const [a, b] = splitContourPrimitive(prim, cutPoint);
+    const drawnPrimitives = [fresh.primitives[0], a, b, ...fresh.primitives.slice(2)];
+    const segments = drawnPrimitives.map((p) => (p.type === 'A'
+      ? { style: 'curve', bulge: 0, dir: 'out', cornerRadius: 0 } : { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 }));
+    const silhouette = { ...fresh, primitives: drawnPrimitives, segments, corners: [] };
+    const cut = manifestFromShape(shapePattern.shape, REGION, {
+      widthMode: 'slot', strokeWidth, silhouette, noMirror: true,
+    });
+
+    const e0 = entityById(cut.entities, 'seg1'), e1 = entityById(cut.entities, 'seg2');
+    expect(e0.type).toBe('ArcCenterSlot');
+    expect(e1.type).toBe('ArcCenterSlot');
+    expect(e0.center).toEqual(e1.center);
+    expect(e0.radius).toBeCloseTo(e1.radius, 9);
+    expect(e0.width).toBe(e1.width);
+    // the two sweeps partition the ORIGINAL arc's own sweep exactly (independent re-derivation from `prim`,
+    // not from the entities under test) -- e0 starts where the original did, e1 ends where it did, and they
+    // meet exactly at the cut.
+    expect(e0.startAngleDeg).toBeCloseTo((prim.theta1 * 180) / Math.PI, 9);
+    expect(e0.startAngleDeg + e0.sweepDeg).toBeCloseTo(e1.startAngleDeg, 9);
+    expect(e1.startAngleDeg + e1.sweepDeg).toBeCloseTo(((prim.theta1 + prim.dTheta) * 180) / Math.PI, 9);
+    expect(e0.sweepDeg + e1.sweepDeg).toBeCloseTo((prim.dTheta * 180) / Math.PI, 9);
+    // a Coincident joins the two new halves (the SAME generic per-adjacent-primitive pass every contour
+    // joint already gets, unconditionally -- no arc-specific Fusion code was needed for this).
+    expect(cut.constraints.some((c) => c.type === 'Coincident'
+      && c.targets.includes('seg1:E') && c.targets.includes('seg2:S'))).toBe(true);
   });
 });
