@@ -1129,6 +1129,16 @@ Saved in the pattern (contour.fromFrame: {on, distance}); old patterns = off. Fu
 (slots, as today). Tests: contour == offset(frame inner edge, d) within tolerance for T1/T2 x boards; linked updates;
 toggle off restores the preset shape; F5-style validity (simple, tangent) holds; live parity on Ranchy.
 
+## Queued (seat A, H11, after H10) — HANDLE-REACH: frame handles (esp. Hip) can go to the TRUE geometric limit (Fred 2026-09-27)
+Fred (iPad, Frame tab, Hourglass, arrows = drag direction): "shouldn't the handle and geometry allow the handle to go
+further and make the arc wider". The Hip handle stops short. MEASURE first (state the numbers): for T1 Shoulder/Hip/Waist
+handles, which bound stops the drag: the F5 feasibleParamRanges (tangency/validity: REAL), F13 FRAME_MIN_OPENING_IN
+0.25 (REAL, but check it isn't computed conservatively), or FRAME-GEN's declared 0.1..0.9 band (meant for RANDOM Generate
+only). Fix: manual handle drags clamp only to the REAL limits (the outline stays simple + tangent, the opening >= min);
+the 0.1..0.9 band applies to Generate only. If a real limit is the one hit, report what it is and what a wider arc would
+need (e.g. the waist arc re-solving instead of staying fixed). Tests: the Hip handle reaches the true limit; beyond it the
+outline would be invalid (proven); Generate stays banded; the F5/F13 sweeps stay green; live parity unchanged.
+
 ## Closed — UI4 0b (Clear then Regenerate does nothing) — NOT REPRODUCIBLE on main (advisor, 2026-09-27)
 Fred clarified: "Shape Lattice using the shape even once cleared". Headless check on main (611490e): Shape Lattice
 Generate = 12 contour segs + 7 rails/7 ties/14 nodes -> Clear = 0 -> Regenerate = 12 contour segs + 7/7/14 (the
