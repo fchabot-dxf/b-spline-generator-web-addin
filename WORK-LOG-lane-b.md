@@ -10426,3 +10426,36 @@ advisor: images don't belong in the repo) and added it to `.gitignore` — confi
 screenshot was already present at the correct absolute path before removing the repo copies, so nothing was lost.
 
 Verify: 2030/2030 vitest. Commit 758d17e, pushed. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 8 — flip the torso, three stacked sections, per-seed variation tuned to Fred's picks
+
+The uncommitted AMEND 4-7 attempts (clamps to keep the clavicle above the ribs) were never committed; this replaces
+them. Fred kept saying "the clavicle doesn't change angle" and "it looks upside down". Both were right, and the
+second explained the first: the torso rendered upside down. Proved with ground truth, not reasoning: a temporary probe
+chest.js returning one band at sv=0.1 (the neck end) rendered at the BOTTOM of the board. So the check-mark Fred kept
+circling at the top was the hip line (fixed slope, never varied), not the clavicle. Fix: `dy = 1 - sv`.
+
+A second measured bug under it: the old clavicle was clamped to [0.02, 0.16] while its angle swung ±0.35, so 91 of 200
+seeds pinned flat on one clamp wall. The new tests' pinning check would have caught it.
+
+Rework (all in a declared `VARY` table of [salt, min, max] rows, one cached layout per seed):
+- Three stacked canvas sections (shoulders, ribcage, abdomen), heights per seed. Each part fades to its own section's
+  window, so nothing crosses into another section and no clamps are needed. Tested: ribStrength/absStrength
+  differences are exactly 0 outside their own sections, across 50 seeds.
+- Only ANGLES follow a neighbour (Fred): costal margin <- ribs. Every other parameter is its own draw.
+- Ribs, narrowed to the seeds Fred marked: 3-7 ribs, bend <= 0.07 of the board (he approved <= 0.065, rejected
+  >= 0.127), mean gap >= 0.075 (every rejected seed <= 0.072, every approved one >= 0.075), prominence >= 1.0, 1.5-2.5
+  swells along each rib, gaps/thickness trend smoothly down the stack, rib height scales with width (wide ribs looked
+  flat because shading follows slope).
+- Sternum: depth and width vary along its length; depth per seed in [-0.20, 0.12], so it is carved on most seeds and
+  raised on the rest.
+- Clavicle: long band or a hip-bone-style bump, per seed (Fred: keep the current look, add the hip-bone look).
+- Hip bones removed (Fred). Abdomen smaller.
+
+Verification: every render was a real headless-Chrome 3D view, cross-checked against height maps computed in Node for
+the same seed. The render-framing "clipping" earlier was my own script's first camera fit happening before the canvas
+layout settled; fixed with a warm-up fit. Renders in `C:/Users/danse/.bspline-status/shots/seatB/` (chest-grid-9*.png,
+chest-grid-clavicle-styles.png).
+
+Verify: 2041/2041 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. Commit a0240a6. NO FUSION this whole turn.
