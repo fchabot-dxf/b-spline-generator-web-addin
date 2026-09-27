@@ -1,20 +1,21 @@
-# NEXT (fb-app) — F16: SE16 ✂ CUT TOOL — DESIGN ONLY (no product code this turn)
+# NEXT (fb-app) — F17: SE16 prerequisites P1 (Send as drawn) + P2 (hand edits survive the boundary refill)
 
-**Ball: worker (seat C) · epoch 1 · F16.** F15 ACCEPTED + merged (d74fa5d). NO FUSION. NO PRODUCT CODE: seat A's H1
-SNAP-SPLIT is mid-flight in the same drag files (editor-interaction.js, editor-transform-handles.js, editor-grid.js,
-editor-ui.js, the palette HTML), so this turn writes the design; the code comes after H1 merges, on top of its snap
-resolver. Spec: ROADMAP.md "SE16" (+ Fred's ruling recorded there / HANDOFF-REG-ADDIN.md §5.1: lattice cut pieces MOVE
-TOGETHER; direct edit moves a piece INDEPENDENTLY). PROGRESS automatic ("F16 item N: …"). Shots/mockups -> shots\seatC\.
+**Ball: worker (seat C) · epoch 1 · F17.** F16 design ACCEPTED (CUT-TOOL-DESIGN.md). P1 + P2 are BUGS under Fred's standing
+rule ("make sure the drawing in the add-in matches the one we insert in Fusion"), so they go now; the cut tool itself
+waits for Fred's Q1-Q6 answers. Seat A is on H2 SEG-COLOR-PANEL (lattice-piece-panel.js + the segmentColors helper in
+editor.js): coordinate if you must touch editor.js. **FUSION WINDOW GRANTED on Ranchy for item 3** (F11 rules: tagged
+scratch docs only, closed by handle; Fred's docs untouched; claude-* cleaned; DEPLOY ONLY FROM A CLEAN WORKTREE AT
+origin/main or your fb-app build, never from the main checkout; redeploy clean main when done; short calls; stop on any
+dialog). PROGRESS automatic ("F17 item N: …"); shots -> shots\seatC\ as items land; push each item.
 
 ## Checklist
-- [ ] [F16-item-1] CUT-TOOL-DESIGN.md (repo root): the tool's gestures (tap a line to cut: snaps to joints, then grid; Alt
-      = free; tap a cut again = Join), the DATA (segments keep lattice membership by DERIVATION, collinear + touching =
-      one rail, declared tolerance; no stored parent id), the drag rules (a cut point = joint, moves both ends together;
-      only true outer ends stretch; Select free-move = intentional break), how it uses H1's snap resolver (read H1's
-      design from seat A's NEXT-SESSION/ROADMAP; don't write a second one), Fusion side (each segment its own slot;
-      joint = separate points + explicit Coincident), undo, and per-segment colour (SEG-COLOR-PANEL).
-- [ ] [F16-item-2] The ACCEPTANCE test plan from the ROADMAP (before/after-cut drag equality incl. every segment
-      coloured differently, both orientations) written as concrete test cases, with the file each lives in.
-- [ ] [F16-item-3] 3-4 rendered mockups of the tool in use (static SVG/PNG: cut marker, joint handle, a rail cut in 3
-      coloured segments) for Fred; the list of open questions for Fred (if any) at the top of the doc.
-Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F16 — <shas>"`.
+- [ ] [F17-item-1] P1: the lattice manifest reads rails/ties/nodes FROM the owned DOM pieces (endpoints, width, colour
+      override), keeping kind, contour hits and attachment coincidents; railGroup derived (§3 chain), not from
+      computePattern; the positional DOM-order width mapping is gone. RED-first test: a dragged rail's Slot sits where it
+      was drawn. Parity app==manifest across the existing sweep stays green.
+- [ ] [F17-item-2] P2: declare which commit kinds refill a boundary-linked pattern (boundary/contour changes) instead of the
+      one-shot _skipBoundaryRefillOnce; piece moves (and later cut/join) do not refill. RED-first test: hand-move in a
+      Shape Lattice, then an unrelated commit: the move survives.
+- [ ] [F17-item-3] LIVE on Ranchy: capture_send_payload.mjs with a hand-dragged rail + tie (extend the script with a drag
+      step), replay into a tagged scratch doc: the Fusion slots sit where drawn (measure), projections still link (0 FAIL).
+Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F17 — <shas>"`.
