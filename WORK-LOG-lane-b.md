@@ -10616,3 +10616,34 @@ browser cache must be disabled (a stale module served weeks-old code earlier in 
 
 Verify: 2120/2120 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Commit e103e20.
 NO FUSION this whole turn.
+
+## T79 item 2 — River Stones and Pond Ripples, from Fred's approved prototypes
+
+Prototypes N3_protoRiver.js / N6_protoRipple.js (looks: ids/N3_River_Stones.png, ids/N6_Pond_Ripples.png). New
+`core/noise/river.js` + `ripples.js`, registered after Faceted Stone. Shared `cells.js` gains `smoothF1` (from the
+prototype helper) with a smooth per-cell id, the second-nearest cell's id, and `meshCellsInLattice` (Faceted Stone now
+uses it too; its tests unchanged).
+
+Seed 42, default settings, vs the prototypes (within 1% of the height range): River Stones 66.5% of the board, Pond
+Ripples 88.9%; the rest is the fixed defects.
+
+- River Stones' dotted/stepped rims -- two causes, isolated by switching the fix off: the dome sqrt(1 - r^2) meets the
+  ground in a wall narrower than the mesh (largest difference 18.7%: now a cubic fillet >= 3 mesh cells wide, zero
+  slope at the ground, joining the dome in value and slope), and each stone's height (scaled by its cell id) stepped
+  where the nearest cell switched between two touching stones (10.3%: now a smooth id weighted exp(-idK*(d - nearest)),
+  idK set so the blend is ~3 mesh cells wide). A first smooth id used the distance's own soft weighting and changed
+  stone heights everywhere; a very sharp idK underflowed to NaN -- both fixed and tested. Honest cost: the stones read
+  softer than the prototype, because at 0.05" spacing clean rims can't be narrower than ~3 cells.
+- Pond Ripples' ring creases: rings came from the nearest drop only, meeting at an angle on each cell boundary. The two
+  nearest drops' rings now blend there, 50/50 on the boundary, band max(0.05 lattice units, 3 mesh cells). Slope jump
+  between 0.001-su steps: 99.9th pct 8.08 -> 0.29, max 12.9 -> 3.1; 8 of 35490 samples still jump > 1 (spots where
+  three drops meet -- a known limit, not chased).
+- Mirror crease: slope leaving the centre 9.85 -> 0.0012 (River), 3.48 -> 0.0007 (Ripples). Lattices follow the seed.
+
+Tweaks: stoneSize / stoneHeight / groundSoftness; ringSpacing / ringDepth / dropCount. 16 tests
+(tests/noise-river-ripples.test.js). Shots: `shots/seatB/t79-river-*.png`, `t79-ripples-*.png`, comparisons
+`t79-{river,ripples}-before-after.png`, close-ups `t79-{river,ripples}-closeup.png`.
+
+Merged origin/main: seat A's Sandstone / Silk / Eroded also went in after Anatomical; the registry conflict was resolved
+keeping all seven (mine first, then seat A's; no test depends on the order of seat A's). 2157/2157 vitest after the
+merge. Commit 613820d (+ merge). NO FUSION this whole turn.
