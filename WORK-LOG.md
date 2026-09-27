@@ -11349,3 +11349,47 @@ current vertex-colour mode, unrelated to this turn — the important property is
 
 `npx vitest run` -> **1907 passed** (8 new: color-utils.test.js x6, frame-3d.test.js x1 new + 1 updated,
 frame-record-profile.test.js x1), zero regressions elsewhere.
+
+---
+
+H8 revision — Fred, live, direct (not a NEXT-SESSION dispatch — messaged straight into the worker session
+while the advisor still held the H8 review): three rounds of feedback after seeing the actual colours,
+each applied immediately rather than batched.
+
+**Round 1 — "Ash should be different lighter."** The FIRST H8 pass used ONE signed constant
+(`FRAME_TINT = -0.08`, always darker) applied to every wood. Ash (the palest declared wood) read as
+"dingy" darkened rather than "a tiny bit different." Asked Fred to disambiguate (all woods lighter, vs.
+Ash-only, vs. a general rule) rather than guess at a real design fork — answer: **move away from middle**
+(a wood lighter than 50% HSL lightness gets lighter, one darker gets darker — more contrast either
+direction, not one direction imposed on every wood). Re-derived `frameTintColor()` accordingly; of the 5
+declared woods, only Mahogany (L 0.329) sits below 0.5, so it alone got darker under this rule.
+
+**Round 2 — "Simply hardcode the colors."** Replaced the runtime HSL computation with a plain declared
+table: `FRAME_COLORS` in `core/color-utils.js`, keyed by the SAME wood-name string
+`defs.appearance.previewColors` already uses, each value computed once under the round-1 rule and frozen
+as a literal hex. `frameTintColor(hex)` → `frameColorFor(appearance, fallbackBoardHex)`; both
+`editor-frame-profile.js` call sites (`frameSolidSpec` for the 3D bars, `drawFrameProfile` for the 2D band)
+and `frame-mesh.js`'s own null-fallback updated to the new signature. Rewrote all three test files' H8
+cases around the table (no more asserting a signed constant's own sign — the whole point was to stop
+computing it).
+
+**Round 3 — per-wood corrections after seeing every wood rendered ("Screen shot all").** Extended
+`tools/repro/frame_3d_shots.mjs`'s wood loop into a small dedicated multi-wood pass (all 5 woods, the F17
+"iso-edge" close-up angle — the "below" angle tried first rendered pale Ash as near-grey under that
+lighting, an existing rendering characteristic unrelated to the actual material colour, confirmed by
+`gl.readPixels` sampling the live WebGL canvas directly rather than eyeballing a screenshot). Two direct
+corrections from the resulting shots:
+- **"Oak needs darker"** — Oak's own board colour sits almost exactly AT middle gray (L 0.527), so
+  round 1's rule barely nudged it lighter and it read as indistinguishable from its own board live.
+  Declared an explicit exception: Oak now goes DARKER (`#b88a55` → `#a17543`), same 8% magnitude as every
+  other entry, flipped.
+- **"Ash lighter"** — the base 8% lift wasn't enough against Ash's own already-light board. Declared a
+  bigger exception for Ash specifically: +15% instead of +8% (`#d9c9a3` → `#efe9d9`).
+
+Both are now named, commented exceptions in `FRAME_COLORS` (not a re-tuned shared magnitude, which would
+have moved every other wood's colour again for a problem specific to these two) — the file's own doc
+comment explains why each one differs from the base rule. Live-reread after each edit
+(`gl.readPixels`-verified initially, then plain hex-string readback via the extended shot script) — every
+wood's rendered bar colour matches its own `FRAME_COLORS` entry exactly, board colour still unchanged
+throughout. Re-ran the full suite after each of the three rounds; final state 1908 passed. Shots:
+`h8_v2_isoedge_<wood>` for all 5 woods, in `shots\seatA\`.

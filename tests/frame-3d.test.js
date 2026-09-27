@@ -13,7 +13,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 import { FakeTHREE, carvedPanel } from './helpers/drawn-panel.js';
 import { fitView } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-view.js';
-import { frameTintColor } from '../bspline-frame-builder/b-spline-gen/html/core/color-utils.js';
+import { frameColorFor } from '../bspline-frame-builder/b-spline-gen/html/core/color-utils.js';
 
 const BOARD = { widthIn: 7, heightIn: 9 };
 const rec = (id, extra = {}) => normalizeFrameRecord({ templateId: id, ...extra });
@@ -77,15 +77,15 @@ describe('bars', () => {
     const p = bars.geometry.attributes.position.array;
     for (let i = 2; i < p.length; i += 3) z.push(Math.round(p[i] * 1e6) / 1e6);
     expect([...new Set(z)].sort()).toEqual([-1, 0.5]); // bottom = frame bottom z, top = the (flat) underside
-    // H8: the bars are tinted a "tiny bit" darker than the raw wood colour
-    // (color-utils.js's own declared FRAME_TINT), not the raw board colour.
-    expect(bars.material.color).toBe(frameTintColor(FRAME_DEFS.appearance.previewColors['3D Oak - Painted']));
+    // H8: the bars use the declared frame colour for the wood (color-
+    // utils.js's own FRAME_COLORS table), not the raw board colour.
+    expect(bars.material.color).toBe(frameColorFor('3D Oak - Painted', FRAME_DEFS.appearance.previewColors['3D Oak - Painted']));
   });
 
-  it('H8: every declared wood\'s frame colour is that wood tinted by FRAME_TINT, never the raw board colour', () => {
+  it('H8: every declared wood\'s frame colour is its own declared FRAME_COLORS entry, never the raw board colour', () => {
     for (const [appearance, boardHex] of Object.entries(FRAME_DEFS.appearance.previewColors)) {
       const spec = frameSolidSpec(FRAME_DEFS, rec('template_1', { appearance }), BOARD);
-      expect(spec.color).toBe(frameTintColor(boardHex));
+      expect(spec.color).toBe(frameColorFor(appearance, boardHex));
       expect(spec.color).not.toBe(boardHex); // "a tiny bit different from the board" -- must not collapse back to it
     }
   });

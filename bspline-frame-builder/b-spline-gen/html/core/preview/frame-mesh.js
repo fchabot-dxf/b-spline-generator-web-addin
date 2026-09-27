@@ -24,7 +24,7 @@
  * never from the grid arrays: the thickened underside is offset along the
  * surface normal, so its vertices are not on the x,y grid.
  */
-import { frameTintColor } from '../color-utils.js';
+import { FRAME_COLORS } from '../color-utils.js';
 
 /** Sample a closed primitive loop (editor coords) at fixed fractions per
  *  primitive, so two loops of the same topology correspond point-for-point. */
@@ -476,10 +476,10 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
     wall.name = 'frame-panel-wall';
     extra.push(wall);
     if (inner) {
-      // H8: spec.color is already frameTintColor()'d (frameSolidSpec, editor-
-      // frame-profile.js) — this fallback only fires when it's null (no
-      // matching wood found); tint it too so every path here is consistent.
-      const barMat = new THREE.MeshPhongMaterial({ color: spec.color || frameTintColor('#d9c9a3'), side: THREE.DoubleSide, shininess: 12 });
+      // H8: spec.color is already the declared frame colour (frameSolidSpec,
+      // editor-frame-profile.js) — this fallback only fires when it's null
+      // (no matching wood found); Ash's own declared entry keeps it consistent.
+      const barMat = new THREE.MeshPhongMaterial({ color: spec.color || FRAME_COLORS['3D Ash - Unfinished'], side: THREE.DoubleSide, shininess: 12 });
       const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
       bars.name = 'frame-bars';
       extra.push(bars);

@@ -12,7 +12,7 @@ import {
   frameCutProfile, frameFit, drawFrameProfile, setFrameProfileProvider, FRAME_PROFILE_GROUP_ID, frameInnerProfile, frameMiters,
   FRAME_OUTLINE_COLOR, INACTIVE_LAYER_OPACITY, setEditorFocus,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
-import { frameTintColor } from '../bspline-frame-builder/b-spline-gen/html/core/color-utils.js';
+import { frameColorFor } from '../bspline-frame-builder/b-spline-gen/html/core/color-utils.js';
 
 const T1 = 'template_1', T2 = 'template_2';
 
@@ -187,11 +187,11 @@ describe('frame lines + the focus rule (F8, Fred)', () => {
     expect(new Set(stroked.map((c) => c.attrs.stroke.color))).toEqual(new Set([FRAME_OUTLINE_COLOR]));
   });
 
-  it('H8: the frame band is filled with the wood colour tinted by FRAME_TINT, not the raw board colour', () => {
+  it('H8: the frame band is filled with the wood\'s own declared FRAME_COLORS entry, not the raw board colour', () => {
     const { g } = drawn();
     const band = g.children.find((c) => c.cls[0] === 'frame-band');
     const boardHex = FRAME_DEFS.appearance.previewColors['3D Ash - Unfinished']; // default appearance (T1, no override)
-    expect(band.attrs.fill.color).toBe(frameTintColor(boardHex));
+    expect(band.attrs.fill.color).toBe(frameColorFor('3D Ash - Unfinished', boardHex));
     expect(band.attrs.fill.color).not.toBe(boardHex);
   });
 
