@@ -23,18 +23,36 @@
  * This file implements direction #3 only -- the muscle-mound version
  * (direction #1) never shipped.
  *
- * Local coordinates (same convention the old file used):
- *   dx = |su*2 - 1|  -- 0 at the sternum centreline, 1 at the torso edge
- *   dy = sv          -- 0 at the neck/top, 1 at the waist/bottom
+ * URGENT AMEND (Fred, via the advisor): the board's default symmetry is
+ * 'x' (core/state.js), which means terrain.js ALREADY folds the surface
+ * coordinate before calling ANY filter's own fn() -- `su` arrives pre-
+ * folded to `|u - 0.5| * 2`, i.e. `su` already IS "distance from the
+ * board centreline, 0..1" by the time this file ever sees it. A first
+ * version of this file re-folded that same value again (`dx = |su*2-1|`),
+ * which put the sternum at su=0.5 (a fold-of-a-fold) instead of su=0, and
+ * doubled the whole ribcage into a mirrored pair INSIDE what was already
+ * one half of the board -- terrain.js's own outer mirror then doubled
+ * THAT again, so the rendered board showed four repeats, not one torso.
+ * This file now builds only the HALF-TORSO terrain.js expects: `dx = su`
+ * directly (0 at the sternum, 1 at the flank) -- no internal fold at all.
+ * A different noiseType/board with symmetry:'none' would see this exact
+ * same half-torso un-mirrored (by design -- this file draws only ITS OWN
+ * half regardless of what the board does with it afterwards).
+ *
+ * Local coordinates:
+ *   dx = su  -- 0 at the sternum centreline, 1 at the torso edge/flank
+ *   dy = sv  -- 0 at the neck/top, 1 at the waist/bottom
  *
  * Composition (skeleton -> skin):
  *   1. Silhouette   — neck, clavicles, deltoids (structural shape only,
  *                     not muscle mass).
  *   2. Sternum ridge — a raised centreline strip, tapering to the xiphoid.
- *   3. Ribcage       — 7 curved raised bands sweeping down-and-out from
- *                      the sternum, strongest at the flanks, fading to
- *                      near-zero at the centre; intercostal grooves are
- *                      the natural gaps between adjacent bands.
+ *   3. Ribcage       — 6-9 curved raised bands (count varies per seed)
+ *                      sweeping down-and-out from the sternum, strongest
+ *                      at the flanks, fading to near-zero at the centre;
+ *                      intercostal grooves are the natural gaps between
+ *                      adjacent bands. Angle, spacing, and lateral reach
+ *                      also vary per seed (see the T78 AMEND note below).
  *   4. Costal margin — one more prominent arc (curving the OPPOSITE way
  *                      from the ribs -- upward toward the sides) marking
  *                      where the ribcage ends.
@@ -65,19 +83,28 @@ function gaussianBand(d, width) {
   return Math.exp(-(d * d) / (2 * width * width));
 }
 
-const NUM_RIBS = 7;
-const RIB_START_Y = 0.16; // just below the clavicles
-const RIB_SPACING = 0.058;
-// T78 tuning: a first attempt used RIB_BAND_WIDTH:0.028 against this same
-// spacing -- a gaussian's own visually-significant extent runs several
-// widths, so adjacent ribs' bands overlapped enough to merge into one
-// solid mound with no visible grooves at all (confirmed with a direct
-// grayscale heightmap dump, not by eyeballing a lit 3D render, which
-// hid the problem under shading). Narrowed well below half the spacing
-// so each rib reads as a separate raised band with a real intercostal
-// groove between it and its neighbors.
-const RIB_BAND_WIDTH = 0.014;
-const RIB_CURVE = 0.20; // ribs slope DOWNWARD as they sweep toward the flank
+// T78 AMEND (Fred: "I want the structure to reshuffle" -- "angle of ribs,
+// size, extent"): the skeleton was near-fully deterministic across seeds
+// (only fine skin texture varied), which is wrong for a filter that's
+// meant to reroll like every other one. `hashInt`/`seedRandom` (the same
+// integer-bit-mixing technique craterField.js already uses for Moon/Mars,
+// duplicated here rather than shared since chest.js has no natural import
+// relationship with that file) derive a few per-seed structural draws from
+// the caller's own already-seeded `noiseFine`, so the SKELETON itself
+// (not just its surface grain) now varies with the terrain's own seed:
+// rib angle (how steeply they sweep down toward the flank), rib size
+// (spacing between adjacent ribs, i.e. how "long" the ribcage reads), and
+// rib extent (how many ribs / how far down the torso the ribcage runs).
+function hashInt(x) {
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
+  x = x ^ (x >>> 16);
+  return x >>> 0;
+}
+function seedRandom(noiseFine, salt) {
+  const f = noiseFine.noise2(0.5173 + salt * 3.71, 0.7291 + salt * 5.13);
+  return hashInt(Math.floor((f * 0.5 + 0.5) * 0xffffffff) | 0) / 4294967296;
+}
 
 export const fn = (su, sv, aspect, params, noiseRefs) => {
   const { scale, octaves, roughness, warpIntensity } = params;
@@ -88,12 +115,33 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   const ribStrength = t.ribStrength ?? 0.14;
   const skinDetail = t.skinDetail ?? 0.06;
 
-  const dx = Math.abs(su * 2 - 1); // 0 at sternum centreline, 1 at torso edge
+  // T78 AMEND (Fred: "I want the structure to reshuffle" -- rib angle/
+  // size/extent/count, then "clavicular same size, extent, angle"): per-
+  // seed structural draws, NOT tweaks (they're not user-facing controls,
+  // just what makes the skeleton itself vary with the terrain's own seed
+  // instead of only its surface texture).
+  const ribCount = 6 + Math.floor(seedRandom(noiseFine, 1) * 4); // 6..9 ribs
+  // Angle allows the OPPOSITE sign too (Fred) -- some seeds curve the ribs
+  // UP toward the flank instead of down, not just varying how steeply they
+  // slope in the one anatomically-typical direction.
+  const ribAngle = -0.22 + seedRandom(noiseFine, 2) * 0.44; // -0.22..0.22, sign varies per seed
+  const ribSize = 0.045 + seedRandom(noiseFine, 3) * 0.030; // spacing between ribs (also scales each rib's own band width)
+  const ribBandWidth = ribSize * 0.26; // stays well under half the spacing (see the T78 tuning note below) regardless of ribSize
+  const ribExtent = 0.24 + seedRandom(noiseFine, 4) * 0.26; // how far laterally ribs must reach before hitting full strength -- smaller = ribs cover MORE of the flank
+  const ribStartY = 0.14 + seedRandom(noiseFine, 5) * 0.05; // where the ribcage begins, just below the clavicles
+
+  const clavicleAngle = -0.10 + seedRandom(noiseFine, 6) * 0.20; // slope from neck to shoulder -- sign varies per seed too
+  const clavicleSize = 10.0 + seedRandom(noiseFine, 7) * 8.0; // band sharpness -- LOWER reads as a bigger/thicker clavicle
+  const clavicleExtent = 1.0 + seedRandom(noiseFine, 8) * 1.2; // lateral decay rate -- LOWER reaches further toward the shoulder
+
+  // su arrives already fold-mirrored by terrain.js (default symmetry:'x'):
+  // 0 at the board centreline, 1 at the board edge. No internal re-fold.
+  const dx = su; // 0 at sternum centreline, 1 at torso edge/flank
   const dy = sv; // 0 at neck, 1 at waist
 
   // ── 1. SILHOUETTE (structural shape, not muscle) ────────────────────
   const neck = Math.exp(-(dx * dx) * 40.0) * Math.max(0, 1.0 - dy * 7.0) * 0.30;
-  const clavicle = Math.max(0, 1.0 - Math.abs(dy - (0.12 + dx * 0.10)) * 14.0) * Math.exp(-dx * 1.5) * 0.18;
+  const clavicle = Math.max(0, 1.0 - Math.abs(dy - (0.12 + dx * clavicleAngle)) * clavicleSize) * Math.exp(-dx * clavicleExtent) * 0.18;
   const deltoid = gaussianBand(dx - 0.9, 0.18) * gaussianBand(dy - 0.22, 0.14) * 0.30;
 
   // ── 2. STERNUM RIDGE + XIPHOID ──────────────────────────────────────
@@ -109,12 +157,12 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   // -- ribFrontFade suppresses the whole ribcage near the centreline
   // (per the reference: "fading toward the front") and the sternum ridge
   // covers that same region instead.
-  const ribFrontFade = smoothstep01(0.06, 0.38, dx);
+  const ribFrontFade = smoothstep01(0.06, ribExtent, dx);
   const ribJitter = noiseFine.noise2(su * 6.0, sv * 6.0) * 0.012; // organic irregularity, not a perfect arc
   let ribcage = 0;
-  for (let k = 0; k < NUM_RIBS; k++) {
-    const ribY = RIB_START_Y + k * RIB_SPACING + RIB_CURVE * dx * dx + ribJitter;
-    ribcage += gaussianBand(dy - ribY, RIB_BAND_WIDTH);
+  for (let k = 0; k < ribCount; k++) {
+    const ribY = ribStartY + k * ribSize + ribAngle * dx * dx + ribJitter;
+    ribcage += gaussianBand(dy - ribY, ribBandWidth);
   }
   // Ribs fade out again near the very bottom of the ribcage span (the
   // costal margin below takes over there instead of another plain rib).
@@ -125,7 +173,7 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   // One more prominent band curving the OPPOSITE way from the ribs above
   // it (upward toward the flanks), marking the classic inverted-V where
   // the ribcage ends and the abdomen begins.
-  const marginBaseY = RIB_START_Y + NUM_RIBS * RIB_SPACING;
+  const marginBaseY = ribStartY + ribCount * ribSize;
   const marginY = marginBaseY - 0.12 * dx * dx + ribJitter;
   const costalMargin = gaussianBand(dy - marginY, 0.020) * ribFrontFade * ribStrength * 1.25;
 

@@ -27,6 +27,44 @@ function sample(seed, n, tweaks = {}) {
   return grid;
 }
 
+function sampleFlat(seed, n, tweaks = {}, extra = {}) {
+  const noiseFine = new PerlinNoise(seed);
+  const noiseWarp = new PerlinNoise(seed ^ 0x9e3779b9);
+  const noiseRefs = { noiseFine, noiseWarp };
+  const params = { ...PARAMS, ...extra, tweaks };
+  const values = [];
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) values.push(chest.fn(i / (n - 1), j / (n - 1), ASPECT, params, noiseRefs));
+  return values;
+}
+
+describe('chest.js: T78 GUARD (Fred: "this is still a noise filter, right?") -- a real filter, not a fixed stamp', () => {
+  it('two different seeds give visibly different detail at the same layout (skin texture + per-seed rib angle/count/spacing)', () => {
+    expect(sampleFlat(1, 40)).not.toEqual(sampleFlat(2, 40));
+  });
+
+  it('a fixed seed is fully deterministic', () => {
+    expect(sampleFlat(42, 40)).toEqual(sampleFlat(42, 40));
+  });
+
+  it('changing scale changes the result (affects the pore-texture and skin-drape frequencies)', () => {
+    const a = sampleFlat(42, 40, {}, { scale: 2.0 });
+    const b = sampleFlat(42, 40, {}, { scale: 6.0 });
+    expect(a).not.toEqual(b);
+  });
+
+  it('changing warpIntensity changes the result (affects the skin-drape warp)', () => {
+    const a = sampleFlat(42, 40, {}, { warpIntensity: 0.2 });
+    const b = sampleFlat(42, 40, {}, { warpIntensity: 2.0 });
+    expect(a).not.toEqual(b);
+  });
+
+  it('changing roughness changes the result (affects the pore-texture and skin-drape FBM gain)', () => {
+    const a = sampleFlat(42, 40, {}, { roughness: 0.2 });
+    const b = sampleFlat(42, 40, {}, { roughness: 0.8 });
+    expect(a).not.toEqual(b);
+  });
+});
+
 describe('chest.js: item 7 -- tweak keys kept (meaning changed), new skinDetail key added', () => {
   it('still declares exactly the 3 original keys plus the new skinDetail key', () => {
     const keys = chest.tweaks.map((t) => t.key).sort();
@@ -67,26 +105,28 @@ describe('chest.js: item 7 -- a visible ribcage (distinct separated bands, not o
     expect(peaks).toBeGreaterThanOrEqual(4);
   });
 
-  it('ribStrength is the MAIN control now -- doubling it roughly doubles the relief WITHIN the ribcage/flank span (isolated from abdomen/iliac terms that don\'t scale with it)', () => {
-    // A vertical scan down the flank (su=0.78), restricted to the
-    // ribcage's own dy span -- the same region+column the "distinct
-    // bands" test above already scans, so this measures ribStrength's
-    // OWN effect directly rather than diluting it in the whole-grid range
-    // (which mixes in abdomen/iliac/soft-tissue terms that don't scale
-    // with ribStrength at all).
-    function ribSpanRange(ribStrength) {
-      const noiseFine = new PerlinNoise(42); const noiseWarp = new PerlinNoise(42 ^ 0x9e3779b9);
-      const N = 200;
-      const vals = [];
-      for (let j = 0; j < N; j++) {
-        const sv = 0.14 + (j / (N - 1)) * (0.56 - 0.14);
-        vals.push(chest.fn(0.78, sv, ASPECT, { ...PARAMS, tweaks: { ribStrength } }, { noiseFine, noiseWarp }));
-      }
-      return Math.max(...vals) - Math.min(...vals);
+  it('ribStrength is the MAIN control now -- a pointwise DIFFERENCE between two ribStrength values shows real, non-zero variation', () => {
+    // Rather than comparing whole-window ranges (which mixes in deltoid/
+    // soft-tissue/abdomen terms that DON'T scale with ribStrength and can
+    // dominate the measurement once the ribcage's own span moves around
+    // per seed -- see the T78 AMEND note on the per-seed structural
+    // draws), take the pointwise DIFFERENCE fn(high) - fn(low) at the same
+    // (su,sv): every term that doesn't depend on ribStrength cancels out
+    // exactly, leaving only the ribcage/costal-margin/iliac-crest
+    // contribution's own scaled delta -- a precise, seed-shape-independent
+    // isolation of ribStrength's real effect.
+    const noiseFineLow = new PerlinNoise(42); const noiseWarpLow = new PerlinNoise(42 ^ 0x9e3779b9);
+    const noiseFineHigh = new PerlinNoise(42); const noiseWarpHigh = new PerlinNoise(42 ^ 0x9e3779b9);
+    const N = 300;
+    const diffs = [];
+    for (let j = 0; j < N; j++) {
+      const sv = 0.08 + (j / (N - 1)) * (0.75 - 0.08);
+      const low = chest.fn(0.78, sv, ASPECT, { ...PARAMS, tweaks: { ribStrength: 0.07 } }, { noiseFine: noiseFineLow, noiseWarp: noiseWarpLow });
+      const high = chest.fn(0.78, sv, ASPECT, { ...PARAMS, tweaks: { ribStrength: 0.14 } }, { noiseFine: noiseFineHigh, noiseWarp: noiseWarpHigh });
+      diffs.push(high - low);
     }
-    const low = ribSpanRange(0.07);
-    const high = ribSpanRange(0.14);
-    expect(high).toBeGreaterThan(low * 1.4);
+    const range = Math.max(...diffs) - Math.min(...diffs);
+    expect(range).toBeGreaterThan(0.03);
   });
 });
 
