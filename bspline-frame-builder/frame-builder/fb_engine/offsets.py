@@ -202,11 +202,14 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             # ObjectCollection: the side check and the tagging read .count / .item().
             result = _as_collection(getattr(offset_constraint, 'childCurves', None))
             # F22 MEASURED live: inside the deferred-compute window the new curves are not solved yet (their bbox is
-            # the source's), so the side check saw nothing wrong and the lip landed inward. One compute pulse first
-            # (the same pulse offset_step does after this returns), then check the side, then pulse again.
-            _pulse(sketch)
-            _ensure_side(ctx, offset_constraint, coll, result, d_expr, s_name, side)
-            _pulse(sketch)
+            # the source's), so the side check saw nothing wrong and the lip landed inward. The check runs with
+            # compute ON (its reads force the solve), then the deferred state is restored.
+            was = sketch.isComputeDeferred
+            try:
+                sketch.isComputeDeferred = False
+                _ensure_side(ctx, offset_constraint, coll, result, d_expr, s_name, side)
+            finally:
+                sketch.isComputeDeferred = was
             ctx.logger.log(f"OFFSET PARAMETRIC OK: addOffset2 succeeded for {s_name}")
             return result
 
@@ -217,16 +220,6 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             f"OFFSET PARAMETRIC FAIL: addOffset2 failed for {s_name}: {e} -- "
             f"FALLING BACK to a NON-parametric offset", "WARNING")
     return None
-
-
-def _pulse(sketch):
-    """Force one solve of a compute-deferred sketch, then restore its deferred state."""
-    try:
-        was = sketch.isComputeDeferred
-        sketch.isComputeDeferred = False
-        sketch.isComputeDeferred = was
-    except Exception:
-        pass
 
 
 def _as_collection(curves):
@@ -280,6 +273,7 @@ def _ensure_side(ctx, offset_constraint, source, result, d_expr, s_name, side="i
         src, res = _bbox_span(source), _bbox_span(result) if result is not None else None
         if not src or not res:
             return
+        ctx.logger.log(f"OFFSET SIDE CHECK: {s_name} declared {side}, source span {src}, result span {res}")
         if offset_went_wrong_side(src, res, side):
             flipped = f"-({d_expr})"
             offset_constraint.dimension.parameter.expression = flipped
