@@ -1139,6 +1139,16 @@ the 0.1..0.9 band applies to Generate only. If a real limit is the one hit, repo
 need (e.g. the waist arc re-solving instead of staying fixed). Tests: the Hip handle reaches the true limit; beyond it the
 outline would be invalid (proven); Generate stays banded; the F5/F13 sweeps stay green; live parity unchanged.
 
+## Queued (seat A, H13, after H12) — HAPTICS: haptic feedback on touch devices (Fred 2026-09-27: "all of them")
+ONE declared haptics module: a table {event -> pattern} + a haptic(event) call; nothing hand-rolled at call sites. Events
+(Fred approved all): snap (grid OR geometry snap engaging during a drag) = tiny tick ~5 ms; limit (a handle or drag hitting
+its clamp: frame Hip/Shoulder/waist handles, Shape Lattice handles, joint pushes, lip/trim ranges) = firm bump ~15 ms;
+multiselect-add / remove (double-tap-and-hold) = double tick; context menu open = tick; cut / join = tick. Backends:
+Android/Chrome = navigator.vibrate; iOS/iPadOS Safari 18+ = the hidden <input type=checkbox switch> toggle trick (measure
+on Fred's iPad: if it doesn't fire, say so); desktop/Fusion palette = no-op. Rate-limit (snap must not buzz continuously:
+only on ENTERING a snap). A Settings toggle "Haptic feedback" (default ON on touch devices), persisted. Tests: each event
+calls haptic with its pattern; the rate limit; the toggle; no-op without support. Fred checks the feel on his phone + iPad.
+
 ## Closed — UI4 0b (Clear then Regenerate does nothing) — NOT REPRODUCIBLE on main (advisor, 2026-09-27)
 Fred clarified: "Shape Lattice using the shape even once cleared". Headless check on main (611490e): Shape Lattice
 Generate = 12 contour segs + 7 rails/7 ties/14 nodes -> Clear = 0 -> Regenerate = 12 contour segs + 7/7/14 (the
