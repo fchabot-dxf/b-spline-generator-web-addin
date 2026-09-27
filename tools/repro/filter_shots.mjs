@@ -112,13 +112,30 @@ if (LOWLIGHT) {
 // fit-to-board `r` from the REAL board size, then we copy targetOrb straight
 // into orb (skipping the damped lerp) so every shot uses the identical
 // camera with no wait-for-settle guessing (same technique
-// frame_3d_shots.mjs's own custom-angle shots already use).
+// frame_3d_shots.mjs's own custom-angle shots already use). Snapping `_orb`
+// alone is NOT enough headlessly -- the app's own animate loop is what
+// normally turns `_orb` into `_camera.position`/`quaternion` each frame,
+// and that loop does not reliably tick in a headless/unfocused page, so
+// the camera transform is recomputed and applied explicitly right here
+// (T78 tuning finding: a first attempt at a custom side-angle shot for
+// Dunes silently rendered from the STALE previous camera with this step
+// skipped -- caught by comparing the rendered image, not by inspection).
+const SNAP_CAMERA = `
+  const p = window.__preview, o = p._orbit, T = p._THREE;
+  const pos = new T.Vector3(0, 0, o._orb.r).applyQuaternion(o._orb.q);
+  p._camera.position.addVectors(o._orb.target, pos);
+  p._camera.quaternion.copy(o._orb.q);
+  if (typeof p.updateFrustum === 'function') p.updateFrustum();
+  else if (typeof o.updateFrustum === 'function') o.updateFrustum();
+  p._needsRender = true;
+`;
 await evalJS(`(async () => {
   const p = window.__preview;
   p.goHome(); // internally: this._orbit.goHome(this._lastWidth, this._lastHeight)
   p._orbit._orb.q.copy(p._orbit._targetOrb.q);
   p._orbit._orb.r = p._orbit._targetOrb.r;
   p._orbit._orb.target.copy(p._orbit._targetOrb.target);
+  ${SNAP_CAMERA}
   true;
 })()`);
 
@@ -142,7 +159,7 @@ for (const noiseType of TYPES) {
     p._orbit._orb.q.copy(p._orbit._targetOrb.q);
     p._orbit._orb.r = p._orbit._targetOrb.r;
     p._orbit._orb.target.copy(p._orbit._targetOrb.target);
-    p._needsRender = true;
+    ${SNAP_CAMERA}
     true;
   })()`);
   await sleep(150);
