@@ -266,10 +266,26 @@ export function addLayer(editor, opts = {}) {
   return layer;
 }
 
+// H20 item 6 (Fred: "after a few layers they just come back"): layers.js
+// stays the lower-level module (editor-lattice-pattern.js already imports
+// FROM it) — rather than reaching back UP into lattice-pattern concepts
+// here (a circular import), this declares a generic "a layer is about to
+// be removed" hook that any higher-level module can subscribe to. The
+// Lattice/Shape-Lattice pattern system registers ITS OWN handler (see
+// editor-lattice-pattern.js's own onLayerRemoved(...) call) to mark that
+// kind permanently removed from its pattern, rather than layers.js needing
+// to know anything about kinds/patterns at all.
+const _removeHooks = [];
+export function onLayerRemoved(fn) { _removeHooks.push(fn); }
+
 function removeLayer(editor, id) {
   if (!Array.isArray(editor._layers)) return;
   const idx = editor._layers.findIndex(l => String(l.id) === String(id));
   if (idx === -1) return;
+
+  // Fired BEFORE the splice below, so a hook can still see the full roster
+  // (including whichever OTHER layer owns this one's pattern, if any).
+  for (const fn of _removeHooks) fn(editor, id);
 
   // Remove SVG elements on this layer.
   if (editor._sketchLayer) {
@@ -758,7 +774,13 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   del.addEventListener('click', (e) => {
     e.stopPropagation();
     if (del.disabled) return;
-    _confirmAndRemove(editor, layer);
+    // H20 item 4 (Fred, screenshot of the "Delete... and its N elements?"
+    // confirm: "dont ask"): removed. removeLayer() already calls
+    // pushState() AFTER the removal, capturing the post-delete state on
+    // the undo stack the same way every other mutator here does — Ctrl+Z
+    // pops back to the PRE-delete snapshot, restoring the layer, its
+    // elements, its order and its per-layer settings in one step.
+    removeLayer(editor, layer.id);
   });
 
   // MOB4 layer-row AMEND ("C1"): grip, then the editable name (with its
@@ -783,19 +805,6 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   });
 
   return row;
-}
-
-function _confirmAndRemove(editor, layer) {
-  // Count elements that will be deleted.
-  let count = 0;
-  if (editor._sketchLayer) {
-    count = editor._sketchLayer.children().toArray().filter(c => getElementLayer(c) === String(layer.id)).length;
-  }
-  const msg = count > 0
-    ? `Delete "${layer.name}" and its ${count} element${count === 1 ? '' : 's'}?`
-    : `Delete "${layer.name}"?`;
-  if (!window.confirm(msg)) return;
-  removeLayer(editor, layer.id);
 }
 
 function _startRename(editor, row, nameEl, layer) {

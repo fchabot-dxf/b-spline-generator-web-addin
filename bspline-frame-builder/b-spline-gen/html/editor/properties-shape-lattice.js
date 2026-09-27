@@ -235,10 +235,14 @@ export function regenerateSilhouette(editor, p) {
     // F21: the ONE contour source (contour-from-frame.js): the preset, or the frame's inner edge offset inward.
     const sil = contourSilhouette(p, region, contourWidth, frameContext(editor));
     const { primitives, segments, hasUserSegments } = sil;
-    if (sil.fromFrameError) {
-        setEditorStatusHint(sil.fromFrameError === 'noFrame'
-            ? 'Offset from frame: no frame is chosen, so the Shape preset is drawn.'
-            : 'Offset from frame: the frame opening is too small for this distance, so the Shape preset is drawn.');
+    // H20 item 6 hint change (Fred: "this specific message is useless to
+    // me"): the noFrame case is silent now -- drawing the Shape preset when
+    // no frame is chosen is the obvious, expected behavior, not something
+    // worth interrupting the user about. The "frame opening is too small"
+    // case is a genuine, actionable surprise (the user DID choose a frame),
+    // so it still gets a hint.
+    if (sil.fromFrameError && sil.fromFrameError !== 'noFrame') {
+        setEditorStatusHint('Offset from frame: the frame opening is too small for this distance, so the Shape preset is drawn.');
     }
     // SIL-RESOLVE (F5): the shared outline guard. The solver resolves every
     // slider combination to a clean outline; this is the safety net for
@@ -284,6 +288,14 @@ export function regenerateSilhouette(editor, p) {
     // `ensureActiveLayer` (not bare `getActiveLayer`) guarantees a valid
     // layer id even when NO layer exists yet at all.
     const layerId = _ensureKindLayers(editor, p, ensureActiveLayer(editor), ['contour']).contour;
+    // H20 item 6 (Fred: "after a few layers they just come back"): the user
+    // deleted the Contour layer -- _ensureKindLayers just declined to
+    // recreate it (p.removedKinds.contour). Without this guard, the code
+    // below would draw fresh `<path>` elements stamped `data-layer` with
+    // this undefined id -- geometry belonging to no real layer, invisible
+    // in the panel and impossible to select/delete again. Stays gone until
+    // Undo, matching every other kind.
+    if (!layerId) return existing;
     const segEls = primitives.map((prim, i) => {
         const d = primitiveToPathD(prim);
         if (countMatches) return existing[i].attr('d', d);

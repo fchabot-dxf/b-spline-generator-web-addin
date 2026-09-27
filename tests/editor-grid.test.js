@@ -69,7 +69,7 @@ describe('mergeGridPrefs', () => {
       expect(merged.gridSnap).toBe(true);
       expect(merged.visible).toBe(false);
       expect(merged.spacing).toBe(0.5);
-      expect(merged.geometrySnap).toBe(false); // new toggle, not resurrected from anything old
+      expect(merged.geometrySnap).toBe(true); // H20 item 7: the current default, not resurrected from anything old
     });
 
     it('maps an old snap:false record onto gridSnap:false — non-vacuous, not just "always true"', () => {
@@ -104,7 +104,30 @@ describe('loadGridPrefs (localStorage integration)', () => {
 
   it('migrates a real legacy record read back from storage (pre-H1 shape)', () => {
     localStorage.setItem('bsg.editorGrid', JSON.stringify({ visible: true, snap: false, spacing: 0.5 }));
-    expect(loadGridPrefs()).toEqual({ visible: true, gridSnap: false, geometrySnap: false, spacing: 0.5 });
+    // H20 item 7: this legacy record has no geometrySnap key at all, so it
+    // gets the CURRENT default (true) -- same "fill only what's missing"
+    // rule gridSnap's own migration above already relies on.
+    expect(loadGridPrefs()).toEqual({ visible: true, gridSnap: false, geometrySnap: true, spacing: 0.5 });
+  });
+
+  // H20 item 7 (Fred: "make snap to geometry on by default") -- the
+  // checklist's own core invariant: flipping the DEFAULT must never flip
+  // an EXISTING saved choice. A record already on disk with geometrySnap
+  // explicitly false (the old default, or a deliberate off) stays false;
+  // only a record with NO geometrySnap key at all (never saved, i.e. a
+  // genuinely fresh browser/session) picks up the new default.
+  it('a saved geometrySnap:false is NOT flipped by the new default -- an existing choice stays put', () => {
+    localStorage.setItem('bsg.editorGrid', JSON.stringify({ geometrySnap: false }));
+    expect(loadGridPrefs().geometrySnap).toBe(false);
+  });
+
+  it('a saved geometrySnap:true (already on) also stays put', () => {
+    localStorage.setItem('bsg.editorGrid', JSON.stringify({ geometrySnap: true }));
+    expect(loadGridPrefs().geometrySnap).toBe(true);
+  });
+
+  it('a genuinely fresh session (nothing stored at all) gets the new default: ON', () => {
+    expect(loadGridPrefs().geometrySnap).toBe(true);
   });
 
   it('does not throw and falls back to defaults on a corrupt stored value', () => {

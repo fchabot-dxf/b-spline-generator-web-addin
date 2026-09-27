@@ -24,9 +24,10 @@ import {
   LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
-import { getActiveLayer, addLayer, setActiveLayer } from './layers.js';
+import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved } from './layers.js';
 import { OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import { lcgPoints } from '../core/terrain.js';
+import { setEditorStatusHint } from './editor-ui.js';
 // T48 (SE13 Slice 2): the pure boundary-cutting engine (T47) — computePattern's
 // 'boundary' extent branch calls insideSpans directly (no re-derivation of
 // L/A/C crossing math here); primitivesBBox is _resolveExtent's own
@@ -1141,15 +1142,18 @@ export function _enforceTieMinSpacing(tieSlots, minSpacingIn, spacing) {
   if (minSpacingCells <= 0) return tieSlots;
   const accepted = [];
   for (const slot of tieSlots) {
-    const lo1 = Math.min(slot.jStart, slot.jEnd), hi1 = Math.max(slot.jStart, slot.jEnd);
-    const conflict = accepted.some((a) => {
-      const lo2 = Math.min(a.jStart, a.jEnd), hi2 = Math.max(a.jStart, a.jEnd);
-      const spansOverlapOrTouch = lo1 <= hi2 && lo2 <= hi1;
-      return spansOverlapOrTouch && Math.abs(slot.i - a.i) < minSpacingCells;
-    });
-    if (!conflict) accepted.push(slot);
+    if (!accepted.some((a) => _tiesTooClose(a, slot, minSpacingCells))) accepted.push(slot);
   }
   return accepted;
+}
+
+// The min-spacing rule itself (see above), shared with count mode's
+// accept-as-you-choose pass so both apply exactly the same test.
+function _tiesTooClose(a, b, minSpacingCells) {
+  if (minSpacingCells <= 0) return false;
+  const lo1 = Math.min(b.jStart, b.jEnd), hi1 = Math.max(b.jStart, b.jEnd);
+  const lo2 = Math.min(a.jStart, a.jEnd), hi2 = Math.max(a.jStart, a.jEnd);
+  return lo1 <= hi2 && lo2 <= hi1 && Math.abs(b.i - a.i) < minSpacingCells;
 }
 
 /**
@@ -1190,141 +1194,134 @@ export function _enforceTieMinSpacing(tieSlots, minSpacingIn, spacing) {
  * seeded count lands above the range's own minimum. See
  * `_chooseTieColumns`'s own doc comment for the full derivation.
  */
-function _tieSlotsByCount(railRows, columns, ties, jMin, jMax, seed, tieSpanIntact) {
-  if (columns.length === 0) return [];
-  const spanMode = ties.span?.mode || 'cells';
-  if (spanMode === 'rails' && railRows.length < 2) return []; // nothing to bridge between
+function _tieSlotsByCount(railRows, columns, ties, jMin, jMax, seed, tieSpanIntact, onRealRails = () => true, minSpacingCells = 0) {
   const [countMin, countMax] = ties.count;
+  const none = { slots: [], countMin };
+  if (columns.length === 0) return none;
+  const spanMode = ties.span?.mode || 'cells';
+  if (spanMode === 'rails' && railRows.length < 2) return none; // nothing to bridge between
   const countDraw = lcgPoints(_fmix32(_columnSeed(seed, _TIES_COUNT_SALT)), 1)[0].u;
-  const count = Math.min(
-    columns.length,
-    Math.max(0, countMin + Math.floor(countDraw * (countMax - countMin + 1)))
-  );
-  if (count <= 0) return [];
-
-  const chosen = _chooseTieColumns(columns, count, countMin, ties.spread || 'stratified', seed);
-
-  const slots = [];
-
-  if (spanMode === 'rails') {
-    const numGaps = railRows.length - 1;
-    const minGaps = Math.max(1, Math.min(numGaps, ties.span?.rails || 1));
-    const maxGaps = Math.max(minGaps, Math.min(numGaps, ties.maxRailGaps || minGaps));
-    // T67 AMEND #4 (render+view caught this LIVE, before it ever got
-    // named in the dispatch text): `railRows` is the RAW row list — true
-    // rail-to-rail bridging in board/rect mode, but in BOUNDARY mode
-    // (Shape Lattice) the tie's own column can dip outside the silhouette
-    // somewhere between the two rows even when both rows themselves have
-    // a rail (a pinched/non-convex shape, e.g. an hourglass waist) — a
-    // row being IN this list does not mean the FULL bridge at this
-    // column survives boundary clipping intact. `tieSpanIntact` (board/
-    // rect: always true, so every path below is a pure no-op and the
-    // ORIGINAL seeded draw is always used byte-identically) checks the
-    // WHOLE candidate span, not just its two ends; when the original
-    // draw fails it, a deterministic scan over the SAME candidate space
-    // (by gap size, closest to the drawn one first, then start index
-    // ascending) finds the first genuinely-intact bridge — "place what
-    // fits" (an already-accepted, already-tested outcome elsewhere in
-    // this exact function) rather than a floating/shortened stub, if
-    // none exist at all.
-    const intact = tieSpanIntact || (() => true);
-
-    // T67 AMEND 3+4 (Fred: "i dont want it to be always rail to rail...
-    // one setting: number of one ended ties"): WHICH of `chosen` are
-    // one-ended is its OWN independent seeded score-and-sort (same
-    // "score every candidate, keep the N lowest" shape `_chooseTieColumns`
-    // above already uses for "which zones get the extra tie") — the
-    // LOWEST-scored `oneEnded` columns (clamped to how many ties actually
-    // exist) become one-ended; every other column bridges rail-to-rail
-    // exactly as before this amendment.
-    const oneEndedCount = Math.max(0, Math.min(chosen.length, ties.oneEnded ?? 1));
-    const oneEndedScored = chosen.map((col) => ({ col, score: lcgPoints(_fmix32(_columnSeed(seed, _TIES_SPREAD_SALT + 20000 + col)), 1)[0].u }));
-    oneEndedScored.sort((a, b) => a.score - b.score);
-    const oneEndedSet = new Set(oneEndedScored.slice(0, oneEndedCount).map((s) => s.col));
-
-    const spanMin = Math.max(1, ties.spanMin || 1);
-    const spanMax = Math.max(spanMin, ties.spanMax || spanMin);
-
-    for (const col of chosen) {
-      if (oneEndedSet.has(col)) {
-        // One end ON a rail (jStart, a real row), the other end a FREE
-        // stub that deliberately does NOT reach the neighbouring rail —
-        // tries the seeded direction/row first, falls back to any row/
-        // direction with enough room, and finally (no room anywhere for
-        // ANY stub, a tight-rail edge case) falls through to the
-        // ordinary rail-to-rail path below rather than skip the tie
-        // outright ("place what fits" already covers dropping it later
-        // if even THAT doesn't survive boundary clipping).
-        const draws = lcgPoints(_columnSeed(_columnSeed(seed, col), _TIES_GEOMETRY_SALT + 30000), 3);
-        const rowOrder = [...railRows.keys()].sort((a, b) => Math.abs(a - Math.floor(draws[0].u * railRows.length)) - Math.abs(b - Math.floor(draws[0].u * railRows.length)));
-        let stubPlaced = false;
-        for (const rIdx of rowOrder) {
-          const jStart = railRows[rIdx];
-          const roomUp = rIdx + 1 < railRows.length ? railRows[rIdx + 1] - jStart - 1 : Infinity;
-          const roomDown = rIdx > 0 ? jStart - railRows[rIdx - 1] - 1 : Infinity;
-          const goUpFirst = draws[1].u < 0.5;
-          for (const [room, dir] of goUpFirst ? [[roomUp, 1], [roomDown, -1]] : [[roomDown, -1], [roomUp, 1]]) {
-            if (room < spanMin) continue;
-            const maxSpan = Math.min(spanMax, room);
-            const span = spanMin + Math.floor(draws[2].u * (maxSpan - spanMin + 1));
-            const jEnd = jStart + dir * span;
-            slots.push({ i: col, jStart, jEnd, anchored: true, oneEndedFree: true });
-            stubPlaced = true;
-            break;
-          }
-          if (stubPlaced) break;
-        }
-        if (stubPlaced) continue;
-        // no room anywhere for a stub at this column — fall through to
-        // the ordinary rail-to-rail draw below instead of dropping it.
-      }
-      const draws = lcgPoints(_columnSeed(_columnSeed(seed, col), _TIES_GEOMETRY_SALT), 2);
-      const gapSize = minGaps + Math.floor(draws[0].u * (maxGaps - minGaps + 1));
-      const maxStartIdx = numGaps - gapSize;
-      const startIdx = Math.floor(draws[1].u * (maxStartIdx + 1));
-      if (intact(col, railRows[startIdx], railRows[startIdx + gapSize])) {
-        slots.push({ i: col, jStart: railRows[startIdx], jEnd: railRows[startIdx + gapSize], anchored: true });
-        continue;
-      }
-      let placed = false;
-      const gapOrder = [gapSize, ...Array.from({ length: maxGaps - minGaps + 1 }, (_, k) => minGaps + k).filter((g) => g !== gapSize)];
-      for (const g of gapOrder) {
-        const maxStart = numGaps - g;
-        if (maxStart < 0) continue;
-        for (let s = 0; s <= maxStart; s++) {
-          const jStart = railRows[s], jEnd = railRows[s + g];
-          if (!intact(col, jStart, jEnd)) continue;
-          slots.push({ i: col, jStart, jEnd, anchored: true });
-          placed = true;
-          break;
-        }
-        if (placed) break;
-      }
-    }
-    return slots;
-  }
-
-  // 'cells' (default): the EXACT pre-T56 free-anchor span draw
-  // (`_tieSpanForColumn`'s own 'free' branch), reused here rather than
-  // re-derived — same formula, same `_applyRailSnap` call, just fed by
-  // this function's own (nested) geometry seed instead of the density
-  // gate's own `gate`/`pick` pair.
   const spanMin = Math.max(1, ties.spanMin || 1);
   const spanMax = Math.max(spanMin, ties.spanMax || spanMin);
+
+  // ── Per-column tie geometry (unchanged; each returns a slot or null) ──
+  //
+  // T67 AMEND #4 (render+view caught this LIVE, before it ever got named
+  // in the dispatch text): `railRows` is the RAW row list — true
+  // rail-to-rail bridging in board/rect mode, but in BOUNDARY mode (Shape
+  // Lattice) the tie's own column can dip outside the silhouette somewhere
+  // between the two rows even when both rows themselves have a rail (a
+  // pinched/non-convex shape, e.g. an hourglass waist). `tieSpanIntact`
+  // (board/rect: always true) checks the WHOLE candidate span, not just
+  // its two ends; when the seeded draw fails it, a deterministic scan over
+  // the SAME candidate space (by gap size, closest to the drawn one first,
+  // then start index ascending) finds the first genuinely-intact bridge.
+  const intact = tieSpanIntact || (() => true);
+  const numGaps = railRows.length - 1;
+  const minGaps = Math.max(1, Math.min(numGaps, ties.span?.rails || 1));
+  const maxGaps = Math.max(minGaps, Math.min(numGaps, ties.maxRailGaps || minGaps));
+  const railBridge = (col) => {
+    const draws = lcgPoints(_columnSeed(_columnSeed(seed, col), _TIES_GEOMETRY_SALT), 2);
+    const gapSize = minGaps + Math.floor(draws[0].u * (maxGaps - minGaps + 1));
+    const startIdx = Math.floor(draws[1].u * (numGaps - gapSize + 1));
+    if (intact(col, railRows[startIdx], railRows[startIdx + gapSize])) {
+      return { i: col, jStart: railRows[startIdx], jEnd: railRows[startIdx + gapSize], anchored: true };
+    }
+    const gapOrder = [gapSize, ...Array.from({ length: maxGaps - minGaps + 1 }, (_, k) => minGaps + k).filter((g) => g !== gapSize)];
+    for (const g of gapOrder) {
+      for (let st = 0; st <= numGaps - g; st++) {
+        if (intact(col, railRows[st], railRows[st + g])) return { i: col, jStart: railRows[st], jEnd: railRows[st + g], anchored: true };
+      }
+    }
+    return null;
+  };
+  // T67 AMEND 3+4: a one-ended tie -- one end ON a rail (jStart, a real
+  // row), the other a FREE stub that deliberately does NOT reach the
+  // neighbouring rail. Seeded row/direction first, then any row/direction
+  // with room; null when no stub fits anywhere at this column.
+  const railStub = (col) => {
+    const draws = lcgPoints(_columnSeed(_columnSeed(seed, col), _TIES_GEOMETRY_SALT + 30000), 3);
+    const rowOrder = [...railRows.keys()].sort((a, b) => Math.abs(a - Math.floor(draws[0].u * railRows.length)) - Math.abs(b - Math.floor(draws[0].u * railRows.length)));
+    for (const rIdx of rowOrder) {
+      const jStart = railRows[rIdx];
+      const roomUp = rIdx + 1 < railRows.length ? railRows[rIdx + 1] - jStart - 1 : Infinity;
+      const roomDown = rIdx > 0 ? jStart - railRows[rIdx - 1] - 1 : Infinity;
+      const goUpFirst = draws[1].u < 0.5;
+      for (const [room, dir] of goUpFirst ? [[roomUp, 1], [roomDown, -1]] : [[roomDown, -1], [roomUp, 1]]) {
+        if (room < spanMin) continue;
+        const maxSpan = Math.min(spanMax, room);
+        const span = spanMin + Math.floor(draws[2].u * (maxSpan - spanMin + 1));
+        return { i: col, jStart, jEnd: jStart + dir * span, anchored: true, oneEndedFree: true };
+      }
+    }
+    return null;
+  };
+  // 'cells': the EXACT pre-T56 free-anchor span draw (`_tieSpanForColumn`'s
+  // own 'free' branch), fed by this function's own geometry seed.
   const railSnapRows = ties.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
-  for (const col of chosen) {
+  const cellStub = (col) => {
     const draws = lcgPoints(_columnSeed(_columnSeed(seed, col), _TIES_GEOMETRY_SALT), 2);
     const span = spanMin + Math.floor(draws[0].u * (spanMax - spanMin + 1));
     const clampedSpan = Math.min(span, spanMax, jMax - jMin);
-    if (clampedSpan < 0) continue;
+    if (clampedSpan < 0) return null;
     const maxStart = jMax - clampedSpan;
-    if (maxStart < jMin) continue; // doesn't fit in this extent at all — skip this column
+    if (maxStart < jMin) return null; // doesn't fit in this extent at all
     const jStart = jMin + Math.floor(draws[1].u * (maxStart - jMin + 1));
-    const jEnd = jStart + clampedSpan;
-    const snapped = _applyRailSnap(jStart, jEnd, railRows, railSnapRows, spanMin, spanMax);
-    slots.push({ i: col, jStart: snapped.jStart, jEnd: snapped.jEnd });
+    const snapped = _applyRailSnap(jStart, jStart + clampedSpan, railRows, railSnapRows, spanMin, spanMax);
+    return { i: col, jStart: snapped.jStart, jEnd: snapped.jEnd };
+  };
+  // A tie only counts if it survives every filter that can reject it:
+  // inside the shape (above) and, for an anchored tie, ending on a rail
+  // that was actually drawn (`onRealRails`, from the caller).
+  const valid = (slot) => (slot && onRealRails(slot) ? slot : null);
+  const baseCache = new Map();
+  const baseSlot = (col) => {
+    if (!baseCache.has(col)) baseCache.set(col, valid(spanMode === 'rails' ? railBridge(col) : cellStub(col)));
+    return baseCache.get(col);
+  };
+
+  // T80 item 1 (Fred: Count 8-13 on an hourglass drew only 4): the count
+  // used to be chosen FIRST and the filters dropped ties AFTER, so the
+  // delivered count fell below Count's minimum. Now: build the VALID
+  // candidates, draw the count and choose among those (same seeded draw,
+  // same stratified spread, just over columns that can actually hold a
+  // tie), then accept them against min spacing -- refilling from the
+  // remaining valid columns, in a seeded order, when spacing rejects some.
+  // The caller reports a shortfall when fewer than Count's minimum fit.
+  const pool = columns.filter((col) => baseSlot(col));
+  const count = Math.min(pool.length, Math.max(0, countMin + Math.floor(countDraw * (countMax - countMin + 1))));
+  if (count <= 0) return none;
+  const chosen = _chooseTieColumns(pool, count, countMin, ties.spread || 'stratified', seed);
+
+  // T67 AMEND 3+4 (Fred: "one setting: number of one ended ties"): WHICH
+  // of `chosen` are one-ended is its own seeded score-and-sort; a column
+  // with no room for a valid stub keeps its rail-to-rail tie.
+  let oneEndedSet = new Set();
+  if (spanMode === 'rails') {
+    const oneEndedCount = Math.max(0, Math.min(chosen.length, ties.oneEnded ?? 1));
+    const oneEndedScored = chosen.map((col) => ({ col, score: lcgPoints(_fmix32(_columnSeed(seed, _TIES_SPREAD_SALT + 20000 + col)), 1)[0].u }));
+    oneEndedScored.sort((a, b) => a.score - b.score);
+    oneEndedSet = new Set(oneEndedScored.slice(0, oneEndedCount).map((sc) => sc.col));
   }
-  return slots;
+  const slotFor = (col) => (oneEndedSet.has(col) ? (valid(railStub(col)) || baseSlot(col)) : baseSlot(col));
+
+  const accepted = [];
+  const accept = (slot) => {
+    if (!slot || accepted.some((a) => _tiesTooClose(a, slot, minSpacingCells))) return;
+    accepted.push(slot);
+  };
+  for (const col of chosen) accept(slotFor(col));
+  if (accepted.length < count) {
+    const chosenSet = new Set(chosen);
+    const rest = pool.filter((col) => !chosenSet.has(col))
+      .map((col) => ({ col, score: lcgPoints(_fmix32(_columnSeed(seed, _TIES_SPREAD_SALT + 40000 + col)), 1)[0].u }))
+      .sort((a, b) => a.score - b.score);
+    for (const { col } of rest) {
+      if (accepted.length >= count) break;
+      accept(baseSlot(col));
+    }
+  }
+  return { slots: accepted, countMin };
 }
 
 function _occupiedHas(occupied, i, j, kind) {
@@ -1459,6 +1456,30 @@ function _rowScanLine(j, orientation) {
   const p0 = orient({ i: 0, j }, orientation);
   const p1 = orient({ i: 1, j }, orientation);
   return { point: { x: p0.i, y: p0.j }, dir: { x: p1.i - p0.i, y: p1.j - p0.j } };
+}
+
+/** T80 item 2: clip ONE hand-drawn rail (canonical row `j`, from `iLo` to
+ *  `iHi`, ±Infinity = the whole row) to a boundary-mode pattern's shape --
+ *  the SAME scan line, inside/collinear span union, span clip and end rule
+ *  computePattern applies to a generated rail on that row. `spacing` is the
+ *  hand tool's own lattice step (its i/j units). Returns the inside pieces
+ *  as [{a, b}] canonical i values (0, 1 or many), or null when the pattern
+ *  has no boundary to clip to. */
+export async function clipHandRailToBoundary(editor, PATTERN, j, iLo, iHi, spacing) {
+  if (!PATTERN || !PATTERN.extent || PATTERN.extent.mode !== 'boundary') return null;
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(PATTERN.widths || {}) };
+  const boundary = { ...PATTERN_DEFAULTS.boundary, ...(PATTERN.boundary || {}) };
+  const orientation = PATTERN.orientation || PATTERN_DEFAULTS.orientation;
+  const resolved = await _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths);
+  const primitives = resolved.primitives.map((p) => _scalePrimitiveToLattice(p, spacing));
+  const rowScan = _rowScanLine(j, orientation);
+  const combined = _unionSpans(insideSpans(rowScan, primitives), collinearSpans(rowScan, primitives));
+  const endRule = usesContourCenterline(PATTERN) ? 'on-boundary' : (boundary.endRule || PATTERN_DEFAULTS.boundary.endRule);
+  const halfRail = widths.rails / 2 / spacing;
+  return _clipToSpans(Math.min(iLo, iHi), Math.max(iLo, iHi), combined).map((piece) => {
+    const { a, b } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfRail);
+    return { a, b };
+  });
 }
 
 /** T48: same as `_rowScanLine`, for a CANONICAL column `i` (a tie). */
@@ -1776,23 +1797,22 @@ export function computePattern(PATTERN, opts = {}) {
   // computed up front here, then fed through the SAME emission loop below
   // either way (only how `tieSlots` gets built differs by mode).
   let tieSlots;
+  let tieShortfall = null;
   if (ties.mode === 'count') {
-    tieSlots = _tieSlotsByCount(railRows, columns, ties, jMin, jMax, seed, tieSpanIntact);
-    // T67 AMEND #4 — belt-and-suspenders final check: `tieSpanIntact`
-    // verifies the COLUMN stays inside the boundary via `insideSpans`'
-    // own vertical (col) scan; a rail ROW's own visible extent comes
-    // from a SEPARATE horizontal (row) scan, independently end-rule-
-    // pulled-back. For almost every case these agree, but a genuinely
-    // pinched/asymmetric boundary can disagree at its own extreme edge
-    // (measured directly, not assumed: seed 42's own default hourglass,
-    // column 0 — the board's own leftmost candidate column — passed the
-    // col-scan check while row 12's own ACTUAL emitted rail only reaches
-    // x=1.05, never x=0 at all). Ground truth for "does a tie's own end
-    // land on a rail" is the rail's own REAL, ALREADY-EMITTED segment —
-    // checked here directly (rails always emit before ties, above) —
-    // rather than trusting two independently-computed insideness tests
-    // to necessarily agree. An anchored slot that fails this is dropped
-    // ("place what fits", not a floating stub).
+    // T67 AMEND #4 — `tieSpanIntact` verifies the COLUMN stays inside the
+    // boundary via `insideSpans`' own vertical (col) scan; a rail ROW's
+    // own visible extent comes from a SEPARATE horizontal (row) scan,
+    // independently end-rule-pulled-back. For almost every case these
+    // agree, but a genuinely pinched/asymmetric boundary can disagree at
+    // its own extreme edge (measured directly, not assumed: seed 42's own
+    // default hourglass, column 0 passed the col-scan check while row
+    // 12's own ACTUAL emitted rail only reaches x=1.05, never x=0 at all).
+    // Ground truth for "does a tie's own end land on a rail" is the rail's
+    // own REAL, ALREADY-EMITTED segment (rails always emit before ties,
+    // above). T80 item 1: this check now runs while the ties are CHOSEN
+    // (passed into `_tieSlotsByCount`), not as a filter afterwards, so a
+    // rejected tie no longer lowers the delivered count.
+    let onRealRails = () => true;
     if (isBoundary) {
       const railSpansByRow = new Map();
       for (const seg of segments) {
@@ -1804,9 +1824,13 @@ export function computePattern(PATTERN, opts = {}) {
       // T67 AMEND 3+4: a one-ended slot only needs its OWN rail end
       // (jStart) validated — jEnd is a deliberate free stub, never
       // expected to be on a rail at all.
-      tieSlots = tieSlots.filter((slot) => !slot.anchored
-        || (slot.oneEndedFree ? onRealRail(slot.jStart, slot.i) : (onRealRail(slot.jStart, slot.i) && onRealRail(slot.jEnd, slot.i))));
+      onRealRails = (slot) => !slot.anchored
+        || (slot.oneEndedFree ? onRealRail(slot.jStart, slot.i) : (onRealRail(slot.jStart, slot.i) && onRealRail(slot.jEnd, slot.i)));
     }
+    const minSpacingCells = (ties.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing) / P.spacing;
+    const byCount = _tieSlotsByCount(railRows, columns, ties, jMin, jMax, seed, tieSpanIntact, onRealRails, minSpacingCells);
+    tieSlots = byCount.slots;
+    if (tieSlots.length < byCount.countMin) tieShortfall = { placed: tieSlots.length, min: byCount.countMin };
   } else {
     tieSlots = [];
     for (const i of columns) {
@@ -1820,7 +1844,9 @@ export function computePattern(PATTERN, opts = {}) {
   // filter above (boundary-intactness, one-ended placement, ...) has
   // already settled it -- both count-mode and density-mode/Shape-Lattice
   // (boundary-clipped) ties converge to this one `tieSlots` array before
-  // it, so one filter covers every mode, never a per-mode copy.
+  // it, so one filter covers every mode, never a per-mode copy. (Count
+  // mode already applied the same rule while choosing -- T80 item 1 -- so
+  // for it this is a no-op.)
   tieSlots = _enforceTieMinSpacing(tieSlots, ties.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing, P.spacing);
 
   const halfTie = widths.ties / 2 / P.spacing;
@@ -1941,6 +1967,8 @@ export function computePattern(PATTERN, opts = {}) {
   // (a no-op when orientation is 'horizontal' — orient() is the identity
   // then, so this whole map costs nothing observable in today's default).
   return {
+    // T80 item 1: set when Count asks for more ties than fit (placed < min).
+    tieShortfall,
     segments: segments.map((s) => ({
       kind: s.kind,
       a: orient(s.a, orientation),
@@ -2150,6 +2178,29 @@ function _collectOccupied(editor, layerIds, spacing) {
 // the commit hook. Needed before generatePattern can reference it.
 let _boundaryRefillInProgress = false;
 
+/**
+ * T80 item 1: when Count asks for more ties than fit, say so in the editor's
+ * status hint (the Shape Lattice panel's existing notice), and clear that
+ * message -- only ours, never someone else's hint -- once it no longer applies.
+ */
+export function tieShortfallText(shortfall) {
+  if (!shortfall) return null;
+  return `Ties: only ${shortfall.placed} fit (Count asks for at least ${shortfall.min}). `
+    + 'Lower the minimum, the min spacing or the one-ended count, or widen the shape.';
+}
+let _lastTieHint = null;
+function _showTieShortfall(shortfall) {
+  const text = tieShortfallText(shortfall);
+  const hintEl = typeof document !== 'undefined' ? document.getElementById('editorStatusHint') : null;
+  if (text) {
+    setEditorStatusHint(text);
+    _lastTieHint = text;
+  } else if (_lastTieHint && hintEl && hintEl.textContent === _lastTieHint) {
+    setEditorStatusHint(null);
+    _lastTieHint = null;
+  }
+}
+
 export async function generatePattern(editor, PATTERN) {
   if (!editor || !editor._sketchLayer) return null;
   if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
@@ -2193,7 +2244,11 @@ export async function generatePattern(editor, PATTERN) {
   } else {
     extent = _resolveExtent(editor, PATTERN);
   }
-  const kindLayerList = [kindLayerIds.rails, kindLayerIds.ties, kindLayerIds.nodes];
+  // H20 item 6: a removed kind's id is absent from kindLayerIds (see
+  // _ensureKindLayers) — filtered here so a deleted Ties/Nodes layer's old
+  // (now-gone) id, or an entry that was never created, is never matched
+  // against a live child's data-layer attribute.
+  const kindLayerList = [kindLayerIds.rails, kindLayerIds.ties, kindLayerIds.nodes].filter(Boolean);
   const occupied = _collectOccupied(editor, kindLayerList, spacing);
 
   // Remove every element EACH kind-layer already owns — the "replace",
@@ -2209,7 +2264,8 @@ export async function generatePattern(editor, PATTERN) {
     }
   });
 
-  const { segments, nodePoints } = computePattern(PATTERN, { extent, occupied });
+  const { segments, nodePoints, tieShortfall } = computePattern(PATTERN, { extent, occupied });
+  _showTieShortfall(tieShortfall);
 
   const tagOwned = (el) => { if (el) el.attr(OWNERSHIP_ATTR, PATTERN.id); return el; };
   // T72 (AMEND 5's own sweep, a real parity bug): skip a genuinely
@@ -2240,22 +2296,31 @@ export async function generatePattern(editor, PATTERN) {
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
     tagOwned(emitSegment(editor, 'rail', p1, p2, widths.rails));
   }
-  editor._activeLayer = kindLayerIds.ties;
-  editor._color = colors.ties;
-  for (const seg of segments) {
-    if (seg.kind !== 'tie') continue;
-    const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
-    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
-    tagOwned(emitSegment(editor, 'tie', p1, p2, widths.ties));
+  // H20 item 6: kindLayerIds.ties/.nodes is absent when the user deleted
+  // that layer (_ensureKindLayers skips recreating a removedKinds entry) —
+  // guarded so a removed kind's loop never runs (which would otherwise set
+  // _activeLayer to undefined and let ensureActiveLayer/emitSegment spin up
+  // a stray new layer to emit into, resurrecting the deleted kind anyway).
+  if (kindLayerIds.ties) {
+    editor._activeLayer = kindLayerIds.ties;
+    editor._color = colors.ties;
+    for (const seg of segments) {
+      if (seg.kind !== 'tie') continue;
+      const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
+      if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
+      tagOwned(emitSegment(editor, 'tie', p1, p2, widths.ties));
+    }
   }
-  editor._activeLayer = kindLayerIds.nodes;
-  editor._color = colors.nodes;
-  for (const p of nodePoints) {
-    // emitNode dedupes against an existing node at the same lattice cell
-    // (findNodeAt, editor-lattice.js:99) — a belt-and-suspenders no-op if
-    // occupied-detection already steered clear of it; returns null if so,
-    // which tagOwned's own null-check handles.
-    tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeDiameter / 2));
+  if (kindLayerIds.nodes) {
+    editor._activeLayer = kindLayerIds.nodes;
+    editor._color = colors.nodes;
+    for (const p of nodePoints) {
+      // emitNode dedupes against an existing node at the same lattice cell
+      // (findNodeAt, editor-lattice.js:99) — a belt-and-suspenders no-op if
+      // occupied-detection already steered clear of it; returns null if so,
+      // which tagOwned's own null-check handles.
+      tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeDiameter / 2));
+    }
   }
   editor._color = previousColor;
   // T76 (SE17): land on the RAILS layer — real, editable, generated
@@ -2302,7 +2367,7 @@ export async function generatePattern(editor, PATTERN) {
   if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   _boundaryRefillInProgress = wasRefilling;
 
-  return { segments, nodePoints };
+  return { segments, nodePoints, tieShortfall };
 }
 
 /**
@@ -2663,7 +2728,14 @@ export function resolvePatternLayer(editor, layerId) {
   if (!layer) return null;
   if (layer.pattern) return layer;
   if (layer.patternOwner) return layers.find((l) => String(l.id) === String(layer.patternOwner)) || null;
-  return null;
+  // T80 item 4: `patternOwner` is runtime-only (not in the saved roster), so
+  // after a reopen a sibling kind-layer had no owner and the panel started a
+  // fresh pattern -> a second Ties/Contour/Nodes set. The owner's own
+  // `pattern.layers` map (saved with the pattern) is the declared identity:
+  // it names each kind-layer by id, so it survives 3D/eye toggles, renames
+  // and reordering.
+  return layers.find((l) => l.pattern && l.pattern.layers
+    && Object.values(l.pattern.layers).some((id) => String(id) === key)) || null;
 }
 
 /** H2 (SEG-COLOR-PANEL): true when `el` is a contour segment carrying an
@@ -2748,12 +2820,56 @@ export function _ensureKindLayers(editor, pattern, currentLayerId, kinds) {
   for (const kind of kinds) {
     if (kind === 'rails') continue; // ensured, unconditionally, above
     if (layerExists(ids[kind])) continue;
+    // H20 item 6 (Fred: "after a few layers they just come back"): a kind
+    // the user DELETED (not one that's merely never existed yet) stays
+    // deleted until Undo — `removeLayer` (layers.js) marks it here when the
+    // delete happens. Without this, deleting e.g. the Ties layer and then
+    // triggering ANY later refill (a visibility toggle, undo/redo, a
+    // recolor, Contour's own boundary changing) silently recreated it from
+    // the pattern's own on/off-less "just fill whatever's missing" logic.
+    if (pattern.removedKinds && pattern.removedKinds[kind]) continue;
     const layer = addLayer(editor, { ...LATTICE_KIND_LAYER_DEFAULTS[kind], skipUndo: true });
     layer.patternOwner = ids.rails;
     ids[kind] = layer.id;
   }
   return ids;
 }
+
+/**
+ * H20 item 6 (Fred: "I've been trying to delete layers and after a few
+ * layers they just come back" — measured, live: deleting Ties then Nodes
+ * left them gone; the NEXT commit-triggering action — e.g. toggling a
+ * layer's visibility — resurrected both via `generatePattern`'s own
+ * refill, because nothing had ever told the pattern those kinds were
+ * gone). Registered below via `onLayerRemoved` (layers.js) — fired by
+ * `removeLayer` BEFORE it splices the doomed layer out, so the pattern
+ * that owns it (identified via `pattern.layers`, T80 item 4's own declared
+ * identity — the map survives 3D/eye toggles, renames and reordering,
+ * unlike the runtime-only `patternOwner`) can still be found here.
+ *
+ * Marks the kind `removedKinds[kind] = true` (read by `_ensureKindLayers`,
+ * above, and checked directly by `regenerateSilhouette` for contour) and
+ * drops `pattern.layers[kind]`. Once every non-rails kind is marked
+ * removed, the lattice itself is gone — drops `.pattern` from the rails
+ * layer entirely, turning it back into a plain layer, rather than leaving
+ * an empty shell a stray refill could still "generate" content into.
+ */
+function _markLatticeKindRemoved(editor, removedId) {
+  const key = String(removedId);
+  for (const l of editor._layers) {
+    if (!l.pattern || !l.pattern.layers) continue;
+    const kind = Object.keys(l.pattern.layers).find((k) => String(l.pattern.layers[k]) === key);
+    if (!kind) continue;
+    l.pattern.removedKinds = l.pattern.removedKinds || {};
+    l.pattern.removedKinds[kind] = true;
+    delete l.pattern.layers[kind];
+    if (['contour', 'ties', 'nodes'].every((k) => l.pattern.removedKinds[k])) {
+      delete l.pattern;
+    }
+    return;
+  }
+}
+onLayerRemoved(_markLatticeKindRemoved);
 
 /** SE7i: the ACTIVE layer's own Pattern settings — the one per-layer
  *  source of truth (retires the old file-level editor._latticePattern,
