@@ -95,9 +95,13 @@ bspline-frame-builder/stamp-editor/html/core/gaussian.js
 *-debug.log
 *.bak
 *.bak[0-9]
-# T78: filter_shots.mjs's own throwaway headless-Chrome profile dirs (the
-# committed shots\seatB\*.png screenshots themselves are NOT ignored)
-shots/**/.chrome-*/
+# T78 AMEND (advisor): renders go to the ABSOLUTE
+# C:/Users/danse/.bspline-status/shots/seatB path now (that's what Fred's
+# progress page actually reads), not this worktree's own shots/ -- a
+# relative shots/seatB never showed up there, and images don't belong in
+# the repo anyway. Ignore the whole folder (this also covers
+# filter_shots.mjs's own throwaway headless-Chrome profile dirs).
+shots/
 /diff_*.txt
 /pytest_run_output.txt
 

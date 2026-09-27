@@ -166,7 +166,19 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
 
   // ── 1. SILHOUETTE (structural shape, not muscle) ────────────────────
   const neck = Math.exp(-(dx * dx) * 40.0) * Math.max(0, 1.0 - dy * 7.0) * 0.30;
-  const clavicle = Math.max(0, 1.0 - Math.abs(dy - (0.12 + dx * clavicleAngle)) * clavicleSize) * Math.exp(-dx * clavicleExtent) * 0.18;
+  // T78 AMEND 3 (Fred: "None of the clavicule are actually going
+  // opposite"): NOT a stale-image issue (confirmed by directly computing
+  // the actual per-seed angle values) -- a real bug. The clavicle line's
+  // own target position is `clavicleBaseY + dx*clavicleAngle`; with the
+  // old base (0.12, close to the board's own dy=0 top edge), a NEGATIVE
+  // angle pushes that target BELOW dy=0 well before dx=1 -- dy can't go
+  // negative, so the line simply clips and fades out near the board edge
+  // instead of visibly curving upward, while a POSITIVE angle has the
+  // entire dy=0..1 range to curve into and reads clearly. The two
+  // directions were never symmetric. Raised the base so there's real room
+  // on BOTH sides for the full clavicleAngle range to curve into.
+  const clavicleBaseY = 0.30;
+  const clavicle = Math.max(0, 1.0 - Math.abs(dy - (clavicleBaseY + dx * clavicleAngle)) * clavicleSize) * Math.exp(-dx * clavicleExtent) * 0.18;
   const deltoid = gaussianBand(dx - deltoidPos, deltoidSize) * gaussianBand(dy - 0.22, 0.14) * 0.30;
 
   // ── 2. STERNUM RIDGE + XIPHOID ──────────────────────────────────────
