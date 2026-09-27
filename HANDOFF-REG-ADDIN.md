@@ -130,7 +130,9 @@ rail ends follow the contour on a stroke_width edit, stale_params written + corr
    "Segments" sections, above Boundary. Fred's order named only Boundary→Contour→Rails→Ties→Nodes. Keep Shape/Segments on
    top, or move them? And hide the SHAPE seed too (Fred said "seed we can hide" — applied to the lattice seed only)?
    These sections are seat C's (SHAPE-PARAMS will rebase onto R7's panel). **ANSWERED (Fred): HIDE the shape seed too.**
-   Shape/Segments position: still open.
+   Shape/Segments position — **ANSWERED (Fred): "shape goes in contour"**: the Shape controls (preset, sliders) move INTO
+   the Contour section (Boundary → Contour[checkbox, stroke, shape preset + sliders] → Rails → Ties → Nodes). Segments
+   (per-piece Straight/Curve/Kink of the same outline) assumed to go in Contour too — confirm with Fred.
 2. SNAP-SPLIT (ROADMAP): separate GRID vs GEOMETRY snap for manual moves — queued, not started (Fred: leave for home).
 
 **Still queued for the home side:** SE16 ✂ Cut tool (Fred's ruling in ROADMAP: lattice cut pieces move together, direct
