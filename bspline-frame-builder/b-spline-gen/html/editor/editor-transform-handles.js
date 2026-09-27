@@ -182,6 +182,55 @@ export function hitTestHandle(records, pt) {
     return best;
 }
 
+// ─── T81 item 1 (Fred screenshot: the Shape Lattice shape handles give no
+// hover feedback -- "add visual feedback to these handles on hover") ──────
+//
+// Declared ONCE here, not per handle system, so a Shape Lattice param
+// handle (properties-shape-lattice.js) and a Frame handle (editor-frame-
+// profile.js) look and behave identically on hover/press, per the
+// dispatch's own "same look everywhere... unify onto the one declaration"
+// (neither system had its own hover style to unify FROM -- confirmed by
+// reading both: Frame's own pointer wiring, frame-panel.js, only ever had
+// pointerdown/move-while-dragging/up, no idle-hover path at all). Colors
+// match this app's OWN already-declared `.svg-handle:hover` rule (styles/
+// editor.css: fill -> accent, stroke -> white) -- found unused by any live
+// handle (no element anywhere carries that class), not invented fresh here.
+
+/** A hovered/pressed handle grows to this fraction of its idle radius. */
+export const HANDLE_HOVER_SCALE = 1.3;
+/** Matches `--cad-accent`'s own declared default (styles/editor.css). */
+export const HANDLE_HOVER_FILL = '#1e6fea';
+export const HANDLE_HOVER_STROKE = '#ffffff';
+
+/** `{radius, fill, stroke}` for ONE handle circle. `active` (hovered OR
+ *  pressed -- Touch has no hover, so "the finger is down on it" must look
+ *  exactly like "the pointer is over it," per the dispatch's own "Touch:
+ *  show the same state while pressed") grows it and swaps to the shared
+ *  accent look; otherwise the caller's own idle fill/stroke, unchanged.
+ *  These handle circles are rebuilt from scratch on every render (not
+ *  persistent DOM nodes toggling a class), so growth/colour are computed
+ *  here rather than applied via a CSS class. */
+export function handleHoverVisual(baseRadius, idleFill, idleStroke, active) {
+    return active
+        ? { radius: baseRadius * HANDLE_HOVER_SCALE, fill: HANDLE_HOVER_FILL, stroke: HANDLE_HOVER_STROKE }
+        : { radius: baseRadius, fill: idleFill, stroke: idleStroke };
+}
+
+/** The shared grab/grabbing cursor for whichever handle system is hovered
+ *  or being dragged -- ONE pair of classes (styles/editor.css) toggled on
+ *  the canvas container, so a Shape Lattice handle and a Frame handle set
+ *  the cursor the SAME way rather than two independent toggles that could
+ *  drift apart. `state`: null (idle), 'hover' (grab) or 'active' (grabbing,
+ *  mid-drag) -- distinct class names from the pre-existing `pan-ready`/
+ *  `panning` (also grab/grabbing, for Space-pan) so the two never fight
+ *  over the same class. */
+export function setHandleCursor(state) {
+    const c = typeof document !== 'undefined' ? document.getElementById('editorSVGContainer') : null;
+    if (!c) return;
+    c.classList.toggle('handle-hover-ready', state === 'hover');
+    c.classList.toggle('handle-hover-active', state === 'active');
+}
+
 /** True if `m`'s linear part carries any rotation/skew (b or c nonzero) —
  *  a pure scale+translate matrix always has b=c=0. Used only to decide
  *  whether a rect needs promoting to a path before a 'geometry' edit (see

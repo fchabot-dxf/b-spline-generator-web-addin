@@ -28,7 +28,8 @@ import {
     PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges, SHAPE_PARAM_KEYS,
 } from './editor-shape-lattice-generator.js';
 import { setEditorStatusHint } from './editor-ui.js';
-import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
+import { boardRegion, computeParamHandles, mirrorSegmentIndex, HANDLE_SEGMENT_INDEX } from './editor-shape-lattice-interaction.js';
+import { handleHoverVisual, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
 import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
@@ -421,6 +422,21 @@ export function paramHandleRecords(editor) {
     return computeParamHandles(shape.preset, region, resolved).map((h) => ({ ...h, hx: h.anchor.x, hy: h.anchor.y }));
 }
 
+/** T81 item 1: the contour segment element a hovered/pressed handle
+ *  controls (HANDLE_SEGMENT_INDEX), by its own stamped index -- reads the
+ *  LIVE element's own `d` directly (whatever it currently draws, hand-edit
+ *  divergence and all) rather than recomputing primitives, so the overlay
+ *  can never disagree with what's actually on screen. */
+function _contourSegmentEl(editor, index) {
+    if (!editor._sketchLayer) return null;
+    // Number(), not a bare `===` -- same convention hasContourSegmentColor
+    // (editor-lattice-pattern.js) already uses for this exact attribute.
+    return editor._sketchLayer.children().toArray().find(
+        (ch) => ch && ch.node && ch.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR)
+            && Number(ch.node.getAttribute(CONTOUR_SEG_INDEX_ATTR)) === index
+    ) || null;
+}
+
 /**
  * Draws the current param handles into `editor._handleLayer` — same
  * visual/sizing convention `renderTransformHandles` (editor-transform-
@@ -432,6 +448,16 @@ export function paramHandleRecords(editor) {
  * (`{key,label,axis,valueFromWorld,hx,hy,hitR}`), directly compatible
  * with `hitTestHandle` (editor-transform-handles.js) — same shape, so
  * editor-interaction.js reuses that function rather than a second one.
+ *
+ * T81 item 1: whichever handle is hovered (`editor._shapeHandleHover`) or
+ * being dragged (`editor._shapeLatticeDragKey`) draws grown + accent-filled
+ * (handleHoverVisual, the ONE declaration every editor handle system reads
+ * — editor-transform-handles.js), and the segment it controls gets a
+ * temporary accent overlay in this SAME pointer-events:none layer — no
+ * separate cleanup needed, `_handleLayer.clear()` (editor-interaction.js's
+ * `updateHandles`) already wipes it every render, same as the handle
+ * circles themselves. `hitR` stays keyed to the IDLE size — hover must not
+ * change what counts as "on the handle".
  */
 export function renderShapeLatticeHandles(editor) {
     if (!editor._handleLayer) return [];
@@ -445,12 +471,25 @@ export function renderShapeLatticeHandles(editor) {
     const handlePx = inputProfileFor(editor._pointerType).handlePx;
     const sz = Math.max(handlePx / pxPerModelUnit, 0.05);
     const strokeW = sz * (0.0025 / 0.012); // matches renderTransformHandles' own ratio
+    const preset = currentShape(currentPattern(editor)).preset;
     const out = [];
     for (const r of records) {
-        editor._handleLayer.circle(sz * 2)
+        const active = editor._shapeHandleHover === r.key || editor._shapeLatticeDragKey === r.key;
+        if (active) {
+            const segIndex = HANDLE_SEGMENT_INDEX[preset]?.[r.key];
+            const segEl = segIndex != null ? _contourSegmentEl(editor, segIndex) : null;
+            const d = segEl ? segEl.attr('d') : null;
+            if (d) {
+                editor._handleLayer.path(d).fill('none')
+                    .stroke({ color: HANDLE_HOVER_FILL, width: strokeW * 6, opacity: 0.45, linecap: 'round' })
+                    .attr('pointer-events', 'none');
+            }
+        }
+        const vis = handleHoverVisual(sz, '#ffffff', '#7b1fa2', active);
+        editor._handleLayer.circle(vis.radius * 2)
             .center(r.hx, r.hy)
-            .fill('#ffffff')
-            .stroke({ color: '#7b1fa2', width: strokeW })
+            .fill(vis.fill)
+            .stroke({ color: vis.stroke, width: strokeW })
             .attr('pointer-events', 'none');
         out.push({ ...r, hitR: sz * 1.8 });
     }

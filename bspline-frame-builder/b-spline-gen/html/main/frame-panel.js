@@ -23,6 +23,7 @@ import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds } from '../editor/frame-handles.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
 import { frameCutProfile } from '../editor/editor-frame-profile.js';
+import { setHandleCursor } from '../editor/editor-transform-handles.js';
 
 /** F9: how close (screen px) a press must land to grab a frame shape handle (finger-sized). */
 export const HANDLE_HIT_PX = 16;
@@ -96,6 +97,9 @@ export function setEditorTab(tab) {
   if ($('editorDrawerTab-layers')) $('editorDrawerTab-layers').textContent = frame ? 'Frame' : 'Layers';
   const ed = typeof window !== 'undefined' ? window.svgEditor : null;
   setEditorFocus(ed, _editorTab);
+  // T81 item 1: leaving the Frame tab drops its handles entirely (below) --
+  // a hover/grab cursor read from the OLD tab must not stick around either.
+  if (!frame) _clearFrameHover();
   if (ed) drawFrameProfile(ed); // F9: the shape handles show in the Frame tab only
   return _editorTab;
 }
@@ -201,6 +205,33 @@ export function syncFramePanel() {
  * container) takes ONLY a pointerdown that starts on a frame handle. Everything else reaches the editor, which in
  * the Frame tab (artwork locked) pans on one finger and pinch-zooms on two (editor-interaction.js).
  */
+/** F9 hit-test, factored out (T81 item 1) so pointerdown's grab check and
+ *  the idle-hover check below share the ONE nearest-handle-within-
+ *  HANDLE_HIT_PX rule rather than two copies. */
+function _hitFrameHandle(ed, clientX, clientY) {
+  const pt = ed._getMousePoint({ clientX, clientY });
+  const edge = ed._getMousePoint({ clientX: clientX + HANDLE_HIT_PX, clientY });
+  let best = null, bestD = Infinity;
+  for (const h of ed._frameHandles || []) {
+    const d = Math.hypot(h.anchor.x - pt.x, h.anchor.y - pt.y);
+    if (d < bestD) { bestD = d; best = h; }
+  }
+  return best && bestD <= Math.abs(edge.x - pt.x) ? best : null;
+}
+
+// T81 item 1: module scope (not inside _wireHandleDrag's own closure) so
+// setEditorTab, below, can clear it when the Frame tab is left -- same
+// "a mode/tab switch invalidates a stale hover" rule editor-ui.js's setMode
+// already applies to its own snap/grid hover state.
+let _frameHoverKey = null;
+function _clearFrameHover() {
+  if (_frameHoverKey === null) return;
+  _frameHoverKey = null;
+  const ed = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (ed) ed._frameHandleHover = null;
+  setHandleCursor(null);
+}
+
 function _wireHandleDrag() {
   const shield = $('editorFrameShield');
   if (!shield || !shield.parentElement) return;
@@ -209,27 +240,39 @@ function _wireHandleDrag() {
   let dragKey = null;
   const editor = () => (typeof window !== 'undefined' ? window.svgEditor : null);
   const inFrameTab = () => _editorTab === 'frame';
+  // T81 item 1: hover state lives on the editor (ed._frameHandleHover/Drag)
+  // so editor-frame-profile.js's own draw loop -- a different module, no
+  // access to this closure -- can read it; `_frameHoverKey` is just this
+  // listener's (and setEditorTab's) own "did it change" guard, so an
+  // unmoved hover doesn't redraw the whole frame profile every mousemove.
+  const setHover = (ed, key) => {
+    if (_frameHoverKey === key) return;
+    _frameHoverKey = key;
+    if (ed) { ed._frameHandleHover = key; if (ed._frameProfile) drawFrameProfile(ed); }
+    setHandleCursor(key ? 'hover' : null);
+  };
   surface.addEventListener('pointerdown', (e) => {
     if (!inFrameTab()) return;
     const ed = editor();
     if (!ed || !ed._frameProfile || !(ed._frameHandles || []).length) return;
-    const pt = ed._getMousePoint(e);
-    const edge = ed._getMousePoint({ clientX: e.clientX + HANDLE_HIT_PX, clientY: e.clientY });
-    let best = null, bestD = Infinity;
-    for (const h of ed._frameHandles) {
-      const d = Math.hypot(h.anchor.x - pt.x, h.anchor.y - pt.y);
-      if (d < bestD) { bestD = d; best = h; }
-    }
-    if (!best || bestD > Math.abs(edge.x - pt.x)) return;
+    const best = _hitFrameHandle(ed, e.clientX, e.clientY);
+    if (!best) return;
     dragKey = best.key;
+    ed._frameHandleDrag = dragKey; // T81 item 1: the SAME hover/press look for the whole drag
+    setHandleCursor('active');
+    drawFrameProfile(ed); // show it immediately -- a bare press with no movement yet (Touch has no hover at all) must not wait for the first move tick
     pushFrameHistory(); // F13: a tweak is one undoable step
     if (surface.setPointerCapture && e.pointerId != null) { try { surface.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
     e.preventDefault();
     e.stopPropagation(); // the editor never sees a handle drag
   }, true);
   surface.addEventListener('pointermove', (e) => {
-    if (!dragKey) return;
     const ed = editor();
+    if (!dragKey) {
+      // T81 item 1: idle hover -- only while the Frame tab's own handles are live.
+      setHover(ed, inFrameTab() && ed && ed._frameProfile ? (_hitFrameHandle(ed, e.clientX, e.clientY)?.key ?? null) : null);
+      return;
+    }
     const h = (ed?._frameHandles || []).find((q) => q.key === dragKey);
     if (!h) return;
     setFrameRecord(handleDragPatch(getFrameRecord(), h, ed._getMousePoint(e), ed._frameProfile.region));
@@ -237,7 +280,18 @@ function _wireHandleDrag() {
     e.preventDefault();
     e.stopPropagation();
   }, true);
-  const end = (e) => { if (!dragKey) return; dragKey = null; e.stopPropagation(); syncFramePanel(); };
+  const end = (e) => {
+    if (!dragKey) return;
+    dragKey = null;
+    const ed = editor();
+    if (ed) {
+      ed._frameHandleDrag = null;
+      if (ed._frameProfile) drawFrameProfile(ed); // T81 item 1: drop the "active" look immediately, don't wait for the next move
+    }
+    setHandleCursor(_frameHoverKey ? 'hover' : null); // likely still hovering the handle just released
+    e.stopPropagation();
+    syncFramePanel();
+  };
   surface.addEventListener('pointerup', end, true);
   surface.addEventListener('pointercancel', end, true);
 }

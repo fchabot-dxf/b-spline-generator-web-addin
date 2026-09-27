@@ -16,6 +16,7 @@ import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { offsetOutlineInward } from './outline-offset.js';
 import { shapeParamOverrides, frameHandles } from './frame-handles.js';
 import { frameColorFor } from '../core/color-utils.js';
+import { handleHoverVisual } from './editor-transform-handles.js';
 
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
 export const FRAME_GRID_CLIP_ID = 'frame-grid-clip';
@@ -239,8 +240,13 @@ function _drawFrameProfile(editor) {
     const tpl = (spec.defs.templates || []).find((t) => t.id === prof.templateId);
     editor._frameHandles = frameHandles(tpl, prof, _param(tpl, spec.record, 'frame_thickness') ?? 0);
     for (const h of editor._frameHandles) {
-      g.circle(FRAME_HANDLE_RADIUS * 2).center(h.anchor.x, h.anchor.y).fill('#ffffff')
-        .stroke({ color: FRAME_OUTLINE_COLOR, width: 0.03 }).addClass('frame-handle').attr('data-key', h.key);
+      // T81 item 1: the SAME declared hover/press look Shape Lattice's own
+      // param handles use (editor-transform-handles.js) -- frame-panel.js
+      // sets _frameHandleHover/_frameHandleDrag from its own pointer wiring.
+      const active = editor._frameHandleHover === h.key || editor._frameHandleDrag === h.key;
+      const vis = handleHoverVisual(FRAME_HANDLE_RADIUS, '#ffffff', FRAME_OUTLINE_COLOR, active);
+      g.circle(vis.radius * 2).center(h.anchor.x, h.anchor.y).fill(vis.fill)
+        .stroke({ color: vis.stroke, width: 0.03 }).addClass('frame-handle').attr('data-key', h.key);
     }
   }
   return prof;

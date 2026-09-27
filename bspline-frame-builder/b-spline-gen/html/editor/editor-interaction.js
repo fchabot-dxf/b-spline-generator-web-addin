@@ -25,7 +25,7 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { haptic, resetHapticSnap } from '../core/haptics.js';
 import {
     renderTransformHandles, hitTestHandle,
-    beginTransform, applyTransformDrag,
+    beginTransform, applyTransformDrag, setHandleCursor,
 } from './editor-transform-handles.js';
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
@@ -2103,6 +2103,10 @@ const shapeLatticeHandler = {
         if (hit) {
             editor._isDrawing = true;
             editor._shapeLatticeDragKey = hit.key;
+            // T81 item 1: the SAME visual a hover shows, held for the whole
+            // drag (Touch has no hover at all, so this is its only cue).
+            setHandleCursor('active');
+            if (typeof editor._updateHandles === 'function') editor._updateHandles();
             // `update(editor, pt)` below only ever gets the OFFSET point
             // (handleMove's own signature has no `e`) — capture the
             // offset's own constant delta here, once, and re-add it on
@@ -2242,9 +2246,29 @@ const shapeLatticeHandler = {
         editor._isDrawing = false;
         editor._shapeLatticeDragKey = null;
         editor._shapeLatticeDragOffsetY = 0;
+        // T81 item 1: back to hover (the pointer is very likely still on the
+        // handle it just released) or idle -- the next hover() call
+        // self-corrects if it isn't (no fresh pointer position here to
+        // re-test against).
+        setHandleCursor(editor._shapeHandleHover ? 'hover' : null);
         regenerateSilhouetteAndFill(editor);
     },
-    hover(editor, pt) { if (selectHandler.hover) selectHandler.hover(editor, pt); },
+    /** T81 item 1: hover feedback for the param handles -- grows/fills the
+     *  hovered one (renderShapeLatticeHandles) and sets the shared grab
+     *  cursor. `pt` is already the offset-adjusted point handleMove passes
+     *  every mode's own hover() (no raw event here), matching what a real
+     *  grab at this same point would hit — SNAP_POLICY.shapeLattice is
+     *  'none', so `pt` carries no grid-snap discrepancy against it either. */
+    hover(editor, pt) {
+        const hit = hitTestHandle(editor._paramHandles || [], pt);
+        const key = hit ? hit.key : null;
+        if (editor._shapeHandleHover !== key) {
+            editor._shapeHandleHover = key;
+            if (typeof editor._updateHandles === 'function') editor._updateHandles();
+        }
+        setHandleCursor(key ? 'hover' : null);
+        if (selectHandler.hover) selectHandler.hover(editor, pt);
+    },
 };
 
 const modeHandlers = {

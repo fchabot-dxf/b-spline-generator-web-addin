@@ -1570,6 +1570,11 @@
        stylesheet's <link>), same specificity. */
     #editorSVGContainer.pan-ready { cursor: grab; }
     #editorSVGContainer.panning { cursor: grabbing; }
+    /* T81 item 1: hover/press over a Shape Lattice or Frame handle -- own
+       class names (not pan-ready/panning) so the two never fight over the
+       same class; same grab/grabbing values. */
+    #editorSVGContainer.handle-hover-ready { cursor: grab; }
+    #editorSVGContainer.handle-hover-active { cursor: grabbing; }
     /* SE7a: SNAP dimmed for modes whose policy is 'none' (nothing to
        snap) or 'always' (already always on) — declared here, not
        styles/base.css, for the same reason as the cursor rules above. */
