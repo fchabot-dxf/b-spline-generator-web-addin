@@ -4,7 +4,7 @@
 //   - it follows a Size edit;
 //   - it is NOT in any serializer: save() (persist + 3D drape input), saveForRasterization() (stamp input),
 //     saveWithTextCopies() (SVG download) are byte-identical with and without #guide-layer present;
-//   - Apply Stencils -> the 3D preview (screenshot) shows no box.
+//   - Apply -> the 3D preview (screenshot) shows no box.
 // Usage: node tools/repro/boundary_guide_shots.mjs <outdir> [desktop|mobile] [url]
 // Own CDP ports (9343/9344) so it never collides with another lane's select_drag_shape run (9333/9334).
 import { spawn } from 'node:child_process';
@@ -116,7 +116,7 @@ async function run(tool) {
     `${tool}: Size width ${newW} -> guide ${r2.w} wide, centred at x=${r2.x}`);
   await shot(`${tool}-${MODE}-2-editor-size-edit.png`);
 
-  // 3D: Apply Stencils closes the editor and stamps -> screenshot of the 3D preview
+  // 3D: Apply closes the editor and stamps -> screenshot of the 3D preview
   await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms)); document.getElementById('editorApply').click(); await W(6000); })()`);
   await shot(`${tool}-${MODE}-3-3d-preview.png`);
 }

@@ -180,7 +180,7 @@ report.pillRect = await rectOf('.editor-history');
 report.layersPanelRect = await rectOf('#editorLayersPanel');
 report.pillIntersectsLayersPanel = intersects(report.pillRect, report.layersPanelRect);
 
-// Bug #2: Apply Stencils must always be reachable inside the viewport.
+// Bug #2: Apply must always be reachable inside the viewport.
 report.applyRect = await rectOf('#editorApply');
 report.applyFullyVisible = withinViewport(report.applyRect, W, H);
 report.cancelRect = await rectOf('#editorCancel');
