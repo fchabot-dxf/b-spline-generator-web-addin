@@ -15,7 +15,7 @@ import { generateSilhouette, outlineDefects, primitivesToPathD, paramsFromShapeM
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { offsetOutlineInward } from './outline-offset.js';
 import { shapeParamOverrides, frameHandles } from './frame-handles.js';
-import { frameTintColor } from '../core/color-utils.js';
+import { frameColorFor } from '../core/color-utils.js';
 
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
 export const FRAME_GRID_CLIP_ID = 'frame-grid-clip';
@@ -121,11 +121,11 @@ export function frameSolidSpec(defs, record, board) {
     innerPrimitives: innerOk ? inner.primitives : null,
     frameBottomZ: record.frameBottomZ,
     // H8 (Fred: "make frame colour a bit different than board, tiny bit"):
-    // the frame's own colour, not the board's raw wood colour — the SAME
-    // frameTintColor() the 2D band below calls, so both surfaces apply the
-    // identical declared offset (color-utils.js's own FRAME_TINT).
+    // the frame's own declared colour, not the board's raw wood colour —
+    // the SAME frameColorFor() the 2D band below calls, so both surfaces
+    // read the identical declared table (color-utils.js's own FRAME_COLORS).
     color: defs.appearance?.previewColors?.[record.appearance]
-      ? frameTintColor(defs.appearance.previewColors[record.appearance])
+      ? frameColorFor(record.appearance, defs.appearance.previewColors[record.appearance])
       : null,
   };
 }
@@ -182,8 +182,8 @@ export function drawFrameProfile(editor) {
   const inner = prof.fit.ok ? frameInnerProfile(spec.defs, spec.record, { widthIn: W, heightIn: H }) : null;
   if (inner && !inner.defects.length && inner.primitives.length === prof.primitives.length) {
     const innerD = primitivesToPathD(inner.primitives);
-    // H8: frameTintColor() again — see frameSolidSpec's own identical call.
-    const wood = frameTintColor(spec.defs.appearance?.previewColors?.[spec.record.appearance] || '#d9c9a3');
+    // H8: frameColorFor() again — see frameSolidSpec's own identical call.
+    const wood = frameColorFor(spec.record.appearance, spec.defs.appearance?.previewColors?.[spec.record.appearance] || '#d9c9a3');
     g.path(`${prof.pathD} ${innerD}`).fill({ color: wood, opacity: 0.45 }).attr('fill-rule', 'evenodd').addClass('frame-band');
     g.path(innerD).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.025 }).addClass('frame-inner-edge');
     for (const m of frameMiters(prof.primitives, inner.primitives)) {
