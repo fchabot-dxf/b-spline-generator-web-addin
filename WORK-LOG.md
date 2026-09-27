@@ -12919,3 +12919,64 @@ Shots in `shots\seatA\`: `h22i1_01_before_drag`, `h22i1_02_mid_drag_highlight`,
 `h22i1_02b_hover_before_release`, `h22i1_03_after_mouse_drag`, `h22i1_04_after_reopen`.
 
 `npx vitest run` -> **2234 passed** (up from 2227), zero regressions.
+
+## H22 item 2 — apply-stamp-layers.js's filtered-index-into-unfiltered-array fix
+
+Flagged in H22 item 1's WORK-LOG: `applyStampLayers` (`core/engine/apply-stamp-layers.js`) matched each
+stamp pass to "its" editor layer via `editorLayers[layerIdx]` — a POSITION in the full, unfiltered
+`window.svgEditor._layers` — using `layerIdx`, which is actually the forEach index within `passes`, the
+ALREADY-FILTERED (`isCarved`-only) list `_collectStampPasses` (`core/engine/rebuild.js`) builds. Once any
+earlier-in-`_layers` layer was hidden/non-carved, every subsequent pass silently read a DIFFERENT layer's
+depth/profile/suppression/smoothing/edgeFilletRadius — a stamp's actual cut could use a completely wrong
+layer's tool settings with no error or visible sign anything was wrong.
+
+**Fix**: `_collectStampPasses` now stamps each pass with `id: layer.id` (its stable identity — the same one
+H22 item 1's drag-to-reorder already keys off of), and `applyStampLayers` now builds a `Map` from
+`window.svgEditor._layers` keyed by id (`editorById`) and resolves each pass's matching editor layer via
+`editorFor(pass)` — an id join — replacing the old positional `editorAt(idx)`. Every downstream field
+(`effectiveDepth`/`effectiveSuppression`/`effectiveSmoothing`/`effectiveProfile`) is unchanged; only how
+`eLayer` itself is found changed.
+
+**Tests** (`tests/apply-stamp-layers.test.js`, 4 new): (1) a hidden layer ahead of two carved ones no longer
+causes the carved passes to borrow each other's/the hidden layer's depth — asserted against exact
+Float32-representable depths (0.5/0.25/0.875) so no float-rounding noise; (2) the same correctness holds
+when `_layers` has since been REORDERED relative to when the pass list was built (guards against a lesser
+"skip N hidden layers before this index" fix, not just a true id join — H22 item 1's own drag-to-reorder is
+exactly the kind of event that could reorder `_layers` between pass-collection and a later rebuild); (3) the
+pre-existing "no matching id -> fall back to the pass's own snapshotted depth" chain still works under the
+new join; (4) no `window.svgEditor` at all still falls back cleanly to each pass's own fields.
+Mutation-tested: stashed both source files and reran — **3 of 4 fail** against the pre-fix code (the 4th,
+no-`svgEditor` case, was never on the buggy path either way — noted honestly, not counted as proof). Restored,
+reran clean.
+
+**Sweep for the same pattern elsewhere** (dispatched as a read-only research pass, file:line verified):
+- **A second, related but distinct instance found and NAMED, not fixed here** —
+  `main/stamp-mask-manager.js:76`: `const lLayer = P.stampLayers?.[idx] || {};` where `idx` is the position
+  within the FULL `editorLayers.forEach` (correct against `editorLayers` itself — this file's own `idx` isn't
+  reindexed by filtering, unlike `_collectStampPasses`), but is then used to index `P.stampLayers` — a
+  separate, static legacy array (`core/state.js`, ~3 fixed entries, predates per-layer tooling) that never
+  tracks additions/deletions/reorders of editor layers. Past 3 editor layers, or after any reorder/delete,
+  `P.stampLayers[idx]` names the wrong or nonexistent legacy entry. Lower blast radius than the bug just
+  fixed — `eLayer.field ?? lLayer.field` always prefers the real editor layer first, so `lLayer` is only
+  consulted when an editor layer's OWN field is genuinely `undefined` (per SE4b, `P.stampLayers` content is
+  already "retired" and editor layers are "the single tooling store now," so this fallback may rarely fire
+  on current documents) — but it is a real, live latent bug for any field an editor layer legitimately
+  leaves unset, especially on older/legacy documents. **Flagging for the advisor to decide whether this
+  becomes its own item** — deciding whether `P.stampLayers` should be joined by id, retired outright, or
+  left as a legacy fallback is a design call, not a drive-by fix, and out of scope for the bug actually
+  dispatched here.
+- **Adjacent, not clearly broken, named for awareness**: `main/stamp/_shared.js` and `core/state.js` both use
+  `P.activeLayerIdx` to index `window.svgEditor._layers` directly — correct only as long as
+  `activeLayerIdx` is kept as a true live position in `_layers` (appears to be, via `main/stamp/layer.js`'s
+  `syncFromEditor`), so not confirmed broken, but the same "position, not id" design smell —
+  `core/state.js` itself already says so ("Position-based mapping until each stamp pass formally points at
+  an editor layer id").
+- **Checked and clean** (id-based, or a single array's own index reused consistently against itself, no
+  cross-array mismatch): `core/preview/drape-svg.js` (joins by `data-layer` id); `main/export-flow.js`
+  (`_stampExportCandidates`/`sendToFusion`/`downloadFiles` all `.map()` the SAME array in one pass, indices
+  stay aligned; `editorLayerFor` is already `.find(id)`-based); `editor/layers.js`'s `removeLayer` (`idx`
+  from the same, post-splice array); `main/stamp/layer.js`'s `idxOfEditorLayer`/`syncFromEditor` (idx derived
+  and consumed against the same `_layers` array); `main/app-init.js`'s legacy migration loops (both iterate
+  the same `P.stampLayers` array).
+
+`npx vitest run` -> **2238 passed** (up from 2234), zero regressions.

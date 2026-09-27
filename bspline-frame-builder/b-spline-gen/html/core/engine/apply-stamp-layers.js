@@ -29,13 +29,22 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
   if (!Array.isArray(layers)) return stampedHeights;
 
   // Step 2 unification: prefer tooling values from the matching editor
-  // layer when one exists. Position-based mapping. Falls through to the
-  // stamp layer's own field, then the global default.
+  // layer when one exists. Falls through to the stamp layer's own field,
+  // then the global default.
+  //
+  // H22 item 2 (Fred, via H22 item 1's flagged finding): joined BY ID, not
+  // position. `layers` is already filtered (isCarved) by _collectStampPasses
+  // (rebuild.js), so its own forEach index never lines up with the full,
+  // unfiltered _layers array once any earlier layer is hidden/non-carved —
+  // a positional lookup silently read a DIFFERENT layer's settings.
   const editorLayers = (typeof window !== 'undefined'
                         && window.svgEditor
                         && Array.isArray(window.svgEditor._layers))
     ? window.svgEditor._layers : null;
-  const editorAt = (idx) => (editorLayers ? (editorLayers[idx] || null) : null);
+  const editorById = editorLayers
+    ? new Map(editorLayers.filter(l => l && l.id != null).map(l => [String(l.id), l]))
+    : null;
+  const editorFor = (pass) => (editorById && pass.id != null ? (editorById.get(String(pass.id)) || null) : null);
 
   layers.forEach((layer, layerIdx) => {
     if (!layer || !layer.enabled || !layer.svg || !layer.mask) return;
@@ -47,7 +56,7 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
     if (!body || body.length !== nx * nz) return;
     if (fillet && fillet.length !== nx * nz) return;
 
-    const eLayer = editorAt(layerIdx) || {};
+    const eLayer = editorFor(layer) || {};
     const effectiveDepth = eLayer.depth ?? layer.depth ?? stampDepth;
     const effectiveSuppression = (typeof eLayer.suppression === 'number')
       ? eLayer.suppression
