@@ -6,14 +6,11 @@ sliders side by side, no? choice of slider or stepper depends on the param: does
 SVG-editor drawer's pan Offset X/Y, all slider+stepper rows today. Seat B = core/noise; seat C idle. PROGRESS: commit subjects
 "H14 item N: …" (the page counts them).
 
-## Checklist
-- [ ] [H14-item-1] ONE declared table (data, one module, e.g. main/param-controls.js): param id -> control 'stepper' (needs an exact typed
-      value) | 'slider' (explored by feel; value readout beside it) | 'both' (genuinely needs both); plus optional pairWith for X/Y pairs.
-      Classify EVERY numeric sidebar/panel parameter with a one-line reason each (the WORK-LOG gets the full table for Fred to review).
-      Units in inches/degrees that go to Fusion/CNC lean 'stepper'; pans/strengths/noise shapes lean 'slider'.
-- [ ] [H14-item-2] The UI renders each param from the table (no per-field hand edits): slider-only rows show a live value readout;
-      'feel' X/Y pairs render as two sliders SIDE BY SIDE on one line at every width (390-1366); stepper pairs as today. Formula
-      fields keep working where a stepper/number input exists; hidden inputs keep ids intact (tests + saved projects).
-- [ ] [H14-item-3] Tests: the table covers every numeric param (a test fails if a new param lands unclassified); each control renders per
-      its entry; pairs on one line (your multi-width script). Shots at 390 + 834 of the SEED section + a lattice panel.
+## Checklist (SCOPE NARROWED by Fred: "only make this to the ones you found just now")
+- [ ] [H14-item-1] The 4 X/Y pairs ONLY (seat C's F25 list): Stamp layer Offset X/Y (in), main pan Offset X/Y (screens), Skeleton
+      Symmetry Offset X/Y, the SVG-editor drawer's pan Offset X/Y: each pair = two SLIDERS side by side on one line (value readout
+      beside each; the stepper dropped for these), one small declared list of these pairs (no app-wide table). Ids/hidden inputs
+      intact (tests, saved projects, formula fields).
+- [ ] [H14-item-2] Check at 390 / 768 / 834 / 1024 / 1366 that each pair is on one line and the readouts are visible (your multi-width
+      script); shots at 390 + 834.
 Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — H14 — <shas>"`.
