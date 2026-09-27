@@ -106,4 +106,4 @@ After the in-flight tasks land, the regular add-in HANDS BACK to the home-PC adv
 **R6** (RAIL-SPACING engine) + **R7** (lattice panel restructure: Boundary first, Anchor/Spacing/Count, remove
 "Draw boundary") on main, and **L1** (BOUNDARY-GUIDE) on lane2, merged to main by the Asus advisor. Then: `handoff.py
 done` on both loops, lane2 worktree removed, a hand-back note here (state + what's left: SE16 cut tool with Fred's
-ruling in ROADMAP, UI4 0b, stamp-layer formula fields, Fred's live checks T75/T76/UI5/stale-params).
+ruling in ROADMAP, UI4 0b, SNAP-SPLIT (Fred: leave for home), stamp-layer formula fields, Fred's live checks T75/T76/UI5/stale-params).

@@ -973,7 +973,7 @@ lattice + direct edit; mobile.
 RAIL-SPACING RULINGS (Fred 2026-09-26, Asus Q&A): off-grid rails fine, NO spacing rounding; generated ties ALWAYS
 snap exactly onto rails; Center + even count straddles the centre (no rail on it); new-pattern defaults center + 1 in.
 PANELS (R7): Boundary section = Size W x H (+ Shape Lattice Contour checkbox(es) and its stroke); Orientation moves into
-Rails; the SEED field is HIDDEN (pattern keeps its seed); old grid-step "Spacing" + Every/Offset removed (old patterns
+Rails; the SEED field is HIDDEN (Generate still re-rolls, as today); Contour stroke moves into Boundary with its checkbox; old grid-step "Spacing" + Every/Offset removed (old patterns
 keep geometry); "Draw boundary" toggle removed.
 
 ## Queued (Fred's queue, Asus) — FORMULA-FIELDS: type a formula in a number field (Fred 2026-09-26)
