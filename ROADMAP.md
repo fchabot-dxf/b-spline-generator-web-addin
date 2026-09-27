@@ -973,7 +973,7 @@ lattice + direct edit; mobile.
 RAIL-SPACING RULINGS (Fred 2026-09-26, Asus Q&A): off-grid rails fine, NO spacing rounding; generated ties ALWAYS
 snap exactly onto rails; Center + even count straddles the centre (no rail on it); new-pattern defaults center + 1 in.
 PANELS (R7): Boundary section = Size W x H ONLY (Fred: "contour isn't boundary" - the Shape Lattice Contour checkbox + its stroke
-stay in their OWN section, not Boundary); Orientation moves into Rails; the SEED field is HIDDEN (Generate still
+stay in their OWN separate section, not Boundary; Shape Lattice order: Boundary, Contour, Rails, Ties, Nodes); Orientation moves into Rails; the SEED field is HIDDEN (Generate still
 re-rolls, as today); old grid-step "Spacing" + Every/Offset removed (old patterns
 keep geometry); "Draw boundary" toggle removed.
 
