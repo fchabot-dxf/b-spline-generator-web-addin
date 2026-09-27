@@ -1,12 +1,10 @@
 /**
- * T79 item 2 — River Stones (river.js) and Pond Ripples (ripples.js), built
- * from Fred's approved prototypes, sharing core/noise/cells.js.
+ * T79 item 2 — Pond Ripples (ripples.js), built from Fred's approved
+ * prototype, sharing core/noise/cells.js.
  */
 import { describe, it, expect } from 'vitest';
 import { PerlinNoise } from '../bspline-frame-builder/b-spline-gen/html/core/noise.js';
 import { NoiseList, NoiseTweaks } from '../bspline-frame-builder/b-spline-gen/html/core/noise/index.js';
-import { smoothF1 } from '../bspline-frame-builder/b-spline-gen/html/core/noise/cells.js';
-import * as river from '../bspline-frame-builder/b-spline-gen/html/core/noise/river.js';
 import * as ripples from '../bspline-frame-builder/b-spline-gen/html/core/noise/ripples.js';
 
 const ASPECT = 7 / 9;
@@ -20,15 +18,13 @@ function sample(mod, seed, n = 40, extra = {}, tweaks = {}) {
 }
 
 const FILTERS = [
-  ['river', 'River Stones', river, ['groundSoftness', 'stoneHeight', 'stoneSize']],
   ['ripples', 'Pond Ripples', ripples, ['dropCount', 'ringDepth', 'ringSpacing']],
 ];
 
 describe('T79 item 2: registered after Faceted Stone', () => {
-  it('River Stones and Pond Ripples follow Hand-Carved and Faceted Stone', () => {
+  it('Pond Ripples follows Hand-Carved and Faceted Stone', () => {
     const ids = NoiseList.map((m) => m.id);
-    const at = ids.indexOf('faceted');
-    expect(ids.slice(at + 1, at + 3)).toEqual(['river', 'ripples']);
+    expect(ids[ids.indexOf('faceted') + 1]).toBe('ripples');
   });
 });
 
@@ -87,30 +83,3 @@ for (const [id, label, mod, keys] of FILTERS) {
     });
   });
 }
-
-describe('T79 item 2: River Stones rims', () => {
-  const profile = river._rimProfile;
-  it('the rim reaches the ground with zero slope (no wall), and nothing outside the stone', () => {
-    expect(profile(1, 0.2)).toBe(0);
-    expect(profile(1.3, 0.2)).toBe(0);
-    expect((profile(1 - 1e-6, 0.2) - profile(1, 0.2)) / 1e-6).toBeLessThan(0.01);
-  });
-
-  it('joins the approved dome sqrt(1 - r^2) in value and slope, and matches it inside', () => {
-    const w = 0.2; const r1 = 1 - w; const e = 1e-6;
-    expect(profile(r1 + e, w)).toBeCloseTo(Math.sqrt(1 - r1 * r1), 4);
-    const inner = (profile(r1 - e, w) - profile(r1 - 2 * e, w)) / e;
-    const outer = (profile(r1 + 2 * e, w) - profile(r1 + e, w)) / e;
-    expect(Math.abs(inner - outer)).toBeLessThan(0.01);
-    for (const r of [0, 0.3, 0.6, r1]) expect(profile(r, w)).toBe(Math.sqrt(1 - r * r));
-  });
-
-  it('the smooth stone id stays finite even for a very sharp weighting, and equals the nearest id away from boundaries', () => {
-    for (let n = 0; n < 50; n++) {
-      const x = 0.37 + n * 0.53; const y = 0.11 + n * 0.29;
-      const c = smoothF1(x, y, 1, 7, 0.85, 5000);
-      expect(Number.isFinite(c.idSmooth)).toBe(true);
-      expect(c.idSmooth).toBeCloseTo(c.id, 6);
-    }
-  });
-});

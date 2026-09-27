@@ -1,6 +1,6 @@
 /**
  * Shared jittered cell noise (Worley-style) for the cell-based filters
- * (T79: Hand-Carved, Faceted Stone, River Stones, Pond Ripples). Promoted
+ * (T79: Hand-Carved, Faceted Stone, Pond Ripples). Promoted
  * from Fred's approved prototypes' helper (proto-filters/_cells.js) so it
  * isn't duplicated.
  *
@@ -26,42 +26,6 @@ export function cells(x, y, salt = 0, jitter = 0.85) {
     }
   }
   return { f1, f2, id, id2 };
-}
-
-/**
- * Smooth nearest-cell distance (log-sum-exp smooth-min over a 5x5 block):
- * rounded, crease-free. -> { d, id, idSmooth }
- *   id:       the nearest cell's value (as the prototype used it)
- *   idSmooth: cell values weighted by exp(-idK * distance), so it changes
- *             smoothly across a cell boundary instead of jumping (a jump
- *             there is a step in anything scaled by it). A sharper idK than
- *             k keeps it equal to the nearest cell's value except in a narrow
- *             band at the boundary.
- */
-export function smoothF1(x, y, salt = 0, k = 9, jitter = 0.85, idK = k) {
-  const ix = Math.floor(x), iy = Math.floor(y);
-  const dist = [], ids = [];
-  let s = 0, id = 0, best = 9;
-  for (let j = -2; j <= 2; j++) {
-    for (let i = -2; i <= 2; i++) {
-      const cx = ix + i, cy = iy + j;
-      const px = cx + 0.5 + (hash(cx, cy, salt) - 0.5) * jitter;
-      const py = cy + 0.5 + (hash(cx, cy, salt + 9) - 0.5) * jitter;
-      const d = Math.hypot(x - px, y - py);
-      const cellId = hash(cx, cy, salt + 3);
-      s += Math.exp(-k * d);
-      dist.push(d); ids.push(cellId);
-      if (d < best) { best = d; id = cellId; }
-    }
-  }
-  // Weights relative to the nearest cell, so a sharp idK can't underflow.
-  let sId = 0, sIdW = 0;
-  for (let n = 0; n < dist.length; n++) {
-    const w = Math.exp(-idK * (dist[n] - best));
-    sId += w * ids[n];
-    sIdW += w;
-  }
-  return { d: -Math.log(s) / k, id, idSmooth: sId / sIdW };
 }
 
 /**
