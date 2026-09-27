@@ -1054,6 +1054,13 @@ manifest's per-piece hardcoded width DIMENSION (seat B T75 item 3 / OVR-FUSION) 
 to assert the new rule; don't delete silently). Old saved patterns carrying data-override-width: ignored on load
 (migration test). Live check (advisor, Ranchy): a Send has no per-piece width dims; stroke_width drives every slot.
 
+## Queued (seat A, H4, after H3) — MOB-STEPPERS: bigger −/+ steppers on mobile (Fred 2026-09-26)
+Fred (phone screenshot of the Frame section): "in general steppers can be bigger on mobile". ONE declared touch size for
+every numeric stepper (sidebar, both lattice panels, the Frame section, the Selected piece panel, formula fields): at the
+mobile breakpoint (and on coarse pointers: @media (pointer: coarse)), −/+ buttons >= 44 px square with a matching input
+height; desktop unchanged. A shared CSS token/class, not per-field overrides; check no row overflows at 390 px width.
+Shots: the Frame section + a lattice panel on mobile, before/after.
+
 ## SE16 RULINGS (Fred 2026-09-26, answers to CUT-TOOL-DESIGN.md §0) — supersede the SE16 text below where they differ
 Q1 Send AS DRAWN (bug fix F17 P1). Q2 Regenerate CLEARS cuts (Undo restores). Q3 dragging a lattice joint SLIDES ALONG the
 rail. Q4 Join clears BOTH segments' overrides (the joined rail = lattice default colour/width). Q5 cutting snaps by the normal
