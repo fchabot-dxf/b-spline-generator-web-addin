@@ -398,16 +398,52 @@ export const PATTERN_DEFAULTS = {
   // explicit caller-given rectangle, used as given, unrelated to `size`.
   size: { width: null, height: null },
   // T56 (Fred: "your usual lattice is much denser than what I need... I
-  // want 6-7 rails and 8-10 ties"): `mode:'count'` is the new default —
-  // a seeded pick within `count`, evenly distributed across the extent's
-  // own rows (see `_railRowsByCount`) — declared alongside `every`/
-  // `offset` rather than replacing them, so `mode:'every'` (the ORIGINAL
-  // behavior) stays a real, supported alternative, not a removed one.
-  // `computePattern`'s own merge (below) is careful NOT to let an
+  // want 6-7 rails and 8-10 ties"): `mode:'count'` was the T56-era
+  // default — a seeded pick within `count`, evenly distributed across the
+  // extent's own rows (see `_railRowsByCount`) — declared alongside
+  // `every`/`offset` rather than replacing them, so `mode:'every'` (the
+  // ORIGINAL behavior) stays a real, supported alternative, not a removed
+  // one. `computePattern`'s own merge (below) is careful NOT to let an
   // EXISTING saved pattern's `rails` object (written before `mode`
-  // existed, so it never got serialized) silently inherit this new
-  // 'count' default — see that merge's own comment.
-  rails: { mode: 'count', count: [6, 7], every: 2, offset: 0 },
+  // existed, so it never got serialized) silently inherit whatever this
+  // default currently is — see that merge's own comment.
+  // RAIL-SPACING (Fred: "spacing means rail-to-rail" / "origin anchor is
+  // top center bottom edge" / "count and spacing can both be used at the
+  // same time now"): `mode:'spacing'` — a NEW, DECLARED alternative
+  // alongside 'every'/'count' above (never replacing them: an existing
+  // saved pattern's `rails.mode` is read back exactly as it was written,
+  // by the SAME `mode: PATTERN.rails.mode || 'every'` fallback
+  // `computePattern` already uses — a pattern from before this feature
+  // existed has no `mode:'spacing'` to inherit, so its geometry is
+  // untouched). `anchor` ('start'|'center'|'end' — UI: Top/Center/Bottom
+  // for horizontal rails, Left/Center/Right for vertical, R7's job):
+  // the first rail sits ON that boundary edge (or the centre line for
+  // 'center'), repeating by `spacing` toward/across the boundary;
+  // anything that would fall outside is dropped. `spacing`: real INCHES,
+  // rail-to-rail — genuinely OFF-GRID is fine (Fred: "off-grid is fine" —
+  // this supersedes an earlier "whole number of grid steps" sentence in
+  // the same ROADMAP entry; see `_railRowsBySpacing`'s own doc comment
+  // for the one place that distinction actually matters: how a rails-
+  // anchored tie measures the gap between two rails). `spacingCount`:
+  // OPTIONAL — deliberately NOT named `count` (that key is already the
+  // [min,max] SEEDED RANGE the 'count' mode above reads — a single
+  // optional integer under the same name would silently change type
+  // depending on `mode`, exactly the kind of ambiguity this file's own
+  // "declare it, don't infer it" convention exists to avoid). Null/unset
+  // = fill the boundary; a number = exactly N rails from the anchor
+  // ('center': N rails centred on the centre line, symmetric first).
+  // R7 carry-over 1 (Fred, advisor review): `mode:'spacing'` becomes the
+  // default for a BRAND-NEW pattern (this default is ONLY ever read by
+  // `freshPattern` below — `computePattern`'s own merge, unchanged, still
+  // reads an EXISTING saved pattern's own explicit `rails.mode`, or falls
+  // back to 'every' when `PATTERN.rails` exists but never serialized a
+  // `mode` at all — so this line change touches NOTHING about how an old
+  // pattern resolves; see that merge's own comment, and this file's own
+  // R7 WORK-LOG entry for the regression test that proves it).
+  rails: {
+    mode: 'spacing', count: [6, 7], every: 2, offset: 0,
+    anchor: 'center', spacing: 1, spacingCount: null,
+  },
   // T30 (Fred: "don't limit it to rails, but do snap to them"): default
   // anchor flips 'rails' -> 'free' + railSnapRows (a free end within this
   // many rows of a rail moves onto it; 0 = off). 'rails' strict mode
@@ -622,6 +658,33 @@ export const PATTERN_DEFAULTS = {
   contour: { show: true, width: null, segmentColors: [] },
 };
 
+/** R7 carry-over 2 (RAIL-SPACING ruling 4, "one grid"): the ONE place a
+ *  BRAND-NEW pattern is created from PATTERN_DEFAULTS — both lattice
+ *  panels' own lazy-creation point (`properties-lattice.js`'s
+ *  `_currentPattern` / `properties-shape-lattice.js`'s `currentPattern`,
+ *  the ONLY two call sites, confirmed by grepping every
+ *  `JSON.parse(JSON.stringify(PATTERN_DEFAULTS))` in this codebase — R7's
+ *  own WORK-LOG entry). PATTERN_DEFAULTS.spacing (0.25) is now purely the
+ *  fallback-of-fallback: a fresh pattern's own `.spacing` — the lattice's
+ *  GRID STEP, read everywhere in this file as `P.spacing` — is stamped
+ *  ONCE at creation from the EDITOR's own live toolbar grid
+ *  (`editor._grid.spacing`, editor-grid.js), not the lattice-side setting
+ *  this ruling retires. An EXISTING saved pattern never calls this at
+ *  all (it already has its own `.spacing`, read back by `computePattern`'s
+ *  own `{...PATTERN_DEFAULTS, ...PATTERN}` merge exactly as before) — so
+ *  migration needs no separate code path: "a saved pattern's own spacing
+ *  is still read as its grid step" falls out of the SAME merge that
+ *  already existed, untouched. `editor` is optional (defensive — the one
+ *  call site with no real layer yet, `_currentPattern`'s own "no layers
+ *  at all" branch, still has a real editor to read the grid from in
+ *  practice, but this never throws if it somehow doesn't). */
+export function freshPattern(editor) {
+  const p = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
+  const gridSpacing = editor && editor._grid && editor._grid.spacing;
+  if (gridSpacing) p.spacing = gridSpacing;
+  return p;
+}
+
 /** SE7g (Fred: "the generate button needs to automatically use a new
  *  seed"): the ONE seed-rolling function, used by Generate/Regenerate
  *  before every run. Replaces the old standalone Reroll button, which
@@ -706,6 +769,80 @@ function _railRowsByCount(jMin, jMax, countRange, seed) {
     rows.push(row);
   }
   return rows.sort((a, b) => a - b);
+}
+
+/** RAIL-SPACING: `rails.mode:'spacing'` — rails laid out from the BOUNDARY
+ *  (jMin/jMax, already the resolved extent — board or the boundary bbox,
+ *  either way, `_resolveExtent`'s job, unchanged), not the grid. Unseeded
+ *  (Fred: "on generate it is evenly spaced" — a declared layout, not an
+ *  organic draw the way ties are): the anchor + a fixed rail-to-rail step
+ *  fully determine every row, so two Generates with the same inputs are
+ *  always byte-identical without needing a seed at all.
+ *
+ *  `rails.spacing` is real INCHES; `gridSpacing` (P.spacing, the lattice's
+ *  own grid-step-in-inches, UNCHANGED by this feature — see this file's
+ *  own R6 WORK-LOG entry for why that's deliberately out of scope here)
+ *  converts it to the SAME lattice-unit ("j") space every other row/column
+ *  index in this file already uses. `stepJ` is genuinely allowed to be
+ *  fractional — "off-grid is fine" (Fred) — every consumer downstream
+ *  (segment emission, `_occupiedHas`, `latticeCrossings`) already treats a
+ *  rail row as a plain coordinate, never assumes an integer, so nothing
+ *  else in the emission path needs to change for this. The ONE place a
+ *  fractional step matters is a rails-ANCHORED tie's own gap measurement
+ *  (`ties.anchor==='rails'`, `_tieSpanForColumn`'s own comment) — spanMin/
+ *  spanMax are small declared integers meaning "how many rail ROWS apart"
+ *  (not "how many grid cells"), so that check counts ARRAY-INDEX distance
+ *  between rails, never their raw coordinate difference; this function
+ *  just needs to hand back a plain, ascending array of rows, same shape
+ *  every other `_railRows*` function already returns.
+ *
+ *  Anchor: 'start'/'end' walk outward from that edge by `stepJ`. 'center'
+ *  with an ODD `spacingCount`, or no `spacingCount` at all (fill the
+ *  boundary — ruling 1's own unconditional "a rail ON the centre line"),
+ *  keeps the exact centre row (k=0) and interleaves outward from it,
+ *  nearest first. 'center' with an EVEN `spacingCount` (Fred, confirmed):
+ *  rails STRADDLE the centre symmetrically instead — NO rail exactly on
+ *  the centre line — a half-step-offset lattice (c ± 0.5*step, ±1.5*step,
+ *  …) rather than the integer one, since an even count of evenly-spaced
+ *  rails centred on a point can never include that point itself while
+ *  staying symmetric. `spacingCount` (optional) truncates whichever
+ *  candidate list applies in that SAME nearest-to-anchor-first order
+ *  BEFORE the final ascending sort, so "first N from the anchor" and "N
+ *  centred on the centre" (either lattice) fall out of one shared shape.
+ *  A degenerate extent (`jMax < jMin`, e.g. a zero-height boundary) or a
+ *  non-positive step returns `[]` — "no rails" is always safer than a
+ *  divide-by-zero or an infinite loop. */
+function _railRowsBySpacing(jMin, jMax, rails, gridSpacing) {
+  const EPS = 1e-9; // guards an anchor computed to fall EXACTLY on jMin/jMax from being excluded by fp error
+  const step = rails.spacing != null ? rails.spacing : PATTERN_DEFAULTS.rails.spacing;
+  const stepJ = step / (gridSpacing || PATTERN_DEFAULTS.spacing);
+  if (!(stepJ > 0) || jMax < jMin) return [];
+  const inRange = (j) => j >= jMin - EPS && j <= jMax + EPS;
+
+  const priority = []; // built nearest-to-anchor(-or-centre) first; sorted ascending at the very end
+  if (rails.anchor === 'center') {
+    const c = (jMin + jMax) / 2;
+    const n = rails.spacingCount;
+    const straddle = Number.isInteger(n) && n > 0 && n % 2 === 0; // Fred: even count -> no rail ON centre
+    if (straddle) {
+      for (let k = 0; inRange(c + (k + 0.5) * stepJ) || inRange(c - (k + 0.5) * stepJ); k++) {
+        if (inRange(c + (k + 0.5) * stepJ)) priority.push(c + (k + 0.5) * stepJ);
+        if (inRange(c - (k + 0.5) * stepJ)) priority.push(c - (k + 0.5) * stepJ);
+      }
+    } else {
+      priority.push(c);
+      for (let k = 1; inRange(c + k * stepJ) || inRange(c - k * stepJ); k++) {
+        if (inRange(c + k * stepJ)) priority.push(c + k * stepJ);
+        if (inRange(c - k * stepJ)) priority.push(c - k * stepJ);
+      }
+    }
+  } else {
+    const start = rails.anchor === 'end' ? jMax : jMin;
+    const dir = rails.anchor === 'end' ? -1 : 1;
+    for (let k = 0; inRange(start + dir * k * stepJ); k++) priority.push(start + dir * k * stepJ);
+  }
+  const kept = rails.spacingCount > 0 ? priority.slice(0, rails.spacingCount) : priority;
+  return kept.sort((a, b) => a - b);
 }
 
 /** Per-column independent seed derivation — mirrors core/terrain.js's own
@@ -803,8 +940,22 @@ function _applyRailSnap(jStart, jEnd, railRows, railSnapRows, spanMin, spanMax) 
  * density gate but still draws span/position from the seed, so hand-
  * picking WHICH columns get a tie doesn't also mean hand-picking exactly
  * where each one sits.
+ *
+ * RAIL-SPACING (ruling 6, "ties must still attach correctly to off-grid
+ * rails"): `railsMode` is `rails.mode` (the SAME `rails` object
+ * `computePattern` already resolved) — when it's `'spacing'`, rails can
+ * sit at fractional lattice coordinates, so the `anchor==='rails'` branch
+ * below measures the gap between two rails by ARRAY-INDEX distance ("how
+ * many rail ROWS apart"), never their raw coordinate difference (which,
+ * off-grid, has no reason to land on an integer spanMin..spanMax at all —
+ * `_tieSlotsByCount`'s own `span.mode:'rails'` branch, this file's actual
+ * DEFAULT tie path since T67 AMEND #4, already works this way for exactly
+ * this reason; this brings the older `ties.mode:'density'` path in line
+ * with it). Every OTHER `railsMode` (`'every'`/`'count'`, i.e. every
+ * pattern saved before this feature existed) keeps the ORIGINAL coordinate
+ * -distance check byte-for-byte — this is purely additive.
  */
-function _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced) {
+function _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced, railsMode) {
   const draws = lcgPoints(_columnSeed(seed, i), 2);
   const [gate, pick] = draws;
   if (!forced && gate.u >= ties.density) return null;
@@ -834,7 +985,7 @@ function _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced) {
   const jStart = railRows[startIdx];
   const candidates = [];
   for (let k = startIdx + 1; k < railRows.length; k++) {
-    const d = railRows[k] - jStart;
+    const d = railsMode === 'spacing' ? (k - startIdx) : (railRows[k] - jStart);
     if (d >= spanMin && d <= spanMax) candidates.push(railRows[k]);
   }
   if (candidates.length === 0) return null; // spacing/span combo can't bridge any rail pair here
@@ -1505,8 +1656,15 @@ export function computePattern(PATTERN, opts = {}) {
   // T56: `mode:'count'` (default) picks rail rows via `_railRowsByCount`
   // (a seeded count, evenly spread) instead of the fixed `every`/`offset`
   // stride — 'every' stays available as an explicit alternative mode.
+  // RAIL-SPACING: 'spacing' is a third, DECLARED alternative alongside
+  // 'every'/'count' above — see PATTERN_DEFAULTS.rails' own comment for
+  // why an old saved pattern (mode 'every' by its own fallback) never
+  // reaches this branch, and _railRowsBySpacing's own comment for the
+  // layout rule itself.
   const railRows = rails.mode === 'every'
     ? _railRows(jMin, jMax, rails.every, rails.offset)
+    : rails.mode === 'spacing'
+    ? _railRowsBySpacing(jMin, jMax, rails, P.spacing)
     : _railRowsByCount(jMin, jMax, rails.count, seed);
   const halfRail = widths.rails / 2 / P.spacing;
   for (const j of railRows) {
@@ -1649,7 +1807,7 @@ export function computePattern(PATTERN, opts = {}) {
     tieSlots = [];
     for (const i of columns) {
       const forced = forcedSet ? forcedSet.has(i) : false;
-      const span = _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced);
+      const span = _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced, rails.mode);
       if (span) tieSlots.push({ i, jStart: span.jStart, jEnd: span.jEnd });
     }
   }

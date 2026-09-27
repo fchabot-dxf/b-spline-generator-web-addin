@@ -316,9 +316,13 @@ describe('parity: shape lattice (bottle) — T72 regression: the default Bottle 
 });
 
 describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice parity; OFF hides/omits the contour and (T73 AMEND 3) keeps the narrower contour-inset fill boundary, ON clips to the contour\'s own wider raw centerline', () => {
+  // R7 carry-over 1 (Fred, advisor review): PATTERN_DEFAULTS.rails.mode is now 'spacing' — this
+  // describe block's own density assumptions (T56-era seeded [6,7] rails) need `mode:'count'`
+  // EXPLICITLY, or the boundary-widening assertion below has too little room to be non-vacuous.
   function shapePattern(contour) {
     return {
       ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      rails: { ...PATTERN_DEFAULTS.rails, mode: 'count' },
       extent: { mode: 'boundary' },
       shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
       ...(contour ? { contour } : {}),

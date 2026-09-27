@@ -31,23 +31,6 @@
       "task": "NEXT-SESSION-fb-app.md",
       "checkout": "-fb-app",
       "session": "b-spline-generator-web-addin-9f"
-    },
-    {
-      "key": "asus",
-      "name": "Reg-addin (advisor)",
-      "station": "asus",
-      "branch": "main",
-      "task": "NEXT-SESSION-reg-addin.md",
-      "commits": "^(R\\d|docs\\(reg-addin\\))",
-      "url": "https://claude.ai/code/session_015NmKa8YAS4WHj5jjsPeiUh"
-    },
-    {
-      "key": "asus-lane2",
-      "name": "Lane2",
-      "station": "asus",
-      "branch": "lane2",
-      "task": "NEXT-SESSION-lane2.md",
-      "commits": "^(L\\d|docs\\(lane2\\))"
     }
   ]
 }

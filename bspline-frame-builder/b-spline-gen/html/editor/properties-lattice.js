@@ -8,11 +8,10 @@
  * See SE7B-PATTERN-GENERATOR-DESIGN.md §5 for the mockup this markup follows.
  */
 import { el, on } from './dom.js';
-import { GRID_SPACINGS } from './editor-grid.js';
 import { LATTICE_DRAW_KINDS } from './editor-lattice.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
-    _findBoundaryElements, resolvePatternLayer,
+    _findBoundaryElements, resolvePatternLayer, freshPattern,
 } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
@@ -33,7 +32,7 @@ function _activeLayerObj(editor) {
 }
 function _currentPattern(editor) {
     const layer = _activeLayerObj(editor);
-    if (!layer) return JSON.parse(JSON.stringify(PATTERN_DEFAULTS)); // defensive: no layers at all yet
+    if (!layer) return freshPattern(editor); // defensive: no layers at all yet
     // T76 (SE17): the active layer may be any one of a pattern's own FOUR
     // kind-layers (Contour/Rails/Ties/Nodes) -- e.g. right after clicking a
     // tie, which activates the Ties layer (editor-interaction.js). Reading
@@ -44,7 +43,10 @@ function _currentPattern(editor) {
     // the pattern ACTUALLY lives first.
     const patternLayer = resolvePatternLayer(editor, layer.id);
     if (patternLayer) return patternLayer.pattern;
-    layer.pattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
+    // R7 carry-over 2: a brand-new pattern's own grid step comes from the
+    // LIVE editor grid, not PATTERN_DEFAULTS.spacing -- see freshPattern's
+    // own doc comment.
+    layer.pattern = freshPattern(editor);
     return layer.pattern;
 }
 // R5: exported under a clearer name for lattice-formula-fields.js (the
@@ -53,17 +55,16 @@ function _currentPattern(editor) {
 export { _currentPattern as currentPatternLattice };
 
 export function initLatticeProperties(editor) {
-    const spacingEl = el('latticeSpacing');
-    // T56: rails/ties mode toggles (same segmented-control shape as
-    // Orientation) + their own field groups, shown/hidden together.
-    const railsModeCountEl = el('latticeRailsModeCount');
-    const railsModeEveryEl = el('latticeRailsModeEvery');
-    const railsCountFieldsEl = el('latticeRailsCountFields');
-    const railsEveryFieldsEl = el('latticeRailsEveryFields');
-    const railsCountMinEl = el('latticeRailsCountMin');
-    const railsCountMaxEl = el('latticeRailsCountMax');
-    const railsEveryEl = el('latticeRailsEvery');
-    const railsOffsetEl = el('latticeRailsOffset');
+    // RAIL-SPACING R7: the old grid-step Spacing select + Every/Offset +
+    // seeded count-range fields are REMOVED from the UI (ruling) — an old
+    // saved pattern's own stored values for these are untouched (nothing
+    // writes them any more; readFieldsIntoPattern's own existing
+    // fallback-to-current-value shape, unchanged, covers this for free).
+    const railsAnchorStartEl = el('latticeRailsAnchorStart');
+    const railsAnchorCenterEl = el('latticeRailsAnchorCenter');
+    const railsAnchorEndEl = el('latticeRailsAnchorEnd');
+    const railsSpacingEl = el('latticeRailsSpacing');
+    const railsSpacingCountEl = el('latticeRailsSpacingCount');
     const tiesModeCountEl = el('latticeTiesModeCount');
     const tiesModeDensityEl = el('latticeTiesModeDensity');
     const tiesCountFieldsEl = el('latticeTiesCountFields');
@@ -117,18 +118,24 @@ export function initLatticeProperties(editor) {
     // the drawer — not this panel by itself — is the one thing that can
     // cover the canvas bottom.
 
-    // Spacing select populated at bind time from GRID_SPACINGS — same
-    // idiom properties-shape.js's initGridToggle already uses for the
-    // grid's own spacing select (SA-TEXT-6 used the same pattern for
-    // the font-family select) — no hand-typed <option> list to drift.
-    if (spacingEl) {
-        spacingEl.innerHTML = '';
-        for (const spacing of GRID_SPACINGS) {
-            const opt = document.createElement('option');
-            opt.value = String(spacing);
-            opt.textContent = `${spacing}"`;
-            spacingEl.appendChild(opt);
-        }
+    // RAIL-SPACING R7 (ruling 4, "one grid"): the lattice grid step is no
+    // longer a lattice-side setting at all (GRID_SPACINGS/GRID_DEFAULTS
+    // now live purely in the editor's own toolbar grid) — the old
+    // #latticeSpacing select this block used to populate is removed from
+    // the markup entirely; freshPattern (editor-lattice-pattern.js) is
+    // the ONE place a NEW pattern's own grid step is stamped, from the
+    // live editor grid, at creation time.
+
+    /** Anchor's own button LABELS swap Top/Center/Bottom (horizontal) <->
+     *  Left/Center/Right (vertical) — the VALUE (start/center/end) never
+     *  changes meaning, just its on-screen name, matching the ruling's
+     *  own "[Top|Center|Bottom] (horizontal) / [Left|Center|Right]
+     *  (vertical)" wording exactly. Called from syncFieldsFromPattern
+     *  (reflects the loaded pattern's own orientation) and the
+     *  Orientation click handlers below (reflects a live flip). */
+    function _updateAnchorLabels(orientation) {
+        if (railsAnchorStartEl) railsAnchorStartEl.textContent = orientation === 'vertical' ? 'Left' : 'Top';
+        if (railsAnchorEndEl) railsAnchorEndEl.textContent = orientation === 'vertical' ? 'Right' : 'Bottom';
     }
 
     function syncGenerateLabel() {
@@ -150,12 +157,13 @@ export function initLatticeProperties(editor) {
     // click handlers (reflecting a user's own click) so the two can never
     // drift apart into showing a group that doesn't match the `.active`
     // button.
-    function _showRailsMode(mode) {
-        if (railsModeCountEl) railsModeCountEl.classList.toggle('active', mode !== 'every');
-        if (railsModeEveryEl) railsModeEveryEl.classList.toggle('active', mode === 'every');
-        if (railsCountFieldsEl) railsCountFieldsEl.style.display = mode === 'every' ? 'none' : 'flex';
-        if (railsEveryFieldsEl) railsEveryFieldsEl.style.display = mode === 'every' ? 'flex' : 'none';
-    }
+    // RAIL-SPACING R7: the rails mode toggle (Count/Every) + its own two
+    // field groups are gone from the UI — this panel's own Generate now
+    // always writes rails.mode:'spacing' (see readFieldsIntoPattern);
+    // reflecting the anchor buttons' own `.active` state is handled
+    // inline in syncFieldsFromPattern below, same one-liner shape as
+    // Orientation just above it, since there's no field GROUP to show/
+    // hide any more (unlike Ties' own Count/Density split, still real).
     function _showTiesMode(mode) {
         if (tiesModeCountEl) tiesModeCountEl.classList.toggle('active', mode !== 'density');
         if (tiesModeDensityEl) tiesModeDensityEl.classList.toggle('active', mode === 'density');
@@ -190,33 +198,36 @@ export function initLatticeProperties(editor) {
         const orientation = p.orientation ?? PATTERN_DEFAULTS.orientation;
         if (orientHorizontalEl) orientHorizontalEl.classList.toggle('active', orientation !== 'vertical');
         if (orientVerticalEl) orientVerticalEl.classList.toggle('active', orientation === 'vertical');
-        if (spacingEl) spacingEl.value = String(p.spacing ?? PATTERN_DEFAULTS.spacing);
+        _updateAnchorLabels(orientation);
         // T75 LAT-SIZE: null (unset) reads as blank ("auto"), same
         // convention as the Shape Lattice tool's own Size fields.
         const size = { ...PATTERN_DEFAULTS.size, ...p.size };
         if (sizeWidthEl) sizeWidthEl.value = size.width == null ? '' : size.width;
         if (sizeHeightEl) sizeHeightEl.value = size.height == null ? '' : size.height;
+        // RAIL-SPACING R7: anchor/spacing/spacingCount — a saved pattern
+        // from before this feature existed has none of these keys, so
+        // `PATTERN_DEFAULTS.rails`' own new defaults (center/1in/null)
+        // apply via the same `?? ` fallback every other field here uses.
+        const railsAnchor = p.rails?.anchor ?? PATTERN_DEFAULTS.rails.anchor;
+        if (railsAnchorStartEl) railsAnchorStartEl.classList.toggle('active', railsAnchor === 'start');
+        if (railsAnchorCenterEl) railsAnchorCenterEl.classList.toggle('active', railsAnchor !== 'start' && railsAnchor !== 'end');
+        if (railsAnchorEndEl) railsAnchorEndEl.classList.toggle('active', railsAnchor === 'end');
+        if (railsSpacingEl) railsSpacingEl.value = p.rails?.spacing ?? PATTERN_DEFAULTS.rails.spacing;
+        if (railsSpacingCountEl) railsSpacingCountEl.value = p.rails?.spacingCount == null ? '' : p.rails.spacingCount;
         // T56: same migration-aware fallback computePattern's own merge
         // uses (editor-lattice-pattern.js's own comment on this exact
-        // point) — a saved `rails`/`ties` object from before `mode`
-        // existed reads as the OLD implicit mode, not the new default.
-        const railsMode = p.rails ? (p.rails.mode || 'every') : PATTERN_DEFAULTS.rails.mode;
+        // point) — a saved `ties` object from before `mode` existed reads
+        // as the OLD implicit mode, not the new default.
         const tiesMode = p.ties ? (p.ties.mode || 'density') : PATTERN_DEFAULTS.ties.mode;
-        _showRailsMode(railsMode);
         _showTiesMode(tiesMode);
         // T56 AMEND: span.mode has its OWN "no key yet" fallback too — a
         // saved pattern from before this field existed (or a fresh one,
         // which materializes straight from PATTERN_DEFAULTS anyway)
         // reads as PATTERN_DEFAULTS.ties.span.mode ('cells').
         _showTieSpanMode(p.ties?.span?.mode || PATTERN_DEFAULTS.ties.span.mode);
-        const railsCount = p.rails?.count ?? PATTERN_DEFAULTS.rails.count;
-        if (railsCountMinEl) railsCountMinEl.value = railsCount[0];
-        if (railsCountMaxEl) railsCountMaxEl.value = railsCount[1];
         const tiesCount = p.ties?.count ?? PATTERN_DEFAULTS.ties.count;
         if (tiesCountMinEl) tiesCountMinEl.value = tiesCount[0];
         if (tiesCountMaxEl) tiesCountMaxEl.value = tiesCount[1];
-        if (railsEveryEl) railsEveryEl.value = p.rails?.every ?? PATTERN_DEFAULTS.rails.every;
-        if (railsOffsetEl) railsOffsetEl.value = p.rails?.offset ?? PATTERN_DEFAULTS.rails.offset;
         if (tiesDensityEl) tiesDensityEl.value = p.ties?.density ?? PATTERN_DEFAULTS.ties.density;
         if (tiesSpanMinEl) tiesSpanMinEl.value = p.ties?.spanMin ?? PATTERN_DEFAULTS.ties.spanMin;
         if (tiesSpanMaxEl) tiesSpanMaxEl.value = p.ties?.spanMax ?? PATTERN_DEFAULTS.ties.spanMax;
@@ -313,29 +324,39 @@ export function initLatticeProperties(editor) {
         // anything else (including a fresh panel with neither button
         // wired) reads as horizontal.
         p.orientation = orientVerticalEl?.classList.contains('active') ? 'vertical' : 'horizontal';
-        if (spacingEl) p.spacing = parseFloat(spacingEl.value) || PATTERN_DEFAULTS.spacing;
-        // T56: same "the control's own `.active` state IS the source of
-        // truth" shape as Orientation above — Every/Density active means
-        // that mode, anything else (including a fresh panel with neither
-        // toggle wired) means Count, this tool's own new default.
-        const railsMode = railsModeEveryEl?.classList.contains('active') ? 'every' : 'count';
+        // RAIL-SPACING R7 (ruling 4, "one grid"): p.spacing (the lattice
+        // GRID STEP) is deliberately left UNTOUCHED here — there is no
+        // field for it any more (freshPattern, editor-lattice-pattern.js,
+        // is the ONE place a NEW pattern's own grid step gets stamped,
+        // from the live editor grid, at creation time; an EXISTING
+        // pattern already has its own `.spacing`, read back unchanged by
+        // computePattern's own merge, same migration story as always).
         const tiesMode = tiesModeDensityEl?.classList.contains('active') ? 'density' : 'count';
         // T56 AMEND: Rails active means bridging, anything else (including
         // no toggle wired) means Cells — this tool's own new default,
         // matching Fred's own pick.
         const tieSpanMode = tiesSpanModeRailsEl?.classList.contains('active') ? 'rails' : 'cells';
-        const railsCountMin = railsCountMinEl ? (parseInt(railsCountMinEl.value, 10) || 1) : (p.rails?.count?.[0] ?? PATTERN_DEFAULTS.rails.count[0]);
-        const railsCountMax = railsCountMaxEl ? (parseInt(railsCountMaxEl.value, 10) || railsCountMin) : (p.rails?.count?.[1] ?? PATTERN_DEFAULTS.rails.count[1]);
         const tiesCountMin = tiesCountMinEl ? (parseInt(tiesCountMinEl.value, 10) || 1) : (p.ties?.count?.[0] ?? PATTERN_DEFAULTS.ties.count[0]);
         const tiesCountMax = tiesCountMaxEl ? (parseInt(tiesCountMaxEl.value, 10) || tiesCountMin) : (p.ties?.count?.[1] ?? PATTERN_DEFAULTS.ties.count[1]);
+        // RAIL-SPACING R7: this panel's own Generate always writes
+        // rails.mode:'spacing' now — the OLD 'every'/'count' UI is gone,
+        // so there's nothing left to read a DIFFERENT mode FROM. An old
+        // saved pattern's own stored every/offset/count values are kept
+        // (not read from any field, since none exist — just carried
+        // forward unchanged) so a future rollback to an OLDER mode, or a
+        // migration script, still has them; this panel simply never
+        // writes them again.
+        const railsAnchor = railsAnchorStartEl?.classList.contains('active') ? 'start'
+            : railsAnchorEndEl?.classList.contains('active') ? 'end' : 'center';
+        const railsSpacingCount = railsSpacingCountEl && railsSpacingCountEl.value !== ''
+            ? (parseInt(railsSpacingCountEl.value, 10) || null) : null;
         p.rails = {
-            mode: railsMode,
-            // count is a [min,max] PAIR — swap defensively if a user
-            // types them backwards rather than silently emitting an
-            // inverted (empty) seeded range.
-            count: railsCountMin <= railsCountMax ? [railsCountMin, railsCountMax] : [railsCountMax, railsCountMin],
-            every: railsEveryEl ? (parseInt(railsEveryEl.value, 10) || 1) : (p.rails?.every ?? PATTERN_DEFAULTS.rails.every),
-            offset: railsOffsetEl ? (parseInt(railsOffsetEl.value, 10) || 0) : (p.rails?.offset ?? PATTERN_DEFAULTS.rails.offset),
+            ...PATTERN_DEFAULTS.rails,
+            ...p.rails,
+            mode: 'spacing',
+            anchor: railsAnchor,
+            spacing: railsSpacingEl ? (parseFloat(railsSpacingEl.value) || PATTERN_DEFAULTS.rails.spacing) : (p.rails?.spacing ?? PATTERN_DEFAULTS.rails.spacing),
+            spacingCount: railsSpacingCount,
         };
         p.ties = {
             ...PATTERN_DEFAULTS.ties,
@@ -491,6 +512,7 @@ export function initLatticeProperties(editor) {
     async function selectOrientation(value) {
         if (orientHorizontalEl) orientHorizontalEl.classList.toggle('active', value === 'horizontal');
         if (orientVerticalEl) orientVerticalEl.classList.toggle('active', value === 'vertical');
+        _updateAnchorLabels(value);
         const p = readFieldsIntoPattern();
         await generatePattern(editor, p); // T49: generatePattern is now async (boundary mode's own shapeToPrimitives)
         syncGenerateLabel();
@@ -521,12 +543,18 @@ export function initLatticeProperties(editor) {
         });
     }
 
-    // T56: rails/ties MODE toggles — a settings field like Rails' own
-    // every/offset or Ties' own density, NOT an immediate re-projection
-    // (unlike Orientation) — takes effect on the next explicit Generate,
-    // same as every other structural field in this panel.
-    if (railsModeCountEl) on(railsModeCountEl, 'click', () => _showRailsMode('count'));
-    if (railsModeEveryEl) on(railsModeEveryEl, 'click', () => _showRailsMode('every'));
+    // RAIL-SPACING R7: Anchor — a settings field like Ties' own density,
+    // NOT an immediate re-projection (unlike Orientation/Size) — takes
+    // effect on the next explicit Generate, same as every other
+    // structural field in this panel.
+    const _setRailsAnchor = (value) => {
+        if (railsAnchorStartEl) railsAnchorStartEl.classList.toggle('active', value === 'start');
+        if (railsAnchorCenterEl) railsAnchorCenterEl.classList.toggle('active', value === 'center');
+        if (railsAnchorEndEl) railsAnchorEndEl.classList.toggle('active', value === 'end');
+    };
+    if (railsAnchorStartEl) on(railsAnchorStartEl, 'click', () => _setRailsAnchor('start'));
+    if (railsAnchorCenterEl) on(railsAnchorCenterEl, 'click', () => _setRailsAnchor('center'));
+    if (railsAnchorEndEl) on(railsAnchorEndEl, 'click', () => _setRailsAnchor('end'));
     if (tiesModeCountEl) on(tiesModeCountEl, 'click', () => _showTiesMode('count'));
     if (tiesModeDensityEl) on(tiesModeDensityEl, 'click', () => _showTiesMode('density'));
     if (tiesSpanModeCellsEl) on(tiesSpanModeCellsEl, 'click', () => _showTieSpanMode('cells'));
@@ -601,7 +629,7 @@ export function initLatticeProperties(editor) {
     // type==='number' check would leave it untouched anyway, but it's
     // named explicitly rather than silently omitted.
     attachLatticeFormulaFields([
-        sizeWidthEl, sizeHeightEl, railsCountMinEl, railsCountMaxEl, railsEveryEl, railsOffsetEl,
+        sizeWidthEl, sizeHeightEl, railsSpacingEl, railsSpacingCountEl,
         tiesCountMinEl, tiesCountMaxEl, tiesSpanMinEl, tiesSpanMaxEl, tiesRailSnapRowsEl,
         tiesOneEndedEl, tiesMinSpacingEl, widthRailsEl, widthTiesEl, widthNodesEl, widthLinkedEl,
     ], latticeScopeThunk);

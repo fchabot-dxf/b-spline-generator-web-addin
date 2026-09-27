@@ -1196,9 +1196,14 @@ describe('buildSketchManifest — T72: the default Bottle preset (and a deep-wai
 });
 
 describe('buildSketchManifest — T72 (SE14c) + T73 AMEND 3: contour.show=false omits the contour from the manifest and keeps the OLD (contour-inset) lattice boundary; show=true clips the lattice fill to the contour\'s own wider, raw centerline instead', () => {
+  // R7 carry-over 1 (Fred, advisor review): PATTERN_DEFAULTS.rails.mode is now 'spacing' (a brand-new
+  // pattern's own default) — this describe block's own density assumptions (built against the T56-era
+  // seeded [6,7] rail pick) need `mode:'count'` EXPLICITLY, or 'spacing' mode's fixed, sparser layout
+  // can leave too little room for the boundary-widening assertion below to be non-vacuous.
   function shapePattern(contour) {
     return {
       ...PATTERN_DEFAULTS, spacing: 0.25,
+      rails: { ...PATTERN_DEFAULTS.rails, mode: 'count' },
       extent: { mode: 'boundary' },
       shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
       ...(contour ? { contour } : {}),

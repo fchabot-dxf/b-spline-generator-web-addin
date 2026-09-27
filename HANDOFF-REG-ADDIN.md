@@ -100,3 +100,40 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
   (section 2) until the UI5 merge lands. FORMULA-FIELDS is a good first pick (a new shared module).
 - Leave fb-app and the silhouette solver to the home PC.
 - The home PC also pushes to main (merges): always `git pull --rebase` before pushing.
+
+## 5. Wind-down (Fred 2026-09-26)
+After the in-flight tasks land, the regular add-in HANDS BACK to the home-PC advisor. The Asus loops end after:
+**R6** (RAIL-SPACING engine) + **R7** (lattice panel restructure: Boundary first, Anchor/Spacing/Count, remove
+"Draw boundary") on main, and **L1** (BOUNDARY-GUIDE) on lane2, merged to main by the Asus advisor. Then: `handoff.py
+done` on both loops, lane2 worktree removed, a hand-back note here (state + what's left: SE16 cut tool with Fred's
+ruling in ROADMAP, UI4 0b, SNAP-SPLIT (Fred: leave for home), stamp-layer formula fields, Fred's live checks T75/T76/UI5/stale-params).
+
+### 5.1 HAND-BACK NOTE (Asus advisor → home advisor, 2026-09-26)
+**Final main sha at hand-back: `082b92b`** (+ this note's docs commit). Full suite on that tree, run by the Asus advisor:
+**vitest 89 files / 1645 passed, pytest 302 passed.** Both Asus loops are DONE (reg-addin + lane2); lane2 worktree removed.
+**Files mid-change: NONE** (both trees clean, everything pushed).
+
+**Shipped on the Asus (all on main):** R1–R2–R5 FORMULA-FIELDS (safe parser, declared scopes: stock/sidebar sections +
+both lattice panels + per-piece override width; min/max clamp) · lockfile (809f870) · R3–R4 STALE-PARAMS (registry in
+parameter_schema.py, adopt registered names, delete out-of-payload + no dependentParameters) · R6 RAIL-SPACING engine
+(rails.mode 'spacing': anchor/spacing/spacingCount, off-grid rails, ties exactly on rails, even count straddles) · R7 panels
+(Box: Boundary→Rails→Ties→Nodes; Shape: Boundary→Contour→Rails→Ties→Nodes; lattice seed hidden, Generate re-rolls; new
+patterns default spacing/center/1 in; one grid) · L1 BOUNDARY-GUIDE (dashed black editor guide, never in 3D/export, own
+first "Lattice Boundary" Fusion sketch in construction geometry) · R7 item 0 = the 3 LIVE bugs the home advisor found
+(stale-params logger crash, sketchManifest key, SE17 projections outside isComputeDeferred) → `9db556c`.
+
+**Open gates / waiting on the home advisor:** LIVE re-run on Ranchy of `9db556c`+ (4 kind sketches linked by projection,
+rail ends follow the contour on a stroke_width edit, stale_params written + correct). Nothing else is gated on the Asus.
+
+**Decisions awaiting Fred:**
+1. Shape Lattice panel still OPENS with the silhouette's own "Shape" (preset, shape seed, waist/corner sliders) and
+   "Segments" sections, above Boundary. Fred's order named only Boundary→Contour→Rails→Ties→Nodes. Keep Shape/Segments on
+   top, or move them? And hide the SHAPE seed too (Fred said "seed we can hide" — applied to the lattice seed only)?
+   These sections are seat C's (SHAPE-PARAMS will rebase onto R7's panel).
+2. SNAP-SPLIT (ROADMAP): separate GRID vs GEOMETRY snap for manual moves — queued, not started (Fred: leave for home).
+
+**Still queued for the home side:** SE16 ✂ Cut tool (Fred's ruling in ROADMAP: lattice cut pieces move together, direct
+edit independent) · SNAP-SPLIT · UI4 item 0b (needs Fred's steps) · stamp-layer transform formula fields (own binder,
+R2 note) · Fred's live checks: T75/T76 (after the projection fix), UI5 overrides, stale-params.
+**Known test note:** tests/frame-3d-sweep.test.js (F8) can time out at vitest's 5 s default on the Asus (passes with a
+longer timeout) — green in the final run above.

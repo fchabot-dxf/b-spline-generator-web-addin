@@ -21,6 +21,13 @@ import { computePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spl
 
 const EXTENT = { iMin: 0, jMin: 0, iMax: 12, jMax: 30 }; // a tall board — plenty of rows/columns for 6-7 rails / 8-13 ties
 
+// R7 carry-over 1 (Fred, advisor review): PATTERN_DEFAULTS.rails.mode is now 'spacing' (a brand-new
+// pattern's own default) — this WHOLE file is about 'count' mode's own behavior specifically, still a
+// real, fully-supported alternative, so every fixture below asks for it EXPLICITLY instead of relying
+// on the ambient default (which is what actually changed, not 'count' mode's own behavior).
+const RAILS_COUNT_MODE = { ...PATTERN_DEFAULTS.rails, mode: 'count' };
+const PATTERN_COUNT_MODE = { ...PATTERN_DEFAULTS, rails: RAILS_COUNT_MODE };
+
 function railRows(result) {
   return [...new Set(result.segments.filter((s) => s.kind === 'rail').map((s) => s.a.j))].sort((a, b) => a - b);
 }
@@ -28,9 +35,12 @@ function tieSegs(result) {
   return result.segments.filter((s) => s.kind === 'tie');
 }
 
-describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () => {
+describe('computePattern: rails.mode:\'count\' / ties.mode:\'count\' (T56 — still a real, declared alternative; R7 changed the DEFAULT, not this mode\'s own behavior)', () => {
   it('PATTERN_DEFAULTS declares the dispatched ranges and the RAILS span default (T67 AMEND #4, Fred: "ties needs to be coincident to their rails")', () => {
-    expect(PATTERN_DEFAULTS.rails.mode).toBe('count');
+    // R7 carry-over 1 (Fred, advisor review): a brand-new pattern's OWN default is now 'spacing', not
+    // 'count' — see tests/editor-lattice-pattern-rail-spacing.test.js for that. `count` mode itself (this
+    // whole file) is untouched: still exactly this range, still fully supported when asked for explicitly.
+    expect(PATTERN_DEFAULTS.rails.mode).toBe('spacing');
     expect(PATTERN_DEFAULTS.rails.count).toEqual([6, 7]);
     expect(PATTERN_DEFAULTS.ties.mode).toBe('count');
     expect(PATTERN_DEFAULTS.ties.count).toEqual([8, 13]);
@@ -40,7 +50,7 @@ describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () =
 
   it('50 seeds: rail count is always in [6,7], evenly spread (first/last row at the extent\'s own edges)', () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed }, { extent: EXTENT });
       const rows = railRows(result);
       expect(rows.length).toBeGreaterThanOrEqual(6);
       expect(rows.length).toBeLessThanOrEqual(7);
@@ -55,7 +65,7 @@ describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () =
   // merits below (tests/editor-lattice-pattern-tie-gap.test.js).
   it('50 seeds: tie count is always in [8,13]', () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } }, { extent: EXTENT });
       const ties = tieSegs(result);
       expect(ties.length).toBeGreaterThanOrEqual(8);
       expect(ties.length).toBeLessThanOrEqual(13);
@@ -64,7 +74,7 @@ describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () =
 
   it('50 seeds: every default tie has AT LEAST ONE end on a real rail row, and exactly PATTERN_DEFAULTS.ties.oneEnded (1) of them has the OTHER end free — never a tie with BOTH ends floating (T67 AMEND 3+4\'s own explicit goal, refining the earlier "always both ends" version)', () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } }, { extent: EXTENT });
       const rows = new Set(railRows(result));
       let oneEndedCount = 0;
       for (const tie of tieSegs(result)) {
@@ -79,7 +89,7 @@ describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () =
 
   it('50 seeds: no two ties share a column (distinct slots, per the dispatch\'s own "spread them")', () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed }, { extent: EXTENT });
       const columns = tieSegs(result).map((t) => t.a.i);
       expect(new Set(columns).size).toBe(columns.length);
     }
@@ -87,7 +97,7 @@ describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () =
 
   it('holds under orientation:\'vertical\' too (rails run the OTHER axis, same count guarantees)', () => {
     for (const seed of [1, 2, 3, 17, 42]) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, orientation: 'vertical', seed }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, orientation: 'vertical', seed }, { extent: EXTENT });
       const rails = result.segments.filter((s) => s.kind === 'rail');
       const ties = result.segments.filter((s) => s.kind === 'tie');
       // Vertical: rails run along j at a fixed i (a.i===b.i); count is
@@ -114,7 +124,7 @@ describe('computePattern: ties.span.mode:\'rails\' (the DEFAULT since T67 AMEND 
 
   it('50 seeds: every tie starts AND ends exactly on a real rail row (bridges, never a floating stub)', () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: railsSpanTies() }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed, ties: railsSpanTies() }, { extent: EXTENT });
       const rows = new Set(railRows(result));
       for (const tie of tieSegs(result)) {
         expect(rows.has(tie.a.j)).toBe(true);
@@ -134,7 +144,7 @@ describe('computePattern: ties.span.mode:\'rails\' (the DEFAULT since T67 AMEND 
     const seen = new Set();
     for (let seed = 1; seed <= 50; seed++) {
       const result = computePattern(
-        { ...PATTERN_DEFAULTS, seed, ties: railsSpanTies({ maxRailGaps: 2 }) },
+        { ...PATTERN_COUNT_MODE, seed, ties: railsSpanTies({ maxRailGaps: 2 }) },
         { extent: EXTENT }
       );
       const rows = railRows(result);
@@ -154,7 +164,7 @@ describe('computePattern: ties.oneEnded (T67 AMEND 3+4, Fred: "one setting: numb
       for (let seed = 1; seed <= 50; seed++) {
         // T77 (TIE-GAP): minSpacing:0 -- this describe block's own purpose
         // is oneEnded placement, independent of the new gap constraint.
-        const pattern = { ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, oneEnded, minSpacing: 0 } };
+        const pattern = { ...PATTERN_COUNT_MODE, seed, ties: { ...PATTERN_DEFAULTS.ties, oneEnded, minSpacing: 0 } };
         const result = computePattern(pattern, { extent: EXTENT });
         const rows = new Set(railRows(result));
         const ties = tieSegs(result);
@@ -179,7 +189,7 @@ describe('computePattern: ties.span.mode:\'cells\' (T67 AMEND #4 — the PRE-exi
 
   it('50 seeds: every cells-mode tie\'s own span is spanMin..spanMax grid cells (a short stub, per Fred\'s own original pick — still available on request)', () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: cellsSpanTies() }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed, ties: cellsSpanTies() }, { extent: EXTENT });
       for (const tie of tieSegs(result)) {
         const span = Math.abs(tie.b.j - tie.a.j);
         expect(span).toBeGreaterThanOrEqual(PATTERN_DEFAULTS.ties.spanMin);
@@ -206,7 +216,7 @@ describe('computePattern: boundary mode places <= count ("place what fits")', ()
       primitives: rectPrimitives(EXTENT.iMin, 10, EXTENT.iMax, 20),
     };
     for (let seed = 1; seed <= 20; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: boundary });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed }, { extent: boundary });
       const rows = railRows(result);
       expect(rows.length).toBeLessThanOrEqual(7);
       for (const j of rows) {
@@ -229,8 +239,8 @@ describe('computePattern: boundary mode places <= count ("place what fits")', ()
       primitives: rectPrimitives(EXTENT.iMin, 0, EXTENT.iMax, 3),
     };
     for (let seed = 1; seed <= 10; seed++) {
-      expect(() => computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: boundary })).not.toThrow();
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: boundary });
+      expect(() => computePattern({ ...PATTERN_COUNT_MODE, seed }, { extent: boundary })).not.toThrow();
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed }, { extent: boundary });
       const ties = tieSegs(result);
       expect(ties.length).toBeLessThanOrEqual(13);
       for (const tie of ties) {
@@ -244,7 +254,7 @@ describe('computePattern: boundary mode places <= count ("place what fits")', ()
 describe('computePattern: mode:\'every\'/\'density\' remain real, working alternatives', () => {
   it('rails.mode:\'every\' still gives the exact fixed-stride rows, ignoring count entirely', () => {
     const result = computePattern(
-      { ...PATTERN_DEFAULTS, rails: { mode: 'every', every: 3, offset: 0, count: [6, 7] } },
+      { ...PATTERN_COUNT_MODE, rails: { mode: 'every', every: 3, offset: 0, count: [6, 7] } },
       { extent: EXTENT }
     );
     expect(railRows(result)).toEqual([0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30]);
@@ -273,26 +283,31 @@ describe('computePattern: mode:\'every\'/\'density\' remain real, working altern
 describe('computePattern: an existing saved pattern (no `mode` key) keeps its OLD implicit behavior', () => {
   it('rails: {every,offset} with no mode key reads as \'every\', not the new \'count\' default', () => {
     const oldSavedRails = { every: 4, offset: 1 }; // exactly what a pre-T56 saved pattern's own rails object looked like
-    const result = computePattern({ ...PATTERN_DEFAULTS, rails: oldSavedRails }, { extent: EXTENT });
+    const result = computePattern({ ...PATTERN_COUNT_MODE, rails: oldSavedRails }, { extent: EXTENT });
     expect(railRows(result)).toEqual([1, 5, 9, 13, 17, 21, 25, 29]);
   });
 
   it('ties: {density,...} with no mode key reads as \'density\', not the new \'count\' default', () => {
     const oldSavedTies = { density: 0, spanMin: 1, spanMax: 3, columns: null, anchor: 'free', railSnapRows: 1 };
     const result = computePattern(
-      { ...PATTERN_DEFAULTS, rails: { every: 5, offset: 0 }, ties: oldSavedTies },
+      { ...PATTERN_COUNT_MODE, rails: { every: 5, offset: 0 }, ties: oldSavedTies },
       { extent: EXTENT }
     );
     expect(tieSegs(result).length).toBe(0); // density:0 correctly suppresses every tie, proving density mode is live
   });
 
-  it('no `rails`/`ties` key at all (a genuinely brand-new pattern) gets the NEW count default', () => {
+  it('no `rails` key at all (a genuinely brand-new pattern) gets the CURRENT default (R7: \'spacing\', not \'count\')', () => {
+    // R7 carry-over 1 changed this from 'count' to 'spacing' -- this test now guards THAT fact directly,
+    // rather than asserting a specific row count the way the T56-era version did (this describe block's
+    // own subject is 'count' mode's behavior, not the ambient default, so it now lives in
+    // tests/editor-lattice-pattern-rail-spacing.test.js alongside every other 'spacing'-mode assertion).
     const fresh = { ...PATTERN_DEFAULTS };
     delete fresh.rails;
-    delete fresh.ties;
     const result = computePattern({ ...fresh, seed: 5 }, { extent: EXTENT });
     const rows = railRows(result);
-    expect(rows.length).toBeGreaterThanOrEqual(6);
-    expect(rows.length).toBeLessThanOrEqual(7);
+    // 'spacing' mode, anchor:'center' (PATTERN_DEFAULTS.rails), spacing 1in against EXTENT's default
+    // 0.25in grid step -> every gap is exactly 4 lattice rows, unlike 'count' mode's seeded [6,7] pick.
+    expect(new Set(rows.slice(1).map((r, i) => r - rows[i])).size).toBe(1);
+    expect(rows.slice(1).map((r, i) => r - rows[i])[0]).toBe(4);
   });
 });

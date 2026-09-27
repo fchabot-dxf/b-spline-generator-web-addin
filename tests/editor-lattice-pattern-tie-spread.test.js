@@ -36,6 +36,12 @@ import { computePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spl
 
 const EXTENT = { iMin: 0, jMin: 0, iMax: 25, jMax: 35 }; // wide board — plenty of columns to spread 8-13 ties across
 
+// R7 carry-over 1 (Fred, advisor review): PATTERN_DEFAULTS.rails.mode is now 'spacing' (a brand-new
+// pattern's own default) — this file is about ties.spread scaffolded on 'count' mode's OWN rail
+// layout (the T56-era seeded [6,7] pick this file's own measurements were built against), so every
+// fixture asks for 'count' mode EXPLICITLY rather than relying on the ambient default.
+const PATTERN_COUNT_MODE = { ...PATTERN_DEFAULTS, rails: { ...PATTERN_DEFAULTS.rails, mode: 'count' } };
+
 function tieColumns(result) {
   return result.segments.filter((s) => s.kind === 'tie').map((t) => t.a.i);
 }
@@ -48,7 +54,7 @@ describe('computePattern: ties.spread (T57)', () => {
   it('50 seeds: no half of the board holds more than ~65% of the ties', () => {
     const mid = (EXTENT.iMin + EXTENT.iMax) / 2;
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed }, { extent: EXTENT });
       const cols = tieColumns(result);
       expect(cols.length).toBeGreaterThan(0);
       const leftFrac = cols.filter((c) => c < mid).length / cols.length;
@@ -64,7 +70,7 @@ describe('computePattern: ties.spread (T57)', () => {
     // every zone before the fmix32 fix. Comparing several small,
     // adjacent seeds directly reproduces the exact failure mode.
     const seeds = [1, 2, 7, 42];
-    const results = seeds.map((seed) => tieColumns(computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: EXTENT })).sort((a, b) => a - b));
+    const results = seeds.map((seed) => tieColumns(computePattern({ ...PATTERN_COUNT_MODE, seed }, { extent: EXTENT })).sort((a, b) => a - b));
     for (let i = 0; i < results.length; i++) {
       for (let j = i + 1; j < results.length; j++) {
         expect(results[i]).not.toEqual(results[j]);
@@ -74,7 +80,7 @@ describe('computePattern: ties.spread (T57)', () => {
 
   it('50 seeds: still no two ties share a column (T56\'s own guarantee, unaffected by the spread mechanism)', () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed }, { extent: EXTENT });
       const cols = tieColumns(result);
       expect(new Set(cols).size).toBe(cols.length);
     }
@@ -85,7 +91,7 @@ describe('computePattern: ties.spread (T57)', () => {
     // mechanism, independent of the new gap constraint (tested on its own
     // merits in tests/editor-lattice-pattern-tie-gap.test.js).
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } }, { extent: EXTENT });
       const cols = tieColumns(result);
       expect(cols.length).toBeGreaterThanOrEqual(8);
       expect(cols.length).toBeLessThanOrEqual(13);
@@ -118,7 +124,7 @@ describe('computePattern: ties.spread (T57)', () => {
     const zoneOf = (col) => Math.min(zones - 1, Math.floor(col / zoneWidth));
     let totalZone0 = 0, totalTies = 0, sawMultiTieSeed = false;
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: wideRangeTies }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed, ties: wideRangeTies }, { extent: EXTENT });
       const cols = tieColumns(result);
       if (cols.length < 3) continue; // need >zones to actually exercise wrapping
       sawMultiTieSeed = true;
@@ -135,9 +141,9 @@ describe('computePattern: ties.spread (T57)', () => {
     // 'random' has no stratification guarantee — verify it's actually
     // DIFFERENT from stratified output for the same seed (proving the
     // dispatch is live, not silently ignored), not that it clusters.
-    const stratified = tieColumns(computePattern({ ...PATTERN_DEFAULTS, seed: 42 }, { extent: EXTENT })).sort((a, b) => a - b);
+    const stratified = tieColumns(computePattern({ ...PATTERN_COUNT_MODE, seed: 42 }, { extent: EXTENT })).sort((a, b) => a - b);
     const random = tieColumns(
-      computePattern({ ...PATTERN_DEFAULTS, seed: 42, ties: { ...PATTERN_DEFAULTS.ties, spread: 'random' } }, { extent: EXTENT })
+      computePattern({ ...PATTERN_COUNT_MODE, seed: 42, ties: { ...PATTERN_DEFAULTS.ties, spread: 'random' } }, { extent: EXTENT })
     ).sort((a, b) => a - b);
     expect(random).not.toEqual(stratified);
   });
@@ -151,17 +157,17 @@ describe('computePattern: the COUNT draws themselves (T56\'s own already-merged 
     const wideRangeTies = { ...PATTERN_DEFAULTS.ties, count: [2, 15] };
     const counts = new Set();
     for (let seed = 1; seed <= 30; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: wideRangeTies }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed, ties: wideRangeTies }, { extent: EXTENT });
       counts.add(tieColumns(result).length);
     }
     expect(counts.size).toBeGreaterThan(3); // genuinely varied, not stuck at one value
   });
 
   it('rails: a wide count range [2,15]: 30 consecutive small seeds produce genuinely VARIED rail counts too', () => {
-    const wideRangeRails = { ...PATTERN_DEFAULTS.rails, count: [2, 15] };
+    const wideRangeRails = { ...PATTERN_DEFAULTS.rails, mode: 'count', count: [2, 15] };
     const counts = new Set();
     for (let seed = 1; seed <= 30; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed, rails: wideRangeRails }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_COUNT_MODE, seed, rails: wideRangeRails }, { extent: EXTENT });
       const rows = new Set(result.segments.filter((s) => s.kind === 'rail').map((s) => s.a.j));
       counts.add(rows.size);
     }

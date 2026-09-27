@@ -959,6 +959,24 @@ a saved pattern's old `spacing` is read as its grid step and keeps its exact geo
 spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
 the one grid.
 
+## Queued (Fred's queue) — SNAP-SPLIT: separate GRID snap and GEOMETRY snap for manual moves (Fred 2026-09-26)
+Fred: "on manual moving, geometry snaps if snapping is on (need snapping distinction, for geometry and grid)". Today the
+editor has ONE toggle (`#editorGridSnap` "SNAP", grid only; Alt = off-grid). Change: two declared snap modes, each its own
+toolbar toggle — GRID (snap to grid points) and GEOMETRY (snap to existing geometry: rails, ties' rail contacts, nodes,
+contour, line ends/midpoints/intersections). When dragging by hand (Select-drag, lattice pieces, direct edit), a point
+snaps to geometry when GEOMETRY is on, to the grid when GRID is on; both on = geometry wins within its tolerance, else
+grid. Alt still suspends all snapping. One snap resolver (declared targets + priority), read by every drag path — not
+per-tool special cases. Generated rails are off-grid (RAIL-SPACING) and generated ties always sit exactly on rails
+(Fred: "ties def snap to rails") — this entry is about MANUAL moves. Tests: each toggle alone, both, neither, Alt;
+lattice + direct edit; mobile.
+
+RAIL-SPACING RULINGS (Fred 2026-09-26, Asus Q&A): off-grid rails fine, NO spacing rounding; generated ties ALWAYS
+snap exactly onto rails; Center + even count straddles the centre (no rail on it); new-pattern defaults center + 1 in.
+PANELS (R7): Boundary section = Size W x H ONLY (Fred: "contour isn't boundary" - the Shape Lattice Contour checkbox + its stroke
+stay in their OWN separate section, not Boundary; Shape Lattice order: Boundary, Contour, Rails, Ties, Nodes); Orientation moves into Rails; the SEED field is HIDDEN (Generate still
+re-rolls, as today); old grid-step "Spacing" + Every/Offset removed (old patterns
+keep geometry); "Draw boundary" toggle removed.
+
 ## Queued (Fred's queue, Asus) — FORMULA-FIELDS: type a formula in a number field (Fred 2026-09-26)
 Fred: "if I want a rail exactly on the boundary I just math it out" / "can we enter formula in the fields". Today no
 field accepts expressions. ONE shared parser module used by every numeric input (declared, not per-field): + - * /
@@ -1002,6 +1020,16 @@ patterns keep their exact shape (migration test). F5 guarantees hold (dense swee
 Shape Lattice first. Frames get handles for their EXISTING template params in F9. Frames NEVER get the new params (Fred: "we don't need to add new
 parameters that aren't in the add-in right now"): frame handles drive ONLY the params the Frame Builder add-in already has.
 Fusion Shape Lattice export unchanged in kind (the geometry changes, no new radius dims: Fred's SE15 rule).
+
+## Queued (seat C, fb-app, after F10) — FRAME-GEN: a [Generate] button for the frame shape, then tweak with handles (Fred 2026-09-26)
+Fred: "we have a generate button that regenerates every time we press? … and allow to tweak the result with handles".
+In the Frame tab: [Generate] draws a new random frame shape each press. A seeded RNG (the new seed is stored in the
+frame record, like the lattice seed, so a shape is reproducible) sets every declared handle's value inside its
+feasibleParamRanges (F5), so a generated frame can never loop or invert. The results are written as the handles' SEEDS
+(F9), so the handles then tweak that exact shape, and a tweak is kept until the next Generate. Undo restores the
+previous shape. No new Fusion params (seeds stay plain sketch values). Tests: N generates are all valid outlines (the
+F5 sweep guarantees), the same seed gives the same shape, a tweak after generate persists through save/reload, undo
+works. Shots: 3 generated shapes + one tweaked, T1 + T2.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
