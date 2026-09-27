@@ -20,6 +20,12 @@ export const DEFAULT = {
     seed: 42,
     scale: 3.7,
     macroScale: 0.65,
+    // Map Zoom (H17): a drawing-style zoom of the whole generated terrain,
+    // centred on the board -- bigger value = bigger features. Implemented
+    // once at terrain.js's (u,v) sampler entry so coarse shapes, fine
+    // texture and detail/cluster masks all scale together; does not affect
+    // stamps/sculpt/frame/edge fade/the board. 1 = today's terrain exactly.
+    mapZoom: 1,
     warpIntensity: 1.0,
     symmetry: 'x',
     // Symmetry mirror-line offsets. 0 = mirror through panel center (legacy
@@ -147,6 +153,8 @@ export const SLIDER_PAIRS = {
     // H16 item 5: back after H15 removed it with the whole Seed panel --
     // the control returns (now in Filter's "Map" group), the P key never left.
     macroScale: 'macroSlider',
+    // H17 item 1: new -- Filter's "Map" group.
+    mapZoom: 'mapZoomSlider',
     carveZ: 'carveZSlider',
     smoothIntensity: 'smoothIntensitySlider',
     smoothRadius: 'smoothRadiusSlider',
@@ -329,7 +337,7 @@ export function updateP(key, value) {
     }
     
     // Safety Floor: Prevent critical parameters from becoming 0
-    if (key === 'carveZ' || key === 'macroScale' || key === 'scale') {
+    if (key === 'carveZ' || key === 'macroScale' || key === 'scale' || key === 'mapZoom') {
         value = Math.max(0.001, parseFloat(value));
     }
     if (key === 'peakShape') {

@@ -20,6 +20,7 @@ export function generateHeightmap(params, stampParams = null) {
     seed           = 42,
     scale          = 1.2,
     macroScale     = 0.35,
+    mapZoom        = 1,
     octaves        = 4,
     roughness      = 0.5,
     edgeMargin     = 0,
@@ -53,14 +54,25 @@ export function generateHeightmap(params, stampParams = null) {
         const u = i / (nx - 1);
         const v = j / (nz - 1);
 
+        // H17 item 1 -- Map Zoom: a drawing-style zoom of the whole
+        // generated terrain, centred on the board. Remapped ONCE here, at
+        // the sampler's (u,v) entry, so every downstream layer that reads
+        // su/sv (fine noise, detail/cluster masks, coarse redistribution)
+        // scales together as one drawing. `u`/`v` themselves are left
+        // UNCHANGED below (edgeFade, Pass 3 smoothing, applyVectorDrape all
+        // intentionally still read the real board position) -- stamps,
+        // sculpt, the frame, edge fade and the board itself must not zoom.
+        const zu = 0.5 + (u - 0.5) / mapZoom;
+        const zv = 0.5 + (v - 0.5) / mapZoom;
+
         // Mirror axis can be shifted by symOffsetX/Y. Default 0 = mirror
         // through center (legacy behavior). The fold output is scaled by 2
         // so the noise frequency stays consistent with the un-offset case.
-        let su = u, sv = v;
+        let su = zu, sv = zv;
         const mx = 0.5 + symOffsetX;
         const my = 0.5 + symOffsetY;
-        if (symmetry === 'x' || symmetry === 'radial') su = Math.abs(u - mx) * 2;
-        if (symmetry === 'y' || symmetry === 'radial') sv = Math.abs(v - my) * 2;
+        if (symmetry === 'x' || symmetry === 'radial') su = Math.abs(zu - mx) * 2;
+        if (symmetry === 'y' || symmetry === 'radial') sv = Math.abs(zv - my) * 2;
 
         // ── Pass 1: Fine Detail (Strategy Pattern) ──
         // Skeleton-isolation mode bypasses the filter with a flat 0.5,
@@ -86,9 +98,10 @@ export function generateHeightmap(params, stampParams = null) {
         let detailIntensity = 1.0;
         if (params.detailDensity < 0.99) {
             // Use folded coords (msu=su, msv=sv) when respecting symmetry,
-            // otherwise raw u,v so the mask breaks symmetry intentionally.
-            const msu = params.detailDensityRespectSymmetry ? su : u;
-            const msv = params.detailDensityRespectSymmetry ? sv : v;
+            // otherwise zoomed-but-unfolded zu,zv so the mask breaks symmetry
+            // intentionally (still zoomed -- it's part of the drawing).
+            const msu = params.detailDensityRespectSymmetry ? su : zu;
+            const msv = params.detailDensityRespectSymmetry ? sv : zv;
             const modFreq = 2.5;
             let mVal = (noiseCoarse.fbm(msu * modFreq, msv * modFreq, 2) * 1.5 + 1) * 0.5;
             mVal = Math.max(0, Math.min(1, mVal));

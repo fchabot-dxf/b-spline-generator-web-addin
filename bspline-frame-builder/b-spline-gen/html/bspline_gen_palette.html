@@ -727,6 +727,22 @@
             </div>
           </div>
 
+          <!-- H17 item 1 (Fred: "add it in filters, not replace region"): a
+               NEW slider, distinct from Region Scale above -- a drawing-
+               style zoom of the WHOLE generated terrain about the board
+               centre (bigger value = bigger features), implemented once at
+               terrain.js's (u,v) sampler entry so coarse shapes, fine
+               texture and detail/cluster masks all scale together. Does
+               NOT affect stamps/sculpt/frame/edge fade/the board. New P key
+               mapZoom, default 1 = today's terrain exactly. -->
+          <label class="cad-label">Map Zoom</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="mapZoomSlider" class="cad-slider" min="0.25" max="4" step="0.05" value="1">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="mapZoom" value="1">
+            </div>
+          </div>
+
           <!-- H16 item 4 (Fred: "the seed offset could be surfaced in
                skeleton if it was removed" -> correction: "sorry, it
                should go in filter"): the H15-removed Seed panel's Offset

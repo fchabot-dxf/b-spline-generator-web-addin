@@ -12132,3 +12132,70 @@ Shots in `shots\seatA\` (`H16-item5_filter-map-group_390/834`).
 
 `npx vitest run` -> **2083 passed**, zero regressions (no unit-test file added this item, so the count is
 unchanged from H16 items 1-4).
+
+## H17 item 1 — Map Zoom: a drawing-style zoom of the whole terrain, new slider in Filter's Map group
+
+Fred: "add it in filters, not replace region" — a NEW slider alongside (never instead of) Region Scale.
+
+**The implementation, once, at the (u,v) entry (`core/terrain.js`).** Right after `u`/`v` are computed
+(the top of the Pass 1+2 loop), added `zu = 0.5 + (u-0.5)/mapZoom` and `zv = 0.5 + (v-0.5)/mapZoom`, then
+substituted `zu`/`zv` everywhere `u`/`v` fed "the drawing": the symmetry-fold input (`su`/`sv`, which then
+drives fine noise sampling AND the coarse-redistribution `cx`/`cz`, so both inherit it automatically with
+no separate code) and the detail-density mask's symmetry-breaking branch (`msu`/`msv`'s `: u`/`: v` arm,
+now `: zu`/`: zv` — it's still part of what the noise draws, just deliberately unfolded). `u`/`v`
+THEMSELVES are untouched everywhere else in the function: `edgeFade(u, …)`/`edgeFade(v, …)` still reads
+the real board position (edge fade must not zoom), Pass 3's smoothing loop recomputes its own local `u`/`v`
+from `i`/`j` independently (never sees `zu`/`zv`), and `applyVectorDrape` (stamps) operates on the already-
+computed `heights` array by index, never touching `u`/`v` at all — so stamps/sculpt/frame/edge fade/the
+board are excluded from the zoom structurally, not by a special-case guard. `noiseRefs.rawU`/`rawV` (fed
+`u`/`v`, unchanged) were left alone — grepped and confirmed no noise-mode file (`core/noise/*.js`) actually
+reads them; not worth touching dead fields.
+Symmetry's mirror axis (`mx`/`my`, from `symOffsetX`/`Y`) was deliberately left un-zoomed, folded directly
+against `zu`/`zv` — since the mirror line is part of "the drawing" too, this makes it zoom along with
+everything else automatically, which is the "implement once, inherits everywhere" outcome the checklist
+asks for, not a separate decision.
+- `core/state.js`: new `DEFAULT.mapZoom = 1` (placed next to `macroScale`), new `SLIDER_PAIRS.mapZoom =
+  'mapZoomSlider'` entry, added `mapZoom` to the existing "Safety Floor" list (`carveZ`/`macroScale`/
+  `scale`) so it can never reach exactly 0 (it's a divisor in the zoom formula — 0 would produce Infinity).
+- `main/param-manager.js`: added `mapZoom` to `immediateRebuildParams` — the checklist's "must be a real
+  filter input" requirement; without this, dragging the slider would update `P.mapZoom` but never re-render.
+- `bspline_gen_palette.html`: a new "Map Zoom" slider + stepper (`#mapZoomSlider`/`#mapZoom`, min 0.25 /
+  max 4 / step 0.05 / default 1) inserted directly below Region Scale, inside the same "Map" group,
+  above the item-4/5 Offset X/Y pair. Region Scale's own markup is untouched.
+- Declare-over-hand-roll: same as item 5 — `main/ui-bindings.js`'s generic `Object.keys(P)` + `SLIDER_PAIRS`
+  binder picked up the new control automatically from the DOM id + registry entry; no new wiring code.
+
+**Tests** (`tests/h17-map-zoom.test.js`, 5 tests, calling `generateHeightmap` directly, `{...DEFAULT,
+...overrides}` per the H15 test-construction finding): (1) `mapZoom: 1` is byte-identical to `mapZoom`
+omitted from the params object entirely — confirms 1 is a true no-op default, i.e. "identical to before"
+in the most literal sense (before this feature existed, no `mapZoom` key existed at all). (2) The board-
+centre sample is identical at zoom 0.5/1/2 (zoom is centred on the board — `(0.5-0.5)/zoom` is exactly 0
+at any zoom). (3) The checklist's exact scenario: with symmetry off, a feature at `u=0.75` at zoom 1
+equals a feature at `u=1.0` at zoom 2, on a 5×5 grid sized so both land on exact grid points (`zu=0.75` in
+both cases, verified by hand: `0.5+(0.75-0.5)/1=0.75` and `0.5+(1.0-0.5)/2=0.75`). (4) `mapZoom` actually
+changes the heightmap between 1 and 1.5 (not a dead parameter). (5) `edgeFade` is unaffected at any zoom —
+a fully-margin-faded corner (`u=v=0`) stays exactly 0 at zoom 1 and zoom 3 alike, since `edgeFade` never
+sees `zu`/`zv`.
+Mutation-tested: `git stash push -u -- core/terrain.js` (reverting ONLY the sampler change, keeping the new
+P key/slider/wiring in place — `mapZoom` becomes a silently-ignored extra field, exactly the failure mode
+of "wired the UI but forgot the sampler"). Re-ran: tests 3 and 4 — the two that actually exercise the zoom
+mechanism — correctly FAILED (`0.7122... !== 0.8693...` for test 3; heights identical between zoom 1 and
+1.5 for test 4, so `not.toEqual` failed). Tests 1/2/5 correctly stayed green under this mutation too — they
+assert invariants (default no-op, centre invariance, edge fade exclusion) that hold whether the feature
+exists or not, so they're not expected to catch its absence; they exist to catch a DIFFERENT class of bug
+(e.g. someone wrongly zooming edge fade). Popped the stash, re-ran — all 5 green again.
+
+Live-verified via headless CDP at 390px (fresh Chrome profile — hit a stale zombie headless-Chrome process
+from earlier in the session squatting on a previously-used debug port, which silently served a wrong/stale
+page; fixed by picking a random high port per run instead of a formula that could collide with a leftover
+process): `#mapZoom`/`#mapZoomSlider` present inside `.panel-filter` (not `.panel-skeleton`), positioned
+below Region Scale in the same Map group, default 1; Region Scale itself confirmed UNTOUCHED at 0.65;
+dragging the slider to 2 updates `P.mapZoom` (imported live from `core/state.js`) without touching
+`P.macroScale`, and the stepper mirrors it — the real-filter-input wiring, live. Fixed the seed (4242) and
+noise type (simplex) then rendered the SAME terrain via `window.__preview.getSnapshot()` (the
+`tools/repro/filter_shots.mjs` camera-snap technique) at zoom 0.5, 1 and 2: 0.5 shows many small, busy
+features; 2 shows a few large, sweeping ones spanning the whole board — visually exactly "the same drawing
+enlarged," confirming the effect is real and matches Fred's description, not just numerically correct.
+Shots in `shots\seatA\` (`H17-item1_zoom0.5/1/2_390`).
+
+`npx vitest run` -> **2088 passed** (up from 2083), zero regressions.

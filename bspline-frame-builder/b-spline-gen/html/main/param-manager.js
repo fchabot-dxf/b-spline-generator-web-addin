@@ -10,7 +10,7 @@ import { AppState } from './app-state.js';
 const immediateRebuildParams = [
   'widthIn', 'heightIn', 'spacing', 'seed', 'noiseType',
   'seedType', 'seedOffsetX', 'seedOffsetY', 'seedRotation',
-  'symmetry', 'symOffsetX', 'symOffsetY', 'carveZ', 'scale', 'macroScale', 'warpIntensity',
+  'symmetry', 'symOffsetX', 'symOffsetY', 'carveZ', 'scale', 'macroScale', 'mapZoom', 'warpIntensity',
   'peakShape', 'density', 'clustering',
   'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode',
   'edgeMarginIn', 'stampDepth', 'stampBlur', 'stampSmoothingRadius',
