@@ -14,6 +14,39 @@
  * axis-locked, clamped to the generator's feasible ranges), not a copy.
  */
 import { computeParamHandles } from './editor-shape-lattice-interaction.js';
+import {
+  PARAM_ORDER, feasibleParamRanges, generateSilhouette, paramsFromShapeModel, seededUnit,
+} from './editor-shape-lattice-generator.js';
+
+/** F13 (FRAME-GEN): a generated value is drawn from this band of its feasible
+ *  range (a design choice, not a guard: every value in the range is valid; the
+ *  band keeps a generated frame off the extremes). */
+export const FRAME_GEN_BAND = [0.1, 0.9];
+const FRAME_GEN_SALT = 700;
+
+/**
+ * F13: the FRAME's own feasibility, on top of the silhouette's. The frame's
+ * inner edge is the outline offset inward by the frame thickness t
+ * (outline-offset.js), so at the pinch (the hourglass waist, the bottle neck)
+ * the opening across the centreline must stay at least this wide, or the two
+ * inner edges cross and the opening closes (MEASURED: a generated T1 waist of
+ * 0.78 left a 1.44 in pinch for a 2 x 0.75 in frame). A declared minimum.
+ */
+export const FRAME_MIN_OPENING_IN = 0.25;
+const _templateThickness = (tpl) => tpl.params.find((p) => p.name === 'frame_thickness')?.default ?? 0;
+const _narrow = (r, lo, hi) => {
+  const a = Math.max(r.min, lo), b = Math.min(r.max, hi);
+  return a <= b ? { min: a, max: b } : { min: b, max: b }; // no room: validity (the frame rule) wins
+};
+
+/** The silhouette's feasible ranges narrowed by the frame opening rule (frame thickness `t`, inches). */
+export function frameParamRanges(tpl, region, resolved, t = _templateThickness(tpl)) {
+  const R = feasibleParamRanges(tpl.silhouettePreset, region, resolved);
+  const hw = region.w / 2, half = FRAME_MIN_OPENING_IN / 2;
+  if (tpl.silhouettePreset === 'bottle') R.neckWidth = _narrow(R.neckWidth, (t + half) / hw, Infinity);
+  else R.waistReach = _narrow(R.waistReach, -Infinity, 1 - (t + half) / hw); // the pinch: hw - depth - t >= half
+  return R;
+}
 
 const BASIS = { hw: (r) => r.w / 2, hh: (r) => r.h / 2, h: (r) => r.h };
 
@@ -37,10 +70,12 @@ export function shapeParamOverrides(tpl, record, region) {
 
 /** The on-canvas handles for a drawn cut profile (its region + resolved params),
  *  only those the table declares, each with its binding. */
-export function frameHandles(tpl, prof) {
+export function frameHandles(tpl, prof, t = _templateThickness(tpl)) {
   const table = new Map(frameHandleTable(tpl).map((h) => [h.key, h]));
+  const R = frameParamRanges(tpl, prof.region, prof.params, t); // F13: a drag honours the frame opening too
   return computeParamHandles(tpl.silhouettePreset, prof.region, prof.params, [...table.keys()])
-    .map((h) => ({ ...h, label: table.get(h.key).label, binding: table.get(h.key).binding, basis: table.get(h.key).basis }));
+    .map((h) => ({ ...h, label: table.get(h.key).label, binding: table.get(h.key).binding, basis: table.get(h.key).basis,
+      valueFromWorld: (pt) => Math.max(R[h.key].min, Math.min(R[h.key].max, h.valueFromWorld(pt))) }));
 }
 
 /**
@@ -72,6 +107,31 @@ export function frameSeedGeometry(tpl, prof, W, H) {
     }
   }
   return out;
+}
+
+/**
+ * F13 (FRAME-GEN, Fred: "a generate button that regenerates every time we
+ * press, and allow to tweak the result with handles"): a seeded random frame
+ * shape as the template's SEEDED handle values (record.seeds). Each value is
+ * drawn inside its declared feasible range (F5, with F12's closed-notch and
+ * keyhole bounds, and the frame opening rule for thickness `t`), in
+ * PARAM_ORDER, each range conditional on the values drawn before it, so a
+ * generated frame (outline AND inner edge) can never loop or invert. The same
+ * `seed` gives the same shape. `region` = the frame's cut-profile region.
+ */
+export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl)) {
+  const preset = tpl.silhouettePreset;
+  const seeded = new Set(frameHandleTable(tpl).filter((h) => h.binding === 'seeded').map((h) => h.key));
+  const params = { ...paramsFromShapeModel(preset, tpl.shapeModel, region) };
+  const seeds = {};
+  PARAM_ORDER[preset].forEach((key, i) => {
+    if (!seeded.has(key)) return;
+    const resolved = generateSilhouette(region, { preset, params }).params;
+    const r = frameParamRanges(tpl, region, resolved, t)[key];
+    const u = FRAME_GEN_BAND[0] + (FRAME_GEN_BAND[1] - FRAME_GEN_BAND[0]) * seededUnit(seed, FRAME_GEN_SALT + i);
+    params[key] = seeds[key] = r.min + (r.max - r.min) * u;
+  });
+  return seeds;
 }
 
 /** The record patch a drag of `handle` to board point `pt` writes (per its binding). */

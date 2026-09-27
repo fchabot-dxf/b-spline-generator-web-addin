@@ -20,11 +20,49 @@ import { P, isFusionMode } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
-import { handleDragPatch, frameSeedGeometry } from '../editor/frame-handles.js';
+import { handleDragPatch, frameSeedGeometry, generateFrameSeeds } from '../editor/frame-handles.js';
+import { nextSeed } from '../editor/editor-lattice-pattern.js';
 import { frameCutProfile } from '../editor/editor-frame-profile.js';
 
 /** F9: how close (screen px) a press must land to grab a frame shape handle (finger-sized). */
 export const HANDLE_HIT_PX = 16;
+
+// ── F13: the Frame tab's own undo (generate, a handle drag and a template change
+// are each one step). The editor's artwork undo is locked in the Frame tab (F8),
+// so the frame's steps never mix with the artwork's.
+const _frameHistory = [];
+let _undoKeyWired = false;
+const _clone = (r) => JSON.parse(JSON.stringify(r));
+
+/** Remember the current frame record as one undoable step. */
+export function pushFrameHistory() {
+  _frameHistory.push(_clone(getFrameRecord()));
+  _syncUndo();
+}
+
+/** Restore the frame record before the last step; false when there is none. */
+export function undoFrame() {
+  const prev = _frameHistory.pop();
+  if (!prev) return false;
+  setFrameRecord(prev);
+  syncFramePanel();
+  _syncUndo();
+  return true;
+}
+export const frameHistoryDepth = () => _frameHistory.length;
+function _syncUndo() { if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0; }
+
+/** F13 [Generate]: a new seeded random frame shape, written as the handles' seeds. */
+export function generateFrame(seed = nextSeed()) {
+  const rec = getFrameRecord();
+  const tpl = findFrameTemplate(FRAME_DEFS, rec.templateId);
+  if (!tpl) return null;
+  const region = frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }).region;
+  pushFrameHistory();
+  setFrameRecord({ seeds: generateFrameSeeds(tpl, region, seed, frameParam(FRAME_DEFS, rec, 'frame_thickness')), genSeed: seed });
+  syncFramePanel();
+  return getFrameRecord();
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -163,6 +201,7 @@ function _wireHandleDrag() {
     }
     if (!best || bestD > Math.abs(edge.x - pt.x)) return;
     dragKey = best.key;
+    pushFrameHistory(); // F13: a tweak is one undoable step
     if (shield.setPointerCapture && e.pointerId != null) { try { shield.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
     e.preventDefault();
   });
@@ -195,7 +234,19 @@ export function initFramePanel() {
   for (const sel of [woodSel, $('editorFrameWood')].filter(Boolean)) {
     for (const w of FRAME_DEFS.appearance?.options || []) sel.appendChild(_option(w, w.replace(/^3D /, '')));
   }
-  $('editorFrameTemplate')?.addEventListener('change', (e) => { setFrameRecord({ templateId: e.target.value || null, params: {} }); syncFramePanel(); });
+  $('editorFrameTemplate')?.addEventListener('change', (e) => { pushFrameHistory(); setFrameRecord({ templateId: e.target.value || null, params: {} }); syncFramePanel(); });
+  $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
+  $('editorFrameUndo')?.addEventListener('click', () => undoFrame());
+  // Ctrl/Cmd+Z in the Frame tab undoes the FRAME (the artwork's undo is locked there, F8)
+  if (!_undoKeyWired) { // once per page (initFramePanel may run again, e.g. in tests)
+    _undoKeyWired = true;
+    window.addEventListener('keydown', (e) => {
+      if (_editorTab !== 'frame' || !(e.ctrlKey || e.metaKey) || e.shiftKey || (e.key !== 'z' && e.key !== 'Z')) return;
+      e.preventDefault();
+      undoFrame();
+    });
+  }
+  _syncUndo();
   $('editorFrameWood')?.addEventListener('change', (e) => { setFrameRecord({ appearance: e.target.value }); syncFramePanel(); });
   for (const f of FRAME_PARAM_FIELDS) {
     $(f.id)?.addEventListener('change', (e) => {
@@ -210,7 +261,7 @@ export function initFramePanel() {
   // "Open SVG Editor" (the same button) on the Artwork tab.
   $('btnStampEdit')?.addEventListener('click', () => { setEditorTab(_openEditorOn || 'artwork'); _openEditorOn = null; });
 
-  tplSel.addEventListener('change', () => { setFrameRecord({ templateId: tplSel.value || null, params: {} }); syncFramePanel(); });
+  tplSel.addEventListener('change', () => { pushFrameHistory(); setFrameRecord({ templateId: tplSel.value || null, params: {} }); syncFramePanel(); });
   woodSel.addEventListener('change', () => { setFrameRecord({ appearance: woodSel.value }); syncFramePanel(); });
   $('frameBottomZ')?.addEventListener('change', (e) => { setFrameRecord({ frameBottomZ: parseFloat(e.target.value) }); syncFramePanel(); });
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
