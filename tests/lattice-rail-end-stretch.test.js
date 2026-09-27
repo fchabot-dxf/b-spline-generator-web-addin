@@ -66,6 +66,8 @@ function makeMockEditor(mW = 4, mH = 4) {
     clear() { handles = []; },
     circle(d) { return mkHandle('circle', { r: d / 2 }); },
     path(d) { return mkHandle('path', { d }); },
+    // F27 item 2: radius handles are diamonds (a polygon), centred on the mean of its 4 points
+    polygon(pts) { return mkHandle('polygon', { points: pts, cx: pts.reduce((a, p) => a + p[0], 0) / pts.length, cy: pts.reduce((a, p) => a + p[1], 0) / pts.length }); },
     rect() { return mkHandle('rect', {}); },
     all: () => handles,
   };

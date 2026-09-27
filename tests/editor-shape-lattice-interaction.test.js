@@ -63,16 +63,17 @@ describe.each(['hourglass', 'bottle'])('computeParamHandles(%s) — round-trip c
     }
   });
 
-  it('axis is always x or y — this generator never declares a diagonal handle (see the module\'s own header comment)', () => {
+  it('axis is always x or y — this generator never declares a diagonal handle (see the module\'s own header comment); F27 item 2: except the ON-ARC radius handles (axis \'arc\')', () => {
     const out = generateSilhouette(REGION, { preset });
     const handles = computeParamHandles(preset, REGION, out.params);
-    for (const h of handles) expect(['x', 'y']).toContain(h.axis);
+    for (const h of handles) expect(h.axis === 'arc' ? h.handleKind : h.axis).toMatch(h.axis === 'arc' ? /^radius$/ : /^[xy]$/);
+    expect(handles.filter((h) => h.axis === 'arc').map((h) => h.key)).toEqual([preset === 'bottle' ? 'bodyRadius' : 'waistRadius']);
   });
 
   it('a handle only reads its OWN axis coordinate — moving the OFF-axis coordinate never changes the recovered value', () => {
     const out = generateSilhouette(REGION, { preset, seed: 42 });
     const handles = computeParamHandles(preset, REGION, out.params);
-    for (const h of handles) {
+    for (const h of handles.filter((q) => q.axis !== 'arc')) { // F27 item 2: an on-arc handle reads both (its own describe below)
       const off = h.axis === 'x' ? { x: h.anchor.x, y: h.anchor.y + 3 } : { x: h.anchor.x + 3, y: h.anchor.y };
       expect(h.valueFromWorld(off)).toBeCloseTo(h.valueFromWorld(h.anchor), 9);
     }

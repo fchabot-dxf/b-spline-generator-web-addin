@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "66ed7375e4436d18e7051775290af61f145c9bcef20f10a2ee8fa98f9fa28584",
+  "sourceHash": "32c02cf4109556f86fc220631de4dc3cec0f6bc6a89f9c7bed19ffe4b64290a3",
   "templates": [
     {
       "features": [
@@ -132,6 +132,12 @@ export default {
           "binding": "seeded",
           "key": "waistCenterY",
           "label": "Waist position"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "waistRadius",
+          "label": "Waist radius"
         }
       ],
       "id": "template_1",
@@ -1711,6 +1717,12 @@ export default {
           "binding": "seeded",
           "key": "neckLength",
           "label": "Shoulder height"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "bodyRadius",
+          "label": "Body radius"
         }
       ],
       "id": "template_2",

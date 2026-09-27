@@ -16,7 +16,7 @@ import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { offsetOutlineInward } from './outline-offset.js';
 import { shapeParamOverrides, frameHandles } from './frame-handles.js';
 import { frameColorFor } from '../core/color-utils.js';
-import { handleHoverVisual } from './editor-transform-handles.js';
+import { handleKindVisual, drawParamHandle } from './editor-transform-handles.js';
 
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
 export const FRAME_GRID_CLIP_ID = 'frame-grid-clip';
@@ -243,10 +243,12 @@ function _drawFrameProfile(editor) {
       // T81 item 1: the SAME declared hover/press look Shape Lattice's own
       // param handles use (editor-transform-handles.js) -- frame-panel.js
       // sets _frameHandleHover/_frameHandleDrag from its own pointer wiring.
+      // F27 item 2: drawn by its declared KIND (position = round white,
+      // radius = accent diamond), the ONE kind table the Shape Lattice reads too.
       const active = editor._frameHandleHover === h.key || editor._frameHandleDrag === h.key;
-      const vis = handleHoverVisual(FRAME_HANDLE_RADIUS, '#ffffff', FRAME_OUTLINE_COLOR, active);
-      g.circle(vis.radius * 2).center(h.anchor.x, h.anchor.y).fill(vis.fill)
-        .stroke({ color: vis.stroke, width: 0.03 }).addClass('frame-handle').attr('data-key', h.key);
+      const vis = handleKindVisual(h.handleKind, FRAME_HANDLE_RADIUS, FRAME_OUTLINE_COLOR, active);
+      drawParamHandle(g, vis, h.anchor.x, h.anchor.y, 0.03)
+        .addClass('frame-handle').attr('data-key', h.key).attr('data-kind', h.handleKind || 'position');
     }
   }
   return prof;

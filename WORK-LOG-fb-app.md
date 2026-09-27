@@ -2917,3 +2917,98 @@ split, `writePieceColor`, `minPieceLength`, exports), editor/editor-shape-lattic
 (`primitiveToPathD` digits), editor-interaction.js (+2 lines: import + `stripe` mode handler), editor-ui.js
 (hint + panel predicate), editor-drawer.js (TOOL_PANELS), editor-grid.js (SNAP_POLICY), tools/mode-tools.js,
 editor-controls.js, bspline_gen_palette.html (button + panel), styles/editor.css (drawer header rule).
+
+## F27 item 2 -- Frame editor: radius handles + distinct handle kinds -- 2026-09-27
+
+**Worker (cloud worktree, no Fusion). Fred screenshot, Frame tab, Hourglass: the waist's arc radius "can never
+be set anywhere, it needs a handle, and handle for position should be a different color or shape than handle
+for radii".**
+
+### Arc inventory (every frame-template arc, right side; the left arc is its exact mirror, one param drives both)
+| Template | Arc (prim) | Radius handle BEFORE | AFTER |
+|---|---|---|---|
+| T1 Hourglass | shoulder (1 / L 9) | yes: `cornerRadiusTop` "Shoulder" (at the arc centre) | same handle, now kind=radius (diamond) |
+| T1 Hourglass | WAIST (2 / L 8) | **none** (`waistReach` = pinch position, `waistCenterY` = waist line position) | **NEW `waistRadius` "Waist radius"**, ON the arc |
+| T1 Hourglass | hip (3 / L 7) | yes: `cornerRadiusBottom` "Hip" (at the arc centre) | same handle, kind=radius |
+| T2 Narrow Neck | neck (1 / L 7) | yes: `skeletonX` "S-curve tightness" (radius = skeletonX - neckWidth, at the arc centre) | same handle, kind=radius |
+| T2 Narrow Neck | BODY / hip (2 / L 6) | **none** (`bodyRadius` existed only on the Shape Lattice) | **NEW `bodyRadius` "Body radius"**, ON the arc |
+Declared as data in `tests/frame-radius-handles.test.js` (`ARC_RADIUS_HANDLE`), which asserts, at 7x9, 12x6 and
+5.51x1.97, that the right-side arcs of each profile are exactly those keys and that each handle's param really
+moves THAT arc's radius (and its mirror's).
+
+### (a) Binding: seeded, no new Fusion parameter
+No template param sets either radius (T1's `ck_*` params are constraint on/off toggles, not a radius), so both are
+`"binding": "seeded"` in `template_data.py` FRAME_HANDLES (T1, T2) -> regenerated `frame-defs.{json,js}`
+(`tools/gen_frame_defs.py`). The value lives in `record.seeds`, the record gate admits it automatically (it reads
+the declared seeded keys), and [Send frame] carries it the F11 way: the seed geometry. T1's waist is in the
+seed map twice (`arc_waist_R/L` Arc3Point seeds + `seed_rad_waist_R/L` temporary radius dims); T2's body is in
+its `arc_hip_R/L` seeds (no radius-dim entries in T2's map). Nothing else needed wiring.
+
+### (a) The handle: ON the arc, the arc follows the pointer
+One catalogue still (`computeParamHandles`, editor-shape-lattice-interaction.js), shared by the Frame tab and
+the Shape Lattice, so the two new frame handles are the Shape Lattice's `waistRadius`/`bodyRadius` handles,
+MOVED from their arc CENTRE (off the board for a flat waist) onto the arc (axis `'arc'`):
+- **T1 waist:** not at the apex -- the apex IS the pinch, where the `waistReach` position handle sits. It sits
+  `WAIST_RADIUS_HANDLE_AT` = 0.75 of the angle from the pinch to the shoulder junction. MEASURED in the first
+  headless drag: at the midpoint (0.5) a 0.18 in drag threw the 7x9 waist from 0.68 to its 8.4 in limit. The
+  gain is exact: every waist circle passes through the fixed pinch, so moving the arc point at angle phi by 1
+  along the normal changes the radius by 1/(1 - cos phi) (7.5x at 30 degrees, 2x at 60).
+- **T2 body:** the midpoint of the body arc (bisector of its neck-junction and side-tangent directions).
+- **Drag = `radiusThroughPoint`** (new, exported): the radius whose arc passes under the pointer, solved
+  numerically over the generator's OWN construction (`hourglassConstruction` algebra / `bottleConstruction`),
+  so it needs no per-arc algebra. Of several roots it takes the one on the current BRANCH (crossing in the
+  same direction as the current arc), then the nearest: MEASURED on T2, the body circles fold back at small
+  radii and plain "nearest root" jumped branches (an inward drag gave 0.07 instead of 0.46). No root in range =
+  past the true limit -> the nearer end, so a manual drag reaches the limit exactly (the F23 ruling).
+- Limits: the SAME `feasibleParamRanges` -> `frameParamRanges` clamp as every handle; the corners after the
+  waist in PARAM_ORDER keep clamping to it, so the outline stays defect-free across the whole range (tested at
+  both ends, 3 boards, both templates; the T1 inner edge too).
+- **Generate keeps the band (existing ruling, a visible consequence):** `generateFrameSeeds` draws every
+  SEEDED key in PARAM_ORDER, so Generate now also draws the waist radius (T1) and body radius (T2) inside the
+  10-90% band of their feasible range, instead of always keeping the fitted model's value. T1's waist range is
+  wide (7x9: 0.08 .. 8.4 in), so generated hourglasses now vary from tight to near-flat waists. Flagging it;
+  the ruling was applied as written, not narrowed.
+
+### (b) Handle KINDS: declared once, extending T81 item 1
+`HANDLE_KINDS` in editor-transform-handles.js, next to T81 item 1's `handleHoverVisual` (which it extends,
+not replaces): `position: { shape: 'circle', fill: '#ffffff' }`, `radius: { shape: 'diamond', fill:
+HANDLE_HOVER_FILL }`. **Fred's ruling (relayed mid-task): the diamond's accent = the editor's EXISTING blue
+accent, the one the hover/selection highlight already uses, read from that constant (`HANDLE_HOVER_FILL`,
+= `--cad-accent`), not a new literal.** `handleKindVisual(kind, r, idleStroke, active)` +
+`drawParamHandle(layer, vis, x, y, w)` are the ONE draw path both systems now call (editor-frame-profile.js,
+properties-shape-lattice.js); each keeps its own idle stroke (frame brown / lattice purple). Hover keeps the
+kind's shape (grown, white rim). Every catalogue entry declares `handleKind`: radius = cornerRadiusTop,
+cornerRadiusBottom, waistRadius, skeletonX (sets the neck radius), bodyRadius; position = waistReach,
+waistCenterY, neckWidth, neckLength. Named `handleKind`, not `kind`, because the transform-handle records
+already use `kind` ('rotate'/'scale'). Drawn marks carry `data-kind`.
+
+### Tests
+- NEW `tests/frame-radius-handles.test.js` (17): the arc inventory; each new handle ON its arc (and inside its
+  angular span, clear of the other handles); a drag along the normal changes the radius, the arc passes under
+  the pointer, only a seed is written; a continuous Frame-tab-style drag (fresh handle every move) keeps the arc
+  under the pointer and is monotone; drags past the geometry stop AT the range ends with a valid outline; the
+  pinch does not move; `radiusThroughPoint` unit cases; **[Send frame] payload**: a dragged T1 waist sends
+  `seeds: {waistRadius}` and `seed_rad_waist_R/L.radius` + the `arc_waist_R/L` 3-point arcs at the new radius, no
+  new param; a dragged T2 body sends both `arc_hip_R/L` arcs at the new radius; the kind table, every frame
+  handle's kind, and `drawParamHandle` circle vs diamond.
+- Updated: frame-handles (5/4 handles, 2 circles + 3 diamonds in the Frame tab), editor-shape-lattice-interaction
+  (axis 'arc' allowed only for the two radius handles; the off-axis test skips them), shape-lattice-handle-hover
+  (T81 look tests moved to the Waist reach, a POSITION handle, since the Shoulder is now an already-blue
+  diamond; +2 kind tests: distinct marks/fills, hover keeps the diamond and grows it), mocks gained `polygon`
+  (frame-gen, frame-record-profile, properties-shape-lattice).
+- Full JS suite: 2342/2342 (138 files) with `--testTimeout=60000`. At the default 5 s, the heavy sweeps
+  (`frame-bartop-drawn`, `frame-3d-sweep`) time out under the parallel load of the other worktrees' agents --
+  also red on the untouched baseline, all green run alone. Python frame-builder: 201 pass, 2 skipped.
+
+### Shots (headless Chromium, real CDP mouse; CDN libs served from the npm tarballs of the SAME versions)
+`scratchpad/shots/f27-2/`: `t1_hourglass_*` and `t2_neck_*` -- 1/2 kinds (full + zoom: white circles =
+position, blue diamonds = radius), 3 hover on the radius diamond, 4 mid-drag, 5/6 after. Measured in-page
+(`result.json`): T1 waist 0.680 -> 1.486 in (seed 0.457 hw), `seed_rad_waist_R/L` = 1.4863, shoulder/hip radii
+unchanged, params {}, 0 defects; T2 body 0.672 -> 0.287 in (both body arcs), 0 defects, no page errors.
+
+### NOT verified here: the live Fusion check (left for Fred)
+No Fusion in this cloud container. What IS verified is everything up to the add-in's door: the exact
+`send_frame` JSON the app emits (unit test above + the in-page seed geometry in the shot run). Still to do, live
+(clean origin/main scratch worktree only): T1, drag the waist radius, [Send frame], confirm the built sketch's
+waist arcs hold the sent radius (F20 measured the corner seeds holding to 4e-5 in; the waist seeds are the same
+mechanism but unmeasured) and the frame builds; same for a T2 body radius.
