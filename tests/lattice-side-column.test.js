@@ -23,7 +23,9 @@ describe('sectionKindForTitle / SECTION_KIND_BY_TITLE', () => {
     expect(sectionKindForTitle('Contour')).toBe('contour');
     expect(sectionKindForTitle('Border')).toBe('contour');
     expect(sectionKindForTitle('Shape')).toBe('contour');
-    expect(sectionKindForTitle('Boundary')).toBe('contour');
+    // T81 item 2 (Fred screenshot: "boundary and contour have the same
+    // color code"): Boundary is its OWN kind now, not an alias for contour.
+    expect(sectionKindForTitle('Boundary')).toBe('boundary');
   });
 
   it('falls through to neutral for anything not declared (Add, Colors, Widths, Seed, Fill seed, ...)', () => {
@@ -36,8 +38,8 @@ describe('sectionKindForTitle / SECTION_KIND_BY_TITLE', () => {
     expect(sectionKindForTitle('  Ties  ')).toBe('ties');
   });
 
-  it('every value in the declared map is one of the 4 real kinds (no typo silently creating a 5th)', () => {
-    const validKinds = new Set(['rails', 'ties', 'nodes', 'contour']);
+  it('every value in the declared map is one of the 5 real kinds (no typo silently creating a 6th)', () => {
+    const validKinds = new Set(['rails', 'ties', 'nodes', 'contour', 'boundary']);
     for (const kind of Object.values(SECTION_KIND_BY_TITLE)) {
       expect(validKinds.has(kind)).toBe(true);
     }
@@ -149,7 +151,9 @@ describe('initLatticeSideColumn', () => {
 
     const shapeBody = document.getElementById('editorShapeLatticePanelBody');
     const shapeKinds = Array.from(shapeBody.children).map((c) => c.dataset.latticeSection);
-    expect(shapeKinds).toEqual([undefined, 'contour', 'neutral', 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'contour', 'neutral']);
+    // T81 item 2: the LAST 'contour' here is the Boundary section -- now its
+    // own 'boundary' kind, not an alias for Shape's 'contour' (index 1).
+    expect(shapeKinds).toEqual([undefined, 'contour', 'neutral', 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'boundary', 'neutral']);
   });
 
   it('hides the Shape Lattice "Fill seed" section only — the box Lattice Seed section stays visible', () => {
@@ -167,13 +171,17 @@ describe('initLatticeSideColumn', () => {
     expect(seedSection.style.display).not.toBe('none');
   });
 
-  it('sets --kind-rails/-ties/-nodes on the panel body from the REAL swatch colours, and a fixed --kind-contour', () => {
+  it('sets --kind-rails/-ties/-nodes on the panel body from the REAL swatch colours, and fixed --kind-contour/--kind-boundary', () => {
     initLatticeSideColumn(editor);
     const body = document.getElementById('editorLatticePanelBody');
     expect(body.style.getPropertyValue('--kind-rails')).toBe('rgb(198, 40, 40)');
     expect(body.style.getPropertyValue('--kind-ties')).toBe('rgb(249, 200, 14)');
     expect(body.style.getPropertyValue('--kind-nodes')).toBe('rgb(26, 35, 126)');
     expect(body.style.getPropertyValue('--kind-contour')).toBe('rgb(46, 125, 50)');
+    // T81 item 2: Boundary's own colour is the dashed-black guide's
+    // (editor-guides.js GUIDE_STROKE) -- distinct from Contour's green.
+    expect(body.style.getPropertyValue('--kind-boundary')).toBe('rgb(0, 0, 0)');
+    expect(body.style.getPropertyValue('--kind-boundary')).not.toBe(body.style.getPropertyValue('--kind-contour'));
   });
 
   it('a colour change on the swatch (a real production write: swatchEl.style.background = ...) updates the CSS var live', () => {

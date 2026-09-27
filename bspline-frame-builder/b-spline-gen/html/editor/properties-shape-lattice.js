@@ -766,7 +766,11 @@ export function initShapeLatticeProperties(editor) {
             btn.dataset.value = value;
             btn.textContent = label;
             btn.title = title;
-            btn.style.flex = '1';
+            // T81 item 2 (Fred screenshot: 4 options clipped at the 236px
+            // panel width -- "Boundary" the widest): 2 per row (CSS wraps
+            // #shapeLatticeEndRule, editor.css) rather than shrinking every
+            // one of the app's other segmented-group controls to fit.
+            btn.style.flex = '1 1 45%';
             // Same passive-until-Generate behavior the old <select> had
             // (no 'change' listener at all — readFieldsIntoPattern below
             // reads whichever is .active only when Generate/Regenerate

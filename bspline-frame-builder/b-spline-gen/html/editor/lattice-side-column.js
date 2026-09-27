@@ -26,6 +26,7 @@
  * drawer's own DOM at all.
  */
 import { el, on } from './dom.js';
+import { GUIDE_STROKE } from './editor-guides.js';
 
 // =========================================================================
 // 1. Section colour-coding (Fred picked option B from the mockup).
@@ -34,10 +35,11 @@ import { el, on } from './dom.js';
 /** Declared ONCE: section title -> colour KIND. Anything not listed here
  *  falls through to 'neutral' (Add, Colors, Widths, Seed, Fill seed...).
  *  The dispatch's own wording named "Contour/Border/Shape" for the
- *  outer-shape kind; 'Boundary' is added too since that's this app's
- *  ACTUAL current section title for the same concept (Pick shape / the
- *  Ending rule / show-contour toggle) — neither panel says "Contour"
- *  verbatim today. */
+ *  outer-shape kind; 'Boundary' used to share it too, but T81 item 2
+ *  (Fred screenshot: "boundary and contour have the same color code")
+ *  gives it its own 'boundary' kind — it's the Size W×H outer EXTENT
+ *  (the dashed-black guide, editor-guides.js), a genuinely different
+ *  thing from the Contour/Shape/Border section's own drawn silhouette. */
 export const SECTION_KIND_BY_TITLE = {
   'Grid & rails': 'rails',
   'Ties': 'ties',
@@ -45,7 +47,7 @@ export const SECTION_KIND_BY_TITLE = {
   'Contour': 'contour',
   'Border': 'contour',
   'Shape': 'contour',
-  'Boundary': 'contour',
+  'Boundary': 'boundary',
 };
 const DEFAULT_KIND = 'neutral';
 
@@ -75,6 +77,11 @@ function _tagSections(bodyEl) {
  *  panel-decorator module in this codebase already keeps import-light). */
 const CONTOUR_COLOR_RGB = { r: 0x2e, g: 0x7d, b: 0x32 };
 
+/** T81 item 2: the Boundary section's colour is the dashed-black guide's
+ *  OWN declared colour (editor-guides.js's `GUIDE_STROKE.color`, "Fred
+ *  (L1 ruling): dashed BLACK") — one source, not a second black literal. */
+const BOUNDARY_COLOR_RGB = _hexToRgb(GUIDE_STROKE.color) || { r: 0, g: 0, b: 0 };
+
 const SWATCH_IDS_BY_PANEL = {
   editorLatticePanel: { rails: 'latticeColorRails', ties: 'latticeColorTies', nodes: 'latticeColorNodes' },
   editorShapeLatticePanel: { rails: 'shapeLatticeColorRails', ties: 'shapeLatticeColorTies', nodes: 'shapeLatticeColorNodes' },
@@ -92,13 +99,20 @@ const FALLBACK_RGB = { r: 136, g: 136, b: 136 };
  *  `.style.backgroundColor`, but that normalization isn't guaranteed in
  *  every environment this module might run test-side, so both forms are
  *  parsed rather than assumed. */
+/** `#rrggbb` -> `{r,g,b}`, or null if `hex` isn't that shape. Declared once
+ *  (T81 item 2) so BOUNDARY_COLOR_RGB (below) and _readSwatchRgb's own hex
+ *  branch share the ONE hex parse rather than two copies. */
+function _hexToRgb(hex) {
+  const m = /^#([0-9a-f]{6})$/i.exec((hex || '').trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
 function _readSwatchRgb(swatchEl) {
   const raw = (swatchEl.style.backgroundColor || swatchEl.style.background || '').trim();
-  const hexMatch = /^#([0-9a-f]{6})$/i.exec(raw);
-  if (hexMatch) {
-    const n = parseInt(hexMatch[1], 16);
-    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-  }
+  const hex = _hexToRgb(raw);
+  if (hex) return hex;
   const rgbMatch = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(raw);
   if (rgbMatch) return { r: +rgbMatch[1], g: +rgbMatch[2], b: +rgbMatch[3] };
   return FALLBACK_RGB;
@@ -126,6 +140,7 @@ function _applyKindColor(bodyEl, kind, { r, g, b }) {
  *  module" — no edits to either properties-*.js file. */
 function _wireLiveColors(panelId, bodyEl) {
   _applyKindColor(bodyEl, 'contour', CONTOUR_COLOR_RGB);
+  _applyKindColor(bodyEl, 'boundary', BOUNDARY_COLOR_RGB); // T81 item 2
   const swatchIds = SWATCH_IDS_BY_PANEL[panelId];
   if (!swatchIds) return;
   for (const [kind, id] of Object.entries(swatchIds)) {

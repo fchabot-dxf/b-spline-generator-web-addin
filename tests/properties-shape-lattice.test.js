@@ -427,6 +427,12 @@ describe('initShapeLatticeProperties: Fill + Generate', () => {
     expect(group.querySelector('.active').dataset.value).toBe('inset');
   });
 
+  it('T81 item 2 (Fred screenshot: 4 options clipped at the 236px panel width): each button gets flex-basis 45% -- 2 per row (editor.css wraps #shapeLatticeEndRule), not flex:1 shrinking to fit one row', () => {
+    initShapeLatticeProperties(editor);
+    const group = document.getElementById('shapeLatticeEndRule');
+    for (const btn of group.children) expect(btn.style.flex).toBe('1 1 45%');
+  });
+
   it('clicking an Ending button moves .active to it, and Generate reads that value into the pattern', async () => {
     initShapeLatticeProperties(editor);
     const group = document.getElementById('shapeLatticeEndRule');
