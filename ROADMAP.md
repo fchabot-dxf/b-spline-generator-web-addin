@@ -1021,6 +1021,16 @@ Shape Lattice first. Frames get handles for their EXISTING template params in F9
 parameters that aren't in the add-in right now"): frame handles drive ONLY the params the Frame Builder add-in already has.
 Fusion Shape Lattice export unchanged in kind (the geometry changes, no new radius dims: Fred's SE15 rule).
 
+## Queued (seat C, fb-app, after F10) — FRAME-GEN: a [Generate] button for the frame shape, then tweak with handles (Fred 2026-09-26)
+Fred: "we have a generate button that regenerates every time we press? … and allow to tweak the result with handles".
+In the Frame tab: [Generate] draws a new random frame shape each press. A seeded RNG (the new seed is stored in the
+frame record, like the lattice seed, so a shape is reproducible) sets every declared handle's value inside its
+feasibleParamRanges (F5), so a generated frame can never loop or invert. The results are written as the handles' SEEDS
+(F9), so the handles then tweak that exact shape, and a tweak is kept until the next Generate. Undo restores the
+previous shape. No new Fusion params (seeds stay plain sketch values). Tests: N generates are all valid outlines (the
+F5 sweep guarantees), the same seed gives the same shape, a tweak after generate persists through save/reload, undo
+works. Shots: 3 generated shapes + one tweaked, T1 + T2.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
