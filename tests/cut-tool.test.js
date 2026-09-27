@@ -3,10 +3,11 @@
  * chain-aware drag helpers, and the Fusion side (an explicit Coincident at every cut). CUT-TOOL-DESIGN.md U1-U4, M1.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { latticeChains, splitLine, chainOf, withChain, writeChainRow, updateJointSlide, JOINT_TOL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
+import { latticeChains, splitLine, chainOf, withChain, writeChainRow, updateJointSlide, pushTieJoints, MIN_PIECE_CELLS, JOINT_TOL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
 import { cutAt, join, jointAt, snapOnLine, cutIntent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-cut-tool.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { drawnFromPattern } from './helpers/drawn-lattice.js';
+import { moveRailAlongAxis, orient, fromLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 
 // ── a minimal svg.js-shaped element + editor (worldPoint = identity: no matrix()) ──
 function makeEl(type, attrs, layer) {
@@ -239,4 +240,86 @@ describe('M1b: a node on a joint where a tie passes THROUGH (not ending there)',
     expect(legs).toContain('tie0');
     expect(m.constraints).toContainEqual({ type: 'Coincident', targets: ['rail1:E', 'rail2:S'] });
   });
+});
+
+describe('F19: a rail dragged across a CUT tie joint pushes the joint along (Fred, option b)', () => {
+  const TIE = { 'data-lattice': 'tie', 'data-lattice-gen': 'p', stroke: '#333', 'stroke-width': 0.05 };
+  const S = 0.25;
+  // one scene per orientation, written in (along-rail, across-rail) coordinates: T maps them to world
+  for (const orientation of ['horizontal', 'vertical']) {
+    const T = (u, v) => (orientation === 'horizontal' ? [u, v] : [v, u]);
+    const scene = (tieCuts, beyond = null) => {
+      const ed = makeEditor({ spacing: S });
+      const rail = ed.line(...T(0.5, 1), ...T(4, 1), RAIL);
+      let tie = ed.line(...T(2, 1), ...T(2, 3), TIE);
+      const segs = [];
+      for (const v of tieCuts) { const [a, b] = cutAt(ed, tie, { x: T(2, v)[0], y: T(2, v)[1] }); segs.push(a); tie = b; }
+      segs.push(tie);
+      if (beyond) segs.push(...cutAt(ed, ed.line(...T(beyond, 1), ...T(beyond, 3), TIE), { x: T(beyond, 2)[0], y: T(beyond, 2)[1] }));
+      const canon = (el) => ({ a: orient({ i: +el.store.x1 / S, j: +el.store.y1 / S }, orientation), b: orient({ i: +el.store.x2 / S, j: +el.store.y2 / S }, orientation) });
+      const r = canon(rail);
+      const m = withChain(ed, { kind: 'rail', mode: 'move', el: rail, spacing: S, orientation, railCanon: r,
+        ties: segs.map((el) => ({ el, ...canon(el) })), nodes: [] });
+      // the real per-frame order (editor-interaction.js _updateLatticeMove + _writeRailMove): push, then the rail
+      const dragTo = (v) => {
+        const j = pushTieJoints(m, v / S);
+        const res = moveRailAlongAxis(m.railCanon, j, m.ties, m.nodes);
+        const a = fromLattice(orient(res.rail.a, orientation), S), b = fromLattice(orient(res.rail.b, orientation), S);
+        rail.attr({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+        for (const { tie: t, end, point } of res.tieUpdates) {
+          const p = fromLattice(orient(point, orientation), S);
+          t.el.attr(end === 'a' ? { x1: p.x, y1: p.y } : { x2: p.x, y2: p.y });
+        }
+        return j * S;
+      };
+      // each tie segment as [v start, v end] along the tie; plus its u (straightness)
+      const along = (el) => (orientation === 'horizontal' ? [+el.store.y1, +el.store.y2] : [+el.store.x1, +el.store.x2]);
+      const across = (el) => (orientation === 'horizontal' ? [+el.store.x1, +el.store.x2] : [+el.store.y1, +el.store.y2]);
+      return { ed, rail, segs, m, dragTo, along, across };
+    };
+
+    it(`${orientation}: past the joint -> the joint is pushed ahead, both segments >= the minimum, coincident, straight`, () => {
+      const { segs, dragTo, along, across } = scene([2]);
+      expect(dragTo(2.5)).toBeCloseTo(2.5, 12);                      // never blocked here
+      const [n, f] = segs.map(along);
+      expect(n[0]).toBeCloseTo(2.5, 12);                             // the attached end rides the rail
+      expect(n[1]).toBeCloseTo(2.5 + MIN_PIECE_CELLS * S, 12);       // the joint, one cell ahead
+      expect(f[0]).toBe(n[1]);                                       // still coincident (the same number)
+      expect(f[1]).toBeCloseTo(3, 12);                               // the far end stays
+      expect(n[1] - n[0]).toBeGreaterThanOrEqual(MIN_PIECE_CELLS * S - 1e-12);
+      expect(f[1] - f[0]).toBeGreaterThanOrEqual(MIN_PIECE_CELLS * S - 1e-12);
+      for (const el of segs) for (const u of across(el)) expect(u).toBeCloseTo(2, 12); // still one straight tie
+    });
+
+    it(`${orientation}: the one clamp -- the far segment keeps the minimum too; moving back lets the joint return`, () => {
+      const { segs, dragTo, along } = scene([2]);
+      expect(dragTo(3.75)).toBeCloseTo(3 - 2 * MIN_PIECE_CELLS * S, 12);
+      expect(along(segs[1])[1] - along(segs[1])[0]).toBeCloseTo(MIN_PIECE_CELLS * S, 12);
+      expect(dragTo(1.5)).toBeCloseTo(1.5, 12);
+      expect(along(segs[0])[1]).toBeCloseTo(2, 12);                  // back at its own place: a push, not a drag
+    });
+
+    it(`${orientation}: 2 cuts -> only the NEAREST joint is pushed`, () => {
+      const { segs, dragTo, along } = scene([1.75, 2.5]);
+      dragTo(2);
+      expect(along(segs[0])[1]).toBeCloseTo(2.25, 12);
+      expect(along(segs[1])[0]).toBeCloseTo(2.25, 12);
+      expect(along(segs[1])[1]).toBeCloseTo(2.5, 12);                // the second joint untouched
+      expect(dragTo(3)).toBeCloseTo(2.5 - 2 * MIN_PIECE_CELLS * S, 12); // clamped by the segment up to the next joint
+    });
+
+    it(`${orientation}: an UNCUT tie is unchanged (no push record; it just shrinks with the rail)`, () => {
+      const { m, segs, dragTo, along } = scene([]);
+      expect(m.tiePush).toBeUndefined();
+      expect(dragTo(2.5)).toBeCloseTo(2.5, 12);
+      expect(along(segs[0])).toEqual([2.5, 3]);
+    });
+
+    it(`${orientation}: a cut tie on the rail's row but BEYOND its end is not attached, so not pushed`, () => {
+      const { segs, dragTo, along } = scene([2], 5);
+      dragTo(2.5);
+      expect(along(segs[2])).toEqual([1, 2]);
+      expect(along(segs[3])).toEqual([2, 3]);
+    });
+  }
 });

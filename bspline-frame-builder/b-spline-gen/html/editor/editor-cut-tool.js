@@ -18,7 +18,7 @@ import { worldPoint } from './editor-coords.js';
 import { getDynamicTolerance } from './editor-hit.js';
 import { geometrySnapTargets, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
 import { GRID_DEFAULTS } from './editor-grid.js';
-import { chainOf, JOINT_TOL } from './editor-lattice-chains.js';
+import { chainOf, JOINT_TOL, MIN_PIECE_CELLS } from './editor-lattice-chains.js';
 import { clearColorOverride, pieceKindOf, OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import { getLayerPattern, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
 import { isOnVisibleLayer } from './layers.js';
@@ -78,7 +78,7 @@ export function snapOnLine(editor, el, pt, alt = false) {
 
 function _minPiece(editor, el) {
   if (!latticeKind(el)) return CUT_MIN_PLAIN_IN;
-  return (getLayerPattern(editor) || PATTERN_DEFAULTS).spacing || PATTERN_DEFAULTS.spacing;
+  return MIN_PIECE_CELLS * ((getLayerPattern(editor) || PATTERN_DEFAULTS).spacing || PATTERN_DEFAULTS.spacing);
 }
 
 function _commit(editor) {
