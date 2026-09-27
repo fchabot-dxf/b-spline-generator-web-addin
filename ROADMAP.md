@@ -1131,7 +1131,7 @@ toggle off restores the preset shape; F5-style validity (simple, tangent) holds;
 
 ## Queued (seat A, H11, after H10) — HANDLE-REACH: frame handles (esp. Hip) can go to the TRUE geometric limit (Fred 2026-09-27)
 Fred (iPad, Frame tab, Hourglass, arrows = drag direction): "shouldn't the handle and geometry allow the handle to go
-further and make the arc wider". The Hip handle stops short. MEASURE first (state the numbers): for T1 Shoulder/Hip/Waist
+further and make the arc wider". The Hip handle stops short, and Fred confirms: "hip and shoulder": BOTH must reach their true limit (same treatment, same tests, both handles). MEASURE first (state the numbers): for T1 Shoulder/Hip/Waist
 handles, which bound stops the drag: the F5 feasibleParamRanges (tangency/validity: REAL), F13 FRAME_MIN_OPENING_IN
 0.25 (REAL, but check it isn't computed conservatively), or FRAME-GEN's declared 0.1..0.9 band (meant for RANDOM Generate
 only). Fix: manual handle drags clamp only to the REAL limits (the outline stays simple + tangent, the opening >= min);
