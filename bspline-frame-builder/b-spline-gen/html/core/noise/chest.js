@@ -66,6 +66,8 @@ export const tweaks = [
   { key: 'absStrength',      label: 'Abdomen',         default: 0.10, min: 0.00, max: 0.30, step: 0.01, desc: 'Sunken-abdomen depth + faint ab lines (was six-pack mound depth)' },
   { key: 'ribStrength',      label: 'Rib Prominence',  default: 0.14, min: 0.00, max: 0.30, step: 0.01, desc: 'Ribcage + costal margin height -- the MAIN control now (was side-rib striation amplitude)' },
   { key: 'skinDetail',       label: 'Skin Detail',     default: 0.06, min: 0.00, max: 0.20, step: 0.01, desc: 'Fine skin creases + pore/stretch texture' },
+  // Fred: -20..+20 degrees around each seed's own rib angle (30 was too much).
+  { key: 'ribAngle',         label: 'Rib Angle',       default: 0,    min: -20,  max: 20,   step: 1,    desc: 'Turns the ribs around this seed\'s own angle, in degrees (0 = the seed\'s own look; + sweeps down, - sweeps up)' },
 ];
 
 function smoothstep01(a, b, x) {
@@ -181,8 +183,14 @@ function vary(noiseFine, [salt, lo, hi], index = 0) {
 }
 
 const layoutCache = new WeakMap();
-function layout(noiseFine) {
-  const cached = layoutCache.get(noiseFine);
+function layout(noiseFine, ribAngleDeg = 0, aspect = 7 / 9) {
+  let perSeed = layoutCache.get(noiseFine);
+  if (!perSeed) {
+    perSeed = new Map();
+    layoutCache.set(noiseFine, perSeed);
+  }
+  const cacheKey = `${ribAngleDeg}|${aspect}`;
+  const cached = perSeed.get(cacheKey);
   if (cached) return cached;
   const v = (name, index) => vary(noiseFine, VARY[name], index);
 
@@ -207,6 +215,19 @@ function layout(noiseFine) {
   const bendRoom = Math.max(0, h2 * 0.92 - (ribCount + 1) * MIN_RIB_SPACING);
   const maxReserve = VARY.ribBend[2] * (1 + Math.abs(ribFan));
   const ribBend = v('ribBend') * Math.min(1, bendRoom / maxReserve);
+
+  // The Rib Angle tweak turns the whole ribcage around the seed's own angle,
+  // measured sternum -> flank across the real half-width (bend is in board
+  // heights, so slope = bend / (aspect / 2)). The extra turn is NOT squeezed
+  // into the section (that collapsed most seeds to 3 ribs and still fell
+  // short of the angle); instead the ribcage/abdomen boundary bends with it.
+  let ribTurn = 0;
+  if (ribAngleDeg !== 0) {
+    const halfWidth = aspect / 2;
+    const seedAngle = Math.atan(ribBend / halfWidth);
+    const turned = Math.max(-1.4, Math.min(1.4, seedAngle + (ribAngleDeg * Math.PI) / 180));
+    ribTurn = Math.tan(turned) * halfWidth - ribBend;
+  }
   const reserve = Math.abs(ribBend) * (1 + Math.abs(ribFan));
   const usable = h2 * 0.92 - reserve;
   const ribStart = top2 + Math.max(0, -ribBend) * (1 + Math.abs(ribFan));
@@ -258,7 +279,12 @@ function layout(noiseFine) {
     deltoidY: h1 * v('deltoidLevel'),
     deltoidSize: v('deltoidSize'),
     deltoidStrength: v('deltoidStrength'),
-    ribs, ribCount, ribBend, ribFan,
+    ribs, ribCount, ribBend, ribFan, ribTurn,
+    // How far the ribcage (and the ribcage/abdomen boundary) moves down at a
+    // given rib-curve position, from the Rib Angle tweak. A down-sweep drops
+    // the flank ends; an up-sweep keeps the flank ends and drops the centre,
+    // where the ribs are faded anyway, so the shoulders are never touched.
+    turnShift: (shape) => (ribTurn > 0 ? ribTurn * shape : -ribTurn * (1 - shape)),
     ribCurve: v('ribCurve'),
     ribSwing: v('ribSwing'),
     ribWaves: v('ribWaves'),
@@ -275,7 +301,7 @@ function layout(noiseFine) {
     navelY: top3 + h3 * v('navelLevel'),
     navelSize: v('navelSize'),
   };
-  layoutCache.set(noiseFine, L);
+  perSeed.set(cacheKey, L);
   return L;
 }
 export const _layout = layout;
@@ -295,7 +321,7 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   const ribStrength = t.ribStrength ?? 0.14;
   const skinDetail = t.skinDetail ?? 0.06;
 
-  const L = layout(noiseFine);
+  const L = layout(noiseFine, t.ribAngle ?? 0, aspect);
   const dx = Math.pow(su, L.build);
   const dy = 1 - sv;
 
@@ -323,27 +349,29 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   const ribFrontFade = smoothstep01(0.02, L.ribReach + 0.15, dx);
   const ribJitter = noiseFine.noise2(su * 6.0, sv * 6.0) * 0.012;
   const bendShape = Math.pow(dx, L.ribCurve);
+  const turnShift = L.turnShift(bendShape);
+  const ribcageBottom = L.top3 + turnShift;
   let ribcage = 0;
   for (const rib of L.ribs) {
     const swell = 1 + L.ribSwing * noiseFine.noise2(dx * L.ribWaves, rib.swellRow) * 1.4;
-    ribcage += gaussianBand(dy - (rib.y0 + rib.bend * bendShape + ribJitter), rib.width * Math.max(0.4, 1 + 0.6 * (swell - 1)))
+    ribcage += gaussianBand(dy - (rib.y0 + rib.bend * bendShape + turnShift + ribJitter), rib.width * Math.max(0.4, 1 + 0.6 * (swell - 1)))
       * Math.max(0, swell) * rib.height;
   }
   ribcage *= ribFrontFade * ribStrength * L.ribProminence;
-  const marginY = L.marginApex + L.marginBend * bendShape + ribJitter;
+  const marginY = L.marginApex + L.marginBend * bendShape + turnShift + ribJitter;
   const costalMargin = gaussianBand(dy - marginY, L.marginWidth) * ribFrontFade * ribStrength * 1.25 * L.marginStrength;
-  const ribcageSection = (ribcage + costalMargin) * sectionWindow(dy, L.top2, L.top3);
+  const ribcageSection = (ribcage + costalMargin) * sectionWindow(dy, L.top2, ribcageBottom);
 
   // ── 3. ABDOMEN (sunken, faint ab lines, hollow navel) ───────────────
-  const abdomenMask = smoothstep01(L.top3 - 0.02, L.top3 + 0.10, dy);
+  const abdomenMask = smoothstep01(ribcageBottom - 0.02, ribcageBottom + 0.10, dy);
   const abdomenConcavity = -absStrength * abdomenMask * (1 - dx * 0.55);
   const abLineWarp = noiseFine.noise2(su * 3.0, sv * 3.0) * 1.2;
   const abLineDy = dy - L.abLineTilt * dx;
   const abLines = Math.sin((abLineDy + abLineWarp * 0.03) * 11.0) * absStrength * 0.10 * abdomenMask * (1 - dx * 0.6);
-  const navelDy = dy - L.navelY;
+  const navelDy = dy - (L.navelY + L.turnShift(0));
   const navelSize2 = L.navelSize * L.navelSize;
   const navel = -Math.exp(-(dx * dx * 30.0 + navelDy * navelDy * 90.0) / navelSize2) * absStrength * 0.6;
-  const abdomenSection = (abdomenConcavity + abLines + navel) * sectionWindow(dy, L.top3, 2);
+  const abdomenSection = (abdomenConcavity + abLines + navel) * sectionWindow(dy, ribcageBottom, 2);
 
   // ── SOFT TISSUE (a gentle flesh layer, not a muscle mound) ──────────
   const softTissueLayer = gaussianBand(dx - 0.25, 0.55) * gaussianBand(dy - 0.35, 0.45) * softTissue;

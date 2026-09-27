@@ -64,9 +64,9 @@ describe('chest.js: T78 GUARD (Fred: "this is still a noise filter, right?") -- 
 });
 
 describe('chest.js: item 7 -- tweak keys kept (meaning changed), new skinDetail key added', () => {
-  it('still declares exactly the 3 original keys plus the new skinDetail key', () => {
+  it('declares the 3 original keys plus skinDetail and ribAngle', () => {
     const keys = chest.tweaks.map((t) => t.key).sort();
-    expect(keys).toEqual(['absStrength', 'pectoralStrength', 'ribStrength', 'skinDetail'].sort());
+    expect(keys).toEqual(['absStrength', 'pectoralStrength', 'ribAngle', 'ribStrength', 'skinDetail'].sort());
   });
 
   it('an old saved pattern with only the 3 original keys (no skinDetail) still runs and reads the declared default', () => {
@@ -239,6 +239,54 @@ describe('chest.js: T78 AMEND 8 -- three stacked canvas sections (shoulders, rib
         counts.set(slot, (counts.get(slot) ?? 0) + 1);
       }
       expect(Math.max(...counts.values())).toBeLessThanOrEqual(12);
+    }
+  });
+});
+
+describe('chest.js: T78 AMEND 9 -- Rib Angle slider, -20..+20 degrees around each seed\'s own angle (Fred)', () => {
+  const halfWidth = ASPECT / 2;
+  const degreesOf = (bend) => (Math.atan(bend / halfWidth) * 180) / Math.PI;
+
+  it('the slider is declared -20..+20 with 0 as the default', () => {
+    const t = chest.tweaks.find((x) => x.key === 'ribAngle');
+    expect([t.min, t.default, t.max]).toEqual([-20, 0, 20]);
+  });
+
+  it('Rib Angle 0 is exactly today\'s look (identical to no tweak at all)', () => {
+    for (const seed of [1, 6, 42]) {
+      const a = sampleFlat(seed, 24);
+      const b = sampleFlat(seed, 24, { ribAngle: 0 });
+      expect(b).toEqual(a);
+    }
+  });
+
+  it('every seed turns by exactly the slider amount, keeping its own rib count', () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const base = chest._layout(new PerlinNoise(seed), 0, ASPECT);
+      for (const deg of [-20, -8, 8, 20]) {
+        const L = chest._layout(new PerlinNoise(seed), deg, ASPECT);
+        expect(L.ribCount).toBe(base.ribCount);
+        expect(degreesOf(L.ribBend + L.ribTurn) - degreesOf(base.ribBend)).toBeCloseTo(deg, 6);
+      }
+    }
+  });
+
+  it('at +/-20 the sections still never overlap: no rib in the shoulders, no abdomen above the bent ribcage edge', () => {
+    for (const deg of [-20, 20]) {
+      for (let seed = 1; seed <= 30; seed++) {
+        const L = chest._layout(new PerlinNoise(seed), deg, ASPECT);
+        const at = (su, dy, tweaks) => chest.fn(su, svAt(dy), ASPECT, { ...PARAMS, tweaks: { ribAngle: deg, ...tweaks } }, refs(seed));
+        for (const su of [0.1, 0.5, 0.9]) {
+          const shape = Math.pow(Math.pow(su, L.build), L.ribCurve);
+          const ribcageBottom = L.top3 + L.turnShift(shape);
+          for (let j = 0; j <= 10; j++) {
+            const shoulderDy = (j / 10) * (L.top2 - 0.03);
+            expect(at(su, shoulderDy, { ribStrength: 0.3 }) - at(su, shoulderDy, { ribStrength: 0 })).toBe(0);
+            const aboveDy = (j / 10) * Math.min(1, ribcageBottom - 0.03);
+            expect(at(su, aboveDy, { absStrength: 0.3 }) - at(su, aboveDy, { absStrength: 0 })).toBe(0);
+          }
+        }
+      }
     }
   });
 });
