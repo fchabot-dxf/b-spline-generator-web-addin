@@ -167,3 +167,46 @@ describe('stored segments after a slider change (the second loop mechanism)', ()
     expect(again.hasUserSegments).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------- F12 SHAPE-PARAMS dense sweep
+// the new params set together, and each one ALONE (the others left at their
+// defaults: e.g. only the waist radius moved, the corners still the old shared one)
+const NEW_PARAM_SETS = {
+  hourglass: [['waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom'], ['waistRadius'], ['cornerRadiusTop'], ['cornerRadiusBottom']],
+  bottle: [['bodyRadius']],
+};
+const coarse = (preset) => {
+  const keys = Object.keys(PRESETS[preset].params);
+  const values = keys.map((k) => linspace(...SLIDERS[preset][k], 4));
+  const out = [];
+  for (const a of values[0]) for (const b of values[1]) for (const c of values[2]) out.push({ [keys[0]]: a, [keys[1]]: b, [keys[2]]: c });
+  return out;
+};
+
+describe.each(['hourglass', 'bottle'])('F12 dense sweep of the NEW params: %s', (preset) => {
+  it('each new param at its range min / mid / max (given the ones before it) is clean and honoured exactly', () => {
+    const bad = [];
+    let checked = 0;
+    const fracs = [0, 0.5, 1];
+    for (const set of NEW_PARAM_SETS[preset]) for (const region of REGIONS) for (const stroke of STROKES) for (const base of coarse(preset)) {
+      // every combination of the set's fractions, each resolved in PARAM_ORDER on top of the previous ones
+      const combos = set.reduce((acc) => acc.flatMap((c) => fracs.map((f) => [...c, f])), [[]]);
+      for (const combo of combos) {
+        const params = { ...base };
+        let sil = generateContourSilhouette(region, { preset, params }, stroke * 2);
+        set.forEach((key, i) => {
+          const r = feasibleParamRanges(preset, region, sil.params, stroke)[key];
+          params[key] = r.min + (r.max - r.min) * combo[i];
+          sil = generateContourSilhouette(region, { preset, params }, stroke * 2);
+        });
+        checked++;
+        const d = outlineDefects(sil.primitives);
+        const off = set.filter((k) => Math.abs(sil.params[k] - params[k]) > 1e-9);
+        if (d.length || off.length) bad.push({ region: `${region.w}x${region.h}`, stroke, params, defect: d[0], clamped: off });
+        if (bad.length > 5) break;
+      }
+    }
+    expect(bad).toEqual([]);
+    expect(checked).toBeGreaterThan(preset === 'hourglass' ? 10000 : 1000);
+  });
+});

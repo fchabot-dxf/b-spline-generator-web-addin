@@ -11,6 +11,7 @@
  * needed) and `.clone()` (SVG.js's own real API, mirrored here for parity
  * with the other mocks in this test suite).
  */
+import { SHAPE_PARAM_KEYS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   initShapeLatticeProperties, regenerateSilhouette, regenerateSilhouetteAndFill, writeSegmentStyle,
@@ -114,12 +115,15 @@ function fixtureHTML() {
     <input id="shapeSeed" type="number" value="42">
     <button id="shapeReroll"></button>
     <label id="shapeParamRow-waistReach"><input id="shapeParam-waistReach" type="range" min="0.05" max="0.92" step="0.01" value="0.55"></label>
-    <label id="shapeParamRow-cornerRadius"><input id="shapeParam-cornerRadius" type="range" min="0.04" max="0.6" step="0.01" value="0.22"></label>
+    <label id="shapeParamRow-cornerRadiusTop"><input id="shapeParam-cornerRadiusTop" type="range" min="0.04" max="0.6" step="0.01" value="0.22"></label>
+    <label id="shapeParamRow-cornerRadiusBottom"><input id="shapeParam-cornerRadiusBottom" type="range" min="0.04" max="0.6" step="0.01" value="0.22"></label>
     <label id="shapeParamRow-waistCenterY"><input id="shapeParam-waistCenterY" type="range" min="-0.6" max="0.6" step="0.01" value="0"></label>
+    <label id="shapeParamRow-waistRadius"><input id="shapeParam-waistRadius" type="range" min="0.02" max="0.9" step="0.01" value="0.33"></label>
     <label id="shapeParamRow-neckWidth" style="display:none"><input id="shapeParam-neckWidth" type="range" min="0.05" max="0.85" step="0.01" value="0.5"></label>
     <label id="shapeParamRow-bodyWidth" style="display:none"><input id="shapeParam-bodyWidth" type="range" min="0.1" max="0.98" step="0.01" value="0.92"></label>
     <label id="shapeParamRow-skeletonX" style="display:none"><input id="shapeParam-skeletonX" type="range" min="0.1" max="0.95" step="0.01" value="0.72"></label>
     <label id="shapeParamRow-neckLength" style="display:none"><input id="shapeParam-neckLength" type="range" min="0.08" max="0.85" step="0.01" value="0.32"></label>
+    <label id="shapeParamRow-bodyRadius" style="display:none"><input id="shapeParam-bodyRadius" type="range" min="0.02" max="0.9" step="0.01" value="0.28"></label>
 
     <select id="shapeSegmentIndex"></select>
     <div role="group">
@@ -263,13 +267,15 @@ describe('initShapeLatticeProperties: Shape section', () => {
     const set = async (id, v) => {
       const el = document.getElementById(id); el.value = String(v); el.dispatchEvent(new Event('change')); await flush();
     };
-    // A deep, off-centre waist leaves little vertical room: the corner-radius
-    // range shrinks below the static HTML max (0.6).
+    // A deep, LOW waist (y-down) leaves little vertical room below it: the
+    // bottom corner's range shrinks below the static HTML max (0.6). F12: the
+    // corners are separate, and the top one keeps its larger room.
     await set('shapeParam-waistCenterY', 0.6);
     await set('shapeParam-waistReach', 0.9);
-    const cr = document.getElementById('shapeParam-cornerRadius');
+    const cr = document.getElementById('shapeParam-cornerRadiusBottom');
     expect(parseFloat(cr.max)).toBeLessThan(0.6);
     expect(parseFloat(cr.max)).toBeGreaterThanOrEqual(parseFloat(cr.min));
+    expect(parseFloat(document.getElementById('shapeParam-cornerRadiusTop').max)).toBeGreaterThanOrEqual(parseFloat(cr.max));
     expect(editor._shapeOutlineDefects).toEqual([]);
   });
 
@@ -729,7 +735,7 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
     it('T72 (AMEND 2): 0 handles pre-Generate, 3 after -- the dispatch\'s own exact acceptance test', () => {
       expect(paramHandleRecords(editor).length).toBe(0);
       regenerateSilhouette(editor, currentPattern(editor));
-      expect(paramHandleRecords(editor).length).toBe(3); // hourglass's own 3 declared params
+      expect(paramHandleRecords(editor).length).toBe(SHAPE_PARAM_KEYS.hourglass.length); // F12: hourglass's declared params (5)
     });
 
     it('returns [] once the linked shape is hand-PICKED (source==\'picked\') — nothing to drag', () => {
@@ -746,16 +752,16 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
       const records = paramHandleRecords(editor);
       // T74 AMEND 3: 'bodyWidth' retired -- the bottle's body always spans
       // the full contour width now, same as the hourglass.
-      expect(records.length).toBe(3);
-      expect(records.map((r) => r.key).sort()).toEqual(['neckLength', 'neckWidth', 'skeletonX']);
+      expect(records.length).toBe(SHAPE_PARAM_KEYS.bottle.length);
+      expect(records.map((r) => r.key).sort()).toEqual(['bodyRadius', 'neckLength', 'neckWidth', 'skeletonX']); // F12: + the body shoulder
     });
 
     it('non-vacuous: renderShapeLatticeHandles draws exactly one circle per record into _handleLayer', () => {
       regenerateSilhouette(editor, currentPattern(editor)); // T72: a real Generate must have run first
       const drawn = renderShapeLatticeHandles(editor);
-      expect(drawn.length).toBe(3);
+      expect(drawn.length).toBe(SHAPE_PARAM_KEYS.hourglass.length);
       const circles = editor._handleLayer.children();
-      expect(circles.length).toBe(3);
+      expect(circles.length).toBe(SHAPE_PARAM_KEYS.hourglass.length);
     });
 
     it('each returned record is hitTestHandle-compatible (has hx/hy/hitR) and hitR is a real positive number', () => {

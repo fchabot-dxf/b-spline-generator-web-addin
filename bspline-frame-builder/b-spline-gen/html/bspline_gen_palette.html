@@ -2027,11 +2027,19 @@
               <label id="shapeParamRow-waistReach" style="display:flex; flex-direction:column; gap:2px;">waist reach
                 <input id="shapeParam-waistReach" type="range" min="0.05" max="0.92" step="0.01" value="0.55" style="width:100%; height:22px;">
               </label>
-              <label id="shapeParamRow-cornerRadius" style="display:flex; flex-direction:column; gap:2px;">corner radius
-                <input id="shapeParam-cornerRadius" type="range" min="0.04" max="0.6" step="0.01" value="0.22" style="width:100%; height:22px;">
+              <!-- F12 SHAPE-PARAMS: the corners separately (an old pattern's single corner radius becomes both). -->
+              <label id="shapeParamRow-cornerRadiusTop" style="display:flex; flex-direction:column; gap:2px;">top corner radius
+                <input id="shapeParam-cornerRadiusTop" type="range" min="0.04" max="0.6" step="0.01" value="0.22" style="width:100%; height:22px;">
+              </label>
+              <label id="shapeParamRow-cornerRadiusBottom" style="display:flex; flex-direction:column; gap:2px;">bottom corner radius
+                <input id="shapeParam-cornerRadiusBottom" type="range" min="0.04" max="0.6" step="0.01" value="0.22" style="width:100%; height:22px;">
               </label>
               <label id="shapeParamRow-waistCenterY" style="display:flex; flex-direction:column; gap:2px;">waist position
                 <input id="shapeParam-waistCenterY" type="range" min="-0.6" max="0.6" step="0.01" value="0" style="width:100%; height:22px;">
+              </label>
+              <!-- F12: the waist radius, independent of the corners. -->
+              <label id="shapeParamRow-waistRadius" style="display:flex; flex-direction:column; gap:2px;">waist radius
+                <input id="shapeParam-waistRadius" type="range" min="0.02" max="0.9" step="0.01" value="0.33" style="width:100%; height:22px;">
               </label>
               <!-- Bottle params. -->
               <label id="shapeParamRow-neckWidth" style="display:none; flex-direction:column; gap:2px;">neck width
@@ -2046,6 +2054,10 @@
               </label>
               <label id="shapeParamRow-neckLength" style="display:none; flex-direction:column; gap:2px;">neck length
                 <input id="shapeParam-neckLength" type="range" min="0.08" max="0.85" step="0.01" value="0.32" style="width:100%; height:22px;">
+              </label>
+              <!-- F12: the body shoulder (the neck-to-body transition). -->
+              <label id="shapeParamRow-bodyRadius" style="display:none; flex-direction:column; gap:2px;">body shoulder radius
+                <input id="shapeParam-bodyRadius" type="range" min="0.02" max="0.9" step="0.01" value="0.28" style="width:100%; height:22px;">
               </label>
             </div>
 

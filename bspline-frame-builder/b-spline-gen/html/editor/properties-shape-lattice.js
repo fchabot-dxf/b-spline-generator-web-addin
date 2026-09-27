@@ -25,7 +25,7 @@ import {
     _ensureKindLayers, resolvePatternLayer, freshPattern,
 } from './editor-lattice-pattern.js';
 import {
-    PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges,
+    PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges, SHAPE_PARAM_KEYS,
 } from './editor-shape-lattice-generator.js';
 import { setEditorStatusHint } from './editor-ui.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
@@ -88,12 +88,12 @@ const SEGMENT_LABELS = {
   ],
 };
 
-// Which param sliders belong to which preset — PRESETS' own `params` keys
-// (editor-shape-lattice-generator.js), just the NAMES, so this table can't
-// drift from what the generator actually reads.
+// Which param sliders belong to which preset — the generator's own declared
+// SHAPE_PARAM_KEYS (F12: incl. the waist radius, the top/bottom corners, the
+// bottle's body shoulder), so this table can't drift from what it reads.
 const PARAM_ROWS = {
-  hourglass: Object.keys(PRESETS.hourglass.params),
-  bottle: Object.keys(PRESETS.bottle.params),
+  hourglass: SHAPE_PARAM_KEYS.hourglass,
+  bottle: SHAPE_PARAM_KEYS.bottle,
 };
 
 /** SE7i's own per-layer pattern lookup, duplicated here (not imported)

@@ -11,7 +11,7 @@
  * including through a kink's own two-primitive split.
  */
 import { describe, it, expect } from 'vitest';
-import { generateSilhouette, PRESETS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+import { generateSilhouette, PRESETS, SHAPE_PARAM_KEYS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import {
   boardRegion, computeParamHandles, hitTestSegment, primitiveSegmentMap, mirrorSegmentIndex,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-interaction.js';
@@ -26,11 +26,11 @@ describe('boardRegion', () => {
 });
 
 describe.each(['hourglass', 'bottle'])('computeParamHandles(%s) — round-trip correctness', (preset) => {
-  it('one handle per declared preset param', () => {
+  it('one handle per declared Shape Lattice param (F12: SHAPE_PARAM_KEYS)', () => {
     const out = generateSilhouette(REGION, { preset, seed: 42 });
     const handles = computeParamHandles(preset, REGION, out.params);
     const handleKeys = handles.map((h) => h.key).sort();
-    const declaredKeys = Object.keys(PRESETS[preset].params).sort();
+    const declaredKeys = [...SHAPE_PARAM_KEYS[preset]].sort();
     expect(handleKeys).toEqual(declaredKeys);
   });
 

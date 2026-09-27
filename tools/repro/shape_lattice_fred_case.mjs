@@ -45,8 +45,9 @@ const verdict = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(
   document.getElementById('shapePresetHourglass')?.click(); await W(300);
   document.getElementById('shapeLatticeGenerate').click(); await W(2500);
   const set = async (k, v) => { const el = document.getElementById('shapeParam-' + k); el.value = String(v); el.dispatchEvent(new Event('change')); await W(1200); };
-  await set('waistCenterY', 0); await set('waistReach', 0.294); await set('cornerRadius', 0.432);
-  const cr = document.getElementById('shapeParam-cornerRadius');
+  // F12: the corners are separate sliders now; Fred's case is both at 0.432
+  await set('waistCenterY', 0); await set('waistReach', 0.294); await set('cornerRadiusTop', 0.432); await set('cornerRadiusBottom', 0.432);
+  const cr = document.getElementById('shapeParam-cornerRadiusTop');
   const e = window.svgEditor;
   return JSON.stringify({ cornerRadiusSlider: { value: cr.value, min: cr.min, max: cr.max },
     defects: e && e._shapeOutlineDefects ? e._shapeOutlineDefects.map((d) => d.kind) : 'n/a (pre-F5 build)',
