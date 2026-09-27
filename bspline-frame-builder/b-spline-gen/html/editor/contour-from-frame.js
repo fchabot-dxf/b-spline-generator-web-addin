@@ -2,11 +2,20 @@
  * contour-from-frame.js — F21 CONTOUR-FROM-FRAME (Fred: "add a way in art to match the frame outline
  * concentrically" -> "a toggle for 'offset from frame'" on the Shape Lattice contour).
  *
- * `pattern.contour.fromFrame = { on, distance }` (PATTERN_DEFAULTS: off, 0.25 in). ON: the contour is the
- * frame's INNER edge offset inward by `distance`, i.e. the frame's cut profile offset by
- * frame_thickness + distance, measured to the contour's OUTSIDE edge (T74: a contour's declared size is its
- * outside edge), so its centerline sits half the contour stroke further in. One call to the F8 true offset
- * (outline-offset.js, the same function the frame's inner edge uses), never a copy.
+ * `pattern.contour.fromFrame = { on, distance, distanceRef }` (PATTERN_DEFAULTS: off, 0.25 in, 'outer').
+ * ON: the contour is the frame's OUTER edge (its cut profile, `distance = 0`) offset by `distance` --
+ * positive = inward, negative = outward -- measured to the contour's OUTSIDE edge (T74: a contour's declared
+ * size is its outside edge), so its centerline sits half the contour stroke further in. One call to the F8
+ * true offset (outline-offset.js, the same function the frame's inner edge uses AND the panel lip's own
+ * outward trim, F22, already proved handles a negative amount), never a copy.
+ *
+ * F26 (Fred, screenshot: "offset from frame at 0 is clamped to the inside of frame rather than outside, and
+ * doesn't accept negative value"): the reference point moved from the frame's INNER edge (the cut profile
+ * offset inward by `frame_thickness`, so `distance=0` used to sit `frame_thickness` inward of the outline)
+ * to the OUTER edge directly. `distanceRef: 'outer'` is the declared marker a saved pattern carries once it
+ * is in this (current) scheme -- `main/app-init.js`'s `contour-from-frame-outer-edge` migration converts an
+ * older saved `distance` (absent the marker) by `+= frame_thickness`, once, so an existing contour's actual
+ * drawn position does not move on load.
  *
  * A convex corner arc smaller than the offset collapses: its neighbours meet in a sharp corner (Fusion's own
  * "merged regime"; the frame's inner edge does the same). Fred: "merge in corner not a problem, just less
@@ -49,13 +58,14 @@ function _distToLoop(q, prims) {
   return best;
 }
 
-export const CONTOUR_FROM_FRAME_DEFAULTS = Object.freeze({ on: false, distance: 0.25 });
+export const CONTOUR_FROM_FRAME_DEFAULTS = Object.freeze({ on: false, distance: 0.25, distanceRef: 'outer' });
 
-/** The effective `{ on, distance }` of a pattern (absent = off: old patterns keep their preset contour). */
+/** The effective `{ on, distance }` of a pattern (absent = off: old patterns keep their preset contour).
+ *  F26: negative `distance` (outward) is accepted; only a genuinely non-finite value falls back. */
 export function contourFromFrameOf(pattern) {
   const ff = { ...CONTOUR_FROM_FRAME_DEFAULTS, ...((pattern && pattern.contour && pattern.contour.fromFrame) || {}) };
   const distance = Number(ff.distance);
-  return { on: !!ff.on, distance: Number.isFinite(distance) && distance >= 0 ? distance : CONTOUR_FROM_FRAME_DEFAULTS.distance };
+  return { on: !!ff.on, distance: Number.isFinite(distance) ? distance : CONTOUR_FROM_FRAME_DEFAULTS.distance };
 }
 
 /** True when a frame is chosen (the toggle's precondition). `frame` = `{ defs, record, board }`. */
@@ -75,8 +85,17 @@ export function frameContourSilhouette(frame, distance, strokeWidth) {
   const tpl = frame.defs.templates.find((t) => t.id === frame.record.templateId);
   const tp = tpl.params.find((q) => q.name === 'frame_thickness');
   const t = frame.record.params && Number.isFinite(frame.record.params.frame_thickness) ? frame.record.params.frame_thickness : tp.default;
-  const out = t + distance; // the contour's OUTSIDE edge
-  const all = offsetOutlineInward(prof.primitives, out + (strokeWidth || 0) / 2);
+  // F26: the contour's OUTSIDE edge, offset from the frame's OWN OUTER edge (the cut profile itself) --
+  // distance alone, no longer `t + distance` (that offset the reference to the INNER edge instead).
+  const out = distance;
+  // the CENTRELINE offset actually applied: `out` + stroke/2, UNCHANGED from before F26 (a plain addition
+  // on offsetOutlineInward's own continuous +inward/-outward scale is correct regardless of `out`'s own
+  // sign -- e.g. out=-0.25, stroke=0.1: applied=-0.20, i.e. the centerline sits 0.20 outward, INSIDE the
+  // 0.25-outward outside edge by the same half-stroke as ever; VERIFIED with this exact case, not assumed
+  // from the formula alone. offsetOutlineInward's own sign convention: + = inward; F22's panel lip already
+  // proved a negative amount offsets outward, not a new capability here).
+  const applied = out + (strokeWidth || 0) / 2;
+  const all = offsetOutlineInward(prof.primitives, applied);
   const keep = all.map((p) => !p.collapsed);
   const primitives = all.filter((_, i) => keep[i]);
   if (primitives.length < 3) return { error: 'tooSmall' };
@@ -89,13 +108,18 @@ export function frameContourSilhouette(frame, distance, strokeWidth) {
   });
   const defects = outlineDefects(primitives).filter((d) => !(d.kind === 'notTangent' && corners.includes(d.index)));
   if (defects.length) return { error: 'invalid', defects };
-  // an offset only exists while the loop stays INSIDE the frame at (at least) the offset distance; past that the
-  // offset joints fly off (MEASURED: T1 7x9 at 2 in "fits" a 12 in wide loop that passes the loop guard), so this
-  // is the definition of the offset checked directly: every centerline point inside the frame outline and
-  // >= thickness + distance + stroke/2 from it
+  // an offset only exists while the loop stays on its OWN side of the frame outline (inside for a positive
+  // offset, outside for a negative one -- F26) at (at least) the offset distance; past that the offset
+  // joints fly off (MEASURED pre-F26: T1 7x9 at 2 in "fits" a 12 in wide loop that passes the loop guard),
+  // so this is the definition of the offset checked directly: every centerline point on the correct side of
+  // the frame outline and >= |applied offset| from it. `applied` near zero (on the outline itself) skips
+  // the side check -- "inside or outside" of a loop that IS the loop isn't a meaningful question, and
+  // floating-point sampling would make it flaky either way.
   const outline = sampleOutline(prof.primitives);
-  const need = out + (strokeWidth || 0) / 2 - 1e-3;
-  if (!_samples(primitives).every((q) => pointInPolygon(q.x, q.y, outline) && _distToLoop(q, prof.primitives) >= need)) {
+  const need = Math.abs(applied) - 1e-3;
+  const onCorrectSide = (q) => (Math.abs(applied) < 1e-9 ? true
+    : applied > 0 ? pointInPolygon(q.x, q.y, outline) : !pointInPolygon(q.x, q.y, outline));
+  if (!_samples(primitives).every((q) => onCorrectSide(q) && _distToLoop(q, prof.primitives) >= need)) {
     return { error: 'tooSmall' };
   }
   const segments = primitives.map((p) => (p.type === 'A'

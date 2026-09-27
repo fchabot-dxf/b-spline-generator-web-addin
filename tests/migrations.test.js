@@ -494,3 +494,86 @@ describe('runMigrations: removed-noise-type-to-default (T78 item 10: Biomechanic
     expect(P).toEqual({ noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } } });
   });
 });
+
+/**
+ * F26 — contour-from-frame-outer-edge. `.pattern.contour.fromFrame.distance`'s
+ * reference point moved from the frame's INNER edge (the cut profile offset
+ * inward by `frame_thickness`) to its OUTER edge directly. `distanceRef:
+ * 'outer'` is the declared marker a pattern carries once it is in the new
+ * scheme; a saved `distance` without it gets `+= frame_thickness` once (the
+ * project's own frame record, `P.frame`) so the contour's ACTUAL drawn
+ * position does not move on load.
+ */
+describe('runMigrations: contour-from-frame-outer-edge', () => {
+  function editorSvgWithLayers(roster) {
+    const attr = JSON.stringify(roster).replace(/"/g, '&quot;');
+    return `<svg xmlns="http://www.w3.org/2000/svg" data-editor-layers="${attr}"></svg>`;
+  }
+  function rosterOf(p) {
+    const root = new DOMParser().parseFromString(p.editorSvg, 'image/svg+xml').documentElement;
+    return JSON.parse(root.getAttribute('data-editor-layers'));
+  }
+
+  it('an old distance (no distanceRef) gets += the project\'s own frame_thickness, and is marked outer', () => {
+    const P = {
+      editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { contour: { fromFrame: { on: true, distance: 0.25 } } } } ]),
+      frame: { templateId: 'template_1', params: { frame_thickness: 0.5 } },
+    };
+    runMigrations(P);
+    const ff = rosterOf(P)[0].pattern.contour.fromFrame;
+    expect(ff.distance).toBeCloseTo(0.75, 10); // 0.25 (old, from the inner edge) + 0.5 (frame_thickness)
+    expect(ff.distanceRef).toBe('outer');
+    expect(ff.on).toBe(true); // untouched
+  });
+
+  it('no frame on record: falls back to the template\'s own shared declared default (0.75), not 0 or a throw', () => {
+    const P = { editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { contour: { fromFrame: { on: false, distance: 0.1 } } } }]) };
+    expect(() => runMigrations(P)).not.toThrow();
+    const ff = rosterOf(P)[0].pattern.contour.fromFrame;
+    expect(ff.distance).toBeCloseTo(0.85, 10); // 0.1 + 0.75
+    expect(ff.distanceRef).toBe('outer');
+  });
+
+  it('a pattern already marked distanceRef: outer (a fresh save, or already migrated) is left exactly as saved', () => {
+    const P = {
+      editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { contour: { fromFrame: { on: true, distance: -0.25, distanceRef: 'outer' } } } }]),
+      frame: { templateId: 'template_1', params: { frame_thickness: 0.5 } },
+    };
+    runMigrations(P);
+    const ff = rosterOf(P)[0].pattern.contour.fromFrame;
+    expect(ff.distance).toBe(-0.25); // NOT re-converted (would otherwise become 0.25)
+  });
+
+  it('a layer with no fromFrame at all (contour off, or no frame ever used) is left untouched, no throw', () => {
+    const P = { editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { contour: { show: true } } }]) };
+    expect(() => runMigrations(P)).not.toThrow();
+    expect(rosterOf(P)[0].pattern.contour.fromFrame).toBeUndefined();
+  });
+
+  it('mixed roster: only the unmigrated layer converts', () => {
+    const P = {
+      editorSvg: editorSvgWithLayers([
+        { id: '0', name: 'Layer 1', pattern: { contour: { fromFrame: { on: true, distance: 0.25 } } } }, // converts
+        { id: '1', name: 'Layer 2', pattern: { contour: { fromFrame: { on: true, distance: 0.5, distanceRef: 'outer' } } } }, // already migrated
+        { id: '2', name: 'Layer 3', pattern: { contour: { show: true } } }, // no fromFrame at all
+      ]),
+      frame: { templateId: 'template_1', params: { frame_thickness: 0.5 } },
+    };
+    runMigrations(P);
+    const roster = rosterOf(P);
+    expect(roster[0].pattern.contour.fromFrame.distance).toBeCloseTo(0.75, 10);
+    expect(roster[1].pattern.contour.fromFrame.distance).toBe(0.5); // untouched
+    expect(roster[2].pattern.contour.fromFrame).toBeUndefined();
+  });
+
+  it('is idempotent — running twice does not change the result', () => {
+    const P = {
+      editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { contour: { fromFrame: { on: true, distance: 0.25 } } } }]),
+      frame: { templateId: 'template_1', params: { frame_thickness: 0.5 } },
+    };
+    runMigrations(P);
+    const first = P.editorSvg;
+    runMigrations(P);
+    expect(P.editorSvg).toBe(first);
+  });
+});

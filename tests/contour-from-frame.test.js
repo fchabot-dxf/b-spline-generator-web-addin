@@ -1,11 +1,11 @@
 /**
- * F21 CONTOUR-FROM-FRAME: the Shape Lattice contour as the frame's inner edge offset inward by Distance
+ * F21/F26 CONTOUR-FROM-FRAME: the Shape Lattice contour as the frame's OUTER edge offset by Distance
  * (editor/contour-from-frame.js), the ONE source for the drawn contour, its fill clip and the Fusion manifest.
  */
 import { describe, it, expect } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { frameInnerProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { frameInnerProfile, frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import {
   contourSilhouette, frameContourSilhouette, contourFromFrameOf, CONTOUR_FROM_FRAME_DEFAULTS,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
@@ -14,6 +14,7 @@ import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/edi
 import { buildSketchManifest, latticeExtentFor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { boardRegion } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-interaction.js';
 import { sizedBoardRegion } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
+import { sampleOutline, pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 
 const SW = 0.07;
 const frameOf = (templateId, W, H, extra = {}) => ({
@@ -49,20 +50,22 @@ function distTo(q, prims) {
   return best;
 }
 
-describe('the frame-offset contour == the frame inner edge offset inward by Distance (to its outside edge)', () => {
+describe('the frame-offset contour == the frame OUTER edge offset by Distance (to its outside edge) -- F26', () => {
   const CASES = [];
   for (const id of ['template_1', 'template_2']) for (const [W, H] of [[7, 9], [12, 6], [9, 12]]) for (const d of [0.1, 0.25, 0.5]) CASES.push([id, W, H, d]);
   it.each(CASES)('%s %sx%s, distance %s', (id, W, H, d) => {
     const frame = frameOf(id, W, H);
     const sil = frameContourSilhouette(frame, d, SW);
     expect(sil.error).toBeUndefined();
-    const inner = frameInnerProfile(frame.defs, frame.record, frame.board).primitives;
-    // every centerline point sits EXACTLY d + stroke/2 from the frame's inner edge (a concentric offset);
+    // F26: the reference is the frame's OUTER edge (its cut profile), not the inner edge -- a positive
+    // distance still moves the contour INWARD (unchanged direction), just measured from a different origin.
+    const outer = frameCutProfile(frame.defs, frame.record, frame.board).primitives;
+    // every centerline point sits EXACTLY d + stroke/2 from the frame's outer edge (a concentric offset);
     // at a merged corner a point may only be FARTHER (the corner cuts inside the collapsed arc)
-    const ds = samples(sil.primitives).map((q) => distTo(q, inner));
+    const ds = samples(sil.primitives).map((q) => distTo(q, outer));
     for (const v of ds) expect(v).toBeGreaterThan(d + SW / 2 - 2e-3);
     const onLines = sil.primitives.filter((p) => p.type === 'L').flatMap((p) => samples([p]));
-    for (const q of onLines) expect(Math.abs(distTo(q, inner) - (d + SW / 2))).toBeLessThan(2e-3);
+    for (const q of onLines) expect(Math.abs(distTo(q, outer) - (d + SW / 2))).toBeLessThan(2e-3);
     // validity: simple, positive radii; tangent everywhere except the declared merged corners
     expect(outlineDefects(sil.primitives, { requireTangency: false })).toEqual([]);
     expect(outlineDefects(sil.primitives).filter((x) => !(x.kind === 'notTangent' && sil.corners.includes(x.index)))).toEqual([]);
@@ -73,18 +76,86 @@ describe('the frame-offset contour == the frame inner edge offset inward by Dist
   });
 
   it('a corner arc smaller than the offset merges into a corner: fewer segments, the corner declared (Fred: "just less segments")', () => {
-    const sil = frameContourSilhouette(frameOf('template_1', 7, 9), 0.25, SW);
+    // F26: the offset is now measured from the OUTER edge directly, so a distance needs to be roughly
+    // `old distance + frame_thickness` (T1's own default 0.75) to collapse the SAME corner arc as before.
+    const sil = frameContourSilhouette(frameOf('template_1', 7, 9), 1.0, SW);
     expect(sil.primitives.length).toBeLessThan(12); // T1's outline has 12 pieces
     expect(sil.corners.length).toBeGreaterThan(0);
     expect(sil.segments).toHaveLength(sil.primitives.length);
   });
 
-  it('follows the frame: a Shoulder seed, a thickness and a Trim offset change each move the contour', () => {
+  it('follows the frame: a Shoulder seed and a Trim offset change each move the contour', () => {
     const base = frameContourSilhouette(frameOf('template_1', 9, 12), 0.25, SW).primitives;
-    for (const extra of [{ seeds: { cornerRadiusTop: 0.5 } }, { params: { frame_thickness: 0.5 } }, { params: { boundingboxoffset: 0.6 } }]) {
+    for (const extra of [{ seeds: { cornerRadiusTop: 0.5 } }, { params: { boundingboxoffset: 0.6 } }]) {
       const moved = frameContourSilhouette(frameOf('template_1', 9, 12, extra), 0.25, SW).primitives;
       expect(JSON.stringify(moved)).not.toBe(JSON.stringify(base));
     }
+  });
+
+  it('F26: frame_thickness alone does NOT move an outer-edge-referenced contour (it only ever affected the OLD inner-edge reference)', () => {
+    // MEASURED, not assumed: frameCutProfile's own construction (region = boundingboxoffset + the shape
+    // params) never reads frame_thickness at all, so the outer edge -- and therefore this contour -- is
+    // thickness-independent by construction. Proving it directly, not inferring it from the formula.
+    const base = frameContourSilhouette(frameOf('template_1', 9, 12), 0.25, SW).primitives;
+    const moved = frameContourSilhouette(frameOf('template_1', 9, 12, { params: { frame_thickness: 0.5 } }), 0.25, SW).primitives;
+    expect(JSON.stringify(moved)).toBe(JSON.stringify(base));
+  });
+});
+
+/**
+ * F26 (Fred, screenshot: "offset from frame at 0 is clamped to the inside of frame rather than outside, and
+ * doesn't accept negative value"): distance 0 sits ON the frame's outer edge; negative distances offset
+ * OUTWARD of it (accepted everywhere, not clamped away). MEASURED at the checklist's own 0 / +0.5 / -0.25.
+ */
+describe('F26: distance is measured from the OUTER edge, negatives offset outward', () => {
+  it.each(['template_1', 'template_2'])('%s: distance 0 sits exactly on the outer edge (stroke/2 in)', (id) => {
+    const frame = frameOf(id, 9, 12);
+    const sil = frameContourSilhouette(frame, 0, SW);
+    expect(sil.error).toBeUndefined();
+    const outer = frameCutProfile(frame.defs, frame.record, frame.board).primitives;
+    for (const q of samples(sil.primitives)) expect(Math.abs(distTo(q, outer) - SW / 2)).toBeLessThan(2e-3);
+  });
+
+  // Only the MIDDLE of each straight segment, not its own ends: an outward offset (F26, new) makes a line
+  // GROW past its original endpoints into the corner region (the arc there grows too, MEASURED: T1 9x12's
+  // corner radius 0.8423 -> 1.0573 at -0.25), so a sample near a line's own end can have a genuinely
+  // DIFFERENT nearest point on the outer outline (the corner's own arc or corner point, not "the same line
+  // shifted") -- a real geometric fact about offsetting outward, not a test tolerance problem. An inward
+  // offset (the existing "distance N" sweep above) never hits this: a line SHRINKS inward, so its ends stay
+  // safely within its own corresponding original line's span.
+  const midOfLine = (p) => Array.from({ length: 5 }, (_, k) => {
+    const t = 0.4 + 0.05 * k; // the middle 20% of the line's own span
+    return { x: p.p0.x + (p.p1.x - p.p0.x) * t, y: p.p0.y + (p.p1.y - p.p0.y) * t };
+  });
+
+  it.each(['template_1', 'template_2'])('%s: distance +0.5 sits 0.5 + stroke/2 INSIDE the outer edge (unchanged direction from before F26)', (id) => {
+    const frame = frameOf(id, 9, 12);
+    const sil = frameContourSilhouette(frame, 0.5, SW);
+    expect(sil.error).toBeUndefined();
+    const outer = frameCutProfile(frame.defs, frame.record, frame.board).primitives;
+    for (const v of samples(sil.primitives).map((q) => distTo(q, outer))) expect(v).toBeGreaterThan(0.5 + SW / 2 - 2e-3);
+    const midLines = sil.primitives.filter((p) => p.type === 'L').flatMap(midOfLine);
+    for (const q of midLines) expect(Math.abs(distTo(q, outer) - (0.5 + SW / 2))).toBeLessThan(2e-3);
+  });
+
+  it.each(['template_1', 'template_2'])('%s: distance -0.25 (NEW: negative is accepted, not clamped to the default) sits 0.25 - stroke/2 OUTSIDE the outer edge', (id) => {
+    const frame = frameOf(id, 9, 12);
+    const sil = frameContourSilhouette(frame, -0.25, SW);
+    expect(sil.error).toBeUndefined();
+    const outer = frameCutProfile(frame.defs, frame.record, frame.board).primitives;
+    // PROVEN outside, not assumed: every centerline point must be OUTSIDE the frame's own outer polygon
+    // (the SAME sampleOutline/pointInPolygon the implementation's own validity check reads).
+    const outlinePts = sampleOutline(outer);
+    for (const q of samples(sil.primitives)) expect(pointInPolygon(q.x, q.y, outlinePts)).toBe(false);
+    const midLines = sil.primitives.filter((p) => p.type === 'L').flatMap(midOfLine);
+    for (const q of midLines) expect(Math.abs(distTo(q, outer) - (0.25 - SW / 2))).toBeLessThan(2e-3);
+  });
+
+  it('contourFromFrameOf no longer clamps a negative distance to the default (was: silently forced to 0.25)', () => {
+    expect(contourFromFrameOf({ contour: { fromFrame: { on: true, distance: -0.25 } } }).distance).toBe(-0.25);
+    expect(contourFromFrameOf({ contour: { fromFrame: { on: true, distance: 0 } } }).distance).toBe(0);
+    // still falls back on a genuinely non-finite value (NaN, a broken save), not on sign
+    expect(contourFromFrameOf({ contour: { fromFrame: { on: true, distance: 'x' } } }).distance).toBe(CONTOUR_FROM_FRAME_DEFAULTS.distance);
   });
 });
 
@@ -92,9 +163,11 @@ describe('the toggle, the default, the fallbacks', () => {
   const region = sizedBoardRegion(boardRegion({ _mW: 7, _mH: 9 }), null);
   const pattern = (fromFrame) => ({ shape: { ...PATTERN_DEFAULTS.shape }, contour: { ...PATTERN_DEFAULTS.contour, ...(fromFrame ? { fromFrame } : {}) } });
 
-  it('old patterns (no key) are OFF; the declared default is off, 0.25 in', () => {
-    expect(PATTERN_DEFAULTS.contour.fromFrame).toEqual({ on: false, distance: 0.25 });
-    expect(CONTOUR_FROM_FRAME_DEFAULTS).toEqual({ on: false, distance: 0.25 });
+  it('old patterns (no key) are OFF; the declared default is off, 0.25 in from the outer edge (F26)', () => {
+    expect(PATTERN_DEFAULTS.contour.fromFrame).toEqual({ on: false, distance: 0.25, distanceRef: 'outer' });
+    expect(CONTOUR_FROM_FRAME_DEFAULTS).toEqual({ on: false, distance: 0.25, distanceRef: 'outer' });
+    // contourFromFrameOf's own return shape is unchanged (on/distance only) -- distanceRef is the
+    // MIGRATION's own concern (app-init.js), not a runtime reader's.
     expect(contourFromFrameOf({ contour: { show: true } })).toEqual({ on: false, distance: 0.25 });
     expect(contourFromFrameOf({})).toEqual({ on: false, distance: 0.25 });
   });

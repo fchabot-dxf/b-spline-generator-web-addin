@@ -1192,12 +1192,13 @@ export function initShapeLatticeProperties(editor) {
     // — the width field replaces the retired Border section's own width
     // field, which had the same immediate-effect behavior.
     // F21: immediate write+redraw, same convention as the show checkbox / width field
+    // F26: negative distance (outward of the frame's outer edge) is a valid value now, not a typo to reject.
     async function _writeFromFrame() {
         const p = currentPattern(editor);
         const d = parseFloat(fromFrameDistanceEl && fromFrameDistanceEl.value);
         p.contour = { ...PATTERN_DEFAULTS.contour, ...p.contour, fromFrame: {
             on: !!(fromFrameEl && fromFrameEl.checked),
-            distance: Number.isFinite(d) && d >= 0 ? d : CONTOUR_FROM_FRAME_DEFAULTS.distance } };
+            distance: Number.isFinite(d) ? d : CONTOUR_FROM_FRAME_DEFAULTS.distance, distanceRef: 'outer' } };
         _syncFromFrame(p);
         await regenerateSilhouetteAndFill(editor);
     }
