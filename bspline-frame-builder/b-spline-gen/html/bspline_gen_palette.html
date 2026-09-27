@@ -2010,77 +2010,9 @@
                  falls back to the drawer's own small 96px peek floor
                  instead, leaving the canvas reachable; the user can still
                  collapse it to reclaim scroll space, or expand the drawer
-                 itself to reach the sliders. -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Shape</span>
-              <div role="group" class="segmented-group">
-                <button type="button" id="shapePresetHourglass" class="editor-fillmode-btn active" style="flex:1;" title="An hourglass silhouette">Hourglass</button>
-                <button type="button" id="shapePresetBottle" class="editor-fillmode-btn" style="flex:1;" title="A bottle silhouette">Bottle</button>
-              </div>
-              <div style="display:flex; gap:6px; align-items:flex-end;">
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">seed
-                  <input id="shapeSeed" type="number" step="1" value="42" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-                </label>
-                <button type="button" id="shapeReroll" title="Roll a new seed and regenerate" style="height:26px; width:26px; flex-shrink:0; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">🎲</button>
-              </div>
-              <!-- Hourglass params. -->
-              <label id="shapeParamRow-waistReach" style="display:flex; flex-direction:column; gap:2px;">waist reach
-                <input id="shapeParam-waistReach" type="range" min="0.05" max="0.92" step="0.01" value="0.55" style="width:100%; height:22px;">
-              </label>
-              <!-- F12 SHAPE-PARAMS: the corners separately (an old pattern's single corner radius becomes both). -->
-              <label id="shapeParamRow-cornerRadiusTop" style="display:flex; flex-direction:column; gap:2px;">top corner radius
-                <input id="shapeParam-cornerRadiusTop" type="range" min="0.04" max="0.6" step="0.01" value="0.22" style="width:100%; height:22px;">
-              </label>
-              <label id="shapeParamRow-cornerRadiusBottom" style="display:flex; flex-direction:column; gap:2px;">bottom corner radius
-                <input id="shapeParam-cornerRadiusBottom" type="range" min="0.04" max="0.6" step="0.01" value="0.22" style="width:100%; height:22px;">
-              </label>
-              <label id="shapeParamRow-waistCenterY" style="display:flex; flex-direction:column; gap:2px;">waist position
-                <input id="shapeParam-waistCenterY" type="range" min="-0.6" max="0.6" step="0.01" value="0" style="width:100%; height:22px;">
-              </label>
-              <!-- F12: the waist radius, independent of the corners. -->
-              <label id="shapeParamRow-waistRadius" style="display:flex; flex-direction:column; gap:2px;">waist radius
-                <input id="shapeParam-waistRadius" type="range" min="0.02" max="0.9" step="0.01" value="0.33" style="width:100%; height:22px;">
-              </label>
-              <!-- Bottle params. -->
-              <label id="shapeParamRow-neckWidth" style="display:none; flex-direction:column; gap:2px;">neck width
-                <input id="shapeParam-neckWidth" type="range" min="0.05" max="0.85" step="0.01" value="0.5" style="width:100%; height:22px;">
-              </label>
-              <!-- T74 AMEND 3: the 'body width' slider (shapeParam-
-                   bodyWidth) is RETIRED along with the param itself -- the
-                   bottle's own body always spans the full contour width
-                   now, same as the hourglass. -->
-              <label id="shapeParamRow-skeletonX" style="display:none; flex-direction:column; gap:2px;">S-curve tightness
-                <input id="shapeParam-skeletonX" type="range" min="0.1" max="0.95" step="0.01" value="0.72" style="width:100%; height:22px;">
-              </label>
-              <label id="shapeParamRow-neckLength" style="display:none; flex-direction:column; gap:2px;">neck length
-                <input id="shapeParam-neckLength" type="range" min="0.08" max="0.85" step="0.01" value="0.32" style="width:100%; height:22px;">
-              </label>
-              <!-- F12: the body shoulder (the neck-to-body transition). -->
-              <label id="shapeParamRow-bodyRadius" style="display:none; flex-direction:column; gap:2px;">body shoulder radius
-                <input id="shapeParam-bodyRadius" type="range" min="0.02" max="0.9" step="0.01" value="0.28" style="width:100%; height:22px;">
-              </label>
-            </div>
-
-            <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Segments</span>
-              <select id="shapeSegmentIndex" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-              <div role="group" class="segmented-group">
-                <button type="button" id="shapeSegStyleStraight" class="editor-fillmode-btn active" style="flex:1;" title="No arc">Straight</button>
-                <button type="button" id="shapeSegStyleCurve" class="editor-fillmode-btn" style="flex:1;" title="A circular arc">Curve</button>
-                <button type="button" id="shapeSegStyleKink" class="editor-fillmode-btn" style="flex:1;" title="A sharp offset vertex">Kink</button>
-              </div>
-              <div id="shapeSegCurveFields" style="display:none; flex-direction:column; gap:3px;">
-                <div role="group" class="segmented-group">
-                  <button type="button" id="shapeSegDirOut" class="editor-fillmode-btn active" style="flex:1;" title="Bulges away from the centerline">Out</button>
-                  <button type="button" id="shapeSegDirIn" class="editor-fillmode-btn" style="flex:1;" title="Bulges toward the centerline">In</button>
-                </div>
-                <label style="display:flex; flex-direction:column; gap:2px;">bulge
-                  <input id="shapeSegBulge" type="range" min="0" max="0.99" step="0.01" value="0.5" style="width:100%; height:22px;">
-                </label>
-              </div>
-              <span style="font-size:9px; color:#888;">Mirrored side updates together.</span>
-            </div>
-
+                 itself to reach the sliders. F12 (Fred): the Shape and
+                 Segments blocks now live INSIDE the Contour section below
+                 (still an ordinary collapsible section, for the same reason). -->
             <!-- T75 (LAT-SIZE, Fred): a declared Size (width x height), the
                  OUTSIDE of the contour/fill area (T74 AMEND 2's own rule),
                  centred on the board. Blank/auto (placeholder text, same
@@ -2092,9 +2024,8 @@
                  width field's own immediate-effect wiring. -->
             <!-- RAIL-SPACING R7 (Fred): "the FIRST section of both lattice
                  panels is BOUNDARY" -- renamed from "Size" (same ids, same
-                 fields, just the section title + its new position: right
-                 after Shape/Segments, which stay exactly where they are
-                 -- seat C's own SHAPE-PARAMS territory, untouched). -->
+                 fields, just the section title + its new position: the
+                 first section (F12 moved Shape/Segments into Contour). -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Boundary</span>
               <div style="display:flex; gap:6px;">
@@ -2125,6 +2056,78 @@
               <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">width
                 <input id="shapeLatticeContourWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
               </label>
+              <!-- F12 (Fred: "shape goes in contour", "segment too"): the silhouette's preset + sliders,
+                   then its per-segment styles, are part of the Contour section (same ids, same wiring). -->
+              <div style="display:flex; flex-direction:column; gap:3px;">
+                <span style="font-size:11px; color:#444;">Shape</span>
+                <div role="group" class="segmented-group">
+                  <button type="button" id="shapePresetHourglass" class="editor-fillmode-btn active" style="flex:1;" title="An hourglass silhouette">Hourglass</button>
+                  <button type="button" id="shapePresetBottle" class="editor-fillmode-btn" style="flex:1;" title="A bottle silhouette">Bottle</button>
+                </div>
+                <div style="display:flex; gap:6px; align-items:flex-end;">
+                  <!-- F12 (Fred): the shape seed field is HIDDEN, like the lattice seed; it stays in the
+                       pattern and is saved; the dice button still rolls a new shape. -->
+                  <label style="flex:1; display:none; flex-direction:column; gap:2px;">seed
+                    <input id="shapeSeed" type="number" step="1" value="42" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                  </label>
+                  <button type="button" id="shapeReroll" title="Roll a new seed and regenerate" style="height:26px; width:26px; flex-shrink:0; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">🎲</button>
+                </div>
+                <!-- Hourglass params. -->
+                <label id="shapeParamRow-waistReach" style="display:flex; flex-direction:column; gap:2px;">waist reach
+                  <input id="shapeParam-waistReach" type="range" min="0.05" max="0.92" step="0.01" value="0.55" style="width:100%; height:22px;">
+                </label>
+                <!-- F12 SHAPE-PARAMS: the corners separately (an old pattern's single corner radius becomes both). -->
+                <label id="shapeParamRow-cornerRadiusTop" style="display:flex; flex-direction:column; gap:2px;">top corner radius
+                  <input id="shapeParam-cornerRadiusTop" type="range" min="0.04" max="0.6" step="0.01" value="0.22" style="width:100%; height:22px;">
+                </label>
+                <label id="shapeParamRow-cornerRadiusBottom" style="display:flex; flex-direction:column; gap:2px;">bottom corner radius
+                  <input id="shapeParam-cornerRadiusBottom" type="range" min="0.04" max="0.6" step="0.01" value="0.22" style="width:100%; height:22px;">
+                </label>
+                <label id="shapeParamRow-waistCenterY" style="display:flex; flex-direction:column; gap:2px;">waist position
+                  <input id="shapeParam-waistCenterY" type="range" min="-0.6" max="0.6" step="0.01" value="0" style="width:100%; height:22px;">
+                </label>
+                <!-- F12: the waist radius, independent of the corners. -->
+                <label id="shapeParamRow-waistRadius" style="display:flex; flex-direction:column; gap:2px;">waist radius
+                  <input id="shapeParam-waistRadius" type="range" min="0.02" max="0.9" step="0.01" value="0.33" style="width:100%; height:22px;">
+                </label>
+                <!-- Bottle params. -->
+                <label id="shapeParamRow-neckWidth" style="display:none; flex-direction:column; gap:2px;">neck width
+                  <input id="shapeParam-neckWidth" type="range" min="0.05" max="0.85" step="0.01" value="0.5" style="width:100%; height:22px;">
+                </label>
+                <!-- T74 AMEND 3: the 'body width' slider (shapeParam-
+                     bodyWidth) is RETIRED along with the param itself -- the
+                     bottle's own body always spans the full contour width
+                     now, same as the hourglass. -->
+                <label id="shapeParamRow-skeletonX" style="display:none; flex-direction:column; gap:2px;">S-curve tightness
+                  <input id="shapeParam-skeletonX" type="range" min="0.1" max="0.95" step="0.01" value="0.72" style="width:100%; height:22px;">
+                </label>
+                <label id="shapeParamRow-neckLength" style="display:none; flex-direction:column; gap:2px;">neck length
+                  <input id="shapeParam-neckLength" type="range" min="0.08" max="0.85" step="0.01" value="0.32" style="width:100%; height:22px;">
+                </label>
+                <!-- F12: the body shoulder (the neck-to-body transition). -->
+                <label id="shapeParamRow-bodyRadius" style="display:none; flex-direction:column; gap:2px;">body shoulder radius
+                  <input id="shapeParam-bodyRadius" type="range" min="0.02" max="0.9" step="0.01" value="0.28" style="width:100%; height:22px;">
+                </label>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:3px;">
+                <span style="font-size:11px; color:#444;">Segments</span>
+                <select id="shapeSegmentIndex" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
+                <div role="group" class="segmented-group">
+                  <button type="button" id="shapeSegStyleStraight" class="editor-fillmode-btn active" style="flex:1;" title="No arc">Straight</button>
+                  <button type="button" id="shapeSegStyleCurve" class="editor-fillmode-btn" style="flex:1;" title="A circular arc">Curve</button>
+                  <button type="button" id="shapeSegStyleKink" class="editor-fillmode-btn" style="flex:1;" title="A sharp offset vertex">Kink</button>
+                </div>
+                <div id="shapeSegCurveFields" style="display:none; flex-direction:column; gap:3px;">
+                  <div role="group" class="segmented-group">
+                    <button type="button" id="shapeSegDirOut" class="editor-fillmode-btn active" style="flex:1;" title="Bulges away from the centerline">Out</button>
+                    <button type="button" id="shapeSegDirIn" class="editor-fillmode-btn" style="flex:1;" title="Bulges toward the centerline">In</button>
+                  </div>
+                  <label style="display:flex; flex-direction:column; gap:2px;">bulge
+                    <input id="shapeSegBulge" type="range" min="0" max="0.99" step="0.01" value="0.5" style="width:100%; height:22px;">
+                  </label>
+                </div>
+                <span style="font-size:9px; color:#888;">Mirrored side updates together.</span>
+              </div>
             </div>
 
             <!-- RAIL-SPACING R7: same restructure as the box Lattice panel
