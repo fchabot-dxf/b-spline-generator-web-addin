@@ -47,10 +47,21 @@ def offset_step(ctx, sketch, s_name, off):
         side = off.get("Side", OFFSET_SIDE)
 
         # --- Primary: addOffset2 (parametric) ---
-        offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side)
+        # F22 MEASURED live: for an OUTWARD offset of the frame outline (projected lines + arcs), addOffset2 lands
+        # inward and flipping its dimension's sign does NOT move it (both signs tried on the built sketch); on a
+        # plain rectangle the sign does flip it. The direction-point offset (sketch.offset toward a point outside
+        # the loop) is deterministic, creates an OffsetConstraint + dimension, and that dimension linked to the
+        # expression keeps its side when the parameter is edited (measured: panel_lip 0.0625 -> 0.125 moved it
+        # further out). So outward uses that path, then links the dimension; inward is unchanged.
+        if side == "outward":
+            offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side)
+            if offset_result:
+                _link_offset_dimension(ctx, sketch, offset_result, d_expr, s_name)
+        else:
+            offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Fallback: sketch.offset() (non-parametric) ---
-        if not offset_result:
+        if not offset_result and side != "outward":
             offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Tag results ---
@@ -313,6 +324,9 @@ def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             return result
     except Exception as e:
         ctx.logger.log(f"OFFSET ATTEMPT 1 FAIL: {e}", "WARNING")
+    if side == "outward":  # F22: the retries below flip the side (a negated distance, then the origin point)
+        ctx.logger.log(f"OFFSET OUTWARD FAILED for {s_name}: no retry that would land it inward", "ERROR")
+        return None
 
     # Attempt 2: flip distance sign
     try:
@@ -337,6 +351,24 @@ def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
 
     ctx.logger.log(f"OFFSET ALL ATTEMPTS EXHAUSTED for {s_name}", "ERROR")
     return None
+
+
+def _link_offset_dimension(ctx, sketch, offset_curves, d_expr, s_name):
+    """F22: drive a direction-point offset by `d_expr`: the OffsetConstraint whose child curves are `offset_curves`
+    gets its dimension's expression set (editing the parameter then moves the offset, measured live)."""
+    try:
+        first = offset_curves.item(0)
+        for c in sketch.geometricConstraints:
+            if not c.objectType.endswith('OffsetConstraint'):
+                continue
+            if any(k == first for k in c.childCurves):
+                c.dimension.parameter.expression = d_expr
+                ctx.logger.log(f"OFFSET LINK SUCCESS: {s_name} direction-point offset driven by '{d_expr}'")
+                return True
+        ctx.logger.log(f"OFFSET LINK MISSING: no OffsetConstraint owns the new curves in {s_name}", "WARNING")
+    except Exception as e:
+        ctx.logger.log(f"OFFSET LINK FAIL in {s_name}: {e}", "WARNING")
+    return False
 
 
 def _outside_direction(coll, centroid):
