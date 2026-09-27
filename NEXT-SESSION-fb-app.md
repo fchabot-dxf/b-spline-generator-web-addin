@@ -1,18 +1,15 @@
-# NEXT (fb-app) — F23: HANDLE-REACH — frame Hip + Shoulder handles reach the TRUE limit (Generate keeps its band)
+# NEXT (fb-app) — F24: frame handles stay ON the outline + the bottle neckLength floor
 
-**Ball: worker (seat C) · epoch 3 · F23.** You're back on (Fred: "can't C pick up some?"); your own frame code. Spec: ROADMAP.md
-"HANDLE-REACH" (Fred, iPad, Frame tab, Hourglass: "shouldn't the handle and geometry allow the handle to go further and make the
-arc wider" -> "hip and shoulder" -> "we can keep the limit on generate, but allow me to tweak it"). Seat A does only a sidebar
-stepper layout fix (HTML/CSS) right now; seat B works only in core/noise. NO FUSION unless a live parity check needs it (ask me).
-PROGRESS automatic ("F23 item N: …"); shots -> shots\seatC\; push each item. Deploy rule: only from a clean worktree.
+**Ball: worker (seat C) · epoch 3 · F24.** F23 ACCEPTED (4dbaab3, being merged). NO FUSION unless a live parity check needs it.
+PROGRESS automatic ("F24 item N: …"); shots -> shots\seatC\; push each item.
 
 ## Checklist
-- [ ] [F23-item-1] MEASURE (numbers in the WORK-LOG): for T1 Shoulder + Hip (and T2's handles), which bound stops a manual drag:
-      F5 feasibleParamRanges (tangency/validity), F13 FRAME_MIN_OPENING_IN, or your FRAME-GEN 0.1..0.9 band.
-- [ ] [F23-item-2] Manual drags clamp ONLY to the REAL limits (simple + tangent outline, opening >= min, computed exactly, not
-      conservatively); the band applies to Generate ONLY. If a REAL limit stops the arc widening, report what a wider arc would
-      need (e.g. the waist arc re-solving with it) instead of forcing it.
-- [ ] [F23-item-3] Tests: Hip + Shoulder reach the true limit; just beyond it the outline is invalid (proven); Generate stays banded;
-      F5/F13 sweeps green; real-input drag repro (desktop + touch) showing the wider arc; seeds still reach Fusion (F11 parity
-      holds at the new extremes: live check if the solve changed). Shots before/after.
-Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — F23 — <shas>"`.
+- [ ] [F24-item-1] HANDLE PLACEMENT: with the wider F23 range, the Shoulder/Hip handles land OFF the board (0935_F23reach_after_hip.png:
+      circles in the canvas gutter at top-left/bottom-left) because they sit at the arc's centre, which runs away as the radius grows.
+      Put every frame handle ON the outline (e.g. the arc's midpoint / the corner's tangent point), dragging along its declared axis,
+      so it's always visible and reachable at any radius; same for the Shape Lattice handles if they share the placement. Test:
+      each handle's anchor lies on the drawn outline and inside the board rect at the range extremes.
+- [ ] [F24-item-2] T2 bottle neckLength floor: the same leftover-declared-band artifact you flagged; re-derive the neckWidth branch's
+      cross-reference so neckLength's floor is the true geometric one. Tests + the F5 sweep green.
+- [ ] [F24-item-3] Real-input drag repro (desktop + touch) at the extremes; shots.
+Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — F24 — <shas>"`.

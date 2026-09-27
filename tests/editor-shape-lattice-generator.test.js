@@ -18,7 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   generateSilhouette, PRESETS, ALL_STYLES, WIRED_STYLES, primitivesToPathD,
-  feasibleParamRanges, paramsFromShapeModel, hourglassConstruction, HORN_MIN_OF_HALF_HEIGHT, DERIVED_PARAM_DEFAULTS,
+  feasibleParamRanges, paramsFromShapeModel, hourglassConstruction, bottleConstruction, HORN_MIN_OF_HALF_HEIGHT, DERIVED_PARAM_DEFAULTS,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { _arcWorldPointTangent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-expand-path.js';
 import { shapeToPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
@@ -466,5 +466,54 @@ describe('F23/H11 HANDLE-REACH: Shoulder/Hip (cornerRadiusTop/Bottom) reach the 
       expect(Number.isNaN(dy(min))).toBe(false); // real at the declared floor
       expect(Number.isNaN(dy(min * 0.9))).toBe(true); // a modest step below: no real tangent junction exists
     }
+  });
+});
+
+/**
+ * F24 item 2 (Fred's follow-up, flagged in F23's own WORK-LOG): T2 (bottle)'s
+ * "Shoulder height" (`neckLength`) had the SAME declared-band artifact as
+ * T1's corners -- [0.08, 0.85], predating the geometric derivation. Its own
+ * floor is now geometry only (a fixed clearance over the drawn height,
+ * independent of `neckWidth`); `neckWidth`'s OWN floor formula (which used
+ * to read the declared 0.08 as its "shortest possible neck" assumption) now
+ * reads that same true geometric floor instead, so it no longer silently
+ * re-imports the retired artifact through the back door.
+ */
+describe('F24 item 2: T2 bottle neckLength floor is the true geometric one (no leftover declared-band artifact)', () => {
+  const T2 = FRAME_DEFS.templates.find((t) => t.id === 'template_2');
+  const bbo = T2.params.find((p) => p.name === 'boundingboxoffset').default;
+  const regionOf = (W, H) => ({ x: bbo, y: bbo, w: W - 2 * bbo, h: H - 2 * bbo });
+
+  it.each([[7, 9], [12, 6]])('T2 %sx%s: neckLength floor is ~0.01 (was the declared 0.08), 8x looser', (W, H) => {
+    const region = regionOf(W, H);
+    const resolved = paramsFromShapeModel('bottle', T2.shapeModel, region);
+    const { min } = feasibleParamRanges('bottle', region, resolved).neckLength;
+    expect(min).toBeLessThan(0.02); // was pinned at the declared 0.08 pre-fix
+    expect(min).toBeGreaterThan(0);
+  });
+
+  it.each([[7, 9], [12, 6]])('T2 %sx%s: just past the new neckLength min, the top horn is shorter than its declared minimum', (W, H) => {
+    const region = regionOf(W, H);
+    const resolved = paramsFromShapeModel('bottle', T2.shapeModel, region);
+    const hh = region.h / 2;
+    const hornFloor = HORN_MIN_OF_HALF_HEIGHT * hh;
+    const { min } = feasibleParamRanges('bottle', region, resolved).neckLength;
+    const hornLength = (v) => bottleConstruction(region, { ...resolved, neckLength: v }).neckCenterY + hh;
+    expect(hornLength(min)).toBeCloseTo(hornFloor, 9); // exactly on the floor
+    expect(hornLength(min * 0.9)).toBeLessThan(hornFloor - 1e-6); // a modest step below: invalid (negative horn margin)
+  });
+
+  it.each([[7, 9], [12, 6]])('T2 %sx%s: neckWidth\'s own floor no longer assumes the retired 0.08 "shortest neck"', (W, H) => {
+    const region = regionOf(W, H);
+    const resolved = paramsFromShapeModel('bottle', T2.shapeModel, region);
+    const hh = region.h / 2, hw = region.w / 2;
+    const horn = HORN_MIN_OF_HALF_HEIGHT * hh;
+    const nlLoTrue = horn / (2 * hh); // stroke=0 in feasibleParamRanges' default
+    const oldFloorFromHeight = 1 - (2 * hh * (1 - 0.08) - horn) / hw; // the retired declared-band formula
+    const newFloorFromHeight = 1 - (2 * hh * (1 - nlLoTrue) - horn) / hw;
+    const { min } = feasibleParamRanges('bottle', region, resolved).neckWidth;
+    expect(newFloorFromHeight).toBeLessThan(oldFloorFromHeight); // the true floor is looser
+    // the panel's own range reflects the NEW floor whenever it's the binding one (not the declared 0.05 pair)
+    if (newFloorFromHeight > 0.05) expect(min).toBeCloseTo(newFloorFromHeight, 9);
   });
 });

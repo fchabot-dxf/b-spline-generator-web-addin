@@ -161,7 +161,13 @@ const BASE_RANGES = {
   // the pre-F12 shared `cornerRadius`) -- removed since _hourglassRange's
   // corner branch no longer reads them (geometry-only now, see there).
   hourglass: { waistCenterY: [-0.6, 0.6], waistReach: [0.05, 0.92], cornerRadius: [0.04, 0.95] },
-  bottle: { neckWidth: [0.05, 0.85], skeletonX: [0.1, 0.95], neckLength: [0.08, 0.85] },
+  // F24: neckLength used to have an entry here too ([0.08, 0.85]) -- removed
+  // since _bottleRange's neckLength branch no longer reads it (geometry-only
+  // now, mirroring F23's hourglass corner fix). NOTE (pre-existing, not
+  // touched): skeletonX here is ALREADY dead -- `_bottleRange`'s own
+  // skeletonX branch computes its range entirely from `nw` and never reads
+  // this pair; left as-is, not this task's mess.
+  bottle: { neckWidth: [0.05, 0.85], skeletonX: [0.1, 0.95] },
 };
 
 /**
@@ -250,12 +256,31 @@ function _hourglassRange(key, region, stroke, v) {
 function _bottleRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   if (key === 'bodyRadius') return _optionalRange('bottle', region, stroke, v);
+  if (key === 'neckLength') {
+    // F24: used to be clamped into a declared [0.08, 0.85] UI-slider band
+    // (BASE_RANGES) -- the same "panel slider limit predates the geometric
+    // derivation" artifact F23 already retired for the hourglass corners
+    // (Fred's own follow-up: "the same leftover-declared-band artifact you
+    // flagged"). Geometry only now: the floor is a fixed clearance (stroke
+    // + the minimum horn) over the full drawn height (independent of
+    // neckWidth); the ceiling keeps the hip centre above the bottom edge
+    // for the CURRENT neckWidth (unchanged formula, just no longer
+    // intersected with a declared pair).
+    const horn = HORN_MIN_OF_HALF_HEIGHT * hh;
+    const top = (2 * hh - stroke - horn - hw * (1 - v.neckWidth)) / (2 * hh);
+    return _range(0, Infinity, (stroke + horn) / (2 * hh), top);
+  }
   const [lo, hi] = BASE_RANGES.bottle[key];
-  const [nlLo] = BASE_RANGES.bottle.neckLength;
   if (key === 'neckWidth') {
     // hip centre above the bottom edge even at the shortest neck:
     // hw*(1-nw) <= 2hh*(1-nlLo) - stroke; and the drawn neck stays positive.
-    const floorFromHeight = 1 - (2 * hh * (1 - nlLo) - stroke - HORN_MIN_OF_HALF_HEIGHT * hh) / hw;
+    // F24: the worst-case (shortest) neck used here is neckLength's OWN true
+    // geometric floor (its branch above), not the old declared band value --
+    // using the declared 0.08 here would silently re-import the same
+    // artifact into neckWidth's own floor even after retiring it above.
+    const horn = HORN_MIN_OF_HALF_HEIGHT * hh;
+    const nlLoTrue = (stroke + horn) / (2 * hh);
+    const floorFromHeight = 1 - (2 * hh * (1 - nlLoTrue) - stroke - horn) / hw;
     return _range(lo, hi, Math.max(floorFromHeight, (stroke + EPS_FRAC * hw) / hw));
   }
   const nw = v.neckWidth;
@@ -263,9 +288,6 @@ function _bottleRange(key, region, stroke, v) {
     // the old span rule, plus the drawn body radius (hw - skelX) > stroke
     return _range(nw + (1 - nw) * 0.15, nw + (1 - nw) * 0.85, -Infinity, 1 - (stroke + EPS_FRAC * hw) / hw);
   }
-  const horn = HORN_MIN_OF_HALF_HEIGHT * hh;
-  const top = (2 * hh - stroke - horn - hw * (1 - nw)) / (2 * hh);
-  return _range(lo, hi, (stroke + horn) / (2 * hh), top);
 }
 
 /**

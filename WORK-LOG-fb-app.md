@@ -2264,3 +2264,86 @@ produce an out-of-range shape; the proof has to go one level under it):
 - **Cleanup:** scratch measurement scripts (`scripts/scratch/`) deleted, not committed. Static server (8091)
   and both headless Chrome profiles stopped; `proc_health.py watch` clean.
 - **Capacity:** OK, one turn, nothing left mid-flight.
+
+## F24 -- T2 bottle neckLength true floor (item 1 dropped by amendment) -- 2026-09-27
+
+**Ball: worker (seat C) · epoch 3 · F24.** Dispatch had 3 items; a mid-task amendment landed before I committed:
+"Fred: 'well I don't mind arc centre'. DROP item 1. Handles stay at the arc CENTRE as they are (even when
+that's off the board). Do only item 2 (T2 bottle neckLength true floor) + its item 3 repro/shots."
+
+### Item 1 -- built, then reverted per the amendment
+Had implemented "every frame handle ON the outline": measured `waistRadius`'s centre ALSO runs off-board
+(both T1 boards, not just cornerRadiusTop/Bottom, which F23's own shots already showed) while bottle's
+`skeletonX`/`bodyRadius` stay in-board at their own extremes (measured, not touched). Anchored
+cornerRadiusTop/cornerRadiusBottom/waistRadius on the arc's own on-curve MIDPOINT (a short-way bisector of the
+two unit vectors to the arc's endpoints; `waistRadius`'s concave arc additionally needed `waistMajor`'s
+negation) -- validated against the real primitive's own true midpoint (`generateSilhouette`'s arc read at
+t=0.5), not assumed: 12/12 exact matches across both boards, corner sweeps from 27 to 162 degrees. Also found
+and would have fixed a stale doc claim in `editor-shape-lattice-interaction.js`'s own header ("shoulderY does
+NOT depend on cornerRadius") -- MEASURED wrong post-F12 (`hourglassConstruction` at cornerRadiusTop 0.1/0.2/0.3
+gives shoulderY -0.975/-1.259/-1.489, clearly moving) -- the claim predates F12 decoupling `waistRadius` from
+the old coupled rule that made the cancellation hold.
+
+**Reverted per the amendment** (`git checkout HEAD -- editor-shape-lattice-interaction.js` and the matching
+test file -- neither had been committed yet, so this discarded exactly the uncommitted item-1 work and
+nothing else): handles stay centre-anchored, off-board or not, Fred's explicit call. The stale doc-claim
+finding is real but NOT fixed now (dropped along with the file it lived in) -- noting it here rather than
+editing that file under an amendment that said to leave it alone; a future seat touching that header comment
+should re-verify before trusting its "does NOT depend on cornerRadius" line.
+
+### Item 2 -- T2 bottle neckLength floor: the true geometric one
+Root cause matched the F23 hourglass-corner pattern exactly: `_bottleRange`'s `neckLength` branch computed the
+real geometric bound (`(stroke+horn)/(2*hh)` floor, a height-derived ceiling) but intersected it with
+`BASE_RANGES.bottle.neckLength` ([0.08, 0.85]), the same declared "panel slider limit" predating the geometric
+derivation. **The circular-dependency worry from F23's own flag turned out to be unfounded**: `neckWidth`'s
+own floor formula reads `v.neckWidth`-independent constants only (`stroke`, `horn`, `hh`) for its "shortest
+possible neck" cross-reference -- `feasibleParamRanges`'s own `v` starts as a FULL COPY of the caller's
+resolved params (not built up incrementally in `PARAM_ORDER` order), so every key's own resolved value is
+already available to every OTHER key's range function regardless of declaration order; I had assumed a
+forward-reference problem that isn't real.
+
+Fix: `neckLength` now returns `_range(0, Infinity, (stroke+horn)/(2*hh), top)` -- geometry only, matching F23's
+hourglass-corner pattern. `neckWidth`'s own floor formula now derives its "shortest neck" cross-reference from
+that SAME true geometric constant (`nlLoTrue = (stroke+horn)/(2*hh)`) instead of the retired declared 0.08, so
+it no longer silently re-imports the artifact through the back door. `BASE_RANGES.bottle` drops the now-dead
+`neckLength` entry. **Noted, not touched** (pre-existing, not my mess): `BASE_RANGES.bottle.skeletonX` is
+ALREADY dead -- `_bottleRange`'s own `skeletonX` branch computes its range entirely from `nw` and never reads
+that pair, even before this change.
+
+MEASURED (T2's own board sizes, bbo 0.25): neckLength floor 0.08 -> 0.01 on BOTH boards (8x looser); ceiling
+unaffected (0.844/0.717, already tighter than the declared 0.85 in both cases). neckWidth's own floor at 12x6:
+0.1296 -> 0.0626 (looser, since the worst-case-neck assumption is now less pessimistic); at 7x9 no visible
+change (the declared 0.05 floor already binds tighter than either version of `floorFromHeight` there).
+
+### Item 3 -- tests + shots
+- `tests/editor-shape-lattice-generator.test.js` (+5, new describe "F24 item 2"): the new floor pinned per
+  board (regression); the min-side horn-length breach proven (T2's neck horn sits exactly on its floor at the
+  new min, drops below it at `min*0.9` -- same proof shape as F23's hourglass horn check, just linear instead
+  of sqrt-based since the neck horn has no tangency term); `neckWidth`'s own floor formula proven to read the
+  new constant, not the retired one. Mutation-tested against the pre-fix source (`git stash` of just the
+  source file): 5/55 fail there, restored clean, 55/55 green again.
+- Real-input drag repro (`tools/repro/frame_neck_length_floor_shots.mjs`, new -- same CDP-mouse/touch pattern
+  as F23's own scripts): T2's "Shoulder height" handle dragged via real CDP mouse (desktop) and touch (mobile)
+  toward the floor (neckLength increases as world y increases, per this handle's own `valueFromWorld`, so a big
+  upward drag reaches the min) -- clamps at 0.01, past the old 0.08 floor, zero outline defects. Mutation-
+  tested against the pre-fix source the same way: the repro reports `pastOldFloor: false` (clamps at exactly
+  0.08) on the pre-fix tree, `ok: true` (clamps at 0.01) on the fixed tree. Shots:
+  `shots/seatC/1000_F24necklength_{before,after}` (desktop) and `..._mobile_*` (touch). Own scratch static
+  servers (ports 8091-8093, this worktree's own files) and headless Chrome instances all stopped after each
+  run; `proc_health.py watch` clean throughout. The item-1 shots taken before the amendment
+  (`0955_F24onboard_*`) were deleted along with the reverted code, so `shots/seatC/` only holds what shipped.
+
+### Gates
+- JS: full suite 102 files / 1990 passed (net +5 vs the F23 baseline of 1985 -- item 1's own +6 tests were
+  added then removed with the revert).
+- Fusion: not needed -- same reasoning as F23: this only WIDENS the feasible range; every existing default and
+  saved record is byte-identical (no default is near the old artifact bound), so recorded live parity is
+  untouched.
+
+### Notes
+- **Amendments polled:** the item-1-drop amendment (this entire log documents absorbing it, mid-task, before
+  committing anything -- nothing was committed under the dropped design).
+- **Cleanup:** all three scratch static servers (8091/8092/8093) and every headless Chrome profile stopped;
+  `proc_health.py watch` clean after each. No scratch scripts committed.
+- **Capacity:** OK, one turn (spent real effort on item 1 before the amendment landed, but caught it before
+  committing -- nothing wasted downstream, just this session's own tokens).
