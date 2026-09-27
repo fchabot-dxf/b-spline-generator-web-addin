@@ -164,10 +164,9 @@ export const SLIDER_PAIRS = {
     peakShape: 'peakShapeSlider',
     density: 'densitySlider',
     clustering: 'clusteringSlider',
-    // H16 item 4: back after H15 removed them with the whole Seed panel --
-    // the control returns (now in Filter), the P keys never left.
-    seedOffsetX: 'seedOffsetXSlider',
-    seedOffsetY: 'seedOffsetYSlider',
+    // H19 item 1: seedOffsetX/Y are plain steppers now (no slider to pair
+    // with) -- picked up automatically by the generic Object.keys(P)
+    // binder above, same as widthIn/heightIn.
     symOffsetX: 'symOffsetXSlider',
     symOffsetY: 'symOffsetYSlider',
     thickness: 'thickenOffsetSlider',

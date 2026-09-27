@@ -750,23 +750,24 @@
                per that correction. Bound to the SAME P keys
                (seedOffsetX/seedOffsetY) H15 explicitly kept -- no new
                params, a saved project's offsets already show correctly.
-               Same H14 declared "feel" pair shape (a value readout, not a
-               stepper) as every other side-by-side slider pair. Rotation
-               (the 3rd control the old Seed panel had) stays removed
-               unless Fred asks for it back too. -->
+               H19 item 1 (Fred: "these offset I want in steppers"): the
+               H14 slider+readout "feel" pair is gone -- two plain -/+
+               steppers side by side, same component + layout as Width/
+               Height in Stock Dimensions (.cad-paired-steppers wrapping
+               two .cad-stepper columns). No slider, no range clamp beyond
+               what already existed (the stepper input itself never had a
+               min/max; only the removed slider did). -->
           <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
             <div style="flex:1;">
               <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
-              <div class="cad-slider-row">
-                <input type="range" id="seedOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-                <input type="number" id="seedOffsetX" class="no-stepper cad-slider-readout" value="0" step="0.01">
+              <div class="cad-stepper">
+                <input type="number" id="seedOffsetX" value="0" step="0.05">
               </div>
             </div>
             <div style="flex:1;">
               <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
-              <div class="cad-slider-row">
-                <input type="range" id="seedOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-                <input type="number" id="seedOffsetY" class="no-stepper cad-slider-readout" value="0" step="0.01">
+              <div class="cad-stepper">
+                <input type="number" id="seedOffsetY" value="0" step="0.05">
               </div>
             </div>
           </div>
