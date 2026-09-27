@@ -108,7 +108,7 @@ export const CONTEXT_MENU_ITEMS = [
   },
   {
     id: 'cut',
-    label: '✂ Cut here',
+    label: 'Cut here',
     icon: '✂',
     appliesTo: (kind) => kind === 'line' || kind === 'rails' || kind === 'ties',
     when: (target) => !!(target.cutIntent && target.cutIntent.action === 'cut'),

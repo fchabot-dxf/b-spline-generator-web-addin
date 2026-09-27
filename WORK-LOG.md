@@ -11265,3 +11265,37 @@ drag-not-a-menu check) is still asserted for real on mobile. Screenshots: `menu_
 `menu_on_plain_line` (both platforms).
 
 `npx vitest run` -> **1899 passed** (33 new registry/gesture tests added, zero regressions elsewhere).
+
+---
+
+Dispatch: epoch 3 — H7: context-menu polish (double scissors on "Cut here"; fixed-width icon column so
+labels align; shots into `shots\seatA\`). H6 accepted (advisor re-ran `context_menu_shots.mjs` desktop +
+mobile: ALL CHECKS PASSED; full suite 1899) — the advisor's own note flagged that H6's shots never reached
+`shots\seatA\` since I saved them to my own scratch dir; the advisor had to re-run the script itself with
+the right `outPrefix` to get them there. Fixing that placement is item 3 below, going forward.
+
+**Item 1.** `editor-context-menu.js`'s `cut` entry carried the scissors TWICE: `icon: '✂'` (rendered by the
+popover's own icon column) AND the label text itself was `'✂ Cut here'`. The registry's own declared shape
+is icon-and-label as two separate fields precisely so a caller never has to embed an icon in text — this
+was the one entry that didn't follow its own convention. Label is now plain `'Cut here'`; icon field
+unchanged.
+
+**Item 2.** `.context-menu-row-icon` was `flex: 0 0 auto` — sized to each row's own glyph, so 🎨 vs ✂ vs ⧉
+vs a bare ▦ (different natural widths) put labels at different x per row (visible in H6's own screenshots
+once several entries sat one under another). Changed to a fixed `flex: 0 0 18px` (22px under
+`pointer:coarse`, matching the row's own 44px height bump there), icon text `text-align: center` within
+that fixed column — every label now starts at the identical offset regardless of which icon occupies that
+row, confirmed live (rail menu: Colour/Cut here/Duplicate/Select all rails/Delete all flush; plain-line
+menu's "Move to layer ▸" caret lines up the same way).
+
+**Item 3.** Re-ran `tools/repro/context_menu_shots.mjs` (unchanged) with
+`outPrefix = C:\Users\danse\.bspline-status\shots\seatA\h7_ctxmenu_<desktop|mobile>` this time, matching
+the advisor's own naming from its H6 re-run (`h6_ctxmenu_*`) — desktop 12/12 and mobile 10/10 + the same
+one honest, pointer-type-agnostic skip from H6 (a hand-drawn rig line's placement lands on the Layers
+panel's own drawer handle on this specific mobile viewport; unrelated to this turn's own changes, unrelated
+to the app). No test file changes — the checklist's own "tests unchanged/green" was pure CSS + one string
+literal, confirmed via `tests/editor-context-menu.test.js` still 33/33 (nothing in it asserts exact label
+text or icon-column width).
+
+`npx vitest run` -> **1899 passed**, unchanged (pure CSS + one label string, no JS logic touched) — zero
+regressions.

@@ -513,12 +513,18 @@
     background: #eef4ff;
     outline: none;
 }
-.context-menu-row-icon { flex: 0 0 auto; }
+/* H7 (Fred, live: "labels don't line up"): a fixed-width icon column, not
+   flex:0 0 auto -- different glyphs (🎨 vs ✂ vs ⧉ vs a bare ▦) measure
+   different natural widths, so an auto-sized column let each row's own
+   icon push its label to a different x. One declared width, every label
+   starts at the same offset regardless of which icon is in that row. */
+.context-menu-row-icon { flex: 0 0 18px; text-align: center; }
 .context-menu-row-label { flex: 1 1 auto; }
 .context-menu-row-caret { flex: 0 0 auto; color: #888; }
 
 @media (pointer: coarse) {
     .context-menu-row { height: 44px; font-size: 13px; }
+    .context-menu-row-icon { flex-basis: 22px; }
 }
 
 /* MOB3: the drawer wrapper and its own body wrapper are BOTH
