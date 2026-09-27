@@ -1040,6 +1040,13 @@ existing segmentColors[i] (keyed by primitive index, not a second schema), so th
 disagree. Tests: select segment -> panel colour == stored colour; set/reset; survives Regenerate + reload; Send carries it;
 no width control shown for a segment.
 
+## SE16 RULINGS (Fred 2026-09-26, answers to CUT-TOOL-DESIGN.md §0) — supersede the SE16 text below where they differ
+Q1 Send AS DRAWN (bug fix F17 P1). Q2 Regenerate CLEARS cuts (Undo restores). Q3 dragging a lattice joint SLIDES ALONG the
+rail. Q4 Join clears BOTH segments' overrides (the joined rail = lattice default colour/width). Q5 cutting snaps by the normal
+GRID/GEOM toggles, NOT a forced "joints then grid" rule (Fred: "I just meant that in Fusion the jointed geometry is coincident
+regardless if it's in the middle of a rail or intersecting a tie"): every cut = an explicit Coincident in Fusion, wherever it
+is. Q6 plain lines: grabbing the shared point moves ONE line's end.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
