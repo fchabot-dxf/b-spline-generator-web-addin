@@ -159,39 +159,73 @@ describe('refreshBoundaryPatterns (§9, commit-only link refresh)', () => {
   });
 
   /**
-   * UI4 item 0 (Fred, live: a Select-mode drag on a Shape Lattice
-   * rail/tie/node "moved 0.000" and a tie drag REPLACED every piece with
-   * fresh elements) -- root cause: every Shape Lattice pattern IS
-   * boundary-linked to its own contour (extent.mode === 'boundary' is how
-   * a Shape Lattice's fill is represented), so this function fired -- and
-   * unconditionally regenerated, discarding the just-moved piece -- on
-   * EVERY commit, including a plain piece move that never touched the
-   * boundary/contour at all. editor-interaction.js's selectHandler.start
-   * now sets editor._skipBoundaryRefillOnce = true immediately before a
-   * commit that grabbed an existing rail/tie/node (never for a contour
-   * hit); this is the pure-logic half of that fix -- the DOM/click-
-   * dispatch half is covered live (WORK-LOG), no existing scaffold reaches
-   * that deeply nested interaction code from a unit test.
+   * F17 (P2, SE16 prerequisite): a refill runs only when what the fill was made
+   * from changed (boundaryFillInputs: the boundary's geometry + every non-style
+   * setting). Replaces UI4 item 0's one-shot `_skipBoundaryRefillOnce` flag
+   * (which only covered a Select-grab of a piece; a later recolour still
+   * regenerated and wiped a hand move).
    */
-  it('UI4 item 0: a boundary-mode refill is skipped once when _skipBoundaryRefillOnce is set (a plain lattice-piece move), and the flag is consumed (cleared) after', async () => {
-    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
-    editor._layers[0].pattern = {
-      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
-      extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
-    };
+  describe('F17 P2: hand edits survive an unrelated commit; boundary/setting edits still refill', () => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const rails = () => editor._sketchLayer.children().filter((e) => e.attr('data-lattice') === 'rail');
+    async function generated() {
+      const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+      const pattern = {
+        ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
+        extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
+      };
+      editor._layers[0].pattern = pattern;
+      await generatePattern(editor, pattern);
+      editor.notifyChangeCalls.length = 0;
+      return { boundaryEl, pattern };
+    }
 
-    editor._skipBoundaryRefillOnce = true;
-    refreshBoundaryPatterns(editor);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(editor.notifyChangeCalls).toEqual([]); // skipped -- no regenerate fired
-    expect(editor._skipBoundaryRefillOnce).toBe(false); // consumed, not left dangling for a LATER unrelated commit
+    it('a hand-moved rail survives an unrelated commit (RED before F17: the commit regenerated and wiped it)', async () => {
+      await generated();
+      const rail = rails()[0];
+      rail.attr('y1', Number(rail.attr('y1')) + 0.5).attr('y2', Number(rail.attr('y2')) + 0.5); // a lattice drag
+      const moved = [rail.attr('y1'), rail.attr('y2')];
+      refreshBoundaryPatterns(editor); // any commit (_notifyChange('commit') calls this)
+      await settle();
+      expect(editor.notifyChangeCalls).toEqual([]);                    // no regenerate
+      expect(rails()[0]).toBe(rail);                                   // the same element...
+      expect([rail.attr('y1'), rail.attr('y2')]).toEqual(moved);      // ...where it was moved to
+    });
 
-    // A SUBSEQUENT call (the flag no longer set) proceeds normally --
-    // proves this is a one-shot skip, not a permanent kill switch.
-    refreshBoundaryPatterns(editor);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const rails = editor._sketchLayer.children().filter((e) => e.attr('data-lattice') === 'rail');
-    expect(rails.length).toBeGreaterThan(0);
+    it('a recolour (style only) does not refill', async () => {
+      const { pattern } = await generated();
+      pattern.colors = { ...pattern.colors, rails: '#ff0000' };
+      refreshBoundaryPatterns(editor);
+      await settle();
+      expect(editor.notifyChangeCalls).toEqual([]);
+    });
+
+    it('an edited boundary still refills', async () => {
+      const { boundaryEl } = await generated();
+      const before = rails()[0];
+      boundaryEl.attr('width', '6');
+      refreshBoundaryPatterns(editor);
+      await settle();
+      expect(editor.notifyChangeCalls).toEqual(['commit']);
+      expect(rails()[0]).not.toBe(before);
+    });
+
+    it('a geometry setting (a width: the fill inset depends on it) still refills', async () => {
+      const { pattern } = await generated();
+      pattern.widths = { ...pattern.widths, rails: pattern.widths.rails * 2 };
+      refreshBoundaryPatterns(editor);
+      await settle();
+      expect(editor.notifyChangeCalls).toEqual(['commit']);
+    });
+
+    it('the fill records what it was made from, so a second refresh is a no-op', async () => {
+      const { pattern } = await generated();
+      expect(typeof pattern.fillInputs).toBe('string');
+      refreshBoundaryPatterns(editor);
+      refreshBoundaryPatterns(editor);
+      await settle();
+      expect(editor.notifyChangeCalls).toEqual([]);
+    });
   });
 
   it('does nothing when boundary mode is set but no shape is linked yet', () => {

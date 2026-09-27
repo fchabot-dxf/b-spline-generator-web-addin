@@ -1569,3 +1569,132 @@ amendment) · `ef6e890` snapping on H1 as merged · this commit: the log. No pro
 - **Agent citation check:** I spot-checked the Explore agent's line numbers. All held except `recolorOwnedKind`
   (2440, not 2473), which is corrected in the doc.
 - **Capacity:** fine.
+
+
+## 🔨 turn 32 — F17 (seat C, epoch 1): P1 Send as drawn + P2 refill + live proof + crisp 3D edges
+
+Commits (fb-app, pushed):
+- `12b8a31` P1;
+- `4c88aea` P2;
+- `88959ee` Fred's Q1–Q6 in CUT-TOOL-DESIGN;
+- `ccc771b` item 3 tooling;
+- `236b4f5` no per-segment width;
+- `ebd187b` item 4;
+- this commit: the log.
+
+Fusion window used (F11 rules). One tagged scratch doc, closed by its handle; Fred's "Untitled" was never touched.
+MAIN was redeployed from a CLEAN worktree at origin/main (`82e4e02`) and verified.
+
+### Item 1 — P1: the lattice manifest is built from the pieces AS DRAWN
+- **Before:**
+  - `manifestFromLattice` re-ran `computePattern`, so a hand-moved rail went to Fusion at its GENERATED position;
+  - a deleted piece was still sent;
+  - width overrides were matched by DOM position.
+- **Now:** `latticeFromDrawn(pieces, spacing, generated)` (editor-sketch-manifest.js) turns the owned rails/ties/nodes
+  into computePattern's own `{segments, nodePoints}` shape. `export-flow` reads the pieces
+  (`_drawnPiecesForLayer`: x1..y2 / cx,cy + `data-override-width`), per kind layer.
+  - All the existing relation code (tie-on-rail, nodes, H/V + Collinear, contour coincidents) runs unchanged on
+    what is on screen.
+  - Contour coincidents: an end still exactly where the generator put it inherits that end's contour hit; a moved end
+    has none (it left the contour).
+  - `railGroup` = the piece's LINE (same kind, same row/column). This is T73's "collinear across a boundary gap".
+    CUT-TOOL-DESIGN §3 said "railGroup = the chain"; that would have dropped T73's cross-gap Collinear, so the doc's
+    chain stays the drag-time notion and Fusion collinearity stays per line.
+  - Collinear links are sorted by position; end matching uses EPS (drawn coordinates come back through x / spacing).
+  - `latticeExtentFor` is declared once and used by buildSketchManifest and the test helper.
+- **Tests** (`tests/send-as-drawn.test.js` + `tests/helpers/drawn-lattice.js`):
+  - pieces drawn where generated reproduce the old manifest EXACTLY (box lattice + Shape Lattice, combined + per kind);
+  - a moved rail's Slot sits where drawn; a deleted rail is not sent;
+  - contour coincidents are kept for untouched ends and dropped for a moved rail;
+  - overrides ride per piece, surviving a delete that the old DOM-order mapping could not;
+  - out-of-order collinear pieces (what a cut makes) link neighbours;
+  - 1e-12 float noise keeps the same constraints.
+- **RED:** the moved-rail test is red on the pre-F17 export-flow.
+- **Mutations 7/7:**
+  - sent generated: 4 red;
+  - no contour inheritance: 1;
+  - override not per piece: 6;
+  - collinear unsorted: 1 (survived first; I added the out-of-order test);
+  - `===` ends: 1 (survived first; I added the float-noise test).
+- **Old tests:** the positional T75 block is REMOVED (its cases live on in send-as-drawn, per piece). The export-flow
+  mocks now carry real geometry. A pattern that draws nothing is no longer sent (the A/B fixture now uses `every:20`).
+
+### Item 2 — P2: hand edits survive the boundary refill
+- **Before:** `refreshBoundaryPatterns` regenerated every boundary-linked (Shape Lattice) pattern on every commit. The
+  only exception was UI4's one-shot `_skipBoundaryRefillOnce` Select-grab flag, so a later recolour (or any other
+  commit) wiped hand moves.
+- **Now, declared:** `boundaryFillInputs(editor, pattern)` = the linked boundary elements' geometry
+  (`BOUNDARY_GEOMETRY_ATTRS`) + every pattern setting except the style-only ones (colours, contour segmentColors).
+  - `generatePattern` stores it as `pattern.fillInputs` BEFORE its undo snapshot, and a refresh refills only when it
+    changed.
+  - Widths stay inputs: the fill's inset depends on them.
+- **Sweep:** the flag and its setter in editor-interaction.js are removed. The UI4 test (it pinned the flag) is
+  replaced by the declared-rule tests: a hand move survives, a recolour doesn't refill, a boundary edit refills, a
+  width edit refills, the inputs are stored.
+- **RED:** 3/16 on the pre-F17 file.
+- **Mutations 4/4:** always refill 3; inputs not stored 3; colours as geometry 1; boundary ignored 1.
+- **Known:** a project saved before F17 has no `fillInputs`, so its first commit refills once (as before), then it is
+  stable.
+
+### Item 3 — LIVE on Ranchy
+- **Capture:** `capture_send_payload.mjs --drag` makes real mouse drags through the lattice tool's handlers (the grab
+  is verified via `_latticeMove`). The middle rail moved +0.5 in (y 4.5 → 5.0) and a tie +0.5 in (x 1.0 → 1.5);
+  `<out>.drawn.json` records the drawn pieces and the before-drag coordinates.
+- **Traps found building it:**
+  - in the Shape Lattice tool the shape's parameter handles are hit-tested BEFORE pieces, and one sits at the board
+    centre. My first grab at the midpoint caught the handle, and the release regenerated the lattice. Grabs now go
+    off-centre.
+  - `evalJS` swallowed page exceptions; they are printed now.
+- **Offline:** the captured manifests equal the drawn pieces exactly (0 in, 7 rails + 7 ties).
+- **Fusion** (fb-app build deployed; tagged scratch doc; `_handle_generate` replay):
+  - all 14 slots found; every one where drawn, max 0.0002 in (unmoved contour pieces: the solver pulls them onto the
+    3-decimal contour, T73's known 2e-3);
+  - moved rail3 at y = −0.5 (generated 0.0); moved tie0 at x = −2.0 (generated −2.5);
+  - 5 constrained sketches: entities 4/4, 12/12, 7/7, 7/7, 14/14; constraints_issues 0; dim_issues 0;
+    93 CONSTRAINT OK; 0 FAIL/MISS in this run's log;
+  - the ties/nodes sketches' `proj_*` targets all resolved (projections link); all sketches healthy.
+  - Shot: `2319_F17_fusion_as_drawn`.
+- **Deploy hygiene:**
+  - MAIN deployed from a temporary `git worktree add --detach` at origin/main, then the worktree was removed.
+  - The deploy's `workspace_link.json` had pointed the running log at that worktree. After removal I restarted the
+    add-in, and its log fell back to its own AddIns folder (`get_log_path`'s writable check; `_log` fails silently
+    anyway). Worth knowing: a deploy source that is later deleted leaves a stale link until the next deploy/restart.
+
+### Item 4 (ADD) — crisp 3D frame edges (Fred's phone shot from below)
+- **Cause:** `ringArrays` shares vertices between the bars' top, bottom and walls, and `computeVertexNormals` averaged
+  across the 90° edges.
+- **Fix, declared:**
+  - `FRAME_CREASE_ANGLE_DEG = 30` + `creasedNormals()` (frame-mesh.js). A face corner averages only the faces around
+    its vertex within the crease angle; different normals get separate vertices (`source` carries the wall's colours
+    across).
+  - Hard edges split; the top following the underside and walls along a curve stay smooth.
+- **Performance:** refreshFrame 160 → 225 ms with a first Map/string version. Rewritten vertex-centred (compressed
+  rows, typed arrays, no strings): 181 ms (+13%).
+- **Tests** (`tests/frame-mesh-normals.test.js`):
+  - flat faces have exactly their own normal;
+  - no vertex is shared across a hard edge, including the real bars and wall (T1/T2);
+  - the round ring's walls and a curved top stay smooth;
+  - the uncreased input does share hard edges (the "before").
+- **Mutations 3/3:** crease 180 (the old blur) 4 red; crease ~0 2; colours not carried 1.
+- **Wall test:** restated as "every wall vertex on the drawn bottom or top": the split wall is no longer (bottom, top)
+  pairs.
+- **Measured, not eyeballed** (a pixel column across a bar's bottom-to-wall edge, same camera): the gradual ramp went
+  from 53 px to 13 px; the bar bottom is a flat luminance 121 with hard steps.
+- **Shots:** `2322_F17n_BEFORE_*`, `2328_F17n_AFTER_*` (below + iso-edge + 3d; desktop T1 + mobile T2).
+  `frame_3d_shots.mjs` gained a "below" view.
+
+### Amendments absorbed
+- **Fred's Q1–Q6:** recorded in CUT-TOOL-DESIGN §0/§1/§4/§5 and U2/U3.
+  - Q4: Join clears both overrides.
+  - Q5: cutting obeys the normal GRID/GEOMETRY toggles, Alt = exact; the "shared coincident points" were the Fusion
+    Coincident at every cut.
+- **"Stroke width is never per segment":** removed from the data section, Q4, risks, K, A2/U1 and mockups 2/3. UI5's
+  per-piece Width is untouched (asked separately).
+- **F18 FRAME-TAB-ZOOM:** queued, no action.
+
+### Gates
+- JS: the 51 spec files that import a touched module: 1238/1238; frame-mesh specs 63/63.
+- Python unchanged (no Python edits).
+- The full suite is the advisor's gate.
+
+Server stopped; no headless Chrome of mine left. Capacity fine.

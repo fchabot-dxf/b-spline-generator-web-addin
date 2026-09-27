@@ -2,14 +2,19 @@
 // is planted before the page loads, records every call, and the generate_start/chunk/finish stream is
 // reassembled exactly like b-spline-gen.py does. The payload can then be replayed into the add-in's own
 // _handle_generate inside Fusion (live checks without clicking in the palette).
-//   node tools/repro/capture_send_payload.mjs <out.json> <paletteUrl> [scenario] [port]
+//   node tools/repro/capture_send_payload.mjs <out.json> <paletteUrl> [scenario] [port] [--drag]
 //   scenario: shape-lattice (default) | box-lattice
+//   --drag (F17, Send as drawn): after Generate, HAND-DRAG the middle rail down and one tie sideways with real mouse
+//          events through the lattice tool's own handlers, then write the pieces as drawn to <out>.drawn.json
+//          ({W, H, rails:[{x1,y1,x2,y2}], ties:[...], moved:{rail, tie}}), in canvas order = manifest id order.
 // Serve with tools/serve_app.py so the CSS loads.
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = process.argv.slice(2);
+const ARGS = process.argv.slice(2).filter((a) => a !== '--drag');
+const DRAG = process.argv.includes('--drag');
+const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = ARGS;
 const PORT = Number(PORTARG || 9395);
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PROFILE = `${dirname(OUT)}/chrome-capture-${PORT}`;
@@ -32,7 +37,11 @@ ws.addEventListener('message', (ev) => {
   if (msg.method === 'Runtime.exceptionThrown') console.log('PAGE ERROR:', msg.params.exceptionDetails?.exception?.description?.split('\n')[0]);
 });
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
-const evalJS = async (expr) => (await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true })).result?.result?.value;
+const evalJS = async (expr) => {
+  const r = (await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true })).result;
+  if (r?.exceptionDetails) console.log('PAGE EVAL ERROR:', String(r.exceptionDetails.exception?.description || r.exceptionDetails.text).split(/\r?\n/)[0]);
+  return r?.result?.value;
+};
 
 await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -52,9 +61,59 @@ if (!steps) { console.log('unknown scenario', SCENARIO); chrome.kill(); process.
 const built = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
   document.getElementById('btnStampEdit').click(); await W(2500);
   ${steps}
-  const n = document.querySelectorAll('[data-lattice]').length;
+  return document.querySelectorAll('[data-lattice]').length;
+})()`);
+if (DRAG) {
+  // F17: a real hand drag (mouse events -> the lattice tool's handlers), verified to have grabbed the intended piece
+  const toScreen = (id, t) => `(()=>{ try { const el=window.svgEditor._sketchLayer.node.querySelector('[data-f17="${id}"]'); const svg=el.ownerSVGElement; const p=svg.createSVGPoint();
+    const x1=+el.getAttribute('x1'),y1=+el.getAttribute('y1'),x2=+el.getAttribute('x2'),y2=+el.getAttribute('y2');
+    p.x=x1+(x2-x1)*${t}; p.y=y1+(y2-y1)*${t}; const q=p.matrixTransform(el.getScreenCTM()); return JSON.stringify([q.x,q.y]);
+    } catch (e) { return JSON.stringify({ error: String(e) }); } })()`;
+  const drag = async (id, dx, dy) => {
+    // off-centre first: the Shape Lattice tool hit-tests its shape handles (one sits at the board centre) BEFORE pieces
+    for (const t of [0.3, 0.7, 0.2, 0.8]) {
+      const at = JSON.parse(await evalJS(toScreen(id, t)));
+      if (!Array.isArray(at)) { console.log('drag: cannot locate', id, JSON.stringify(at)); return false; }
+      const [x, y] = at;
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+      await sleep(60);
+      const grabbed = await evalJS(`(()=>{ const m = window.svgEditor._latticeMove; return m && m.el && m.el.node ? m.el.node.getAttribute('data-f17') + '|' + m.mode : null; })()`);
+      if (!grabbed || !grabbed.startsWith(id + '|') || !grabbed.endsWith('|move')) {
+        console.log('drag: grab miss at', t, 'got', grabbed, 'under:', await evalJS(`(()=>{ const e=document.elementFromPoint(${x},${y}); return e ? e.tagName + '#' + e.id + '.' + (e.getAttribute('class')||'') + ' lat=' + e.getAttribute('data-lattice') : 'none'; })()`), 'at', x, y);
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+        await sleep(200); continue;
+      }
+      for (let i = 1; i <= 8; i++) { await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + dx * i / 8, y: y + dy * i / 8, button: 'left', buttons: 1 }); await sleep(30); }
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x + dx, y: y + dy, button: 'left', clickCount: 1 });
+      await sleep(600);
+      return true;
+    }
+    return false;
+  };
+  // the lattice tool's "tap a piece" sub-mode (the same step tools/repro/select_drag_shape.mjs selectPiece uses)
+  await evalJS(`(async()=>{ const b=[...document.querySelectorAll('button,[role=button]')].find(x=>x.offsetParent && /tap a piece/i.test(x.title||''));
+    if (b) b.click(); await new Promise(r=>setTimeout(r,400)); })()`);
+  await sleep(1500);
+  const picked = JSON.parse(await evalJS(`(()=>{ const L=window.svgEditor._sketchLayer.node; const rails=[...L.querySelectorAll('[data-lattice="rail"][data-lattice-gen]')];
+    const ties=[...L.querySelectorAll('[data-lattice="tie"][data-lattice-gen]')];
+    const r = rails.slice().sort((a,b)=>(+a.getAttribute('y1'))-(+b.getAttribute('y1')))[Math.floor(rails.length/2)];
+    const t = ties.slice().sort((a,b)=>Math.abs(+b.getAttribute('y2')-(+b.getAttribute('y1')))-Math.abs(+a.getAttribute('y2')-(+a.getAttribute('y1'))))[0];
+    r.setAttribute('data-f17', 'f17_rail'); t.setAttribute('data-f17', 'f17_tie');
+    const idx = (list, el) => list.indexOf(el);
+    const at = (e) => ['x1','y1','x2','y2'].map(k => +e.getAttribute(k));
+    return JSON.stringify({ rail: idx(rails, r), tie: idx(ties, t), railBefore: at(r), tieBefore: at(t) }); })()`));
+  const railOk = await drag('f17_rail', 0, 45);
+  const tieOk = await drag('f17_tie', 35, 0);
+  const drawn = JSON.parse(await evalJS(`(()=>{ const q=(k)=>[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-lattice="'+k+'"][data-lattice-gen]')]
+    .map(e=>({x1:+e.getAttribute('x1'),y1:+e.getAttribute('y1'),x2:+e.getAttribute('x2'),y2:+e.getAttribute('y2'),mark:e.getAttribute('data-f17')}));
+    const ed=window.svgEditor; return JSON.stringify({ W: ed._mW, H: ed._mH, rails: q('rail'), ties: q('tie') }); })()`));
+  drawn.moved = { ...picked, railOk, tieOk };
+  writeFileSync(OUT.replace(/\.json$/, '') + '.drawn.json', JSON.stringify(drawn, null, 1));
+  console.log('hand drag:', JSON.stringify(drawn.moved));
+}
+await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
   [...document.querySelectorAll('button')].find(b => /apply stencils/i.test(b.textContent))?.click(); await W(4000);
-  return n;
 })()`);
 console.log('lattice pieces drawn:', built);
 await evalJS(`(async()=>{ document.getElementById('btnDownload').click(); await new Promise(r=>setTimeout(r,30000)); })()`);

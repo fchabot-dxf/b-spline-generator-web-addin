@@ -184,8 +184,10 @@ function pointOnLatticeSegment(pt, seg) {
  *  leaving one cruder than the other. Returns the target STRING (`id`,
  *  `id:S`, or `id:E`) or null if `pt` isn't on `seg` at all. */
 function pieceEndOrCurveTarget(pt, seg, id) {
-  if (pt.i === seg.a.i && pt.j === seg.a.j) return `${id}:S`;
-  if (pt.i === seg.b.i && pt.j === seg.b.j) return `${id}:E`;
+  // F17: EPS, not ===: drawn pieces (latticeFromDrawn) come back through x / spacing
+  const same = (p, q) => Math.abs(p.i - q.i) < EPS && Math.abs(p.j - q.j) < EPS;
+  if (same(pt, seg.a)) return `${id}:S`;
+  if (same(pt, seg.b)) return `${id}:E`;
   if (pointOnLatticeSegment(pt, seg)) return id;
   return null;
 }
@@ -234,6 +236,48 @@ function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
 }
 
 /**
+ * F17 (P1, SE16 prerequisite; Fred's standing rule: "make sure the drawing in
+ * the add-in matches the one we insert in Fusion"): the lattice pieces AS
+ * DRAWN. A lattice drag writes the DOM only (editor-interaction.js
+ * _finishLatticeMove), so the pattern's params no longer describe a hand-moved
+ * rail; the owned rails/ties/nodes on the canvas do. This turns them into the
+ * SAME `{segments, nodePoints}` shape `computePattern` returns, so every
+ * relation below (tie-on-rail, node coincidences, H/V + Collinear, contour
+ * coincidents) is derived from what is on screen.
+ *   `pieces`    { rails: [{p1, p2, overrideWidth}], ties: [...], nodes: [{c, overrideWidth}] },
+ *               model inches, in canvas order (export-flow reads them from the DOM);
+ *   `generated` computePattern's own output for the same pattern: an end still
+ *               exactly where the generator put it keeps that end's contour
+ *               attribution (T73 AMEND 3); a moved end has none (it left the contour).
+ * railGroup = the piece's own LINE (same kind, same row/column: T73 AMEND 3c's
+ * "collinear across a gap"), never the drag-time touching chain.
+ */
+export function latticeFromDrawn(pieces, spacing, generated = null) {
+  const L = (p) => ({ i: p.x / spacing, j: p.y / spacing });
+  const round6 = (v) => Math.round(v * 1e6) / 1e6;
+  const key = (kind, pt) => `${kind}:${round6(pt.i)}:${round6(pt.j)}`;
+  const hits = new Map();
+  for (const s of (generated && generated.segments) || []) {
+    if (s.aContourHit) hits.set(key(s.kind, s.a), s.aContourHit);
+    if (s.bContourHit) hits.set(key(s.kind, s.b), s.bContourHit);
+  }
+  const lineOf = (a, b) => {
+    if (Math.abs(a.j - b.j) < 1e-6) return round6(a.j);
+    if (Math.abs(a.i - b.i) < 1e-6) return round6(a.i);
+    return undefined; // not axis-aligned: no line to share
+  };
+  const seg = (kind) => (p) => {
+    const a = L(p.p1), b = L(p.p2);
+    return { kind, a, b, aContourHit: hits.get(key(kind, a)), bContourHit: hits.get(key(kind, b)),
+      railGroup: lineOf(a, b), overrideWidth: p.overrideWidth ?? null };
+  };
+  return {
+    segments: [...(pieces.rails || []).map(seg('rail')), ...(pieces.ties || []).map(seg('tie'))],
+    nodePoints: (pieces.nodes || []).map((n) => ({ ...L(n.c), overrideWidth: n.overrideWidth ?? null })),
+  };
+}
+
+/**
  * §3's own `_manifestFromLattice` — `pattern` (a layer's own PATTERN
  * object, PATTERN_DEFAULTS-mergeable, same shape `computePattern` itself
  * reads) + an ALREADY-RESOLVED lattice `extent` (board/rect:
@@ -246,21 +290,18 @@ function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
  * already runs, building manifest entities instead of calling
  * `emitSegment`/`emitNode`.
  */
-// T75 item 3 (OVR-FUSION): `overrides` is `{rails, ties, nodes}`, each an
-// array of override-width-or-null, POSITIONALLY matching the real, already-
-// drawn owned elements of that kind on the layer, in the SAME order this
-// function's own rail/tie/node loops below emit their entities (both derive
-// from the identical seeded `computePattern` output, in the identical
-// filtered order — the same parity guarantee every other app/manifest
-// correspondence in this module already relies on). `null` (the default)
-// means "nothing overridden", identical to every array read as empty.
-export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MODE.shapeLattice, overrides = null) {
+// F17 (P1): `drawn` = the pieces as drawn (`{rails, ties, nodes}`, see
+// latticeFromDrawn above): when given, they ARE the geometry, and each
+// piece carries its own width override (T75 item 3, OVR-FUSION). This
+// replaces the old positional `overrides` arrays, which matched DOM order to
+// computePattern order and broke as soon as a piece was moved, deleted or
+// added. `null` (the default) = the generated geometry, no overrides (pure
+// callers, parity sweeps).
+export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MODE.shapeLattice, drawn = null) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
   const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
-  const { segments, nodePoints } = computePattern(pattern, { extent, occupied: null });
-  const railOverrides = (overrides && overrides.rails) || [];
-  const tieOverrides = (overrides && overrides.ties) || [];
-  const nodeOverrides = (overrides && overrides.nodes) || [];
+  const generated = computePattern(pattern, { extent, occupied: null });
+  const { segments, nodePoints } = drawn ? latticeFromDrawn(drawn, spacing, generated) : generated;
 
   const railsCanon = segments.filter((s) => s.kind === 'rail');
   const tiesCanon = segments.filter((s) => s.kind === 'tie');
@@ -346,9 +387,13 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     for (const p of pieces) {
       if (p.railGroup == null) continue;
       if (!byGroup.has(p.railGroup)) byGroup.set(p.railGroup, []);
-      byGroup.get(p.railGroup).push(p.id);
+      byGroup.get(p.railGroup).push(p);
     }
-    for (const ids of byGroup.values()) {
+    // F17: consecutive along the line (drawn pieces come in canvas order; a
+    // generated row is already ascending, so this is a no-op there)
+    const start = (p) => Math.min(p.p1.x, p.p2.x) + Math.min(p.p1.y, p.p2.y);
+    for (const group of byGroup.values()) {
+      const ids = group.slice().sort((a, b) => start(a) - start(b)).map((p) => p.id);
       for (let k = 1; k < ids.length; k++) constraints.push({ type: 'Collinear', targets: [ids[k - 1], ids[k]] });
     }
   }
@@ -359,7 +404,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     const id = toEntityId('rail', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
-    const overrideWidth = railOverrides[railPieces.length] ?? null;
+    const overrideWidth = seg.overrideWidth ?? null;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.rails.push(id);
     railPieces.push({ id, p1, p2, railGroup: seg.railGroup, overrideWidth });
@@ -392,7 +437,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     const id = toEntityId('tie', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
-    const overrideWidth = tieOverrides[tiePieces.length] ?? null;
+    const overrideWidth = seg.overrideWidth ?? null;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.ties.push(id);
     tiePieces.push({ id, p1, p2, railGroup: seg.railGroup, overrideWidth });
@@ -469,7 +514,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   nodePoints.forEach((pt, idx) => {
     const id = toEntityId('node', idx);
     const p = fromLattice(pt, spacing);
-    const overrideWidth = nodeOverrides[groups.nodes.length] ?? null;
+    const overrideWidth = pt.overrideWidth ?? null;
     if (overrideWidth != null) nodeOverrideById[id] = overrideWidth;
     entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: (overrideWidth != null ? overrideWidth : widths.nodeDiameter) / 2 });
     groups.nodes.push(id);
@@ -1072,6 +1117,14 @@ function manifestFromGuide(guide) {
   return { entities, constraints };
 }
 
+/** The lattice extent `buildSketchManifest` fills (the Shape Lattice's sized contour boundary, else the board
+ *  extent), declared once. F17: the drawn-pieces tests read the SAME geometry the generator draws through it. */
+export function latticeExtentFor(pattern, region) {
+  return hasGeneratedSilhouette(pattern)
+    ? resolveShapeBoundaryExtent(pattern, sizedBoardRegion(region, pattern.size))
+    : resolveBoardExtent(pattern, region);
+}
+
 export function buildSketchManifest(pattern, region, opts = {}) {
   // PATTERN_DEFAULTS.shape.source defaults to 'generated' UNCONDITIONALLY
   // (editor-lattice-pattern.js) — every pattern carries a `.shape`
@@ -1111,8 +1164,8 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // own dimensioned piece, so a `lattice_width`/`lattice_height` parameter
   // would have nothing to drive, just an inert number in Fusion's
   // parameter table.
-  const extent = hasShape ? resolveShapeBoundaryExtent(pattern, contourRegion) : resolveBoardExtent(pattern, region);
-  const lattice = manifestFromLattice(pattern, extent, widthMode, opts.overrides);
+  const extent = latticeExtentFor(pattern, region);
+  const lattice = manifestFromLattice(pattern, extent, widthMode, opts.drawn || null);
   // T69: the contour's own slot width matches the layer's own REAL
   // rails/ties width (`pattern.widths.rails`, merged over
   // PATTERN_DEFAULTS.widths the SAME way manifestFromLattice's own

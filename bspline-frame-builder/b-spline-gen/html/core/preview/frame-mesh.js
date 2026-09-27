@@ -344,11 +344,86 @@ export function frameLoopsWorld(spec, grid) {
   return { cell, outer: toWorld(paired.outer, W, H), inner: spec.innerPrimitives ? toWorld(paired.inner, W, H) : null };
 }
 
-function _mesh(THREE, { positions, index }, material) {
+/**
+ * F17 item 4 (Fred, phone shot from below: the frame's shading was blurred at
+ * its hard edges): smooth normals are kept only where the surface really is
+ * smooth. Faces meeting at more than this angle get separate vertices with
+ * their own normals (the bars' top/bottom/walls, the outline's sharp corners);
+ * below it they stay shared and averaged (the bar top following the curved
+ * underside, a wall along a curve). Declared once.
+ */
+export const FRAME_CREASE_ANGLE_DEG = 30;
+
+/**
+ * Indexed triangles -> `{ positions, index, normals, source }` with CREASED
+ * normals: each face corner averages (area-weighted) the normals of the faces
+ * around that vertex whose normal is within `creaseDeg` of its own face's;
+ * corners of one vertex that end up with different normals get separate
+ * vertices. `source[k]` = the input vertex new vertex k came from (to carry
+ * other per-vertex attributes across). Pure.
+ */
+export function creasedNormals(positions, index, creaseDeg = FRAME_CREASE_ANGLE_DEG) {
+  const cosMax = Math.cos(creaseDeg * Math.PI / 180);
+  const nv = positions.length / 3, nc = index.length, nf = nc / 3;
+  // face normals (unit) + areas
+  const fn = new Float64Array(nf * 3), fa = new Float64Array(nf);
+  for (let f = 0; f < nf; f++) {
+    const a = 3 * index[3 * f], b = 3 * index[3 * f + 1], c = 3 * index[3 * f + 2];
+    const ux = positions[b] - positions[a], uy = positions[b + 1] - positions[a + 1], uz = positions[b + 2] - positions[a + 2];
+    const vx = positions[c] - positions[a], vy = positions[c + 1] - positions[a + 1], vz = positions[c + 2] - positions[a + 2];
+    const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx;
+    const len = Math.hypot(x, y, z);
+    fa[f] = len / 2;
+    if (len > 0) { fn[3 * f] = x / len; fn[3 * f + 1] = y / len; fn[3 * f + 2] = z / len; }
+  }
+  // vertex -> its face corners (compressed rows)
+  const rowStart = new Int32Array(nv + 1);
+  for (let k = 0; k < nc; k++) rowStart[index[k] + 1]++;
+  for (let v = 0; v < nv; v++) rowStart[v + 1] += rowStart[v];
+  const fill = rowStart.slice(0, nv), corners = new Int32Array(nc);
+  for (let k = 0; k < nc; k++) corners[fill[index[k]]++] = k;
+  const outIndex = new Array(nc), outPos = [], outN = [], source = [];
+  for (let v = 0; v < nv; v++) {
+    const r0 = rowStart[v], r1 = rowStart[v + 1];
+    const made = []; // [nx, ny, nz, newVertex] for this vertex
+    for (let r = r0; r < r1; r++) {
+      const f = (corners[r] / 3) | 0;
+      let x = 0, y = 0, z = 0;
+      for (let q = r0; q < r1; q++) {
+        const g = (corners[q] / 3) | 0;
+        if (g !== f && fn[3 * f] * fn[3 * g] + fn[3 * f + 1] * fn[3 * g + 1] + fn[3 * f + 2] * fn[3 * g + 2] < cosMax) continue;
+        x += fn[3 * g] * fa[g]; y += fn[3 * g + 1] * fa[g]; z += fn[3 * g + 2] * fa[g];
+      }
+      const len = Math.hypot(x, y, z) || 1;
+      x /= len; y /= len; z /= len;
+      let id = -1;
+      for (const m of made) if (Math.abs(m[0] - x) < 1e-9 && Math.abs(m[1] - y) < 1e-9 && Math.abs(m[2] - z) < 1e-9) { id = m[3]; break; }
+      if (id < 0) {
+        id = source.length;
+        made.push([x, y, z, id]);
+        outPos.push(positions[3 * v], positions[3 * v + 1], positions[3 * v + 2]);
+        outN.push(x, y, z);
+        source.push(v);
+      }
+      outIndex[corners[r]] = id;
+    }
+  }
+  return { positions: outPos, index: outIndex, normals: outN, source };
+}
+
+/** A mesh with CREASED normals (hard edges stay hard). `attrs` = extra per-input-vertex attributes
+ *  ({ name: { array, itemSize } }), carried across the vertex split. */
+function _mesh(THREE, { positions, index }, material, attrs = {}) {
+  const c = creasedNormals(positions, index);
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  g.setIndex(index);
-  g.computeVertexNormals();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(c.positions, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(c.normals, 3));
+  for (const [name, { array, itemSize }] of Object.entries(attrs)) {
+    const out = [];
+    for (const v of c.source) for (let k = 0; k < itemSize; k++) out.push(array[v * itemSize + k]);
+    g.setAttribute(name, new THREE.Float32BufferAttribute(out, itemSize));
+  }
+  g.setIndex(c.index);
   return new THREE.Mesh(g, material);
 }
 
@@ -390,12 +465,13 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
     const wallMat = panelMesh.material.clone();
     wallMat.side = THREE.DoubleSide;
     const w = wallArrays(outer, bot, top);
-    const wall = _mesh(THREE, w, wallMat);
+    const wallAttrs = {};
     if (attrs.color) { // the panel's own colours at the top edge, as its own side walls
       const col = [];
       for (const p of outer) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
-      wall.geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      wallAttrs.color = { array: col, itemSize: 3 };
     }
+    const wall = _mesh(THREE, w, wallMat, wallAttrs);
     wall.name = 'frame-panel-wall';
     extra.push(wall);
     if (inner) {

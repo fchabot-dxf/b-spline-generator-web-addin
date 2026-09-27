@@ -76,11 +76,17 @@ describe('bar tops vs the DRAWN panel faces (normal-offset underside)', () => {
     expect(Math.max(...Array.from(col).map((c, i) => Math.abs(c - PANEL_COLOUR[i % 3])))).toBeLessThan(1e-6);
     const solidZ = drawnFaces([solid]);
     const P = wall.geometry.attributes.position.array;
-    for (let i = 0; i < P.length; i += 6) { // (bottom, top) pairs along the outline
+    // every wall vertex sits on the drawn bottom or top face (F17: creased normals split vertices, so the
+    // wall is no longer laid out as (bottom, top) pairs)
+    let bottoms = 0, tops = 0;
+    for (let i = 0; i < P.length; i += 3) {
       const zs = solidZ(P[i], P[i + 1]);
-      expect(Math.abs(P[i + 2] - Math.min(...zs))).toBeLessThan(1e-4);
-      expect(Math.abs(P[i + 5] - Math.max(...zs))).toBeLessThan(1e-4);
+      const onBottom = Math.abs(P[i + 2] - Math.min(...zs)) < 1e-4, onTop = Math.abs(P[i + 2] - Math.max(...zs)) < 1e-4;
+      expect(onBottom || onTop).toBe(true);
+      bottoms += onBottom; tops += onTop;
     }
+    expect(bottoms).toBeGreaterThan(0);
+    expect(tops).toBeGreaterThan(0);
   });
 });
 
