@@ -2688,7 +2688,14 @@ export function resolvePatternLayer(editor, layerId) {
   if (!layer) return null;
   if (layer.pattern) return layer;
   if (layer.patternOwner) return layers.find((l) => String(l.id) === String(layer.patternOwner)) || null;
-  return null;
+  // T80 item 4: `patternOwner` is runtime-only (not in the saved roster), so
+  // after a reopen a sibling kind-layer had no owner and the panel started a
+  // fresh pattern -> a second Ties/Contour/Nodes set. The owner's own
+  // `pattern.layers` map (saved with the pattern) is the declared identity:
+  // it names each kind-layer by id, so it survives 3D/eye toggles, renames
+  // and reordering.
+  return layers.find((l) => l.pattern && l.pattern.layers
+    && Object.values(l.pattern.layers).some((id) => String(id) === key)) || null;
 }
 
 /** H2 (SEG-COLOR-PANEL): true when `el` is a contour segment carrying an
