@@ -324,7 +324,7 @@ function _arcCap(tip, neighbor, radius, isStart) {
  * editor-expand-shape), then bakes the element's transform matrix
  * onto each sample.
  */
-function _sampleElement(el) {
+export function _sampleElement(el) {
     const node = el.node;
     if (!node || typeof node.getTotalLength !== 'function') return null;
     let len;

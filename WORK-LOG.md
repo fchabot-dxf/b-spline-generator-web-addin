@@ -12464,3 +12464,54 @@ backdrop-AFTER_seed42` (fixed, ribs low, matching), `H20-item1_3d-top-view-groun
 TOP view both are compared against).
 
 `npx vitest run` -> **2152 passed** (up from 2148), zero regressions.
+
+## H20 item 2 — Box select: WINDOW / CROSSING by drag direction (Fusion/CAD convention)
+
+Fred: "box select should have the 2 way select mode, include and exclude." Delegated the architecture survey
+to an Explore agent first (marquee lifecycle, existing hit test, shared-vs-duplicated implementations,
+reusable geometry helpers, pointer input path, CSS) before writing anything, per the dispatch's own "one
+marquee implementation reads a declared mode from drag direction, no per-tool copies" — confirmed there
+already IS exactly one: `editor/editor-marquee.js`, shared by the main Select tool AND Shape Lattice's
+Select fallback (it falls through to the same `selectHandler.start`). The Box Lattice tool's own Select
+sub-mode deliberately never starts a marquee at all (its own comment: "a lattice-panel Select tap is for
+picking an existing piece") — untouched, out of scope, since the dispatch says "wherever the editor's
+marquee/box select runs," not "add it somewhere it was deliberately left out."
+
+**The fix (`editor/editor-marquee.js`).** `updateMarquee` now re-evaluates the drag direction on EVERY move
+(`pt.x >= start.x` = WINDOW, else CROSSING) — not locked from the first movement, so dragging back past the
+start point flips it live — and restyles the rect to match: WINDOW gets a NEW solid-outline/light-fill
+green style (`#2ea043`), CROSSING keeps the pre-H20 dashed blue look (`#0066cc`) since that's the only style
+that existed before and needs no visual change to keep meaning what it always meant. `finalizeMarquee`
+captures `editor._marqueeMode` before `clearMarquee` resets it (the exact same "read before it's gone"
+pattern the file's own `additive` var already used, right above it), then branches the hit test:
+- **WINDOW**: full bbox containment only (`_aabbContains`), replacing the old single bbox-overlap test.
+- **CROSSING**: bbox overlap (fast reject) → if the box also fully encloses the bbox, done → otherwise
+  SHARPENED with an actual outline sample (exported `_sampleElement` from `editor-eraser.js` — reused
+  rather than re-implemented, the exact getTotalLength/getPointAtLength technique `editor-expand-shape`
+  already relies on) so a shape whose bbox merely shares empty corner-space with the box, but whose real
+  geometry never enters it, isn't picked just because two rectangles happen to touch. Elements that can't
+  be sampled (e.g. `<text>`, no `getTotalLength`) fall back to bbox overlap — the best available signal.
+
+**Test** (`tests/editor-marquee.test.js`, extended with 8 new tests, 12 total in the file): direction sets
+the right mode; direction flips mid-drag; WINDOW excludes a half-inside piece; CROSSING includes the SAME
+half-inside piece; CROSSING excludes a piece whose bbox corner touches the box but whose sampled outline
+never does (the false-positive the bbox-only test would have wrongly picked); a fully-enclosed piece is
+picked by both modes; `clearMarquee` resets the mode. Mutation-tested: reverted `finalizeMarquee`'s hit test
+to the old single bbox-overlap check in a scratch copy — the 2 tests that specifically exercise the NEW
+discriminating logic (full-containment-only, and bbox-vs-real-geometry) correctly FAILED; the others stayed
+green since they test properties BOTH implementations happen to share (not a flaw — different tests guard
+different things). Restored, re-ran clean.
+
+**Live-verified** via real CDP mouse drags (`Input.dispatchMouseEvent`, not synthetic function calls) in the
+actual editor: drew a rectangle, deselected, then dragged left-to-right and right-to-left over it, reading
+`window.svgEditor._marqueeMode` mid-drag both times and screenshotting the live rect. Confirmed visually
+distinct: WINDOW is solid green, CROSSING is dashed blue, exactly as designed — not just asserted by a unit
+test. (One CDP quirk hit and worked around: starting a drag ON TOP of an already-selected element moves it
+instead of starting a marquee — same as a real user would experience — so each drag now starts from empty
+canvas space after an explicit deselect click.)
+Flagged, not fixed (unrelated, pre-existing, out of scope): `editor/layers.js`'s own comment says
+`finalizeMarquee` uses `isOnVisibleLayer` for its layer-class filter — it actually uses a plain
+`class.includes('layer-hidden')` string check (unchanged by this turn). A stale comment, not a behavior bug.
+Shots in `shots\seatA\` (`H20-item2_window-mode-solid-green`, `H20-item2_crossing-mode-dashed-blue`).
+
+`npx vitest run` -> **2160 passed** (up from 2152), zero regressions.
