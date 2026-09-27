@@ -1698,3 +1698,105 @@ MAIN was redeployed from a CLEAN worktree at origin/main (`82e4e02`) and verifie
 - The full suite is the advisor's gate.
 
 Server stopped; no headless Chrome of mine left. Capacity fine.
+
+
+## 🔨 turn 34 — F18 (seat C, epoch 1): Frame-tab pinch/pan + the SE16 ✂ cut tool (code, acceptance, live)
+
+Commits (fb-app, pushed): `66f64d6` item 1 · `9269cd9` item 2 · `1e06497` item 3 · `d2968cc` item 4 · this commit:
+the log. Fusion window used (F11 rules): one tagged scratch doc, closed by its handle; Fred's "Untitled" was
+untouched. No redeploy was needed: MAIN stayed deployed (clean, from F17) and has the same Python builder, and the
+payload carries the new manifest.
+
+### Item 1 — FRAME-TAB-ZOOM
+- **Cause:** the F9 shield (touch-action:none, pointer capture) swallowed every gesture in the Frame tab.
+- **Fix:**
+  - the shield is inert (`pointer-events:none`);
+  - a CAPTURE listener on its parent (the canvas container) takes only a pointerdown that starts on a frame handle
+    (and stops propagation);
+  - everything else reaches the editor, which in the Frame tab (artwork locked) pans on one finger (any pointer type)
+    and pinch-zooms on two. No tool starts, no hover.
+- **Code:** `editor-interaction.js` `_startPan` + two lock gates; the frame-panel.js listener target; the HTML style.
+  The frame-tabs hover test's exact read list was updated (the pointer map is read first now, so a tracked pointer can
+  pan).
+- **Mobile CDP** (`tools/repro/frame_tab_zoom.mjs`, real touch events), T1 + T2:
+  - a handle drag moves the handle without moving the view;
+  - a pinch zooms 1.06 → 3.18;
+  - a one-finger pan off the handles moves the view.
+- **RED** on the pre-F18 files: pinch and pan do nothing.
+- **Test traps (not product bugs):** after a 3× zoom handles leave the 390 px screen (so the handle drag runs first),
+  and touch adjustment snaps a touch near the undo pill onto it (so pan spots need clear canvas around them).
+
+### Item 2 — the ✂ cut tool (per CUT-TOOL-DESIGN + Fred's Q1–Q6 + "no per-segment width")
+- **`editor/editor-lattice-chains.js`:**
+  - `latticeChains` = derivation (same kind + collinear + touching, `JOINT_TOL` = SE7i's 1e-6); nothing stores a
+    parent;
+  - `withChain` makes a lattice grab chain-aware:
+    - a body move covers the whole rail's extent (ties attach against it) and every segment takes the new row;
+    - a tie chain translates as one;
+    - a grab at a JOINT slides along the axis, both ends together, clamped to one cell each side (Q3);
+    - true outer ends stretch as before.
+- **`editor/editor-cut-tool.js`:**
+  - plain commands `cutAt(editor, piece, point)` / `join(editor, joint)` (for seat A's H6 context menu, per the
+    amendment);
+  - `snapOnLine` = H1's geometry targets that lie on the line, else the line's grid crossings, else the projection;
+    obeys the GRID/GEOMETRY toggles, Alt exact (Q5);
+  - the hover marker (orange = cut, blue diamond = join) and the `cut` mode;
+  - a cut clones every attribute and writes both ends from one number;
+  - a Join clears both colour overrides back to the lattice default (Q4);
+  - no width override anywhere.
+- **Hooks in shared files (small, stated):**
+  - editor-interaction.js: `withChain` at the two `_beginLatticeMove` call sites; chain writes in `_writeRailMove` and
+    the tie-move branch; the joint branch; the chain as a Set in `_geometryAxisSnap`;
+  - H1's resolver: `excludeEl` accepts a Set (one line);
+  - `SNAP_POLICY.cut = 'none'` (the tool snaps on the line itself); the mode hint; the toolbar button (scissors, key X).
+- **Manifest:** two pieces of one line meeting end-to-end get ONE explicit `Coincident(segK:E, segK+1:S)`. A node on
+  a joint keeps only one of the two segment legs (the same triangle T67 drops for ties).
+- **Tests** (`tests/cut-tool.test.js`, 13): chains, cut/join, snapping, drag helpers, manifest (incl. a tie passing
+  THROUGH a joint).
+- **Mutations 9/9:** the joint-triangle filter first survived; the through-tie case was added and it now goes red.
+- **My own bug:** the `withChain(` wrap was missing its closing paren. Vite's lexer rejected it while `node --check`
+  passed (it doesn't parse these files as modules). Found by bisecting the lexer.
+
+### Item 3 — acceptance (`tools/repro/cut_tool_acceptance.mjs`, real Chrome, real pointer/touch events)
+- **Setup:** U = a generated box lattice. K = the same lattice with the rail with the most tie contacts cut ON a tie
+  contact and MID-RAIL, plus the longest attached tie cut, with real ✂ taps; every segment coloured differently.
+- **Gestures (through the real handlers):** 3 body grabs (one per future segment), both outer-end stretches, and the
+  cut tie's drag.
+- **Checks:** pieces merged by chain identical to 1e-9; colours stay on their segments; undo AND redo restore each
+  step; a joint grab is `rail:joint` with the rail extents unchanged.
+- **Results:** desktop horizontal + vertical all OK; mobile (touch) horizontal all OK.
+- **RED:** with `withChain` disabled, the 3 body moves and the tie move differ and the joint becomes a stretch (a gap).
+  The outer-end stretches match either way, as expected.
+- **Found by it, fixed:** the tool's hit-test took the nearest ELEMENT, so a lattice node on a tie contact hid the
+  rail. It now searches lines only and prefers a line the point is inside of over one merely ending there.
+- **Honest limits:**
+  - mobile: 14/15 points were on canvas, and the tie gesture grabbed a rail on the phone (identical in U and K, but
+    not a tie move there); desktop covers the tie.
+  - moving a rail ACROSS an attached cut tie's own joint flips that tie's near segment (the uncut tie just shrinks).
+    It is not in the design's risk list, so the acceptance moves the rail away from the cut tie. **Question for
+    Fred/advisor:** should a rail move be clamped at an attached cut tie's joint, or should the tie's joint slide
+    with it?
+
+### Item 4 — LIVE on Ranchy
+- **Capture:** `capture_send_payload.mjs --cut` (box lattice): the rail at y = 2.5 cut at x = 1 (mid-rail) and
+  x = 3 (tie contact) via `cutAt`; 2 of the 3 segments coloured.
+- **Offline:** the manifest has 3 Slots, the joint Coincidents `rail2:E–rail3:S` and `rail3:E–rail4:S`, and
+  `tie3:S → proj_rail3_E` (the projected joint).
+- **Fusion:**
+  - the 3 slots are exactly where drawn;
+  - both joints are at 0.0 in with a real `CoincidentConstraint` in the sketch;
+  - all 11 slot widths are `stroke_width`. Set to 0.2 in, every dimension followed and the joints held (0.0 in),
+    healthy;
+  - 4 sketches with 0 constraint/dim issues and parity 0; the log shows `CONSTRAINT OK` for both joints and for
+    tie3 → proj_rail3_E; 0 FAIL/MISS.
+  - Shot: `0013_F18_fusion_cut_rail`.
+
+### Gates
+- JS: the 48 affected spec files 1141/1141 (after item 2); cut-tool 13/13; frame specs 118/118.
+- Python: no edits.
+- The full suite is the advisor's gate.
+
+### Notes
+- **Shots:** `*_F18zoom_*`, `*_F18acc_*` (cut + joint, both orientations, mobile), `0013_F18_fusion_cut_rail`.
+- Server stopped; no headless Chrome of mine left.
+- **Capacity:** fine; the session is long but healthy.
