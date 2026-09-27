@@ -1,6 +1,6 @@
 # NEXT (fb-app) — F23: HANDLE-REACH — frame Hip + Shoulder handles reach the TRUE limit (Generate keeps its band)
 
-**Ball: worker (seat C) · epoch 2 · F23.** You're back on (Fred: "can't C pick up some?"); your own frame code. Spec: ROADMAP.md
+**Ball: worker (seat C) · epoch 3 · F23.** You're back on (Fred: "can't C pick up some?"); your own frame code. Spec: ROADMAP.md
 "HANDLE-REACH" (Fred, iPad, Frame tab, Hourglass: "shouldn't the handle and geometry allow the handle to go further and make the
 arc wider" -> "hip and shoulder" -> "we can keep the limit on generate, but allow me to tweak it"). Seat A does only a sidebar
 stepper layout fix (HTML/CSS) right now; seat B works only in core/noise. NO FUSION unless a live parity check needs it (ask me).
@@ -15,4 +15,4 @@ PROGRESS automatic ("F23 item N: …"); shots -> shots\seatC\; push each item. D
 - [ ] [F23-item-3] Tests: Hip + Shoulder reach the true limit; just beyond it the outline is invalid (proven); Generate stays banded;
       F5/F13 sweeps green; real-input drag repro (desktop + touch) showing the wider arc; seeds still reach Fusion (F11 parity
       holds at the new extremes: live check if the solve changed). Shots before/after.
-Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 2 — F23 — <shas>"`.
+Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — F23 — <shas>"`.
