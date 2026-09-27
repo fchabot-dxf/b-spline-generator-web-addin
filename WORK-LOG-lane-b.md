@@ -10522,3 +10522,32 @@ noiseType chest, no ribAngle override) before capture.
 
 Verify: 2083/2083 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
 before the commit (the item 9 amendment itself). Commit 6c333ba. NO FUSION this whole turn.
+
+## T78 item 8 — Biomechanical (xeno.js): two attempts, both reverted at Fred's call; item left OPEN
+
+Nothing committed for item 8; `xeno.js` is byte-identical to HEAD. Reference: `C:/Users/danse/.bspline-status/shots/fred/biomechanical_reference.jpg`
+(a Giger alien sculpture). "Before" renders: `shots/seatB/xeno-before-*.png`.
+
+Attempt 1 -- stamped parts (vertebra beads, ribbed hose bundles with ring grooves, rib tubes, round domes, sinew
+texture; declared per-seed VARY table like chest.js). Fred: "too sharp" (softened profiles), "more organic" / "shapes
+shouldn't repeat exactly" (added gradual per-part variation), then "doesn't look refined like xeno at all", "looks like
+a craft project", "still way too sharp". Diagnosis: identical stamped units read as craft, and the "sharpness" was lots
+of small tightly-curved features, not steep slopes -- measured p99 slope was no higher than the approved Anatomical
+filter's (0.02-0.03 vs 0.025-0.04).
+
+Attempt 2 -- everything a flowing strand (tapering spine, ribs arching out of it into a swaying conduit bundle,
+segments sized by local thickness and alternating ribbed/smooth stretches, broad calm swells, a few sinews; strands
+soft-joined and evaluated at X and -X so the mirror line is flat by construction; no near-identical neighbouring ribs
+across 2000 seeds). Renders: `shots/seatB/xeno-grid-9-v2.png`, `xeno-before-after.png`. Fred: "Aie aie aie, I think
+revert".
+
+Both versions are kept outside the repo (scratchpad `xeno-strands-backup/`) in case a piece is reusable. Useful
+findings for whoever picks item 8 up:
+- The browser's heuristic cache served a weeks-old xeno.js to headless renders (chest.js changed often enough to
+  dodge it). Render scripts must disable the cache (CDP `Network.setCacheDisabled`) and check the page's actual module
+  code, not just the tweak labels.
+- A centre-line crease can hide from a 1e-5 derivative probe: measure the slope over one mesh cell (~0.004 su). Rib
+  ends meeting at the centre in a V were the cause; blending each strand with its mirror image fixed it.
+- Suggest showing Fred a small mockup patch of the intended look before building, given two full rejections.
+
+Verify after the revert: 2083/2083 vitest. NO FUSION this whole turn.
