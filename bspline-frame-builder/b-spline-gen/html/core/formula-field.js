@@ -64,6 +64,12 @@ export function wordAtCaret(text, caret) {
   return m ? { start: caret - m[0].length, prefix: m[0] } : null;
 }
 
+/** F15: the popup's left edge — under the field, but kept inside the viewport (MEASURED: on a 390 px phone the
+ *  stamp transform's dropdown ran off the right edge, hiding the values). */
+export function popupLeft(fieldLeft, popupWidth, viewportWidth, margin = 4) {
+  return Math.max(margin, Math.min(fieldLeft, viewportWidth - popupWidth - margin));
+}
+
 /** The input's declared [min, max] (missing/blank attribute = unbounded). */
 export function declaredRange(input) {
   const read = (attr, dflt) => {
@@ -129,7 +135,8 @@ export function attachFormula(input, scope) {
 
   const place = (el, below) => {
     const r = input.getBoundingClientRect();
-    el.style.left = `${Math.round(r.left)}px`;
+    const vw = doc.defaultView?.innerWidth || doc.documentElement.clientWidth || Infinity;
+    el.style.left = `${Math.round(popupLeft(r.left, el.offsetWidth || 0, vw))}px`;
     el.style.top = `${Math.round(r.bottom + (below || 0) + 2)}px`;
   };
 

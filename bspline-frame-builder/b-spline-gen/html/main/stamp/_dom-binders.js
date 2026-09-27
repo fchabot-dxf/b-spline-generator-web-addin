@@ -22,6 +22,7 @@
  * as every other sidebar control, not a bespoke one for layer fields.
  */
 import { scheduleUndoSnapshot } from '../../core/history.js';
+import { attachFormula } from '../../core/formula-field.js';
 
 export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask }) {
   // Defensive default so older callers that don't supply activeEditorLayer
@@ -56,8 +57,11 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
       };
     },
 
+    /** opts.formulaScope (F15): a declared formula scope — the input becomes a formula field (core/formula-field.js
+     *  commits a plain number through the listeners below, unchanged). */
     bindLayerOnlyNumber(inputId, sliderId, layerField, opts = {}) {
       const num = document.getElementById(inputId);
+      if (num && opts.formulaScope) attachFormula(num, opts.formulaScope);
       const sld = sliderId ? document.getElementById(sliderId) : null;
       const triggerRemask = opts.triggerRemask !== false;
       const writeAndRefresh = (v) => {

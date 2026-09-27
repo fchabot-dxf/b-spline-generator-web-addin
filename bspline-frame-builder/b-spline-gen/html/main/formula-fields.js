@@ -8,10 +8,11 @@
  *
  * Covered: the generic sidebar number fields whose handler is bind() -> applyParam (main/ui-bindings.js) — stage 1
  * (R1) proved it on Stock Width/Height, R2 extends it to every such section outside the frozen/other-seat files.
- * FRAME (FB-APP F9): the Trim offset field (its value lives in the frame record, not in P).
- * Deliberately NOT here (see WORK-LOG-reg-addin.md, R2): seed (an integer id, not a quantity), the per-layer stamp
- * transform (tx/ty/rotation/scale — own layer-only binder, not bind()), the sculpt
- * "hardness" fields (not in P), the lattice/editor panels (R3, frozen for seat A's UI5).
+ * FRAME (FB-APP F9, F15): Trim offset, Frame bottom and the Frame tab's thickness (values in the frame record, not P).
+ * SCULPT (F15): Strength / Hardness, now bound to P.sculpt{Top,Bot}Strength through INPUT_PAIRS (core/state.js).
+ * STAMP TRANSFORM (F15): tx/ty/rotation/scale live on the LAYER, written by bindLayerOnlyNumber
+ * (main/stamp/_dom-binders.js), which attaches them with STAMP_TRANSFORM_FIELDS' per-layer scope below.
+ * Deliberately NOT here: seed (an integer id, not a quantity). The lattice panels have their own (R3).
  */
 import { P } from '../core/state.js';
 import { attachFormula } from '../core/formula-field.js';
@@ -82,13 +83,18 @@ export const FORMULA_SECTIONS = Object.freeze([
   },
   {
     section: 'FRAME',
-    ids: ['frameTrimOffset'],
-    names: [{ name: 'trim', label: 'Trim offset', get: () => frameParam(FRAME_DEFS, getFrameRecord(), 'boundingboxoffset'), unit: IN }],
+    ids: ['frameTrimOffset', 'frameBottomZ', 'editorFrameThickness'],
+    names: [
+      { name: 'trim', label: 'Trim offset', get: () => frameParam(FRAME_DEFS, getFrameRecord(), 'boundingboxoffset'), unit: IN },
+      { name: 'bottom', label: 'Frame bottom (z)', get: () => getFrameRecord().frameBottomZ, unit: IN },
+      { name: 'thickness', label: 'Frame thickness', get: () => frameParam(FRAME_DEFS, getFrameRecord(), 'frame_thickness'), unit: IN },
+    ],
   },
   {
     section: 'SCULPT TOP',
-    ids: ['sculptTopRadius', 'sculptTopNoiseScale'],
-    names: [pname('brush', 'sculptTopRadius', 'Brush size'), pname('noise', 'sculptTopNoiseScale', 'Noise scale')],
+    ids: ['sculptTopRadius', 'sculptTopHardness', 'sculptTopNoiseScale'],
+    names: [pname('brush', 'sculptTopRadius', 'Brush size'), pname('strength', 'sculptTopStrength', 'Strength / Hardness'),
+      pname('noise', 'sculptTopNoiseScale', 'Noise scale')],
   },
   {
     section: 'THICKEN',
@@ -97,14 +103,33 @@ export const FORMULA_SECTIONS = Object.freeze([
   },
   {
     section: 'SCULPT BOTTOM',
-    ids: ['sculptBotRadius', 'sculptBotNoiseScale'],
-    names: [pname('brush', 'sculptBotRadius', 'Brush size'), pname('noise', 'sculptBotNoiseScale', 'Noise scale')],
+    ids: ['sculptBotRadius', 'sculptBotHardness', 'sculptBotNoiseScale'],
+    names: [pname('brush', 'sculptBotRadius', 'Brush size'), pname('strength', 'sculptBotStrength', 'Strength / Hardness'),
+      pname('noise', 'sculptBotNoiseScale', 'Noise scale')],
   },
 ].map((s) => Object.freeze({ ...s, scope: Object.freeze([...STOCK_SCOPE, ...s.names]) })));
 
 /** field id -> scope (derived from the sections — one source). */
 export const FORMULA_FIELDS = Object.freeze(
   FORMULA_SECTIONS.flatMap((s) => s.ids.map((id) => Object.freeze({ id, section: s.section, scope: s.scope }))));
+
+/**
+ * F15: the per-layer stamp transform — layer fields (not P), written by bindLayerOnlyNumber. One row per field:
+ * the input id (its slider is `${id}Slider`), the layer field, and the name it adds to its scope.
+ */
+export const STAMP_TRANSFORM_FIELDS = Object.freeze([
+  { id: 'stampTx', field: 'tx', name: 'x', label: 'Layer offset X', unit: IN },
+  { id: 'stampTy', field: 'ty', name: 'y', label: 'Layer offset Y', unit: IN },
+  { id: 'stampRotation', field: 'rotation', name: 'rotation', label: 'Layer rotation', unit: DEG },
+  { id: 'stampScale', field: 'scale', name: 'scale', label: 'Layer scale' },
+].map(Object.freeze));
+
+/** The stamp transform's scope: the stock names + the ACTIVE layer's own current transform values (read live). */
+export function stampTransformScope(activeLayer) {
+  return Object.freeze([...STOCK_SCOPE, ...STAMP_TRANSFORM_FIELDS.map((f) => Object.freeze({
+    name: f.name, label: f.label, unit: f.unit || '', get: () => activeLayer()?.[f.field] ?? 0,
+  }))]);
+}
 
 export function attachFormulaFields(doc = document) {
   FORMULA_FIELDS.forEach(({ id, scope }) => attachFormula(doc.getElementById(id), scope));

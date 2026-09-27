@@ -137,6 +137,9 @@ export let P = { ...DEFAULT };
 // to `getElementById(paramName)`.
 export const INPUT_PAIRS = {
     thickness: 'thickenOffset',
+    // F15: the "Strength / Hardness" inputs were renamed by the CAD restyle (5842d90) and left unbound since.
+    sculptTopStrength: 'sculptTopHardness',
+    sculptBotStrength: 'sculptBotHardness',
 };
 
 export const SLIDER_PAIRS = {
@@ -158,9 +161,9 @@ export const SLIDER_PAIRS = {
     thickness: 'thickenOffsetSlider',
     warpIntensity: 'warpIntensitySlider',
     sculptTopRadius: 'sculptTopRadiusSlider',
-    sculptTopStrength: 'sculptTopStrengthSlider',
+    sculptTopStrength: 'sculptTopHardnessSlider',
     sculptBotRadius: 'sculptBotRadiusSlider',
-    sculptBotStrength: 'sculptBotStrengthSlider',
+    sculptBotStrength: 'sculptBotHardnessSlider',
     sculptTopNoiseScale: 'sculptTopNoiseScaleSlider',
     sculptBotNoiseScale: 'sculptBotNoiseScaleSlider',
     edgeMarginIn: 'edgeMarginInSlider',
