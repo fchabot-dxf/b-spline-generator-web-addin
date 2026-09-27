@@ -10211,3 +10211,35 @@ and `presence` still correctly gating texture to the colony area (`colonyThresho
 leaves sand-only relief with a tight range).
 
 Verify: 2009/2009 vitest (6 new), 87/87 b-spline-gen pytest. Commit f1eca0d, pushed. NO FUSION this whole turn.
+
+## T78 item 6 — cross-cutting acceptance sweep for all four reworked filters
+
+Each filter's own item (2-5) already covered its own tweak-key preservation, determinism, and an individual std-
+dev-vs-Simplex guard within its own test file. New `tests/noise-filters-relief-summary.test.js` is the single TABLE-
+STYLE check item 6 describes as one unit across all four together, plus the "output range normalised" requirement
+(every filter's own raw range must stay at least half of Simplex's, at the default seed) which no per-filter file
+states on its own, and a combined determinism + seed-dependence sweep across all four in one place.
+
+**Measured std-dev summary** (seed 42, default tweaks — the per-item commits already stated each filter's own
+before/after numbers individually; this is the consolidated table):
+
+| Filter  | stdDev before | stdDev after | vs Simplex (0.082) before | vs Simplex after |
+|---------|--------------:|-------------:|--------------------------:|------------------:|
+| Moon    | 0.056         | 0.078        | 68%                       | 139% (higher relief than the reference!) |
+| Mars    | 0.043         | 0.138        | 53%                       | 168% |
+| Dunes   | 0.133         | 0.191        | 163%                      | 233% |
+| Reef    | 0.125         | 0.200        | 152%                      | 244% |
+
+Dunes and Reef were ALREADY numerically above Simplex's own stdDev before this turn's rework — their own reported
+bugs (a symmetric wave profile; colony-interior flatness) were about SHAPE/STRUCTURE, not raw amplitude, which is
+exactly why items 4 and 5 fixed the underlying MECHANISM (asymmetric cross-section; an unclipped relief field) rather
+than just cranking a multiplier — a multiplier alone would not have fixed either filter's own actual complaint.
+
+Before/after screenshots for all four (+ Simplex as the reference Fred judges everything against), same seed 42,
+already committed across items 1-5: `shots/seatB/before_{simplex,moon,mars,dunes,reef}_seed42.png` (5 files) and
+`after-{moon,mars,dunes,reef}_..._seed42.png` (+ Moon's own extra reference-comparison shots against Fred's real
+lunar photos, + Dunes' own cross-section side view showing the actual asymmetric profile).
+
+Verify: 2015/2015 vitest (6 new). Commit f195036, pushed. NO FUSION this whole turn.
+
+# T78 (original checklist, items 1-6) complete. Continuing to item 7 (added mid-turn): the Anatomical filter.
