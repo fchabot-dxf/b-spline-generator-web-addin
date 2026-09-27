@@ -10126,3 +10126,59 @@ before this rework).
 
 Verify: 1994/1994 vitest (6 new), 87/87 b-spline-gen pytest, 378/378 frame-builder pytest (2 skipped, both pre-
 existing, untouched by this item). Commit fc77351, pushed. NO FUSION this whole turn.
+
+## T78 item 4 — WIND DUNES: real asymmetric profile (gentle stoss, steep lee, sharp crest)
+
+Rebuilt the dune cross-section as an off-centre triangle wave (new exported `_duneCrossSection` helper) whose own
+peak sits at 72% through each wavelength, not the midpoint — the climb spans 72% (gentle windward/stoss slope), the
+drop spans only the remaining 28% (geometrically steeper for the same height range). `crestSharpness` still narrows
+the peak on top, unchanged semantics. The OLD profile built its asymmetry by ATTENUATING the AMPLITUDE on the lee
+side of a symmetric sine wave via a separate `lee` multiplier — which actually makes that side SHALLOWER, not
+steeper (multiplying a smooth curve by a fraction <1 flattens it, it adds no slope). Real dune asymmetry is a SHAPE
+property, not an amplitude one — this rework fixes the actual mechanism, not just the visual symptom. Removed the
+now-redundant `lee` term. Bumped the profile's own amplitude (0.45 → 0.62) for "enough height to carve". Kept the
+per-region wind-curve rotation, cross-ripples, and sand-grain texture unchanged.
+
+**A real bug found in item 1's own render tool** while trying to capture a close-up cross-section shot: snapping
+`_orbit._orb` alone does NOT reliably move the rendered camera in a headless/unfocused page — the app's own animate
+loop (which normally turns `_orb` into `_camera.position`/`quaternion` every frame) does not reliably tick
+headlessly, so a custom side-angle shot silently rendered from the STALE previous camera with this step missing.
+Caught by comparing the actual rendered image (looked identical to the previous shot), not by inspection. Fixed by
+explicitly recomputing and applying `_camera.position`/`quaternion` (and the orthographic frustum) right after every
+`_orb` snap, in both the initial iso-camera setup and the per-noiseType re-apply. Re-captured
+`shots/seatB/before_reef_seed42.png` with the corrected tool for consistency (reef.js is unchanged code — a pure
+camera-framing correction, not a behavior change; the existing moon/mars/simplex before/after PAIRS each still used
+one consistent camera setting across their own two sides, so those comparisons remain valid even though the absolute
+framing differs slightly from dunes/reef's own later, corrected batch).
+
+New shots: `after-dunes_dunes_seed42.png` (default iso, matching the committed "before" pair) and
+`after-dunes-sideview_seed42.png` (a low grazing side view showing the actual cross-section — gentle windward rise,
+sharp crest, real steep dark-shadowed lee face — since the iso view alone mostly frames dune TOPS, not their
+profile, and looked deceptively similar to the "before" shot from that angle alone).
+
+New `tests/noise-dunes.test.js` (9 tests): tweak keys preserved, determinism, three DIRECT unit tests on
+`_duneCrossSection` itself (climb genuinely wider/gentler than drop, isolated from the wind-rotation layer on top —
+a raw `fn()`-level scan can't reliably show this at every cross-section, since the slowly-curving wind angle distorts
+the apparent local slope depending on cut angle, which is exactly what the first test-writing attempt hit: failed at
+`sv=0.5` with the ratio backwards; correct 0-at-trough/1-at-crest values; correct wraparound), `crestSharpness` still
+narrows the peak, a std-dev-vs-Simplex regression guard, and `rippleStrength`/`windCurve` still functioning.
+
+Verify: 2003/2003 vitest (9 new), 87/87 b-spline-gen pytest. Commit 03eb64a, pushed. NO FUSION this whole turn.
+
+**Mid-item-4 amendment**: T78 ADD (Fred: "the anatomical filter needs work done too") — `core/noise/chest.js`
+('Anatomical'), added as item 7 (after the original four): render its BEFORE, then rework toward a believable relief.
+Superseded immediately by T78 Anatomical CORRECTION (Fred: "I'd want it to be more skin and bony like") — the actual
+target is a LEAN torso, skin stretched over BONE: a clearly visible ribcage (each rib a raised curved band following
+the real arc, intercostal grooves between), sternum ridge + xiphoid, the costal margin, clavicles across the top;
+muscles minimal/flattened; a real skin layer on top (fine creases/folds across the bands, soft pore/stretch texture,
+smooth drape transitions between bones). Keep the 3 existing tweak keys (pectoralStrength → soft tissue amount,
+absStrength → abdomen, ribStrength → now the MAIN control, rib prominence — meaning change documented in the file
+itself) + add a new `skinDetail` key. Will do items 5/6 first, then item 7.
+
+**T78 ANATOMICAL REFERENCE** (Fred, a third amendment): `C:\Users\danse\.bspline-status\shots\fred\anatomical_
+reference_lean_torso.jpg` — an emaciated torso, FORM only. Confirms/refines the correction above: prominent
+clavicles with hollows above/below; ribs visible as separate bands down BOTH flanks, strongest at the sides, fading
+toward the front/centre (not a uniform rib pattern all across); the sternum line down the centre with the chest
+flattened either side of it; a SUNKEN abdomen with faint ab lines (not blocky segments) and a hollow navel; the
+iliac crest (hip bones) jutting at the waist, skin draping into the hollow between the lower ribs and hips; thin
+skin over everything, bony edges reading through SOFTLY, never hard-edged. Put the best render next to this photo.
