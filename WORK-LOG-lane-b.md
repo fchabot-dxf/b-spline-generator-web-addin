@@ -10754,3 +10754,209 @@ identity was confirmed stable). Covers tieEndNodes' own matching (a fractional e
 + multi-select duplicate, the shared-node dedup, and a tie+its own node both explicitly selected. Mutation:
 with the tie-node copy step removed, 4 tests fail.
 Shot: shots/seatB/t80-tie-duplicate-shared-node.png. Verify: 2177/2177 vitest. Commit e2aa9e9. NO FUSION.
+
+## T81 item 1 — hover feedback on Shape Lattice and Frame handles
+
+Fred: the Shape Lattice shoulder/hip/waist handles gave no feedback on hover. Checked both named systems for an
+existing hover to unify onto (the checklist's own instruction) -- neither had one: Frame's own pointer wiring
+(frame-panel.js) had only pointerdown/move-while-dragging/up, no idle-hover path at all.
+Declared once (editor-transform-handles.js, already the shared home for hitTestHandle both systems use):
+`handleHoverVisual(baseRadius, idleFill, idleStroke, active)` -- grows ~1.3x and swaps to the accent colour for
+hover OR press (Touch has no hover, so "finger down" must look identical to "pointer over"); colours match this
+app's own already-declared `.svg-handle:hover` rule (bspline_gen_palette.html's inline style), found UNUSED by
+any live handle -- not a fresh colour pick. `setHandleCursor(state)` toggles handle-hover-ready/-active on
+#editorSVGContainer (grab/grabbing) -- own class names, not the pre-existing pan-ready/panning (also
+grab/grabbing, for Space-pan), so the two never fight.
+Shape Lattice: shapeLatticeHandler.hover hit-tests _paramHandles and re-renders; renderShapeLatticeHandles draws
+the active handle grown+accent AND highlights the contour segment it controls, via a new declared
+HANDLE_SEGMENT_INDEX table (editor-shape-lattice-interaction.js) read off _solveHourglass/_solveBottle's own
+FIXED keypoint/segment order -- NOT a geometric nearest-point heuristic (several handles anchor at an arc's
+CENTER, off its curve, where a heuristic could pick the wrong nearby segment). The overlay reads the LIVE
+segment element's own `d` directly (no primitives recomputed), so it can't disagree with the screen, and needs
+no separate cleanup (the handle layer's own per-render clear already wipes it).
+Frame: frame-panel.js's pointermove hit-tests _frameHandles when not dragging (_hitFrameHandle, factored out of
+the existing pointerdown check), storing hover/drag state on the editor for editor-frame-profile.js's draw loop.
+A bare press with no movement yet shows the active look immediately (drawFrameProfile called at pointerdown
+itself) -- Touch never gets a move tick before the finger is down. Both systems clear hover+cursor on the same
+"stale state" triggers editor-ui.js's setMode / frame-panel.js's setEditorTab already use for their own hover.
+Segment highlight scoped to Shape Lattice only: Frame's contour is one combined path, no per-segment elements to
+reuse; extending it there needs a sub-path built from primitives, not asked for (Fred's shot was Shape Lattice).
+
+Tests: handle-hover.test.js (9, pure style/cursor), shape-lattice-handle-hover.test.js (6, real canvas handler +
+render), frame-handles.test.js (+6, real pointer events on the existing fixture; extended its mock to actually
+capture fill/stroke/radius -- additive, no existing assertion touched). Mutation: hover visual disabled -> 6
+tests fail across all three files.
+Shots: shots/seatB/t81-shape-lattice-handle-hover.png (idle vs hover, real geometry incl. the segment overlay,
+pixel-sampled: idle (255,255,255) -> hover (30,111,234) = #1e6fea), shots/seatB/t81-frame-handle-hover.png (idle
+vs hover, real handle data: 0.18 -> 0.234 diameter = x1.3).
+Verify: 2230/2230 vitest. Commit 5990330. NO FUSION.
+
+## T81 item 2 — Boundary gets its own section colour; Rail ends no longer clips
+
+Fred screenshot 1: "boundary and contour have the same color code". Cause: `SECTION_KIND_BY_TITLE`
+(lattice-side-column.js) mapped 'Boundary' to the SAME 'contour' kind as Contour/Shape/Border, so both got the
+identical green bar/tint. Fix: 'Boundary' is now its own 'boundary' kind, coloured from the dashed-black guide's
+own declared colour -- `GUIDE_STROKE` (editor-guides.js, "Fred (L1 ruling): dashed BLACK") exported for this,
+converted via a new shared `_hexToRgb` (factored out of `_readSwatchRgb`'s own hex branch -- one parse, not a
+second). New `[data-lattice-section="boundary"]` CSS rule (editor.css), same shape as the existing rails/ties/
+nodes/contour ones. Applies to both panels for free (the one shared `_wireLiveColors` call already runs for both).
+
+Fred screenshot 2: the Contour section's "Rail ends" segmented control (Boundary/Inset/Joint/Loose) clipped at
+the 236px panel width. Measured with the REAL CSS in headless Chrome (not eyeballed): at the old `flex:1`, the 4
+buttons total right at the container's own edge with no margin to spare -- the real panel's own vertical
+scrollbar (`overflow-y:auto`) most likely tips that into an actual clip, which this isolated measurement (no
+scrollbar in the harness) doesn't reproduce byte-for-byte; documented as a measured, not assumed, finding.
+Fixed with a wide safety margin either way: `#shapeLatticeEndRule` wraps to 2 rows (editor.css `flex-wrap`), and
+each button's own `flex-basis` moves from `1` to `1 1 45%` (properties-shape-lattice.js) -- 2 per row, ~107px
+each in the same measured harness, comfortable room for "Boundary". Scoped to this one control (the only
+4-option segmented group in the app) -- every other segmented-group keeps its established single-row look.
+
+Tests: lattice-side-column.test.js (+1 new, 3 existing updated -- they encoded the old shared-with-contour
+mapping, which is exactly the bug this item fixes); properties-shape-lattice.test.js (+1, the flex-basis).
+Mutation: reverting either fix fails 3 tests.
+Shots (real headless renders against the app's own CSS, not mockups): shots/seatB/t81-boundary-section-
+colour.png, shots/seatB/t81-endrule-wrap.png.
+Verify: 2231/2231 vitest. Commit f4c5bb3. NO FUSION.
+
+## T81 item 3 — randomize segment colours button, Shape Lattice Contour section
+
+Fred: "in shape lattice contour, add a randomize segment color button". A dice-icon button (title "Randomize
+segment colours"), placed OUTSIDE shapeLatticeShapeBlock/shapeLatticeSegmentsBlock (both go `inert` under Offset
+from frame, per an existing comment) so it stays available whichever contour source is active, per the item's
+own "works whether Shape preset or Offset-from-frame."
+
+New `randomSegmentColorSet(n, rng)` (editor-color.js, pure): draws N colours from the app's ONE declared palette
+(VECTOR_COLORS, the same 32-swatch mosaic the toolbar's colour picker uses), rejecting-and-redrawing against a
+CYCLICAL adjacency constraint (index i vs i-1, and the last vs the first, since a contour is a closed loop).
+`rng` defaults to Math.random ("each click gives a new draw"); a test injects a seeded one for a reproducible
+sequence -- with 32 colours the reject loop settles fast even at typical segment counts.
+
+New `randomizeSegmentColors(editor, rng)` (properties-shape-lattice.js): gets the segment COUNT from
+`contourSilhouette` directly, using the exact SAME inputs (region/contourWidth/frameContext) `regenerateSilhouette`
+itself resolves them from -- correct for either contour source (contourSilhouette already dispatches on
+`contour.fromFrame.on`) and for a 'kink' segment (expands 1 topology segment to 2 drawn primitives; the count is
+`primitives.length`, matching what's actually drawn, not `shape.segments.length`). Writes the draw into
+`p.contour.segmentColors` -- the SAME field a manual per-segment pick already writes (`_storeContourSegmentColor`,
+editor.js) and `regenerateSilhouette`'s own per-segment recolour loop already reads on every call -- no second
+colour store, and this new function never touches a segment's DOM stroke directly. `regenerateSilhouetteAndFill`
+(unchanged) applies it and supplies the ONE commit (its own `generatePattern` call pushes/notifies) -- one undo
+step reverts all, the same shape `writeSegmentStyle` already uses for a segment-level change.
+
+Tests: shape-lattice-segment-color.test.js (+19). Pure algorithm: palette membership, no-adjacent-equal
+(wrap-around included) across seeds 1-20 x segment counts [1,2,3,5,12], determinism. Through the real per-segment
+path (regenerateSilhouette + randomizeSegmentColors, the same mock this file's own T73 tests already use --
+extended with `.center()`, which generatePattern's own node emission needed and this contour-only mock never had
+before): every drawn element's stroke matches segmentColors[i]; two consecutive clicks differ (real Math.random,
+not the seeded rng, deliberately, to prove it's actually wired); exactly one pushState/commit call; a KINK segment
+(count = primitives.length, verified genuinely +1 over topology count); Offset-from-frame (a REAL frame-defs
+template via setFrameProfileProvider, not a stub); a never-generated pattern no-ops. Mutation: removing the
+adjacency constraint fails the adjacency test.
+Shot (real rendered before/after, seeded for reproducibility): shots/seatB/t81-randomize-segment-colors.png.
+Verify: 2241/2241 vitest. Commit 7641a86. NO FUSION.
+
+## T81 item 4 — Widths get steppers; the old Add row is now genuinely hidden
+
+Fred screenshot 1: "width should have steppers". Rails/Ties (linked and unlinked), the combined "Rails & ties"
+field and Node size all carried `no-stepper` in both panels -- an opt-out from a stale reason (MOB2: the panel
+was 220px wide then, no wrap fallback existed). Neither holds any more (widened to 236px; UI2-FIX already added
+a min-width/flex-wrap fallback for exactly this row). First measurement attempt loaded only editor.css/base.css
+and concluded 120px vs a "genuine 126px need" for the unlinked pair -- WRONG: `.cad-stepper`'s own base rule
+(min-width:75px, flex-shrink:0) lives in the PALETTE's own inline `<style>`, missing from that harness, so every
+stepper's real footprint was under-measured. Caught before it reached a permanent comment; re-measured with the
+real inline stylesheet loaded too: linked fits at exactly 216/216px, unlinked's own pair fits at 186px (each
+stepper 90px) inside its 186px-wide container -- zero clipping either way, no wrap actually needed today. Kept
+one more flex-wrap fallback on the unlinked-fields container anyway (same defensive shape the outer row already
+has one level up), documented as an unfired safety net, not a fabricated number.
+
+Fred screenshot 2 (same shot): the OLD "Add [Rail|Tie|Node]" text row was STILL VISIBLE under Widths, alongside
+the new icon row from T80 item 2. Root cause, found by direct source reading: a lattice panel body can carry
+MULTIPLE `[data-no-collapse]` sections (Seed, Fill seed, Add) -- `_buildLatticeIconRow`'s own `oldAddRow =
+bodyEl.querySelector('[data-no-collapse]')` matched whichever came FIRST in the DOM. In the box Lattice panel
+that's Seed (line-ordered before Add in the real markup, already display:none from ITS OWN inline style) -- so
+the code hid the already-hidden Seed row (a no-op) and inserted the new icon row right after IT, while the REAL
+Add row was never touched and stayed fully visible. Fix: find Add through its own already-unique, stable id
+(#latticeAddKindGroup -> .closest('[data-no-collapse]')) instead of DOM order. Shape Lattice has no such id, so
+its own behavior (icon row = first child, no Add row to hide) is unaffected. The existing "tags every real
+section" test's own fixture had only ONE `[data-no-collapse]` element total (Add) -- structurally unable to
+reproduce this collision; reordered to match the real page (Seed before Add, BOTH data-no-collapse) so it
+actually exercises the bug now, and a new dedicated regression test asserts the real Add row (found via its own
+id) is hidden and the icon row lands right after it, even with Seed ALSO data-no-collapse and coming first.
+
+Tests: lattice-panel-restructure.test.js (+3, real-markup assertions against the actual palette HTML -- same
+technique its own "R7: real markup" block already uses): no no-stepper on any of the 8 width inputs; Seed's own
+UNRELATED opt-out (RAIL-SPACING R7) stays untouched (a non-vacuous check the assertion can actually fail);
+step/min unchanged. lattice-side-column.test.js (+1 new, 2 existing updated for the corrected fixture + the new
+expected child order). Mutation: reverting the querySelector fix fails 11 tests; restoring `no-stepper` on one
+field fails 1.
+Shots (real headless renders, the REAL CSS incl. the palette's own inline stylesheet this time):
+shots/seatB/t81-widths-steppers-linked.png, -unlinked.png.
+Verify: 2245/2245 vitest. Commit 9a3eeae. NO FUSION.
+
+## T81 item 5 (PRIORITY) — the yellow selection halo now tracks a moved tie
+
+Fred: "the yellow highlight is persistent even after I released a moved tie." Investigated FIRST, with a
+background agent tracing every yellow-drawing mechanism in the codebase (a snap cursor, a Select-mode bbox, the
+node-edit diamond, the tie's own default fill) before any fix was written, per the checklist's own instruction.
+Root cause: the yellow IS the SELECTION HALO (editor-ui.js's `updateSelectionHighlight`, `#ffcc00`) -- not the
+tie's own default drawn colour (`#f9c80e`, PATTERN_DEFAULTS.colors.ties, a plausible-looking red herring: that's
+the tie itself, meant to stay). Grabbing a rail/tie/node in Select sub-mode (the DEFAULT drawKind) selects it,
+which draws the halo as a STATIC CLONE of the piece's geometry at that instant. Every write the lattice move
+code makes (`_updateLatticeMove`/`_finishLatticeMove`, editor-interaction.js) moves the REAL element directly --
+neither function called `editor._updateSelectionHighlight()` anywhere, on ANY exit path (confirmed by reading
+both in full). Contrast: `translateSelection`/`dragNode` (the Select/Node-mode drag paths) already refresh the
+SAME halo every move tick -- the lattice move path simply never adopted that established pattern. The halo froze
+at the piece's PRE-drag position for the whole gesture and stayed there after release -- "persistent," exactly
+as reported.
+Fix: `_updateLatticeMove` split into a thin wrapper around the unchanged geometry logic (renamed
+`_updateLatticeMoveGeometry`, which has 3 exits -- plain fall-through, a joint slide, a chained-tie translate --
+a scattered one-line-per-return fix risked missing one); the wrapper refreshes the halo once after EVERY call,
+regardless of which internal branch ran. `_finishLatticeMove` refreshes it again, unconditionally, at the very
+top -- the ONE end-of-drag cleanup every exit path (pointerup, pointercancel, lost capture, per handleEnd's own
+unification) already funnels through, so one call there covers every one of them; harmless on the no-op (bare
+click, nothing moved) case, since nothing changed.
+
+Tests: lattice-drag-highlight.test.js (10), driven through the REAL canvas handlers (getModeHandler) for BOTH
+rect Lattice and Shape Lattice, with the real `select`/`updateSelectionHighlight` (editor-ui.js) machinery
+running end to end (only the DOM-adjacent bits those functions already try/catch around -- active-layer sync,
+toolbar colour sync -- are absent from the mock, which is exactly what those try/catches are for). REPRODUCED
+FIRST: grab draws the halo at the tie's ORIGINAL position; mid-drag it tracks the CURRENT position (fails before
+the fix -- frozen at grab); after release it matches the FINAL position, not the pre-drag one (Fred's own
+report, also fails before the fix); a bare click (no movement) is a safe no-op; pointercancel goes through the
+same `finish()` as pointerup. Mutation: reverting the fix fails 6 of the 10 tests.
+Shot (real geometry read back from the test's own mock, not a mockup): shots/seatB/t81-tie-drag-halo-fix.png.
+Verify: 2255/2255 vitest. Commit 22d9cb2. NO FUSION.
+
+## T81 item 6 (PRIORITY) — tapping a Shape Lattice contour segment selects it
+
+Fred: "I can't seem to select contour segment". Investigated FIRST, with a background agent tracing all three
+pointer-down handlers (the main Select tool's `selectHandler`, the rect Lattice tool's `latticeHandler`, the
+Shape Lattice tool's own `shapeLatticeHandler`) before any fix was written. Finding: the main Select tool's own
+generic hit-test (`editor._getNearbyElement`) already correctly selects a contour segment -- no exclusion of
+`data-contour-seg` elements anywhere in that path. The break is specific to the Shape Lattice tool's OWN icon
+row (`shapeLatticeHandler.start`), which every user actually editing a Shape Lattice's contour is naturally in
+(including its own advertised "Select" option -- lattice-side-column.js's own comment promises "tap a piece to
+select it... like the main Select tool", a promise this ONE branch broke). Its contour-segment-tap branch
+resolved which segment was hit (`hitTestSegment`) and unconditionally opened the floating style bar
+(`openSegmentStyleBar`) -- it never called `editor._select`/`_selectAdd` on the segment itself, so it never
+reached `editor._selectedElements`, no `editorSelectionChanged` ever fired, and the Selected-piece panel (whose
+own listener is otherwise correct and already recognizes a contour segment as kind 'contour', per
+`lattice-piece-panel.js`) never showed it. The rail/tie/node branch two checks earlier in the SAME function
+already does BOTH (select AND arm its own gesture) -- this bug was exactly that dual behavior missing for
+contour alone.
+Fix: the segment-tap branch now runs the SAME select dance the rail/tie/node branch already uses (shift adds, a
+double-tap leaves the selection alone, else replace + arm the context-menu hold) on the segment element, found
+via `_contourSegmentEl` (exported from properties-shape-lattice.js -- the SAME lookup T81 item 1's own segment-
+highlight overlay already uses, not a second copy). The style bar still opens on the exact same tap, unchanged;
+this only ADDS the missing selection. Pick priority (handle -> existing rail/tie/node -> add mode -> contour ->
+fallback select) is unchanged -- already correct per the investigation, not the reported bug.
+
+Tests: shape-lattice-segment-select.test.js (5), through the REAL canvas handler (`getModeHandler('shapeLattice')`)
+and the REAL selection machinery (`editor-ui.js`'s `select`/`selectAdd`/`updateSelectionHighlight`, same convention
+T81 item 5's own tests established). A tap adds the segment to `editor._selectedElements`; the style bar still
+opens on the same tap; the halo is genuinely drawn; a shift-tap multi-selects a second segment; an ARC segment
+(hit-tested at its own TRUE curve midpoint via the primitive's center/radius/angular span, not the chord
+midpoint -- measured live: the chord midpoint sits 0.18in off this shape's own shoulder arc, well outside any
+reasonable pick tolerance, which is exactly what made my first draft of this test fail before I fixed the test
+itself, not the production code) is selected too. Mutation: reverting the fix fails all 5.
+Shot (real rendered contour + halo geometry, not a mockup): shots/seatB/t81-contour-segment-select-fix.png.
+Verify: 2260/2260 vitest. Commit c78a110. NO FUSION.

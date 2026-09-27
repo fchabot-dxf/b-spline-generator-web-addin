@@ -25,7 +25,7 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { haptic, resetHapticSnap } from '../core/haptics.js';
 import {
     renderTransformHandles, hitTestHandle,
-    beginTransform, applyTransformDrag,
+    beginTransform, applyTransformDrag, setHandleCursor,
 } from './editor-transform-handles.js';
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
@@ -65,6 +65,7 @@ import { hitTestSegment } from './editor-shape-lattice-interaction.js';
 import {
     currentPattern, currentShape, regenerateSilhouette, regenerateSilhouetteAndFill,
     paramHandleRecords, renderShapeLatticeHandles, openSegmentStyleBar, _shapeContourRegion,
+    _contourSegmentEl,
 } from './properties-shape-lattice.js';
 
 function _strokeLog(msg) {
@@ -1514,7 +1515,24 @@ function _geometryAxisSnap(editor, move, pt, axis) {
  *  Section 4: "a Lattice-mode move BAKES its result into the attrs"). Runs
  *  on every mousemove; the eventual undo step is a single pushState() at
  *  finish(), not one per tick. */
+// T81 item 5 (Fred: "the yellow highlight is persistent even after I
+// released a moved tie"): thin wrapper so EVERY exit of
+// _updateLatticeMoveGeometry (it has several — joint slide, a chained tie
+// translate, and the plain fall-through case) refreshes the SELECTION HALO
+// (editor-ui.js, #ffcc00) exactly once, rather than one-off calls sprinkled
+// at each `return` that a future added branch could forget. The halo is a
+// static clone taken at grab time (Select sub-mode selects the piece it
+// just grabbed); every write in the geometry function moves the REAL
+// element, never it. translateSelection/dragNode (this file's own Select/
+// Node-mode drag paths) already refresh it every move tick — this lattice
+// move path never did, so the halo stayed glued to the piece's PRE-drag
+// position for the whole gesture, "persistent" exactly as reported.
 function _updateLatticeMove(editor, pt) {
+    _updateLatticeMoveGeometry(editor, pt);
+    if (typeof editor._updateSelectionHighlight === 'function') editor._updateSelectionHighlight();
+}
+
+function _updateLatticeMoveGeometry(editor, pt) {
     const move = editor._latticeMove;
     const { spacing, orientation } = move;
     const canonPt = orient(toLattice(pt, spacing), orientation);
@@ -1619,6 +1637,16 @@ function _finishLatticeMove(editor) {
     const move = editor._latticeMove;
     editor._latticeMove = null;
     editor._isDrawing = false;
+    // T81 item 5: the ONE end-of-drag cleanup every exit path (pointerup,
+    // pointercancel, lost capture — all funnel into handleEnd -> this
+    // function) already runs through. Unconditional, before the `moved`
+    // check below: refreshes the selection halo to the piece's FINAL real
+    // position even on a no-op release (harmless — nothing changed, so the
+    // halo drawn at grab time is already correct) and is a plain no-op if
+    // `applyLayerState` below happens to deselect (its own doc comment: a
+    // piece that became non-editable by its layer) — that already clears
+    // every highlight itself.
+    if (typeof editor._updateSelectionHighlight === 'function') editor._updateSelectionHighlight();
     const nowAttrs = move.kind === 'node'
         ? { cx: move.el.attr('cx'), cy: move.el.attr('cy') }
         : { x1: move.el.attr('x1'), y1: move.el.attr('y1'), x2: move.el.attr('x2'), y2: move.el.attr('y2') };
@@ -2103,6 +2131,10 @@ const shapeLatticeHandler = {
         if (hit) {
             editor._isDrawing = true;
             editor._shapeLatticeDragKey = hit.key;
+            // T81 item 1: the SAME visual a hover shows, held for the whole
+            // drag (Touch has no hover at all, so this is its only cue).
+            setHandleCursor('active');
+            if (typeof editor._updateHandles === 'function') editor._updateHandles();
             // `update(editor, pt)` below only ever gets the OFFSET point
             // (handleMove's own signature has no `e`) — capture the
             // offset's own constant delta here, once, and re-add it on
@@ -2187,6 +2219,31 @@ const shapeLatticeHandler = {
             const tol = getDynamicTolerance(editor, 10, 'slopPx');
             const segIndex = hitTestSegment(primitives, shape.segments, rawPt, tol);
             if (segIndex != null) {
+                // T81 item 6 (PRIORITY BUG, Fred: "I can't seem to select
+                // contour segment"): this branch used to ONLY open the
+                // style bar -- never editor._select/_selectAdd, so the
+                // segment never reached editor._selectedElements, the
+                // Selected-piece panel never showed it, and per-segment
+                // colour (which reads that panel's own selection) had no
+                // way to reach a segment via a plain tap at all. Same
+                // select dance the rail/tie/node branch above already
+                // uses (shift adds, a double-tap leaves selection alone,
+                // else replace + arm the context-menu hold) -- one
+                // declared "tap selects" behavior, not a second for
+                // contour. The style bar still opens on the SAME tap
+                // (unchanged); this only ADDS the missing selection.
+                const segEl = _contourSegmentEl(editor, segIndex);
+                if (segEl) {
+                    const shift = !!(e && e.shiftKey);
+                    if (shift) {
+                        editor._selectAdd(segEl);
+                    } else if (armMultiSelectPress(editor, segEl, e)) {
+                        // second half of a double-tap: leave selection as tap 1 left it.
+                    } else {
+                        if (!(editor._selectedElements || []).includes(segEl)) editor._select(segEl);
+                        armContextMenuHold(editor, { kind: targetKindOf(segEl), el: segEl, point: pt }, e);
+                    }
+                }
                 openSegmentStyleBar(editor, segIndex, e.clientX, e.clientY);
                 return;
             }
@@ -2242,9 +2299,29 @@ const shapeLatticeHandler = {
         editor._isDrawing = false;
         editor._shapeLatticeDragKey = null;
         editor._shapeLatticeDragOffsetY = 0;
+        // T81 item 1: back to hover (the pointer is very likely still on the
+        // handle it just released) or idle -- the next hover() call
+        // self-corrects if it isn't (no fresh pointer position here to
+        // re-test against).
+        setHandleCursor(editor._shapeHandleHover ? 'hover' : null);
         regenerateSilhouetteAndFill(editor);
     },
-    hover(editor, pt) { if (selectHandler.hover) selectHandler.hover(editor, pt); },
+    /** T81 item 1: hover feedback for the param handles -- grows/fills the
+     *  hovered one (renderShapeLatticeHandles) and sets the shared grab
+     *  cursor. `pt` is already the offset-adjusted point handleMove passes
+     *  every mode's own hover() (no raw event here), matching what a real
+     *  grab at this same point would hit — SNAP_POLICY.shapeLattice is
+     *  'none', so `pt` carries no grid-snap discrepancy against it either. */
+    hover(editor, pt) {
+        const hit = hitTestHandle(editor._paramHandles || [], pt);
+        const key = hit ? hit.key : null;
+        if (editor._shapeHandleHover !== key) {
+            editor._shapeHandleHover = key;
+            if (typeof editor._updateHandles === 'function') editor._updateHandles();
+        }
+        setHandleCursor(key ? 'hover' : null);
+        if (selectHandler.hover) selectHandler.hover(editor, pt);
+    },
 };
 
 const modeHandlers = {

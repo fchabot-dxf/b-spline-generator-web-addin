@@ -16,6 +16,8 @@ import { frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/edit
 import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { generateSilhouette, paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { initFramePanel, setEditorTab, HANDLE_HIT_PX } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { FRAME_HANDLE_RADIUS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { HANDLE_HOVER_SCALE, HANDLE_HOVER_FILL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 
 const BOARD = { widthIn: 7, heightIn: 9 };
 const tplOf = (defs, id) => defs.templates.find((t) => t.id === id);
@@ -120,10 +122,16 @@ function mockCanvasEditor() {
     const n = { children: [], attrs: {} };
     const self = (f) => (...a) => { f(...a); return n; };
     Object.assign(n, {
-      id: self((v) => { n.attrs.id = v; }), attr: self((k, v) => { n.attrs[k] = v; }), fill: self(() => {}),
-      stroke: self(() => {}), addClass: self(() => {}), center: self((x, y) => { n.attrs.cx = x; n.attrs.cy = y; }),
+      id: self((v) => { n.attrs.id = v; }), attr: self((k, v) => { n.attrs[k] = v; }),
+      // T81 item 1: fill/stroke/circle now capture their own argument (idle
+      // fill='#ffffff', a bare `.circle()` with no args, etc. never read
+      // these before -- an additive change, nothing existing asserted on
+      // them, so no other test's expectations shift).
+      fill: self((v) => { n.attrs.fill = v; }),
+      stroke: self((v) => { if (v && typeof v === 'object') { n.attrs.stroke = v.color; n.attrs.strokeWidth = v.width; } }),
+      addClass: self(() => {}), center: self((x, y) => { n.attrs.cx = x; n.attrs.cy = y; }),
       path: () => { const c = node(); n.children.push(c); return c; },
-      circle: () => { const c = node(); c.isCircle = true; n.children.push(c); return c; },
+      circle: (d) => { const c = node(); c.isCircle = true; c.d = d; n.children.push(c); return c; },
       group: () => { const c = node(); c.parent = n; n.children.push(c); return c; },
       remove: () => { if (n.parent) n.parent.children = n.parent.children.filter((x) => x !== n); },
       findOne: (sel) => n.children.find((c) => '#' + c.attrs.id === sel) || null,
@@ -141,7 +149,7 @@ describe('Frame tab: dragging a handle through the shield', () => {
     root = document.createElement('div');
     root.innerHTML = `<input id="widthIn" value="7"><input id="heightIn" value="9">
       <select id="frameTemplate"></select><div id="frameSettings"><select id="frameAppearance"></select></div>
-      <button id="btnStampEdit"></button><div id="editorFrameShield"></div>
+      <button id="btnStampEdit"></button><div id="editorSVGContainer"></div><div id="editorFrameShield"></div>
       <aside id="editorFramePanel"></aside><aside id="editorLayersPanel"></aside>`;
     document.body.appendChild(root);
     P.frame = null; P.widthIn = 7; P.heightIn = 9;
@@ -175,6 +183,78 @@ describe('Frame tab: dragging a handle through the shield', () => {
     fire('pointerup', to.x, to.y);
     expect(getFrameRecord().seeds.waistReach).toBeCloseTo(h.valueFromWorld(to), 9);
     expect(ed._frameHandles.find((q) => q.key === 'waistReach').anchor.x).toBeCloseTo(to.x, 6); // the handle followed
+  });
+
+  // T81 item 1 (Fred: "add visual feedback to these handles on hover"):
+  // Frame had no idle-hover path at all before this (confirmed by reading
+  // _wireHandleDrag pre-item-1: pointerdown/move-while-dragging/up only) --
+  // the SAME declared look (handleHoverVisual) Shape Lattice's own param
+  // handles use, per the dispatch's "same look everywhere."
+  const cssState = () => Array.from(document.getElementById('editorSVGContainer').classList).filter((c) => c.startsWith('handle-hover'));
+  const circleFor = (key) => {
+    const h = ed._frameHandles.find((q) => q.key === key);
+    return ed._bgLayer.findOne('#frame-profile').children.find((c) => c.isCircle && c.attrs.cx === h.anchor.x && c.attrs.cy === h.anchor.y);
+  };
+
+  it('idle: base radius/colour, no cursor class', () => {
+    setEditorTab('frame');
+    const c = circleFor('waistReach');
+    expect(c.d / 2).toBeCloseTo(FRAME_HANDLE_RADIUS, 9);
+    expect(c.attrs.fill).toBe('#ffffff');
+    expect(cssState()).toEqual([]);
+  });
+
+  it('hovering a handle (no press) grows it, fills it with the shared accent, and sets the grab cursor', () => {
+    setEditorTab('frame');
+    const h = ed._frameHandles.find((q) => q.key === 'waistReach');
+    fire('pointermove', h.anchor.x, h.anchor.y);
+    expect(ed._frameHandleHover).toBe('waistReach');
+    const c = circleFor('waistReach');
+    expect(c.d / 2).toBeCloseTo(FRAME_HANDLE_RADIUS * HANDLE_HOVER_SCALE, 9);
+    expect(c.attrs.fill).toBe(HANDLE_HOVER_FILL);
+    expect(cssState()).toEqual(['handle-hover-ready']);
+    expect(getFrameRecord().seeds).toEqual({}); // a hover writes nothing
+  });
+
+  it('moving off a handle clears the hover look', () => {
+    setEditorTab('frame');
+    const h = ed._frameHandles.find((q) => q.key === 'waistReach');
+    fire('pointermove', h.anchor.x, h.anchor.y);
+    expect(ed._frameHandleHover).toBe('waistReach');
+    fire('pointermove', h.anchor.x + 5, h.anchor.y + 5);
+    expect(ed._frameHandleHover).toBeNull();
+    expect(circleFor('waistReach').attrs.fill).toBe('#ffffff');
+    expect(cssState()).toEqual([]);
+  });
+
+  it('pressing a handle shows the SAME active look for the whole drag (Touch has no hover), then drops it on release', () => {
+    setEditorTab('frame');
+    const h = ed._frameHandles.find((q) => q.key === 'waistReach');
+    fire('pointermove', h.anchor.x, h.anchor.y); // the real flow: hover, then press
+    fire('pointerdown', h.anchor.x + 0.05, h.anchor.y);
+    expect(ed._frameHandleDrag).toBe('waistReach');
+    expect(cssState()).toEqual(['handle-hover-active']);
+    expect(circleFor('waistReach').attrs.fill).toBe(HANDLE_HOVER_FILL);
+
+    fire('pointermove', h.anchor.x - 0.3, h.anchor.y);
+    expect(circleFor('waistReach').attrs.fill).toBe(HANDLE_HOVER_FILL); // still active mid-drag
+
+    fire('pointerup', h.anchor.x - 0.3, h.anchor.y);
+    expect(ed._frameHandleDrag).toBeNull();
+    // still hovering the handle it was just released on -- plain hover, not idle.
+    expect(cssState()).toEqual(['handle-hover-ready']);
+  });
+
+  it('leaving the Frame tab clears the hover and the cursor (same rule the rest of the editor applies to its own hover state)', () => {
+    setEditorTab('frame');
+    const h = ed._frameHandles.find((q) => q.key === 'waistReach');
+    fire('pointermove', h.anchor.x, h.anchor.y);
+    expect(cssState()).toEqual(['handle-hover-ready']);
+
+    setEditorTab('artwork');
+
+    expect(ed._frameHandleHover).toBeNull();
+    expect(cssState()).toEqual([]);
   });
 });
 

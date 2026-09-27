@@ -805,6 +805,18 @@
 }
 #latticeWidthUnlinkedFields, #shapeLatticeWidthUnlinkedFields {
     min-width: 120px;
+    /* T81 item 4: Rails/Ties now get their own -/+ stepper (each a real
+       .cad-stepper, min-width:75px, this file's own inline <style>) inside
+       this shared 120px-floor container -- measured live in headless
+       Chrome (with that inline stylesheet loaded, not just editor.css/
+       base.css, or .cad-stepper's own floor is silently missing from the
+       measurement): the row's own flex-wrap below already gives this
+       container more than 120px in practice, so this doesn't currently
+       fire, but it's the same defensive fallback the outer row already
+       uses one level up -- wrap Rails under Ties rather than ever
+       squeezing either below its own floor, if a narrower future context
+       ever left less room than measured today. */
+    flex-wrap: wrap;
 }
 .panel-row-3:has(#latticeWidthNodes),
 .panel-row-3:has(#shapeLatticeWidthNodes) {
@@ -1744,14 +1756,18 @@
    UI2 — colour-coded Lattice/Shape Lattice panel sections (Fred's own
    "option B" pick from the advisor's mockup): a soft tint, a 5px left
    bar, and the section's own title in the bar colour. The KIND (rails/
-   ties/nodes/contour/neutral) is decided once by editor/lattice-side-
-   column.js's own declared title->kind map and written as
+   ties/nodes/contour/boundary/neutral) is decided once by editor/lattice-
+   side-column.js's own declared title->kind map and written as
    data-lattice-section on the section element; the bar/tint colours
    themselves are 2 CSS custom properties that module keeps live-synced
    to the pattern's actual rails/ties/nodes/contour colours (--kind-*,
    --kind-*-tint) on the section's own ANCESTOR body element, so they
    apply here purely through normal CSS inheritance — no per-section JS
    write needed when a colour changes, only the two custom properties.
+   T81 item 2 (Fred screenshot: "boundary and contour have the same color
+   code"): 'boundary' is its own kind now, not an alias for 'contour' --
+   the neutral dashed-BLACK guide colour (editor-guides.js's own
+   GUIDE_STROKE, the ONE place that colour is declared), not a fresh pick.
    ========================================================================= */
 [data-lattice-section] {
     border-radius: 4px;
@@ -1759,16 +1775,28 @@
     margin: 0 -2px;
     border-left: 5px solid transparent;
 }
-[data-lattice-section="rails"]   { background: var(--kind-rails-tint, rgba(198, 40, 40, 0.12));  border-left-color: var(--kind-rails, #c62828); }
-[data-lattice-section="ties"]    { background: var(--kind-ties-tint, rgba(249, 200, 14, 0.12));   border-left-color: var(--kind-ties, #f9c80e); }
-[data-lattice-section="nodes"]   { background: var(--kind-nodes-tint, rgba(26, 35, 126, 0.12));   border-left-color: var(--kind-nodes, #1a237e); }
-[data-lattice-section="contour"] { background: var(--kind-contour-tint, rgba(46, 125, 50, 0.12)); border-left-color: var(--kind-contour, #2e7d32); }
-[data-lattice-section="neutral"] { background: rgba(0, 0, 0, 0.03); border-left-color: #bbb; }
-[data-lattice-section="rails"]   > span:first-child { color: var(--kind-rails, #c62828); }
-[data-lattice-section="ties"]    > span:first-child { color: var(--kind-ties, #f9c80e); }
-[data-lattice-section="nodes"]   > span:first-child { color: var(--kind-nodes, #1a237e); }
-[data-lattice-section="contour"] > span:first-child { color: var(--kind-contour, #2e7d32); }
-[data-lattice-section="neutral"] > span:first-child { color: #666; }
+[data-lattice-section="rails"]    { background: var(--kind-rails-tint, rgba(198, 40, 40, 0.12));  border-left-color: var(--kind-rails, #c62828); }
+[data-lattice-section="ties"]     { background: var(--kind-ties-tint, rgba(249, 200, 14, 0.12));   border-left-color: var(--kind-ties, #f9c80e); }
+[data-lattice-section="nodes"]    { background: var(--kind-nodes-tint, rgba(26, 35, 126, 0.12));   border-left-color: var(--kind-nodes, #1a237e); }
+[data-lattice-section="contour"]  { background: var(--kind-contour-tint, rgba(46, 125, 50, 0.12)); border-left-color: var(--kind-contour, #2e7d32); }
+[data-lattice-section="boundary"] { background: var(--kind-boundary-tint, rgba(0, 0, 0, 0.08));    border-left-color: var(--kind-boundary, #000000); }
+[data-lattice-section="neutral"]  { background: rgba(0, 0, 0, 0.03); border-left-color: #bbb; }
+[data-lattice-section="rails"]    > span:first-child { color: var(--kind-rails, #c62828); }
+[data-lattice-section="ties"]     > span:first-child { color: var(--kind-ties, #f9c80e); }
+[data-lattice-section="nodes"]    > span:first-child { color: var(--kind-nodes, #1a237e); }
+[data-lattice-section="contour"]  > span:first-child { color: var(--kind-contour, #2e7d32); }
+[data-lattice-section="boundary"] > span:first-child { color: var(--kind-boundary, #000000); }
+[data-lattice-section="neutral"]  > span:first-child { color: #666; }
+
+/* T81 item 2 (Fred screenshot: "Boundary/Inset/Joint/Loose" clipped at the
+   236px panel width -- "Boundary" the widest of the 4): this ONE control
+   wraps to 2 rows (its own buttons go to flex-basis 45%, properties-shape-
+   lattice.js) instead of shrinking every other segmented-group in the app
+   to make room. */
+#shapeLatticeEndRule {
+    flex-wrap: wrap;
+    height: auto;
+}
 
 /* UI3 (Fred: "like in main side bar, make lattice section collapsible")
    — the collapsible-section chevron, generalized from editor-drawer.js's

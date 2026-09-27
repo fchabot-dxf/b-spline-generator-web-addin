@@ -7,6 +7,7 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { getElementLayer, setActiveLayer as _setActiveLayer } from './layers.js';
 import { SNAP_POLICY, clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { syncColorToggleSwatch } from './properties-shape.js';
+import { setHandleCursor } from './editor-transform-handles.js';
 
 // Per-mode help text shown in the floating status hint at the bottom of the
 // editor canvas. Keeps the lessons-learned messages out of the toolbar so the
@@ -151,6 +152,10 @@ export function setMode(editor, mode) {
     // T31: same reason — the grid hover highlight also reads the mode's
     // own SNAP_POLICY.
     clearGridHover(editor);
+    // T81 item 1: same reason — a Shape Lattice handle hover read by the
+    // OLD mode must not leave the grab cursor stuck after switching away.
+    editor._shapeHandleHover = null;
+    setHandleCursor(null);
     // The lattice is meaningless invisible — turn the grid on the moment
     // the tool is picked rather than leaving the user to find SHOW first.
     if (mode === 'lattice' && editor._grid && !editor._grid.visible) {

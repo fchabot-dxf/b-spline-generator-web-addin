@@ -28,9 +28,10 @@ import {
     PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges, SHAPE_PARAM_KEYS,
 } from './editor-shape-lattice-generator.js';
 import { setEditorStatusHint } from './editor-ui.js';
-import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
+import { boardRegion, computeParamHandles, mirrorSegmentIndex, HANDLE_SEGMENT_INDEX } from './editor-shape-lattice-interaction.js';
+import { handleHoverVisual, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
 import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
-import { openColorMosaic } from './editor-color.js';
+import { openColorMosaic, randomSegmentColorSet } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
 import { contourSilhouette, contourFromFrameOf, hasFrame, CONTOUR_FROM_FRAME_DEFAULTS } from './contour-from-frame.js';
 import { primitiveFromContourD, collapseContourCuts } from './editor-contour-cut.js';
@@ -383,6 +384,41 @@ export async function regenerateSilhouetteAndFill(editor) {
 }
 
 /**
+ * T81 item 3 (Fred: "in shape lattice contour, add a randomize segment
+ * color button"): draws `randomSegmentColorSet` (editor-color.js's ONE
+ * declared palette, no two cyclically-adjacent segments equal) and writes
+ * it wholesale into `p.contour.segmentColors` -- the SAME field a manual
+ * per-segment pick already writes (editor.js's `_storeContourSegmentColor`,
+ * via `setColor` on a selected segment) and `regenerateSilhouette`'s own
+ * per-segment recolor loop already reads on every call. No second colour
+ * store, no direct DOM stroke write here at all: `regenerateSilhouetteAndFill`
+ * (unchanged) applies it and is the ONE undo step (its own `generatePattern`
+ * call is what actually pushes/commits) -- same shape `writeSegmentStyle`
+ * above already uses for a segment-level change.
+ *
+ * The segment COUNT comes from `contourSilhouette` directly (the SAME
+ * inputs -- region/contourWidth/frameContext -- `regenerateSilhouette`
+ * itself resolves them from), not the last-drawn DOM element count, so
+ * this is correct even before a first Generate has run. Works for either
+ * contour source (Shape preset or Offset-from-frame): both write through
+ * this one `p.contour.segmentColors` field, and `contourSilhouette` itself
+ * already picks whichever source is active.
+ */
+export async function randomizeSegmentColors(editor, rng = Math.random) {
+    const p = currentPattern(editor);
+    if (!hasGeneratedSilhouette(p)) return;
+    const region = _shapeContourRegion(editor, p);
+    const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
+    const contourWidth = p.contour?.width != null ? p.contour.width : widths.rails;
+    const { primitives } = contourSilhouette(p, region, contourWidth, frameContext(editor));
+    const n = primitives.length;
+    if (!n) return;
+    p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
+    p.contour.segmentColors = randomSegmentColorSet(n, rng);
+    await regenerateSilhouetteAndFill(editor);
+}
+
+/**
  * T59: writes a PATCH onto `shape.segments[index]` (mirrored per SE14
  * §4's own rule — the two cap edges have no partner, a no-op spread in
  * that case), then regenerates + refills — the tap-a-segment popup's own
@@ -434,6 +470,24 @@ export function paramHandleRecords(editor) {
     return computeParamHandles(shape.preset, region, resolved).map((h) => ({ ...h, hx: h.anchor.x, hy: h.anchor.y }));
 }
 
+/** T81 item 1: the contour segment element a hovered/pressed handle
+ *  controls (HANDLE_SEGMENT_INDEX), by its own stamped index -- reads the
+ *  LIVE element's own `d` directly (whatever it currently draws, hand-edit
+ *  divergence and all) rather than recomputing primitives, so the overlay
+ *  can never disagree with what's actually on screen. Exported (T81 item 6)
+ *  for shapeLatticeHandler.start's own segment-tap branch (editor-
+ *  interaction.js) to select the SAME element it just resolved a segment
+ *  index for -- one lookup, not a second copy of this same find(). */
+export function _contourSegmentEl(editor, index) {
+    if (!editor._sketchLayer) return null;
+    // Number(), not a bare `===` -- same convention hasContourSegmentColor
+    // (editor-lattice-pattern.js) already uses for this exact attribute.
+    return editor._sketchLayer.children().toArray().find(
+        (ch) => ch && ch.node && ch.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR)
+            && Number(ch.node.getAttribute(CONTOUR_SEG_INDEX_ATTR)) === index
+    ) || null;
+}
+
 /**
  * Draws the current param handles into `editor._handleLayer` — same
  * visual/sizing convention `renderTransformHandles` (editor-transform-
@@ -445,6 +499,16 @@ export function paramHandleRecords(editor) {
  * (`{key,label,axis,valueFromWorld,hx,hy,hitR}`), directly compatible
  * with `hitTestHandle` (editor-transform-handles.js) — same shape, so
  * editor-interaction.js reuses that function rather than a second one.
+ *
+ * T81 item 1: whichever handle is hovered (`editor._shapeHandleHover`) or
+ * being dragged (`editor._shapeLatticeDragKey`) draws grown + accent-filled
+ * (handleHoverVisual, the ONE declaration every editor handle system reads
+ * — editor-transform-handles.js), and the segment it controls gets a
+ * temporary accent overlay in this SAME pointer-events:none layer — no
+ * separate cleanup needed, `_handleLayer.clear()` (editor-interaction.js's
+ * `updateHandles`) already wipes it every render, same as the handle
+ * circles themselves. `hitR` stays keyed to the IDLE size — hover must not
+ * change what counts as "on the handle".
  */
 export function renderShapeLatticeHandles(editor) {
     if (!editor._handleLayer) return [];
@@ -458,12 +522,25 @@ export function renderShapeLatticeHandles(editor) {
     const handlePx = inputProfileFor(editor._pointerType).handlePx;
     const sz = Math.max(handlePx / pxPerModelUnit, 0.05);
     const strokeW = sz * (0.0025 / 0.012); // matches renderTransformHandles' own ratio
+    const preset = currentShape(currentPattern(editor)).preset;
     const out = [];
     for (const r of records) {
-        editor._handleLayer.circle(sz * 2)
+        const active = editor._shapeHandleHover === r.key || editor._shapeLatticeDragKey === r.key;
+        if (active) {
+            const segIndex = HANDLE_SEGMENT_INDEX[preset]?.[r.key];
+            const segEl = segIndex != null ? _contourSegmentEl(editor, segIndex) : null;
+            const d = segEl ? segEl.attr('d') : null;
+            if (d) {
+                editor._handleLayer.path(d).fill('none')
+                    .stroke({ color: HANDLE_HOVER_FILL, width: strokeW * 6, opacity: 0.45, linecap: 'round' })
+                    .attr('pointer-events', 'none');
+            }
+        }
+        const vis = handleHoverVisual(sz, '#ffffff', '#7b1fa2', active);
+        editor._handleLayer.circle(vis.radius * 2)
             .center(r.hx, r.hy)
-            .fill('#ffffff')
-            .stroke({ color: '#7b1fa2', width: strokeW })
+            .fill(vis.fill)
+            .stroke({ color: vis.stroke, width: strokeW })
             .attr('pointer-events', 'none');
         out.push({ ...r, hitR: sz * 1.8 });
     }
@@ -765,7 +842,11 @@ export function initShapeLatticeProperties(editor) {
             btn.dataset.value = value;
             btn.textContent = label;
             btn.title = title;
-            btn.style.flex = '1';
+            // T81 item 2 (Fred screenshot: 4 options clipped at the 236px
+            // panel width -- "Boundary" the widest): 2 per row (CSS wraps
+            // #shapeLatticeEndRule, editor.css) rather than shrinking every
+            // one of the app's other segmented-group controls to fit.
+            btn.style.flex = '1 1 45%';
             // Same passive-until-Generate behavior the old <select> had
             // (no 'change' listener at all — readFieldsIntoPattern below
             // reads whichever is .active only when Generate/Regenerate
@@ -1268,6 +1349,11 @@ export function initShapeLatticeProperties(editor) {
             };
             await regenerateSilhouetteAndFill(editor);
         });
+    }
+    // T81 item 3 (Fred: "add a randomize segment color button").
+    const randomizeColorsEl = el('shapeLatticeRandomizeSegmentColors');
+    if (randomizeColorsEl) {
+        on(randomizeColorsEl, 'click', () => randomizeSegmentColors(editor));
     }
     // T75 (LAT-SIZE): same IMMEDIATE write+redraw convention as the
     // Contour width field above — blank clears back to auto (board minus

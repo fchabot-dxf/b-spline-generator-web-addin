@@ -143,6 +143,38 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
   ]));
 }
 
+/**
+ * T81 item 1 (Fred screenshot: "add visual feedback to these handles on
+ * hover" -- the segment a handle controls should highlight too, "so you
+ * see WHAT it moves before dragging"): which contour SEGMENT INDEX each
+ * handle key's own drag actually reshapes, right side only (a handle's own
+ * side, matching `computeParamHandles`' "right side only" convention).
+ *
+ * Declared once as a plain lookup, not inferred from the handle's anchor
+ * point geometrically (an anchor sits at an arc's own CENTER for several
+ * handles -- see this file's own header comment -- which is NOT on that
+ * arc's curve, so a nearest-point-to-anchor search could easily pick the
+ * WRONG nearby segment). Instead this is read directly off
+ * `_solveHourglass`/`_solveBottle`'s (editor-shape-lattice-generator.js)
+ * own FIXED keypoint/segment order -- unconditional on any param value, by
+ * construction (each solver's own `fresh` array comment: "keypoints[0] ===
+ * rTop, starts at the first real edge out of rTop"):
+ *   hourglass: 0 horn, 1 SHOULDER, 2 WAIST, 3 HIP, 4 horn, 5 bottom edge,
+ *              6 horn, 7 hip(L), 8 waist(L), 9 shoulder(L), 10 horn, 11 top edge.
+ *   bottle:    0 horn, 1 NECK/WAIST, 2 HIP/BODY, 3 horn, 4 bottom edge,
+ *              5 horn, 6 hip/body(L), 7 neck/waist(L), 8 horn, 9 top edge.
+ * `waistCenterY` repositions the pinch itself (shoulderY/hipY are BOTH
+ * derived from it -- this file's own header comment) but has no single
+ * curve of its own; the waist arc is the one it most directly sets, so it
+ * maps there rather than being left unhighlighted. If a generator solver's
+ * own segment order ever changes, this table must change with it -- there
+ * is no automatic check tying the two together.
+ */
+export const HANDLE_SEGMENT_INDEX = {
+  hourglass: { cornerRadiusTop: 1, waistReach: 2, cornerRadiusBottom: 3, waistCenterY: 2, waistRadius: 2 },
+  bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2 },
+};
+
 /** An `A` primitive's own point at parameter `t` (0=start, 1=end) —
  *  duplicated from editor-shape-lattice-generator.js's own private
  *  `_arcPointAt` (same "small pure helper, duplicated per module"

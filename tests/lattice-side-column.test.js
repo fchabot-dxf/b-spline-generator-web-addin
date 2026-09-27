@@ -23,7 +23,9 @@ describe('sectionKindForTitle / SECTION_KIND_BY_TITLE', () => {
     expect(sectionKindForTitle('Contour')).toBe('contour');
     expect(sectionKindForTitle('Border')).toBe('contour');
     expect(sectionKindForTitle('Shape')).toBe('contour');
-    expect(sectionKindForTitle('Boundary')).toBe('contour');
+    // T81 item 2 (Fred screenshot: "boundary and contour have the same
+    // color code"): Boundary is its OWN kind now, not an alias for contour.
+    expect(sectionKindForTitle('Boundary')).toBe('boundary');
   });
 
   it('falls through to neutral for anything not declared (Add, Colors, Widths, Seed, Fill seed, ...)', () => {
@@ -36,8 +38,8 @@ describe('sectionKindForTitle / SECTION_KIND_BY_TITLE', () => {
     expect(sectionKindForTitle('  Ties  ')).toBe('ties');
   });
 
-  it('every value in the declared map is one of the 4 real kinds (no typo silently creating a 5th)', () => {
-    const validKinds = new Set(['rails', 'ties', 'nodes', 'contour']);
+  it('every value in the declared map is one of the 5 real kinds (no typo silently creating a 6th)', () => {
+    const validKinds = new Set(['rails', 'ties', 'nodes', 'contour', 'boundary']);
     for (const kind of Object.values(SECTION_KIND_BY_TITLE)) {
       expect(validKinds.has(kind)).toBe(true);
     }
@@ -65,6 +67,20 @@ function buildFixture() {
     <aside id="editorLatticePanel">
       <div id="editorLatticePanelHeader"><span>Lattice Pattern</span></div>
       <div id="editorLatticePanelBody">
+        <!-- T81 item 4: data-no-collapse AND placed BEFORE Add, matching
+             the REAL page's own order exactly (Seed, then Add) -- this is
+             what let a bare querySelector on that attribute match Seed
+             instead of Add and silently leave Add visible; the fixture
+             used to have only ONE such element (Add), which could never
+             reproduce that collision. -->
+        <div data-no-collapse>
+          <span style="font-weight:600;">Seed</span>
+        </div>
+        ${section('Grid & rails')}
+        ${section('Ties')}
+        ${section('Nodes')}
+        ${section('Colors', '<button id="latticeColorRails" style="background:#c62828;"></button><button id="latticeColorTies" style="background:#f9c80e;"></button><button id="latticeColorNodes" style="background:#1a237e;"></button>')}
+        ${section('Widths')}
         <div data-no-collapse>
           <span style="font-weight:600;">Add</span>
           <div role="group" id="latticeAddKindGroup" class="segmented-group">
@@ -73,12 +89,6 @@ function buildFixture() {
             <button type="button" id="latticeAdd-node" class="editor-fillmode-btn">Node</button>
           </div>
         </div>
-        ${section('Grid & rails')}
-        ${section('Ties')}
-        ${section('Nodes')}
-        ${section('Colors', '<button id="latticeColorRails" style="background:#c62828;"></button><button id="latticeColorTies" style="background:#f9c80e;"></button><button id="latticeColorNodes" style="background:#1a237e;"></button>')}
-        ${section('Widths')}
-        ${section('Seed')}
       </div>
       <div id="editorLatticePanelFooter">
         <button id="latticeGenerate">Generate</button>
@@ -141,15 +151,35 @@ describe('initLatticeSideColumn', () => {
     initLatticeSideColumn(editor);
     // AMEND 1 inserts a new (untagged -- no bold-span first child) icon
     // row: right after the (hidden) old Add div in the Lattice panel
-    // (which HAS one to hide), and as the very first child of the Shape
-    // Lattice panel (which has none).
+    // (which HAS one to hide, found by its own stable id -- T81 item 4 --
+    // not by DOM order, so this holds regardless of where Add sits relative
+    // to Seed/Fill seed, both ALSO `[data-no-collapse]`), and as the very
+    // first child of the Shape Lattice panel (which has no Add row at all).
     const latticeBody = document.getElementById('editorLatticePanelBody');
     const kinds = Array.from(latticeBody.children).map((c) => c.dataset.latticeSection);
-    expect(kinds).toEqual(['neutral', undefined, 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'neutral']);
+    expect(kinds).toEqual(['neutral', 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'neutral', undefined]);
 
     const shapeBody = document.getElementById('editorShapeLatticePanelBody');
     const shapeKinds = Array.from(shapeBody.children).map((c) => c.dataset.latticeSection);
-    expect(shapeKinds).toEqual([undefined, 'contour', 'neutral', 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'contour', 'neutral']);
+    // T81 item 2: the LAST 'contour' here is the Boundary section -- now its
+    // own 'boundary' kind, not an alias for Shape's 'contour' (index 1).
+    expect(shapeKinds).toEqual([undefined, 'contour', 'neutral', 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'boundary', 'neutral']);
+  });
+
+  it("T81 item 4 (Fred screenshot: the OLD 'Add [Rail|Tie|Node]' row was still visible alongside the new icon row): the REAL Add row is hidden even though Seed ALSO carries data-no-collapse and comes first in the DOM", () => {
+    initLatticeSideColumn(editor);
+    const latticeBody = document.getElementById('editorLatticePanelBody');
+    const addRow = document.getElementById('latticeAddKindGroup').closest('[data-no-collapse]');
+    expect(addRow.style.display).toBe('none');
+    // non-vacuous: Seed is a DIFFERENT [data-no-collapse] element, earlier
+    // in the DOM, and must NOT be the one a bare attribute-only query would
+    // have matched first -- it stays exactly as the fixture declared it.
+    const seedRow = Array.from(latticeBody.children).find((c) => c.textContent.trim() === 'Seed');
+    expect(seedRow).not.toBe(addRow);
+    expect(seedRow.style.display).not.toBe('none');
+    // the new icon row lands right after the (now-hidden) Add row, not
+    // after Seed.
+    expect(addRow.nextElementSibling.className).toBe('lattice-icon-tool-row');
   });
 
   it('hides the Shape Lattice "Fill seed" section only — the box Lattice Seed section stays visible', () => {
@@ -167,13 +197,17 @@ describe('initLatticeSideColumn', () => {
     expect(seedSection.style.display).not.toBe('none');
   });
 
-  it('sets --kind-rails/-ties/-nodes on the panel body from the REAL swatch colours, and a fixed --kind-contour', () => {
+  it('sets --kind-rails/-ties/-nodes on the panel body from the REAL swatch colours, and fixed --kind-contour/--kind-boundary', () => {
     initLatticeSideColumn(editor);
     const body = document.getElementById('editorLatticePanelBody');
     expect(body.style.getPropertyValue('--kind-rails')).toBe('rgb(198, 40, 40)');
     expect(body.style.getPropertyValue('--kind-ties')).toBe('rgb(249, 200, 14)');
     expect(body.style.getPropertyValue('--kind-nodes')).toBe('rgb(26, 35, 126)');
     expect(body.style.getPropertyValue('--kind-contour')).toBe('rgb(46, 125, 50)');
+    // T81 item 2: Boundary's own colour is the dashed-black guide's
+    // (editor-guides.js GUIDE_STROKE) -- distinct from Contour's green.
+    expect(body.style.getPropertyValue('--kind-boundary')).toBe('rgb(0, 0, 0)');
+    expect(body.style.getPropertyValue('--kind-boundary')).not.toBe(body.style.getPropertyValue('--kind-contour'));
   });
 
   it('a colour change on the swatch (a real production write: swatchEl.style.background = ...) updates the CSS var live', () => {
