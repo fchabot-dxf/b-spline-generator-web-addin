@@ -129,7 +129,8 @@ rail ends follow the contour on a stroke_width edit, stale_params written + corr
 1. Shape Lattice panel still OPENS with the silhouette's own "Shape" (preset, shape seed, waist/corner sliders) and
    "Segments" sections, above Boundary. Fred's order named only Boundary→Contour→Rails→Ties→Nodes. Keep Shape/Segments on
    top, or move them? And hide the SHAPE seed too (Fred said "seed we can hide" — applied to the lattice seed only)?
-   These sections are seat C's (SHAPE-PARAMS will rebase onto R7's panel).
+   These sections are seat C's (SHAPE-PARAMS will rebase onto R7's panel). **ANSWERED (Fred): HIDE the shape seed too.**
+   Shape/Segments position: still open.
 2. SNAP-SPLIT (ROADMAP): separate GRID vs GEOMETRY snap for manual moves — queued, not started (Fred: leave for home).
 
 **Still queued for the home side:** SE16 ✂ Cut tool (Fred's ruling in ROADMAP: lattice cut pieces move together, direct
