@@ -1040,6 +1040,18 @@ existing segmentColors[i] (keyed by primitive index, not a second schema), so th
 disagree. Tests: select segment -> panel colour == stored colour; set/reset; survives Regenerate + reload; Send carries it;
 no width control shown for a segment.
 
+## Queued (seat A, H3, right after H2) — NO-PIECE-WIDTH: remove the per-piece WIDTH override for lattice pieces (Fred 2026-09-26)
+Fred: "changing stroke width is never per segment, it's a general param" / "it should go, changing it changes every
+lattice part; it is different if I'm in rectangle or freeform though, then I can have different width". So: lattice
+pieces (rails, ties, nodes, contour segments, cut segments) have NO own width; the "Selected piece" panel's Width
+control edits the lattice's GENERAL width for that kind (all parts change), Colour stays per piece. Plain drawing
+elements (rectangle, freeform, line, …) keep per-element width as today. REMOVAL = a sweep along the whole chain, every
+link removed or kept with a named reason: the panel's per-piece width control -> data-override-width attr + the schema
+module's width half (editor-piece-override.js) -> rewidthOwnedKind's override-skip -> export/SVG width attr -> the
+manifest's per-piece hardcoded width DIMENSION (seat B T75 item 3 / OVR-FUSION) -> tests guarding any of it (rewrite
+to assert the new rule; don't delete silently). Old saved patterns carrying data-override-width: ignored on load
+(migration test). Live check (advisor, Ranchy): a Send has no per-piece width dims; stroke_width drives every slot.
+
 ## SE16 RULINGS (Fred 2026-09-26, answers to CUT-TOOL-DESIGN.md §0) — supersede the SE16 text below where they differ
 Q1 Send AS DRAWN (bug fix F17 P1). Q2 Regenerate CLEARS cuts (Undo restores). Q3 dragging a lattice joint SLIDES ALONG the
 rail. Q4 Join clears BOTH segments' overrides (the joined rail = lattice default colour/width). Q5 cutting snaps by the normal
