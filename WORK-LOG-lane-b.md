@@ -10754,3 +10754,39 @@ identity was confirmed stable). Covers tieEndNodes' own matching (a fractional e
 + multi-select duplicate, the shared-node dedup, and a tie+its own node both explicitly selected. Mutation:
 with the tie-node copy step removed, 4 tests fail.
 Shot: shots/seatB/t80-tie-duplicate-shared-node.png. Verify: 2177/2177 vitest. Commit e2aa9e9. NO FUSION.
+
+## T81 item 1 — hover feedback on Shape Lattice and Frame handles
+
+Fred: the Shape Lattice shoulder/hip/waist handles gave no feedback on hover. Checked both named systems for an
+existing hover to unify onto (the checklist's own instruction) -- neither had one: Frame's own pointer wiring
+(frame-panel.js) had only pointerdown/move-while-dragging/up, no idle-hover path at all.
+Declared once (editor-transform-handles.js, already the shared home for hitTestHandle both systems use):
+`handleHoverVisual(baseRadius, idleFill, idleStroke, active)` -- grows ~1.3x and swaps to the accent colour for
+hover OR press (Touch has no hover, so "finger down" must look identical to "pointer over"); colours match this
+app's own already-declared `.svg-handle:hover` rule (bspline_gen_palette.html's inline style), found UNUSED by
+any live handle -- not a fresh colour pick. `setHandleCursor(state)` toggles handle-hover-ready/-active on
+#editorSVGContainer (grab/grabbing) -- own class names, not the pre-existing pan-ready/panning (also
+grab/grabbing, for Space-pan), so the two never fight.
+Shape Lattice: shapeLatticeHandler.hover hit-tests _paramHandles and re-renders; renderShapeLatticeHandles draws
+the active handle grown+accent AND highlights the contour segment it controls, via a new declared
+HANDLE_SEGMENT_INDEX table (editor-shape-lattice-interaction.js) read off _solveHourglass/_solveBottle's own
+FIXED keypoint/segment order -- NOT a geometric nearest-point heuristic (several handles anchor at an arc's
+CENTER, off its curve, where a heuristic could pick the wrong nearby segment). The overlay reads the LIVE
+segment element's own `d` directly (no primitives recomputed), so it can't disagree with the screen, and needs
+no separate cleanup (the handle layer's own per-render clear already wipes it).
+Frame: frame-panel.js's pointermove hit-tests _frameHandles when not dragging (_hitFrameHandle, factored out of
+the existing pointerdown check), storing hover/drag state on the editor for editor-frame-profile.js's draw loop.
+A bare press with no movement yet shows the active look immediately (drawFrameProfile called at pointerdown
+itself) -- Touch never gets a move tick before the finger is down. Both systems clear hover+cursor on the same
+"stale state" triggers editor-ui.js's setMode / frame-panel.js's setEditorTab already use for their own hover.
+Segment highlight scoped to Shape Lattice only: Frame's contour is one combined path, no per-segment elements to
+reuse; extending it there needs a sub-path built from primitives, not asked for (Fred's shot was Shape Lattice).
+
+Tests: handle-hover.test.js (9, pure style/cursor), shape-lattice-handle-hover.test.js (6, real canvas handler +
+render), frame-handles.test.js (+6, real pointer events on the existing fixture; extended its mock to actually
+capture fill/stroke/radius -- additive, no existing assertion touched). Mutation: hover visual disabled -> 6
+tests fail across all three files.
+Shots: shots/seatB/t81-shape-lattice-handle-hover.png (idle vs hover, real geometry incl. the segment overlay,
+pixel-sampled: idle (255,255,255) -> hover (30,111,234) = #1e6fea), shots/seatB/t81-frame-handle-hover.png (idle
+vs hover, real handle data: 0.18 -> 0.234 diameter = x1.3).
+Verify: 2230/2230 vitest. Commit 5990330. NO FUSION.
