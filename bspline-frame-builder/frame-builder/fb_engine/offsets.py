@@ -201,7 +201,12 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             # non-parametric sketch.offset (the inner edge's untagged duplicate loop). Wrapped as an
             # ObjectCollection: the side check and the tagging read .count / .item().
             result = _as_collection(getattr(offset_constraint, 'childCurves', None))
+            # F22 MEASURED live: inside the deferred-compute window the new curves are not solved yet (their bbox is
+            # the source's), so the side check saw nothing wrong and the lip landed inward. One compute pulse first
+            # (the same pulse offset_step does after this returns), then check the side, then pulse again.
+            _pulse(sketch)
             _ensure_side(ctx, offset_constraint, coll, result, d_expr, s_name, side)
+            _pulse(sketch)
             ctx.logger.log(f"OFFSET PARAMETRIC OK: addOffset2 succeeded for {s_name}")
             return result
 
@@ -212,6 +217,16 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             f"OFFSET PARAMETRIC FAIL: addOffset2 failed for {s_name}: {e} -- "
             f"FALLING BACK to a NON-parametric offset", "WARNING")
     return None
+
+
+def _pulse(sketch):
+    """Force one solve of a compute-deferred sketch, then restore its deferred state."""
+    try:
+        was = sketch.isComputeDeferred
+        sketch.isComputeDeferred = False
+        sketch.isComputeDeferred = was
+    except Exception:
+        pass
 
 
 def _as_collection(curves):
