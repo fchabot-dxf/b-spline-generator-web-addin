@@ -456,8 +456,19 @@ class FakeSketch:
         mirroring frame-builder's own `project_step`'s own assumption
         about `sketch.project`'s real return shape (fb_engine/
         projections.py) -- the same real Fusion API, called from a
-        different tool in this same repo."""
+        different tool in this same repo.
+
+        R7 item 0(c) (home advisor, root cause PROVEN live on Ranchy):
+        Fusion's REAL `sketch.project()` returns an EMPTY collection while
+        THIS sketch (the one being projected INTO) has
+        `isComputeDeferred=True` -- modeled here so a caller that (wrongly)
+        calls `_apply_projections` inside that deferred window gets
+        genuinely nothing back, exactly like the real API, making the old
+        bug reproduce and FAIL in this shim rather than passing by
+        accident."""
         CALL_LOG.append(("project", type(entity).__name__))
+        if self.isComputeDeferred:
+            return FakeObjectCollection()
         if isinstance(entity, FakeSketchPoint):
             copy = FakeSketchPoint(entity.geometry.copy())
             self._points.append(copy)

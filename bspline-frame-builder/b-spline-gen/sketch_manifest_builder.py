@@ -969,22 +969,40 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     dimensions = manifest.get("dimensions", [])
     projections = manifest.get("projections")
 
+    # R7 item 0(c) (home advisor, root cause PROVEN live on Ranchy; verified
+    # in code): `sketch.project()` returns NOTHING while `sketch` (the
+    # TARGET being projected INTO, i.e. THIS sketch) has
+    # isComputeDeferred=True — a real Fusion API quirk, not a bug in
+    # `_apply_projections` itself (it already has its own "project()
+    # returned nothing" skip+log path, unchanged; that path was firing on
+    # EVERY projection live because of this ordering, not a genuine miss).
+    # Projections resolve BEFORE the deferred-compute window opens — they
+    # only need the ALREADY-BUILT source sketches (`kind_to_sketch`, an
+    # EARLIER kind in this same manifest group), never this sketch's own
+    # not-yet-created entities, so there is no correctness reason they
+    # needed to be inside the window in the first place (T76's own
+    # original ordering just never hit a live Fusion session with this
+    # window's real behavior until now). A no-op (nothing to project) for
+    # every standalone/pre-SE17 build, which never has a `projections`
+    # list.
+    if projections:
+        _apply_projections(ctx, sketch, s_name, projections, kind_to_sketch)
+
     # T64 (final design, 5 mid-turn amendments): a Slot entity creates its
     # OWN width dimension as a side effect of geometry creation itself
     # (_create_slot_entity, inside _create_geometry) — no separate
     # offset/cap phase exists any more (Fred: "box lattice needs to be
     # slots too", removing the old offset+cap mechanism entirely, not
     # just gating it off for one layer type). Geometry + constraints stay
-    # in ONE deferred-compute window, same as before.
+    # in ONE deferred-compute window, same as before — constraints that
+    # target a PROJECTED curve (registered into `ctx.entity_map[s_name]`
+    # just above, before this window even opens) resolve through the
+    # exact same `ctx.resolve_entity` path as any other same-sketch
+    # entity, so moving the projection call earlier changes nothing about
+    # how `_apply_constraints` finds it.
     sketch.isComputeDeferred = True
     try:
         e_created, e_skipped = _create_geometry(ctx, sketch, s_name, entities, dimensions)
-        # T76 (SE17, item 5): projections resolve BEFORE constraints -- a
-        # cross-kind constraint's own target is the PROJECTED copy, which
-        # must exist first. A no-op (nothing to project) for every
-        # standalone/pre-SE17 build, which never has a `projections` list.
-        if projections:
-            _apply_projections(ctx, sketch, s_name, projections, kind_to_sketch)
         _apply_constraints(ctx, sketch, s_name, constraints)
     finally:
         sketch.isComputeDeferred = False

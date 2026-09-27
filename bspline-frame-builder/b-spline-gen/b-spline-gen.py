@@ -8,7 +8,7 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 
 # adsk check: removed diagnostic
 
-import os, tempfile, json, re, types
+import os, tempfile, json, re
 from datetime import datetime
 
 # T63 (SE15): the constrained-sketch builder — a sibling module in this
@@ -713,6 +713,38 @@ class PaletteClosedHandler(adsk.core.UserInterfaceGeneralEventHandler):
             _log(f'Error in PaletteClosedHandler:\n{traceback.format_exc()}')
 
 
+def _layer_manifest(layer):
+    """R7 item 0(b) (home advisor, LIVE bug found in Fusion): the ONE place
+    a layer's own constrained-sketch manifest is read — `layer['sketch
+    Manifest']` (export-flow.js:472/484 is the ONE thing that ever writes
+    it). The stale-params payload-name collection (Finalise, below) used
+    to read `layer.get('manifest')` instead — a key that never existed in
+    a real payload — so every lattice parameter looked "out of payload"
+    and became a stale-delete candidate on every ordinary Send (only
+    `dependentParameters` stood between it and `deleteMe()`). Declared
+    here so `_svg_layer_import_plan` (the ONLY other reader) and the
+    payload-names loop can never diverge on the key name again."""
+    return layer.get('sketchManifest')
+
+
+class _LogAdapter:
+    """R7 item 0(a) (home advisor, LIVE bug found in Fusion): `_log(msg)`
+    takes exactly ONE positional argument — this module's own logging
+    convention bakes any level into the message text itself (grep this
+    file's own `_log(` call sites). `param_ownership.compute_stale_params`
+    calls `logger.log(msg, level)` (a 2-arg shape, matching OTHER loggers
+    elsewhere in this codebase, e.g. fb_engine's own `DebugLogger`) — every
+    such call raised `TypeError: _log() takes 1 positional argument but 2
+    were given`, which (however it actually surfaced live) meant the
+    cleanup pass never completed a single run. Wraps `_log` behind the
+    2-arg shape `compute_stale_params` actually calls, folding `level`
+    into the message the same way this file's OWN direct `_log` calls
+    already do by convention (an explicit `[LEVEL]` prefix), rather than
+    inventing a second logging convention."""
+    def log(self, msg, level=None):
+        _log(f"[{level}] {msg}" if level else msg)
+
+
 def _svg_layer_import_plan(layers, design_available):
     """T74 AMEND 5: the PURE per-layer decision `_import_all_svg_layers`
     executes — entirely Fusion-API-free (no adsk.* references anywhere
@@ -735,7 +767,7 @@ def _svg_layer_import_plan(layers, design_available):
         idx = layer.get('index', 1)
         cfg = layer.get('config', {})
         svg = layer.get('svg', '')
-        manifest = layer.get('sketchManifest')
+        manifest = _layer_manifest(layer)
         prof = cfg.get('profile', 'flat')
         depth = cfg.get('depth', 0)
         plan.append({
@@ -1453,11 +1485,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 try:
                     payload_names = set(params.keys())
                     for layer in (stamp_data.get('layers', []) if stamp_data else []):
-                        manifest = layer.get('manifest') or {}
+                        manifest = _layer_manifest(layer) or {}
                         for p in manifest.get('parameters', []) or []:
                             if p.get('name'):
                                 payload_names.add(p['name'])
-                    stale = compute_stale_params(des.userParameters, payload_names, logger=types.SimpleNamespace(log=_log))
+                    stale = compute_stale_params(des.userParameters, payload_names, logger=_LogAdapter())
                     _merge_last_send_key('stale_params', stale)
                     if stale['deleted'] or stale['failed']:
                         _log(f'[STALE PARAMS] deleted={stale["deleted"]} adopted={stale["adopted"]} '
