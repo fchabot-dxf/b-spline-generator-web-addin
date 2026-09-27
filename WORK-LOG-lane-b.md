@@ -10700,3 +10700,29 @@ REPRODUCED FIRST: tests/shape-lattice-reopen-layers.test.js (7) round-trips thro
 the roster the way open() does. Before the fix, 5 failed (7 layers instead of 4). Covers Fred's case, each kind
 active, eye hidden + renamed + reordered, and an already-duplicated document. Verify: 2159/2159 vitest.
 Commit 3bb9af5. NO FUSION. (Correction to the item 1 entry above: its commit is 3c0975a, not 7c5c30b.)
+
+## T80 item 2 — Shape Lattice gets the [Select][Rail][Tie][Node] add tools
+
+Fred: "where are add geometry tools". lattice-side-column.js built [Select] alone for Shape Lattice. Both
+panels now build the same four-button row, which writes the one shared `editor._lattice.drawKind` through the
+original latticeAdd-* buttons (selectDrawKind stays the only writer); a pick highlights in both rows.
+shapeLatticeHandler.start hands a Rail/Tie/Node press on EMPTY space to latticeHandler.start. The order is
+param handle, then existing piece (move/select), then add mode, then segment tap, then select. update() and
+finish() route to latticeHandler while `_latticeStart` is set. start() clears it first, because
+_cancelDrawing never does; that's a pre-existing gap in the box tool too, not fixed there.
+Clip: new clipHandRailToBoundary (editor-lattice-pattern.js) runs the same _rowScanLine, insideSpans ∪
+collinearSpans, _clipToSpans and _applyEndRule computePattern uses for a generated rail. latticeHandler.finish
+applies it whenever the active pattern is boundary-mode, which also covers a box Lattice with a picked boundary.
+A rail click spawns ±∞ and clips to the whole inside row. Emission moved into _emitHandPieces (0..n pieces;
+none = no commit).
+REGENERATE RULE for hand-added pieces (the box Lattice rule, unchanged): hand pieces carry no OWNERSHIP_ATTR.
+generatePattern removes only owned pieces on the kind-layers, so hand pieces survive Regenerate. On a kind-layer,
+_collectOccupied keeps generation off their cells.
+Note, not changed: hand pieces land on the ACTIVE layer, as in the box tool, not on their own kind-layer.
+
+Tests: shape-lattice-add-tools.test.js (7) drives the real shapeLattice handler (getModeHandler now exported).
+A board-wide drag at the waist gets the generated waist rail's exact ends; a rail click gets the same; a rail
+outside the shape adds nothing; tie; node; Select adds nothing; a hand node survives Regenerate. Mutation: with
+the clip disabled, the 3 clip tests fail. The side-column "Select-only row" test encoded the old behaviour and
+was rewritten: same 4 titles as the box row, a pick proxies latticeAdd-* and shows in both rows.
+Shot: shots/seatB/t80-shape-lattice-add-tools.png. Verify: 2167/2167 vitest. Commit c5af5d2. NO FUSION.
