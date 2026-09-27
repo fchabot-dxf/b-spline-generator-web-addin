@@ -156,8 +156,11 @@ export const PARAM_ORDER = {
   bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
 };
 const BASE_RANGES = {
-  hourglass: { waistCenterY: [-0.6, 0.6], waistReach: [0.05, 0.92], cornerRadius: [0.04, 0.95],
-    cornerRadiusTop: [0.04, 0.95], cornerRadiusBottom: [0.04, 0.95] },
+  // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
+  // ([0.04, 0.95], the same "panel slider limit" carried over verbatim from
+  // the pre-F12 shared `cornerRadius`) -- removed since _hourglassRange's
+  // corner branch no longer reads them (geometry-only now, see there).
+  hourglass: { waistCenterY: [-0.6, 0.6], waistReach: [0.05, 0.92], cornerRadius: [0.04, 0.95] },
   bottle: { neckWidth: [0.05, 0.85], skeletonX: [0.1, 0.95], neckLength: [0.08, 0.85] },
 };
 
@@ -201,8 +204,6 @@ function _range(lo, hi, geoLo = -Infinity, geoHi = Infinity) {
 function _hourglassRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   if (key === 'waistRadius') return _optionalRange('hourglass', region, stroke, v);
-  const [lo, hi] = BASE_RANGES.hourglass[key];
-  if (key === 'waistCenterY') return _range(lo, hi);
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // F12: each corner has its OWN vertical room (y-down: a lower waist leaves
     // more above it): its arc centre may not rise above the top (sink below
@@ -215,8 +216,27 @@ function _hourglassRange(key, region, stroke, v) {
     // the keyhole bound (see _optionalRange), per side: dy >= R in the major-waist
     // regime, i.e. R >= d - sqrt(2 d Rw) (binding only while Rw <= 2d)
     const keyhole = rw <= 2 * d ? d - Math.sqrt(2 * d * rw) : -Infinity;
-    return _range(lo, hi, Math.max(stroke + EPS_FRAC * hw, d / 2 - rw + EPS_FRAC * hw, keyhole) / hw, (sMax - rw) / hw);
+    // F23/H11 (Fred, iPad: "shouldn't the handle... allow the handle to go
+    // further and make the arc wider" -- Shoulder/Hip): [0.04, 0.95] here
+    // used to come from BASE_RANGES, same as every other branch in this
+    // function -- but that table is "the panel's own slider limits" (this
+    // file's own header comment) predating the F12 corner split, carried
+    // over verbatim by handleMigrations rather than ever re-derived
+    // geometrically. Measured live (fb-app board sizes) against
+    // outlineDefects: the true tangent/simple limit is ~2.6-2.7x wider than
+    // 0.95 at 7x9's low bbox and the 0.04 floor is ~40x tighter than
+    // geometry needs there; at 12x6 the floor is a closer ~1.1x. `waistRadius`
+    // (the other F12 corner-ish param, just above) already gets the correct
+    // geometry-only treatment via `_optionalRange`'s `_range(0, Infinity,
+    // geoLo, geoHi)` -- same pattern here, not the BASE_RANGES pair, so a
+    // manual drag reaches the actual outline limit instead of an unrelated
+    // UI artifact. The panel's own handle clamp (`frameHandles` in
+    // frame-handles.js) already reads its min/max from this same function
+    // every drag, so it widens for free -- no separate UI change needed.
+    return _range(0, Infinity, Math.max(stroke + EPS_FRAC * hw, d / 2 - rw + EPS_FRAC * hw, keyhole) / hw, (sMax - rw) / hw);
   }
+  const [lo, hi] = BASE_RANGES.hourglass[key];
+  if (key === 'waistCenterY') return _range(lo, hi);
   const H = hh - stroke - Math.abs(v.waistCenterY) * hh - HORN_MIN_OF_HALF_HEIGHT * hh;
   if (key === 'waistReach') return _range(lo, hi, -Infinity, H / hw);
   const d = hw * v.waistReach;

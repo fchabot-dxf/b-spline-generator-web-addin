@@ -79,6 +79,49 @@ describe.each(['template_1', 'template_2'])('%s: [Generate] shapes', (id) => {
   });
 });
 
+/**
+ * F23 HANDLE-REACH (Fred, iPad, Frame tab, Hourglass: "shouldn't the handle
+ * and geometry allow the handle to go further and make the arc wider" ->
+ * "hip and shoulder"): T1's Shoulder/Hip (cornerRadiusTop/cornerRadiusBottom)
+ * no longer clamp manual drags to a declared UI band ([0.04, 0.95], pre-F23)
+ * -- only to the real outline geometry (editor-shape-lattice-generator.js's
+ * own HANDLE-REACH tests prove the new bound is the true tangency/validity
+ * limit). [Generate] must still stay inside its own declared band regardless
+ * -- the SAME band-only-governs-Generate split as `waistReach`/`neckWidth`.
+ */
+describe('F23 HANDLE-REACH: Shoulder/Hip reach the true limit; Generate stays banded', () => {
+  const tpl = tplOf('template_1'), region = regionOf('template_1');
+
+  it.each(['cornerRadiusTop', 'cornerRadiusBottom'])('a manual drag on %s can reach past the old [0.04, 0.95] band', (key) => {
+    const rec = normalizeFrameRecord({ templateId: 'template_1' });
+    const prof = frameCutProfile(FRAME_DEFS, rec, BOARD);
+    const h = frameHandles(tpl, prof, 0.75).find((q) => q.key === key);
+    const r = frameParamRanges(tpl, prof.region, prof.params, 0.75)[key];
+    expect(r.max).toBeGreaterThan(0.95); // the true ceiling now exceeds the old declared UI band
+    // drag far past the old 0.95 ceiling (cornerRadiusTop/Bottom increase as
+    // world x DECREASES, per this handle's own valueFromWorld): the handle
+    // clamps to the NEW (wider) max, not 0.95.
+    const far = { x: h.anchor.x - prof.region.w * 4, y: h.anchor.y };
+    const v = h.valueFromWorld(far);
+    expect(v).toBeCloseTo(r.max, 9);
+    expect(v).toBeGreaterThan(0.95);
+  });
+
+  it('200 [Generate]s keep cornerRadiusTop/Bottom inside the declared 0.1-0.9 band, not the widened outline limit', () => {
+    for (const key of ['cornerRadiusTop', 'cornerRadiusBottom']) {
+      for (let seed = 1; seed <= 200; seed++) {
+        const seeds = generateFrameSeeds(tpl, region, seed);
+        const rec = normalizeFrameRecord({ templateId: 'template_1', seeds });
+        const prof = frameCutProfile(FRAME_DEFS, rec, BOARD);
+        const r = frameParamRanges(tpl, prof.region, prof.params, 0.75)[key];
+        const v = seeds[key];
+        expect(v).toBeGreaterThanOrEqual(r.min + (r.max - r.min) * FRAME_GEN_BAND[0] - 1e-9);
+        expect(v).toBeLessThanOrEqual(r.min + (r.max - r.min) * FRAME_GEN_BAND[1] + 1e-9);
+      }
+    }
+  });
+});
+
 // ---------------------------------------------------------------- the Frame tab flow
 function mockCanvasEditor() {
   const node = () => {

@@ -18,9 +18,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   generateSilhouette, PRESETS, ALL_STYLES, WIRED_STYLES, primitivesToPathD,
+  feasibleParamRanges, paramsFromShapeModel, hourglassConstruction, HORN_MIN_OF_HALF_HEIGHT, DERIVED_PARAM_DEFAULTS,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { _arcWorldPointTangent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-expand-path.js';
 import { shapeToPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
+import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 
 const REGIONS = [
   { x: 0, y: 0, w: 200, h: 300 }, // portrait
@@ -372,6 +374,97 @@ describe.each(PRESET_NAMES)('generateSilhouette(%s) — the new `params` return 
       // rNeckHorn = keypoints[1] = (cx+neckHalfW, ...) -> neckWidth = (kp1.x-cx)/hw.
       const nwFromGeometry = (out.keypoints[1].x - cx) / hw;
       expect(out.params.neckWidth).toBeCloseTo(nwFromGeometry, 6);
+    }
+  });
+});
+
+/**
+ * F23/H11 HANDLE-REACH (Fred, iPad, Frame tab, Hourglass: "shouldn't the
+ * handle and geometry allow the handle to go further and make the arc
+ * wider" -> "hip and shoulder"): cornerRadiusTop/cornerRadiusBottom used to
+ * be clamped to a declared UI-slider band, [0.04, 0.95] (BASE_RANGES), a
+ * "panel slider limit" carried over verbatim from the pre-F12 shared
+ * `cornerRadius` (this file's own header), NOT a re-derived geometric bound
+ * -- unlike `waistRadius`, the other F12 corner-ish param, which already
+ * used `_optionalRange`'s `_range(0, Infinity, geoLo, geoHi)`. MEASURED
+ * (numbers below, T1's own board sizes from frame-defs, bbo 0.25): the true
+ * tangent/simple limit is far wider than 0.95 on a wide board (7x9) and
+ * only slightly wider on a narrow one (12x6); the floor is looser too.
+ */
+describe('F23/H11 HANDLE-REACH: Shoulder/Hip (cornerRadiusTop/Bottom) reach the TRUE geometric limit', () => {
+  const T1 = FRAME_DEFS.templates.find((t) => t.id === 'template_1');
+  const bbo = T1.params.find((p) => p.name === 'boundingboxoffset').default; // 0.25
+  const regionOf = (W, H) => ({ x: bbo, y: bbo, w: W - 2 * bbo, h: H - 2 * bbo });
+  const KEYS = ['cornerRadiusTop', 'cornerRadiusBottom'];
+
+  it.each([
+    // [W, H, key, expected min, expected max] -- MEASURED live against feasibleParamRanges,
+    // pinned as a regression: the old declared band was [0.04, 0.95] on BOTH.
+    [7, 9, 'cornerRadiusTop', 0.0010, 2.5655],
+    [7, 9, 'cornerRadiusBottom', 0.0010, 2.5587],
+    [12, 6, 'cornerRadiusTop', 0.0377, 0.5019],
+    [12, 6, 'cornerRadiusBottom', 0.0377, 0.4676],
+  ])('T1 %sx%s %s: F5 = [%s, %s], no longer the old [0.04, 0.95] UI band', (W, H, key, min, max) => {
+    const region = regionOf(W, H);
+    const resolved = paramsFromShapeModel('hourglass', T1.shapeModel, region);
+    const r = feasibleParamRanges('hourglass', region, resolved)[key];
+    expect(r.min).toBeCloseTo(min, 3);
+    expect(r.max).toBeCloseTo(max, 3);
+    // the old artifact band no longer binds: BOTH ends moved past it (widened) on 7x9;
+    // on the narrower 12x6 the ceiling was already inside 0.95, but the floor still moved.
+    if (W === 7) expect(r.max).toBeGreaterThan(0.95 * 2.5); // >2.5x the old ceiling
+    expect(r.min).toBeLessThan(0.04); // the old floor was never geometric (see below)
+  });
+
+  it.each([[7, 9], [12, 6]])(
+    'T1 %sx%s: just past the new max, the horn (the straight run above/below the arc) would be shorter than its declared minimum',
+    (W, H) => {
+      const region = regionOf(W, H);
+      const resolved = paramsFromShapeModel('hourglass', T1.shapeModel, region);
+      const hh = region.h / 2;
+      const hornFloor = HORN_MIN_OF_HALF_HEIGHT * hh;
+      for (const key of KEYS) {
+        const { max } = feasibleParamRanges('hourglass', region, resolved)[key];
+        const hornLength = (v) => {
+          const c = hourglassConstruction(region, { ...resolved, [key]: v });
+          return key === 'cornerRadiusTop' ? c.shoulderY + hh : hh - c.hipY;
+        };
+        // PROVEN, not argued: at the declared max the horn sits exactly on its floor;
+        // a small step past it is measurably shorter than that floor (an invalid frame:
+        // the horn would need to be negative-length past this, per this file's own
+        // comment on _hourglassRange's corner branch).
+        expect(hornLength(max)).toBeCloseTo(hornFloor, 6);
+        expect(hornLength(max * 1.01)).toBeLessThan(hornFloor - 1e-6);
+      }
+    },
+  );
+
+  // The min floor is whichever of THREE terms binds (see _hourglassRange's corner
+  // branch: `Math.max(stroke+eps, tangency, keyhole)`) -- which one it is depends
+  // on the board: at 7x9 the geometric terms are slack (a trivial "radius stays
+  // positive" floor binds instead); at 12x6 the waist-tangency term binds. Each
+  // proven in its OWN currency, not forced into one shape.
+  it('T1 7x9: the min floor is the trivial positivity floor (the geometric terms are slack here) -- proven by staying below it needing r<=0', () => {
+    const region = regionOf(7, 9);
+    const resolved = paramsFromShapeModel('hourglass', T1.shapeModel, region);
+    for (const key of KEYS) {
+      const { min } = feasibleParamRanges('hourglass', region, resolved)[key];
+      expect(min).toBeGreaterThan(0);
+      expect(min).toBeLessThan(0.002); // ~EPS_FRAC*hw/hw -- a hair above zero, not a geometric bound
+    }
+  });
+
+  it('T1 12x6: just past the new min, the waist tangency loses its real solution (dy becomes NaN)', () => {
+    const region = regionOf(12, 6);
+    const resolved = paramsFromShapeModel('hourglass', T1.shapeModel, region);
+    const hw = region.w / 2;
+    const d = hw * resolved.waistReach;
+    const rw = hw * (resolved.waistRadius ?? DERIVED_PARAM_DEFAULTS.hourglass.waistRadius(resolved));
+    const dy = (r) => { const S = hw * r + rw; return Math.sqrt(d * (2 * S - d)); }; // NaN if 2S < d
+    for (const key of KEYS) {
+      const { min } = feasibleParamRanges('hourglass', region, resolved)[key];
+      expect(Number.isNaN(dy(min))).toBe(false); // real at the declared floor
+      expect(Number.isNaN(dy(min * 0.9))).toBe(true); // a modest step below: no real tangent junction exists
     }
   });
 });
