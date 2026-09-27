@@ -2,10 +2,19 @@
  * H17 item 2 (Fred: "the seed offset isnt what i wanted" -> "pan the whole
  * map"): seedOffsetX/Y must slide the ENTIRE drawing -- coarse shapes AND
  * fine texture together -- like moving a picture under the board window.
- * Moved to the same (u,v) sampler entry as Map Zoom (H17 item 1):
- *   zu = 0.5 + (u-0.5)/mapZoom + seedOffsetX   (same for v)
- * and the old coarse-only "cx += seedOffsetX*cFreq*aspect" lines are
- * REMOVED so the offset isn't applied twice.
+ * Moved to the same (u,v) sampler entry as Map Zoom (H17 item 1), and
+ * REMOVED the old coarse-only "cx += seedOffsetX*cFreq*aspect" lines so
+ * the offset isn't applied twice.
+ *
+ * H17 item 3 (spec of item 2, missed): item 2's first formula --
+ *   zu = 0.5 + (u-0.5)/mapZoom + seedOffsetX
+ * -- added the offset AFTER dividing by mapZoom, so the offset kept its
+ * zoom=1 magnitude while the visible window shrank around it (at zoom 2,
+ * offset 0.5 was already panning a full zoomed screen). Fixed to add the
+ * offset BEFORE the division:
+ *   zu = 0.5 + (u - 0.5 + seedOffsetX) / mapZoom   (same for v)
+ * so "1 unit of offset" is always exactly one board-width at the CURRENT
+ * zoom, matching the "(screens)" label.
  */
 import { describe, it, expect } from 'vitest';
 import { generateHeightmap } from '../bspline-frame-builder/b-spline-gen/html/core/terrain.js';
@@ -61,17 +70,30 @@ describe('H17 item 2: Seed Offset pans the WHOLE map (fine texture + coarse shap
     expect(Array.from(at05)).not.toEqual(Array.from(at0));
   });
 
-  it('interacts correctly with Map Zoom: at mapZoom=2, offset dx pans by HALF the board-width it would at zoom 1 (units are "screens" at the zoomed size)', () => {
+  it('H17 item 3: at zoom 2, offset 1 pans by exactly ONE (zoomed) screen -- offset 1 at u equals offset 0 at u+1', () => {
+    // The checklist's exact scenario. nx=5 -> grid u values 0, 0.25, 0.5,
+    // 0.75, 1.0; only u=0 has a valid u+1 (=1.0) on this grid.
+    // zu(zoom=2, offset=1, u=0)   = 0.5 + (0 - 0.5 + 1)/2   = 0.75
+    // zu(zoom=2, offset=0, u=1.0) = 0.5 + (1.0 - 0.5 + 0)/2 = 0.75
+    const nx = 5, nz = 5;
+    const row = 2 * nx; // v = 0.5, held equal in both cases (offsetY=0 throughout)
+    const withOffset = generateHeightmap({ ...BASE, nx, nz, mapZoom: 2, seedOffsetX: 1 }).heights[row + 0]; // u=0
+    const shiftedInstead = generateHeightmap({ ...BASE, nx, nz, mapZoom: 2, seedOffsetX: 0 }).heights[row + 4]; // u=1.0
+    expect(withOffset).toBe(shiftedInstead);
+  });
+
+  it('offset units scale with zoom: the SAME raw offset value pans a SMALLER absolute distance at a higher zoom', () => {
+    // At zoom=1, offset=0.25 pans by exactly 1 grid step (0.25, this
+    // grid's own u spacing). At zoom=2, the SAME offset=0.25 must pan by
+    // only HALF a grid step -- i.e. it must NOT match the same +1-step
+    // reference zoom=1 does, since "1 unit of offset" is now a smaller
+    // absolute distance (half a board-width instead of a whole one).
     const nx = 5, nz = 5;
     const row = 2 * nx;
-    // At zoom=2: zu = 0.5 + (u-0.5)/2 + offsetX. offsetX=0.25 at u=0.5 -> zu=0.75.
-    // At zoom=1, offsetX=0 at u=1.0 -> zu = 0.5+(1.0-0.5)/1+0 = 1.0 (not 0.75) --
-    // so the SAME raw offset value reaches a different zu depending on zoom,
-    // confirming the offset is expressed in the CURRENT zoomed frame, not
-    // an absolute one. Verify by comparing to the zoom=2 own zu=0.75
-    // reference point instead (u=1.0 at zoom=2: zu=0.5+0.25+0=0.75).
-    const zoomedOffset = generateHeightmap({ ...BASE, nx, nz, mapZoom: 2, seedOffsetX: 0.25 }).heights[row + 2]; // u=0.5
-    const zoomedReference = generateHeightmap({ ...BASE, nx, nz, mapZoom: 2, seedOffsetX: 0 }).heights[row + 4]; // u=1.0
-    expect(zoomedOffset).toBe(zoomedReference);
+    const zoom1Offset = generateHeightmap({ ...BASE, nx, nz, mapZoom: 1, seedOffsetX: 0.25 }).heights[row + 2]; // u=0.5
+    const zoom1Reference = generateHeightmap({ ...BASE, nx, nz, mapZoom: 1, seedOffsetX: 0 }).heights[row + 3]; // u=0.75 (+1 step)
+    const zoom2Offset = generateHeightmap({ ...BASE, nx, nz, mapZoom: 2, seedOffsetX: 0.25 }).heights[row + 2]; // u=0.5
+    expect(zoom1Offset).toBe(zoom1Reference);
+    expect(zoom2Offset).not.toBe(zoom1Reference);
   });
 });

@@ -71,10 +71,14 @@ export function generateHeightmap(params, stampParams = null) {
         // of sliding the whole drawing. Added here instead, they're baked
         // into su/sv before either the fine noise call or the coarse cx/cz
         // math sees them, so fine texture and coarse shapes pan together.
-        // Units stay "screens" -- board-widths at the CURRENT zoomed size,
-        // since the offset is added after dividing by mapZoom.
-        const zu = 0.5 + (u - 0.5) / mapZoom + seedOffsetX;
-        const zv = 0.5 + (v - 0.5) / mapZoom + seedOffsetY;
+        // H17 item 3 (spec of item 2, missed): the offset must be added
+        // BEFORE dividing by mapZoom, not after -- otherwise it keeps its
+        // zoom=1 magnitude while the visible window shrinks around it, so
+        // at zoom 2 an offset of 0.5 was already panning a full (zoomed)
+        // screen instead of half one. Added inside the division, "1 unit of
+        // offset" is always exactly one board-width at the CURRENT zoom.
+        const zu = 0.5 + (u - 0.5 + seedOffsetX) / mapZoom;
+        const zv = 0.5 + (v - 0.5 + seedOffsetY) / mapZoom;
 
         // Mirror axis can be shifted by symOffsetX/Y. Default 0 = mirror
         // through center (legacy behavior). The fold output is scaled by 2

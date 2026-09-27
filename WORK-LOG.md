@@ -12254,3 +12254,34 @@ shots — the whole drawing sliding, not the old "shape moves over static textur
 `shots\seatA\` (`H17-item2_offsetX0/0.25/0.5_390`).
 
 `npx vitest run` -> **2093 passed** (up from 2088), zero regressions.
+
+## H17 item 3 — Offset units = screens at the CURRENT zoom (spec of item 2, missed)
+
+A one-line formula fix, caught by the advisor re-reading item 2's own spec against what actually shipped:
+item 2's formula (`zu = 0.5 + (u-0.5)/mapZoom + seedOffsetX`) added `seedOffsetX` AFTER dividing by
+`mapZoom` — so the offset kept its zoom=1 magnitude while the visible window shrank around it. At zoom 2,
+an offset of 0.5 was already panning a FULL (zoomed) screen instead of half of one, silently breaking the
+"(screens)" label's promise the moment zoom left 1.
+
+**The fix (`core/terrain.js`).** Moved the offset INSIDE the division: `zu = 0.5 + (u - 0.5 + seedOffsetX)
+/ mapZoom` (same for `v`). Now "1 unit of offset" is always exactly one board-width at whatever zoom is
+current. Replaced the item-2 comment that asserted the (actually wrong) unit claim with one explaining the
+bug and the fix. `core/state.js`'s own `seedOffsetX/Y` doc-comment needed no change — it already described
+the INTENDED "screens at the current zoomed size" behavior; item 3 is what makes the code finally match it.
+
+**Tests** (`tests/h17-seed-offset-pan.test.js`): replaced the one existing test that had encoded the OLD
+(buggy) relationship as "correct" — confirmed it actually FAILS against the new formula before fixing it
+(`0.9376... !== 0.9547...`), then rewrote it as two tests: (1) the checklist's exact scenario, zoom 2 /
+offset 1 at `u=0` equals zoom 2 / offset 0 at `u=1.0` (verified by hand: both reduce to `zu=0.75`); (2) the
+SAME raw offset value (0.25) pans a smaller absolute distance at zoom 2 than at zoom 1 — proving the units
+now genuinely scale with zoom, not just at the one value item 2's test happened to check.
+Mutation-tested: `git stash push -u -- core/terrain.js` (back to item 2's formula). Re-ran: both new/changed
+tests correctly FAILED (`0.4910... !== 0.9547...` and the `not.toBe` assertion tripped since both sides came
+out equal under the old formula) — confirming they exercise the exact bug item 3 fixes. Popped the stash,
+re-ran full — 11/11 green across both H17 sampler test files (item 1's own 5 tests unaffected, since none of
+them combine non-zero `mapZoom` with non-zero `seedOffsetX`).
+No new shots needed (checklist) — this doesn't change what any existing screenshot shows: item 1's zoom
+shots all used `seedOffsetX=0` (formula identical at offset 0), and item 2's offset shots all used
+`mapZoom=1` (formula identical at zoom 1, since dividing by 1 is a no-op either way).
+
+`npx vitest run` -> **2094 passed** (up from 2093), zero regressions.
