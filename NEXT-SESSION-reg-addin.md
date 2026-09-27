@@ -31,6 +31,16 @@ R7 is on main and will rebase onto your panel — keep the panel structure clean
 the panels already do that), no drive-by changes to the Shape Lattice handles/sliders code.
 
 ## Checklist
+- [ ] [R7-item-0] **R4-FIX FIRST, own commit, push at once** (home advisor, LIVE on real Fusion 87ea3f1 — advisor verified
+      both in code): (a) CRASH every Send: `logger=types.SimpleNamespace(log=_log)` but `_log(msg)` takes 1 arg while
+      param_ownership calls `logger.log(msg, level)` → stale_params never written, nothing ever runs. (b) WRONG KEY:
+      b-spline-gen.py:1456 reads `layer.get('manifest')`; the app sends `layer['sketchManifest']` (the builder path reads it
+      at :738) → every lattice param looks out-of-payload (only dependentParameters stands between it and deleteMe).
+      Fix at the declaration: ONE helper that yields a layer's manifest (used by BOTH :738 and the payload-names loop, so
+      they can't diverge), and a logger adapter matching `_log`'s real signature. Tests: drive the REAL wiring with a
+      1-arg logger; a payload fixture with the real `sketchManifest` key (use tools/repro/capture_send_payload.mjs from
+      the home advisor, on main shortly — or a fixture shaped from export-flow.js:472-484) proving every manifest param
+      is in payload_names and nothing in-payload is ever a candidate.
 - [ ] [R7-item-1] Carry-over 1 (default mode 'spacing') + carry-over 2 (one grid) in the engine/defaults, with tests.
 - [ ] [R7-item-2] Box Lattice panel: new section order + fields per rulings; formula fields (R5) still attached to every
       numeric field incl. the new Spacing/Count (update the declared scope: `spacing` = rail-to-rail now).
