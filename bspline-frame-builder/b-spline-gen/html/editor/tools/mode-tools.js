@@ -19,4 +19,6 @@ export function registerModeTools(editor) {
   // engine as toolLattice above — its own tool since it edits per-segment
   // shape, not just rails/ties.
   bind('toolShapeLattice', () => editor.setMode('shapeLattice'));
+  // SE16 ✂: split a line (rail, tie or plain) where tapped; tap the cut again to join.
+  bind('toolCut', () => editor.setMode('cut'));
 }

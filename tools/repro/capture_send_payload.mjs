@@ -7,13 +7,16 @@
 //   --drag (F17, Send as drawn): after Generate, HAND-DRAG the middle rail down and one tie sideways with real mouse
 //          events through the lattice tool's own handlers, then write the pieces as drawn to <out>.drawn.json
 //          ({W, H, rails:[{x1,y1,x2,y2}], ties:[...], moved:{rail, tie}}), in canvas order = manifest id order.
+//   --cut  (F18, SE16): after Generate, CUT the rail with the most tie contacts at a tie contact AND mid-rail (the
+//          editor's own cutAt command), colour 2 of its 3 segments, write <out>.drawn.json with `cut`.
 // Serve with tools/serve_app.py so the CSS loads.
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const ARGS = process.argv.slice(2).filter((a) => a !== '--drag');
+const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut');
 const DRAG = process.argv.includes('--drag');
+const CUT = process.argv.includes('--cut');
 const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = ARGS;
 const PORT = Number(PORTARG || 9395);
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -111,6 +114,33 @@ if (DRAG) {
   drawn.moved = { ...picked, railOk, tieOk };
   writeFileSync(OUT.replace(/\.json$/, '') + '.drawn.json', JSON.stringify(drawn, null, 1));
   console.log('hand drag:', JSON.stringify(drawn.moved));
+}
+if (CUT) {
+  const cut = JSON.parse(await evalJS(`(async()=>{ const ct = await import('./editor/editor-cut-tool.js'); const o = await import('./editor/editor-piece-override.js');
+    const ed = window.svgEditor, L = ed._sketchLayer.node, sp = ed._grid.spacing || 0.25;
+    const els = ed._sketchLayer.children().toArray().filter((e) => e.type === 'line' && e.node.hasAttribute('data-lattice-gen'));
+    const P = (e) => ({ x1: +e.attr('x1'), y1: +e.attr('y1'), x2: +e.attr('x2'), y2: +e.attr('y2') });
+    const rails = els.filter((e) => e.node.getAttribute('data-lattice') === 'rail'), ties = els.filter((e) => e.node.getAttribute('data-lattice') === 'tie');
+    const horiz = (r) => Math.abs(P(r).y1 - P(r).y2) < 1e-9;
+    const contacts = (r) => { const q = P(r), row = q.y1, lo = Math.min(q.x1, q.x2), hi = Math.max(q.x1, q.x2);
+      return [...new Set(ties.flatMap((t) => [[P(t).x1, P(t).y1], [P(t).x2, P(t).y2]]).filter(([x, y]) => Math.abs(y - row) < 1e-9 && x > lo + 2 * sp && x < hi - 2 * sp).map(([x]) => x))].sort((a, b) => a - b); };
+    const R = rails.filter(horiz).sort((a, b) => contacts(b).length - contacts(a).length)[0];
+    const q = P(R), row = q.y1, lo = Math.min(q.x1, q.x2), hi = Math.max(q.x1, q.x2), cs = contacts(R);
+    const onTie = cs[0];
+    let mid = null; for (let u = Math.ceil((lo + 2 * sp) / sp) * sp; u <= hi - 2 * sp + 1e-9; u += sp) if (Math.abs(u - onTie) >= 3 * sp && !cs.some((c) => Math.abs(c - u) < 1e-9)) { mid = u; break; }
+    const [s1, s2] = ct.cutAt(ed, R, { x: onTie, y: row });
+    const right = s2, target = (mid > onTie) ? right : s1;
+    const [t1, t2] = ct.cutAt(ed, target, { x: mid, y: row });
+    const three = ed._sketchLayer.children().toArray().filter((e) => e.type === 'line' && e.node.getAttribute('data-lattice') === 'rail' && Math.abs(+e.attr('y1') - row) < 1e-9 && Math.abs(+e.attr('y2') - row) < 1e-9);
+    o.applyColorOverride(three[0], 'rails', '#e53935'); o.applyColorOverride(three[1], 'rails', '#1e88e5');
+    ed.pushState();
+    return JSON.stringify({ row, onTie, mid, segments: three.map(P), colours: three.map((e) => e.node.getAttribute('data-override-color')) }); })()`));
+  const drawn = JSON.parse(await evalJS(`(()=>{ const q=(k)=>[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-lattice="'+k+'"][data-lattice-gen]')]
+    .map(e=>({x1:+e.getAttribute('x1'),y1:+e.getAttribute('y1'),x2:+e.getAttribute('x2'),y2:+e.getAttribute('y2'),color:e.getAttribute('data-override-color')}));
+    const ed=window.svgEditor; return JSON.stringify({ W: ed._mW, H: ed._mH, rails: q('rail'), ties: q('tie') }); })()`));
+  drawn.cut = cut;
+  writeFileSync(OUT.replace(/\.json$/, '') + '.drawn.json', JSON.stringify(drawn, null, 1));
+  console.log('cut:', JSON.stringify(cut));
 }
 await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
   [...document.querySelectorAll('button')].find(b => /apply stencils/i.test(b.textContent))?.click(); await W(4000);

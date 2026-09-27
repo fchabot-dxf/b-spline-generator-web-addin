@@ -1,21 +1,24 @@
-# NEXT (fb-app) — F17: SE16 prerequisites P1 (Send as drawn) + P2 (hand edits survive the boundary refill)
+# NEXT (fb-app) — F18: Frame-tab pinch/pan + the SE16 ✂ CUT TOOL (code)
 
-**Ball: worker (seat C) · epoch 1 · F17.** F16 design ACCEPTED (CUT-TOOL-DESIGN.md). P1 + P2 are BUGS under Fred's standing
-rule ("make sure the drawing in the add-in matches the one we insert in Fusion"), so they go now; the cut tool itself
-waits for Fred's Q1-Q6 answers. Seat A is on H2 SEG-COLOR-PANEL (lattice-piece-panel.js + the segmentColors helper in
-editor.js): coordinate if you must touch editor.js. **FUSION WINDOW GRANTED on Ranchy for item 3** (F11 rules: tagged
-scratch docs only, closed by handle; Fred's docs untouched; claude-* cleaned; DEPLOY ONLY FROM A CLEAN WORKTREE AT
-origin/main or your fb-app build, never from the main checkout; redeploy clean main when done; short calls; stop on any
-dialog). PROGRESS automatic ("F17 item N: …"); shots -> shots\seatC\ as items land; push each item.
+**Ball: worker (seat C) · epoch 1 · F18.** F17 ACCEPTED + merged (1c8a7ea; live 14/14 as drawn). Spec: CUT-TOOL-DESIGN.md
++ ROADMAP "SE16 RULINGS" (Q1-Q6 + "segments never carry their own width": width is always the general stroke_width) +
+"FRAME-TAB-ZOOM". Seat A is on H3 NO-PIECE-WIDTH (removes per-piece width incl. the manifest's per-piece width dim,
+editor-piece-override.js, lattice-piece-panel.js), then H4 mobile pass (header/steppers), then H5 MULTI-SELECT
+(double-tap-and-hold in editor-interaction.js). You'll both touch editor-interaction.js: pull --rebase often, keep your
+cut-tool code in its own module(s), and wire in with small hooks. **FUSION WINDOW GRANTED on Ranchy for item 4** (F11 rules;
+deploy only from a clean worktree or your fb-app build; redeploy clean main after). PROGRESS automatic ("F18 item N: …");
+shots -> shots\seatC\ as items land; push each item.
 
 ## Checklist
-- [ ] [F17-item-1] P1: the lattice manifest reads rails/ties/nodes FROM the owned DOM pieces (endpoints, width, colour
-      override), keeping kind, contour hits and attachment coincidents; railGroup derived (§3 chain), not from
-      computePattern; the positional DOM-order width mapping is gone. RED-first test: a dragged rail's Slot sits where it
-      was drawn. Parity app==manifest across the existing sweep stays green.
-- [ ] [F17-item-2] P2: declare which commit kinds refill a boundary-linked pattern (boundary/contour changes) instead of the
-      one-shot _skipBoundaryRefillOnce; piece moves (and later cut/join) do not refill. RED-first test: hand-move in a
-      Shape Lattice, then an unrelated commit: the move survives.
-- [ ] [F17-item-3] LIVE on Ranchy: capture_send_payload.mjs with a hand-dragged rail + tie (extend the script with a drag
-      step), replay into a tagged scratch doc: the Fusion slots sit where drawn (measure), projections still link (0 FAIL).
-Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F17 — <shas>"`.
+- [ ] [F18-item-1] FRAME-TAB-ZOOM: the Frame tab's shield captures only a one-finger gesture that STARTS ON A HANDLE; pinch and
+      pan (and a one-finger drag off a handle) go to the normal canvas pan/zoom. Mobile CDP test: pinch + pan work, and a
+      handle drag still works.
+- [ ] [F18-item-2] The ✂ Cut tool per the design: main tool rail button; hover marker; tap = cut (snaps by H1's GRID/GEOM,
+      Alt = exact); tap the joint = Join (clears both segments' overrides); lattice joints SLIDE ALONG the rail; plain lines:
+      grabbing the shared point moves ONE end. Membership by derivation (no stored parent id). Regenerate clears cuts
+      (Undo restores). No per-segment width.
+- [ ] [F18-item-3] The ACCEPTANCE suite from the design: identical drag results before/after cutting (both orientations),
+      with every segment a different COLOUR; undo/redo; mobile.
+- [ ] [F18-item-4] LIVE on Ranchy: a cut rail (3 segments, 2 coloured) sent AS DRAWN: 3 slots, an explicit Coincident at
+      each cut (mid-rail AND on a tie crossing), stroke_width drives all 3, projections still link. Measure; screenshot.
+Pass back from the fb-app root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 1 — F18 — <shas>"`.

@@ -131,7 +131,9 @@ describe('editor [Frame | Artwork] tabs', () => {
     const move = () => window.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }));
     reads.length = 0;
     move();
-    expect(reads).toEqual(['_artworkLocked']); // locked (the Frame tab): returns at once
+    // locked (the Frame tab): an untracked (hover) move returns at once. F18: the pointer map is read first, so a
+    // TRACKED pointer can still pinch/pan the canvas in the Frame tab
+    expect(reads).toEqual(['_activePointers', '_artworkLocked']);
     target._artworkLocked = false;
     reads.length = 0;
     move();

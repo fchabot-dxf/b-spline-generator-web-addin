@@ -73,7 +73,8 @@ export function geometrySnapTargets(editor, excludeEl = null) {
   const lines = [];
 
   for (const el of editor._sketchLayer.children().toArray()) {
-    if (!el || el === excludeEl) continue;
+    // SE16: `excludeEl` may also be a Set (a cut rail's whole chain being dragged)
+    if (!el || el === excludeEl || (excludeEl instanceof Set && excludeEl.has(el))) continue;
     if (!isOnVisibleLayer(editor, el)) continue;
     let nodes;
     try {
