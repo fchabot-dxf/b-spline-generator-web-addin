@@ -90,23 +90,75 @@ for (const { w, h, name } of WIDTHS) {
   check(!stepperInfo.height.clipped && stepperInfo.height.inputW >= 20 && stepperInfo.height.btnWidths.every(b => b >= 20),
     `H10@${name}: Height stepper not clipped, input/buttons visible (${JSON.stringify(stepperInfo.height)})`);
 
-  // H10: "Width (X)" / "Height (Y)" / "Carve Depth (Z)" must stay one line
-  // each. These labels are `display:flex` (base.css's global rule), so a
-  // stacked layout is still ONE block-level box -- label.getClientRects()
-  // always reports exactly 1 rect whether the two children sit side by
-  // side OR stacked (caught live: an earlier version of this check used
-  // that and passed even against the unfixed, genuinely-stacked baseline,
-  // i.e. it was vacuous). Comparing the leading text node's own line
-  // position against the trailing span's instead: same row -> vertical
-  // centers match; stacked -> the span sits a line-height below.
+  // H12 (Fred: V-Bit Angle's stepper showed an empty grey box trailing
+  // after "+" -- a NESTED .cad-stepper, inside a wider .cad-nested-input,
+  // didn't fill its own parent, leaving the parent's own background
+  // visible past the last button). General sweep so a stray like this
+  // can't hide again: every VISIBLE stepper on the page, wherever it
+  // lives, must have (a) exactly its own buttons+input as children (no
+  // stray extra element inside the .cad-stepper itself), (b) its
+  // outermost VISIBLE box (the .cad-nested-input parent when nested,
+  // else the .cad-stepper itself) with NO gap before the first button or
+  // after the last one, and (c) both buttons the same width as each
+  // other.
+  const allSteppers = JSON.parse(await evalJS(`(()=>{
+    const steppers = [...document.querySelectorAll('.cad-stepper')].filter(s => s.getBoundingClientRect().width > 0);
+    return JSON.stringify(steppers.map((stepper) => {
+      const btns = [...stepper.querySelectorAll('button')];
+      const input = stepper.querySelector('input');
+      const container = stepper.parentElement.classList.contains('cad-nested-input') ? stepper.parentElement : stepper;
+      const cr = container.getBoundingClientRect();
+      const firstBtn = btns[0]?.getBoundingClientRect();
+      const lastBtn = btns[btns.length - 1]?.getBoundingClientRect();
+      const widths = btns.map(b => Math.round(b.getBoundingClientRect().width));
+      return {
+        id: input?.id || '(no id)',
+        structureOk: stepper.children.length === btns.length + 1,
+        // 3px tolerance: a nested stepper's outer box (.cad-nested-input)
+        // and the stepper's own box can each carry a 1px border, so up to
+        // ~2px of that is legitimate border chrome, not a stray gap --
+        // measured live (H12): a genuinely un-nested stepper is ~1px, the
+        // V-Bit bug before its fix was 108px, nothing legitimate sits
+        // in between.
+        noLeadingGap: firstBtn ? Math.abs(cr.left - firstBtn.left) < 3 : true,
+        noTrailingGap: lastBtn ? Math.abs(cr.right - lastBtn.right) < 3 : true,
+        consistentWidths: widths.length < 2 || widths.every(w => Math.abs(w - widths[0]) < 1),
+        widths,
+      };
+    }));
+  })()`));
+  console.log(`allSteppers@${name}: ${allSteppers.length} visible steppers checked`, JSON.stringify(allSteppers));
+  for (const s of allSteppers) {
+    check(s.structureOk, `H12@${name}: stepper "${s.id}" has only its own buttons+input as children`);
+    check(s.noLeadingGap, `H12@${name}: stepper "${s.id}" has no leading gap before its first button`);
+    check(s.noTrailingGap, `H12@${name}: stepper "${s.id}" has no trailing gap after its last button (widths=${JSON.stringify(s.widths)})`);
+    check(s.consistentWidths, `H12@${name}: stepper "${s.id}" has matching -/+ button widths (${JSON.stringify(s.widths)})`);
+  }
+
+  // H10/H12: every label + its trailing muted sub-label ("Width (X)",
+  // "Offset X (screens)", etc.) must stay on one line. These labels are
+  // `display:flex` (base.css's global rule), so a stacked layout is still
+  // ONE block-level box -- label.getClientRects() always reports exactly 1
+  // rect whether the two children sit side by side OR stacked (caught
+  // live, H10: an earlier version of this check used that and passed even
+  // against the unfixed, genuinely-stacked baseline, i.e. it was vacuous).
+  // Comparing the leading text node's own line position against the
+  // trailing span's instead: same row -> vertical centers match; stacked
+  // -> the span sits a line-height below.
+  // H12: generalized from 3 hardcoded ids (Width/Height/Carve Depth) to
+  // every `.cad-label-inline` on the page -- H12 gave every label with
+  // this exact shape that SAME declared class (base.css), so querying it
+  // directly covers all 14 (and any future one) without hardcoding ids.
+  // Filtered to visible ones only (width>0), same reasoning as the
+  // stepper check above -- a label inside a still-collapsed panel or a
+  // closed modal (the Skeleton-Editor fullscreen editor's own copies)
+  // measures 0x0 and isn't a real failure.
   const labelInfo = JSON.parse(await evalJS(`(()=>{
-    const lookups = {
-      widthIn: () => document.getElementById('widthIn').closest('.cad-stepper').previousElementSibling,
-      heightIn: () => document.getElementById('heightIn').closest('.cad-stepper').previousElementSibling,
-      carveZ: () => document.getElementById('carveZ').closest('.cad-slider-row').previousElementSibling,
-    };
-    return JSON.stringify(Object.entries(lookups).map(([id, get]) => {
-      const label = get();
+    const sidebar = document.querySelector('.cad-sidebar');
+    const sidebarRight = sidebar.getBoundingClientRect().right;
+    const labels = [...document.querySelectorAll('label.cad-label-inline')]
+      .filter(label => label.getBoundingClientRect().width > 0);
+    return JSON.stringify(labels.map((label) => {
       const span = label.querySelector('span');
       const textNode = [...label.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
       const range = document.createRange();
@@ -114,12 +166,14 @@ for (const { w, h, name } of WIDTHS) {
       const textRect = range.getClientRects()[0];
       const spanRect = span.getBoundingClientRect();
       const sameLine = Math.abs((textRect.top + textRect.height / 2) - (spanRect.top + spanRect.height / 2)) < 5;
-      return { id, sameLine, text: label.textContent.trim() };
+      const overflows = spanRect.right > sidebarRight + 0.5;
+      return { sameLine, overflows, text: label.textContent.trim() };
     }));
   })()`));
-  console.log(`labels@${name}:`, JSON.stringify(labelInfo));
+  console.log(`labels@${name}: ${labelInfo.length} visible labels checked`, JSON.stringify(labelInfo));
   for (const l of labelInfo) {
-    check(l.sameLine, `H10@${name}: label "${l.text}" stays on one line`);
+    check(l.sameLine, `H12@${name}: label "${l.text}" stays on one line`);
+    check(!l.overflows, `H12@${name}: label "${l.text}" doesn't overflow the sidebar`);
   }
 
   // H10: the main Seed number field is hidden (not deleted) -- Generate

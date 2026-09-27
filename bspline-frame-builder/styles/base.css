@@ -1160,6 +1160,22 @@ header {
     color: #333;
 }
 
+/* H12: the declared pattern for a label with a trailing muted sub-label/
+   hint span that must stay on the SAME line as the label text (e.g.
+   "Width (X)", "Offset X (screens)") -- `label`'s own global
+   `flex-direction: column` above (this file, the "label ABOVE its input"
+   default most labels want) stacks a label + its child span onto two
+   lines otherwise, since a plain `.cad-label` doesn't override it. Apply
+   `class="cad-label cad-label-inline"` rather than a bespoke inline
+   `style="flex-direction:row..."` per label -- H10 first fixed 3 labels
+   this way inline; H12 consolidated all of them (14 total) onto this one
+   class so a 15th never needs the inline copy-paste again. */
+.cad-label-inline {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
+}
+
 /* Shared Control Base
    NOTE: transition is restricted to non-layout properties (border-color,
    background-color, color). Using `transition: all` here previously

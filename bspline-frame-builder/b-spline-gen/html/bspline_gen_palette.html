@@ -144,6 +144,31 @@
       margin: 0;
     }
 
+    /* H12 (Fred, phone: V-Bit Angle's stepper showed an empty grey box
+       trailing after "+"): a few rows (#stampVBitAngle here; also #seed,
+       now hidden, and #thickenYellowOffset) nest a JS-injected
+       .cad-stepper INSIDE a .cad-nested-input instead of using
+       .cad-stepper directly. .cad-nested-input is `display:flex;
+       width:100%` (above) but .cad-stepper itself is `flex-shrink:0` with
+       no flex-grow, so it just sits at its own ~75px content width at the
+       LEFT of that 100%-wide flex box, leaving the remainder as visible
+       flex space -- showing .cad-nested-input's own #eee background,
+       exactly the "empty grey box" reported. flex:1 makes the nested
+       stepper fill its parent exactly, so there's no leftover box to see.
+       Still measured a ~4-5px gap on each side after that alone -- base.css's
+       OWN `.cad-nested-input { padding: 0 4px }` (a different rule than this
+       page's own .cad-nested-input above, which never redeclares padding,
+       so base.css's still applies) was leaving that much room BEFORE the
+       (now full-width) stepper could fill it. Every OTHER (non-nested)
+       .cad-stepper sits flush against its own box with no padding at all,
+       so :has() strips it specifically for the nested case, to match. */
+    .cad-nested-input > .cad-stepper {
+      flex: 1;
+    }
+    .cad-nested-input:has(> .cad-stepper) {
+      padding: 0;
+    }
+
     /* Generate New Seed — primary seed action. Higher specificity than
        .cad-btn:hover so the green doesn't get overridden on hover. */
     #btnRandomSeed:hover {
@@ -467,10 +492,10 @@
                    line"): base.css's global `label { flex-direction: column }`
                    (the "label ABOVE its input" default most labels in this
                    panel want) was stacking "Width" and "(X)" as two flex
-                   items instead of flowing them as one line of text -- same
-                   root cause SE7p already hit and fixed the same way
-                   elsewhere in this file (see its own comment, below). -->
-              <label class="cad-label" style="flex-direction:row; align-items:baseline; gap:4px;">Width <span style="color:#ff3b30;font-weight:600;">(X)</span></label>
+                   items instead of flowing them as one line of text.
+                   H12: now the declared `.cad-label-inline` class (base.css)
+                   instead of this bespoke inline style -- see there. -->
+              <label class="cad-label cad-label-inline">Width <span style="color:#ff3b30;font-weight:600;">(X)</span></label>
               <div class="cad-stepper">
                 <!-- min/max match the Ultimate Bee 96"×96" envelope.
                      step="any" so the browser doesn't reject "7.5";
@@ -479,14 +504,14 @@
               </div>
             </div>
             <div style="flex:1;">
-              <label class="cad-label" style="flex-direction:row; align-items:baseline; gap:4px;">Height <span style="color:#34c759;font-weight:600;">(Y)</span></label>
+              <label class="cad-label cad-label-inline">Height <span style="color:#34c759;font-weight:600;">(Y)</span></label>
               <div class="cad-stepper">
                 <input type="number" id="heightIn" value="9" step="any" min="0.1" max="96">
               </div>
             </div>
           </div>
 
-          <label class="cad-label" style="flex-direction:row; align-items:baseline; gap:4px;">Carve Depth <span style="color:#0a84ff;font-weight:600;">(Z)</span></label>
+          <label class="cad-label cad-label-inline">Carve Depth <span style="color:#0a84ff;font-weight:600;">(Z)</span></label>
           <div class="cad-slider-row">
             <input type="range" id="carveZSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.5">
             <div class="cad-stepper" style="width:75px;">
@@ -581,7 +606,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
+          <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="seedOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
             <div class="cad-stepper" style="width:75px;">
@@ -589,7 +614,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
+          <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="seedOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
             <div class="cad-stepper" style="width:75px;">
@@ -597,7 +622,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Rotation <span style="font-size:10px; opacity:0.6; font-weight:400;">(degrees)</span></label>
+          <label class="cad-label cad-label-inline">Rotation <span style="font-size:10px; opacity:0.6; font-weight:400;">(degrees)</span></label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="seedRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
             <div class="cad-stepper" style="width:75px;">
@@ -611,7 +636,7 @@
       <div class="panel panel-skeleton">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🦴 SKELETON</div>
         <div class="panel-body hidden">
-          <label class="cad-label">Peak Shape <span style="font-size:10px; opacity:0.6; font-weight:400;">(round ↔ spiky)</span></label>
+          <label class="cad-label cad-label-inline">Peak Shape <span style="font-size:10px; opacity:0.6; font-weight:400;">(round ↔ spiky)</span></label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="peakShapeSlider" class="cad-slider" min="0.3" max="5" step="0.05" value="2.2">
             <div class="cad-stepper" style="width:75px;">
@@ -619,7 +644,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Density <span style="font-size:10px; opacity:0.6; font-weight:400;">(sparse ↔ dense)</span></label>
+          <label class="cad-label cad-label-inline">Density <span style="font-size:10px; opacity:0.6; font-weight:400;">(sparse ↔ dense)</span></label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="densitySlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
             <div class="cad-stepper" style="width:75px;">
@@ -627,7 +652,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Clustering <span style="font-size:10px; opacity:0.6; font-weight:400;">(even ↔ clumped)</span></label>
+          <label class="cad-label cad-label-inline">Clustering <span style="font-size:10px; opacity:0.6; font-weight:400;">(even ↔ clumped)</span></label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="clusteringSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
             <div class="cad-stepper" style="width:75px;">
@@ -645,7 +670,7 @@
             </select>
           </div>
 
-          <label class="cad-label">Symmetry Offset X <span style="font-size:10px; opacity:0.6;">(panel-width fraction)</span></label>
+          <label class="cad-label cad-label-inline">Symmetry Offset X <span style="font-size:10px; opacity:0.6;">(panel-width fraction)</span></label>
           <div class="cad-slider-row" style="margin-bottom:8px;">
             <input type="range" id="symOffsetXSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
             <div class="cad-stepper" style="width:75px;">
@@ -653,7 +678,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Symmetry Offset Y <span style="font-size:10px; opacity:0.6;">(panel-height fraction)</span></label>
+          <label class="cad-label cad-label-inline">Symmetry Offset Y <span style="font-size:10px; opacity:0.6;">(panel-height fraction)</span></label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="symOffsetYSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
             <div class="cad-stepper" style="width:75px;">
@@ -2715,7 +2740,7 @@
           </div>
 
           <div>
-            <label class="cad-label">Offset X <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
+            <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
             <div class="cad-slider-row">
               <input type="range" id="skelOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
               <div class="cad-stepper" style="width:75px;">
@@ -2725,7 +2750,7 @@
           </div>
 
           <div>
-            <label class="cad-label">Offset Y <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
+            <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
             <div class="cad-slider-row">
               <input type="range" id="skelOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
               <div class="cad-stepper" style="width:75px;">
@@ -2735,7 +2760,7 @@
           </div>
 
           <div>
-            <label class="cad-label">Rotation <span style="font-size:10px; opacity:0.6;">(°)</span></label>
+            <label class="cad-label cad-label-inline">Rotation <span style="font-size:10px; opacity:0.6;">(°)</span></label>
             <div class="cad-slider-row">
               <input type="range" id="skelRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
               <div class="cad-stepper" style="width:75px;">

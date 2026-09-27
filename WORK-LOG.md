@@ -11627,3 +11627,78 @@ Depth's buttons now read 24px (was 32px) confirming the token took effect there 
 -> **1973 passed**, unchanged (pure CSS, no JS logic touched). Shots at 390 and 834 in `shots\seatA\`
 (`h11_item0_390.png`, `h11_item0_834.png`) as requested; 768/1024/1366 also captured during the
 `h10_multiwidth_shots.mjs` re-run for the same reason H10 kept all five.
+
+---
+
+Dispatch: epoch 3 — H12: sub-labels inline with their labels across the whole UI (one declared pattern;
+shorten wording where too long; one line at every width). NEXT-SESSION.md, Fred (iPad, Seed section):
+"go through the UI and see if sub-labels can fit onto their label lines, like width/height."
+
+**Item 1 — inventory.** Delegated an exhaustive search (every `cad-label` in the app, every `.html`/`.js`
+file under `b-spline-gen/html/` grepped for the pattern) rather than hand-searching a 3000+ line file.
+Found **11 unfixed instances**, all in `bspline_gen_palette.html`, all sharing the exact H10 root cause
+(base.css's global `label { flex-direction: column }` stacking a label's own text and its trailing muted
+hint `<span>` onto two lines): Seed panel's Offset X/Y ("(pan, in screens)") and Rotation ("(degrees)");
+Skeleton panel's Peak Shape/Density/Clustering/Symmetry Offset X/Symmetry Offset Y; the Skeleton-Editor
+fullscreen modal's own duplicate Offset X/Y/Rotation copies. Confirmed zero instances anywhere else (no
+`.js` file builds label markup as a string; the SVG editor's own Lattice/Shape-Lattice panels use a
+different markup convention entirely — plain spans, not `<label class="cad-label">` — confirmed via a
+direct grep of `#editorLatticePanelBody`'s own line range, zero `cad-label` hits, so they were never
+subject to this bug and needed no fix or check here). Also flagged 5 checkbox-labels with a related but
+different root cause (checkbox stacked above its own text, not a two-line hint) — left alone, out of this
+turn's scope (not what Fred reported), noted for whoever touches them next.
+
+**Item 2 — ONE declared pattern.** New `.cad-label-inline` class in `base.css` (`flex-direction: row;
+align-items: baseline; gap: 4px;`), applied via `class="cad-label cad-label-inline"`. Retrofitted H10's
+own 3 labels (Width/Height/Carve Depth) from their bespoke inline `style="flex-direction:row..."` onto
+this same class too, so all 14 (3 + 11) now share one declaration — a 15th label never needs the inline
+copy-paste again. Declared in `base.css` (not the page's own inline `<style>`) since it's a general-purpose
+utility for the exact bug `base.css`'s own global rule causes; costs nothing for the other Fusion palettes
+sharing that file even though only this app's markup uses it yet.
+
+**Wording shortening — measured, not assumed.** The inventory flagged "Symmetry Offset X (panel-width
+fraction)" / "...Y (panel-height fraction)" as the longest, most likely to need shortening at 390px.
+Applied the class first, then MEASURED live rather than pre-judging by character count: every one of the
+11 fits on one line with zero horizontal overflow at all 5 tested widths (390/768/834/1024/1366) — no
+renames needed. Character-count intuition would have triggered an unnecessary rename; the actual render
+didn't need one.
+
+**Item 3 — check, mutation-tested.** Extended `tools/repro/h10_multiwidth_shots.mjs`'s label check from 3
+hardcoded ids to a general sweep of every visible `label.cad-label-inline` on the page (so it now covers
+all 11 new ones for free, and any future one tagged with the class), plus a NEW overflow check (same-line
+alone doesn't rule out a long label clipping past the sidebar's edge). Mutation-tested by disabling just
+the CSS rule's properties (kept the HTML's class references intact, so the query still finds all 11
+elements) rather than reverting the whole file — reverting everything would have made the query return
+zero elements and the check would have passed vacuously, the same trap H10 already hit once with the
+`getClientRects().length` version of this check. 55 failures (11 labels x 5 widths) confirmed, all
+restored to green after undoing the mutation. `npx vitest run` -> **1973 passed**, unchanged. Shots:
+SEED section + Frame section (unaffected — its labels are plain, no hint span, never subject to this bug)
+before/after at 390 + 834, in `shots\seatA\`.
+
+**Mid-task amendment (Fred, phone, Vector Stamping/V-Bit): the V-Bit Angle stepper showed the input
+stretched wide, then "+", then an empty grey box trailing to the right.** Root cause, found by direct DOM
+inspection (not guessed): `#stampVBitAngle` is one of a few fields (also `#seed`, now hidden, and
+`#thickenYellowOffset`) where `main/ui-bindings.js`'s `attachNumberSteppers` injects a `.cad-stepper`
+*inside* a `.cad-nested-input` wrapper instead of using `.cad-stepper` directly. `.cad-nested-input` is
+`display:flex; width:100%` but the injected `.cad-stepper` is `flex-shrink:0` with no flex-grow, so it
+just sits at its own ~225px content width at the LEFT of the now-100%-wide (338px) box, leaving the
+remaining ~108px as visible flex space — showing `.cad-nested-input`'s own `#eee` background, exactly what
+Fred described. Two-part fix in `bspline_gen_palette.html`'s own `<style>` block: `.cad-nested-input >
+.cad-stepper { flex: 1; }` makes the nested stepper fill its parent; that alone still left a measured ~5px
+gap on each side from `base.css`'s OWN (different, earlier-loaded) `.cad-nested-input { padding: 0 4px }`
+rule, which the page's own `.cad-nested-input` redefinition never overrides (it redeclares
+display/width/border/etc. but not padding, so base.css's still applies) — `.cad-nested-input:has(>
+.cad-stepper) { padding: 0 }` strips it specifically for the nested case, matching how every OTHER
+(non-nested) stepper sits flush against its own box with no padding at all. Confirmed live: gap went from
+108px (before) to 1px (after, pure border width).
+
+**General stepper-structure check (the amendment's own ask, "so strays like this can't hide"), also
+mutation-tested.** Extended the same script: every VISIBLE `.cad-stepper` on the page (38 of them across
+all panels, not just the ones already spot-checked) must have (a) only its own buttons+input as children,
+(b) no gap before its first button or after its last one relative to its own outermost visible box (the
+`.cad-nested-input` parent when nested, else the stepper itself — 3px tolerance for legitimate 1px-border
+stacking, measured against a real un-nested stepper's own ~1px gap so the tolerance isn't arbitrary), and
+(c) both buttons the same width. Mutation-tested by reverting both files to the pre-H12 baseline: 10
+failures (2 checks x 5 widths, `stampVBitAngle` specifically) confirmed, restored to green after popping
+the stash. Shots: V-Bit Angle before (`h12_vbit_before.png`, showing the empty box) and after
+(`h12_vbit_after.png`, flush) in `shots\seatA\`.
