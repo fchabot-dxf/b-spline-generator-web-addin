@@ -243,13 +243,13 @@ describe('chest.js: T78 AMEND 8 -- three stacked canvas sections (shoulders, rib
   });
 });
 
-describe('chest.js: T78 AMEND 9 -- Rib Angle slider, -20..+20 degrees around each seed\'s own angle (Fred)', () => {
+describe('chest.js: T78 AMEND 9 -- Rib Angle slider, -30..+10 degrees around each seed\'s own angle (Fred)', () => {
   const halfWidth = ASPECT / 2;
   const degreesOf = (bend) => (Math.atan(bend / halfWidth) * 180) / Math.PI;
 
-  it('the slider is declared -20..+20 with 0 as the default', () => {
+  it('the slider is declared -30..+10 with 0 as the default', () => {
     const t = chest.tweaks.find((x) => x.key === 'ribAngle');
-    expect([t.min, t.default, t.max]).toEqual([-20, 0, 20]);
+    expect([t.min, t.default, t.max]).toEqual([-30, 0, 10]);
   });
 
   it('Rib Angle 0 is exactly today\'s look (identical to no tweak at all)', () => {
@@ -263,7 +263,7 @@ describe('chest.js: T78 AMEND 9 -- Rib Angle slider, -20..+20 degrees around eac
   it('every seed turns by exactly the slider amount, keeping its own rib count', () => {
     for (let seed = 1; seed <= 100; seed++) {
       const base = chest._layout(new PerlinNoise(seed), 0, ASPECT);
-      for (const deg of [-20, -8, 8, 20]) {
+      for (const deg of [-30, -12, 5, 10]) {
         const L = chest._layout(new PerlinNoise(seed), deg, ASPECT);
         expect(L.ribCount).toBe(base.ribCount);
         expect(degreesOf(L.ribBend + L.ribTurn) - degreesOf(base.ribBend)).toBeCloseTo(deg, 6);
@@ -271,8 +271,8 @@ describe('chest.js: T78 AMEND 9 -- Rib Angle slider, -20..+20 degrees around eac
     }
   });
 
-  it('at +/-20 the sections still never overlap: no rib in the shoulders, no abdomen above the bent ribcage edge', () => {
-    for (const deg of [-20, 20]) {
+  it('at -30 and +10 the sections still never overlap: no rib in the shoulders, no abdomen above the bent ribcage edge', () => {
+    for (const deg of [-30, 10]) {
       for (let seed = 1; seed <= 30; seed++) {
         const L = chest._layout(new PerlinNoise(seed), deg, ASPECT);
         const at = (su, dy, tweaks) => chest.fn(su, svAt(dy), ASPECT, { ...PARAMS, tweaks: { ribAngle: deg, ...tweaks } }, refs(seed));

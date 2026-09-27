@@ -66,8 +66,8 @@ export const tweaks = [
   { key: 'absStrength',      label: 'Abdomen',         default: 0.10, min: 0.00, max: 0.30, step: 0.01, desc: 'Sunken-abdomen depth + faint ab lines (was six-pack mound depth)' },
   { key: 'ribStrength',      label: 'Rib Prominence',  default: 0.14, min: 0.00, max: 0.30, step: 0.01, desc: 'Ribcage + costal margin height -- the MAIN control now (was side-rib striation amplitude)' },
   { key: 'skinDetail',       label: 'Skin Detail',     default: 0.06, min: 0.00, max: 0.20, step: 0.01, desc: 'Fine skin creases + pore/stretch texture' },
-  // Fred: -20..+20 degrees around each seed's own rib angle (30 was too much).
-  { key: 'ribAngle',         label: 'Rib Angle',       default: 0,    min: -20,  max: 20,   step: 1,    desc: 'Turns the ribs around this seed\'s own angle, in degrees (0 = the seed\'s own look; + sweeps down, - sweeps up)' },
+  // Fred: -30..+10 degrees around each seed's own rib angle.
+  { key: 'ribAngle',         label: 'Rib Angle',       default: 0,    min: -30,  max: 10,   step: 1,    desc: 'Turns the ribs around this seed\'s own angle, in degrees (0 = the seed\'s own look; + sweeps down, - sweeps up)' },
 ];
 
 function smoothstep01(a, b, x) {
