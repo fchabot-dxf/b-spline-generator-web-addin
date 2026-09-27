@@ -10459,3 +10459,32 @@ chest-grid-clavicle-styles.png).
 
 Verify: 2041/2041 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
 clean before the commit. Commit a0240a6. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 9 — Rib Angle slider, -20..+20 degrees around each seed's own angle
+
+Request came from the advisor relaying Fred (first "more angle range", then "not that much", then -30..+30), then Fred
+directly in this session: "30 is too much", "-15 to +15", "-20 to +20 sorry". Final: a `ribAngle` tweak, -20..+20,
+step 1, default 0. The per-seed spread is unchanged: the advisor's relay also asked for +/-30 per seed, but that would
+bring back the steep seeds Fred X'd on the grids (18-39 degrees), so it's left at the approved +/-0.07 bend (about
++/-10 degrees) pending Fred's word.
+
+How it works: the angle is measured sternum -> flank across the real half-width (slope = bend / (aspect / 2)), and the
+tweak turns the ribcage by exactly that many degrees around the seed's own angle. First attempt squeezed the extra
+turn into the fixed ribcage section; measured at +/-30 over 300 seeds it collapsed 95% of seeds to 3 ribs and 72% fell
+short of the angle (median 24 degrees, some 3 degrees). Replaced: the ribcage/abdomen boundary bends with the extra
+turn instead, so rib count, spacing and the exact angle all hold. A down-sweep drops the flank ends; an up-sweep keeps
+the flank ends and drops the centre (where ribs are faded), so the shoulders are never touched.
+
+Tests: 0 is identical to no tweak; every seed turns by exactly the slider amount with its rib count unchanged; at
++/-20 no rib draws in the shoulders and no abdomen part draws above the bent ribcage edge.
+
+Render-tool note: the merge of origin/main brought seat A's H15 (seed controls removed), so `#seed` no longer exists
+and my shot scripts' seed step threw silently (a thrown error returned by value reads as `{}`). Renders were
+pixel-identical across angles, which is how it was caught. Now the scripts call `applyParam('seed', n)` from
+`main/param-manager.js` and exit on any page exception.
+
+Before/after: `C:/Users/danse/.bspline-status/shots/seatB/rib-angle-before-after.png` (seeds 2, 42, 77 at -20/0/+20;
+each angle verified to differ from 0 by pixel diff).
+
+Verify: 2082/2082 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. Commit cc77b5e. NO FUSION this whole turn.
