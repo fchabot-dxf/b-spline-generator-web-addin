@@ -2434,6 +2434,14 @@ export function refreshBoundaryPatterns(editor) {
     .finally(() => { _boundaryRefillInProgress = false; });
 }
 
+/** T81 item 8 (Fred: "only use the colors set for rail node and tie"): the colour pool the randomize-segment-
+ *  colours button and the scissors' recolour-on-cut both draw from -- the pattern's CURRENT Rails/Ties/Nodes
+ *  colours (defaults filled in, same merge generatePattern applies), deduped, in that order. */
+export function latticeColorPool(pattern) {
+  const colors = { ...PATTERN_DEFAULTS.colors, ...((pattern && pattern.colors) || {}) };
+  return [...new Set([colors.rails, colors.ties, colors.nodes].filter(Boolean))];
+}
+
 /** PATTERN.colors' kind names ('rails'/'ties'/'nodes') to LATTICE_ATTR's
  *  own singular values ('rail'/'tie'/'node') — the one place the two
  *  naming conventions meet, so a caller of recolorOwnedKind (below) uses

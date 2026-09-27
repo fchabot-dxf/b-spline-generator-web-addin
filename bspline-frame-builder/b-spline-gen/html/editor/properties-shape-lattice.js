@@ -22,7 +22,7 @@ import { el, on } from './dom.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
-    _ensureKindLayers, resolvePatternLayer, freshPattern,
+    _ensureKindLayers, resolvePatternLayer, freshPattern, latticeColorPool,
 } from './editor-lattice-pattern.js';
 import {
     PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges, SHAPE_PARAM_KEYS,
@@ -31,7 +31,7 @@ import { setEditorStatusHint } from './editor-ui.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex, HANDLE_SEGMENT_INDEX } from './editor-shape-lattice-interaction.js';
 import { handleHoverVisual, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
 import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
-import { openColorMosaic, randomSegmentColorSet } from './editor-color.js';
+import { openColorMosaic, pickColorDiffering } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
 import { contourSilhouette, contourFromFrameOf, hasFrame, CONTOUR_FROM_FRAME_DEFAULTS } from './contour-from-frame.js';
 import { primitiveFromContourD, collapseContourCuts } from './editor-contour-cut.js';
@@ -385,8 +385,9 @@ export async function regenerateSilhouetteAndFill(editor) {
 
 /**
  * T81 item 3 (Fred: "in shape lattice contour, add a randomize segment
- * color button"): draws `randomSegmentColorSet` (editor-color.js's ONE
- * declared palette, no two cyclically-adjacent segments equal) and writes
+ * color button"): draws from the lattice's own Rails/Ties/Nodes colours
+ * (T81 item 8: `latticeColorPool` + editor-color.js's ONE shared
+ * `pickColorDiffering`), no two cyclically-adjacent segments equal, and writes
  * it wholesale into `p.contour.segmentColors` -- the SAME field a manual
  * per-segment pick already writes (editor.js's `_storeContourSegmentColor`,
  * via `setColor` on a selected segment) and `regenerateSilhouette`'s own
@@ -414,7 +415,14 @@ export async function randomizeSegmentColors(editor, rng = Math.random) {
     const n = primitives.length;
     if (!n) return;
     p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
-    p.contour.segmentColors = randomSegmentColorSet(n, rng);
+    // T81 item 8: the lattice's own Rails/Ties/Nodes colours, one draw per segment through the ONE shared
+    // helper -- each vs its predecessor, the last also vs the first (a contour is a closed loop).
+    const pool = latticeColorPool(p);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+        out.push(pickColorDiffering(pool, [i > 0 ? out[i - 1] : null, i === n - 1 && n > 1 ? out[0] : null], rng));
+    }
+    p.contour.segmentColors = out;
     await regenerateSilhouetteAndFill(editor);
 }
 

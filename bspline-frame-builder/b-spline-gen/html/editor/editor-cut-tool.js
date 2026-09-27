@@ -31,10 +31,10 @@ import { chainOf, JOINT_TOL, MIN_PIECE_CELLS } from './editor-lattice-chains.js'
 import { clearColorOverride, applyColorOverride, pieceKindOf, OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import {
   getLayerPattern, PATTERN_DEFAULTS, BOUNDARY_REF_ATTR, CONTOUR_SEG_INDEX_ATTR, _findBoundaryElements,
-  resolvePatternLayer, clearContourSegmentColor,
+  resolvePatternLayer, clearContourSegmentColor, latticeColorPool,
 } from './editor-lattice-pattern.js';
 import { primitiveToPathD } from './editor-shape-lattice-generator.js';
-import { pickColorDiffering } from './editor-color.js';
+import { pickColorDiffering, VECTOR_COLORS } from './editor-color.js';
 import {
   primitiveFromContourD, contourPrimitiveEnds, nearestOnContourPrimitive, splitContourPrimitive, mergeContourPrimitives,
   CONTOUR_JOINT_EPS,
@@ -210,18 +210,20 @@ function _touchingColorAt(editor, point, exclude) {
  *  (whatever ALREADY touches its own far end; null for a true free end, so only the first constraint applies).
  *  Called BEFORE `_commit`, so it lands in the SAME undo step as the cut itself (Q1-style "one undo step"),
  *  never a second one. `rng` is test-injectable (defaults to Math.random), the SAME `pickColorDiffering`
- *  (editor-color.js) primitive the advisor's T81 item 3 randomize-colours button also draws from (declared
- *  here since that item hadn't landed on main yet at the time of this dispatch -- see editor-color.js's own
- *  doc comment on `pickColorDiffering`). Contour: writes BOTH the live DOM stroke and
+ *  (editor-color.js) the T81 item 3 randomize-colours button also draws from, over the SAME pool (T81 item 8:
+ *  the lattice's own Rails/Ties/Nodes colours, `latticeColorPool`). Contour: writes BOTH the live DOM stroke and
  *  `pattern.contour.segmentColors[]` (the field regenerateSilhouette's own per-segment repaint reads on every
  *  call, same as a manual per-segment pick already does) -- never a second colour store. Rail/tie: the normal
  *  override mechanism (editor-piece-override.js). A plain (non-lattice) line: a direct stroke write, same as
  *  Direct-edit's own `setColor` uses for a shape with no "layer default" to preserve behind it. */
 function _recolorSecondAfterCut(editor, first, second, farNeighbourColor, rng) {
-  const hex = pickColorDiffering([first.attr('stroke'), farNeighbourColor], rng);
+  // T81 item 8: the pool is the lattice's own Rails/Ties/Nodes colours; a plain line on a layer with no
+  // lattice pattern has none of its own, so it keeps the app's general palette.
+  const layer = resolvePatternLayer(editor, second.attr('data-layer'));
+  const pool = layer && layer.pattern ? latticeColorPool(layer.pattern) : VECTOR_COLORS.flat();
+  const hex = pickColorDiffering(pool, [first.attr('stroke'), farNeighbourColor], rng);
   if (isContourPath(second)) {
     const i = _contourIndex(second);
-    const layer = resolvePatternLayer(editor, second.attr('data-layer'));
     const colors = layer && layer.pattern && layer.pattern.contour && layer.pattern.contour.segmentColors;
     if (Array.isArray(colors)) colors[i] = hex;
     second.stroke({ color: hex });

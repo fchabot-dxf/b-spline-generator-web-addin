@@ -20,10 +20,10 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
 import {
   PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR, hasContourSegmentColor, clearContourSegmentColor,
-  resolvePatternLayer,
+  resolvePatternLayer, latticeColorPool,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
-import { VECTOR_COLORS, randomSegmentColorSet } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js';
+import { pickColorDiffering } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js';
 import { setFrameProfileProvider } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
@@ -258,34 +258,46 @@ function seededRng(seed) {
     return s / 4294967296;
   };
 }
-const PALETTE = VECTOR_COLORS.flat();
+const POOL = ['#c62828', '#f9c80e', '#1a237e'];
 
-describe('T81 item 3: randomSegmentColorSet -- N palette colours, no two cyclically-adjacent equal', () => {
-  it('every colour comes from the app\'s ONE declared palette, never an arbitrary hex', () => {
-    const out = randomSegmentColorSet(12, seededRng(1));
-    expect(out.length).toBe(12);
-    for (const c of out) expect(PALETTE).toContain(c);
+// build a cyclic sequence the way randomizeSegmentColors does: each vs its predecessor, the last also vs the first
+function cyclicDraw(pool, n, rng) {
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(pickColorDiffering(pool, [i > 0 ? out[i - 1] : null, i === n - 1 && n > 1 ? out[0] : null], rng));
+  return out;
+}
+
+describe('T81 item 8: pickColorDiffering -- ONE helper, explicit pool, neighbour constraints', () => {
+  it('every draw comes from the given pool, never an arbitrary hex', () => {
+    for (let seed = 1; seed <= 20; seed++) expect(POOL).toContain(pickColorDiffering(POOL, [], seededRng(seed)));
   });
 
-  it('no two adjacent are equal, wrap-around included, for a range of segment counts', () => {
-    for (const n of [1, 2, 3, 5, 12]) {
+  it('differs from every non-null neighbour when the pool allows it', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      expect(pickColorDiffering(POOL, ['#c62828', '#f9c80e'], seededRng(seed))).toBe('#1a237e');
+      expect(pickColorDiffering(POOL, ['#c62828', null], seededRng(seed))).not.toBe('#c62828');
+    }
+  });
+
+  it('3 colours: no two cyclically-adjacent equal for every loop length, odd ones included', () => {
+    for (const n of [2, 3, 4, 5, 7, 12, 13]) {
       for (let seed = 1; seed <= 20; seed++) {
-        const out = randomSegmentColorSet(n, seededRng(seed));
+        const out = cyclicDraw(POOL, n, seededRng(seed));
         for (let i = 1; i < n; i++) expect(out[i], `n=${n} seed=${seed} i=${i}`).not.toBe(out[i - 1]);
-        if (n > 1) expect(out[n - 1], `n=${n} seed=${seed} wrap`).not.toBe(out[0]);
+        expect(out[n - 1], `n=${n} seed=${seed} wrap`).not.toBe(out[0]);
       }
     }
   });
 
-  it('the same rng sequence gives the same draw (deterministic); a different one gives a different draw', () => {
-    expect(randomSegmentColorSet(12, seededRng(7))).toEqual(randomSegmentColorSet(12, seededRng(7)));
-    expect(randomSegmentColorSet(12, seededRng(7))).not.toEqual(randomSegmentColorSet(12, seededRng(8)));
+  it('<3 distinct colours relaxes (first neighbour wins, then anything) instead of stalling; duplicates in the pool count once', () => {
+    const two = ['#111', '#222', '#111'];
+    expect(pickColorDiffering(two, ['#111', '#222'], seededRng(1))).toBe('#222');
+    expect(pickColorDiffering(['#111'], ['#111'], seededRng(1))).toBe('#111');
+    expect(pickColorDiffering([], ['#111'], seededRng(1))).toBeNull();
   });
 
-  it('a single segment has no neighbour to differ from -- any palette colour is valid', () => {
-    const out = randomSegmentColorSet(1, seededRng(1));
-    expect(out.length).toBe(1);
-    expect(PALETTE).toContain(out[0]);
+  it('the same rng sequence gives the same draw (deterministic)', () => {
+    expect(cyclicDraw(POOL, 12, seededRng(7))).toEqual(cyclicDraw(POOL, 12, seededRng(7)));
   });
 });
 
@@ -303,8 +315,11 @@ describe('T81 item 3: randomizeSegmentColors -- through the EXISTING per-segment
 
     expect(p.contour.segmentColors.length).toBe(segEls.length);
     const segElsAfter = sortedSegs(editor);
+    const pool = latticeColorPool(p);
+    expect(pool.length).toBe(3); // non-vacuous: the defaults' own three distinct kind colours
     for (let i = 0; i < segElsAfter.length; i++) {
-      expect(PALETTE).toContain(segElsAfter[i].attr('stroke'));
+      // T81 item 8: ONLY the lattice's own Rails/Ties/Nodes colours, not the 32-colour app palette
+      expect(pool).toContain(segElsAfter[i].attr('stroke'));
       // the SAME field regenerateSilhouette's own per-segment loop reads --
       // not a second, direct DOM write this function invented on its own.
       expect(segElsAfter[i].attr('stroke')).toBe(p.contour.segmentColors[i]);
@@ -317,14 +332,16 @@ describe('T81 item 3: randomizeSegmentColors -- through the EXISTING per-segment
     const editor = makeMockEditor();
     const p = currentPattern(editor);
     regenerateSilhouette(editor, p);
-    expect(sortedSegs(editor).length).toBeGreaterThanOrEqual(10); // non-vacuous: (1/32)^10 chance of a false failure
+    expect(sortedSegs(editor).length).toBeGreaterThanOrEqual(10); // non-vacuous
 
-    await randomizeSegmentColors(editor);
-    const first = [...p.contour.segmentColors];
-    await randomizeSegmentColors(editor);
-    const second = [...p.contour.segmentColors];
-
-    expect(second).not.toEqual(first);
+    // a 3-colour pool leaves ~2 choices per segment, so compare several clicks, not just two:
+    // all five identical has a ~(1/2)^40 chance
+    const draws = [];
+    for (let k = 0; k < 5; k++) {
+      await randomizeSegmentColors(editor);
+      draws.push(JSON.stringify(p.contour.segmentColors));
+    }
+    expect(new Set(draws).size).toBeGreaterThan(1);
   });
 
   it('one undo step reverts all (ONE pushState/_notifyChange commit, not one per segment)', async () => {
@@ -355,7 +372,7 @@ describe('T81 item 3: randomizeSegmentColors -- through the EXISTING per-segment
     await randomizeSegmentColors(editor, seededRng(5));
 
     expect(p.contour.segmentColors.length).toBe(segEls.length);
-    for (const el of sortedSegs(editor)) expect(PALETTE).toContain(el.attr('stroke'));
+    for (const el of sortedSegs(editor)) expect(latticeColorPool(p)).toContain(el.attr('stroke'));
   });
 
   it('works when the contour is Offset-from-frame, not just the Shape preset', async () => {
@@ -372,7 +389,24 @@ describe('T81 item 3: randomizeSegmentColors -- through the EXISTING per-segment
     const segElsAfter = sortedSegs(editor);
     expect(segElsAfter.length).toBe(segEls.length);
     expect(p.contour.segmentColors.length).toBe(segEls.length);
-    for (const el of segElsAfter) expect(PALETTE).toContain(el.attr('stroke'));
+    for (const el of segElsAfter) expect(latticeColorPool(p)).toContain(el.attr('stroke'));
+  });
+
+  it('T81 item 8: draws ONLY the pattern\'s CURRENT Rails/Ties/Nodes colours (Fred: "only use the colors set for rail node and tie")', async () => {
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    p.colors = { ...PATTERN_DEFAULTS.colors, rails: '#010101', ties: '#020202', nodes: '#030303' };
+    regenerateSilhouette(editor, p);
+    const segEls = sortedSegs(editor);
+    expect(segEls.length).toBeGreaterThan(2); // non-vacuous
+
+    await randomizeSegmentColors(editor, seededRng(11));
+
+    const allowed = ['#010101', '#020202', '#030303'];
+    for (const c of p.contour.segmentColors) expect(allowed).toContain(c);
+    const out = p.contour.segmentColors;
+    for (let i = 1; i < out.length; i++) expect(out[i]).not.toBe(out[i - 1]);
+    expect(out[out.length - 1]).not.toBe(out[0]);
   });
 
   it('a fresh, never-generated pattern is a no-op (nothing to colour yet)', async () => {

@@ -8,7 +8,7 @@ import { cutAt, join, jointAt, snapOnContourPiece, cutIntent } from '../bspline-
 import { primitiveFromContourD, contourPrimitiveEnds } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-contour-cut.js';
 import { generateSilhouette, primitiveToPathD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { BOUNDARY_REF_ATTR, CONTOUR_SEG_INDEX_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
-import { VECTOR_COLORS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js';
+import { latticeColorPool } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
 // F27 item 1 ADD: a simple seeded LCG wherever a cut-recolour test needs a REPRODUCIBLE draw, same convention
 // tests/shape-lattice-segment-color.test.js already uses for T81 item 3's own randomize button.
@@ -16,7 +16,6 @@ function seededRng(seed) {
   let s = seed >>> 0;
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
-const PALETTE = VECTOR_COLORS.flat();
 
 // ── the SAME minimal svg.js-shaped element + editor as tests/cut-tool.test.js (duplicated per that file's own
 //    "small pure test helper, no shared import" convention), extended with a path() factory for a contour piece.
@@ -136,7 +135,7 @@ describe('F27 U1: cutAt on a contour segment (line and arc)', () => {
     // F27 item 1 ADD (Fred: "the colour of one segment to change right away ... it also helps to know where I
     // cut"): `b` (the far side) is immediately recoloured to a real palette colour, differing from `a` -- no
     // longer a plain duplicate of the cut piece's own colour.
-    expect(PALETTE).toContain(b.attr('stroke'));
+    expect(latticeColorPool(ed._layers[0].pattern)).toContain(b.attr('stroke')); // T81 item 8: the lattice's own colours
     expect(b.attr('stroke')).not.toBe('#f00');
     const colors = ed._layers[0].pattern.contour.segmentColors;
     expect(colors[i]).toBe('#f00');

@@ -15,7 +15,6 @@ import { cutAt, join, jointAt, snapOnLine, cutIntent } from '../bspline-frame-bu
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { drawnFromPattern } from './helpers/drawn-lattice.js';
 import { moveRailAlongAxis, orient, fromLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
-import { VECTOR_COLORS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js';
 
 // F27 item 1 ADD: a simple seeded LCG wherever a cut-recolour test needs a REPRODUCIBLE draw, same convention
 // tests/shape-lattice-segment-color.test.js already uses for T81 item 3's own randomize button.
@@ -23,7 +22,9 @@ function seededRng(seed) {
   let s = seed >>> 0;
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
-const PALETTE = VECTOR_COLORS.flat();
+// T81 item 8: the recolour draws from the lattice's own Rails/Ties/Nodes colours (makeEditor's rails:'#333' +
+// the default ties/nodes), not the 32-colour app palette
+const RAIL_POOL = ['#333', '#f9c80e', '#1a237e'];
 
 // ── a minimal svg.js-shaped element + editor (worldPoint = identity: no matrix()) ──
 function makeEl(type, attrs, layer) {
@@ -118,11 +119,22 @@ describe('U2 cutAt / join', () => {
     // the cut) is immediately recoloured to a real palette colour that differs from it -- a real, visible cue,
     // not the old "clone every attribute including colour" behaviour.
     expect(a.store.stroke).toBe(originalStroke);
-    expect(PALETTE).toContain(b.store.stroke);
+    expect(RAIL_POOL).toContain(b.store.stroke);
     expect(b.store.stroke).not.toBe(a.store.stroke);
     expect(ed.layer.list.indexOf(b)).toBe(ed.layer.list.indexOf(a) + 1);
     expect(ed.commits).toBe(1); // still ONE undo step -- the recolour rides along with the cut, not a second commit
     expect(chainOf(ed, a).segments.map((s) => s.el)).toEqual([a, b]); // still ONE rail by derivation
+  });
+
+  it('T81 item 8: the recolour draws ONLY the pattern\'s own Rails/Ties/Nodes colours, never the app palette', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const ed = makeEditor({ spacing: 0.25, colors: { rails: '#010101', ties: '#020202', nodes: '#030303' } });
+      const r = ed.line(0, 1, 4, 1, RAIL);
+      r.stroke({ color: '#010101' });
+      const [a, b] = cutAt(ed, r, { x: 1.5, y: 1 }, seededRng(seed));
+      expect(['#020202', '#030303']).toContain(b.store.stroke);
+      expect(b.store.stroke).not.toBe(a.store.stroke);
+    }
   });
 
   it('refuses a lattice cut closer than one cell to an end; a plain line may be cut anywhere inside', () => {
