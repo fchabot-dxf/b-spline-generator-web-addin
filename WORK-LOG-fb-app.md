@@ -2560,3 +2560,70 @@ not `"-0.25"`), `ok:true` restored. Shots: `shots/seatC/1030_F26offsetframe_dist
   server (8095) and its headless Chrome profile stopped; `proc_health.py watch` clean.
 - **Capacity:** OK, one turn (the origin/main merge + full suite re-verify added real time but no risk --
   clean fast-forward, no conflicts).
+
+## F26 item 2 -- Frame panel: remove the standing help label under Send frame -- 2026-09-27
+
+**Ball: worker (seat C) · epoch 3 · F26.** Amendment mid-turn 1: original item 2 (Fred screenshot: "remove
+these labels and add a delete frame button") landed via `amend_item` while I was still on item 1. A SECOND
+amendment corrected it before I started: Fred: "we can use none then" -- **no Delete frame button** (Template
+= None already does the same thing); item 2 is ONLY removing the standing help label. Both absorbed here,
+mid-task, before touching any code for this item; noting per the amendment's own instruction that the delete
+button was dropped per Fred, not built and then cut.
+
+### The change
+`main/frame-panel.js`'s `frameSendState`: the `enabled: true` branch used to return a standing caption
+explaining what the button DOES ("Sends the frame to Fusion (replaces the previous frame). Send B-spline
+first.", plus a seeded-handle-count variant) -- shown UNCONDITIONALLY once the button was ready, not just when
+something needed explaining. Now `enabled: true` returns `hint: ''`; only the two genuinely DISABLED cases
+("Pick a frame template..." / "Open this app from the Fusion add-in...") still carry a hint, since those are
+actionable "why can't I press this" reasons.
+
+**The "Send B-spline first" ERROR case was never actually a local check** -- the function's own pre-existing
+comment already said so ("The 'needs a B-spline body' check is the add-in's... and comes back in
+`frame_result`"), and `onFrameResult` already calls `setFusionStatus(r.error || ..., 'warn')` on a real
+failure -- THE existing status line the dispatch names. So there was nothing new to build for the error path;
+removing the redundant standing reminder was the whole fix. **Live-verified, not assumed**: replayed a real
+Fusion `frame_result` failure (`{ok:false, error:'No B-spline body...'}`) through the actual
+`fusionJavaScriptHandler` and confirmed the message lands in the status banner exactly as before, while the
+button's own hint stays empty throughout (shot: `1035_F26item2_fusion-no-body`).
+
+**Swept the rest of the sidebar FRAME section** for other "sibling help/hint paragraphs" per the dispatch's
+own wording: `frameFitWarning` is ALREADY conditional (`display:none` unless the board is too small for the
+frame) -- a genuine error-state line, not a standing label, left untouched. Nothing else in that section is a
+static explanatory paragraph.
+
+### Tests
+`tests/frame-send.test.js`: the enabled-case assertion now expects `hint: ''` (was `stringContaining('Send
+B-spline first')`); the sidebar-DOM version now expects `$('frameSendHint').textContent` to be `''` (was
+`toContain('Send B-spline first')`). **Removed, not silently**: the test asserting the seeded-handle-count
+appeared IN THE HINT ("says the handle shape changes go with the frame") -- that specific surfacing is
+retired along with the standing caption it lived in. Swept for the underlying BEHAVIOR (seeds actually
+traveling in the send_frame payload) separately: still covered, untouched, by "sends the frame record as the
+send_frame payload" a few lines down in the same file -- confirmed before deleting the hint-text test, not
+assumed.
+Mutation-tested (`git stash` of just `frame-panel.js`): 2/5 fail in `frame-send.test.js` against the pre-fix
+source (the exact old caption text), restored clean. Full suite 119/2161 (net -1: one test removed, none
+weakened).
+
+### Shots (reused the EXISTING repro, not a new one)
+`tools/repro/frame_send_shots.mjs` already drove exactly this flow (web-disabled, Fusion-ready, a press, and
+BOTH a success and a real "no B-spline body" Fusion reply) -- ran it UNCHANGED against the fix rather than
+writing a new script. `fusionReady.hint` reads `""` (was the caption); `web`/`fusionNoFrame`'s own disabled-
+state hints are untouched; `replyNoBody.status` still carries the real Fusion error text, live-verified above.
+Shots: `shots/seatC/1035_F26item2_{web-disabled,fusion-ready,fusion-sending,fusion-built,fusion-no-body}.png`.
+
+### Gates
+- JS: full suite 119/2161.
+- Fusion: **not needed, and none of the shots above required a real Fusion connection either** -- the "Fusion
+  mode" pass fakes `window.adsk` (the same technique `frame_send_shots.mjs` already used before this turn),
+  since nothing Fusion-side (Python, the add-in) changed at all -- this is a pure sidebar-label removal.
+
+### Notes
+- **Delete Frame button: explicitly dropped per Fred's own correction**, not built. Template = None already
+  achieves the same outcome (frame set back to none, artwork untouched, undoable) -- no new button, no Python
+  delete path, no live Fusion check.
+- **Amendments polled:** both (the original item-2 dispatch, then its correction) absorbed before writing any
+  code for this item -- see the header above.
+- **Cleanup:** the static server (8096) and its headless Chrome profiles stopped; `proc_health.py watch` clean.
+- **Capacity:** OK, small item, finished in the same wake as item 1 per the amendment's own instruction
+  (landed as an amendment to poll, not a fresh dispatch to wait for).

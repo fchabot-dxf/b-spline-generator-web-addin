@@ -32,22 +32,19 @@ describe('[Send frame] state', () => {
     expect(frameSendState(FRAME_DEFS, normalizeFrameRecord({}), true)).toMatchObject({ enabled: false, hint: expect.stringContaining('Pick a frame') });
     const rec = normalizeFrameRecord({ templateId: 'template_1' });
     expect(frameSendState(FRAME_DEFS, rec, false)).toMatchObject({ enabled: false, hint: expect.stringContaining('Fusion add-in') });
-    expect(frameSendState(FRAME_DEFS, rec, true)).toMatchObject({ enabled: true, hint: expect.stringContaining('Send B-spline first') });
+    // F26 item 2 (Fred: "remove these labels"): enabled = no standing caption any more -- only the two
+    // DISABLED cases above (an actual reason it can't be pressed) still carry a hint.
+    expect(frameSendState(FRAME_DEFS, rec, true)).toEqual({ enabled: true, hint: '' });
   });
 
-  it('says the handle shape changes go with the frame (F11, option B)', () => {
-    const rec = normalizeFrameRecord({ templateId: 'template_1', seeds: { waistReach: 0.4 } });
-    expect(frameSendState(FRAME_DEFS, rec, true)).toMatchObject({ enabled: true, hint: expect.stringContaining('with your 1 handle shape change(s)') });
-  });
-
-  it('the sidebar button follows the record and the Fusion mode', () => {
+  it('the sidebar button follows the record and the Fusion mode; no standing hint once it is enabled', () => {
     setIsFusionMode(true);
     syncFramePanel();
     expect($('btnSendFrame').disabled).toBe(true); // no frame
     setFrameRecord({ templateId: 'template_2' });
     syncFramePanel();
     expect($('btnSendFrame').disabled).toBe(false);
-    expect($('frameSendHint').textContent).toContain('Send B-spline first');
+    expect($('frameSendHint').textContent).toBe('');
   });
 });
 
