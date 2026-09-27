@@ -1072,7 +1072,14 @@ gesture that starts on a handle (one finger); a two-finger gesture, or a one-fin
 canvas's normal pan/zoom (the same gestures as the Artwork tab). Test: pinch + pan work in the Frame tab and a handle
 drag still works; mobile CDP repro.
 
-## Queued (seat A, H5, after H4) — MULTI-SELECT: touch-and-hold adds to the selection; batch colour (Fred 2026-09-26)
+## Queued (seat A, H5, after H4) — MULTI-SELECT: DOUBLE-TAP-AND-HOLD adds to the selection; batch colour (Fred 2026-09-26)
+FRED FINAL (supersedes "touch & hold" below): the gesture is DOUBLE-TAP-AND-HOLD on a piece (tap, then within the
+double-tap window press again and hold still for the hold time) -> add / remove it; a plain tap selects only it; a
+press-and-move is still a drag; plain hold does nothing new. Advisor-checked: double-tap is free on pieces in Select
+(canvas dblclick only commits a pen path in draw mode, or opens TEXT editing: text elements are excluded from the
+gesture); the MOB4 double-tap lives on the splitter bar only. HINT (Fred: "add a hint when expressly selecting an
+element"): when a single element is selected by tap, the editor hint line shows e.g. "Double-tap and hold another
+piece to add it to the selection" (touch) / "Shift+click to add" (mouse), declared strings, shown only then.
 Fred: "do you allow multi select of geometry? to batch change color?" / "touch and hold can act as select for
 multiselect". Today: main Select has Shift+click + marquee on desktop and toolbar COLOR recolours the whole selection;
 the lattice "Selected piece" panel shows ONE piece; touch has no multi-select. Change: (1) touch & hold (declared hold
