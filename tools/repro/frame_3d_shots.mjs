@@ -35,11 +35,15 @@ const send = (method, params = {}) => new Promise((r) => { const i = ++id; pendi
 const evalJS = async (expr) => (await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true })).result?.result?.value;
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(`${PREFIX}_${name}.png`, Buffer.from(r.result.data, 'base64')); };
 // Read back what the preview actually built (module instances are shared with the page).
+// H8 (Fred: "frame a tiny bit different colour than board"): barColor vs
+// boardColor read back together so a shot's own numbers prove the two
+// differ, not just that a screenshot LOOKS different.
 const STATE = `(async()=>{ const { AppState } = await import('./main/app-state.js'); const p = AppState.preview;
   const g = p && p._mesh && p._mesh.geometry; const bars = (p?._frameMeshes || []).find(m => m.name === 'frame-bars');
   return JSON.stringify({ frameMeshes: (p?._frameMeshes || []).length,
     trimmed: g ? [g.index.count, (g.userData.fullIndex || []).length] : null,
-    barColor: bars ? '#' + bars.material.color.getHexString() : null }); })()`;
+    barColor: bars ? '#' + bars.material.color.getHexString() : null,
+    boardColor: p && p._mesh ? '#' + p._mesh.material.color.getHexString() : null }); })()`;
 
 await send('Runtime.enable'); await send('Page.enable');
 if (MODE === 'mobile') {
