@@ -16,9 +16,8 @@ if a field is needed to test in the browser, drive the pattern record directly.
    repeating symmetrically. Rails outside the boundary are dropped.
 2. `rails.spacing` (inches, rail-to-rail) is always the step; `rails.count` OPTIONAL (N from the anchor; center = N
    centred); empty = fill the boundary.
-3. **Off-grid is fine — NO rounding of spacing to grid steps** (the later "off-grid is fine / not the grid" ruling
-   supersedes the older "whole number of grid steps" sentence; advisor flagged it to Fred — if he overrules, it's a
-   one-line change, so keep the rounding as ONE declared option, default off).
+3. **CONFIRMED (Fred): off-grid is fine — NO rounding of spacing to grid steps. BUT TIES MUST SNAP TO RAILS:** every
+   generated tie end lies EXACTLY on its rail (same coordinate as the off-grid rail, not the nearest grid row).
 4. The lattice GRID STEP comes from the editor grid (one grid); the old lattice-side `spacing` stops being a setting.
 5. MIGRATION: a saved pattern's old `spacing` is read as its grid step and keeps its EXACT geometry (no silent re-layout).
    Declare it in the migrations path (tests/migrations.test.js pattern), not ad hoc in the generator.
