@@ -151,29 +151,30 @@ export async function _fusionLayerSvg(editor, l, excludePattern) {
  *  manifest when there's something real for it to represent. */
 /** F17 (P1): the lattice pieces AS DRAWN, `{rails, ties, nodes}` for
  *  `latticeFromDrawn` (editor-sketch-manifest.js): every owned piece of each
- *  kind with its own endpoints (a lattice drag writes the DOM only) and its
- *  own width override. UI5-item-2 writes that override into
- *  `data-override-width` (Fred: "rendered live"); a piece with none reads
- *  `null`. Replaces the old positional width arrays (T75 item 3), which
- *  lined DOM order up with computePattern order and broke on any hand move,
- *  delete or add. */
-// T76 (SE17, item 4): each kind's own overrides now come from THAT KIND's
-// own layer (`pattern.layers[kind]`), not necessarily `layerId` itself --
+ *  kind with its own endpoints (a lattice drag writes the DOM only).
+ *  Replaces the old positional width arrays (T75 item 3), which lined DOM
+ *  order up with computePattern order and broke on any hand move, delete
+ *  or add.
+ *
+ *  H3 (NO-PIECE-WIDTH): no more per-piece width override to read here — a
+ *  lattice piece has no width of its own any more, only the kind's shared
+ *  parameter (stroke_width/node_diameter), so a Send never carries a
+ *  per-piece hardcoded dimension. A stale `data-override-width` left on an
+ *  element from before this turn is simply never read by anything any
+ *  more, here included. */
+// T76 (SE17, item 4): each kind's own pieces now come from THAT KIND's own
+// layer (`pattern.layers[kind]`), not necessarily `layerId` itself --
 // rails/ties/nodes each got their own layer in item 2's own split. Falls
 // back to `layerId` for a pre-SE17 pattern with no `.layers` map yet
 // (every kind still resolves to that one shared layer, unchanged).
 function _drawnPiecesForLayer(editor, pattern, layerId) {
     const kindLayerId = (kind) => (pattern && pattern.layers && pattern.layers[kind]) || layerId;
     const num = (el, k) => parseFloat(el.node.getAttribute(k));
-    const override = (el) => {
-        const raw = el.node.getAttribute('data-override-width');
-        return raw == null || raw === '' ? null : parseFloat(raw);
-    };
     const lines = (latticeKind, patternKind) => _ownedOnLayer(editor, kindLayerId(patternKind), latticeKind).map((el) => ({
-        p1: { x: num(el, 'x1'), y: num(el, 'y1') }, p2: { x: num(el, 'x2'), y: num(el, 'y2') }, overrideWidth: override(el),
+        p1: { x: num(el, 'x1'), y: num(el, 'y1') }, p2: { x: num(el, 'x2'), y: num(el, 'y2') },
     }));
     const nodes = _ownedOnLayer(editor, kindLayerId('nodes'), 'node').map((el) => ({
-        c: { x: num(el, 'cx'), y: num(el, 'cy') }, overrideWidth: override(el),
+        c: { x: num(el, 'cx'), y: num(el, 'cy') },
     }));
     return { rails: lines('rail', 'rails'), ties: lines('tie', 'ties'), nodes };
 }

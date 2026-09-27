@@ -208,21 +208,13 @@ function pieceEndOrCurveTarget(pt, seg, id) {
  *  resolves it after creation, same "seed value, then re-drive by
  *  expression" pattern this module already uses for every other
  *  dimensioned quantity). */
-// T75 item 3 (OVR-FUSION, Fred: "overrides don't survive [regenerate] and
-// don't get a param, just hardcode the dimension seed"): a piece with its
-// own per-piece width override drives its OWN dimension from a plain
-// "<n> in" Fusion expression (a literal, valid expression Fusion resolves
-// with no named parameter at all) instead of the kind's shared parameter
-// name — sibling, non-overridden pieces of the same kind are untouched,
-// still referencing the shared parameter exactly as before.
-function _widthExprFor(paramName, overrideWidth) {
-  return overrideWidth != null ? `${overrideWidth} in` : paramName;
-}
-
+// H3 (NO-PIECE-WIDTH): a lattice piece has no per-piece width any more, so
+// every piece of a kind drives its Fusion dimension from that kind's own
+// shared parameter, unconditionally — no per-piece hardcoded expression
+// (T75/OVR-FUSION's own "<n> in" literal-expression path) any more.
 function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
-  for (const { id, p1, p2, railGroup, overrideWidth } of pieces) {
-    const width = overrideWidth != null ? overrideWidth : widthValue;
-    const entity = { id, type: 'Slot', p1: [p1.x, p1.y], p2: [p2.x, p2.y], width };
+  for (const { id, p1, p2, railGroup } of pieces) {
+    const entity = { id, type: 'Slot', p1: [p1.x, p1.y], p2: [p2.x, p2.y], width: widthValue };
     // T73 AMEND 3c (Fred: "rails can have colinearity"): a piece's OWN
     // railGroup (only rail/tie pieces carry one — the contour's own
     // single-piece call site below never passes it) is plain DATA here,
@@ -231,7 +223,7 @@ function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
     // rail" from the Collinear constraints below.
     if (railGroup !== undefined) entity.railGroup = railGroup;
     entities.push(entity);
-    dimensions.push({ type: 'SlotWidth', target: id, expression: _widthExprFor(paramName, overrideWidth) });
+    dimensions.push({ type: 'SlotWidth', target: id, expression: paramName });
   }
 }
 
@@ -244,8 +236,8 @@ function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
  * SAME `{segments, nodePoints}` shape `computePattern` returns, so every
  * relation below (tie-on-rail, node coincidences, H/V + Collinear, contour
  * coincidents) is derived from what is on screen.
- *   `pieces`    { rails: [{p1, p2, overrideWidth}], ties: [...], nodes: [{c, overrideWidth}] },
- *               model inches, in canvas order (export-flow reads them from the DOM);
+ *   `pieces`    { rails: [{p1, p2}], ties: [...], nodes: [{c}] }, model inches,
+ *               in canvas order (export-flow reads them from the DOM);
  *   `generated` computePattern's own output for the same pattern: an end still
  *               exactly where the generator put it keeps that end's contour
  *               attribution (T73 AMEND 3); a moved end has none (it left the contour).
@@ -269,11 +261,11 @@ export function latticeFromDrawn(pieces, spacing, generated = null) {
   const seg = (kind) => (p) => {
     const a = L(p.p1), b = L(p.p2);
     return { kind, a, b, aContourHit: hits.get(key(kind, a)), bContourHit: hits.get(key(kind, b)),
-      railGroup: lineOf(a, b), overrideWidth: p.overrideWidth ?? null };
+      railGroup: lineOf(a, b) };
   };
   return {
     segments: [...(pieces.rails || []).map(seg('rail')), ...(pieces.ties || []).map(seg('tie'))],
-    nodePoints: (pieces.nodes || []).map((n) => ({ ...L(n.c), overrideWidth: n.overrideWidth ?? null })),
+    nodePoints: (pieces.nodes || []).map((n) => ({ ...L(n.c) })),
   };
 }
 
@@ -404,10 +396,9 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     const id = toEntityId('rail', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
-    const overrideWidth = seg.overrideWidth ?? null;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.rails.push(id);
-    railPieces.push({ id, p1, p2, railGroup: seg.railGroup, overrideWidth });
+    railPieces.push({ id, p1, p2, railGroup: seg.railGroup });
     if (constrained) {
       emitAxisOncePerGroup(railAxisGroupsSeen, seg.railGroup, axisConstraintType(p1, p2), id);
       contourHitConstraint(id, 'S', seg.aContourHit);
@@ -437,10 +428,9 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     const id = toEntityId('tie', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
-    const overrideWidth = seg.overrideWidth ?? null;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.ties.push(id);
-    tiePieces.push({ id, p1, p2, railGroup: seg.railGroup, overrideWidth });
+    tiePieces.push({ id, p1, p2, railGroup: seg.railGroup });
     if (constrained) {
       emitAxisOncePerGroup(tieAxisGroupsSeen, seg.railGroup, axisConstraintType(p1, p2), id);
       // "tie-end-on-rail" (ROADMAP.md:765) — a plain equality check on the
@@ -510,13 +500,10 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     return out.filter((t) => !redundant.has(t));
   }
 
-  const nodeOverrideById = {};
   nodePoints.forEach((pt, idx) => {
     const id = toEntityId('node', idx);
     const p = fromLattice(pt, spacing);
-    const overrideWidth = pt.overrideWidth ?? null;
-    if (overrideWidth != null) nodeOverrideById[id] = overrideWidth;
-    entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: (overrideWidth != null ? overrideWidth : widths.nodeDiameter) / 2 });
+    entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: widths.nodeDiameter / 2 });
     groups.nodes.push(id);
     if (constrained) {
       for (const target of nodePieceCoincidences(pt)) {
@@ -569,9 +556,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     // needs one) — only the declared PARAMETER + its DRIVING dimension
     // are diameter-based now, matching what the panel's stepper edits.
     parameters.push({ name: 'node_diameter', value: widths.nodeDiameter, unit: 'in' });
-    groups.nodes.forEach((id) => dimensions.push({
-      type: 'Diameter', target: id, expression: _widthExprFor('node_diameter', nodeOverrideById[id] ?? null),
-    }));
+    groups.nodes.forEach((id) => dimensions.push({ type: 'Diameter', target: id, expression: 'node_diameter' }));
   }
 
   return { entities, constraints, parameters, dimensions, groups, pieceCount, constrained };

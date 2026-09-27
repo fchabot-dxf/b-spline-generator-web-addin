@@ -90,44 +90,44 @@ describe('F17 P1: a lattice is sent AS DRAWN', () => {
   });
 });
 
-describe('F17 P1: width overrides ride on their own piece (T75 OVR-FUSION, no positional matching)', () => {
+// H3 (NO-PIECE-WIDTH): rewritten, not deleted — a lattice piece has no
+// per-piece width any more (Fred: "changing stroke width is never per
+// segment, it's a general param"), so the OLD "overrides ride on their own
+// piece" mechanism this describe block tested is gone. `overrideWidth`
+// set here now stands for a STALE `data-override-width` an OLD saved
+// document (from before this turn) might still carry — `drawnFromPattern`/
+// `ownedStores` (tests/helpers/drawn-lattice.js) still simulate it
+// unchanged, exactly the same shape a real old document would have; the
+// NEW rule under test is that nothing reads it into a hardcoded dimension
+// any more, for any kind.
+describe('H3 (NO-PIECE-WIDTH): a stale data-override-width is ignored, not honoured', () => {
   const dim = (m, type, id) => m.dimensions.find((d) => d.type === type && d.target === id);
 
-  it('an overridden rail gets a hardcoded "<n> in" SlotWidth; siblings keep the shared parameter', () => {
+  it('a rail carrying a stale override still gets the shared parameter expression, not a hardcoded one', () => {
     const drawn = drawnFromPattern(BOX, REGION);
-    drawn.rails[1].overrideWidth = 0.375;
+    drawn.rails[1].overrideWidth = 0.375; // stale, pre-H3 marker
     const m = buildSketchManifest(BOX, REGION, { drawn });
     const plain = buildSketchManifest(BOX, REGION);
-    expect(dim(m, 'SlotWidth', 'rail1').expression).toBe('0.375 in');
-    expect(slot(m, 'rail1').width).toBe(0.375);
-    for (const id of ['rail0', 'rail2']) expect(dim(m, 'SlotWidth', id)).toEqual(dim(plain, 'SlotWidth', id));
-    expect(m.parameters.some((p) => p.name === 'rail_width')).toBe(true);
+    expect(dim(m, 'SlotWidth', 'rail1')).toEqual(dim(plain, 'SlotWidth', 'rail1')); // identical to an un-stale sibling
+    expect(dim(m, 'SlotWidth', 'rail1').expression).toBe('rail_width');
+    expect(slot(m, 'rail1').width).toBe(BOX.widths.rails); // the SHARED value, not 0.375
   });
 
-  it('a tie and a node override behave the same way', () => {
+  it('a tie and a node carrying a stale override behave the same way', () => {
     const drawn = drawnFromPattern(BOX, REGION);
     drawn.ties[1].overrideWidth = 0.2;
     drawn.nodes[1].overrideWidth = 0.3;
     const m = buildSketchManifest(BOX, REGION, { drawn });
-    expect(dim(m, 'SlotWidth', 'tie1').expression).toBe('0.2 in');
-    expect(dim(m, 'SlotWidth', 'tie0').expression).toBe('tie_width');
-    expect(dim(m, 'Diameter', 'node1').expression).toBe('0.3 in');
-    expect(slot(m, 'node1').radius).toBeCloseTo(0.15, 9);
+    expect(dim(m, 'SlotWidth', 'tie1').expression).toBe('tie_width');
+    expect(dim(m, 'Diameter', 'node1').expression).toBe('node_diameter');
+    expect(slot(m, 'node1').radius).toBeCloseTo(BOX.widths.nodeDiameter / 2, 9);
   });
 
-  it('the override follows ITS piece when an earlier piece is deleted (the old DOM-order matching could not)', () => {
+  it('export-flow does not read data-override-width off the element at all any more', () => {
     const drawn = drawnFromPattern(BOX, REGION);
-    drawn.rails[2].overrideWidth = 0.5;
-    const m = buildSketchManifest(BOX, REGION, { drawn: { ...drawn, rails: drawn.rails.slice(1) } });
-    expect(dim(m, 'SlotWidth', 'rail1').expression).toBe('0.5 in');   // was rail2, now the 2nd piece
-    expect(dim(m, 'SlotWidth', 'rail0').expression).toBe('rail_width');
-  });
-
-  it('export-flow reads the override from the element (data-override-width)', () => {
-    const drawn = drawnFromPattern(BOX, REGION);
-    drawn.rails[0].overrideWidth = 0.5;
+    drawn.rails[0].overrideWidth = 0.5; // ownedStores still WRITES the attribute, matching a real old document
     const m = _fusionLayerManifest(editorWith(BOX, drawn), { id: 'railsL' });
-    expect(dim(m, 'SlotWidth', 'rail0').expression).toBe('0.5 in');
+    expect(dim(m, 'SlotWidth', 'rail0').expression).toBe('rail_width');
     expect(dim(m, 'SlotWidth', 'rail1').expression).toBe('rail_width');
   });
 });

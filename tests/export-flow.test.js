@@ -327,20 +327,13 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
     expect(_fusionLayerManifest(editor, { id: '2' })).toBeNull();
   });
 
-  // H3 (NO-PIECE-WIDTH): intentionally LEFT UNCHANGED, not overlooked.
-  // `_overridesForLayer`/`manifestFromLattice`'s own per-piece width
-  // DIMENSION lives here and in editor-sketch-manifest.js — the two files
-  // seat C is mid-edit on for F17 (Send-as-drawn, not merged to main yet).
-  // The dispatch's own instruction: list this for the advisor instead of
-  // editing, rather than risk colliding with F17's own rewrite of how a
-  // manifest is built. Removing the WRITE side (H3's real scope: the
-  // panel no longer ever calls applyWidthOverride) already satisfies the
-  // user-facing acceptance ("a Send has no per-piece width dims" for
-  // anything drawn from now on) without touching either file — this test
-  // and the mechanism it covers only still matter for an OLD saved
-  // document that already carries a stale data-override-width attribute
-  // from before this turn. See the grep check below.
-  it('T75 item 3 (OVR-FUSION): a real owned rail element carrying data-override-width produces a HARDCODED SlotWidth expression on that piece\'s manifest entity', () => {
+  // H3 (NO-PIECE-WIDTH): rewritten, not deleted — T75/OVR-FUSION's own
+  // "a per-piece override hardcodes its own SlotWidth expression"
+  // mechanism is gone (a lattice piece has no per-piece width any more).
+  // `data-override-width` here now stands for a STALE marker an OLD saved
+  // document might still carry (from before this turn) — the new rule is
+  // that it's simply never read, by this element or any other.
+  it('H3: an element carrying a stale data-override-width still gets the SHARED parameter expression, never a hardcoded one', () => {
     const pattern = {
       spacing: 0.25,
       rails: { mode: 'every', every: 2, offset: 0 },
@@ -349,26 +342,25 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
       widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
     };
     const owned = ownedFor(pattern, '3');
-    owned.find((o) => o['data-lattice'] === 'rail')['data-override-width'] = '0.5'; // the FIRST drawn rail
+    owned.find((o) => o['data-lattice'] === 'rail')['data-override-width'] = '0.5'; // stale, pre-H3 marker
     const editor = mockEditor([{ id: '3', pattern, owned }]);
     const manifest = _fusionLayerManifest(editor, { id: '3' });
     const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');
-    expect(rail0Dim.expression).toBe('0.5 in');
-    // a sibling rail with no mock override at all keeps referencing the
-    // shared parameter, exactly like every rail did before this feature.
+    expect(rail0Dim.expression).toBe('stroke_width'); // NOT '0.5 in'
     const rail1Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail1');
-    expect(rail1Dim.expression).toBe('stroke_width');
+    expect(rail1Dim.expression).toBe('stroke_width'); // identical to its "un-stale" sibling
   });
 });
 
 // H3 (NO-PIECE-WIDTH) item 3: "a grep proves no reader of data-override-width
 // remains" — proves it directly, against the real source tree, rather than
 // asserting it in prose. The ONE known, deliberately-deferred exception (see
-// the comment above the OVR-FUSION test just above) is named explicitly, so
-// this test would FAIL — not silently pass — the moment a NEW reader
-// appears anywhere else, or the day _overridesForLayer's own read is
-// finally removed post-F17 without this line coming with it.
-describe('H3 (NO-PIECE-WIDTH): no reader of data-override-width remains outside the named, deferred exception', () => {
+// this test would FAIL — not silently pass — the moment ANY reader of it
+// reappears anywhere in the real source tree, now that the manifest-side
+// half (editor-sketch-manifest.js + export-flow.js's own
+// _drawnPiecesForLayer) is removed too (this part landed after F17
+// merged, unblocking it -- see WORK-LOG).
+describe('H3 (NO-PIECE-WIDTH): no reader of data-override-width remains anywhere', () => {
   it('greps the real editor/main source tree', () => {
     const ROOT = 'bspline-frame-builder/b-spline-gen/html';
     const READ_PATTERN = /\.(getAttribute|hasAttribute|attr)\(\s*['"]data-override-width['"]/;
@@ -381,8 +373,7 @@ describe('H3 (NO-PIECE-WIDTH): no reader of data-override-width remains outside 
       }
     })(ROOT);
     const readers = files.filter((f) => READ_PATTERN.test(readFileSync(f, 'utf-8')));
-    const relative = readers.map((f) => f.slice(ROOT.length + 1));
-    expect(relative).toEqual(['main/export-flow.js']); // the one named, deferred exception
+    expect(readers).toEqual([]); // no reader anywhere, no named exception left
   });
 
   it('returns a real manifest for a layer that DOES carry a .pattern AND owned pieces', () => {
@@ -508,7 +499,13 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
     expect(manifestB.projections.length).toBeGreaterThan(0);
   });
 
-  it('a per-kind-layer manifest\'s own overrides are read from THAT KIND\'s own owned elements, not whichever layer id was asked about', () => {
+  // H3 (NO-PIECE-WIDTH): rewritten, not deleted — the override-hardcoding
+  // half is gone, but the SE17 kind-layer resolution this test was really
+  // probing (a stale marker on ONE kind-layer's own owned element) still
+  // needs to correctly resolve to the shared parameter under the SAME
+  // per-kind-layer split, not just the simpler pre-SE17 path the OVR-
+  // FUSION test above already covers.
+  it('a per-kind-layer manifest ignores a stale data-override-width on THAT KIND\'s own owned elements the same as the simple path does', () => {
     const pattern = {
       spacing: 0.25,
       rails: { mode: 'every', every: 2, offset: 0 },
@@ -518,7 +515,7 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
       layers: { rails: 'railsL', ties: 'tiesL', nodes: 'nodesL' },
     };
     const owned = ownedFor(pattern, null, 'p');
-    owned.find((o) => o['data-lattice'] === 'rail')['data-override-width'] = '0.5';
+    owned.find((o) => o['data-lattice'] === 'rail')['data-override-width'] = '0.5'; // stale, pre-H3 marker
     const on = (layer) => owned.filter((o) => o['data-layer'] === layer);
     const editor = mockEditor([
       { id: 'railsL', pattern, owned: on('railsL') },
@@ -527,6 +524,6 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
     ]);
     const manifest = _fusionLayerManifest(editor, { id: 'railsL' });
     const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');
-    expect(rail0Dim.expression).toBe('0.5 in'); // hardcoded, from the Rails layer's own override
+    expect(rail0Dim.expression).toBe('rail_width'); // NOT hardcoded
   });
 });

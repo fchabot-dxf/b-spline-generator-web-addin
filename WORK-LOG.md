@@ -10991,3 +10991,47 @@ that needed scoping to `editor._sketchLayer`'s own children instead of the whole
 
 `npx vitest run` -> **1826 passed** (net -1 from 1827: -3 width-override tests removed/folded, +1 new
 "exports gone" test, +1 new grep test — the rewritten rewidthOwnedKind test keeps the same count).
+
+## Turn 298 (part 2) — epoch 3 — H3 NO-PIECE-WIDTH: the manifest-side removal, unblocked by F17's merge
+
+Mid-task amendment (polled before committing part 1, per protocol): **seat C's F17 merged to main
+(1c8a7ea)** while part 1 was in flight — "Send lattices AS DRAWN" now reads pieces from the DOM
+(`editor-sketch-manifest.js`'s `latticeFromDrawn` + `export-flow.js`'s `_drawnPiecesForLayer`, renamed
+from `_overridesForLayer`), replacing the old positional width arrays entirely. This is exactly the
+"if it lives in files seat C is editing in F17, list it for the advisor instead" carve-out from part 1's
+own dispatch — now moot, since F17 landed. `git pull --rebase` onto it, then completed item 2's own
+manifest-side half on top.
+
+**The removal.** `export-flow.js`'s `_drawnPiecesForLayer`: the `override(el)` helper (read
+`data-override-width` off the element) and its two call sites (`overrideWidth: override(el)` on both the
+rail/tie line mapper and the node mapper) are gone — a drawn piece is just `{p1, p2}` / `{c}` now.
+`editor-sketch-manifest.js`: `latticeFromDrawn`'s own `seg`/nodePoints mappers drop `overrideWidth`
+entirely; the rail/tie emission loops drop their own `overrideWidth` read + the field on
+`railPieces`/`tiePieces`; the node loop drops `nodeOverrideById` and always uses
+`widths.nodeDiameter / 2` for the entity radius; `addSlotPieces` always uses `widthValue`/`paramName`
+unconditionally (its own `overrideWidth` destructure and ternary removed); the node Diameter dimension
+always reads `'node_diameter'`. `_widthExprFor` (the "hardcode a literal Fusion expression when
+overridden" helper) is deleted outright — nothing left to call it.
+
+**Tests — rewritten, not deleted (the same discipline as part 1).** `tests/send-as-drawn.test.js`'s own
+"width overrides ride on their own piece" describe block (F17's own, 4 tests) is rewritten to "a stale
+data-override-width is ignored, not honoured" (3 tests — the 4th, "the override follows ITS piece when an
+earlier piece is deleted", tested override-by-identity survival specifically, which is moot with no
+override left; the underlying "deleted piece drops out of the manifest cleanly" claim is already covered
+by this same file's own separate "a deleted rail is not sent" test). `tests/export-flow.test.js`: the
+T75/OVR-FUSION test and the T76-item-4 kind-layer-override test both rewritten to assert the SHARED
+parameter expression where they used to assert a hardcoded one; the grep test's own expectation tightens
+from `['main/export-flow.js']` (the one deferred exception) to `[]` (no reader anywhere, full stop) — this
+is the test that would have caught it if this part were skipped. `tests/helpers/drawn-lattice.js` (F17's
+own shared mock-editor helper) is UNCHANGED — its `overrideWidth: null` fields and
+`ownedStores`'s own `data-override-width` writer are exactly the right shape to keep simulating "an old
+saved document's stale marker" for these rewritten tests, so nothing there needed touching.
+
+Confirmed via `grep`-based test only (no separate live-Fusion check — this turn is explicitly NO FUSION,
+"the advisor checks it live on Ranchy after" per the dispatch's own opening line): the ROADMAP's own
+acceptance ("a Send has no per-piece width dims; stroke_width drives every slot") is now true for BOTH a
+freshly-drawn pattern (never had the attribute) and an old saved one still carrying a stale
+`data-override-width` (now provably ignored, not just assumed).
+
+`npx vitest run` -> **1842 passed** (net -1 from 1843 post-F17-merge: one override-identity test retired
+per the reasoning above, three others rewritten in place). Zero regressions elsewhere.
