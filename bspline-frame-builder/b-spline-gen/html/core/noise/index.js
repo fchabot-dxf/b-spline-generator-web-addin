@@ -29,6 +29,9 @@ import * as artifact   from './artifact.js';
 import * as stone      from './stone.js';
 import * as cracked    from './cracked.js';
 import * as chest      from './chest.js';
+import * as carved     from './carved.js';
+import * as faceted    from './faceted.js';
+import * as ripples    from './ripples.js';
 import * as sandstone  from './sandstone.js';
 import * as silk       from './silk.js';
 import * as eroded     from './eroded.js';
@@ -44,7 +47,8 @@ import * as dunes      from './dunes.js';
 // Order here = dropdown order.
 const _all = [
   simplex, sculptural, hetero, basalt, artifact, stone, cracked,
-  chest, sandstone, silk, eroded, magma, reef, glacier,
+  chest, carved, faceted, ripples, sandstone, silk, eroded,
+  magma, reef, glacier,
   mars, moon, venus, mycelium, dunes,
 ];
 

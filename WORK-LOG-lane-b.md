@@ -10579,3 +10579,83 @@ migration's own comment in app-init.js, and the fallback test (needs the old id 
 
 Verify: 2103/2103 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
 clean before the commit. Commit 5a067ca. NO FUSION this whole turn.
+
+## T79 item 1 — Hand-Carved and Faceted Stone, from Fred's approved prototypes
+
+Prototypes: `C:/Users/danse/.bspline-status/proto-filters/` (protoCarved.js, protoFaceted.js, _cells.js; approved looks
+fred_OK_*.png at seed 42). New modules `core/noise/carved.js` + `faceted.js`, registered after `chest` (Biomechanical's
+old slot); shared `core/noise/cells.js` (the helper, promoted, not duplicated) and `core/noise/mirror-seam.js`.
+
+Measured against the prototypes at seed 42, default settings (140x180 samples):
+- Hand-Carved: identical on 96.4% of the board; the rest is the centre band, max 3.7% of the height range.
+- Faceted Stone: identical on 64% of the board; the rest is the seam bottoms (see below), max 12.9%.
+
+Fixes, each measured:
+- Faceted's dotted/stair-stepped seams. First hypothesis -- the 3x3 cell search picking the wrong 2nd-nearest cell --
+  measured 0.00% wrong, so the search stays 3x3 (a 5x5 attempt was reverted). Second -- the pow(edge, 0.55) profile's
+  infinite slope -- rounding it to a finite-slope V didn't remove the beads (checked in a close-up render). Actual
+  cause: the groove was ~0.04" wide against a 0.05" mesh (141x181 samples on 7x9 at 0.05" spacing, read from the live
+  page), so the mesh caught it only where it crossed a vertex. Fix: the seam bottom is a U (same depth, zero slope at
+  the seam, joining edge^0.55 in value and slope) at least MIN_SEAM_CELLS = 3 mesh cells wide, computed from
+  params.widthIn and params.nx, so finer meshes keep crisper seams. Close-up before/after:
+  `shots/seatB/t79-faceted-seams-before-after.png`.
+- Mirror crease: mirrorSeam() blends a 0.04-su band at the centre with its own reflection (50/50 at su=0), so the slope
+  across the line is zero. Slope leaving the centre line: Hand-Carved 4.58 -> 0.0009, Faceted 17.5 -> 0.016.
+- Seed-driven lattice: the prototypes used one lattice for every seed -- 72-79% of Faceted's facets sat in the same
+  place at seeds 42/7/123. Lattice salt = approved salt + (seed - 42) (cells.js latticeSalt): seed 42 unchanged, every
+  other seed its own layout (Faceted output correlation 42~7 now 0.00).
+
+Tweaks: Hand-Carved gougeSize / gougeDepth / grainTurn; Faceted facetSize / facetHeight / seamSoftness (extra rounding
+on top of the mesh minimum; default 0). Every default reproduces the prototype. 17 tests
+(tests/noise-carved-faceted.test.js): registration, tweak ranges, determinism/no NaN/sane range, seed variation,
+scale/roughness/warp honoured, each tweak effective, centre-line slope continuous, lattice rule, seam profile joins.
+
+Shots (default 3D view, 900x700 to match Fred's framing): `shots/seatB/t79-carved-*.png`, `t79-faceted-*.png`,
+comparisons `t79-*-before-after.png`. Render-tool note: after the H15 merge the seed is set via applyParam, and the
+browser cache must be disabled (a stale module served weeks-old code earlier in T78).
+
+Verify: 2120/2120 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Commit e103e20.
+NO FUSION this whole turn.
+
+## T79 item 2 — River Stones and Pond Ripples, from Fred's approved prototypes
+
+Prototypes N3_protoRiver.js / N6_protoRipple.js (looks: ids/N3_River_Stones.png, ids/N6_Pond_Ripples.png). New
+`core/noise/river.js` + `ripples.js`, registered after Faceted Stone. Shared `cells.js` gains `smoothF1` (from the
+prototype helper) with a smooth per-cell id, the second-nearest cell's id, and `meshCellsInLattice` (Faceted Stone now
+uses it too; its tests unchanged).
+
+Seed 42, default settings, vs the prototypes (within 1% of the height range): River Stones 66.5% of the board, Pond
+Ripples 88.9%; the rest is the fixed defects.
+
+- River Stones' dotted/stepped rims -- two causes, isolated by switching the fix off: the dome sqrt(1 - r^2) meets the
+  ground in a wall narrower than the mesh (largest difference 18.7%: now a cubic fillet >= 3 mesh cells wide, zero
+  slope at the ground, joining the dome in value and slope), and each stone's height (scaled by its cell id) stepped
+  where the nearest cell switched between two touching stones (10.3%: now a smooth id weighted exp(-idK*(d - nearest)),
+  idK set so the blend is ~3 mesh cells wide). A first smooth id used the distance's own soft weighting and changed
+  stone heights everywhere; a very sharp idK underflowed to NaN -- both fixed and tested. Honest cost: the stones read
+  softer than the prototype, because at 0.05" spacing clean rims can't be narrower than ~3 cells.
+- Pond Ripples' ring creases: rings came from the nearest drop only, meeting at an angle on each cell boundary. The two
+  nearest drops' rings now blend there, 50/50 on the boundary, band max(0.05 lattice units, 3 mesh cells). Slope jump
+  between 0.001-su steps: 99.9th pct 8.08 -> 0.29, max 12.9 -> 3.1; 8 of 35490 samples still jump > 1 (spots where
+  three drops meet -- a known limit, not chased).
+- Mirror crease: slope leaving the centre 9.85 -> 0.0012 (River), 3.48 -> 0.0007 (Ripples). Lattices follow the seed.
+
+Tweaks: stoneSize / stoneHeight / groundSoftness; ringSpacing / ringDepth / dropCount. 16 tests
+(tests/noise-river-ripples.test.js). Shots: `shots/seatB/t79-river-*.png`, `t79-ripples-*.png`, comparisons
+`t79-{river,ripples}-before-after.png`, close-ups `t79-{river,ripples}-closeup.png`.
+
+Merged origin/main: seat A's Sandstone / Silk / Eroded also went in after Anatomical; the registry conflict was resolved
+keeping all seven (mine first, then seat A's; no test depends on the order of seat A's). 2157/2157 vitest after the
+merge. Commit 613820d (+ merge). NO FUSION this whole turn.
+
+## T79 item 3 — River Stones left out (Fred: "not as good as I'd hoped, leave it out")
+
+Removed before merge: core/noise/river.js; its index.js import + _all entry (dropdown option, tweaks, metadata all
+derive from _all); smoothF1 (+ its smooth id) from cells.js, since only River Stones used it. cells.js kept (cells,
+id2, latticeSalt, meshCellsInLattice serve Hand-Carved, Faceted Stone and Pond Ripples). tests/noise-river-ripples.test.js
+renamed to tests/noise-ripples.test.js with only Pond Ripples' tests (registration now: ripples right after faceted).
+No shot/repro scripts or docs listed it; it never reached main, so no saved-project fallback (the generic migration
+would cover it anyway). Sweep: remaining "river" hits are the checklist lines and Mars/Venus's own river-network text.
+
+Verify: 2148/2148 vitest (2157 minus River Stones' 9), 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder
+pytest. Commit 9af292a. NO FUSION this whole turn.
