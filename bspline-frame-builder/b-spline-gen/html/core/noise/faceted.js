@@ -15,7 +15,7 @@
  *   - the cell lattice follows the seed (cells.js latticeSalt);
  *   - the mirror line is flat (mirror-seam.js).
  */
-import { cells, latticeSalt } from './cells.js';
+import { cells, latticeSalt, meshCellsInLattice } from './cells.js';
 import { mirrorSeam } from './mirror-seam.js';
 
 export const id = 'faceted';
@@ -54,12 +54,9 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   const facetSize = t.facetSize ?? 1.0;
   const facetHeight = t.facetHeight ?? 0.28;
   // Seam bottom width in cell units: at least MIN_SEAM_CELLS mesh cells of
-  // the real board (1 unit of su is half the board width), or the slider's
-  // extra rounding if that is wider.
-  const widthIn = params.widthIn ?? 7;
-  const meshIn = widthIn / Math.max(1, (params.nx ?? 141) - 1);
-  const cellsPerInch = (scale * 0.9 * aspect * 1.4) / (facetSize * widthIn / 2);
-  const soft = Math.max(MIN_SEAM_CELLS * meshIn * cellsPerInch, t.seamSoftness ?? 0);
+  // the real board, or the slider's extra rounding if that is wider.
+  const unitsPerSu = (scale * 0.9 * aspect * 1.4) / facetSize;
+  const soft = Math.max(meshCellsInLattice(params, unitsPerSu, MIN_SEAM_CELLS), t.seamSoftness ?? 0);
   const salt = latticeSalt(APPROVED_SALT, params.seed);
 
   const sample = (s) => {
