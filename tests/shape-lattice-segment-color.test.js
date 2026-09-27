@@ -16,7 +16,10 @@
 import { describe, it, expect } from 'vitest';
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
 import { regenerateSilhouette, currentPattern, currentShape } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
-import { PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import {
+  PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR, hasContourSegmentColor, clearContourSegmentColor,
+  resolvePatternLayer,
+} from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 
 function makeMockEditor() {
@@ -163,5 +166,71 @@ describe('T73 (SE14b): Shape Lattice contour as N selectable, per-segment-colour
     const segElsAfter = sortedSegs(editor);
     expect(segElsAfter.length).toBe(segEls.length); // same elements, not removed
     for (const el of segElsAfter) expect(el.attr('display')).toBe('none');
+  });
+});
+
+describe('H2 (SEG-COLOR-PANEL): hasContourSegmentColor / clearContourSegmentColor', () => {
+  it('reports no override on a freshly-generated segment, then true once one is set', () => {
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    regenerateSilhouette(editor, p);
+    const segEls = sortedSegs(editor);
+    expect(hasContourSegmentColor(editor, segEls[1])).toBe(false);
+
+    editor._selectedElements = [segEls[1]];
+    VectorEditor.prototype.setColor.call(editor, '#ff00ff');
+    expect(hasContourSegmentColor(editor, segEls[1])).toBe(true);
+    // non-vacuous: an UNTOUCHED sibling segment still reads as not-overridden
+    expect(hasContourSegmentColor(editor, segEls[0])).toBe(false);
+  });
+
+  it('clearing DELETES the stored entry (not just overwrites it with the default) and repaints the element', () => {
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    regenerateSilhouette(editor, p);
+    const segEls = sortedSegs(editor);
+    editor._selectedElements = [segEls[1]];
+    VectorEditor.prototype.setColor.call(editor, '#ff00ff');
+    expect(p.contour.segmentColors[1]).toBe('#ff00ff');
+
+    clearContourSegmentColor(editor, segEls[1], PATTERN_DEFAULTS.colors.contour);
+
+    expect(segEls[1].attr('stroke')).toBe(PATTERN_DEFAULTS.colors.contour);
+    expect(hasContourSegmentColor(editor, segEls[1])).toBe(false);
+    // the real assertion "cleared" makes beyond hasContourSegmentColor: the
+    // array slot is gone, not merely holding a copy of today's default —
+    // so a LATER change to the pattern's own Contour colour would still
+    // reach this segment (unlike a pinned override).
+    expect(1 in p.contour.segmentColors).toBe(false);
+  });
+
+  it('is a no-op on an element that is not a contour segment', () => {
+    const editor = makeMockEditor();
+    const p = currentPattern(editor);
+    regenerateSilhouette(editor, p);
+    const rail = editor._sketchLayer.line(0, 0, 1, 0);
+    expect(hasContourSegmentColor(editor, rail)).toBe(false);
+    expect(() => clearContourSegmentColor(editor, rail, '#000')).not.toThrow();
+  });
+
+  // Live-CDP-only finding (this mock's own `attr()` never coerces, so it
+  // could never have caught this): svg.js's REAL `.attr()` auto-coerces a
+  // numeric-looking attribute value to an actual JS number. A caller that
+  // reads `el.attr('data-layer')` directly (as `_storeContourSegmentColor`
+  // already did, pre-H2, and as this file's own new
+  // hasContourSegmentColor/clearContourSegmentColor now also do) can hand
+  // resolvePatternLayer a NUMBER while every layer's `.id` is a STRING —
+  // this reproduces that exact mismatch directly against
+  // resolvePatternLayer's own layer array, independent of svg.js/the mock.
+  it('resolves a layer even when layerId arrives as a NUMBER (svg.js attr() coercion) against string layer ids', () => {
+    const editor = {
+      _layers: [
+        { id: '0', pattern: { contour: { segmentColors: ['seeded'] } } },
+        { id: '1', patternOwner: '0' },
+      ],
+    };
+    expect(resolvePatternLayer(editor, 1)).toBe(editor._layers[0]); // numeric patternOwner-holder lookup
+    expect(resolvePatternLayer(editor, '1')).toBe(editor._layers[0]); // string form still works
+    expect(resolvePatternLayer(editor, 0)).toBe(editor._layers[0]); // numeric direct-pattern-holder lookup
   });
 });

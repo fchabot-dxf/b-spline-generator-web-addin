@@ -10826,3 +10826,95 @@ direct `editor._snap()` calls; the time went into test-harness robustness agains
 already-documented source of flakiness in this file. Flagging in case a future H2-style task in box
 Lattice hits the same wall — the `dragTieEndToPoint`/`findFreeEndedTie`/`rigOffGridRailAndFreeTie`
 helpers in `select_drag_shape.mjs` are reusable for that.
+
+## Turn 296 — epoch 3 — H2 SEG-COLOR-PANEL: contour segments in the "Selected piece" panel, colour only — DONE — NO FUSION
+
+Dispatch: a Shape Lattice contour segment should show the same "Selected piece" panel rails/ties/nodes
+already get (UI5), colour + Reset only, reading/writing the EXISTING `PATTERN.contour.segmentColors[i]`
+(SE14b) via the same helper the toolbar COLOR control already drives — not a second schema. Amendments
+received before commit (turn 296, 2 new, both about the NEXT turn): H3 = NO-PIECE-WIDTH removes the
+UI5 per-piece width override entirely; H2 was already colour-only per its own dispatch, so nothing here
+needed to change — noted for whoever picks up H3 next.
+
+**Item 1/2 — the panel + storage.** `lattice-piece-panel.js`: a contour segment is recognized by its own
+`CONTOUR_SEG_INDEX_ATTR` marker (`editor-piece-override.js`'s `pieceKindOf` deliberately stays
+rails/ties/nodes-only — its own doc comment already flagged contour's DIFFERENT persistence rule as a
+follow-up, so this doesn't touch that module at all); the width row is now wrapped in its own
+`.lattice-piece-width-row` div, hidden for kind `'contour'`. Colour SET calls `editor.setColor(hex)`
+directly — the literal same call `properties-shape.js`'s own toolbar COLOR control makes, not a copy of
+its logic — which already writes `PATTERN.contour.segmentColors[i]` via editor.js's existing (pre-H2,
+still private) `_storeContourSegmentColor`. Colour RESET needed a genuinely new capability (no "clear a
+segment's colour" affordance existed before this panel) — two new EXPORTED functions in
+`editor-lattice-pattern.js` (not editor.js, to avoid a cycle: editor.js already imports
+properties-shape-lattice.js, which imports this panel, which would import editor.js right back):
+`hasContourSegmentColor` (mirrors `hasColorOverride` for the Reset button's own visibility) and
+`clearContourSegmentColor` (DELETES the `segmentColors[i]` entry, not merely overwrites it with the
+default — a pinned copy of today's default would stop tracking a LATER change to the pattern's own
+Contour colour default, unlike a genuinely cleared segment).
+
+**Two real bugs found building the live verification (not by inspection) — both fixed:**
+
+1. **`resolvePatternLayer` silently failed on a contour segment's own `data-layer`, ALWAYS** (pre-existing
+   since SE14b, invisible to every mock-based test because the mock's own `attr()` never coerces): svg.js's
+   REAL `.attr()` auto-coerces a numeric-looking attribute value to an actual JS NUMBER, so
+   `el.attr('data-layer')` returns `1`, not `'1'` — but every layer's own `.id` is a STRING, and the
+   lookup used bare `===`. `_storeContourSegmentColor` reads `data-layer` this exact way, so a toolbar-
+   driven contour recolour has NEVER actually persisted into `segmentColors[i]` in the real app, despite
+   its own unit test passing (the mock's `attr()` returns whatever type was stored, no coercion). Fixed at
+   the ONE declared resolver (`String()` both sides, matching `layers.js`'s own `getElementLayer`, which
+   already had to solve this same coercion for its one call site) rather than patching every caller.
+   Regression test added directly against `resolvePatternLayer` with a NUMBER layerId against string
+   layer ids (the mock can't reproduce svg.js's own coercion, so this test constructs the mismatch
+   directly) — mutation-tested (reverted the `String()` fix, 1/9 tests in the file failed, exactly the new
+   one; restored, 9/9 green).
+2. **Clicking the panel's own Reset button deselected the segment.** `editor._notifyChange('commit')`
+   (the rails/ties/nodes reset branch's own existing idiom, which the contour branch copied) calls
+   `refreshBoundaryPatterns`, which REBUILDS a Shape Lattice's contour segment elements — a side effect
+   rails/ties/nodes never trigger (they're not part of any boundary rebuild), so this was invisible until
+   a contour segment's own Reset tried it live. The rebuild replaces the DOM element out from under the
+   just-cleared selection. Fix: the contour Reset branch commits via `editor._commitStyleChange()` instead
+   — the SAME commit primitive `setColor` itself already uses for a plain recolour (no boundary refresh),
+   which is exactly what a colour reset is. Confirmed live: selection now survives Reset; the mosaic
+   reopens correctly afterward.
+
+**Item 3 — tests.** Unit (`tests/shape-lattice-segment-color.test.js`, extended, real
+`regenerateSilhouette`-backed mock — not a hand-rolled stub): `hasContourSegmentColor`/
+`clearContourSegmentColor` against a freshly-generated segment (reports false, then true once set;
+clearing deletes the array slot, mutation-tested per above; a no-op on a non-segment element), plus the
+`resolvePatternLayer` numeric-layerId regression test. 9/9 in the file (was 5).
+
+Live (`tools/repro/seg_color_panel_shots.mjs`, new — matches `piece_override_shots.mjs`'s own
+`serve_app.py`/CDP/`<outPrefix>_<name>.png` convention), direct-select (not a pixel click, same
+determinism reasoning as every other panel-acceptance script in this repo), one continuous Shape Lattice
+session covering the checklist's own named requirements end to end: panel shows on segment select
+(colour + Reset, kind label "Contour segment", width row `display:none`) → real click through the panel's
+own colour swatch → mosaic pick → segment's rendered stroke AND `segmentColors[i]` both match → Reset
+button appears → real click on Reset → both cleared, rendered back to the plain default, Reset hides →
+(a THIRD real finding, see below) toolbar/panel sync → survives a real Regenerate (same preset) → the
+saved SVG string carries the colour verbatim → survives a real save+reopen round trip. ALL CHECKS PASSED,
+confirmed on 2 further clean re-runs plus a separate mobile pass (390px viewport).
+
+**Third finding, test-script-only (not an app bug, not fixed — documented instead):**
+`properties-lattice.js` and `properties-shape-lattice.js` each mount their OWN independent
+`lattice-piece-panel.js` instance (pre-existing UI5 architecture, shared by rails/ties/nodes too) — only
+one is ever visually active (whichever tool's tab is open), but BOTH listen to the same document-level
+`editorSelectionChanged` and hold independent `current`/swatch state. A colour change applied through ONE
+instance's own click handler only calls `refresh()` on THAT instance — the other (inactive, zero-rect)
+instance's swatch goes stale until its own next selection-changed event. My first pass at this script used
+an unscoped `document.querySelector('.lattice-piece-panel')`, which happened to grab the box-Lattice
+instance (always inactive during this Shape-Lattice-only script) for its DOM-level reads — every
+MODEL-level assertion (segmentColors, stroke attribute) was correct throughout, but the DOM-level ones
+were silently reading the wrong, stale instance, which is what first looked like the colour wasn't
+applying (a live screenshot showing green when the model already held blue is what surfaced it — a
+reminder that a screenshot needs the SAME "verify the actual value" discipline as anything else, not a
+glance). Fixed by scoping every query to `[...document.querySelectorAll(...)].find(el =>
+el.getBoundingClientRect().width > 0)`. Not fixing the underlying dual-instance staleness itself — it
+predates H2, affects rails/ties/nodes identically, and a real user never has both panels visibly active
+at once, so there is no user-observable path to the divergence this turn's script happened to trip over.
+Flagging for whoever next touches `lattice-piece-panel.js`'s own mounting.
+
+Screenshots (`shots\seatA\h2_segcolor_{desktop,mobile}_{panel_colour_set,panel_final}.png`): the panel's
+own swatch, segment recoloured in the canvas, Reset button present.
+
+`npx vitest run` -> **1827 passed** (up from 1823 on main before this turn: 4 new, 0 removed), zero
+regressions.

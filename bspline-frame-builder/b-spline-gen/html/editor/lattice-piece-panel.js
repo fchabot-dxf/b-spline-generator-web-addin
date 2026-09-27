@@ -13,10 +13,18 @@
  * (seat B owns that markup) — `data-no-collapse` so lattice-side-column.js's
  * own section-collapsing sweep leaves it alone, exactly like the icon row.
  *
- * Reads/writes overrides ONLY through editor-piece-override.js (the
- * declared schema module — "no second source" per the dispatch); reacts
- * to `editorSelectionChanged` (editor-ui.js's _afterSelectionChange /
- * editor.js's _deselect), the one selection-changed signal that feature
+ * Rails/ties/nodes read/write overrides ONLY through editor-piece-
+ * override.js (the declared schema module — "no second source" per the
+ * UI5 dispatch). H2 (SEG-COLOR-PANEL) extends this same panel to a Shape
+ * Lattice CONTOUR SEGMENT too, colour-only — but a segment's colour is an
+ * OLDER, differently-persisted mechanism (T73/SE14b's own
+ * `PATTERN.contour.segmentColors[i]`, survives Regenerate, unlike an
+ * override which Regenerate clears), so it goes through THAT storage
+ * instead (editor.js's `setColor`/`_storeContourSegmentColor`, plus this
+ * file's own `clearContourSegmentColor`/`hasContourSegmentColor` — still
+ * one storage path each, just not the SAME one as rails/ties/nodes).
+ * Reacts to `editorSelectionChanged` (editor-ui.js's _afterSelectionChange
+ * / editor.js's _deselect), the one selection-changed signal that feature
  * added.
  */
 import {
@@ -24,11 +32,25 @@ import {
   applyColorOverride, applyWidthOverride, clearColorOverride, clearWidthOverride,
 } from './editor-piece-override.js';
 import { openColorMosaic } from './editor-color.js';
-import { PATTERN_DEFAULTS, resolvePatternLayer } from './editor-lattice-pattern.js';
+import {
+  PATTERN_DEFAULTS, resolvePatternLayer,
+  CONTOUR_SEG_INDEX_ATTR, hasContourSegmentColor, clearContourSegmentColor,
+} from './editor-lattice-pattern.js';
 import { getElementLayer } from './layers.js';
 import { attachFormula } from '../core/formula-field.js';
 
-const KIND_LABEL = { rails: 'Rail', ties: 'Tie', nodes: 'Node' };
+const KIND_LABEL = { rails: 'Rail', ties: 'Tie', nodes: 'Node', contour: 'Contour segment' };
+
+// H2 (SEG-COLOR-PANEL, Fred: "only color" — a contour segment has no width
+// control here): a segment carries no `data-lattice` value at all
+// (pieceKindOf's own vocabulary is rails/ties/nodes only, by that file's
+// own documented scope decision — a segment's colour already has an OLDER,
+// differently-persisted mechanism, `PATTERN.contour.segmentColors[i]`, not
+// the override-attribute schema), so it's recognized here by its own
+// `CONTOUR_SEG_INDEX_ATTR` marker instead.
+function _isContourSegment(el) {
+  return !!(el && el.node && el.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+}
 
 /** The layer's own declared default colour/width for `kind` — exactly
  *  what recolorOwnedKind/rewidthOwnedKind would apply to a non-overridden
@@ -70,7 +92,7 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
       <button type="button" class="lattice-piece-color-reset" title="Reset to layer colour"
         style="font-size:10px; padding:2px 6px; cursor:pointer;">Reset</button>
     </div>
-    <div style="display:flex; gap:8px; align-items:center;">
+    <div class="lattice-piece-width-row" style="display:flex; gap:8px; align-items:center;">
       <label style="font-size:11px; flex:1;">Width</label>
       <input type="number" class="lattice-piece-width" min="0" step="0.01"
         style="width:60px; height:22px; font-size:11px; text-align:center;">
@@ -82,6 +104,7 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   const kindEl = section.querySelector('.lattice-piece-panel-kind');
   const colorBtn = section.querySelector('.lattice-piece-color');
   const colorResetBtn = section.querySelector('.lattice-piece-color-reset');
+  const widthRow = section.querySelector('.lattice-piece-width-row');
   const widthInput = section.querySelector('.lattice-piece-width');
   const widthResetBtn = section.querySelector('.lattice-piece-width-reset');
   // R5: the override width field is formula-capable too, over the SAME
@@ -97,19 +120,27 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
     const { el, kind, layerId } = current;
     const defaults = _kindDefaults(editor, layerId, kind);
     const color = _currentColor(el, kind) || defaults.color;
-    const width = _currentWidth(el, kind) || defaults.width;
     kindEl.textContent = KIND_LABEL[kind] || kind;
     colorBtn.style.background = color;
-    widthInput.value = width;
-    colorResetBtn.style.visibility = hasColorOverride(el) ? 'visible' : 'hidden';
-    widthResetBtn.style.visibility = hasWidthOverride(el) ? 'visible' : 'hidden';
+    if (kind === 'contour') {
+      // H2: "only color" -- no width control for a contour segment.
+      colorResetBtn.style.visibility = hasContourSegmentColor(editor, el) ? 'visible' : 'hidden';
+      widthRow.style.display = 'none';
+    } else {
+      widthInput.value = _currentWidth(el, kind) || defaults.width;
+      colorResetBtn.style.visibility = hasColorOverride(el) ? 'visible' : 'hidden';
+      widthResetBtn.style.visibility = hasWidthOverride(el) ? 'visible' : 'hidden';
+      widthRow.style.display = 'flex';
+    }
     section.style.display = '';
   }
 
   document.addEventListener('editorSelectionChanged', (e) => {
     if (!e.detail || e.detail.editor !== editor) return;
     const { primary, selected } = e.detail;
-    const kind = selected && selected.length === 1 ? pieceKindOf(primary) : null;
+    const kind = selected && selected.length === 1
+      ? (pieceKindOf(primary) || (_isContourSegment(primary) ? 'contour' : null))
+      : null;
     current = kind ? { el: primary, kind, layerId: getElementLayer(primary) } : null;
     refresh();
   });
@@ -119,9 +150,17 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
     if (!current) return;
     openColorMosaic(colorBtn, (hex) => {
       const { el, kind } = current;
-      applyColorOverride(el, kind, hex);
-      if (typeof editor.pushState === 'function') editor.pushState();
-      if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+      if (kind === 'contour') {
+        // H2 item 2: ONE storage path -- the same helper (setColor's own
+        // internal _storeContourSegmentColor) the toolbar COLOR control
+        // already drives, not a second write into segmentColors[i].
+        // setColor already pushes state / notifies on its own.
+        editor.setColor(hex);
+      } else {
+        applyColorOverride(el, kind, hex);
+        if (typeof editor.pushState === 'function') editor.pushState();
+        if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+      }
       refresh();
     });
   });
@@ -129,14 +168,30 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   colorResetBtn.addEventListener('click', () => {
     if (!current) return;
     const { el, kind, layerId } = current;
-    clearColorOverride(el, kind, _kindDefaults(editor, layerId, kind).color);
-    if (typeof editor.pushState === 'function') editor.pushState();
-    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+    if (kind === 'contour') {
+      // H2: NOT pushState()+_notifyChange('commit') (the rails/ties/nodes
+      // branch's own idiom, below) -- editor.js's own 'commit' hook calls
+      // refreshBoundaryPatterns, which REBUILDS a Shape Lattice's contour
+      // segment elements (rails/ties/nodes never trigger this rebuild, so
+      // that branch never hits it), invalidating THIS segment's own
+      // selection out from under the very reset that just ran. setColor's
+      // own commit path (_commitStyleChange, no boundary refresh) is what
+      // the toolbar COLOR control already relies on for a plain segment
+      // recolor — Reset is the same kind of change, so it uses the same
+      // commit primitive, confirmed live: the rails/ties/nodes idiom
+      // deselects the segment (found building this turn's own CDP check).
+      clearContourSegmentColor(editor, el, _kindDefaults(editor, layerId, kind).color);
+      if (typeof editor._commitStyleChange === 'function') editor._commitStyleChange();
+    } else {
+      clearColorOverride(el, kind, _kindDefaults(editor, layerId, kind).color);
+      if (typeof editor.pushState === 'function') editor.pushState();
+      if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+    }
     refresh();
   });
 
   widthInput.addEventListener('change', () => {
-    if (!current) return;
+    if (!current || current.kind === 'contour') return;
     const { el, kind, layerId } = current;
     const value = parseFloat(widthInput.value) || _kindDefaults(editor, layerId, kind).width;
     applyWidthOverride(el, kind, value);
@@ -146,7 +201,7 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   });
 
   widthResetBtn.addEventListener('click', () => {
-    if (!current) return;
+    if (!current || current.kind === 'contour') return;
     const { el, kind, layerId } = current;
     clearWidthOverride(el, kind, _kindDefaults(editor, layerId, kind).width);
     if (typeof editor.pushState === 'function') editor.pushState();

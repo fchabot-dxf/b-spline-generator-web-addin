@@ -2622,11 +2622,57 @@ export function detachAllOwned(editor, layerId) {
  */
 export function resolvePatternLayer(editor, layerId) {
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
-  const layer = layers.find((l) => l.id === layerId);
+  // H2 (live CDP, not the mock-based unit suite): svg.js's own `.attr()`
+  // auto-coerces a numeric-looking attribute value to a real JS number —
+  // a caller reading `el.attr('data-layer')` DIRECTLY (as
+  // `_storeContourSegmentColor` below already did, pre-H2) can hand this a
+  // NUMBER while every layer's own `.id` is a STRING (`layers.js`'s
+  // `getElementLayer` already stringifies for exactly this reason, but not
+  // every caller goes through it) — a bare `===` then silently finds
+  // nothing. String() on both sides makes the lookup ID-type-agnostic,
+  // same fix shape as `getElementLayer` itself already applies at ITS one
+  // call site. This was a REAL, live-only bug (segment colours never
+  // actually persisted, though every mock-based test passed, because the
+  // mock's own `attr()` never coerces): caught building this turn's own
+  // live verification, not a hypothetical.
+  const key = layerId == null ? null : String(layerId);
+  const layer = layers.find((l) => String(l.id) === key);
   if (!layer) return null;
   if (layer.pattern) return layer;
-  if (layer.patternOwner) return layers.find((l) => l.id === layer.patternOwner) || null;
+  if (layer.patternOwner) return layers.find((l) => String(l.id) === String(layer.patternOwner)) || null;
   return null;
+}
+
+/** H2 (SEG-COLOR-PANEL): true when `el` is a contour segment carrying an
+ *  EXPLICIT stored colour (`PATTERN.contour.segmentColors[i]`, T73/SE14b's
+ *  own field, set by `editor.js`'s `_storeContourSegmentColor` — the same
+ *  helper the toolbar COLOR control drives via `setColor`), as opposed to
+ *  inheriting the pattern's plain `colors.contour`. Lets the "Selected
+ *  piece" panel show/hide its Reset button the same way
+ *  `hasColorOverride` does for rails/ties/nodes, without reaching into
+ *  that DIFFERENT (and differently-persisted) schema for a segment. */
+export function hasContourSegmentColor(editor, el) {
+  if (!el || !el.node || !el.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR)) return false;
+  const segIndex = Number(el.node.getAttribute(CONTOUR_SEG_INDEX_ATTR));
+  const layer = resolvePatternLayer(editor, el.attr('data-layer'));
+  const colors = layer && layer.pattern && layer.pattern.contour && layer.pattern.contour.segmentColors;
+  return !!(colors && colors[segIndex]);
+}
+
+/** H2: clears a contour segment's own stored colour (deletes the
+ *  `segmentColors[i]` entry, not merely overwrite it with `defaultColor` —
+ *  a pinned copy of today's default would stop tracking a LATER change to
+ *  the pattern's own Contour colour, unlike a genuinely cleared segment)
+ *  and repaints `el` with `defaultColor`, the same plain colour
+ *  `regenerateSilhouette` already gives every non-overridden segment. */
+export function clearContourSegmentColor(editor, el, defaultColor) {
+  if (!el || !el.node || !el.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR)) return;
+  const segIndex = Number(el.node.getAttribute(CONTOUR_SEG_INDEX_ATTR));
+  const layer = resolvePatternLayer(editor, el.attr('data-layer'));
+  if (layer && layer.pattern && layer.pattern.contour && Array.isArray(layer.pattern.contour.segmentColors)) {
+    delete layer.pattern.contour.segmentColors[segIndex];
+  }
+  el.stroke({ color: defaultColor });
 }
 
 /**
