@@ -10362,3 +10362,67 @@ merging into piping/conduits, smooth glossy dome/plate calm zones between dense 
 connections. Same mirror rule as chest.js (su arrives pre-folded under the default Mirror X — a central spine at
 su=0, ribs/tubes running outward to su=1, never re-fold). Must stay a real filter (seed-driven, honours
 scale/octaves/roughness/warpIntensity), keep its existing tweak keys. Before/after shots next to the reference.
+
+## T78 item 7 AMEND 2 — a REAL variation palette (Fred: "Thats not a variation palette / They still look the same")
+
+The first per-seed reshuffle (AMEND 1) was real but too narrow to read as genuinely different bodies at a glance —
+confirmed by a fresh 3x3 grayscale palette dump (`chest-palette-3x3.png`), which only looked convincingly varied once
+every range below was widened substantially:
+
+- `ribCount`: 6..9 → 5..12; `ribAngle`: ±0.22 → ±0.38; `ribSize`: 0.045-0.075 → 0.035-0.100; `ribExtent`: 0.24-0.50 →
+  0.16-0.66; `ribStartY`: 0.14-0.19 → 0.09-0.23.
+
+New structural dimensions beyond ribs/clavicle, so seeds differ in overall BUILD, not just rib count: `dx =
+Math.pow(su, build)` (0.65 lean .. 1.55 broad) — a power-curve remap of the LATERAL COORDINATE ITSELF, not a
+downstream amplitude multiplier, so it changes WHERE features sit — plus per-seed `sternumWidth`, `deltoidPos`, and
+`deltoidSize`.
+
+**Second correction mid-fix** (Fred: "Ok ribs do go both ways but not clavicul"): the clavicle's own opposite-angle
+range (added in AMEND 1) was real in the code but invisible in practice — its own `exp(-dx*clavicleExtent)`
+visibility decay concentrates the clavicle brightest right at dx=0, exactly where `dx*clavicleAngle` is smallest, so
+the slope had no room to read before the line faded out. Widened `clavicleAngle` to match rib angle's own magnitude
+(±0.16 → ±0.35) and slowed `clavicleExtent`'s own decay (0.6-2.4 → 0.3-1.2) — verified with a focused 9-seed
+grayscale strip of just the clavicle region (`chest-clavicle-3x3.png`).
+
+Final verification: a real mirrored 3D render palette (6 seeds, `chest-final-palette-mirrored.png`) showed genuinely
+distinct bodies — tight vs broad builds, dense vs sparse rib counts, one pair of seeds whose opposite-signed rib
+angles cross into a visually striking X-weave pattern at the flank.
+
+`tests/noise-chest.test.js`: the sternum-ridge isolation test used su=0.5 as "centreline" (a naming error carried
+over from before the mirror-fold fix — su=0 is the TRUE centreline; 0.5 only happened to still pass by coincidence,
+since a Gaussian is monotonic and 0.5<0.53) and broke once ribcage/deltoid/soft-tissue terms became far more
+variable per seed. Fixed to use su=0 vs su=0.2 (safely outside even the widest per-seed sternumWidth), isolating the
+sternum ridge itself.
+
+Verify: 2030/2030 vitest. Commit d05ef76, pushed. NO FUSION this whole turn.
+
+## T78 item 7 AMEND 3 — fix clavicle opposite-angle bug (a real bug, not a stale image); stop committing shots/ to the repo
+
+Fred: "None of the clavicule are actually going opposite." First reaction was to suspect a stale render, but DIRECTLY
+COMPUTING the actual per-seed `clavicleAngle` values (not eyeballing a blurry image) showed several seeds already
+drawing negative angles — ruling out "wrong/old seeds" as the explanation. The REAL bug: the clavicle line's own
+target position was `0.12 + dx*clavicleAngle`. With the base this close to the board's own dy=0 top edge, a NEGATIVE
+angle pushed that target BELOW dy=0 well before dx reached the flank — dy can't go negative in the real coordinate
+space, so the line simply clipped and faded to nothing near the board edge instead of visibly curving upward, while
+a POSITIVE angle had the ENTIRE dy=0..1 range to curve into and read perfectly clearly. The two directions were
+never symmetric, for ANY seed — this is why every render, regardless of which specific seed got chosen, looked like
+"positive angle, or nothing."
+
+Fixed by raising the base to 0.30, giving real, symmetric room on both sides for the full `clavicleAngle` range
+(±0.35) to curve into. This time verified NUMERICALLY FIRST, before touching a render: computed the clavicle term's
+own peak-dy trajectory across dx for several strongly-negative-angle seeds — before the fix, `peakVal` dropped to
+exactly 0 well before dx=1 (a hard clip); after, it stays visible and non-zero across the full range for every seed
+checked. Only THEN rendered a deliberately-contrasting palette, this time choosing seeds BY their own computed
+`clavicleAngle` sign (strongly positive: 6, 13; strongly negative: 11, 18) rather than reusing arbitrary seeds from
+earlier — `chest-clavicle-contrast.png` clearly shows both curve directions side by side.
+
+**Separately, a real workflow bug found by the advisor**: every T78 screenshot this whole turn was written to a
+RELATIVE `shots/seatB` inside this worktree, which Fred's own progress page never reads (it reads the ABSOLUTE
+`C:/Users/danse/.bspline-status/shots/seatB` path) — a real contributor to the "is this even current?" confusion
+during the chest.js back-and-forth (my own renders WERE current, but Fred had no way to see the newest ones without
+the advisor manually copying them over each time). Fixed going forward: `filter_shots.mjs`'s own `outDir` is a CLI
+argument, now always passed as the absolute status path. Removed `shots/` from git tracking entirely (per the
+advisor: images don't belong in the repo) and added it to `.gitignore` — confirmed every previously-committed
+screenshot was already present at the correct absolute path before removing the repo copies, so nothing was lost.
+
+Verify: 2030/2030 vitest. Commit 758d17e, pushed. NO FUSION this whole turn.
