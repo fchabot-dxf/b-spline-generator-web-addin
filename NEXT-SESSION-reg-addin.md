@@ -41,6 +41,14 @@ the panels already do that), no drive-by changes to the Shape Lattice handles/sl
       1-arg logger; a payload fixture with the real `sketchManifest` key (use tools/repro/capture_send_payload.mjs from
       the home advisor, on main shortly — or a fixture shaped from export-flow.js:472-484) proving every manifest param
       is in payload_names and nothing in-payload is ever a candidate.
+      (c) SE17 PROJECTIONS all fail live (home advisor, root cause PROVEN on Ranchy; advisor verified the order in code):
+      `build_constrained_sketch` sets `sketch.isComputeDeferred = True` (~:979) and calls `_apply_projections` inside that
+      window (~:987); project() returns 0 curves while the target sketch is deferred, 1 when not. Fix: run
+      `_apply_projections(...)` BEFORE `isComputeDeferred = True` (it only needs the already-built source sketches); keep
+      _create_geometry + _apply_constraints deferred, and make sure constraints that reference projected curves still
+      find them. Test: the fake-Fusion shim MODELS it (project() returns empty while the target sketch is deferred), so
+      the old order fails the test. Same commit as (a)+(b) or right after; push at once. Real payload fixture:
+      tools/repro/capture_send_payload.mjs (on main, 5c61291).
 - [ ] [R7-item-1] Carry-over 1 (default mode 'spacing') + carry-over 2 (one grid) in the engine/defaults, with tests.
 - [ ] [R7-item-2] Box Lattice panel: new section order + fields per rulings; formula fields (R5) still attached to every
       numeric field incl. the new Spacing/Count (update the declared scope: `spacing` = rail-to-rail now).
