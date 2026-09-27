@@ -101,6 +101,8 @@ function mockEditor() {
       fill(v) { n.attrs.fill = v; return n; }, stroke(v) { n.attrs.stroke = v; return n; },
       addClass(c) { n.cls.push(c); return n; },
       path(d) { const c = node('path'); c.attrs.d = d; n.children.push(c); calls.push('path'); return c; },
+      circle(dia) { const c = node('circle'); c.attrs.r = dia / 2; n.children.push(c); return c; },
+      center(x, y) { n.attrs.cx = x; n.attrs.cy = y; return n; },
       group() { const c = node('g'); n.children.push(c); c.parent = n; return c; },
       remove() { if (n.parent) n.parent.children = n.parent.children.filter((x) => x !== n); },
       findOne(sel) { return n.children.find((c) => '#' + c.attrs.id === sel) || null; },

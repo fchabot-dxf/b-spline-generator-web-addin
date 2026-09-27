@@ -162,3 +162,22 @@ def test_every_silhouette_preset_exists_in_the_app(defs):
     app_presets = set(re.findall(r"^\s{2}(\w+):\s*\{", block, re.M))
     for t in defs["templates"]:
         assert t["silhouettePreset"] in app_presets, (t["id"], t["silhouettePreset"], app_presets)
+
+
+# ------------------------------------------------------------- F9 handles
+def test_every_handle_binding_is_declared_and_valid(defs):
+    """The ONE binding table (template_data FRAME_HANDLES): a handle is either
+    'seeded' or bound to an EXISTING frame-owned template param."""
+    js = open(_APP_PRESETS_JS, encoding="utf-8").read()
+    order = js[js.index("export const PARAM_ORDER = {"):]
+    order = order[:order.index("\n};")]
+    for t in defs["templates"]:
+        keys = re.findall(r"'(\w+)'", re.search(t["silhouettePreset"] + r":\s*\[([^\]]*)\]", order).group(1))
+        frame_params = {p["name"] for p in t["params"] if p["owner"] == "frame"}
+        assert t["handles"], t["id"]
+        assert len({h["key"] for h in t["handles"]}) == len(t["handles"])
+        for h in t["handles"]:
+            assert h["key"] in keys, (t["id"], h["key"], keys)
+            assert h["label"] and h["basis"] in ("hw", "hh", "h"), (t["id"], h)
+            b = h["binding"]
+            assert b == "seeded" or (isinstance(b, dict) and b.get("param") in frame_params), (t["id"], h)

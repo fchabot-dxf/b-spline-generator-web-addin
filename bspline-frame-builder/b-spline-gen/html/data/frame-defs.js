@@ -56,7 +56,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "072e507b55b97201063fbfc587058372437693d00bd06f333e5ff78339722445",
+  "sourceHash": "bf089c94e18d5c4b35a029f786f6b2329e5b503fce5b47a8abf2991f4eac0752",
   "templates": [
     {
       "features": [
@@ -85,6 +85,26 @@ export default {
           "region": "surround-minus-outline",
           "start": "0 in",
           "taper": "0 deg"
+        }
+      ],
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "waistReach",
+          "label": "Waist reach"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "cornerRadius",
+          "label": "Corner radius"
+        },
+        {
+          "basis": "hh",
+          "binding": "seeded",
+          "key": "waistCenterY",
+          "label": "Waist position"
         }
       ],
       "id": "template_1",
@@ -1503,6 +1523,26 @@ export default {
           "region": "surround-minus-outline",
           "start": "0 in",
           "taper": "0 deg"
+        }
+      ],
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "neckWidth",
+          "label": "Neck width"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "skeletonX",
+          "label": "S-curve tightness"
+        },
+        {
+          "basis": "h",
+          "binding": "seeded",
+          "key": "neckLength",
+          "label": "Shoulder height"
         }
       ],
       "id": "template_2",

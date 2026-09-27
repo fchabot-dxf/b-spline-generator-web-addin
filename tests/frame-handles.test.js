@@ -1,0 +1,178 @@
+/**
+ * FB-APP F9 items 2-3: the frame shape HANDLES of the editor's Frame tab, read
+ * from the ONE binding table (template_data.py FRAME_HANDLES -> frame-defs
+ * `handles`). Seeded handles write the frame record's `seeds` and never a
+ * parameter; a param-bound handle writes its (existing) param. The preview
+ * (cut profile -> editor, trim, 3D) follows both; reload keeps them; a
+ * template change resets the seeds.
+ */
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
+import { P, persistableP } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import {
+  normalizeFrameRecord, getFrameRecord, setFrameRecord, framePayload,
+} from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
+import { frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { frameHandles, handleDragPatch, frameHandleTable } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
+import { initFramePanel, setEditorTab, HANDLE_HIT_PX } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+
+const BOARD = { widthIn: 7, heightIn: 9 };
+const tplOf = (defs, id) => defs.templates.find((t) => t.id === id);
+const clone = (x) => JSON.parse(JSON.stringify(x));
+const profile = (defs, rec) => frameCutProfile(defs, rec, BOARD);
+/** Drag handle `key` by (dx, dy) board inches: the patch a drag writes. */
+function drag(defs, rec, key, dx, dy) {
+  const prof = profile(defs, rec);
+  const h = frameHandles(tplOf(defs, rec.templateId), prof).find((q) => q.key === key);
+  return { h, patch: handleDragPatch(rec, h, { x: h.anchor.x + dx, y: h.anchor.y + dy }, prof.region) };
+}
+
+describe('the binding table is the ONE source', () => {
+  it.each(['template_1', 'template_2'])('%s: the handles drawn are exactly the declared ones, all seeded today', (id) => {
+    const rec = normalizeFrameRecord({ templateId: id });
+    const table = frameHandleTable(tplOf(FRAME_DEFS, id));
+    expect(table.length).toBe(3);
+    expect(table.every((h) => h.binding === 'seeded')).toBe(true); // no Frame Builder param controls the shape (phases/p02_*)
+    expect(frameHandles(tplOf(FRAME_DEFS, id), profile(FRAME_DEFS, rec)).map((h) => h.key)).toEqual(table.map((h) => h.key));
+  });
+
+  it('a handle removed from the table is not drawn (nothing else declares handles)', () => {
+    const defs = clone(FRAME_DEFS);
+    tplOf(defs, 'template_1').handles = tplOf(defs, 'template_1').handles.filter((h) => h.key !== 'cornerRadius');
+    const rec = normalizeFrameRecord({ templateId: 'template_1' }, defs);
+    expect(frameHandles(tplOf(defs, 'template_1'), profile(defs, rec)).map((h) => h.key)).toEqual(['waistReach', 'waistCenterY']);
+  });
+});
+
+describe('seeded handle: the record + the payload, never a parameter', () => {
+  it.each([['template_1', 'waistReach', -0.4, 0], ['template_2', 'neckLength', 0, 0.5]])('%s %s', (id, key, dx, dy) => {
+    const rec = normalizeFrameRecord({ templateId: id });
+    const { h, patch } = drag(FRAME_DEFS, rec, key, dx, dy);
+    const next = normalizeFrameRecord({ ...rec, ...patch });
+    expect(next.seeds[key]).toBeCloseTo(h.valueFromWorld({ x: h.anchor.x + dx, y: h.anchor.y + dy }), 12);
+    expect(next.params).toEqual({}); // nothing written to a parameter
+    const payload = framePayload(FRAME_DEFS, next);
+    expect(payload.seeds).toEqual(next.seeds);
+    const frameParams = tplOf(FRAME_DEFS, id).params.filter((p) => p.owner === 'frame').map((p) => p.name).sort();
+    expect(Object.keys(payload.params).sort()).toEqual(frameParams); // no new parameter name
+    // the preview follows the seed (editor profile == the 3D / trim source)
+    expect(profile(FRAME_DEFS, next).params[key]).toBeCloseTo(next.seeds[key], 9);
+    expect(profile(FRAME_DEFS, next).pathD).not.toBe(profile(FRAME_DEFS, rec).pathD);
+  });
+
+  it('the gate keeps only declared seeded keys', () => {
+    const rec = normalizeFrameRecord({ templateId: 'template_1', seeds: { waistReach: 0.3, neckWidth: 0.4, bogus: 1, cornerRadius: 'x' } });
+    expect(rec.seeds).toEqual({ waistReach: 0.3 });
+  });
+});
+
+describe('param-bound handle (the code path a proven binding takes)', () => {
+  it('writes the bound param in inches (fraction x basis), the payload carries it, no seed', () => {
+    const defs = clone(FRAME_DEFS);
+    // a synthetic binding onto an existing frame-owned param, only to exercise the path
+    tplOf(defs, 'template_1').handles.find((h) => h.key === 'cornerRadius').binding = { param: 'frame_thickness' };
+    const rec = normalizeFrameRecord({ templateId: 'template_1' }, defs);
+    const { h, patch } = drag(defs, rec, 'cornerRadius', 0.2, 0);
+    const next = normalizeFrameRecord({ ...rec, ...patch }, defs);
+    const region = profile(defs, rec).region;
+    const v = h.valueFromWorld({ x: h.anchor.x + 0.2, y: h.anchor.y });
+    expect(next.params.frame_thickness).toBeCloseTo(v * region.w / 2, 12);
+    expect(next.seeds).toEqual({});
+    expect(framePayload(defs, next).params.frame_thickness).toBeCloseTo(v * region.w / 2, 12);
+    expect(profile(defs, next).params.cornerRadius).toBeCloseTo(v, 9);
+  });
+});
+
+describe('drag -> record -> reload, and a template change resets the seeds', () => {
+  beforeEach(() => { P.frame = null; });
+  afterEach(() => { P.frame = null; });
+  it('keeps the seed through save/reload and resets it on a template change', () => {
+    setFrameRecord({ templateId: 'template_1' });
+    setFrameRecord(drag(FRAME_DEFS, getFrameRecord(), 'waistCenterY', 0, 0.6).patch);
+    const seeds = getFrameRecord().seeds;
+    expect(Object.keys(seeds)).toEqual(['waistCenterY']);
+    const saved = JSON.parse(JSON.stringify({ P: persistableP() }));
+    P.frame = null; P.frame = saved.P.frame;
+    expect(getFrameRecord().seeds).toEqual(seeds);
+    setFrameRecord({ wood: 'x', frameBottomZ: -2 }); // any other edit keeps them
+    expect(getFrameRecord().seeds).toEqual(seeds);
+    setFrameRecord({ templateId: 'template_2' });
+    expect(getFrameRecord().seeds).toEqual({});
+  });
+
+  it('the reset is the declared rule, not a side effect of disjoint keys (two templates sharing a key)', () => {
+    const t2 = tplOf(FRAME_DEFS, 'template_2');
+    const saved = t2.handles;
+    t2.handles = [...saved, { key: 'waistReach', label: 'shared', basis: 'hw', binding: 'seeded' }];
+    try {
+      setFrameRecord({ templateId: 'template_1', seeds: { waistReach: 0.3 } });
+      expect(getFrameRecord().seeds).toEqual({ waistReach: 0.3 });
+      setFrameRecord({ templateId: 'template_2' });
+      expect(getFrameRecord().seeds).toEqual({});
+    } finally { t2.handles = saved; }
+  });
+});
+
+// ---------------------------------------------------------------- the Frame tab UI
+function mockCanvasEditor() {
+  const node = () => {
+    const n = { children: [], attrs: {} };
+    const self = (f) => (...a) => { f(...a); return n; };
+    Object.assign(n, {
+      id: self((v) => { n.attrs.id = v; }), attr: self((k, v) => { n.attrs[k] = v; }), fill: self(() => {}),
+      stroke: self(() => {}), addClass: self(() => {}), center: self((x, y) => { n.attrs.cx = x; n.attrs.cy = y; }),
+      path: () => { const c = node(); n.children.push(c); return c; },
+      circle: () => { const c = node(); c.isCircle = true; n.children.push(c); return c; },
+      group: () => { const c = node(); c.parent = n; n.children.push(c); return c; },
+      remove: () => { if (n.parent) n.parent.children = n.parent.children.filter((x) => x !== n); },
+      findOne: (sel) => n.children.find((c) => '#' + c.attrs.id === sel) || null,
+    });
+    return n;
+  };
+  const PX = 100; // screen px per board inch
+  return { _bgLayer: node(), _sketchLayer: node(), _mW: 7, _mH: 9, PX,
+    _getMousePoint: (e) => ({ x: e.clientX / PX, y: e.clientY / PX }) };
+}
+
+describe('Frame tab: dragging a handle through the shield', () => {
+  let root, ed;
+  beforeEach(() => {
+    root = document.createElement('div');
+    root.innerHTML = `<input id="widthIn" value="7"><input id="heightIn" value="9">
+      <select id="frameTemplate"></select><div id="frameSettings"><select id="frameAppearance"></select></div>
+      <button id="btnStampEdit"></button><div id="editorFrameShield"></div>
+      <aside id="editorFramePanel"></aside><aside id="editorLayersPanel"></aside>`;
+    document.body.appendChild(root);
+    P.frame = null; P.widthIn = 7; P.heightIn = 9;
+    ed = mockCanvasEditor();
+    window.svgEditor = ed;
+    initFramePanel();
+    setFrameRecord({ templateId: 'template_1' });
+  });
+  afterEach(() => { setEditorTab('artwork'); root.remove(); window.svgEditor = null; P.frame = null; });
+
+  const fire = (type, x, y) => document.getElementById('editorFrameShield')
+    .dispatchEvent(new MouseEvent(type, { clientX: x * ed.PX, clientY: y * ed.PX, bubbles: true, cancelable: true }));
+
+  it('handles show in the Frame tab only; a press on one + a move writes the seed; a far press does nothing', () => {
+    expect(ed._frameHandles || []).toEqual([]); // Artwork tab: no handles
+    setEditorTab('frame');
+    const handles = ed._frameHandles;
+    expect(handles.map((h) => h.key)).toEqual(['waistReach', 'cornerRadius', 'waistCenterY']);
+    const g = ed._bgLayer.findOne('#frame-profile');
+    expect(g.children.filter((c) => c.isCircle)).toHaveLength(3);
+
+    const far = HANDLE_HIT_PX / ed.PX + 0.05;
+    fire('pointerdown', handles[0].anchor.x + far, handles[0].anchor.y);
+    fire('pointermove', handles[0].anchor.x - 0.5, handles[0].anchor.y);
+    fire('pointerup', 0, 0);
+    expect(getFrameRecord().seeds).toEqual({});
+
+    const h = handles[0], to = { x: h.anchor.x - 0.4, y: h.anchor.y };
+    fire('pointerdown', h.anchor.x + 0.05, h.anchor.y);
+    fire('pointermove', to.x, to.y);
+    fire('pointerup', to.x, to.y);
+    expect(getFrameRecord().seeds.waistReach).toBeCloseTo(h.valueFromWorld(to), 9);
+    expect(ed._frameHandles.find((q) => q.key === 'waistReach').anchor.x).toBeCloseTo(to.x, 6); // the handle followed
+  });
+});

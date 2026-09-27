@@ -2,7 +2,9 @@
  * frame-record.js — FB-APP S2 (F6): the persisted FRAME RECORD (design §3.2).
  *
  * One declared record, saved and loaded with the project as `P.frame`:
- *   { recordVersion, templateId (null = no frame), params, frameBottomZ, appearance }
+ *   { recordVersion, templateId (null = no frame), params, seeds, frameBottomZ, appearance }
+ * `seeds` (F9): the values of the template's SEEDED shape handles (frame-defs
+ * `handles`, editor/frame-handles.js), additive, so still version 1.
  * Only overrides live in `params`; every default comes from the generated
  * frame definition (data/frame-defs.js, built from the frame builder's own
  * Python by tools/gen_frame_defs.py), so a regenerated definition never needs
@@ -32,6 +34,7 @@ export function defaultFrameRecord(defs = FRAME_DEFS) {
     recordVersion: FRAME_RECORD_VERSION,
     templateId: defs.defaultTemplate ?? null,
     params: {},
+    seeds: {},
     frameBottomZ: _extrusion(defs, 'frameBottomZ').default ?? -1,
     appearance: defs.appearance?.default ?? null,
   };
@@ -53,7 +56,29 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
       if (declared.has(k) && Number.isFinite(n)) out.params[k] = n;
     }
   }
+  if (tpl && raw.seeds && typeof raw.seeds === 'object') {
+    const seeded = new Set((tpl.handles || []).filter((h) => h.binding === 'seeded').map((h) => h.key));
+    for (const [k, v] of Object.entries(raw.seeds)) {
+      const n = Number(v);
+      if (seeded.has(k) && Number.isFinite(n)) out.seeds[k] = n;
+    }
+  }
   return out;
+}
+
+/**
+ * F9: what [Send frame] (S5) sends: the template, every frame-owned param's
+ * effective value (defaults + overrides: the ONLY user parameters), the seeded
+ * handle values as plain values under `seeds` (never a parameter), the frame
+ * bottom and the wood.
+ */
+export function framePayload(defs, record) {
+  const tpl = findFrameTemplate(defs, record?.templateId);
+  if (!tpl) return null;
+  const params = {};
+  for (const p of tpl.params) if (p.owner === 'frame') params[p.name] = frameParam(defs, record, p.name);
+  return { recordVersion: record.recordVersion, templateId: tpl.id, params, seeds: { ...(record.seeds || {}) },
+    frameBottomZ: record.frameBottomZ, appearance: record.appearance };
 }
 
 /** A frame param's effective value: the record's override, else the template default. */
@@ -69,9 +94,12 @@ export function getFrameRecord() {
   return normalizeFrameRecord(P.frame);
 }
 
-/** The ONE write path: normalize, store on P, persist, mark the project dirty. */
+/** The ONE write path: normalize, store on P, persist, mark the project dirty.
+ *  A template change resets the seeds (F9: they belong to that template's shape). */
 export function setFrameRecord(patch) {
-  P.frame = normalizeFrameRecord({ ...getFrameRecord(), ...patch });
+  const cur = getFrameRecord();
+  const reset = 'templateId' in patch && patch.templateId !== cur.templateId ? { seeds: {} } : {};
+  P.frame = normalizeFrameRecord({ ...cur, ...reset, ...patch });
   saveLastSession();
   markDirty();
   return P.frame;

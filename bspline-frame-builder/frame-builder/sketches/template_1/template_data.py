@@ -101,6 +101,22 @@ FRAME_REGIONS = {
                ("proj_top_edge", "proj_horn_TR", "proj_bottom_edge", "proj_horn_BL")],
     "surround": "surround_rect",                           # p03_05
 }
+# FB-APP F9: the frame shape HANDLES, the ONE binding table (the app's Frame tab
+# reads it from frame-defs.json; S5's [Send frame] will too). Each handle drags
+# one of the app's shape params (editor-shape-lattice-generator.js PARAM_ORDER
+# key), a fraction of `basis`: the safe zone's half width "hw", half height
+# "hh", or full height "h".
+#   binding "seeded": no existing template param controls this feature (the
+#     shape comes from the literal seeds in phases/p02_*), so the dragged value
+#     lives in the frame record's `seeds`, and [Send frame] writes it into the
+#     sketch as a plain value: no user parameter is ever created.
+#   binding {"param": "<name>"}: an EXISTING template param, only once per-value
+#     goldens prove the preview matches Fusion (FB-APP-DESIGN.md §3.2).
+FRAME_HANDLES = [
+    {"key": "waistReach",   "label": "Waist reach",     "basis": "hw", "binding": "seeded"},
+    {"key": "cornerRadius", "label": "Corner radius",   "basis": "hw", "binding": "seeded"},
+    {"key": "waistCenterY", "label": "Waist position",  "basis": "hh", "binding": "seeded"},
+]
 FRAME_FEATURES = COMMON_FRAME_FEATURES
 # F8: this template's app shape is a MODEL fitted from the recorded Fusion
 # goldens (fb_engine/frame_shape_fit.py, run by tools/gen_frame_defs.py);
@@ -141,5 +157,6 @@ def get_template_logic(ui_data=None):
             "silhouettePreset": FRAME_SILHOUETTE_PRESET,
             "regions": FRAME_REGIONS,
             "features": [dict(f) for f in FRAME_FEATURES],
+            "handles": [dict(h) for h in FRAME_HANDLES],
         },
     }

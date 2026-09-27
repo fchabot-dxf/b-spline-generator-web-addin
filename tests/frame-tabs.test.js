@@ -114,6 +114,29 @@ describe('editor [Frame | Artwork] tabs', () => {
     ed._selectedElements = [{}];
     press('Delete'); press('p');
     expect([ed.deleteSelected.mock.calls.length, toolClick.mock.calls.length]).toEqual([1, 1]);
+    ed._artworkLocked = true; // initInteraction's window listeners outlive the test: leave this mock inert
+  });
+
+  it('the editor shows no hover/snap feedback in the Frame tab (its pointer handler reads nothing else)', () => {
+    // A recording editor: every property the editor's own handlers read is logged; anything
+    // missing is an inert chameleon (callable, any property), so no code path can throw.
+    const cham = new Proxy(function () {}, { get: (_, k) => (k === Symbol.toPrimitive ? () => 0 : cham), apply: () => cham });
+    const reads = [];
+    const target = { _artworkLocked: true };
+    const ed = new Proxy(target, {
+      get: (t, k) => { reads.push(k); return k in t ? t[k] : cham; },
+      set: (t, k, v) => { t[k] = v; return true; },
+    });
+    initInteraction(ed);
+    const move = () => window.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }));
+    reads.length = 0;
+    move();
+    expect(reads).toEqual(['_artworkLocked']); // locked (the Frame tab): returns at once
+    target._artworkLocked = false;
+    reads.length = 0;
+    move();
+    expect(reads.length).toBeGreaterThan(1); // unlocked (the Artwork tab): the hover path runs
+    target._artworkLocked = true; // leave this test's window listener inert
   });
 });
 
