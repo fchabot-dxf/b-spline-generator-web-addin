@@ -10243,3 +10243,66 @@ lunar photos, + Dunes' own cross-section side view showing the actual asymmetric
 Verify: 2015/2015 vitest (6 new). Commit f195036, pushed. NO FUSION this whole turn.
 
 # T78 (original checklist, items 1-6) complete. Continuing to item 7 (added mid-turn): the Anatomical filter.
+
+## T78 item 7 — ANATOMICAL: a lean torso, skin stretched over bone
+
+Full rework of `core/noise/chest.js`, added to the checklist mid-turn via THREE rounds of Fred's own direction: (1)
+"the anatomical filter needs work done too" — first direction was a believable MUSCLE relief (pecs/abs/rib
+striations); (2) superseded immediately (Fred: "I'd want it to be more skin and bony like"); (3) T78 ANATOMICAL
+REFERENCE (a real photo of an emaciated torso, form only) confirmed/refined direction 2. Only direction 3 shipped —
+the muscle-mound version never went out.
+
+Shipped design: a visible RIBCAGE (7 curved bands sweeping down-and-out from the sternum, strongest at the flanks,
+fading toward the front per the reference), a STERNUM RIDGE tapering toward the xiphoid, a COSTAL MARGIN (one more
+prominent arc curving the OPPOSITE way from the ribs, marking the classic inverted-V where the ribcage ends), a
+SUNKEN abdomen (concave, not a six-pack mound) with faint ab lines and a hollow navel, and ILIAC CRESTS jutting at
+the waist — muscles minimal and flattened everywhere else. Kept the 3 original tweak keys for saved projects, with
+their MEANING changed to match the new model (documented per-key in the tweaks array itself): `pectoralStrength` →
+overall soft-tissue thickness (was pectoral mound height), `absStrength` → sunken-abdomen depth (was six-pack mound
+depth), `ribStrength` → rib/costal-margin/iliac prominence, now the MAIN control (was side-rib striation amplitude).
+Added a new `skinDetail` key (fine creases + pore/stretch texture).
+
+**Two real bugs found by RENDERING, not by reasoning about the formulas alone** — and neither was visible in the
+STANDARD lit 3D iso preview (the terrain-style camera the other 6 items used); both needed a genuinely different
+verification technique:
+
+1. **Ribs merged into one solid mound.** The per-rib gaussian band width (0.028) was wider than half the spacing
+   between adjacent ribs (0.052), so all 7 bands overlapped enough to fuse into one continuous mound with NO
+   intercostal grooves at all — invisible in the lit 3D preview (shading smoothed right over it), but obvious the
+   moment a direct GRAYSCALE HEIGHTMAP was dumped (bypassing 3D lighting entirely — a quick Python/PIL script reading
+   a raw sampled grid, no browser needed). Narrowed to 0.014 (well under half the spacing) — the same diagnostic
+   image then showed 7 cleanly separated curved bands.
+2. **A skin-crease term created a dominant stripe artifact.** A first attempt at fine skin creases used spatial
+   frequency 26x; even at a tiny nominal amplitude, slope ≈ amplitude × frequency, so the high frequency alone
+   produced a steep enough per-vertex gradient that flat mesh shading turned it into a bold, distracting stripe
+   pattern covering the WHOLE torso, drowning out the ribcage structure underneath — again caught only once actually
+   rendered (both the lit 3D view and the heightmap dump showed it clearly; reasoning about the "tiny amplitude"
+   number alone would have suggested it was safe). Lowered to a gentler, much lower frequency that reads as a few
+   broad skin creases instead of engraved lines.
+
+**Verification technique note for future anatomical/portrait-style filters**: the standard terrain-iso camera
+(45°-ish oblique, tuned for landscape boards) does NOT suit a front-facing relief like this — from that angle the
+ribcage structure was nearly unreadable even once the two bugs above were fixed. A near-top-down camera (`Euler(0.001,
+0, 0)`, i.e. looking almost straight down at the board) reads far better for this kind of subject, and a raw
+grayscale heightmap dump (no 3D rendering, no lighting) is the fastest and most reliable way to debug STRUCTURE
+issues specifically (band merging, unwanted high-frequency artifacts) before ever touching the browser.
+
+Verified against Fred's own reference photo: `shots/seatB/after-chest_vs_reference.png` (a near-top-down render next
+to the reference — a real photo of an emaciated torso, used for form only per Fred's own note). Before/after shots:
+`before_chest_seed42.png` / `after-chest_chest_seed42.png` (standard iso, matching the other 6 filters' own
+before/after convention) and `before-chest-topview_seed42.png` / `after-chest-topview_seed42.png` (the more
+diagnostic near-top-down view) — the before shot shows generic muscle-fiber-like vertical striations with no
+organized structure at all; the after shot shows a clearly recognizable ribcage.
+
+New `tests/noise-chest.test.js` (10 tests): tweak keys kept + `skinDetail` added; an old-saved-pattern-with-3-keys-
+only case (no `skinDetail`); determinism; a direct STRUCTURAL test proving the ribcage is separate distinct bands
+(counts local peaks with real valleys between them along a flank scan, restricted to the ribcage's own dy span) —
+the regression guard for bug 1 above, would have failed against the pre-fix 0.028 band width; `ribStrength` as the
+now-main control, isolated to the ribcage's own span so the measurement isn't diluted by unrelated abdomen/iliac
+terms that don't scale with it; sternum ridge higher than a point just off-centre; sunken abdomen lower than the
+ribcage-height area; `absStrength` controlling abdomen depth; iliac crest presence; and `skinDetail` as a real
+multiplier.
+
+Verify: 2025/2025 vitest (10 new), 87/87 b-spline-gen pytest. Commit 3708fae, pushed. NO FUSION this whole turn.
+
+# T78 complete — all 7 items (the original 6 + the mid-turn Anatomical addition) landed. Passing back to the advisor.
