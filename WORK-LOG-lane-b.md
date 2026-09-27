@@ -10084,3 +10084,45 @@ mariaAmount's effect on overall variance, and a std-dev-vs-Simplex regression gu
 
 Verify: 1988/1988 vitest (15 new), 87/87 b-spline-gen pytest, 378/378 frame-builder pytest (2 skipped, both
 pre-existing, untouched by this item). Commit 67f2ed0, pushed. NO FUSION this whole turn.
+
+## T78 item 3 — MARS: dust-softened craters, dendritic channels, flat-topped mesas, wind streaks
+
+Reuses `craterField.js` (item 2's own shared model) via a distinct `saltOffset` (5000) so Mars's own crater sites are
+placed INDEPENDENTLY from Moon's at the identical seed — lower density (0.22) and lower `rimHeight` (0.35) for a
+dust-softened look, since real Mars is far less crater-saturated than the airless Moon (atmosphere + dust erosion
+erase most of them over geologic time). Craters are deliberately SECONDARY here, not the dominant feature they are
+on the Moon.
+
+New flat-topped mesa terracing: the HIGHEST band of the existing continental-relief field (`reliefRaw` in
+[0.50,0.70], via a smoothstep mask) is quantized into 5 discrete `Math.round()` levels, producing genuine flat
+treads bordered by abrupt cliff steps — a localized butte/plateau feature confined to the highland crests, not a
+global staircase over the whole board (tuned the mask's own threshold band empirically: the first attempt,
+[0.55,0.75], only covered 2.7% of a sample grid — nearly invisible in practice; landed on [0.50,0.70] for ~18.5%
+coverage, a "notable recurring feature" without terracing the entire board). The existing dendritic drainage network
+(two octave-shifted `fractalRidge2` river systems, merged) is kept, unchanged in structure.
+
+**First render attempt looked indistinguishable from Moon at a glance** — the dispatch's own explicit acceptance
+criterion — because craters were still visually dominant even at a reduced density. Measured each component's own
+stdDev separately (relief ~0.058, valleys ~0.031, craters alone ~0.22 at density 0.35) to confirm craters really
+were drowning out the geology, then rebalanced: relief amplitude x1.7 (and a gentler `pow(...,1.3)` curve, was 1.6),
+valleys x1.6 (and a gentler `pow(...,2.0)` exponent, was 2.3), craters cut further (density 0.35→0.22, rimHeight
+0.55→0.35) — all internal constants, no tweak's own DECLARED default changed. Re-rendered: the dendritic/mesa
+structure now reads clearly, craters present but clearly secondary — a real qualitative difference from Moon, not
+just a re-skin of the same crater-dominated look.
+
+New faint wind-streak term: a heavily direction-stretched low-frequency FBM band (0.012 amplitude, compressed ~15x
+along one axis via a fixed wind angle) — per the dispatch's own "faint wind streaks".
+
+Kept all 4 original tweak keys (reliefHeight/riverDepth/craterScale/ridgeAmount) at their original defaults, per
+item 6.
+
+New `tests/noise-mars.test.js` (6 tests): tweak keys preserved; determinism; a STRUCTURAL mesa-terrace test (a 400-
+sample 1D scan finds a run of 8+ consecutive near-identical relief samples — a genuine flat tread — rather than
+smooth relief everywhere, confirming the quantization is real and not just theoretical); Mars's own `craterField`
+call measurably less-covered than Moon's at the same seed (dust-softened is a real, tested difference, not just a
+comment); Mars and Moon independently placed at the same seed (not visually-identical crater positions); and a std-
+dev-vs-Simplex regression guard (Mars must now EXCEED Simplex's own stdDev, having measured well below it — 53% —
+before this rework).
+
+Verify: 1994/1994 vitest (6 new), 87/87 b-spline-gen pytest, 378/378 frame-builder pytest (2 skipped, both pre-
+existing, untouched by this item). Commit fc77351, pushed. NO FUSION this whole turn.
