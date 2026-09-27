@@ -1,16 +1,16 @@
-# NEXT — seat A — H12: sub-labels inline with their labels, across the whole UI
+# NEXT — seat A — H13: HAPTICS (all the moments Fred approved)
 
-**Ball: worker (seat A) · epoch 3 · H12.** H11 item 0 ACCEPTED (dc06793). NO FUSION. Fred (iPad screenshot, SEED section: "Offset X
-(pan, in screens)", "Offset Y (pan, in screens)", "Rotation (degrees)" each take 2 lines): "go through the UI and see if sub-labels
-can fit onto their label lines, like width/height". Seat B = core/noise; seat C = frame handle files: not yours.
-PROGRESS automatic ("H12 item N: …"); push each item; shots -> shots\seatA\.
+**Ball: worker (seat A) · epoch 3 · H13.** H12 ACCEPTED (9b1574f). Spec: ROADMAP.md "HAPTICS". NO FUSION. Seat B = core/noise;
+seat C = frame solver/handles (F24): call haptic() from their clamp points only through tiny hooks. PROGRESS automatic
+("H13 item N: …"); push each item; shots/notes -> shots\seatA\.
 
 ## Checklist
-- [ ] [H12-item-1] Inventory (in the WORK-LOG): every label that has a sub-label / hint line under it (sidebar sections, lattice
-      panels, Frame section, the editor panels, Settings): selector + current text.
-- [ ] [H12-item-2] ONE declared pattern (a shared class/markup: bold label + muted sub-label on the same line, like "Width (X)") applied
-      to all of them. Where a sub-label is too long to fit at 390 px, shorten the WORDING (e.g. "(pan, in screens)" -> "(screens)"),
-      state each rename; never let it wrap. Keep ids/for= intact (formula fields + tests reference them).
-- [ ] [H12-item-3] Check (extend your multi-width script): every label + sub-label is ONE line at 390 / 768 / 834 / 1024 / 1366;
-      mutation-tested like H10. Shots before/after (SEED section + one lattice panel + Frame section) at 390 + 834.
-Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — H12 — <shas>"`.
+- [ ] [H13-item-1] ONE declared module (e.g. core/haptics.js): a table {event -> pattern} + haptic(event); backends: Android/Chrome
+      navigator.vibrate; iOS/iPadOS Safari 18+ = the hidden <input type=checkbox switch> toggle trick; desktop/Fusion = no-op.
+- [ ] [H13-item-2] Wire ALL events: snap (grid or geometry, only on ENTERING a snap: rate-limited), limit (any clamped drag: frame
+      Shoulder/Hip/waist handles, Shape Lattice handles, cut-joint pushes, lip/trim ranges: one call at each clamp), multiselect
+      add/remove (double tick), context menu open (tick), cut/join (tick).
+- [ ] [H13-item-3] Settings toggle "Haptic feedback" (default ON on touch devices), persisted.
+- [ ] [H13-item-4] Tests: each event -> its pattern; the snap rate limit; the toggle; no-op without support. Note in the WORK-LOG
+      how Fred can check the feel on his Android phone + iPad (which gestures to try).
+Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — H13 — <shas>"`.
