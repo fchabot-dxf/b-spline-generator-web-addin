@@ -24,4 +24,6 @@ blobby lumps; Dunes = a low flat slab with fine ripples, no real crests; Reef = 
 - [ ] [T78-item-6] Keep each filter's existing tweak KEYS (saved projects load; new keys get defaults); deterministic per seed;
       output range normalised like the others; relief comparable to Simplex (state a measured std-dev/detail metric vs Simplex).
       Before/after shots for all four, same seed, in shots\seatB\.
+- [ ] [T78-item-7] ANATOMICAL (chest.js): skin-and-bone lean torso per Fred's reference (shotsrednatomical_reference_lean_torso.jpg):
+      clavicles, ribs down the flanks, sternum line, sunken abdomen, iliac crest, thin skin; keep the tweak keys. Before/after shots.
 Pass back from the lane-b root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — T78 — <shas>"`.
