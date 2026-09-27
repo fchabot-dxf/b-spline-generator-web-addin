@@ -1,16 +1,22 @@
-# NEXT — seat A, regular add-in — H2: SEG-COLOR-PANEL (contour segments in the "Selected piece" panel, colour only)
+# NEXT — seat A, regular add-in — H3: NO-PIECE-WIDTH (remove the per-piece width override for lattice pieces)
 
-**Ball: worker (seat A) · epoch 3 · H2.** H1 SNAP-SPLIT ACCEPTED (407e4cc; full suite on main 1823 vitest + 365 pytest).
-NO FUSION. Spec: ROADMAP.md "SEG-COLOR-PANEL". Seat C is DESIGNING the SE16 cut tool (CUT-TOOL-DESIGN.md, no code yet)
-and will build it on your snap resolver; don't start cut-tool code. PROGRESS automatic ("H2 item N: …"); commit + push EACH
-item as it passes (H1 sat uncommitted for 2 h: push as you go); shots -> shots\seatA\ as items land.
+**Ball: worker (seat A) · epoch 3 · H3.** H2 SEG-COLOR-PANEL ACCEPTED (879d5ac; pixel-verified: the segment renders #1565c0).
+NO FUSION (the advisor checks it live on Ranchy after). Spec: ROADMAP.md "NO-PIECE-WIDTH" (incl. the NODES rule: nodes
+follow the general node_diameter, no per-node size). Seat C is on F17 (Send-as-drawn: the lattice manifest now reads
+pieces FROM THE DOM, in editor-sketch-manifest.js + export-flow.js on the fb-app branch, not merged yet): coordinate before
+touching those two files; the per-piece width DIMENSION removal there may need to land after F17 merges. PROGRESS automatic
+("H3 item N: …"); push each item; shots -> shots\seatA\.
+
+THIS IS A REMOVAL: sweep the whole chain; every link is REMOVED or KEPT WITH A NAMED REASON in the WORK-LOG.
 
 ## Checklist
-- [ ] [H2-item-1] Selecting a Shape Lattice contour segment shows the "Selected piece" panel (lattice-piece-panel.js) with
-      COLOUR + Reset only, no width control (Fred: "only color").
-- [ ] [H2-item-2] ONE storage path: the panel reads/writes the existing PATTERN.contour.segmentColors[i] (primitive index)
-      via the same helper the toolbar COLOR uses (_storeContourSegmentColor in editor.js); no second schema, so the
-      toolbar and the panel can't disagree.
-- [ ] [H2-item-3] Tests: select segment -> panel colour == stored; set/reset; survives Regenerate + reload; Send payload
-      carries it; no width control for a segment; toolbar COLOR and panel stay in sync. Desktop + mobile shots.
-Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — H2 — <shas>"`.
+- [ ] [H3-item-1] The Selected piece panel: Colour stays per piece; its Width (rails/ties) and size (nodes) controls now edit
+      the lattice's GENERAL value for that kind (all parts change). Contour segments stay colour-only.
+- [ ] [H3-item-2] Remove the chain: data-override-width attr + the width half of editor-piece-override.js ->
+      rewidthOwnedKind's override-skip -> SVG/export width attr -> the manifest's per-piece hardcoded width DIMENSION
+      (T75 item 3 / OVR-FUSION; if it lives in files seat C is editing in F17, list it for the advisor instead of editing).
+      Old saved patterns carrying data-override-width: ignored on load (migration test).
+- [ ] [H3-item-3] Tests: guarded-by-old-behaviour tests are REWRITTEN to assert the new rule (never silently deleted); a
+      grep proves no reader of data-override-width remains. Plain drawing elements (rect/freeform/line) keep per-element
+      width (test). Shots desktop + mobile.
+Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — H3 — <shas>"`.
