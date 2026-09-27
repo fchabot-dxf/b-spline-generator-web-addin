@@ -36,6 +36,7 @@ import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { viewScale } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
 import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
+import { latticeScope, attachLatticeFormulaFields } from './lattice-formula-fields.js';
 
 // T59: the event this module dispatches after ANY programmatic change to
 // `p.shape` from OUTSIDE the panel's own field handlers (a param-handle
@@ -1199,5 +1200,21 @@ export function initShapeLatticeProperties(editor) {
 
     // UI5 items 1/3/4: shared with properties-lattice.js — see
     // lattice-piece-panel.js's own header comment.
-    mountSelectedPiecePanel(editor, el('editorShapeLatticePanelBody'));
+    const shapeLatticeScopeThunk = () => latticeScope(editor, currentPattern);
+    mountSelectedPiecePanel(editor, el('editorShapeLatticePanelBody'), shapeLatticeScopeThunk);
+
+    // R5: same shared scope as the box Lattice panel (lattice-formula-fields.js)
+    // — this panel's own `currentPattern` (exported above) is the live
+    // accessor. `contourWidthEl` (this panel only, no box-Lattice
+    // equivalent) uses the base scope as-is: its own current value has a
+    // nullable "auto" default with no single obvious fallback number to
+    // expose as a name, so it wasn't worth declaring one just for this
+    // one cosmetic field — see WORK-LOG-reg-addin.md's R5 entry. Excluded:
+    // `tiesDensityEl` (`#shapeLatticeTiesDensity` is `type="range"`, same
+    // reason as the box Lattice panel).
+    attachLatticeFormulaFields([
+        sizeWidthEl, sizeHeightEl, railsCountMinEl, railsCountMaxEl, railsEveryEl, railsOffsetEl,
+        tiesCountMinEl, tiesCountMaxEl, tiesSpanMinEl, tiesSpanMaxEl, tiesRailSnapRowsEl,
+        tiesOneEndedEl, tiesMinSpacingEl, widthRailsEl, widthTiesEl, widthNodesEl, widthLinkedEl, contourWidthEl,
+    ], shapeLatticeScopeThunk);
 }

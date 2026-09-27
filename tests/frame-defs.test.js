@@ -30,7 +30,10 @@ describe('frame-defs (generated) — schema', () => {
 
   it.each(FRAME_DEFS.templates.map((t) => [t.id, t]))('%s: preset, shape params and params are complete', (_id, t) => {
     expect(PRESETS[t.silhouettePreset]).toBeTruthy();
-    expect(Object.keys(t.shapeParams).sort()).toEqual(Object.keys(PRESETS[t.silhouettePreset].params).sort());
+    // F8: the shape is a model fitted from the recorded Fusion goldens, with its fit report.
+    const FEATURES = { hourglass: ['cornerR', 'depth', 'notch', 'waistCy', 'waistR'], bottle: ['bodyR', 'neckHalfW', 'neckR', 'neckTop'] };
+    expect(Object.keys(t.shapeModel.features).sort()).toEqual(FEATURES[t.silhouettePreset]);
+    expect(t.shapeModel.fit.fittedFrom.length).toBeGreaterThanOrEqual(2);
     for (const p of t.params) {
       expect(p).toHaveProperty('unit');
       expect(p).toHaveProperty('default');

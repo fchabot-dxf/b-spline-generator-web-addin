@@ -26,6 +26,7 @@ import {
 import { openColorMosaic } from './editor-color.js';
 import { PATTERN_DEFAULTS, resolvePatternLayer } from './editor-lattice-pattern.js';
 import { getElementLayer } from './layers.js';
+import { attachFormula } from '../core/formula-field.js';
 
 const KIND_LABEL = { rails: 'Rail', ties: 'Tie', nodes: 'Node' };
 
@@ -52,7 +53,7 @@ function _currentColor(el, kind) {
   return kind === 'nodes' ? el.attr('fill') : el.attr('stroke');
 }
 
-export function mountSelectedPiecePanel(editor, bodyEl) {
+export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   if (!bodyEl) return;
 
   const section = document.createElement('div');
@@ -83,6 +84,11 @@ export function mountSelectedPiecePanel(editor, bodyEl) {
   const colorResetBtn = section.querySelector('.lattice-piece-color-reset');
   const widthInput = section.querySelector('.lattice-piece-width');
   const widthResetBtn = section.querySelector('.lattice-piece-width-reset');
+  // R5: the override width field is formula-capable too, over the SAME
+  // scope its host panel declares (`scope` — a caller-supplied thunk, so
+  // it reads live off whichever layer/pattern is active, same as the
+  // panel's own fields).
+  if (scope) attachFormula(widthInput, scope);
 
   let current = null; // { el, kind, layerId }
 

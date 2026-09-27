@@ -17,6 +17,7 @@ import {
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
 import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
+import { latticeScope, attachLatticeFormulaFields } from './lattice-formula-fields.js';
 
 /** SE7i: Pattern settings live ON THE ACTIVE LAYER now (`layer.pattern`),
  *  not once per file — Generate/Regenerate write into whichever layer is
@@ -46,6 +47,10 @@ function _currentPattern(editor) {
     layer.pattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
     return layer.pattern;
 }
+// R5: exported under a clearer name for lattice-formula-fields.js (the
+// declared per-panel formula scope) — same live pattern accessor this
+// panel already uses internally, not a second one.
+export { _currentPattern as currentPatternLattice };
 
 export function initLatticeProperties(editor) {
     const spacingEl = el('latticeSpacing');
@@ -584,5 +589,20 @@ export function initLatticeProperties(editor) {
     // with properties-shape-lattice.js (lattice-piece-panel.js), mounted
     // into THIS panel's own body via runtime DOM creation (no edits to
     // bspline_gen_palette.html).
-    mountSelectedPiecePanel(editor, el('editorLatticePanelBody'));
+    const latticeScopeThunk = () => latticeScope(editor, _currentPattern);
+    mountSelectedPiecePanel(editor, el('editorLatticePanelBody'), latticeScopeThunk);
+
+    // R5: every numeric field in this panel becomes formula-capable, over
+    // ONE shared scope (lattice-formula-fields.js) — see that module's own
+    // doc comment for the excluded fields (Seed; the mode/anchor/end-rule
+    // controls, which aren't number inputs to begin with). ALSO excluded
+    // here: `tiesDensityEl` — `#latticeTiesDensity` is `type="range"` (a
+    // slider), not a typeable number field; attachFormula's own
+    // type==='number' check would leave it untouched anyway, but it's
+    // named explicitly rather than silently omitted.
+    attachLatticeFormulaFields([
+        sizeWidthEl, sizeHeightEl, railsCountMinEl, railsCountMaxEl, railsEveryEl, railsOffsetEl,
+        tiesCountMinEl, tiesCountMaxEl, tiesSpanMinEl, tiesSpanMaxEl, tiesRailSnapRowsEl,
+        tiesOneEndedEl, tiesMinSpacingEl, widthRailsEl, widthTiesEl, widthNodesEl, widthLinkedEl,
+    ], latticeScopeThunk);
 }

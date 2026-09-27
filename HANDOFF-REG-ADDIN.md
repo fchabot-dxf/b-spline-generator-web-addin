@@ -49,7 +49,7 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
    The rail and tie ends should stay coincident to the contour through a `stroke_width` edit (small drift is accepted).
    Hide one kind and it shouldn't be sent. Change the lattice Size and `contour_width`/`contour_height` should follow.
    Give one piece a width override and it should get a hardcoded dim. Inspect `last_send.json` when something looks off.
-2. **Live check of the Frame Builder F4 fixes** (merged 6dfdcaf): build a frame with the standalone Frame Builder; the
+2. ✅ **DONE (Fred 2026-09-26: "frame builder looks fine")** **Live check of the Frame Builder F4 fixes** (merged 6dfdcaf): build a frame with the standalone Frame Builder; the
    log should show NO "FALLING BACK to a NON-parametric offset"; changing frame_thickness must move the frame; a
    unit value like 0.75 in resolves (no FAIL RESOLVE). If the offset lands OUTSIDE, report it (OFFSET_SIDE sign).
 3. **Live check of UI5** once merged: override one piece → only that piece changes; Regenerate clears the override; Undo restores it.
@@ -100,3 +100,10 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
   (section 2) until the UI5 merge lands. FORMULA-FIELDS is a good first pick (a new shared module).
 - Leave fb-app and the silhouette solver to the home PC.
 - The home PC also pushes to main (merges): always `git pull --rebase` before pushing.
+
+## 5. Wind-down (Fred 2026-09-26)
+After the in-flight tasks land, the regular add-in HANDS BACK to the home-PC advisor. The Asus loops end after:
+**R6** (RAIL-SPACING engine) + **R7** (lattice panel restructure: Boundary first, Anchor/Spacing/Count, remove
+"Draw boundary") on main, and **L1** (BOUNDARY-GUIDE) on lane2, merged to main by the Asus advisor. Then: `handoff.py
+done` on both loops, lane2 worktree removed, a hand-back note here (state + what's left: SE16 cut tool with Fred's
+ruling in ROADMAP, UI4 0b, stamp-layer formula fields, Fred's live checks T75/T76/UI5/stale-params).

@@ -11,11 +11,36 @@
  * engine the Shape Lattice uses solves it (no second copy of the math), and
  * the F5 outline guard must pass before anything is drawn.
  */
-import { generateSilhouette, outlineDefects, primitivesToPathD } from './editor-shape-lattice-generator.js';
+import { generateSilhouette, outlineDefects, primitivesToPathD, paramsFromShapeModel } from './editor-shape-lattice-generator.js';
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
+import { offsetOutlineInward } from './outline-offset.js';
 
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
 export const FRAME_GRID_CLIP_ID = 'frame-grid-clip';
+
+/** F8 (Fred): every frame line (outline, inner edge, miters) in ONE colour. */
+export const FRAME_OUTLINE_COLOR = '#5d4037';
+/** F8 (Fred): the symmetric focus rule: whichever of frame / artwork is NOT
+ *  being edited is drawn at this opacity, the edited one at full. */
+export const INACTIVE_LAYER_OPACITY = 0.4;
+
+/**
+ * The editor's two modes (design §3.1). 'frame': the frame is edited, the
+ * artwork is a faded, LOCKED background (editor._artworkLocked: no selection,
+ * no shortcut reaches it; drawn from the same layer, never modified).
+ * 'artwork': the artwork is edited, the frame profile is the faded background.
+ * Display only: opacity lives on the layer / group, never on the drawing.
+ */
+export function setEditorFocus(editor, tab) {
+  if (!editor) return;
+  const frame = tab === 'frame';
+  editor._editorTab = frame ? 'frame' : 'artwork';
+  editor._artworkLocked = frame;
+  if (frame && typeof editor._deselect === 'function') editor._deselect();
+  if (editor._sketchLayer) editor._sketchLayer.attr('opacity', frame ? INACTIVE_LAYER_OPACITY : null);
+  const g = editor._bgLayer?.findOne ? editor._bgLayer.findOne('#' + FRAME_PROFILE_GROUP_ID) : null;
+  if (g) g.attr('opacity', frame ? null : INACTIVE_LAYER_OPACITY);
+}
 
 /** The declared fit rule (frame-defs `fit`, frame_definition.FRAME_FIT in
  *  Python): 2*frame_thickness < min(W, H) - 2*boundingboxoffset. */
@@ -24,6 +49,9 @@ export function frameFit(widthIn, heightIn, frameThickness, bboxOffset) {
   const need = 2 * frameThickness;
   return { ok: need < safe, safeZoneIn: safe, requiredIn: need };
 }
+
+/** The template's shape params for this region (the fitted model, F8). */
+const _shapeParams = (tpl, region) => paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region);
 
 const _param = (tpl, record, name) => {
   if (record?.params && name in record.params) return record.params[name];
@@ -42,7 +70,7 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
   const bbo = _param(tpl, record, 'boundingboxoffset') ?? 0;
   const ft = _param(tpl, record, 'frame_thickness') ?? 0;
   const region = { x: bbo, y: bbo, w: widthIn - 2 * bbo, h: heightIn - 2 * bbo };
-  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: tpl.shapeParams || {} });
+  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: _shapeParams(tpl, region) });
   const defects = outlineDefects(sil.primitives);
   return {
     templateId: tpl.id, name: tpl.name, region, primitives: sil.primitives,
@@ -52,20 +80,23 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
 }
 
 /**
- * FB-APP S3 (F7): the frame's inner edge, i.e. the same template solved on the
- * safe zone inset by frame_thickness. Exact on the straight runs (the inner
- * edge F2 measured at +/-2.5 in on 7x9); an approximation of Fusion's true
- * offset on the arcs. Same primitive topology as the outline, so the two
- * loops correspond point-for-point (sampleOutline).
+ * FB-APP S3 (F7), exact since F8: the frame's inner edge is the TRUE inward
+ * offset of the cut profile by frame_thickness (editor/outline-offset.js):
+ * lines shifted along their normal, arcs concentric at r -/+ t, re-joined at
+ * the joints, i.e. the same operation Fusion's Offset performs. Same primitive
+ * count/order as the outline (a collapsed piece stays as a zero-length
+ * placeholder), so outline and inner edge pair by index. The guard runs on the
+ * real pieces; a merged corner is legitimately not tangent. No inner edge
+ * when the frame does not fit (the declared fit rule): the offset is then
+ * undefined (Fusion's own flips outside the board, e.g. T1 5.51x1.97).
  */
-export function frameInnerProfile(defs, record, { widthIn, heightIn }) {
-  const tpl = record && (defs.templates || []).find((t) => t.id === record.templateId);
-  if (!tpl) return null;
-  const inset = (_param(tpl, record, 'boundingboxoffset') ?? 0) + (_param(tpl, record, 'frame_thickness') ?? 0);
-  const region = { x: inset, y: inset, w: widthIn - 2 * inset, h: heightIn - 2 * inset };
-  if (!(region.w > 0 && region.h > 0)) return null;
-  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: tpl.shapeParams || {} });
-  return { region, primitives: sil.primitives, defects: outlineDefects(sil.primitives) };
+export function frameInnerProfile(defs, record, board) {
+  const prof = frameCutProfile(defs, record, board);
+  if (!prof || !prof.fit.ok) return null;
+  const tpl = defs.templates.find((t) => t.id === record.templateId);
+  const primitives = offsetOutlineInward(prof.primitives, _param(tpl, record, 'frame_thickness') ?? 0);
+  const real = primitives.filter((p) => !p.collapsed);
+  return { primitives, defects: outlineDefects(real, { requireTangency: false }) };
 }
 
 /** Everything the 3D preview needs (core/preview/frame-mesh.js), or null
@@ -83,6 +114,27 @@ export function frameSolidSpec(defs, record, board) {
     frameBottomZ: record.frameBottomZ,
     color: defs.appearance?.previewColors?.[record.appearance] || null,
   };
+}
+
+/**
+ * F8 (Fred: "see the frame thickness and miter lines in the editor"): the
+ * frame's miters join each OUTER corner of the cut profile to the matching
+ * INNER corner. Corners are the joints where two straight pieces meet at an
+ * angle (the bounding-box corners); outline and inner edge share the same
+ * primitive topology, so the same index pairs them.
+ */
+export function frameMiters(outerPrims, innerPrims) {
+  if (!innerPrims || innerPrims.length !== outerPrims.length) return [];
+  const n = outerPrims.length, out = [];
+  const dir = (p) => { const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
+  for (let i = 0; i < n; i++) {
+    const a = outerPrims[(i - 1 + n) % n], b = outerPrims[i];
+    if (a.type !== 'L' || b.type !== 'L') continue;
+    const [ax, ay] = dir(a), [bx, by] = dir(b);
+    if (Math.abs(ax * bx + ay * by) > 0.999) continue; // collinear: not a corner
+    out.push({ outer: { ...b.p0 }, inner: { ...innerPrims[i].p0 } });
+  }
+  return out;
 }
 
 let _provider = null;
@@ -106,10 +158,25 @@ export function drawFrameProfile(editor) {
   if (!prof || prof.defects.length) return prof;
   const W = editor._mW, H = editor._mH;
   const g = editor._bgLayer.group().id(FRAME_PROFILE_GROUP_ID).attr('pointer-events', 'none');
+  if (editor._editorTab !== 'frame') g.attr('opacity', INACTIVE_LAYER_OPACITY); // the focus rule (setEditorFocus)
   // Everything outside the profile is cut away: board rect minus the outline (even-odd).
   g.path(`M0 0 H${W} V${H} H0 Z ${prof.pathD}`)
     .fill({ color: '#1f2933', opacity: 0.6 }).attr('fill-rule', 'evenodd').addClass('frame-cutaway');
-  g.path(prof.pathD).fill('none').stroke({ color: '#2e7d32', width: 0.04 }).addClass('frame-cut-profile');
+  // The frame itself: the band between the outline and its inner edge (the
+  // frame thickness), tinted in the chosen wood, plus the inner edge and the
+  // 4 miter lines. Same inner loop the 3D bars use (frameInnerProfile).
+  const inner = prof.fit.ok ? frameInnerProfile(spec.defs, spec.record, { widthIn: W, heightIn: H }) : null;
+  if (inner && !inner.defects.length && inner.primitives.length === prof.primitives.length) {
+    const innerD = primitivesToPathD(inner.primitives);
+    const wood = spec.defs.appearance?.previewColors?.[spec.record.appearance] || '#d9c9a3';
+    g.path(`${prof.pathD} ${innerD}`).fill({ color: wood, opacity: 0.45 }).attr('fill-rule', 'evenodd').addClass('frame-band');
+    g.path(innerD).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.025 }).addClass('frame-inner-edge');
+    for (const m of frameMiters(prof.primitives, inner.primitives)) {
+      g.path(`M${m.outer.x} ${m.outer.y} L${m.inner.x} ${m.inner.y}`).fill('none')
+        .stroke({ color: FRAME_OUTLINE_COLOR, width: 0.025 }).addClass('frame-miter');
+    }
+  }
+  g.path(prof.pathD).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.04 }).addClass('frame-cut-profile');
   return prof;
 }
 

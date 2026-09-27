@@ -959,6 +959,17 @@ a saved pattern's old `spacing` is read as its grid step and keeps its exact geo
 spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
 the one grid.
 
+## Queued (Fred's queue) — SNAP-SPLIT: separate GRID snap and GEOMETRY snap for manual moves (Fred 2026-09-26)
+Fred: "on manual moving, geometry snaps if snapping is on (need snapping distinction, for geometry and grid)". Today the
+editor has ONE toggle (`#editorGridSnap` "SNAP", grid only; Alt = off-grid). Change: two declared snap modes, each its own
+toolbar toggle — GRID (snap to grid points) and GEOMETRY (snap to existing geometry: rails, ties' rail contacts, nodes,
+contour, line ends/midpoints/intersections). When dragging by hand (Select-drag, lattice pieces, direct edit), a point
+snaps to geometry when GEOMETRY is on, to the grid when GRID is on; both on = geometry wins within its tolerance, else
+grid. Alt still suspends all snapping. One snap resolver (declared targets + priority), read by every drag path — not
+per-tool special cases. Generated rails are off-grid (RAIL-SPACING) and generated ties always sit exactly on rails
+(Fred: "ties def snap to rails") — this entry is about MANUAL moves. Tests: each toggle alone, both, neither, Alt;
+lattice + direct edit; mobile.
+
 ## Queued (Fred's queue, Asus) — FORMULA-FIELDS: type a formula in a number field (Fred 2026-09-26)
 Fred: "if I want a rail exactly on the boundary I just math it out" / "can we enter formula in the fields". Today no
 field accepts expressions. ONE shared parser module used by every numeric input (declared, not per-field): + - * /
@@ -1014,7 +1025,7 @@ principle as SE7i's derived tie-on-rail attachment, no second source of truth; d
 Join = tap the joint again (or "Join" action). Fred: "like a cut tool" → tap ANYWHERE on a line to cut there (snaps to joints then grid points; Alt / Snap-off =
 free); Fred: "we don't need it in lattice if it's not needed for keeping structure" → main rail only, NO lattice-panel
 button and NO "Cut all at joints"; the tool itself preserves lattice membership when cutting a rail/tie; tap a cut point again with the tool = Join. Default: cut
-segments move together as one rail (Fred to confirm vs fully independent). Works on any plain line too (main tool).
+segments move together as one rail (CONFIRMED Fred 2026-09-26: "in lattice move together"; plain lines in DIRECT EDIT (main tool rail, non-lattice): NOT together, each segment moves independently, Fred 2026-09-26: "lattice keeps the structure but normal mode is indiscriminate" - a cut in normal mode leaves plain, unrelated segments). Works on any plain line too (main tool).
 ACCEPTANCE (Fred: "I don't want the cut tool to break the lattice structure editability — rails and ties following
 each other on drag"): for the SAME lattice before and after cutting a rail (and a tie) at several joints, the SAME
 drag gestures must give IDENTICAL results — dragging any segment moves every collinear touching segment of that rail,

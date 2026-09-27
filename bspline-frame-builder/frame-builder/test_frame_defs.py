@@ -86,7 +86,7 @@ def test_every_template_entry_is_complete(defs):
     ids = [t["value"] for t in get_available_templates()]
     assert [t["id"] for t in defs["templates"]] == ids and ids  # discovered, not hand-listed
     for t in defs["templates"]:
-        for key in ("id", "name", "prefix", "silhouettePreset", "shapeParams", "params", "regions", "features", "sketches"):
+        for key in ("id", "name", "prefix", "silhouettePreset", "shapeModel", "params", "regions", "features", "sketches"):
             assert t.get(key), (t["id"], key)
         for p in t["params"]:
             assert {"name", "unit", "default", "owner"} <= set(p), (t["id"], p)

@@ -1,35 +1,50 @@
-# NEXT (reg-addin, Asus) — R5: FORMULA-FIELDS stage 3 (Lattice + Shape Lattice panels)
+# NEXT (reg-addin, Asus) — R6: RAIL-SPACING engine (rails laid out from the boundary; panels UI = R7)
 
-**Ball: worker (reg-addin) · epoch 1 · R5.** NO FUSION. R4 (be1f25b..a28c3ef) ACCEPTED (pytest 284/284, advisor re-ran).
-UI5 has MERGED (home advisor, 0acc3bb): seat A's files are ours now. Log = WORK-LOG-reg-addin.md. Commit subjects
-"R5 item N: …", push after every item.
+**Ball: worker (reg-addin) · epoch 1 · R6.** NO FUSION. R5 (bf11571) ACCEPTED (advisor re-ran 151/151 on the 4 specs).
+Spec = ROADMAP "RAIL-SPACING" (read ALL of it — later rulings supersede earlier sentences). Log = WORK-LOG-reg-addin.md.
+Commit subjects "R6 item N: …", push after every item.
 
-## Hands off / sequencing
-- fb-app, `editor-shape-lattice-generator.js` (silhouette solver), frame files (core/frame-record.js,
-  editor-frame-profile.js, frame-mesh.js, main/frame-panel.js, frame-builder/).
-- `properties-shape-lattice.js` + `editor-shape-lattice-interaction.js`: seat C's F9 / SHAPE-PARAMS will touch the Shape
-  Lattice handles/sliders later. Keep your edit there SMALL and additive (a declaration + one attach call at build);
-  no restructuring. If it has to be bigger → STOP and say so (the advisor sequences it with the home PC).
+## Scope split (why)
+RAIL-SPACING restructures both lattice panels (Boundary first), and seat C's F9/SHAPE-PARAMS will also touch
+properties-shape-lattice.js — the advisor is sequencing that with the home PC. So **R6 = ENGINE + DATA ONLY**; the panel
+UI (Boundary-first order, Anchor/Spacing/Count fields, "Draw boundary" toggle removal) is R7. R6 may add NO visible UI;
+if a field is needed to test in the browser, drive the pattern record directly.
+
+## Rulings for R6
+1. `rails.anchor` = 'start' | 'center' | 'end' (UI later: Top/Center/Bottom or Left/Center/Right by orientation).
+   start/end: first rail ON that boundary edge, repeat toward the other edge; center: a rail ON the centre line,
+   repeating symmetrically. Rails outside the boundary are dropped.
+2. `rails.spacing` (inches, rail-to-rail) is always the step; `rails.count` OPTIONAL (N from the anchor; center = N
+   centred); empty = fill the boundary.
+3. **CONFIRMED (Fred): off-grid is fine — NO rounding of spacing to grid steps. BUT TIES MUST SNAP TO RAILS:** every
+   generated tie end lies EXACTLY on its rail (same coordinate as the off-grid rail, not the nearest grid row).
+4. The lattice GRID STEP comes from the editor grid (one grid); the old lattice-side `spacing` stops being a setting.
+5. MIGRATION: a saved pattern's old `spacing` is read as its grid step and keeps its EXACT geometry (no silent re-layout).
+   Declare it in the migrations path (tests/migrations.test.js pattern), not ad hoc in the generator.
+6. Ties / nodes must still attach correctly to off-grid rails (survey how ties find rails today — grid rows? — and
+   fix at the declaration, not per-case). Seat B's TIE-GAP (`ties.minSpacing`) must still hold.
+
+## Hands off
+fb-app; `editor-shape-lattice-generator.js` (silhouette solver — if Shape Lattice rails need it, STOP and say so);
+frame files; `core/preview/frame-mesh.js`. Panels (`properties-lattice.js`, `properties-shape-lattice.js`): R7, not now.
+Lane 2 (b1, worktree -lane2) is on BOUNDARY-GUIDE: editor boundary drawing, 3D skip, manifest construction flag,
+sketch_manifest_builder.py — don't edit those.
 
 ## Checklist
-- [ ] [R5-item-1] SURVEY first (WORK-LOG, file:line): how both panels build their number inputs (dynamic re-render?
-      Regenerate? Lattice ⇄ Shape Lattice switch? the new editor/lattice-piece-panel.js override width field?) and which
-      handler each input runs on change. Pick the attach point that survives every re-render.
-- [ ] [R5-item-2] DECLARE one scope per panel in the R1/R2 pattern (data, no per-field code): names read LIVE from the
-      pattern record — at least width, height (lattice Size / boundary), stroke, count (+ spacing, minspacing, node, or
-      others the panel obviously has). Declare which fields are formula-capable (all numeric fields in both panels
-      unless there's a stated reason, incl. the per-piece override width). Board vs lattice names must be unambiguous
-      (e.g. `width`/`height` = lattice Size, `boardw`/`boardh` = stock) — state the choice.
-- [ ] [R5-item-3] Fred's case: "a rail exactly on the boundary" — show which field + formula does it and prove it in
-      the real browser. If no field today can express it, say so (that's RAIL-SPACING's job next — don't build it here).
-- [ ] [R5-item-4] Tests: each panel scope resolves live values; a formula in a lattice field commits + runs the panel's
-      normal update with ONE undo snapshot; still works after Regenerate and after switching panels; range clamp holds.
-      Real-browser desktop + mobile (extend tools/repro/formula_field_shots.mjs), screenshots to shots/reg-addin/.
-      Also rerun `node tools/repro/select_drag_shape.mjs` to prove the lattice panels still drag-persist.
+- [ ] [R6-item-1] SURVEY (WORK-LOG, file:line): today's rail placement (every/offset/count, `_isRailRow`, `_resolveExtent`),
+      how ties/nodes locate rails, where `pattern.spacing` is read, both Lattice + Shape Lattice paths.
+- [ ] [R6-item-2] Declare `rails.anchor` / `rails.spacing` / optional `rails.count` in the pattern defaults + migration
+      (ruling 5), and the boundary-anchored layout in the generator (rulings 1-4, 6).
+- [ ] [R6-item-3] Tests: every generated gap identical; first rail exactly on the anchor (start/end edge, centre line);
+      count honoured; out-of-boundary rails dropped; both orientations; box + Shape Lattice; several sizes/presets;
+      old saved patterns byte-identical geometry; ties/nodes attach to off-grid rails; TIE-GAP sweep still green;
+      select_drag_shape.mjs still passes.
+- [ ] [R6-item-4] Fred's case proven in the pattern: anchor start → a rail exactly on the top boundary edge
+      (screenshot via tools/serve_app.py after setting the pattern record, desktop).
 
 ## Gate (fast tier)
-Touched/new specs + full `npx vitest run` smoke. No Fusion.
+Touched/new specs + full `npx vitest run`. No Fusion.
 
 ## Finish
 Commit by path, `git pull --rebase`, push main. From the REPO ROOT:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R5 — <shas>"`.
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R6 — <shas>"`.
