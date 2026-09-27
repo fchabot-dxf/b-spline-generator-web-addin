@@ -39,6 +39,7 @@ export function defaultFrameRecord(defs = FRAME_DEFS) {
     seeds: {},
     genSeed: null,
     frameBottomZ: _extrusion(defs, 'frameBottomZ').default ?? -1,
+    panelLip: _extrusion(defs, 'panelLip').default ?? 0, // F22
     appearance: defs.appearance?.default ?? null,
   };
 }
@@ -62,6 +63,9 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
     }
   }
   if (tpl && Number.isInteger(raw.genSeed)) out.genSeed = raw.genSeed;
+  // F22: the panel lip, inside its declared range (0 .. the record's own Trim offset); old records = the default 0
+  const lip = Number(raw.panelLip);
+  if (tpl && Number.isFinite(lip)) { const r = panelLipRange(defs, out); out.panelLip = Math.min(r.max, Math.max(r.min, lip)); }
   if (tpl && raw.seeds && typeof raw.seeds === 'object') {
     const seeded = new Set((tpl.handles || []).filter((h) => h.binding === 'seeded').map((h) => h.key));
     // F20: a seed key the template split (frame-defs `handleMigrations`, e.g. the one corner radius -> Shoulder +
@@ -90,7 +94,17 @@ export function framePayload(defs, record) {
   const params = {};
   for (const p of tpl.params) if (p.owner === 'frame') params[p.name] = frameParam(defs, record, p.name);
   return { recordVersion: record.recordVersion, templateId: tpl.id, params, seeds: { ...(record.seeds || {}) },
-    frameBottomZ: record.frameBottomZ, appearance: record.appearance };
+    frameBottomZ: record.frameBottomZ, panelLip: record.panelLip ?? 0, appearance: record.appearance };
+}
+
+/** F22: the panel lip's declared range for `record`: frame-defs `extrusion` panelLip {min, max}, where `max` names a
+ *  frame param (the Trim offset). */
+export function panelLipRange(defs, record) {
+  const s = _extrusion(defs, 'panelLip');
+  const bound = (v) => (typeof v === 'string' ? Number(frameParam(defs, record, v)) : Number(v));
+  const min = Number.isFinite(bound(s.min)) ? bound(s.min) : 0;
+  const max = Number.isFinite(bound(s.max)) ? bound(s.max) : Infinity;
+  return { min, max: Math.max(min, max) };
 }
 
 /** A frame param's effective value: the record's override, else the template default. */

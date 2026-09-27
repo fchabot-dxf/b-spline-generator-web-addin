@@ -33,6 +33,17 @@ export default {
       "unit": "in"
     },
     {
+      "default": 0.0,
+      "key": "panelLip",
+      "label": "Panel lip (in)",
+      "max": "boundingboxoffset",
+      "meaning": "the panel is trimmed this far outside the frame outline (a flush-trim allowance); 0 = on the outline",
+      "min": 0.0,
+      "owner": "frame",
+      "ui": true,
+      "unit": "in"
+    },
+    {
       "default": "3D Ash - Unfinished",
       "key": "appearance",
       "label": "Wood",
@@ -59,7 +70,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "74495c8308c4837a1872a24fc6de6a04def9061bc0779b877842fc237b3d5d0c",
+  "sourceHash": "800bddc3dfe2eeb20f5b06af619acb755f685815a78316d627857902314b5299",
   "templates": [
     {
       "features": [

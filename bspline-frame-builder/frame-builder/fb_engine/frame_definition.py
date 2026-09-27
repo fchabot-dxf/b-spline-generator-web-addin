@@ -77,6 +77,12 @@ EXTRUSION_SETTINGS = (
      "label": "Frame bottom (z)", "ui": True, "owner": "frame",
      "meaning": "z position of the frame bottom relative to the frame sketch plane "
                 "(negative = below); a position, not a length"},
+    # F22 (Fred: "for the panel I sometimes want a small offset outward ... so I can flush trim at the end"):
+    # the panel is trimmed this far OUTSIDE the frame outline. A plain value in the trim sketch, never a user
+    # parameter. It can not exceed the board-to-frame gap (the Trim offset): a declared range.
+    {"key": "panelLip", "unit": "in", "default": 0.0, "min": 0.0, "max": "boundingboxoffset",
+     "label": "Panel lip (in)", "ui": True, "owner": "frame",
+     "meaning": "the panel is trimmed this far outside the frame outline (a flush-trim allowance); 0 = on the outline"},
     {"key": "appearance", "label": "Wood", "ui": True, "default": DEFAULT_APPEARANCE,
      "options": "appearance"},
     {"key": "endOffset", "unit": "in", "default": 0.0, "label": "End offset", "ui": False,
