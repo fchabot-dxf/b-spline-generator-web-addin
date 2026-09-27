@@ -2347,3 +2347,98 @@ change (the declared 0.05 floor already binds tighter than either version of `fl
   `proc_health.py watch` clean after each. No scratch scripts committed.
 - **Capacity:** OK, one turn (spent real effort on item 1 before the amendment landed, but caught it before
   committing -- nothing wasted downstream, just this session's own tokens).
+
+## F25 -- Tool Profile + V-Bit Angle on one line -- 2026-09-27
+
+Fred: "tool profile and vbit angle can be on the same line". Amendment landed after the checklist ("or tool
+profile and tool diam") widening the intent to "whichever size field the profile shows"; a second amendment
+narrowed item 2's own bar to genuinely SEMANTIC pairs; a third fixed the progress-page commit convention
+(see Notes -- this entry's own commit follows it).
+
+### Item 1 -- Tool Profile + V-Bit Angle share one line
+Same paired-row SHAPE as Stock Dimensions' Width/Height (H10/H11-item-0): a `.cad-paired-steppers` flex row,
+Tool Profile's `<label>`+`<select>` and `#vBitAngleContainer` each in their own column. `#vBitAngleContainer`
+keeps its existing JS-driven show/hide (`main/stamp/profile-control.js`, data-driven off the active profile's
+declared `uiParams`) untouched -- only `display` toggles, so a hidden sibling's flex:1 space is absorbed by
+Tool Profile automatically ("no angle field -> the select takes the full row").
+
+**NOT** `.cad-label-inline` (the H12 pattern) on these two labels -- that class is declared specifically for a
+label + a trailing muted SPAN sub-label (base.css's own doc comment); "Tool Profile"/"V-Bit Angle" are plain
+single-text labels with no span. Applying it anyway would have been worse than redundant:
+`h10_multiwidth_shots.mjs`'s own label sweep assumes every `.cad-label-inline` HAS a span
+(`span.getBoundingClientRect()`) and would crash on one that doesn't -- caught by running that existing sanity
+script BEFORE writing my own, not assumed.
+
+**MEASURED, not assumed, and it caught a real bug**: an even 50/50 `flex:1` split clipped "V-Bit (Linear)"
+mid-word at 768-1366 (all three share ONE fixed desktop-sidebar row width, ~207px -- confirmed identical
+across them; only 390's full-width mobile-stacked sidebar gives more room, ~338px, plenty). Live screenshot
+caught it (`1040_F25after_834` in the FIRST pass, before the width fix -- superseded, not kept). Binary-
+searched the select's real minimum: a `<select>`'s `scrollWidth` does NOT report text-overflow the way an
+`<input>` does (confirmed empirically -- it read `scrollWidth === clientWidth` at every width down to 80px,
+even visibly clipped ones), so this had to be read VISUALLY, screenshot by screenshot: 110px renders "V-Bit
+(Linear)" whole, 100px was the clipped case seen live. Fixed at 120/75 (Tool Profile/V-Bit Angle column
+min-widths, a small margin over the measured 110px floor and matching this file's own declared
+`.cad-stepper { min-width: 75px }` for the angle's stepper) + 8px gap = 203px, inside the ~207px row.
+`flex-wrap:wrap` on the row as the same safety net H10 used for Width/Height (never triggers at any of the 5
+widths today, but costs nothing to have).
+
+**Tests**: `tools/repro/f25_tool_profile_shots.mjs` (new) -- every option in the Tool Profile select, at all 5
+widths: the select never clips its own box; when V-Bit Angle shows, the two columns share one row and neither
+clips; when it's hidden, Tool Profile fills the row. Mutation-tested against the pre-F25 HTML (`git stash` of
+just that file): the check CRASHES there (`.cad-paired-steppers > div` doesn't exist pre-fix, so
+`.closest()` returns null and the next line throws) -- a stronger signal than a plain assertion failure, not
+engineered to degrade gracefully since it's a throwaway repro tool, not shipped code. `h10_multiwidth_shots.mjs`
+(existing, unmodified) re-run clean after the restructure -- no regression to the header/stepper/label sweep
+(11 labels found, matching the pre-F25 count exactly -- confirms Tool Profile/V-Bit Angle correctly did NOT
+join that sweep). Full JS suite 102/102 files, 1990/1990, unchanged (pure HTML/CSS, no JS logic touched).
+
+**Shots**: `shots/seatC/1030_F25sanity_*` (the H10 sanity re-run, all 5 widths), `1055_F25toolprofile_*` (the
+new check's own shots, all 5 widths, the corrected 120/75 version), `1100_F25{before,after}_{390,834}` (a
+dedicated before/after pair at the two widths the checklist named).
+
+### Item 2 -- other pairable rows, for Fred to pick (listed, NOT changed)
+Per the amendment's bar (only pairs that belong together in MEANING -- a setting + the value it controls, X+Y
+of the same thing, min+max of one range -- not just two short fields that happen to fit):
+
+| pair | why they belong together |
+|---|---|
+| Stamp layer Transform: **Offset X (in)** / **Offset Y (in)** | X and Y of the same position |
+| Main canvas pan: **Offset X** / **Offset Y** (both "pan, in screens") | X and Y of the same pan |
+| Skeleton **Symmetry Offset X** / **Symmetry Offset Y** | X and Y of the same symmetry-centre offset |
+| SVG Editor drawer's own copy of the pan **Offset X** / **Offset Y** (screens) | same pair as the main-canvas one above, duplicated in this file's SVG-editor-drawer section (~line 2791) -- same fix would apply to both places |
+
+**Caveat MEASURED, not assumed** (worth knowing before picking): every one of these four is a `.cad-slider-row`
+(a range slider + a 75px `.cad-stepper`), NOT a plain stepper pair like Width/Height or a select+stepper pair
+like Tool Profile/V-Bit Angle. Two full slider-rows side by side, at the SAME ~207px row this turn's own fix
+had to fit into, leaves only ~50px total for BOTH sliders combined once each stepper keeps its 75px floor --
+a slider that narrow is closer to decorative than usable. Pairing any of these would need a real design call
+first (drop the slider when paired? keep it but accept it's very thin? only pair at wider breakpoints and
+stack below some width?), not a drop-in reuse of this turn's pattern -- flagging the shape mismatch rather
+than picking one myself.
+
+**Considered and left OUT** (share a widget shape, don't share a meaning, per the amendment's own bar):
+Smoothing Intensity/Radius, Edge Fillet/Fillet Sharpness, Brush Size/Strength-Hardness (both sculpt-brush
+sections), Frame's Frame-bottom(z)/Trim-offset/Panel-lip. Each pair is two independent knobs of one FEATURE,
+not one thing's X+Y, a mode+its-value, or a min+max -- the amendment's own examples don't cover this shape,
+so I didn't count it as belonging together just because both happen to be short numeric fields in sequence.
+
+### Gates
+- JS: full suite 102 files / 1990 passed, unchanged from F24's own baseline (pure HTML/CSS this turn).
+- Fusion: not needed (no JS/Python logic touched, HTML/CSS layout only).
+
+### Notes
+- **PROGRESS CONVENTION amendment (Fred, via the progress page): every work commit subject must start with the
+  checklist tag words** ("F25 item 1: …" / "F25 item 1 + F25 item 2: …") -- my F23/F24 commit subjects didn't
+  and counted as 0 items on that page. This commit follows it; noting it here so it isn't missed again.
+- **Amendments polled:** both (item 2's semantic bar, absorbed into the table above before writing it; the
+  progress-convention one, absorbed into this commit's own subject) -- checked before this write-up and before
+  the commit/pass.
+- **Cleanup:** all headless Chrome profiles from this turn stopped and their scratch profile dirs removed
+  (`chrome-f25-*`, `chrome-handleonboard-*` and `chrome-handlereach-*`/`chrome-necklength-*` left over from
+  earlier F23/F24 exploration this session); the static server (8094) stopped; `proc_health.py watch` clean.
+  Superseded exploratory screenshots (an early 50/50-split version that still clipped, and a redundant
+  intermediate pass) deleted before this commit so `shots/seatC/` only holds the shots referenced above.
+- **Capacity:** OK, one turn. Spent real measurement effort chasing the select-width clipping (a `<select>`'s
+  own overflow isn't observable via `scrollWidth`/`clientWidth` the way other elements are, so it took a
+  genuine visual binary search, not just arithmetic) -- worth knowing if a future row-pairing task hits the
+  same wall.

@@ -809,20 +809,75 @@
             </div>
           </div>
 
-          <label class="cad-label">Tool Profile</label>
-          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
-            <select id="stampProfile" style="width:100%; border:none; background:transparent; font-size:11px;">
-              <option value="vbit" selected>V-Bit (Linear)</option>
-              <option value="adaptive">Adaptive (Fine Detail)</option>
-              <option value="ballnose">Ballnose (Round)</option>
-              <option value="flat">Flat Endmill (Hard)</option>
-            </select>
-          </div>
-
-          <div id="vBitAngleContainer" style="display:none;">
-            <label class="cad-label">V-Bit Angle</label>
-            <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
-              <input type="number" id="stampVBitAngle" value="90" min="10" max="170" step="5">
+          <!-- F25 (Fred: "tool profile and vbit angle can be on the same
+               line"; amendment: pair with whichever size field a profile
+               shows): same paired-row SHAPE as Stock Dimensions' Width/
+               Height (H10/H11-item-0), not a new pattern -- a
+               .cad-paired-steppers flex row, each field in its own flex:1
+               column. NOT `.cad-label-inline` on these two labels (the H12
+               pattern) -- that class is specifically for a label + a
+               trailing muted SPAN sub-label staying on one line (base.css's
+               own doc comment); "Tool Profile"/"V-Bit Angle" are plain
+               single-text labels with no span, nothing to stack in the
+               first place, and h10_multiwidth_shots.mjs's own label sweep
+               assumes every `.cad-label-inline` has one (`span.getBounding
+               ClientRect()`) -- applying it here would crash that check,
+               not just be redundant. #vBitAngleContainer keeps its own
+               JS-driven show/hide (main/stamp/profile-control.js,
+               data-driven off the active profile's declared `uiParams`)
+               unchanged -- only `display` is toggled, so when it's 'none'
+               the Tool Profile column alone fills the row (a flex:1 sibling
+               naturally expands into a hidden item's space), matching "When
+               the profile has no angle field, the select takes the full
+               row." Today only V-Bit declares an angle uiParam --
+               adaptive/ballnose/flat declare `uiParams: []` (core/stamp/
+               profiles/{adaptive,ballnose,flat}.js), no Tool Diameter field
+               exists in the data model at all, so this row is solo for
+               them and the amendment's "ballnose/flat -> Tool Diameter" /
+               "if a profile shows BOTH" cases don't apply YET. A real
+               diameter field would need its OWN container + its own row
+               (this one only has two named children, #vBitAngleContainer
+               isn't a generic "any second uiParam" slot) -- a genuine
+               feature addition, not the "small, additive HTML/CSS" this
+               dispatch scoped; flagged in WORK-LOG, not built. -->
+          <!-- MEASURED (834px, iPad, the narrowest width this row is ever
+               forced to share -- 768/834/1024/1366 all share the SAME
+               fixed desktop-sidebar row width, ~207px; only 390's full-
+               width-stacked mobile sidebar gives more room): an even
+               50/50 flex:1 split clipped "V-Bit (Linear)" mid-word --
+               binary-searched the select's own true minimum live (a
+               `<select>`'s scrollWidth doesn't report text-overflow the
+               way an input does, so this had to be read visually,
+               screenshot by screenshot, not inferred): 110px renders it
+               whole, 100px was already the clipped case seen live. 120px
+               (a safety margin above the measured 110px floor) + the
+               angle's own `.cad-stepper` floor (this file's own CSS:
+               min-width:75px) + the 8px gap = 203px, fits inside the
+               ~207px row. Column widths below match those real minimums
+               -- Adaptive/Ballnose/Flat's longer names only ever appear
+               full-row, unpaired, since only V-Bit declares an angle
+               uiParam, so the select never needs to fit them while
+               paired. `flex-wrap:wrap` is the same safety net H10 used
+               for Width/Height, in case a narrower context ever appears
+               here too (390 already has room to spare; wrap never
+               triggers there). -->
+          <div class="cad-paired-steppers" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+            <div style="flex:1; min-width:120px;">
+              <label class="cad-label">Tool Profile</label>
+              <div class="cad-nested-input" style="width:100%;">
+                <select id="stampProfile" style="width:100%; border:none; background:transparent; font-size:11px;">
+                  <option value="vbit" selected>V-Bit (Linear)</option>
+                  <option value="adaptive">Adaptive (Fine Detail)</option>
+                  <option value="ballnose">Ballnose (Round)</option>
+                  <option value="flat">Flat Endmill (Hard)</option>
+                </select>
+              </div>
+            </div>
+            <div id="vBitAngleContainer" style="flex:1; min-width:75px; display:none;">
+              <label class="cad-label">V-Bit Angle</label>
+              <div class="cad-nested-input" style="width:100%;">
+                <input type="number" id="stampVBitAngle" value="90" min="10" max="170" step="5">
+              </div>
             </div>
           </div>
 
