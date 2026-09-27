@@ -959,6 +959,17 @@ a saved pattern's old `spacing` is read as its grid step and keeps its exact geo
 spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
 the one grid.
 
+## Queued (Fred's queue) — SNAP-SPLIT: separate GRID snap and GEOMETRY snap for manual moves (Fred 2026-09-26)
+Fred: "on manual moving, geometry snaps if snapping is on (need snapping distinction, for geometry and grid)". Today the
+editor has ONE toggle (`#editorGridSnap` "SNAP", grid only; Alt = off-grid). Change: two declared snap modes, each its own
+toolbar toggle — GRID (snap to grid points) and GEOMETRY (snap to existing geometry: rails, ties' rail contacts, nodes,
+contour, line ends/midpoints/intersections). When dragging by hand (Select-drag, lattice pieces, direct edit), a point
+snaps to geometry when GEOMETRY is on, to the grid when GRID is on; both on = geometry wins within its tolerance, else
+grid. Alt still suspends all snapping. One snap resolver (declared targets + priority), read by every drag path — not
+per-tool special cases. Generated rails are off-grid (RAIL-SPACING) and generated ties always sit exactly on rails
+(Fred: "ties def snap to rails") — this entry is about MANUAL moves. Tests: each toggle alone, both, neither, Alt;
+lattice + direct edit; mobile.
+
 ## Queued (Fred's queue, Asus) — FORMULA-FIELDS: type a formula in a number field (Fred 2026-09-26)
 Fred: "if I want a rail exactly on the boundary I just math it out" / "can we enter formula in the fields". Today no
 field accepts expressions. ONE shared parser module used by every numeric input (declared, not per-field): + - * /
