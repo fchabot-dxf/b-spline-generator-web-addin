@@ -10659,3 +10659,27 @@ would cover it anyway). Sweep: remaining "river" hits are the checklist lines an
 
 Verify: 2148/2148 vitest (2157 minus River Stones' 9), 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder
 pytest. Commit 9af292a. NO FUSION this whole turn.
+
+## T80 item 1 — ties honour Count's minimum (valid ties first, then choose)
+
+Fred: hourglass, Count 8-13, rails span, one-ended 1, min spacing 0.5 -> 4 ties. Cause as the checklist said:
+_tieSlotsByCount chose count + columns first; boundary-intactness (with its fallback scan), the real-rail check at
+the call site and _enforceTieMinSpacing dropped ties after. Fix, once for count mode: per-column tie builders
+(rail bridge / one-ended stub / cell stub, geometry unchanged) validated as they're built (the real-rail check now
+passed in as onRealRails); count drawn with the same seeded draw and chosen from the VALID pool with the same
+stratified spread; accepted against min spacing (shared _tiesTooClose), refilling from the rest of the pool in a
+seeded order. Shortfall (< Count min) returned as tieShortfall from computePattern and generatePattern and shown via
+setEditorStatusHint ("Ties: only N fit ..."); cleared only when the hint is still ours.
+
+Measured (seeds 1-20, Fred's config): before 15/20 below 8, seed 1 = 4 ties (his screenshot); after 0/20.
+Mutation check: the old order (choose from all columns, no refill) fails the new test at 5/20.
+Shot: shots/seatB/t80-tie-count-before-after.png (seed 1, 4 -> 10 ties).
+
+Existing tests that encoded the bug, rewritten to their intent: rail-spacing TIE-GAP (asserted fewer ties with a
+big gap -> now checks no two overlapping ties closer than the gap); parity "ON has strictly more pieces" and
+sketch-manifest "ON > OFF pieces" -- measured on the old code: ON 6 ties / OFF 5, both below 8; now both 8, so the
+documented rail grid-snap artifact (ON 5 rails vs OFF 7) decides the totals. They now check ON's rails are longer
+(101.3 vs 94.6) / the fills differ and both meet Count's min.
+
+New tests: tests/editor-lattice-tie-count.test.js (4). Verify: 2152/2152 vitest, 87/87 + 201/2-skipped pytest.
+Commit 7c5c30b. NO FUSION.
