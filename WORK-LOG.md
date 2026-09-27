@@ -11176,3 +11176,92 @@ mobile run's own genuinely touch-dependent behaviours (the gesture itself, drag,
 are all still asserted for real. Screenshots captured on both: `panel_three_pieces`, `hint`, `panel_mixed`.
 
 `npx vitest run` -> **1853 passed** (11 new gesture tests added, zero regressions elsewhere).
+
+---
+
+Dispatch: epoch 3 — H6: CONTEXT-MENU (declared registry; hold/right-click; Colour, Cut here, Join,
+Duplicate, Select all kind, Move to layer (plain only), Delete; empty: Paste, Select all, Fit view). Spec:
+ROADMAP.md's own CONTEXT-MENU section. SE16 (the cut tool) merged upstream at `a626e8f` since H5 — its own
+header comment already earmarks `cutAt`/`join` as "seat A's H6 context menu registers them," so this turn
+calls them directly rather than reimplementing.
+
+**The registry (`editor-context-menu.js`, new module — same reasoning as H5's own gesture module: keep
+this shared, actively-touched file's edits to one-line hooks).** `{id, label, icon, appliesTo(kind),
+when(target), run(editor, target, rowEl)}`. `target = {editor, kind, el, selection, point, cutIntent}` —
+`kind` is the SPECIFIC held/right-clicked element's kind (a lattice kind, `'contour'`, a plain `el.type`,
+or `'empty'`), used for kind-scoped entries (Cut/Join/Select-all-\<kind\>/Move-to-layer); `selection` is
+`editor._selectedElements` at open time, used for whole-selection entries (Colour/Duplicate/Delete) —
+"acts on the whole selection when the held piece is in it" needed NO new logic: H5's own existing
+select-replace/no-op branch already leaves `_selectedElements` as exactly the right set by the time either
+trigger fires. Pure reuse: Colour → `applyColorOverride`+`editor.setColor` (lattice-piece-panel.js's own
+ordering, stamp-then-setColor-last, ONE commit); Cut/Join → `cutAt`/`join`; Duplicate →
+`copySelection`+`pasteClipboard` back to back; Delete → `editor.deleteSelected()` (already multi-select
+safe); Paste/Select-all/Fit-view → `pasteClipboard`/`selectAllVisible`/`editor.fitView()`. Two genuinely
+new bits, both flagged rather than silently invented: Select-all-\<kind\> (`_sketchLayer.children()` +
+`pieceKindOf` filter + `_selectMany` — no existing "select all of a kind" command existed to reuse) and
+Move-to-layer (ROADMAP's own text says "the existing move-to-layer command" — none exists app-wide,
+confirmed by a dedicated research pass; built from `editor._layers`/`addLayer`/`applyLayerState`, the same
+primitives every other layer mutator already uses, one `pushState()` for the whole move — "New layer…"
+folds layer-creation and the move into that SAME single undo step by passing `addLayer` its own
+`{skipUndo:true}`).
+
+**Gesture (touch hold + desktop right-click).** Touch: reuses H5's own declared `MULTISELECT_HOLD_MS` (its
+doc comment already earmarks this exact reuse) and mirrors its arm/cancel shape closely, but as a
+SEPARATE timer — `armContextMenuHold` is only ever called from the "fresh press, not a double-tap
+continuation" tail of each of H5's own three selection branches (`selectHandler`/`latticeHandler`/
+`shapeLatticeHandler`), i.e. exactly when `armMultiSelectPress` has already returned false for that SAME
+press — so the two timers can never both fire for one press. Desktop needed NO hold timer at all: a
+right-click's own mousedown already runs through the identical hit-test/select-replace pipeline every
+left-click does (confirmed live — no button-type check gates it anywhere in the file), so by the time the
+native `contextmenu` event fires, `editor._selectedElements` already holds the right target;
+`bindContextMenu` just reads it. Five one-line `armContextMenuHold` calls (three hit branches, two
+empty-canvas branches) plus the same three cancel-hooks H5 already added to
+`handlePointerDown`/`Move`/`Up`, plus one `bindContextMenu(editor, svgNode)` call in `initInteraction` —
+the whole footprint in the shared file.
+
+**Real bug found and fixed, in MY OWN new module, via live testing (not unit tests — mocked
+`editor._selectedElements` state can't reproduce a live browser's own compat-event synthesis):** a
+touch-hold that fires the menu WHILE the finger is still down (the menu opens at 450ms, before the
+finger's own touchend) raced against the browser's spec'd behaviour of synthesizing a trailing
+compatibility `mousedown`/`mouseup`/`click` shortly AFTER that touchend, at the same point the finger was
+— my popover's own outside-click dismiss listener (registered the instant the menu opens, mid-gesture)
+caught that synthetic mousedown and closed the menu before anything could ever see it open. Confirmed
+live: `matchingItems` found the right 5 entries, `openContextMenu` ran, and the menu was already gone by
+the time the test queried the DOM. Fixed with a `suppressDismissUntil` guard on the popover, seeded at
+open time (+500ms, covers an immediate release) and RE-ARMED to fire 400ms from the ACTUAL release moment
+via a one-shot `_awaitingHoldRelease` flag consumed by the very next `cancelContextMenuHold()` call (i.e.
+the opening touch's own pointerup) — not a blind fixed window from open time, since a hold can stay open
+arbitrarily long before the user actually lifts their finger. `openColorMosaic` never needed this: it only
+ever opens from a completed click, never mid-gesture from a still-active touch.
+
+**Verification.** 33 new unit tests (`tests/editor-context-menu.test.js`) — registry filtering per
+kind/empty (rails/ties/nodes/contour/plain-line/empty), Move-to-layer hidden for every lattice-owned kind
+incl. contour, Cut/Join gated on `cutIntent`'s own action (not just kind), each `run` calls the real
+mocked command with the right args in the right order, the touch hold arm/fire/cancel-on-move/
+cancel-on-release shape, and desktop's `bindContextMenu` reading the current selection. Mutation-tested
+three of the registry's own filtering/ordering rules by breaking them one at a time (widened
+Move-to-layer's `appliesTo`, reordered Colour's stamp-then-setColor) — each broke exactly the 1-3 tests
+that should catch it, confirmed, restored.
+
+`tools/repro/context_menu_shots.mjs`, desktop (real right-click) and mobile (real
+`Input.dispatchTouchEvent`) both green: the menu on a rail (Colour/Cut here/Duplicate/Select all
+rails/Delete, Move to layer correctly hidden), on empty canvas (Select all/Fit view, Paste absent until
+something's copied), and on a plain line (Move to layer shown); Duplicate/Delete/undo each verified as the
+real command running once. Two rig-only issues found and fixed along the way, neither an app bug: (1) a
+generator-owned rail's own regeneration reconciliation drifts the total rail count on ANY commit
+(confirmed by right-clicking a rail and dismissing without running anything) — switched the
+Duplicate/Delete/undo counting checks to a hand-drawn plain line instead; (2) that hand-drawn line's own
+placement, chosen to clear the lattice's tight bbox, mapped on this mobile layout to a screen point sitting
+on the Layers panel's own "delete layer" button — touching it opened that button's OWN confirmation
+dialog, which blocks the whole renderer thread (a JS-blocking native dialog stalls ALL subsequent CDP
+commands, not just the page's own script — confirmed via a CDP-call timeout that pinpointed
+`Input.dispatchTouchEvent`'s `touchEnd` as the one that never returned). Guarded with an `elementFromPoint`
+occlusion check before dispatching, mirroring H5's own precedent exactly: mobile skips just that one
+placement-dependent sub-check with an explicit console note when occluded (observed consistently on this
+viewport, via the layers panel's own drawer handle) rather than asserting a false feature failure — the
+rule itself (Move to layer's `appliesTo`) has no pointer-type branch and is fully covered by desktop, and
+every genuinely touch-dependent behaviour (the hold gesture itself, on a rail and on empty canvas, plus the
+drag-not-a-menu check) is still asserted for real on mobile. Screenshots: `menu_on_rail`, `menu_on_empty`,
+`menu_on_plain_line` (both platforms).
+
+`npx vitest run` -> **1899 passed** (33 new registry/gesture tests added, zero regressions elsewhere).

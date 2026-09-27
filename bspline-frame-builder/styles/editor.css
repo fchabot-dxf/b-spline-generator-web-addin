@@ -477,6 +477,50 @@
     .color-mosaic-custom { height: 44px; font-size: 13px; }
 }
 
+/* H6 CONTEXT-MENU: same position:fixed-on-document.body / z-index-above-
+   the-modal convention as .color-mosaic-popover just above (appended
+   there for the identical reason — floating above the canvas, not
+   clipped by an overflow:hidden ancestor). */
+.context-menu-popover {
+    position: fixed;
+    z-index: 10001;
+    background: #fff;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    min-width: 160px;
+}
+.context-menu-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 32px;
+    padding: 0 10px;
+    border: none;
+    background: none;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+.context-menu-row:hover,
+.context-menu-row:focus {
+    background: #eef4ff;
+    outline: none;
+}
+.context-menu-row-icon { flex: 0 0 auto; }
+.context-menu-row-label { flex: 1 1 auto; }
+.context-menu-row-caret { flex: 0 0 auto; color: #888; }
+
+@media (pointer: coarse) {
+    .context-menu-row { height: 44px; font-size: 13px; }
+}
+
 /* MOB3: the drawer wrapper and its own body wrapper are BOTH
    `display:contents` by default — this base rule (not inside the
    ≤720px block below) is what makes desktop byte-for-byte unaffected:

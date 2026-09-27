@@ -48,6 +48,11 @@ import {
 // turn's edits to this shared, concurrently-extended file stay a few
 // one-line hooks — see editor-multiselect-gesture.js's own doc comment.
 import { armMultiSelectPress, cancelMultiSelectHoldIfMoved, cancelMultiSelectHold } from './editor-multiselect-gesture.js';
+// H6 CONTEXT-MENU: same reasoning, own module — see its own doc comment.
+import {
+    armContextMenuHold, cancelContextMenuHoldIfMoved, cancelContextMenuHold,
+    bindContextMenu, targetKindOf,
+} from './editor-context-menu.js';
 // T59 (SE14's own deferred "Slice 3 editing model"): axis-locked param
 // handles + tap-a-segment. generateSilhouette/boardRegion/hitTestSegment
 // are pure; the properties-shape-lattice.js imports are its own MODULE-
@@ -111,6 +116,10 @@ export function initInteraction(editor) {
     on(window,  'pointermove', (e) => handlePointerMove(editor, e), { passive: false });
     on(window,  'pointerup',   (e) => handlePointerUp(editor, e));
     on(window,  'pointercancel', (e) => handlePointerUp(editor, e));
+    // H6 CONTEXT-MENU: desktop's own trigger — scoped to svgNode alone, see
+    // bindContextMenu's own doc comment for why (the 3D preview canvas has
+    // its own, separate contextmenu suppression).
+    bindContextMenu(editor, svgNode);
     on(svgNode, 'dblclick',  (e) => handleDblClick(editor, e));
     // SE2: wheel = zoom about the cursor. passive:false so preventDefault
     // stops the modal body from scrolling.
@@ -150,6 +159,7 @@ function handlePointerDown(editor, e) {
     // runs before THIS press's own selection handling ever arms a new
     // hold, so it can never cancel itself.
     cancelMultiSelectHold();
+    cancelContextMenuHold(); // H6: same reasoning, own timer — see its own doc comment.
     editor._pointerType = e.pointerType || 'mouse';
     editor._activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* defensive: capture can fail on some UAs/synthetic events */ }
@@ -195,6 +205,7 @@ function handlePointerMove(editor, e) {
     // down) is more nuanced than that, and a blanket return here would
     // have broken its pan-while-locked case.
     cancelMultiSelectHoldIfMoved(e);
+    cancelContextMenuHoldIfMoved(e); // H6: same still-vs-drag threshold.
     if (!editor._activePointers.has(e.pointerId)) {
         // FB-APP F9/F18: in the Frame tab (artwork locked) there is no hover/snap feedback
         if (editor._artworkLocked) return;
@@ -246,6 +257,7 @@ function handlePointerUp(editor, e) {
     // initInteraction), which is exactly the other case that should cancel
     // a pending hold.
     cancelMultiSelectHold();
+    cancelContextMenuHold(); // H6: a release before the hold time is just a quick tap, no menu.
     editor._activePointers.delete(e.pointerId);
     try { e.target.releasePointerCapture(e.pointerId); } catch (_) {}
     const count = editor._activePointers.size;
@@ -669,8 +681,13 @@ const selectHandler = {
                 editor._selectAdd(hit);
             } else if (hit.type !== 'text' && armMultiSelectPress(editor, hit, e)) {
                 // second half of a double-tap: leave selection as tap 1 left it.
-            } else if (!(editor._selectedElements || []).includes(hit)) {
-                editor._select(hit);
+            } else {
+                if (!(editor._selectedElements || []).includes(hit)) editor._select(hit);
+                // H6 CONTEXT-MENU: a fresh press (not shift, not the second
+                // half of a double-tap) is also a hold-to-menu candidate —
+                // armContextMenuHold no-ops on desktop (right-click is its
+                // own, separate trigger there).
+                armContextMenuHold(editor, { kind: targetKindOf(hit), el: hit, point: pt }, e);
             }
             return;
         }
@@ -685,6 +702,9 @@ const selectHandler = {
         // drive — handleMove/handleEnd's own pan branches (above) pick
         // this up with no new plumbing.
         if (!shift) editor._deselect();
+        // H6 CONTEXT-MENU: a hold on empty canvas opens the empty-canvas
+        // menu (Paste/Select all/Fit view) — no-ops on desktop, same as above.
+        armContextMenuHold(editor, { kind: 'empty', el: null, point: pt }, e);
         if (editor._pointerType === 'touch') {
             editor._isPanning = true;
             editor._panStart = {
@@ -1729,8 +1749,11 @@ const latticeHandler = {
                     editor._selectAdd(hit);
                 } else if (armMultiSelectPress(editor, hit, e)) {
                     // second half of a double-tap: leave selection as tap 1 left it.
-                } else if (!(editor._selectedElements || []).includes(hit)) {
-                    editor._select(hit);
+                } else {
+                    if (!(editor._selectedElements || []).includes(hit)) editor._select(hit);
+                    // H6 CONTEXT-MENU: same shape as selectHandler.start's
+                    // own identical branch above.
+                    armContextMenuHold(editor, { kind: targetKindOf(hit), el: hit, point: pt }, e);
                 }
             } else {
                 editor._deselect();
@@ -1748,6 +1771,9 @@ const latticeHandler = {
         // picking an existing piece, not drawing a new selection box).
         if (drawKind === 'select') {
             if (!(e && e.shiftKey)) editor._deselect();
+            // H6 CONTEXT-MENU: same shape as selectHandler.start's own
+            // identical hook above.
+            armContextMenuHold(editor, { kind: 'empty', el: null, point: pt }, e);
             return;
         }
 
@@ -2080,8 +2106,11 @@ const shapeLatticeHandler = {
                 editor._selectAdd(latticeHit);
             } else if (armMultiSelectPress(editor, latticeHit, e)) {
                 // second half of a double-tap: leave selection as tap 1 left it.
-            } else if (!(editor._selectedElements || []).includes(latticeHit)) {
-                editor._select(latticeHit);
+            } else {
+                if (!(editor._selectedElements || []).includes(latticeHit)) editor._select(latticeHit);
+                // H6 CONTEXT-MENU: same shape as selectHandler.start's own
+                // identical branch above.
+                armContextMenuHold(editor, { kind: targetKindOf(latticeHit), el: latticeHit, point: pt }, e);
             }
             editor._isDrawing = true;
             const spacing = editor._grid.spacing || 0.25;
