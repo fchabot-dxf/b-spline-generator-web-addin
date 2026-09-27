@@ -10925,3 +10925,38 @@ report, also fails before the fix); a bare click (no movement) is a safe no-op; 
 same `finish()` as pointerup. Mutation: reverting the fix fails 6 of the 10 tests.
 Shot (real geometry read back from the test's own mock, not a mockup): shots/seatB/t81-tie-drag-halo-fix.png.
 Verify: 2255/2255 vitest. Commit 22d9cb2. NO FUSION.
+
+## T81 item 6 (PRIORITY) — tapping a Shape Lattice contour segment selects it
+
+Fred: "I can't seem to select contour segment". Investigated FIRST, with a background agent tracing all three
+pointer-down handlers (the main Select tool's `selectHandler`, the rect Lattice tool's `latticeHandler`, the
+Shape Lattice tool's own `shapeLatticeHandler`) before any fix was written. Finding: the main Select tool's own
+generic hit-test (`editor._getNearbyElement`) already correctly selects a contour segment -- no exclusion of
+`data-contour-seg` elements anywhere in that path. The break is specific to the Shape Lattice tool's OWN icon
+row (`shapeLatticeHandler.start`), which every user actually editing a Shape Lattice's contour is naturally in
+(including its own advertised "Select" option -- lattice-side-column.js's own comment promises "tap a piece to
+select it... like the main Select tool", a promise this ONE branch broke). Its contour-segment-tap branch
+resolved which segment was hit (`hitTestSegment`) and unconditionally opened the floating style bar
+(`openSegmentStyleBar`) -- it never called `editor._select`/`_selectAdd` on the segment itself, so it never
+reached `editor._selectedElements`, no `editorSelectionChanged` ever fired, and the Selected-piece panel (whose
+own listener is otherwise correct and already recognizes a contour segment as kind 'contour', per
+`lattice-piece-panel.js`) never showed it. The rail/tie/node branch two checks earlier in the SAME function
+already does BOTH (select AND arm its own gesture) -- this bug was exactly that dual behavior missing for
+contour alone.
+Fix: the segment-tap branch now runs the SAME select dance the rail/tie/node branch already uses (shift adds, a
+double-tap leaves the selection alone, else replace + arm the context-menu hold) on the segment element, found
+via `_contourSegmentEl` (exported from properties-shape-lattice.js -- the SAME lookup T81 item 1's own segment-
+highlight overlay already uses, not a second copy). The style bar still opens on the exact same tap, unchanged;
+this only ADDS the missing selection. Pick priority (handle -> existing rail/tie/node -> add mode -> contour ->
+fallback select) is unchanged -- already correct per the investigation, not the reported bug.
+
+Tests: shape-lattice-segment-select.test.js (5), through the REAL canvas handler (`getModeHandler('shapeLattice')`)
+and the REAL selection machinery (`editor-ui.js`'s `select`/`selectAdd`/`updateSelectionHighlight`, same convention
+T81 item 5's own tests established). A tap adds the segment to `editor._selectedElements`; the style bar still
+opens on the same tap; the halo is genuinely drawn; a shift-tap multi-selects a second segment; an ARC segment
+(hit-tested at its own TRUE curve midpoint via the primitive's center/radius/angular span, not the chord
+midpoint -- measured live: the chord midpoint sits 0.18in off this shape's own shoulder arc, well outside any
+reasonable pick tolerance, which is exactly what made my first draft of this test fail before I fixed the test
+itself, not the production code) is selected too. Mutation: reverting the fix fails all 5.
+Shot (real rendered contour + halo geometry, not a mockup): shots/seatB/t81-contour-segment-select-fix.png.
+Verify: 2260/2260 vitest. Commit c78a110. NO FUSION.
