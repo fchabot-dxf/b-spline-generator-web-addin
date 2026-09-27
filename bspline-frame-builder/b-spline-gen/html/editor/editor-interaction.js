@@ -14,7 +14,7 @@
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { cutHandler } from './editor-cut-tool.js'; // SE16 ✂
-import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints } from './editor-lattice-chains.js'; // SE16
+import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints, tieEndNodes } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
@@ -377,7 +377,20 @@ function _handleEditorKeyup(editor, e) {
 export function copySelection(editor) {
     const sel = editor._selectedElements || [];
     if (sel.length === 0) return;
-    editor._clipboard = sel.map((el) => ({
+    // T80 item 3 (Fred: "duplicating a tie should also duplicate its node"):
+    // a selected tie's own end nodes (tieEndNodes -- editor-lattice-chains.js)
+    // come along, so Duplicate (= this + pasteClipboard) and a plain Ctrl+C/V
+    // both offset the tie's nodes WITH it (same shared code path, box or
+    // Shape Lattice alike). A Set, keyed by element identity: a node two
+    // selected ties SHARE is added once, so paste creates one copy, not a
+    // stacked double.
+    const toCopy = new Set(sel);
+    for (const el of sel) {
+        if (el && el.node && el.node.getAttribute(LATTICE_ATTR) === 'tie') {
+            for (const n of tieEndNodes(editor, el)) toCopy.add(n.el);
+        }
+    }
+    editor._clipboard = Array.from(toCopy).map((el) => ({
         // Capture each element's outer SVG markup + its data-layer so
         // paste can put it back on the same layer (or rewrite to active
         // on cross-layer paste).
