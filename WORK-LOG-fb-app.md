@@ -934,3 +934,98 @@ Commits (fb-app, pushed): `d074c49` merge origin/main · `56abaf1` item 1 · `72
   - the Frame tab shield still blocks canvas zoom/pan (pre-existing from F8);
   - S5 must map each seed to its Fusion sketch seed (UNVERIFIED, needs Fusion).
 - Capacity fine.
+
+
+## 🔨 turn 18 — F10 (seat C, epoch 1): S5 [Send frame], code + fake-Fusion tests; live = Fred
+
+Commits (fb-app, pushed): `6f9d2ec` items 1-3 · this commit: item 4 (FB-APP-DESIGN.md §4.1 + this log).
+
+### What the reading found (an Explore pass mapped the plumbing, file:line; the key facts)
+- **`frame_engine.build_frame_logic` is broken.** `frame_engine.py:231` calls
+  `self._create_assembly_joints`, which exists nowhere. The resulting AttributeError is swallowed as
+  "CRASH in run_full_synthesis" and skips FB-ORDER. It stays hidden only because no AestheticCore is
+  ever found.
+  - **Chosen:** `build_sketch_logic_v3`, the Sketch Builder palette's own full-build path. It ends
+    with FB-ORDER.
+  - Not fixed here (a separate item): the dead call in `build_frame_logic`.
+- **Every `ui_data` key becomes a USER PARAMETER** (`parametric_engine._sync_user_parameters`).
+  So the payload params are filtered to the template's own declared params (tested), and the seeds
+  never travel in `ui_data`.
+- **The R4 stale-param logger at b-spline-gen.py:1458 is already broken.** It passes
+  `SimpleNamespace(log=_log)`, but `_log` takes one argument and `compute_stale_params` calls
+  `log(msg, level)`; the TypeError is swallowed by its try. Fenced, **not touched**: this is for
+  the reg-addin seat.
+- **Nothing in production stamps AestheticCore**, and discovery's name hint "clean solid" never
+  matches "Clean". So the handler resolves the body from b-spline-gen's own hierarchy
+  (B-Spline Set / Clean / solid "panel", the literals `_handle_generate` builds) and passes it in.
+  - That is a mirror of those literals; editing `_handle_generate` to declare them was out of the
+    file fence. **Flagged.**
+
+### Item 1: the button (JS)
+- `#btnSendFrame` plus `#frameSendHint` in the FRAME section.
+- `frameSendState()` declares enabled / disabled and the hint:
+  - no frame: "Pick a frame template";
+  - outside Fusion: "Open this app from the Fusion add-in";
+  - seeds present: "N handle shape change(s) are not sent yet".
+- The press sends `framePayload()` as `send_frame`. The reply `frame_result` is a new branch in
+  main.js's handshake, and it goes to the one status line.
+- The panel re-syncs on Fusion detection; otherwise the button would stay disabled in Fusion,
+  because the mode is set after init.
+- Real app (fake `adsk` injected before load): the button sent exactly the frame record, and both
+  replies rendered. Shots: `2029_F10send_*` (web-disabled, fusion-ready, sending, built, no-body).
+
+### Item 2: the add-in side
+- **b-spline-gen.py, additions only:**
+  - `frame_engine = None`, injected by the root file (`_bs.frame_engine = _engine`, the palettes'
+    own pattern);
+  - `_find_bspline_core_body`;
+  - the `send_frame` dispatch plus `_handle_send_frame`. It merges `frame` into last_send.json and
+    replies `frame_result`; a crash is reported to the palette.
+- **`fb_engine/send_frame.py`** (pure, collaborators injected). Steps as in FB-APP-DESIGN.md §4.1:
+  - refuse clearly first;
+  - delete by attribute: the frame occurrences, plus the TRIM_CUT in Clean via `FrameComponent`;
+  - the sketch build with the filtered `ui_data`;
+  - the solid to `core.underside` (declared bound n.z ≤ −0.9) at `frameBottomZ`, in the wood.
+- **Dropped an extra `ensure_order` call I had first written:** both builds already run FB-ORDER, so
+  the extra call was untestable decoration.
+
+### Item 3: tests
+- **`fb_engine/test_send_frame.py` (9):** the real `ensure_frame_before_inlay` on the shared
+  FakeItem/FakeTimeline, with a world whose attributes and components delete with their owners.
+  - body → Frame_1 block → inlay;
+  - a re-send leaves exactly one Frame_1 and one TRIM_CUT;
+  - a later inlay then a re-send still lands before every inlay;
+  - no body / no template / unknown / no downward face are clear errors with nothing touched;
+  - `ui_data` holds only declared params, and no seed becomes a param;
+  - the solid gets the underside, the bottom and the wood;
+  - seeds are reported as not applied.
+- **`b-spline-gen/test_send_frame_handler.py` (8):** the real `notify` dispatch, the body finder,
+  the root-injected engine passed through, last_send.json, and a crash reported.
+- **`tests/frame-send.test.js` (6).**
+- **Mutations** (restored from my copies; pyc cleared): keep TRIM_CUT 2 red, `ui_data` unfiltered
+  1, delete before the body check 1, face ignored 1, no dispatch 3. The pre-change files fail all.
+- **Isolation fix:** in the combined Python run another test swaps the `adsk` stub, so the fixture
+  patches the `adsk` the module bound at import.
+
+### Item 4: Fred's live step list
+FB-APP-DESIGN.md §4.1 has the full list: deploy/reload; B-spline then frame; re-send; the other
+order; no body; seeds; and what to send back (`last_send.json` `frame` key,
+`frame-builder-debug.log`, `b_spline_gen_log.txt`, a screenshot of the browser tree and timeline).
+
+### GATE: seeds → Fusion (not built; your call)
+The dispatch said "map each declared seed to its phase dim". **There is no such dim:**
+- T1's only seed dims (`seed_rad_*`, `p02_03`) are radii, and `p02_09` deletes them;
+- T2 has none (`p02_04_arcs.py` is literal points only);
+- the Fusion outline is under-constrained after `p02_09`.
+
+So seeds are carried in the payload and reported `applied: false`, and the UI says so. Options
+(§4.1): (A) plain driving dims added only when a seed is present, proven per handle by goldens at
+2-3 values; (B) move the literal seed points only (unprovable); (C) leave it app-only. I recommend
+**(A), T1 first**.
+
+### Gates / processes
+- JS fast tier: 1587 / 87 files green.
+- Python fast tier: 222 green.
+- frame-defs fresh.
+- Server and Chrome stopped.
+- Capacity fine.
