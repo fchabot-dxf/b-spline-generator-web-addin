@@ -1045,7 +1045,9 @@ Fred: "changing stroke width is never per segment, it's a general param" / "it s
 lattice part; it is different if I'm in rectangle or freeform though, then I can have different width". So: lattice
 pieces (rails, ties, nodes, contour segments, cut segments) have NO own width; the "Selected piece" panel's Width
 control edits the lattice's GENERAL width for that kind (all parts change), Colour stays per piece. Plain drawing
-elements (rectangle, freeform, line, …) keep per-element width as today. REMOVAL = a sweep along the whole chain, every
+elements (rectangle, freeform, line, …) keep per-element width as today. NODES (Fred: "nodes are different though" -> option a): a node's size is the
+general node_diameter param (not stroke_width); no per-node size either: the panel's size control for a node edits
+node_diameter, so every node changes. REMOVAL = a sweep along the whole chain, every
 link removed or kept with a named reason: the panel's per-piece width control -> data-override-width attr + the schema
 module's width half (editor-piece-override.js) -> rewidthOwnedKind's override-skip -> export/SVG width attr -> the
 manifest's per-piece hardcoded width DIMENSION (seat B T75 item 3 / OVR-FUSION) -> tests guarding any of it (rewrite
