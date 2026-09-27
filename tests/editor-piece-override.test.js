@@ -1,16 +1,24 @@
 /**
  * UI5 items 1-4 (per-piece overrides): editor-piece-override.js is the
- * ONE declared schema module (data-override-color/width + apply/clear/
- * read helpers) — this file tests it directly, in isolation, with a
- * minimal svg.js-shaped mock element (same shape as editor-lattice-
- * pattern-emit.test.js's own makeElement, extended with removeAttribute
- * since clearColorOverride/clearWidthOverride need it).
+ * ONE declared schema module (data-override-color + apply/clear/read
+ * helpers) — this file tests it directly, in isolation, with a minimal
+ * svg.js-shaped mock element (same shape as editor-lattice-pattern-
+ * emit.test.js's own makeElement, extended with removeAttribute since
+ * clearColorOverride needs it).
+ *
+ * H3 (NO-PIECE-WIDTH): the module's own width half (data-override-width +
+ * hasWidthOverride/applyWidthOverride/clearWidthOverride) is gone, not
+ * just changed — see the "width override" describe block below for the
+ * rewritten check. The BEHAVIOURAL new rule ("an old override no longer
+ * blocks a general width change") is tested where that behaviour actually
+ * lives: tests/editor-lattice-pattern-emit.test.js's own rewidthOwnedKind
+ * describe block.
  */
 import { describe, it, expect } from 'vitest';
+import * as pieceOverride from '../bspline-frame-builder/b-spline-gen/html/editor/editor-piece-override.js';
 import {
-  OVERRIDE_COLOR_ATTR, OVERRIDE_WIDTH_ATTR, pieceKindOf,
-  hasColorOverride, hasWidthOverride,
-  applyColorOverride, applyWidthOverride, clearColorOverride, clearWidthOverride,
+  OVERRIDE_COLOR_ATTR, pieceKindOf,
+  hasColorOverride, applyColorOverride, clearColorOverride,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-piece-override.js';
 
 function makeEl(initial) {
@@ -71,41 +79,27 @@ describe('colour override', () => {
   });
 });
 
-describe('width override', () => {
-  it('applyWidthOverride sets stroke-width for a rail/tie directly (not halved)', () => {
-    const el = makeEl({});
-    applyWidthOverride(el, 'ties', 0.5);
-    expect(el._store['stroke-width']).toBe(0.5);
-    expect(el._store[OVERRIDE_WIDTH_ATTR]).toBe(0.5);
-  });
-
-  it('applyWidthOverride halves the value into `r` for a node (diameter-in, radius-out)', () => {
-    const el = makeEl({});
-    applyWidthOverride(el, 'nodes', 0.8);
-    expect(el._store.r).toBe(0.4);
-    expect(el._store[OVERRIDE_WIDTH_ATTR]).toBe(0.8); // the ATTRIBUTE still records the diameter the panel showed
-  });
-
-  it('clearWidthOverride removes the attribute and re-sizes with the given default', () => {
-    const el = makeEl({});
-    applyWidthOverride(el, 'nodes', 0.8);
-    clearWidthOverride(el, 'nodes', 0.3);
-    expect(hasWidthOverride(el)).toBe(false);
-    expect(el._store.r).toBe(0.15);
+// H3 (NO-PIECE-WIDTH): the module's width half is REMOVED, not merely
+// changed — asserted directly against the module's own exports (would
+// fail on the pre-H3 module, which had all four; passes now that none
+// do), rather than deleted outright with nothing in its place.
+describe('width override (H3: removed)', () => {
+  it('no width-override attribute constant or helpers remain exported', () => {
+    expect(pieceOverride.OVERRIDE_WIDTH_ATTR).toBeUndefined();
+    expect(pieceOverride.hasWidthOverride).toBeUndefined();
+    expect(pieceOverride.applyWidthOverride).toBeUndefined();
+    expect(pieceOverride.clearWidthOverride).toBeUndefined();
   });
 });
 
-// Non-vacuous check (mutation-style, in-file): hasColorOverride/hasWidthOverride
-// must actually distinguish "override present" from "not present", not just
+// Non-vacuous check (mutation-style, in-file): hasColorOverride must
+// actually distinguish "override present" from "not present", not just
 // always return the same thing.
-describe('hasColorOverride / hasWidthOverride are genuinely conditional', () => {
-  it('read false before an override is applied, true after', () => {
+describe('hasColorOverride is genuinely conditional', () => {
+  it('reads false before an override is applied, true after', () => {
     const el = makeEl({});
     expect(hasColorOverride(el)).toBe(false);
-    expect(hasWidthOverride(el)).toBe(false);
     applyColorOverride(el, 'rails', '#111111');
-    applyWidthOverride(el, 'rails', 0.4);
     expect(hasColorOverride(el)).toBe(true);
-    expect(hasWidthOverride(el)).toBe(true);
   });
 });

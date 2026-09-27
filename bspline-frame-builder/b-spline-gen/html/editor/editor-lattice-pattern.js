@@ -25,7 +25,7 @@ import {
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { getActiveLayer, addLayer, setActiveLayer } from './layers.js';
-import { OVERRIDE_COLOR_ATTR, OVERRIDE_WIDTH_ATTR } from './editor-piece-override.js';
+import { OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import { lcgPoints } from '../core/terrain.js';
 // T48 (SE13 Slice 2): the pure boundary-cutting engine (T47) — computePattern's
 // 'boundary' extent branch calls insideSpans directly (no re-derivation of
@@ -2514,6 +2514,11 @@ export function recolorOwnedKind(editor, layerId, kind, color) {
  * out conversion, just at the two different points each one needs it.
  *
  * @returns {number} how many elements were re-widthed.
+ *
+ * H3 (NO-PIECE-WIDTH): no override-skip any more (rails/ties/nodes have no
+ * per-piece width) — every owned element of `kind` is re-widthed
+ * unconditionally, including one that still carries a stale, now-ignored
+ * `data-override-width` from before this turn.
  */
 export function rewidthOwnedKind(editor, layerId, kind, value) {
   const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
@@ -2524,8 +2529,6 @@ export function rewidthOwnedKind(editor, layerId, kind, value) {
   const owned = _ownedOnLayer(editor, targetLayerId, latticeKind);
   let changed = 0;
   for (const ch of owned) {
-    // UI5 items 1-4: same override exemption as recolorOwnedKind above.
-    if (ch.node.hasAttribute(OVERRIDE_WIDTH_ATTR)) continue;
     if (latticeKind === 'node') {
       ch.attr('r', value / 2);
     } else {
@@ -2568,8 +2571,8 @@ export function rewidthOwnedKinds(editor, layerId, kindValuePairs) {
     if (!latticeKind) continue;
     const owned = _ownedOnLayer(editor, _kindLayerId(pattern, layerId, kind), latticeKind);
     for (const ch of owned) {
-      // UI5 items 1-4: same override exemption as recolorOwnedKind above.
-      if (ch.node.hasAttribute(OVERRIDE_WIDTH_ATTR)) continue;
+      // H3 (NO-PIECE-WIDTH): no override-skip any more, see
+      // rewidthOwnedKind's own identical note above.
       if (latticeKind === 'node') ch.attr('r', value);
       else ch.attr('stroke-width', value);
       total++;

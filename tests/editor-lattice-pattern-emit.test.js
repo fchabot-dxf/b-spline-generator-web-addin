@@ -26,7 +26,7 @@ import {
   nextSeed, recolorOwnedKind, rewidthOwnedKind, BOUNDARY_REF_ATTR,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { save, _migrateLegacyPatternOntoLayers } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
-import { OVERRIDE_COLOR_ATTR, OVERRIDE_WIDTH_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-piece-override.js';
+import { OVERRIDE_COLOR_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-piece-override.js';
 
 function _makeMockEditor() {
   let elements = [];
@@ -704,22 +704,29 @@ describe('rewidthOwnedKind (SE7i): re-width owned pieces in place, no reseed', (
     expect(rail.attr('stroke-width')).toBe(originalWidth);
   });
 
-  // UI5 items 1-4: same override exemption as recolorOwnedKind's own test.
-  it('an OVERRIDDEN piece of that kind keeps its own width — untouched, but still counted as owned', () => {
+  // H3 (NO-PIECE-WIDTH): rewritten to assert the NEW rule, not deleted —
+  // this used to exempt an overridden piece; now a piece STILL carrying
+  // a stale `data-override-width` (the exact shape an OLD saved document
+  // would have, from before this turn removed the schema's write side)
+  // gets re-widthed like everything else. The attribute is inert, ignored
+  // data now — not read by this function, not read by anything else in
+  // the app any more (editor-piece-override.js's own module no longer
+  // exports a helper for it at all).
+  it('a piece carrying a STALE data-override-width (old saved doc) is re-widthed anyway — the attribute is ignored', () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 54, rails: { every: 2, offset: 0 } };
     generatePattern(editor, pattern);
     const rails = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
     expect(rails.length).toBeGreaterThan(1);
-    const overridden = rails[0];
-    overridden.attr(OVERRIDE_WIDTH_ATTR, 0.75);
-    overridden.attr('stroke-width', 0.75);
+    const stale = rails[0];
+    stale.attr('data-override-width', 0.75); // pre-H3 marker, no longer read anywhere
+    stale.attr('stroke-width', 0.75);
 
     const count = rewidthOwnedKind(editor, editor._activeLayer, 'rails', 0.3);
 
-    expect(overridden.attr('stroke-width')).toBe(0.75); // untouched
-    for (const el of rails.slice(1)) expect(el.attr('stroke-width')).toBe(0.3);
-    expect(count).toBe(rails.length - 1);
-    expect(overridden.attr(OWNERSHIP_ATTR)).toBeTruthy();
+    expect(stale.attr('stroke-width')).toBe(0.3); // NOT exempted any more
+    for (const el of rails) expect(el.attr('stroke-width')).toBe(0.3);
+    expect(count).toBe(rails.length); // every rail, including the stale one
+    expect(stale.attr(OWNERSHIP_ATTR)).toBeTruthy();
   });
 
   it('is exactly one undo step (not one per re-widthed element)', () => {

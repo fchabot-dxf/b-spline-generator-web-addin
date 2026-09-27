@@ -19,6 +19,7 @@
  * layer wrongly included/excluded — not just an absent field.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines, _fusionLayerManifest, _boundarySketchManifests } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
 import { setLayerVisible } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
@@ -326,6 +327,19 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
     expect(_fusionLayerManifest(editor, { id: '2' })).toBeNull();
   });
 
+  // H3 (NO-PIECE-WIDTH): intentionally LEFT UNCHANGED, not overlooked.
+  // `_overridesForLayer`/`manifestFromLattice`'s own per-piece width
+  // DIMENSION lives here and in editor-sketch-manifest.js — the two files
+  // seat C is mid-edit on for F17 (Send-as-drawn, not merged to main yet).
+  // The dispatch's own instruction: list this for the advisor instead of
+  // editing, rather than risk colliding with F17's own rewrite of how a
+  // manifest is built. Removing the WRITE side (H3's real scope: the
+  // panel no longer ever calls applyWidthOverride) already satisfies the
+  // user-facing acceptance ("a Send has no per-piece width dims" for
+  // anything drawn from now on) without touching either file — this test
+  // and the mechanism it covers only still matter for an OLD saved
+  // document that already carries a stale data-override-width attribute
+  // from before this turn. See the grep check below.
   it('T75 item 3 (OVR-FUSION): a real owned rail element carrying data-override-width produces a HARDCODED SlotWidth expression on that piece\'s manifest entity', () => {
     const pattern = {
       spacing: 0.25,
@@ -344,6 +358,31 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
     // shared parameter, exactly like every rail did before this feature.
     const rail1Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail1');
     expect(rail1Dim.expression).toBe('stroke_width');
+  });
+});
+
+// H3 (NO-PIECE-WIDTH) item 3: "a grep proves no reader of data-override-width
+// remains" — proves it directly, against the real source tree, rather than
+// asserting it in prose. The ONE known, deliberately-deferred exception (see
+// the comment above the OVR-FUSION test just above) is named explicitly, so
+// this test would FAIL — not silently pass — the moment a NEW reader
+// appears anywhere else, or the day _overridesForLayer's own read is
+// finally removed post-F17 without this line coming with it.
+describe('H3 (NO-PIECE-WIDTH): no reader of data-override-width remains outside the named, deferred exception', () => {
+  it('greps the real editor/main source tree', () => {
+    const ROOT = 'bspline-frame-builder/b-spline-gen/html';
+    const READ_PATTERN = /\.(getAttribute|hasAttribute|attr)\(\s*['"]data-override-width['"]/;
+    const files = [];
+    (function walk(dir) {
+      for (const name of readdirSync(dir)) {
+        const p = `${dir}/${name}`;
+        if (statSync(p).isDirectory()) walk(p);
+        else if (name.endsWith('.js')) files.push(p);
+      }
+    })(ROOT);
+    const readers = files.filter((f) => READ_PATTERN.test(readFileSync(f, 'utf-8')));
+    const relative = readers.map((f) => f.slice(ROOT.length + 1));
+    expect(relative).toEqual(['main/export-flow.js']); // the one named, deferred exception
   });
 
   it('returns a real manifest for a layer that DOES carry a .pattern AND owned pieces', () => {

@@ -10918,3 +10918,76 @@ own swatch, segment recoloured in the canvas, Reset button present.
 
 `npx vitest run` -> **1827 passed** (up from 1823 on main before this turn: 4 new, 0 removed), zero
 regressions.
+
+## Turn 298 (part 1) — epoch 3 — H3 NO-PIECE-WIDTH: panel + schema + rewidthOwnedKind sweep — DONE, manifest-side follow-up next
+
+Dispatch: lattice pieces (rails/ties/nodes/contour) have NO per-piece width any more — the "Selected piece"
+panel's Width/size control now edits the lattice's GENERAL width/node_diameter for that kind (Fred:
+"changing stroke width is never per segment... it should go, changing it changes every lattice part").
+Nodes (Fred, option a): size = the general `node_diameter` param, not a per-node radius. Colour stays
+per-piece, unaffected. THIS IS A REMOVAL: every link in the chain accounted for below, removed or kept
+with a named reason — none silently dropped.
+
+**Item 1 — the panel.** `lattice-piece-panel.js`: the width row's Reset button is GONE (removed from the
+HTML entirely, not just hidden — there is no override left to reset from). The `<input>`'s own `change`
+handler now does exactly what `properties-lattice.js`'s own `wireWidthStepper` already does for this same
+field (reused, not duplicated): write `PATTERN.widths[field]` (`field` = 'nodeDiameter' for nodes, the
+kind name otherwise), then call `rewidthOwnedKind(editor, layerId, kind, value)` — the SAME function the
+Colors/Widths panel section's own general stepper already calls, so every piece of that kind changes
+together, live, in the currently-open panel too. The row's own label is now dynamic: "Width (all)" for
+rails/ties, "Size (all)" for nodes (Fred's own wording split), so it reads differently from Colour's still-
+per-piece Reset-bearing row rather than looking like the same kind of control. Contour stays untouched
+(colour-only, no width row at all, unchanged from H2).
+
+**Item 2 (partial) — the chain, non-manifest half.** `editor-piece-override.js`: the WIDTH half of the
+schema module is REMOVED outright (not just unused) — `OVERRIDE_WIDTH_ATTR`,
+`hasWidthOverride`/`applyWidthOverride`/`clearWidthOverride` all deleted; the file's own doc comment
+rewritten to describe the colour-only scope and why (contour already has its own, older, differently-
+persisted colour path from H2, so it was never a candidate for reuse here either).
+`editor-lattice-pattern.js`: `rewidthOwnedKind`/`rewidthOwnedKinds` both drop their own
+`if (hasAttribute(OVERRIDE_WIDTH_ATTR)) continue` exemption — a general width change now reaches EVERY
+owned piece unconditionally, including one that still carries a stale `data-override-width` from before
+this turn (that's the "old saved patterns: ignored on load" requirement — nothing reads the attribute for
+meaning any more, so it's just inert data). Noticed, NOT touched (pre-existing, unrelated,
+out of scope): `rewidthOwnedKinds`'s own node branch does `ch.attr('r', value)` where `rewidthOwnedKind`'s
+does `value / 2` (diameter-to-radius) — a real inconsistency, but `rewidthOwnedKinds` is only ever called
+today with `['rails', v], ['ties', v]` pairs (the rails/ties link toggle), never `'nodes'`, so this is dead
+code in practice, not something my own change touches or should quietly fix in passing.
+
+The MANIFEST-side half of item 2 (`_overridesForLayer`/`manifestFromLattice`'s own per-piece width
+DIMENSION, T75/OVR-FUSION) was deliberately NOT touched in this first part — `export-flow.js` and
+editor-sketch-manifest.js were seat C's own F17 (Send-as-drawn) files, not merged to main yet at dispatch
+time, per the dispatch's own explicit "list it for the advisor instead of editing" instruction. Documented
+instead: `tests/export-flow.test.js` gets a real, executable grep test (`readdirSync`-walks the actual
+source tree, asserts the ONLY remaining reader of `'data-override-width'` as a literal string is
+`main/export-flow.js`) rather than a prose claim — it would fail the moment a NEW reader appeared
+anywhere else. An amendment landed before this commit: **F17 merged to main (1c8a7ea) while I was
+finishing this part** — the per-piece width DIMENSION removal is unblocked now; continuing as part 2 of
+this same turn, on top of a `git pull --rebase` picking up F17's own DOM-driven manifest rewrite.
+
+**Item 3 — tests.** `tests/editor-piece-override.test.js`: the "width override" describe block is
+REWRITTEN (not deleted) to assert the module's own width exports are gone (`pieceOverride.
+hasWidthOverride` etc. all `undefined`) — fails on the pre-H3 module, passes now.
+`tests/editor-lattice-pattern-emit.test.js`: the "an OVERRIDDEN piece keeps its own width" test rewritten
+to "a piece carrying a STALE data-override-width... is re-widthed anyway" — mutation-tested (temporarily
+restored the skip-check, exactly this 1 test failed of 49; restored, green). Plain drawing elements
+(rect/freeform/line) were never in scope for this module at all (`pieceKindOf`/`CONTOUR_SEG_INDEX_ATTR`
+both correctly say "not a lattice piece" for them, so the panel never even mounts for one) — their own
+width still goes through the completely separate, untouched `editor.setStrokeWidth`, already covered by
+existing `editor-session.test.js` coverage; confirmed live rather than assumed (see below) rather than
+adding a redundant unit test for something already tested and unchanged.
+
+Live (`tools/repro/no_piece_width_shots.mjs`, new): select a rail → panel shows "Width (all)", no Reset
+button in the DOM at all → editing it to 0.9 changes EVERY rail's `stroke-width` (not just the selected
+one) and `PATTERN.widths.rails`; select a node → "Size (all)" → editing to 0.3 changes every node's `r` to
+0.15 and `PATTERN.widths.nodeDiameter`; a hand-drawn plain line gets its own `editor.setStrokeWidth` and
+the Selected-piece panel never shows for it at all. ALL CHECKS PASSED, desktop + mobile, confirmed on
+repeat runs. One real diagnostic detour: an early run's "every rail" check kept finding ONE extra rail-
+shaped element with a strange stroke-width — traced to the SELECTION HIGHLIGHT overlay (a semi-transparent
+yellow clone of the selected piece, `pointer-events:none`, drawn by `_updateSelectionHighlight` in a
+separate highlight layer) coincidentally carrying the same `data-lattice`/`data-lattice-gen` attributes as
+the real piece, picked up by an unscoped `document.querySelectorAll`. Not an app bug — a test-script query
+that needed scoping to `editor._sketchLayer`'s own children instead of the whole document.
+
+`npx vitest run` -> **1826 passed** (net -1 from 1827: -3 width-override tests removed/folded, +1 new
+"exports gone" test, +1 new grep test — the rewritten rewidthOwnedKind test keeps the same count).

@@ -1,9 +1,10 @@
 /**
  * lattice-piece-panel.js — UI5 items 1/3/4 (Fred, via advisor): the
- * "Selected piece" override panel — shows the CURRENT colour + width of
- * whichever single rail/tie/node is selected (via either the lattice
- * Select icon or the main Select tool), each with an override control and
- * a reset back to the layer's own kind default. Shared by both
+ * "Selected piece" panel — shows the CURRENT colour of whichever single
+ * rail/tie/node/contour-segment is selected (via either the lattice
+ * Select icon or the main Select tool), with a per-piece colour override +
+ * reset back to the layer's own kind default (rails/ties/nodes only — see
+ * H3 below for why width isn't a per-piece thing at all). Shared by both
  * properties-lattice.js and properties-shape-lattice.js (each calls
  * `mountSelectedPiecePanel(editor, bodyEl)` with its own panel body) —
  * one implementation, not two near-duplicates.
@@ -13,27 +14,37 @@
  * (seat B owns that markup) — `data-no-collapse` so lattice-side-column.js's
  * own section-collapsing sweep leaves it alone, exactly like the icon row.
  *
- * Rails/ties/nodes read/write overrides ONLY through editor-piece-
- * override.js (the declared schema module — "no second source" per the
- * UI5 dispatch). H2 (SEG-COLOR-PANEL) extends this same panel to a Shape
- * Lattice CONTOUR SEGMENT too, colour-only — but a segment's colour is an
- * OLDER, differently-persisted mechanism (T73/SE14b's own
- * `PATTERN.contour.segmentColors[i]`, survives Regenerate, unlike an
- * override which Regenerate clears), so it goes through THAT storage
- * instead (editor.js's `setColor`/`_storeContourSegmentColor`, plus this
- * file's own `clearContourSegmentColor`/`hasContourSegmentColor` — still
- * one storage path each, just not the SAME one as rails/ties/nodes).
+ * Rails/ties/nodes read/write their COLOUR override ONLY through
+ * editor-piece-override.js (the declared schema module — "no second
+ * source" per the UI5 dispatch). H2 (SEG-COLOR-PANEL) extends colour to a
+ * Shape Lattice CONTOUR SEGMENT too — a segment's colour is an OLDER,
+ * differently-persisted mechanism (T73/SE14b's own
+ * `PATTERN.contour.segmentColors[i]`, survives Regenerate, unlike a
+ * rail/tie/node override which Regenerate clears), so it goes through
+ * THAT storage instead (editor.js's `setColor`/`_storeContourSegmentColor`,
+ * plus this file's own `clearContourSegmentColor`/`hasContourSegmentColor`
+ * — still one storage path each, just not the SAME one as rails/ties/
+ * nodes).
+ *
+ * H3 (NO-PIECE-WIDTH, Fred: "changing stroke width is never per segment,
+ * it's a general param"): there is no per-piece width any more. The
+ * Width/size control edits the lattice's GENERAL width/node_diameter for
+ * that kind directly (`rewidthOwnedKind` — the SAME function the Colors/
+ * Widths panel section's own stepper already calls), so every piece of
+ * that kind changes together; there is no override to reset, so no Reset
+ * button for width. A contour segment stays colour-only (no width row at
+ * all, unchanged from H2).
+ *
  * Reacts to `editorSelectionChanged` (editor-ui.js's _afterSelectionChange
  * / editor.js's _deselect), the one selection-changed signal that feature
  * added.
  */
 import {
-  pieceKindOf, hasColorOverride, hasWidthOverride,
-  applyColorOverride, applyWidthOverride, clearColorOverride, clearWidthOverride,
+  pieceKindOf, hasColorOverride, applyColorOverride, clearColorOverride,
 } from './editor-piece-override.js';
 import { openColorMosaic } from './editor-color.js';
 import {
-  PATTERN_DEFAULTS, resolvePatternLayer,
+  PATTERN_DEFAULTS, resolvePatternLayer, rewidthOwnedKind,
   CONTOUR_SEG_INDEX_ATTR, hasContourSegmentColor, clearContourSegmentColor,
 } from './editor-lattice-pattern.js';
 import { getElementLayer } from './layers.js';
@@ -93,11 +104,9 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
         style="font-size:10px; padding:2px 6px; cursor:pointer;">Reset</button>
     </div>
     <div class="lattice-piece-width-row" style="display:flex; gap:8px; align-items:center;">
-      <label style="font-size:11px; flex:1;">Width</label>
+      <label class="lattice-piece-width-label" style="font-size:11px; flex:1;"></label>
       <input type="number" class="lattice-piece-width" min="0" step="0.01"
         style="width:60px; height:22px; font-size:11px; text-align:center;">
-      <button type="button" class="lattice-piece-width-reset" title="Reset to layer width"
-        style="font-size:10px; padding:2px 6px; cursor:pointer;">Reset</button>
     </div>`;
   bodyEl.insertBefore(section, bodyEl.firstChild);
 
@@ -105,12 +114,12 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   const colorBtn = section.querySelector('.lattice-piece-color');
   const colorResetBtn = section.querySelector('.lattice-piece-color-reset');
   const widthRow = section.querySelector('.lattice-piece-width-row');
+  const widthLabel = section.querySelector('.lattice-piece-width-label');
   const widthInput = section.querySelector('.lattice-piece-width');
-  const widthResetBtn = section.querySelector('.lattice-piece-width-reset');
-  // R5: the override width field is formula-capable too, over the SAME
-  // scope its host panel declares (`scope` — a caller-supplied thunk, so
-  // it reads live off whichever layer/pattern is active, same as the
-  // panel's own fields).
+  // R5: the width field is formula-capable too, over the SAME scope its
+  // host panel declares (`scope` — a caller-supplied thunk, so it reads
+  // live off whichever layer/pattern is active, same as the panel's own
+  // fields).
   if (scope) attachFormula(widthInput, scope);
 
   let current = null; // { el, kind, layerId }
@@ -127,9 +136,13 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
       colorResetBtn.style.visibility = hasContourSegmentColor(editor, el) ? 'visible' : 'hidden';
       widthRow.style.display = 'none';
     } else {
-      widthInput.value = _currentWidth(el, kind) || defaults.width;
+      // H3: this value is the lattice's GENERAL width/node_diameter for
+      // the kind, same as every other piece of it -- there is no per-piece
+      // reading to fall back from, so no `|| defaults.width` needed the
+      // way colour still has one.
+      widthLabel.textContent = kind === 'nodes' ? 'Size (all)' : 'Width (all)';
+      widthInput.value = _currentWidth(el, kind);
       colorResetBtn.style.visibility = hasColorOverride(el) ? 'visible' : 'hidden';
-      widthResetBtn.style.visibility = hasWidthOverride(el) ? 'visible' : 'hidden';
       widthRow.style.display = 'flex';
     }
     section.style.display = '';
@@ -192,20 +205,21 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
 
   widthInput.addEventListener('change', () => {
     if (!current || current.kind === 'contour') return;
-    const { el, kind, layerId } = current;
+    const { layerId, kind } = current;
     const value = parseFloat(widthInput.value) || _kindDefaults(editor, layerId, kind).width;
-    applyWidthOverride(el, kind, value);
-    if (typeof editor.pushState === 'function') editor.pushState();
-    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
-    refresh();
-  });
-
-  widthResetBtn.addEventListener('click', () => {
-    if (!current || current.kind === 'contour') return;
-    const { el, kind, layerId } = current;
-    clearWidthOverride(el, kind, _kindDefaults(editor, layerId, kind).width);
-    if (typeof editor.pushState === 'function') editor.pushState();
-    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+    widthInput.value = value;
+    // H3 (NO-PIECE-WIDTH): edits the lattice's GENERAL width/node_diameter
+    // directly -- the SAME two steps wireWidthStepper (properties-
+    // lattice.js's own Widths section) already does for this exact field,
+    // reused here rather than duplicated: write PATTERN.widths[field], then
+    // re-width every owned piece of this kind in place. rewidthOwnedKind
+    // pushes state / notifies on its own.
+    const patternLayer = resolvePatternLayer(editor, layerId);
+    if (patternLayer && patternLayer.pattern) {
+      const field = kind === 'nodes' ? 'nodeDiameter' : kind;
+      patternLayer.pattern.widths = { ...PATTERN_DEFAULTS.widths, ...patternLayer.pattern.widths, [field]: value };
+    }
+    rewidthOwnedKind(editor, layerId, kind, value);
     refresh();
   });
 }
