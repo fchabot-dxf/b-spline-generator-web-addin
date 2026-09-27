@@ -293,3 +293,61 @@ class TestTheTargetFaceIsResolvedWhenUsed:
                           build_sketch=b.sketch, build_solid=b.solid)
         assert r["ok"] and len(calls) == 2
         assert b.solid_calls[0]["to_face"] is bodies[1].faces[2]  # the fresh one, not the early one
+
+
+# ------------------------------------------------------------------ F11 option B: seed geometry
+from fb_engine.seed_geometry import apply_seed_geometry, SeedGeometryError  # noqa: E402
+
+
+def _steps(template):
+    out = {}
+    for sk in template["Sketches"]:
+        for b in sk.get("Blocks", []):
+            for st in b.get("BuildSequence", []) or []:
+                if st.get("Type") in ("Line", "Arc3Point"):
+                    out[st["ID"]] = st
+                elif st.get("Type") == "Radius":  # (p02_09's DeleteDimension reuses the same Name)
+                    out[st["Name"]] = st
+    return out
+
+
+class TestSeedGeometry:
+    def test_moves_only_the_named_seeds_as_plain_values(self):
+        template, _ = resolve_template("template_1")
+        before = _steps(template)
+        out = apply_seed_geometry(template, {
+            "arc_waist_R": {"points": [[2.8, -0.6], [2.4, 0.0], [2.8, 0.6]]},
+            "seed_rad_waist_R": {"radius": 0.7},
+        })
+        after = _steps(out)
+        assert after["arc_waist_R"]["Points"] == [["2.8 in", "-0.6 in"], ["2.4 in", "0.0 in"], ["2.8 in", "0.6 in"]]
+        assert after["seed_rad_waist_R"]["Expression"] == "0.7 in"
+        assert after["arc_hip_R"] == before["arc_hip_R"]          # untouched
+        assert _steps(template)["arc_waist_R"] == before["arc_waist_R"]  # the resolved template is not mutated
+
+    def test_an_unknown_seed_or_a_wrong_point_count_is_refused(self):
+        template, _ = resolve_template("template_1")
+        for bad in ({"nope": {"points": [[0, 0], [1, 1]]}}, {"arc_waist_R": {"points": [[0, 0], [1, 1]]}},
+                    {"seed_rad_waist_R": {"points": [[0, 0]]}}):
+            try:
+                apply_seed_geometry(template, bad)
+                assert False, bad
+            except SeedGeometryError:
+                pass
+
+    def test_send_frame_passes_the_seed_geometry_to_the_build_never_as_params(self):
+        w = World()
+        send_bspline(w)
+        geo = {"arc_waist_R": {"points": [[2.8, -0.6], [2.4, 0.0], [2.8, 0.6]]}}
+        r, b = run(w, payload(seeds={"waistReach": 0.5}, seedGeometry=geo))
+        assert r["ok"] and r["seeds"] == {"count": 1, "applied": True, "reason": None}
+        assert b.sketch_calls[0]["data"]["seed_geometry"] == geo
+        assert "waistReach" not in w.params and "arc_waist_R" not in w.params
+
+    def test_a_bad_seed_geometry_is_refused_before_anything_is_deleted(self):
+        w = World()
+        send_bspline(w)
+        run(w, payload())
+        r, b = run(w, payload(seeds={"waistReach": 0.5}, seedGeometry={"nope": {"points": [[0, 0], [1, 1]]}}))
+        assert not r["ok"] and "could not be seeded" in r["error"]
+        assert b.sketch_calls == [] and w.frame_names() == ["Frame_1"]  # the previous frame is still there

@@ -20,7 +20,8 @@ import { P, isFusionMode } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
-import { handleDragPatch } from '../editor/frame-handles.js';
+import { handleDragPatch, frameSeedGeometry } from '../editor/frame-handles.js';
+import { frameCutProfile } from '../editor/editor-frame-profile.js';
 
 /** F9: how close (screen px) a press must land to grab a frame shape handle (finger-sized). */
 export const HANDLE_HIT_PX = 16;
@@ -72,14 +73,20 @@ export function frameSendState(defs, record, inFusion) {
   if (!inFusion) return { enabled: false, hint: 'Open this app from the Fusion add-in to send the frame.' };
   const seeded = Object.keys(record.seeds || {}).length;
   return { enabled: true, hint: seeded
-    ? `Sends the frame to Fusion. ${seeded} handle shape change(s) are not sent yet: Fusion builds the template's own shape.`
+    ? `Sends the frame to Fusion with your ${seeded} handle shape change(s) (replaces the previous frame). Send B-spline first.`
     : 'Sends the frame to Fusion (replaces the previous frame). Send B-spline first.' };
 }
 
 /** Press [Send frame]: the frame record as the payload [Send frame] reads (fb_engine/send_frame.py). */
 export function sendFrame() {
-  const payload = framePayload(FRAME_DEFS, getFrameRecord());
+  const rec = getFrameRecord();
+  const payload = framePayload(FRAME_DEFS, rec);
   if (!payload) return false;
+  // F11 option B: seeded handles go as the template's own seed geometry
+  if (Object.keys(rec.seeds || {}).length) {
+    const prof = frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn });
+    payload.seedGeometry = frameSeedGeometry(findFrameTemplate(FRAME_DEFS, rec.templateId), prof, P.widthIn, P.heightIn);
+  }
   adsk.fusionSendData('send_frame', JSON.stringify(payload));
   setFusionStatus('Sending the frame to Fusion...', 'busy');
   return true;

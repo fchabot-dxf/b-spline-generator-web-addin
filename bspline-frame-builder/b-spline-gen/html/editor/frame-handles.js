@@ -44,6 +44,37 @@ export function frameHandles(tpl, prof) {
     .map((h) => ({ ...h, label: table.get(h.key).label, binding: table.get(h.key).binding, basis: table.get(h.key).basis }));
 }
 
+/**
+ * F11, option B (Fred: "simply seed it in position"): the seeded outline as the
+ * template's OWN seed geometry (frame-defs `seedMap`, template_data.py
+ * FRAME_SEED_MAP), in Fusion sketch coordinates (inches, centred, y up), for
+ * fb_engine/seed_geometry.py to move those seeds. `prof` is the drawn cut
+ * profile (frameCutProfile) on a `W` x `H` board.
+ */
+export const PIN_AXIS_NUDGE_IN = 0.01; // a pin's inner end sits this far off the Y axis (the phases' own anti-auto-coincidence nudge)
+export function frameSeedGeometry(tpl, prof, W, H) {
+  const F = (p) => [p.x - W / 2, H / 2 - p.y];
+  const at = (a, t) => ({ x: a.cx + a.rx * Math.cos(a.theta1 + a.dTheta * t), y: a.cy + a.rx * Math.sin(a.theta1 + a.dTheta * t) });
+  const out = {};
+  for (const e of (tpl && tpl.seedMap) || []) {
+    const p = prof.primitives[e.prim];
+    if (e.kind === 'line') {
+      const pts = [F(p.p0), F(p.p1)];
+      out[e.id] = { points: e.reverse ? pts.reverse() : pts };
+    } else if (e.kind === 'arc') {
+      const [s, m, t] = [F(at(p, 0)), F(at(p, 0.5)), F(at(p, 1))];
+      out[e.id] = { points: e.reverse ? [t, m, s] : [s, m, t] };
+    } else if (e.kind === 'pin') {
+      const c = F({ x: p.cx, y: p.cy });
+      const inner = [Math.sign(c[0]) * PIN_AXIS_NUDGE_IN, c[1]];
+      out[e.id] = { points: e.outer === 'S' ? [c, inner] : [inner, c] };
+    } else if (e.kind === 'radius') {
+      out[e.id] = { radius: p.rx };
+    }
+  }
+  return out;
+}
+
 /** The record patch a drag of `handle` to board point `pt` writes (per its binding). */
 export function handleDragPatch(record, handle, pt, region) {
   const v = handle.valueFromWorld(pt);

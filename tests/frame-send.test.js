@@ -35,9 +35,9 @@ describe('[Send frame] state', () => {
     expect(frameSendState(FRAME_DEFS, rec, true)).toMatchObject({ enabled: true, hint: expect.stringContaining('Send B-spline first') });
   });
 
-  it('says plainly that seeded handle shapes are not sent yet', () => {
+  it('says the handle shape changes go with the frame (F11, option B)', () => {
     const rec = normalizeFrameRecord({ templateId: 'template_1', seeds: { waistReach: 0.4 } });
-    expect(frameSendState(FRAME_DEFS, rec, true)).toMatchObject({ enabled: true, hint: expect.stringContaining('1 handle shape change(s) are not sent') });
+    expect(frameSendState(FRAME_DEFS, rec, true)).toMatchObject({ enabled: true, hint: expect.stringContaining('with your 1 handle shape change(s)') });
   });
 
   it('the sidebar button follows the record and the Fusion mode', () => {
@@ -61,7 +61,10 @@ describe('the press and the reply', () => {
     const sends = window.adsk.fusionSendData.mock.calls.filter(([action]) => action === 'send_frame');
     expect(sends).toHaveLength(1);
     const sent = JSON.parse(sends[0][1]);
-    expect(sent).toEqual(framePayload(FRAME_DEFS, getFrameRecord()));
+    const { seedGeometry, ...rest } = sent;
+    expect(rest).toEqual(framePayload(FRAME_DEFS, getFrameRecord()));
+    // F11: seeded handles travel as the template's own seed geometry
+    expect(Object.keys(seedGeometry).sort()).toEqual(FRAME_DEFS.templates[0].seedMap.map((e) => e.id).sort());
     expect(sent).toMatchObject({ templateId: 'template_1', frameBottomZ: -1.5, appearance: '3D Cherry - Unfinished', seeds: { waistReach: 0.4 } });
     expect(sent.params.boundingboxoffset).toBe(0.5);
     expect($('fusion-status').textContent).toContain('Sending the frame');

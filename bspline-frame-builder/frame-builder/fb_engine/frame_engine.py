@@ -89,10 +89,13 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
     # Merge snapshot into state (freshness priority)
     ui_data = {**ui_state, **ui_snapshot}
     max_phase = data_dict.get('max_phase', None) if isinstance(data_dict, dict) else None
+    # FB-APP F11: the app's seeded shape as seed GEOMETRY (fb_engine/seed_geometry.py),
+    # never in ui_data (every ui_data key becomes a user parameter).
+    seed_geometry = data_dict.get('seed_geometry') if isinstance(data_dict, dict) else None
 
     if external_logger:
-        external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars, max_phase={max_phase}")
-    builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase)
+        external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars, max_phase={max_phase}, seeds={len(seed_geometry or {})}")
+    builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase, seed_geometry=seed_geometry)
     return builder.fit
 
 def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
@@ -173,7 +176,7 @@ class FrameBuilder:
         except Exception as e:
             self.logger.log(f"Warning: could not restore root active component: {e}", "WARNING")
 
-    def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None, max_phase=None):
+    def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None, max_phase=None, seed_geometry=None):
         start_time = time.time()
         try:
             self.logger.session_start(f"SKETCH ONLY: {style_id}")
@@ -188,6 +191,10 @@ class FrameBuilder:
 
             # Resolve template and prefix from registry
             template, prefix = _resolve_template(style_id, ui_data)
+            if seed_geometry:
+                from fb_engine.seed_geometry import apply_seed_geometry
+                template = apply_seed_geometry(template, seed_geometry)
+                self.logger.log(f"SEED GEOMETRY: {len(seed_geometry)} seed(s) moved to the app's shape")
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver, max_phase=max_phase)
             builder.build_template(template)

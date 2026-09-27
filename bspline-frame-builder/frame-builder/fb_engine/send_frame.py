@@ -23,17 +23,17 @@ points the Frame Builder palettes use:
      live in F3), so the whole block lands before the inlay whichever button
      came first; nothing extra here
 
-Seeds (the Frame tab's SEEDED shape handles) are NOT applied in Fusion yet:
-the template phases have no dimension to receive them (T1's seed radius dims
-are deleted by p02_09, T2 has none), so mapping them needs new plain
-dimensions proven on Fusion. That is a GATE (WORK-LOG turn 18); the result
-says so instead of dropping them silently.
+Seeds (the Frame tab's SEEDED shape handles), F11 option B: the app sends
+`seedGeometry`, its seeded outline as the template's OWN seed geometry
+(template_data FRAME_SEED_MAP); the sketch build moves those seeds
+(fb_engine/seed_geometry.py). No dimension and no parameter is added.
 
 Pure orchestration: the Fusion-touching collaborators are injected, so the
 fake-Fusion tests drive this exact code.
 """
 
 from fb_engine.frame_definition import DEFAULT_FRAME_BOTTOM_EXPR
+from fb_engine.seed_geometry import apply_seed_geometry, SeedGeometryError
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
 FRAME_TYPE_VALUE = "Frame"
@@ -42,8 +42,7 @@ FRAME_MEMBER_ATTR = ("FrameBuilder", "FrameComponent")  # value = the frame comp
 # on NURBS faces, so "~" is a declared bound, not an exact -1.
 UNDERSIDE_MAX_NORMAL_Z = -0.9
 
-SEEDS_NOT_APPLIED = ("seeded shape handles are not applied in Fusion yet: the template phases have "
-                     "no dimension to receive them (gate, WORK-LOG turn 18)")
+SEEDS_NOT_APPLIED = "the payload has seeds but no seedGeometry (an app older than F11 sent it)"
 
 
 class SendFrameError(Exception):
@@ -110,8 +109,11 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
     user-facing reason (it is reported as `error`)."""
     log = lambda msg, level="INFO": logger.log(msg, level)
     seeds = dict(payload.get("seeds") or {})
+    seed_geometry = payload.get("seedGeometry") or None
+    applied = bool(seeds) and bool(seed_geometry)
     result = {"ok": False, "error": None, "deleted": [], "frame": None, "fit": None,
-              "seeds": {"count": len(seeds), "applied": False, "reason": SEEDS_NOT_APPLIED if seeds else None}}
+              "seeds": {"count": len(seeds), "applied": applied,
+                        "reason": SEEDS_NOT_APPLIED if seeds and not applied else None}}
     try:
         template_id = payload.get("templateId")
         if not template_id:
@@ -128,9 +130,17 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
         except ValueError as e:
             raise SendFrameError(f"Unknown frame template {template_id!r}: {e}")
         ui_data = frame_ui_data(payload, declared_param_names(template))
+        if applied:  # refuse a bad seedGeometry BEFORE anything is deleted
+            try:
+                apply_seed_geometry(template, seed_geometry)
+            except SeedGeometryError as e:
+                raise SendFrameError(f"The frame shape could not be seeded: {e}")
 
         result["deleted"] = delete_previous_frames(design, log)
-        result["fit"] = build_sketch(style_id=template_id, external_logger=logger, data={"ui_data": ui_data})
+        data = {"ui_data": ui_data}
+        if applied:
+            data["seed_geometry"] = seed_geometry
+        result["fit"] = build_sketch(style_id=template_id, external_logger=logger, data=data)
         frames = find_frames(design)
         if not frames:
             raise SendFrameError("The frame sketch build created no frame (see the Frame Builder log).")
@@ -144,7 +154,7 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
         z = payload.get("frameBottomZ")
         build_solid(to_face=face, start_offset_expr=f"{float(z)} in" if z is not None else DEFAULT_FRAME_BOTTOM_EXPR,
                     appearance_name=payload.get("appearance"), external_logger=logger)
-        if seeds:
+        if seeds and not applied:
             log(f"SEND FRAME: {len(seeds)} seed(s) sent but not applied: {SEEDS_NOT_APPLIED}", "WARNING")
         result["ok"] = True
     except SendFrameError as e:
