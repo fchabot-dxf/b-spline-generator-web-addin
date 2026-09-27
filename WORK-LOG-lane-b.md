@@ -10891,3 +10891,37 @@ field fails 1.
 Shots (real headless renders, the REAL CSS incl. the palette's own inline stylesheet this time):
 shots/seatB/t81-widths-steppers-linked.png, -unlinked.png.
 Verify: 2245/2245 vitest. Commit 9a3eeae. NO FUSION.
+
+## T81 item 5 (PRIORITY) — the yellow selection halo now tracks a moved tie
+
+Fred: "the yellow highlight is persistent even after I released a moved tie." Investigated FIRST, with a
+background agent tracing every yellow-drawing mechanism in the codebase (a snap cursor, a Select-mode bbox, the
+node-edit diamond, the tie's own default fill) before any fix was written, per the checklist's own instruction.
+Root cause: the yellow IS the SELECTION HALO (editor-ui.js's `updateSelectionHighlight`, `#ffcc00`) -- not the
+tie's own default drawn colour (`#f9c80e`, PATTERN_DEFAULTS.colors.ties, a plausible-looking red herring: that's
+the tie itself, meant to stay). Grabbing a rail/tie/node in Select sub-mode (the DEFAULT drawKind) selects it,
+which draws the halo as a STATIC CLONE of the piece's geometry at that instant. Every write the lattice move
+code makes (`_updateLatticeMove`/`_finishLatticeMove`, editor-interaction.js) moves the REAL element directly --
+neither function called `editor._updateSelectionHighlight()` anywhere, on ANY exit path (confirmed by reading
+both in full). Contrast: `translateSelection`/`dragNode` (the Select/Node-mode drag paths) already refresh the
+SAME halo every move tick -- the lattice move path simply never adopted that established pattern. The halo froze
+at the piece's PRE-drag position for the whole gesture and stayed there after release -- "persistent," exactly
+as reported.
+Fix: `_updateLatticeMove` split into a thin wrapper around the unchanged geometry logic (renamed
+`_updateLatticeMoveGeometry`, which has 3 exits -- plain fall-through, a joint slide, a chained-tie translate --
+a scattered one-line-per-return fix risked missing one); the wrapper refreshes the halo once after EVERY call,
+regardless of which internal branch ran. `_finishLatticeMove` refreshes it again, unconditionally, at the very
+top -- the ONE end-of-drag cleanup every exit path (pointerup, pointercancel, lost capture, per handleEnd's own
+unification) already funnels through, so one call there covers every one of them; harmless on the no-op (bare
+click, nothing moved) case, since nothing changed.
+
+Tests: lattice-drag-highlight.test.js (10), driven through the REAL canvas handlers (getModeHandler) for BOTH
+rect Lattice and Shape Lattice, with the real `select`/`updateSelectionHighlight` (editor-ui.js) machinery
+running end to end (only the DOM-adjacent bits those functions already try/catch around -- active-layer sync,
+toolbar colour sync -- are absent from the mock, which is exactly what those try/catches are for). REPRODUCED
+FIRST: grab draws the halo at the tie's ORIGINAL position; mid-drag it tracks the CURRENT position (fails before
+the fix -- frozen at grab); after release it matches the FINAL position, not the pre-drag one (Fred's own
+report, also fails before the fix); a bare click (no movement) is a safe no-op; pointercancel goes through the
+same `finish()` as pointerup. Mutation: reverting the fix fails 6 of the 10 tests.
+Shot (real geometry read back from the test's own mock, not a mockup): shots/seatB/t81-tie-drag-halo-fix.png.
+Verify: 2255/2255 vitest. Commit 22d9cb2. NO FUSION.
