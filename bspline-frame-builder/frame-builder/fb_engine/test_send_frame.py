@@ -63,8 +63,39 @@ class Entity:
         self._w.delete_entity(self)
 
 
+class FakeUserParam:
+    def __init__(self, world, name, expr):
+        self._w, self.name, self.expression = world, name, expr
+        self.attributes = Attrs(world, self)
+        self.dependents = 0
+
+    @property
+    def dependentParameters(self):
+        return type("Coll", (), {"count": self.dependents})()
+
+    def deleteMe(self):
+        del self._w.user_params[self.name]
+
+
+class FakeUserParams:
+    """design.userParameters (F22: only panel_lip goes through it; the template params stay in World.params)."""
+
+    def __init__(self, world):
+        self._w = world
+
+    def itemByName(self, name):
+        return self._w.user_params.get(name)
+
+    def add(self, name, value_input, unit, comment):
+        p = FakeUserParam(self._w, name, value_input)
+        self._w.user_params[name] = p
+        return p
+
+
 class World:
     def __init__(self):
+        self.user_params = {}
+        self.userParameters = FakeUserParams(self)
         self.attributes = []
         self.timeline = FakeTimeline([])
         self.root = Comp(self, "(Root)")
@@ -187,7 +218,7 @@ def run(w, pl, body="default"):
     b = Builds(w)
     b_obj = Body() if body == "default" else body
     r = sf.send_frame(w, pl, lambda: b_obj, Log(), resolve_template=resolve_template,
-                      build_sketch=b.sketch, build_solid=b.solid)
+                      build_sketch=b.sketch, build_solid=b.solid, value_input=lambda e: e)
     return r, b
 
 
@@ -360,3 +391,40 @@ class TestSeedGeometry:
         assert not r["ok"] and "Unknown wood" in r["error"] and b.sketch_calls == []
         r, b = run(w, payload(appearance="Cherry"))  # F14: retired (the app migrates it before sending)
         assert not r["ok"] and "Unknown wood" in r["error"] and b.sketch_calls == []
+
+
+class TestPanelLip:
+    """F22: the panel lip. panel_lip is the ONE frame-owned user parameter (Fred: "if needed add a param in fusion")."""
+
+    def test_lip_creates_the_tagged_param_and_the_build_gets_the_lip(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(panelLip=0.0625))
+        assert r["ok"] and r["panelLip"] == {"in": 0.0625, "param": "created"}
+        p = w.user_params["panel_lip"]
+        assert p.expression == "0.0625 in" and p.attributes.itemByName("FrameBuilder", "owner").value == "1"
+        assert b.sketch_calls[0]["data"]["panel_lip"] == 0.0625
+        assert "panel_lip" not in b.sketch_calls[0]["data"]["ui_data"]  # never through the template-param path
+        r, b = run(w, payload(panelLip=0.125))                            # re-send: updated, still one param
+        assert r["panelLip"]["param"] == "updated" and w.user_params["panel_lip"].expression == "0.125 in"
+
+    def test_lip_0_is_today_and_removes_an_unreferenced_param(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload())
+        assert r["panelLip"] == {"in": 0.0, "param": "none"} and "panel_lip" not in b.sketch_calls[0]["data"]
+        run(w, payload(panelLip=0.0625))
+        r, _ = run(w, payload(panelLip=0))
+        assert r["panelLip"]["param"] == "removed" and "panel_lip" not in w.user_params
+
+    def test_lip_0_keeps_a_param_something_still_references(self):
+        w = World()
+        send_bspline(w)
+        run(w, payload(panelLip=0.0625))
+        w.user_params["panel_lip"].dependents = 1  # e.g. Fred used it in his own expression
+        r, _ = run(w, payload(panelLip=0))
+        assert r["panelLip"]["param"] == "kept" and "panel_lip" in w.user_params
+
+    def test_a_bad_lip_is_0(self):
+        assert sf.panel_lip_of({"panelLip": "x"}) == 0.0 and sf.panel_lip_of({"panelLip": -1}) == 0.0
+        assert sf.panel_lip_of({}) == 0.0 and sf.panel_lip_of({"panelLip": 0.25}) == 0.25

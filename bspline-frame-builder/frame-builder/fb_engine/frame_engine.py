@@ -92,10 +92,13 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
     # FB-APP F11: the app's seeded shape as seed GEOMETRY (fb_engine/seed_geometry.py),
     # never in ui_data (every ui_data key becomes a user parameter).
     seed_geometry = data_dict.get('seed_geometry') if isinstance(data_dict, dict) else None
+    # F22: the panel lip (inches; 0/absent = none) — the lip loop in the frame sketch, driven by panel_lip
+    panel_lip = data_dict.get('panel_lip') if isinstance(data_dict, dict) else None
 
     if external_logger:
         external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars, max_phase={max_phase}, seeds={len(seed_geometry or {})}")
-    builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase, seed_geometry=seed_geometry)
+    builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase, seed_geometry=seed_geometry,
+                            panel_lip=panel_lip)
     return builder.fit
 
 def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
@@ -176,7 +179,8 @@ class FrameBuilder:
         except Exception as e:
             self.logger.log(f"Warning: could not restore root active component: {e}", "WARNING")
 
-    def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None, max_phase=None, seed_geometry=None):
+    def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None, max_phase=None, seed_geometry=None,
+                        panel_lip=None):
         start_time = time.time()
         try:
             self.logger.session_start(f"SKETCH ONLY: {style_id}")
@@ -195,6 +199,10 @@ class FrameBuilder:
                 from fb_engine.seed_geometry import apply_seed_geometry
                 template = apply_seed_geometry(template, seed_geometry)
                 self.logger.log(f"SEED GEOMETRY: {len(seed_geometry)} seed(s) moved to the app's shape")
+            if panel_lip:
+                from fb_engine.panel_lip import apply_panel_lip
+                template = apply_panel_lip(template, panel_lip)
+                self.logger.log(f"PANEL LIP: {panel_lip} in, the lip loop added to the frame sketch")
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver, max_phase=max_phase)
             builder.build_template(template)

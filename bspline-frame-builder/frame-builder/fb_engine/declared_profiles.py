@@ -10,6 +10,8 @@ A profile is known by the FrameBuilder.ID of the sketch curves bounding it
   - else it touches an `outline` curve         -> region "outline-minus-inner";
     which bar it is follows the declared `miters` (each miter starts a bar at
     its outline curve's start, in outline order) and the feature's `bodyNames`
+  - F22: else it touches a panel-LIP curve (lip_<outline id>, fb_engine/panel_lip.py) -> the lip ring between
+    the outline and the lip loop: no feature (the panel keeps it; the trim follows the lip loop)
   - else it is the frame's opening (inside the inner edge)  -> no feature.
     Its curves' ids are NOT required: MEASURED F14 (T2 12x6), Fusion re-solves
     the inner offset later in the build and the replacement curves carry no
@@ -55,6 +57,13 @@ def classify(curve_ids, frame):
     ids = set(curve_ids)
     if regions["surround"] in ids:
         return _feature_for(features, SURROUND_REGION), None
+    from fb_engine.panel_lip import lip_ids
+    lip = set(lip_ids(regions["outline"]))
+    if ids & lip:
+        stray = ids - lip - set(regions["outline"])
+        if stray:
+            raise DeclaredProfileError(f"lip profile curves {sorted(stray)} are not the outline or its lip")
+        return None, None  # the lip ring: the panel keeps it
     outline = ids & set(regions["outline"])
     if outline:
         feat = _feature_for(features, BAR_REGION)

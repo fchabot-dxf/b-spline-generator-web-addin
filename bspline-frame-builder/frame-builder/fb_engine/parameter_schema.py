@@ -53,6 +53,13 @@ _LATTICE_OWNED_PARAMS = (
     'half_width', 'contour_width', 'contour_height',
 )
 
+# F22 PANEL LIP (Fred: "if needed add a param in fusion"): the ONE user parameter a frame build may create,
+# the exception to "frames never get new params". Group 'FrameBuilder' (tagged FrameBuilder.owner), written only by
+# [Send frame] (fb_engine/send_frame.py sync_panel_lip_param); the B-spline Send's cleanup (board + lattice
+# groups) never touches it.
+PANEL_LIP_PARAM = 'panel_lip'
+_FRAME_OWNED_PARAMS = (PANEL_LIP_PARAM,)
+
 # FB-FIX (F4): the ONE unit table for parsing a unit-suffixed value
 # ('0.75 in', '19 mm', '0.75"') to Fusion's internal cm. Before this,
 # BuildContext.resolve_val did float('0.75 in'), which raised and was swallowed
@@ -79,6 +86,7 @@ class ParameterSchema:
     UNITLESS_PREFIXES = _UNITLESS_PREFIXES
     BOARD_OWNED_PARAMS = _BOARD_OWNED_PARAMS
     LATTICE_OWNED_PARAMS = _LATTICE_OWNED_PARAMS
+    FRAME_OWNED_PARAMS = _FRAME_OWNED_PARAMS
 
     @classmethod
     def is_board_owned(cls, name):
@@ -92,6 +100,11 @@ class ParameterSchema:
         (STALE-PARAMS R4) — the accessor every 'is this ours' check
         reads instead of holding its own copy of LATTICE_OWNED_PARAMS."""
         return name in cls.LATTICE_OWNED_PARAMS
+
+    @classmethod
+    def is_frame_owned(cls, name):
+        """True for a parameter only [Send frame] creates / writes / removes (F22: panel_lip)."""
+        return name in cls.FRAME_OWNED_PARAMS
 
     # ------------------------------------------------------------------
     # Unit resolution

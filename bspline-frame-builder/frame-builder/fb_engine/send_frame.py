@@ -15,7 +15,9 @@ points the Frame Builder palettes use:
      exist, see WORK-LOG turn 18). ui_data = the payload's params, filtered to
      the template's OWN declared params: every ui_data key becomes a user
      parameter (parametric_engine._sync_user_parameters), so nothing else may
-     be in it. Frames never get new params.
+     be in it. Frames never get new params,
+     except F22's `panel_lip` (sync_panel_lip_param: created/updated when the
+     payload's panelLip > 0, removed when 0 and nothing references it).
   3  solid_coordinator.build_solid_logic_v3 to the declared core.underside
      (the core body's face whose normal at pointOnFace has n.z ~ -1), start at
      the payload's frameBottomZ, in the chosen wood
@@ -34,6 +36,7 @@ fake-Fusion tests drive this exact code.
 
 from fb_engine.frame_definition import DEFAULT_FRAME_BOTTOM_EXPR, APPEARANCE_OPTIONS
 from fb_engine.seed_geometry import apply_seed_geometry, SeedGeometryError
+from fb_engine.parameter_schema import PANEL_LIP_PARAM, ParameterSchema
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
 FRAME_TYPE_VALUE = "Frame"
@@ -43,6 +46,55 @@ FRAME_MEMBER_ATTR = ("FrameBuilder", "FrameComponent")  # value = the frame comp
 UNDERSIDE_MAX_NORMAL_Z = -0.9
 
 SEEDS_NOT_APPLIED = "the payload has seeds but no seedGeometry (an app older than F11 sent it)"
+
+
+PARAM_OWNER_ATTR = ("FrameBuilder", "owner")  # F22: the frame group's owner tag (panel_lip)
+
+
+def panel_lip_of(payload):
+    """The payload's panel lip in inches (0 when absent, non-numeric or negative)."""
+    try:
+        v = float(payload.get("panelLip") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return v if v > 0 else 0.0
+
+
+def sync_panel_lip_param(design, lip, log, value_input=None):
+    """F22: the ONE writer of `panel_lip` (ParameterSchema FRAME group). lip > 0: create or update it
+    ("<lip> in") and tag it FrameBuilder.owner. lip 0: remove it when it exists and nothing references it
+    (after the previous frame is deleted, the lip offset that used it is gone). Returns what it did.
+    `value_input(expr)` builds the adsk ValueInput (injected, so the fake-Fusion tests drive this code)."""
+    assert ParameterSchema.is_frame_owned(PANEL_LIP_PARAM)
+    params = design.userParameters
+    p = params.itemByName(PANEL_LIP_PARAM)
+    if lip > 0:
+        expr = f"{lip} in"
+        if p is None:
+            if value_input is None:
+                import adsk.core  # the real one (tests inject theirs)
+                value_input = adsk.core.ValueInput.createByString
+            p = params.add(PANEL_LIP_PARAM, value_input(expr), "in", "Panel lip: the panel is trimmed this far outside the frame outline")
+            action = "created"
+        else:
+            p.expression = expr
+            action = "updated"
+        try:
+            if not p.attributes.itemByName(*PARAM_OWNER_ATTR):
+                p.attributes.add(*PARAM_OWNER_ATTR, "1")
+        except Exception as e:  # the tag is bookkeeping; the parameter itself is what the build needs
+            log(f"PANEL LIP: owner tag not written ({e})", "WARNING")
+        log(f"PANEL LIP: {PANEL_LIP_PARAM} {action} = {expr}")
+        return action
+    if p is None:
+        return "none"
+    deps = getattr(getattr(p, "dependentParameters", None), "count", None)
+    if deps == 0:
+        p.deleteMe()
+        log(f"PANEL LIP: lip 0, {PANEL_LIP_PARAM} removed")
+        return "removed"
+    log(f"PANEL LIP: lip 0 but {PANEL_LIP_PARAM} is still referenced ({deps}); kept", "WARNING")
+    return "kept"
 
 
 class SendFrameError(Exception):
@@ -98,7 +150,7 @@ def underside_face(body):
     return best if best is not None and best_z <= UNDERSIDE_MAX_NORMAL_Z else None
 
 
-def send_frame(design, payload, find_core_body, logger, *, resolve_template, build_sketch, build_solid):
+def send_frame(design, payload, find_core_body, logger, *, resolve_template, build_sketch, build_solid, value_input=None):
     """Run [Send frame]. `find_core_body()` returns the B-spline body (or None);
     it is asked TWICE: up front (refuse without one) and again right before the
     solid build. MEASURED live (F11): a BRepFace taken before the delete + sketch
@@ -140,7 +192,11 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
                 raise SendFrameError(f"The frame shape could not be seeded: {e}")
 
         result["deleted"] = delete_previous_frames(design, log)
+        lip = panel_lip_of(payload)
+        result["panelLip"] = {"in": lip, "param": sync_panel_lip_param(design, lip, log, value_input)}
         data = {"ui_data": ui_data}
+        if lip > 0:
+            data["panel_lip"] = lip
         if applied:
             data["seed_geometry"] = seed_geometry
         result["fit"] = build_sketch(style_id=template_id, external_logger=logger, data=data)

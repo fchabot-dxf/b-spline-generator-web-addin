@@ -43,12 +43,15 @@ def offset_step(ctx, sketch, s_name, off):
         _audit_endpoint_topology(ctx, coll, s_name, label="source")
 
 
+        # F22: which side the offset goes, declared on the step (default inward, every offset before F22)
+        side = off.get("Side", OFFSET_SIDE)
+
         # --- Primary: addOffset2 (parametric) ---
-        offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name)
+        offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Fallback: sketch.offset() (non-parametric) ---
         if not offset_result:
-            offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name)
+            offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Tag results ---
         if offset_result and offset_result.count > 0:
@@ -163,7 +166,7 @@ def _collect_source_curves(ctx, sketch, s_name, off):
 # ------------------------------------------------------------------
 # Primary: Parametric offset (addOffset2)
 # ------------------------------------------------------------------
-def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name):
+def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
     """
     Attempt the modern parametric offset via createOffsetInput + addOffset2.
     Returns the resulting curve collection or None.
@@ -194,7 +197,7 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name):
                 ctx.logger.log(f"OFFSET LINK FAIL: Could not set expression: {name_e}", "WARNING")
 
             result = offset_constraint.offsetCurves if hasattr(offset_constraint, 'offsetCurves') else None
-            _ensure_inward(ctx, offset_constraint, coll, result, d_expr, s_name)
+            _ensure_side(ctx, offset_constraint, coll, result, d_expr, s_name, side)
             ctx.logger.log(f"OFFSET PARAMETRIC OK: addOffset2 succeeded for {s_name}")
             return result
 
@@ -229,18 +232,26 @@ def _bbox_span(entities):
     return (max(xs) - min(xs), max(ys) - min(ys)) if xs else None
 
 
-def _ensure_inward(ctx, offset_constraint, source, result, d_expr, s_name):
-    """If addOffset2 put the curves OUTSIDE the source (a bigger bbox),
-    flip the driving expression's sign so the offset lands inward, still
-    parametric. UNVERIFIED live which sign Fusion picks by default."""
+def offset_went_wrong_side(src_span, res_span, side):
+    """Pure: did an offset land on the wrong side? Inward = the result's bbox is not bigger than the
+    source's; outward (F22, the panel lip) = it is not smaller."""
+    bigger = res_span[0] > src_span[0] + 1e-6 or res_span[1] > src_span[1] + 1e-6
+    smaller = res_span[0] < src_span[0] - 1e-6 or res_span[1] < src_span[1] - 1e-6
+    return smaller if side == "outward" else bigger
+
+
+def _ensure_side(ctx, offset_constraint, source, result, d_expr, s_name, side="inward"):
+    """If addOffset2 put the curves on the wrong side of the source (bbox
+    compare), flip the driving expression's sign so it lands on the declared
+    side, still parametric."""
     try:
         src, res = _bbox_span(source), _bbox_span(result) if result is not None else None
         if not src or not res:
             return
-        if res[0] > src[0] + 1e-6 or res[1] > src[1] + 1e-6:
+        if offset_went_wrong_side(src, res, side):
             flipped = f"-({d_expr})"
             offset_constraint.dimension.parameter.expression = flipped
-            ctx.logger.log(f"OFFSET SIDE: {s_name} went outward; driving expression flipped to '{flipped}'")
+            ctx.logger.log(f"OFFSET SIDE: {s_name} landed on the wrong side (declared {side}); driving expression flipped to '{flipped}'")
     except Exception as e:
         ctx.logger.log(f"OFFSET SIDE CHECK FAILED in {s_name}: {e}", "WARNING")
 
@@ -248,13 +259,15 @@ def _ensure_inward(ctx, offset_constraint, source, result, d_expr, s_name):
 # ------------------------------------------------------------------
 # Fallback: Non-parametric offset (sketch.offset)
 # ------------------------------------------------------------------
-def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name):
+def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
     """
     Fallback using sketch.offset() which takes a numeric distance in cm.
     Uses centroid of source curves as the direction point.
     """
     d_val = ctx.resolve_val(d_expr)
     dir_pt = _compute_centroid_direction(ctx, coll, s_name)
+    if side == "outward":  # F22: a direction point OUTSIDE the loop (past its bbox)
+        dir_pt = _outside_direction(coll, dir_pt)
 
     ctx.logger.log(
         f"OFFSET RUN: {s_name} Distance={d_val:.3f} cm "
@@ -295,6 +308,16 @@ def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name):
 
     ctx.logger.log(f"OFFSET ALL ATTEMPTS EXHAUSTED for {s_name}", "ERROR")
     return None
+
+
+def _outside_direction(coll, centroid):
+    """F22: a point beyond the loop's bbox (to its right), for an OUTWARD non-parametric offset."""
+    xs = []
+    for i in range(coll.count):
+        b = coll.item(i).boundingBox
+        xs += [b.minPoint.x, b.maxPoint.x]
+    span = (max(xs) - min(xs)) if xs else 1.0
+    return adsk.core.Point3D.create(max(xs) + span if xs else centroid.x + 100, centroid.y, 0)
 
 
 def _compute_centroid_direction(ctx, coll, s_name):

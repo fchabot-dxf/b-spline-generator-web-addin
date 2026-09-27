@@ -1,0 +1,85 @@
+"""F22 PANEL LIP: the lip block, the lip ring's classification, the declared offset side, the frame-owned param."""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pytest  # noqa: E402
+
+from fb_engine.template_resolver import resolve_template  # noqa: E402
+from fb_engine.panel_lip import apply_panel_lip, lip_ids, LIP_PHASE_ID  # noqa: E402
+from fb_engine.declared_profiles import classify, DeclaredProfileError  # noqa: E402
+from fb_engine.parameter_schema import ParameterSchema, PANEL_LIP_PARAM  # noqa: E402
+from fb_engine.frame_definition import EXTRUSION_SETTINGS  # noqa: E402
+
+TEMPLATES = ["template_1", "template_2"]
+
+
+def _blocks(t):
+    return [(sk["Name"], b["PhaseID"]) for sk in t["Sketches"] for b in sk["Blocks"]]
+
+
+@pytest.mark.parametrize("tid", TEMPLATES)
+def test_lip_0_leaves_the_template_exactly_as_today(tid):
+    t, _ = resolve_template(tid)
+    assert apply_panel_lip(t, 0) is t
+    assert apply_panel_lip(t, None) is t
+
+
+@pytest.mark.parametrize("tid", TEMPLATES)
+def test_the_lip_block_is_one_outward_offset_of_the_outline_driven_by_panel_lip(tid):
+    t, _ = resolve_template(tid)
+    before = _blocks(t)
+    out = apply_panel_lip(t, 0.0625)
+    assert _blocks(t) == before                        # the input is untouched (a copy)
+    added = [x for x in _blocks(out) if x not in before]
+    frame_sketch = [sk["Name"] for sk in t["Sketches"] if any(b["PhaseID"].startswith("p03_") for b in sk["Blocks"])][0]
+    assert added == [(frame_sketch, LIP_PHASE_ID)]
+    step = [b for sk in out["Sketches"] for b in sk["Blocks"] if b["PhaseID"] == LIP_PHASE_ID][0]["Steps"][0]
+    outline = t["Frame"]["regions"]["outline"]
+    assert step == {"Type": "Offset", "SourceID": outline, "DistanceExpr": PANEL_LIP_PARAM, "Side": "outward",
+                    "TargetIDs": lip_ids(outline)}
+
+
+@pytest.mark.parametrize("tid", TEMPLATES)
+def test_the_lip_ring_is_no_feature_the_trim_still_cuts_and_the_bars_are_unchanged(tid):
+    t, _ = resolve_template(tid)
+    frame = t["Frame"]
+    reg = frame["regions"]
+    lip = lip_ids(reg["outline"])
+    # the trim profile is now bounded by the surround + the lip loop
+    feat, _ = classify(lip + [reg["surround"]], frame)
+    assert feat["region"] == "surround-minus-outline"
+    # the ring between the outline and the lip loop: the panel keeps it
+    assert classify(lip + reg["outline"], frame) == (None, None)
+    # a bar is classified exactly as before
+    m0 = reg["miters"][0]
+    bar = [reg["outline"][0], reg["inner"][0], m0[0].split(":")[0]]
+    assert classify(bar, frame) == classify([c for c in bar], frame)
+    assert classify([reg["outline"][0], reg["inner"][0]], frame)[0]["region"] == "outline-minus-inner"
+    # a lip profile with a stray curve is refused, never guessed
+    with pytest.raises(DeclaredProfileError):
+        classify(lip + ["somewhere_else"], frame)
+
+
+def test_the_declared_offset_side(monkeypatch):
+    import types, importlib
+    # offsets.py imports adsk at module level; the rule itself is pure: a scoped stand-in, the module loaded fresh
+    fake = types.ModuleType('adsk')
+    fake.core, fake.fusion = types.ModuleType('adsk.core'), types.ModuleType('adsk.fusion')
+    for k, v in (('adsk', fake), ('adsk.core', fake.core), ('adsk.fusion', fake.fusion)):
+        monkeypatch.setitem(sys.modules, k, v)
+    monkeypatch.delitem(sys.modules, 'fb_engine.offsets', raising=False)
+    offset_went_wrong_side = importlib.import_module('fb_engine.offsets').offset_went_wrong_side
+    assert offset_went_wrong_side((10, 10), (12, 12), "inward") is True
+    assert offset_went_wrong_side((10, 10), (8, 8), "inward") is False
+    assert offset_went_wrong_side((10, 10), (8, 8), "outward") is True
+    assert offset_went_wrong_side((10, 10), (12, 12), "outward") is False
+
+
+def test_panel_lip_is_the_one_frame_owned_param_and_the_setting_names_it():
+    assert ParameterSchema.FRAME_OWNED_PARAMS == (PANEL_LIP_PARAM,) == ("panel_lip",)
+    assert ParameterSchema.is_frame_owned("panel_lip")
+    assert not ParameterSchema.is_board_owned("panel_lip") and not ParameterSchema.is_lattice_owned("panel_lip")
+    s = [x for x in EXTRUSION_SETTINGS if x["key"] == "panelLip"][0]
+    assert s["param"] == PANEL_LIP_PARAM and s["default"] == 0.0 and s["max"] == "boundingboxoffset"
