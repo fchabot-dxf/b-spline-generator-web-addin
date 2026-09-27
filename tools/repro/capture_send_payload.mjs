@@ -17,7 +17,9 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut');
+const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut' && !a.startsWith('--lip='));
+// F22: --lip=<in> sets the Frame section's "Panel lip" (the real field) before the frame payload is taken
+const LIP = (process.argv.find((a) => a.startsWith('--lip=')) || '').slice(6);
 const DRAG = process.argv.includes('--drag');
 const CUT = process.argv.includes('--cut');
 const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = ARGS;
@@ -165,6 +167,7 @@ const payload = chunks.length ? chunks.join('') : single?.[1];
 if (!payload) { console.log('NO PAYLOAD captured'); chrome.kill(); process.exit(2); }
 writeFileSync(OUT, payload);
 if (SCENARIO === 'shape-lattice-frame') { // F21: the [Send frame] payload, the panel's own sendFrame()
+  if (LIP !== '') await evalJS(`(async()=>{ const e = document.getElementById('framePanelLip'); e.value = '${LIP}'; e.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,500)); })()`);
   await evalJS(`(async()=>{ window.__sends = []; (await import('./main/frame-panel.js')).sendFrame(); })()`);
   const fs = (await evalJS('window.__sends') || []).find((q) => q[0] === 'send_frame');
   if (fs) writeFileSync(OUT.replace(/\.json$/, '') + '.frame.json', fs[1]);
