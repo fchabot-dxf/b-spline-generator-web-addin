@@ -455,10 +455,12 @@
       <span class="cad-nav-titlebox">
         <!-- Title text + version badge moved to the Settings panel (H9:
              Fred, "the title could go away, if we had a splash screen for
-             loading") — the splash screen now carries the brand. dirty-dot
-             and fmCurrentFileLabel stay: functional file-state indicators,
-             not "the title". -->
-        <span id="dirty-dot" class="cad-nav-version" title="Unsaved changes" hidden>●</span>
+             loading") — the splash screen now carries the brand.
+             fmCurrentFileLabel stays: a functional file-state indicator,
+             not "the title". H16: dirty-dot REMOVED (Fred, phone, pointing
+             at it: "what is the point for?") -- the Save button's own
+             colour-vs-grey state (main/cloud-project-manager.js) is the
+             one unsaved-changes signal now. -->
         <span id="fmCurrentFileLabel" class="cad-nav-version" style="display:none"></span>
       </span>
     </div>
@@ -479,9 +481,16 @@
            (set after a successful Save/Load in the Project Manager). When
            set: silent overwrite. When not set: opens the Project Manager
            and starts a Save prompt. Label updates to show the active
-           file name so the user always sees what they're editing. -->
-      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnQuickSave"
-              title="Save (no file associated yet)">
+           file name so the user always sees what they're editing.
+           H16: the disk icon itself is the unsaved-changes signal --
+           normal colour when dirty, `.disabled` (CLASS only, never the
+           `disabled` ATTRIBUTE -- stays fully clickable either way) when
+           everything is saved, title "Save"/"Saved"
+           (main/cloud-project-manager.js's onDirtyChange handler owns
+           both; this static title is the pre-JS fallback, matching
+           core/dirty.js's own clean-by-default initial state). -->
+      <button class="cad-btn cad-btn-secondary cad-nav-btn disabled" id="btnQuickSave"
+              title="Saved">
         <span style="font-size:18px; line-height:1;">💾</span>
         <span id="btnQuickSaveLabel" class="cad-nav-label">Save…</span>
       </button>
@@ -700,6 +709,66 @@
             <select id="noiseType" data-default="simplex" style="width:100%; border:none; background:transparent; font-size:11px;">
               <!-- Options populated at runtime from core/noise/index.js → populateNoiseDropdown() -->
             </select>
+          </div>
+
+          <!-- H16 item 5 (Fred: "yes"): a "Map" group at the top of Filter
+               holding Region Scale + the item-4 Offset X/Y pair together --
+               the H15-removed Seed panel's own macroScale control, back
+               exactly as it was (slider + stepper, not a value-readout
+               "feel" pair, since it's a single knob not a pair). Bound to
+               the SAME P key (macroScale) H15 explicitly kept -- no new
+               params, saved values already show correctly. -->
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Map</label>
+          <label class="cad-label">Region Scale</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="macroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="macroScale" value="0.65">
+            </div>
+          </div>
+
+          <!-- H17 item 1 (Fred: "add it in filters, not replace region"): a
+               NEW slider, distinct from Region Scale above -- a drawing-
+               style zoom of the WHOLE generated terrain about the board
+               centre (bigger value = bigger features), implemented once at
+               terrain.js's (u,v) sampler entry so coarse shapes, fine
+               texture and detail/cluster masks all scale together. Does
+               NOT affect stamps/sculpt/frame/edge fade/the board. New P key
+               mapZoom, default 1 = today's terrain exactly. -->
+          <label class="cad-label">Map Zoom</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="mapZoomSlider" class="cad-slider" min="0.25" max="4" step="0.05" value="1">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="mapZoom" value="1">
+            </div>
+          </div>
+
+          <!-- H16 item 4 (Fred: "the seed offset could be surfaced in
+               skeleton if it was removed" -> correction: "sorry, it
+               should go in filter"): the H15-removed Seed panel's Offset
+               X/Y pair, back as a control, but here rather than Skeleton
+               per that correction. Bound to the SAME P keys
+               (seedOffsetX/seedOffsetY) H15 explicitly kept -- no new
+               params, a saved project's offsets already show correctly.
+               Same H14 declared "feel" pair shape (a value readout, not a
+               stepper) as every other side-by-side slider pair. Rotation
+               (the 3rd control the old Seed panel had) stays removed
+               unless Fred asks for it back too. -->
+          <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="seedOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+                <input type="number" id="seedOffsetX" class="no-stepper cad-slider-readout" value="0" step="0.01">
+              </div>
+            </div>
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
+              <div class="cad-slider-row">
+                <input type="range" id="seedOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+                <input type="number" id="seedOffsetY" class="no-stepper cad-slider-readout" value="0" step="0.01">
+              </div>
+            </div>
           </div>
 
           <label class="cad-label">Fine Scale</label>

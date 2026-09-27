@@ -12011,3 +12011,277 @@ errors on load; `.panel-seed`/`#seedType`/`#btnEditSeed`/`#skeletonEditorModal` 
 Shape/Density/Clustering/Symmetry (its pre-existing order, unchanged). Shots of the sidebar (top,
 Generate New Seed -> Stock Dimensions -> Frame with no Seed panel in between) and the Skeleton panel
 (Peak Shape first) in `shots\seatA\`.
+
+## H16 — Save button IS the unsaved-changes signal; #dirty-dot removed; Seed Offset X/Y back in Filter
+
+**Channel note (read this first).** Two corrections arrived as cross-session messages during this turn,
+ahead of `NEXT-SESSION.md`/`amendments` catching up, matching the established precedent from H11/H14 of
+trusting the most-recent live correction: (1) Fred: "no, just a colour vs grey" — replaced the item-1
+badge-dot design with a colour-vs-grey Save button before any dot was ever built; NEXT-SESSION.md's
+checklist text already reflects this. (2) Fred: "sorry, it should go in filter" — item 4's Offset X/Y pair
+goes in **Filter**, not Skeleton. At the time I implemented this, NEXT-SESSION.md's item-4 text still read
+"SEED OFFSET back in the SKELETON section" (unchanged from before the correction) — I followed the
+cross-session message, not the file, and placed the pair in `.panel-filter`. Flagging this explicitly so
+the advisor can correct immediately if the file text is actually the authoritative one and the message was
+stale.
+
+**Items 1-2 — the Save button replaces the dot.**
+- `bspline_gen_palette.html`: removed `#dirty-dot` entirely (was inside `.cad-nav-titlebox`); kept
+  `#fmCurrentFileLabel`. Gave `#btnQuickSave` a `disabled` CSS class + `title="Saved"` in its static markup
+  as the pre-JS fallback, matching `core/dirty.js`'s clean-by-default initial state.
+- `main/cloud-project-manager.js`: the `onDirtyChange` subscriber now toggles `.disabled` (CLASS only,
+  never the `disabled` ATTRIBUTE, so the button stays fully clickable either way) and sets
+  `title = dirty ? 'Save' : 'Saved'`. Reused `.cad-btn.disabled` as-is — an existing, already-declared
+  "looks disabled, isn't" pattern (`base.css`: light grey bg/text/border) already used by
+  `core/history.js`'s Undo/Redo and `editor/editor-ui.js`'s snap toggles — rather than inventing new CSS.
+  `onDirtyChange` fires immediately with the current value on subscription, so this also sets the correct
+  initial state with no separate init call needed. `updateNavbarSaveLabel()` now only sets the label text;
+  the button's `title` is owned solely by the dirty handler. The 2 existing `markClean()` call sites
+  (save-success, load-success) needed no change.
+- `tools/repro/h9_splash_shots.mjs`: its `#dirty-dot` presence check (from H9) would now always read
+  "gone" vacuously since the element no longer exists at all — replaced with an explicit
+  `dirtyDotGone: !document.getElementById('dirty-dot')` check kept as a removal-confirmation assertion
+  (same pattern H15 used for its own removed ids), not silently dropped.
+
+**Item 3 — tests + shots.**
+New `tests/h16-save-dirty-badge.test.js` (5 tests): `#dirty-dot` absent from the DOM; starts clean
+(`.disabled` present, title "Saved"); `markDirty()` turns the badge on (`.disabled` removed, title "Save",
+`disabled` attribute never set); `markClean()` after a save turns it back off; `markClean()` after a load
+does the same. Mutation-tested: commented out the `.disabled` toggle and hardcoded `title = 'Save'` ->
+4 of 5 tests correctly failed; restored to green.
+Live-verified via headless CDP at 390/1366/834px: clean state shows `.disabled` + "Saved" + not actually
+disabled; `markDirty()` flips to no-`.disabled` + "Save" + still not actually disabled; `#dirty-dot` absent
+at every width. Shots in `shots\seatA\` (`H16-item1-3_save-clean_390/1366`,
+`H16-item1-3_save-dirty_390/1366`).
+
+**Discovered but OUT OF SCOPE — flagging for the advisor/Fred, not fixed here.** Live verification first
+failed with the Save button showing dirty ("Save", no `.disabled`) on a completely FRESH page load, before
+any user edit. Traced to `main/param-manager.js:80` — `applyParam()` calls `markDirty()`
+unconditionally, including during the app's OWN boot/init sequence, so every fresh load already reads as
+dirty. Confirmed via a `git stash`-based isolation test (reverting all H16 changes and re-running the same
+check) that this is PRE-EXISTING and unrelated to this turn's work — very likely the actual root cause of
+Fred's original "why is the dot always on" complaint. H16's stated scope is replacing the visual indicator,
+not fixing why the dirty flag fires too eagerly, so I did not touch `param-manager.js`; my own live-
+verification script now calls `markClean()` explicitly right after the splash clears to get a known
+baseline before asserting the clean/dirty cycle. Worth a dedicated follow-up task: guard `applyParam`'s
+`markDirty()` so it doesn't fire during `AppState.isInitializing`.
+
+**Item 4 — Seed Offset X/Y, now in Filter (per the live correction, see channel note above).**
+- `bspline_gen_palette.html`: inserted a `.cad-paired-steppers` Offset X/Y slider pair into
+  `.panel-filter`, right after the Noise Type `<select>`, before Fine Scale — the exact H14 side-by-side
+  slider shape (declared class, reused verbatim: `.cad-label-inline`, `.cad-slider-readout`+`no-stepper`),
+  bound to the same `seedOffsetXSlider`/`seedOffsetYSlider`/`seedOffsetX`/`seedOffsetY` ids H15 had
+  removed. No new params — same P keys the pipeline never stopped reading.
+- `core/state.js`: restored the 2 `SLIDER_PAIRS` entries (`seedOffsetX`, `seedOffsetY`) H15 had removed,
+  now that their DOM ids exist again, placed next to the pre-existing `symOffsetX`/`symOffsetY` entries.
+- Live-verified at 390/834px: the pair resolves inside `.panel-filter` (not `.panel-skeleton`), X/Y sit on
+  one row, both readouts visible, both sliders have real rendered width, no stepper buttons. Shots in
+  `shots\seatA\` (`H16-item4_filter-offset-pair_390/834`).
+
+**Peer FYI absorbed (seat B, H15-removal-chain sweep).** A cross-session message flagged that
+`tools/repro/filter_shots.mjs` still set the seed via `document.getElementById('seed').value = ...`
+(H15 removed that input, so this silently did nothing since H15 landed). Fixed: now calls
+`applyParam('seed', N)` via a dynamic `import('./main/param-manager.js')`, the same mechanism
+`header-controls.js`'s own `btnRandomSeed` handler uses — confirmed `seed` is in `param-manager.js`'s
+`immediateRebuildParams` list, so this still triggers an immediate rebuild exactly like the old DOM-input
+path did. Grepped all of `tools/repro/` for `#seed`/`getElementById('seed'`/`seedType`/`seedOffset`:
+`h10_multiwidth_shots.mjs`'s matches are all H15 removal-CONFIRMATION checks (asserting the ids are gone),
+not stale seed-setting code — left as-is.
+
+`npx vitest run` -> **2083 passed**, zero regressions.
+
+## H16 item 5 — Region Scale back in Filter, in a new "Map" group above Offset X/Y
+
+Fred: "yes" to putting Region Scale back alongside the item-4 seed offset, in Filter (not Skeleton).
+- `bspline_gen_palette.html`: restored the exact pre-H15 markup (`git show c185d7e` had it verbatim) —
+  a plain slider + stepper (`#macroSlider` / `#macroScale`, min 0.05 / max 2 / step 0.05 / default 0.65),
+  NOT the H14 value-readout "feel pair" shape item 4 uses, since Region Scale is a single knob, not an
+  X/Y pair. Added a `Map` group label above it, placed above the item-4 Offset X/Y pair per the checklist's
+  explicit ordering, inside `.panel-filter`. No new params — `macroScale` is the same P key H15 explicitly
+  kept (`core/terrain.js`'s `cFreq = (macroScale || 0.65) * cMultiplier`, `param-manager.js`'s
+  `immediateRebuildParams` list already includes it, unchanged since before H15).
+- `core/state.js`: restored the single `macroScale: 'macroSlider'` `SLIDER_PAIRS` entry H15 had removed
+  (`git show c185d7e` confirmed its exact prior position, right after `scale`).
+- Declare-over-hand-roll check: `main/ui-bindings.js`'s `bindControls()` already iterates `Object.keys(P)`
+  and binds any input whose id matches a P key, then binds every `SLIDER_PAIRS` entry generically — so
+  restoring the DOM ids + the one `SLIDER_PAIRS` entry was the ENTIRE fix; no new wiring code was written,
+  same declared-registry mechanism items 1-4 already relied on.
+- Did NOT restore `main/formula-fields.js`'s old `SEED` section entry for `macroScale` (H15 had deleted
+  a whole `{section:'SEED', ids:['macroScale','seedOffsetX','seedOffsetY','seedRotation'], ...}` block) —
+  consistent with item 4, which also left `seedOffsetX`/`seedOffsetY` out of formula-fields.js. Neither the
+  item-4 nor item-5 checklist text asked for formula-capable inputs back, so this stays out of scope for
+  both, not a one-off inconsistency.
+
+**Test.** No new unit test file — the underlying data-layer claim ("macroScale is a real filter input, and
+round-trips through save/load") is already proven generically by `tests/h15-seed-removal.test.js`'s
+`generateHeightmap`/`persistableP` round-trip (built before this turn, still green). What item 5 actually
+adds is UI wiring, verified live via headless CDP at 390 + 834px: DOM presence (`#macroScale`/`#macroSlider`
+found, inside `.panel-filter`, NOT `.panel-skeleton`, positioned above the Offset X/Y pair, default value
+0.65); dragging the slider to 1.4 updates `P.macroScale` directly (imported live from `core/state.js`) —
+the "real filter input" requirement, since `macroScale` being in `immediateRebuildParams` means this
+triggers a real rebuild, not just a UI-only change; a simulated save/load round trip (perturb `P.macroScale`
+to 0.2, then restore every P key from a `JSON.parse(JSON.stringify(P))` snapshot the way a real project load
+would, then call the real `syncUItoParam('macroScale', …)`) shows the restored value (1.4, not the
+perturbed 0.2) back in both the stepper and the slider.
+Mutation-tested the verification itself: stashed this turn's 2 changed files (`git stash push -u`), re-ran
+the same script against the pre-item-5 tree — 6 of 7 layout checks correctly FAILED (element not found /
+not in Filter / not positioned above the pair / no width / wrong default), and the drag-the-slider step
+correctly threw `TypeError: Cannot set properties of null` since the slider doesn't exist yet. Popped the
+stash, re-ran once more to confirm all-green after restore.
+Shots in `shots\seatA\` (`H16-item5_filter-map-group_390/834`).
+
+`npx vitest run` -> **2083 passed**, zero regressions (no unit-test file added this item, so the count is
+unchanged from H16 items 1-4).
+
+## H17 item 1 — Map Zoom: a drawing-style zoom of the whole terrain, new slider in Filter's Map group
+
+Fred: "add it in filters, not replace region" — a NEW slider alongside (never instead of) Region Scale.
+
+**The implementation, once, at the (u,v) entry (`core/terrain.js`).** Right after `u`/`v` are computed
+(the top of the Pass 1+2 loop), added `zu = 0.5 + (u-0.5)/mapZoom` and `zv = 0.5 + (v-0.5)/mapZoom`, then
+substituted `zu`/`zv` everywhere `u`/`v` fed "the drawing": the symmetry-fold input (`su`/`sv`, which then
+drives fine noise sampling AND the coarse-redistribution `cx`/`cz`, so both inherit it automatically with
+no separate code) and the detail-density mask's symmetry-breaking branch (`msu`/`msv`'s `: u`/`: v` arm,
+now `: zu`/`: zv` — it's still part of what the noise draws, just deliberately unfolded). `u`/`v`
+THEMSELVES are untouched everywhere else in the function: `edgeFade(u, …)`/`edgeFade(v, …)` still reads
+the real board position (edge fade must not zoom), Pass 3's smoothing loop recomputes its own local `u`/`v`
+from `i`/`j` independently (never sees `zu`/`zv`), and `applyVectorDrape` (stamps) operates on the already-
+computed `heights` array by index, never touching `u`/`v` at all — so stamps/sculpt/frame/edge fade/the
+board are excluded from the zoom structurally, not by a special-case guard. `noiseRefs.rawU`/`rawV` (fed
+`u`/`v`, unchanged) were left alone — grepped and confirmed no noise-mode file (`core/noise/*.js`) actually
+reads them; not worth touching dead fields.
+Symmetry's mirror axis (`mx`/`my`, from `symOffsetX`/`Y`) was deliberately left un-zoomed, folded directly
+against `zu`/`zv` — since the mirror line is part of "the drawing" too, this makes it zoom along with
+everything else automatically, which is the "implement once, inherits everywhere" outcome the checklist
+asks for, not a separate decision.
+- `core/state.js`: new `DEFAULT.mapZoom = 1` (placed next to `macroScale`), new `SLIDER_PAIRS.mapZoom =
+  'mapZoomSlider'` entry, added `mapZoom` to the existing "Safety Floor" list (`carveZ`/`macroScale`/
+  `scale`) so it can never reach exactly 0 (it's a divisor in the zoom formula — 0 would produce Infinity).
+- `main/param-manager.js`: added `mapZoom` to `immediateRebuildParams` — the checklist's "must be a real
+  filter input" requirement; without this, dragging the slider would update `P.mapZoom` but never re-render.
+- `bspline_gen_palette.html`: a new "Map Zoom" slider + stepper (`#mapZoomSlider`/`#mapZoom`, min 0.25 /
+  max 4 / step 0.05 / default 1) inserted directly below Region Scale, inside the same "Map" group,
+  above the item-4/5 Offset X/Y pair. Region Scale's own markup is untouched.
+- Declare-over-hand-roll: same as item 5 — `main/ui-bindings.js`'s generic `Object.keys(P)` + `SLIDER_PAIRS`
+  binder picked up the new control automatically from the DOM id + registry entry; no new wiring code.
+
+**Tests** (`tests/h17-map-zoom.test.js`, 5 tests, calling `generateHeightmap` directly, `{...DEFAULT,
+...overrides}` per the H15 test-construction finding): (1) `mapZoom: 1` is byte-identical to `mapZoom`
+omitted from the params object entirely — confirms 1 is a true no-op default, i.e. "identical to before"
+in the most literal sense (before this feature existed, no `mapZoom` key existed at all). (2) The board-
+centre sample is identical at zoom 0.5/1/2 (zoom is centred on the board — `(0.5-0.5)/zoom` is exactly 0
+at any zoom). (3) The checklist's exact scenario: with symmetry off, a feature at `u=0.75` at zoom 1
+equals a feature at `u=1.0` at zoom 2, on a 5×5 grid sized so both land on exact grid points (`zu=0.75` in
+both cases, verified by hand: `0.5+(0.75-0.5)/1=0.75` and `0.5+(1.0-0.5)/2=0.75`). (4) `mapZoom` actually
+changes the heightmap between 1 and 1.5 (not a dead parameter). (5) `edgeFade` is unaffected at any zoom —
+a fully-margin-faded corner (`u=v=0`) stays exactly 0 at zoom 1 and zoom 3 alike, since `edgeFade` never
+sees `zu`/`zv`.
+Mutation-tested: `git stash push -u -- core/terrain.js` (reverting ONLY the sampler change, keeping the new
+P key/slider/wiring in place — `mapZoom` becomes a silently-ignored extra field, exactly the failure mode
+of "wired the UI but forgot the sampler"). Re-ran: tests 3 and 4 — the two that actually exercise the zoom
+mechanism — correctly FAILED (`0.7122... !== 0.8693...` for test 3; heights identical between zoom 1 and
+1.5 for test 4, so `not.toEqual` failed). Tests 1/2/5 correctly stayed green under this mutation too — they
+assert invariants (default no-op, centre invariance, edge fade exclusion) that hold whether the feature
+exists or not, so they're not expected to catch its absence; they exist to catch a DIFFERENT class of bug
+(e.g. someone wrongly zooming edge fade). Popped the stash, re-ran — all 5 green again.
+
+Live-verified via headless CDP at 390px (fresh Chrome profile — hit a stale zombie headless-Chrome process
+from earlier in the session squatting on a previously-used debug port, which silently served a wrong/stale
+page; fixed by picking a random high port per run instead of a formula that could collide with a leftover
+process): `#mapZoom`/`#mapZoomSlider` present inside `.panel-filter` (not `.panel-skeleton`), positioned
+below Region Scale in the same Map group, default 1; Region Scale itself confirmed UNTOUCHED at 0.65;
+dragging the slider to 2 updates `P.mapZoom` (imported live from `core/state.js`) without touching
+`P.macroScale`, and the stepper mirrors it — the real-filter-input wiring, live. Fixed the seed (4242) and
+noise type (simplex) then rendered the SAME terrain via `window.__preview.getSnapshot()` (the
+`tools/repro/filter_shots.mjs` camera-snap technique) at zoom 0.5, 1 and 2: 0.5 shows many small, busy
+features; 2 shows a few large, sweeping ones spanning the whole board — visually exactly "the same drawing
+enlarged," confirming the effect is real and matches Fred's description, not just numerically correct.
+Shots in `shots\seatA\` (`H17-item1_zoom0.5/1/2_390`).
+
+`npx vitest run` -> **2088 passed** (up from 2083), zero regressions.
+
+## H17 item 2 — Seed Offset pans the WHOLE map (fine texture + coarse shapes together)
+
+Fred: "the seed offset isnt what i wanted" -> "pan the whole map". Previously `seedOffsetX/Y` only shifted
+`cx`/`cz` (the coarse-redistribution layer) — panning the coarse SHAPE over a static fine texture, which is
+why it didn't read as "the map" moving.
+
+**The fix (`core/terrain.js`).** Moved `seedOffsetX`/`Y` to the same `(u,v)` sampler entry as H17 item 1's
+Map Zoom: `zu = 0.5 + (u-0.5)/mapZoom + seedOffsetX` (same for `v`), added `seedOffsetX = 0, seedOffsetY =
+0` to the destructured params (they were previously read ad hoc via `params.seedOffsetX || 0` only at the
+old site) — then DELETED the old lines entirely: `cx += (params.seedOffsetX || 0) * cFreq * aspect;` /
+`cz += (params.seedOffsetY || 0) * cFreq;` and their now-obsolete "screen-width" comment, so the offset
+isn't applied twice. Because `zu`/`zv` already feed `su`/`sv` (which drives BOTH the fine noise call and
+`cx`/`cz`), the pan now reaches fine texture and coarse shapes through the exact same substitution H17
+item 1 set up — no separate wiring needed for "the whole map." The mirror fold (`su = Math.abs(zu - mx) *
+2`) still runs on the POST-pan `zu`, so the mirror line stays fixed at the board centre while the drawing
+slides underneath it — exactly the checklist's "fold happens after the pan," and it required no code
+change since the fold already ran after `zu`'s computation.
+Reworded two comments that described the OLD mechanism and would otherwise mislead a future reader:
+`state.js`'s `seedOffsetX/Y` doc-comment (was "pan through the noise field… browsing within one seed",
+implying coarse-only; now describes the whole-map pan) and `terrain.js`'s seed-rotation comment (was
+"…about the origin BEFORE offset"; offset no longer happens at that site at all, so noted that rotation now
+only ever acts on the already-panned coordinate, and that `seedRotation`'s own UI stays removed per H16
+item 4 so this is currently unreachable with a non-zero value in practice).
+
+**Tests** (`tests/h17-seed-offset-pan.test.js`, 5 tests, `{...DEFAULT, ...overrides}` per the H15 finding):
+(1) offset 0 explicit is byte-identical to offset omitted — 0 is a true no-op. (2) The checklist's exact
+scenario: symmetry off, a sample at `(u, v)` with `offsetX=dx` is IDENTICAL to a sample at `(u+dx, v)` with
+`offsetX=0` (5×5 grid sized so both land on exact grid points; verified this is a genuine black-box test of
+BOTH layers together, since the final `heights` value mixes fine and coarse nonlinearly — a mismatch in
+either layer would break the equality with near-certainty). (3) Proves it's not double-applied: offset 0.25
+matches exactly a +1-grid-step reference, not +2 steps (if the old coarse-only line had been left in place,
+the coarse layer would receive the offset twice while fine only got it once, breaking this exact identity).
+(4) `seedOffsetX` still has a real, non-dead effect. (5) Interacts correctly with Map Zoom: at `mapZoom=2`,
+the SAME raw offset value reaches a different `zu` than at zoom 1, confirming units are "screens at the
+CURRENT zoomed size" per the checklist, not an absolute unit.
+Mutation-tested: `git stash push -u -- core/terrain.js core/state.js` (back to the H17-item-1-only tree, where
+`seedOffsetX` still only touches the old coarse-only `cx`/`cz` lines). Re-ran: tests 2, 3 and 5 — every test
+that actually exercises "pans the whole map together" or the zoom interaction — correctly FAILED (all three
+failed on the exact same value mismatch, `0.9330... !== 0.9547...`, since they all key off the same
+identity). Tests 1 and 4 correctly stayed green (0-is-a-no-op and "has *some* effect" both still held true
+under the old, narrower mechanism too — they're not expected to catch this specific regression, they guard
+different failure modes). Popped the stash, re-ran full — 10/10 green across both H17 test files (confirms
+item 2's terrain.js edits didn't disturb item 1's own tests, since both share the same `zu`/`zv` lines).
+
+Live-verified via headless CDP at 390px (random high port per run, after finding the same zombie-Chrome
+port-collision trap H17 item 1 hit): dragging `#seedOffsetXSlider` still updates `P.seedOffsetX` without
+touching `P.mapZoom`/`P.macroScale`, the stepper mirrors it, and the control is still exactly where H16
+item 4 placed it (`.panel-filter`) — the backend refactor didn't disturb the existing UI wiring. Fixed the
+seed (4242) and noise type (simplex), rendered the SAME terrain via `getSnapshot()` at Offset X 0 / 0.25 /
+0.5: the fine-grain texture pattern visibly shifts together with the coarse peak/ridge shapes between
+shots — the whole drawing sliding, not the old "shape moves over static texture" look. Shots in
+`shots\seatA\` (`H17-item2_offsetX0/0.25/0.5_390`).
+
+`npx vitest run` -> **2093 passed** (up from 2088), zero regressions.
+
+## H17 item 3 — Offset units = screens at the CURRENT zoom (spec of item 2, missed)
+
+A one-line formula fix, caught by the advisor re-reading item 2's own spec against what actually shipped:
+item 2's formula (`zu = 0.5 + (u-0.5)/mapZoom + seedOffsetX`) added `seedOffsetX` AFTER dividing by
+`mapZoom` — so the offset kept its zoom=1 magnitude while the visible window shrank around it. At zoom 2,
+an offset of 0.5 was already panning a FULL (zoomed) screen instead of half of one, silently breaking the
+"(screens)" label's promise the moment zoom left 1.
+
+**The fix (`core/terrain.js`).** Moved the offset INSIDE the division: `zu = 0.5 + (u - 0.5 + seedOffsetX)
+/ mapZoom` (same for `v`). Now "1 unit of offset" is always exactly one board-width at whatever zoom is
+current. Replaced the item-2 comment that asserted the (actually wrong) unit claim with one explaining the
+bug and the fix. `core/state.js`'s own `seedOffsetX/Y` doc-comment needed no change — it already described
+the INTENDED "screens at the current zoomed size" behavior; item 3 is what makes the code finally match it.
+
+**Tests** (`tests/h17-seed-offset-pan.test.js`): replaced the one existing test that had encoded the OLD
+(buggy) relationship as "correct" — confirmed it actually FAILS against the new formula before fixing it
+(`0.9376... !== 0.9547...`), then rewrote it as two tests: (1) the checklist's exact scenario, zoom 2 /
+offset 1 at `u=0` equals zoom 2 / offset 0 at `u=1.0` (verified by hand: both reduce to `zu=0.75`); (2) the
+SAME raw offset value (0.25) pans a smaller absolute distance at zoom 2 than at zoom 1 — proving the units
+now genuinely scale with zoom, not just at the one value item 2's test happened to check.
+Mutation-tested: `git stash push -u -- core/terrain.js` (back to item 2's formula). Re-ran: both new/changed
+tests correctly FAILED (`0.4910... !== 0.9547...` and the `not.toBe` assertion tripped since both sides came
+out equal under the old formula) — confirming they exercise the exact bug item 3 fixes. Popped the stash,
+re-ran full — 11/11 green across both H17 sampler test files (item 1's own 5 tests unaffected, since none of
+them combine non-zero `mapZoom` with non-zero `seedOffsetX`).
+No new shots needed (checklist) — this doesn't change what any existing screenshot shows: item 1's zoom
+shots all used `seedOffsetX=0` (formula identical at offset 0), and item 2's offset shots all used
+`mapZoom=1` (formula identical at zoom 1, since dividing by 1 is a no-op either way).
+
+`npx vitest run` -> **2094 passed** (up from 2093), zero regressions.

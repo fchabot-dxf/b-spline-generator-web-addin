@@ -144,8 +144,8 @@ const report = { label: LABEL, seed: SEED, types: {} };
 for (const noiseType of TYPES) {
   await evalJS(`(async () => {
     const W = (ms) => new Promise((r) => setTimeout(r, ms));
-    const seedEl = document.getElementById('seed');
-    seedEl.value = '${SEED}'; seedEl.dispatchEvent(new Event('input'));
+    const { applyParam } = await import('./main/param-manager.js');
+    applyParam('seed', ${SEED});
     await W(120);
     const sel = document.getElementById('noiseType');
     sel.value = '${noiseType}'; sel.dispatchEvent(new Event('change'));

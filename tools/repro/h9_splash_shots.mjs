@@ -70,11 +70,13 @@ await shot('splash-390');
 await sleep(6000);
 const afterLoad = JSON.parse(await evalJS(`JSON.stringify({ splashGone: !document.getElementById('app-splash'),
   titleGone: !document.querySelector('.cad-nav-title'),
-  dirtyDotPresent: !!document.getElementById('dirty-dot') })`));
+  fileLabelPresent: !!document.getElementById('fmCurrentFileLabel'),
+  dirtyDotGone: !document.getElementById('dirty-dot') })`));
 console.log('after load (390px):', JSON.stringify(afterLoad));
 check(afterLoad.splashGone, 'H9: splash removes itself from the DOM once the app is ready');
 check(afterLoad.titleGone, 'H9: the header no longer has a .cad-nav-title element');
-check(afterLoad.dirtyDotPresent, 'H9: dirty-dot (a functional indicator, not "the title") stays in the header');
+check(afterLoad.fileLabelPresent, 'H9: fmCurrentFileLabel (a functional indicator, not "the title") stays in the header');
+check(afterLoad.dirtyDotGone, 'H16: dirty-dot is gone -- the Save button\\'s own colour is the unsaved-changes signal now');
 await shot('header-no-title-390');
 
 // 4) Header without title at desktop too.
