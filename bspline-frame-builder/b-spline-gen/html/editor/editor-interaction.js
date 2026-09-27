@@ -13,6 +13,8 @@
  * a mid-gesture mode change.
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
+import { cutHandler } from './editor-cut-tool.js'; // SE16 ✂
+import { withChain, writeChainRow, writeChainTranslate, updateJointSlide } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
@@ -1301,9 +1303,12 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
  *  tie visibly stretches), and every carried node's centre. */
 function _writeRailMove(move, result) {
     const { orientation, spacing } = move;
-    const railA = fromLattice(orient(result.rail.a, orientation), spacing);
-    const railB = fromLattice(orient(result.rail.b, orientation), spacing);
-    move.el.attr({ x1: railA.x, y1: railA.y, x2: railB.x, y2: railB.y });
+    if (move.chain) writeChainRow(move, result.rail.a.j); // SE16: every segment of a cut rail takes the new row
+    else {
+        const railA = fromLattice(orient(result.rail.a, orientation), spacing);
+        const railB = fromLattice(orient(result.rail.b, orientation), spacing);
+        move.el.attr({ x1: railA.x, y1: railA.y, x2: railB.x, y2: railB.y });
+    }
     for (const { tie, end, point } of result.tieUpdates) {
         const p = fromLattice(orient(point, orientation), spacing);
         if (end === 'a') tie.el.attr({ x1: p.x, y1: p.y });
@@ -1421,7 +1426,8 @@ function _updateLatticeStretch(editor, move, targetAxisValue, stretchFn) {
 function _geometryAxisSnap(editor, move, pt, axis) {
     if (!editor._grid || !editor._grid.geometrySnap) return null;
     const tol = getDynamicTolerance(editor, GEOMETRY_SNAP_TOL_PX, 'slopPx');
-    const hit = nearestGeometrySnap(pt, editor, tol, move.el);
+    // SE16: a cut rail's chain never snaps onto one of its OWN segments' points
+    const hit = nearestGeometrySnap(pt, editor, tol, move.excludeSet || move.el);
     if (!hit) return null;
     return orient(toLatticeFractional(hit, move.spacing), move.orientation)[axis];
 }
@@ -1438,6 +1444,10 @@ function _updateLatticeMove(editor, pt) {
     const { spacing, orientation } = move;
     const canonPt = orient(toLattice(pt, spacing), orientation);
 
+    if (move.mode === 'joint') { // SE16: a cut rail's joint slides ALONG the rail, both ends together (Fred Q3)
+        updateJointSlide(move, _geometryAxisSnap(editor, move, pt, move.axis) ?? canonPt[move.axis]);
+        return;
+    }
     if (move.kind === 'rail' && move.mode === 'stretch') {
         // A rail's end moves along its OWN axis (canonical i) only — its
         // row (j) never changes during a stretch, unlike a move. H1: a
@@ -1489,6 +1499,7 @@ function _updateLatticeMove(editor, pt) {
         // move here, which was always free in both axes).
         const di = canonPt.i - move.startCanon.i;
         const dj = canonPt.j - move.startCanon.j;
+        if (move.chain) { writeChainTranslate(move, di, dj); return; } // SE16: a cut tie moves as one
         const moved = translateTie(move.tieCanon, di, dj);
         const a = fromLattice(orient(moved.a, orientation), spacing);
         const b = fromLattice(orient(moved.b, orientation), spacing);
@@ -1681,7 +1692,7 @@ const latticeHandler = {
             }
             editor._isDrawing = true;
             const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;
-            editor._latticeMove = _beginLatticeMove(editor, hit, hitKind, pt, spacing, orientation);
+            editor._latticeMove = withChain(editor, _beginLatticeMove(editor, hit, hitKind, pt, spacing, orientation));
             return;
         }
 
@@ -2026,7 +2037,7 @@ const shapeLatticeHandler = {
             // pt (this function's own 2nd param), not rawPt -- _beginLatticeMove
             // is designed against the touch-offset-adjusted point, matching
             // latticeHandler.start's own identical call exactly.
-            editor._latticeMove = _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation);
+            editor._latticeMove = withChain(editor, _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation));
             return;
         }
         // T75 LAT-SIZE: kept as its own `p` (not inlined) -- the trailing
@@ -2102,6 +2113,7 @@ const modeHandlers = {
     erase:   eraseHandler,
     lattice: latticeHandler,
     shapeLattice: shapeLatticeHandler,
+    cut:     cutHandler, // SE16 ✂ (editor-cut-tool.js)
 };
 
 function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }

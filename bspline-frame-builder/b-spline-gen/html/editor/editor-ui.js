@@ -12,6 +12,7 @@ import { syncColorToggleSwatch } from './properties-shape.js';
 // editor canvas. Keeps the lessons-learned messages out of the toolbar so the
 // affordance is visible without hover. See BUG-02 and BUG-06.
 const MODE_HINTS = {
+  cut:    'Cut — tap a line to split it there (snaps by GRID / GEOMETRY; Alt = exact). Tap a cut again to join.',
   select: 'Select — click a shape to pick it up, drag to move. Hold Shift for additional…',
   node:   'Nodes — click a shape to edit its anchor points. Drag the diamond handles to reshape.',
   draw:   'Pen — Click to place anchors (double-click or Enter to commit, Esc to cancel). Or drag to freehand.',

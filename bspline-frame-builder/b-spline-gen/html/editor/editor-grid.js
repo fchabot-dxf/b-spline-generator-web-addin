@@ -108,6 +108,9 @@ export const SNAP_POLICY = {
   // snap underneath it would fight/jitter the drag), same reasoning
   // erase/expand already use for their own freehand gestures.
   shapeLattice: 'none',
+  // SE16 ✂: the cut tool snaps ON the line itself (editor-cut-tool.js snapOnLine, the same H1 toggles and geometry
+  // targets restricted to the line), so the generic point snap stays out of its way.
+  cut: 'none',
 };
 
 /**

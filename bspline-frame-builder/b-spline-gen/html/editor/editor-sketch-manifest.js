@@ -183,6 +183,16 @@ function pointOnLatticeSegment(pt, seg) {
  *  precision is worth having consistently on BOTH call sites rather than
  *  leaving one cruder than the other. Returns the target STRING (`id`,
  *  `id:S`, or `id:E`) or null if `pt` isn't on `seg` at all. */
+/** SE16: `[prev:S|E, next:S|E]` when pieces `prev` and `next` (manifest pieces, model p1/p2) share an end point, else
+ *  null. The same EPS the rest of this module uses. */
+function _jointEnds(prev, next) {
+  const same = (p, q) => Math.abs(p.x - q.x) < EPS && Math.abs(p.y - q.y) < EPS;
+  for (const [pe, pp] of [['S', prev.p1], ['E', prev.p2]]) {
+    for (const [ne, np] of [['S', next.p1], ['E', next.p2]]) if (same(pp, np)) return [`${prev.id}:${pe}`, `${next.id}:${ne}`];
+  }
+  return null;
+}
+
 function pieceEndOrCurveTarget(pt, seg, id) {
   // F17: EPS, not ===: drawn pieces (latticeFromDrawn) come back through x / spacing
   const same = (p, q) => Math.abs(p.i - q.i) < EPS && Math.abs(p.j - q.j) < EPS;
@@ -393,11 +403,25 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     // generated row is already ascending, so this is a no-op there)
     const start = (p) => Math.min(p.p1.x, p.p2.x) + Math.min(p.p1.y, p.p2.y);
     for (const group of byGroup.values()) {
-      const ids = group.slice().sort((a, b) => start(a) - start(b)).map((p) => p.id);
-      for (let k = 1; k < ids.length; k++) constraints.push({ type: 'Collinear', targets: [ids[k - 1], ids[k]] });
+      const sorted = group.slice().sort((a, b) => start(a) - start(b));
+      for (let k = 1; k < sorted.length; k++) {
+        const [prev, next] = [sorted[k - 1], sorted[k]];
+        constraints.push({ type: 'Collinear', targets: [prev.id, next.id] });
+        // SE16 (a cut, CUT-TOOL-DESIGN §7): two pieces of one line meeting end-to-end are a JOINT: separate points
+        // plus ONE explicit Coincident (deletable in Fusion), wherever the cut is (mid-rail or on a tie crossing).
+        const joint = _jointEnds(prev, next);
+        if (joint) {
+          constraints.push({ type: 'Coincident', targets: joint });
+          jointPartner[joint[0]] = joint[1];
+          jointPartner[joint[1]] = joint[0];
+        }
+      }
     }
   }
 
+  // SE16: joint end -> its partner end (the other segment's), so a node sitting on a joint does not ALSO get a
+  // redundant leg to the second segment (the same triangle T67 drops for ties; see nodePieceCoincidences)
+  const jointPartner = {};
   const railAxisGroupsSeen = new Set();
   const railPieces = [];
   railsCanon.forEach((seg, idx) => {
@@ -506,6 +530,9 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     for (const t of out) {
       const railViaTie = tieEndToRailTarget[t];
       if (railViaTie && out.includes(railViaTie)) redundant.add(railViaTie);
+      // SE16: node on a joint -> keep ONE of the two segment ends (the joint's own Coincident implies the other)
+      const partner = jointPartner[t];
+      if (partner && out.includes(partner) && !redundant.has(t)) redundant.add(partner);
     }
     return out.filter((t) => !redundant.has(t));
   }
