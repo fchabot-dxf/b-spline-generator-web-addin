@@ -10,7 +10,7 @@ import {
   stripeCutPoints, primitiveLength, STRIPE_ATTR, STRIPE_SRC_ATTR, STRIPE_DEFAULTS, STRIPE_FALLBACK_COLORS,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-stripe-tool.js';
 import { cutKindOf, minPieceLength, CUT_KIND } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-cut-tool.js';
-import { chainOf, MIN_PIECE_CELLS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
+import { chainOf } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
 import { primitiveFromContourD, contourPrimitiveEnds } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-contour-cut.js';
 import { generateSilhouette, primitiveToPathD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import {
@@ -130,12 +130,12 @@ describe('F27 item 3: striping a RAIL (structural cuts, the rail stays ONE chain
     expect(new Set(stripes.map((s) => s.store[STRIPE_ATTR])).size).toBe(1);
     expect(chainOf(ed, stripes[2]).segments.map((s) => s.el)).toEqual(stripes);
   });
-  it('rail stripes may be shorter than one lattice cell (the scissors\' minimum does not apply; the stroke width does)', () => {
+  it('rail stripes may be shorter than one lattice cell (the only minimum is the stroke width)', () => {
     const ed = makeEditor(pattern);
     const rail = ed.line(0, 1, 1, 1, RAIL); // 4 cells long
     const stripes = stripeAt(ed, rail, count(10));
     expect(stripes).toHaveLength(10);
-    expect(0.1).toBeLessThan(MIN_PIECE_CELLS * pattern.spacing);
+    expect(0.1).toBeLessThan(pattern.spacing); // shorter than one cell
     const ed2 = makeEditor(pattern);
     expect(stripeAt(ed2, ed2.line(0, 1, 1, 1, RAIL), count(100))).toHaveLength(14); // floor(1 / 0.07)
   });

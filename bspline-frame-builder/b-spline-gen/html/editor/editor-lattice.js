@@ -327,12 +327,15 @@ export function stretchRailEnd(railCanon, whichEnd, newI, minLen = 1) {
  * (railSnapRows) is the CALLER's job (editor-interaction.js), the same
  * split constrainToKind/the T30 rail-row snap already use for a freshly-
  * drawn tie's end — this function only clamps the minimum-length rule.
+ * `minLen` (canonical cells): the tie's own stroke width / spacing (Fred:
+ * "The only distance it should use is the stroke width."); the default 1
+ * cell is only for a caller that passes none.
  */
-export function stretchTieEnd(tieCanon, whichEnd, newJ) {
+export function stretchTieEnd(tieCanon, whichEnd, newJ, minLen = 1) {
   const fixed = whichEnd === 'a' ? tieCanon.b : tieCanon.a;
   const original = tieCanon[whichEnd];
   const sign = original.j >= fixed.j ? 1 : -1;
-  const clampedJ = sign > 0 ? Math.max(newJ, fixed.j + 1) : Math.min(newJ, fixed.j - 1);
+  const clampedJ = sign > 0 ? Math.max(newJ, fixed.j + minLen) : Math.min(newJ, fixed.j - minLen);
   const moved = { i: tieCanon.a.i, j: clampedJ };
   return whichEnd === 'a' ? { a: moved, b: tieCanon.b } : { a: tieCanon.a, b: moved };
 }

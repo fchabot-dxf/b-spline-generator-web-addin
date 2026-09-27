@@ -3012,3 +3012,25 @@ No Fusion in this cloud container. What IS verified is everything up to the add-
 (clean origin/main scratch worktree only): T1, drag the waist radius, [Send frame], confirm the built sketch's
 waist arcs hold the sent radius (F20 measured the corner seeds holding to 4e-5 in; the waist seeds are the same
 mechanism but unmeasured) and the frame builds; same for a T2 body radius.
+
+## Min piece length = stroke width (retires MIN_PIECE_CELLS) -- 2026-09-27
+
+Fred, asked what the scissors' "can't cut shorter than one cell" limit was for: "Ok that seems arbitrary" /
+"The only distance it should use is the stroke width." So the one-lattice-cell minimum (`MIN_PIECE_CELLS = 1`,
+declared in F19/SE16 as the "Q3" default) is removed, and every minimum-length rule reads ONE value:
+`minPieceLength(el)` in editor-lattice-chains.js = the piece's own `stroke-width`, falling back to a 0.001 in
+floor (`MIN_PIECE_FLOOR_IN`) only for a piece with no stroke width, so a zero-length piece stays impossible.
+
+Now on the stroke width (was one cell, or 0.001 in for contour/plain):
+- scissors cut, rail/tie/plain line (`cutAtNoCommit`) and contour (`_cutContourAt`);
+- joint slide (`updateJointSlide`): each side keeps at least the larger of the two segments' stroke widths;
+- F19 rail push (`pushTieJoints`): the pushed joint stays one tie stroke width ahead, the far segment keeps it too;
+- rail and tie end-stretch in draw/Select (`stretchRailEnd` / `stretchTieEnd` via `_stretchMinCells`); the
+  T81 item 7 end handle already used it;
+- the stripe tool (F27 item 3) already used it; `minPieceLength` moved from editor-cut-tool.js to
+  editor-lattice-chains.js (re-exported from editor-cut-tool.js, so its import is unchanged).
+
+Tests: cut-tool.test.js (cut refusal, joint slide, F19 push x2 orientations) now assert the stroke width; new
+tests/min-piece-stroke-width.test.js (the helper + both stretch clamps). Full vitest 2385/2385, pytest 380 passed.
+Not live-checked (cloud session): a very short piece in Fusion -- a Slot shorter than it is wide should still
+build, but worth one try on the real machine.

@@ -23,9 +23,24 @@ import { haptic } from '../core/haptics.js';
  *  re-snap to lattice coordinates, so joints never drift apart. */
 export const JOINT_TOL = 1e-6;
 
-/** The shortest segment a cut lattice line may have, in lattice cells: what a cut may leave, how far a joint slide
- *  may go, and how close a pushed joint stays ahead of a rail (F19). */
-export const MIN_PIECE_CELLS = 1;
+/** The floor (model inches) for a piece with no stroke width of its own: only there so a zero-length piece is
+ *  impossible. */
+export const MIN_PIECE_FLOOR_IN = 1e-3;
+
+/** Fred: "The only distance it should use is the stroke width." The shortest a lattice (or plain) line piece may
+ *  be, in model inches: its OWN stroke width -- never one lattice cell (the old MIN_PIECE_CELLS = 1 rule, retired).
+ *  What a cut may leave, how far a joint slide may go, how close a pushed joint stays ahead of a rail (F19), and
+ *  the stripe tool's shortest stripe all read this one value. */
+export function minPieceLength(el) {
+  const sw = parseFloat(el && el.node ? el.node.getAttribute('stroke-width') : NaN);
+  return Number.isFinite(sw) && sw > 0 ? sw : MIN_PIECE_FLOOR_IN;
+}
+
+/** `minPieceLength` in canonical lattice units (cells) for the drag helpers below, which work in cells. The
+ *  largest of the given pieces' own minimums, so neither side of a joint drops below its own stroke width. */
+function minCells(els, spacing) {
+  return Math.max(...els.map(minPieceLength)) / (spacing || 1);
+}
 
 const same = (p, q, tol = JOINT_TOL) => Math.abs(p.x - q.x) < tol && Math.abs(p.y - q.y) < tol;
 
@@ -179,12 +194,13 @@ export function writeChainTranslate(move, di, dj) {
 
 /**
  * A joint slide: the two touching ends move TOGETHER along the chain's axis to `target` (canonical), clamped so
- * each of the two segments keeps at least one lattice cell (their far ends are fixed).
+ * each of the two segments stays at least its own stroke width long (`minPieceLength`; their far ends are fixed).
  */
 export function updateJointSlide(move, target) {
   const { spacing, orientation, axis } = move;
   const far = move.joint.map((s) => s.canon[s.end === 'a' ? 'b' : 'a'][axis]);
-  const lo = Math.min(...far) + MIN_PIECE_CELLS, hi = Math.max(...far) - MIN_PIECE_CELLS;
+  const min = minCells(move.joint.map((s) => s.el), spacing);
+  const lo = Math.min(...far) + min, hi = Math.max(...far) - min;
   const v = lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, target));
   if (v !== target) haptic('limit'); // H13: a joint slide hit its clamp
   for (const s of move.joint) {
@@ -229,20 +245,23 @@ export function withTiePush(editor, move) {
 }
 
 /**
- * Per frame of a rail move to row `targetJ`: each pushed joint stays MIN_PIECE_CELLS ahead of the rail (never behind
- * its original place, so moving back lets it return), and the drag is never blocked, except the one clamp: the
- * segment beyond a joint never drops below MIN_PIECE_CELLS either. Writes the joint ends; returns the (clamped) row.
+ * Per frame of a rail move to row `targetJ`: each pushed joint stays ahead of the rail by the tie's own stroke width
+ * (`minPieceLength`; never behind its original place, so moving back lets it return), and the drag is never
+ * blocked, except the one clamp: the segment beyond a joint never drops below its own stroke width either. Writes
+ * the joint ends; returns the (clamped) row.
  */
 export function pushTieJoints(move, targetJ) {
   let j = targetJ;
+  const { spacing, orientation } = move;
+  const minOf = (p) => minCells(p.ends.map((s) => s.el), spacing);
   for (const p of move.tiePush || []) {
-    const cap = Math.max(p.d * p.from, p.d * p.far - 2 * MIN_PIECE_CELLS); // the rail's furthest row toward `far`
+    const cap = Math.max(p.d * p.from, p.d * p.far - 2 * minOf(p)); // the rail's furthest row toward `far`
     if (p.d * j > cap) j = p.d * cap;
   }
   if (j !== targetJ) haptic('limit'); // H13: a rail push against a cut tie's joint hit its clamp
-  const { spacing, orientation } = move;
   for (const p of move.tiePush || []) {
-    const v = p.d > 0 ? Math.max(p.joint, j + MIN_PIECE_CELLS) : Math.min(p.joint, j - MIN_PIECE_CELLS);
+    const min = minOf(p);
+    const v = p.d > 0 ? Math.max(p.joint, j + min) : Math.min(p.joint, j - min);
     const w = fromLattice(orient({ i: p.i, j: v }, orientation), spacing);
     for (const s of p.ends) {
       if (s.end === 'a') s.el.attr({ x1: w.x, y1: w.y }); else s.el.attr({ x2: w.x, y2: w.y });

@@ -27,7 +27,7 @@ import { worldPoint } from './editor-coords.js';
 import { getDynamicTolerance } from './editor-hit.js';
 import { geometrySnapTargets, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
 import { GRID_DEFAULTS } from './editor-grid.js';
-import { chainOf, JOINT_TOL, MIN_PIECE_CELLS } from './editor-lattice-chains.js';
+import { chainOf, JOINT_TOL, MIN_PIECE_FLOOR_IN, minPieceLength } from './editor-lattice-chains.js';
 import { clearColorOverride, applyColorOverride, pieceKindOf, OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import {
   getLayerPattern, PATTERN_DEFAULTS, BOUNDARY_REF_ATTR, CONTOUR_SEG_INDEX_ATTR, _findBoundaryElements,
@@ -42,9 +42,9 @@ import {
 import { isOnVisibleLayer } from './layers.js';
 import { haptic } from '../core/haptics.js';
 
-/** The shortest piece a cut may leave: one lattice cell for a lattice rail/tie (the stretch minimum), a hair for a
- *  plain line. */
-export const CUT_MIN_PLAIN_IN = 1e-3;
+/** The floor for a piece with no stroke width of its own (see `minPieceLength` below): only there so a
+ *  zero-length piece is impossible. */
+export const CUT_MIN_PLAIN_IN = MIN_PIECE_FLOOR_IN;
 const CUT_MARKER_ID = 'cut-marker';
 
 /** A contour segment: one of the N `<path>` pieces a generated boundary draws (T73/SE14b), never transformed
@@ -177,20 +177,10 @@ export function snapOnContourPiece(editor, el, pt, alt = false) {
   return proj;
 }
 
-/** F27 item 3 (Fred: "The only distance it should use is the stroke width."): the shortest piece a STRIPE may
- *  leave -- the stroke width of the line being striped (its own `stroke-width` attribute, the same units as the
- *  geometry), falling back to the plain-line floor when it has none. Declared here, next to the scissors' own
- *  floors, so the scissors can switch to it later (Fred's follow-up; `_minPiece` below is deliberately NOT
- *  changed in this item). */
-export function minPieceLength(el) {
-  const sw = parseFloat(el && el.node ? el.node.getAttribute('stroke-width') : NaN);
-  return Number.isFinite(sw) && sw > 0 ? sw : CUT_MIN_PLAIN_IN;
-}
-
-function _minPiece(editor, el) {
-  if (!latticeKind(el)) return CUT_MIN_PLAIN_IN;
-  return MIN_PIECE_CELLS * ((getLayerPattern(editor) || PATTERN_DEFAULTS).spacing || PATTERN_DEFAULTS.spacing);
-}
+/** Fred: "The only distance it should use is the stroke width." The shortest piece a cut or a stripe may leave is
+ *  the piece's own stroke width -- `minPieceLength`, declared once in editor-lattice-chains.js (re-exported here
+ *  for the stripe tool). No lattice-cell minimum any more, for a lattice rail/tie or a plain line alike. */
+export { minPieceLength };
 
 /** F27 item 3: exported as `commitCutEdit` so the stripe tool's N cuts + colour writes land as ONE undo step
  *  through the SAME commit a single cut uses (never a second commit path). */
@@ -262,7 +252,7 @@ export function writePieceColor(editor, el, hex) {
  * CUT: split line `piece` at `point` (already on it; snapOnLine gives one). Both new ends are written from the SAME
  * numbers. The new segment is a clone (every attribute: kind, ownership, layer, stroke, colour override), inserted
  * right after the original. One undo step. Returns [first, second], or null when a piece would be shorter than the
- * minimum (a lattice piece: one cell).
+ * minimum (the piece's own stroke width, `minPieceLength`).
  */
 export function cutAt(editor, piece, point, rng = Math.random) {
   const pair = cutAtNoCommit(editor, piece, point, { rng });
@@ -274,8 +264,8 @@ export function cutAt(editor, piece, point, rng = Math.random) {
  * F27 item 3: `cutAt` without the commit -- the ONE cut implementation, which `cutAt` (one cut, one undo step) and
  * the stripe tool (N cuts, then one commit) both call. `opts.rng`: the recolour draw; `opts.recolor` (default
  * true): the scissors' immediate recolour of the far piece (the stripe tool paints every piece itself, so it
- * passes false); `opts.min`: the shortest piece allowed (default: the scissors' own floor, one lattice cell for a
- * rail/tie, `CUT_MIN_PLAIN_IN` otherwise -- the stripe tool passes its own stroke-width floor, Fred's ruling);
+ * passes false); `opts.min`: the shortest piece allowed (default: the piece's own stroke width, `minPieceLength` --
+ * Fred: "The only distance it should use is the stroke width.");
  * `opts.digits`: a contour piece's d-string precision (default `primitiveToPathD`'s own 3 decimals).
  */
 export function cutAtNoCommit(editor, piece, point, opts = {}) {
@@ -283,7 +273,7 @@ export function cutAtNoCommit(editor, piece, point, opts = {}) {
   if (!isLine(piece)) return null;
   const { rng = Math.random, recolor = true } = opts;
   const [a, b] = ends(piece);
-  const min = opts.min != null ? opts.min : _minPiece(editor, piece);
+  const min = opts.min != null ? opts.min : minPieceLength(piece);
   if (Math.hypot(point.x - a.x, point.y - a.y) < min - 1e-9 || Math.hypot(point.x - b.x, point.y - b.y) < min - 1e-9) return null;
   if (piece.attr('transform')) piece.attr({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, transform: null }); // bake, like a lattice move
   const second = piece.clone();
@@ -309,11 +299,11 @@ const _contourIndex = (el) => { const raw = el.node.getAttribute(CONTOUR_SEG_IND
  * cut segment's own entry inserted right after it, so a stored override (if any) survives on BOTH new pieces,
  * matching the DOM clone's own live `stroke` colour (rails' "every attribute" convention, here for a path).
  * One undo step. Returns [first, second], or null when the point sits too close to either end (the SAME plain-
- * line floor, `CUT_MIN_PLAIN_IN` -- a contour has no lattice-cell concept of its own).
+ * piece's own stroke width, `minPieceLength`, same as every other cut).
  */
 function _cutContourAt(editor, piece, point, opts = {}) {
   const { rng = Math.random, recolor = true } = opts;
-  const min = opts.min != null ? opts.min : CUT_MIN_PLAIN_IN;
+  const min = opts.min != null ? opts.min : minPieceLength(piece);
   const prim = contourPrim(piece);
   if (!prim) return null;
   const [a, b] = contourPrimitiveEnds(prim);

@@ -10,7 +10,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-hit.js', async
   const m = await orig();
   return { ...m, getDynamicTolerance: (ed, px, key) => (TOL.override && key in TOL.override ? TOL.override[key] : m.getDynamicTolerance(ed, px, key)) };
 });
-import { latticeChains, splitLine, chainOf, withChain, writeChainRow, updateJointSlide, pushTieJoints, MIN_PIECE_CELLS, JOINT_TOL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
+import { latticeChains, splitLine, chainOf, withChain, writeChainRow, updateJointSlide, pushTieJoints, JOINT_TOL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
 import { cutAt, join, jointAt, snapOnLine, cutIntent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-cut-tool.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { drawnFromPattern } from './helpers/drawn-lattice.js';
@@ -137,9 +137,10 @@ describe('U2 cutAt / join', () => {
     }
   });
 
-  it('refuses a lattice cut closer than one cell to an end; a plain line may be cut anywhere inside', () => {
-    expect(cutAt(ed, rail, { x: 0.2, y: 1 })).toBeNull();
+  it('the only minimum is the piece\'s own stroke width (Fred: "The only distance it should use is the stroke width"), not one lattice cell', () => {
+    expect(cutAt(ed, rail, { x: 0.06, y: 1 })).toBeNull();      // closer than the rail's 0.07 stroke width: refused
     expect(ed.commits).toBe(0);
+    expect(cutAt(ed, rail, { x: 0.1, y: 1 })).not.toBeNull();   // under one 0.25 cell, over the stroke width: allowed
     const plain = ed.line(0, 3, 1, 3, { stroke: '#000' });
     expect(cutAt(ed, plain, { x: 0.05, y: 3 })).not.toBeNull();
   });
@@ -217,15 +218,15 @@ describe('the chain-aware drag helpers', () => {
     expect(segs.map(pts)).toEqual([[0.5, 1.5, 1.5, 1.5], [1.5, 1.5, 3, 1.5], [3, 1.5, 4, 1.5]]);
   });
 
-  it('a grab at a JOINT becomes a joint slide (both ends together, clamped to one cell each side); an outer end stays a stretch', () => {
+  it('a grab at a JOINT becomes a joint slide (both ends together, clamped to the stroke width each side); an outer end stays a stretch', () => {
     setup();
     const j = withChain(ed, baseMove(segs[0], 'stretch', { end: 'b' }));
     expect(j.mode).toBe('joint');
     updateJointSlide(j, 8); // 2 in
     expect(pts(segs[0])[2]).toBeCloseTo(2, 12);
     expect(pts(segs[1])[0]).toBeCloseTo(2, 12);           // no gap
-    updateJointSlide(j, 100);                              // past the next joint: clamped one cell short of it
-    expect(pts(segs[0])[2]).toBeCloseTo(3 - 0.25, 12);
+    updateJointSlide(j, 100);                              // past the next joint: clamped one stroke width short of it
+    expect(pts(segs[0])[2]).toBeCloseTo(3 - RAIL['stroke-width'], 12);
     const outer = withChain(ed, baseMove(segs[0], 'stretch', { end: 'a' }));
     expect(outer.mode).toBe('stretch');
   });
@@ -294,6 +295,7 @@ describe('M1b: a node on a joint where a tie passes THROUGH (not ending there)',
 describe('F19: a rail dragged across a CUT tie joint pushes the joint along (Fred, option b)', () => {
   const TIE = { 'data-lattice': 'tie', 'data-lattice-gen': 'p', stroke: '#333', 'stroke-width': 0.05 };
   const S = 0.25;
+  const MIN = TIE['stroke-width']; // the only minimum: the tie's own stroke width (Fred), not one cell
   // one scene per orientation, written in (along-rail, across-rail) coordinates: T maps them to world
   for (const orientation of ['horizontal', 'vertical']) {
     const T = (u, v) => (orientation === 'horizontal' ? [u, v] : [v, u]);
@@ -332,18 +334,18 @@ describe('F19: a rail dragged across a CUT tie joint pushes the joint along (Fre
       expect(dragTo(2.5)).toBeCloseTo(2.5, 12);                      // never blocked here
       const [n, f] = segs.map(along);
       expect(n[0]).toBeCloseTo(2.5, 12);                             // the attached end rides the rail
-      expect(n[1]).toBeCloseTo(2.5 + MIN_PIECE_CELLS * S, 12);       // the joint, one cell ahead
+      expect(n[1]).toBeCloseTo(2.5 + MIN, 12);                       // the joint, one stroke width ahead
       expect(f[0]).toBe(n[1]);                                       // still coincident (the same number)
       expect(f[1]).toBeCloseTo(3, 12);                               // the far end stays
-      expect(n[1] - n[0]).toBeGreaterThanOrEqual(MIN_PIECE_CELLS * S - 1e-12);
-      expect(f[1] - f[0]).toBeGreaterThanOrEqual(MIN_PIECE_CELLS * S - 1e-12);
+      expect(n[1] - n[0]).toBeGreaterThanOrEqual(MIN - 1e-12);
+      expect(f[1] - f[0]).toBeGreaterThanOrEqual(MIN - 1e-12);
       for (const el of segs) for (const u of across(el)) expect(u).toBeCloseTo(2, 12); // still one straight tie
     });
 
     it(`${orientation}: the one clamp -- the far segment keeps the minimum too; moving back lets the joint return`, () => {
       const { segs, dragTo, along } = scene([2]);
-      expect(dragTo(3.75)).toBeCloseTo(3 - 2 * MIN_PIECE_CELLS * S, 12);
-      expect(along(segs[1])[1] - along(segs[1])[0]).toBeCloseTo(MIN_PIECE_CELLS * S, 12);
+      expect(dragTo(3.75)).toBeCloseTo(3 - 2 * MIN, 12);
+      expect(along(segs[1])[1] - along(segs[1])[0]).toBeCloseTo(MIN, 12);
       expect(dragTo(1.5)).toBeCloseTo(1.5, 12);
       expect(along(segs[0])[1]).toBeCloseTo(2, 12);                  // back at its own place: a push, not a drag
     });
@@ -351,10 +353,10 @@ describe('F19: a rail dragged across a CUT tie joint pushes the joint along (Fre
     it(`${orientation}: 2 cuts -> only the NEAREST joint is pushed`, () => {
       const { segs, dragTo, along } = scene([1.75, 2.5]);
       dragTo(2);
-      expect(along(segs[0])[1]).toBeCloseTo(2.25, 12);
-      expect(along(segs[1])[0]).toBeCloseTo(2.25, 12);
+      expect(along(segs[0])[1]).toBeCloseTo(2 + MIN, 12);           // pushed one stroke width ahead of the rail
+      expect(along(segs[1])[0]).toBeCloseTo(2 + MIN, 12);
       expect(along(segs[1])[1]).toBeCloseTo(2.5, 12);                // the second joint untouched
-      expect(dragTo(3)).toBeCloseTo(2.5 - 2 * MIN_PIECE_CELLS * S, 12); // clamped by the segment up to the next joint
+      expect(dragTo(3)).toBeCloseTo(2.5 - 2 * MIN, 12); // clamped by the segment up to the next joint
     });
 
     it(`${orientation}: an UNCUT tie is unchanged (no push record; it just shrinks with the rail)`, () => {

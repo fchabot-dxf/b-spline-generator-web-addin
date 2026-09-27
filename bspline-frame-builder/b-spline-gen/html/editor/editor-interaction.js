@@ -15,7 +15,7 @@
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { cutHandler } from './editor-cut-tool.js'; // SE16 ✂
 import { stripeHandler } from './editor-stripe-tool.js'; // F27 item 3
-import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints, tieEndNodes } from './editor-lattice-chains.js'; // SE16
+import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints, tieEndNodes, minPieceLength } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
@@ -1498,11 +1498,15 @@ function _updateLatticeStretch(editor, move, targetAxisValue, stretchFn) {
     if (move.railEnd && typeof editor._updateHandles === 'function') editor._updateHandles(); // T81 item 7: the end handle rides the end
 }
 
-/** T81 item 7 (Fred: "The only distance it should use is the stroke
- *  width."): a rail end-drag's shortest length is the rail's own stroke
- *  width (`move.railEnd.minLen`, armRailEndStretch), not one lattice cell. */
+/** Fred: "The only distance it should use is the stroke width." A rail or
+ *  tie end-stretch's shortest length is the piece's own stroke width
+ *  (`minPieceLength`), in canonical cells -- never one lattice cell. The
+ *  T81 item 7 end handle arms the same value as `move.railEnd.minLen`. */
+function _stretchMinCells(move) {
+    return minPieceLength(move.el) / (move.spacing || 1);
+}
 function _railStretchFn(move) {
-    const minLen = move.railEnd ? move.railEnd.minLen : undefined;
+    const minLen = move.railEnd ? move.railEnd.minLen : _stretchMinCells(move);
     return (canon, end, target) => stretchRailEnd(canon, end, target, minLen);
 }
 
@@ -1604,7 +1608,7 @@ function _updateLatticeMoveGeometry(editor, pt) {
         // AFTER the rail-row snap so the two constraints compose (snap
         // first, then pull back inside the contour if the snapped row
         // itself falls outside it).
-        _updateLatticeStretch(editor, move, _clampStretchToContour(editor, move, target), stretchTieEnd);
+        _updateLatticeStretch(editor, move, _clampStretchToContour(editor, move, target), (c, e, t) => stretchTieEnd(c, e, t, _stretchMinCells(move)));
     } else if (move.kind === 'tie') {
         // A tie "drags freely... NOT confined between rails" — a rigid
         // translation of both ends by the same snapped delta, free in
