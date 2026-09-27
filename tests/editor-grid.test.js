@@ -24,11 +24,11 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-grid.js';
 
 describe('snapToGrid', () => {
-  const grid = { visible: true, snap: true, spacing: 0.25 };
+  const grid = { visible: true, gridSnap: true, spacing: 0.25 };
 
   it('is identity when the grid is not snapping', () => {
     const pt = { x: 1.13, y: 2.37 };
-    expect(snapToGrid(pt, { ...grid, snap: false })).toEqual(pt);
+    expect(snapToGrid(pt, { ...grid, gridSnap: false })).toEqual(pt);
   });
 
   it('is identity when bypass is set, even with snap on', () => {
@@ -61,6 +61,31 @@ describe('mergeGridPrefs', () => {
     expect(mergeGridPrefs('garbage')).toEqual(GRID_DEFAULTS);
     expect(mergeGridPrefs(42)).toEqual(GRID_DEFAULTS);
   });
+
+  // H1 (SNAP-SPLIT): "old saved SNAP-on state maps to GRID on" (dispatch).
+  describe('legacy `snap` -> `gridSnap` migration', () => {
+    it('maps an old snap:true record onto gridSnap:true', () => {
+      const merged = mergeGridPrefs({ snap: true, visible: false, spacing: 0.5 });
+      expect(merged.gridSnap).toBe(true);
+      expect(merged.visible).toBe(false);
+      expect(merged.spacing).toBe(0.5);
+      expect(merged.geometrySnap).toBe(false); // new toggle, not resurrected from anything old
+    });
+
+    it('maps an old snap:false record onto gridSnap:false — non-vacuous, not just "always true"', () => {
+      const merged = mergeGridPrefs({ snap: false });
+      expect(merged.gridSnap).toBe(false);
+    });
+
+    it('a record that ALREADY has gridSnap is left alone, even if a stray old `snap` key is also present', () => {
+      const merged = mergeGridPrefs({ snap: true, gridSnap: false });
+      expect(merged.gridSnap).toBe(false);
+    });
+
+    it('a record with neither key gets the plain default (no migration needed)', () => {
+      expect(mergeGridPrefs({ visible: false }).gridSnap).toBe(GRID_DEFAULTS.gridSnap);
+    });
+  });
 });
 
 describe('loadGridPrefs (localStorage integration)', () => {
@@ -73,8 +98,13 @@ describe('loadGridPrefs (localStorage integration)', () => {
   });
 
   it('merges a stored partial object over GRID_DEFAULTS', () => {
-    localStorage.setItem('bsg.editorGrid', JSON.stringify({ snap: true }));
-    expect(loadGridPrefs()).toEqual({ ...GRID_DEFAULTS, snap: true });
+    localStorage.setItem('bsg.editorGrid', JSON.stringify({ gridSnap: false }));
+    expect(loadGridPrefs()).toEqual({ ...GRID_DEFAULTS, gridSnap: false });
+  });
+
+  it('migrates a real legacy record read back from storage (pre-H1 shape)', () => {
+    localStorage.setItem('bsg.editorGrid', JSON.stringify({ visible: true, snap: false, spacing: 0.5 }));
+    expect(loadGridPrefs()).toEqual({ visible: true, gridSnap: false, geometrySnap: false, spacing: 0.5 });
   });
 
   it('does not throw and falls back to defaults on a corrupt stored value', () => {
@@ -110,7 +140,7 @@ describe('applyGrid', () => {
   });
 
   it('draws one line per axis per spacing step, classifying whole-inch lines as major', () => {
-    const editor = { _gridLayer: mockGridLayer(), _grid: { visible: true, snap: false, spacing: 0.5 }, _mW: 1, _mH: 1 };
+    const editor = { _gridLayer: mockGridLayer(), _grid: { visible: true, gridSnap: false, spacing: 0.5 }, _mW: 1, _mH: 1 };
     applyGrid(editor);
 
     // 3 vertical (x=0,0.5,1) + 3 horizontal (y=0,0.5,1) on a 1x1 board.
@@ -129,7 +159,7 @@ describe('applyGrid', () => {
   });
 
   it('redraws (clears first) on every call, not just the first', () => {
-    const editor = { _gridLayer: mockGridLayer(), _grid: { visible: true, snap: false, spacing: 1 }, _mW: 2, _mH: 2 };
+    const editor = { _gridLayer: mockGridLayer(), _grid: { visible: true, gridSnap: false, spacing: 1 }, _mW: 2, _mH: 2 };
     applyGrid(editor);
     applyGrid(editor);
     expect(editor._gridLayer.cleared).toBe(2);
@@ -148,44 +178,101 @@ describe('GRID_SPACINGS', () => {
   });
 });
 
-describe('snapFor — per-tool snap policy (SE7a)', () => {
-  const onGrid = { visible: true, snap: true, spacing: 0.25 };
+// H1 (SNAP-SPLIT): snapFor now takes the EDITOR (geometry candidates live
+// on its sketch layer), not a bare grid record. A minimal mock with no
+// sketch layer at all is enough for every POLICY-level test below (they
+// never reach geometry candidate gathering unless geometrySnap is true
+// AND the sketch layer actually has something in it — the dedicated
+// GEOMETRY describe block further down supplies a real one).
+function mockSnapEditor(gridPatch) {
+  return { _grid: { visible: true, gridSnap: true, geometrySnap: false, spacing: 0.25, ...gridPatch }, _sketchLayer: null };
+}
+
+describe('snapFor — per-tool snap policy (SE7a; H1 GRID/GEOMETRY)', () => {
+  const onGrid = () => mockSnapEditor({});
   const pt = { x: 1.13, y: 2.37 };
 
-  it('erase never snaps, even with grid.snap on and no bypass', () => {
-    expect(snapFor(pt, onGrid, 'erase', 'start', false)).toEqual(pt);
-    expect(snapFor(pt, onGrid, 'erase', 'move', false)).toEqual(pt);
+  it('erase never snaps, even with gridSnap on and no bypass', () => {
+    expect(snapFor(pt, onGrid(), 'erase', 'start', false)).toEqual(pt);
+    expect(snapFor(pt, onGrid(), 'erase', 'move', false)).toEqual(pt);
   });
 
   it('expand never snaps either — same "none" policy', () => {
     expect(SNAP_POLICY.expand).toBe('none');
-    expect(snapFor(pt, onGrid, 'expand', 'start', false)).toEqual(pt);
+    expect(snapFor(pt, onGrid(), 'expand', 'start', false)).toEqual(pt);
   });
 
   it('circle snaps on start (the center) but not on move (the radius drag)', () => {
-    const snappedStart = snapFor(pt, onGrid, 'circle', 'start', false);
+    const snappedStart = snapFor(pt, onGrid(), 'circle', 'start', false);
     expect(snappedStart).toEqual({ x: 1.25, y: 2.25 });
-    expect(snapFor(pt, onGrid, 'circle', 'move', false)).toEqual(pt);
+    expect(snapFor(pt, onGrid(), 'circle', 'move', false)).toEqual(pt);
   });
 
   it('draw (pen) snaps the anchor click but not a freehand move', () => {
-    expect(snapFor(pt, onGrid, 'draw', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
-    expect(snapFor(pt, onGrid, 'draw', 'move', false)).toEqual(pt);
+    expect(snapFor(pt, onGrid(), 'draw', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
+    expect(snapFor(pt, onGrid(), 'draw', 'move', false)).toEqual(pt);
   });
 
-  it('lattice snaps even with grid.snap off, and even with Alt (bypass) held', () => {
-    const gridOff = { visible: true, snap: false, spacing: 0.25 };
+  it('lattice snaps even with gridSnap off, and even with Alt (bypass) held', () => {
+    const gridOff = mockSnapEditor({ gridSnap: false });
     expect(snapFor(pt, gridOff, 'lattice', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
-    expect(snapFor(pt, onGrid, 'lattice', 'start', true)).toEqual({ x: 1.25, y: 2.25 });
+    expect(snapFor(pt, onGrid(), 'lattice', 'start', true)).toEqual({ x: 1.25, y: 2.25 });
   });
 
   it('line honours Alt bypass like every other "point"-policy tool', () => {
-    expect(snapFor(pt, onGrid, 'line', 'start', true)).toEqual(pt);
-    expect(snapFor(pt, onGrid, 'line', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
+    expect(snapFor(pt, onGrid(), 'line', 'start', true)).toEqual(pt);
+    expect(snapFor(pt, onGrid(), 'line', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
   });
 
   it('an unlisted mode falls back to "point" policy rather than throwing', () => {
-    expect(snapFor(pt, onGrid, 'nonexistent-mode', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
+    expect(snapFor(pt, onGrid(), 'nonexistent-mode', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
+  });
+
+  it('neither toggle on -> identity (no snap at all)', () => {
+    const neither = mockSnapEditor({ gridSnap: false, geometrySnap: false });
+    expect(snapFor(pt, neither, 'select', 'start', false)).toEqual(pt);
+  });
+});
+
+// H1 item 1: the GRID-vs-GEOMETRY priority itself, against a real (mocked)
+// sketch layer — "both on = geometry wins inside its tolerance, else
+// grid" (ROADMAP's own wording), verified both ways round.
+describe('snapFor — GEOMETRY snap (H1)', () => {
+  function editorWithLine(x1, y1, x2, y2, gridPatch) {
+    const lineEl = {
+      type: 'line',
+      attr: (k) => ({ x1, y1, x2, y2, 'data-layer': 'layer-1' }[k]),
+    };
+    return {
+      _grid: { visible: true, gridSnap: true, geometrySnap: true, spacing: 0.25, ...gridPatch },
+      _sketchLayer: { children: () => ({ toArray: () => [lineEl] }) },
+      _layers: [{ id: 'layer-1', visible: true }],
+      _activeLayer: 'layer-1',
+      _draw: null,
+    };
+  }
+
+  it('snaps to a nearby line ENDPOINT rather than the grid, when GEOMETRY is on and the point is within tolerance', () => {
+    // A rail-like line from (1, 0.6) to (5, 0.6) -- its own endpoint isn't
+    // a grid-aligned point at spacing 0.25 is fine either way; the point
+    // under test here is deliberately close to the endpoint, not the grid.
+    const editor = editorWithLine(1.0, 0.62, 5.0, 0.62);
+    editor._getDynamicTolerance = () => 0.1; // getDynamicTolerance falls back to 0.1 with no _draw/container
+    const near = { x: 1.02, y: 0.60 };
+    const result = snapFor(near, editor, 'select', 'start', false);
+    expect(result).toEqual({ x: 1.0, y: 0.62 }); // the endpoint, not Math.round-to-0.25
+  });
+
+  it('falls back to GRID when GEOMETRY is on but nothing is within tolerance', () => {
+    const editor = editorWithLine(10, 10, 12, 10); // far away
+    const far = { x: 1.13, y: 2.37 };
+    expect(snapFor(far, editor, 'select', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
+  });
+
+  it('GEOMETRY off, GRID on -> plain grid snap even near a line endpoint', () => {
+    const editor = editorWithLine(1.0, 0.62, 5.0, 0.62, { geometrySnap: false });
+    const near = { x: 1.02, y: 0.60 };
+    expect(snapFor(near, editor, 'select', 'start', false)).toEqual({ x: 1.0, y: 0.5 }); // rounds to grid, not the line
   });
 });
 
@@ -259,7 +346,7 @@ function mockHandleLayer() {
 function mockHoverEditor(overrides = {}) {
   return {
     _handleLayer: mockHandleLayer(),
-    _grid: { visible: true, snap: false, spacing: 0.25 },
+    _grid: { visible: true, gridSnap: false, spacing: 0.25 },
     _currentMode: 'select',
     _mW: 7, _mH: 9,
     _getMousePoint: () => ({ x: 1.1, y: 2.1 }), // -> nearest node {i:4, j:8}, i.e. (1.0, 2.0)
@@ -270,7 +357,7 @@ function mockHoverEditor(overrides = {}) {
 
 describe('updateGridHover / clearGridHover (T31 / SE6c)', () => {
   it('draws nothing when the grid is not visible', () => {
-    const editor = mockHoverEditor({ _grid: { visible: false, snap: false, spacing: 0.25 } });
+    const editor = mockHoverEditor({ _grid: { visible: false, gridSnap: false, spacing: 0.25 } });
     updateGridHover(editor, {});
     expect(editor._handleLayer.created).toHaveLength(0);
   });

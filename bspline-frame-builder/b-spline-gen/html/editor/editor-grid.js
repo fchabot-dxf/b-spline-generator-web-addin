@@ -10,10 +10,20 @@
  */
 import { screenToModelDelta } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
+import { getDynamicTolerance } from './editor-hit.js';
+import { nearestGeometrySnap, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
 
 /** Board is in inches — spacing/coords here are all in the same model
- *  units as editor._mW/_mH (see editor-view.js's own note on this). */
-export const GRID_DEFAULTS = { visible: true, snap: true, spacing: 0.25 }; // grid shown + snap ON by default (Fred 2026-09-24/25)
+ *  units as editor._mW/_mH (see editor-view.js's own note on this).
+ *  H1 (SNAP-SPLIT, Fred 2026-09-26): the old single `snap` boolean split
+ *  into two independent toggles — `gridSnap` (what `snap` used to mean)
+ *  and `geometrySnap` (new: snap to existing geometry instead of/as well
+ *  as the grid). `geometrySnap` defaults OFF — a new capability, opt-in;
+ *  `gridSnap` keeps the old `snap` default (true) so a FRESH install
+ *  behaves exactly as before. mergeGridPrefs (below) migrates an existing
+ *  saved `snap` value onto `gridSnap` for anyone with prefs already on
+ *  disk. */
+export const GRID_DEFAULTS = { visible: true, gridSnap: true, geometrySnap: false, spacing: 0.25 };
 
 /** The customisable spacing choices (inches). The toolbar select derives
  *  its options from this list — no hand-written <option>s to drift. */
@@ -38,10 +48,10 @@ const GRID_HOVER_OUTLINE = { color: '#000', opacity: 0.6, width: 3.5 };
 const GRID_HOVER_CORE = { color: '#fff', opacity: 1, width: 2 };
 const GRID_HOVER_NODE_RADIUS_PX = 5;
 
-/** pt unchanged when the grid isn't snapping or bypass is set (Alt held);
+/** pt unchanged when GRID snap isn't on or bypass is set (Alt held);
  *  otherwise each coordinate rounds to the nearest multiple of spacing. */
 export function snapToGrid(pt, grid, bypass = false) {
-  if (!pt || !grid || !grid.snap || bypass) return pt;
+  if (!pt || !grid || !grid.gridSnap || bypass) return pt;
   const spacing = grid.spacing || GRID_DEFAULTS.spacing;
   return {
     x: Math.round(pt.x / spacing) * spacing,
@@ -81,9 +91,12 @@ export function gridHoverExtents(i, j, spacing, boardW, boardH) {
  *   'center'  — snap on START only; a drag that follows (setting a
  *               circle's radius) must stay unsnapped or the smallest
  *               circle would be one grid cell (circle).
- *   'always'  — snap even when grid.snap is off, and ignore Alt — the
- *               lattice tool IS the grid, there's no "off-grid" mode
- *               for it (lattice).
+ *   'always'  — snap to the GRID even when gridSnap is off, and ignore
+ *               Alt — the lattice tool IS the grid when drawing a brand
+ *               new piece, there's no "off-grid" mode for that gesture
+ *               (lattice). H1's own GRID/GEOMETRY split is about MANUAL
+ *               moves (ROADMAP's own scoping) — a fresh lattice draw
+ *               keeps this exactly as before, no geometry option here.
  *   'none'    — identity always (erase, expand: freehand tools that
  *               should never quantise).
  */
@@ -97,23 +110,54 @@ export const SNAP_POLICY = {
   shapeLattice: 'none',
 };
 
-/** The one place `_snap` derives its behaviour from SNAP_POLICY + phase
- *  ('start' | 'move'). `bypass` is Alt-held; ignored entirely for
- *  'always' (lattice can't be drawn off-grid) and for 'none' (nothing to
- *  bypass). */
-export function snapFor(pt, grid, mode, phase, bypass = false) {
+/**
+ * H1 (SNAP-SPLIT): the ONE declared snap resolver — every manual drag
+ * path reads THIS function (directly, via editor._snap, or via
+ * editor-transform-handles.js's own endpoint-scale call), never
+ * `snapToGrid`/`nearestGeometrySnap` individually. SNAP_POLICY + phase
+ * decide WHETHER a point snaps at all for the current mode/gesture-phase
+ * (unchanged from before H1); once that's a yes, this is the priority:
+ * GEOMETRY wins when it's on AND a target is within its own tolerance,
+ * else GRID when it's on, else the raw point. `excludeEl` (optional) is
+ * the element currently being dragged, so a point can't snap to its own
+ * about-to-move endpoint.
+ *
+ * Takes `editor` (not just `editor._grid`) — geometry candidates live on
+ * the sketch layer, which only the editor object can reach.
+ */
+export function snapFor(pt, editor, mode, phase, bypass = false, excludeEl = null) {
   const policy = SNAP_POLICY[mode] || 'point';
   if (policy === 'none') return pt;
-  if (policy === 'always') return snapToGrid(pt, { ...grid, snap: true }, false);
+  if (policy === 'always') return snapToGrid(pt, { ...editor._grid, gridSnap: true }, false);
   if ((policy === 'anchors' || policy === 'center') && phase === 'move') return pt;
-  return snapToGrid(pt, grid, bypass);
+  if (bypass) return pt;
+
+  const grid = editor._grid;
+  if (grid && grid.geometrySnap) {
+    const tol = getDynamicTolerance(editor, GEOMETRY_SNAP_TOL_PX, 'slopPx');
+    const hit = nearestGeometrySnap(pt, editor, tol, excludeEl);
+    if (hit) return hit; // geometry wins within its own tolerance
+  }
+  return snapToGrid(pt, grid, false);
 }
 
 /** Pure merge over GRID_DEFAULTS — exported so the shape-safety net (a
  *  stale/partial stored object never yields a half-shaped grid) is
- *  testable without mocking localStorage. */
+ *  testable without mocking localStorage. H1: a pre-existing saved record
+ *  has `snap` (the old single toggle), not `gridSnap` — migrate it onto
+ *  `gridSnap` ("old saved SNAP-on state maps to GRID on", per the
+ *  dispatch) so nobody's saved preference silently resets. Only applies
+ *  when `gridSnap` itself is absent — a record that's already been
+ *  through this merge once (or saved fresh under the new shape) is left
+ *  alone, even if some other code path left a stray `snap` key on it. */
 export function mergeGridPrefs(stored) {
-  return { ...GRID_DEFAULTS, ...((stored && typeof stored === 'object') ? stored : {}) };
+  const s = (stored && typeof stored === 'object') ? stored : {};
+  let migrated = s;
+  if (!('gridSnap' in s) && ('snap' in s)) {
+    const { snap, ...rest } = s; // drop the stale key rather than leave it as dead weight on the merged/re-saved record
+    migrated = { ...rest, gridSnap: snap };
+  }
+  return { ...GRID_DEFAULTS, ...migrated };
 }
 
 export function loadGridPrefs() {
@@ -242,7 +286,7 @@ export function updateSnapCursor(editor, e) {
     // both snap the SAME already-shifted point via applyTouchMarkerOffset,
     // so the ring's position and the commit position can never disagree.
     const adjusted = applyTouchMarkerOffset(editor, rawPt);
-    snapped = snapFor(adjusted, editor._grid, editor._currentMode, 'start', bypass);
+    snapped = snapFor(adjusted, editor, editor._currentMode, 'start', bypass);
     show = isTouch || snapped.x !== adjusted.x || snapped.y !== adjusted.y;
   }
 

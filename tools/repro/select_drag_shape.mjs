@@ -279,6 +279,121 @@ async function runSharedScenario(kind) {
   await shot(`${kind}_after.png`);
 }
 
+// H1 SNAP-SPLIT (Fred 2026-09-26, NEXT-SESSION.md item 3): "an off-grid
+// rail (RAIL-SPACING) gets a tie end snapped onto it by GEOMETRY." A
+// #latticeRailsSpacing value that isn't a multiple of the grid's own 0.25
+// spacing makes every generated row genuinely off-grid via the REAL
+// RAIL-SPACING feature (not a hand-rigged position, unlike item 5's own
+// synthetic contour rig above — RAIL-SPACING already has no preset that
+// forces a SPECIFIC row, so a plain non-multiple value is the faithful way
+// to get one). A tie with a FREE end (touching no rail) sidesteps box
+// Lattice's own exact-corner ambiguity, same reasoning as
+// runSharedScenario's own free-end search above.
+function findFreeEndedTie(ties, rails) {
+  for (const t of ties) {
+    if (!rails.some((r) => connected({ x1: t.x1, y1: t.y1, x2: t.x1, y2: t.y1 }, r))) return { tie: t, end: 0 };
+    if (!rails.some((r) => connected({ x1: t.x2, y1: t.y2, x2: t.x2, y2: t.y2 }, r))) return { tie: t, end: 1 };
+  }
+  return null;
+}
+async function dragTieEndToPoint(tie, end, targetPt) {
+  // FIXED absolute-distance offsets (model units) from the true endpoint,
+  // not length fractions: RAIL-SPACING ties can span several rail rows
+  // (this scenario's own #latticeRailsSpacing=0.6 makes them longer than
+  // runSharedScenario's default-adjacent-rail ties), so a fraction like
+  // 0.1 can be a large absolute distance that overshoots the endpoint's
+  // small, PIXEL-radius grab-tolerance zone entirely (observed live: every
+  // fraction down to 0.9 still grabbed a body 'move', never a 'stretch').
+  const tieLen = Math.hypot(tie.x2 - tie.x1, tie.y2 - tie.y1) || 1;
+  const offsets = [0, 0.02, 0.04, 0.08, 0.15, 0.25, 0.4];
+  const tries = end === 0 ? offsets.map((o) => o / tieLen) : offsets.map((o) => 1 - o / tieLen);
+  for (const t of tries) {
+    const g = await grabAndVerify(tie.id, t);
+    if (!g.ok || g.mode !== 'stretch') {
+      console.log(`  (retry) geometry-snap tie end t=${t} missed (got ${JSON.stringify(g.got || g.mode)})`);
+      // grabAndVerify only auto-releases on a WRONG-ELEMENT miss; a right-
+      // element/wrong-MODE hit (grabbed the tie, but as a body 'move' not
+      // an end 'stretch') leaves the mouse logically down, corrupting the
+      // NEXT try's own mousedown -- release explicitly before retrying.
+      if (g.ok) await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: g.x, y: g.y, button: 'left', clickCount: 1 });
+      continue;
+    }
+    const [tx, ty] = JSON.parse(await evalJS(`(()=>{ const el=document.getElementById('${tie.id}'); const svg=el.ownerSVGElement; const p=svg.createSVGPoint(); p.x=${targetPt.x}; p.y=${targetPt.y}; const q=p.matrixTransform(svg.getScreenCTM()); return JSON.stringify([q.x,q.y]); })()`));
+    await continueDrag(g.x, g.y, tx - g.x, ty - g.y);
+    return true;
+  }
+  return false;
+}
+// Common rig: a fresh box Lattice with a non-0.25-multiple rail spacing
+// (genuinely off-grid rows), Select mode, and a tie with a free end to
+// drag. `geometryOn` sets which toggle state the drag runs under. Returns
+// null (after logging why) when this generation doesn't offer a usable
+// tie/rail pair — the caller re-rolls, same recovery shape as this file's
+// other box-Lattice scenarios.
+async function rigOffGridRailAndFreeTie(geometryOn) {
+  await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
+    const input = document.getElementById('latticeRailsSpacing');
+    if (input) { input.value = '0.6'; input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); }
+    await W(200);
+    document.getElementById('latticeGenerate').click(); await W(2500);
+  })()`);
+  await selectPiece();
+  const gridOn = await evalJS(`window.svgEditor._grid.gridSnap`);
+  if (gridOn === geometryOn) { await evalJS(`document.getElementById('editorSnapGrid').click()`); await sleep(100); }
+  const geomOn = await evalJS(`window.svgEditor._grid.geometrySnap`);
+  if (geomOn !== geometryOn) { await evalJS(`document.getElementById('editorSnapGeometry').click()`); await sleep(100); }
+
+  const spacing = await evalJS(spacingExpr);
+  const state = JSON.parse(await evalJS(snap));
+  const rails = Object.entries(state).filter(([, v]) => v.k === 'rail').map(([rid, v]) => ({ id: rid, ...v }));
+  const ties = Object.entries(state).filter(([, v]) => v.k === 'tie').map(([tid, v]) => ({ id: tid, ...v }));
+  const offGridRails = rails.filter((r) => !nearMultiple(r.y1, spacing));
+  if (!offGridRails.length) { console.log('  (no off-grid rail this generation -- re-rolling)'); return null; }
+  const pick = findFreeEndedTie(ties, rails);
+  if (!pick) { console.log('  (no free-ended tie this generation -- re-rolling)'); return null; }
+  const rail = offGridRails.find((r) => !connected(pick.tie, r)) || offGridRails[0];
+  return { spacing, pick, rail };
+}
+async function runGeometrySnapPositiveScenario(kind) {
+  console.log(`=== ${kind}: H1 GEOMETRY snap onto an off-grid RAIL-SPACING rail ===`);
+  const rig = await rigOffGridRailAndFreeTie(true);
+  check(!!rig, `${kind}: rigged an off-grid rail + free-ended tie`);
+  if (!rig) return;
+  const { pick, rail } = rig;
+  // The declared geometry targets are node points (line endpoints/
+  // midpoints) and line-line intersections -- NOT every point along a
+  // line's own body (editor-snap-resolver.js's geometrySnapTargets). A
+  // drop point on the rail's ROW but away from any of those (e.g. plumb
+  // under the dragged tie's own column, if nothing else crosses there)
+  // has no candidate within tolerance and correctly falls through to
+  // GRID -- observed live as an apparent flake before this was targeted
+  // at the rail's own registered endpoint instead, which always IS one.
+  const dragOk = await dragTieEndToPoint(pick.tie, pick.end, { x: rail.x1, y: rail.y1 });
+  check(dragOk, `${kind}: geometry-snap drag grabbed the tie's free end (stretch mode)`);
+  if (!dragOk) return;
+  const after = JSON.parse(await evalJS(snap))[pick.tie.id];
+  const landed = pick.end === 0 ? after.y1 : after.y2;
+  check(Math.abs(landed - rail.y1) < 1e-6,
+    `${kind}: tie end snapped EXACTLY onto the off-grid rail's row by GEOMETRY (landed=${landed}, rail=${rail.y1})`);
+  await shot(`${kind}_geometry_snap.png`);
+}
+async function runGeometrySnapControlScenario(kind) {
+  console.log(`=== ${kind}: H1 GEOMETRY off -- the same drag does NOT snap to the off-grid row ===`);
+  const rig = await rigOffGridRailAndFreeTie(false);
+  check(!!rig, `${kind}: rigged an off-grid rail + free-ended tie (control)`);
+  if (!rig) return;
+  const { spacing, pick, rail } = rig;
+  const dragOk = await dragTieEndToPoint(pick.tie, pick.end, { x: rail.x1, y: rail.y1 });
+  check(dragOk, `${kind}: control drag (GEOMETRY off) grabbed the tie's free end (stretch mode)`);
+  if (!dragOk) return;
+  const after = JSON.parse(await evalJS(snap))[pick.tie.id];
+  const landed = pick.end === 0 ? after.y1 : after.y2;
+  check(Math.abs(landed - rail.y1) > 1e-6,
+    `${kind}: with GEOMETRY off, the drag does NOT land exactly on the off-grid rail (landed=${landed}, rail=${rail.y1})`);
+  check(nearMultiple(landed, spacing),
+    `${kind}: with GEOMETRY off, the tie end fell back to the plain grid instead (landed=${landed}, spacing=${spacing})`);
+}
+
 async function runContourClampScenario() {
   console.log('=== shape: T73 rail end stays on the contour ===');
   const before = JSON.parse(await evalJS(snap));
@@ -338,6 +453,38 @@ for (let attempt = 1; attempt <= 3; attempt++) {
   if (failures === before) break;
   if (attempt < 3) {
     console.log(`  (box scenario had ${failures - before} failure(s) on attempt ${attempt} -- re-rolling a fresh layout)`);
+    failures = before;
+  }
+}
+
+// H1 SNAP-SPLIT item 3's own named scenario, box Lattice (its own
+// #latticeRailsSpacing control feeds RAIL-SPACING; Shape Lattice has no
+// such field). Fresh setup each attempt, and the positive/control halves
+// each get their OWN fresh setup too (not shared) — two sequential drags
+// on the same piece within one page load proved fragile in practice
+// (mid-drag toggle clicks + CTM state didn't always compose cleanly), so
+// each half runs against an independent, freshly-generated layout instead.
+// 5 attempts, not 3 -- observed live needing more re-rolls than the other
+// box scenarios above: this one's rig requires BOTH an off-grid rail AND a
+// free-ended tie in the same random layout, a rarer combination than
+// "any rail with any tie".
+for (let attempt = 1; attempt <= 5; attempt++) {
+  const before = failures;
+  await setupBox();
+  await runGeometrySnapPositiveScenario('box');
+  if (failures === before) break;
+  if (attempt < 5) {
+    console.log(`  (box geometry-snap positive scenario had ${failures - before} failure(s) on attempt ${attempt} -- re-rolling)`);
+    failures = before;
+  }
+}
+for (let attempt = 1; attempt <= 5; attempt++) {
+  const before = failures;
+  await setupBox();
+  await runGeometrySnapControlScenario('box');
+  if (failures === before) break;
+  if (attempt < 5) {
+    console.log(`  (box geometry-snap control scenario had ${failures - before} failure(s) on attempt ${attempt} -- re-rolling)`);
     failures = before;
   }
 }

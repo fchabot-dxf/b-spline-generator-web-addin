@@ -472,7 +472,7 @@ function _applyScaleToElement(state, rec, sx, sy, h, pt, altBypass, editor) {
             x: rec.anchorWorld.x + dot * rec.dirUnit.x,
             y: rec.anchorWorld.y + dot * rec.dirUnit.y,
         };
-        const snapped = snapFor(newWorld, editor._grid, 'select', 'move', altBypass);
+        const snapped = snapFor(newWorld, editor, 'select', 'move', altBypass, rec.el);
         const local = toLocal(rec.el, snapped);
         if (rec.movingIsP1) rec.el.attr({ x1: local.x, y1: local.y });
         else rec.el.attr({ x2: local.x, y2: local.y });

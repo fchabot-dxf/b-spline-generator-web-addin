@@ -29,6 +29,7 @@ import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './edi
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
 import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover } from './editor-grid.js';
 import { getDynamicTolerance } from './editor-hit.js';
+import { nearestGeometrySnap, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
 import {
     toLattice, toLatticeFractional, fromLattice, constrainToKind, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
@@ -946,9 +947,17 @@ const circleHandler = {
  *  rows are harmless (nearestRailRow just scans for the closest, ties
  *  broken toward the first match), so no dedup needed. */
 function _existingRailRows(editor, spacing, orientation) {
+    // H1 (SNAP-SPLIT, generalizing UI5 item 5's own fix): RAIL-SPACING can
+    // now place a rail's row genuinely off the standard grid -- `s.a`
+    // (toLattice-ROUNDED) would silently report the wrong row, and
+    // nearestRailRow's own tolerance-based match (its own doc comment)
+    // would then compare a tie's end against the WRONG target. `s.aWorld`
+    // (the raw world point) through toLatticeFractional keeps this exact
+    // for an off-grid rail while staying a no-op for an ordinary
+    // integer-row one.
     return _collectLatticeElements(editor, spacing)
         .filter((s) => s.kind === 'rail')
-        .map((s) => orient(s.a, orientation).j);
+        .map((s) => orient(toLatticeFractional(s.aWorld, spacing), orientation).j);
 }
 
 /**
@@ -1396,6 +1405,23 @@ function _updateLatticeStretch(editor, move, targetAxisValue, stretchFn) {
     }
 }
 
+/** H1 (SNAP-SPLIT): the nearest existing geometry point to the RAW
+ *  pointer, as a canonical axis value (`'i'` or `'j'`, matching whichever
+ *  axis the caller's own gesture varies) — null when GEOMETRY snap is off
+ *  or nothing qualifies, so every caller below falls through to its own
+ *  existing grid/rail-row logic unchanged. `move.el` is excluded so a
+ *  piece can't snap to its own about-to-move endpoint (nearestGeometrySnap
+ *  itself is generic across every visible layer's own rails/ties/nodes/
+ *  contour/hand-drawn geometry, editor-snap-resolver.js's own doc
+ *  comment — no lattice-specific candidate gathering needed here). */
+function _geometryAxisSnap(editor, move, pt, axis) {
+    if (!editor._grid || !editor._grid.geometrySnap) return null;
+    const tol = getDynamicTolerance(editor, GEOMETRY_SNAP_TOL_PX, 'slopPx');
+    const hit = nearestGeometrySnap(pt, editor, tol, move.el);
+    if (!hit) return null;
+    return orient(toLatticeFractional(hit, move.spacing), move.orientation)[axis];
+}
+
 /** SE7i/SE7k: one tick of a piece-move-or-stretch gesture — recomputes the
  *  live geometry from the FIXED drag-start snapshot (`editor._latticeMove`)
  *  and the CURRENT pointer position, writing straight to the real
@@ -1410,29 +1436,45 @@ function _updateLatticeMove(editor, pt) {
 
     if (move.kind === 'rail' && move.mode === 'stretch') {
         // A rail's end moves along its OWN axis (canonical i) only — its
-        // row (j) never changes during a stretch, unlike a move. T73:
-        // clamped to the contour when the layer's pattern is boundary-mode
-        // (a no-op for board-mode box Lattice).
-        _updateLatticeStretch(editor, move, _clampStretchToContour(editor, move, canonPt.i), stretchRailEnd);
+        // row (j) never changes during a stretch, unlike a move. H1: a
+        // nearby GEOMETRY target (another rail's own end, a tie's column,
+        // an intersection) wins over the plain grid value when GEOMETRY
+        // is on and something is within tolerance. T73: clamped to the
+        // contour when the layer's pattern is boundary-mode (a no-op for
+        // board-mode box Lattice) — applied AFTER either source picks the
+        // raw target, same "snap first, then pull back inside the
+        // contour" composition the tie-stretch branch below already uses.
+        const targetI = _geometryAxisSnap(editor, move, pt, 'i') ?? canonPt.i;
+        _updateLatticeStretch(editor, move, _clampStretchToContour(editor, move, targetI), stretchRailEnd);
     } else if (move.kind === 'rail') {
         // A rail moves only ACROSS its own direction — never slides
         // along its own length — so only the row (canonical j) tracks
         // the pointer; moveRailAlongAxis carries the i-range over as-is.
-        const result = moveRailAlongAxis(move.railCanon, canonPt.j, move.ties, move.nodes);
+        const targetJ = _geometryAxisSnap(editor, move, pt, 'j') ?? canonPt.j;
+        const result = moveRailAlongAxis(move.railCanon, targetJ, move.ties, move.nodes);
         _writeRailMove(move, result);
     } else if (move.kind === 'tie' && move.mode === 'stretch') {
-        // A tie's end moves along its OWN axis (canonical j) — snapped to
-        // the grid AND to nearby rail rows (railSnapRows), the SAME snap a
-        // freshly-drawn tie's end already gets (T30/SE7k's own update()).
-        const railSnapRows = getLayerPattern(editor)?.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
-        const railRows = _existingRailRows(editor, spacing, orientation);
-        const snapped = nearestRailRow(canonPt.j, railRows, railSnapRows);
+        // A tie's end moves along its OWN axis (canonical j). H1: GEOMETRY
+        // on tries the existing rail-row magnetism FIRST (railSnapRows —
+        // the SAME snap a freshly-drawn tie's end already gets, T30/SE7k's
+        // own update(); ROADMAP's own "ties' rail contacts" target,
+        // row-based so the tie can land anywhere along the rail's own
+        // length, not just at its two endpoints), then falls back to a
+        // plain nearby-point geometry match, then the grid — all three
+        // gated the SAME way now instead of the rail-row magnetism firing
+        // unconditionally regardless of either toggle.
+        let target = canonPt.j;
+        if (editor._grid && editor._grid.geometrySnap) {
+            const railSnapRows = getLayerPattern(editor)?.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
+            const railRows = _existingRailRows(editor, spacing, orientation);
+            const snappedRow = nearestRailRow(canonPt.j, railRows, railSnapRows);
+            target = snappedRow != null ? snappedRow : (_geometryAxisSnap(editor, move, pt, 'j') ?? canonPt.j);
+        }
         // T73: same contour clamp as the rail-stretch branch above, applied
         // AFTER the rail-row snap so the two constraints compose (snap
         // first, then pull back inside the contour if the snapped row
         // itself falls outside it).
-        const target = _clampStretchToContour(editor, move, snapped != null ? snapped : canonPt.j);
-        _updateLatticeStretch(editor, move, target, stretchTieEnd);
+        _updateLatticeStretch(editor, move, _clampStretchToContour(editor, move, target), stretchTieEnd);
     } else if (move.kind === 'tie') {
         // A tie "drags freely... NOT confined between rails" — a rigid
         // translation of both ends by the same snapped delta, free in
@@ -1459,8 +1501,16 @@ function _updateLatticeMove(editor, pt) {
         }
     } else {
         // 'node': no piece under it at all — a plain free single-point
-        // move, snapped to the lattice.
-        const p = fromLattice(orient(canonPt, orientation), spacing);
+        // move. H1: GEOMETRY on and a nearby target found -> that exact
+        // point (both axes, not just one -- a free node isn't confined to
+        // a single row/column the way a rail/tie stretch is); otherwise
+        // the plain grid point, exactly as before H1.
+        let p;
+        if (editor._grid && editor._grid.geometrySnap) {
+            const tol = getDynamicTolerance(editor, GEOMETRY_SNAP_TOL_PX, 'slopPx');
+            p = nearestGeometrySnap(pt, editor, tol, move.el);
+        }
+        if (!p) p = fromLattice(orient(canonPt, orientation), spacing);
         move.el.center(p.x, p.y);
     }
 }

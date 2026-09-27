@@ -230,14 +230,18 @@ function formatSpacingLabel(value) {
 }
 
 /**
- * Wire the GRID toolbar group (SE6): SHOW/SNAP toggles + spacing select.
- * Same shape as initFillModeToggle above — editor.setGrid() is the one
- * place that mutates the record, persists it, and redraws, so this module
- * only needs to reflect state back onto the buttons.
+ * Wire the GRID toolbar group (SE6; H1 SNAP-SPLIT): SHOW/GRID/GEOMETRY
+ * toggles + spacing select. Same shape as initFillModeToggle above —
+ * editor.setGrid() is the one place that mutates the record, persists it,
+ * and redraws, so this module only needs to reflect state back onto the
+ * buttons. GRID and GEOMETRY are independent toggles (both/neither valid)
+ * replacing the old single SNAP toggle — see editor-grid.js's own
+ * GRID_DEFAULTS/mergeGridPrefs doc comments for the migration.
  */
 function initGridToggle(editor) {
   const showBtn = el('editorGridShow');
-  const snapBtn = el('editorGridSnap');
+  const gridSnapBtn = el('editorSnapGrid');
+  const geometrySnapBtn = el('editorSnapGeometry');
   const spacingSelect = el('editorGridSpacing');
   // SE7n: AUTO NODES bound HERE, in the same module as SHOW/SNAP, per the
   // dispatch's own instruction — its file-list line named editor-ui.js,
@@ -245,11 +249,12 @@ function initGridToggle(editor) {
   // SE6, not editor-ui.js; followed the explicit "same module" build
   // instruction over the file list.
   const autoNodesBtn = el('editorAutoNodes');
-  if (!showBtn && !snapBtn && !spacingSelect && !autoNodesBtn) return;
+  if (!showBtn && !gridSnapBtn && !geometrySnapBtn && !spacingSelect && !autoNodesBtn) return;
 
   const syncButtons = () => {
     if (showBtn) showBtn.classList.toggle('active', !!editor._grid.visible);
-    if (snapBtn) snapBtn.classList.toggle('active', !!editor._grid.snap);
+    if (gridSnapBtn) gridSnapBtn.classList.toggle('active', !!editor._grid.gridSnap);
+    if (geometrySnapBtn) geometrySnapBtn.classList.toggle('active', !!editor._grid.geometrySnap);
     if (autoNodesBtn) autoNodesBtn.classList.toggle('active', !!editor._lattice.autoNodes);
   };
 
@@ -265,7 +270,8 @@ function initGridToggle(editor) {
   }
 
   if (showBtn) on(showBtn, 'click', () => { editor.setGrid({ visible: !editor._grid.visible }); syncButtons(); });
-  if (snapBtn) on(snapBtn, 'click', () => { editor.setGrid({ snap: !editor._grid.snap }); syncButtons(); });
+  if (gridSnapBtn) on(gridSnapBtn, 'click', () => { editor.setGrid({ gridSnap: !editor._grid.gridSnap }); syncButtons(); });
+  if (geometrySnapBtn) on(geometrySnapBtn, 'click', () => { editor.setGrid({ geometrySnap: !editor._grid.geometrySnap }); syncButtons(); });
   if (spacingSelect) on(spacingSelect, 'change', () => {
     const spacing = parseFloat(spacingSelect.value);
     if (!Number.isNaN(spacing)) editor.setGrid({ spacing });

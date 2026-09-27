@@ -10713,3 +10713,116 @@ already takes its output path as a CLI arg, which is why this never surfaced bef
 
 This is seat A's last UI5 turn (Fred moves to the regular add-in himself; the Asus loop was waiting on
 these two files). No edits to `bspline_gen_palette.html`.
+
+## Turn 294 — epoch 3 — H1 SNAP-SPLIT: one snap resolver, GRID vs GEOMETRY toggles — DONE — NO FUSION
+
+Dispatch (seat A restarted under a new epoch after standing down at turn 292): read HANDOFF-REG-ADDIN.md
+§5.1 (the Asus's RAIL-SPACING engine, R7 panel restructure, stale-params, boundary guide), then
+NEXT-SESSION.md's H1 checklist. ROADMAP's own spec: two declared snap modes (GRID: grid points; GEOMETRY:
+existing geometry — rails, ties' rail contacts, nodes, contour, line ends/midpoints/intersections), each
+its own toolbar toggle; both on = geometry wins within tolerance else grid; Alt still suspends all; ONE
+declared resolver read by every manual-drag path, not per-tool special cases. Explicitly told to reuse
+UI5 item 5's own attachment/tolerance work (turn 290/291), not copy it.
+
+**Item 1 — the resolver.** New `editor-snap-resolver.js`: a pure, toggle-agnostic QUERY module
+(`geometrySnapTargets`, `nearestGeometrySnap`) — no knowledge of grid state at all, so `editor-grid.js`
+can import it one-directionally without a cycle (`editor-grid.js` already needs to be imported BY the
+geometry side's own candidate-gathering, since candidates live on the sketch layer editor-grid.js
+already has a handle to). Targets fall out of `getNodes()` (editor-hit.js, already the direct-edit
+tool's own node extractor) for FREE across every element kind — a rail/tie is a plain `<line>`, a node a
+plain `<circle>`, a contour segment a plain `<path>`, exactly like anything hand-drawn — plus a midpoint
+per consecutive node pair and a standard parametric line-line intersection pass (covers "ties' rail
+contacts" AND "line intersections" with the SAME formula, no lattice-specific branch). No `toLattice`
+rounding anywhere in this file — comparing real world positions within tolerance, never rounding to the
+nearest grid cell, is exactly what UI5 item 5 already established and exactly why an off-grid
+RAIL-SPACING row is a valid, exact target here too.
+
+`editor-grid.js`'s `snapFor` is the actual declared resolver: `GRID_DEFAULTS` gained `gridSnap`/
+`geometrySnap` (replacing the old single `snap`); `mergeGridPrefs` migrates a stored `snap` key to
+`gridSnap` (dropped, not left stale) so an old saved layer doesn't silently lose snapping. `snapFor`'s
+signature changed from `(pt, grid, ...)` to `(pt, editor, ...)` since it now needs sketch-layer access for
+geometry candidates — every call site (editor.js's `_snap`, editor-transform-handles.js's Select-drag,
+editor-grid.js's own cursor preview) updated to pass `editor`. Priority: geometry (if on, within a
+`getDynamicTolerance`-scaled radius) wins, else grid (if on), else identity — Alt bypass unchanged
+(checked first, same as before).
+
+Lattice piece drags (editor-interaction.js's `_updateLatticeMove`) are a SEPARATE path from `snapFor`
+(they move along ONE canonical axis, not a free point), so they get their own `_geometryAxisSnap`
+helper: calls the SAME `nearestGeometrySnap`, then extracts just the tracked axis (i or j) from whatever
+point it found via the existing `orient(toLatticeFractional(...))` conversion. Wired into all 4 branches
+(rail-stretch, rail-move, tie-stretch, node-move) each with a `?? fallback` to the pre-existing
+grid/canonical value, so `geometrySnap` off reproduces prior behavior exactly (confirmed: full suite
+unchanged at 1665 when the toggle defaults off). Tie-stretch specifically also fixed `_existingRailRows`
+(fed `nearestRailRow`'s pre-existing tolerance-based magnetism): it was reading `toLattice(s.a)` —
+ROUNDED to the nearest grid cell — instead of `toLatticeFractional(s.aWorld)`, silently defeating any
+off-grid row's own magnetism before this turn; now reads the real position, and the whole mechanism is
+gated behind the `geometrySnap` toggle (it fired unconditionally before). Scope cuts, both flagged rather
+than silently skipped: tie MOVE (rigid two-axis translation) doesn't participate in geometry-snap (its
+delta-based shape doesn't map onto a single-axis or single-point target cleanly); Alt-bypass isn't
+threaded through lattice-piece drags at all (no bypass concept existed there before this turn either —
+"lattice IS the grid" stays the unconditional fallback when `geometrySnap` is off).
+
+**Item 2 — toolbar.** `bspline_gen_palette.html`'s single `editorGridSnap` "SNAP" button replaced with
+`editorSnapGrid` ("GRID") + `editorSnapGeometry` ("GEOM") in the same segmented group as `editorGridShow`
+(main toolbar, not the lattice side-panel — same precedent as every other main-toolbar edit this whole
+UI5/H1 arc). `properties-shape.js`'s `initGridToggle` rewritten for two independent buttons/handlers;
+`editor-ui.js`'s toolbar-dimming logic now dims both under the same disabled-mode condition.
+
+**Item 3 — tests.** Unit (`tests/editor-grid.test.js`, 49/49): `mergeGridPrefs` legacy-migration (4 new
+tests, including a real pre-H1 localStorage shape read back through `loadGridPrefs`), and a rewritten
+`snapFor` describe block (editor object mock, not a bare grid record) covering each toggle alone/both/
+neither/Alt, plus a new `describe('snapFor — GEOMETRY snap (H1)')` block (geometry-wins-within-tolerance,
+grid-fallback, geometry-off). Mutation-tested the migration logic (a first attempt left a stale `snap`
+key on the migrated record via `{...s, gridSnap: s.snap}`; caught by a test expecting a clean record,
+fixed by destructuring `snap` out first).
+
+Live (`tools/repro/select_drag_shape.mjs`, extended — item 3's own instruction, not a new script): two
+new scenarios, `runGeometrySnapPositiveScenario`/`runGeometrySnapControlScenario`. Rig: box Lattice's own
+`#latticeRailsSpacing` set to `0.6` (not a multiple of the 0.25 grid) makes every generated row genuinely
+off-grid via the REAL RAIL-SPACING feature, not a hand-rigged position. A free-ended tie (touches no
+rail — `ties.oneEnded`'s own guarantee) sidesteps box Lattice's pre-existing exact-corner hit-test
+ambiguity (same class UI5 item 5 already found: a tie's rail-touching end is geometrically coincident,
+0 distance, with the rail's own endpoint, so ANY nearby-fraction retry can still grab the rail). Positive:
+GEOMETRY on, GRID off, drag the free end toward the off-grid rail's own registered endpoint (a real
+snap target — the geometry candidate list is node points/midpoints/intersections, NOT arbitrary points
+along a line's own body, which is why an early version of this scenario aimed at "this tie's own column,
+the rail's row" intermittently failed: that point isn't a declared target unless something else happens
+to cross there) — asserts the landed row matches the rail's row to 1e-6. Control: same rig, GEOMETRY off
+— asserts it does NOT land exactly on the off-grid row and instead falls back to the plain 0.25 grid.
+Both get their own fresh `setupBox()` (not shared/sequential on one generation — an earlier version doing
+both toggle states against the SAME already-dragged piece proved fragile: toggle clicks + stale CTM
+state didn't always compose cleanly across two sequential drags in one page load) and the same bounded
+re-roll pattern as this file's other box-Lattice scenarios (5 attempts, not the usual 3 — this rig needs
+BOTH an off-grid rail AND a free-ended tie in the same random layout, a rarer combination). Also fixed a
+latent bug in the retry helper while building this: `grabAndVerify` only auto-releases the mouse on a
+WRONG-ELEMENT miss, not a right-element/wrong-MODE one (grabbed the intended tie, but as a body 'move'
+not an end 'stretch') — left uncorrected, that leaves the mouse logically down across retries, corrupting
+the next attempt's own mousedown. Flagging for the advisor: this same latent bug exists in the
+pre-existing `robustDrag` too (identical shape, not touched — out of this turn's scope, but worth a
+look). Verified 4 fresh runs after the fixes above: 3 fully clean, 1 with unrelated pre-existing
+`runSharedScenario` flakiness on an unusually dense random box-Lattice layout (not this turn's code) —
+box Lattice's own randomness remains an acknowledged, pre-existing source of occasional retry-loop
+flakiness in this file, same as its existing scenarios.
+
+**Item 4 — shots.** New `tools/repro/snap_split_shots.mjs` (matches `piece_override_shots.mjs`'s own
+convention: `serve_app.py` for real CSS, `<outPrefix>_<name>.png`, desktop/mobile via CDP device-metrics
+override), `shots\seatA\h1_snapsplit_{desktop,mobile}_{toolbar,geometry_snap}.png`. Toolbar shot shows
+GRID/GEOM in place of the old SNAP button (GEOM active). Geometry-snap shot: a tie mid-drag, its dragged
+end extended exactly onto an off-grid rail's row with the app's own live alignment guide rendered across
+the canvas at that row. Mobile toolbar shot: GEOM button is scrolled just off the right edge of the
+390px viewport — pre-existing `.editor-toolbar-top` horizontal-scroll behavier (`overflow-x: auto`,
+already used by every other dense toolbar section on mobile), not a regression from adding one more
+button to an already-scrolling row.
+
+`npx vitest run` -> **1665 passed**, zero regressions (test/repro-tooling-only changes since the last full
+run this session; app source unchanged since then).
+
+Capacity note for the advisor: this turn's live-drag verification (item 3) took materially longer than
+expected — box Lattice's random-layout hit-test ambiguity required three successive redesigns of the
+repro rig (fraction-based grab offsets → absolute-distance offsets → targeting a registered geometry
+point instead of an arbitrary row position) before it stopped being intermittently wrong for reasons
+unrelated to the resolver itself. The resolver's own correctness was never in doubt after the first
+direct `editor._snap()` calls; the time went into test-harness robustness against a pre-existing,
+already-documented source of flakiness in this file. Flagging in case a future H2-style task in box
+Lattice hits the same wall — the `dragTieEndToPoint`/`findFreeEndedTie`/`rigOffGridRailAndFreeTie`
+helpers in `select_drag_shape.mjs` are reusable for that.
