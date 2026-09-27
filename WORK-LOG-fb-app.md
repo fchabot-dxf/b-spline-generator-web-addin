@@ -1484,3 +1484,88 @@ Commits (fb-app, pushed): `1c3b1ca` items 1-4 · this commit: the log. NO FUSION
   advisor's gate.
 - Server stopped. My headless Chrome instances exited (none left with my profiles).
 - **Capacity:** fine.
+
+
+## 🔨 turn 30 — F16 (seat C, epoch 1): SE16 ✂ cut tool — DESIGN ONLY
+
+Commits (fb-app, pushed): `8f4445e` design + plan + mockup generator · `cda2d4b` merge origin/main (H1, per the
+amendment) · `ef6e890` snapping on H1 as merged · this commit: the log. No product code, no Fusion.
+
+### Item 1: `CUT-TOOL-DESIGN.md` (repo root)
+- **Gestures:** tap a line to cut (joints, then grid; Alt = free); tap a joint = Join; main rail only.
+- **Data:** NO new schema. A segment is an ordinary owned `<line data-lattice=…>`, and membership is DERIVED by
+  `latticeChains(pieces, JOINT_TOL)`: same kind + collinear + touching. `JOINT_TOL` is SE7i's existing 1e-6
+  (`_sameWorldPoint`, editor-interaction.js:1095), promoted to one named export rather than a second tolerance.
+- **Cut/join:** pure functions; both joint ends are written from one number; join∘cut = identity.
+- **Drag rules:** a chain behaves like the uncut piece. Body = move over the chain's union extent; true outer ends
+  stretch; a joint slides along the axis (Q3). A Select free-move of one segment breaks the chain (intended), and so
+  does deleting a middle segment.
+- **Fusion:** one Slot per segment; chain = the existing `railGroup` (H/V once + Collinear, already emitted); an
+  explicit Coincident at each joint.
+- **Undo:** `pushState` per cut/join/slide, no new mechanism.
+- **Colour:** UI5's per-piece overrides on each segment. SEG-COLOR-PANEL is the contour's own store and untouched.
+
+### Two prerequisites the code survey found (verified by me at file:line, not only by the Explore agent)
+- **P1:**
+  - Send does NOT send lattice pieces as drawn. `manifestFromLattice` (editor-sketch-manifest.js:257) re-runs
+    `computePattern` (:260), and only widths come from the DOM, matched by DOM order (export-flow.js:167).
+    `_finishLatticeMove` (editor-interaction.js:1478) writes nothing back to the pattern.
+  - So a hand-dragged rail already reaches Fusion at its GENERATED position (a pre-existing gap), and a cut would
+    also misalign the positional width mapping.
+  - Design: the manifest reads the owned DOM pieces; chain → `railGroup`. The P1 test is RED today by design.
+- **P2:**
+  - `refreshBoundaryPatterns` (editor-lattice-pattern.js:2326) regenerates every boundary-linked (Shape Lattice)
+    pattern on every commit, except after the one-shot `_skipBoundaryRefillOnce` Select-grab flag (:2339).
+  - So a cut would be erased on its own commit.
+  - Design: declared refill commit kinds instead of the flag.
+- Fred's Q1 asks whether "send as drawn" is wanted.
+
+### Snapping on H1 (amendment: H1 merged, `407e4cc`)
+- **Merged:** origin/main merged into fb-app (clean). Gates after the merge: Python 279, JS 294 / 15 files (grid,
+  formula, frame, lattice), frame-defs fresh.
+- **Cut point:** `SNAP_POLICY.cut = 'onLine'`, dispatched by `snapFor` to a new `snapOnLine` next to
+  `nearestGeometrySnap`. The order is H1's geometry targets that lie ON the line (joints), then the line's
+  grid-line crossings, then the projection (Alt). The toggles are ignored (Q5).
+- **Joint slide / chain drags:** they reuse `_geometryAxisSnap` (editor-interaction.js:1417). Found in H1's code:
+  it excludes only `move.el`, so a cut segment would snap onto its own sibling's joint. The design therefore widens
+  `excludeEl` to a Set (the chain), with a new test U4.
+- These are additive changes in seat A's merged files, so they are flagged for the advisor to route.
+
+### Item 2: acceptance plan (§10 of the doc)
+- **Copies:** U (uncut) / C (cut: a rail at 2 joints + a tie at 1) / K (C with every segment coloured, one wider).
+  The same gestures run on each, and `canon(pieces)` (merged by chain) must be equal after every gesture, in both
+  orientations.
+- **Cases:**
+  - A1–A9: body drags, coloured, 20-drag drift, tie drags, outer-end stretch + joint slide, the cut tie, the
+    Select break, deleting a middle segment, undo/redo;
+  - U1–U4: chains, cut/join, the onLine snap, chain self-snap;
+  - M1/P1 manifest; P2 refill; L1 live Chrome.
+  - Each case names its file.
+- **A correction on myself:** I first named `shape-lattice-rails-on-contour.test.js` as a "happy-dom editor
+  harness". Checking it showed it is manifest-only, and no test drives the lattice drag handlers outside Chrome.
+  - The plan therefore makes the drag core a PURE `planLatticeDrag` (extracted first, uncut cases green = a pure
+    refactor, then made chain-aware), plus `tools/repro/cut_tool_acceptance.mjs` end to end.
+  - The non-vacuous rule is stated: every A-case must go red with the chain expansion disabled.
+
+### Item 3: mockups + questions
+- **Mockups:** 4 PNGs in `shots\seatC\2242_F16_*`:
+  - hover marker at a joint;
+  - one rail = 3 coloured segments (one wider);
+  - a drag moves the whole rail, with ties stretching on both sides;
+  - joint vs outer end.
+- **First render problems:** the toolbar overlapped the titles, the captions were clipped, and mockup 3 had ties
+  spanning the moved rail, so nothing visibly stretched. Fixed with a brick layout (ties between neighbouring rails).
+- **Source:** `tools/repro/cut_tool_mockups.py`. The repo git-ignores every `*.svg` (0 tracked), so I did not force
+  the SVGs in; the generator is the tracked source and was verified to reproduce all 4 byte-for-byte.
+- **Questions for Fred** (top of the doc, each with a recommendation):
+  - Q1 send as drawn;
+  - Q2 does Regenerate clear cuts (yes, like overrides);
+  - Q3 does a joint slide along the rail (yes);
+  - Q4 which style a Join keeps (the first segment's);
+  - Q5 does cutting always snap, toggles ignored (yes);
+  - Q6 are plain lines independent (confirm).
+
+### Notes
+- **Agent citation check:** I spot-checked the Explore agent's line numbers. All held except `recolorOwnedKind`
+  (2440, not 2473), which is corrected in the doc.
+- **Capacity:** fine.
