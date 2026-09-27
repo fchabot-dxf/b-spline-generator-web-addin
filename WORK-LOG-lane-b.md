@@ -9980,3 +9980,42 @@ Verify: 1398/1398 vitest (38 new), 52/52 b-spline-gen pytest, 196/196 frame-buil
 untouched by this item). Commit ba84ef4, pushed. NO FUSION this whole turn.
 
 # T77 — TIE-GAP complete: all 3 items landed. Passing back to the advisor.
+
+# T78 — FILTER REWORK: Moon, Mars, Wind Dunes, Coral Reef (Fred, epoch 6)
+
+Fred (seeing them next to Simplex, which he likes): "I don't like Wind Dune, Moon Surface, Mars Surface, Coral Reef;
+these all need adjusting" / "the planet ones aren't planet-like at all, craters don't look like craters either".
+Files ONLY: core/noise/{moon,mars,dunes,reef}.js (+ their tweaks, tests, a render tool). NO FUSION.
+
+## T78 item 1 — headless before/after render tool
+
+New `tools/repro/filter_shots.mjs`, forked from the established `frame_3d_shots.mjs` CDP driver (chrome headless +
+swiftshader, raw debugger websocket, no deps) since that's the dominant convention in `tools/repro/` (30+ of 34
+files). Drives the REAL app's own `#noiseType` select + `#seed` input, captures via `window.__preview.getSnapshot()`
+— a purpose-built headless-verification hook the app's own authors already exposed on `window` for exactly this
+(main/main.js) — from a fixed, INSTANTLY-set isometric camera (`goHome()`'s own fit-to-board `r`, then `_orb` copied
+straight from `_targetOrb`, skipping the damped lerp) so every noise type renders from an identical view with no
+wait-for-settle guessing.
+
+Also reads back each filter's raw `fn()` output stats (mean/stdDev/min/max) over a 96×96 grid straight from the live
+page's own imported module + a freshly-seeded `PerlinNoise` pair matching `terrain.js`'s own construction (seed,
+seed^0x9e3779b9) — the "measured std-dev/detail metric vs Simplex" item 6 asks for, computed in the SAME tool run
+rather than needing a second one. Confirmed via research (dispatched an Explore agent first, given the size of what
+this touches) that `terrain.js` does NO global min/max renormalization at all — only `Math.max(0, h) * carveZ` — so
+each filter really is solely responsible for its own comparable amplitude, which is exactly why this metric matters.
+
+An optional `lowlight` flag repositions the scene's own sun `DirectionalLight` to a low grazing angle before every
+shot (T78 MOON REFERENCE amendment, Fred: "check your render under low-angle light: the rims should pop") by
+mutating the LIVE `THREE.Scene` object at runtime (found by scanning `_scene.children` for the brighter of the two
+directional lights, since `preview/index.js` never exposes `sun` as an instance field) — no `preview.js` source
+change needed for this, staying inside the dispatch's own "files ONLY" fence.
+
+Committed the BEFORE set (seed 42, all 4 target filters + Simplex as the reference) —
+`shots/seatB/before_{simplex,moon,mars,dunes,reef}_seed42.png`. The measured stats independently confirm the
+advisor's own visual diagnosis: Moon/Mars stdDev is only 53-68% of Simplex's, and — the clearest smoking gun — Moon's
+raw `fn()` output goes NEGATIVE (min -0.079) at the default seed/params, meaning crater pits are being silently
+floor-clipped by `terrain.js`'s own `Math.max(0, h)` before a rendered pit is even visible; the current crater model
+genuinely does not carve deep enough to survive that clamp.
+
+Verify: 1973/1973 vitest (pre-existing suite, untouched by this item — a new tool file only). Commit e211689,
+pushed. NO FUSION this whole turn.
