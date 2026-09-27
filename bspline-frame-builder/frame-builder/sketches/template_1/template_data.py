@@ -122,6 +122,12 @@ FRAME_HANDLES = [
     {"key": "cornerRadiusTop",    "label": "Shoulder", "basis": "hw", "binding": "seeded"},
     {"key": "cornerRadiusBottom", "label": "Hip",      "basis": "hw", "binding": "seeded"},
     {"key": "waistCenterY", "label": "Waist position",  "basis": "hh", "binding": "seeded"},
+    # F27 item 2 (Fred, Frame tab, Hourglass: the waist's arc radius "can never be set anywhere, it
+    # needs a handle"): the waist arc's own radius, a RADIUS handle ON the arc (the app's
+    # editor-shape-lattice-interaction.js catalogue). No template param sets the waist radius (the
+    # phases seed it: seed_rad_waist_R/L + the arc_waist_R/L seed arcs, FRAME_SEED_MAP below), so it
+    # is seeded like the others (Fred's ruling: no new Fusion parameter unless allowed).
+    {"key": "waistRadius",  "label": "Waist radius",    "basis": "hw", "binding": "seeded"},
 ]
 # F20: a frame record saved before the split carries the ONE seeded `cornerRadius`:
 # it becomes both corners (the record gate, core/frame-record.js), so its shape is exact.

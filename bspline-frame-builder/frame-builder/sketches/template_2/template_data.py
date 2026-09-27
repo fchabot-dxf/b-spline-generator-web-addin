@@ -102,6 +102,11 @@ FRAME_HANDLES = [
     {"key": "neckWidth",  "label": "Neck width",        "basis": "hw", "binding": "seeded"},
     {"key": "skeletonX",  "label": "S-curve tightness", "basis": "hw", "binding": "seeded"},
     {"key": "neckLength", "label": "Shoulder height",   "basis": "h",  "binding": "seeded"},
+    # F27 item 2 (Fred: an arc radius with no handle "can never be set anywhere"): the body
+    # (hip) arc's own radius, a RADIUS handle ON the arc. The neck arc's radius already has one
+    # (skeletonX, "S-curve tightness": radius = skeletonX - neckWidth); the body arc had none. No
+    # template param sets it (the arc_hip_R/L seed arcs carry it, FRAME_SEED_MAP below): seeded.
+    {"key": "bodyRadius", "label": "Body radius",       "basis": "hw", "binding": "seeded"},
 ]
 # FB-APP F11 (option B, Fred: "simply seed it in position"): where each of
 # this template's shape-outline SEEDS comes from when the app sends seeded

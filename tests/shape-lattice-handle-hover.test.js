@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { generatePattern } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { regenerateSilhouette, currentPattern } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
 import { getModeHandler, updateHandles } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-interaction.js';
-import { HANDLE_HOVER_SCALE, HANDLE_HOVER_FILL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
+import { HANDLE_HOVER_SCALE, HANDLE_HOVER_FILL, HANDLE_KINDS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 import { setMode } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-ui.js';
 
 function makeMockEditor(mW, mH) {
@@ -64,6 +64,14 @@ function makeMockEditor(mW, mH) {
   }
   const handleLayer = {
     circle(d) { return makeHandleEl('circle', d); },
+    // F27 item 2: a radius handle is a diamond (drawParamHandle): its centre
+    // and "diameter" (2 x half-diagonal) read off the four points
+    polygon(pts) {
+      const el = makeHandleEl('polygon', pts[1][0] - pts[3][0]);
+      el.store.cx = (pts[1][0] + pts[3][0]) / 2; el.store.cy = (pts[0][1] + pts[2][1]) / 2;
+      el.center = () => el;
+      return el;
+    },
     path(d) { return makeHandleEl('path', d); },
     clear() { handleEls = []; },
     items: () => handleEls,
@@ -96,9 +104,12 @@ async function shapeLatticeEditor() {
   return editor;
 }
 
+// F27 item 2: a handle's mark is a circle (position) or a diamond (radius)
 const handleCircle = (editor, key) => {
   const rec = editor._paramHandles.find((r) => r.key === key);
-  return editor._handleLayer.items().find((e) => e.type === 'circle' && e.store.cx === rec.hx && e.store.cy === rec.hy);
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  return editor._handleLayer.items().find((e) => (e.type === 'circle' || e.type === 'polygon')
+    && near(e.store.cx, rec.hx) && near(e.store.cy, rec.hy));
 };
 const overlayPaths = (editor) => editor._handleLayer.items().filter((e) => e.type === 'path');
 const cssState = () => Array.from(document.getElementById('editorSVGContainer').classList)
@@ -113,7 +124,7 @@ describe("T81 item 1: hovering a Shape Lattice handle", () => {
     const editor = await shapeLatticeEditor();
     h.hover(editor, { x: -100, y: -100 }); // nowhere near any handle
     expect(editor._shapeHandleHover).toBeNull();
-    const c = handleCircle(editor, 'cornerRadiusTop');
+    const c = handleCircle(editor, 'waistReach');
     expect(c.store.fill).toBe('#ffffff');
     expect(c.store.stroke).toBe('#7b1fa2');
     expect(cssState()).toEqual([]);
@@ -122,54 +133,56 @@ describe("T81 item 1: hovering a Shape Lattice handle", () => {
 
   it('hovering a handle grows it, fills it with the shared accent, sets the grab cursor, and highlights the segment it controls', async () => {
     const editor = await shapeLatticeEditor();
-    const rec = editor._paramHandles.find((r) => r.key === 'cornerRadiusTop');
-    const idleRadius = handleCircle(editor, 'cornerRadiusTop').store.d / 2;
+    const rec = editor._paramHandles.find((r) => r.key === 'waistReach');
+    const idleRadius = handleCircle(editor, 'waistReach').store.d / 2;
 
     h.hover(editor, { x: rec.hx, y: rec.hy });
 
-    expect(editor._shapeHandleHover).toBe('cornerRadiusTop');
-    const c = handleCircle(editor, 'cornerRadiusTop');
+    expect(editor._shapeHandleHover).toBe('waistReach');
+    const c = handleCircle(editor, 'waistReach');
     expect(c.store.d / 2).toBeCloseTo(idleRadius * HANDLE_HOVER_SCALE, 6);
     expect(c.store.fill).toBe(HANDLE_HOVER_FILL);
     expect(cssState()).toEqual(['handle-hover-ready']);
 
     // "the segment it controls" -- an overlay in the accent colour, matching
-    // the LIVE shoulder segment's own drawn `d` (segment index 1).
-    const shoulderSeg = editor._sketchLayer.children().toArray().find((e) => e.attr('data-contour-seg') === 1);
-    expect(shoulderSeg).toBeTruthy();
+    // the LIVE waist segment's own drawn `d` (segment index 2). (F27 item 2:
+    // these look tests use the Waist reach, a POSITION handle -- round and
+    // white when idle; the Shoulder is a radius diamond now, see below.)
+    const waistSeg = editor._sketchLayer.children().toArray().find((e) => e.attr('data-contour-seg') === 2);
+    expect(waistSeg).toBeTruthy();
     const overlays = overlayPaths(editor);
     expect(overlays.length).toBe(1);
-    expect(overlays[0].store.d).toBe(shoulderSeg.attr('d'));
+    expect(overlays[0].store.d).toBe(waistSeg.attr('d'));
     expect(overlays[0].store.stroke).toBe(HANDLE_HOVER_FILL);
   });
 
   it('moving off the handle clears the hover look and the overlay', async () => {
     const editor = await shapeLatticeEditor();
-    const rec = editor._paramHandles.find((r) => r.key === 'cornerRadiusTop');
+    const rec = editor._paramHandles.find((r) => r.key === 'waistReach');
     h.hover(editor, { x: rec.hx, y: rec.hy });
-    expect(editor._shapeHandleHover).toBe('cornerRadiusTop');
+    expect(editor._shapeHandleHover).toBe('waistReach');
 
     h.hover(editor, { x: -100, y: -100 });
 
     expect(editor._shapeHandleHover).toBeNull();
-    expect(handleCircle(editor, 'cornerRadiusTop').store.fill).toBe('#ffffff');
+    expect(handleCircle(editor, 'waistReach').store.fill).toBe('#ffffff');
     expect(cssState()).toEqual([]);
     expect(overlayPaths(editor).length).toBe(0);
   });
 
   it('pressing a handle shows the SAME active look for the whole drag (Touch has no hover) and the grabbing cursor', async () => {
     const editor = await shapeLatticeEditor();
-    const rec = editor._paramHandles.find((r) => r.key === 'cornerRadiusTop');
+    const rec = editor._paramHandles.find((r) => r.key === 'waistReach');
     h.hover(editor, { x: rec.hx, y: rec.hy }); // the real flow: hover, then press
 
     h.start(editor, { x: rec.hx, y: rec.hy }, { x: rec.hx, y: rec.hy });
-    expect(editor._shapeLatticeDragKey).toBe('cornerRadiusTop');
+    expect(editor._shapeLatticeDragKey).toBe('waistReach');
     expect(cssState()).toEqual(['handle-hover-active']);
-    let c = handleCircle(editor, 'cornerRadiusTop');
+    let c = handleCircle(editor, 'waistReach');
     expect(c.store.fill).toBe(HANDLE_HOVER_FILL);
 
     h.update(editor, { x: rec.hx - 0.05, y: rec.hy }); // regenerateSilhouette's own end re-renders handles
-    c = handleCircle(editor, 'cornerRadiusTop');
+    c = handleCircle(editor, 'waistReach');
     expect(c.store.fill).toBe(HANDLE_HOVER_FILL); // still active mid-drag
 
     await h.finish(editor);
@@ -188,14 +201,48 @@ describe("T81 item 1: hovering a Shape Lattice handle", () => {
 
   it('switching mode away from Shape Lattice clears the hover and the cursor (same rule as the snap/grid hover)', async () => {
     const editor = await shapeLatticeEditor();
-    const rec = editor._paramHandles.find((r) => r.key === 'cornerRadiusTop');
+    const rec = editor._paramHandles.find((r) => r.key === 'waistReach');
     h.hover(editor, { x: rec.hx, y: rec.hy });
-    expect(editor._shapeHandleHover).toBe('cornerRadiusTop');
+    expect(editor._shapeHandleHover).toBe('waistReach');
     expect(cssState()).toEqual(['handle-hover-ready']);
 
     setMode(editor, 'select');
 
     expect(editor._shapeHandleHover).toBeNull();
     expect(cssState()).toEqual([]);
+  });
+});
+
+describe('F27 item 2: Shape Lattice handles are drawn by their declared KIND', () => {
+  it('radius handles (Shoulder, Hip, Waist radius) are accent diamonds; position handles (Waist reach, Waist position) round white', async () => {
+    const editor = await shapeLatticeEditor();
+    const kinds = Object.fromEntries(editor._paramHandles.map((r) => [r.key, r.handleKind]));
+    expect(kinds).toEqual({ waistReach: 'position', cornerRadiusTop: 'radius', cornerRadiusBottom: 'radius',
+      waistCenterY: 'position', waistRadius: 'radius' });
+    expect(HANDLE_KINDS.radius.shape).toBe('diamond');
+    expect(HANDLE_KINDS.position.shape).toBe('circle');
+    for (const r of editor._paramHandles) {
+      const mark = handleCircle(editor, r.key);
+      expect(mark, r.key).toBeTruthy();
+      expect(mark.type).toBe(r.handleKind === 'radius' ? 'polygon' : 'circle');
+      expect(mark.store.fill).toBe(HANDLE_KINDS[r.handleKind].fill);
+      expect(mark.store['data-kind']).toBe(r.handleKind);
+    }
+    // Fred's ruling: the radius accent IS the editor's existing blue accent (the hover fill), not a new colour
+    expect(HANDLE_KINDS.radius.fill).toBe(HANDLE_HOVER_FILL);
+    expect(HANDLE_KINDS.position.fill).toBe('#ffffff');
+  });
+
+  it('hovering a radius diamond keeps its shape and grows it (T81 item 1 look on top of the kind)', async () => {
+    const editor = await shapeLatticeEditor();
+    const rec = editor._paramHandles.find((r) => r.key === 'cornerRadiusTop');
+    const idle = handleCircle(editor, 'cornerRadiusTop');
+    expect(idle.type).toBe('polygon');
+    const idleD = idle.store.d;
+    h.hover(editor, { x: rec.hx, y: rec.hy });
+    const c = handleCircle(editor, 'cornerRadiusTop');
+    expect(c.type).toBe('polygon');
+    expect(c.store.d).toBeCloseTo(idleD * HANDLE_HOVER_SCALE, 6);
+    expect(c.store.stroke).toBe('#ffffff');
   });
 });

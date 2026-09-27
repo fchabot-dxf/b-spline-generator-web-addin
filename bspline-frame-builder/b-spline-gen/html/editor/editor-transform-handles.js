@@ -216,6 +216,56 @@ export function handleHoverVisual(baseRadius, idleFill, idleStroke, active) {
         : { radius: baseRadius, fill: idleFill, stroke: idleStroke };
 }
 
+// ─── F27 item 2 (Fred screenshot, Frame tab, Hourglass: "handle for
+// position should be a different color or shape than handle for radii") ───
+//
+// Handle KINDS, declared ONCE here beside T81 item 1's hover look (which they
+// extend, not replace): every param handle carries a `handleKind` in its ONE
+// catalogue (computeParamHandles, editor-shape-lattice-interaction.js), and
+// both handle systems (the Frame tab, editor-frame-profile.js; the Shape
+// Lattice, properties-shape-lattice.js) draw it through drawParamHandle
+// below, so a radius handle looks the same in both.
+//   position: moves a feature (the pinch, the waist line, the neck) -- the
+//             round white handle, exactly as before;
+//   radius:   sets an arc's radius -- a diamond in the accent colour. Fred's
+//             ruling: the accent is the editor's EXISTING blue (the one the
+//             hover/selection highlight already uses, HANDLE_HOVER_FILL =
+//             `--cad-accent`), read from that constant, not a new literal.
+// The idle STROKE stays each system's own (the frame's outline brown, the
+// Shape Lattice's purple) so a handle still says which system it belongs to.
+// Hover/press keeps the kind's SHAPE and applies T81 item 1's look on top
+// (grown, accent fill, white stroke): for the already-blue diamond the
+// growth and the white rim are the feedback.
+
+/** kind -> its idle mark. An unknown kind draws as 'position'. */
+export const HANDLE_KINDS = {
+    position: { shape: 'circle', fill: '#ffffff' },
+    radius: { shape: 'diamond', fill: HANDLE_HOVER_FILL },
+};
+/** A diamond's half-diagonal, as a multiple of the handle's radius: a square
+ *  rotated 45 degrees reads smaller than the circle it replaces at the same
+ *  half-width, so it is drawn a little larger. */
+export const HANDLE_DIAMOND_SCALE = 1.25;
+
+/** `{shape, radius, fill, stroke}` for one param handle of `kind` (T81 item
+ *  1's hover look on top of the kind's own idle mark). */
+export function handleKindVisual(kind, baseRadius, idleStroke, active) {
+    const k = HANDLE_KINDS[kind] || HANDLE_KINDS.position;
+    return { shape: k.shape, ...handleHoverVisual(baseRadius, k.fill, idleStroke, active) };
+}
+
+/** Draw one param handle mark (circle or diamond) centred on (x, y) into an
+ *  svg.js container; returns the element. The two handle systems' ONE draw
+ *  call, so neither can drift into its own shape for a kind. */
+export function drawParamHandle(layer, vis, x, y, strokeWidth) {
+    if (vis.shape === 'diamond') {
+        const r = vis.radius * HANDLE_DIAMOND_SCALE;
+        return layer.polygon([[x, y - r], [x + r, y], [x, y + r], [x - r, y]])
+            .fill(vis.fill).stroke({ color: vis.stroke, width: strokeWidth });
+    }
+    return layer.circle(vis.radius * 2).center(x, y).fill(vis.fill).stroke({ color: vis.stroke, width: strokeWidth });
+}
+
 /** The shared grab/grabbing cursor for whichever handle system is hovered
  *  or being dragged -- ONE pair of classes (styles/editor.css) toggled on
  *  the canvas container, so a Shape Lattice handle and a Frame handle set

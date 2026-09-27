@@ -34,7 +34,7 @@ describe('the binding table is the ONE source', () => {
   it.each(['template_1', 'template_2'])('%s: the handles drawn are exactly the declared ones, all seeded today', (id) => {
     const rec = normalizeFrameRecord({ templateId: id });
     const table = frameHandleTable(tplOf(FRAME_DEFS, id));
-    expect(table.length).toBe(id === 'template_1' ? 4 : 3); // F20: T1 has a Shoulder AND a Hip
+    expect(table.length).toBe(id === 'template_1' ? 5 : 4); // F20: T1 has a Shoulder AND a Hip; F27 item 2: + one radius handle each
     expect(table.every((h) => h.binding === 'seeded')).toBe(true); // no Frame Builder param controls the shape (phases/p02_*)
     expect(frameHandles(tplOf(FRAME_DEFS, id), profile(FRAME_DEFS, rec)).map((h) => h.key)).toEqual(table.map((h) => h.key));
   });
@@ -43,7 +43,7 @@ describe('the binding table is the ONE source', () => {
     const defs = clone(FRAME_DEFS);
     tplOf(defs, 'template_1').handles = tplOf(defs, 'template_1').handles.filter((h) => h.key !== 'cornerRadiusBottom');
     const rec = normalizeFrameRecord({ templateId: 'template_1' }, defs);
-    expect(frameHandles(tplOf(defs, 'template_1'), profile(defs, rec)).map((h) => h.key)).toEqual(['waistReach', 'cornerRadiusTop', 'waistCenterY']);
+    expect(frameHandles(tplOf(defs, 'template_1'), profile(defs, rec)).map((h) => h.key)).toEqual(['waistReach', 'cornerRadiusTop', 'waistCenterY', 'waistRadius']);
   });
 });
 
@@ -132,6 +132,12 @@ function mockCanvasEditor() {
       addClass: self(() => {}), center: self((x, y) => { n.attrs.cx = x; n.attrs.cy = y; }),
       path: () => { const c = node(); n.children.push(c); return c; },
       circle: (d) => { const c = node(); c.isCircle = true; c.d = d; n.children.push(c); return c; },
+      // F27 item 2: a radius handle's diamond (drawParamHandle): centre + half-diagonal off its points
+      polygon: (pts) => {
+        const c = node(); c.isDiamond = true; c.d = pts[1][0] - pts[3][0];
+        c.attrs.cx = (pts[1][0] + pts[3][0]) / 2; c.attrs.cy = (pts[0][1] + pts[2][1]) / 2;
+        n.children.push(c); return c;
+      },
       group: () => { const c = node(); c.parent = n; n.children.push(c); return c; },
       remove: () => { if (n.parent) n.parent.children = n.parent.children.filter((x) => x !== n); },
       findOne: (sel) => n.children.find((c) => '#' + c.attrs.id === sel) || null,
@@ -167,9 +173,11 @@ describe('Frame tab: dragging a handle through the shield', () => {
     expect(ed._frameHandles || []).toEqual([]); // Artwork tab: no handles
     setEditorTab('frame');
     const handles = ed._frameHandles;
-    expect(handles.map((h) => h.key)).toEqual(['waistReach', 'cornerRadiusTop', 'cornerRadiusBottom', 'waistCenterY']);
+    expect(handles.map((h) => h.key)).toEqual(['waistReach', 'cornerRadiusTop', 'cornerRadiusBottom', 'waistCenterY', 'waistRadius']);
     const g = ed._bgLayer.findOne('#frame-profile');
-    expect(g.children.filter((c) => c.isCircle)).toHaveLength(4);
+    // F27 item 2: the two position handles are circles, the three radius handles diamonds
+    expect(g.children.filter((c) => c.isCircle)).toHaveLength(2);
+    expect(g.children.filter((c) => c.isDiamond)).toHaveLength(3);
 
     const far = HANDLE_HIT_PX / ed.PX + 0.05;
     fire('pointerdown', handles[0].anchor.x + far, handles[0].anchor.y);
@@ -264,7 +272,8 @@ describe('F20 SHOULDER-HIP: the T1 frame has a Shoulder and a Hip handle, seeded
     const t = frameHandleTable(T1());
     expect(t.map((h) => [h.key, h.label, h.binding])).toEqual([
       ['waistReach', 'Waist reach', 'seeded'], ['cornerRadiusTop', 'Shoulder', 'seeded'],
-      ['cornerRadiusBottom', 'Hip', 'seeded'], ['waistCenterY', 'Waist position', 'seeded']]);
+      ['cornerRadiusBottom', 'Hip', 'seeded'], ['waistCenterY', 'Waist position', 'seeded'],
+      ['waistRadius', 'Waist radius', 'seeded']]); // F27 item 2
     expect(T1().handleMigrations).toEqual({ cornerRadius: ['cornerRadiusTop', 'cornerRadiusBottom'] });
   });
 

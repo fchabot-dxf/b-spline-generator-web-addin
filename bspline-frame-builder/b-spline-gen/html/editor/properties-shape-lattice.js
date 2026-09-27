@@ -29,7 +29,7 @@ import {
 } from './editor-shape-lattice-generator.js';
 import { setEditorStatusHint } from './editor-ui.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex, HANDLE_SEGMENT_INDEX } from './editor-shape-lattice-interaction.js';
-import { handleHoverVisual, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
+import { handleKindVisual, drawParamHandle, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
 import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
 import { openColorMosaic, pickColorDiffering } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
@@ -544,12 +544,13 @@ export function renderShapeLatticeHandles(editor) {
                     .attr('pointer-events', 'none');
             }
         }
-        const vis = handleHoverVisual(sz, '#ffffff', '#7b1fa2', active);
-        editor._handleLayer.circle(vis.radius * 2)
-            .center(r.hx, r.hy)
-            .fill(vis.fill)
-            .stroke({ color: vis.stroke, width: strokeW })
-            .attr('pointer-events', 'none');
+        // F27 item 2: the handle's declared KIND picks its mark (radius =
+        // accent diamond, position = round white) -- the SAME table and draw
+        // call the Frame tab's handles use (editor-transform-handles.js).
+        const vis = handleKindVisual(r.handleKind, sz, '#7b1fa2', active);
+        drawParamHandle(editor._handleLayer, vis, r.hx, r.hy, strokeW)
+            .attr('pointer-events', 'none')
+            .attr('data-kind', r.handleKind || 'position');
         out.push({ ...r, hitR: sz * 1.8 });
     }
     return out;
