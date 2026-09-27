@@ -1880,3 +1880,91 @@ Seat A's H5/H6 gesture files untouched.
 - **Amendments polled:** F20 SHOULDER-HIP and F21 CONTOUR-FROM-FRAME are queued; no action taken.
 - Server stopped; no headless Chrome of mine left.
 - **Capacity:** OK.
+
+
+## 🔨 turn 38 — F20 (seat C, epoch 1): SHOULDER-HIP, separate Shoulder and Hip handles (Shape Lattice + Frame)
+
+Commits (fb-app, pushed): `4ab0f9b` the origin/main merge (H8's FRAME_TINT kept) · `f7e2442` item 1 · `2a91a08` item 2 ·
+`cb5528d` item 3 · this commit: the log.
+- **Fusion window (F11 rules):** scratch docs only, each tagged `claude/scratch/F20` and closed by its own handle.
+  Fred's "Untitled" was never touched, and it was the only doc open after every call.
+- **No deploy:** MAIN stayed deployed, and the frame builder's Python behaviour is unchanged.
+
+### Item 1 — Shape Lattice: measured first, then relabelled
+- **Measured before editing:** the Shape Lattice hourglass had NO combined corner handle or slider.
+  - F12 already made the panel offer `cornerRadiusTop` / `cornerRadiusBottom` (`SHAPE_PARAM_KEYS`).
+  - The combined `cornerRadius` handle entry in `computeParamHandles` was reached only by the T1 frame's binding table.
+  - Shot `0348_F20pre_shape_before`: 5 handles, "top/bottom corner radius".
+- **Change:** sliders "shoulder" / "hip" and handles "Shoulder" / "Hip".
+- **`cornerRadius` stays a shape param:** it is in `PARAM_ORDER`, it is the shape model's base, and it is the migration
+  input.
+- **Test:** labels plus independence (a shoulder drag leaves the hip anchor exact). It fails 2/2 on the pre-change
+  files.
+- **The F5 sweep stays green;** shape + frame specs 527/527.
+- **Stale page:** the first "after" shot showed the old labels because the persistent Chrome profile cached the palette
+  HTML. The new script launches Chrome with `--disk-cache-size=1`.
+
+### Item 2 — Frame T1: the live check first
+- **Question:** do T1's phases force the shoulder and hip corners equal?
+- **Answer: NO.** The 29 constraints touching the corner geometry (read back from the built sketch) are:
+  - Horizontal on each skeleton pin, and each pin's :S on the Y axis / its partner;
+  - the arc chain: shoulder:S–waist:S, hip:E–waist:E (both sides), each arc end on its horn;
+  - tangency, each corner arc to its waist arc and its horn;
+  - **p02_10 welds:** each arc centre to its OWN skeleton pin end (`ck_arc_shoulder_weld` / `ck_arc_hip_weld`);
+  - **p02_11:** one Equal, `skel_shoulder_pin_L = _R` (L/R symmetry; `hip_equal` was removed long ago);
+  - no dimension; the sketch is not fully constrained.
+  - Nothing ties a shoulder to a hip.
+- **Measured through the Send path** (`build_sketch_logic_v3` + `seed_geometry`), T1 7×9:
+  - shoulder 0.15 / hip 0.45: Fusion radii 0.4875 / 1.4625 = the app, max error 4e-5 in;
+  - reversed (0.45 / 0.15): 4.2e-5 in;
+  - healthy; user params are only the template's own 8.
+- **⚠ My first run said "both ≈ 0.62".** That was `build_frame_logic`, which IGNORES `seed_geometry`: it built the
+  template's literal seeds (the log showed the `heightIn/14` seed radii). `record_frame_parity.py` uses that entry, so
+  it cannot check seeded shapes. The kept harness `tools/repro/f20_live_parity.py` uses the Send path and says why.
+- **The split (declared):**
+  - `template_data.py` `FRAME_HANDLES`: `cornerRadius` becomes `cornerRadiusTop` "Shoulder" + `cornerRadiusBottom`
+    "Hip", both seeded; no new Fusion param (Fred's rule).
+  - `FRAME_HANDLE_MIGRATIONS = {cornerRadius: [cornerRadiusTop, cornerRadiusBottom]}` is emitted as frame-defs
+    `handleMigrations`, per template, `{}` for T2.
+  - The record gate `normalizeFrameRecord` fans an old seed out to both corners unless a new key is already present.
+    So a frame saved with the one corner seed keeps its exact shape: the test compares primitives with the pre-F20
+    construction.
+- **Removal sweep:**
+  - the combined `cornerRadius` catalogue entry in `computeParamHandles` is removed: its only consumer was this table;
+  - `test_send_frame.py` uses the new key;
+  - the `FB-APP-DESIGN.md` binding table gets an F20 note (the table is labelled a snapshot at F9, so it was not
+    rewritten);
+  - the `stamp-editor/` copy is generated and untracked;
+  - no persisted key is left: old records are migrated at the gate;
+  - the old `'Corner radius'` label survives only in historical mockups (FB-APP-DESIGN §UI sketch, SE14 design), left
+    as history.
+- **Per-handle live parity** (the real table, `f20_seed_case.mjs` → `f20_live_parity.py`, every outline arc):
+  - Shoulder only 0.12: 5.8e-5 in;
+  - Hip only 0.50: 5.2e-5 in;
+  - both 0.15 / 0.45: 5.2e-5 in;
+  - all healthy, 29 constraints, no new params.
+- **Tests:** frame-handles 13, of which 7 fail on the pre-split sources. Migration mutations 2/2 killed (no migration;
+  migration overwrites an explicit key).
+
+### Item 3 — shots + real-input drags
+- **Frame tab** (`tools/repro/frame_shoulder_hip_shots.mjs`, real CDP input, desktop mouse + mobile touch):
+  - handles Waist reach / Shoulder / Hip / Waist position;
+  - a Shoulder drag changes only `cornerRadiusTop`, and the Hip handle moves 0;
+  - a Hip drag changes only `cornerRadiusBottom`, and the Shoulder moves 0;
+  - no defects; OK on both.
+- **Shots:**
+  - `0359_F20frame_{desktop,mobile}_{before,after_shoulder,after_hip}`;
+  - `0350_F20shape_*` (the Shape Lattice's Shoulder / Hip drags);
+  - `0358_F20_fusion_T1_shoulder015_hip045_top` (the Fusion outline: tight shoulder, broad hip).
+
+### Gates
+- JS: the 24 affected spec files 676/676.
+- Python fast tier 127 + test_send_frame 15.
+- frame-defs fresh.
+- The full suite is the advisor's gate.
+
+### Notes
+- **Bottle (T2)** is unchanged: its handles and an empty `handleMigrations`.
+- **Amendments polled:** none new.
+- **Cleanup:** server stopped; no headless Chrome of mine left; no Fusion doc of mine open.
+- **Capacity:** OK.
