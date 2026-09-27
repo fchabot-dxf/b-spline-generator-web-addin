@@ -1072,6 +1072,18 @@ gesture that starts on a handle (one finger); a two-finger gesture, or a one-fin
 canvas's normal pan/zoom (the same gestures as the Artwork tab). Test: pinch + pan work in the Frame tab and a handle
 drag still works; mobile CDP repro.
 
+## Queued (seat A, H5, after H4) — MULTI-SELECT: touch-and-hold adds to the selection; batch colour (Fred 2026-09-26)
+Fred: "do you allow multi select of geometry? to batch change color?" / "touch and hold can act as select for
+multiselect". Today: main Select has Shift+click + marquee on desktop and toolbar COLOR recolours the whole selection;
+the lattice "Selected piece" panel shows ONE piece; touch has no multi-select. Change: (1) touch & hold (declared hold
+time, e.g. 450 ms, with a small visual cue) on a piece ADDS it to the selection; hold on an already-selected piece
+REMOVES it; a normal tap still selects just that piece; Shift+click = the same on desktop. Both the main Select and the
+lattice Select. (2) The Selected piece panel reads the WHOLE selection: "N pieces (2 rails, 1 tie)", Colour shows
+"mixed" when they differ, one pick recolours all (contour segments included, via segmentColors), Reset resets all;
+the general width/size controls (H3) stay general. FIRST check what touch-and-hold does today (drag start? context
+menu? MOB5 double-tap handle?) and state it; no gesture may lose its current meaning silently. Tests: hold adds/removes,
+tap replaces, batch colour + reset, undo = one step; mobile CDP repro.
+
 ## SE16 RULINGS (Fred 2026-09-26, answers to CUT-TOOL-DESIGN.md §0) — supersede the SE16 text below where they differ
 Q1 Send AS DRAWN (bug fix F17 P1). Q2 Regenerate CLEARS cuts (Undo restores). Q3 dragging a lattice joint SLIDES ALONG the
 rail. Q4 Join clears BOTH segments' overrides (the joined rail = lattice default colour/width). Q5 cutting snaps by the normal
