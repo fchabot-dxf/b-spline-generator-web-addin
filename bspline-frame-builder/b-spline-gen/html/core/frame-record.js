@@ -5,6 +5,8 @@
  *   { recordVersion, templateId (null = no frame), params, seeds, frameBottomZ, appearance }
  * `seeds` (F9): the values of the template's SEEDED shape handles (frame-defs
  * `handles`, editor/frame-handles.js), additive, so still version 1.
+ * `genSeed` (F13): the seed the Frame tab's [Generate] drew the seeds with
+ * (null = not generated), so a generated shape is reproducible; additive.
  * Only overrides live in `params`; every default comes from the generated
  * frame definition (data/frame-defs.js, built from the frame builder's own
  * Python by tools/gen_frame_defs.py), so a regenerated definition never needs
@@ -35,6 +37,7 @@ export function defaultFrameRecord(defs = FRAME_DEFS) {
     templateId: defs.defaultTemplate ?? null,
     params: {},
     seeds: {},
+    genSeed: null,
     frameBottomZ: _extrusion(defs, 'frameBottomZ').default ?? -1,
     appearance: defs.appearance?.default ?? null,
   };
@@ -58,6 +61,7 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
       if (declared.has(k) && Number.isFinite(n)) out.params[k] = n;
     }
   }
+  if (tpl && Number.isInteger(raw.genSeed)) out.genSeed = raw.genSeed;
   if (tpl && raw.seeds && typeof raw.seeds === 'object') {
     const seeded = new Set((tpl.handles || []).filter((h) => h.binding === 'seeded').map((h) => h.key));
     for (const [k, v] of Object.entries(raw.seeds)) {
@@ -100,7 +104,7 @@ export function getFrameRecord() {
  *  A template change resets the seeds (F9: they belong to that template's shape). */
 export function setFrameRecord(patch) {
   const cur = getFrameRecord();
-  const reset = 'templateId' in patch && patch.templateId !== cur.templateId ? { seeds: {} } : {};
+  const reset = 'templateId' in patch && patch.templateId !== cur.templateId ? { seeds: {}, genSeed: null } : {};
   P.frame = normalizeFrameRecord({ ...cur, ...reset, ...patch });
   saveLastSession();
   markDirty();

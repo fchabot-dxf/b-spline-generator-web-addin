@@ -52,6 +52,10 @@ function _draw(seed, salt) {
   return lcgPoints(_subSeed(seed, salt), 1)[0].u;
 }
 
+/** F13: the solver's own seeded draw in [0, 1) (one PRNG for every seeded
+ *  shape: the Shape Lattice jitter and the frame's [Generate]). */
+export const seededUnit = (seed, salt) => _draw(seed, salt);
+
 /** SE14 §4 — the declared style vocabulary (unchanged by T55). Only
  *  `straight`/`curve`/`kink` are wired; the rest are declared, not yet
  *  wired, an additive-later extension point. */

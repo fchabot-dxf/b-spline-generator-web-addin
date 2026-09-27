@@ -188,7 +188,7 @@ export function drawFrameProfile(editor) {
   editor._frameHandles = [];
   if (editor._editorTab === 'frame') {
     const tpl = (spec.defs.templates || []).find((t) => t.id === prof.templateId);
-    editor._frameHandles = frameHandles(tpl, prof);
+    editor._frameHandles = frameHandles(tpl, prof, _param(tpl, spec.record, 'frame_thickness') ?? 0);
     for (const h of editor._frameHandles) {
       g.circle(FRAME_HANDLE_RADIUS * 2).center(h.anchor.x, h.anchor.y).fill('#ffffff')
         .stroke({ color: FRAME_OUTLINE_COLOR, width: 0.03 }).addClass('frame-handle').attr('data-key', h.key);
