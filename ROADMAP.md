@@ -970,6 +970,12 @@ per-tool special cases. Generated rails are off-grid (RAIL-SPACING) and generate
 (Fred: "ties def snap to rails") — this entry is about MANUAL moves. Tests: each toggle alone, both, neither, Alt;
 lattice + direct edit; mobile.
 
+RAIL-SPACING RULINGS (Fred 2026-09-26, Asus Q&A): off-grid rails fine, NO spacing rounding; generated ties ALWAYS
+snap exactly onto rails; Center + even count straddles the centre (no rail on it); new-pattern defaults center + 1 in.
+PANELS (R7): Boundary section = Size W x H (+ Shape Lattice Contour checkbox(es) and its stroke); Orientation moves into
+Rails; the SEED field is HIDDEN (pattern keeps its seed); old grid-step "Spacing" + Every/Offset removed (old patterns
+keep geometry); "Draw boundary" toggle removed.
+
 ## Queued (Fred's queue, Asus) — FORMULA-FIELDS: type a formula in a number field (Fred 2026-09-26)
 Fred: "if I want a rail exactly on the boundary I just math it out" / "can we enter formula in the fields". Today no
 field accepts expressions. ONE shared parser module used by every numeric input (declared, not per-field): + - * /
