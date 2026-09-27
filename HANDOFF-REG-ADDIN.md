@@ -132,7 +132,7 @@ rail ends follow the contour on a stroke_width edit, stale_params written + corr
    These sections are seat C's (SHAPE-PARAMS will rebase onto R7's panel). **ANSWERED (Fred): HIDE the shape seed too.**
    Shape/Segments position — **ANSWERED (Fred): "shape goes in contour"**: the Shape controls (preset, sliders) move INTO
    the Contour section (Boundary → Contour[checkbox, stroke, shape preset + sliders] → Rails → Ties → Nodes). Segments
-   (per-piece Straight/Curve/Kink of the same outline) assumed to go in Contour too — confirm with Fred.
+   (per-piece Straight/Curve/Kink of the same outline) go in Contour too — **CONFIRMED (Fred: "segment too")**.
 2. SNAP-SPLIT (ROADMAP): separate GRID vs GEOMETRY snap for manual moves — queued, not started (Fred: leave for home).
 
 **Still queued for the home side:** SE16 ✂ Cut tool (Fred's ruling in ROADMAP: lattice cut pieces move together, direct
