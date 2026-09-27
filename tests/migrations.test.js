@@ -452,3 +452,45 @@ describe('runMigrations: box-lattice-margin-to-size', () => {
     expect(P.editorSvg).toBe(first);
   });
 });
+
+describe('runMigrations: removed-noise-type-to-default (T78 item 10: Biomechanical removed)', () => {
+  it('the registry no longer has the Biomechanical filter, and the default filter is in it', async () => {
+    const { NoiseModes, NoiseList } = await import('../bspline-frame-builder/b-spline-gen/html/core/noise/index.js');
+    const { DEFAULT } = await import('../bspline-frame-builder/b-spline-gen/html/core/state.js');
+    expect('xeno' in NoiseModes).toBe(false);
+    expect(NoiseList.some((m) => m.id === 'xeno' || /iomechanical/i.test(m.label))).toBe(false);
+    expect(DEFAULT.noiseType in NoiseModes).toBe(true);
+  });
+
+  it('an old saved xeno project loads with the default filter; its xeno tweaks go, other filters\' tweaks stay', async () => {
+    const { DEFAULT } = await import('../bspline-frame-builder/b-spline-gen/html/core/state.js');
+    const P = {
+      noiseType: 'xeno',
+      filterTweaks: { xeno: { spineStrength: 0.9, plateStrength: 0.4 }, chest: { ribAngle: -12 } },
+    };
+    runMigrations(P);
+    expect(P.noiseType).toBe(DEFAULT.noiseType);
+    expect(P.filterTweaks.xeno).toBeUndefined();
+    expect(P.filterTweaks.chest).toEqual({ ribAngle: -12 });
+  });
+
+  it('the migrated project generates terrain without error', async () => {
+    const { NoiseModes } = await import('../bspline-frame-builder/b-spline-gen/html/core/noise/index.js');
+    const { PerlinNoise } = await import('../bspline-frame-builder/b-spline-gen/html/core/noise.js');
+    const P = { noiseType: 'xeno', filterTweaks: { xeno: { spineStrength: 0.9 } } };
+    runMigrations(P);
+    const fn = NoiseModes[P.noiseType];
+    const refs = { noiseFine: new PerlinNoise(1), noiseWarp: new PerlinNoise(2), noiseCoarse: new PerlinNoise(3) };
+    const params = { scale: 3.7, octaves: 4, roughness: 0.5, warpIntensity: 1, tweaks: P.filterTweaks[P.noiseType] ?? {} };
+    expect(() => {
+      for (let i = 0; i < 5; i++) expect(Number.isFinite(fn(i / 4, 0.5, 7 / 9, params, refs))).toBe(true);
+    }).not.toThrow();
+  });
+
+  it('filters that still exist are left alone, and running twice is a no-op', () => {
+    const P = { noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } } };
+    runMigrations(P);
+    runMigrations(P);
+    expect(P).toEqual({ noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } } });
+  });
+});
