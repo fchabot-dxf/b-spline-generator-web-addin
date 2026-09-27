@@ -10647,3 +10647,15 @@ Tweaks: stoneSize / stoneHeight / groundSoftness; ringSpacing / ringDepth / drop
 Merged origin/main: seat A's Sandstone / Silk / Eroded also went in after Anatomical; the registry conflict was resolved
 keeping all seven (mine first, then seat A's; no test depends on the order of seat A's). 2157/2157 vitest after the
 merge. Commit 613820d (+ merge). NO FUSION this whole turn.
+
+## T79 item 3 — River Stones left out (Fred: "not as good as I'd hoped, leave it out")
+
+Removed before merge: core/noise/river.js; its index.js import + _all entry (dropdown option, tweaks, metadata all
+derive from _all); smoothF1 (+ its smooth id) from cells.js, since only River Stones used it. cells.js kept (cells,
+id2, latticeSalt, meshCellsInLattice serve Hand-Carved, Faceted Stone and Pond Ripples). tests/noise-river-ripples.test.js
+renamed to tests/noise-ripples.test.js with only Pond Ripples' tests (registration now: ripples right after faceted).
+No shot/repro scripts or docs listed it; it never reached main, so no saved-project fallback (the generic migration
+would cover it anyway). Sweep: remaining "river" hits are the checklist lines and Mars/Venus's own river-network text.
+
+Verify: 2148/2148 vitest (2157 minus River Stones' 9), 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder
+pytest. Commit 9af292a. NO FUSION this whole turn.
