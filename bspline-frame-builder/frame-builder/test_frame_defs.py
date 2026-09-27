@@ -197,5 +197,15 @@ def test_every_declared_wood_is_a_real_fusion_appearance():
     lib = json.load(open(_LIBRARY_FIXTURE, encoding="utf-8"))["libraries"]["Fusion Appearance Library"]
     missing = [w for w in APPEARANCE_OPTIONS if w not in lib]
     assert missing == [], f"not in the Fusion Appearance Library: {missing}"
+    # F14 (Fred: "keep only 3D grain ones")
+    assert [w for w in APPEARANCE_OPTIONS if not w.startswith("3D ")] == []
     assert set(APPEARANCE_RENAMED.values()) <= set(APPEARANCE_OPTIONS)
     assert not set(APPEARANCE_RENAMED) & set(lib), "a renamed (old) name must be one Fusion does not have"
+
+
+def test_the_declared_woods_are_freds_list():
+    """F14 (Fred): Ash (default), Mahogany, Pine, Maple, Oak; Cherry removed."""
+    from fb_engine.frame_definition import APPEARANCE_OPTIONS, DEFAULT_APPEARANCE
+    assert APPEARANCE_OPTIONS == ("3D Ash - Unfinished", "3D Mahogany - Unfinished", "3D Pine - Unfinished",
+                                  "3D Maple - Painted", "3D Oak - Painted")
+    assert DEFAULT_APPEARANCE == "3D Ash - Unfinished"

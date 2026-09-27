@@ -54,7 +54,7 @@ describe('[Send frame] state', () => {
 describe('the press and the reply', () => {
   it('sends the frame record as the send_frame payload', () => {
     setIsFusionMode(true);
-    setFrameRecord({ templateId: 'template_1', params: { boundingboxoffset: 0.5 }, frameBottomZ: -1.5, appearance: 'Cherry', seeds: { waistReach: 0.4 } });
+    setFrameRecord({ templateId: 'template_1', params: { boundingboxoffset: 0.5 }, frameBottomZ: -1.5, appearance: '3D Oak - Painted', seeds: { waistReach: 0.4 } });
     syncFramePanel();
     $('btnSendFrame').click();
     // (in Fusion mode the app also sends its own 'log' action; only the send counts)
@@ -65,7 +65,7 @@ describe('the press and the reply', () => {
     expect(rest).toEqual(framePayload(FRAME_DEFS, getFrameRecord()));
     // F11: seeded handles travel as the template's own seed geometry
     expect(Object.keys(seedGeometry).sort()).toEqual(FRAME_DEFS.templates[0].seedMap.map((e) => e.id).sort());
-    expect(sent).toMatchObject({ templateId: 'template_1', frameBottomZ: -1.5, appearance: 'Cherry', seeds: { waistReach: 0.4 } });
+    expect(sent).toMatchObject({ templateId: 'template_1', frameBottomZ: -1.5, appearance: '3D Oak - Painted', seeds: { waistReach: 0.4 } });
     expect(sent.params.boundingboxoffset).toBe(0.5);
     expect($('fusion-status').textContent).toContain('Sending the frame');
   });

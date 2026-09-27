@@ -146,11 +146,11 @@ describe('round trip: Frame -> Artwork -> Frame -> save -> reload', () => {
     $('btnEditFrameShape').click(); // Frame
     change('editorFrameTemplate', 'template_1');
     change('editorFrameThickness', '0.625');
-    change('editorFrameWood', 'Cherry');
+    change('editorFrameWood', '3D Oak - Painted');
     $('editorTabArtwork').click(); // Artwork
     change('frameBottomZ', '-1.5'); // a sidebar edit meanwhile
     $('editorTabFrame').click(); // Frame again
-    const expected = { templateId: 'template_1', params: { frame_thickness: 0.625 }, frameBottomZ: -1.5, appearance: 'Cherry' };
+    const expected = { templateId: 'template_1', params: { frame_thickness: 0.625 }, frameBottomZ: -1.5, appearance: '3D Oak - Painted' };
     expect(getFrameRecord()).toMatchObject(expected);
     // save -> reload (the project serializer, then the load's own P restore)
     const saved = JSON.parse(JSON.stringify({ P: persistableP() }));

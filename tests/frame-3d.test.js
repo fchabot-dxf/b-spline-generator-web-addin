@@ -70,13 +70,13 @@ describe('trimmed panel', () => {
 describe('bars', () => {
   it('run straight from frame-bottom z up to the panel underside, in the chosen wood', () => {
     const { mesh, grid } = panel(7, 9, 36, 46, 2, 0.5);
-    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1', { frameBottomZ: -1, appearance: 'Cherry' }), BOARD);
+    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1', { frameBottomZ: -1, appearance: '3D Oak - Painted' }), BOARD);
     const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
     const z = [];
     const p = bars.geometry.attributes.position.array;
     for (let i = 2; i < p.length; i += 3) z.push(Math.round(p[i] * 1e6) / 1e6);
     expect([...new Set(z)].sort()).toEqual([-1, 0.5]); // bottom = frame bottom z, top = the (flat) underside
-    expect(bars.material.color).toBe(FRAME_DEFS.appearance.previewColors['Cherry']);
+    expect(bars.material.color).toBe(FRAME_DEFS.appearance.previewColors['3D Oak - Painted']);
   });
 
   it('changing the wood changes the bars colour (live, no rebuild of the spec source)', () => {

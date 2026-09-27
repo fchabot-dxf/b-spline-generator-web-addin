@@ -194,7 +194,7 @@ Top-level shape, abridged from the real file:
   "defaultTemplate": null,
   "appearance": {"default": "3D Ash - Unfinished",
                  "options": ["3D Ash - Unfinished", "3D Mahogany - Unfinished", "3D Pine - Unfinished",
-                             "3D Cherry - Unfinished", "3D Maple - Unfinished"]},
+                             "3D Maple - Painted", "3D Oak - Painted"]},
   "extrusion": [
     {"key": "frameBottomZ", "param": "frame_height_offset", "unit": "in", "default": -1.0,
      "label": "Frame bottom (z)", "ui": true, "owner": "frame",
@@ -381,6 +381,9 @@ frame: {
 **Frame vs Shape Lattice.** They are **separate records sharing ONE silhouette engine**:
 `generateSilhouette` and the `PRESETS` in `editor-shape-lattice-generator.js`. The frame never
 duplicates that math, and the frame's handles call the same solver the lattice's handles call.
+
+**Shape Lattice dice (Fred, F14: keep it).** The shape seed field stays hidden. The dice re-rolls the
+outline (and refits the fill); Regenerate re-rolls the fill only.
 
 **Ownership table:**
 
@@ -611,6 +614,12 @@ in a tagged scratch doc:
   Fusion's libraries. There, cherry is "Cherry" and maple is only "3D Maple - Painted". Those two
   woods silently fall back to the body's material. Ash, Mahogany and Pine are fine (Mahogany is
   proven live).
+  - **F14 (Fred: "keep only 3D grain ones", "yes oak"):** the list is Ash (default), Mahogany, Pine,
+    "3D Maple - Painted" and "3D Oak - Painted".
+    - A test checks that every wood starts with "3D " and exists in the recorded library.
+    - Cherry (only a flat "Cherry" exists) is removed. A saved Cherry frame gets Ash, through the
+      record gate's rule for an unlisted wood (migration test).
+    - Oak is proven live on all 4 bars.
 
 **Seeds: option B, BUILT and PROVEN live (F11).** Fred's ruling was "simply seed it in position".
 - **How it works:** the app sends `seedGeometry`, its seeded outline expressed as the template's
@@ -631,7 +640,7 @@ in a tagged scratch doc:
    delete the palette first (the reload gotcha).
 1. **Order 1, B-spline then frame.** New design → open the app from the add-in → Stock 7x9 → **Send
    to Fusion** (Send B-spline) and wait for "Imported". Then FRAME: Template Hourglass,
-   Trim offset 0.5, Wood Cherry → **Send frame**.
+   Trim offset 0.5, Wood Oak → **Send frame**.
    - Pass:
      - the status line reads "Frame built in Fusion: Frame_1";
      - the browser shows one `Frame_1`;
@@ -640,7 +649,7 @@ in a tagged scratch doc:
      - Modify → Change Parameters shows `boundingboxoffset` 0.5 in, `frame_thickness` 0.75 in and
        `frame_height_offset` −1 in, and no user parameter named `waistReach` or `cornerRadius`
        (or any other handle key);
-     - the bars are cherry, and their tops meet the panel's underside.
+     - the bars are oak, and their tops meet the panel's underside.
 2. **Re-send.** Edit frame shape → Frame tab → thickness 0.5 → **Send frame** again.
    - Pass: exactly one `Frame_1`, exactly one TRIM_CUT, thinner bars, and every feature healthy
      (no red or yellow).
