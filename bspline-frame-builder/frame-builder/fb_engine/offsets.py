@@ -196,7 +196,11 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             except Exception as name_e:
                 ctx.logger.log(f"OFFSET LINK FAIL: Could not set expression: {name_e}", "WARNING")
 
-            result = offset_constraint.offsetCurves if hasattr(offset_constraint, 'offsetCurves') else None
+            # F22 MEASURED live: Fusion's OffsetConstraint exposes the new curves as `childCurves` (there is no
+            # `offsetCurves`), so this used to return None and EVERY parametric offset also fell back to a second,
+            # non-parametric sketch.offset (the inner edge's untagged duplicate loop). Wrapped as an
+            # ObjectCollection: the side check and the tagging read .count / .item().
+            result = _as_collection(getattr(offset_constraint, 'childCurves', None))
             _ensure_side(ctx, offset_constraint, coll, result, d_expr, s_name, side)
             ctx.logger.log(f"OFFSET PARAMETRIC OK: addOffset2 succeeded for {s_name}")
             return result
@@ -208,6 +212,19 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             f"OFFSET PARAMETRIC FAIL: addOffset2 failed for {s_name}: {e} -- "
             f"FALLING BACK to a NON-parametric offset", "WARNING")
     return None
+
+
+def _as_collection(curves):
+    """A curve sequence (SWIG vector / list) -> an ObjectCollection, or None when there are none."""
+    if curves is None:
+        return None
+    items = list(curves)
+    if not items:
+        return None
+    coll = adsk.core.ObjectCollection.create()
+    for c in items:
+        coll.add(c)
+    return coll
 
 
 def _as_curve_list(coll):
