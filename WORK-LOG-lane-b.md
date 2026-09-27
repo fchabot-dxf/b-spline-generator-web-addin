@@ -10551,3 +10551,31 @@ findings for whoever picks item 8 up:
 - Suggest showing Fred a small mockup patch of the intended look before building, given two full rejections.
 
 Verify after the revert: 2083/2083 vitest. NO FUSION this whole turn.
+
+## T78 item 8+10 — Biomechanical filter removed; old saves fall back to the default filter
+
+Turn 177 dispatch (Fred: "Remove the filter", closing item 8 after two rejected reworks). Pulled the item-10 checklist
+line and merged origin/main (1474121) first.
+
+Chain, link by link:
+- `core/noise/xeno.js`: deleted; nothing else imported it.
+- `core/noise/index.js`: import + `_all` entry removed. The Noise Type dropdown, NoiseModes, NoiseMetadata, NoiseLabels
+  and NoiseTweaks (tweak schema/keys) are all derived from `_all`, so that one change removes every one of them.
+- Tests / repro+shot scripts / ROADMAP+docs / Fusion-side name mapping: none referenced it (git grep + an rg that also
+  covers gitignored files). The stamp-editor bundle (`sync_stamp_bundle.py`) copies no noise files.
+- Saved projects: one declared migration, `removed-noise-type-to-default`, added to the existing MIGRATIONS list in
+  `main/app-init.js` (it runs after loadLastSession and on project load inside applySnapshot). A save whose
+  `noiseType` isn't in the registry loads with `DEFAULT.noiseType` and drops that filter's leftover tweak bucket; other
+  filters' tweaks are kept. It only acts on a string id that's missing, so it covers any future removal too.
+- `main/snapshot-manager.js`: applySnapshot synced the UI from the saved values BEFORE running migrations, so the
+  dropdown would have been left on the dead id; it now re-syncs `noiseType` after migrations.
+
+Tests (tests/migrations.test.js, +4): registry has no xeno/"Biomechanical" and has the default; an old saved xeno
+project loads with the default filter, its xeno tweaks dropped and chest's kept; the migrated project generates finite
+terrain without error; a still-existing filter is untouched and running twice is a no-op.
+
+Final sweep, remaining hits kept on purpose: NEXT-SESSION-lane-b.md checklist lines 29/31 (advisor-owned history), the
+migration's own comment in app-init.js, and the fallback test (needs the old id to simulate an old save).
+
+Verify: 2103/2103 vitest, 87/87 b-spline-gen pytest, 201 passed + 2 skipped frame-builder pytest. Amendments polled
+clean before the commit. Commit 5a067ca. NO FUSION this whole turn.
