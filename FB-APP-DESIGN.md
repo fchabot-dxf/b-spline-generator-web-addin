@@ -427,6 +427,11 @@ checks every entry. Snapshot at F9:
 | template_2 | `skeletonX` | S-curve tightness | hw | seeded |
 | template_2 | `neckLength` | Shoulder height | h | seeded |
 
+F20 (SHOULDER-HIP): T1's `cornerRadius` row is now two seeded rows, `cornerRadiusTop` "Shoulder" and
+`cornerRadiusBottom` "Hip". They were measured independent live: no T1 constraint ties the two corners, and
+the seeds hold. A record saved with the old `cornerRadius` seed is migrated by the record gate via frame-defs
+`handleMigrations` (template_data.py `FRAME_HANDLE_MIGRATIONS`).
+
 - **seeded** (every handle today): no existing template param controls these features. The shape
   comes from the literal seeds in `phases/p02_*` (e.g. `p02_02_anatomy.py`, the
   `seed_rad_*` dimensions in `p02_09_radius_removal.py`).

@@ -64,7 +64,13 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
   if (tpl && Number.isInteger(raw.genSeed)) out.genSeed = raw.genSeed;
   if (tpl && raw.seeds && typeof raw.seeds === 'object') {
     const seeded = new Set((tpl.handles || []).filter((h) => h.binding === 'seeded').map((h) => h.key));
-    for (const [k, v] of Object.entries(raw.seeds)) {
+    // F20: a seed key the template split (frame-defs `handleMigrations`, e.g. the one corner radius -> Shoulder +
+    // Hip) becomes each of its new keys, unless the record already has that key
+    const seeds = { ...raw.seeds };
+    for (const [old, keys] of Object.entries(tpl.handleMigrations || {})) {
+      if (old in seeds) for (const k of keys) if (!(k in seeds)) seeds[k] = seeds[old];
+    }
+    for (const [k, v] of Object.entries(seeds)) {
       const n = Number(v);
       if (seeded.has(k) && Number.isFinite(n)) out.seeds[k] = n;
     }

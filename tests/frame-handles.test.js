@@ -13,7 +13,8 @@ import {
   normalizeFrameRecord, getFrameRecord, setFrameRecord, framePayload,
 } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
-import { frameHandles, handleDragPatch, frameHandleTable } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
+import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
+import { generateSilhouette, paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { initFramePanel, setEditorTab, HANDLE_HIT_PX } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 
 const BOARD = { widthIn: 7, heightIn: 9 };
@@ -31,16 +32,16 @@ describe('the binding table is the ONE source', () => {
   it.each(['template_1', 'template_2'])('%s: the handles drawn are exactly the declared ones, all seeded today', (id) => {
     const rec = normalizeFrameRecord({ templateId: id });
     const table = frameHandleTable(tplOf(FRAME_DEFS, id));
-    expect(table.length).toBe(3);
+    expect(table.length).toBe(id === 'template_1' ? 4 : 3); // F20: T1 has a Shoulder AND a Hip
     expect(table.every((h) => h.binding === 'seeded')).toBe(true); // no Frame Builder param controls the shape (phases/p02_*)
     expect(frameHandles(tplOf(FRAME_DEFS, id), profile(FRAME_DEFS, rec)).map((h) => h.key)).toEqual(table.map((h) => h.key));
   });
 
   it('a handle removed from the table is not drawn (nothing else declares handles)', () => {
     const defs = clone(FRAME_DEFS);
-    tplOf(defs, 'template_1').handles = tplOf(defs, 'template_1').handles.filter((h) => h.key !== 'cornerRadius');
+    tplOf(defs, 'template_1').handles = tplOf(defs, 'template_1').handles.filter((h) => h.key !== 'cornerRadiusBottom');
     const rec = normalizeFrameRecord({ templateId: 'template_1' }, defs);
-    expect(frameHandles(tplOf(defs, 'template_1'), profile(defs, rec)).map((h) => h.key)).toEqual(['waistReach', 'waistCenterY']);
+    expect(frameHandles(tplOf(defs, 'template_1'), profile(defs, rec)).map((h) => h.key)).toEqual(['waistReach', 'cornerRadiusTop', 'waistCenterY']);
   });
 });
 
@@ -70,16 +71,16 @@ describe('param-bound handle (the code path a proven binding takes)', () => {
   it('writes the bound param in inches (fraction x basis), the payload carries it, no seed', () => {
     const defs = clone(FRAME_DEFS);
     // a synthetic binding onto an existing frame-owned param, only to exercise the path
-    tplOf(defs, 'template_1').handles.find((h) => h.key === 'cornerRadius').binding = { param: 'frame_thickness' };
+    tplOf(defs, 'template_1').handles.find((h) => h.key === 'cornerRadiusTop').binding = { param: 'frame_thickness' };
     const rec = normalizeFrameRecord({ templateId: 'template_1' }, defs);
-    const { h, patch } = drag(defs, rec, 'cornerRadius', 0.2, 0);
+    const { h, patch } = drag(defs, rec, 'cornerRadiusTop', 0.2, 0);
     const next = normalizeFrameRecord({ ...rec, ...patch }, defs);
     const region = profile(defs, rec).region;
     const v = h.valueFromWorld({ x: h.anchor.x + 0.2, y: h.anchor.y });
     expect(next.params.frame_thickness).toBeCloseTo(v * region.w / 2, 12);
     expect(next.seeds).toEqual({});
     expect(framePayload(defs, next).params.frame_thickness).toBeCloseTo(v * region.w / 2, 12);
-    expect(profile(defs, next).params.cornerRadius).toBeCloseTo(v, 9);
+    expect(profile(defs, next).params.cornerRadiusTop).toBeCloseTo(v, 9);
   });
 });
 
@@ -158,9 +159,9 @@ describe('Frame tab: dragging a handle through the shield', () => {
     expect(ed._frameHandles || []).toEqual([]); // Artwork tab: no handles
     setEditorTab('frame');
     const handles = ed._frameHandles;
-    expect(handles.map((h) => h.key)).toEqual(['waistReach', 'cornerRadius', 'waistCenterY']);
+    expect(handles.map((h) => h.key)).toEqual(['waistReach', 'cornerRadiusTop', 'cornerRadiusBottom', 'waistCenterY']);
     const g = ed._bgLayer.findOne('#frame-profile');
-    expect(g.children.filter((c) => c.isCircle)).toHaveLength(3);
+    expect(g.children.filter((c) => c.isCircle)).toHaveLength(4);
 
     const far = HANDLE_HIT_PX / ed.PX + 0.05;
     fire('pointerdown', handles[0].anchor.x + far, handles[0].anchor.y);
@@ -174,5 +175,47 @@ describe('Frame tab: dragging a handle through the shield', () => {
     fire('pointerup', to.x, to.y);
     expect(getFrameRecord().seeds.waistReach).toBeCloseTo(h.valueFromWorld(to), 9);
     expect(ed._frameHandles.find((q) => q.key === 'waistReach').anchor.x).toBeCloseTo(to.x, 6); // the handle followed
+  });
+});
+
+describe('F20 SHOULDER-HIP: the T1 frame has a Shoulder and a Hip handle, seeded separately', () => {
+  const T1 = () => tplOf(FRAME_DEFS, 'template_1');
+  it('the table: Shoulder (top corner) and Hip (bottom corner), seeded; no combined corner', () => {
+    const t = frameHandleTable(T1());
+    expect(t.map((h) => [h.key, h.label, h.binding])).toEqual([
+      ['waistReach', 'Waist reach', 'seeded'], ['cornerRadiusTop', 'Shoulder', 'seeded'],
+      ['cornerRadiusBottom', 'Hip', 'seeded'], ['waistCenterY', 'Waist position', 'seeded']]);
+    expect(T1().handleMigrations).toEqual({ cornerRadius: ['cornerRadiusTop', 'cornerRadiusBottom'] });
+  });
+
+  it('dragging the Shoulder moves only the shoulder arcs (seed geometry); the Hip only the hip arcs', () => {
+    const rec = normalizeFrameRecord({ templateId: 'template_1' });
+    const geo0 = frameSeedGeometry(T1(), profile(FRAME_DEFS, rec), 7, 9);
+    const moved = (key, dx) => {
+      const { patch } = drag(FRAME_DEFS, rec, key, dx, 0);
+      const next = normalizeFrameRecord({ ...rec, ...patch });
+      expect(Object.keys(next.seeds)).toEqual([key]);             // one seed, never a parameter
+      expect(next.params).toEqual({});
+      const geo = frameSeedGeometry(T1(), profile(FRAME_DEFS, next), 7, 9);
+      return Object.keys(geo).filter((id) => JSON.stringify(geo[id]) !== JSON.stringify(geo0[id]) && /shoulder|hip/.test(id)).sort();
+    };
+    const shoulder = moved('cornerRadiusTop', -0.3), hip = moved('cornerRadiusBottom', -0.3);
+    expect(shoulder.length).toBeGreaterThan(0);
+    expect(shoulder.every((id) => /shoulder/.test(id))).toBe(true);
+    expect(hip.length).toBeGreaterThan(0);
+    expect(hip.every((id) => /hip/.test(id))).toBe(true);
+  });
+
+  it('migration: a frame saved with the ONE corner radius seed keeps its exact shape (it becomes both corners)', () => {
+    const old = normalizeFrameRecord({ templateId: 'template_1', seeds: { waistReach: 0.4, cornerRadius: 0.2 } });
+    expect(old.seeds).toEqual({ waistReach: 0.4, cornerRadiusTop: 0.2, cornerRadiusBottom: 0.2 });
+    // the pre-F20 shape: the shared cornerRadius overridden (both corners default to it)
+    const prof = profile(FRAME_DEFS, old);
+    const was = generateSilhouette(prof.region, { preset: 'hourglass',
+      params: { ...paramsFromShapeModel('hourglass', T1().shapeModel, prof.region), waistReach: 0.4, cornerRadius: 0.2 } });
+    expect(prof.primitives).toEqual(was.primitives);
+    // an explicit new key wins over the migrated one
+    expect(normalizeFrameRecord({ templateId: 'template_1', seeds: { cornerRadius: 0.2, cornerRadiusBottom: 0.3 } }).seeds)
+      .toEqual({ cornerRadiusTop: 0.2, cornerRadiusBottom: 0.3 });
   });
 });

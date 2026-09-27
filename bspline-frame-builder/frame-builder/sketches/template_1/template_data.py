@@ -115,9 +115,18 @@ FRAME_REGIONS = {
 #     goldens prove the preview matches Fusion (FB-APP-DESIGN.md §3.2).
 FRAME_HANDLES = [
     {"key": "waistReach",   "label": "Waist reach",     "basis": "hw", "binding": "seeded"},
-    {"key": "cornerRadius", "label": "Corner radius",   "basis": "hw", "binding": "seeded"},
+    # F20 SHOULDER-HIP (Fred: "two different handles for shoulder and hip"): the corners are seeded
+    # separately. MEASURED live (Ranchy, 7x9, shoulder 0.15 / hip 0.45 and reversed): no constraint
+    # ties them (p02_10 welds each arc to its OWN skeleton pin; p02_11 Equal is L/R only), the
+    # seeds hold to 4e-5 in, no new parameter.
+    {"key": "cornerRadiusTop",    "label": "Shoulder", "basis": "hw", "binding": "seeded"},
+    {"key": "cornerRadiusBottom", "label": "Hip",      "basis": "hw", "binding": "seeded"},
     {"key": "waistCenterY", "label": "Waist position",  "basis": "hh", "binding": "seeded"},
 ]
+# F20: a frame record saved before the split carries the ONE seeded `cornerRadius`:
+# it becomes both corners (the record gate, core/frame-record.js), so its shape is exact.
+FRAME_HANDLE_MIGRATIONS = {"cornerRadius": ["cornerRadiusTop", "cornerRadiusBottom"]}
+
 # FB-APP F11 (option B, Fred: "simply seed it in position"): where each of
 # this template's shape-outline SEEDS comes from when the app sends seeded
 # handles: the app's own solved outline (editor-shape-lattice-generator
@@ -200,6 +209,7 @@ def get_template_logic(ui_data=None):
             "regions": FRAME_REGIONS,
             "features": [dict(f) for f in FRAME_FEATURES],
             "handles": [dict(h) for h in FRAME_HANDLES],
+            "handleMigrations": {k: list(v) for k, v in FRAME_HANDLE_MIGRATIONS.items()},
             "seedMap": [dict(e) for e in FRAME_SEED_MAP],
         },
     }

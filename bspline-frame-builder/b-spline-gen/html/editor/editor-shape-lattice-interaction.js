@@ -109,12 +109,6 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
       valueFromWorld: (pt) => within('waistReach', 1 - (pt.x - cx0) / hw),
     },
     {
-      // the shared corner (a frame's own `cornerRadius` handle): both corners
-      key: 'cornerRadius', label: 'Corner radius', axis: 'x',
-      anchor: { x: cx0 + g.shoulderCx, y: cy0 + g.shoulderY }, // the shoulder arc's own CENTER
-      valueFromWorld: (pt) => within('cornerRadius', (cx0 + hw - pt.x) / hw),
-    },
-    {
       // F12: the top corner alone (its arc centre at hw - Rt, a pure horizontal move); F20: Fred's "Shoulder"
       key: 'cornerRadiusTop', label: 'Shoulder', axis: 'x',
       anchor: { x: cx0 + g.shoulderCx, y: cy0 + g.shoulderY },
