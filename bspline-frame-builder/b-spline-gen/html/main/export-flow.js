@@ -14,6 +14,8 @@
  */
 
 import { P, lastResult, isFusionMode } from '../core/state.js';
+import { frameSendPayload } from './frame-panel.js';
+import { confirmDialog } from '../core/confirm-dialog.js';
 import { rebuild } from '../core/engine.js';
 import { generateThickenedStep } from '../core/stepWriter.js';
 import {
@@ -331,6 +333,20 @@ export function onGenerate(preview) {
     }
 }
 
+/** Fred ("i think id rather have a delete everything button"): remove what the add-in built in the Fusion design
+ *  (b-spline-gen.py _handle_clear_design); the reply is 'clear_result' (main.js). */
+export async function onClearFusionDesign() {
+    if (!isFusionMode) return;
+    const ok = await confirmDialog(
+        'Remove everything the add-in built in this Fusion design: the B-spline body, the artwork and lattice sketches, '
+        + 'and the frame?\nYour own sketches, bodies and CAM operations stay; CAM setups will need BUILD SETUPS again.',
+        { okLabel: 'Clear', zIndex: 20000 });
+    if (!ok) return;
+    document.getElementById('settings-panel-overlay')?.style.setProperty('display', 'none');
+    adsk.fusionSendData('clear_design', '{}');
+    setFusionStatus('Clearing the Fusion design…', 'busy');
+}
+
 export function closeWizard() {
     const modal = document.getElementById('exportWizardModal');
     if (modal) modal.style.display = 'none';
@@ -516,6 +532,9 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
         filename: filename_hint || `B-Spline-${Date.now()}.step`,
         isPreview: false,
         isAppend,
+        // Fred ("send bspline and frame at same time" / "no send frame"): the frame goes with the Send and is built
+        // right after the body; the add-in first clears the previous frame + B-Spline Set (b-spline-gen.py)
+        frame: isAppend ? null : frameSendPayload(),
         isVisible: options.isVisible !== undefined ? options.isVisible : true,
         stamp: {
             enabled: options.includeSVG,

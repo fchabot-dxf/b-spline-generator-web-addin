@@ -191,7 +191,14 @@ function handleFusionHandshake(ev) {
         setFusionStatus(msg || 'The Send failed in Fusion', 'warn');
         return;
     }
-    if (action === 'frame_result') { onFrameResult(ev.detail.data); return; } // FB-APP S5: [Send frame]
+    if (action === 'frame_result') { onFrameResult(ev.detail.data); return; } // the frame, built by the one Send
+    if (action === 'clear_result') { // Fred: "Clear Fusion design"
+        let r = {}; try { r = JSON.parse(ev.detail.data || '{}'); } catch (e) {}
+        if (!r.ok) { setFusionStatus(r.error || 'The Fusion design was not cleared.', 'warn'); return; }
+        const n = (r.frames || []).length + (r.bsplineSets || 0);
+        setFusionStatus(n ? 'Fusion design cleared' : 'Nothing to clear in this Fusion design', 'ok');
+        return;
+    }
 
     if (action === 'pong') return;
 

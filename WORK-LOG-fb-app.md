@@ -3611,3 +3611,23 @@ are Generate + Unprotect all, no errors. vitest 2438 passed.
   (ANCHOR_HINT ''), no one-selected tip. The status line itself stays for warnings/results the tools post
   (setEditorStatusHint). Verified at 390px: Select / Cut / Stripe / Shape Lattice / Lattice -> no hint; a posted
   warning still shows. vitest 2438 passed.
+
+## One Send (B-spline + frame), Clear Fusion design, tagged B-Spline Set
+(Fred: "lets try to send bspline and frame at same time" -- "changing the frame would potentially change the
+bspline" -- "no send frame" -- "id rather have a delete everything button")
+- Send payload carries `frame` (frame-panel frameSendPayload: the frame record + seed geometry; null with no frame).
+  b-spline-gen.py _handle_generate (a real, non-append Send): deletes the previous frame(s) first (fb_engine
+  delete_previous_frames -- the frame is extruded to the body), then every B-Spline Set, builds the new set and
+  TAGS its component ('Bspline','set'); after the import it builds the frame with the same _handle_send_frame
+  (reply frame_result, as before) BEFORE importing_done, so the palette hides only when both are done.
+- B-Spline Set found by tag (+ legacy root occurrences named "B-Spline Set*"): a re-Send after a Fusion restart no
+  longer adds a second set (last_imported_occurrences was memory-only). Everything the Send builds lives inside
+  that component, so deleting its occurrence removes the bodies, artwork planes and sketches.
+- The Send frame button and its state/hint are gone (sendFrame remains, frame-only, no UI).
+- Settings (⚙) > "Clear Fusion design" (Fusion only): confirm -> 'clear_design' -> _handle_clear_design deletes the
+  frame(s), every B-Spline Set, preview graphics; reply 'clear_result' -> status line. The user's own sketches /
+  bodies / CAM and the user parameters stay.
+- Verified with an adsk stub (390px): Send frame button gone; Settings shows the Clear section in Fusion mode;
+  confirm -> clear_design sent, status "Clearing…", reply -> "Fusion design cleared"; the Send payload decoded from
+  its chunks carries frame {templateId: template_1, …}. Python untested live (no Fusion here): parses, pytest 204
+  passed; vitest 2437 passed (frameSendState + its button test removed).

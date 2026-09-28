@@ -293,6 +293,57 @@ def _remove_last_import():
     _clear_custom_graphics()
 
 
+# Fred ("Clear Fusion design" + one Send): the B-Spline Set component is TAGGED, like the frame, so every B-spline
+# this add-in built is found again after a Fusion restart / add-in reload (the in-memory last_imported_occurrences
+# was lost then, and a re-Send added a SECOND "B-Spline Set"). Everything the B-spline Send builds -- bodies, the
+# artwork planes and sketches -- lives inside that component, so deleting its occurrence removes all of it.
+BSPLINE_SET_ATTR = ('Bspline', 'set')
+
+
+def _bspline_set_occurrences(des):
+    """Every B-Spline Set this add-in built: tagged components, plus untagged ones from before the tag (a root
+    occurrence named "B-Spline Set")."""
+    occs = []
+    try:
+        comps = []
+        for a in des.findAttributes(*BSPLINE_SET_ATTR) or []:
+            if a.parent is not None and a.parent not in comps:
+                comps.append(a.parent)
+        for comp in comps:
+            for occ in des.rootComponent.allOccurrencesByComponent(comp) or []:
+                if occ not in occs:
+                    occs.append(occ)
+        for occ in des.rootComponent.occurrences:
+            if occ.component.name.startswith('B-Spline Set') and occ not in occs:
+                occs.append(occ)
+    except Exception as e:
+        _log(f'_bspline_set_occurrences failed: {e}')
+    return occs
+
+
+def _delete_bspline_sets(des):
+    """Delete every B-Spline Set (see _bspline_set_occurrences). Returns how many were deleted."""
+    n = 0
+    for occ in _bspline_set_occurrences(des):
+        try:
+            if occ.isValid:
+                occ.deleteMe()
+                n += 1
+        except Exception as e:
+            _log(f'  B-Spline Set deleteMe failed: {e}')
+    return n
+
+
+def _delete_frames(des):
+    """Delete every frame the add-in built (fb_engine.send_frame, by its own attribute). Returns their names."""
+    try:
+        from fb_engine import send_frame as fb_send
+        return fb_send.delete_previous_frames(des, lambda msg, level='INFO': _log(msg))
+    except Exception as e:
+        _log(f'_delete_frames failed: {e}')
+        return []
+
+
 def _timeline_marker_safe():
     """Read the current parametric timeline length, or None if we can't.
 
@@ -961,6 +1012,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     if ui: ui.messageBox('Failed to parse STEP payload.')
                 return
 
+            # ── clear_design — Fred: "Clear Fusion design" ──────────────────────
+            if action == 'clear_design':
+                self._handle_clear_design()
+                return
+
             # ── send_frame — FB-APP S5 (F10): the frame on its own ───────────
             if action == 'send_frame':
                 data = json.loads(htmlArgs.data) if htmlArgs.data else {}
@@ -1096,6 +1152,34 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if ui:
                 ui.messageBox('Palette HTML event failed:\n{}'.format(tb))
 
+    def _handle_clear_design(self):
+        """Fred ("i think id rather have a delete everything button"): remove everything this add-in built in the
+        active design -- the frame(s), then every B-Spline Set (bodies, artwork planes and sketches) and the preview
+        graphics. What Fred made by hand (his own sketches, bodies, CAM) is untouched; the board / lattice / frame
+        user parameters stay (the next Send updates them). Reports clear_result {ok, frames, bsplineSets, error}."""
+        global last_imported_occurrences, current_import_group
+        result = {'ok': False, 'frames': [], 'bsplineSets': 0, 'error': None}
+        try:
+            des = adsk.fusion.Design.cast(app.activeProduct)
+            if not des:
+                raise RuntimeError('No active Fusion design.')
+            result['frames'] = _delete_frames(des)
+            _remove_last_import()
+            result['bsplineSets'] = _delete_bspline_sets(des)
+            last_imported_occurrences = []
+            current_import_group = None
+            result['ok'] = True
+        except Exception as e:
+            _log(f'CLEAR DESIGN failed: {e}\n{traceback.format_exc()}')
+            result['error'] = f'Clear failed: {e}'
+        _log(f'CLEAR DESIGN result: {result}')
+        try:
+            pal = app.userInterface.palettes.itemById(PALETTE_ID)
+            if pal:
+                pal.sendInfoToHTML('clear_result', json.dumps(result, default=str))
+        except Exception as e:
+            _log(f'CLEAR DESIGN could not report back: {e}')
+
     def _handle_send_frame(self, payload):
         """FB-APP S5 (F10): fb_engine.send_frame does the work (delete the
         previous frame by attribute, rebuild through the palettes' own entry
@@ -1192,9 +1276,19 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             
             global current_import_group
             if not is_preview and not is_append:
+                # One Send = the whole design: the previous frame goes first (it is extruded to the B-spline body,
+                # so it would break), then every B-Spline Set -- tagged, so a set from before a Fusion restart
+                # goes too -- and the fresh set is tagged. The frame is rebuilt at the end when one is chosen.
+                deleted_frames = _delete_frames(des)
                 _remove_last_import()
+                n_sets = _delete_bspline_sets(des)
+                _log(f'[SEND] cleared: frames={deleted_frames} bspline_sets={n_sets}')
                 current_import_group = root_comp.occurrences.addNewComponent(adsk.core.Matrix3D.create())
                 current_import_group.component.name = "B-Spline Set"
+                try:
+                    current_import_group.component.attributes.add(*BSPLINE_SET_ATTR, '1')
+                except Exception as e:
+                    _log(f'B-Spline Set tag failed: {e}')
 
             primary_imported_occurrence = None
 
@@ -1576,6 +1670,13 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                              f'kept_referenced={[k["name"] for k in stale["kept_referenced"]]} failed={stale["failed"]}')
                 except Exception as e:
                     _log(f'[STALE PARAMS] cleanup pass failed (Send itself unaffected): {e}')
+                # Fred ("lets try to send bspline and frame at same time" / "no send frame"): the frame is built by
+                # the same Send, right after the body it extrudes to -- before importing_done, so the palette does
+                # not hide until both are done. Its result reaches the palette as frame_result, as before.
+                frame_payload = data.get('frame')
+                if frame_payload:
+                    _send_progress('Building the frame...')
+                    self._handle_send_frame(frame_payload)
                 importing_done = True
                 _send_progress('Finalizing Import...')
                 _log('Import session finalized.')

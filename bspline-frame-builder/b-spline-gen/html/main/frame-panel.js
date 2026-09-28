@@ -16,7 +16,7 @@
  * (editor-frame-profile.js setEditorFocus; display only).
  */
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
-import { P, isFusionMode } from '../core/state.js';
+import { P } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
@@ -126,35 +126,24 @@ export function setEditorTab(tab) {
 }
 export const getEditorTab = () => _editorTab;
 
-/**
- * FB-APP S5 (F10): the [Send frame] button's state, from the record. The
- * "needs a B-spline body" check is the add-in's (it knows the document) and
- * comes back in `frame_result` -- a real failure already surfaces through
- * onFrameResult's own setFusionStatus call below, the existing status line,
- * so it isn't re-explained here.
- *
- * F26 item 2 (Fred, screenshot: "remove these labels"): `hint` used to
- * explain what the button DOES even while it's enabled and ready (a
- * standing caption, always visible) -- now it's empty whenever the button
- * can be pressed; only the two DISABLED cases (an actual reason it can't
- * be) still carry one, since those are the ones a person needs telling.
- */
-export function frameSendState(defs, record, inFusion) {
-  if (!findFrameTemplate(defs, record?.templateId)) return { enabled: false, hint: 'Pick a frame template to send it.' };
-  if (!inFusion) return { enabled: false, hint: 'Open this app from the Fusion add-in to send the frame.' };
-  return { enabled: true, hint: '' };
-}
-
-/** Press [Send frame]: the frame record as the payload [Send frame] reads (fb_engine/send_frame.py). */
-export function sendFrame() {
+/** The frame as fb_engine/send_frame.py reads it, or null when no frame is chosen. Fred ("no send frame"): it rides
+ *  in the one Send's payload (export-flow.js `frame`); the add-in builds it right after the B-spline body. */
+export function frameSendPayload() {
   const rec = getFrameRecord();
   const payload = framePayload(FRAME_DEFS, rec);
-  if (!payload) return false;
+  if (!payload) return null;
   // F11 option B: seeded handles go as the template's own seed geometry
   if (Object.keys(rec.seeds || {}).length) {
     const prof = frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn });
     payload.seedGeometry = frameSeedGeometry(findFrameTemplate(FRAME_DEFS, rec.templateId), prof, P.widthIn, P.heightIn);
   }
+  return payload;
+}
+
+/** The frame alone ('send_frame' -- no button any more; the one Send carries the frame). */
+export function sendFrame() {
+  const payload = frameSendPayload();
+  if (!payload) return false;
   adsk.fusionSendData('send_frame', JSON.stringify(payload));
   setFusionStatus('Sending the frame to Fusion...', 'busy');
   return true;
@@ -197,9 +186,6 @@ export function syncFramePanel() {
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${tpl.name.split(' - ').pop()}` : '— none';
-  const send = frameSendState(FRAME_DEFS, rec, isFusionMode);
-  if ($('btnSendFrame')) $('btnSendFrame').disabled = !send.enabled;
-  if ($('frameSendHint')) $('frameSendHint').textContent = send.hint;
 
   const warn = $('frameFitWarning');
   if (warn) {
@@ -416,7 +402,6 @@ export function initFramePanel() {
   $('frameBottomZ')?.addEventListener('change', (e) => editFrame({ frameBottomZ: parseFloat(e.target.value) }));
   $('framePanelLip')?.addEventListener('change', (e) => editFrame({ panelLip: parseFloat(e.target.value) }));
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
-  $('btnSendFrame')?.addEventListener('click', () => sendFrame());
   _wireHandleDrag();
   // The fit warning (and the editor's profile) depend on the board size.
   for (const id of ['widthIn', 'heightIn']) $(id)?.addEventListener('change', () => syncFramePanel());

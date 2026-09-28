@@ -14,6 +14,7 @@
 import { isFusionMode } from '../core/state.js';
 import { applyParam } from './param-manager.js';
 import { isHapticEnabled, setHapticEnabled } from '../core/haptics.js';
+import { onClearFusionDesign } from './export-flow.js';
 
 const ADDIN_RELEASE_URL = 'https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/bspline-frame-builder.zip';
 
@@ -27,6 +28,12 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
     const btnWizardExport = document.getElementById('btnWizardExport');
     if (btnWizardExport) btnWizardExport.addEventListener('click', onWizardExport);
 
+    document.getElementById('btnClearFusionDesign')?.addEventListener('click', onClearFusionDesign);
+    // the Clear section is Fusion-only; the settings panel is opened from the header (⚙)
+    document.getElementById('settings-btn')?.addEventListener('click', () => {
+        const sec = document.getElementById('clearFusionSection');
+        if (sec) sec.style.display = isFusionMode ? '' : 'none';
+    });
     const btnWizardCancel = document.getElementById('btnWizardCancel');
     if (btnWizardCancel) btnWizardCancel.addEventListener('click', onWizardCancel);
 
