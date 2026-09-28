@@ -3,6 +3,7 @@
  * Refactored into a modular ES6 architecture.
  */
 
+import { logAction } from '../core/action-log.js';
 import { pieceKindOf, applyColorOverride } from './editor-piece-override.js';
 import { initIO, save, saveWithTextCopies, saveForRasterization, open, sync3DBackground, getPointerPos } from './editor-io.js';
 import { commitText, cancelText } from './editor-text-session.js';
@@ -381,6 +382,7 @@ export class VectorEditor {
      * actual final state.
      */
     _notifyChange(kind) {
+        if (kind === 'commit') logAction('commit', { undo: Array.isArray(this._undoStack) ? this._undoStack.length : undefined });
         if (kind === 'commit') refreshOutlinePreview(this); // SE12 T37: commit-only, same timing as refreshDrape
         // T59 (SE14 §6, "recompute-and-compare"): BEFORE the boundary
         // refill below — detects a hand node-edit on a GENERATED

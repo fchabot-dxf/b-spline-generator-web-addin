@@ -1,6 +1,7 @@
 /**
  * editor-ui.js - Mode management, toolbar sync, and selection highlights for VectorEditor.
  */
+import { logAction } from '../core/action-log.js';
 import { clearTouchConfirm } from './editor-touch-confirm.js';
 import { el as getEl, queryAll, query } from './dom.js';
 import { worldBbox } from './editor-coords.js';
@@ -182,6 +183,7 @@ export function setMode(editor, mode) {
     editor._aimSelect = null; // an aim-select in progress belongs to the tool being left
 
     editor._currentMode = mode;
+    logAction('tool', { mode });
     _rememberOpeningMode(mode);
     updateToolbarVisibility(editor, mode, editor._selectedElement);
     // MOB3: the mobile drawer (editor-drawer.js) needs to know a tool

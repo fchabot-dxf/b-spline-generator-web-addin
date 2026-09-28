@@ -12,6 +12,7 @@
  * stroke-update) are handled before the mode dispatch so they survive
  * a mid-gesture mode change.
  */
+import { logAction } from '../core/action-log.js';
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { cutHandler } from './editor-cut-tool.js'; // SE16 ✂
 import { primitiveFromContourD, nearestOnContourPrimitive } from './editor-contour-cut.js';
@@ -228,6 +229,23 @@ function handlePointerDown(editor, e) {
         ? { undoLen: editor._undoStack.length, redo: Array.isArray(editor._redoStack) ? editor._redoStack.slice() : null, last: editor._lastPushedState }
         : null;
     handleStart(editor, e);
+    _logPointer(editor, e, 'press');
+}
+
+/** Fred's action log (core/action-log.js): a canvas press / release -- model point, pointer, tool, and the state it
+ *  left (what is selected, whether an aim / drag / draw is under way). */
+function _logPointer(editor, e, a) {
+    try {
+        const p = editor._getMousePoint(e);
+        const sel = (editor._selectedElements || []).map((el) => el.node.getAttribute(LATTICE_ATTR) || el.type);
+        logAction(a, {
+            x: p.x, y: p.y, ptr: e.pointerType, mode: editor._currentMode,
+            sub: editor._currentMode === 'lattice' ? editor._lattice.drawKind : undefined,
+            sel: sel.length ? sel.join(',') : undefined,
+            state: [editor._aimSelect && 'aim', editor._isDragging && 'drag', editor._isDrawing && 'draw',
+                editor._latticeMove && 'latticeMove', editor._isPanning && 'pan'].filter(Boolean).join(',') || undefined,
+        });
+    } catch (_) { /* logging never breaks a gesture */ }
 }
 
 /** A pinch took over a one-finger touch gesture: drop every in-progress gesture
@@ -386,6 +404,7 @@ function handlePointerUp(editor, e) {
     if (count > 0) return; // still tracking a lower-priority extra finger
 
     handleEnd(editor, e);
+    _logPointer(editor, e, 'release');
 }
 
 function handleWheel(editor, e) {

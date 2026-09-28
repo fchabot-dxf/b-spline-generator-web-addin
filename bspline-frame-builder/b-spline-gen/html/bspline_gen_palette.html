@@ -1302,6 +1302,12 @@
           <button type="button" id="btnClearFusionDesign" class="cad-btn cad-btn-secondary" style="width:100%; height:34px; color:#c62828;">Clear Fusion design</button>
           <div style="font-size:11px; color:#666; margin-top:6px;">Removes what the add-in built (B-spline, artwork sketches, frame). Your own work stays.</div>
         </div>
+        <!-- Fred: "a log of my actions and of the data model ... a json copied to clipboard" (core/action-log.js) -->
+        <div class="cad-panel-section">
+          <label class="cad-label">Log for Claude</label>
+          <button type="button" id="btnCopyLog" class="cad-btn cad-btn-secondary" style="width:100%; height:34px;">Copy log (JSON)</button>
+          <div style="font-size:11px; color:#666; margin-top:6px;">Your last actions + the drawing now. Paste it in the chat.</div>
+        </div>
         <div class="cad-panel-section">
           <label class="cad-label">Undo Limit</label>
           <div class="cad-nested-input" style="width:100%;">

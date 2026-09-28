@@ -3655,3 +3655,17 @@ bspline" -- "no send frame" -- "id rather have a delete everything button")
   Length (in)); no follower readout (the editorStripeTarget listener in properties-stripe.js is gone). The math is
   unchanged (stripeCountFor). Verified at 390px: Count shows Stripes only; Length shows Length only, drive
   'length'; 0.5 in on a 5.75 in rail -> 12 stripes. vitest 2437 passed.
+
+## Action log + model snapshot, copied as JSON (Fred: "is there a way to have a log of my actions and of the data
+## model, you can then look at" -> "a json copied to clipboard" -> "ok")
+- core/action-log.js: rolling log (last 300, localStorage 'bspline.actionLog', survives reload; a 'page-load' entry
+  starts each session): every click on a button / tool / tab / menu row and every committed field change (two
+  capture listeners -- id, label, value), canvas press / release (editor-interaction _logPointer: model point,
+  pointer, tool, lattice sub-mode, selection, aim/drag/draw/move/pan state), tool switches (setMode), each commit
+  (_notifyChange, undo depth), uncaught errors. Nothing leaves the device.
+- logReport: { copiedAt, screen, userAgent, log, model } -- model = board + frame record + editor (mode, model
+  size, view, active layer, layers with their patterns minus fillInputs, selection indices, undo depth, every piece
+  in DOM order = drawing order: tag + layer/lattice/gen/override/stripe/contour attrs + geometry at 3 decimals).
+- Settings > "Copy log (JSON)" (main/copy-log.js): navigator.clipboard; refused (Fusion palette) -> a box with the
+  JSON selected + a Copy button. Verified at 390px: Generate, an aim-select, Apply, Copy -> toast "Log copied
+  (10 KB)", 20 entries in order, 46 pieces. vitest 2437 passed.
