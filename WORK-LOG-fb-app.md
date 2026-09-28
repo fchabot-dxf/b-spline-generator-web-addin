@@ -3325,3 +3325,12 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
   -> per-element key) still refills. tests/boundary-fill-inputs-contour.test.js (fails without the fix).
 - Headless: straight contour stripe in Lattice and Shape Lattice -> stays striped, ONE undo step, no refill push;
   arc stripe via stripeAt -> same.
+
+## Arc radius floor 0.125 in, frame + lattice (Fred: "Limit the arcs radius in frame and lattice to .125in minimum")
+- editor-shape-lattice-generator.js: MIN_ARC_RADIUS_IN = 0.125, applied on top of every geometric range
+  (`_withArcFloor`, in feasibleParamRanges AND _resolveParams, so sliders, handles, frame generate and the solve all
+  obey it). Floors the DRAWN arc (stroke-aware: convex corners/body R - s, concave waist/neck R + s; a frame has
+  s = 0): hourglass cornerRadius/Top/Bottom, waistRadius; bottle bodyRadius, and the neck via skeletonX >= nw +
+  floor. A derived (absent) radius is raised to the floor too. Where the geometry has no room, geometry wins.
+- Old patterns: all 128 migration fixture cases unchanged (none drew an arc < 0.125). Tests: the 7x9 corner min is
+  now the floor; new floor test (hourglass + bottle, explicit tiny radius raised).

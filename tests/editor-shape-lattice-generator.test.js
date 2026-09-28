@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest';
 import {
   generateSilhouette, PRESETS, ALL_STYLES, WIRED_STYLES, primitivesToPathD,
   feasibleParamRanges, paramsFromShapeModel, hourglassConstruction, bottleConstruction, HORN_MIN_OF_HALF_HEIGHT, DERIVED_PARAM_DEFAULTS,
+  MIN_ARC_RADIUS_IN,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { _arcWorldPointTangent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-expand-path.js';
 import { shapeToPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
@@ -393,6 +394,7 @@ describe.each(PRESET_NAMES)('generateSilhouette(%s) — the new `params` return 
  */
 describe('F23/H11 HANDLE-REACH: Shoulder/Hip (cornerRadiusTop/Bottom) reach the TRUE geometric limit', () => {
   const T1 = FRAME_DEFS.templates.find((t) => t.id === 'template_1');
+  const T2 = FRAME_DEFS.templates.find((t) => t.id === 'template_2');
   const bbo = T1.params.find((p) => p.name === 'boundingboxoffset').default; // 0.25
   const regionOf = (W, H) => ({ x: bbo, y: bbo, w: W - 2 * bbo, h: H - 2 * bbo });
   const KEYS = ['cornerRadiusTop', 'cornerRadiusBottom'];
@@ -400,15 +402,17 @@ describe('F23/H11 HANDLE-REACH: Shoulder/Hip (cornerRadiusTop/Bottom) reach the 
   it.each([
     // [W, H, key, expected min, expected max] -- MEASURED live against feasibleParamRanges,
     // pinned as a regression: the old declared band was [0.04, 0.95] on BOTH.
-    [7, 9, 'cornerRadiusTop', 0.0010, 2.5655],
-    [7, 9, 'cornerRadiusBottom', 0.0010, 2.5587],
+    // min 7x9: Fred's 0.125 in arc floor (MIN_ARC_RADIUS_IN / hw, hw = 3.5 - bbo) now binds, above the 0.001
+    // positivity floor that bound here before it
+    [7, 9, 'cornerRadiusTop', null, 2.5655],
+    [7, 9, 'cornerRadiusBottom', null, 2.5587],
     [12, 6, 'cornerRadiusTop', 0.0377, 0.5019],
     [12, 6, 'cornerRadiusBottom', 0.0377, 0.4676],
   ])('T1 %sx%s %s: F5 = [%s, %s], no longer the old [0.04, 0.95] UI band', (W, H, key, min, max) => {
     const region = regionOf(W, H);
     const resolved = paramsFromShapeModel('hourglass', T1.shapeModel, region);
     const r = feasibleParamRanges('hourglass', region, resolved)[key];
-    expect(r.min).toBeCloseTo(min, 3);
+    expect(r.min).toBeCloseTo(min ?? MIN_ARC_RADIUS_IN / (region.w / 2), 3);
     expect(r.max).toBeCloseTo(max, 3);
     // the old artifact band no longer binds: BOTH ends moved past it (widened) on 7x9;
     // on the narrower 12x6 the ceiling was already inside 0.95, but the floor still moved.
@@ -444,14 +448,32 @@ describe('F23/H11 HANDLE-REACH: Shoulder/Hip (cornerRadiusTop/Bottom) reach the 
   // on the board: at 7x9 the geometric terms are slack (a trivial "radius stays
   // positive" floor binds instead); at 12x6 the waist-tangency term binds. Each
   // proven in its OWN currency, not forced into one shape.
-  it('T1 7x9: the min floor is the trivial positivity floor (the geometric terms are slack here) -- proven by staying below it needing r<=0', () => {
+  it('T1 7x9: the geometric terms are slack here, so the min is Fred\'s 0.125 in arc floor (was the trivial positivity floor)', () => {
     const region = regionOf(7, 9);
     const resolved = paramsFromShapeModel('hourglass', T1.shapeModel, region);
     for (const key of KEYS) {
       const { min } = feasibleParamRanges('hourglass', region, resolved)[key];
-      expect(min).toBeGreaterThan(0);
-      expect(min).toBeLessThan(0.002); // ~EPS_FRAC*hw/hw -- a hair above zero, not a geometric bound
+      expect(min * (region.w / 2)).toBeCloseTo(MIN_ARC_RADIUS_IN, 9); // exactly 0.125 in (a frame: no stroke offset)
     }
+  });
+
+  it('Fred ("limit the arcs radius ... to .125in minimum"): every arc floor, frame and lattice (drawn radius, stroke-aware)', () => {
+    const region = regionOf(7, 9), hw = region.w / 2;
+    const resolved = paramsFromShapeModel('hourglass', T1.shapeModel, region);
+    const s = 0.05; // a lattice contour's stroke half-width: convex arcs draw at R - s, concave at R + s
+    const R = feasibleParamRanges('hourglass', region, resolved, s);
+    expect(R.cornerRadiusTop.min * hw).toBeCloseTo(MIN_ARC_RADIUS_IN + s, 9);
+    expect(R.cornerRadiusBottom.min * hw).toBeCloseTo(MIN_ARC_RADIUS_IN + s, 9);
+    expect(R.waistRadius.min * hw).toBeGreaterThanOrEqual(MIN_ARC_RADIUS_IN - s - 1e-9);
+    // an explicit too-small radius is raised to the floor in the drawn silhouette
+    const out = generateSilhouette(region, { preset: 'hourglass', params: { ...resolved, cornerRadiusTop: 0.001, cornerRadiusBottom: 0.001 } });
+    const arcs = out.primitives.filter((p) => p.type === 'A');
+    expect(Math.min(...arcs.map((p) => p.rx))).toBeGreaterThanOrEqual(MIN_ARC_RADIUS_IN - 1e-9);
+    // bottle: body and neck arcs
+    const T2r = feasibleParamRanges('bottle', region, paramsFromShapeModel('bottle', T2.shapeModel, region));
+    expect(T2r.bodyRadius.min * hw).toBeGreaterThanOrEqual(MIN_ARC_RADIUS_IN - 1e-9);
+    const b = generateSilhouette(region, { preset: 'bottle', params: { ...paramsFromShapeModel('bottle', T2.shapeModel, region), bodyRadius: 0.001 } });
+    expect(Math.min(...b.primitives.filter((p) => p.type === 'A').map((p) => p.rx))).toBeGreaterThanOrEqual(MIN_ARC_RADIUS_IN - 1e-9);
   });
 
   it('T1 12x6: just past the new min, the waist tangency loses its real solution (dy becomes NaN)', () => {

@@ -349,6 +349,31 @@ function _optionalRange(preset, region, stroke, v) {
   return _range(0, 1, Math.max(stroke + eps, (a - rN) / 2 + eps) / hw, rbMax / hw);
 }
 
+/** Fred: "Limit the arcs radius in frame and lattice to .125in minimum". Every arc of both presets, as the
+ *  param that sets its radius (a fraction of hw) -> the smallest fraction whose DRAWN arc is MIN_ARC_RADIUS_IN.
+ *  The drawn contour is the outline offset inward by the stroke half-width `s` (0 for a frame): a convex arc
+ *  (the hourglass shoulder/hip corners, the bottle body) draws at R - s, a concave one (the hourglass waist, the
+ *  bottle neck, whose radius is skeletonX - neckWidth) at R + s.
+ *  Applied on top of the geometric range (`_withArcFloor`); where the geometry has no room for it the geometry
+ *  wins (min = max), the same "validity wins" rule `_range` already uses. */
+export const MIN_ARC_RADIUS_IN = 0.125;
+function _arcFloorFrac(preset, key, region, stroke, v) {
+  const hw = region.w / 2;
+  const convex = (MIN_ARC_RADIUS_IN + stroke) / hw, concave = Math.max(0, MIN_ARC_RADIUS_IN - stroke) / hw;
+  if (preset === 'bottle') {
+    if (key === 'bodyRadius') return convex;
+    if (key === 'skeletonX') return v.neckWidth + concave;
+    return -Infinity;
+  }
+  if (key === 'waistRadius') return concave;
+  return ['cornerRadius', 'cornerRadiusTop', 'cornerRadiusBottom'].includes(key) ? convex : -Infinity;
+}
+function _withArcFloor(preset, key, region, stroke, v, r) {
+  const f = _arcFloorFrac(preset, key, region, stroke, v);
+  if (!(f > r.min)) return r;
+  return f <= r.max ? { min: f, max: r.max } : { min: r.max, max: r.max };
+}
+
 /** `{ param: {min, max} }` for `preset` on `region`, each conditional on the
  *  params resolved before it (PARAM_ORDER). `params` supplies those earlier
  *  values (e.g. a solver's own `params` output). */
@@ -358,7 +383,7 @@ export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0)
   const v = { ...params };
   const out = {};
   for (const key of PARAM_ORDER[preset]) {
-    out[key] = fn(key, region, strokeHalfWidth, v);
+    out[key] = _withArcFloor(preset, key, region, strokeHalfWidth, v, fn(key, region, strokeHalfWidth, v));
     if (v[key] == null && derived[key]) v[key] = derived[key](v); // a later range reads the declared default
   }
   return out;
@@ -373,11 +398,14 @@ function _resolveParams(preset, region, params, seed, strokeHalfWidth) {
   const derived = DERIVED_PARAM_DEFAULTS[preset];
   const v = {};
   for (const key of PARAM_ORDER[preset]) {
-    const r = fn(key, region, strokeHalfWidth, v);
+    const r = _withArcFloor(preset, key, region, strokeHalfWidth, v, fn(key, region, strokeHalfWidth, v));
     if (derived[key]) {
       // F12: explicit -> clamped into its feasible range; absent -> today's rule, unclamped
-      // (it is feasible by construction), so an old pattern resolves bit-for-bit as before.
-      v[key] = params[key] != null ? Math.max(r.min, Math.min(r.max, params[key])) : derived[key](v);
+      // (it is feasible by construction), so an old pattern resolves bit-for-bit as before --
+      // except the MIN_ARC_RADIUS_IN floor, which a derived radius is raised to as well.
+      const floor = _arcFloorFrac(preset, key, region, strokeHalfWidth, v);
+      v[key] = params[key] != null ? Math.max(r.min, Math.min(r.max, params[key]))
+        : Math.min(Math.max(derived[key](v), floor), Math.max(r.max, derived[key](v)));
     } else {
       v[key] = _jitteredParam(params[key], p[key], j[key], seed, salt[key], r.min, r.max);
     }
