@@ -561,7 +561,9 @@ function handleStart(editor, e) {
     // position, so the same offset updateSnapCursor draws the ring at is
     // applied here BEFORE snapping (applyTouchMarkerOffset is a no-op for
     // mouse/pen — INPUT_PROFILE's markerOffsetPx: 0).
-    const pt = editor._snap(applyTouchMarkerOffset(editor, editor._getMousePoint(e)), e.altKey, 'start');
+    const aimed = applyTouchMarkerOffset(editor, editor._getMousePoint(e));
+    editor._pressRaw = aimed; // the unsnapped press, for a selection move's own-ends snap (_selectionMoveDelta)
+    const pt = editor._snap(aimed, e.altKey, 'start');
 
     const handler = getModeHandler(editor._currentMode);
     if (handler.start) handler.start(editor, pt, e);
@@ -1954,6 +1956,12 @@ const latticeHandler = {
         // minus the marquee/pan — a lattice-panel Select tap is for
         // picking an existing piece, not drawing a new selection box).
         if (drawKind === 'select') {
+            // Fred ("Moving contour piece won't snap" -- "I was in lattice"): a contour piece (or any other drawn
+            // piece) under the press used to be ignored here -- no grab, no move. It now goes through the SAME
+            // select-and-drag Shape Lattice's Select already hands it to (selectHandler: select, translate with
+            // its ends snapping onto other geometry, one undo step on release).
+            const other = editor._getNearbyElement(pt, tol, { anyVisibleLayer: true });
+            if (other) { selectHandler.start(editor, pt, e, other); return; }
             if (!(e && e.shiftKey)) editor._deselect();
             // H6 CONTEXT-MENU: same shape as selectHandler.start's own
             // identical hook above.
@@ -2678,7 +2686,13 @@ const SEL_MOVE_MAX_ANCHORS = 400;
 function _selectionMoveDelta(editor, pt, raw, bypass) {
     const sel = editor._selectedElements || [];
     let ms = editor._selMove;
-    if (!ms) ms = editor._selMove = { start: { x: editor._lastDragPt.x, y: editor._lastDragPt.y }, applied: { x: 0, y: 0 }, exclude: new Set(sel), anchors: null, targets: null };
+    if (!ms) {
+        const start = { x: editor._lastDragPt.x, y: editor._lastDragPt.y };
+        // the anchors' search measures from the UNSNAPPED press (a grid-snapped press point -- Lattice snaps its
+        // press to the grid -- would throw the ends up to half a cell off the target they're near)
+        const rawStart = editor._pressRaw ? { x: editor._pressRaw.x, y: editor._pressRaw.y } : start;
+        ms = editor._selMove = { start, rawStart, applied: { x: 0, y: 0 }, exclude: new Set(sel), anchors: null, targets: null };
+    }
     if (!raw) return { x: pt.x - ms.start.x, y: pt.y - ms.start.y };
     const geomOn = !!(editor._grid && editor._grid.geometrySnap) && !bypass;
     if (geomOn) {
@@ -2691,7 +2705,7 @@ function _selectionMoveDelta(editor, pt, raw, bypass) {
             }
             ms.targets = geometrySnapTargets(editor, ms.exclude);
         }
-        const rx = raw.x - ms.start.x, ry = raw.y - ms.start.y;
+        const rx = raw.x - ms.rawStart.x, ry = raw.y - ms.rawStart.y;
         const tol = getDynamicTolerance(editor, GEOMETRY_SNAP_TOL_PX, 'slopPx');
         let best = null, bestD = tol * tol;
         for (const a of ms.anchors) {

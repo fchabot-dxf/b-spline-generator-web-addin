@@ -3305,3 +3305,12 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
   pushState, cleared by undo/redo). One move = one consistent step; verified: 2 moves, 2 undos -> original.
 - slider-scroll-guard: a touch released without a sideways drag now puts the value back too (no tap-to-set on
   touch); only a horizontal drag moves a slider.
+
+## Lattice (#) Select: contour pieces can be moved (Fred: "I was in lattice")
+- latticeHandler.start, Select sub-mode: a press on a non-lattice piece (a contour piece, a drawn shape) used to
+  just deselect -- no grab, no move. It now goes to selectHandler.start with that hit (same as Shape Lattice's
+  Select), so it selects, drags with its ends snapping onto geometry, and commits one undo step.
+- _selectionMoveDelta measures the ends' search from the UNSNAPPED press (`editor._pressRaw`, set in
+  handleStart): Lattice grid-snaps its press, which threw the ends up to half a cell off their target.
+- Headless (real mouse, Lattice Select): contour piece moved, dragged back 4 px off -> exact on its neighbours;
+  2 floating undos -> original.
