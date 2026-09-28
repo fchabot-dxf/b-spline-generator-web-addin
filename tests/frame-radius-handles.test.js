@@ -3,13 +3,17 @@
  * "can never be set anywhere, it needs a handle, and handle for position
  * should be a different color or shape than handle for radii").
  *
- * (a) every frame-shape arc's radius has a handle (the arc inventory below);
- *     the new ones (T1 waist, T2 body) sit at their arc's CENTRE like Shoulder/
- *     Hip (Fred: "please use center"; a flat waist's centre past the frame
- *     edge parks the diamond on that edge), a horizontal drag moves the
- *     centre, clamped to the true geometric limit, seeded in the record (no
- *     new Fusion parameter), and [Send frame] carries the new radius in the
- *     seed geometry.
+ * (a) every frame-shape arc's radius has a handle (the arc inventory below),
+ *     seeded in the record (no new Fusion parameter), and [Send frame] carries
+ *     the new radius in the seed geometry. F27 item 2 ARC PULL (Fred: "the more
+ *     I look at it the more I'm thinking it's more intuitive to pull the arc
+ *     than the arc center"; "Well I still want a handle on the curve itself"):
+ *     the handle IS the arc, either side, with a blue dot ON it; the drag
+ *     re-solves the radius so the arc passes under the pointer, up to the true
+ *     geometric limit. The hourglass waist is a CAD circle (Fred agreed): its
+ *     waistReach square at the arc centre ("Then the position for waist reach
+ *     can be the arc center") slides it, radius held; its arc (dot on the
+ *     pinch) is the rim, following the pointer about the fixed centre.
  * (b) handle KINDS are declared data (HANDLE_KINDS, editor-transform-
  *     handles.js): position = a white square with the app's blue selection-
  *     handle border; radius = a circle in the editor's existing blue accent;
@@ -72,84 +76,195 @@ describe('(a) the arc inventory: every frame arc has a radius handle', () => {
   });
 });
 
-describe('(a) the new radius handles sit at their arc CENTRE (Fred: "please use center") and drag the radius', () => {
-  const CASES = [['template_1', 'waistRadius', 2], ['template_2', 'bodyRadius', 2]];
+/** A point `d` in along the arc's outward-from-centre direction at its parameter `t`. */
+const onArc = (a, t, d = 0) => {
+  const th = a.theta1 + a.dTheta * t;
+  return { x: a.cx + (a.rx + d) * Math.cos(th), y: a.cy + (a.rx + d) * Math.sin(th) };
+};
+const mirrorX = (p, q) => ({ x: 2 * (p.region.x + p.region.w / 2) - q.x, y: q.y });
+/** Drag handle `h` of `rec` to `pt` (ctx: side / grab), the record after it. */
+const dragTo = (rec, h, pt, ctx = {}, W = 7, H = 9) => normalizeFrameRecord({ ...rec, ...handleDragPatch(rec, h, pt, prof(rec, W, H).region, ctx) });
+/** The arc-pull radius params: every arc but the hourglass waist (a CAD circle, below). */
+const PULLED = [['template_1', 'cornerRadiusTop', 1], ['template_1', 'cornerRadiusBottom', 3], ['template_2', 'skeletonX', 1], ['template_2', 'bodyRadius', 2]];
+const inside = (h, v) => v > h.range.min + 1e-9 && v < h.range.max - 1e-9;
 
-  it.each(CASES)('%s %s: the handle is at the arc\'s centre (or, past the frame edge, parked ON the edge on the centre\'s line), a horizontal radius handle', (id, key, prim) => {
+describe('(a) F27 item 2 arc pull (Fred: "more intuitive to pull the arc than the arc center"): the arc IS the radius handle', () => {
+  it.each(Object.keys(ARC_RADIUS_HANDLE))('%s: every radius handle grips its arc on BOTH sides, its dot ON the right arc', (id) => {
     for (const [W, H] of BOARDS) {
       const rec = normalizeFrameRecord({ templateId: id });
-      const p = prof(rec, W, H), a = p.primitives[prim];
-      const h = handle(rec, key, W, H);
-      expect(h.axis).toBe('x');
-      expect(h.handleKind).toBe('radius');
-      expect(h.anchor.y).toBeCloseTo(a.cy, 9);
-      const edge = p.region.x + p.region.w;
-      expect(h.anchor.x).toBeCloseTo(Math.min(a.cx, edge), 9);
-    }
-  });
-
-  it.each(CASES)('%s %s: a horizontal drag moves the centre (the radius changes, the arc stays valid), only a seed is written', (id, key, prim) => {
-    const rec = normalizeFrameRecord({ templateId: id });
-    const p0 = prof(rec), h = handle(rec, key), a = p0.primitives[prim];
-    const radii = [];
-    for (const d of [-0.15, 0.15]) {
-      const pt = { x: h.anchor.x + d, y: h.anchor.y };
-      const patch = handleDragPatch(rec, h, pt, p0.region);
-      expect(Object.keys(patch)).toEqual(['seeds']);
-      const next = normalizeFrameRecord({ ...rec, ...patch });
-      expect(next.params).toEqual({}); // never a parameter (Fred's ruling: no new Fusion params)
-      expect(Object.keys(next.seeds)).toEqual([key]);
-      const p1 = prof(next), a1 = p1.primitives[prim];
-      expect(p1.defects).toEqual([]);
-      if (h.range && next.seeds[key] > h.range.min && next.seeds[key] < h.range.max) expect(a1.cx).toBeCloseTo(pt.x, 6); // the centre follows the pointer
-      radii.push(a1.rx);
-    }
-    expect((radii[0] - a.rx) * (radii[1] - a.rx)).toBeLessThan(0); // the two directions change the radius in opposite senses
-  });
-
-  it('T1 waist: a flat waist parks its diamond on the frame edge; grabbing it there is no jump, pulling it in tightens the waist', () => {
-    const rec0 = normalizeFrameRecord({ templateId: 'template_1' });
-    const h0 = handle(rec0, 'waistRadius');
-    const flat = normalizeFrameRecord({ ...rec0, seeds: { waistRadius: h0.range.max } });
-    const p = prof(flat), a = p.primitives[2], edge = p.region.x + p.region.w;
-    expect(a.cx).toBeGreaterThan(edge); // non-vacuous: the centre really is off the frame
-    const h = handle(flat, 'waistRadius');
-    expect(h.anchor.x).toBeCloseTo(edge, 9);
-    expect(h.valueFromWorld({ x: edge, y: h.anchor.y })).toBeCloseTo(flat.seeds.waistRadius, 9);
-    expect(h.valueFromWorld({ x: edge + 1, y: h.anchor.y })).toBeCloseTo(flat.seeds.waistRadius, 9);
-    const tighter = normalizeFrameRecord({ ...flat, ...handleDragPatch(flat, h, { x: edge - 0.5, y: h.anchor.y }, p.region) });
-    expect(prof(tighter).primitives[2].rx).toBeLessThan(a.rx);
-    expect(prof(tighter).defects).toEqual([]);
-  });
-
-  it.each(CASES)('%s %s: a drag past the geometry stops AT the true limit (not the Generate band), with a valid outline', (id, key) => {
-    for (const [W, H] of BOARDS) {
-      const rec = normalizeFrameRecord({ templateId: id });
-      const p0 = prof(rec, W, H), h = handle(rec, key, W, H);
-      const values = [];
-      for (const far of [{ x: 1e4, y: h.anchor.y }, { x: -1e4, y: h.anchor.y }, { x: h.anchor.x, y: -1e4 }, { x: h.anchor.x, y: 1e4 }]) {
-        const v = h.valueFromWorld(far);
-        expect(v).toBeGreaterThanOrEqual(h.range.min - 1e-12);
-        expect(v).toBeLessThanOrEqual(h.range.max + 1e-12);
-        values.push(v);
-        const next = normalizeFrameRecord({ ...rec, ...handleDragPatch(rec, h, far, p0.region) });
-        expect(prof(next, W, H).defects, `${id} ${W}x${H} ${JSON.stringify(far)}`).toEqual([]);
+      const p = prof(rec, W, H), n = p.primitives.length;
+      for (const [i, key] of Object.entries(ARC_RADIUS_HANDLE[id])) {
+        const h = handle(rec, key, W, H);
+        expect(h.axis).toBe('arc');
+        expect(h.handleKind).toBe('radius');
+        expect([h.segment, h.mirrorSegment]).toEqual([Number(i), n - 2 - Number(i)]);
+        expect(h.arcs).toEqual([p.primitives[i], p.primitives[n - 2 - i]]);
+        const a = h.arcs[0];
+        expect(Math.hypot(h.anchor.x - a.cx, h.anchor.y - a.cy), `${id} ${W}x${H} ${key}`).toBeCloseTo(a.rx, 9); // ON the arc
+        expect(h.valueFromWorld(h.anchor)).toBeCloseTo(p.params[key], 9); // grabbing the dot is no jump
       }
-      // both ends of the declared feasible range are reachable by a manual drag
-      expect(values.some((v) => v === h.range.min) || values.some((v) => v === h.range.max)).toBe(true);
     }
   });
 
-  it('T1 waist: the pinch (waist reach) stays put while the radius changes -- the radius handle is not a position handle', () => {
-    const rec = normalizeFrameRecord({ templateId: 'template_1' });
-    const pinch0 = handle(rec, 'waistReach').anchor;
-    const h = handle(rec, 'waistRadius');
-    const next = normalizeFrameRecord({ ...rec, ...handleDragPatch(rec, h, { x: h.anchor.x - 0.2, y: h.anchor.y - 0.1 }, prof(rec).region) });
-    expect(next.seeds.waistRadius).not.toBeCloseTo(prof(rec).params.waistRadius, 4);
-    const pinch1 = handle(next, 'waistReach').anchor;
-    expect(pinch1.x).toBeCloseTo(pinch0.x, 12);
-    expect(pinch1.y).toBeCloseTo(pinch0.y, 12);
+  it.each(PULLED)('%s %s: the dot sits at the arc\'s angular midpoint', (id, key, i) => {
+    const rec = normalizeFrameRecord({ templateId: id });
+    const h = handle(rec, key), mid = onArc(prof(rec).primitives[i], 0.5);
+    expect(h.anchor.x).toBeCloseTo(mid.x, 9);
+    expect(h.anchor.y).toBeCloseTo(mid.y, 9);
+  });
+
+  it.each(PULLED)('%s %s: dragging the arc (right or mirrored left) re-solves the radius so the arc passes under the pointer, monotone, seed only', (id, key, i) => {
+    for (const [W, H] of BOARDS) {
+      const rec = normalizeFrameRecord({ templateId: id });
+      const p0 = prof(rec, W, H), h = handle(rec, key, W, H), n = p0.primitives.length;
+      const values = [];
+      for (const d of [-0.12, -0.06, 0.06, 0.12]) {
+        for (const t of [0.3, 0.5, 0.7]) {
+          const q = onArc(p0.primitives[i], t, d * Math.min(1, p0.primitives[i].rx));
+          const next = dragTo(rec, h, q, { side: 0 }, W, H);
+          expect(next.params).toEqual({}); // never a parameter (Fred's ruling: no new Fusion params)
+          expect(Object.keys(next.seeds)).toEqual([key]);
+          const p1 = prof(next, W, H), a1 = p1.primitives[i];
+          expect(p1.defects, `${id} ${W}x${H} ${key} d=${d} t=${t}`).toEqual([]);
+          if (inside(h, next.seeds[key])) expect(Math.hypot(q.x - a1.cx, q.y - a1.cy), `${id} ${W}x${H} ${key} d=${d}`).toBeCloseTo(a1.rx, 6); // the arc under the pointer
+          // the mirrored LEFT arc, grabbed at the mirror point: the same value
+          const left = dragTo(rec, h, mirrorX(p0, q), { side: 1 }, W, H);
+          expect(left.seeds[key]).toBeCloseTo(next.seeds[key], 9);
+          expect(prof(left, W, H).primitives[n - 2 - i].rx).toBeCloseTo(a1.rx, 9);
+          if (t === 0.5) values.push(next.seeds[key]);
+        }
+      }
+      // monotone along the normal: outward one way, inward the other
+      const diffs = values.slice(1).map((v, k) => v - values[k]);
+      expect(diffs.every((x) => x >= -1e-12) || diffs.every((x) => x <= 1e-12), `${id} ${W}x${H} ${key} ${values}`).toBe(true);
+      expect(Math.abs(values[3] - values[0])).toBeGreaterThan(1e-4);
+    }
+  });
+
+  it.each(PULLED)('%s %s: pulled far either way the drag stops AT the true limit (not the Generate band), outline valid', (id, key, i) => {
+    for (const [W, H] of BOARDS) {
+      const rec = normalizeFrameRecord({ templateId: id });
+      const p0 = prof(rec, W, H), h = handle(rec, key, W, H), a = p0.primitives[i];
+      const ends = [];
+      for (const d of [-a.rx * 0.999, 50]) { // through the centre side / far outside
+        // walk there in small steps, the way a real drag re-reads the shape each tick
+        let r = rec;
+        for (let k = 1; k <= 40; k++) {
+          const hk = handle(r, key, W, H);
+          r = dragTo(r, hk, onArc(a, 0.5, d * k / 40), { side: 0 }, W, H);
+        }
+        expect(prof(r, W, H).defects, `${id} ${W}x${H} ${key} ${d}`).toEqual([]);
+        ends.push(r.seeds[key]);
+      }
+      expect(ends.some((v) => v === h.range.min || v === h.range.max), `${id} ${W}x${H} ${key} ${ends} ${JSON.stringify(h.range)}`).toBe(true);
+    }
+  });
+});
+
+describe('(a) the hourglass WAIST is a CAD circle (Fred): centre square + rim', () => {
+  const T1 = () => normalizeFrameRecord({ templateId: 'template_1' });
+
+  it('the waist dot sits ON THE PINCH, the waistReach square at the arc CENTRE, on the same line', () => {
+    for (const [W, H] of BOARDS) {
+      const p = prof(T1(), W, H), a = p.primitives[2];
+      const dot = handle(T1(), 'waistRadius', W, H).anchor, sq = handle(T1(), 'waistReach', W, H).anchor;
+      expect(dot.x).toBeCloseTo(a.cx - a.rx, 9);
+      expect(dot.y).toBeCloseTo(a.cy, 9);
+      expect(sq.x).toBeCloseTo(Math.min(a.cx, p.region.x + p.region.w), 9);
+      expect(sq.y).toBeCloseTo(a.cy, 9);
+    }
+  });
+
+  it('grabbing the waist arc ANYWHERE (either side): the rim follows the pointer about a FIXED centre -- one drag writes waistRadius AND waistReach', () => {
+    for (const [W, H] of BOARDS) {
+      const rec = T1(), p0 = prof(rec, W, H), a = p0.primitives[2], h = handle(rec, 'waistRadius', W, H);
+      for (const t of [0.2, 0.5, 0.8]) {
+        for (const d of [-0.08, 0.08]) {
+          const q = onArc(a, t, d * a.rx);
+          for (const [side, pt] of [[0, q], [1, mirrorX(p0, q)]]) {
+            const next = dragTo(rec, h, pt, { side }, W, H);
+            expect(Object.keys(next.seeds).sort()).toEqual(['waistRadius', 'waistReach']);
+            const p1 = prof(next, W, H), a1 = p1.primitives[2];
+            expect(p1.defects).toEqual([]);
+            expect(a1.cx, `${W}x${H} t=${t} d=${d} side=${side}`).toBeCloseTo(a.cx, 9); // the centre never moves
+            expect(a1.cy).toBeCloseTo(a.cy, 9);
+            expect(a1.rx).toBeCloseTo(Math.hypot(q.x - a.cx, q.y - a.cy), 9); // r = |pointer - centre|
+          }
+        }
+      }
+    }
+  });
+
+  it('the dot dragged horizontally just moves the pinch (the centre stays put)', () => {
+    const rec = T1(), p0 = prof(rec), a = p0.primitives[2], h = handle(rec, 'waistRadius');
+    const next = dragTo(rec, h, { x: h.anchor.x - 0.2, y: h.anchor.y });
+    const dot = handle(next, 'waistRadius').anchor;
+    expect(dot.x).toBeCloseTo(h.anchor.x - 0.2, 9);
+    expect(handle(next, 'waistReach').anchor.x).toBeCloseTo(handle(rec, 'waistReach').anchor.x, 9);
+    expect(prof(next).primitives[2].cx).toBeCloseTo(a.cx, 9);
     expect(frameInnerProfile(FRAME_DEFS, next, { widthIn: 7, heightIn: 9 }).defects).toEqual([]);
+  });
+
+  it('pulled past a limit, the waist stops AT it with the centre still fixed (whichever of the two params binds first)', () => {
+    for (const [W, H] of BOARDS) {
+      const rec = T1(), p0 = prof(rec, W, H), a = p0.primitives[2];
+      const limits = [];
+      for (const far of [{ x: a.cx - 1e3, y: a.cy }, { x: a.cx, y: a.cy }]) { // a huge rim / no rim at all
+        const h = handle(rec, 'waistRadius', W, H);
+        const next = dragTo(rec, h, far, {}, W, H);
+        const p1 = prof(next, W, H);
+        expect(p1.defects, `${W}x${H} ${JSON.stringify(far)}`).toEqual([]);
+        expect(p1.primitives[2].cx).toBeCloseTo(a.cx, 9);
+        const R = handle(next, 'waistRadius', W, H).range, Rr = handle(next, 'waistReach', W, H).range;
+        const atLimit = [next.seeds.waistRadius - R.min, R.max - next.seeds.waistRadius, next.seeds.waistReach - Rr.min, Rr.max - next.seeds.waistReach]
+          .some((x) => Math.abs(x) < 1e-6);
+        limits.push(atLimit);
+      }
+      expect(limits, `${W}x${H}`).toEqual([true, true]);
+    }
+  });
+
+  it('the waistReach square slides the whole waist sideways, its radius held (the centre follows the pointer)', () => {
+    for (const [W, H] of BOARDS) {
+      const rec = T1(), p0 = prof(rec, W, H), a = p0.primitives[2], h = handle(rec, 'waistReach', W, H);
+      if (a.cx > p0.region.x + p0.region.w) continue; // parked: its own test below
+      for (const dx of [-0.1, 0.05]) {
+        const next = dragTo(rec, h, { x: h.anchor.x + dx, y: h.anchor.y }, { grab: { value: h.value } }, W, H);
+        const a1 = prof(next, W, H).primitives[2];
+        expect(prof(next, W, H).defects).toEqual([]);
+        expect(a1.rx).toBeCloseTo(a.rx, 9); // the radius held
+        const R = handle(next, 'waistRadius', W, H).range, Rr = h.range;
+        const limited = [next.seeds.waistRadius - R.min, R.max - next.seeds.waistRadius, next.seeds.waistReach - Rr.min, Rr.max - next.seeds.waistReach]
+          .some((x) => Math.abs(x) < 1e-6);
+        if (!limited) expect(a1.cx, `${W}x${H} ${dx}`).toBeCloseTo(a.cx + dx, 9); // the centre under the pointer
+        else expect((a1.cx - a.cx) * dx).toBeGreaterThanOrEqual(0); // or stopped at the limit on the way
+      }
+    }
+  });
+
+  it('a FLAT waist (centre past the frame edge) parks its square on the edge: grabbing it there is no jump, pulling it in is continuous', () => {
+    const rec0 = T1();
+    // a flat waist: 40% of the way to its largest radius (at the very largest, a deeper pinch with that radius held
+    // is infeasible, so the square stops at once -- the limit, not a jump)
+    const r0 = handle(rec0, 'waistRadius');
+    const flat = normalizeFrameRecord({ ...rec0, seeds: { waistRadius: r0.value + (r0.range.max - r0.value) * 0.4 } });
+    const p = prof(flat), a = p.primitives[2], edge = p.region.x + p.region.w;
+    expect(a.cx).toBeGreaterThan(edge + 0.5); // non-vacuous: the centre really is off the frame
+    const h = handle(flat, 'waistReach'), grab = { value: h.value };
+    expect(h.anchor.x).toBeCloseTo(edge, 9);
+    expect(h.valueFromWorld({ x: edge, y: h.anchor.y }, { grab })).toBeCloseTo(h.value, 12); // no jump on the grab
+    expect(h.valueFromWorld({ x: edge + 1, y: h.anchor.y }, { grab })).toBeCloseTo(h.value, 12); // past the edge: unchanged
+    let prev = h.value;
+    for (const dx of [0.001, 0.01, 0.1, 0.5, 1]) {
+      const v = h.valueFromWorld({ x: edge - dx, y: h.anchor.y }, { grab });
+      expect(v).toBeGreaterThanOrEqual(prev); // inward = a deeper pinch, monotone
+      prev = v;
+    }
+    expect(h.valueFromWorld({ x: edge - 0.001, y: h.anchor.y }, { grab }) - h.value).toBeLessThan(0.01); // continuous
+    const tighter = dragTo(flat, h, { x: edge - 0.5, y: h.anchor.y }, { grab });
+    expect(prof(tighter).defects).toEqual([]);
+    expect(prof(tighter).primitives[2].rx).toBeCloseTo(a.rx, 9); // radius held
+    expect(prof(tighter).primitives[2].cx).toBeLessThan(a.cx);
   });
 });
 
@@ -185,12 +300,16 @@ describe('(a) [Send frame]: a changed radius reaches Fusion in the seed geometry
     setFrameRecord({ templateId: 'template_1' });
     const rec = normalizeFrameRecord(P.frame);
     const p0 = prof(rec), h = handle(rec, 'waistRadius');
-    setFrameRecord(handleDragPatch(rec, h, { x: h.anchor.x - 0.2, y: h.anchor.y }, p0.region));
+    // F27 item 2 arc pull: grab the LEFT waist arc and pull it (the CAD-circle rim)
+    const a = p0.primitives[8], th = a.theta1 + a.dTheta * 0.3;
+    const pt = { x: a.cx + (a.rx + 0.2) * Math.cos(th), y: a.cy + (a.rx + 0.2) * Math.sin(th) };
+    setFrameRecord(handleDragPatch(rec, h, pt, p0.region, { side: 1 }));
     const rw = normalizeFrameRecord(P.frame).seeds.waistRadius * hwOf(p0);
-    expect(Math.abs(rw - p0.primitives[2].rx)).toBeGreaterThan(0.05);
+    expect(rw).toBeCloseTo(p0.primitives[2].rx + 0.2, 9);
     expect(sendFrame()).toBe(true);
     const s = sent();
-    expect(s.seeds).toEqual({ waistRadius: normalizeFrameRecord(P.frame).seeds.waistRadius });
+    const seeds = normalizeFrameRecord(P.frame).seeds;
+    expect(s.seeds).toEqual({ waistRadius: seeds.waistRadius, waistReach: seeds.waistReach }); // the centre held: the pinch moved too
     expect(Object.keys(s.params).sort()).toEqual(Object.keys(framePayload(FRAME_DEFS, normalizeFrameRecord({ templateId: 'template_1' })).params).sort());
     expect(s.seedGeometry.seed_rad_waist_R.radius).toBeCloseTo(rw, 9);
     expect(s.seedGeometry.seed_rad_waist_L.radius).toBeCloseTo(rw, 9);
@@ -202,7 +321,9 @@ describe('(a) [Send frame]: a changed radius reaches Fusion in the seed geometry
     setFrameRecord({ templateId: 'template_2' });
     const rec = normalizeFrameRecord(P.frame);
     const p0 = prof(rec), h = handle(rec, 'bodyRadius'), a = p0.primitives[2];
-    setFrameRecord(handleDragPatch(rec, h, { x: h.anchor.x - 0.2, y: h.anchor.y }, p0.region)); // centre moves in: a bigger body arc
+    // F27 item 2 arc pull: the body arc pulled in toward its centre (a flatter shoulder = a bigger radius)
+    const u = { x: (h.anchor.x - a.cx) / a.rx, y: (h.anchor.y - a.cy) / a.rx };
+    setFrameRecord(handleDragPatch(rec, h, { x: h.anchor.x - 0.1 * u.x, y: h.anchor.y - 0.1 * u.y }, p0.region, { side: 0 }));
     const rb = normalizeFrameRecord(P.frame).seeds.bodyRadius * hwOf(p0);
     expect(Math.abs(rb - a.rx)).toBeGreaterThan(0.05);
     sendFrame();
@@ -214,7 +335,7 @@ describe('(a) [Send frame]: a changed radius reaches Fusion in the seed geometry
 });
 
 describe('(b) handle kinds are declared data, and render distinct', () => {
-  it('the ONE table: position = the app\'s white/blue square, radius = circle in the editor\'s existing blue accent (Fred)', () => {
+  it('the ONE table: position = the app\'s white/blue square, radius = a dot (ON its arc) in the editor\'s existing blue accent (Fred)', () => {
     expect(HANDLE_KINDS).toEqual({
       position: { shape: 'square', fill: '#ffffff', stroke: APP_HANDLE_STROKE },
       radius: { shape: 'circle', fill: HANDLE_HOVER_FILL },
@@ -257,8 +378,12 @@ describe('(b) handle kinds are declared data, and render distinct', () => {
     expect(paramHandleCursorAxis({ handleKind: 'position', axis: 'y' })).toBe('y');
     expect(paramHandleCursorAxis({ handleKind: 'radius', axis: 'x' })).toBe('plain');
     expect(paramHandleCursorAxis(null)).toBe(null);
+    // a position handle slides on x or y; a radius handle is its arc (F27 item 2 arc pull), the normal pointer
     for (const id of Object.keys(ARC_RADIUS_HANDLE)) {
-      for (const h of handlesOf(normalizeFrameRecord({ templateId: id }))) expect(h.axis, `${id} ${h.key}`).toMatch(/^[xy]$/);
+      for (const h of handlesOf(normalizeFrameRecord({ templateId: id }))) {
+        expect(h.axis, `${id} ${h.key}`).toMatch(h.handleKind === 'radius' ? /^arc$/ : /^[xy]$/);
+        expect(paramHandleCursorAxis(h)).toBe(h.handleKind === 'radius' ? 'plain' : h.axis);
+      }
     }
   });
 });

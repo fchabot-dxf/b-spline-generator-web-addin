@@ -24,6 +24,7 @@ import { handleDragPatch, frameSeedGeometry, generateFrameSeeds } from '../edito
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
 import { frameCutProfile } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
+import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 
 /** F9: how close (screen px) a press must land to grab a frame shape handle (finger-sized). */
 export const HANDLE_HIT_PX = 16;
@@ -213,16 +214,22 @@ function _frameHandleAxis(ed, key) {
 
 /** F9 hit-test, factored out (T81 item 1) so pointerdown's grab check and
  *  the idle-hover check below share the ONE nearest-handle-within-
- *  HANDLE_HIT_PX rule rather than two copies. */
+ *  HANDLE_HIT_PX rule rather than two copies. F27 item 2 arc pull (Fred: "more
+ *  intuitive to pull the arc than the arc center"): the handle MARKS (squares,
+ *  radius dots) first -- a position square in reach wins -- then a radius
+ *  param's ARC, either side, within the same HANDLE_HIT_PX. Returns
+ *  `{ handle, side }` (side 1 = the mirrored left arc) or null. */
 function _hitFrameHandle(ed, clientX, clientY) {
   const pt = ed._getMousePoint({ clientX, clientY });
   const edge = ed._getMousePoint({ clientX: clientX + HANDLE_HIT_PX, clientY });
+  const tol = Math.abs(edge.x - pt.x);
   let best = null, bestD = Infinity;
   for (const h of ed._frameHandles || []) {
     const d = Math.hypot(h.anchor.x - pt.x, h.anchor.y - pt.y);
     if (d < bestD) { bestD = d; best = h; }
   }
-  return best && bestD <= Math.abs(edge.x - pt.x) ? best : null;
+  if (best && bestD <= tol) return { handle: best, side: 0 };
+  return hitTestArcGrip(ed._frameHandles, pt, tol);
 }
 
 // T81 item 1: module scope (not inside _wireHandleDrag's own closure) so
@@ -244,6 +251,7 @@ function _wireHandleDrag() {
   shield.style.pointerEvents = 'none';
   const surface = shield.parentElement;
   let dragKey = null;
+  let dragCtx = {}; // F27 item 2 arc pull: { side, grab } for the whole drag
   const editor = () => (typeof window !== 'undefined' ? window.svgEditor : null);
   const inFrameTab = () => _editorTab === 'frame';
   // T81 item 1: hover state lives on the editor (ed._frameHandleHover/Drag)
@@ -261,9 +269,11 @@ function _wireHandleDrag() {
     if (!inFrameTab()) return;
     const ed = editor();
     if (!ed || !ed._frameProfile || !(ed._frameHandles || []).length) return;
-    const best = _hitFrameHandle(ed, e.clientX, e.clientY);
-    if (!best) return;
+    const hit = _hitFrameHandle(ed, e.clientX, e.clientY);
+    if (!hit) return;
+    const best = hit.handle;
     dragKey = best.key;
+    dragCtx = { side: hit.side, grab: { value: best.value } };
     ed._frameHandleDrag = dragKey; // T81 item 1: the SAME hover/press look for the whole drag
     setHandleCursor('active', paramHandleCursorAxis(best));
     drawFrameProfile(ed); // show it immediately -- a bare press with no movement yet (Touch has no hover at all) must not wait for the first move tick
@@ -276,12 +286,12 @@ function _wireHandleDrag() {
     const ed = editor();
     if (!dragKey) {
       // T81 item 1: idle hover -- only while the Frame tab's own handles are live.
-      setHover(ed, inFrameTab() && ed && ed._frameProfile ? (_hitFrameHandle(ed, e.clientX, e.clientY)?.key ?? null) : null);
+      setHover(ed, inFrameTab() && ed && ed._frameProfile ? (_hitFrameHandle(ed, e.clientX, e.clientY)?.handle.key ?? null) : null);
       return;
     }
     const h = (ed?._frameHandles || []).find((q) => q.key === dragKey);
     if (!h) return;
-    setFrameRecord(handleDragPatch(getFrameRecord(), h, ed._getMousePoint(e), ed._frameProfile.region));
+    setFrameRecord(handleDragPatch(getFrameRecord(), h, ed._getMousePoint(e), ed._frameProfile.region, dragCtx));
     drawFrameProfile(ed);
     e.preventDefault();
     e.stopPropagation();
@@ -289,6 +299,7 @@ function _wireHandleDrag() {
   const end = (e) => {
     if (!dragKey) return;
     dragKey = null;
+    dragCtx = {};
     const ed = editor();
     if (ed) {
       ed._frameHandleDrag = null;

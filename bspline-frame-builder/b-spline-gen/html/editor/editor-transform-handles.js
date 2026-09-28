@@ -232,9 +232,13 @@ export function handleHoverVisual(baseRadius, idleFill, idleStroke, active) {
 //             it slides is shown by the CURSOR on hover, not drawn on the
 //             canvas (Fred: "Changing cursor on hover"): see setHandleCursor;
 //   radius:   sets an arc's radius -- a CIRCLE in the accent colour (Fred:
-//             "dont use diamond use circles"), sitting at the arc's CENTRE
-//             ("please use center"). The accent is the editor's EXISTING blue
-//             (HANDLE_HOVER_FILL = `--cad-accent`), not a new literal.
+//             "dont use diamond use circles"). F27 item 2 ARC PULL (Fred: "more
+//             intuitive to pull the arc than the arc center"; "Well I still
+//             want a handle on the curve itself"): the dot sits ON its arc, and
+//             the whole arc (both sides) is the grip -- hovering it lights it
+//             (drawSegmentHighlight), the cursor stays the normal pointer. The
+//             accent is the editor's EXISTING blue (HANDLE_HOVER_FILL =
+//             `--cad-accent`), not a new literal.
 // A kind with its own `stroke` uses it; otherwise the idle stroke stays each
 // system's own (the frame's outline brown, the Shape Lattice's purple).
 // Hover/press keeps the kind's SHAPE and applies T81 item 1's look on top

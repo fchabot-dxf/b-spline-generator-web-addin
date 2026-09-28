@@ -68,7 +68,7 @@ import {
 // so this file — which has no panel DOM at all — can call the identical
 // write/regenerate logic, not a second copy of it).
 import { generateSilhouette, joinSegmentPathsIntoClosedD } from './editor-shape-lattice-generator.js';
-import { hitTestSegment } from './editor-shape-lattice-interaction.js';
+import { hitTestSegment, hitTestArcGrip } from './editor-shape-lattice-interaction.js';
 import {
     currentPattern, currentShape, regenerateSilhouette, regenerateSilhouetteAndFill,
     paramHandleRecords, renderShapeLatticeHandles, openSegmentStyleBar, _shapeContourRegion,
@@ -2224,10 +2224,13 @@ const shapeLatticeHandler = {
         // rail/tie draw is in progress (_latticeStart set) -- a cancelled draw
         // (_cancelDrawing never clears it) must not leak into this press.
         editor._latticeStart = null;
+        editor._shapeArcPress = null; // F27 item 2 arc pull: a stale press (a hold that opened the menu) never leaks
         const hit = hitTestHandle(editor._paramHandles || [], rawPt);
         if (hit) {
             editor._isDrawing = true;
             editor._shapeLatticeDragKey = hit.key;
+            // F27 item 2 arc pull: a radius dot is its arc's right side; the grab value anchors a parked square.
+            editor._shapeLatticeDragCtx = { side: 0, grab: { value: hit.value } };
             // T81 item 1: the SAME visual a hover shows, held for the whole
             // drag (Touch has no hover at all, so this is its only cue).
             setHandleCursor('active', paramHandleCursorAxis(hit));
@@ -2307,15 +2310,19 @@ const shapeLatticeHandler = {
             latticeHandler.start(editor, pt, e);
             return;
         }
-        // T75 LAT-SIZE: kept as its own `p` (not inlined) -- the trailing
-        // `_shapeContourRegion(editor, p)` call below needs the pattern
-        // object too, not just its shape.
-        const p = currentPattern(editor);
-        const shape = currentShape(p);
-        if (shape.source === 'generated' && Array.isArray(shape.segments)) {
-            const { primitives } = generateSilhouette(_shapeContourRegion(editor, p), shape);
-            const tol = getDynamicTolerance(editor, 10, 'slopPx');
-            const segIndex = hitTestSegment(primitives, shape.segments, rawPt, tol);
+        {
+            // F27 item 2 arc pull (Fred: "more intuitive to pull the arc than the arc
+            // center"): a radius param's arc is its handle, so a press on one is a
+            // TAP or a DRAG, decided by the click threshold (update() below): the
+            // tap is exactly today's segment tap (select + style bar, T81 item 6,
+            // run right here at the press as always); a drag past the threshold
+            // reshapes the radius instead. `grip` counts only where the tap picks
+            // that same arc (_arcGripUnder), and widens the tap to the grip's own
+            // (handle) tolerance so the hover highlight never promises a grab the
+            // press would miss.
+            const grip = _arcGripUnder(editor, rawPt);
+            const found = _contourSegmentAt(editor, rawPt);
+            const segIndex = found != null ? found : (grip ? grip.segment : null);
             if (segIndex != null) {
                 // T81 item 6 (PRIORITY BUG, Fred: "I can't seem to select
                 // contour segment"): this branch used to ONLY open the
@@ -2343,6 +2350,14 @@ const shapeLatticeHandler = {
                     }
                 }
                 openSegmentStyleBar(editor, segIndex, e.clientX, e.clientY);
+                if (grip) {
+                    editor._isDrawing = true; // so the move/release reach update()/finish() below
+                    editor._shapeArcPress = {
+                        key: grip.handle.key, side: grip.side, start: rawPt, offsetY: rawPt.y - pt.y,
+                        grab: { value: grip.handle.value },
+                    };
+                    if (typeof editor._updateHandles === 'function') editor._updateHandles(); // lit while pressed (Touch)
+                }
                 return;
             }
         }
@@ -2368,6 +2383,7 @@ const shapeLatticeHandler = {
         // implementation rather than diverging.
         if (editor._latticeMove) { _updateLatticeMove(editor, pt); return; }
         if (editor._latticeStart) { latticeHandler.update(editor, pt); return; } // T80 item 2: a rail/tie being drawn
+        if (editor._shapeArcPress && !_beginArcDrag(editor, pt)) return; // F27 item 2 arc pull: still a tap
         const key = editor._shapeLatticeDragKey;
         if (!key) return;
         const rawPt = { x: pt.x, y: pt.y + (editor._shapeLatticeDragOffsetY || 0) };
@@ -2375,13 +2391,16 @@ const shapeLatticeHandler = {
         const shape = currentShape(p);
         const handle = paramHandleRecords(editor).find((h) => h.key === key);
         if (!handle) return;
-        const value = handle.valueFromWorld(rawPt);
+        // F27 item 2 arc pull: the drag writes the handle's PATCH -- its own key, or
+        // for the hourglass waist (a CAD circle) waistReach and waistRadius together.
+        const patch = handle.patchFromWorld(rawPt, editor._shapeLatticeDragCtx || {});
+        const value = patch[key];
         // H13: valueFromWorld already clamped -- comparing against the
         // handle's own declared range (editor-shape-lattice-interaction.js)
         // tells us whether THIS drag tick actually hit the bound, without
         // that pure module touching haptic()/navigator/document itself.
         if (handle.range && (value === handle.range.min || value === handle.range.max)) haptic('limit');
-        shape.params = { ...shape.params, [key]: value };
+        shape.params = { ...shape.params, ...patch };
         regenerateSilhouette(editor, p); // its own end calls editor._updateHandles(), re-rendering from the NEW params
         editor._notifyChange('live');
     },
@@ -2395,7 +2414,16 @@ const shapeLatticeHandler = {
         if (editor._latticeMove) return _finishLatticeMove(editor); // T81 item 7: may be a promise
         if (editor._latticeStart) return latticeHandler.finish(editor); // T80 item 2: a rail/tie being drawn
         editor._isDrawing = false;
+        if (editor._shapeArcPress) {
+            // F27 item 2 arc pull: released before the click threshold -- a TAP, and the
+            // tap (segment select + style bar) already ran at the press. Nothing reshaped,
+            // no regenerate, no undo step; just drop the pressed highlight.
+            editor._shapeArcPress = null;
+            if (typeof editor._updateHandles === 'function') editor._updateHandles();
+            return;
+        }
         editor._shapeLatticeDragKey = null;
+        editor._shapeLatticeDragCtx = null;
         editor._shapeLatticeDragOffsetY = 0;
         // T81 item 1: back to hover (the pointer is very likely still on the
         // handle it just released) or idle -- the next hover() call
@@ -2411,7 +2439,10 @@ const shapeLatticeHandler = {
      *  grab at this same point would hit — SNAP_POLICY.shapeLattice is
      *  'none', so `pt` carries no grid-snap discrepancy against it either. */
     hover(editor, pt) {
-        const hit = hitTestHandle(editor._paramHandles || [], pt);
+        if (editor._shapeArcPress && !editor._isDrawing) editor._shapeArcPress = null; // a hold's menu ended that press
+        // F27 item 2 arc pull: the marks first (a square in reach wins), then a radius
+        // param's arc, either side -- its only affordance is the highlight of both.
+        const hit = hitTestHandle(editor._paramHandles || [], pt) || _arcGripUnder(editor, pt)?.handle || null;
         const key = hit ? hit.key : null;
         if (editor._shapeHandleHover !== key) {
             editor._shapeHandleHover = key;
@@ -2425,6 +2456,51 @@ const shapeLatticeHandler = {
         if (selectHandler.hover) selectHandler.hover(editor, pt);
     },
 };
+
+/** T59 tap-a-segment, factored out (F27 item 2 arc pull: the arc grip below
+ *  asks it too): the contour segment a tap at `pt` selects -- the nearest one
+ *  within slopPx of the generated silhouette -- or null. */
+function _contourSegmentAt(editor, pt) {
+    const p = currentPattern(editor);
+    const shape = currentShape(p);
+    if (!(shape.source === 'generated' && Array.isArray(shape.segments))) return null;
+    const { primitives } = generateSilhouette(_shapeContourRegion(editor, p), shape);
+    return hitTestSegment(primitives, shape.segments, pt, getDynamicTolerance(editor, 10, 'slopPx'));
+}
+
+/** F27 item 2 arc pull: the radius param's arc under `pt` -- `{ handle, side,
+ *  segment }` (side 1 = the mirrored left arc) within the handles' own hit
+ *  tolerance, or null. Only where a tap would pick that SAME segment (or no
+ *  segment at all): near a junction with a straight horn the tap's nearest-
+ *  segment rule wins, so hover, tap and drag always agree on the target. */
+function _arcGripUnder(editor, pt) {
+    const grips = (editor._paramHandles || []).filter((r) => r.axis === 'arc');
+    if (!grips.length) return null;
+    const grip = hitTestArcGrip(grips, pt, grips[0].hitR);
+    if (!grip) return null;
+    const segment = grip.side === 1 ? grip.handle.mirrorSegment : grip.handle.segment;
+    const tapped = _contourSegmentAt(editor, pt);
+    return tapped == null || tapped === segment ? { ...grip, segment } : null;
+}
+
+/** F27 item 2 arc pull: a pressed arc becomes a radius DRAG once the pointer
+ *  passes the click threshold (the same clickThresholdPx every other tap-vs-drag
+ *  call reads); true once it has. The tap's style bar goes (the drag is not a
+ *  style edit); the tapped segment stays selected, as a dragged thing does. */
+function _beginArcDrag(editor, pt) {
+    const press = editor._shapeArcPress;
+    const rawPt = { x: pt.x, y: pt.y + press.offsetY };
+    if (Math.hypot(rawPt.x - press.start.x, rawPt.y - press.start.y) <= getDynamicTolerance(editor, 3, 'clickThresholdPx')) return false;
+    document.querySelectorAll('.shape-lattice-segment-bar').forEach((bar) => bar.remove());
+    cancelContextMenuHold();
+    cancelMultiSelectHold();
+    editor._shapeArcPress = null;
+    editor._shapeLatticeDragKey = press.key;
+    editor._shapeLatticeDragCtx = { side: press.side, grab: press.grab };
+    editor._shapeLatticeDragOffsetY = press.offsetY;
+    setHandleCursor('active', 'plain'); // Fred: a radius keeps the normal pointer
+    return true;
+}
 
 /** F27 item 2 follow-up: a Shape Lattice param handle's cursor axis (its drag axis, or 'plain' for a radius). */
 function _paramHandleAxis(editor, key) {

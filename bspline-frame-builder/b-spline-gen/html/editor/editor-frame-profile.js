@@ -80,10 +80,12 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
   const bbo = _param(tpl, record, 'boundingboxoffset') ?? 0;
   const ft = _param(tpl, record, 'frame_thickness') ?? 0;
   const region = { x: bbo, y: bbo, w: widthIn - 2 * bbo, h: heightIn - 2 * bbo };
-  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: _shapeParams(tpl, region, record) });
+  const shapeParams = _shapeParams(tpl, region, record);
+  const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: shapeParams });
   const defects = outlineDefects(sil.primitives);
   return {
-    templateId: tpl.id, name: tpl.name, region, primitives: sil.primitives, params: sil.params,
+    // F27 item 2 arc pull: `shapeParams` = the params the outline was generated FROM (the arc grips re-solve over them)
+    templateId: tpl.id, name: tpl.name, region, primitives: sil.primitives, params: sil.params, shapeParams,
     pathD: primitivesToPathD(sil.primitives), polygon: sampleOutline(sil.primitives),
     defects, fit: frameFit(widthIn, heightIn, ft, bbo),
   };
@@ -253,9 +255,12 @@ function _drawFrameProfile(editor) {
       // T81 item 1: the SAME declared hover/press look Shape Lattice's own
       // param handles use (editor-transform-handles.js) -- frame-panel.js
       // sets _frameHandleHover/_frameHandleDrag from its own pointer wiring.
-      // F27 item 2: drawn by its declared KIND (radius = accent circle at the
-      // arc centre, position = the app's white/blue square; the cursor shows
-      // the drag direction), the ONE kind table the Shape Lattice reads too.
+      // F27 item 2: drawn by its declared KIND (radius = accent dot ON its arc,
+      // position = the app's white/blue square; the cursor shows the drag
+      // direction), the ONE kind table the Shape Lattice reads too. F27 item 2
+      // arc pull: a radius param's grip is its whole arc, both sides
+      // (frame-panel.js hit-tests it); the dot marks it, and hovering either
+      // arc lights both through the highlight above (the arc's only other cue).
       const active = editor._frameHandleHover === h.key || editor._frameHandleDrag === h.key;
       const vis = handleKindVisual(h.handleKind, FRAME_HANDLE_RADIUS, FRAME_OUTLINE_COLOR, active);
       drawParamHandle(g, vis, h.anchor.x, h.anchor.y, 0.03)

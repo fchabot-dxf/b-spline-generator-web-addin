@@ -3065,3 +3065,85 @@ Full vitest 2384/2384. Shot: scratchpad shots/handles-v3.
   sides (`controlledSegments`, editor-shape-lattice-interaction.js). One declared look, `drawSegmentHighlight`
   (editor-transform-handles.js). Frame segments use `primitiveToPathD` (open) -- the closing Z of
   `primitivesToPathD` drew a chord across the arc (caught in the headless shot). Shots: scratchpad handles-v5.
+
+## F27 item 2 follow-up -- pull the ARC to set its radius; the waist as a CAD circle -- 2026-09-28
+
+Fred: "the more I look at it the more I'm thinking it's more intuitive to pull the arc than the arc center"
+(he picked: grab the arc itself, for ALL arcs, Frame tab AND Shape Lattice); then "Well I still want a handle on
+the curve itself"; "Then the position for waist reach can be the arc center"; and (agreed) the hourglass waist
+behaves like a CAD circle: a centre point + a point on the rim.
+
+What changed (one handle catalogue, `computeParamHandles`, so both systems get all of it):
+- **Arc grip.** Every radius param (T1 Shoulder, Hip, Waist radius; T2 S-curve/neck, Body) is now axis `'arc'`:
+  its record carries the segment it drives, that segment's mirror and both live arcs (`segment`,
+  `mirrorSegment`, `arcs`). A press or hover within the handles' own screen tolerance of EITHER side's arc grabs
+  it (`hitTestArcGrip`); the marks are tested first, so a position square in reach wins (measured case: T2's
+  Shoulder-height square sits exactly where the neck arc starts). The left arc mirrors the pointer across the
+  centre line before solving (`ctx.side`).
+- **The drag.** Every arc but the waist: `radiusThroughPoint` (restored from 5feacb0, branch-tracked) over the
+  generator's OWN silhouette with that one param set to v -- the arc passes under the pointer, clamped into the
+  declared range, so a manual drag reaches the true limit. The silhouette is the DRAWN one: the Shape Lattice
+  passes its stroke inset and raw shape (`opts.strokeHalfWidth`, `opts.shape`), the Frame its own params
+  (`prof.shapeParams`, new on the cut profile).
+- **The dot** (Fred: "a handle on the curve itself"): the radius mark (blue circle, unchanged look) sits ON the
+  right arc; dragging it = dragging the arc there; hover grows it, the cursor stays the normal pointer.
+  Placement, checked per arc for a point every circle of the family shares (a dot there could not change the
+  radius): shoulder/hip (tangent to the side and to the waist) and T2 body (tangent to the side and to the neck)
+  have no common point -> angular midpoint; T2 neck circles all pass through the neck horn point, which is the
+  arc's START -> the midpoint is clear of it. Measured radius change per inch of pull along the normal at the
+  dot (default frames): T1 shoulder/hip -3.41 / -0.94 / -0.64 (7x9 / 12x6 / 5.51x1.97), T2 neck 4.20 / 2.26 /
+  2.72, T2 body -2.72 / -0.95 / -0.86; one solve 0.4-5 ms.
+- **The waist as a CAD circle.** The waistReach SQUARE sits at the waist arc's CENTRE (pinch line) and slides
+  the whole waist sideways with its radius held. The waist RIM: my choice between the two options offered was
+  **one rule for the whole arc** -- grabbed anywhere (dot or elsewhere, either side) the rim follows the pointer
+  about the FIXED centre, Rw = |pointer - centre| (less the stroke inset). Why: the dot and the arc then never
+  disagree, and it avoids the radiusThroughPoint-with-fixed-pinch family, whose shared point (the pinch) is where
+  the dot sits and where that drag is singular (5feacb0 measured 0.18 in -> 0.68 to 8.4 in near it). The dot
+  sits ON THE PINCH (the rim point facing the square, on its line; equal to the angular midpoint when Shoulder =
+  Hip): a horizontal drag of it just moves the pinch. Both waist drags write BOTH params (`patchFromWorld`:
+  waistReach = (hw + Rw - centre)/hw), one undo step; each candidate pair is checked against ONE range source
+  (`opts.rangesFor`; the Frame passes `frameParamRanges`, so the frame-opening rule counts too), and the drag
+  stops at whichever limit binds first (bisection) -- the centre never drifts (tested to 1e-9).
+- **Parked square (flat waist, centre past the frame edge).** Drawn on the edge, on the pinch line. My mapping
+  (`waistReachFromCentre`), decided by the value at the GRAB so it never drifts while the drag re-reads the shape:
+  a pointer at/past the edge keeps the grabbed value (no jump); inward the centre blends linearly from "E past the
+  pointer" at the edge to "under the pointer" at the centre line, centre = x + E (x - cx0)/(edge - cx0) --
+  continuous and monotone; the square catches up with the pointer on the way. Known limit: a waist already at its
+  LARGEST radius cannot be deepened with that radius held (the radius range shrinks as the pinch deepens), so the
+  square stops at once there -- pull the rim in first.
+- **Shape Lattice tap vs drag.** A press on an arc runs today's segment tap exactly (select + style bar, T81 item
+  6, at the press as before) and arms `_shapeArcPress`; release inside `clickThresholdPx` = the tap, nothing
+  reshaped, no undo step; a move past it closes the style bar, cancels the long-press menu and becomes the radius
+  drag (one regenerate + undo step on release; the tapped segment stays selected, as a dragged thing does).
+  start() order unchanged: marks -> lattice pieces -> add modes -> contour. Judgement call: the arc grip counts
+  only where the tap would pick that same segment (`_arcGripUnder`), and where no segment is within slopPx but the
+  arc is within the handle tolerance (14 px mouse vs 10 px slop) the tap now selects that arc -- so the hover
+  highlight never promises a grab the press would miss.
+- **Hover highlight** = the only affordance of an arc: hovering either side lights both (`drawSegmentHighlight`),
+  in both systems; Touch: lit while pressed/dragging (`_shapeArcPress` / `_frameHandleDrag`).
+- **Frame writes.** `handleDragPatch(record, handle, pt, region, ctx)` writes the handle's patch, each key through
+  its own binding in the table (seeds only: no new Fusion params); [Send frame] carries the new radius (and the
+  waist's pinch) in the seed geometry. The old post-clamp in `frameHandles` is gone (the ranges go in instead).
+- Removed: the waist-radius "parking at the centre" logic and the centre-anchored radius handles.
+
+Tests: frame-radius-handles (rewritten: arc inventory as grips, dots on the arcs, right AND mirrored-left pulls
+put the arc under the pointer and are monotone, limits reached with valid outlines, waist CAD circle: centre fixed
+from anywhere on either arc, dot moves the pinch, stop at a limit, square slides radius-held, parked no-jump,
+[Send frame] seeds for T1 waist + T2 body), frame-handles (real pointer events: hover the left waist arc -> both
+lit + plain cursor; drag the left shoulder arc -> seed only, one undo step, arc under the pointer; waist dot keeps
+the centre; T2 square beats the neck arc), shape-lattice-handle-hover (hover an arc -> both sides; TAP = select +
+style bar, params untouched, no undo step; DRAG past the threshold on the left arc -> one param, arc under the
+pointer, one undo step, bar gone; waist CAD circle; square with a derived waist radius; square beats arc; a horn is
+no grip), editor-shape-lattice-interaction (arc records, radiusThroughPoint, hitTestArcGrip, inset/drawn arcs,
+user-styled segment has no grip, waistReachFromCentre). Full vitest 2415/2415.
+
+Shots (real CDP mouse events, scratchpad `arc_pull_shots.mjs`, a copy of f27_2_shots.mjs; page served from
+`bspline-frame-builder/` so `../../styles` resolves): scratchpad `shots/arc-pull/` -- T1 idle (squares + dots on
+the arcs), hovering the LEFT waist arc (both lit), mid-drag / after (rim +0.25 in, centre fixed), the centre
+square sliding the waist 0.35 in (radius held), a shoulder arc pull; Shape Lattice: hover, tap (segment 9
+selected + style bar, params unchanged), mid-drag / after of the left shoulder arc (0.60 -> 1.04 in).
+
+NOT verified here: live Fusion ([Send frame] of a pulled waist: both waist seeds + the moved pinch should build;
+same mechanism as the F20 corner seeds, unmeasured); a real touch device (only mouse events in the shots; the
+touch path is the same start/update/finish with the press-lit highlight). Pre-existing, not changed: the Frame
+tab's hover only clears on a move over the canvas (leaving the canvas keeps the last hover look).

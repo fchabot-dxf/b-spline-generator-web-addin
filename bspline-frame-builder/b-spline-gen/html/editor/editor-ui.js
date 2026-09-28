@@ -156,6 +156,7 @@ export function setMode(editor, mode) {
     // T81 item 1: same reason — a Shape Lattice handle hover read by the
     // OLD mode must not leave the grab cursor stuck after switching away.
     editor._shapeHandleHover = null;
+    editor._shapeArcPress = null; // F27 item 2 arc pull: a pending arc press is the old mode's too
     editor._railEndHover = null; // T81 item 7: same, for the lattice rail-end handle
     setHandleCursor(null);
     // The lattice is meaningless invisible — turn the grid on the moment

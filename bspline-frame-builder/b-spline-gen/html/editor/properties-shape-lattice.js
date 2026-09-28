@@ -473,9 +473,21 @@ export function paramHandleRecords(editor) {
     if (!hasGeneratedSilhouette(p)) return [];
     if (contourFromFrameOf(p).on) return []; // F21: the frame drives the shape, so its handles are off
     const region = _shapeContourRegion(editor, p);
-    const { params: resolved } = generateSilhouette(region, shape);
+    // F27 item 2 arc pull: the arc grips hold the DRAWN arcs (regenerateSilhouette's own
+    // stroke-inset contour, user-styled segments and all) and re-solve over the shape's
+    // own raw params -- the ones a drag writes.
+    const strokeHalfWidth = _contourWidthOf(p) / 2;
+    const { params: resolved } = generateSilhouette(region, shape, strokeHalfWidth);
     if (!resolved) return [];
-    return computeParamHandles(shape.preset, region, resolved).map((h) => ({ ...h, hx: h.anchor.x, hy: h.anchor.y }));
+    const opts = { strokeHalfWidth, shape: { params: shape.params || {}, segments: shape.segments, seed: shape.seed } };
+    return computeParamHandles(shape.preset, region, resolved, undefined, opts).map((h) => ({ ...h, hx: h.anchor.x, hy: h.anchor.y }));
+}
+
+/** The contour's drawn stroke width (auto = the rails' width), as regenerateSilhouette reads it. */
+function _contourWidthOf(p) {
+    const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
+    const contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
+    return contour.width != null ? contour.width : widths.rails;
 }
 
 /** T81 item 1: the contour segment element a hovered/pressed handle
@@ -543,7 +555,10 @@ export function renderShapeLatticeHandles(editor) {
     const preset = currentShape(currentPattern(editor)).preset;
     const out = [];
     for (const r of records) {
-        const active = editor._shapeHandleHover === r.key || editor._shapeLatticeDragKey === r.key;
+        // F27 item 2 arc pull: a press on an arc (pending tap-or-drag, editor-interaction.js) lights it too --
+        // Touch has no hover, so the press is its only cue.
+        const active = editor._shapeHandleHover === r.key || editor._shapeLatticeDragKey === r.key
+            || (editor._shapeArcPress && editor._shapeArcPress.key === r.key);
         if (active) {
             // the segment it controls AND its mirror (Fred: "How about
             // highlighting the geometry it control" -- the param moves both sides)
@@ -554,7 +569,7 @@ export function renderShapeLatticeHandles(editor) {
             }
         }
         // F27 item 2: the handle's declared KIND picks its mark (radius =
-        // accent circle, position = the app's white/blue square) -- the
+        // accent dot ON its arc, position = the app's white/blue square) -- the
         // SAME table and draw call the Frame tab's handles use
         // (editor-transform-handles.js).
         const vis = handleKindVisual(r.handleKind, sz, '#7b1fa2', active);

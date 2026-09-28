@@ -168,6 +168,10 @@ export class VectorEditor {
         // _transformHandles/_transformState just above.
         this._paramHandles = [];
         this._shapeLatticeDragKey = null;
+        // F27 item 2 arc pull: the drag's {side, grab}, and a press on an arc
+        // still deciding tap (segment select) or drag (its radius).
+        this._shapeLatticeDragCtx = null;
+        this._shapeArcPress = null;
     }
 
     /** Primary selection — the most-recently clicked element. Legacy

@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { generateSilhouette, PRESETS, SHAPE_PARAM_KEYS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import {
   boardRegion, computeParamHandles, hitTestSegment, primitiveSegmentMap, mirrorSegmentIndex,
+  HANDLE_SEGMENT_INDEX, radiusThroughPoint, hitTestArcGrip, waistReachFromCentre,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-interaction.js';
 
 const REGION = { x: 0, y: 0, w: 7, h: 9 }; // real board-inches scale, matching properties-shape-lattice.js's own _boardRegion
@@ -63,10 +64,19 @@ describe.each(['hourglass', 'bottle'])('computeParamHandles(%s) — round-trip c
     }
   });
 
-  it('axis is always x or y — this generator never declares a diagonal handle (see the module\'s own header comment); every radius handle sits at its arc centre (Fred: "please use center")', () => {
+  it('a position handle\'s axis is x or y (never diagonal); a radius handle is its ARC (F27 item 2 arc pull: "more intuitive to pull the arc than the arc center")', () => {
     const out = generateSilhouette(REGION, { preset });
     const handles = computeParamHandles(preset, REGION, out.params);
-    for (const h of handles) expect(h.axis).toMatch(/^[xy]$/);
+    for (const h of handles) {
+      if (h.handleKind === 'radius') {
+        expect(h.axis).toBe('arc');
+        expect(h.arcs).toEqual([out.primitives[h.segment], out.primitives[h.mirrorSegment]]);
+        expect(h.segment).toBe(HANDLE_SEGMENT_INDEX[preset][h.key]);
+        expect(h.mirrorSegment).toBe(mirrorSegmentIndex(h.segment, out.segments.length));
+      } else expect(h.axis).toMatch(/^[xy]$/);
+    }
+    expect(handles.filter((h) => h.handleKind === 'radius').map((h) => h.key).sort())
+      .toEqual(preset === 'hourglass' ? ['cornerRadiusBottom', 'cornerRadiusTop', 'waistRadius'] : ['bodyRadius', 'skeletonX']);
   });
 
   it('a handle only reads its OWN axis coordinate — moving the OFF-axis coordinate never changes the recovered value', () => {
@@ -166,5 +176,70 @@ describe('F20 SHOULDER-HIP: the Shape Lattice hourglass has a Shoulder and a Hip
     const label = (id) => html.match(new RegExp(`id="shapeParamRow-${id}"[^>]*>([^<]*)<`))[1].trim();
     expect(label('cornerRadiusTop')).toBe('shoulder');
     expect(label('cornerRadiusBottom')).toBe('hip');
+  });
+});
+
+describe('F27 item 2 arc pull: the pure pieces', () => {
+  const at = (a, t, d = 0) => { const th = a.theta1 + a.dTheta * t; return { x: a.cx + (a.rx + d) * Math.cos(th), y: a.cy + (a.rx + d) * Math.sin(th) }; };
+
+  it('radiusThroughPoint: the value whose circle passes through the point; past the range, the nearer limit', () => {
+    const circleAt = (v) => ({ cx: 0, cy: 0, r: v }); // concentric circles: r = v
+    expect(radiusThroughPoint(circleAt, { min: 0.1, max: 5 }, 1, { x: 3, y: 4 })).toBeCloseTo(5, 9);
+    expect(radiusThroughPoint(circleAt, { min: 0.1, max: 5 }, 1, { x: 0.3, y: 0.4 })).toBeCloseTo(0.5, 9);
+    expect(radiusThroughPoint(circleAt, { min: 0.1, max: 2 }, 1, { x: 30, y: 40 })).toBe(2);
+    expect(radiusThroughPoint(circleAt, { min: 0.1, max: 2 }, 1, { x: 0, y: 0 })).toBe(0.1);
+  });
+
+  it('radiusThroughPoint tracks the CURRENT branch: of two roots, the one on the current sheet of the family', () => {
+    // circles through the origin, centred on the x axis: r = |v|, centre (v, 0). A point (x, y) lies on it
+    // for one v; a family folding back (centre (-v) past 0) is covered by the orientation test.
+    const circleAt = (v) => ({ cx: v, cy: 0, r: Math.abs(v) });
+    const v = radiusThroughPoint(circleAt, { min: 0.05, max: 10 }, 2, { x: 1, y: 1 }); // (x-v)^2 + 1 = v^2 -> v = 1
+    expect(v).toBeCloseTo(1, 9);
+  });
+
+  it('hitTestArcGrip: either side\'s arc within tolerance -> { handle, side }; a far point -> null; a non-arc handle never', () => {
+    const out = generateSilhouette(REGION, { preset: 'hourglass', seed: 42 });
+    const hs = computeParamHandles('hourglass', REGION, out.params);
+    const top = hs.find((h) => h.key === 'cornerRadiusTop');
+    const onRight = at(top.arcs[0], 0.4, 0.02), onLeft = at(top.arcs[1], 0.4, -0.02);
+    expect(hitTestArcGrip(hs, onRight, 0.05)).toMatchObject({ handle: { key: 'cornerRadiusTop' }, side: 0 });
+    expect(hitTestArcGrip(hs, onLeft, 0.05)).toMatchObject({ handle: { key: 'cornerRadiusTop' }, side: 1 });
+    expect(hitTestArcGrip(hs, onRight, 0.01)).toBeNull();
+    expect(hitTestArcGrip(hs, { x: REGION.w / 2, y: REGION.h / 2 }, 0.05)).toBeNull();
+    expect(hitTestArcGrip(hs.filter((h) => h.axis !== 'arc'), onRight, 1)).toBeNull();
+  });
+
+  it('the arcs are the DRAWN ones: opts.strokeHalfWidth insets them exactly as the contour is drawn, and the drag solves there', () => {
+    const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const sh = 0.06;
+    const drawn = generateSilhouette(REGION, shape, sh);
+    const hs = computeParamHandles('hourglass', REGION, drawn.params, undefined, { strokeHalfWidth: sh, shape });
+    const top = hs.find((h) => h.key === 'cornerRadiusTop');
+    expect(top.arcs[0]).toEqual(drawn.primitives[1]);
+    const q = at(top.arcs[0], 0.5, 0.05);
+    const v = top.valueFromWorld(q);
+    const a1 = generateSilhouette(REGION, { ...shape, params: { cornerRadiusTop: v } }, sh).primitives[1];
+    expect(Math.hypot(q.x - a1.cx, q.y - a1.cy)).toBeCloseTo(a1.rx, 6);
+  });
+
+  it('a user-styled segment (the param no longer drives it) has no grip; the rest keep theirs', () => {
+    const out = generateSilhouette(REGION, { preset: 'hourglass', seed: 42 });
+    const segments = out.segments.map((sg, i) => (i === 1 || i === 9 ? { style: 'straight', bulge: 0, dir: 'out', user: true } : sg));
+    const hs = computeParamHandles('hourglass', REGION, out.params, undefined, { shape: { seed: 42, params: {}, segments } });
+    expect(hs.find((h) => h.key === 'cornerRadiusTop')).toBeUndefined();
+    expect(hs.find((h) => h.key === 'cornerRadiusBottom').axis).toBe('arc');
+  });
+
+  it('waistReachFromCentre: unparked, the centre is the pointer; parked, no jump at the edge and continuous inward', () => {
+    const geo = { cx0: 0, hw: 1, edge: 1, radiusWaist: 0.4 };
+    // centre = pinch + Rw = (1 - reach) + 0.4: reach 0.6 -> centre 0.8 (on the board)
+    expect(waistReachFromCentre(geo, 0.7, 0.6)).toBeCloseTo(0.7, 12); // centre 0.7 -> reach 0.7
+    // reach 0.2 -> centre 1.2, past the edge by 0.2: parked
+    expect(waistReachFromCentre(geo, 1, 0.2)).toBeCloseTo(0.2, 12);
+    expect(waistReachFromCentre(geo, 5, 0.2)).toBeCloseTo(0.2, 12);
+    expect(waistReachFromCentre(geo, 0.999, 0.2)).toBeCloseTo(0.2, 2);
+    expect(waistReachFromCentre(geo, 0.5, 0.2)).toBeCloseTo(1.4 - (0.5 + 0.2 * 0.5), 12); // blended
+    expect(waistReachFromCentre(geo, 0, 0.2)).toBeCloseTo(1.4, 12); // at the centre line: under the pointer
   });
 });
