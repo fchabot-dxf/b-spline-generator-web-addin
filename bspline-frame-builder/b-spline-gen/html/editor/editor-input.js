@@ -27,10 +27,13 @@
  * "no behaviour change," so this seeds the declaration without yet
  * tuning touch/pen differently; a later turn can widen touch's value the
  * same way SE7m widened slopPx/grabPx, in this one place instead of
- * hunting down two inline literals again. */
+ * hunting down two inline literals again.
+ * Audit batch 1: touch widened to 8 (a finger's normal tap jitter, the usual phone touch slop): at 3 a tap that
+ * wobbled read as a drag -- a ✗ tap re-aimed instead of cancelling, a Lattice tap drew nothing. Every tap-vs-drag
+ * call reads it (pastClickThreshold, editor-hit.js). */
 export const INPUT_PROFILE = {
   mouse: { slopPx: 10, grabPx: 15, handlePx: 8, markerOffsetPx: 0, clickThresholdPx: 3 },
-  touch: { slopPx: 22, grabPx: 28, handlePx: 14, markerOffsetPx: 40, clickThresholdPx: 3 },
+  touch: { slopPx: 22, grabPx: 28, handlePx: 14, markerOffsetPx: 40, clickThresholdPx: 8 },
   pen: { slopPx: 8, grabPx: 12, handlePx: 8, markerOffsetPx: 0, clickThresholdPx: 3 },
 };
 

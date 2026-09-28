@@ -3348,3 +3348,28 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
 ## Frame-linked contour keeps its stripes (Fred: "I can see the preview and the green check, on confirm it returns to normal. All edges do that on contour")
 - Cause: refreshFrameLinkedContours (a Shape Lattice contour with Offset from frame, re-checked on every frame redraw) compared the drawn pieces 1:1 with the fresh contour; a striped segment is several pieces -> "changed" -> regenerateSilhouette (count mismatch clears segmentColors, redraws) + refill -> stripes gone. Reproduced headless with a frame + Offset from frame: stripe shown, then 12 plain segments 2 s later (2 refill pushes).
 - Fix: `contourPiecesKey` (exported, the same cut-collapsing key boundaryFillInputs uses) compares the drawn pieces as the segments they came from. After: 16 striped pieces stay, one undo step.
+
+## Audit batch 1 -- pointer input / picking / gestures (Fred picked "Full multi-agent audit" then "batch 1")
+Audit: 8 agents (4 read-only auditors + 4 adversarial verifiers), 34 confirmed findings (report: session scratch).
+Batch 1 fixes:
+- ONE pick rule: an EXISTING thing is picked at the finger (`editor._pressFinger`), NEW things aim with the marker.
+  Select / Node / Text used the aim point (40 px above, snapped) -> a finger on a line, node or handle missed. Now
+  `_pickPt`; a grab sets `editor._grabAtFinger` and the drag follows the finger (handleMove), start snapped with the
+  grabbed things excluded. Lattice/Shape Lattice: `_latticePickPt` -- Select sub-mode at the finger, an Add mode
+  (Rail/Tie/Node) at the marker (so a finger resting on a rail doesn't steal a new rail's draw).
+- Hover picks like the press: latticeHandler.hover uses _getNearbyLatticePiece at the raw point (was the generic
+  active-layer picker at the grid-snapped point); select/node/text/shapeLattice hovers get the unsnapped point.
+- `resetDragGestureState` (exported): one reset for every drag field, at each press, pinch abort and drag end --
+  a pinch left _transformState/_dragNodeIndex set, the next drag drove detached elements.
+- Every drag snap excludes what is dragged (node / transform drags snapped onto their own points).
+- Hidden-layer rails/ties/nodes are never picked (_nearbyLatticePiece isOnVisibleLayer).
+- `pastClickThreshold` (editor-hit.js), the one tap-vs-drag rule; touch clickThresholdPx 3 -> 8. Used by the
+  touch-confirm ✓/✗ (a wobbly X tap re-aimed instead of cancelling) and Lattice tap-to-spawn (used the 22 px slop,
+  so short drags spawned full pieces).
+- Frame handles: reach = max(16, handlePx*1.8 for the pointer, drawn dot + 4 px) (was a fixed 16 px).
+- Found while verifying: a FLAT selection (a horizontal/vertical line) drew scale handles along its missing axis
+  ON the line and the rotate knob at its middle -> pressing the line to move it grabbed a do-nothing handle. Those
+  handles are dropped; the rotate knob goes perpendicular above the line.
+Verified headless touch 390px: Select drag of a line 27.9 px (old 0), Node end drag 41.8 (old 0), drag after pinch
+ok, hidden rail not grabbed (old: grabbed), wobbly ✗ cancels; regressions (tie move, rail-end stretch, contour move
++ undo in Lattice Select, stripe on touch) all pass.

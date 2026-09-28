@@ -42,9 +42,9 @@ describe('INPUT_PROFILE / inputProfileFor', () => {
   // mode freehand threshold and the circle near-zero-radius threshold,
   // editor-interaction.js — used a flat literal 3 regardless of pointer
   // type before this turn too).
-  it('clickThresholdPx is declared and equal (3) across mouse/touch/pen — a seeded field, not yet per-device tuned', () => {
+  it('clickThresholdPx: 3 for mouse/pen, touch widened to 8 (a tap\'s own jitter; audit batch 1)', () => {
     expect(INPUT_PROFILE.mouse.clickThresholdPx).toBe(3);
-    expect(INPUT_PROFILE.touch.clickThresholdPx).toBe(3);
+    expect(INPUT_PROFILE.touch.clickThresholdPx).toBe(8);
     expect(INPUT_PROFILE.pen.clickThresholdPx).toBe(3);
   });
 });

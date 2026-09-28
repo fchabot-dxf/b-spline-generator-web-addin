@@ -79,6 +79,13 @@ export function getDynamicTolerance(editor, px = 5, profileKey = null) {
     return effectivePx / viewScale(view, screenWidth, screenHeight);
 }
 
+/** Audit (batch 1): THE tap-vs-drag decision -- has the pointer moved from `a` to `b` (model points) further than
+ *  a tap's own jitter (INPUT_PROFILE clickThresholdPx for the current pointer type)? One rule instead of per-site
+ *  literals or the hit slop (slopPx is how far a pick reaches, not how much a tap wobbles). */
+export function pastClickThreshold(editor, a, b) {
+    return Math.hypot(b.x - a.x, b.y - a.y) > getDynamicTolerance(editor, 3, 'clickThresholdPx');
+}
+
 /**
  * SE7n: each node is `{ x, y, set(localPt) }` — x,y in WORLD space (as
  * always, via worldPoint), `set` closing over the REAL mutation for that

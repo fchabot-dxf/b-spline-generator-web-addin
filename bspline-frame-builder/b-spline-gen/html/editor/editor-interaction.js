@@ -17,7 +17,7 @@ import { cutHandler } from './editor-cut-tool.js'; // SE16 ✂
 import { stripeHandler } from './editor-stripe-tool.js'; // F27 item 3
 import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints, tieEndNodes, minPieceLength } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
-import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer } from './layers.js';
+import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer, isOnVisibleLayer } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
 import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
@@ -32,7 +32,7 @@ import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.j
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
 import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover } from './editor-grid.js';
-import { getDynamicTolerance } from './editor-hit.js';
+import { getDynamicTolerance, pastClickThreshold } from './editor-hit.js';
 import { nearestGeometrySnap, geometrySnapTargets, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
 import {
     toLattice, toLatticeFractional, fromLattice, constrainToKind, latticeCrossings,
@@ -219,13 +219,30 @@ function handlePointerDown(editor, e) {
  *  WITHOUT committing it and restore the drawing (sketch + layer patterns, i.e.
  *  shape params too) to the snapshot taken when that finger touched down. No
  *  undo step is added or removed; the pinch then zooms as usual. */
+/** Audit (batch 1): ONE reset for every drag-gesture field, so no gesture can start with state left over from
+ *  an earlier one -- a pinch used to leave `_transformState` / `_dragNodeIndex` set (only handleEnd cleared them),
+ *  and the next one-finger drag then drove the detached pre-restore elements and pushed an empty undo step.
+ *  Called by a pinch abort, at every press (handleStart) and at the end of handleEnd. Never touches multi-press
+ *  state (pen anchor mode, a pending ✓/✗, text editing). */
+export function resetDragGestureState(editor) {
+    editor._isDragging = false;
+    editor._selMove = null;
+    editor._transformState = null;
+    editor._dragNodeIndex = -1;
+    editor._dragNodes = null;
+    if (editor._marqueeRect) clearMarquee(editor); // removes a half-drawn box too
+    editor._marqueeStart = null;
+    editor._marqueeRect = null;
+    editor._dragMoved = false;
+    editor._grabAtFinger = false;
+}
+
 function _abortTouchGesture(editor) {
     const snap = editor._touchGestureSnapshot;
     editor._touchGestureSnapshot = null;
     if (typeof editor._cancelDrawing === 'function') editor._cancelDrawing(); // a pen path in progress
     editor._isDrawing = false;
-    editor._isDragging = false;
-    editor._selMove = null;
+    resetDragGestureState(editor);
     editor._latticeMove = null;
     editor._latticeStart = null;
     editor._shapeLatticeDragKey = null;
@@ -575,7 +592,14 @@ function handleStart(editor, e) {
     // position, so the same offset updateSnapCursor draws the ring at is
     // applied here BEFORE snapping (applyTouchMarkerOffset is a no-op for
     // mouse/pen — INPUT_PROFILE's markerOffsetPx: 0).
-    const aimed = applyTouchMarkerOffset(editor, editor._getMousePoint(e));
+    // Audit (batch 1, the rule Lattice got first -- Fred: "It's catching rails instead"): an EXISTING thing is
+    // picked at the FINGER (`editor._pressFinger`, no aim offset, no snap); the aim point `pt` is only for placing
+    // or aiming something NEW. A handler that grabs something at the finger sets `editor._grabAtFinger`, and the
+    // rest of that drag then follows the finger too (handleMove), so nothing jumps 40 px on the first move.
+    resetDragGestureState(editor);
+    const finger = editor._getMousePoint(e);
+    editor._pressFinger = finger;
+    const aimed = applyTouchMarkerOffset(editor, finger);
     editor._pressRaw = aimed; // the unsnapped press, for a selection move's own-ends snap (_selectionMoveDelta)
     const pt = editor._snap(aimed, e.altKey, 'start');
 
@@ -599,7 +623,14 @@ function handleMove(editor, e) {
     // just-updated connected/position state, not a stale one from the
     // previous move event.
     updateGridHover(editor, e);
-    const pt = editor._snap(applyTouchMarkerOffset(editor, editor._getMousePoint(e)), e.altKey, 'move');
+    const finger = editor._getMousePoint(e);
+    const aimed = editor._grabAtFinger ? finger : applyTouchMarkerOffset(editor, finger);
+    // Audit (batch 1): every drag snap excludes what is being dragged -- a node / handle drag used to snap back
+    // onto the edited element's own points and stick (only the translate path excluded them).
+    const dragged = editor._isDragging && (editor._transformState || editor._dragNodeIndex !== -1)
+        ? new Set(editor._selectedElements && editor._selectedElements.length ? editor._selectedElements : [editor._selectedElement].filter(Boolean))
+        : null;
+    const pt = editor._snap(aimed, e.altKey, 'move', dragged);
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
         if (handler.update) handler.update(editor, pt);
@@ -618,11 +649,12 @@ function handleMove(editor, e) {
         }
         if (editor._dragNodeIndex !== -1) { dragNode(editor, pt); return; }
         if (editor._marqueeStart) { updateMarquee(editor, pt); return; }
-        if ((editor._selectedElements || []).length) translateSelection(editor, pt, applyTouchMarkerOffset(editor, editor._getMousePoint(e)), !!e.altKey);
+        if ((editor._selectedElements || []).length) translateSelection(editor, pt, aimed, !!e.altKey);
         return;
     }
     const handler = getModeHandler(editor._currentMode);
-    if (handler.hover) handler.hover(editor, pt);
+    // `aimed` unsnapped: a hover picks with the same point and picker its press will (audit batch 1)
+    if (handler.hover) handler.hover(editor, pt, aimed);
 }
 
 // Shared by the single-finger drag-pan (_panBy) and the two-finger pinch's
@@ -661,6 +693,7 @@ function handleEnd(editor, e) {
     if (editor._isDragging) {
         editor._isDragging = false;
         editor._selMove = null;
+        editor._grabAtFinger = false;
         const wasNodeDrag  = editor._dragNodeIndex !== -1;
         const wasTransform = !!editor._transformState;
         const wasMarquee   = !!editor._marqueeStart;
@@ -723,6 +756,29 @@ function handleEnd(editor, e) {
 
 // ─── Mode handlers ──────────────────────────────────────────────────
 
+/** Audit (batch 1): the point an EXISTING thing is picked at -- the finger itself (handleStart's
+ *  `_pressFinger`), falling back to `pt` for a caller with no press (tests, synthetic starts). */
+const _pickPt = (editor, pt) => editor._pressFinger || pt;
+
+/** Audit (batch 1): a press grabbed an existing thing at the finger -- the drag follows the finger from here
+ *  (handleMove), and its start is the finger snapped with the grabbed things left out of the snap. */
+function _grabAtFinger(editor, pt, e, exclude) {
+    editor._grabAtFinger = true;
+    const finger = _pickPt(editor, pt);
+    editor._pressRaw = finger;
+    return editor._pressFinger ? editor._snap(finger, !!(e && e.altKey), 'start', exclude) : pt;
+}
+
+/** Audit (batch 1): where a Lattice / Shape Lattice press picks an existing rail/tie/node. Select sub-mode picks
+ *  at the FINGER (Fred: "It's catching rails instead"); an Add mode (Rail/Tie/Node) is aiming with the marker, so
+ *  a piece is grabbed only where the MARKER is -- a finger resting on another rail must not steal a new rail's
+ *  draw. (Unsnapped either way: the grid snap is for placing, not for picking.) */
+function _latticePickPt(editor, pt, e) {
+    const adding = LATTICE_DRAW_KINDS.some((k) => k.value === editor._lattice.drawKind);
+    if (adding) return editor._pressRaw || pt;
+    return e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt;
+}
+
 const selectHandler = {
     // UI4 item 0: `presetHit` lets a caller that already resolved (and
     // trusts) a specific element skip this function's own generic
@@ -735,20 +791,22 @@ const selectHandler = {
     // caller omits it and keeps today's own hit-test exactly.
     start(editor, pt, e, presetHit = null) {
         const shift = !!(e && e.shiftKey);
+        const pick = _pickPt(editor, pt);
         if ((editor._selectedElements || []).length) {
-            const grabbed = hitTestHandle(editor._transformHandles, pt);
+            const grabbed = hitTestHandle(editor._transformHandles, pick);
             if (grabbed) {
+                const start = _grabAtFinger(editor, pt, e, new Set(editor._selectedElements));
                 editor._dragMoved = false;
                 editor._isDragging = true;
-                editor._transformState = beginTransform(editor, grabbed, pt);
-                editor._lastDragPt = pt;
+                editor._transformState = beginTransform(editor, grabbed, start);
+                editor._lastDragPt = start;
                 return;
             }
         }
         // SE7h add-on (Fred: generated Rails/Ties/Nodes were unclickable):
         // 'select' mode hit-tests across every VISIBLE layer, not just the
         // active one — see isOnVisibleLayer's own doc comment (layers.js).
-        const hit = presetHit || editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
+        const hit = presetHit || editor._getNearbyElement(pick, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
         editor._dragMoved = false;
         // UI4 item 0's one-shot _skipBoundaryRefillOnce flag is gone (F17 P2): refreshBoundaryPatterns refills only
         // when the fill's declared inputs changed (boundaryFillInputs), so a moved rail/tie/node survives any commit.
@@ -761,7 +819,7 @@ const selectHandler = {
             const hitLayer = getElementLayer(hit);
             if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
             editor._isDragging = true;
-            editor._lastDragPt = pt;
+            editor._lastDragPt = _grabAtFinger(editor, pt, e, new Set([hit, ...(editor._selectedElements || [])]));
             editor._selMove = null; // a fresh move: its snap anchors/targets are captured on the first move tick
             // H5 MULTI-SELECT: text is excluded (double-tap already opens
             // text editing there, handleDblClick above) — a plain, no-
@@ -813,42 +871,44 @@ const selectHandler = {
         editor._marqueeAdditive = shift;
         editor._marqueeRect     = null;
     },
-    hover(editor, pt) {
+    hover(editor, pt, raw = pt) {
         if ((editor._selectedElements || []).length
-            && hitTestHandle(editor._transformHandles, pt)) {
+            && hitTestHandle(editor._transformHandles, raw)) {
             editor._setHover(null); return;
         }
-        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
+        const hit = editor._getNearbyElement(raw, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
         editor._setHover(hit);
     },
 };
 
 const nodeHandler = {
-    start(editor, pt) {
+    start(editor, pt, e) {
+        const pick = _pickPt(editor, pt);
         if (editor._selectedElement) {
             // SE7n: cache the node list (not just the hit index) — dragNode
             // needs the SAME closures for the rest of this gesture (a
             // rect's opposite-corner pin, a path's segment index) rather
             // than rebuilding them from the element's already-mutated
             // attrs on every subsequent move.
-            const { idx, nodes } = findNodeAt(editor, pt);
+            const { idx, nodes } = findNodeAt(editor, pick);
             if (idx !== -1) {
                 editor._isDragging = true;
                 editor._dragNodeIndex = idx;
                 editor._dragNodes = nodes;
-                editor._lastDragPt = pt;
+                editor._lastDragPt = _grabAtFinger(editor, pt, e, new Set([editor._selectedElement]));
                 return;
             }
         }
         // SE7h add-on: same anyVisibleLayer relaxation as selectHandler.
-        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
+        const hit = editor._getNearbyElement(pick, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
         if (hit && hit !== editor._selectedElement) {
             const hitLayer = getElementLayer(hit);
             if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
             editor._select(hit);
         }
     },
-    hover(editor, pt) {
+    hover(editor, pt, raw = pt) {
+        pt = raw; // audit batch 1: hover picks where the press will
         if (!editor._selectedElement) {
             const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
             editor._setHover(hit); return;
@@ -867,13 +927,13 @@ const nodeHandler = {
 
 const textHandler = {
     start(editor, pt, e) {
-        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
+        const hit = editor._getNearbyElement(_pickPt(editor, pt), getDynamicTolerance(editor, 10, 'slopPx'));
         if (hit && hit.type === 'text') { beginTextEdit(editor, hit); return; }
         if (hit) editor._deselect();
-        startTextAt(editor, pt, e);
+        startTextAt(editor, pt, e); // a NEW text goes where the aim is
     },
-    hover(editor, pt) {
-        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
+    hover(editor, pt, raw = pt) {
+        const hit = editor._getNearbyElement(raw, getDynamicTolerance(editor, 10, 'slopPx'));
         editor._setHover(hit);
     },
 };
@@ -1926,7 +1986,7 @@ const latticeHandler = {
         // picked where the finger/mouse REALLY is. `pt` is the touch-aim point (40 px ABOVE the finger) snapped to
         // the grid -- right for drawing a new rail/tie, but on a tie a rail's length away from the finger it hit
         // the rail above. Shape Lattice already hit-tests the raw point (shapeLatticeHandler.start).
-        const rawPt = e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt;
+        const rawPt = _latticePickPt(editor, pt, e);
         const hit = _getNearbyLatticePiece(editor, rawPt, tol);
         const hitKind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
         if (hitKind === 'rail' || hitKind === 'tie' || hitKind === 'node') {
@@ -2103,9 +2163,9 @@ const latticeHandler = {
         // not the lattice-snapped a/b — at low zoom one lattice cell can
         // span many screen pixels, so a same-cell check alone would wrongly
         // call a real, deliberate short drag a "click".
-        const slopModel = getDynamicTolerance(editor, 10, 'slopPx');
-        const rawDist = Math.hypot(rawLast.x - rawStart.x, rawLast.y - rawStart.y);
-        const isClick = rawDist <= slopModel;
+        // Audit (batch 1): the tap-vs-drag rule (pastClickThreshold), not the hit slop -- at phone zoom the 22 px
+        // touch slop spans a whole cell or more, so a short deliberate rail/tie drag spawned a full default piece.
+        const isClick = !pastClickThreshold(editor, rawStart, rawLast);
 
         let aCanon, bCanon;
         if (isClick) {
@@ -2140,11 +2200,14 @@ const latticeHandler = {
     // non-lattice shape (or empty space, where a drag would draw) gets
     // none, matching "drag ON an existing piece" being the only case
     // this tool treats specially.
-    hover(editor, pt) {
+    hover(editor, pt, raw = pt) {
+        // Audit (batch 1): the SAME picker and point the press uses (start: _getNearbyLatticePiece at the raw
+        // point, any visible layer) -- the hover used the generic active-layer picker at the grid-snapped point,
+        // so it could light one piece while the press grabbed another.
+        pt = raw;
         const tol = getDynamicTolerance(editor, 10, 'slopPx');
-        const hit = editor._getNearbyElement(pt, tol);
-        const kind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
-        editor._setHover((kind === 'rail' || kind === 'tie' || kind === 'node') ? hit : null);
+        const hit = _getNearbyLatticePiece(editor, pt, tol);
+        editor._setHover(hit || null);
         // T81 item 7: a rail END under the pointer shows its end handle +
         // the shared handle cursor, left-right or up-down by the rail's own
         // direction (a press there stretches, SE7k).
@@ -2248,6 +2311,9 @@ function _nearbyLatticePiece(editor, pt, tol) {
     editor._sketchLayer.children().toArray().forEach((el) => {
         const kind = el.node.getAttribute(LATTICE_ATTR);
         if (kind !== 'rail' && kind !== 'tie' && kind !== 'node') return;
+        // Audit (batch 1): a piece on a hidden layer is never picked (every other picker already filtered it --
+        // getNearbyElement, the scissors/stripe _lineUnder, geometrySnapTargets)
+        if (!isOnVisibleLayer(editor, el)) return;
         const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth || 0.01;
         const buffer = tol + (sw / 2);
         let d;
@@ -2357,14 +2423,15 @@ const shapeLatticeHandler = {
         // contour segment (confirmed live), which the generic hit-test's
         // bbox-center tie-break resolves in the CONTOUR's favor.
         const latticeTol = getDynamicTolerance(editor, 10, 'slopPx');
-        const near = _nearbyLatticePiece(editor, rawPt, latticeTol);
+        const latticePick = _latticePickPt(editor, pt, e);
+        const near = _nearbyLatticePiece(editor, latticePick, latticeTol);
         // Fred: "I still can't select contour segment" -- rails end ON the contour, so a
         // finger's wide reach found a rail on most contour taps and the rail always won.
         // Now the CLOSER one wins, measured to each one's visible edge (a tap inside the
         // contour's own stroke picks the contour even with a rail end touching it); on a
         // tie, the nearer centreline. The UI4 item 0 rule still holds where it matters: a
         // tap on a rail/tie/node itself is closer to it than to any contour edge.
-        const seg = near.el ? _contourSegmentNear(editor, rawPt) : null;
+        const seg = near.el ? _contourSegmentNear(editor, latticePick) : null;
         const contourWins = seg && (seg.edge < near.edge || (seg.edge === near.edge && seg.dist < near.dist));
         const latticeHit = contourWins ? null : near.el;
         if (latticeHit) {
@@ -2403,7 +2470,7 @@ const shapeLatticeHandler = {
             // pt (this function's own 2nd param), not rawPt -- _beginLatticeMove
             // is designed against the touch-offset-adjusted point, matching
             // latticeHandler.start's own identical call exactly.
-            editor._latticeMove = withChain(editor, _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation, rawPt));
+            editor._latticeMove = withChain(editor, _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation, latticePick));
             armRailEndStretch(editor, editor._latticeMove); // T81 item 7
             return;
         }
@@ -2511,7 +2578,8 @@ const shapeLatticeHandler = {
      *  every mode's own hover() (no raw event here), matching what a real
      *  grab at this same point would hit — SNAP_POLICY.shapeLattice is
      *  'none', so `pt` carries no grid-snap discrepancy against it either. */
-    hover(editor, pt) {
+    hover(editor, pt, raw = pt) {
+        pt = raw; // audit batch 1: hover picks where the press will (start hit-tests the raw point)
         if (editor._shapeArcPress && !editor._isDrawing) editor._shapeArcPress = null; // a hold's menu ended that press
         // F27 item 2 arc pull: the marks first (a square in reach wins), then a radius
         // param's arc, either side -- its only affordance is the highlight of both.
@@ -2526,7 +2594,7 @@ const shapeLatticeHandler = {
         const railEnd = key ? null : _railEndUnder(editor, pt);
         setRailEndHover(editor, railEnd);
         setHandleCursor(key || railEnd ? 'hover' : null, key ? paramHandleCursorAxis(hit) : railEndAxis(railEnd));
-        if (selectHandler.hover) selectHandler.hover(editor, pt);
+        if (selectHandler.hover) selectHandler.hover(editor, pt, pt);
     },
 };
 

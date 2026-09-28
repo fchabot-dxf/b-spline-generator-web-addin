@@ -124,8 +124,19 @@ export function renderTransformHandles(editor) {
 
     const records = [];
 
+    // Audit (batch 1): a FLAT or thin selection (a horizontal/vertical line, a hairline box) gets no handle that
+    // scales along its missing axis. Those sit ON the shape itself (the top/bottom-middle squares of a horizontal
+    // line are at its middle), so a finger pressing the line to move it grabbed a do-nothing scale instead. Thin
+    // = narrower than two handles. Kept: the handles along the real extent (a flat line: its end squares, 'e'/'w').
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const thin = sz * 4;
+    const flatH = dist(worldOf(0.5, 0), worldOf(0.5, 1)) < thin; // no height
+    const flatW = dist(worldOf(0, 0.5), worldOf(1, 0.5)) < thin; // no width
+    const usable = (h) => !((flatH && h.sy) || (flatW && h.sx));
+
     // Scale handles — white square with blue border.
     for (const h of SCALE_HANDLES) {
+        if (!usable(h)) continue;
         const { x: hx, y: hy } = worldOf(h.hx, h.hy);
         const { x: ax, y: ay } = worldOf(h.ax, h.ay);
         editor._handleLayer.rect(sz * 2, sz * 2)
@@ -147,6 +158,14 @@ export function renderTransformHandles(editor) {
     const center = worldOf(0.5, 0.5);
     const topMid = worldOf(0.5, 0);
     let dx = topMid.x - center.x, dy = topMid.y - center.y;
+    if (Math.hypot(dx, dy) < 1e-9) {
+        // Audit (batch 1): a flat selection has no "top" -- its up is perpendicular to its width (screen up for a
+        // horizontal line); it used to fall back to the centre, putting the rotate knob ON the line's middle,
+        // where a press meant to move the line rotated it instead.
+        const ex = worldOf(1, 0.5), wx = worldOf(0, 0.5);
+        const ux = ex.x - wx.x, uy = ex.y - wx.y;
+        if (Math.hypot(ux, uy) > 1e-9) { dx = uy; dy = -ux; } else { dx = 0; dy = -1; }
+    }
     const dlen = Math.hypot(dx, dy) || 1;
     dx /= dlen; dy /= dlen;
     const rx = topMid.x + dx * rotateOffset;

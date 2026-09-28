@@ -26,9 +26,17 @@ import { frameCutProfile } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { syncDrawerForMode } from '../editor/editor-drawer.js';
+import { inputProfileFor } from '../editor/editor-input.js';
+import { FRAME_HANDLE_RADIUS } from '../editor/editor-frame-profile.js';
 
-/** F9: how close (screen px) a press must land to grab a frame shape handle (finger-sized). */
+/** F9: how close (screen px) a press must land to grab a frame shape handle -- the FLOOR (a mouse). Audit
+ *  (batch 1): the reach is now the pointer's own, the same `handlePx * 1.8` Shape Lattice's identical handles
+ *  use (~25 px for a finger), and never less than the drawn dot itself when zoomed in (`_frameHandleHitPx`). */
 export const HANDLE_HIT_PX = 16;
+function _frameHandleHitPx(ed, pointerType) {
+  const onePx = Math.abs(ed._getMousePoint({ clientX: 1, clientY: 0 }).x - ed._getMousePoint({ clientX: 0, clientY: 0 }).x) || 1;
+  return Math.max(HANDLE_HIT_PX, inputProfileFor(pointerType).handlePx * 1.8, FRAME_HANDLE_RADIUS / onePx + 4);
+}
 
 // ── F13: the Frame tab's own undo (generate, a handle drag and a template change
 // are each one step). The editor's artwork undo is locked in the Frame tab (F8),
@@ -222,9 +230,9 @@ function _frameHandleAxis(ed, key) {
  *  radius dots) first -- a position square in reach wins -- then a radius
  *  param's ARC, either side, within the same HANDLE_HIT_PX. Returns
  *  `{ handle, side }` (side 1 = the mirrored left arc) or null. */
-function _hitFrameHandle(ed, clientX, clientY) {
+function _hitFrameHandle(ed, clientX, clientY, pointerType = 'mouse') {
   const pt = ed._getMousePoint({ clientX, clientY });
-  const edge = ed._getMousePoint({ clientX: clientX + HANDLE_HIT_PX, clientY });
+  const edge = ed._getMousePoint({ clientX: clientX + _frameHandleHitPx(ed, pointerType), clientY });
   const tol = Math.abs(edge.x - pt.x);
   let best = null, bestD = Infinity;
   for (const h of ed._frameHandles || []) {
@@ -296,7 +304,7 @@ function _wireHandleDrag() {
     }
     const ed = editor();
     if (!ed || !ed._frameProfile || !(ed._frameHandles || []).length) return;
-    const hit = _hitFrameHandle(ed, e.clientX, e.clientY);
+    const hit = _hitFrameHandle(ed, e.clientX, e.clientY, e.pointerType);
     if (!hit) return;
     const best = hit.handle;
     dragKey = best.key;
@@ -316,7 +324,7 @@ function _wireHandleDrag() {
     const ed = editor();
     if (!dragKey) {
       // T81 item 1: idle hover -- only while the Frame tab's own handles are live.
-      setHover(ed, inFrameTab() && ed && ed._frameProfile ? (_hitFrameHandle(ed, e.clientX, e.clientY)?.handle.key ?? null) : null);
+      setHover(ed, inFrameTab() && ed && ed._frameProfile ? (_hitFrameHandle(ed, e.clientX, e.clientY, e.pointerType)?.handle.key ?? null) : null);
       return;
     }
     if (e.pointerId !== dragPointerId) return; // another finger (a pinch): never drags the handle

@@ -26,6 +26,8 @@ const BUTTON_GAP_PX = 58;
 const BUTTON_SPREAD_PX = 34;
 export const CONFIRM_COLORS = Object.freeze({ ok: '#2e7d32', cancel: '#c62828' });
 
+import { pastClickThreshold } from './editor-hit.js';
+
 export const isTouchPress = (editor, e) => ((e && e.pointerType) || editor._pointerType) === 'touch';
 
 const _px = (editor, px) => (typeof editor._getDynamicTolerance === 'function' ? editor._getDynamicTolerance(px) : px / 100);
@@ -85,9 +87,9 @@ export function touchConfirmStart(editor, tool, pt, raw) {
       return;
     }
     clearTouchConfirm(editor); // the X, or anywhere else: cancel -- and a drag from here re-aims
-    editor._touchAim = { pt, moved: false, cancelled: true };
+    editor._touchAim = { pt, start: pt, moved: false, cancelled: true };
   } else {
-    editor._touchAim = { pt, moved: false, cancelled: false };
+    editor._touchAim = { pt, start: pt, moved: false, cancelled: false };
   }
   editor._isDrawing = true;
   tool.preview(editor, pt);
@@ -96,6 +98,9 @@ export function touchConfirmStart(editor, tool, pt, raw) {
 export function touchConfirmUpdate(editor, tool, pt) {
   const aim = editor._touchAim;
   if (!aim) return;
+  // Audit (batch 1): a tap's own jitter is not a re-aim -- a wobbly tap on the X (or anywhere) used to re-aim
+  // 40 px above the finger and could raise a NEW check/X on another line instead of cancelling.
+  if (!aim.moved && !pastClickThreshold(editor, aim.start, pt)) return;
   aim.pt = pt;
   aim.moved = true;
   tool.preview(editor, pt);
