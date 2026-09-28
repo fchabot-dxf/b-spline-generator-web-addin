@@ -3438,3 +3438,6 @@ hidden contour not cuttable (old: cut); moved contour piece -> no transform, d b
 - editor-primitives.js: the one arcPointAtAngle / arcPointAtFraction / distToSegment / distToArc / distToPrimitive
   (three private `_arcPointAt` copies -- one took a FRACTION, two an ANGLE; two segment-distance copies;
   contour-from-frame's inline arc distance).
+
+## Frame section: Edit frame at the top (Fred: "can the edit frame button be at the top like in vector")
+- #btnEditFrameShape moved to the first row of the Frame panel body (like Open SVG Editor in its section); Send frame stays last. Verified at 412px.
