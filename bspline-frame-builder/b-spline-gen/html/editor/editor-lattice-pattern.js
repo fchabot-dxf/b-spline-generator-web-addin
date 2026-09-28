@@ -2431,15 +2431,24 @@ const BOUNDARY_GEOMETRY_ATTRS = Object.freeze(['d', 'x', 'y', 'width', 'height',
  *  `d`, so no float drift) + arc radius/winding + stroke width. A real reshape (a moved end, a new radius, a
  *  moved piece -- it gets a transform, which falls back to the plain per-element key) still changes the key. */
 function _contourGeometryKey(els) {
+  return contourPiecesKey(els.map((el) => ({ d: el.node.getAttribute('d'), sw: el.node.getAttribute('stroke-width') })));
+}
+
+/** `_contourGeometryKey` over plain `{ d, sw }` pieces (sw optional): the contour as the segments its pieces came
+ *  from, cut/stripe pieces collapsed. Also what the frame-linked contour check compares (properties-shape-lattice.js
+ *  refreshFrameLinkedContours -- Fred: "on confirm it returns to normal ... all edges do that on contour": a
+ *  striped segment read as a changed contour there, and the regenerate wiped the stripes). Null if a `d` is not a
+ *  single contour primitive. */
+export function contourPiecesKey(pieces) {
   const out = [];
   let cur = null;
   const r6 = (v) => Math.round(v * 1e6) / 1e6;
   const flush = () => { if (cur) out.push(cur.key()); cur = null; };
-  for (const el of els) {
-    const prim = primitiveFromContourD(el.node.getAttribute('d'));
+  for (const piece of pieces) {
+    const prim = primitiveFromContourD(piece.d);
     if (!prim) return null;
     const [p0, p1] = contourPrimitiveEnds(prim);
-    const sw = el.node.getAttribute('stroke-width');
+    const sw = piece.sw ?? null;
     const merged = cur && cur.sw === sw ? mergeContourPrimitives(cur.prim, prim) : null;
     if (merged) { cur.prim = merged; cur.end = p1; continue; }
     flush();
@@ -2448,14 +2457,15 @@ function _contourGeometryKey(els) {
         this.prim.type === 'A' ? [Math.round(this.prim.rx * 1e3) / 1e3, Math.sign(this.prim.dTheta || 1)] : null, this.sw]; } };
   }
   flush();
-  return out;
+  return JSON.stringify(out);
 }
 
 export function boundaryFillInputs(editor, pattern) {
   const shapeId = pattern && pattern.boundary && pattern.boundary.shapeId;
   const els = _findBoundaryElements(editor, shapeId);
   const isPlainContourPiece = (el) => el.type === 'path' && el.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR) && !el.node.getAttribute('transform');
-  const contourKey = els.length && els.every(isPlainContourPiece) ? _contourGeometryKey(els) : null;
+  const contourKeyStr = els.length && els.every(isPlainContourPiece) ? _contourGeometryKey(els) : null;
+  const contourKey = contourKeyStr ? JSON.parse(contourKeyStr) : null;
   const geometry = contourKey || els.map((el) => [el.type,
     ...BOUNDARY_GEOMETRY_ATTRS.map((k) => el.node.getAttribute(k)), el.node.textContent ?? null]);
   // style-only: colours (the kind colours, the contour's per-segment colours) never move a piece

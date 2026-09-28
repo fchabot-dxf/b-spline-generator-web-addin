@@ -22,7 +22,7 @@ import { el, on } from './dom.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
-    _ensureKindLayers, resolvePatternLayer, freshPattern, latticeColorPool,
+    _ensureKindLayers, resolvePatternLayer, freshPattern, latticeColorPool, contourPiecesKey,
 } from './editor-lattice-pattern.js';
 import {
     PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges, SHAPE_PARAM_KEYS,
@@ -363,6 +363,11 @@ export async function refreshFrameLinkedContours(editor) {
         const expected = contourSilhouette(p, _shapeContourRegion(editor, p), cw, frame).primitives.map((prim) => primitiveToPathD(prim));
         const els = _findBoundaryElements(editor, p.boundary.shapeId);
         if (els.length === expected.length && els.every((e, i) => e.attr('d') === expected[i])) continue;
+        // Fred ("on confirm it returns to normal ... all edges do that on contour"): a striped / scissor-cut
+        // segment is several pieces of the SAME contour -- compared as the segments they came from, it matches,
+        // so the stripes (and their colours) are not wiped by a regenerate on every frame redraw.
+        const drawnKey = contourPiecesKey(els.map((e) => ({ d: e.attr('d') })));
+        if (drawnKey && drawnKey === contourPiecesKey(expected.map((d) => ({ d })))) continue;
         _frameLinkRunning = true;
         const active = editor._activeLayer;
         try {

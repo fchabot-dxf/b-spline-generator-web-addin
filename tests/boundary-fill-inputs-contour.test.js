@@ -5,7 +5,7 @@
  * the segments they came from; a real reshape still changes the key.
  */
 import { describe, it, expect } from 'vitest';
-import { boundaryFillInputs } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { boundaryFillInputs, contourPiecesKey } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
 const REF = 'b-test';
 function piece(d, i, extra = {}) {
@@ -37,5 +37,15 @@ describe('boundaryFillInputs: contour colour cuts are not a boundary change', ()
     expect(boundaryFillInputs(editorWith([WHOLE[0], WHOLE[1], 'M 6.375 2.713 A 0.7 0.7 0 0 1 5.773 3.315']), pattern)).not.toBe(base);
     expect(boundaryFillInputs(editorWith(WHOLE, { 1: { transform: 'matrix(1,0,0,1,0.5,0)' } }), pattern)).not.toBe(base);
     expect(boundaryFillInputs(editorWith(WHOLE, { 0: { 'stroke-width': '0.3' } }), pattern)).not.toBe(base);
+  });
+});
+
+describe('contourPiecesKey (the frame-linked contour check: stripes must not read as a changed contour)', () => {
+  const k = (ds) => contourPiecesKey(ds.map((d) => ({ d })));
+  it('a striped segment keys the same as the fresh generator output; a real change does not', () => {
+    const striped = ['M 0.625 0.625 L 2.542 0.625', 'M 2.542 0.625 L 4.458 0.625', 'M 4.458 0.625 L 6.375 0.625', WHOLE[1],
+      'M 6.375 2.713 A 0.602 0.602 0 0 1 6.198683 3.138683', 'M 6.198683 3.138683 A 0.602 0.602 0 0 1 5.773 3.315'];
+    expect(k(striped)).toBe(k(WHOLE));
+    expect(k(['M 0.625 0.625 L 6.375 0.7', WHOLE[1], WHOLE[2]])).not.toBe(k(WHOLE));
   });
 });

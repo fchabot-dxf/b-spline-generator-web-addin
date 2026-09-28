@@ -3344,3 +3344,7 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
 ## Touching the form no longer touches the canvas (Fred: "scrolling the form is also pressing on the canvas behind the form")
 - handlePointerMove: a pointer the canvas never saw go down (a finger on the drawer/form/toolbar) no longer runs the canvas hover/snap path on touch, and a mouse only hovers when over the svg (`_overCanvas`). handlePointerUp: an untracked pointer ends nothing (it ran handleEnd, committing whatever was pending).
 - Checked: a selected tie drags (touch, tap then drag after 250/700 ms) since 77512ec; Shape Lattice contour stripe on touch (straight + arc: aim, release, tap check) stripes and sticks -- not reproduced.
+
+## Frame-linked contour keeps its stripes (Fred: "I can see the preview and the green check, on confirm it returns to normal. All edges do that on contour")
+- Cause: refreshFrameLinkedContours (a Shape Lattice contour with Offset from frame, re-checked on every frame redraw) compared the drawn pieces 1:1 with the fresh contour; a striped segment is several pieces -> "changed" -> regenerateSilhouette (count mismatch clears segmentColors, redraws) + refill -> stripes gone. Reproduced headless with a frame + Offset from frame: stripe shown, then 12 plain segments 2 s later (2 refill pushes).
+- Fix: `contourPiecesKey` (exported, the same cut-collapsing key boundaryFillInputs uses) compares the drawn pieces as the segments they came from. After: 16 striped pieces stay, one undo step.
