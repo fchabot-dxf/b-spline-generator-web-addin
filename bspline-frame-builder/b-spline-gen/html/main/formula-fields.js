@@ -73,9 +73,7 @@ export const FORMULA_SECTIONS = Object.freeze([
   },
   {
     section: 'FRAME',
-    // Fred: "mirrored" -- each frame field is in the main panel AND the editor's Frame tab.
-    ids: ['frameTrimOffset', 'frameBottomZ', 'editorFrameThickness', 'framePanelLip',
-      'frameThickness', 'editorFrameTrimOffset', 'editorFrameBottomZ', 'editorFramePanelLip'],
+    ids: ['frameTrimOffset', 'frameBottomZ', 'editorFrameThickness', 'framePanelLip'],
     names: [
       { name: 'trim', label: 'Trim offset', get: () => frameParam(FRAME_DEFS, getFrameRecord(), 'boundingboxoffset'), unit: IN },
       { name: 'bottom', label: 'Frame bottom (z)', get: () => getFrameRecord().frameBottomZ, unit: IN },

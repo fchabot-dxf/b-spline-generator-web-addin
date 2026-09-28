@@ -53,7 +53,7 @@ export function undoFrame() {
   return true;
 }
 export const frameHistoryDepth = () => _frameHistory.length;
-function _syncUndo() { _each(FRAME_MIRRORS.undo, (b) => { b.disabled = _frameHistory.length === 0; }); }
+function _syncUndo() { if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0; }
 
 /** F13 [Generate]: a new seeded random frame shape, written as the handles' seeds. */
 export function generateFrame(seed = nextSeed()) {
@@ -74,26 +74,7 @@ const $ = (id) => document.getElementById(id);
 export const FRAME_PARAM_FIELDS = Object.freeze([
   { id: 'editorFrameThickness', param: 'frame_thickness', row: 'editorFrameThicknessRow' },
   { id: 'frameTrimOffset', param: 'boundingboxoffset' }, // F9: "Trim offset (in)"
-  // Fred: "I would've wanted it in both places, mirrored" -- each field's twin on the other side.
-  { id: 'frameThickness', param: 'frame_thickness' },
-  { id: 'editorFrameTrimOffset', param: 'boundingboxoffset' },
 ]);
-
-/** The frame record's own (non-template-param) number fields, each shown in BOTH the main
- *  panel and the editor's Frame tab (Fred: "mirrored"): same record key, same handler. */
-export const FRAME_RECORD_FIELDS = Object.freeze([
-  { ids: ['frameBottomZ', 'editorFrameBottomZ'], key: 'frameBottomZ' },
-  { ids: ['framePanelLip', 'editorFramePanelLip'], key: 'panelLip', range: true }, // F22: range follows the Trim offset
-]);
-/** The mirrored buttons / text lines: [main, editor]. */
-const FRAME_MIRRORS = Object.freeze({
-  generate: ['frameGenerate', 'editorFrameGenerate'],
-  undo: ['frameUndo', 'editorFrameUndo'],
-  send: ['btnSendFrame', 'editorBtnSendFrame'],
-  sendHint: ['frameSendHint', 'editorFrameSendHint'],
-  fitWarning: ['frameFitWarning', 'editorFrameFitWarning'],
-});
-const _each = (ids, fn) => { for (const id of ids) { const el = $(id); if (el) fn(el); } };
 
 function _option(value, label) {
   const o = document.createElement('option');
@@ -189,31 +170,28 @@ export function syncFramePanel() {
   }
   if ($('editorFrameWoodRow')) $('editorFrameWoodRow').style.display = tpl ? '' : 'none';
   if ($('frameTemplate')) $('frameTemplate').value = rec.templateId || '';
-  for (const f of FRAME_RECORD_FIELDS) {
-    _each(f.ids, (el) => {
-      if (f.range) { // F22: the panel lip's declared range follows the Trim offset
-        const r = panelLipRange(FRAME_DEFS, rec);
-        el.min = r.min;
-        if (Number.isFinite(r.max)) el.max = r.max;
-      }
-      if (document.activeElement !== el) el.value = rec[f.key] ?? '';
-    });
+  if ($('frameBottomZ') && document.activeElement !== $('frameBottomZ')) $('frameBottomZ').value = rec.frameBottomZ;
+  if ($('framePanelLip')) { // F22: its declared range follows the Trim offset
+    const r = panelLipRange(FRAME_DEFS, rec);
+    $('framePanelLip').min = r.min;
+    if (Number.isFinite(r.max)) $('framePanelLip').max = r.max;
+    if (document.activeElement !== $('framePanelLip')) $('framePanelLip').value = rec.panelLip;
   }
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
-  if ($('editorFrameSettings')) $('editorFrameSettings').style.display = tpl ? 'flex' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${tpl.name.split(' - ').pop()}` : '— none';
   const send = frameSendState(FRAME_DEFS, rec, isFusionMode);
-  _each(FRAME_MIRRORS.send, (b) => { b.disabled = !send.enabled; });
-  _each(FRAME_MIRRORS.sendHint, (h) => { h.textContent = send.hint; });
+  if ($('btnSendFrame')) $('btnSendFrame').disabled = !send.enabled;
+  if ($('frameSendHint')) $('frameSendHint').textContent = send.hint;
 
-  const fit = tpl ? frameFit(P.widthIn, P.heightIn, frameParam(FRAME_DEFS, rec, 'frame_thickness'),
-    frameParam(FRAME_DEFS, rec, 'boundingboxoffset')) : { ok: true };
-  _each(FRAME_MIRRORS.fitWarning, (warn) => {
+  const warn = $('frameFitWarning');
+  if (warn) {
+    const fit = tpl ? frameFit(P.widthIn, P.heightIn, frameParam(FRAME_DEFS, rec, 'frame_thickness'),
+      frameParam(FRAME_DEFS, rec, 'boundingboxoffset')) : { ok: true };
     warn.style.display = fit.ok ? 'none' : '';
     warn.textContent = fit.ok ? '' : `Board too small for this frame: the safe zone is ${fit.safeZoneIn.toFixed(2)} in `
       + `but the frame needs more than ${fit.requiredIn.toFixed(2)} in.`;
-  });
+  }
   if (typeof window !== 'undefined' && window.svgEditor) drawFrameProfile(window.svgEditor);
   AppState.preview?.refreshFrame?.(); // F7: the 3D trimmed panel + wood bars, live
 }
@@ -393,8 +371,8 @@ export function initFramePanel() {
     for (const w of FRAME_DEFS.appearance?.options || []) sel.appendChild(_option(w, w.replace(/^3D /, '')));
   }
   $('editorFrameTemplate')?.addEventListener('change', (e) => { pushFrameHistory(); setFrameRecord({ templateId: e.target.value || null, params: {} }); syncFramePanel(); });
-  _each(FRAME_MIRRORS.generate, (b) => b.addEventListener('click', () => generateFrame()));
-  _each(FRAME_MIRRORS.undo, (b) => b.addEventListener('click', () => undoFrame()));
+  $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
+  $('editorFrameUndo')?.addEventListener('click', () => undoFrame());
   // Ctrl/Cmd+Z in the Frame tab undoes the FRAME (the artwork's undo is locked there, F8)
   if (!_undoKeyWired) { // once per page (initFramePanel may run again, e.g. in tests)
     _undoKeyWired = true;
@@ -421,11 +399,10 @@ export function initFramePanel() {
 
   tplSel.addEventListener('change', () => { pushFrameHistory(); setFrameRecord({ templateId: tplSel.value || null, params: {} }); syncFramePanel(); });
   woodSel.addEventListener('change', () => { setFrameRecord({ appearance: woodSel.value }); syncFramePanel(); });
-  for (const f of FRAME_RECORD_FIELDS) {
-    _each(f.ids, (el) => el.addEventListener('change', (e) => { setFrameRecord({ [f.key]: parseFloat(e.target.value) }); syncFramePanel(); }));
-  }
+  $('frameBottomZ')?.addEventListener('change', (e) => { setFrameRecord({ frameBottomZ: parseFloat(e.target.value) }); syncFramePanel(); });
+  $('framePanelLip')?.addEventListener('change', (e) => { setFrameRecord({ panelLip: parseFloat(e.target.value) }); syncFramePanel(); });
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
-  _each(FRAME_MIRRORS.send, (b) => b.addEventListener('click', () => sendFrame()));
+  $('btnSendFrame')?.addEventListener('click', () => sendFrame());
   _wireHandleDrag();
   // The fit warning (and the editor's profile) depend on the board size.
   for (const id of ['widthIn', 'heightIn']) $(id)?.addEventListener('change', () => syncFramePanel());
