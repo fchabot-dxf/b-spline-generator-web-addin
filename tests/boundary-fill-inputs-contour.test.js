@@ -49,3 +49,28 @@ describe('contourPiecesKey (the frame-linked contour check: stripes must not rea
     expect(k(['M 0.625 0.625 L 6.375 0.7', WHOLE[1], WHOLE[2]])).not.toBe(k(WHOLE));
   });
 });
+
+describe('audit batch 2: a scissors cut writes at CONTOUR_D_DIGITS, so a cut arc still keys as the uncut arc', async () => {
+  const { primitiveFromContourD, splitContourPrimitive, CONTOUR_D_DIGITS } = await import('../bspline-frame-builder/b-spline-gen/html/editor/editor-contour-cut.js');
+  const { primitiveToPathD } = await import('../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js');
+  it('200 cuts on shallow and corner arcs: every cut arc keys the same as the whole (the audit probe: 95/200 failed at 3 digits)', () => {
+    const k = (ds) => contourPiecesKey(ds.map((d) => ({ d })));
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    let fails = 0;
+    for (let n = 0; n < 200; n++) {
+      const r = n % 2 ? 3 + rnd() * 3 : 0.25 + rnd() * 1.25;       // shallow big arcs and corner arcs
+      const sweep = n % 2 ? 0.3 + rnd() * 0.4 : Math.PI / 2;
+      const a0 = rnd() * Math.PI * 2, cx = 3 + rnd(), cy = 4 + rnd();
+      const P = (t) => ({ x: +(cx + r * Math.cos(t)).toFixed(3), y: +(cy + r * Math.sin(t)).toFixed(3) });
+      const s = P(a0), e = P(a0 + sweep);
+      const whole = `M ${s.x} ${s.y} A ${r.toFixed(3)} ${r.toFixed(3)} 0 0 1 ${e.x} ${e.y}`;
+      const prim = primitiveFromContourD(whole);
+      const t = a0 + sweep * (0.2 + 0.6 * rnd());
+      const cut = { x: prim.cx + prim.rx * Math.cos(t), y: prim.cy + prim.rx * Math.sin(t) };
+      const [h1, h2] = splitContourPrimitive(prim, cut);
+      if (k([primitiveToPathD(h1, CONTOUR_D_DIGITS), primitiveToPathD(h2, CONTOUR_D_DIGITS)]) !== k([whole])) fails++;
+    }
+    expect(fails).toBe(0);
+  });
+});

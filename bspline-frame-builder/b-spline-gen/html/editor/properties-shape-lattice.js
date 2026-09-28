@@ -34,7 +34,6 @@ import { sizedBoardRegion, CONTOUR_STROKE_STYLE } from './editor-lattice-boundar
 import { openColorMosaic, pickColorDiffering } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer, setActiveLayer } from './layers.js';
 import { contourSilhouette, contourFromFrameOf, hasFrame, CONTOUR_FROM_FRAME_DEFAULTS } from './contour-from-frame.js';
-import { primitiveFromContourD, collapseContourCuts } from './editor-contour-cut.js';
 import { frameContext, onFrameProfileDrawn } from './editor-frame-profile.js';
 import { viewScale } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
@@ -267,6 +266,13 @@ export function regenerateSilhouette(editor, p) {
     const reuseExisting = shape.source === 'generated' && p.boundary && p.boundary.shapeId;
     const existing = reuseExisting ? _findBoundaryElements(editor, p.boundary.shapeId) : [];
     const countMatches = existing.length === primitives.length && primitives.length > 0;
+    // Audit (batch 2): a cut / striped contour is still THE SAME contour (contourPiecesKey, the one identity the
+    // fill refill, frame link and detach check use) -- keep its pieces and their per-piece colours and only
+    // restyle them. The count test alone read every stripe as "segment count changed", so Show contour, the
+    // width field and Randomize colours wiped every stripe and every segment colour.
+    const keepPieces = !countMatches && existing.length > primitives.length && primitives.length > 0
+        && existing.every((e) => !e.node.getAttribute('transform'))
+        && contourPiecesKey(existing.map((e) => ({ d: e.attr('d') }))) === contourPiecesKey(primitives.map((prim) => ({ d: primitiveToPathD(prim) })));
 
     // T73: `p.contour.segmentColors[i]` is keyed by PRIMITIVE index (the
     // SAME index `primitives[i]` and the manifest's own `seg{i}` ids use) —
@@ -275,7 +281,7 @@ export function regenerateSilhouette(editor, p) {
     // have different lengths. A segment-count change means index i no
     // longer names the same drawn edge, so overrides are cleared rather
     // than silently misapplied to a different piece after the rebuild.
-    if (!countMatches) {
+    if (!countMatches && !keepPieces) {
         p.contour.segmentColors = [];
         for (const oldEl of existing) oldEl.remove();
     }
@@ -298,7 +304,7 @@ export function regenerateSilhouette(editor, p) {
     // in the panel and impossible to select/delete again. Stays gone until
     // Undo, matching every other kind.
     if (!layerId) return existing;
-    const segEls = primitives.map((prim, i) => {
+    const segEls = keepPieces ? existing : primitives.map((prim, i) => {
         const d = primitiveToPathD(prim);
         if (countMatches) return existing[i].attr('d', d);
         return editor._sketchLayer
@@ -308,7 +314,7 @@ export function regenerateSilhouette(editor, p) {
             .attr('data-layer', layerId)
             .attr(CONTOUR_SEG_INDEX_ATTR, i);
     });
-    if (!countMatches) {
+    if (!countMatches && !keepPieces) {
         const id = stampBoundaryRef(segEls[0]);
         for (let i = 1; i < segEls.length; i++) segEls[i].attr(BOUNDARY_REF_ATTR, id);
         p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
@@ -317,7 +323,9 @@ export function regenerateSilhouette(editor, p) {
     // width/show change already written to `p` takes effect immediately —
     // matching contourWidth's own "follows live" requirement.
     for (let i = 0; i < segEls.length; i++) {
-        const segColor = (p.contour.segmentColors && p.contour.segmentColors[i]) || contourColor;
+        // segmentColors is PIECE-indexed (a cut/stripe splices it with the pieces), so a kept piece reads its own
+        const pi = keepPieces ? Number(segEls[i].attr(CONTOUR_SEG_INDEX_ATTR)) : i;
+        const segColor = (p.contour.segmentColors && p.contour.segmentColors[pi]) || contourColor;
         segEls[i].stroke({ color: segColor, width: contourWidth });
         segEls[i].attr('display', contourShow ? null : 'none');
     }
@@ -381,6 +389,19 @@ export async function refreshFrameLinkedContours(editor) {
 }
 onFrameProfileDrawn((editor) => { refreshFrameLinkedContours(editor); });
 
+/** Audit (batch 2): a contour STYLE change (Randomize colours, Show contour, contour width) -- redraw the contour
+ *  in place (regenerateSilhouette keeps cut/striped pieces and their colours) as ONE undo step, and refill only
+ *  if the fill's inputs really changed (the commit's refreshBoundaryPatterns: a width or Show does -- rail ends
+ *  follow the drawn contour -- a colour never). regenerateSilhouetteAndFill always regenerated the rails/ties too,
+ *  wiping hand edits even for a colour-only click. */
+export function restyleContourAndCommit(editor, p = currentPattern(editor)) {
+    regenerateSilhouette(editor, p);
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+    else if (editor._onChange) editor._onChange();
+    _dispatchShapeChanged(editor);
+}
+
 export async function regenerateSilhouetteAndFill(editor) {
     const p = currentPattern(editor);
     regenerateSilhouette(editor, p);
@@ -417,7 +438,9 @@ export async function randomizeSegmentColors(editor, rng = Math.random) {
     const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
     const contourWidth = p.contour?.width != null ? p.contour.width : widths.rails;
     const { primitives } = contourSilhouette(p, region, contourWidth, frameContext(editor));
-    const n = primitives.length;
+    // Audit (batch 2): segmentColors is PIECE-indexed -- a cut/striped contour gets one colour per drawn piece
+    const drawn = p.boundary && p.boundary.shapeId ? _findBoundaryElements(editor, p.boundary.shapeId).length : 0;
+    const n = drawn || primitives.length;
     if (!n) return;
     p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
     // T81 item 8: the lattice's own Rails/Ties/Nodes colours, one draw per segment through the ONE shared
@@ -428,7 +451,7 @@ export async function randomizeSegmentColors(editor, rng = Math.random) {
         out.push(pickColorDiffering(pool, [i > 0 ? out[i - 1] : null, i === n - 1 && n > 1 ? out[0] : null], rng));
     }
     p.contour.segmentColors = out;
-    await regenerateSilhouetteAndFill(editor);
+    restyleContourAndCommit(editor, p);
 }
 
 /**
@@ -652,27 +675,23 @@ export function detectShapeLatticeDetach(editor) {
     // caught by this file's own pre-existing test the first time this was
     // tried, not assumed).
     const expected = primitives.map((prim) => primitiveToPathD(prim));
+    // Audit (batch 2): ONE contour identity (contourPiecesKey, the same rule the fill refill and the frame link
+    // use) -- a cut/stripe/Join is the same contour; the old re-formatted 3-decimal string compare flagged about a
+    // third of scissors-cut arcs as hand-edited. A piece must still be ONE drawing command (a hand-edit that
+    // appends a subcommand keeps the count and the first command -- see above).
+    const oneCmd = (d) => ((d || '').match(/[A-Za-z]/g) || []).length === 2;
+    const key = (ds) => contourPiecesKey(ds.map((d) => ({ d })));
     let diverged;
-    if (segEls.length === expected.length) {
-      diverged = segEls.some((segEl, i) => segEl.attr('d') !== expected[i]);
+    if (segEls.length === expected.length && segEls.every((segEl, i) => segEl.attr('d') === expected[i])) {
+      diverged = false;
+    } else if (!segEls.every((segEl) => oneCmd(segEl.attr('d')))) {
+      diverged = true;
     } else {
-      // F27 (Fred: "the scissors tool doesn't cut contour, it should" --
-      // FINAL RULING: a contour cut is a colour boundary only, never a
-      // detach): a segment COUNT mismatch alone is no longer unconditional
-      // proof of a hand-edit -- a live-caught bug
-      // (tools/repro/contour_cut_acceptance.mjs: Regenerate silently
-      // stopped clearing cuts, because this exact "count changed" read was
-      // flipping shape.source to 'picked' right after a cut, which then
-      // makes regenerateSilhouette's own reuseExisting check false,
-      // orphaning the cut pieces instead of replacing them) is a SANCTIONED
-      // way for the count to differ now, so every outstanding cut is
-      // undone first (`collapseContourCuts`, the SAME merge math a real
-      // Join tap uses) before comparing -- a genuine hand-edit still fails
-      // this (its own pieces don't merge back into the fresh generator's
-      // own primitives), a mere cut doesn't.
-      const collapsed = collapseContourCuts(segEls.map((segEl) => primitiveFromContourD(segEl.attr('d'))))
-        .map((prim) => primitiveToPathD(prim));
-      diverged = collapsed.length !== expected.length || collapsed.some((d, i) => d !== expected[i]);
+      // F27 (Fred: "the scissors tool doesn't cut contour, it should" -- FINAL RULING: a contour cut is a colour
+      // boundary only, never a detach): outstanding cuts collapse back (the same merge math a Join tap uses)
+      // before comparing, so a mere cut/stripe matches; a genuine hand-edit's pieces don't merge back.
+      const drawn = key(segEls.map((segEl) => segEl.attr('d')));
+      diverged = !drawn || drawn !== key(expected);
     }
     if (diverged) shape.source = 'picked';
 }
@@ -1343,7 +1362,7 @@ export function initShapeLatticeProperties(editor) {
             // survive a plain checkbox toggle, not just `show`.
             p.contour = { ...PATTERN_DEFAULTS.contour, ...p.contour, show: !!contourShowEl.checked };
             _showEndRuleRow(contourShowEl.checked); // T75 item 4: immediate, matches this checkbox's own other effects
-            await regenerateSilhouetteAndFill(editor);
+            restyleContourAndCommit(editor, p); // audit batch 2: keeps stripes/colours; refills only if the fill depends on it
         });
     }
     // T74 AMEND 1: same IMMEDIATE write+redraw as the show checkbox above
@@ -1386,7 +1405,7 @@ export function initShapeLatticeProperties(editor) {
                 ...p.contour,
                 width: contourWidthEl.value !== '' ? parseFloat(contourWidthEl.value) : null,
             };
-            await regenerateSilhouetteAndFill(editor);
+            restyleContourAndCommit(editor, p); // audit batch 2: the refill follows through the commit (width changes the clip)
         });
     }
     // T81 item 3 (Fred: "add a randomize segment color button").

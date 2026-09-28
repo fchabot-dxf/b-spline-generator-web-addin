@@ -193,8 +193,16 @@ export function ensureActiveLayer(editor) {
   return created.id;
 }
 
+/** Audit (batch 2): an element hidden on its own (display:none -- a Shape Lattice contour with Show contour off)
+ *  is not there for picking or snapping, same as one on a hidden layer. The scissors, the Stripe tool and Select
+ *  used to cut / stripe / select an invisible contour piece. */
+function _hiddenItself(node) {
+  const n = node && (node.node || node);
+  return !!(n && typeof n.getAttribute === 'function' && n.getAttribute('display') === 'none');
+}
+
 export function isEditableByLayer(editor, node) {
-  return getElementLayer(node) === getActiveLayer(editor);
+  return getElementLayer(node) === getActiveLayer(editor) && !_hiddenItself(node);
 }
 
 /** SE7h add-on (Fred: generated Rails/Ties/Nodes pieces were unclickable
@@ -215,7 +223,7 @@ export function isOnVisibleLayer(editor, node) {
   const layerId = getElementLayer(node);
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const layer = layers.find((l) => String(l.id) === layerId);
-  return !layer || layer.visible !== false;
+  return (!layer || layer.visible !== false) && !_hiddenItself(node);
 }
 
 // ----------- Data ops -----------

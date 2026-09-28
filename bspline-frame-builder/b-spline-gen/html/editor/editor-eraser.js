@@ -137,7 +137,9 @@ export async function finishEraserStroke(editor) {
     if (anyChanged) {
         applyLayerState(editor);
         if (typeof editor.pushState === 'function') editor.pushState();
-        if (editor._onChange) editor._onChange();
+        // audit batch 2: through the commit hooks (refill / detach), same as every other edit
+        if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+        else if (editor._onChange) editor._onChange();
     }
     _eLog(`finish  anyChanged=${anyChanged}  scanned=${children.length}`);
 }

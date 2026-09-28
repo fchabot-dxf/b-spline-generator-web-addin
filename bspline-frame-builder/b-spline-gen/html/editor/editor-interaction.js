@@ -14,6 +14,7 @@
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { cutHandler } from './editor-cut-tool.js'; // SE16 ✂
+import { primitiveFromContourD, nearestOnContourPrimitive } from './editor-contour-cut.js';
 import { stripeHandler } from './editor-stripe-tool.js'; // F27 item 3
 import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints, tieEndNodes, minPieceLength } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
@@ -40,7 +41,7 @@ import {
     isLatticePoint, moveRailAlongAxis, translateTie,
     nearestEndWithin, stretchRailEnd, stretchTieEnd, LATTICE_DRAW_KINDS,
 } from './editor-lattice.js';
-import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements, resolvePatternLayer, clipHandRailToBoundary } from './editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements, resolvePatternLayer, clipHandRailToBoundary, bakeContourPieceTransform, CONTOUR_SEG_INDEX_ATTR } from './editor-lattice-pattern.js';
 import { insideSpans, insetGeneratedPresetPathDToPrimitives } from './editor-lattice-boundary.js';
 import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
@@ -729,6 +730,7 @@ function handleEnd(editor, e) {
             for (const el of (editor._selectedElements || [])) {
                 const kind = el.node.getAttribute(LATTICE_ATTR);
                 if (kind === 'rail' || kind === 'tie' || kind === 'node') _bakeLatticeTransform(el, kind);
+                else if (el.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR)) bakeContourPieceTransform(el); // audit batch 2
             }
             // SE7b slice 3 / design §2 retired this turn (SE7i, Fred: "I'll
             // create a new one if I want"): a completed drag used to
@@ -1829,7 +1831,9 @@ function _commitLatticeMove(editor, move) {
     if (move.railEnd) move.railEndPruned = pruneAfterRailStretch(editor, move);
     applyLayerState(editor);
     if (typeof editor.pushState === 'function') editor.pushState();
-    if (editor._onChange) editor._onChange();
+    // audit batch 2: through the commit hooks like every other edit (a pending refill is settled in THIS step)
+    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+    else if (editor._onChange) editor._onChange();
 }
 
 /** SE7k: the active layer's own pattern widths/colors, defaults filled in
@@ -2605,6 +2609,22 @@ const shapeLatticeHandler = {
  *  selects it and opens its style bar (the TAP, run at the press as always); when
  *  `grip` (an arc grip or a radius dot on that arc) is given, also arms the press
  *  so a DRAG past the click threshold pulls that radius instead (update()). */
+/** The drawn contour piece nearest `pt` (within the hit slop) of the current pattern's contour, or null. */
+function _contourPieceAt(editor, pt) {
+    const p = currentPattern(editor);
+    if (!p || !p.boundary || !p.boundary.shapeId || !pt) return null;
+    const tol = getDynamicTolerance(editor, 10, 'slopPx');
+    let best = null, bestD = Infinity;
+    for (const el of _findBoundaryElements(editor, p.boundary.shapeId)) {
+        const prim = primitiveFromContourD(el.attr('d'));
+        if (!prim) continue;
+        const q = nearestOnContourPrimitive(prim, pt);
+        const d = Math.hypot(q.x - pt.x, q.y - pt.y);
+        if (d <= tol + (parseFloat(el.attr('stroke-width')) || 0) / 2 && d < bestD) { bestD = d; best = el; }
+    }
+    return best;
+}
+
 function _pressContourSegment(editor, segIndex, grip, rawPt, pt, e) {
     // T81 item 6 (PRIORITY BUG, Fred: "I can't seem to select
     // contour segment"): this branch used to ONLY open the
@@ -2619,7 +2639,10 @@ function _pressContourSegment(editor, segIndex, grip, rawPt, pt, e) {
     // declared "tap selects" behavior, not a second for
     // contour. The style bar still opens on the SAME tap
     // (unchanged); this only ADDS the missing selection.
-    const segEl = _contourSegmentEl(editor, segIndex);
+    // Audit (batch 2): the PIECE under the tap (geometry), not the piece whose index happens to equal the tapped
+    // topology segment -- after a kink, cut or stripe those index spaces differ, and the wrong piece (e.g. the
+    // third stripe of another edge) was selected and recoloured.
+    const segEl = _contourPieceAt(editor, rawPt) || _contourSegmentEl(editor, segIndex);
     if (segEl) {
         const shift = !!(e && e.shiftKey);
         if (shift) {

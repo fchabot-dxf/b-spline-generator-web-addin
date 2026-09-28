@@ -124,6 +124,11 @@ export function splitContourPrimitive(prim, p) {
  *  followed immediately by a Join tap at the exact same point failed at the old 1e-6 floor, off by ~5e-4). */
 export const CONTOUR_JOINT_EPS = 2e-3;
 
+/** Audit (batch 2): the decimals EVERY contour-piece write uses (scissors cut, Join, stripe). At 3 a scissors-cut
+ *  arc's halves often no longer merged back (MEASURED by the audit probe: 95/200 shallow-arc cuts), so the cut
+ *  read as a reshaped contour -- the lattice refilled, the shape detached, Join found no joint. At 6: 0/200. */
+export const CONTOUR_D_DIGITS = 6;
+
 /** The single primitive `a` then `b` (in that drawn order, `a`'s own end == `b`'s own start) merge back into,
  *  if they are two halves of what one cut would have produced — same type, and for a LINE the same straight
  *  direction (collinear, not just any two lines happening to share a type — a genuine corner is two DIFFERENT

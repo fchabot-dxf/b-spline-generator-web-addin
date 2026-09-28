@@ -38,7 +38,7 @@ import { primitiveToPathD } from './editor-shape-lattice-generator.js';
 import { pickColorDiffering, VECTOR_COLORS } from './editor-color.js';
 import {
   primitiveFromContourD, contourPrimitiveEnds, nearestOnContourPrimitive, splitContourPrimitive, mergeContourPrimitives,
-  CONTOUR_JOINT_EPS,
+  CONTOUR_JOINT_EPS, CONTOUR_D_DIGITS,
 } from './editor-contour-cut.js';
 import { isOnVisibleLayer } from './layers.js';
 import { haptic } from '../core/haptics.js';
@@ -239,8 +239,11 @@ export function writePieceColor(editor, el, hex) {
   if (isContourPath(el)) {
     const layer = resolvePatternLayer(editor, el.attr('data-layer'));
     const i = _contourIndex(el);
-    const colors = layer && layer.pattern && layer.pattern.contour && layer.pattern.contour.segmentColors;
-    if (Array.isArray(colors)) colors[i] = hex;
+    const contour = layer && layer.pattern && layer.pattern.contour;
+    // audit batch 2: the colour is always STORED (a missing array used to leave it DOM-only, so the next contour
+    // redraw repainted the piece back to the default)
+    if (contour && !Array.isArray(contour.segmentColors)) contour.segmentColors = [];
+    if (contour) contour.segmentColors[i] = hex;
     el.stroke({ color: hex });
     return;
   }
@@ -325,8 +328,9 @@ function _cutContourAt(editor, piece, point, opts = {}) {
   const secondEl = piece.clone();
   secondEl.insertAfter(piece);
   if (secondEl.node.hasAttribute('id')) secondEl.node.removeAttribute('id');
-  piece.attr('d', primitiveToPathD(first, opts.digits));
-  secondEl.attr('d', primitiveToPathD(second, opts.digits));
+  const digits = opts.digits ?? CONTOUR_D_DIGITS; // audit batch 2: the scissors write as precisely as a stripe
+  piece.attr('d', primitiveToPathD(first, digits));
+  secondEl.attr('d', primitiveToPathD(second, digits));
   secondEl.attr(CONTOUR_SEG_INDEX_ATTR, i + 1);
   const layer = resolvePatternLayer(editor, piece.attr('data-layer'));
   const colors = layer && layer.pattern && layer.pattern.contour && layer.pattern.contour.segmentColors;
@@ -361,7 +365,7 @@ function _joinContour(editor, p, q, opts = {}) {
   const [keepEl, dropEl] = forward ? [p, q] : [q, p];
   const dropIndex = _contourIndex(dropEl);
   const siblings = _contourSiblings(editor, p);
-  keepEl.attr('d', primitiveToPathD(merged, opts.digits));
+  keepEl.attr('d', primitiveToPathD(merged, opts.digits ?? CONTOUR_D_DIGITS));
   dropEl.remove();
   for (const s of siblings) {
     if (s === dropEl) continue;

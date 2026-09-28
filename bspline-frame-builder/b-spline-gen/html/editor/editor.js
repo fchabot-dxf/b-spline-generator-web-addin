@@ -659,7 +659,9 @@ export class VectorEditor {
         }
         this._deselect();
         this.pushState();
-        if (this._onChange) this._onChange();
+        // audit batch 2: through the commit hooks (refill / detach) -- deleting a contour piece used to skip them,
+        // and the stale refill then landed inside the NEXT edit's undo step, wiping that edit
+        this._notifyChange('commit');
     }
 
     /** T8: the one place that clears "what's selected" — _selectedElement(s)

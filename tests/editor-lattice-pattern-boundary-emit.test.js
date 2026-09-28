@@ -205,6 +205,29 @@ describe('refreshBoundaryPatterns (§9, commit-only link refresh)', () => {
       expect(editor._undoStack[1].n).toBe('generated');
     });
 
+    it('audit batch 2: a refill folds only into the step its OWN commit pushed, not a later unrelated one', async () => {
+      const { boundaryEl } = await generated();
+      editor._undoStack = [{ n: 'base' }, { n: 'generated' }];
+      editor.pushState = () => { const st = { n: 'push' + editor._undoStack.length }; editor._undoStack.push(st); editor._lastPushedState = st; };
+      boundaryEl.attr('width', '9');
+      editor.pushState();              // the edit that changed the boundary (push2)
+      refreshBoundaryPatterns(editor); // its commit starts the refill (async)
+      editor.pushState();              // an unrelated edit lands before the refill finishes (push3)
+      await settle(); await settle();
+      // push3 is NOT eaten by the refill: it pushes its own step on top
+      expect(editor._undoStack.map((x) => x.n)).toEqual(['base', 'generated', 'push2', 'push3', 'push4']);
+    });
+
+    it('audit batch 2: no boundary left (Contour layer / shape deleted) -> no refill, the rails and ties stay', async () => {
+      const { boundaryEl } = await generated();
+      const before = rails().length;
+      boundaryEl.remove();
+      refreshBoundaryPatterns(editor);
+      await settle(); await settle();
+      expect(editor.notifyChangeCalls).toEqual([]);
+      expect(rails().length).toBe(before);
+    });
+
     it('after an undo (nothing freshly pushed) a refill still pushes its own step, never eating the restored one', async () => {
       const { boundaryEl } = await generated();
       editor._undoStack = [{ n: 'base' }, { n: 'generated' }];

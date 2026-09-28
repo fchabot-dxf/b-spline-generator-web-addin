@@ -19,7 +19,7 @@
  * `fromLattice` before handing points to `emitSegment`/`emitNode` (which
  * take model-space points).
  */
-import { primitiveFromContourD, contourPrimitiveEnds, mergeContourPrimitives } from './editor-contour-cut.js';
+import { primitiveFromContourD, contourPrimitiveEnds, mergeContourPrimitives, CONTOUR_D_DIGITS } from './editor-contour-cut.js';
 import {
   toLattice, fromLattice, latticeCrossings,
   LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
@@ -49,7 +49,7 @@ import {
 // own multi-element boundary resolution (_resolveBoundaryPrimitives,
 // below) both need — a LEAF module (no import of this file, or anything
 // that imports it), so no circular-dependency risk pulling it in here.
-import { joinSegmentPathsIntoClosedD } from './editor-shape-lattice-generator.js';
+import { joinSegmentPathsIntoClosedD, primitiveToPathD } from './editor-shape-lattice-generator.js';
 
 // SE7k: `constrain` (direction-guessing) was removed from editor-lattice.js
 // — this file never called it (only re-exported it), and nothing imports
@@ -287,6 +287,20 @@ function _bakeWorldTransform(el, primitives) {
       default: return prim;
     }
   });
+}
+
+/** Audit (batch 2): ONE rule -- a contour piece never carries a transform. A Select move leaves one
+ *  (translateSelection); baked into its own `d` on release (editor-interaction.js handleEnd), so every contour
+ *  reader (fill key, the refill's clip, scissors/stripe hit-tests, detach, regenerate) sees the piece where it is
+ *  drawn. Before, each read the transform differently -- the refill clipped against the UNmoved d, or applied
+ *  piece 0's transform to the whole contour. No-op without a transform or for a d that isn't one primitive. */
+export function bakeContourPieceTransform(el) {
+  if (!el || !el.node || !el.node.getAttribute('transform')) return false;
+  const prim = primitiveFromContourD(el.node.getAttribute('d'));
+  if (!prim) return false;
+  const [baked] = _bakeWorldTransform(el, [prim]);
+  el.attr({ d: primitiveToPathD(baked, CONTOUR_D_DIGITS), transform: null });
+  return true;
 }
 
 /**
@@ -2355,8 +2369,12 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
   // own. Undoing it landed on the in-between state (piece moved, old fill + old fillInputs), whose commit refilled
   // AGAIN and pushed over the undo -- stuck. A commit-triggered refill now folds into the edit's own step when
   // that step is still the latest thing pushed (never after an undo/redo), so one edit = one consistent step.
-  if (amendUndo && Array.isArray(editor._undoStack) && editor._undoStack.length > 1
-      && editor._lastPushedState && editor._undoStack[editor._undoStack.length - 1] === editor._lastPushedState) {
+  // Audit (batch 2): `amendUndo` is the step the commit that DETECTED the change had just pushed (captured by
+  // refreshBoundaryPatterns before the async gap) -- folded only if that exact step is still on top, never into
+  // a later, unrelated edit's step that happened to be pushed meanwhile.
+  const amendTarget = amendUndo === true ? editor._lastPushedState : amendUndo;
+  if (amendTarget && Array.isArray(editor._undoStack) && editor._undoStack.length > 1
+      && amendTarget === editor._lastPushedState && editor._undoStack[editor._undoStack.length - 1] === amendTarget) {
     editor._undoStack.pop();
   }
   if (typeof editor.pushState === 'function') editor.pushState();
@@ -2480,10 +2498,13 @@ export function refreshBoundaryPatterns(editor) {
   const pattern = getLayerPattern(editor);
   if (!pattern || !pattern.extent || pattern.extent.mode !== 'boundary') return;
   if (!pattern.boundary || !pattern.boundary.shapeId) return;
+  // Audit (batch 2): no boundary left to fill against (the Contour layer / the picked shape deleted -- the H20
+  // "rails and ties without a contour" flow) -> keep the pieces; refilling an EMPTY boundary wiped every rail/tie
+  if (!_findBoundaryElements(editor, pattern.boundary.shapeId).length) return;
   // F17 (P2): nothing the fill depends on changed since the last fill -> keep the pieces as drawn
   if (pattern.fillInputs === boundaryFillInputs(editor, pattern)) return;
   _boundaryRefillInProgress = true;
-  generatePattern(editor, pattern, { amendUndo: true })
+  generatePattern(editor, pattern, { amendUndo: editor._lastPushedState || false })
     .catch((err) => console.warn('[editor-lattice-pattern] boundary refill failed:', err))
     .finally(() => { _boundaryRefillInProgress = false; });
 }

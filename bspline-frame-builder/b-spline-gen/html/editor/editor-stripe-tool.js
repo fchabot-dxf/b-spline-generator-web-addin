@@ -48,7 +48,7 @@ import {
   isCuttable, isContourPath, pieceEnds, cutAtNoCommit, joinNoCommit, writePieceColor, commitCutEdit,
   cuttableUnder, minPieceLength, CUT_MIN_PLAIN_IN,
 } from './editor-cut-tool.js';
-import { primitiveFromContourD, contourPrimitiveEnds, mergeContourPrimitives } from './editor-contour-cut.js';
+import { primitiveFromContourD, contourPrimitiveEnds, mergeContourPrimitives, CONTOUR_D_DIGITS } from './editor-contour-cut.js';
 import { JOINT_TOL } from './editor-lattice-chains.js';
 import {
   BOUNDARY_REF_ATTR, _findBoundaryElements, resolvePatternLayer, latticeColorPool,
@@ -63,7 +63,7 @@ export const STRIPE_ATTR = 'data-stripe';
 export const STRIPE_SRC_ATTR = 'data-stripe-src';
 /** A contour stripe's d-string precision (see `primitiveToPathD`'s own F27 item 3 note: at the default 3 decimals
  *  a short sub-arc's re-derived centre drifts, so an arc's stripes would stop sharing one centre). */
-export const STRIPE_D_DIGITS = 6;
+export const STRIPE_D_DIGITS = CONTOUR_D_DIGITS; // audit batch 2: the ONE contour-piece precision (scissors too)
 const STRIPE_MARKER_ID = 'stripe-marker';
 
 /** The panel's settings (per editor session, `editor._stripe`). `colors[i]` null = "the default for the line's

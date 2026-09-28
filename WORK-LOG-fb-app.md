@@ -3373,3 +3373,27 @@ Batch 1 fixes:
 Verified headless touch 390px: Select drag of a line 27.9 px (old 0), Node end drag 41.8 (old 0), drag after pinch
 ok, hidden rail not grabbed (old: grabbed), wobbly ✗ cancels; regressions (tie move, rail-end stretch, contour move
 + undo in Lattice Select, stripe on touch) all pass.
+
+## Audit batch 2 -- contour / boundary / refill
+- CONTOUR_D_DIGITS = 6 (editor-contour-cut.js): the ONE precision for every contour-piece write -- scissors cut and
+  Join default to it (were 3 decimals; a cut arc's halves often didn't merge back: the lattice refilled, the shape
+  detached to 'picked', Join found no joint). STRIPE_D_DIGITS aliases it. Test: 200 random arc cuts key as the
+  whole (53/200 fail at 3 digits).
+- ONE contour identity (contourPiecesKey) now also drives detectShapeLatticeDetach (was a re-formatted 3-decimal
+  string compare) and regenerateSilhouette's reuse (`keepPieces`: a cut/striped contour that is the same contour
+  keeps its pieces and piece-indexed colours; only restyled). Randomize colours sizes to the drawn pieces.
+- `restyleContourAndCommit`: Randomize colours, Show contour and contour width redraw in place as one step and refill
+  only through the commit when the fill inputs changed (were regenerateSilhouetteAndFill: wiped stripes, colours and
+  hand-moved rails/ties even for a colour click).
+- A contour piece never carries a transform: `bakeContourPieceTransform` on Select-move release (handleEnd).
+- refreshBoundaryPatterns: no boundary elements left (Contour layer / picked shape deleted) -> no refill (was: an
+  empty-boundary refill wiped every rail and tie). amendUndo is the step the detecting commit pushed (captured
+  before the async gap) -- never folds into a later unrelated edit.
+- deleteSelected, the eraser and _commitLatticeMove commit through _notifyChange('commit') (bare _onChange skipped
+  the refill/detach hooks; the stale refill then landed inside the next edit).
+- A contour tap selects the piece under the tap (`_contourPieceAt`), not piece[topology index].
+- Hidden-by-itself elements (display:none, Show contour off) are not pickable/snappable (layers.js isOnVisibleLayer
+  / isEditableByLayer).
+Verified headless (new vs old): arc scissors cut -> source stays 'generated', 1 push, rails unchanged (old: picked,
+refill, rails re-rolled); stripe + Randomize + Show off/on -> 17 pieces and colours kept (old: 12, colours lost);
+hidden contour not cuttable (old: cut); moved contour piece -> no transform, d baked, fill follows in one step, undo ok.
