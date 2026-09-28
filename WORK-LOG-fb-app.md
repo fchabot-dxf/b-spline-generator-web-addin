@@ -3340,3 +3340,7 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
 
 ## Lattice: pieces picked where the finger really is (Fred: "In lattice I can't move selected ties easily" / "It's catching rails instead")
 - latticeHandler.start hit-tested at the touch-AIM point (40 px above the finger) snapped to the grid, so a finger on a tie grabbed the rail above. Now the raw point (`editor._getMousePoint(e)`) picks the piece (as Shape Lattice already did) and decides end-stretch vs move (`_beginLatticeMove` grabPt, both tools); the drag deltas keep the aim point. Headless touch: finger on a tie -> tie move (was: rail move); Shape Lattice and mouse too.
+
+## Touching the form no longer touches the canvas (Fred: "scrolling the form is also pressing on the canvas behind the form")
+- handlePointerMove: a pointer the canvas never saw go down (a finger on the drawer/form/toolbar) no longer runs the canvas hover/snap path on touch, and a mouse only hovers when over the svg (`_overCanvas`). handlePointerUp: an untracked pointer ends nothing (it ran handleEnd, committing whatever was pending).
+- Checked: a selected tie drags (touch, tap then drag after 250/700 ms) since 77512ec; Shape Lattice contour stripe on touch (straight + arc: aim, release, tap check) stripes and sticks -- not reproduced.

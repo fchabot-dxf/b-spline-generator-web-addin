@@ -264,6 +264,10 @@ function handlePointerMove(editor, e) {
     if (!editor._activePointers.has(e.pointerId)) {
         // FB-APP F9/F18: in the Frame tab (artwork locked) there is no hover/snap feedback
         if (editor._artworkLocked) return;
+        // Fred ("scrolling the form is also pressing on the canvas behind the form"): a pointer the canvas never
+        // saw go down is a finger on the form/drawer/toolbar -- a touch has no hover, so it never reaches the
+        // canvas; a mouse only hovers the canvas while it is actually over it.
+        if (e.pointerType === 'touch' || !_overCanvas(editor, e)) return;
         // A move from a pointer we never saw go down (e.g. a mouse move
         // with no button held, which still fires pointermove on some
         // UAs) — treat exactly like the old mousemove-with-no-drag path.
@@ -305,7 +309,17 @@ function handlePointerMove(editor, e) {
     handleMove(editor, e);
 }
 
+/** Is the event over the drawing canvas itself (not a panel, drawer or toolbar laid over it)? */
+function _overCanvas(editor, e) {
+    const svg = editor._draw && editor._draw.node;
+    const t = e && e.target;
+    return !!(svg && t && (t === svg || (typeof svg.contains === 'function' && svg.contains(t))));
+}
+
 function handlePointerUp(editor, e) {
+    // Fred ("scrolling the form is also pressing on the canvas"): a finger lifted off the form/drawer never
+    // started a canvas gesture, so it ends nothing (it used to run handleEnd, committing whatever was pending).
+    if (!editor._activePointers.has(e.pointerId)) return;
     // H5 MULTI-SELECT: releasing before the hold time elapses is just a
     // quick second tap — a no-op, since the first tap already left the
     // piece selected alone (there is nothing left to restore). Also
