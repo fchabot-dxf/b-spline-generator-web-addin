@@ -3558,3 +3558,11 @@ re-send hint, B-spline re-send dedupe, CAM changes, handoff, presets, layout pas
   setting; a panel choice is marked fromFrame.userSet (unticking before the first Generate sticks); no frame ->
   the preset as before. Verified at 390px: fresh start (Hourglass) -> Shape Lattice -> Generate -> fromFrame on,
   checkbox ticked, 12-segment contour following the frame.
+
+## Detach all removed (Fred: "Ok then remove it")
+Fred: none of its uses needed it (protection keeps styling; nothing redraws unless Generate; a second lattice goes on
+its own layer; hand-drawn rails/ties are never owned) -- and detached pieces reached Fusion as plain lines, not
+lattice slots. Removed: #latticeDetachAll / #shapeLatticeDetachAll (palette), their handlers (properties-lattice,
+properties-shape-lattice), the side-column mount entry, detachAllOwned + detachOwnership (editor-lattice-pattern.js,
+no other callers) and their 7 tests; fixtures now carry the Unprotect all button. Verified at 390px: both footers
+are Generate + Unprotect all, no errors. vitest 2438 passed.

@@ -51,7 +51,7 @@ describe('sectionKindForTitle / SECTION_KIND_BY_TITLE', () => {
 // to exercise the decorator — NOT a copy of the real markup (this file
 // itself must never be edited from a test either), just the shape
 // initLatticeSideColumn actually reads: bold-span-first-child sections,
-// the panel/body/footer/generate/detachAll ids it looks up by id, and
+// the panel/body/footer/generate/unprotectAll ids it looks up by id, and
 // the layers panel's own header+list.
 // ---------------------------------------------------------------------
 function section(title, extraHtml = '') {
@@ -92,7 +92,7 @@ function buildFixture() {
       </div>
       <div id="editorLatticePanelFooter">
         <button id="latticeGenerate">Generate</button>
-        <button id="latticeDetachAll">Detach all</button>
+        <button id="latticeUnprotectAll">Unprotect all</button>
       </div>
     </aside>
     <aside id="editorShapeLatticePanel">
@@ -110,7 +110,7 @@ function buildFixture() {
       </div>
       <div id="editorShapeLatticePanelFooter">
         <button id="shapeLatticeGenerate">Generate</button>
-        <button id="shapeLatticeDetachAll">Detach all</button>
+        <button id="shapeLatticeUnprotectAll">Unprotect all</button>
       </div>
     </aside>
   `;
@@ -235,7 +235,7 @@ describe('initLatticeSideColumn', () => {
     // button's own rounded corners) rather than as a bare direct child.
     // UI4 AMEND 4b: the slot ALSO carries `sticky-actions`, the one
     // shared pinned-action style (also on the main sidebar's own card).
-    expect(ids).toEqual(['lattice-side-column-pinned-slot sticky-actions', 'layers-header', 'editorLayersList', 'editorLatticePanelBody', 'latticeDetachAll']);
+    expect(ids).toEqual(['lattice-side-column-pinned-slot sticky-actions', 'layers-header', 'editorLayersList', 'editorLatticePanelBody', 'latticeUnprotectAll']);
     expect(document.getElementById('latticeGenerate').parentElement.className).toBe('lattice-side-column-pinned-slot sticky-actions');
 
     expect(document.getElementById('editorLatticePanel').style.display).toBe('none');
@@ -255,7 +255,7 @@ describe('initLatticeSideColumn', () => {
     const panelChildIds = Array.from(panel.children).map((c) => c.id);
     expect(panelChildIds).toEqual(['editorLatticePanelHeader', 'editorLatticePanelBody', 'editorLatticePanelFooter']);
     const footerChildIds = Array.from(document.getElementById('editorLatticePanelFooter').children).map((c) => c.id);
-    expect(footerChildIds).toEqual(['latticeGenerate', 'latticeDetachAll']);
+    expect(footerChildIds).toEqual(['latticeGenerate', 'latticeUnprotectAll']);
   });
 
   it('DESKTOP: switching from lattice directly to shapeLattice unmounts the first tool before mounting the second (never both at once)', () => {
@@ -265,7 +265,7 @@ describe('initLatticeSideColumn', () => {
 
     const layersPanel = document.getElementById('editorLayersPanel');
     const ids = Array.from(layersPanel.children).map((c) => c.id || c.className);
-    expect(ids).toEqual(['lattice-side-column-pinned-slot sticky-actions', 'layers-header', 'editorLayersList', 'editorShapeLatticePanelBody', 'shapeLatticeDetachAll']);
+    expect(ids).toEqual(['lattice-side-column-pinned-slot sticky-actions', 'layers-header', 'editorLayersList', 'editorShapeLatticePanelBody', 'shapeLatticeUnprotectAll']);
     expect(document.getElementById('shapeLatticeGenerate').parentElement.className).toBe('lattice-side-column-pinned-slot sticky-actions');
     expect(document.getElementById('editorLatticePanel').style.display).toBe('');
     expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');

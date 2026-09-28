@@ -98,7 +98,7 @@ describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', 
       <input id="latticeNodesCrossings" type="checkbox" checked>
       <input id="latticeSeed" type="number" value="42">
       <button id="latticeGenerate"></button>
-      <button id="latticeDetachAll"></button>
+      <button id="latticeUnprotectAll"></button>
       <button id="latticeColorRails"></button>
       <button id="latticeColorTies"></button>
       <button id="latticeColorNodes"></button>
@@ -243,7 +243,7 @@ describe('initLatticeProperties (SE7g amend): Colors row swatches', () => {
       <input id="latticeTiesDensity" type="range" value="1">
       <input id="latticeSeed" type="number" value="42">
       <button id="latticeGenerate"></button>
-      <button id="latticeDetachAll"></button>
+      <button id="latticeUnprotectAll"></button>
       <button id="latticeColorRails"></button>
       <button id="latticeColorTies"></button>
       <button id="latticeColorNodes"></button>
@@ -318,7 +318,7 @@ describe('initLatticeProperties (SE7h): orientation toggle', () => {
       <input id="latticeTiesDensity" type="range" value="0">
       <input id="latticeSeed" type="number" value="42">
       <button id="latticeGenerate"></button>
-      <button id="latticeDetachAll"></button>
+      <button id="latticeUnprotectAll"></button>
       <button id="latticeColorRails"></button>
       <button id="latticeColorTies"></button>
       <button id="latticeColorNodes"></button>
@@ -400,7 +400,7 @@ describe('initLatticeProperties (T75 LAT-SIZE): "Size" width/height fields', () 
       <input id="latticeTiesDensity" type="range" value="0">
       <input id="latticeSeed" type="number" value="42">
       <button id="latticeGenerate"></button>
-      <button id="latticeDetachAll"></button>
+      <button id="latticeUnprotectAll"></button>
       <button id="latticeColorRails"></button>
       <button id="latticeColorTies"></button>
       <button id="latticeColorNodes"></button>
@@ -503,7 +503,7 @@ describe('initLatticeProperties (SE7h add-on 2): "at rail ends" checkbox', () =>
       <input id="latticeNodesRailEnds" type="checkbox">
       <input id="latticeSeed" type="number" value="42">
       <button id="latticeGenerate"></button>
-      <button id="latticeDetachAll"></button>
+      <button id="latticeUnprotectAll"></button>
       <button id="toolLattice"></button>
     `;
     document.body.appendChild(container);
@@ -574,7 +574,7 @@ describe('initLatticeProperties (T58 ADD-ON): linked Rails & ties width', () => 
       <input id="latticeTiesDensity" type="range" value="0">
       <input id="latticeSeed" type="number" value="42">
       <button id="latticeGenerate"></button>
-      <button id="latticeDetachAll"></button>
+      <button id="latticeUnprotectAll"></button>
       <button id="toolLattice"></button>
       <div id="latticeWidthUnlinkedFields" style="display:none;">
         <input id="latticeWidthRails" type="number">

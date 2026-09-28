@@ -13,7 +13,7 @@
  * Ties/Nodes layers, no more PATTERN.layers, no more "restore the
  * previously-active layer" dance (there's nothing to restore FROM —
  * the active layer never changes). Ownership (`recolorOwnedKind`/
- * `rewidthOwnedKind`/`detachAllOwned`) is layer-scoped now, not id-
+ * `rewidthOwnedKind`) is layer-scoped now, not id-
  * matched. The mock editor below seeds a real starter layer (id '0',
  * active) to match the REAL app's own invariant (layers.js's
  * initLayerControls always pre-creates "Layer 1" before any tool, incl.
@@ -22,7 +22,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  generatePattern, detachAllOwned, detachOwnership, OWNERSHIP_ATTR, PATTERN_DEFAULTS,
+  generatePattern, OWNERSHIP_ATTR, PATTERN_DEFAULTS,
   nextSeed, recolorOwnedKind, rewidthOwnedKind, BOUNDARY_REF_ATTR,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { save, _migrateLegacyPatternOntoLayers } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
@@ -243,78 +243,6 @@ describe('generatePattern: Regenerate (same PATTERN.id, SAME active layer)', () 
     generatePattern(editor, pattern);
 
     expect(editor._sketchLayer.children()).not.toContain(tie); // swept away
-  });
-});
-
-describe('detachOwnership: the shared strip-the-tag primitive (T21 slice 3)', () => {
-  function ownedEl(id) {
-    const store = { [OWNERSHIP_ATTR]: id };
-    return { attr: (k, ...rest) => (rest.length ? (rest[0] == null ? (delete store[k], undefined) : (store[k] = rest[0])) : store[k]) };
-  }
-
-  it('strips the ownership attribute from every element that carries it', () => {
-    const a = ownedEl('lattice-1');
-    const b = ownedEl('lattice-1');
-    const count = detachOwnership([a, b]);
-    expect(count).toBe(2);
-    expect(a.attr(OWNERSHIP_ATTR)).toBeUndefined();
-    expect(b.attr(OWNERSHIP_ATTR)).toBeUndefined();
-  });
-
-  it('leaves an element with no ownership tag alone (count 0 for it)', () => {
-    const unowned = { attr: () => undefined };
-    expect(detachOwnership([unowned])).toBe(0);
-  });
-
-  it('tolerates a mixed batch (some owned, some not) and null/undefined entries', () => {
-    const owned = ownedEl('lattice-1');
-    const unowned = { attr: () => undefined };
-    expect(detachOwnership([owned, unowned, null, undefined])).toBe(1);
-    expect(owned.attr(OWNERSHIP_ATTR)).toBeUndefined();
-  });
-
-  it('handles an empty or missing list without throwing', () => {
-    expect(detachOwnership([])).toBe(0);
-    expect(detachOwnership(undefined)).toBe(0);
-  });
-});
-
-describe('detachAllOwned: the bulk "Detach all" panel action (SE7i: layer-scoped, not id-matched)', () => {
-  let editor;
-  beforeEach(() => { editor = _makeMockEditor(); });
-
-  it('strips ownership from every element on the given LAYER, leaves others alone', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 20, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 } };
-    generatePattern(editor, pattern);
-    const ownedBefore = editor._sketchLayer.children().filter((el) => el.attr(OWNERSHIP_ATTR) === pattern.id);
-    expect(ownedBefore.length).toBeGreaterThan(0); // sanity — Generate must have actually made owned content
-
-    const count = detachAllOwned(editor, editor._activeLayer);
-
-    expect(count).toBe(ownedBefore.length);
-    const stillOwned = editor._sketchLayer.children().filter((el) => el.attr(OWNERSHIP_ATTR));
-    expect(stillOwned).toHaveLength(0);
-    // nothing was removed or moved — same element count, same geometry
-    expect(editor._sketchLayer.children()).toHaveLength(ownedBefore.length);
-  });
-
-  it('is exactly one undo step (not one per detached element)', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 21, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 } };
-    generatePattern(editor, pattern);
-    editor.pushStateCalls = 0;
-    editor.notifyChangeCalls = [];
-
-    detachAllOwned(editor, editor._activeLayer);
-
-    expect(editor.pushStateCalls).toBe(1);
-    expect(editor.notifyChangeCalls).toEqual(['commit']);
-  });
-
-  it('does nothing (no undo push) when nothing is owned on that layer', () => {
-    const count = detachAllOwned(editor, 'layer-nonexistent');
-    expect(count).toBe(0);
-    expect(editor.pushStateCalls).toBe(0);
-    expect(editor.notifyChangeCalls).toEqual([]);
   });
 });
 

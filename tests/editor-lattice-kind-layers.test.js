@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   LATTICE_FUSION_BUILD_ORDER, LATTICE_KIND_LAYER_DEFAULTS, resolvePatternLayer, _ensureKindLayers,
-  recolorOwnedKind, detachAllOwned, PATTERN_DEFAULTS,
+  recolorOwnedKind, PATTERN_DEFAULTS,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { currentPattern } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
 
@@ -232,7 +232,7 @@ describe('T76 item 7: a pre-SE17 saved pattern (no .layers field at all) keeps w
     };
   }
 
-  it('recolorOwnedKind/detachAllOwned still act on the ONE shared layer\'s own owned pieces directly -- no pattern.layers lookup needed, nothing forced to split just to be edited', () => {
+  it('recolorOwnedKind still acts on the ONE shared layer\'s own owned pieces directly -- no pattern.layers lookup needed, nothing forced to split just to be edited', () => {
     const pattern = { ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)) }; // no .layers key, exactly like an old save
     const railEl = makeMockElement({ 'data-layer': '0', 'data-lattice-gen': pattern.id || 'old', 'data-lattice': 'rail', stroke: '#ff0000' });
     const tieEl = makeMockElement({ 'data-layer': '0', 'data-lattice-gen': pattern.id || 'old', 'data-lattice': 'tie', stroke: '#ffff00' });
@@ -247,9 +247,5 @@ describe('T76 item 7: a pre-SE17 saved pattern (no .layers field at all) keeps w
     expect(railEl.attr('stroke')).toBe('#00ff00');
     expect(tieEl.attr('stroke')).toBe('#ffff00'); // untouched -- rails-only recolor
 
-    const detached = detachAllOwned(editor, '0');
-    expect(detached).toBe(2); // BOTH pieces, still correctly found on the one shared layer
-    expect(railEl.node.hasAttribute('data-lattice-gen')).toBe(false);
-    expect(tieEl.node.hasAttribute('data-lattice-gen')).toBe(false);
   });
 });

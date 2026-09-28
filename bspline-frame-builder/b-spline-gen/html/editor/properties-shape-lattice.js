@@ -20,7 +20,7 @@
  */
 import { el, on } from './dom.js';
 import {
-    PATTERN_DEFAULTS, generatePattern, detachAllOwned, unprotectRails, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
+    PATTERN_DEFAULTS, generatePattern, unprotectRails, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
     _ensureKindLayers, resolvePatternLayer, freshPattern, latticeColorPool, contourPiecesKey,
 } from './editor-lattice-pattern.js';
@@ -957,7 +957,6 @@ export function initShapeLatticeProperties(editor) {
     const widthUnlinkedFieldsEl = el('shapeLatticeWidthUnlinkedFields');
     const widthLinkedRowEl = el('shapeLatticeWidthLinkedRow');
     const fillSeedEl = el('shapeLatticeSeed');
-    const detachAllBtn = el('shapeLatticeDetachAll');
 
     // ── Boundary / Ending / Contour (moved here from the box Lattice
     //    panel — no Board/Shape toggle: this tool is ALWAYS boundary
@@ -1584,11 +1583,6 @@ export function initShapeLatticeProperties(editor) {
     wireLinkedWidthStepper();
     wireWidthLinkToggle();
 
-    if (detachAllBtn) {
-        on(detachAllBtn, 'click', () => {
-            detachAllOwned(editor, getActiveLayer(editor));
-        });
-    }
     // Fred: recoloured / striped / cut rails and contour segments are protected from Generate -- this puts them
     // all back to plain, in one undo step
     on(el('shapeLatticeUnprotectAll'), 'click', () => {

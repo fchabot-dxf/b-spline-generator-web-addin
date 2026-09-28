@@ -8,7 +8,7 @@
  * with its own settings panel is active (Lattice, Shape Lattice), that
  * panel's content MOUNTS into the SAME column instead of opening a
  * second, separate middle column: [pinned Generate] -> [Layers,
- * scrolls] -> [the tool's settings, scrolls] -> [Detach all]. No tool
+ * scrolls] -> [the tool's settings, scrolls] -> [Unprotect all]. No tool
  * active -> the column shows just Layers, exactly as it always has.
  *
  * HARD CONSTRAINT (stated in both the original dispatch and AMEND 2):
@@ -183,7 +183,6 @@ const TOOL_PANEL_MOUNTS = {
     bodyId: 'editorLatticePanelBody',
     footerId: 'editorLatticePanelFooter',
     generateId: 'latticeGenerate',
-    detachAllId: 'latticeDetachAll',
     unprotectAllId: 'latticeUnprotectAll',
   },
   shapeLattice: {
@@ -191,7 +190,6 @@ const TOOL_PANEL_MOUNTS = {
     bodyId: 'editorShapeLatticePanelBody',
     footerId: 'editorShapeLatticePanelFooter',
     generateId: 'shapeLatticeGenerate',
-    detachAllId: 'shapeLatticeDetachAll',
     unprotectAllId: 'shapeLatticeUnprotectAll',
   },
 };
@@ -235,7 +233,6 @@ function _unmount(mode) {
   const bodyEl = el(cfg.bodyId);
   const footerEl = el(cfg.footerId);
   const generateEl = el(cfg.generateId);
-  const detachAllEl = el(cfg.detachAllId);
   const unprotectAllEl = el(cfg.unprotectAllId);
   // generateEl is found by id regardless of which parent currently
   // wraps it — closest() unwraps it from the pinned slot before that
@@ -243,7 +240,6 @@ function _unmount(mode) {
   const pinnedSlot = generateEl ? generateEl.closest('.' + PINNED_SLOT_CLASS) : null;
   if (panelEl && bodyEl) panelEl.insertBefore(bodyEl, footerEl || null);
   if (footerEl && generateEl) footerEl.insertBefore(generateEl, footerEl.firstChild);
-  if (footerEl && detachAllEl) footerEl.appendChild(detachAllEl);
   if (footerEl && unprotectAllEl) footerEl.appendChild(unprotectAllEl);
   if (pinnedSlot) pinnedSlot.remove();
   // Clears the inline override this module itself added in _mount — the
@@ -259,12 +255,11 @@ function _mount(mode, layersPanelEl) {
   const panelEl = el(cfg.panelId);
   const bodyEl = el(cfg.bodyId);
   const generateEl = el(cfg.generateId);
-  const detachAllEl = el(cfg.detachAllId);
   const unprotectAllEl = el(cfg.unprotectAllId);
   if (!panelEl || !bodyEl) return;
   const layersList = layersPanelEl.querySelector('.layers-list');
   // Order: [pinned Generate, in its own opaque slot] -> [layers-header +
-  // layers-list, untouched] -> [this tool's own settings body] -> [Detach all].
+  // layers-list, untouched] -> [this tool's own settings body] -> [Unprotect all].
   if (generateEl) {
     const pinnedSlot = document.createElement('div');
     pinnedSlot.className = PINNED_SLOT_CLASS + ' sticky-actions';
@@ -272,7 +267,6 @@ function _mount(mode, layersPanelEl) {
     layersPanelEl.insertBefore(pinnedSlot, layersPanelEl.firstChild);
   }
   layersPanelEl.insertBefore(bodyEl, layersList ? layersList.nextSibling : null);
-  if (detachAllEl) layersPanelEl.appendChild(detachAllEl);
   if (unprotectAllEl) layersPanelEl.appendChild(unprotectAllEl);
   // The original middle column is now an empty shell (its own header +
   // now-vacated footer) — force it out of layout so the canvas reclaims

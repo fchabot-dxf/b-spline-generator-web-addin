@@ -10,7 +10,7 @@
 import { el, on } from './dom.js';
 import { LATTICE_DRAW_KINDS } from './editor-lattice.js';
 import {
-    PATTERN_DEFAULTS, generatePattern, detachAllOwned, unprotectRails, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
+    PATTERN_DEFAULTS, generatePattern, unprotectRails, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     _findBoundaryElements, resolvePatternLayer, freshPattern,
 } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
@@ -88,7 +88,6 @@ export function initLatticeProperties(editor) {
     const nodesRailEndsEl = el('latticeNodesRailEnds');
     const seedEl = el('latticeSeed');
     const generateBtn = el('latticeGenerate');
-    const detachAllBtn = el('latticeDetachAll');
     const colorRailsEl = el('latticeColorRails');
     const colorTiesEl = el('latticeColorTies');
     const colorNodesEl = el('latticeColorNodes');
@@ -600,10 +599,6 @@ export function initLatticeProperties(editor) {
     wireWidthStepper(widthNodesEl, 'nodeDiameter', 'nodes');
     wireLinkedWidthStepper();
     wireWidthLinkToggle();
-
-    on(detachAllBtn, 'click', () => {
-        detachAllOwned(editor, getActiveLayer(editor));
-    });
 
     // Fred: recoloured / striped / cut rails are protected from Generate -- this puts them all back to plain
     on(el('latticeUnprotectAll'), 'click', () => {

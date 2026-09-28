@@ -377,26 +377,6 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
   return { boundaryEl, boundaryEls, primitives: _bakeWorldTransform(boundaryEl, localPrimitives) };
 }
 
-/** Strip OWNERSHIP_ATTR from each given element that carries it. Pure DOM
- *  mutation only — no undo/pushState/_notifyChange; callers decide when
- *  to commit (editor-interaction.js's handleEnd, for the one-per-drag
- *  hook that must land in the SAME undo step as the move; detachAllOwned
- *  below, for the bulk panel action). Declared once so both call sites
- *  share the exact same detach mechanics rather than two copies of the
- *  same 3-line loop. Returns how many were actually detached. */
-export function detachOwnership(elements) {
-    let count = 0;
-    for (const el of (elements || [])) {
-        try {
-            if (el && el.attr(OWNERSHIP_ATTR) != null) {
-                el.attr(OWNERSHIP_ATTR, null);
-                count++;
-            }
-        } catch (_) { /* defensive: a bad element must not abort the rest of the batch */ }
-    }
-    return count;
-}
-
 export const PATTERN_DEFAULTS = {
   spacing: 0.25,
   // SE7h (Fred: "invert rails and ties so rails are vertical"): default
@@ -2709,7 +2689,7 @@ function _kindLayerId(pattern, fallbackLayerId, kind) {
 }
 
 /** SE7i: every OWNED element (has OWNERSHIP_ATTR) sitting on `layerId` —
- *  the shared filter `recolorOwnedKind`/`rewidthOwnedKind`/`detachAllOwned`
+ *  the shared filter `recolorOwnedKind`/`rewidthOwnedKind`
  *  all apply, now that ownership is layer-scoped rather than id-matched
  *  (a layer only ever holds one pattern's generated content at a time). */
 export function _ownedOnLayer(editor, layerId, latticeKind) {
@@ -2963,30 +2943,6 @@ export function unprotectRails(editor, layerId) {
   return count;
 }
 
-export function detachAllOwned(editor, layerId) {
-  // T76 (SE17, "Detach acts on all of them"): detaches across ALL of this
-  // pattern's own rails/ties/nodes kind-layers, not just whichever one
-  // happens to be active -- contour pieces never carry OWNERSHIP_ATTR at
-  // all (a separate, `_findBoundaryElements`-based mechanism), so they
-  // were never part of "detach all owned" even before this turn. Falls
-  // back to the single `layerId` for a pre-SE17 pattern with no `.layers`
-  // map yet (every kind still resolves to that one shared layer).
-  const patternLayer = resolvePatternLayer(editor, layerId);
-  const pattern = patternLayer && patternLayer.pattern;
-  const layerIds = pattern && pattern.layers
-    ? new Set(['rails', 'ties', 'nodes'].map((k) => _kindLayerId(pattern, layerId, k)))
-    : new Set([layerId]);
-  let count = 0;
-  for (const id of layerIds) {
-    count += detachOwnership(_ownedOnLayer(editor, id, null));
-  }
-  if (count > 0) {
-    if (typeof editor.pushState === 'function') editor.pushState();
-    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
-  }
-  return count;
-}
-
 /**
  * T76 (SE17): the ACTUAL layer holding `.pattern` for a given layer id —
  * either that layer itself (the PRIMARY kind-layer, currently always
@@ -2998,7 +2954,7 @@ export function detachAllOwned(editor, layerId) {
  * contract for a layer with no pattern at all.
  *
  * Kept as its own small function (not inlined into `getLayerPattern`)
- * because `recolorOwnedKind`/`rewidthOwnedKind`/`detachAllOwned` etc. all
+ * because `recolorOwnedKind`/`rewidthOwnedKind` etc. all
  * need the SAME resolution starting from an arbitrary layer id, not just
  * the active one — one function neither can drift from the other's own
  * copy of this same lookup.

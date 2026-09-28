@@ -204,7 +204,7 @@ const BOX_FIXTURE = `
   <input id="latticeTiesMinSpacing" type="number" value="0.5">
   <input id="latticeNodesEnds" type="checkbox" checked><input id="latticeNodesCrossings" type="checkbox" checked><input id="latticeNodesRailEnds" type="checkbox">
   <input id="latticeSeed" type="number" value="42">
-  <button id="latticeGenerate"></button><button id="latticeDetachAll"></button>
+  <button id="latticeGenerate"></button><button id="latticeUnprotectAll"></button>
   <button id="latticeColorRails"></button><button id="latticeColorTies"></button><button id="latticeColorNodes"></button>
   <input id="latticeWidthRails" type="number"><input id="latticeWidthTies" type="number"><input id="latticeWidthNodes" type="number">
   <input id="latticeWidthLinked" type="number">

@@ -172,7 +172,7 @@ function fixtureHTML() {
     <input id="shapeLatticeNodesRailEnds" type="checkbox">
     <input id="shapeLatticeSeed" type="number" value="42">
     <button id="shapeLatticeGenerate"></button>
-    <button id="shapeLatticeDetachAll"></button>
+    <button id="shapeLatticeUnprotectAll"></button>
     <button id="shapeLatticeColorRails"></button>
     <button id="shapeLatticeColorTies"></button>
     <button id="shapeLatticeColorNodes"></button>
