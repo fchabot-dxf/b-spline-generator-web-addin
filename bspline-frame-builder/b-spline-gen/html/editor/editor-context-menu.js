@@ -349,6 +349,18 @@ let _armed = null; // { editor, target, clientX, clientY, timer }
 // consumed by the very next cancelContextMenuHold() call (that release),
 // never re-armed by a later, unrelated pointerup.
 let _awaitingHoldRelease = null;
+let _holdAt = null; // where the hold that opened _awaitingHoldRelease was (client px)
+
+/** Aim-select (Fred: hold on empty canvas, then drag): the menu a touch-hold opened while that same finger is still
+ *  down, and where the hold was -- `{ clientX, clientY }` -- or null. */
+export function heldMenu() {
+  return _awaitingHoldRelease && _holdAt ? { clientX: _holdAt.x, clientY: _holdAt.y } : null;
+}
+/** Closes the menu a still-down hold opened (the finger dragged away from it: aim-select takes over). */
+export function dismissHeldMenu() {
+  if (_awaitingHoldRelease) { _awaitingHoldRelease.close(); _awaitingHoldRelease = null; }
+  _holdAt = null;
+}
 
 export function armContextMenuHold(editor, target, e) {
   cancelContextMenuHold();
@@ -377,7 +389,7 @@ function _fireContextMenuHold(target) {
   // OPEN time too — covers a release that lands almost immediately (before
   // the pointerup handler even runs cancelContextMenuHold below).
   const menu = openContextMenu(editor, target, clientX, clientY, Date.now() + 500);
-  if (menu) _awaitingHoldRelease = menu;
+  if (menu) { _awaitingHoldRelease = menu; _holdAt = { x: clientX, y: clientY }; }
 }
 
 export function cancelContextMenuHoldIfMoved(e) {
@@ -397,6 +409,7 @@ export function cancelContextMenuHold() {
   // pointerup (e.g. tapping a row, or tapping outside on purpose) never
   // re-triggers this.
   if (_awaitingHoldRelease) { _awaitingHoldRelease.bumpSuppressDismiss(400); _awaitingHoldRelease = null; }
+  _holdAt = null;
 }
 
 // ─── desktop right-click ────────────────────────────────────────────────

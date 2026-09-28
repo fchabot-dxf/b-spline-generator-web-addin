@@ -35,7 +35,7 @@ const MODE_HINTS = {
 const TOUCH_MODE_HINTS = {
   cut:    'Cut — tap a line where to split it, then ✓. Tap a cut again to join.',
   stripe: 'Stripe — tap a line, then ✓, to split it into equal stripes of Colours A / B (/ C). Tap it again to re-stripe.',
-  select: 'Select — tap a piece to pick it, drag to move it. Long-press for its menu.',
+  select: 'Select — tap a piece to pick it, drag it to move. Drag from empty space to aim, lift to pick. Two fingers pan.',
   node:   'Nodes — tap a shape to edit its points. Drag the diamond handles to reshape.',
   draw:   'Pen — tap to place points, double-tap to finish. Or drag to draw freehand.',
   text:   'Text — tap the canvas to start typing. Drag the text to move it.',
@@ -173,6 +173,7 @@ export function setMode(editor, mode) {
     if (editor._isDrawing) editor._cancelDrawing();
     clearTouchConfirm(editor); // a pending scissors / stripe check + X belongs to the tool being left
     editor._touchAim = null;
+    editor._aimSelect = null; // an aim-select in progress belongs to the tool being left
 
     editor._currentMode = mode;
     _rememberOpeningMode(mode);

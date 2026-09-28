@@ -60,7 +60,7 @@ import {
 // H6 CONTEXT-MENU: same reasoning, own module — see its own doc comment.
 import {
     armContextMenuHold, cancelContextMenuHoldIfMoved, cancelContextMenuHold,
-    bindContextMenu, targetKindOf,
+    bindContextMenu, targetKindOf, heldMenu, dismissHeldMenu,
 } from './editor-context-menu.js';
 // T59 (SE14's own deferred "Slice 3 editing model"): axis-locked param
 // handles + tap-a-segment. generateSilhouette/boardRegion/hitTestSegment
@@ -203,6 +203,7 @@ function handlePointerDown(editor, e) {
         // view: a 40-120 px snap. A pinch now ends any one-finger pan, and (_afterPinch) the finger left down
         // after a pinch does nothing until every finger is up.
         if (editor._isPanning) resetPanState(editor);
+        clearAimSelect(editor); // a second finger: pinch, not aim
         editor._afterPinch = true;
         const ids = Array.from(editor._activePointers.keys());
         editor._pinchPrev = {
@@ -213,9 +214,9 @@ function handlePointerDown(editor, e) {
     }
     if (count !== 1) return; // 3rd+ finger — tracked, no gesture
 
-    // FB-APP F18 (FRAME-TAB-ZOOM): in the Frame tab the artwork is locked, so a one-finger drag (that did not
-    // start on a frame handle: the frame panel takes those first) PANS the canvas; pinch is above. No tool starts.
-    if (editor._artworkLocked) { _startPan(editor, e); return; }
+    // FB-APP F18 (FRAME-TAB-ZOOM): in the Frame tab the artwork is locked -- no tool starts. Fred ("lose 1f pan"):
+    // a one-finger drag no longer pans (two fingers pan and zoom, pinch above); the frame panel takes handle drags.
+    if (editor._artworkLocked) { if (e.pointerType !== 'touch') _startPan(editor, e); return; }
 
     // The drawing as this touch found it, for _abortTouchGesture (mouse/pen never pinch).
     editor._touchGestureSnapshot = (e.pointerType === 'touch' && typeof editor._snapshotState === 'function')
@@ -252,6 +253,7 @@ export function resetDragGestureState(editor) {
 }
 
 function _abortTouchGesture(editor) {
+    clearAimSelect(editor);
     const snap = editor._touchGestureSnapshot;
     editor._touchGestureSnapshot = null;
     if (typeof editor._cancelDrawing === 'function') editor._cancelDrawing(); // a pen path in progress
@@ -634,6 +636,7 @@ function handleMove(editor, e) {
         _panBy(editor, e.clientX - editor._panStart.clientX, e.clientY - editor._panStart.clientY);
         return;
     }
+    if (editor._aimSelect) { _updateAimSelect(editor, e); return; }
     // SE7a: hover feedback — where would the next click land? Unconditional
     // (drawing or not): in lattice mode the marker doubles as the rail/tie
     // start indicator once a gesture is under way.
@@ -706,6 +709,7 @@ function handleEnd(editor, e) {
         resetPanState(editor);
         return;
     }
+    if (editor._aimSelect) { _finishAimSelect(editor); return; }
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
         _strokeLog(`handleEnd  isDrawing=true  mode=${editor._currentMode}  hasFinish=${!!handler.finish}`);
@@ -802,6 +806,100 @@ function _latticePickPt(editor, pt, e) {
     return e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt;
 }
 
+/** What a tap / press / aim-select at `pt` selects: the generic pick (any visible layer), except that lattice
+ *  pieces go by the lattice tools' own rule -- the generic pick ranks by bounding-box CENTRE, so a tie-end node
+ *  (its centre right under the finger) always beat the long rail it sits on (Fred: "longpress node"). Lattice rule:
+ *  the nearest centreline, a node only when the point is on its dot. */
+function _pickSelectable(editor, pt) {
+    const tol = getDynamicTolerance(editor, 10, 'slopPx');
+    const hit = editor._getNearbyElement(pt, tol, { anyVisibleLayer: true });
+    if (hit && !hit.node.getAttribute(LATTICE_ATTR)) return hit;
+    return _nearbyLatticePiece(editor, pt, tol).el || hit || null;
+}
+
+// ─── aim-select (touch) ────────────────────────────────────────────────────
+// Fred: "tap hold and drag enters a hover feedback mode to see what gets selected" -- like the scissors' aim.
+// A one-finger press on EMPTY space in a Select mode (the Select tool, Box / Shape Lattice Select), then a drag:
+// the marker above the finger (the touch-marker offset) lights the piece it is over, the same outline a mouse
+// hover gets and the same pick a tap makes (_pickSelectable); lifting selects it (over nothing: nothing). A hold
+// there still opens the canvas menu first; dragging on from it closes the menu (past AIM_AFTER_HOLD_PX, so a
+// wobble while holding doesn't) and aims, and sliding onto a menu row and lifting picks that row instead.
+const AIM_AFTER_HOLD_PX = 20;
+const AIM_RING_ID = 'aim-select-ring';
+
+function _beginAimSelect(editor, e) {
+    editor._aimSelect = { startX: e.clientX, startY: e.clientY, moved: false, el: null, row: null };
+}
+
+function _aimRowMark(aim, row) {
+    if (aim.row === row) return;
+    if (aim.row) aim.row.style.background = '';
+    aim.row = row;
+    if (row) row.style.background = 'rgba(30,111,234,0.12)';
+}
+
+function _updateAimSelect(editor, e) {
+    const aim = editor._aimSelect;
+    const held = heldMenu();
+    if (held) {
+        const under = typeof document !== 'undefined' && document.elementFromPoint ? document.elementFromPoint(e.clientX, e.clientY) : null;
+        const row = under && under.closest ? under.closest('.context-menu-row') : null;
+        _aimRowMark(aim, row);
+        if (row) { editor._setHover(null); _clearAimRing(editor); return; } // on the menu: pick a row on lift
+        if (Math.hypot(e.clientX - held.clientX, e.clientY - held.clientY) < AIM_AFTER_HOLD_PX) return;
+        dismissHeldMenu();
+        aim.moved = true;
+    }
+    if (!aim.moved) {
+        if (Math.hypot(e.clientX - aim.startX, e.clientY - aim.startY) < inputProfileFor('touch').clickThresholdPx) return;
+        aim.moved = true;
+    }
+    const finger = editor._getMousePoint(e);
+    const aimed = applyTouchMarkerOffset(editor, finger);
+    aim.el = _pickSelectable(editor, aimed);
+    editor._setHover(aim.el || null);
+    _drawAimRing(editor, finger, aimed);
+}
+
+function _drawAimRing(editor, finger, aimed) {
+    const layer = editor._handleLayer;
+    if (!layer) return;
+    clearSnapCursor(editor); // the aim ring replaces the (grid-snapped) marker -- the pick is unsnapped
+    _clearAimRing(editor);
+    const r = getDynamicTolerance(editor, 9);
+    const g = layer.group().id(AIM_RING_ID).attr('pointer-events', 'none');
+    g.line(finger.x, finger.y, aimed.x, aimed.y + r).stroke({ color: SELECTION_COLOR, width: r * 0.18, opacity: 0.7 });
+    g.circle(2 * r).center(aimed.x, aimed.y).fill('none').stroke({ color: SELECTION_COLOR, width: r * 0.25 });
+}
+
+function _clearAimRing(editor) {
+    const layer = editor._handleLayer;
+    const old = layer && layer.findOne ? layer.findOne('#' + AIM_RING_ID) : null;
+    if (old) old.remove();
+}
+
+/** Drops an aim-select without selecting (a pinch, an aborted gesture, a tool switch). */
+export function clearAimSelect(editor) {
+    const aim = editor._aimSelect;
+    editor._aimSelect = null;
+    if (!aim) return;
+    _aimRowMark(aim, null);
+    _clearAimRing(editor);
+    editor._setHover(null);
+}
+
+function _finishAimSelect(editor) {
+    const aim = editor._aimSelect;
+    const row = aim.row;
+    const el = aim.moved ? aim.el : null;
+    clearAimSelect(editor);
+    if (row) { row.click(); return; } // slid onto the hold's menu: that row
+    if (!el) return;
+    const hitLayer = getElementLayer(el);
+    if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
+    editor._select(el);
+}
+
 const selectHandler = {
     // UI4 item 0: `presetHit` lets a caller that already resolved (and
     // trusts) a specific element skip this function's own generic
@@ -829,15 +927,7 @@ const selectHandler = {
         // SE7h add-on (Fred: generated Rails/Ties/Nodes were unclickable):
         // 'select' mode hit-tests across every VISIBLE layer, not just the
         // active one — see isOnVisibleLayer's own doc comment (layers.js).
-        let hit = presetHit || editor._getNearbyElement(pick, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
-        // workflow audit (Fred: "longpress node"): the generic pick ranks by bounding-box CENTRE, so a tie-end node
-        // (its centre right under the finger) always beat the long rail it sits on -- a tap / long-press on a rail
-        // selected the node. Lattice pieces are picked by the lattice tools' own rule instead: the nearest
-        // centreline, a node only when the finger is on its dot.
-        if (!presetHit && (!hit || hit.node.getAttribute(LATTICE_ATTR))) {
-            const lat = _nearbyLatticePiece(editor, pick, getDynamicTolerance(editor, 10, 'slopPx'));
-            if (lat.el) hit = lat.el;
-        }
+        const hit = presetHit || _pickSelectable(editor, pick);
         editor._dragMoved = false;
         // UI4 item 0's one-shot _skipBoundaryRefillOnce flag is gone (F17 P2): refreshBoundaryPatterns refills only
         // when the fill's declared inputs changed (boundaryFillInputs), so a moved rail/tie/node survives any commit.
@@ -886,16 +976,10 @@ const selectHandler = {
         // H6 CONTEXT-MENU: a hold on empty canvas opens the empty-canvas
         // menu (Paste/Select all/Fit view) — no-ops on desktop, same as above.
         armContextMenuHold(editor, { kind: 'empty', el: null, point: pt }, e);
-        if (editor._pointerType === 'touch') {
-            editor._isPanning = true;
-            editor._panStart = {
-                clientX: e.clientX, clientY: e.clientY,
-                cx: editor._view.cx, cy: editor._view.cy,
-            };
-            const c = el('editorSVGContainer');
-            if (c) c.classList.add('panning');
-            return;
-        }
+        // Fred ("lose 1f pan" + "tap hold and drag ... hover feedback to see what gets selected"): a one-finger
+        // drag from empty space AIMS -- the marker above the finger lights what a lift selects (aim-select, below);
+        // two fingers pan and zoom. (MOB5's one-finger pan used to live here.)
+        if (editor._pointerType === 'touch') { _beginAimSelect(editor, e); return; }
         editor._isDragging      = true;
         editor._lastDragPt      = pt;
         editor._marqueeStart    = { x: pt.x, y: pt.y };
@@ -907,8 +991,7 @@ const selectHandler = {
             && hitTestHandle(editor._transformHandles, raw)) {
             editor._setHover(null); return;
         }
-        const hit = editor._getNearbyElement(raw, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
-        editor._setHover(hit);
+        editor._setHover(_pickSelectable(editor, raw)); // the same pick a press / aim-select makes
     },
 };
 
@@ -2077,6 +2160,7 @@ const latticeHandler = {
             // H6 CONTEXT-MENU: same shape as selectHandler.start's own
             // identical hook above.
             armContextMenuHold(editor, { kind: 'empty', el: null, point: pt }, e);
+            if (editor._pointerType === 'touch') _beginAimSelect(editor, e); // aim-select, as in the Select tool
             return;
         }
 
@@ -2235,7 +2319,8 @@ const latticeHandler = {
         // so it could light one piece while the press grabbed another.
         pt = raw;
         const tol = getDynamicTolerance(editor, 10, 'slopPx');
-        const hit = _getNearbyLatticePiece(editor, pt, tol);
+        // the Select sub-mode picks like the Select tool (and aim-select) -- contour / drawn pieces too
+        const hit = editor._lattice.drawKind === 'select' ? _pickSelectable(editor, pt) : _getNearbyLatticePiece(editor, pt, tol);
         editor._setHover(hit || null);
         // T81 item 7: a rail END under the pointer shows its end handle +
         // the shared handle cursor, left-right or up-down by the rail's own

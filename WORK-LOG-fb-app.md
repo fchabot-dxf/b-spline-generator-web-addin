@@ -3584,3 +3584,24 @@ are Generate + Unprotect all, no errors. vitest 2438 passed.
   by finalizeMarquee, so the preview matches the result. Cleared with the marquee.
 - Verified headless (mouse, 1400px): mid-drag 15 previewed -> release selects the same 15, preview removed.
   (On a phone a one-finger drag on empty canvas pans, MOB5 -- box select stays mouse/pen.) vitest 2438 passed.
+
+## Aim-select on touch; no one-finger pan (Fred: "tap hold and drag enters a hover feedback mode to see what gets
+## selected" / "only start if im starting in empty space" / "Menu can still open, my feature would dismiss it when i
+## start dragging" / "Yes lose 1f pan" / "Do it")
+- A one-finger press on EMPTY space in a Select mode (Select tool; Shape Lattice falls through to it; Box Lattice
+  Select sub-mode), then a drag: the touch marker (40 px above the finger) lights the piece it is over (the hover
+  outline) with an aim ring + leader; lifting selects it (and activates its layer); over nothing, nothing.
+  editor-interaction _beginAimSelect/_updateAimSelect/_finishAimSelect/clearAimSelect (pinch, aborted gesture and
+  tool switch drop it). Box Lattice Select already showed this hover on an empty drag (it never panned) -- now
+  lifting selects there too.
+- A hold there still opens the canvas menu; dragging on from it past 20 px (AIM_AFTER_HOLD_PX -- a wobble keeps the
+  menu) closes it and aims; sliding onto a menu row and lifting runs that row (editor-context-menu heldMenu /
+  dismissHeldMenu). Replaces the old quirk: a drag after the hold panned under the open menu.
+- One pick rule (_pickSelectable) for a tap, a press, a mouse hover, the lattice Select hover and the aim: the
+  generic pick, but lattice pieces by nearest centreline, a node only on its dot.
+- One-finger pan removed: the Select tool's empty-space touch pan (MOB5) and the Frame tab's one-finger pan (F18;
+  mouse drag there still pans). Two fingers pan and zoom everywhere; Space/middle-drag unchanged.
+- Select touch hint mentions it. Verified at 390px touch: empty drag onto a rail -> rail lit, view unchanged, lift
+  -> rail selected; tap empty -> nothing; hold -> menu, 7 px wobble keeps it, drag -> menu closed + aim -> lift
+  selects; hold -> slide onto "Select all" -> lift -> 55 selected; two-finger pan moves the view; Box Lattice Select
+  aim picks a contour piece; Frame tab one-finger drag: view unchanged, two-finger: pans. vitest 2438 passed.
