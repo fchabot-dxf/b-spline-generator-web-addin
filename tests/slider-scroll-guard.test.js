@@ -73,14 +73,14 @@ describe('attachSliderScrollGuard', () => {
     expect(changeEvents).toEqual([]); // the browser's own change on release is not ours to send
   });
 
-  it('a plain TAP (released below the threshold) still sets the value', () => {
+  it('a plain TOUCH (released below the threshold) changes nothing -- only a sideways drag moves a slider', () => {
     fire('pointerdown', slider, { clientX: 100, clientY: 100 });
     nativeJump('80');
     fire('pointermove', slider, { clientX: 103, clientY: 105 });
     fire('pointerup', slider, { clientX: 103, clientY: 105 });
 
-    expect(slider.value).toBe('80');
-    expect(inputEvents).toEqual(['80']);
+    expect(slider.value).toBe('50');
+    expect(inputEvents).toEqual([]);
     expect(changeEvents).toEqual([]);
   });
 

@@ -43,7 +43,9 @@ const DIRECTION_THRESHOLD_PX = 8;
  *     capture phase, before any app listener), so nothing reacts to the touched position yet;
  *   - scroll (vertical first, or the browser cancelling the pointer = it took the gesture as a pan):
  *     the value is put back silently, and the app never saw a change;
- *   - drag (horizontal first) or a plain tap (released without scrolling): the held value is released as
+ *   - a plain touch (released without moving 8px): also put back -- Fred: "It's moving the slider because I
+ *     touch them" -- so on touch ONLY a sideways drag moves a slider;
+ *   - drag (horizontal first): the held value is released as
  *     an input (the browser's own change follows on release), and the rest of a drag flows normally.
  */
 let attached = false;
@@ -102,7 +104,9 @@ export function attachSliderScrollGuard() {
   }, { passive: true });
 
   document.addEventListener('pointerup', () => {
-    if (target && !resolved) release(); // a tap sets the value, as before
+    // Fred: "It's moving the slider because I touch them" -- a touch that never became a sideways drag
+    // (a tap, a rest, a scroll start) changes nothing; only a horizontal drag moves a slider on touch.
+    if (target && !resolved) restore();
     reset();
   }, { passive: true });
   document.addEventListener('pointercancel', () => {

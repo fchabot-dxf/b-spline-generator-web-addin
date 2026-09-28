@@ -192,6 +192,30 @@ describe('refreshBoundaryPatterns (§9, commit-only link refresh)', () => {
       expect([rail.attr('y1'), rail.attr('y2')]).toEqual(moved);      // ...where it was moved to
     });
 
+    it('Fred ("undoing moving lattice geometry doesn\'t work"): an edit\'s refill folds into the edit\'s own undo step', async () => {
+      const { boundaryEl } = await generated();
+      editor._undoStack = [{ n: 'base' }, { n: 'generated' }];
+      editor.pushState = () => { const st = { n: 'push' + editor._undoStack.length }; editor._undoStack.push(st); editor._lastPushedState = st; };
+      boundaryEl.attr('width', '9'); // the contour piece moved
+      editor.pushState();            // the move's own step
+      expect(editor._undoStack.length).toBe(3);
+      refreshBoundaryPatterns(editor); // its commit refills
+      await settle(); await settle();
+      expect(editor._undoStack.length).toBe(3); // ONE step for move + refill, not two
+      expect(editor._undoStack[1].n).toBe('generated');
+    });
+
+    it('after an undo (nothing freshly pushed) a refill still pushes its own step, never eating the restored one', async () => {
+      const { boundaryEl } = await generated();
+      editor._undoStack = [{ n: 'base' }, { n: 'generated' }];
+      editor._lastPushedState = null; // what undo()/redo() leave
+      editor.pushState = () => { const st = { n: 'push' }; editor._undoStack.push(st); editor._lastPushedState = st; };
+      boundaryEl.attr('width', '9');
+      refreshBoundaryPatterns(editor);
+      await settle(); await settle();
+      expect(editor._undoStack.map((x) => x.n)).toEqual(['base', 'generated', 'push']);
+    });
+
     it('a recolour (style only) does not refill', async () => {
       const { pattern } = await generated();
       pattern.colors = { ...pattern.colors, rails: '#ff0000' };

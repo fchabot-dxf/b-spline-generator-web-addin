@@ -2203,7 +2203,7 @@ function _showTieShortfall(shortfall) {
   }
 }
 
-export async function generatePattern(editor, PATTERN) {
+export async function generatePattern(editor, PATTERN, { amendUndo = false } = {}) {
   if (!editor || !editor._sketchLayer) return null;
   if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
 
@@ -2349,6 +2349,15 @@ export async function generatePattern(editor, PATTERN) {
   // F17 (P2): what this fill was made from (boundaryFillInputs), stored before the undo snapshot so undo/redo
   // restore it with the pieces it matches; refreshBoundaryPatterns refills only when it changes.
   PATTERN.fillInputs = boundaryFillInputs(editor, PATTERN);
+  // Fred ("Undoing moving lattice geometry doesn't work" -- Shape Lattice Select, a contour piece, the floating
+  // undo): a refill caused by an edit (a moved contour piece) used to be a SECOND undo step on top of the edit's
+  // own. Undoing it landed on the in-between state (piece moved, old fill + old fillInputs), whose commit refilled
+  // AGAIN and pushed over the undo -- stuck. A commit-triggered refill now folds into the edit's own step when
+  // that step is still the latest thing pushed (never after an undo/redo), so one edit = one consistent step.
+  if (amendUndo && Array.isArray(editor._undoStack) && editor._undoStack.length > 1
+      && editor._lastPushedState && editor._undoStack[editor._undoStack.length - 1] === editor._lastPushedState) {
+    editor._undoStack.pop();
+  }
   if (typeof editor.pushState === 'function') editor.pushState();
   // T59 (a genuine, measured, PRE-EXISTING bug — confirmed live via CDP,
   // not assumed: 2 undo-stack entries per Generate press on a boundary-
@@ -2431,7 +2440,7 @@ export function refreshBoundaryPatterns(editor) {
   // F17 (P2): nothing the fill depends on changed since the last fill -> keep the pieces as drawn
   if (pattern.fillInputs === boundaryFillInputs(editor, pattern)) return;
   _boundaryRefillInProgress = true;
-  generatePattern(editor, pattern)
+  generatePattern(editor, pattern, { amendUndo: true })
     .catch((err) => console.warn('[editor-lattice-pattern] boundary refill failed:', err))
     .finally(() => { _boundaryRefillInProgress = false; });
 }

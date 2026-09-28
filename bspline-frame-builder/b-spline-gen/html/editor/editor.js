@@ -474,6 +474,7 @@ export class VectorEditor {
         const state = this._snapshotState();
         this._redoStack.length = 0;
         this._undoStack.push(state);
+        this._lastPushedState = state; // a commit-triggered refill may fold into this step (generatePattern amendUndo)
         if (this._undoStack.length > this._maxUndo) this._undoStack.shift();
         _undoLog( `pushState  caller=${caller}  children=${childCount}  stack=${this._undoStack.length}  redo=${this._redoStack.length}  svgLen=${state.svg.length}`);
         if (this._onCommit) this._onCommit('push');
@@ -513,6 +514,7 @@ export class VectorEditor {
             return;
         }
         const current = this._undoStack.pop();
+        this._lastPushedState = null; // never fold a refill into a restored step
         this._redoStack.push(current);
         const prev = this._undoStack[this._undoStack.length - 1];
         _undoLog( `undo  popped  stack(after)=${this._undoStack.length}  redo=${this._redoStack.length}  restoringChildren=${(prev.svg||'').match(/<(path|line|rect|circle|polyline|polygon|text|g)\b/g)?.length ?? 0}`);
@@ -527,6 +529,7 @@ export class VectorEditor {
             return;
         }
         const next = this._redoStack.pop();
+        this._lastPushedState = null; // never fold a refill into a restored step
         this._undoStack.push(next);
         _undoLog( `redo  popped  stack=${this._undoStack.length}  redo(after)=${this._redoStack.length}`);
         this._restoreState(next);

@@ -3296,3 +3296,12 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
   (editor._snap gained an `excludeEl`). Alt bypasses. `_selMove` cleared on grab, release and a pinch abort.
 - Headless (real mouse): Shape Lattice contour piece dragged away and back 4 px off -- now lands exactly on its
   neighbours' ends (before: 0.13 in off).
+
+## Undo after moving a contour piece; sliders only move on a sideways drag (Fred: "Lattice Select tool, contour / Float undo button" / "It's moving the slider because I touch them")
+- Repro (headless, real mouse, floating undo): Shape Lattice Select, drag a contour piece -> 2 undo steps (the
+  move's, then the boundary refill's); undo landed on the in-between state (moved piece, old fill + fillInputs),
+  whose commit refilled and pushed again -> undo stuck. Fix: refreshBoundaryPatterns' refill passes
+  `amendUndo` to generatePattern, which replaces the top step when it is still `editor._lastPushedState` (set by
+  pushState, cleared by undo/redo). One move = one consistent step; verified: 2 moves, 2 undos -> original.
+- slider-scroll-guard: a touch released without a sideways drag now puts the value back too (no tap-to-set on
+  touch); only a horizontal drag moves a slider.
