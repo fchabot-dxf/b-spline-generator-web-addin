@@ -81,10 +81,8 @@ describe("applySnapshot — T45: source:'load' replaces the live editor's own do
   it("calls editor.open(editorRestoreSvg(), P.widthIn, P.heightIn) — the SAME restore path a manual editor-open uses", async () => {
     const editor = mockEditor();
     window.svgEditor = editor;
-    P.widthIn = 12;
-    P.heightIn = 7;
-
-    await applySnapshot({ P: {} }, null, { source: 'load' });
+    // save audit #5: a load sets every key -- the saved project's size is what open() gets
+    await applySnapshot({ P: { widthIn: 12, heightIn: 7 } }, null, { source: 'load' });
 
     expect(editor.open).toHaveBeenCalledTimes(1);
     expect(editor.open).toHaveBeenCalledWith('MOCK_RESTORE_SVG', 12, 7);
@@ -158,5 +156,26 @@ describe('applySnapshot — FB-APP S2 (F6): the frame record on project load', (
     // F12: the old (non-existent) wood name reads back as its real Fusion appearance
     const { getFrameRecord } = await import('../bspline-frame-builder/b-spline-gen/html/core/frame-record.js');
     expect(getFrameRecord().appearance).toBe('3D Maple - Painted');
+  });
+});
+
+describe('applySnapshot -- save audit #1 / #5', () => {
+  beforeEach(() => { vi.clearAllMocks(); window.svgEditor = mockEditor(); });
+
+  it("a global undo never restores the drawing or the frame (they have their own undo)", async () => {
+    P.editorSvg = '<svg>current drawing</svg>';
+    P.frame = { id: 'current' };
+    await applySnapshot({ P: { editorSvg: null, frame: null, widthIn: 20 } }, null, { source: 'undo' });
+    expect(P.editorSvg).toBe('<svg>current drawing</svg>');
+    expect(P.frame).toEqual({ id: 'current' });
+    expect(P.widthIn).toBe(20);
+  });
+
+  it('a load of an older project (no editorSvg key) does not keep the current drawing', async () => {
+    P.editorSvg = '<svg>current drawing</svg>';
+    P.frame = { id: 'current' };
+    await applySnapshot({ P: { widthIn: 10 } }, null, { source: 'load' });
+    expect(P.editorSvg).toBe(null);
+    expect(P.frame).toBe(null);
   });
 });

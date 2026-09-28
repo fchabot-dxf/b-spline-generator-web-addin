@@ -857,6 +857,9 @@ async function onSaveAs() {
   // Absolute (contains slash) → use as-is. Bare name → prepend current folder.
   const fullName = (cleaned.includes('/') || !_currentFolder)
     ? cleaned : `${_currentFolder}/${cleaned}`;
+  // Save audit #7: never overwrite a DIFFERENT existing project without asking
+  if (fullName !== _currentFile && _projectExists(fullName)
+      && !(await confirmDialog(`"${fullName}" already exists. Replace it?`))) return;
   return _saveTo(fullName);
 }
 
@@ -874,6 +877,8 @@ export async function quickSave() {
 }
 
 /** Inner save implementation. Takes a fully-qualified name. */
+const _projectExists = (name) => _projects.some((p) => p.name === name);
+
 async function _saveTo(fullName) {
   if (!_API_URL) { setMsg('No cloud API configured.', 'warn'); return; }
 
@@ -914,7 +919,10 @@ async function _saveTo(fullName) {
     renderList();
     refreshList().catch(() => {});
   } catch (e) {
-    setMsg(`Save failed: ${e.message}`, 'error');
+    // Save audit #6: the navbar Save / Ctrl+S run with the modal closed -- setMsg alone was invisible
+    const why = /413/.test(e.message) ? 'the project is too big for the cloud (10 MB)' : e.message;
+    setMsg(`Save failed: ${why}`, 'error');
+    showToast(`Save failed: ${why}`, 'error');
   } finally {
     if (_btnSave) _btnSave.disabled = false;
   }
@@ -996,7 +1004,8 @@ async function onLoad(name) {
 async function _loadFrom(name) {
   if (!name)     return false;
   if (!_API_URL) { setMsg('No cloud API configured.', 'warn'); return false; }
-  if (isDirty() && !window.confirm('You have unsaved changes. Reload the project and lose them?')) return false;
+  // Save audit #8: the app's own dialog -- window.confirm is disabled inside Fusion (returned null: Load did nothing)
+  if (isDirty() && !(await confirmDialog('You have unsaved changes. Load this project and lose them?'))) return false;
 
   setMsg('Loading…');
   try {
@@ -1012,6 +1021,7 @@ async function _loadFrom(name) {
     return true;
   } catch (e) {
     setMsg(`Load failed: ${e.message}`, 'error');
+    showToast(`Load failed: ${e.message}`, 'error');
     return false;
   }
 }
@@ -1038,6 +1048,8 @@ async function onRename() {
   const newName = cleaned.includes('/') ? cleaned : (parent ? `${parent}/${cleaned}` : cleaned);
   if (newName === _selected) return;
   if (!_API_URL) { setMsg('No cloud API configured.', 'warn'); return; }
+  // Save audit #7: renaming onto an existing project would destroy it
+  if (_projectExists(newName) && !(await confirmDialog(`"${newName}" already exists. Replace it?`))) return;
 
   setMsg('Renaming…');
   try {

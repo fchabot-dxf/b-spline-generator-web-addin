@@ -3491,3 +3491,24 @@ study checked the design against generate/cuts/manifest/undo/fill-key/orientatio
   itself (data-override-color / data-stripe / the cut pieces, all in P.editorSvg) and railSpan rides in the pattern
   (data-editor-layers). Verified headless: styled rails + striped contour -> saveForRasterization -> cleared ->
   open(svg) -> identical; Generate after reopening -> identical.
+
+## Save / load audit fixes (Fred: "do save files have bugs" -> "All")
+A read-only audit (scratchpad saveaudit1-3.mjs, real page through CDP) found 8; all fixed, re-run against the fix:
+1. Global (terrain) Undo wiped the drawing's saved copy (P.editorSvg -> null: reopening the editor showed 0 rails)
+   and reverted the frame: applySnapshot('undo') now skips editorSvg + frame (both have their own undo).
+   Verified: slider + undo -> P.editorSvg same, reopen -> 7 rails.
+2. A layer name with & or < made the saved document invalid XML -> blank drawing on open. editor/layers-attr.js
+   (encode/decode/repair) is the one codec for data-editor-layers (editor-io + the five app-init migrations);
+   open() repairs an old save. Verified: "A & B", "A < B", "A > B", "it's", 'A "q" B' all reopen with 7 rails.
+3. Drawing edits never marked the project unsaved: the editor change handler marks dirty on commit (not during a
+   restore). Also: only the LATEST concurrent serialize may write P.editorSvg (font embedding is async).
+4. Reload / tab eviction lost everything: main.js cleared the last session on every load. Removed; a restored
+   session keeps its seed (no re-roll) and its unsaved flag; a quota failure drops the old copy instead of later
+   restoring a stale one; pagehide saves the session; beforeunload warns about unsaved changes (browser only).
+   Verified: generate + recolour + Apply -> reload -> 7 rails, override kept, same seed, still unsaved.
+5. Loading an older project (no editorSvg key) kept the current drawing: a load resets every key the project
+   lacks to its default first. Verified: old project -> its rectangle, 0 lattice rails.
+6. A failed navbar Save / Ctrl+S was invisible: error toast too (413 -> "too big for the cloud (10 MB)"); Load too.
+7. Save As / Rename onto an existing project overwrote it silently: confirm first.
+8. Fusion: Load with unsaved changes did nothing (window.confirm is disabled in CEF): the app's own confirmDialog.
+Tests: snapshot-manager (undo keeps drawing/frame; load resets missing keys), layers-attr (codec + repair).

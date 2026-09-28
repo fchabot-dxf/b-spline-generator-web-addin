@@ -1,4 +1,5 @@
 import { COORD_SYSTEM } from './coords.js';
+import { isDirty, markDirty } from './dirty.js';
 import { dbg } from './debug.js';
 import { fusLog } from './fusion-log.js';
 /**
@@ -270,7 +271,15 @@ export function saveLastSession() {
             postDelta: postDelta ? Array.from(postDelta) : null,
             extraThickenThinMask: extraThickenThinMask ? Array.from(extraThickenThinMask) : null,
         };
-        localStorage.setItem('splineGenLastSession', JSON.stringify(session));
+        // Save audit #4: whether the session had unsaved changes survives a reload with it
+        session.dirty = isDirty();
+        try {
+            localStorage.setItem('splineGenLastSession', JSON.stringify(session));
+        } catch (quota) {
+            // too big for the browser's storage: drop the OLD copy rather than restore a stale drawing on reload
+            localStorage.removeItem('splineGenLastSession');
+            throw quota;
+        }
         // Automatically send session JSON to Fusion log file if running inside Fusion
         fusLog(JSON.stringify(session));
     } catch (e) {
@@ -313,6 +322,7 @@ export function loadLastSession() {
             extraThickenThinMask = new Float32Array(sess.extraThickenThinMask);
             window.extraThickenThinMask = extraThickenThinMask;
         }
+        if (sess.dirty) markDirty();
         return true;
     } catch (e) {
         console.warn('loadLastSession failed:', e);

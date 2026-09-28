@@ -1,4 +1,5 @@
 import { P, DEFAULT, loadLastSession, saveLastSession, lastResult } from '../core/state.js';
+import { encodeLayersAttr, decodeLayersAttr } from '../editor/layers-attr.js';
 import { NoiseModes } from '../core/noise/index.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
@@ -6,6 +7,10 @@ import { rebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateGlobalButtons, takeSnapshot, globalHistoryLog } from '../core/history.js';
 import { AppState } from './app-state.js';
+import { markDirty } from '../core/dirty.js';
+
+// save audit: the change pipeline's serialize order (see the editor change handler)
+let _serializeSeq = 0;
 import { refreshAllStampMasks, updateStampMasks } from './stamp-mask-manager.js';
 import { VectorEditor } from '../editor/index.js';
 import { buildDrapeSvg, nextPow2 } from '../core/preview/drape-svg.js';
@@ -187,7 +192,7 @@ export const MIGRATIONS = [
         }
         return entry;
       });
-      const layersAttr = JSON.stringify(roster).replace(/"/g, '&quot;');
+      const layersAttr = encodeLayersAttr(roster);
 
       p.editorSvg = `<svg xmlns="http://www.w3.org/2000/svg" data-editor-layers="${layersAttr}">${bodies.join('')}</svg>`;
 
@@ -215,7 +220,7 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return false;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         return Array.isArray(layers) && layers.some((l) => l && l.carve === undefined);
       } catch (_) {
         return false;
@@ -225,12 +230,12 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         if (!Array.isArray(layers)) return;
         layers.forEach((l) => {
           if (l && l.carve === undefined) l.carve = l.visible !== false;
         });
-        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        const newAttr = encodeLayersAttr(layers);
         p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
       } catch (e) {
         console.warn('[migration] layer-carve-flag failed:', e);
@@ -255,7 +260,7 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return false;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         return Array.isArray(layers) && layers.some((l) => l && l.pattern && l.pattern.widths
           && l.pattern.widths.nodeRadius !== undefined && l.pattern.widths.nodeDiameter === undefined);
       } catch (_) {
@@ -266,7 +271,7 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         if (!Array.isArray(layers)) return;
         layers.forEach((l) => {
           const w = l && l.pattern && l.pattern.widths;
@@ -275,7 +280,7 @@ export const MIGRATIONS = [
             delete w.nodeRadius;
           }
         });
-        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        const newAttr = encodeLayersAttr(layers);
         p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
       } catch (e) {
         console.warn('[migration] node-radius-to-diameter failed:', e);
@@ -302,7 +307,7 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return false;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         return Array.isArray(layers) && layers.some((l) => l && l.pattern && l.pattern.boundary
           && l.pattern.boundary.border !== undefined);
       } catch (_) {
@@ -313,7 +318,7 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         if (!Array.isArray(layers)) return;
         layers.forEach((l) => {
           const pat = l && l.pattern;
@@ -327,7 +332,7 @@ export const MIGRATIONS = [
           pat.contour = { ...contour, show: mergedShow, width: mergedWidth };
           delete pat.boundary.border;
         });
-        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        const newAttr = encodeLayersAttr(layers);
         p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
       } catch (e) {
         console.warn('[migration] border-to-contour-width failed:', e);
@@ -359,7 +364,7 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return false;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         return Array.isArray(layers) && layers.some((l) => l && l.pattern
           && !(l.pattern.extent && l.pattern.extent.mode === 'boundary')
           && l.pattern.size === undefined);
@@ -371,7 +376,7 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         if (!Array.isArray(layers)) return;
         const boardW = p.widthIn || 7, boardH = p.heightIn || 9;
         layers.forEach((l) => {
@@ -383,7 +388,7 @@ export const MIGRATIONS = [
           pat.size = { width: boardW - 2 * marginIn, height: boardH - 2 * marginIn };
           delete pat.margin;
         });
-        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        const newAttr = encodeLayersAttr(layers);
         p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
       } catch (e) {
         console.warn('[migration] box-lattice-margin-to-size failed:', e);
@@ -415,7 +420,7 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return false;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         return Array.isArray(layers) && layers.some((l) => l && l.pattern && l.pattern.contour
           && l.pattern.contour.fromFrame && l.pattern.contour.fromFrame.distance !== undefined
           && l.pattern.contour.fromFrame.distanceRef !== 'outer');
@@ -427,7 +432,7 @@ export const MIGRATIONS = [
       const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
       if (!m) return;
       try {
-        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        const layers = decodeLayersAttr(m[1]);
         if (!Array.isArray(layers)) return;
         const t = frameParam(FRAME_DEFS, p.frame, 'frame_thickness') ?? 0.75;
         layers.forEach((l) => {
@@ -436,7 +441,7 @@ export const MIGRATIONS = [
           ff.distance = Number(ff.distance) + t;
           ff.distanceRef = 'outer';
         });
-        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        const newAttr = encodeLayersAttr(layers);
         p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
       } catch (e) {
         console.warn('[migration] contour-from-frame-outer-edge failed:', e);
@@ -457,10 +462,12 @@ export function runMigrations(p = P) {
 
 export async function initApp(preview, wireGlobalEvents) {
   AppState.isInitializing = true;
-  loadLastSession();
+  const restored = loadLastSession();
   runMigrations();
 
-  if (!isNaN(P.seed)) {
+  // Save audit #4: a restored session keeps its seed (a fresh one would change the terrain it was saved with);
+  // only a fresh start rolls one
+  if (!restored && !isNaN(P.seed)) {
     P.seed = Math.floor(Math.random() * 99999);
   }
 
@@ -584,12 +591,18 @@ export function initSvgEditor(preview) {
     // (no document-level @font-face reaches a detached data: URL render
     // context).
     async (kind = 'commit') => {
+      // Save audit #3: a drawing edit is an unsaved change (the Save button and the "unsaved changes" guard on
+      // Load read this); a restore/load running with AppState.isInitializing set is not one
+      if (kind === 'commit' && !AppState.isInitializing) markDirty();
+      // Save audit (race): two quick edits serialize concurrently (font embedding is async) -- only the LATEST
+      // one may write P.editorSvg, so an older one finishing last can't put back a stale drawing
+      const seq = ++_serializeSeq;
       await runChangePipeline(kind, {
         serialize: async () => {
           const svg = await window.svgEditor.saveForRasterization();
           // Step 3 unification: the editor's full document is the source
           // of truth. Persist to P.editorSvg so a page reload restores it.
-          if (svg) P.editorSvg = svg;
+          if (svg && seq === _serializeSeq) P.editorSvg = svg;
           return svg;
         },
         persist: saveLastSession,
@@ -616,6 +629,7 @@ export function initSvgEditor(preview) {
         const fontEmbeddedSvg = await window.svgEditor.saveForRasterization();
         if (fontEmbeddedSvg) {
           // Step 3 unification: editor is source of truth.
+          _serializeSeq++; // Apply's own copy is the latest -- an in-flight change save must not overwrite it
           P.editorSvg = fontEmbeddedSvg;
           saveLastSession();
           const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);

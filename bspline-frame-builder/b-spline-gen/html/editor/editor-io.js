@@ -3,6 +3,7 @@
  * Handles SVG serialization and re-import.
  */
 
+import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
@@ -121,7 +122,7 @@ function _serializeLayersAttr(editor) {
         });
         // JSON quotes need HTML entity encoding so they survive being an
         // attribute value. Single-quote the attr so we only escape ".
-        return JSON.stringify(minimal).replace(/"/g, '&quot;');
+        return encodeLayersAttr(minimal);
     } catch (e) {
         console.warn('[editor-io] _serializeLayersAttr failed', e);
         return '';
@@ -934,6 +935,11 @@ export function open(editor, svgString, w, h) {
             const cleaned = stripOriginalAttrs(svgString);
             svgEl = new DOMParser().parseFromString(cleaned, 'image/svg+xml').querySelector('svg');
             if (svgEl) _ioLog('open: recovered from legacy data-original poison (stripped attrs)');
+        }
+        if (!svgEl) {
+            // Save audit #2: a document saved with a layer named "A & B" (or with a <) -- escape the layer roster
+            svgEl = new DOMParser().parseFromString(repairLayersAttr(stripOriginalAttrs(svgString)), 'image/svg+xml').querySelector('svg');
+            if (svgEl) _ioLog('open: recovered from an unescaped layer name');
         }
         if (svgEl) {
             // v47: Filter out metadata elements so they don't clutter the sketch layer

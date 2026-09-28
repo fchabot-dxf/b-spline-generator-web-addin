@@ -1,4 +1,4 @@
-import { P, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache } from '../core/state.js';
+import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache } from '../core/state.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
@@ -32,13 +32,23 @@ export async function applySnapshot(snap, preview, { source } = {}) {
   // Without this guard, restoring a snapshot would immediately schedule
   // ANOTHER one as a side effect of the restore itself.
   setUndoRestoring(true);
+  // Save audit #1: the drawing (editorSvg) and the frame have their OWN undo -- a global (terrain/slider) undo
+  // restoring them from an older snapshot wiped the drawing's saved copy (and put back an old frame).
+  const UNDO_KEEPS = new Set(['editorSvg', 'frame']);
+  // Save audit #5: a load REPLACES the project -- a key the saved project lacks (an older save: no editorSvg,
+  // no frame, a param added since) reads as its default, never as the current session's value.
+  if (source === 'load') {
+    for (const k of Object.keys(DEFAULT)) {
+      if (k in snap.P) continue;
+      P[k] = DEFAULT[k] && typeof DEFAULT[k] === 'object' ? JSON.parse(JSON.stringify(DEFAULT[k])) : DEFAULT[k];
+      syncUItoParam(k, P[k]);
+    }
+  }
   Object.keys(snap.P).forEach(k => {
+    if (source === 'undo' && UNDO_KEEPS.has(k)) return;
     P[k] = snap.P[k];
     syncUItoParam(k, P[k]);
   });
-  // FB-APP S2 (F6): a project saved before frames existed has no `frame`
-  // key; it must read as "no frame", not keep the current session's frame.
-  if (!('frame' in snap.P)) P.frame = null;
   syncFramePanel();
   setUndoRestoring(false);
   AppState.isInitializing = false;

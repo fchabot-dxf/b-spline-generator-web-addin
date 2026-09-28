@@ -25,6 +25,8 @@ import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
 import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { AppState } from './app-state.js';
+import { saveLastSession, isFusionMode } from '../core/state.js';
+import { isDirty } from '../core/dirty.js';
 import { applyParam } from './param-manager.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { initApp, initSvgEditor } from './app-init.js';
@@ -55,8 +57,16 @@ function hideSplashScreen() {
 document.addEventListener('DOMContentLoaded', () => {
     fusLog('[main.js] DOMContentLoaded: Initializing application');
 
-    // Clear last session to reset SVG editor canvas on refresh.
-    localStorage.removeItem('splineGenLastSession');
+    // Save audit #4: the last session is NOT cleared any more -- a reload (or the phone evicting the tab) used to
+    // throw away the drawing and every unsaved change. initApp restores it (loadLastSession).
+    // Leaving the page: keep the session copy current (a phone can evict the tab without another chance), and in a
+    // browser warn when there are changes not saved to the cloud (not inside Fusion: a palette reload must not block).
+    window.addEventListener('pagehide', () => saveLastSession());
+    window.addEventListener('beforeunload', (e) => {
+        if (isFusionMode || !isDirty()) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
 
     // 1. 3D Preview
     const canvas = document.getElementById('previewCanvas');
