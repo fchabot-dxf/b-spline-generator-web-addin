@@ -3524,3 +3524,30 @@ Tests: snapshot-manager (undo keeps drawing/frame; load resets missing keys), la
   snapshot -> markDirty; with the new leave-page warning that warned for nothing): wrapped in setUndoRestoring,
   the same guard applySnapshot uses. Verified: fresh start dirty=false, Frame panel "Hourglass"; pick None ->
   reload -> None; pick Hourglass -> reload -> Hourglass.
+
+## Workflow audit: the obvious fixes (Fred: "What else can be done to help with workflow? Audit and propose" ->
+## "Do the obvious ones first")
+Two read-only audits (a phone walkthrough at 390x844 touch through CDP -- scratchpad/wf; and the design-to-CNC
+pipeline) produced a 31-item list; these are the small, uncontroversial ones, verified at phone size:
+1. The editor opened on the Pen, so the first pan drew a stroke: it opens on the last WORKING tool (Select, Nodes,
+   Lattice, Shape Lattice, Cut, Stripe -- never a drawing tool; editor-ui openingMode, localStorage) or Select.
+   The EXPAND tip says "Tap ... in the toolbar" (was "click ... left toolbar").
+2. Tool row: Lattice, Shape Lattice, Cut, Stripe right after Select/Nodes (they were off-screen on a phone).
+4. Sidebar sections remember open/closed (bspline.sidebar.openPanels, keyed by panel-<name>).
+5. Editor Cancel asks "Discard the changes made in the editor?" (Keep editing / Discard) when the editor's undo
+   stack has anything; core/confirm-dialog.js is the project manager's confirm, shared (zIndex option).
+6. Tool hint: touch wording on a coarse pointer (TOUCH_MODE_HINTS); wraps (was nowrap, 675 px on a 390 px screen);
+   on a phone it floats above the undo pill + drawer (it was hidden under the drawer).
+8. Frame handles: already 25 px touch radius (touch handlePx 14 x 1.8) -- no change needed.
+9. Disabled buttons (`disabled` attribute, e.g. Send frame on a phone) are grey.
+10. Header project name shown from boot, cut with an ellipsis; the 🧩 add-in download is hidden on a phone -- the
+    header now fits 390 px (buttons end at 382).
+11. First save offers "<frame> <W>x<H> <date>" (e.g. "Hourglass 7x9 2026-09-28"); empty-list text fixed.
+12. "✓ Applied" toast after Apply (core/toast.js: the project manager's toast, shared).
+14. Project list newest first (then name).
+15. A failed Send to Fusion is reported at once: b-spline-gen.py _send_import_failed -> 'import_failed' -> palette
+    status line + idle button (it polled up to 25 min; the message box was the only feedback). The empty-STEP case
+    no longer fakes success (importing_done = True hid the palette). Poll-timeout log text: 5 s ticks. (Python
+    untested live -- no Fusion here; parses, pytest 89 passed.)
+Not done (need Fred's call): Offset-from-frame default, long-press rail vs node, Detach/Unprotect placement, frame
+re-send hint, B-spline re-send dedupe, CAM changes, handoff, presets, layout pass.

@@ -4,6 +4,7 @@
  * editor-modal Cancel-snapshot.
  */
 import { P } from '../../core/state.js';
+import { openingMode } from '../../editor/editor-ui.js';
 import { SvgEditorSnapshot, editorRestoreSvg } from '../app-init.js';
 import { addLayer, setActiveLayer, setLayerVisible } from '../../editor/layers.js';
 
@@ -147,6 +148,8 @@ export function initSvgSource(ctx, layerModule) {
         // `.svg`, so the old code passed undefined and reopened blank (RO1).
         window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
       }
+      // workflow audit #1: open on the last working tool (or Select), never the Pen
+      if (window.svgEditor && typeof window.svgEditor.setMode === 'function') window.svgEditor.setMode(openingMode());
     });
   }
 

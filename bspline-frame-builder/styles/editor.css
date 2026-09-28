@@ -226,6 +226,11 @@
     .editor-history.editor-history-no-room {
         display: none;
     }
+    /* workflow audit #6: the tool hint (where scissors / stripe explain themselves) floats just above the pill,
+       which sits above the drawer -- it used to be hidden under the drawer */
+    #editorStatusHint {
+        bottom: calc(var(--canvas-bottom-offset, 0px) + 76px + env(safe-area-inset-bottom, 0px) + var(--drawer-height, 0px)) !important;
+    }
 }
 
 /* Top View Canvas Scaling */

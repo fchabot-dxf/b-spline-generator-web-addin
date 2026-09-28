@@ -1473,7 +1473,10 @@ header {
     border-color: #5db0e5;
 }
 
-.cad-btn.disabled {
+/* workflow audit #9: a disabled button (the `disabled` attribute -- Send frame on a phone) looked active */
+.cad-btn.disabled,
+.cad-btn:disabled,
+.cad-btn:disabled:hover {
     background: #f4f4f4;
     color: #a0a0a0;
     border: var(--cad-border-width) solid #d9d9d9;

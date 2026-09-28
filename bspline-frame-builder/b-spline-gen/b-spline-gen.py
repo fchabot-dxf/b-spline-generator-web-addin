@@ -238,6 +238,17 @@ def _send_progress(msg):
     except Exception: pass
 
 
+def _send_import_failed(msg):
+    """Workflow audit #15: tell the palette a Send failed, right away -- it used to keep polling for minutes
+    (the message box was the only feedback, and it is behind the palette on a busy screen)."""
+    try:
+        pal = app.userInterface.palettes.itemById(PALETTE_ID)
+        if pal:
+            pal.sendInfoToHTML('import_failed', json.dumps({'msg': msg}))
+        _log(f'[IMPORT FAILED] {msg}')
+    except Exception: pass
+
+
 def _clear_custom_graphics():
     """Remove the native canvas preview mesh."""
     global custom_graphics_group
@@ -1158,6 +1169,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             des = adsk.fusion.Design.cast(app.activeProduct)
             if not des:
                 _log('ERROR: no active Design product')
+                if not is_preview: _send_import_failed('No active Fusion design -- open or create a design, then Send again.')
                 if ui: ui.messageBox('No active Fusion design found.')
                 return
 
@@ -1284,7 +1296,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if not step_text:
                     _log('ERROR: stepText is empty — import aborted')
                     if not is_preview:
-                        importing_done = True
+                        _send_import_failed('No STEP data reached Fusion -- Send again.')
                     if ui: ui.messageBox('No STEP data received from palette.')
                     return
 
@@ -1373,6 +1385,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         if not is_append: last_imported_occurrences = []
                     except Exception as e2:
                         _log(f'Final failure: {e2}')
+                        _send_import_failed(f'Fusion could not import the STEP: {e2}')
                         if ui: ui.messageBox('Failed to import STEP:\n{}'.format(e2))
                         return
 
@@ -1574,6 +1587,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         except Exception:
             tb = traceback.format_exc()
             _log(f'_handle_generate EXCEPTION:\n{tb}')
+            if not data.get('isPreview', False):
+                _send_import_failed('The Send failed in Fusion -- see the message there (and the add-in log).')
             if ui: ui.messageBox('Error in generate:\n{}'.format(tb))
 
     def _import_all_svg_layers(self, sketch_target, body_target, stamp_data, orientation='z-up', params=None, design=None):

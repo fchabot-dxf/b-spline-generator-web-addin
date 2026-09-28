@@ -30,6 +30,24 @@ const MODE_HINTS = {
   shapeLattice: 'Shape Lattice — pick a preset and Generate a silhouette. Edit a segment’s style in the panel, then Generate to fill it.',
 };
 
+// Workflow audit #6: on a touch screen the mouse wording ("click", "Alt = exact", "double-click or Enter") is
+// replaced -- the hint is where scissors and stripe explain themselves.
+const TOUCH_MODE_HINTS = {
+  cut:    'Cut — tap a line where to split it, then ✓. Tap a cut again to join.',
+  stripe: 'Stripe — tap a line, then ✓, to split it into equal stripes of Colours A / B (/ C). Tap it again to re-stripe.',
+  select: 'Select — tap a piece to pick it, drag to move it. Long-press for its menu.',
+  node:   'Nodes — tap a shape to edit its points. Drag the diamond handles to reshape.',
+  draw:   'Pen — tap to place points, double-tap to finish. Or drag to draw freehand.',
+  text:   'Text — tap the canvas to start typing. Drag the text to move it.',
+  lattice: 'Lattice — pick Rail, Tie or Node above, then drag (Node: tap). Drag an existing piece to move it.',
+};
+// the editor's pointer type reads 'mouse' until the canvas is first touched, so a phone (coarse pointer) counts too
+const _isTouch = (editor) => (editor && editor._pointerType === 'touch')
+  || (typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+function _modeHint(editor, mode) {
+  return (_isTouch(editor) && TOUCH_MODE_HINTS[mode]) || MODE_HINTS[mode] || '';
+}
+
 // Anchor-mode hint replaces the pen mode hint while the user is actively
 // placing anchor points; toggled from editor-interaction.js.
 export const ANCHOR_HINT = 'Pen (anchor mode) — keep clicking to add points • Double-click or Enter to commit • Esc to cancel';
@@ -42,7 +60,7 @@ const HIGHLIGHT_STROKE_PAD_PX = 5;
 /** Restore the default hint for the editor's current mode. Useful when
  *  the pen tool exits anchor mode (cancel/commit) but stays in 'draw'. */
 export function restoreModeHint(editor) {
-  setEditorStatusHint(MODE_HINTS[editor._currentMode] || '');
+  setEditorStatusHint(_modeHint(editor, editor._currentMode));
 }
 
 // H5 MULTI-SELECT item 3 (Fred: "add a hint when expressly selecting an
@@ -131,6 +149,22 @@ export function setEditorStatusHint(text) {
   }
 }
 
+// Workflow audit #1 (phone): the editor opened on the Pen, so the first one-finger pan drew a stroke across the
+// design. It now opens on the last "working" tool (Select, the lattice tools, scissors, stripe) -- never a drawing
+// tool -- or Select.
+const OPENING_MODE_KEY = 'bspline.editor.openingMode';
+const REMEMBERED_MODES = new Set(['select', 'node', 'lattice', 'shapeLattice', 'cut', 'stripe']);
+function _rememberOpeningMode(mode) {
+    if (!REMEMBERED_MODES.has(mode)) return;
+    try { localStorage.setItem(OPENING_MODE_KEY, mode); } catch (_) { /* private mode: Select next time */ }
+}
+/** The tool the editor opens on: the last remembered working tool, else Select. */
+export function openingMode() {
+    let m = null;
+    try { m = localStorage.getItem(OPENING_MODE_KEY); } catch (_) { /* unavailable */ }
+    return REMEMBERED_MODES.has(m) ? m : 'select';
+}
+
 export function setMode(editor, mode) {
     const wasDrawing = !!editor._isDrawing;
     const wasEditingText = !!editor._editingTextEl;
@@ -141,6 +175,7 @@ export function setMode(editor, mode) {
     editor._touchAim = null;
 
     editor._currentMode = mode;
+    _rememberOpeningMode(mode);
     updateToolbarVisibility(editor, mode, editor._selectedElement);
     // MOB3: the mobile drawer (editor-drawer.js) needs to know a tool
     // switch happened — whether the new mode has its own options tab, and
@@ -192,7 +227,7 @@ export function setMode(editor, mode) {
 
     // Update the floating status hint at the bottom of the canvas so users
     // can see what the current tool does without hunting for tooltips.
-    setEditorStatusHint(MODE_HINTS[mode] || '');
+    setEditorStatusHint(_modeHint(editor, mode));
 
     // If the user just entered Expand mode, the Expand-discovery callout
     // (BUG-06) has served its purpose — hide it and persist the dismissal

@@ -8,6 +8,7 @@ import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring } from '../core/history.js';
 import { AppState } from './app-state.js';
 import { markDirty } from '../core/dirty.js';
+import { showToast } from '../core/toast.js';
 
 // save audit: the change pipeline's serialize order (see the editor change handler)
 let _serializeSeq = 0;
@@ -649,6 +650,7 @@ export function initSvgEditor(preview) {
           const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
           refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
           await refreshDrape(preview);
+          showToast('✓ Applied'); // workflow audit #12: Apply used to close with no confirmation
         }
       } else if (SvgEditorSnapshot.active) {
         // Cancel path — restore the pre-edit DOCUMENT (onChange already

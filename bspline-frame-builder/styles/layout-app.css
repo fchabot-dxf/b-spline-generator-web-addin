@@ -542,3 +542,10 @@ aside {
     .cad-main-content > .cad-resizer { grid-column: 2; }
     .cad-main-content > .cad-sidebar { grid-column: 3; }
 }
+
+/* Workflow audit #10 (phone): the header fits a phone -- the 🧩 "download the Fusion add-in" button is desktop-only
+   (you install the add-in on the PC), and the project name gets a narrower ellipsis. */
+@media (pointer: coarse) and (max-width: 720px) {
+    #btnDownloadAddin { display: none !important; }
+    #fmCurrentFileLabel { max-width: 22vw !important; }
+}

@@ -107,7 +107,7 @@ export function startFusionPolling() {
     pollInterval = setInterval(() => {
         _pollTicks++;
         if (_pollTicks >= timeoutTicks) {
-            fusLog(`Poll timeout (${timeoutTicks * 2}s): bridge never confirmed. Stopping poll — palette left open.`);
+            fusLog(`Poll timeout (${timeoutTicks * 5}s): bridge never confirmed. Stopping poll — palette left open.`);
             clearInterval(pollInterval); pollInterval = null;
             // Do NOT send 'ok' here — that would hide the palette unexpectedly.
             // Just re-enable the button so the user knows the wait is over.

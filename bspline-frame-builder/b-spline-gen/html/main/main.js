@@ -183,6 +183,14 @@ function handleFusionHandshake(ev) {
         return;
     }
     if (action === 'import_success') { setFusionStatus('Imported into Fusion ✓', 'ok'); return; }
+    // workflow audit #15: a failed Send reports at once (the palette used to wait out its whole poll)
+    if (action === 'import_failed') {
+        let msg = ''; try { msg = JSON.parse(ev.detail.data || '{}').msg || ''; } catch (e) {}
+        stopFusionPolling();
+        setFusionActionState(FUSION_IDLE_LABEL, false);
+        setFusionStatus(msg || 'The Send failed in Fusion', 'warn');
+        return;
+    }
     if (action === 'frame_result') { onFrameResult(ev.detail.data); return; } // FB-APP S5: [Send frame]
 
     if (action === 'pong') return;

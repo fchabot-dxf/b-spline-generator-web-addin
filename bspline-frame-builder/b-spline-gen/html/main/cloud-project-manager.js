@@ -18,6 +18,9 @@ import { P, preDelta, postDelta, extraThickenThinMask, persistableP } from '../c
 import { COORD_SYSTEM } from '../core/coords.js';
 import { applySnapshot } from './snapshot-manager.js';
 import { isDirty, markClean, onDirtyChange } from '../core/dirty.js';
+import { confirmDialog } from '../core/confirm-dialog.js';
+import { showToast } from '../core/toast.js';
+import { FRAME_DEFS, findFrameTemplate } from '../core/frame-record.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 function getApiUrl() {
@@ -91,7 +94,7 @@ function unpackPoints(snap) {
 // ─── Module state ─────────────────────────────────────────────────────────────
 let _preview  = null;
 let _API_URL  = null;
-// _projects: array of { name, savedAt?, size? } sorted by name. The `name`
+// _projects: array of { name, savedAt?, size? } sorted newest first (then name). The `name`
 // is the FULL slash-separated path ("MyFolder/Sub/Project1"). Folder
 // hierarchy is virtual — derived from the path, not stored separately.
 let _projects = [];
@@ -145,6 +148,8 @@ export function bindProjectManager(preview) {
     const cf = localStorage.getItem(CURFILE_LS_KEY);
     if (cf) _currentFile = cf;
   } catch { /* corrupted prefs — ignore */ }
+  // workflow audit #10: show the associated project's name from the start (it only appeared once the manager opened)
+  updateHeaderFileIndicator();
 
   if (!_API_URL) {
     console.info('[project-manager] BSPLINE_PRESETS_API_URL not set — cloud disabled');
@@ -332,6 +337,10 @@ function applyViewModeToToggle() {
 }
 
 // ─── Project list ─────────────────────────────────────────────────────────────
+/** Workflow audit #14: newest save first (today's save from the phone is on top), then by name. */
+const _savedTime = (p) => (p && p.savedAt ? new Date(p.savedAt).getTime() || 0 : 0);
+const _newestFirst = (a, b) => (_savedTime(b) - _savedTime(a)) || a.name.localeCompare(b.name);
+
 async function refreshList() {
   if (!_API_URL) {
     setStatus('⚠ No API configured');
@@ -403,7 +412,7 @@ function _reconcileWithMutations(serverItems) {
       }
     }
   }
-  return result.sort((a, b) => a.name.localeCompare(b.name));
+  return result.sort(_newestFirst);
 }
 
 function _optimisticUpsert(name) {
@@ -411,7 +420,7 @@ function _optimisticUpsert(name) {
   const idx = _projects.findIndex(p => p.name === name);
   if (idx >= 0) _projects[idx] = entry;
   else _projects.push(entry);
-  _projects.sort((a, b) => a.name.localeCompare(b.name));
+  _projects.sort(_newestFirst);
   _trackMutation(name, 'added');
 }
 function _optimisticRemove(name) {
@@ -540,7 +549,7 @@ function renderList() {
     const isRoot = !_currentFolder;
     _fmList.innerHTML = `<div class="pm-empty">
       <span class="material-symbols-outlined">${isRoot ? 'inbox' : 'folder_off'}</span>
-      <div>${isRoot ? 'No projects yet — click "Save Current" to add one.' : 'This folder is empty.'}</div>
+      <div>${isRoot ? 'No projects yet — tap Save to add one.' : 'This folder is empty.'}</div>
     </div>`;
     return;
   }
@@ -837,10 +846,21 @@ async function onSave() {
 }
 
 /** Save As… — always prompts for a new name even if a file is associated. */
+/** Workflow audit #11: a first save offers a name instead of an empty box -- the frame, the stock size and the
+ *  date, e.g. "Hourglass 7x9 2026-09-28". */
+function _suggestedName() {
+  const tpl = findFrameTemplate(FRAME_DEFS, P.frame && P.frame.templateId);
+  const frame = tpl ? String(tpl.name || '').replace(/^Template\s*\d+\s*[-–]\s*/i, '') : 'Board';
+  const n = (v) => (Number.isFinite(+v) ? String(+(+v).toFixed(2)) : '?');
+  const d = new Date();
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${frame || 'Board'} ${n(P.widthIn)}x${n(P.heightIn)} ${date}`;
+}
+
 async function onSaveAs() {
   const leafSuggestion = _currentFile
     ? _currentFile.split('/').pop()
-    : ((_selectedKind === 'project' && _selected) ? _selected.split('/').pop() : '');
+    : ((_selectedKind === 'project' && _selected) ? _selected.split('/').pop() : _suggestedName());
   const raw = await promptForName(
     _currentFolder
       ? `Save into 📁 ${_currentFolder}/  —  enter a name (or full path with slashes):`
@@ -952,7 +972,8 @@ function updateHeaderFileIndicator() {
   if (!el) return;
   if (_currentFile) {
     el.textContent = '· ' + _currentFile;
-    el.style.display = '';
+    el.title = _currentFile;
+    el.style.display = 'inline-block'; // inline-block: its max-width / ellipsis apply
   } else {
     el.textContent = '';
     el.style.display = 'none';
@@ -1297,25 +1318,6 @@ function setMsg(text, type = '') {
 }
 
 /** Lightweight non-modal confirmation toast (bottom-right corner). */
-function showToast(text, type = 'ok') {
-  let host = document.getElementById('cpmToastHost');
-  if (!host) {
-    host = document.createElement('div');
-    host.id = 'cpmToastHost';
-    host.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
-    document.body.appendChild(host);
-  }
-  const colors = { ok: '#2a7', warn: '#a60', error: '#c00' };
-  const el = document.createElement('div');
-  el.style.cssText = `background:${colors[type] || '#444'};color:#fff;padding:10px 16px;border-radius:6px;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.25);opacity:0;transition:opacity 200ms ease;pointer-events:auto;max-width:320px;`;
-  el.textContent = text;
-  host.appendChild(el);
-  requestAnimationFrame(() => { el.style.opacity = '1'; });
-  setTimeout(() => {
-    el.style.opacity = '0';
-    setTimeout(() => el.remove(), 250);
-  }, 2200);
-}
 
 async function safeJson(r) { try { return await r.json(); } catch { return {}; } }
 
@@ -1374,33 +1376,6 @@ function promptForName(title, defaultValue = '', placeholder = '') {
 }
 
 /** In-page confirm dialog — same rationale as promptForName. */
-function confirmDialog(message) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'pm-prompt-overlay';
-    overlay.innerHTML = `
-      <div class="pm-prompt-dialog" role="alertdialog" aria-modal="true">
-        <div class="pm-prompt-message">${escapeText(message).replace(/\n/g, '<br>')}</div>
-        <div class="pm-prompt-actions">
-          <button type="button" class="pm-prompt-btn pm-prompt-cancel">Cancel</button>
-          <button type="button" class="pm-prompt-btn pm-prompt-ok pm-prompt-danger">OK</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    const okBtn = overlay.querySelector('.pm-prompt-ok');
-    const cancelBtn = overlay.querySelector('.pm-prompt-cancel');
-    const cleanup = (v) => { overlay.remove(); resolve(v); };
-    okBtn.addEventListener('click', () => cleanup(true));
-    cancelBtn.addEventListener('click', () => cleanup(false));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(false); });
-    overlay.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter')  { e.preventDefault(); cleanup(true); }
-      if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
-    });
-    setTimeout(() => okBtn.focus(), 0);
-  });
-}
 
 function escapeAttr(s) {
   return String(s)

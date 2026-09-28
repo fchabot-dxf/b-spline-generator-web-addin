@@ -461,7 +461,8 @@
              at it: "what is the point for?") -- the Save button's own
              colour-vs-grey state (main/cloud-project-manager.js) is the
              one unsaved-changes signal now. -->
-        <span id="fmCurrentFileLabel" class="cad-nav-version" style="display:none"></span>
+        <!-- workflow audit #10: a long name is cut with "…" instead of pushing the header buttons off a phone -->
+        <span id="fmCurrentFileLabel" class="cad-nav-version" style="display:none; max-width:30vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;"></span>
       </span>
     </div>
 
@@ -1432,10 +1433,36 @@
   </div>
 
   <script>
-    function togglePanel(h) {
-      h.classList.toggle('collapsed');
-      h.nextElementSibling.classList.toggle('hidden');
+    // Workflow audit #4: which sidebar sections are open is remembered (per device), keyed by the panel's own
+    // `panel-<name>` class.
+    const PANEL_OPEN_KEY = 'bspline.sidebar.openPanels';
+    function _panelKey(h) {
+      const panel = h.closest('.panel');
+      return panel ? [...panel.classList].find((c) => c.startsWith('panel-')) : null;
     }
+    function _setPanelOpen(h, open) {
+      h.classList.toggle('collapsed', !open);
+      h.nextElementSibling.classList.toggle('hidden', !open);
+    }
+    function togglePanel(h) {
+      const open = h.nextElementSibling.classList.contains('hidden');
+      _setPanelOpen(h, open);
+      const key = _panelKey(h);
+      if (!key) return;
+      try {
+        const saved = JSON.parse(localStorage.getItem(PANEL_OPEN_KEY) || '{}');
+        saved[key] = open;
+        localStorage.setItem(PANEL_OPEN_KEY, JSON.stringify(saved));
+      } catch (_) { /* storage unavailable: nothing remembered */ }
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(PANEL_OPEN_KEY) || '{}'); } catch (_) { /* none */ }
+      document.querySelectorAll('.panel > .panel-header[onclick^="togglePanel"]').forEach((h) => {
+        const key = _panelKey(h);
+        if (key && typeof saved[key] === 'boolean') _setPanelOpen(h, saved[key]);
+      });
+    });
 
     /**
      * Native CAD UI Integration Patch
@@ -1782,21 +1809,24 @@
         <aside class="editor-sidebar" style="width:44px; background:#fdfdfd; border-right:1px solid var(--cad-border-standard); display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:8px; z-index:10;">
           <button id="toolSelect" class="tool-btn active" title="Select (V)" data-key="v"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:black; stroke:white; stroke-width:0.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
           <button id="toolNode" class="tool-btn" title="Nodes (A)" data-key="a"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:white; stroke:black; stroke-width:1.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
+          <!-- workflow audit #2 (phone): the lattice tools, scissors and stripe come first -- on a phone the row scrolls
+               and these were off-screen; the drawing tools follow. -->
           <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
-          <button id="toolDraw" class="tool-btn" title="Pen (P) — Click to place anchors, double-click or Enter to commit. Drag for freehand stroke. Esc cancels." data-key="p"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="m12 3 7 7L7 22H3v-4L12 3z"/><path d="m19 10-6-6"/></svg></button>
-          <button id="toolText" class="tool-btn" title="Text (T)" data-key="t"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><polyline points="4 7 4 4 20 4 20 7" /><line x1="12" x2="12" y1="4" y2="20" /></svg></button>
-          <button id="toolLine" class="tool-btn" title="Line (L)" data-key="l"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
-          <button id="toolRect" class="tool-btn" title="Rectangle (R)" data-key="r"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></button>
-          <button id="toolCircle" class="tool-btn" title="Circle (C)" data-key="c"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><circle cx="12" cy="12" r="8"/></svg></button>
           <!-- SE7a: drag along a row for a rail, along a column for a tie;
                auto-nodes mark the ends and crossings. A bare click does
-               nothing — Circle (above) is the node tool. -->
+               nothing — Circle (below) is the node tool. -->
           <button id="toolLattice" class="tool-btn" title="Lattice (K) — drag along a row = rail, along a column = tie. A bare click does nothing — use Circle for a manual node." data-key="k"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M4 8h16M4 16h16M9 4v16M15 4v16"/></svg></button>
           <button id="toolShapeLattice" class="tool-btn" title="Shape Lattice (H) — generate or pick a silhouette, edit its per-segment style, then fill it like the Lattice tool." data-key="h"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M7 4h10M7 20h10M7 4c0 5.5 5 6 5 8s-5 2.5-5 8M17 4c0 5.5-5 6-5 8s5 2.5 5 8"/></svg></button>
           <!-- SE16 ✂: tap a line to cut it (snaps by GRID / GEOMETRY, Alt = exact); tap the cut again to join. -->
           <button id="toolCut" class="tool-btn" title="Cut — tap a line to split it; tap the cut again to join." data-key="x"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg></button>
           <!-- F27 item 3: tap a line to split it into equal stripes cycling Colours A/B(/C); tap again to re-stripe. -->
           <button id="toolStripe" class="tool-btn" title="Stripe (S) — tap a line to split it into equal stripes of alternating colours; tap it again to re-stripe." data-key="s"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M3 12h18" stroke-opacity="0.35"/><path d="M3 12h4M10 12h4M17 12h4" stroke-width="6"/></svg></button>
+          <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
+          <button id="toolDraw" class="tool-btn" title="Pen (P) — Click to place anchors, double-click or Enter to commit. Drag for freehand stroke. Esc cancels." data-key="p"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="m12 3 7 7L7 22H3v-4L12 3z"/><path d="m19 10-6-6"/></svg></button>
+          <button id="toolText" class="tool-btn" title="Text (T)" data-key="t"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><polyline points="4 7 4 4 20 4 20 7" /><line x1="12" x2="12" y1="4" y2="20" /></svg></button>
+          <button id="toolLine" class="tool-btn" title="Line (L)" data-key="l"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
+          <button id="toolRect" class="tool-btn" title="Rectangle (R)" data-key="r"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></button>
+          <button id="toolCircle" class="tool-btn" title="Circle (C)" data-key="c"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><circle cx="12" cy="12" r="8"/></svg></button>
           <button id="toolExpand" class="tool-btn" title="Expand — offset and outline paths for CNC carving (opens Detail + EXPAND controls in the top bar)" style="color:var(--cad-accent);"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.5px;"><path d="M7 2h10M7 22h10M22 7v10M2 7v10m13 15 5 5" /></svg></button>
           <!-- Vector eraser: drag a stroke to clip filled shapes and
                split open strokes. Width follows the sidebar stroke
@@ -1851,10 +1881,11 @@
             (Expand discoverability).
           -->
           <div id="editorStatusHint"
-               style="position:absolute; left:50%; bottom:10px; transform:translateX(-50%);
+               style="position:absolute; left:50%; bottom:calc(10px + var(--drawer-height, 0px)); transform:translateX(-50%);
                       background:rgba(30,30,30,0.85); color:#fff; padding:4px 10px;
                       border-radius:12px; font-size:11px; font-family:'Cascadia Code', monospace;
-                      pointer-events:none; z-index:5; white-space:nowrap;
+                      pointer-events:none; z-index:5; white-space:normal; text-align:center;
+                      width:max-content; max-width:calc(100% - 24px); box-sizing:border-box;
                       box-shadow:0 2px 6px rgba(0,0,0,0.25); user-select:none;"></div>
 
           <!--
@@ -1873,7 +1904,7 @@
             <div style="font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
               <span style="font-size:14px;">💡</span> Try EXPAND
             </div>
-            <div>Click the <span style="font-weight:700; color:#b58300;">⤢</span> tool in the left toolbar
+            <div>Tap the <span style="font-weight:700; color:#b58300;">⤢</span> tool in the toolbar
               to offset/outline your paths for CNC carving.</div>
             <button type="button" id="editorExpandCalloutDismiss"
                     style="margin-top:6px; background:#d8a900; color:#fff; border:none;

@@ -5,6 +5,7 @@ import { resetArtworkToFresh, sync3DBackground } from '../editor-io.js';
 import { clearFrame } from '../editor-frame-profile.js';
 import { refreshGuides } from '../editor-guides.js';
 import { commitEdit } from '../editor-commit.js';
+import { confirmDialog } from '../../core/confirm-dialog.js';
 
 export function registerActionTools(editor) {
   const bind = (id, fn) => bindClick(id, fn);
@@ -73,7 +74,14 @@ export function registerActionTools(editor) {
   // Cancel used to skip text-session teardown entirely (see
   // endEditorSession's own comment for the leaked-listener failure mode).
   bind('editorApply',  () => endEditorSession(editor, { commit: true }));
-  bind('editorCancel', () => endEditorSession(editor, { commit: false }));
+  // workflow audit #5: Cancel sits next to Apply and used to drop every edit without a word -- it asks first when
+  // there is anything to lose (the editor's own undo stack holds only the opening state otherwise)
+  bind('editorCancel', async () => {
+    const changed = Array.isArray(editor._undoStack) && editor._undoStack.length > 1;
+    if (changed && !(await confirmDialog('Discard the changes made in the editor?',
+      { okLabel: 'Discard', cancelLabel: 'Keep editing', zIndex: 10002 }))) return;
+    endEditorSession(editor, { commit: false });
+  });
 
   // SE8e / SA-TEXT-4: no dynamically-disabled button state — the natural
   // home for selection-reactive enable/disable (editor-ui.js's toolbar/
