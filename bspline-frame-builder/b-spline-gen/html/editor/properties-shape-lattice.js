@@ -990,6 +990,7 @@ export function initShapeLatticeProperties(editor) {
     const fromFrameHintEl = el('shapeLatticeContourFromFrameHint');
     const shapeBlockEl = el('shapeLatticeShapeBlock');
     const segmentsBlockEl = el('shapeLatticeSegmentsBlock');
+    const boundaryFieldsEl = el('shapeLatticeBoundaryFields'); // the Boundary size only sizes the PRESET shape
 
     // RAIL-SPACING R7 (ruling 4, "one grid"): the old grid-step Spacing
     // select this block used to populate is removed from the markup —
@@ -1516,7 +1517,7 @@ export function initShapeLatticeProperties(editor) {
         if (fromFrameEl) { fromFrameEl.checked = ff.on; fromFrameEl.disabled = !framed && !ff.on; }
         if (fromFrameDistanceEl) { fromFrameDistanceEl.value = ff.distance; fromFrameDistanceEl.disabled = !ff.on; }
         if (fromFrameHintEl) fromFrameHintEl.style.display = framed ? 'none' : 'block';
-        for (const b of [shapeBlockEl, segmentsBlockEl]) {
+        for (const b of [shapeBlockEl, segmentsBlockEl, boundaryFieldsEl]) {
             if (!b) continue;
             b.inert = ff.on;
             b.style.opacity = ff.on ? '0.45' : '';

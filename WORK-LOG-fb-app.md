@@ -3643,3 +3643,8 @@ bspline" -- "no send frame" -- "id rather have a delete everything button")
   (applySnapshot 'undo') dispatches the same event.
 - Verified at 390px: Shape Lattice on 7x9, Apply, width -> 10: saved viewBox 0 0 10 9, preview in proportion
   (screenshot); global undo -> 0 0 7 9, redo -> 0 0 10 9. vitest 2437 passed.
+
+## Boundary greyed with Offset from frame (Fred: "yes grey")
+- The Boundary width/height only size the PRESET shape (contourSilhouette ignores the region when fromFrame is on),
+  so #shapeLatticeBoundaryFields joins the Shape / Segments blocks in _syncFromFrame: inert + 0.45 opacity while
+  "Offset from frame" is ticked. Verified at 390px: ticked -> inert/greyed; unticked -> active. vitest 2437 passed.

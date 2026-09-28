@@ -2361,7 +2361,8 @@
                  first section (F12 moved Shape/Segments into Contour). -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Boundary</span>
-              <div style="display:flex; gap:6px;">
+              <!-- Fred ("boundary isnt useful if i have offset from frame on"): greyed while the contour follows the frame -->
+              <div id="shapeLatticeBoundaryFields" style="display:flex; gap:6px;">
                 <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
                   <input id="shapeLatticeSizeWidth" type="number" min="0" step="0.25" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                 </label>
