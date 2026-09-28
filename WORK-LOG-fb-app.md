@@ -3551,3 +3551,10 @@ pipeline) produced a 31-item list; these are the small, uncontroversial ones, ve
     untested live -- no Fusion here; parses, pytest 89 passed.)
 Not done (need Fred's call): Offset-from-frame default, long-press rail vs node, Detach/Unprotect placement, frame
 re-send hint, B-spline re-send dedupe, CAM changes, handoff, presets, layout pass.
+
+## Offset from frame on by default (Fred: "Yes offset from frame")
+- properties-shape-lattice currentPattern -> _offsetFromFrameByDefault: a pattern with no contour drawn yet
+  (!hasGeneratedSilhouette) gets contour.fromFrame.on when a frame is chosen. A drawn Shape Lattice keeps its own
+  setting; a panel choice is marked fromFrame.userSet (unticking before the first Generate sticks); no frame ->
+  the preset as before. Verified at 390px: fresh start (Hourglass) -> Shape Lattice -> Generate -> fromFrame on,
+  checkbox ticked, 12-segment contour following the frame.

@@ -126,12 +126,25 @@ export function currentPattern(editor) {
     // layer may be any of the pattern's own FOUR kind-layers now, not
     // just the one holding `.pattern`).
     const patternLayer = resolvePatternLayer(editor, layer.id);
-    if (patternLayer) return patternLayer.pattern;
+    if (patternLayer) return _offsetFromFrameByDefault(editor, patternLayer.pattern);
     // R7 carry-over 2: see freshPattern's own doc comment (editor-lattice-
     // pattern.js) -- a brand-new pattern's grid step comes from the live
     // editor grid, not PATTERN_DEFAULTS.spacing.
     layer.pattern = freshPattern(editor);
-    return layer.pattern;
+    return _offsetFromFrameByDefault(editor, layer.pattern);
+}
+
+/** Fred ("Yes offset from frame"): a pattern with no contour drawn yet starts with its contour offset from the frame
+ *  when a frame is chosen -- he ticked it every time. A drawn Shape Lattice keeps whatever it has, and so does a
+ *  choice made in the panel (`fromFrame.userSet`, e.g. unticked before the first Generate); no frame: the preset. */
+function _offsetFromFrameByDefault(editor, p) {
+    if (!p || hasGeneratedSilhouette(p)) return p;
+    const ff = p.contour && p.contour.fromFrame;
+    if (ff && (ff.on || ff.userSet)) return p;
+    if (!hasFrame(frameContext(editor))) return p;
+    p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}),
+        fromFrame: { ...CONTOUR_FROM_FRAME_DEFAULTS, ...(ff || {}), on: true, distanceRef: 'outer' } };
+    return p;
 }
 /** Lazily materializes `p.shape` the same way `currentPattern` itself
  *  lazily materializes `layer.pattern` — a layer that's never touched the
@@ -1487,7 +1500,8 @@ export function initShapeLatticeProperties(editor) {
         const d = parseFloat(fromFrameDistanceEl && fromFrameDistanceEl.value);
         p.contour = { ...PATTERN_DEFAULTS.contour, ...p.contour, fromFrame: {
             on: !!(fromFrameEl && fromFrameEl.checked),
-            distance: Number.isFinite(d) ? d : CONTOUR_FROM_FRAME_DEFAULTS.distance, distanceRef: 'outer' } };
+            distance: Number.isFinite(d) ? d : CONTOUR_FROM_FRAME_DEFAULTS.distance, distanceRef: 'outer',
+            userSet: true } }; // the panel's choice -- never overridden by the offset-from-frame default
         _syncFromFrame(p);
         await regenerateSilhouetteAndFill(editor);
     }
