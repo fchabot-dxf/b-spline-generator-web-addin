@@ -18,6 +18,7 @@
  */
 import { el, on } from './dom.js';
 import { makeSplitter } from './splitter.js';
+import { LANDSCAPE_PHONE_QUERY } from './breakpoints.js';
 
 /** Declared once — a future tool with its own options panel is one entry
  *  here, not a new mechanism. Only Lattice has one today; every other
@@ -81,7 +82,7 @@ const LANDSCAPE_SETTINGS_MAX_VW_FRACTION = 0.45;
 // 720px breakpoint, so `min-width:721px` keeps the two from ever both
 // matching the same viewport (checked live wherever this string is used,
 // not just declared once and trusted).
-const LANDSCAPE_MEDIA_QUERY = '(pointer: coarse) and (max-height: 500px) and (min-width: 721px)';
+const LANDSCAPE_MEDIA_QUERY = LANDSCAPE_PHONE_QUERY; // audit tidy-up: breakpoints.js
 
 /** Pure: resolve a landscape snap state to a concrete px WIDTH for the
  *  given viewport width — same role as drawerHeightPx, for the OTHER axis. */

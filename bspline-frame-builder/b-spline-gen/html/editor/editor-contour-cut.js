@@ -30,15 +30,11 @@
  */
 import { _parseD } from './editor-expand-path.js';
 import { arcCenterParam } from './path-layout.js';
+import { arcPointAtAngle as _arcPointAt } from './editor-primitives.js'; // audit tidy-up: the one copy
 
 /** This codebase's own established invariant for a GENERATED silhouette's own arcs (editor-shape-lattice-
  *  generator.js's own primitivesToPathD doc comment; editor-sketch-manifest.js's own header): rx===ry,
  *  phi===0, always — the contour cut tool only ever meets segments THIS generator drew. */
-function _arcPointAt(prim, theta) {
-  const c = Math.cos(prim.phi), s = Math.sin(prim.phi);
-  const ex = prim.rx * Math.cos(theta), ey = prim.ry * Math.sin(theta);
-  return { x: prim.cx + ex * c - ey * s, y: prim.cy + ex * s + ey * c };
-}
 
 /** `theta`, the branch nearest `ref` (within one turn) — the standard "unwrap onto a reference" normalization,
  *  needed because `Math.atan2` alone can land a bearing on the wrong side of a wraparound (e.g. an arc

@@ -47,6 +47,7 @@
  * right arc and solves there.)
  */
 import { feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS } from './editor-shape-lattice-generator.js';
+import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
 /** SE14 §3 Q5 ruling default, duplicated from properties-shape-lattice.
  *  js's own `_boardRegion` (small, pure, state-free — same "duplicate
@@ -294,7 +295,7 @@ function _arcGrip(key, label, current, c) {
   const axisX = c.region.x + c.region.w / 2; // the centre line the two sides mirror across
   return {
     key, label, axis: 'arc', handleKind: 'radius', ...grip,
-    anchor: _arcPointAt(grip.arcs[0], 0.5),
+    anchor: arcPointAtFraction(grip.arcs[0], 0.5),
     // ctx.side: 0 = the right arc (and its dot), 1 = the mirrored left arc, whose
     // pointer is mirrored across the centre line onto the right arc first.
     valueFromWorld: (pt, ctx = {}) => {
@@ -368,7 +369,7 @@ export function hitTestArcGrip(handles, pt, tolerance) {
   for (const h of handles || []) {
     if (h.axis !== 'arc' || !h.arcs) continue;
     h.arcs.forEach((a, side) => {
-      const d = _distToArc(pt, a);
+      const d = distToArc(pt, a);
       if (d < bestD) { bestD = d; best = { handle: h, side }; }
     });
   }
@@ -410,46 +411,7 @@ export const HANDLE_SEGMENT_INDEX = {
   bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2 },
 };
 
-/** An `A` primitive's own point at parameter `t` (0=start, 1=end) —
- *  duplicated from editor-shape-lattice-generator.js's own private
- *  `_arcPointAt` (same "small pure helper, duplicated per module"
- *  convention `_fmix32` already established) rather than exporting a
- *  third private helper across an unrelated module boundary. */
-function _arcPointAt(prim, t) {
-  const theta = prim.theta1 + prim.dTheta * t;
-  const cosPhi = Math.cos(prim.phi), sinPhi = Math.sin(prim.phi);
-  const ex = prim.rx * Math.cos(theta), ey = prim.ry * Math.sin(theta);
-  return { x: prim.cx + ex * cosPhi - ey * sinPhi, y: prim.cy + ex * sinPhi + ey * cosPhi };
-}
-
-/** Point-to-line-segment distance (`L` primitive) — the standard clamped
- *  projection onto the segment. */
-function _distToLine(pt, p0, p1) {
-  const dx = p1.x - p0.x, dy = p1.y - p0.y;
-  const lenSq = dx * dx + dy * dy;
-  let t = lenSq > 0 ? ((pt.x - p0.x) * dx + (pt.y - p0.y) * dy) / lenSq : 0;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(pt.x - (p0.x + t * dx), pt.y - (p0.y + t * dy));
-}
-
-/** Point-to-arc distance (`A` primitive) — this generator's own arcs are
- *  always CIRCULAR (`rx===ry`, T55's own bulge-derived construction) and
- *  never rotated (`phi` is always 0, `primitivesToPathD`'s own doc
- *  comment) — a plain "distance from the circle, clamped to the arc's
- *  own angular span" is therefore exact, not an ellipse approximation.
- *  Outside the span, the nearest ENDPOINT distance (via `_arcPointAt`)
- *  applies, matching how a person actually perceives "near this curved
- *  segment" past its own ends. */
-function _distToArc(pt, prim) {
-  const distFromCenter = Math.hypot(pt.x - prim.cx, pt.y - prim.cy);
-  let rel = Math.atan2(pt.y - prim.cy, pt.x - prim.cx) - prim.theta1;
-  const TAU = Math.PI * 2;
-  rel -= TAU * Math.floor((rel + Math.PI) / TAU); // normalize to (-PI, PI]
-  const onArc = prim.dTheta >= 0 ? (rel >= 0 && rel <= prim.dTheta) : (rel <= 0 && rel >= prim.dTheta);
-  if (onArc) return Math.abs(distFromCenter - prim.rx);
-  const p0 = _arcPointAt(prim, 0), p1 = _arcPointAt(prim, 1);
-  return Math.min(Math.hypot(pt.x - p0.x, pt.y - p0.y), Math.hypot(pt.x - p1.x, pt.y - p1.y));
-}
+// Arc point / segment and arc distance: editor-primitives.js (audit tidy-up -- the one copy of each).
 
 /** `segments[i]` -> which PRIMITIVE indices it contributed —
  *  `_segmentToPrimitives` (editor-shape-lattice-generator.js) emits TWO
@@ -486,7 +448,7 @@ export function nearestSegment(primitives, segments, pt) {
   const map = primitiveSegmentMap(segments);
   let index = null, dist = Infinity;
   primitives.forEach((prim, i) => {
-    const d = prim.type === 'L' ? _distToLine(pt, prim.p0, prim.p1) : _distToArc(pt, prim);
+    const d = prim.type === 'L' ? distToSegment(pt, prim.p0, prim.p1) : distToArc(pt, prim);
     if (d < dist) { dist = d; index = map[i]; }
   });
   return { index, dist };

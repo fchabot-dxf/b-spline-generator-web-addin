@@ -29,6 +29,7 @@ import { generateContourSilhouette, generateSilhouette, outlineDefects } from '.
 import { frameCutProfile } from './editor-frame-profile.js';
 import { offsetOutlineInward } from './outline-offset.js';
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
+import { distToPrimitive } from './editor-primitives.js';
 
 /** Points along a loop (lines: 8 each, arcs: 24 each). */
 function _samples(prims) {
@@ -42,19 +43,7 @@ function _samples(prims) {
 /** Exact distance from a point to a line/arc loop. */
 function _distToLoop(q, prims) {
   let best = Infinity;
-  for (const p of prims) {
-    if (p.type === 'L') {
-      const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, L2 = dx * dx + dy * dy;
-      const t = L2 ? Math.max(0, Math.min(1, ((q.x - p.p0.x) * dx + (q.y - p.p0.y) * dy) / L2)) : 0;
-      best = Math.min(best, Math.hypot(p.p0.x + t * dx - q.x, p.p0.y + t * dy - q.y));
-      continue;
-    }
-    let rel = Math.atan2(q.y - p.cy, q.x - p.cx) - p.theta1;
-    rel -= 2 * Math.PI * Math.floor((rel + Math.PI) / (2 * Math.PI));
-    const on = p.dTheta >= 0 ? rel >= 0 && rel <= p.dTheta : rel <= 0 && rel >= p.dTheta;
-    if (on) best = Math.min(best, Math.abs(Math.hypot(q.x - p.cx, q.y - p.cy) - p.rx));
-    else for (const th of [p.theta1, p.theta1 + p.dTheta]) best = Math.min(best, Math.hypot(p.cx + p.rx * Math.cos(th) - q.x, p.cy + p.rx * Math.sin(th) - q.y));
-  }
+  for (const p of prims) best = Math.min(best, distToPrimitive(q, p)); // audit tidy-up: the shared helper
   return best;
 }
 

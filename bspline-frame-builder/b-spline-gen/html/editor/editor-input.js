@@ -30,11 +30,13 @@
  * hunting down two inline literals again.
  * Audit batch 1: touch widened to 8 (a finger's normal tap jitter, the usual phone touch slop): at 3 a tap that
  * wobbled read as a drag -- a ✗ tap re-aimed instead of cancelling, a Lattice tap drew nothing. Every tap-vs-drag
- * call reads it (pastClickThreshold, editor-hit.js). */
+ * call reads it (pastClickThreshold, editor-hit.js).
+ * Audit (tidy-up): `markPx` is the radius of a small PREVIEW mark (the stripe tool's boundary ticks) -- its own
+ * size, no longer borrowed from slopPx (a hit reach: 22 px on touch drew 44 px discs that merged into a blob). */
 export const INPUT_PROFILE = {
-  mouse: { slopPx: 10, grabPx: 15, handlePx: 8, markerOffsetPx: 0, clickThresholdPx: 3 },
-  touch: { slopPx: 22, grabPx: 28, handlePx: 14, markerOffsetPx: 40, clickThresholdPx: 8 },
-  pen: { slopPx: 8, grabPx: 12, handlePx: 8, markerOffsetPx: 0, clickThresholdPx: 3 },
+  mouse: { slopPx: 10, grabPx: 15, handlePx: 8, markerOffsetPx: 0, clickThresholdPx: 3, markPx: 5 },
+  touch: { slopPx: 22, grabPx: 28, handlePx: 14, markerOffsetPx: 40, clickThresholdPx: 8, markPx: 8 },
+  pen: { slopPx: 8, grabPx: 12, handlePx: 8, markerOffsetPx: 0, clickThresholdPx: 3, markPx: 5 },
 };
 
 /** Resolve a pointer type (from PointerEvent.pointerType, which is

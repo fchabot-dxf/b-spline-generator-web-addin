@@ -275,7 +275,7 @@ export function clearStripeMarker(editor) {
 function _drawStripeMarker(editor, plan) {
   clearStripeMarker(editor);
   if (!plan || !editor._handleLayer) return;
-  const r = getDynamicTolerance(editor, 5, 'slopPx');
+  const r = getDynamicTolerance(editor, 5, 'markPx'); // audit tidy-up: a mark size, not the hit reach
   const g = editor._handleLayer.group().id(STRIPE_MARKER_ID).attr('pointer-events', 'none');
   for (const p of stripeCutPoints(plan.prim, plan.count)) g.circle(2 * r).center(p.x, p.y).fill('#fff').stroke({ color: '#ff6f00', width: r / 2 });
 }

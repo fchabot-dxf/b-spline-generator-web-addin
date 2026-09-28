@@ -80,12 +80,6 @@
     color: #333;
 }
 
-.tool-btn.active {
-    background: var(--cad-accent) !important;
-    color: white !important;
-    border-color: var(--cad-accent) !important;
-}
-
 /* T10: shortcut-key badge, derived from the button's own data-key (SE1) */
 .tool-btn[data-key] {
     position: relative;

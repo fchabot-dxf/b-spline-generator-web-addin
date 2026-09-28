@@ -142,7 +142,7 @@ export function renderTransformHandles(editor) {
         editor._handleLayer.rect(sz * 2, sz * 2)
             .move(hx - sz, hy - sz)
             .fill('#ffffff')
-            .stroke({ color: '#0066cc', width: strokeW })
+            .stroke({ color: APP_HANDLE_STROKE, width: strokeW })
             .attr('pointer-events', 'none');
         records.push({
             kind: 'scale',
@@ -171,12 +171,12 @@ export function renderTransformHandles(editor) {
     const rx = topMid.x + dx * rotateOffset;
     const ry = topMid.y + dy * rotateOffset;
     editor._handleLayer.line(topMid.x, topMid.y, rx, ry)
-        .stroke({ color: '#0066cc', width: strokeW })
+        .stroke({ color: APP_HANDLE_STROKE, width: strokeW })
         .attr('pointer-events', 'none');
     editor._handleLayer.circle(sz * 2)
         .center(rx, ry)
         .fill('#ffffff')
-        .stroke({ color: '#0066cc', width: strokeW })
+        .stroke({ color: APP_HANDLE_STROKE, width: strokeW })
         .attr('pointer-events', 'none');
     records.push({
         kind: 'rotate',
@@ -265,6 +265,10 @@ export function handleHoverVisual(baseRadius, idleFill, idleStroke, active) {
 
 /** The app's selection-handle border (the scale/rotate handles above). */
 export const APP_HANDLE_STROKE = '#0066cc';
+/** Audit (tidy-up): the editor's shared marking colours, named once (were repeated hex literals). The selection
+ *  halo / layer flash yellow and the hover outline (the handle blue). */
+export const SELECTION_COLOR = '#ffcc00';
+export const HOVER_OUTLINE_COLOR = APP_HANDLE_STROKE;
 
 /** kind -> its idle mark. An unknown kind draws as 'position'. */
 export const HANDLE_KINDS = {

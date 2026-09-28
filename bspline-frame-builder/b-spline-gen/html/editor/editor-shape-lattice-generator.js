@@ -31,6 +31,7 @@
  */
 import { lcgPoints } from '../core/terrain.js';
 import { arcCenterParam } from './path-layout.js';
+import { arcPointAtAngle as _arcPointAt } from './editor-primitives.js'; // audit tidy-up: the one copy
 
 const MIX = (a, b, t) => a + (b - a) * t;
 
@@ -926,11 +927,6 @@ export function generateContourSilhouette(region, shape, strokeWidth) {
  *  branches both pass literal `phi:0`/`arcCenterParam`'s own `phiDeg=0`
  *  arg) but the general rotated form costs nothing extra and keeps this
  *  a real inverse of `arcCenterParam`, not a special-cased one. */
-function _arcPointAt(prim, theta) {
-  const cosPhi = Math.cos(prim.phi), sinPhi = Math.sin(prim.phi);
-  const ex = prim.rx * Math.cos(theta), ey = prim.ry * Math.sin(theta);
-  return { x: prim.cx + ex * cosPhi - ey * sinPhi, y: prim.cy + ex * sinPhi + ey * cosPhi };
-}
 
 /**
  * SIL-RESOLVE (F5) — the declared outline GUARD (F3 AMEND 7b's inversion

@@ -130,6 +130,11 @@ input, select, textarea, button {
     --cad-transition-standard: 0.25s ease;
     --cad-border-soft: #eeeeee;
 
+    /* Audit (tidy-up): --cad-accent / --cad-accent-red were used (active tool, drawer tab underline, svg handles,
+       status light) but never declared, so those declarations were dropped. #1e6fea is the handle-hover blue
+       (HANDLE_HOVER_FILL, editor-transform-handles.js) and the fallback several rules already carried. */
+    --cad-accent: #1e6fea;
+    --cad-accent-red: #d93025;
     --cad-accent-blue: #0696D7;
     --cad-accent-hover: #057fb5;
     --cad-accent-green: #34a853;

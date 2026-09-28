@@ -17,9 +17,10 @@ import { makeSplitter } from '../editor/splitter.js';
 // drawer's OWN declared canvasMax/half/settingsMax width fractions rather
 // than a second copy of the same shape here.
 import { LANDSCAPE_SNAP_STATES, landscapeWidthPx } from '../editor/editor-drawer.js';
+import { MOBILE_QUERY, LANDSCAPE_PHONE_QUERY } from '../editor/breakpoints.js';
 
 const STORAGE_KEY = 'bspline.main.previewHeightPx';
-const MOBILE_BREAKPOINT = '(max-width: 700px)'; // matches styles/layout-app.css's own @media block
+const MOBILE_BREAKPOINT = MOBILE_QUERY; // audit tidy-up: editor/breakpoints.js (styles/layout-app.css uses the same number)
 const MIN_PREVIEW_PX = 120;
 const BOTTOM_MARGIN_PX = 120; // keeps this much of the sidebar visible below the preview, matching the resizer's pre-AMEND floor
 // MOB4: landscape phone reverses the main grid (styles/layout-app.css —
@@ -33,7 +34,7 @@ const BOTTOM_MARGIN_PX = 120; // keeps this much of the sidebar visible below th
 // factored out to splitter-landscape-widths.js so BOTH splitters share
 // one declared set of fractions instead of two copies drifting apart.
 const LANDSCAPE_STORAGE_KEY = 'bspline.main.landscapeSidebarWidthPx';
-const LANDSCAPE_MEDIA_QUERY = '(pointer: coarse) and (max-height: 500px) and (min-width: 701px)';
+const LANDSCAPE_MEDIA_QUERY = LANDSCAPE_PHONE_QUERY;
 
 export function initMobilePreviewResizer() {
   const resizer = document.getElementById('resizer');

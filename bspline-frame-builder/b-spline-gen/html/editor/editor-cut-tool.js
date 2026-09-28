@@ -43,6 +43,7 @@ import {
 import { isOnVisibleLayer } from './layers.js';
 import { haptic } from '../core/haptics.js';
 import { commitEdit } from './editor-commit.js';
+import { HANDLE_HOVER_FILL } from './editor-transform-handles.js';
 
 /** The floor for a piece with no stroke width of its own (see `minPieceLength` below): only there so a
  *  zero-length piece is impossible. */
@@ -525,7 +526,7 @@ function _drawCutMarker(editor, intent) {
   if (!intent || !editor._handleLayer) return;
   const r = getDynamicTolerance(editor, 9, 'slopPx');
   const g = editor._handleLayer.group().id(CUT_MARKER_ID).attr('pointer-events', 'none');
-  const color = intent.action === 'join' ? '#1e88e5' : '#ff6f00';
+  const color = intent.action === 'join' ? HANDLE_HOVER_FILL : '#ff6f00'; // audit tidy-up: the accent blue
   g.circle(2 * r).center(intent.at.x, intent.at.y).fill('none').stroke({ color, width: r / 3 });
   if (intent.action === 'join') g.rect(r, r).center(intent.at.x, intent.at.y).fill('#fff').stroke({ color, width: r / 4 }).rotate(45);
 }

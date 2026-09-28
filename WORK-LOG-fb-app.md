@@ -3422,3 +3422,19 @@ hidden contour not cuttable (old: cut); moved contour piece -> no transform, d b
   cut/stripe/bake/regenerate) -> moved contour pieces reported old points to snapping; now reads the current d.
 - Found while verifying: a Select move with no end snapped moved by snap(now) - snap(grab) -- both ends pulled to
   different geometry, 0.54 in of finger moved the piece 1.0 in. Now the finger's own travel, in grid steps.
+
+## Audit tidy-ups
+- `--cad-accent` (#1e6fea) and `--cad-accent-red` declared in styles/base.css :root -- they were used but never
+  defined, so the active tool border, the drawer tab's active colour + underline, .svg-handle and the dead status
+  light were silently dropped. Removed the dead first `.tool-btn.active` rule. Verified at 390px: active tab blue +
+  underline, active tool blue border.
+- INPUT_PROFILE `markPx` (mouse 5, touch 8): the stripe tool's boundary ticks use it (they borrowed slopPx: 44 px
+  discs on touch that merged into a blob). The scissors marker is unchanged (Fred: works beautifully).
+- editor/breakpoints.js: MOBILE_MAX_PX 720, MOBILE_QUERY, LANDSCAPE_PHONE_QUERY -- used by mobile-resizer,
+  editor-drawer, lattice-side-column, the symbol keyboard; the app shell's 700/701 CSS + palette inline copies moved
+  to 720/721 (a 701-720 px coarse window was landscape to one half of the app and portrait to the other).
+- Colours: SELECTION_COLOR / HOVER_OUTLINE_COLOR exported next to APP_HANDLE_STROKE (editor-transform-handles.js);
+  the scale/rotate/node handles, selection halo, hover outline use them; the scissors join cue uses the accent.
+- editor-primitives.js: the one arcPointAtAngle / arcPointAtFraction / distToSegment / distToArc / distToPrimitive
+  (three private `_arcPointAt` copies -- one took a FRACTION, two an ANGLE; two segment-distance copies;
+  contour-from-frame's inline arc distance).

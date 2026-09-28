@@ -474,7 +474,8 @@ aside {
    `.app` layout, those rules were removed in this refactor along with
    the corresponding desktop resizer fence.
    ========================================================================= */
-@media (max-width: 700px) {
+/* audit tidy-up: 720/721 -- the one phone breakpoint (b-spline-gen/html/editor/breakpoints.js) */
+@media (max-width: 720px) {
     .cad-main-content {
         grid-template-columns: 1fr;
         grid-template-rows: 40vh 12px 1fr;
@@ -533,7 +534,7 @@ aside {
    actually pointed at the real cause). Overriding `grid-column`
    explicitly, together with a reversed grid-template-columns so each
    side keeps its OWN correct size, is what actually swaps position. */
-@media (pointer: coarse) and (max-height: 500px) and (min-width: 701px) {
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 721px) {
     .cad-main-content {
         grid-template-columns: 1fr auto var(--cad-sidebar-width);
     }

@@ -9,6 +9,7 @@ import { getElementLayer, setActiveLayer as _setActiveLayer } from './layers.js'
 import { SNAP_POLICY, clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { syncColorToggleSwatch } from './properties-shape.js';
 import { setHandleCursor } from './editor-transform-handles.js';
+import { SELECTION_COLOR, HOVER_OUTLINE_COLOR } from './editor-transform-handles.js';
 
 // Per-mode help text shown in the floating status hint at the bottom of the
 // editor canvas. Keeps the lessons-learned messages out of the toolbar so the
@@ -374,7 +375,7 @@ export function updateSelectionHighlight(editor) {
     // exactly which shapes are in the set (in addition to the combined
     // bbox + transform handles drawn by updateHandles).
     for (const el of sel) {
-        const h = _renderHighlight(editor, el, '#ffcc00', {
+        const h = _renderHighlight(editor, el, SELECTION_COLOR, {
             textFillOpacity: 0.1,
             textStrokeOpacity: 0.5,
             lineStrokeOpacity: 0.4,
@@ -524,7 +525,7 @@ export function setHover(editor, el) {
     // the yellow halo for every other shape in a multi-select.
     if (!el || (editor._selectedElements || []).includes(el)) return;
 
-    editor._hoverHighlight = _renderHighlight(editor, el, '#0066cc', {
+    editor._hoverHighlight = _renderHighlight(editor, el, HOVER_OUTLINE_COLOR, {
         textFillOpacity: 0.15,
         textStrokeOpacity: 0,
         lineStrokeOpacity: 0.8,

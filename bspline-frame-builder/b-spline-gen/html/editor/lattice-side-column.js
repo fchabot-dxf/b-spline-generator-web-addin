@@ -27,6 +27,7 @@
  */
 import { el, on } from './dom.js';
 import { GUIDE_STROKE } from './editor-guides.js';
+import { MOBILE_QUERY, LANDSCAPE_PHONE_QUERY } from './breakpoints.js';
 
 // =========================================================================
 // 1. Section colour-coding (Fred picked option B from the mockup).
@@ -199,7 +200,7 @@ const TOOL_PANEL_MOUNTS = {
 // "mobile," checked here rather than re-derived, so a future change to
 // either breakpoint can't quietly leave this module disagreeing with
 // the drawer about what counts as mobile.
-const MOBILE_MEDIA_QUERY = '(max-width: 720px), (pointer: coarse) and (max-height: 500px) and (min-width: 721px)';
+const MOBILE_MEDIA_QUERY = `${MOBILE_QUERY}, ${LANDSCAPE_PHONE_QUERY}`; // audit tidy-up: breakpoints.js
 function _isDesktop() {
   return !window.matchMedia(MOBILE_MEDIA_QUERY).matches;
 }

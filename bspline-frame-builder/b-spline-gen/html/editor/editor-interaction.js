@@ -77,6 +77,8 @@ import {
     _contourSegmentEl,
 } from './properties-shape-lattice.js';
 import { commitEdit } from './editor-commit.js';
+import { SELECTION_COLOR, APP_HANDLE_STROKE } from './editor-transform-handles.js';
+import { distToSegment as _distToSegment } from './editor-primitives.js'; // audit tidy-up: the one copy
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
@@ -2279,20 +2281,6 @@ function _railEndUnder(editor, pt) {
     return null;
 }
 
-/** Point-to-segment distance — same standard formula
- *  editor-shape-lattice-interaction.js's own (module-private) _distToLine
- *  uses; duplicated rather than imported across that module boundary for
- *  one 5-line pure function (this file's own established convention for
- *  a genuinely shared small pure helper — see _collectLatticeElements's
- *  own header comment for the same reasoning elsewhere in this file). */
-function _distToSegment(pt, p0, p1) {
-    const dx = p1.x - p0.x, dy = p1.y - p0.y;
-    const lenSq = dx * dx + dy * dy;
-    let t = lenSq > 0 ? ((pt.x - p0.x) * dx + (pt.y - p0.y) * dy) / lenSq : 0;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(pt.x - (p0.x + t * dx), pt.y - (p0.y + t * dy));
-}
-
 /** UI4 item 0 / UI5 item 0 (Fred, live: a Select tap on the topmost/
  *  bottommost rail of a Shape Lattice silhouette hit the CONTOUR instead
  *  — fixed below by scoping to rail/tie/node only; then the advisor's own
@@ -3029,7 +3017,7 @@ export function updateHandles(editor) {
             editor._handleLayer.rect(bb.w, bb.h)
                 .move(bb.x, bb.y)
                 .fill('none')
-                .stroke({ color: '#ffcc00', width: strokeW, dasharray: `${strokeW * 4},${strokeW * 2}` })
+                .stroke({ color: SELECTION_COLOR, width: strokeW, dasharray: `${strokeW * 4},${strokeW * 2}` })
                 .attr('pointer-events', 'none');
             editor._transformHandles = renderTransformHandles(editor);
         } catch (_) {}
@@ -3050,9 +3038,9 @@ export function updateHandles(editor) {
         const isHovered = (editor._hoverNodeIndex === i);
         const rad = isDragging ? baseR * 3.2 : (isHovered ? baseR * 2.8 : baseR * 2);
         const hR = rad * 0.7;
-        const fillStr = isDragging ? '#ff3300' : (isHovered ? '#ffcc00' : '#00ffff');
+        const fillStr = isDragging ? '#ff3300' : (isHovered ? SELECTION_COLOR : '#00ffff');
         const strokeW = (isDragging || isHovered) ? baseR * 0.9 : baseR * 0.4;
-        const strokeC = isDragging ? '#ffffff' : (isHovered ? '#a06b00' : '#0066cc');
+        const strokeC = isDragging ? '#ffffff' : (isHovered ? '#a06b00' : APP_HANDLE_STROKE);
         editor._handleLayer.polygon([
             [pt.x, pt.y - hR],
             [pt.x + hR, pt.y],

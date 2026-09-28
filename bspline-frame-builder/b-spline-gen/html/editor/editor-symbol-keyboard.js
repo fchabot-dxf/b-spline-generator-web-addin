@@ -20,6 +20,7 @@ import { el, query, addClass, on } from './dom.js';
 import { insertSymbol } from './editor-text-style.js';
 import { verifyFontLoaded, SYMBOL_FAMILIES } from './editor-fonts.js';
 import { dbg } from './debug.js';
+import { MOBILE_MAX_PX } from './breakpoints.js';
 
 const HIDDEN_INPUT_ID = 'editorHiddenInput';
 const PANEL_ID = 'editorSymbolKeyboard';
@@ -168,7 +169,7 @@ function populateSymbolKeyboard(editor, family = 'Symbol') {
     }
 
     const range = FAMILY_RANGES[family] || { start: 32, end: 255 };
-    const defaultHeight = window.innerWidth <= 720 ? '40vh' : '50vh';
+    const defaultHeight = window.innerWidth <= MOBILE_MAX_PX ? '40vh' : '50vh';
     const maxHeight = '80vh';
     panel.style.width = '100%';
     panel.style.height = defaultHeight;
@@ -230,7 +231,7 @@ function setupGripResize(symbolPanel, canvasContainer) {
             symbolPanel.style.setProperty('--keyboard-max-height', `${clamped}px`);
             symbolPanel.style.height = `${clamped}px`;
             if (canvasContainer) {
-                if (window.innerWidth <= 720) {
+                if (window.innerWidth <= MOBILE_MAX_PX) {
                     const ratio = (clamped - minHeight) / (maxHeight - minHeight);
                     const sidePadding = ratio * 60;
                     canvasContainer.style.setProperty('--mobile-dynamic-padding', `${sidePadding}px`);
