@@ -3566,3 +3566,12 @@ lattice slots. Removed: #latticeDetachAll / #shapeLatticeDetachAll (palette), th
 properties-shape-lattice), the side-column mount entry, detachAllOwned + detachOwnership (editor-lattice-pattern.js,
 no other callers) and their 7 tests; fixtures now carry the Unprotect all button. Verified at 390px: both footers
 are Generate + Unprotect all, no errors. vitest 2438 passed.
+
+## Long-press on a rail picked the node (Fred: "Ok longpress node")
+- Cause: the Select tool's generic pick (editor-hit getNearbyElement) ranks by bounding-box CENTRE, so a tie-end node
+  (centre under the finger) always beat the long rail it sits on. selectHandler.start now re-picks lattice pieces
+  with the lattice tools' own _nearbyLatticePiece (nearest centreline), and that picker gives a node priority only
+  when the finger is ON its drawn dot (rank -1 within r) -- elsewhere the nearer line wins.
+- Verified at 390px touch, Select tool, Shape Lattice: long-press on the rail 14 px from a tie-end node -> rail
+  selected, menu "Colour… / Cut here / Duplicate / Select all rails / Delete" (before: node, "Select all nodes");
+  long-press on the node dot -> node. vitest 2438 passed.

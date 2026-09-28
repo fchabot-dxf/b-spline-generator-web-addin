@@ -829,7 +829,15 @@ const selectHandler = {
         // SE7h add-on (Fred: generated Rails/Ties/Nodes were unclickable):
         // 'select' mode hit-tests across every VISIBLE layer, not just the
         // active one — see isOnVisibleLayer's own doc comment (layers.js).
-        const hit = presetHit || editor._getNearbyElement(pick, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
+        let hit = presetHit || editor._getNearbyElement(pick, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
+        // workflow audit (Fred: "longpress node"): the generic pick ranks by bounding-box CENTRE, so a tie-end node
+        // (its centre right under the finger) always beat the long rail it sits on -- a tap / long-press on a rail
+        // selected the node. Lattice pieces are picked by the lattice tools' own rule instead: the nearest
+        // centreline, a node only when the finger is on its dot.
+        if (!presetHit && (!hit || hit.node.getAttribute(LATTICE_ATTR))) {
+            const lat = _nearbyLatticePiece(editor, pick, getDynamicTolerance(editor, 10, 'slopPx'));
+            if (lat.el) hit = lat.el;
+        }
         editor._dragMoved = false;
         // UI4 item 0's one-shot _skipBoundaryRefillOnce flag is gone (F17 P2): refreshBoundaryPatterns refills only
         // when the fill's declared inputs changed (boundaryFillInputs), so a moved rail/tie/node survives any commit.
@@ -2314,6 +2322,7 @@ function _nearbyLatticePiece(editor, pt, tol) {
     if (!editor._sketchLayer) return { el: null, dist: Infinity, edge: Infinity };
     let bestEl = null;
     let bestDist = Infinity;
+    let bestRank = Infinity;
     let bestSw = 0;
     editor._sketchLayer.children().toArray().forEach((el) => {
         const kind = el.node.getAttribute(LATTICE_ATTR);
@@ -2323,16 +2332,21 @@ function _nearbyLatticePiece(editor, pt, tol) {
         if (!isOnVisibleLayer(editor, el)) return;
         const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth || 0.01;
         const buffer = tol + (sw / 2);
-        let d;
+        let d, rank;
         if (kind === 'node') {
             const c = worldPoint(el, { x: parseFloat(el.attr('cx')), y: parseFloat(el.attr('cy')) });
             d = Math.hypot(pt.x - c.x, pt.y - c.y);
+            // workflow audit (Fred: "longpress node"): a node sits ON its rail, so the two tie near its centre --
+            // the node wins only when the finger is on its drawn dot; anywhere else the nearer line does
+            const r = parseFloat(el.attr('r')) || 0;
+            rank = d <= r ? -1 : d;
         } else {
             const a = worldPoint(el, { x: parseFloat(el.attr('x1')), y: parseFloat(el.attr('y1')) });
             const b = worldPoint(el, { x: parseFloat(el.attr('x2')), y: parseFloat(el.attr('y2')) });
             d = _distToSegment(pt, a, b);
+            rank = d;
         }
-        if (d <= buffer && d < bestDist) { bestDist = d; bestEl = el; bestSw = sw; }
+        if (d <= buffer && rank < bestRank) { bestRank = rank; bestDist = d; bestEl = el; bestSw = sw; }
     });
     return { el: bestEl, dist: bestDist, edge: bestEl ? Math.max(0, bestDist - bestSw / 2) : Infinity };
 }
