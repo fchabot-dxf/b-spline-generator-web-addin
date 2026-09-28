@@ -51,6 +51,9 @@ export async function applySnapshot(snap, preview, { source } = {}) {
   });
   syncFramePanel();
   setUndoRestoring(false);
+  // a global undo/redo of the stock size: the drawing follows the board (app-init _resyncEditorToStock -- a no-op
+  // when the size did not change; a load reopens the editor itself, below)
+  if (source === 'undo' && typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('stockSizeChanged'));
   AppState.isInitializing = false;
 
   // SE5c: restore per-layer TOOLING (not content — editorSvg/_mask stay

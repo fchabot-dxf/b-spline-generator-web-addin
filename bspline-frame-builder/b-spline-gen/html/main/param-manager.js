@@ -82,6 +82,8 @@ export function applyParam(key, value) {
 
   if (key === 'widthIn' || key === 'heightIn') {
     updateSpacingLabels(P.widthIn, P.heightIn);
+    // the drawing follows the new board (app-init _resyncEditorToStock) -- it was stretched over it
+    if (!AppState.isInitializing && typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('stockSizeChanged'));
   }
 
   if (key === 'activeSculptLayer' || key === 'sculptTopMode' || key === 'sculptBotMode') {

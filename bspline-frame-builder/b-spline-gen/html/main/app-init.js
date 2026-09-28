@@ -18,7 +18,7 @@ import { buildDrapeSvg, nextPow2 } from '../core/preview/drape-svg.js';
 import { dbg, isDebugEnabled } from '../core/debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
-import { frameContext } from '../editor/editor-frame-profile.js';
+import { frameContext, drawFrameProfile } from '../editor/editor-frame-profile.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { FRAME_DEFS, frameParam, normalizeFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
@@ -587,6 +587,33 @@ export async function refreshDrape(preview) {
     _drapeLog(`setDrapeTexture done: drapeMesh=${drapeMesh ? drapeMesh.type : 'none'} ` +
         `material=${drapeMat ? drapeMat.type : 'none'} mapSet=${!!(drapeMat && drapeMat.map)} ` +
         `transparent=${drapeMat ? drapeMat.transparent : 'n/a'}`);
+}
+
+/**
+ * Fred ("after making a lattice on a given stock size, if i resize the stock the art gets squished"): the saved
+ * drawing (P.editorSvg) kept the OLD board size in its viewBox, and the stamp / drape renderers stretch that viewBox
+ * over the board -- the art was squished until the editor was opened again (which refits). Now a stock-size change
+ * (the editor closed) does what opening it does, invisibly: reopen the drawing at the new size (pieces keep their
+ * inch positions), redraw the frame (frame-linked contours refit), and commit -- the change pipeline re-saves the
+ * drawing at the new size, refills a boundary lattice when its inputs moved, remasks and redraws the drape.
+ * Debounced: a stepper burst resyncs once. With the editor open, its own open/Apply handles it.
+ */
+let _stockResyncTimer = null;
+function _resyncEditorToStock() {
+  const ed = window.svgEditor;
+  if (!ed || !ed._draw || !P.editorSvg) return;
+  const modal = document.getElementById('svgEditorModal');
+  if (modal && modal.style.display && modal.style.display !== 'none') return;
+  if (ed._mW === P.widthIn && ed._mH === P.heightIn) return;
+  ed.open(editorRestoreSvg(), P.widthIn, P.heightIn);
+  drawFrameProfile(ed);
+  if (typeof ed._notifyChange === 'function') ed._notifyChange('commit');
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('stockSizeChanged', () => {
+    clearTimeout(_stockResyncTimer);
+    _stockResyncTimer = setTimeout(_resyncEditorToStock, 350);
+  });
 }
 
 export function initSvgEditor(preview) {

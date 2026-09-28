@@ -3631,3 +3631,15 @@ bspline" -- "no send frame" -- "id rather have a delete everything button")
   confirm -> clear_design sent, status "Clearing…", reply -> "Fusion design cleared"; the Send payload decoded from
   its chunks carries frame {templateId: template_1, …}. Python untested live (no Fusion here): parses, pytest 204
   passed; vitest 2437 passed (frameSendState + its button test removed).
+
+## Stock resize squished the art (Fred: "after making a latice on a given stock size, if i resize the stock the art
+## gets squished")
+- Cause: P.editorSvg kept the OLD board size in its viewBox; the stamp / drape renderers stretch that viewBox over
+  the board (preserveAspectRatio none), so 7x9 art was stretched onto a 10x9 board until the editor was reopened.
+- Fix: a stock change (param-manager, widthIn/heightIn) dispatches 'stockSizeChanged'; app-init
+  _resyncEditorToStock (debounced 350 ms, editor closed, size actually changed) does what opening the editor does:
+  open() at the new size (pieces keep their inch positions), drawFrameProfile (frame-linked contours refit), and a
+  commit (re-save at the new size, boundary refill when its inputs moved, remask, drape). A global undo/redo
+  (applySnapshot 'undo') dispatches the same event.
+- Verified at 390px: Shape Lattice on 7x9, Apply, width -> 10: saved viewBox 0 0 10 9, preview in proportion
+  (screenshot); global undo -> 0 0 7 9, redo -> 0 0 10 9. vitest 2437 passed.
