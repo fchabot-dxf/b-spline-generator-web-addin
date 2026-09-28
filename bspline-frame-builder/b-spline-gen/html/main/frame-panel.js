@@ -61,6 +61,15 @@ export function undoFrame() {
   return true;
 }
 export const frameHistoryDepth = () => _frameHistory.length;
+
+/** Audit (batch 3): THE way a Frame-tab control edits the frame -- one undo step, the write, the panel sync.
+ *  Thickness / Trim offset / Wood / Bottom Z / Panel lip used to write with no step (a Frame Undo then reverted
+ *  them together with the previous handle drag, or couldn't undo them at all). */
+export function editFrame(patch) {
+  pushFrameHistory();
+  setFrameRecord(patch);
+  syncFramePanel();
+}
 function _syncUndo() { if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0; }
 
 /** F13 [Generate]: a new seeded random frame shape, written as the handles' seeds. */
@@ -315,7 +324,8 @@ function _wireHandleDrag() {
     ed._frameHandleDrag = dragKey; // T81 item 1: the SAME hover/press look for the whole drag
     setHandleCursor('active', paramHandleCursorAxis(best));
     drawFrameProfile(ed); // show it immediately -- a bare press with no movement yet (Touch has no hover at all) must not wait for the first move tick
-    pushFrameHistory(); // F13: a tweak is one undoable step
+    // F13: a tweak is one undoable step -- audit (batch 3): pushed at RELEASE, and only if the frame changed (a tap
+    // or a pinch-abort used to leave a do-nothing Frame Undo step)
     if (surface.setPointerCapture && e.pointerId != null) { try { surface.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
     e.preventDefault();
     e.stopPropagation(); // the editor never sees a handle drag
@@ -338,6 +348,10 @@ function _wireHandleDrag() {
   }, true);
   const end = (e) => {
     if (!dragKey || e.pointerId !== dragPointerId) return;
+    if (dragStartRecord && JSON.stringify(dragStartRecord) !== JSON.stringify(getFrameRecord())) {
+      _frameHistory.push(_clone(dragStartRecord));
+      _syncUndo();
+    }
     dragKey = null;
     dragPointerId = null;
     dragCtx = {};
@@ -360,11 +374,7 @@ export function initFramePanel() {
   // "None" — same reset a manual template-dropdown-to-"None" change does
   // (setFrameRecord({templateId:null, params:{}})), with its own
   // pushFrameHistory() step so Ctrl+Z on the Frame tab undoes it.
-  setFrameClearHandler(() => {
-    pushFrameHistory();
-    setFrameRecord({ templateId: null, params: {} });
-    syncFramePanel();
-  });
+  setFrameClearHandler(() => editFrame({ templateId: null, params: {} }));
   // F7: the 3D preview asks with the grid size it is actually drawing.
   AppState.preview?.setFrameProvider?.((W, H) => frameSolidSpec(FRAME_DEFS, getFrameRecord(), { widthIn: W, heightIn: H }));
   const tplSel = $('frameTemplate');
@@ -378,7 +388,7 @@ export function initFramePanel() {
   for (const sel of [woodSel, $('editorFrameWood')].filter(Boolean)) {
     for (const w of FRAME_DEFS.appearance?.options || []) sel.appendChild(_option(w, w.replace(/^3D /, '')));
   }
-  $('editorFrameTemplate')?.addEventListener('change', (e) => { pushFrameHistory(); setFrameRecord({ templateId: e.target.value || null, params: {} }); syncFramePanel(); });
+  $('editorFrameTemplate')?.addEventListener('change', (e) => editFrame({ templateId: e.target.value || null, params: {} }));
   $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
   $('editorFrameUndo')?.addEventListener('click', () => undoFrame());
   // Ctrl/Cmd+Z in the Frame tab undoes the FRAME (the artwork's undo is locked there, F8)
@@ -391,13 +401,9 @@ export function initFramePanel() {
     });
   }
   _syncUndo();
-  $('editorFrameWood')?.addEventListener('change', (e) => { setFrameRecord({ appearance: e.target.value }); syncFramePanel(); });
+  $('editorFrameWood')?.addEventListener('change', (e) => editFrame({ appearance: e.target.value }));
   for (const f of FRAME_PARAM_FIELDS) {
-    $(f.id)?.addEventListener('change', (e) => {
-      const rec = getFrameRecord();
-      setFrameRecord({ params: { ...rec.params, [f.param]: parseFloat(e.target.value) } });
-      syncFramePanel();
-    });
+    $(f.id)?.addEventListener('change', (e) => editFrame({ params: { ...getFrameRecord().params, [f.param]: parseFloat(e.target.value) } }));
   }
   $('editorTabFrame')?.addEventListener('click', () => setEditorTab('frame'));
   $('editorTabArtwork')?.addEventListener('click', () => setEditorTab('artwork'));
@@ -405,10 +411,10 @@ export function initFramePanel() {
   // "Open SVG Editor" (the same button) on the Artwork tab.
   $('btnStampEdit')?.addEventListener('click', () => { setEditorTab(_openEditorOn || 'artwork'); _openEditorOn = null; });
 
-  tplSel.addEventListener('change', () => { pushFrameHistory(); setFrameRecord({ templateId: tplSel.value || null, params: {} }); syncFramePanel(); });
-  woodSel.addEventListener('change', () => { setFrameRecord({ appearance: woodSel.value }); syncFramePanel(); });
-  $('frameBottomZ')?.addEventListener('change', (e) => { setFrameRecord({ frameBottomZ: parseFloat(e.target.value) }); syncFramePanel(); });
-  $('framePanelLip')?.addEventListener('change', (e) => { setFrameRecord({ panelLip: parseFloat(e.target.value) }); syncFramePanel(); });
+  tplSel.addEventListener('change', () => editFrame({ templateId: tplSel.value || null, params: {} }));
+  woodSel.addEventListener('change', () => editFrame({ appearance: woodSel.value }));
+  $('frameBottomZ')?.addEventListener('change', (e) => editFrame({ frameBottomZ: parseFloat(e.target.value) }));
+  $('framePanelLip')?.addEventListener('change', (e) => editFrame({ panelLip: parseFloat(e.target.value) }));
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
   $('btnSendFrame')?.addEventListener('click', () => sendFrame());
   _wireHandleDrag();

@@ -16,6 +16,7 @@ import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel }
 import { createEditorCanvas } from './init.js';
 import { fitView as _fitView } from './editor-view.js';
 import { frameSnapGate } from './editor-frame-profile.js';
+import { commitEdit } from './editor-commit.js';
 import { snapFor, applyGrid, loadGridPrefs, saveGridPrefs } from './editor-grid.js';
 import { LATTICE_DEFAULTS } from './editor-lattice.js';
 import { initDrawer, initHeaderOverflowMenu, syncDrawerForMode } from './editor-drawer.js';
@@ -38,6 +39,13 @@ function _undoLog(msg) {
 /** Pull the calling function name out of a fresh stack trace so the
  *  UNDO log can attribute each pushState to who fired it. Best-effort —
  *  returns '?' if the runtime obscures the stack (e.g. some bundlers). */
+/** Audit (batch 3): layers with their pattern deep-copied -- the one clone snapshot AND restore use. */
+function _cloneLayers(layers) {
+    return Array.isArray(layers)
+        ? layers.map((l) => ({ ...l, pattern: l.pattern ? JSON.parse(JSON.stringify(l.pattern)) : l.pattern }))
+        : [];
+}
+
 function _shortCaller() {
     try {
         const stack = new Error().stack || '';
@@ -337,8 +345,7 @@ export class VectorEditor {
     // setStrokeColor as dead; SE9 brings color back as setColor above,
     // now driving one _color field shared by stroke and fill.)
     _commitStyleChange() {
-        if (typeof this.pushState === 'function') this.pushState();
-        if (this._onChange) this._onChange();
+        commitEdit(this); // audit batch 3: the one commit (the lattice-piece panel's no-refill reason is gone: fillInputs ignores colours)
     }
     /**
      * SE8b / SA-UNDO-1: the ONE place a drag-continuation path notifies
@@ -405,8 +412,7 @@ export class VectorEditor {
         if (changedAny) {
             this._updateHandles();
             this._updateSelectionHighlight();
-            this.pushState();
-            if (this._onChange) this._onChange();
+            commitEdit(this); // audit batch 3: the one commit
         }
         return changedAny;
     }
@@ -427,8 +433,7 @@ export class VectorEditor {
         if (anyPromoted) this._deselect();
         this._updateHandles();
         this._updateSelectionHighlight();
-        this.pushState();
-        if (this._onChange) this._onChange();
+        commitEdit(this); // audit batch 3: the one commit
         return true;
     }
 
@@ -497,12 +502,7 @@ export class VectorEditor {
             // with the live layer (exactly the bug SE7g fixed for the old
             // file-level editor._latticePattern, now guarded per-layer
             // instead since Section 1 moved settings onto the layer).
-            layers: Array.isArray(this._layers)
-                ? this._layers.map(l => ({
-                    ...l,
-                    pattern: l.pattern ? JSON.parse(JSON.stringify(l.pattern)) : l.pattern,
-                  }))
-                : [],
+            layers: _cloneLayers(this._layers),
             activeLayer: this._activeLayer,
         };
     }
@@ -566,7 +566,10 @@ export class VectorEditor {
         });
 
         if (isObj && Array.isArray(state.layers)) {
-            this._layers = state.layers.map(l => ({ ...l }));
+            // Audit (batch 3): a COPY -- the live layers never share a pattern object with an undo-stack entry
+            // (a shallow copy made the next panel edit rewrite the restored step in place; its settings were
+            // then gone for good)
+            this._layers = _cloneLayers(state.layers);
         }
         if (isObj && 'activeLayer' in state) {
             this._activeLayer = state.activeLayer;
@@ -594,8 +597,16 @@ export class VectorEditor {
         // before calling it (same effective call this already made),
         // and additionally cancels any pending 'live' frame + refreshes
         // the preview.
-        this._notifyChange('commit');
+        // Audit (batch 3): follow-ups of a RESTORE (the boundary refill) correct the restored step in place and
+        // never push -- a push here cleared redo and made Undo land on the same state again
+        this._restoring = true;
+        try { this._notifyChange('commit'); } finally { this._restoring = false; }
     }
+
+    /** Audit (batch 3): THE way a discrete edit ends -- one undo step, then the full commit pipeline (outline
+     *  preview, detach check, boundary refill, guides, persist). Four idioms did this job; the bare
+     *  `pushState(); _onChange()` one silently skipped the refill/detach/preview/guides. */
+    commitEdit() { commitEdit(this); }
 
     // Delegation Helpers
     _getDynamicTolerance(px) { return getDynamicTolerance(this, px); }

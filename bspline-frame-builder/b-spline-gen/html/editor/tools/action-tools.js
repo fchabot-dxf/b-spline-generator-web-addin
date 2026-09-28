@@ -4,6 +4,7 @@ import { isUnexpandable, unexpand } from '../editor-expand-commit.js';
 import { resetArtworkToFresh, sync3DBackground } from '../editor-io.js';
 import { clearFrame } from '../editor-frame-profile.js';
 import { refreshGuides } from '../editor-guides.js';
+import { commitEdit } from '../editor-commit.js';
 
 export function registerActionTools(editor) {
   const bind = (id, fn) => bindClick(id, fn);
@@ -46,8 +47,7 @@ export function registerActionTools(editor) {
     resetArtworkToFresh(editor);
     sync3DBackground(editor);
     refreshGuides(editor);
-    editor.pushState();
-    if (editor._onChange) editor._onChange();
+    commitEdit(editor); // audit batch 3: the one commit
   });
 
   bind('editorDownload', async () => {

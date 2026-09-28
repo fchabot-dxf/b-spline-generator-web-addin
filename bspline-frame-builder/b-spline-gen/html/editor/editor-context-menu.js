@@ -64,6 +64,7 @@ import { cutAt, join, cutIntent } from './editor-cut-tool.js';
 import { copySelection, pasteClipboard, selectAllVisible } from './editor-interaction.js';
 import { applyLayerState, addLayer } from './layers.js';
 import { haptic } from '../core/haptics.js';
+import { commitEdit } from './editor-commit.js';
 
 const LATTICE_OWNED_KINDS = new Set(['rails', 'ties', 'nodes', 'contour']);
 
@@ -81,9 +82,7 @@ export function targetKindOf(el) {
 function _moveSelectionToLayer(editor, selection, layerId) {
   for (const el of selection) { try { el.attr('data-layer', String(layerId)); } catch (_) {} }
   applyLayerState(editor);
-  if (typeof editor.pushState === 'function') editor.pushState();
-  if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
-  else if (editor._onChange) editor._onChange();
+  commitEdit(editor);
 }
 
 /** ONE declared registry — {id, label, icon, appliesTo(kind), when(target),

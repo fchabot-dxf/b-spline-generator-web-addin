@@ -2372,12 +2372,22 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
   // Audit (batch 2): `amendUndo` is the step the commit that DETECTED the change had just pushed (captured by
   // refreshBoundaryPatterns before the async gap) -- folded only if that exact step is still on top, never into
   // a later, unrelated edit's step that happened to be pushed meanwhile.
-  const amendTarget = amendUndo === true ? editor._lastPushedState : amendUndo;
-  if (amendTarget && Array.isArray(editor._undoStack) && editor._undoStack.length > 1
-      && amendTarget === editor._lastPushedState && editor._undoStack[editor._undoStack.length - 1] === amendTarget) {
-    editor._undoStack.pop();
+  // Audit (batch 3): `amendUndo = { restored }` -- this refill follows an UNDO/REDO restore (editor._restoring):
+  // it corrects that restored step IN PLACE (still on top) and pushes nothing, so redo survives and the next Undo
+  // moves on instead of landing on the same state again.
+  const stack = Array.isArray(editor._undoStack) ? editor._undoStack : null;
+  if (amendUndo && amendUndo.restored && stack && stack[stack.length - 1] === amendUndo.restored
+      && typeof editor._snapshotState === 'function') {
+    const fixed = editor._snapshotState();
+    stack[stack.length - 1] = fixed;
+  } else {
+    const amendTarget = amendUndo === true ? editor._lastPushedState : amendUndo;
+    if (amendTarget && stack && stack.length > 1
+        && amendTarget === editor._lastPushedState && stack[stack.length - 1] === amendTarget) {
+      stack.pop();
+    }
+    if (typeof editor.pushState === 'function') editor.pushState();
   }
-  if (typeof editor.pushState === 'function') editor.pushState();
   // T59 (a genuine, measured, PRE-EXISTING bug — confirmed live via CDP,
   // not assumed: 2 undo-stack entries per Generate press on a boundary-
   // mode layer, ever since T49 introduced boundary mode): this call's OWN
@@ -2504,7 +2514,8 @@ export function refreshBoundaryPatterns(editor) {
   // F17 (P2): nothing the fill depends on changed since the last fill -> keep the pieces as drawn
   if (pattern.fillInputs === boundaryFillInputs(editor, pattern)) return;
   _boundaryRefillInProgress = true;
-  generatePattern(editor, pattern, { amendUndo: editor._lastPushedState || false })
+  const stackTop = Array.isArray(editor._undoStack) ? editor._undoStack[editor._undoStack.length - 1] : null;
+  generatePattern(editor, pattern, { amendUndo: editor._restoring ? { restored: stackTop } : (editor._lastPushedState || false) })
     .catch((err) => console.warn('[editor-lattice-pattern] boundary refill failed:', err))
     .finally(() => { _boundaryRefillInProgress = false; });
 }
@@ -2954,9 +2965,14 @@ function _markLatticeKindRemoved(editor, removedId) {
     if (!l.pattern || !l.pattern.layers) continue;
     const kind = Object.keys(l.pattern.layers).find((k) => String(l.pattern.layers[k]) === key);
     if (!kind) continue;
+    // Audit (batch 3): removing a kind layer is a roster change, not a fill change -- if the fill was current,
+    // it stays current (the layer delete now commits through the refill hook, which would otherwise regenerate
+    // the remaining rails and wipe their hand edits)
+    const wasCurrent = l.pattern.fillInputs != null && l.pattern.fillInputs === boundaryFillInputs(editor, l.pattern);
     l.pattern.removedKinds = l.pattern.removedKinds || {};
     l.pattern.removedKinds[kind] = true;
     delete l.pattern.layers[kind];
+    if (wasCurrent) l.pattern.fillInputs = boundaryFillInputs(editor, l.pattern);
     if (['contour', 'ties', 'nodes'].every((k) => l.pattern.removedKinds[k])) {
       delete l.pattern;
     }

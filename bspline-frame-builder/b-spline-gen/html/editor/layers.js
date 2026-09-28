@@ -57,6 +57,7 @@
 import { el, on } from './dom.js';
 import { refreshOutlinePreview } from './editor-outline-preview.js';
 import { dbg } from '../core/debug.js';
+import { commitEdit } from './editor-commit.js';
 
 /**
  * SE12 T36: which geometry a layer's Fusion export uses — an EXPLICIT
@@ -260,7 +261,11 @@ export function addLayer(editor, opts = {}) {
   // Caller may pass {skipUndo:true} when this add is bundled with
   // another action (e.g. auto-create-on-first-draw — task 2) so the two
   // collapse into one undo step. Default is a discrete undo entry.
-  if (!opts.skipUndo && typeof editor.pushState === 'function') editor.pushState();
+  // Audit (batch 3): skipUndo = BUNDLED -- no step AND no commit here; the calling operation (Generate, the first
+  // draw, "move to new layer", a reset) commits once itself. The commit used to fire here anyway, persisting and
+  // remasking a half-built state up to 3-4 times per first Generate.
+  if (opts.skipUndo) return layer;
+  if (typeof editor.pushState === 'function') editor.pushState();
   // UI4 item 6 (Fred, live: a layer added from the main sidebar vanished
   // when the editor reopened): every OTHER roster mutator below
   // (removeLayer/reorderLayer/setLayerVisible/setLayerCarve/
@@ -391,8 +396,7 @@ function removeLayer(editor, id) {
   }
   renderLayersPanel(editor);
   applyLayerState(editor);
-  if (typeof editor.pushState === 'function') editor.pushState();
-  if (editor._onChange) editor._onChange();
+  commitEdit(editor); // audit batch 3: the one commit
 }
 
 function renameLayer(editor, id, newName) {
@@ -447,8 +451,7 @@ function reorderLayer(editor, sourceId, targetId, displaySide /* 'before' | 'aft
 
   renderLayersPanel(editor);
   applyLayerState(editor);
-  if (typeof editor.pushState === 'function') editor.pushState();
-  if (editor._onChange) editor._onChange();
+  commitEdit(editor); // audit batch 3: the one commit
 }
 
 /** UX-UNDO: these three toggles are per-layer TOOLING (SE5c's
@@ -501,8 +504,7 @@ export function setLayerCarve(editor, id, carve) {
   if (!layer) return;
   layer.carve = !!carve;
   renderLayersPanel(editor);
-  if (typeof editor.pushState === 'function') editor.pushState();
-  if (editor._onChange) editor._onChange();
+  commitEdit(editor); // audit batch 3: the one commit
   _notifyLayerToolingCommit('carve');
 }
 
@@ -517,8 +519,7 @@ export function setLayerShowColor(editor, id, showColor) {
   layer.showColor = !!showColor;
   renderLayersPanel(editor);
   applyLayerState(editor);
-  if (typeof editor.pushState === 'function') editor.pushState();
-  if (editor._onChange) editor._onChange();
+  commitEdit(editor); // audit batch 3: the one commit
   _notifyLayerToolingCommit('showColor');
 }
 

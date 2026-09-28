@@ -20,7 +20,7 @@ import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTi
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer, isOnVisibleLayer } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
-import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout } from './editor-ui.js';
+import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout, updateHistoryButtons } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
@@ -32,7 +32,7 @@ import {
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
-import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover } from './editor-grid.js';
+import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover, snapToGrid, SNAP_POLICY } from './editor-grid.js';
 import { getDynamicTolerance, pastClickThreshold } from './editor-hit.js';
 import { nearestGeometrySnap, geometrySnapTargets, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
 import {
@@ -76,6 +76,7 @@ import {
     paramHandleRecords, renderShapeLatticeHandles, openSegmentStyleBar, _shapeContourRegion,
     _contourSegmentEl,
 } from './properties-shape-lattice.js';
+import { commitEdit } from './editor-commit.js';
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
@@ -181,7 +182,11 @@ function handlePointerDown(editor, e) {
     // pull an arc...) and can move things before the second finger lands; cancelling
     // only a pen stroke left those moves in place. Now a second finger puts the
     // drawing back exactly as it was when the first finger touched down.
-    if (count === 2 && editor._touchGestureSnapshot && (editor._isDrawing || editor._isDragging)) {
+    // Audit (batch 3): also when the first finger's PRESS already committed something (Lattice Node mode places a
+    // node on press) -- that press was the start of a pinch, not an edit.
+    const pressCommitted = !!(editor._touchGestureHistory && Array.isArray(editor._undoStack)
+        && editor._undoStack.length > editor._touchGestureHistory.undoLen);
+    if (count === 2 && editor._touchGestureSnapshot && (editor._isDrawing || editor._isDragging || pressCommitted)) {
         _abortTouchGesture(editor);
     } else if (shouldCancelDrawOnPointerDown(count, editor._isDrawing)) {
         if (typeof editor._cancelDrawing === 'function') editor._cancelDrawing();
@@ -213,6 +218,12 @@ function handlePointerDown(editor, e) {
     // The drawing as this touch found it, for _abortTouchGesture (mouse/pen never pinch).
     editor._touchGestureSnapshot = (e.pointerType === 'touch' && typeof editor._snapshotState === 'function')
         ? editor._snapshotState() : null;
+    // Audit (batch 3): and the history as it was, so an abort also takes back a step the PRESS itself pushed
+    // (Lattice Node mode places + pushes on press) -- else a phantom step stayed and Redo brought back a node the
+    // user never placed.
+    editor._touchGestureHistory = editor._touchGestureSnapshot && Array.isArray(editor._undoStack)
+        ? { undoLen: editor._undoStack.length, redo: Array.isArray(editor._redoStack) ? editor._redoStack.slice() : null, last: editor._lastPushedState }
+        : null;
     handleStart(editor, e);
 }
 
@@ -257,6 +268,14 @@ function _abortTouchGesture(editor) {
     document.querySelectorAll('.shape-lattice-segment-bar').forEach((bar) => bar.remove());
     setHandleCursor(null);
     if (snap && typeof editor._restoreState === 'function') editor._restoreState(snap);
+    const hist = editor._touchGestureHistory;
+    editor._touchGestureHistory = null;
+    if (hist && Array.isArray(editor._undoStack) && editor._undoStack.length > hist.undoLen) {
+        editor._undoStack.length = hist.undoLen;
+        if (hist.redo && Array.isArray(editor._redoStack)) { editor._redoStack.length = 0; editor._redoStack.push(...hist.redo); }
+        editor._lastPushedState = hist.last;
+        updateHistoryButtons(editor);
+    }
     if (typeof editor._updateHandles === 'function') editor._updateHandles();
 }
 
@@ -1065,8 +1084,7 @@ function _commitAnchorPath(editor) {
     editor._isDrawing   = false;
     editor._select(finalPath);
     applyLayerState(editor);
-    if (typeof editor.pushState === 'function') editor.pushState();
-    if (editor._onChange) editor._onChange();
+    commitEdit(editor); // audit batch 3: the one commit
     try { maybeShowExpandCallout(editor); } catch (_) {}
 }
 
@@ -1146,8 +1164,7 @@ const circleHandler = {
             editor._isDrawing = false;
             emitNode(editor, { x: start[0], y: start[1] });
             applyLayerState(editor);
-            if (typeof editor.pushState === 'function') editor.pushState();
-            if (editor._onChange) editor._onChange();
+            commitEdit(editor); // audit batch 3: the one commit
             return;
         }
         finishDrawing(editor, 'circle');
@@ -1949,8 +1966,7 @@ function _emitHandPieces(editor, kind, pieces, orientation, spacing) {
         }
     }
     applyLayerState(editor);
-    if (typeof editor.pushState === 'function') editor.pushState();
-    if (editor._onChange) editor._onChange();
+    commitEdit(editor); // audit batch 3: the one commit
 }
 
 // SE7k (Fred: "needs an add rail and add tie, add node button"): the Add:
@@ -2074,8 +2090,7 @@ const latticeHandler = {
             const created = _emitStyled(editor, 'node', point, point);
             if (!created) return;
             applyLayerState(editor);
-            if (typeof editor.pushState === 'function') editor.pushState();
-            if (editor._onChange) editor._onChange();
+            commitEdit(editor); // audit batch 3: the one commit
             return;
         }
 
@@ -2829,8 +2844,12 @@ function _selectionMoveDelta(editor, pt, raw, bypass) {
         }
         if (best) return best;
     }
-    const p = editor._snap(raw, bypass, 'move', ms.exclude);
-    return { x: p.x - ms.start.x, y: p.y - ms.start.y };
+    // Audit (batch 3): no end snapped -> the FINGER's own travel, in whole grid steps when the grid snaps. It used
+    // to be snap(pointer now) - snap(pointer at grab): both ends pulled to (different) geometry, so a 0.54 in
+    // finger move shifted the piece 1.0 in (MEASURED).
+    const d = { x: raw.x - ms.rawStart.x, y: raw.y - ms.rawStart.y };
+    const policy = SNAP_POLICY[editor._currentMode] || 'point';
+    return (policy !== 'none' && !bypass) || policy === 'always' ? snapToGrid(d, editor._grid, false) : d;
 }
 
 function translateSelection(editor, pt, raw = null, bypass = false) {
@@ -2963,8 +2982,7 @@ function finishDrawing(editor, modeId) {
     editor._points = [];
     editor._select(finalPath);
     applyLayerState(editor);
-    if (typeof editor.pushState === 'function') editor.pushState();
-    if (editor._onChange) editor._onChange();
+    commitEdit(editor); // audit batch 3: the one commit
     try { maybeShowExpandCallout(editor); } catch (_) {}
 }
 

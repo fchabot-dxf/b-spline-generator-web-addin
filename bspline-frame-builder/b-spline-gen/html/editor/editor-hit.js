@@ -111,6 +111,11 @@ export function getNodes(el) {
             });
         });
     } else if (el.type === 'path') {
+        // Audit (batch 3): read the CURRENT d. svg.js caches a path's parsed array (`_array`), and an
+        // `attr('d', ...)` write (contour cut/Join/stripe/bake/regenerate all write that way) does not refresh it --
+        // only plot() does -- so a moved or re-cut contour piece still reported its OLD points to the snap and the
+        // node handles.
+        if (el._array !== undefined && el.node && el.node.getAttribute('d') !== null) delete el._array;
         // Build the node list AND each node's REAL segment index in the
         // SAME loop over el.array() — the old code pushed a point only for
         // M/L/C/Q into a SEPARATE array, so after the first Z (or any

@@ -42,6 +42,7 @@ import {
 } from './editor-contour-cut.js';
 import { isOnVisibleLayer } from './layers.js';
 import { haptic } from '../core/haptics.js';
+import { commitEdit } from './editor-commit.js';
 
 /** The floor for a piece with no stroke width of its own (see `minPieceLength` below): only there so a
  *  zero-length piece is impossible. */
@@ -188,9 +189,7 @@ export { minPieceLength };
 export function commitCutEdit(editor) { _commit(editor); }
 
 function _commit(editor) {
-  if (typeof editor.pushState === 'function') editor.pushState();
-  if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
-  else if (editor._onChange) editor._onChange();
+  commitEdit(editor);
   haptic('cutJoin'); // H13: cutAt/join both route through here, only on genuine success
 }
 

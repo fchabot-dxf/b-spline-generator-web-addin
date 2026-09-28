@@ -175,3 +175,19 @@ describe('undo restores the active layer\'s pattern (SE7g: "undo restores the pr
     expect(activeLayerPattern(editor)).toBeUndefined();
   });
 });
+
+describe('audit batch 3: undo never hands the live layer the undo stack\'s own pattern object', () => {
+  it('push, change, push, UNDO, change the live pattern, push, UNDO -> the ORIGINAL settings, not the post-undo edit', () => {
+    const ed = makeUndoMockEditor();
+    ed._layers[0].pattern = { spacing: 1 };
+    ed.pushState();
+    activeLayerPattern(ed).spacing = 2;
+    ed.pushState();
+    ed.undo();
+    expect(activeLayerPattern(ed).spacing).toBe(1);
+    activeLayerPattern(ed).spacing = 3; // a panel edit after the undo (used to write INTO the stored step)
+    ed.pushState();
+    ed.undo();
+    expect(activeLayerPattern(ed).spacing).toBe(1);
+  });
+});

@@ -3397,3 +3397,28 @@ ok, hidden rail not grabbed (old: grabbed), wobbly ✗ cancels; regressions (tie
 Verified headless (new vs old): arc scissors cut -> source stays 'generated', 1 push, rails unchanged (old: picked,
 refill, rails re-rolled); stripe + Randomize + Show off/on -> 17 pieces and colours kept (old: 12, colours lost);
 hidden contour not cuttable (old: cut); moved contour piece -> no transform, d baked, fill follows in one step, undo ok.
+
+## Audit batch 3 -- undo / commit
+- Undo never hands the live layer the stack's own pattern object: `_cloneLayers` in _snapshotState AND
+  _restoreState (a shallow restore let the next panel edit rewrite the stored step in place). Test added (fails old).
+- A RESTORE's follow-ups never push: _restoreState sets `editor._restoring`; refreshBoundaryPatterns passes
+  `amendUndo: { restored: <stack top> }` and generatePattern then corrects that restored step IN PLACE (redo kept).
+- Frame-linked contour (Offset from frame): refit waits for the frame handle drag to END (`_frameHandleDrag`), never
+  runs during a restore, and corrects the current artwork step in place instead of pushing -- the frame has its own
+  undo. detectShapeLatticeDetach skips frame-linked patterns (an artwork undo flipped them to 'picked', cutting the
+  link). MEASURED old vs new: a 40-move frame handle drag -> 30 artwork steps (history cap flushed) vs 0; artwork undo
+  afterwards -> redo 0 vs 1.
+- Frame tab: `editFrame(patch)` = one step for every control (Thickness, Trim offset, Wood, Bottom Z, Panel lip,
+  template, Clear); a handle press pushes nothing -- the step is pushed at release only if the record changed.
+- A pinch that aborts a touch gesture also takes back what that press committed (history length + redo saved at
+  pointerdown; a press that already pushed -- Lattice Node place -- now counts as abortable). Verified: node gone,
+  undo 1 / redo 1 restored (old: node stayed, redo lost).
+- ONE commit: `commitEdit(editor)` (editor-commit.js; editor.commitEdit) = pushState + _notifyChange('commit');
+  24 bare `pushState(); _onChange()` sites routed through it (layers roster ops, text, cut, context menu, lattice
+  emit/node place, style changes...). Removing a kind layer keeps a current fill current (_markLatticeKindRemoved)
+  so the now-hooked layer delete doesn't regenerate the rails.
+- addLayer({skipUndo}) = bundled: no step AND no commit (the caller commits once).
+- Found while verifying: getNodes read svg.js's cached path array, stale after any `attr('d')` write (contour
+  cut/stripe/bake/regenerate) -> moved contour pieces reported old points to snapping; now reads the current d.
+- Found while verifying: a Select move with no end snapped moved by snap(now) - snap(grab) -- both ends pulled to
+  different geometry, 0.54 in of finger moved the piece 1.0 in. Now the finger's own travel, in grid steps.

@@ -16,6 +16,7 @@ import { getAscenderForFont, buildTspans, migrateTextElement } from './editor-te
 import { on } from './dom.js';
 import { dbg } from './debug.js';
 import { ensureActiveLayer } from './layers.js';
+import { commitEdit } from './editor-commit.js';
 
 const HIDDEN_INPUT_ID = 'editorHiddenInput';
 const CURSOR_BLINK_MS = 530;
@@ -385,8 +386,7 @@ export function commitText(editor) {
 
         editor._editingTextEl = null;
         editor._currentText = '';
-        if (typeof editor.pushState === 'function') editor.pushState();
-        if (editor._onChange) editor._onChange();
+        commitEdit(editor); // audit batch 3: the one commit
     }
 }
 

@@ -39,6 +39,7 @@ import { viewScale } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
 import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
 import { latticeScope, attachLatticeFormulaFields } from './lattice-formula-fields.js';
+import { commitEdit } from './editor-commit.js';
 
 // T59: the event this module dispatches after ANY programmatic change to
 // `p.shape` from OUTSIDE the panel's own field handlers (a param-handle
@@ -361,6 +362,11 @@ export function regenerateSilhouette(editor, p) {
 let _frameLinkRunning = false;
 export async function refreshFrameLinkedContours(editor) {
     if (_frameLinkRunning || !editor || !Array.isArray(editor._layers)) return;
+    // Audit (batch 3): never mid-gesture or mid-undo. A frame HANDLE drag redraws the frame on every move: the
+    // refit (a regenerate + refill + artwork undo step) waits for the release (frame-panel.js clears
+    // _frameHandleDrag, then redraws). An artwork undo/redo restores the contour it stored and must not refit it
+    // to the (separately-undone) frame -- that pushed a step and cleared redo.
+    if (editor._frameHandleDrag || editor._restoring) return;
     const frame = frameContext(editor);
     const linked = editor._layers.map((l) => l && l.pattern)
         .filter((p) => p && hasGeneratedSilhouette(p) && contourFromFrameOf(p).on && p.boundary && p.boundary.shapeId);
@@ -380,7 +386,12 @@ export async function refreshFrameLinkedContours(editor) {
         const active = editor._activeLayer;
         try {
             regenerateSilhouette(editor, p);
-            await generatePattern(editor, p);
+            // Audit (batch 3): a frame-linked contour FOLLOWS the frame -- its refit is never an artwork undo step
+            // of its own (the frame has its own undo). It corrects the current artwork step in place, the same way
+            // a refill after an undo does: one step per frame drag used to flood the artwork history, and an artwork
+            // undo then landed on an old contour that the next frame redraw refit and pushed again, clearing redo.
+            const top = Array.isArray(editor._undoStack) ? editor._undoStack[editor._undoStack.length - 1] : null;
+            await generatePattern(editor, p, { amendUndo: top ? { restored: top } : false });
         } finally {
             _frameLinkRunning = false;
             if (active != null && editor._activeLayer !== active) setActiveLayer(editor, active);
@@ -396,9 +407,7 @@ onFrameProfileDrawn((editor) => { refreshFrameLinkedContours(editor); });
  *  wiping hand edits even for a colour-only click. */
 export function restyleContourAndCommit(editor, p = currentPattern(editor)) {
     regenerateSilhouette(editor, p);
-    if (typeof editor.pushState === 'function') editor.pushState();
-    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
-    else if (editor._onChange) editor._onChange();
+    commitEdit(editor);
     _dispatchShapeChanged(editor);
 }
 
@@ -649,6 +658,10 @@ export function detectShapeLatticeDetach(editor) {
     const shape = p && p.shape;
     if (!shape || shape.source !== 'generated') return;
     if (!p.boundary || !p.boundary.shapeId) return;
+    // Audit (batch 3): a frame-linked contour's geometry belongs to the FRAME, never to a hand edit -- after an
+    // artwork undo (which restores the contour, not the frame) it differed and was flipped to 'picked', which cut
+    // the frame link for good
+    if (contourFromFrameOf(p).on) return;
     const segEls = _findBoundaryElements(editor, p.boundary.shapeId);
     if (!segEls.length) return;
     const region = _shapeContourRegion(editor, p);

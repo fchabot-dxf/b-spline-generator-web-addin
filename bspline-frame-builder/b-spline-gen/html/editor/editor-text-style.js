@@ -12,6 +12,7 @@
  */
 import { reanchorTextY } from './editor-text-baseline.js';
 import { dbg } from './debug.js';
+import { commitEdit } from './editor-commit.js';
 
 export function initText(editor) {
     // Hidden input setup (currently a no-op — the markup is in the HTML).
@@ -40,8 +41,7 @@ export function setFontFamily(editor, family) {
             const size = parseFloat(el.attr('font-size')) || editor._fontSize;
             reanchorTextY(el, family, size);
         }
-        if (typeof editor.pushState === 'function') editor.pushState();
-        if (editor._onChange) editor._onChange();
+        commitEdit(editor); // audit batch 3: the one commit
     }
 }
 
@@ -59,8 +59,7 @@ export function setFontSize(editor, size) {
             const family = (el.attr('font-family') || editor._fontFamily).replace(/['"]/g, '').trim();
             reanchorTextY(el, family, size);
         }
-        if (typeof editor.pushState === 'function') editor.pushState();
-        if (editor._onChange) editor._onChange();
+        commitEdit(editor); // audit batch 3: the one commit
     }
 }
 
