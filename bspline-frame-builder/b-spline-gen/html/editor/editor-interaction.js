@@ -189,6 +189,13 @@ function handlePointerDown(editor, e) {
 
     if (isPinching(count)) {
         e.preventDefault();
+        // Fred: the canvas "jumps ... after I release the fingers", in both tabs. The first finger had started
+        // a one-finger PAN (remembering the view at that moment); the pinch moved the view but never ended that
+        // pan, so when one finger lifted and the other moved a pixel, the stale pan re-applied its old start
+        // view: a 40-120 px snap. A pinch now ends any one-finger pan, and (_afterPinch) the finger left down
+        // after a pinch does nothing until every finger is up.
+        if (editor._isPanning) resetPanState(editor);
+        editor._afterPinch = true;
         const ids = Array.from(editor._activePointers.keys());
         editor._pinchPrev = {
             p1: editor._activePointers.get(ids[0]),
@@ -291,6 +298,7 @@ function handlePointerMove(editor, e) {
     }
     if (count > 2) return; // 3rd+ finger moving — ignored, matches pointerdown
     // FB-APP F18: locked (Frame tab) = pan/pinch only
+    if (editor._afterPinch) return; // the finger still down after a pinch: inert until all are lifted
     if (editor._artworkLocked) { if (editor._isPanning) handleMove(editor, e); return; }
 
     handleMove(editor, e);
@@ -310,6 +318,7 @@ function handlePointerUp(editor, e) {
     const count = editor._activePointers.size;
 
     if (count >= 2) return; // still pinching with the remaining fingers — nothing to end yet
+    if (count === 0) editor._afterPinch = false; // every finger up: the next touch starts fresh
     if (editor._pinchPrev) {
         // Was pinching, now down to 0 or 1 fingers — end the pinch WITHOUT
         // resuming a single-finger draw/select on whichever finger is

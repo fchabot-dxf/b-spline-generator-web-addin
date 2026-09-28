@@ -3229,3 +3229,13 @@ acts (tool stays active), on the X or anywhere else cancels; press-and-drag agai
 pinch/pan and handle re-renders (renderTouchConfirm from updateHandles); a tool switch drops it (setMode). Mouse/pen
 unchanged (instant click). Verified with real touch at 390 px: stripe + cut both -- aim from empty space, release =
 pending + buttons, nothing done; tap check = the aimed rail striped/cut; re-aim + tap elsewhere = cancelled.
+
+## Canvas jump after lifting the fingers -- 2026-09-28
+
+Fred: panning "jumps in both art and frame and after I release the fingers" -- "only the drawing" moves. Reproduced
+headless with a real-phone lift order (fingers lift one at a time, the last one wobbles ~2 px): the view snapped
+40-120 px after the lift, both tabs. Cause: the first finger starts a one-finger pan (_startPan remembers the view);
+the second finger's pinch moved the view but never ended that pan, so the leftover finger's tiny move re-applied the
+stale pan start. Fix (editor-interaction.js): a pinch starting ends any one-finger pan (resetPanState) and sets
+_afterPinch; the finger left down after a pinch is inert until every finger is up (cleared at 0 pointers). After:
+0.0 px change for either lift order, both tabs; pinch/pan/zoom-safety checks unchanged.
