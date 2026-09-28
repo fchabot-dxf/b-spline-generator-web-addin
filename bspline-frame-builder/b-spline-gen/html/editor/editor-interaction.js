@@ -68,7 +68,7 @@ import {
 // so this file — which has no panel DOM at all — can call the identical
 // write/regenerate logic, not a second copy of it).
 import { generateSilhouette, joinSegmentPathsIntoClosedD } from './editor-shape-lattice-generator.js';
-import { hitTestSegment, hitTestArcGrip } from './editor-shape-lattice-interaction.js';
+import { hitTestSegment, hitTestArcGrip, nearestSegment } from './editor-shape-lattice-interaction.js';
 import {
     currentPattern, currentShape, regenerateSilhouette, regenerateSilhouetteAndFill,
     paramHandleRecords, renderShapeLatticeHandles, openSegmentStyleBar, _shapeContourRegion,
@@ -2155,9 +2155,17 @@ function _distToSegment(pt, p0, p1) {
  *  contour segment can never match it at all. Not exported, this file's
  *  own use only (shapeLatticeHandler.start, below). */
 function _getNearbyLatticePiece(editor, pt, tol) {
-    if (!editor._sketchLayer) return null;
+    return _nearbyLatticePiece(editor, pt, tol).el;
+}
+
+/** `_getNearbyLatticePiece` with its distance: `{ el, dist, edge }` -- `dist` to the
+ *  piece's centreline (or node centre), `edge` to its visible edge (dist minus half its
+ *  stroke, floored at 0). `el` null when nothing is in reach. */
+function _nearbyLatticePiece(editor, pt, tol) {
+    if (!editor._sketchLayer) return { el: null, dist: Infinity, edge: Infinity };
     let bestEl = null;
     let bestDist = Infinity;
+    let bestSw = 0;
     editor._sketchLayer.children().toArray().forEach((el) => {
         const kind = el.node.getAttribute(LATTICE_ATTR);
         if (kind !== 'rail' && kind !== 'tie' && kind !== 'node') return;
@@ -2172,9 +2180,9 @@ function _getNearbyLatticePiece(editor, pt, tol) {
             const b = worldPoint(el, { x: parseFloat(el.attr('x2')), y: parseFloat(el.attr('y2')) });
             d = _distToSegment(pt, a, b);
         }
-        if (d <= buffer && d < bestDist) { bestDist = d; bestEl = el; }
+        if (d <= buffer && d < bestDist) { bestDist = d; bestEl = el; bestSw = sw; }
     });
-    return bestEl;
+    return { el: bestEl, dist: bestDist, edge: bestEl ? Math.max(0, bestDist - bestSw / 2) : Infinity };
 }
 
 /**
@@ -2225,7 +2233,17 @@ const shapeLatticeHandler = {
         // (_cancelDrawing never clears it) must not leak into this press.
         editor._latticeStart = null;
         editor._shapeArcPress = null; // F27 item 2 arc pull: a stale press (a hold that opened the menu) never leaks
-        const hit = hitTestHandle(editor._paramHandles || [], rawPt);
+        // Fred: "I still can't select contour segment" -- each arc's radius dot sits at the
+        // middle of its arc, exactly where a tap lands, and grabbing it at once swallowed
+        // the tap. The dot keeps its handle priority (it wins over a rail ending under it,
+        // e.g. at the waist pinch) but presses like its arc: a TAP selects the segment
+        // (+ style bar), a DRAG past the click threshold pulls the radius.
+        const dot = hitTestHandle((editor._paramHandles || []).filter((r) => r.axis === 'arc'), rawPt);
+        const hit = dot ? null : hitTestHandle((editor._paramHandles || []).filter((r) => r.axis !== 'arc'), rawPt);
+        if (dot) {
+            _pressContourSegment(editor, dot.segment, { handle: dot, side: 0, segment: dot.segment }, rawPt, pt, e);
+            return;
+        }
         if (hit) {
             editor._isDrawing = true;
             editor._shapeLatticeDragKey = hit.key;
@@ -2260,7 +2278,16 @@ const shapeLatticeHandler = {
         // contour segment (confirmed live), which the generic hit-test's
         // bbox-center tie-break resolves in the CONTOUR's favor.
         const latticeTol = getDynamicTolerance(editor, 10, 'slopPx');
-        const latticeHit = _getNearbyLatticePiece(editor, rawPt, latticeTol);
+        const near = _nearbyLatticePiece(editor, rawPt, latticeTol);
+        // Fred: "I still can't select contour segment" -- rails end ON the contour, so a
+        // finger's wide reach found a rail on most contour taps and the rail always won.
+        // Now the CLOSER one wins, measured to each one's visible edge (a tap inside the
+        // contour's own stroke picks the contour even with a rail end touching it); on a
+        // tie, the nearer centreline. The UI4 item 0 rule still holds where it matters: a
+        // tap on a rail/tie/node itself is closer to it than to any contour edge.
+        const seg = near.el ? _contourSegmentNear(editor, rawPt) : null;
+        const contourWins = seg && (seg.edge < near.edge || (seg.edge === near.edge && seg.dist < near.dist));
+        const latticeHit = contourWins ? null : near.el;
         if (latticeHit) {
             // UI5 AMEND 2 (advisor, live: the earlier fix moved the piece
             // but with the GENERIC Select move — no grid snap, ties left
@@ -2324,40 +2351,7 @@ const shapeLatticeHandler = {
             const found = _contourSegmentAt(editor, rawPt);
             const segIndex = found != null ? found : (grip ? grip.segment : null);
             if (segIndex != null) {
-                // T81 item 6 (PRIORITY BUG, Fred: "I can't seem to select
-                // contour segment"): this branch used to ONLY open the
-                // style bar -- never editor._select/_selectAdd, so the
-                // segment never reached editor._selectedElements, the
-                // Selected-piece panel never showed it, and per-segment
-                // colour (which reads that panel's own selection) had no
-                // way to reach a segment via a plain tap at all. Same
-                // select dance the rail/tie/node branch above already
-                // uses (shift adds, a double-tap leaves selection alone,
-                // else replace + arm the context-menu hold) -- one
-                // declared "tap selects" behavior, not a second for
-                // contour. The style bar still opens on the SAME tap
-                // (unchanged); this only ADDS the missing selection.
-                const segEl = _contourSegmentEl(editor, segIndex);
-                if (segEl) {
-                    const shift = !!(e && e.shiftKey);
-                    if (shift) {
-                        editor._selectAdd(segEl);
-                    } else if (armMultiSelectPress(editor, segEl, e)) {
-                        // second half of a double-tap: leave selection as tap 1 left it.
-                    } else {
-                        if (!(editor._selectedElements || []).includes(segEl)) editor._select(segEl);
-                        armContextMenuHold(editor, { kind: targetKindOf(segEl), el: segEl, point: pt }, e);
-                    }
-                }
-                openSegmentStyleBar(editor, segIndex, e.clientX, e.clientY);
-                if (grip) {
-                    editor._isDrawing = true; // so the move/release reach update()/finish() below
-                    editor._shapeArcPress = {
-                        key: grip.handle.key, side: grip.side, start: rawPt, offsetY: rawPt.y - pt.y,
-                        grab: { value: grip.handle.value },
-                    };
-                    if (typeof editor._updateHandles === 'function') editor._updateHandles(); // lit while pressed (Touch)
-                }
+                _pressContourSegment(editor, segIndex, grip, rawPt, pt, e);
                 return;
             }
         }
@@ -2460,6 +2454,62 @@ const shapeLatticeHandler = {
 /** T59 tap-a-segment, factored out (F27 item 2 arc pull: the arc grip below
  *  asks it too): the contour segment a tap at `pt` selects -- the nearest one
  *  within slopPx of the generated silhouette -- or null. */
+/** A press on contour segment `segIndex` (T81 item 6 tap + F27 item 2 arc pull):
+ *  selects it and opens its style bar (the TAP, run at the press as always); when
+ *  `grip` (an arc grip or a radius dot on that arc) is given, also arms the press
+ *  so a DRAG past the click threshold pulls that radius instead (update()). */
+function _pressContourSegment(editor, segIndex, grip, rawPt, pt, e) {
+    // T81 item 6 (PRIORITY BUG, Fred: "I can't seem to select
+    // contour segment"): this branch used to ONLY open the
+    // style bar -- never editor._select/_selectAdd, so the
+    // segment never reached editor._selectedElements, the
+    // Selected-piece panel never showed it, and per-segment
+    // colour (which reads that panel's own selection) had no
+    // way to reach a segment via a plain tap at all. Same
+    // select dance the rail/tie/node branch above already
+    // uses (shift adds, a double-tap leaves selection alone,
+    // else replace + arm the context-menu hold) -- one
+    // declared "tap selects" behavior, not a second for
+    // contour. The style bar still opens on the SAME tap
+    // (unchanged); this only ADDS the missing selection.
+    const segEl = _contourSegmentEl(editor, segIndex);
+    if (segEl) {
+        const shift = !!(e && e.shiftKey);
+        if (shift) {
+            editor._selectAdd(segEl);
+        } else if (armMultiSelectPress(editor, segEl, e)) {
+            // second half of a double-tap: leave selection as tap 1 left it.
+        } else {
+            if (!(editor._selectedElements || []).includes(segEl)) editor._select(segEl);
+            armContextMenuHold(editor, { kind: targetKindOf(segEl), el: segEl, point: pt }, e);
+        }
+    }
+    openSegmentStyleBar(editor, segIndex, e.clientX, e.clientY);
+    if (grip) {
+        editor._isDrawing = true; // so the move/release reach update()/finish() below
+        editor._shapeArcPress = {
+            key: grip.handle.key, side: grip.side, start: rawPt, offsetY: rawPt.y - pt.y,
+            grab: { value: grip.handle.value },
+        };
+        if (typeof editor._updateHandles === 'function') editor._updateHandles(); // lit while pressed (Touch)
+    }
+}
+
+/** The nearest contour segment to `pt` with its centreline and visible-edge
+ *  distances (`{ index, dist, edge }`, edge = dist minus half the drawn contour
+ *  stroke), or null when the shape has no generated segments. */
+function _contourSegmentNear(editor, pt) {
+    const p = currentPattern(editor);
+    const shape = currentShape(p);
+    if (!(shape.source === 'generated' && Array.isArray(shape.segments))) return null;
+    const { primitives } = generateSilhouette(_shapeContourRegion(editor, p), shape);
+    const { index, dist } = nearestSegment(primitives, shape.segments, pt);
+    if (index == null) return null;
+    const segEl = _contourSegmentEl(editor, index);
+    const sw = segEl ? parseFloat(segEl.attr('stroke-width')) || 0 : 0;
+    return { index, dist, edge: Math.max(0, dist - sw / 2) };
+}
+
 function _contourSegmentAt(editor, pt) {
     const p = currentPattern(editor);
     const shape = currentShape(p);

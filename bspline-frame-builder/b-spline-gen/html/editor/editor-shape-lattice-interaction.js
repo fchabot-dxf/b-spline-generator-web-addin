@@ -475,13 +475,21 @@ export function primitiveSegmentMap(segments) {
  * segment's own index, or `null` if nothing is within tolerance.
  */
 export function hitTestSegment(primitives, segments, pt, tolerance) {
+  const { index, dist } = nearestSegment(primitives, segments, pt);
+  return dist <= tolerance ? index : null;
+}
+
+/** The contour segment nearest `pt` and its centreline distance, `{ index, dist }`
+ *  (index null for no primitives) -- hitTestSegment's own search, exposed so a
+ *  caller can weigh the contour against a nearby rail/tie/node by distance. */
+export function nearestSegment(primitives, segments, pt) {
   const map = primitiveSegmentMap(segments);
-  let bestIndex = null, bestDist = Infinity;
+  let index = null, dist = Infinity;
   primitives.forEach((prim, i) => {
     const d = prim.type === 'L' ? _distToLine(pt, prim.p0, prim.p1) : _distToArc(pt, prim);
-    if (d < bestDist) { bestDist = d; bestIndex = map[i]; }
+    if (d < dist) { dist = d; index = map[i]; }
   });
-  return bestDist <= tolerance ? bestIndex : null;
+  return { index, dist };
 }
 
 /** SE14 §4's own "mirrored pairs" rule, duplicated from properties-

@@ -3157,3 +3157,20 @@ show the frame settings not the vectors, the tab should be the toggle". `_syncTa
 = #editorFramePanel; `setEditorTab` (frame-panel.js) re-syncs the drawer on every switch, so Artwork brings the tool tab
 + Layers back. Tests: tests/editor-drawer.test.js (2 new). Verified at 390 px with touch emulation: Artwork = tabs +
 Shape Lattice panel, Frame = frame settings only. Also: the Frame panel's help note no longer says "round handles".
+
+## Contour segments selectable again on the phone (Shape Lattice) -- 2026-09-28
+
+Fred: "I still cant select contour segment in the lattice tool". Reproduced headless at 390 px with REAL touch
+(and mouse) taps at every contour segment's midpoint: most selected nothing or a rail. Two causes:
+1. The F27 arc-pull radius DOT sits at each arc's midpoint -- the natural tap spot -- and grabbed the press as a
+   handle drag, so a tap never reached the segment select. Now the dot keeps its handle priority (it still wins
+   over a rail ending under it, e.g. at the waist pinch) but presses like its arc: a TAP selects the segment +
+   opens the style bar, a DRAG past the click threshold pulls the radius (`_pressContourSegment`, shared by the
+   dot and the arc press).
+2. Rails end ON the contour, and any lattice piece within the (wide, touch) slop beat the contour. Now the CLOSER
+   one wins, measured to each one's visible edge (distance minus half its stroke), then centreline
+   (`_nearbyLatticePiece`, `_contourSegmentNear`, `nearestSegment`); a tap on a rail/tie/node itself still picks it.
+Result (touch): 10/12 segments select; the other 2 are points where a rail/tie end genuinely sits on the curve
+(random per Generate) -- a tap elsewhere on that segment selects it. A touch drag on a dot still reshapes
+(cornerRadiusTop default -> 1.32). The rect Lattice tool's border is not split into selectable segments at all
+(0 contour segments there) -- unchanged, separate question for Fred.

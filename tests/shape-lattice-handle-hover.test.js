@@ -314,8 +314,12 @@ describe('F27 item 2 arc pull (Fred: "more intuitive to pull the arc than the ar
     expect(sq.hy).toBeCloseTo(c0.y, 9);
     expect(w.hx).toBeCloseTo(c0.x - w.arcs[0].rx, 9); // the dot on the pinch
     h.start(editor, { x: w.hx, y: w.hy }, { x: w.hx, y: w.hy });
-    expect(editor._shapeLatticeDragKey).toBe('waistRadius'); // the dot grabs at once, like any handle mark
+    // Fred: "I still can't select contour segment" -- a press on the dot is armed like a press on its
+    // arc (a tap selects the waist segment), and only a move past the click threshold pulls the radius.
+    expect(editor._shapeArcPress && editor._shapeArcPress.key).toBe('waistRadius');
+    expect((editor._selectedElements || []).map((el) => el.attr('data-contour-seg'))).toEqual([w.segment]);
     h.update(editor, { x: w.hx - 0.2, y: w.hy });
+    expect(editor._shapeLatticeDragKey).toBe('waistRadius');
     expect(Object.keys(p.shape.params).sort()).toEqual(['waistRadius', 'waistReach']);
     const a1 = rec(editor, 'waistRadius').arcs[0];
     expect(a1.cx).toBeCloseTo(c0.x, 9);
