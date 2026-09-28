@@ -10,7 +10,7 @@ import {
 import { P, persistableP, saveLastSession, loadLastSession } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
   frameCutProfile, frameFit, drawFrameProfile, setFrameProfileProvider, FRAME_PROFILE_GROUP_ID, frameInnerProfile, frameMiters,
-  FRAME_OUTLINE_COLOR, INACTIVE_LAYER_OPACITY, setEditorFocus,
+  FRAME_OUTLINE_COLOR, INACTIVE_LAYER_OPACITY, setEditorFocus, FRAME_CUTAWAY_GROUP_ID,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameColorFor } from '../bspline-frame-builder/b-spline-gen/html/core/color-utils.js';
 
@@ -124,10 +124,16 @@ describe('drawFrameProfile (editor background)', () => {
     const g = bg.findOne('#' + FRAME_PROFILE_GROUP_ID);
     expect(g).toBeTruthy();
     // F8 (Fred): the frame band (thickness), its inner edge and the 4 miters, under the profile outline.
-    expect(g.children.map((c) => c.cls[0])).toEqual(['frame-cutaway', 'frame-band', 'frame-inner-edge',
+    expect(g.children.map((c) => c.cls[0])).toEqual(['frame-band', 'frame-inner-edge',
       'frame-miter', 'frame-miter', 'frame-miter', 'frame-miter', 'frame-cut-profile']);
-    expect(g.children[0].attrs['fill-rule']).toBe('evenodd');
-    expect(g.children[0].attrs.d.startsWith('M0 0 H7 V9 H0 Z ')).toBe(true);
+    // Fred: "when a frame exists make the outside of the frame darker" -- the cut-away is its own group, drawn
+    // just before the profile group and never faded by the focus rule (which only sets the profile group's opacity).
+    const cut = bg.findOne('#' + FRAME_CUTAWAY_GROUP_ID);
+    expect(cut.children.map((c) => c.cls[0])).toEqual(['frame-cutaway']);
+    expect(bg.children.indexOf(cut)).toBe(bg.children.indexOf(g) - 1);
+    expect(cut.attrs.opacity).toBeUndefined();
+    expect(cut.children[0].attrs['fill-rule']).toBe('evenodd');
+    expect(cut.children[0].attrs.d.startsWith('M0 0 H7 V9 H0 Z ')).toBe(true);
     expect(sketch.children).toEqual([]);
     expect(editor._frameProfile).toBe(prof);
   });

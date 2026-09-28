@@ -20,6 +20,11 @@ import { handleKindVisual, drawParamHandle, drawSegmentHighlight } from './edito
 import { controlledSegments } from './editor-shape-lattice-interaction.js';
 
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
+/** The darkened "outside the frame" (board minus the cut profile): its own group, NOT inside the frame
+ *  profile group, so the focus rule's fade (setEditorFocus: the frame at INACTIVE_LAYER_OPACITY in the
+ *  Artwork tab) never lightens it -- Fred (phone, Artwork tab): "when a frame exists make the outside of
+ *  the frame darker". Drawn just before the profile group, so it still sits under the frame lines. */
+export const FRAME_CUTAWAY_GROUP_ID = 'frame-cutaway-layer';
 export const FRAME_GRID_CLIP_ID = 'frame-grid-clip';
 
 /** F8 (Fred): every frame line (outline, inner edge, miters) in ONE colour. */
@@ -203,19 +208,23 @@ export function drawFrameProfile(editor) {
 
 function _drawFrameProfile(editor) {
   if (!editor || !editor._bgLayer) return null;
-  const old = editor._bgLayer.findOne ? editor._bgLayer.findOne('#' + FRAME_PROFILE_GROUP_ID) : null;
-  if (old) old.remove();
+  for (const id of [FRAME_PROFILE_GROUP_ID, FRAME_CUTAWAY_GROUP_ID]) {
+    const old = editor._bgLayer.findOne ? editor._bgLayer.findOne('#' + id) : null;
+    if (old) old.remove();
+  }
   const spec = _provider ? _provider() : null;
   const prof = spec ? frameCutProfile(spec.defs, spec.record, { widthIn: editor._mW, heightIn: editor._mH }) : null;
   editor._frameProfile = prof && !prof.defects.length ? prof : null;
   _clipGrid(editor, editor._frameProfile);
   if (!prof || prof.defects.length) return prof;
   const W = editor._mW, H = editor._mH;
+  // Everything outside the profile is cut away: board rect minus the outline (even-odd) -- in its own
+  // group, full strength in BOTH tabs (FRAME_CUTAWAY_GROUP_ID).
+  const cut = editor._bgLayer.group().id(FRAME_CUTAWAY_GROUP_ID).attr('pointer-events', 'none');
+  cut.path(`M0 0 H${W} V${H} H0 Z ${prof.pathD}`)
+    .fill({ color: '#1f2933', opacity: 0.6 }).attr('fill-rule', 'evenodd').addClass('frame-cutaway');
   const g = editor._bgLayer.group().id(FRAME_PROFILE_GROUP_ID).attr('pointer-events', 'none');
   if (editor._editorTab !== 'frame') g.attr('opacity', INACTIVE_LAYER_OPACITY); // the focus rule (setEditorFocus)
-  // Everything outside the profile is cut away: board rect minus the outline (even-odd).
-  g.path(`M0 0 H${W} V${H} H0 Z ${prof.pathD}`)
-    .fill({ color: '#1f2933', opacity: 0.6 }).attr('fill-rule', 'evenodd').addClass('frame-cutaway');
   // The frame itself: the band between the outline and its inner edge (the
   // frame thickness), tinted in the chosen wood, plus the inner edge and the
   // 4 miter lines. Same inner loop the 3D bars use (frameInnerProfile).

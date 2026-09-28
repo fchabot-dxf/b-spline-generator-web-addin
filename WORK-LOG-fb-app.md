@@ -3191,3 +3191,16 @@ changed AND the view did not zoom. Two causes, two fixes:
   pointer map so the pinch zooms.
 Verified: unfixed = artwork geometry changed / frame changed + no zoom; fixed = both unchanged and both zoom.
 Tests: frame-handles (new pinch test); undo-mock tests gain `_snapshotState`. Full vitest 2418/2418.
+
+## Frame door always visible; outside of the frame stays dark in Artwork -- 2026-09-28
+
+- Fred: "I had to create a frame for settings to appear. I guess I'd still want the editor door even if no frame
+  yet exists." `#btnEditFrameShape` (now "Edit frame ✎") moved out of `#frameSettings` (hidden with template
+  "None"), next to Send frame, so the editor's Frame tab (template picker + Generate) is always reachable.
+- Fred (phone, Artwork tab): "When a frame exists make the outside of the frame darker". The cut-away (board minus
+  the cut profile, #1f2933 @ 0.6) was inside the frame profile group, which the focus rule fades to
+  INACTIVE_LAYER_OPACITY (0.4) in Artwork -> only ~0.24 dark. It is now its own group
+  (FRAME_CUTAWAY_GROUP_ID, drawn just before the profile group), never faded: same darkness in both tabs.
+- Panning "jump" (Fred): not reproduced headless at 390 px with real touch -- one-finger Frame pan, two-finger pan,
+  pinch then lift one finger and keep moving (the remaining finger is ignored, no zoom/jump), one-finger on empty
+  artwork. Asked Fred for the exact gesture.
