@@ -3337,3 +3337,6 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
 
 ## Frame panel buttons taller (Fred, phone shot: "These buttons should be a bit taller")
 - #btnEditFrameShape / #btnSendFrame: height 34px (was the 24px .cad-btn default), 13px text; Send frame semibold. Verified at 412px.
+
+## Lattice: pieces picked where the finger really is (Fred: "In lattice I can't move selected ties easily" / "It's catching rails instead")
+- latticeHandler.start hit-tested at the touch-AIM point (40 px above the finger) snapped to the grid, so a finger on a tie grabbed the rail above. Now the raw point (`editor._getMousePoint(e)`) picks the piece (as Shape Lattice already did) and decides end-stretch vs move (`_beginLatticeMove` grabPt, both tools); the drag deltas keep the aim point. Headless touch: finger on a tie -> tie move (was: rail move); Shape Lattice and mouse too.

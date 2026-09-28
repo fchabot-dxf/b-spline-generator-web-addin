@@ -1257,7 +1257,9 @@ function _bakeLatticeTransform(hit, kind) {
     }
 }
 
-function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
+// `grabPt` (Fred: "It's catching rails instead"): where the finger/mouse REALLY pressed (no touch-aim offset, no
+// grid snap) -- it decides end-STRETCH vs body-MOVE; `pt` stays the gesture's own start for the move deltas.
+function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation, grabPt = pt) {
     // Bake any leftover transform (a prior Select-mode move) into the
     // grabbed element's raw attrs FIRST, once, before anything below
     // reads or writes them — see this function's own header comment.
@@ -1298,7 +1300,7 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
         // read became fractional. A board-mode piece's endpoints are always
         // already integer, so this is a no-op there.
         const pieceCanon = { a: orient(toLatticeFractional(aWorld, spacing), orientation), b: orient(toLatticeFractional(bWorld, spacing), orientation) };
-        const ptFracCanon = orient(toLatticeFractional(pt, spacing), orientation);
+        const ptFracCanon = orient(toLatticeFractional(grabPt, spacing), orientation);
         const end = nearestEndWithin(pieceCanon, ptFracCanon, endGrabTolCells);
 
         if (end) {
@@ -1906,7 +1908,12 @@ const latticeHandler = {
         // hit-test confined to "whichever layer is active" would miss
         // every piece of a DIFFERENT kind than the one just clicked.
         const tol = getDynamicTolerance(editor, 10, 'slopPx');
-        const hit = _getNearbyLatticePiece(editor, pt, tol);
+        // Fred ("In lattice I can't move selected ties easily" / "It's catching rails instead"): the piece is
+        // picked where the finger/mouse REALLY is. `pt` is the touch-aim point (40 px ABOVE the finger) snapped to
+        // the grid -- right for drawing a new rail/tie, but on a tie a rail's length away from the finger it hit
+        // the rail above. Shape Lattice already hit-tests the raw point (shapeLatticeHandler.start).
+        const rawPt = e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt;
+        const hit = _getNearbyLatticePiece(editor, rawPt, tol);
         const hitKind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
         if (hitKind === 'rail' || hitKind === 'tie' || hitKind === 'node') {
             // T76 (SE17): grabbing a piece on a DIFFERENT kind-layer than
@@ -1945,7 +1952,7 @@ const latticeHandler = {
             }
             editor._isDrawing = true;
             const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;
-            editor._latticeMove = withChain(editor, _beginLatticeMove(editor, hit, hitKind, pt, spacing, orientation));
+            editor._latticeMove = withChain(editor, _beginLatticeMove(editor, hit, hitKind, pt, spacing, orientation, rawPt));
             armRailEndStretch(editor, editor._latticeMove); // T81 item 7
             return;
         }
@@ -1960,7 +1967,7 @@ const latticeHandler = {
             // piece) under the press used to be ignored here -- no grab, no move. It now goes through the SAME
             // select-and-drag Shape Lattice's Select already hands it to (selectHandler: select, translate with
             // its ends snapping onto other geometry, one undo step on release).
-            const other = editor._getNearbyElement(pt, tol, { anyVisibleLayer: true });
+            const other = editor._getNearbyElement(rawPt, tol, { anyVisibleLayer: true });
             if (other) { selectHandler.start(editor, pt, e, other); return; }
             if (!(e && e.shiftKey)) editor._deselect();
             // H6 CONTEXT-MENU: same shape as selectHandler.start's own
@@ -2382,7 +2389,7 @@ const shapeLatticeHandler = {
             // pt (this function's own 2nd param), not rawPt -- _beginLatticeMove
             // is designed against the touch-offset-adjusted point, matching
             // latticeHandler.start's own identical call exactly.
-            editor._latticeMove = withChain(editor, _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation));
+            editor._latticeMove = withChain(editor, _beginLatticeMove(editor, latticeHit, hitKind, pt, spacing, orientation, rawPt));
             armRailEndStretch(editor, editor._latticeMove); // T81 item 7
             return;
         }
