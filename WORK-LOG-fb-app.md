@@ -3605,3 +3605,9 @@ are Generate + Unprotect all, no errors. vitest 2438 passed.
   -> rail selected; tap empty -> nothing; hold -> menu, 7 px wobble keeps it, drag -> menu closed + aim -> lift
   selects; hold -> slide onto "Select all" -> lift -> 55 selected; two-finger pan moves the view; Box Lattice Select
   aim picks a contour piece; Frame tab one-finger drag: view unchanged, two-finger: pans. vitest 2438 passed.
+
+## Tool hints off (Fred: "no hint please")
+- editor-ui SHOW_TOOL_HINTS = false: no per-tool help line (MODE_HINTS / TOUCH_MODE_HINTS), no pen anchor tip
+  (ANCHOR_HINT ''), no one-selected tip. The status line itself stays for warnings/results the tools post
+  (setEditorStatusHint). Verified at 390px: Select / Cut / Stripe / Shape Lattice / Lattice -> no hint; a posted
+  warning still shows. vitest 2438 passed.

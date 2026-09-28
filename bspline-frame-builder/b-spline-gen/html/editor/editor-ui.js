@@ -44,13 +44,18 @@ const TOUCH_MODE_HINTS = {
 // the editor's pointer type reads 'mouse' until the canvas is first touched, so a phone (coarse pointer) counts too
 const _isTouch = (editor) => (editor && editor._pointerType === 'touch')
   || (typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+// Fred ("no hint please"): the per-tool help line (and the pen / selection tips) is off. The status line itself
+// stays -- warnings and results still use it (setEditorStatusHint from the tools). Flip to bring the tips back.
+const SHOW_TOOL_HINTS = false;
 function _modeHint(editor, mode) {
+  if (!SHOW_TOOL_HINTS) return '';
   return (_isTouch(editor) && TOUCH_MODE_HINTS[mode]) || MODE_HINTS[mode] || '';
 }
 
-// Anchor-mode hint replaces the pen mode hint while the user is actively
+// Anchor-mode hint replaces the pen mode hint (off with the other tool tips: SHOW_TOOL_HINTS) while the user is actively
 // placing anchor points; toggled from editor-interaction.js.
-export const ANCHOR_HINT = 'Pen (anchor mode) — keep clicking to add points • Double-click or Enter to commit • Esc to cancel';
+export const ANCHOR_HINT_TEXT = 'Pen (anchor mode) — keep clicking to add points • Double-click or Enter to commit • Esc to cancel';
+export const ANCHOR_HINT = SHOW_TOOL_HINTS ? ANCHOR_HINT_TEXT : '';
 
 // SE8c / SA-DECL-3: stroke-width padding around a selection/hover
 // highlight's cloned outline — visual size, not gated per pointer type
@@ -85,6 +90,7 @@ const SELECTION_HINT = {
 document.addEventListener('editorSelectionChanged', (e) => {
   const { editor, selected } = e.detail || {};
   if (!editor || editor._anchorMode) return; // never steal the pen tool's own ANCHOR_HINT
+  if (!SHOW_TOOL_HINTS) return; // Fred: "no hint please"
   if (selected && selected.length === 1) {
     setEditorStatusHint(SELECTION_HINT[editor._pointerType === 'mouse' ? 'mouse' : 'touch']);
   } else {
