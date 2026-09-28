@@ -5,7 +5,7 @@ import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
-import { updateGlobalButtons, takeSnapshot, globalHistoryLog } from '../core/history.js';
+import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring } from '../core/history.js';
 import { AppState } from './app-state.js';
 import { markDirty } from '../core/dirty.js';
 
@@ -19,7 +19,11 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
-import { FRAME_DEFS, frameParam } from '../core/frame-record.js';
+import { FRAME_DEFS, frameParam, normalizeFrameRecord } from '../core/frame-record.js';
+import { syncFramePanel } from './frame-panel.js';
+
+/** The frame a fresh start opens on (data/frame-defs: "Template 1 - Hourglass"). */
+const FRESH_START_FRAME_TEMPLATE = 'template_1';
 
 // SE3a: snapshot of the unified editor document (P.editorSvg) captured
 // when the SVG editor modal opens. The Cancel button restores it — reloads
@@ -470,8 +474,18 @@ export async function initApp(preview, wireGlobalEvents) {
   if (!restored && !isNaN(P.seed)) {
     P.seed = Math.floor(Math.random() * 99999);
   }
+  // Fred ("open on hourglass frame too"): a fresh start (no last session on this device) opens on the Hourglass
+  // frame instead of no frame. A restored session keeps whatever frame it had (none included), and an old project
+  // saved without a frame still loads as "no frame" (the record's own default stays no frame).
+  if (!restored && !P.frame) P.frame = normalizeFrameRecord({ templateId: FRESH_START_FRAME_TEMPLATE });
+  // the Frame panel was built before this ran (main.js initFramePanel): show the restored / fresh-start frame
+  syncFramePanel();
 
+  // syncUItoParam fires a real 'change' on checkboxes, which schedules an undo step -- and that step marked a fresh,
+  // untouched start as "unsaved" (the leave-page warning then fired for nothing). The same guard applySnapshot uses.
+  setUndoRestoring(true);
   Object.keys(P).forEach(k => syncUItoParam(k, P[k]));
+  setUndoRestoring(false);
   updateSpacingLabels(P.widthIn, P.heightIn);
 
   if (preview) preview.setCurvesVisible(P.showMesh);

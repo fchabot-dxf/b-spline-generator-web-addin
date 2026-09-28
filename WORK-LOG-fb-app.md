@@ -3512,3 +3512,15 @@ A read-only audit (scratchpad saveaudit1-3.mjs, real page through CDP) found 8; 
 7. Save As / Rename onto an existing project overwrote it silently: confirm first.
 8. Fusion: Load with unsaved changes did nothing (window.confirm is disabled in CEF): the app's own confirmDialog.
 Tests: snapshot-manager (undo keeps drawing/frame; load resets missing keys), layers-attr (codec + repair).
+
+## Stock size kept; fresh start opens on the Hourglass frame
+(Fred: "I guess id want the stock size saved between session" / "I guess open on hourglass frame too")
+- Stock size: already kept by the save-audit #4 restore (verified: 17.5 x 23.25, depth 0.8 -> reload -> same, fields too).
+- initApp: a fresh start (no last session on this device) sets P.frame to Template 1 - Hourglass
+  (FRESH_START_FRAME_TEMPLATE); a restored session keeps its own frame (None included); an old project without a
+  frame still loads as none (frame-defs defaultTemplate stays null). syncFramePanel() after the restore -- the Frame
+  panel was built first (main.js initFramePanel) and showed "None" for a restored/fresh frame.
+- A fresh, untouched start read as "unsaved" (the boot's syncUItoParam fired checkbox `change` -> scheduled an undo
+  snapshot -> markDirty; with the new leave-page warning that warned for nothing): wrapped in setUndoRestoring,
+  the same guard applySnapshot uses. Verified: fresh start dirty=false, Frame panel "Hourglass"; pick None ->
+  reload -> None; pick Hourglass -> reload -> Hourglass.
