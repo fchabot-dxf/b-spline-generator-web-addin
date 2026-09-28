@@ -3268,3 +3268,14 @@ is `flex: 0 0 auto` on the same line, made to fit by compaction: layer pill capp
 Cancel / Apply / ⋮ padding tightened, 6px gaps, 8px header padding; flex-wrap kept as the fallback for anything too
 narrow. Measured with touch emulation (undo/redo live in the floating pill on touch): one line at 360, 390 and 412px.
 CSS only (styles/editor.css, inside the max-width:720px block); desktop unchanged.
+
+## Phone Stroke / Color / Grid row scrolls again -- 2026-09-28
+
+Fred (phone shot 6:27): "this toolbar isn't scrollable" (Grid cut off). The <=720px rule already set
+`.editor-toolbar-top { overflow-x: auto }`, but the element's inline `overflow: hidden` (desktop row) won, so
+computed overflow-x was `hidden` -- content 990px wide in a 390px row, clipped, no finger scroll. Now
+`overflow-x: auto !important` (+ overflow-y hidden, touch-action pan-x) in the phone block. Verified: computed
+overflow-x hidden -> auto, 600px of scroll range. (Headless synthesized swipes do not scroll ANY row here, including
+the tool row that scrolls on Fred's phone, so that part is confirmed by the computed style, not a swipe.)
+Undo after moving lattice geometry: not reproduced -- rail and tie moves undo correctly in both lattice tools, mouse
+and touch, via the on-screen undo button; asked Fred for the exact steps.

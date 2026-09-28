@@ -1162,7 +1162,12 @@
         gap: 8px;
         padding: 10px 10px 10px 8px;
         height: auto;
-        overflow-x: auto;
+        /* !important: the element's own inline `overflow: hidden` (the desktop row) otherwise wins over this
+           rule, so on a phone the Stroke / Color / Grid row clipped instead of scrolling (Fred, phone shot 6:27:
+           "this toolbar isn't scrollable"). */
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        touch-action: pan-x;
         -webkit-overflow-scrolling: touch;
         scroll-snap-type: x proximity;
         align-items: center;
