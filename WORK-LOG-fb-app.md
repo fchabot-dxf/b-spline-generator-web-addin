@@ -3259,3 +3259,12 @@ find their pattern through the active layer). The carve special case is gone. Ve
 (name, drawing, 3D on) + the four new layers; a second Regenerate reuses them. Tests: editor-lattice-kind-layers
 (rewritten + origin-with-drawings), editor-lattice-pattern-emit. Existing saved lattices (Rails = an old taken-over
 layer) keep working: the rails id is only chosen when none exists yet.
+
+## Phone editor header on one line -- 2026-09-28
+
+Fred (phone shot 6:22): "Layers, Frame and Art should be on same line as header buttons". The <=720px rules gave
+`.editor-header-actions` its own full-width row (`flex: 0 0 100%`, from MOB2/H4 when the buttons did not fit). Now it
+is `flex: 0 0 auto` on the same line, made to fit by compaction: layer pill capped at 76px with an ellipsis, tab /
+Cancel / Apply / ⋮ padding tightened, 6px gaps, 8px header padding; flex-wrap kept as the fallback for anything too
+narrow. Measured with touch emulation (undo/redo live in the floating pill on touch): one line at 360, 390 and 412px.
+CSS only (styles/editor.css, inside the max-width:720px block); desktop unchanged.

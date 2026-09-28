@@ -1085,12 +1085,32 @@
        breakpoint, so Cancel/Apply are simply always visible, no gesture
        required; `overflow-x: auto` + `order` below stay as a fallback for
        whatever narrower device still can't fit them all on one row. */
+    /* Fred (phone shot 6:22: "Layers, Frame and Art should be on same line as header buttons"): the actions
+       group no longer claims a whole row -- it sits on the SAME line as the layer pill + Frame/Artwork, made to
+       fit a 390px phone by the compaction below (layer pill capped with an ellipsis, tighter tab/button padding
+       and gaps). The header's flex-wrap stays as the fallback for a phone too narrow even for that. */
     #svgEditorHeader > .editor-header-actions {
-        flex: 0 0 100%;
+        flex: 0 0 auto;
         min-width: 0;
-        overflow-x: auto;
+        gap: 6px !important;
         justify-content: flex-end;
     }
+    #svgEditorHeader {
+        padding: 8px 8px !important;
+        gap: 6px !important;
+    }
+    #svgEditorHeader > div:first-child { gap: 6px !important; min-width: 0; flex: 0 1 auto; }
+    #editorActiveLayerLabel {
+        min-width: 0 !important;
+        max-width: 76px;
+        padding: 3px 6px !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    #editorModeTabs .editor-fillmode-btn { padding: 3px 8px !important; }
+    #editorCancel, #editorApply { padding: 4px 8px !important; }
+    #editorHeaderMore { padding: 4px 6px !important; }
 
     #svgEditorHeader > .editor-header-actions > #editorCancel,
     #svgEditorHeader > .editor-header-actions > #editorApply {
