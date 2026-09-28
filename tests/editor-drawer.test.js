@@ -17,6 +17,7 @@ import {
   drawerHeightPx,
   LANDSCAPE_SNAP_STATES,
   landscapeWidthPx,
+  syncDrawerForMode,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-drawer.js';
 
 describe('DRAWER_SNAP_STATES / TOOL_PANELS (declared tables)', () => {
@@ -72,5 +73,34 @@ describe('MOB4: LANDSCAPE_SNAP_STATES / landscapeWidthPx (the side-column splitt
 
   it('an unrecognized state falls back to the canvasMax floor', () => {
     expect(landscapeWidthPx('bogus', 800)).toBe(236);
+  });
+});
+
+describe('the Frame / Artwork switch decides the drawer (Fred: "if I\'m in frame the panel should show the frame settings not the vectors, the tab should be the toggle")', () => {
+  const setup = () => {
+    document.body.innerHTML = `<div id="editorDrawerTabs"><button id="editorDrawerTab-tool" class="hidden"></button><button id="editorDrawerTab-layers">Layers</button></div>
+      <aside id="editorShapeLatticePanel"></aside><aside id="editorLayersPanel"></aside>`;
+    return { tabs: document.getElementById('editorDrawerTabs'), tool: document.getElementById('editorDrawerTab-tool'),
+      panel: document.getElementById('editorShapeLatticePanel'), layers: document.getElementById('editorLayersPanel') };
+  };
+  it('Artwork + Shape Lattice: the tool tab shows and is active, the tab strip is visible', () => {
+    const d = setup();
+    syncDrawerForMode({ _editorTab: 'artwork' }, 'shapeLattice');
+    expect(d.tabs.style.display).toBe('');
+    expect(d.tool.classList.contains('hidden')).toBe(false);
+    expect(d.tool.classList.contains('active')).toBe(true);
+    expect(d.panel.classList.contains('editor-drawer-tab-hidden')).toBe(false);
+  });
+  it('Frame (same tool): no tool tab, no tab strip, the tool panel hidden -- only the second slot (the frame settings)', () => {
+    const d = setup();
+    syncDrawerForMode({ _editorTab: 'artwork' }, 'shapeLattice');
+    syncDrawerForMode({ _editorTab: 'frame' }, 'shapeLattice');
+    expect(d.tabs.style.display).toBe('none');
+    expect(d.tool.classList.contains('hidden')).toBe(true);
+    expect(d.panel.classList.contains('editor-drawer-tab-hidden')).toBe(true);
+    expect(d.layers.classList.contains('editor-drawer-tab-hidden')).toBe(false);
+    syncDrawerForMode({ _editorTab: 'artwork' }, 'shapeLattice'); // back to Artwork: the tool panel returns
+    expect(d.tabs.style.display).toBe('');
+    expect(d.panel.classList.contains('editor-drawer-tab-hidden')).toBe(false);
   });
 });

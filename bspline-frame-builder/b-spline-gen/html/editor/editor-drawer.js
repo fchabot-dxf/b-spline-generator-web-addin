@@ -104,7 +104,18 @@ function _syncTabsForMode(editor, mode) {
   const toolTab = el('editorDrawerTab-tool');
   const layersTab = el('editorDrawerTab-layers');
   if (!toolTab || !layersTab) return;
-  const toolPanel = TOOL_PANELS[mode];
+  // Fred (phone, Frame tab showing the Shape Lattice panel): "if I'm in frame the panel should show the
+  // frame settings not the vectors, the tab should be the toggle". The Frame / Artwork switch decides
+  // what the drawer holds: in Frame it is ONLY the frame settings (the second slot, which setEditorTab
+  // fills with #editorFramePanel) -- no tool panel and no drawer tab strip to pick between them.
+  const frameTab = !!editor && editor._editorTab === 'frame';
+  const tabs = el('editorDrawerTabs');
+  if (tabs) tabs.style.display = frameTab ? 'none' : '';
+  // The current tool's own panel stays visible by its toolbar-group rule (editor-ui.js) whatever the drawer
+  // does, so in Frame it has to be hidden here explicitly (and un-hidden again by _activateTab on Artwork).
+  const modePanel = TOOL_PANELS[mode] ? el(TOOL_PANELS[mode].panelId) : null;
+  if (frameTab && modePanel) modePanel.classList.add('editor-drawer-tab-hidden');
+  const toolPanel = frameTab ? null : TOOL_PANELS[mode];
   toolTab.classList.toggle('hidden', !toolPanel);
   toolTab.textContent = toolPanel ? toolPanel.label : '';
   // T58: which panel element the tab tracks travels WITH the tab button
@@ -147,9 +158,11 @@ function _activateTab(editor, which) {
   if (layersPanel) layersPanel.classList.toggle('editor-drawer-tab-hidden', which !== 'layers');
 }
 
-/** Called from editor-ui.js's setMode on every tool switch — keeps the
- *  drawer's tabs in sync with whether the CURRENT tool has an options
- *  panel at all. A no-op if the drawer isn't in this host's DOM. */
+/** Called from editor-ui.js's setMode on every tool switch, and from
+ *  frame-panel.js's setEditorTab on every Frame / Artwork switch — keeps
+ *  the drawer's tabs in sync with the editor tab and whether the CURRENT
+ *  tool has an options panel at all. A no-op if the drawer isn't in this
+ *  host's DOM. */
 export function syncDrawerForMode(editor, mode) {
   _syncTabsForMode(editor, mode);
 }

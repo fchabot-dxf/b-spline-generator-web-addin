@@ -3147,3 +3147,13 @@ NOT verified here: live Fusion ([Send frame] of a pulled waist: both waist seeds
 same mechanism as the F20 corner seeds, unmeasured); a real touch device (only mouse events in the shots; the
 touch path is the same start/update/finish with the press-lit highlight). Pre-existing, not changed: the Frame
 tab's hover only clears on a move over the canvas (leaving the canvas keeps the last hover look).
+
+## Phone drawer follows the Frame / Artwork switch -- 2026-09-28
+
+Fred (phone screenshot, Frame tab showing the Shape Lattice panel): "now in the editor if im in frame the panel should
+show the frame settings not the vectors, the tab should be the toggle". `_syncTabsForMode` (editor-drawer.js) now reads
+`editor._editorTab`: in Frame the drawer's own tab strip is hidden and the current tool's panel is hidden
+(`editor-drawer-tab-hidden`, since its toolbar-group rule would otherwise keep it visible), leaving only the second slot
+= #editorFramePanel; `setEditorTab` (frame-panel.js) re-syncs the drawer on every switch, so Artwork brings the tool tab
++ Layers back. Tests: tests/editor-drawer.test.js (2 new). Verified at 390 px with touch emulation: Artwork = tabs +
+Shape Lattice panel, Frame = frame settings only. Also: the Frame panel's help note no longer says "round handles".
