@@ -19,6 +19,7 @@
  * `fromLattice` before handing points to `emitSegment`/`emitNode` (which
  * take model-space points).
  */
+import { primitiveFromContourD, contourPrimitiveEnds, mergeContourPrimitives } from './editor-contour-cut.js';
 import {
   toLattice, fromLattice, latticeCrossings,
   LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
@@ -2421,9 +2422,41 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
  */
 const BOUNDARY_GEOMETRY_ATTRS = Object.freeze(['d', 'x', 'y', 'width', 'height', 'cx', 'cy', 'r', 'rx', 'ry',
   'x1', 'y1', 'x2', 'y2', 'points', 'transform', 'stroke-width', 'font-size', 'font-family']);
+/** Fred ("Stripe tool on contour doesn't stick -- I see the stripe for a second after confirm then it turns back
+ *  to normal colour"): a stripe / scissors cut on the contour is a COLOUR cut -- it splits a segment into pieces
+ *  without changing the shape. Keyed per element, that read as a new boundary, so every stripe refilled the whole
+ *  lattice (new rails/ties, and a redrawn contour could drop the stripes). The contour's pieces are keyed here as
+ *  the segments they came from: consecutive pieces a cut would have produced (mergeContourPrimitives, the same
+ *  test Join/Regenerate use) collapse into one entry of exact start/end points (straight from the pieces' own
+ *  `d`, so no float drift) + arc radius/winding + stroke width. A real reshape (a moved end, a new radius, a
+ *  moved piece -- it gets a transform, which falls back to the plain per-element key) still changes the key. */
+function _contourGeometryKey(els) {
+  const out = [];
+  let cur = null;
+  const r6 = (v) => Math.round(v * 1e6) / 1e6;
+  const flush = () => { if (cur) out.push(cur.key()); cur = null; };
+  for (const el of els) {
+    const prim = primitiveFromContourD(el.node.getAttribute('d'));
+    if (!prim) return null;
+    const [p0, p1] = contourPrimitiveEnds(prim);
+    const sw = el.node.getAttribute('stroke-width');
+    const merged = cur && cur.sw === sw ? mergeContourPrimitives(cur.prim, prim) : null;
+    if (merged) { cur.prim = merged; cur.end = p1; continue; }
+    flush();
+    cur = { prim, start: p0, end: p1, sw,
+      key() { return [this.prim.type, r6(this.start.x), r6(this.start.y), r6(this.end.x), r6(this.end.y),
+        this.prim.type === 'A' ? [Math.round(this.prim.rx * 1e3) / 1e3, Math.sign(this.prim.dTheta || 1)] : null, this.sw]; } };
+  }
+  flush();
+  return out;
+}
+
 export function boundaryFillInputs(editor, pattern) {
   const shapeId = pattern && pattern.boundary && pattern.boundary.shapeId;
-  const geometry = _findBoundaryElements(editor, shapeId).map((el) => [el.type,
+  const els = _findBoundaryElements(editor, shapeId);
+  const isPlainContourPiece = (el) => el.type === 'path' && el.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR) && !el.node.getAttribute('transform');
+  const contourKey = els.length && els.every(isPlainContourPiece) ? _contourGeometryKey(els) : null;
+  const geometry = contourKey || els.map((el) => [el.type,
     ...BOUNDARY_GEOMETRY_ATTRS.map((k) => el.node.getAttribute(k)), el.node.textContent ?? null]);
   // style-only: colours (the kind colours, the contour's per-segment colours) never move a piece
   const { colors, fillInputs, contour, ...settings } = pattern || {};

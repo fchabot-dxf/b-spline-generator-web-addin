@@ -3314,3 +3314,14 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
   handleStart): Lattice grid-snaps its press, which threw the ends up to half a cell off their target.
 - Headless (real mouse, Lattice Select): contour piece moved, dragged back 4 px off -> exact on its neighbours;
   2 floating undos -> original.
+
+## Contour stripes stick: a colour cut is not a boundary change (Fred: "Stripe tool on contour doesn't stick, I see the stripe for a second after confirm then it turns back to normal colour")
+- Cause: boundaryFillInputs keyed the boundary per element, so splitting a contour segment into stripes (or a
+  scissors colour cut) read as a new boundary -> every stripe refilled the whole lattice (rails/ties re-rolled,
+  and a redrawn contour can drop the stripes).
+- Fix (editor-lattice-pattern.js `_contourGeometryKey`): when every boundary element is a plain contour piece,
+  consecutive pieces a cut would have produced (mergeContourPrimitives) collapse into one entry of exact start/end
+  points + arc radius/winding + stroke width. A moved end, new radius, new stroke width or a moved piece (transform
+  -> per-element key) still refills. tests/boundary-fill-inputs-contour.test.js (fails without the fix).
+- Headless: straight contour stripe in Lattice and Shape Lattice -> stays striped, ONE undo step, no refill push;
+  arc stripe via stripeAt -> same.
