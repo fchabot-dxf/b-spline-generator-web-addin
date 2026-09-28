@@ -3334,3 +3334,6 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
   floor. A derived (absent) radius is raised to the floor too. Where the geometry has no room, geometry wins.
 - Old patterns: all 128 migration fixture cases unchanged (none drew an arc < 0.125). Tests: the 7x9 corner min is
   now the floor; new floor test (hourglass + bottle, explicit tiny radius raised).
+
+## Frame panel buttons taller (Fred, phone shot: "These buttons should be a bit taller")
+- #btnEditFrameShape / #btnSendFrame: height 34px (was the 24px .cad-btn default), 13px text; Send frame semibold. Verified at 412px.
