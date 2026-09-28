@@ -43,7 +43,7 @@ import {
 import { isOnVisibleLayer } from './layers.js';
 import { haptic } from '../core/haptics.js';
 import { commitEdit } from './editor-commit.js';
-import { HANDLE_HOVER_FILL } from './editor-transform-handles.js';
+import { HANDLE_HOVER_FILL, drawSegmentHighlight } from './editor-transform-handles.js';
 
 /** The floor for a piece with no stroke width of its own (see `minPieceLength` below): only there so a
  *  zero-length piece is impossible. */
@@ -521,11 +521,29 @@ export function clearCutMarker(editor) {
   if (m) m.remove();
 }
 
+/** Fred ("scissors and stripe tool should also have highlight feedback when the cut preview is activated"): the
+ *  piece(s) the tap would act on, lit with the SAME segment highlight the Shape Lattice / Frame handles use
+ *  (drawSegmentHighlight: accent blue, translucent, round caps), a little wider than the piece's own stroke. Drawn
+ *  first in the marker group so the ring / ticks stay on top. */
+export function drawTargetHighlight(editor, g, els) {
+  const pad = getDynamicTolerance(editor, 5, 'markPx');
+  for (const el of els || []) {
+    if (!el || !el.node) continue;
+    let d;
+    if (isContourPath(el)) d = el.node.getAttribute('d');
+    else { const [a, b] = ends(el); d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`; }
+    if (!d) continue;
+    const sw = parseFloat(el.node.getAttribute('stroke-width')) || 0;
+    drawSegmentHighlight(g, d, sw + 2 * pad);
+  }
+}
+
 function _drawCutMarker(editor, intent) {
   clearCutMarker(editor);
   if (!intent || !editor._handleLayer) return;
   const r = getDynamicTolerance(editor, 9, 'slopPx');
   const g = editor._handleLayer.group().id(CUT_MARKER_ID).attr('pointer-events', 'none');
+  drawTargetHighlight(editor, g, intent.action === 'join' ? intent.joint : [intent.el]);
   const color = intent.action === 'join' ? HANDLE_HOVER_FILL : '#ff6f00'; // audit tidy-up: the accent blue
   g.circle(2 * r).center(intent.at.x, intent.at.y).fill('none').stroke({ color, width: r / 3 });
   if (intent.action === 'join') g.rect(r, r).center(intent.at.x, intent.at.y).fill('#fff').stroke({ color, width: r / 4 }).rotate(45);

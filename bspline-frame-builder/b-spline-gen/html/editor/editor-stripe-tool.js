@@ -46,7 +46,7 @@
 import { isTouchPress, touchConfirmStart, touchConfirmUpdate, touchConfirmFinish } from './editor-touch-confirm.js';
 import {
   isCuttable, isContourPath, pieceEnds, cutAtNoCommit, joinNoCommit, writePieceColor, commitCutEdit,
-  cuttableUnder, minPieceLength, CUT_MIN_PLAIN_IN,
+  cuttableUnder, minPieceLength, CUT_MIN_PLAIN_IN, drawTargetHighlight,
 } from './editor-cut-tool.js';
 import { primitiveFromContourD, contourPrimitiveEnds, mergeContourPrimitives, CONTOUR_D_DIGITS } from './editor-contour-cut.js';
 import { JOINT_TOL } from './editor-lattice-chains.js';
@@ -277,6 +277,7 @@ function _drawStripeMarker(editor, plan) {
   if (!plan || !editor._handleLayer) return;
   const r = getDynamicTolerance(editor, 5, 'markPx'); // audit tidy-up: a mark size, not the hit reach
   const g = editor._handleLayer.group().id(STRIPE_MARKER_ID).attr('pointer-events', 'none');
+  drawTargetHighlight(editor, g, plan.run); // the run the tap would stripe, lit (Fred: "highlight feedback")
   for (const p of stripeCutPoints(plan.prim, plan.count)) g.circle(2 * r).center(p.x, p.y).fill('#fff').stroke({ color: '#ff6f00', width: r / 2 });
 }
 

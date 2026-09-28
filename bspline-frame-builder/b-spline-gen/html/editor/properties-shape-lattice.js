@@ -24,6 +24,9 @@ import {
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
     _ensureKindLayers, resolvePatternLayer, freshPattern, latticeColorPool, contourPiecesKey,
 } from './editor-lattice-pattern.js';
+import { primitiveFromContourD, mergeContourPrimitives, splitContourPrimitive, CONTOUR_D_DIGITS } from './editor-contour-cut.js';
+import { arcPointAtFraction } from './editor-primitives.js';
+import { STRIPE_ATTR, STRIPE_SRC_ATTR } from './editor-stripe-tool.js';
 import {
     PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges, SHAPE_PARAM_KEYS,
 } from './editor-shape-lattice-generator.js';
@@ -212,6 +215,70 @@ function _effectiveSegments(editor, shape, pattern) {
  *   single element pre-T73 — every real caller discards the return value
  *   already; only tests read it, updated alongside this change).
  */
+const _primLen = (prim) => (prim.type === 'L' ? Math.hypot(prim.p1.x - prim.p0.x, prim.p1.y - prim.p0.y) : Math.abs(prim.dTheta) * prim.rx);
+const _primPointAt = (prim, f) => (prim.type === 'L'
+    ? { x: prim.p0.x + (prim.p1.x - prim.p0.x) * f, y: prim.p0.y + (prim.p1.y - prim.p0.y) * f }
+    : arcPointAtFraction(prim, f));
+
+/** The drawn contour's pieces grouped by the segment they came from (consecutive pieces a cut produced merge back,
+ *  mergeContourPrimitives): per group, each piece's share of the segment's length, its colour and stripe run id.
+ *  Null unless there is exactly one group per NEW segment (the mapping regenerateSilhouette needs). */
+function _captureContourPieces(existing, p, nSegments) {
+    const colors = (p.contour && p.contour.segmentColors) || [];
+    const groups = [];
+    let cur = null;
+    for (const el of existing) {
+        if (el.node.getAttribute('transform')) return null;
+        const prim = primitiveFromContourD(el.attr('d'));
+        if (!prim) return null;
+        const info = { len: _primLen(prim), color: colors[Number(el.attr(CONTOUR_SEG_INDEX_ATTR))] || null,
+            stripe: el.node.getAttribute(STRIPE_ATTR) };
+        const merged = cur ? mergeContourPrimitives(cur.prim, prim) : null;
+        if (merged) { cur.prim = merged; cur.pieces.push(info); } else { cur = { prim, pieces: [info] }; groups.push(cur); }
+    }
+    return groups.length === nSegments && groups.some((g) => g.pieces.length > 1 || g.pieces[0].color) ? groups : null;
+}
+
+/** Re-cut each fresh segment element at its captured fractions (clones inserted after it), renumber the pieces,
+ *  rebuild the piece-indexed segmentColors and the stripe tags (a stripe run's source is its NEW segment, so a
+ *  re-stripe still restores it exactly). Returns every piece element in contour order. */
+function _reapplyContourPieces(segEls, primitives, groups, p) {
+    const out = [], colors = [];
+    segEls.forEach((el, i) => {
+        // split the segment AS WRITTEN (its own d, like a stripe/scissors cut does) so the outer ends stay exactly
+        // the drawn segment's -- splitting the full-precision primitive moved them in the 4th decimal and the
+        // contour then read as hand-edited (detach -> 'picked')
+        const g = groups[i], prim = primitiveFromContourD(el.attr('d')) || primitives[i];
+        const total = g.pieces.reduce((a, q) => a + q.len, 0) || 1;
+        const parts = [];
+        let rest = prim, acc = 0;
+        for (let k = 0; k < g.pieces.length - 1; k++) {
+            acc += g.pieces[k].len;
+            const [a, b] = splitContourPrimitive(rest, _primPointAt(prim, acc / total)) || [];
+            if (!a || !b) break;
+            parts.push(a);
+            rest = b;
+        }
+        parts.push(rest);
+        const src = el.attr('d');
+        let prev = null;
+        parts.forEach((part, k) => {
+            const e = k === 0 ? el : el.clone().insertAfter(prev);
+            if (e.node.hasAttribute('id') && k > 0) e.node.removeAttribute('id');
+            if (parts.length > 1) e.attr('d', primitiveToPathD(part, CONTOUR_D_DIGITS));
+            const info = g.pieces[k] || {};
+            if (info.stripe) e.attr(STRIPE_ATTR, info.stripe).attr(STRIPE_SRC_ATTR, src);
+            else { e.node.removeAttribute(STRIPE_ATTR); e.node.removeAttribute(STRIPE_SRC_ATTR); }
+            colors.push(info.color || null);
+            out.push(e);
+            prev = e;
+        });
+    });
+    out.forEach((e, idx) => e.attr(CONTOUR_SEG_INDEX_ATTR, idx));
+    p.contour.segmentColors = colors;
+    return out;
+}
+
 export function regenerateSilhouette(editor, p) {
     const shape = currentShape(p);
     const region = _shapeContourRegion(editor, p);
@@ -282,6 +349,12 @@ export function regenerateSilhouette(editor, p) {
     // have different lengths. A segment-count change means index i no
     // longer names the same drawn edge, so overrides are cleared rather
     // than silently misapplied to a different piece after the rebuild.
+    // Fred ("on regenerate is it possible to keep stripe recolor, for contour for example"): a cut / striped /
+    // recoloured contour whose SHAPE changed (a slider, a handle, Regenerate) is rebuilt -- but each segment's
+    // pieces are carried over: the same cut FRACTIONS along the new segment, the same colours, the same stripe run.
+    // Only when the segment count is unchanged (a preset swap has no segment-to-segment mapping -> clean slate).
+    const carried = !countMatches && !keepPieces && existing.length > primitives.length
+        ? _captureContourPieces(existing, p, primitives.length) : null;
     if (!countMatches && !keepPieces) {
         p.contour.segmentColors = [];
         for (const oldEl of existing) oldEl.remove();
@@ -320,15 +393,16 @@ export function regenerateSilhouette(editor, p) {
         for (let i = 1; i < segEls.length; i++) segEls[i].attr(BOUNDARY_REF_ATTR, id);
         p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
     }
+    const pieceEls = carried ? _reapplyContourPieces(segEls, primitives, carried, p) : segEls;
     // Re-applied on EVERY regenerate (not just at mint time), so a colour/
     // width/show change already written to `p` takes effect immediately —
     // matching contourWidth's own "follows live" requirement.
-    for (let i = 0; i < segEls.length; i++) {
+    for (let i = 0; i < pieceEls.length; i++) {
         // segmentColors is PIECE-indexed (a cut/stripe splices it with the pieces), so a kept piece reads its own
-        const pi = keepPieces ? Number(segEls[i].attr(CONTOUR_SEG_INDEX_ATTR)) : i;
+        const pi = keepPieces || carried ? Number(pieceEls[i].attr(CONTOUR_SEG_INDEX_ATTR)) : i;
         const segColor = (p.contour.segmentColors && p.contour.segmentColors[pi]) || contourColor;
-        segEls[i].stroke({ color: segColor, width: contourWidth });
-        segEls[i].attr('display', contourShow ? null : 'none');
+        pieceEls[i].stroke({ color: segColor, width: contourWidth });
+        pieceEls[i].attr('display', contourShow ? null : 'none');
     }
 
     p.extent = { mode: 'boundary' };

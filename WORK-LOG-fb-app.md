@@ -3441,3 +3441,18 @@ hidden contour not cuttable (old: cut); moved contour piece -> no transform, d b
 
 ## Frame section: Edit frame at the top (Fred: "can the edit frame button be at the top like in vector")
 - #btnEditFrameShape moved to the first row of the Frame panel body (like Open SVG Editor in its section); Send frame stays last. Verified at 412px.
+
+## Contour stripes/cuts/colours survive a shape change; scissors + stripe target highlight
+(Fred: "On regenerate is it possible to keep stripe recolor, for contour for example, and scissors and stripe tool
+should also have highlight feedback when the cut preview is activated")
+- regenerateSilhouette: when a cut/striped/recoloured contour's SHAPE changes (slider, handle, Regenerate) and the
+  segment count is unchanged, `_captureContourPieces` groups the old pieces per segment (mergeContourPrimitives)
+  with each piece's share of the length, colour and stripe id; `_reapplyContourPieces` re-cuts each new segment AS
+  WRITTEN (its own d -- splitting the full-precision primitive moved the outer ends in the 4th decimal and the
+  detach check flipped the shape to 'picked') at the same fractions, renumbers, rebuilds the piece-indexed
+  segmentColors and re-tags stripe runs (src = the new segment's d, so a re-stripe still restores it). A preset swap
+  (different segment count) still starts clean. Verified: stripe + arc cut, waistReach changed -> 17 pieces, same
+  colours, 5 stripe pieces, source stays 'generated'.
+- `drawTargetHighlight` (editor-cut-tool.js): the scissors (cut: the piece; join: both pieces) and the stripe tool
+  (the run) light their target with the shared segment highlight (drawSegmentHighlight) under the ring / ticks,
+  on hover and on the touch preview with the check/X. Verified at 390px touch (screenshots).
