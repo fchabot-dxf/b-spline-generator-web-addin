@@ -2,9 +2,9 @@
  * properties-stripe.js — F27 item 3: the STRIPE tool's panel (#editorStripePanel, shown only while the stripe tool
  * is active; editor-ui.js TOOLBAR_GROUPS, editor-drawer.js TOOL_PANELS). The tool itself is editor-stripe-tool.js.
  *
- *   Count / Length -- "same interplay as the Rails spacing/count fields: set one, the other follows". The field
- *     set last DRIVES (`settings.drive`); the other one FOLLOWS, shown greyed, for the line under the pointer (and,
- *     after a tap, the line just striped): a stripe's size only exists relative to a line. Neither snaps for
+ *   Count / Length -- a switch (Fred: "just make it a switch no readout"): `settings.drive` picks one, and only that
+ *     field shows. By Count every line gets that many equal stripes; by Length as many as fit at about that
+ *     length (the old greyed "follower" field, computed for the line under the pointer, is gone). Neither snaps for
  *     colour reasons (Fred: "I don't really care if colours don't end the same as start"); both are held to the
  *     stroke width (Fred: "The only distance it should use is the stroke width").
  *   Colours A / B / C -- C is optional, off by default. Each swatch shows the ACTIVE layer's lattice
@@ -14,7 +14,7 @@
 import { el, on } from './dom.js';
 import { openColorMosaic } from './editor-color.js';
 import { getLayerPattern } from './editor-lattice-pattern.js';
-import { stripeSettings, stripeCountFor, defaultStripeColors } from './editor-stripe-tool.js';
+import { stripeSettings, defaultStripeColors } from './editor-stripe-tool.js';
 
 const fmtLen = (v) => (Math.round(v * 1000) / 1000).toString();
 
@@ -25,23 +25,25 @@ export function initStripeProperties(editor) {
   const resetEl = el('stripeColorsReset');
   const swatches = [el('stripeColorA'), el('stripeColorB'), el('stripeColorC')];
   if (!countEl || !lengthEl) return; // panel not in this host
-  let plan = null; // the last line hovered / striped: what the follower field is computed against
+  const byCountEl = el('stripeByCount');
+  const byLengthEl = el('stripeByLength');
+  const countRowEl = el('stripeCountRow');
+  const lengthRowEl = el('stripeLengthRow');
 
   const settings = () => stripeSettings(editor);
 
   function refreshFields() {
     const s = settings();
     const driveCount = s.drive !== 'length';
-    countEl.style.color = driveCount ? '' : '#888';
-    lengthEl.style.color = driveCount ? '#888' : '';
-    if (driveCount) {
-      countEl.value = s.count;
-      lengthEl.value = plan ? fmtLen(plan.length / stripeCountFor(s, plan.length, plan.minLength)) : '';
-    } else {
-      lengthEl.value = s.length;
-      countEl.value = plan ? stripeCountFor(s, plan.length, plan.minLength) : '';
-    }
+    if (byCountEl) byCountEl.classList.toggle('active', driveCount);
+    if (byLengthEl) byLengthEl.classList.toggle('active', !driveCount);
+    if (countRowEl) countRowEl.style.display = driveCount ? 'flex' : 'none';
+    if (lengthRowEl) lengthRowEl.style.display = driveCount ? 'none' : 'flex';
+    if (document.activeElement !== countEl) countEl.value = s.count;
+    if (document.activeElement !== lengthEl) lengthEl.value = fmtLen(Number(s.length) || 0);
   }
+  if (byCountEl) on(byCountEl, 'click', () => { settings().drive = 'count'; refreshFields(); });
+  if (byLengthEl) on(byLengthEl, 'click', () => { settings().drive = 'length'; refreshFields(); });
 
   function paintSwatches() {
     const s = settings();
@@ -86,11 +88,6 @@ export function initStripeProperties(editor) {
   if (resetEl) on(resetEl, 'click', () => { settings().colors = [null, null, null]; paintSwatches(); });
 
   if (typeof document !== 'undefined') {
-    document.addEventListener('editorStripeTarget', (e) => {
-      if (!e.detail || e.detail.editor !== editor) return;
-      plan = e.detail.plan;
-      refreshFields();
-    });
     document.addEventListener('editorModeChanged', (e) => {
       if (!e.detail || e.detail.editor !== editor || e.detail.mode !== 'stripe') return;
       paintSwatches(); // the active layer (so the lattice default colours) may have changed since last time

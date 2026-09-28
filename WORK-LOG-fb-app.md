@@ -3648,3 +3648,10 @@ bspline" -- "no send frame" -- "id rather have a delete everything button")
 - The Boundary width/height only size the PRESET shape (contourSilhouette ignores the region when fromFrame is on),
   so #shapeLatticeBoundaryFields joins the Shape / Segments blocks in _syncFromFrame: inert + 0.45 opacity while
   "Offset from frame" is ticked. Verified at 390px: ticked -> inert/greyed; unticked -> active. vitest 2437 passed.
+
+## Stripe size: a Count / Length switch (Fred: "just make it a switch no readout")
+- The two fields (the one set last drove, the other showed a greyed per-line "follower" value -- not obvious) are
+  a segmented switch #stripeByCount / #stripeByLength (settings.drive); only the chosen field shows (Stripes, or
+  Length (in)); no follower readout (the editorStripeTarget listener in properties-stripe.js is gone). The math is
+  unchanged (stripeCountFor). Verified at 390px: Count shows Stripes only; Length shows Length only, drive
+  'length'; 0.5 in on a 5.75 in rail -> 12 stripes. vitest 2437 passed.

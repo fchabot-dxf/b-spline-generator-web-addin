@@ -2674,14 +2674,17 @@
           <div id="editorStripePanelBody" style="display:flex; flex-direction:column; gap:10px;">
             <div data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Size</span>
-              <div style="display:flex; gap:6px;">
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">Count
-                  <input id="stripeCount" type="number" min="1" step="1" value="5" title="How many equal stripes (the Length follows)" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-                </label>
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">Length (in)
-                  <input id="stripeLength" type="number" min="0" step="0.05" title="Each stripe's length: the nearest equal split (the Count follows)" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-                </label>
+              <!-- Fred ("just make it a switch no readout"): stripe by Count OR by Length -- only the chosen field shows -->
+              <div role="group" class="segmented-group">
+                <button type="button" id="stripeByCount" class="editor-fillmode-btn active" style="flex:1;" title="Each line gets this many equal stripes">Count</button>
+                <button type="button" id="stripeByLength" class="editor-fillmode-btn" style="flex:1;" title="Each line gets as many equal stripes as fit at about this length">Length</button>
               </div>
+              <label id="stripeCountRow" style="display:flex; flex-direction:column; gap:2px;">Stripes
+                <input id="stripeCount" type="number" min="1" step="1" value="5" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              </label>
+              <label id="stripeLengthRow" style="display:none; flex-direction:column; gap:2px;">Length (in)
+                <input id="stripeLength" type="number" min="0" step="0.05" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              </label>
             </div>
             <div data-no-collapse style="display:flex; flex-direction:column; gap:4px;">
               <div style="display:flex; align-items:center; gap:6px;">
