@@ -578,6 +578,17 @@
             <select id="frameTemplate" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
           </div>
           <div id="frameSettings" style="display:none;">
+            <!-- Fred: "I would've wanted it in both places, mirrored" -- every frame setting is in BOTH this panel
+                 and the editor's Frame tab (#editorFramePanel), bound to the same record (main/frame-panel.js
+                 FRAME_MIRRORS); a change in either shows in the other. -->
+            <label class="cad-label">Frame thickness (in)</label>
+            <div class="cad-stepper" style="margin-bottom:12px;">
+              <input type="number" id="frameThickness" step="0.0625">
+            </div>
+            <div style="display:flex; gap:6px; margin-top:6px;">
+              <button type="button" id="frameGenerate" class="cad-btn cad-btn-primary" style="flex:1;">Generate</button>
+              <button type="button" id="frameUndo" class="cad-btn cad-btn-secondary" style="flex:1;" disabled>Undo</button>
+            </div>
             <label class="cad-label">Frame bottom (z)</label>
             <div class="cad-stepper" style="margin-bottom:12px;">
               <input type="number" id="frameBottomZ" value="-1" step="0.125">
@@ -2688,6 +2699,21 @@
               <button type="button" id="editorFrameGenerate" class="cad-btn cad-btn-primary" style="flex:1;">Generate</button>
               <button type="button" id="editorFrameUndo" class="cad-btn cad-btn-secondary" style="flex:1;" disabled>Undo</button>
             </div>
+            <!-- Fred: "mirrored" -- the rest of the main page's frame settings, same record (FRAME_MIRRORS). -->
+            <div id="editorFrameSettings" style="display:none; flex-direction:column; gap:8px;">
+            <label id="editorFrameBottomZRow">Frame bottom (z)
+              <input type="number" id="editorFrameBottomZ" step="0.125" style="width:100%; margin-top:4px;">
+            </label>
+            <label id="editorFrameTrimOffsetRow">Trim offset (in)
+              <input type="number" id="editorFrameTrimOffset" step="0.0625" style="width:100%; margin-top:4px;">
+            </label>
+            <label id="editorFramePanelLipRow">Panel lip (in)
+              <input min="0" type="number" id="editorFramePanelLip" step="0.0625" style="width:100%; margin-top:4px;">
+            </label>
+            <div id="editorFrameFitWarning" style="display:none; color:#b71c1c; font-size:11px;"></div>
+            </div>
+            <button type="button" id="editorBtnSendFrame" class="cad-btn cad-btn-primary" style="width:100%;" disabled>Send frame</button>
+            <div id="editorFrameSendHint" style="color:#666; font-size:11px;"></div>
             <div id="editorFrameNote" style="color:#666;">Generate a random frame shape, then tweak it: drag a curve (or its blue dot) to change its roundness, or a square to move it. Changing the template resets them.</div>
           </div>
         </aside>
