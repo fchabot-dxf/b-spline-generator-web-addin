@@ -439,9 +439,10 @@ export class VectorEditor {
     // blanket snapping quantised the pen's freehand stroke and the eraser.
     // `phase` ('start' | 'move') plus `this._currentMode` pick the policy;
     // bypass is Alt-held (ignored by policies that don't honour it).
-    _snap(pt, bypass = false, phase = 'start') {
+    _snap(pt, bypass = false, phase = 'start', excludeEl = null) {
         // FB-APP F7: snapping follows the frame outline (no grid in the cut-away).
-        return frameSnapGate(this, snapFor(pt, this, this._currentMode, phase, bypass), pt);
+        // `excludeEl` (an element or a Set): what's being dragged, so it can't snap onto its own points.
+        return frameSnapGate(this, snapFor(pt, this, this._currentMode, phase, bypass, excludeEl), pt);
     }
 
     /** One setter for the grid toolbar: merge a patch, persist, redraw,

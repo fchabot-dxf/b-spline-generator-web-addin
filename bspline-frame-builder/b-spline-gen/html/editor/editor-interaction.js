@@ -33,7 +33,7 @@ import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './edi
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
 import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover } from './editor-grid.js';
 import { getDynamicTolerance } from './editor-hit.js';
-import { nearestGeometrySnap, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
+import { nearestGeometrySnap, geometrySnapTargets, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
 import {
     toLattice, toLatticeFractional, fromLattice, constrainToKind, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
@@ -225,6 +225,7 @@ function _abortTouchGesture(editor) {
     if (typeof editor._cancelDrawing === 'function') editor._cancelDrawing(); // a pen path in progress
     editor._isDrawing = false;
     editor._isDragging = false;
+    editor._selMove = null;
     editor._latticeMove = null;
     editor._latticeStart = null;
     editor._shapeLatticeDragKey = null;
@@ -601,7 +602,7 @@ function handleMove(editor, e) {
         }
         if (editor._dragNodeIndex !== -1) { dragNode(editor, pt); return; }
         if (editor._marqueeStart) { updateMarquee(editor, pt); return; }
-        if ((editor._selectedElements || []).length) translateSelection(editor, pt);
+        if ((editor._selectedElements || []).length) translateSelection(editor, pt, applyTouchMarkerOffset(editor, editor._getMousePoint(e)), !!e.altKey);
         return;
     }
     const handler = getModeHandler(editor._currentMode);
@@ -643,6 +644,7 @@ function handleEnd(editor, e) {
     }
     if (editor._isDragging) {
         editor._isDragging = false;
+        editor._selMove = null;
         const wasNodeDrag  = editor._dragNodeIndex !== -1;
         const wasTransform = !!editor._transformState;
         const wasMarquee   = !!editor._marqueeStart;
@@ -744,6 +746,7 @@ const selectHandler = {
             if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
             editor._isDragging = true;
             editor._lastDragPt = pt;
+            editor._selMove = null; // a fresh move: its snap anchors/targets are captured on the first move tick
             // H5 MULTI-SELECT: text is excluded (double-tap already opens
             // text editing there, handleDblClick above) — a plain, no-
             // modifier press on anything else can be the first or second
@@ -2664,9 +2667,52 @@ function dragNode(editor, pt) {
     editor._notifyChange('live');
 }
 
-function translateSelection(editor, pt) {
-    const dx = pt.x - editor._lastDragPt.x;
-    const dy = pt.y - editor._lastDragPt.y;
+/** Fred: "Moving contour piece won't snap to geometry". A dragged selection used to follow the snapped POINTER,
+ *  and the pointer's geometry snap still counted the dragged piece's own points (moving along with it), so the
+ *  piece stuck to itself and never reached anything else. Now, CAD-style: the selection's own points (ends,
+ *  corners, segment ends, captured at grab) snap onto OTHER geometry (the targets, also captured at grab, leave
+ *  the selection out) within the usual tolerance, the nearest pair winning; otherwise the pointer snap applies as
+ *  before, minus the selection's own points. Alt bypasses, as everywhere. */
+const SEL_MOVE_MAX_ANCHORS = 400;
+
+function _selectionMoveDelta(editor, pt, raw, bypass) {
+    const sel = editor._selectedElements || [];
+    let ms = editor._selMove;
+    if (!ms) ms = editor._selMove = { start: { x: editor._lastDragPt.x, y: editor._lastDragPt.y }, applied: { x: 0, y: 0 }, exclude: new Set(sel), anchors: null, targets: null };
+    if (!raw) return { x: pt.x - ms.start.x, y: pt.y - ms.start.y };
+    const geomOn = !!(editor._grid && editor._grid.geometrySnap) && !bypass;
+    if (geomOn) {
+        if (!ms.anchors) {
+            ms.anchors = [];
+            for (const el of sel) {
+                let nodes = [];
+                try { nodes = editor._getNodes(el) || []; } catch (_) { /* not a node-bearing element */ }
+                for (const n of nodes) if (ms.anchors.length < SEL_MOVE_MAX_ANCHORS) ms.anchors.push({ x: n.x, y: n.y });
+            }
+            ms.targets = geometrySnapTargets(editor, ms.exclude);
+        }
+        const rx = raw.x - ms.start.x, ry = raw.y - ms.start.y;
+        const tol = getDynamicTolerance(editor, GEOMETRY_SNAP_TOL_PX, 'slopPx');
+        let best = null, bestD = tol * tol;
+        for (const a of ms.anchors) {
+            const ax = a.x + rx, ay = a.y + ry;
+            for (const t of ms.targets) {
+                const d = (t.x - ax) ** 2 + (t.y - ay) ** 2;
+                if (d <= bestD) { bestD = d; best = { x: t.x - a.x, y: t.y - a.y }; }
+            }
+        }
+        if (best) return best;
+    }
+    const p = editor._snap(raw, bypass, 'move', ms.exclude);
+    return { x: p.x - ms.start.x, y: p.y - ms.start.y };
+}
+
+function translateSelection(editor, pt, raw = null, bypass = false) {
+    const want = _selectionMoveDelta(editor, pt, raw, bypass);
+    const ms = editor._selMove;
+    const dx = want.x - ms.applied.x;
+    const dy = want.y - ms.applied.y;
+    ms.applied = want;
     if (dx !== 0 || dy !== 0) editor._dragMoved = true;
     for (const el of (editor._selectedElements || [])) {
         el.translate(dx, dy);

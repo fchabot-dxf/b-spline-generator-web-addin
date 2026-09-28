@@ -3287,3 +3287,12 @@ and touch, via the on-screen undo button; asked Fred for the exact steps.
   put back silently, the app never sees it (previously the jump reached the app first, and a pointercancel before
   8px reset WITHOUT restoring). Horizontal drag or tap -> released as one input; the browser's own change follows.
   Guard attaches once. Verified headless with real touch events: vertical swipe = no change seen; drag/tap = set.
+
+## Moving a piece snaps its ENDS onto other geometry (Fred: "Moving contour piece won't snap to geometry")
+- editor-interaction.js translateSelection: a Select drag used to follow the snapped POINTER, and that snap counted
+  the dragged piece's own points (moving with it), so it stuck to itself. Now (`_selectionMoveDelta`): the
+  selection's own nodes (captured at grab, max 400) snap onto OTHER geometry targets (captured at grab, selection
+  excluded) within the GEOMETRY tolerance, nearest pair wins; else the pointer snap, minus the selection's points
+  (editor._snap gained an `excludeEl`). Alt bypasses. `_selMove` cleared on grab, release and a pinch abort.
+- Headless (real mouse): Shape Lattice contour piece dragged away and back 4 px off -- now lands exactly on its
+  neighbours' ends (before: 0.13 in off).
