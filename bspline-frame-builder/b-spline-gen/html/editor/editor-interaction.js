@@ -224,6 +224,8 @@ function _abortTouchGesture(editor) {
     editor._shapeLatticeDragOffsetY = 0;
     editor._shapeArcPress = null;
     editor._railEndDrag = null;
+    editor._touchAimPt = null; // a scissors / stripe aim (acts on lift): dropped, nothing cut or striped
+    for (const id of ['cut-marker', 'stripe-marker']) document.getElementById(id)?.remove();
     document.querySelectorAll('.shape-lattice-segment-bar').forEach((bar) => bar.remove());
     setHandleCursor(null);
     if (snap && typeof editor._restoreState === 'function') editor._restoreState(snap);

@@ -526,13 +526,43 @@ function _drawCutMarker(editor, intent) {
   if (intent.action === 'join') g.rect(r, r).center(intent.at.x, intent.at.y).fill('#fff').stroke({ color, width: r / 4 }).rotate(45);
 }
 
+/** Touch (Fred: "Stripe tool, I don't understand how to confirm the action on mobile"; the scissors were
+ *  "very hard to use on mobile"): a phone has no hover, and the action fired on the PRESS at the touch
+ *  marker point (offset above the finger), so the preview of WHAT it would hit never showed and the finger
+ *  landed on one line while another got the action. On touch the press now only AIMS -- the same marker /
+ *  preview hover draws, following the finger while it slides -- and LIFTING the finger confirms it there.
+ *  Mouse and pen keep the instant click. `editor._touchAimPt` holds the aimed point (null = none). */
+const _aimsOnLift = (editor, e) => ((e && e.pointerType) || editor._pointerType) === 'touch';
+
 export const cutHandler = {
   hover(editor, pt) { _drawCutMarker(editor, cutIntent(editor, pt)); }, // the snapped landing point (Alt: exact, on the tap)
   start(editor, pt, e) {
-    const intent = cutIntent(editor, pt, !!(e && e.altKey));
-    clearCutMarker(editor);
-    if (!intent) return;
-    if (intent.action === 'join') join(editor, intent.joint);
-    else cutAt(editor, intent.el, intent.at);
+    if (_aimsOnLift(editor, e)) { // touch: aim now (the marker shows the cut / join), act on lift (finish)
+      editor._isDrawing = true;
+      editor._touchAimPt = pt;
+      cutHandler.hover(editor, pt);
+      return;
+    }
+    _cutAtPoint(editor, pt, !!(e && e.altKey));
+  },
+  update(editor, pt) {
+    if (!editor._touchAimPt) return;
+    editor._touchAimPt = pt;
+    cutHandler.hover(editor, pt);
+  },
+  finish(editor) {
+    const pt = editor._touchAimPt;
+    editor._touchAimPt = null;
+    editor._isDrawing = false;
+    if (pt) _cutAtPoint(editor, pt, false);
+    else clearCutMarker(editor);
   },
 };
+
+function _cutAtPoint(editor, pt, exact) {
+  const intent = cutIntent(editor, pt, exact);
+  clearCutMarker(editor);
+  if (!intent) return;
+  if (intent.action === 'join') join(editor, intent.joint);
+  else cutAt(editor, intent.el, intent.at);
+}

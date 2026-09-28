@@ -279,6 +279,14 @@ function _drawStripeMarker(editor, plan) {
   for (const p of stripeCutPoints(plan.prim, plan.count)) g.circle(2 * r).center(p.x, p.y).fill('#fff').stroke({ color: '#ff6f00', width: r / 2 });
 }
 
+/** Touch (Fred: "Stripe tool, I don't understand how to confirm the action on mobile"; the scissors were
+ *  "very hard to use on mobile"): a phone has no hover, and the action fired on the PRESS at the touch
+ *  marker point (offset above the finger), so the preview of WHAT it would hit never showed and the finger
+ *  landed on one line while another got the action. On touch the press now only AIMS -- the same marker /
+ *  preview hover draws, following the finger while it slides -- and LIFTING the finger confirms it there.
+ *  Mouse and pen keep the instant click. `editor._touchAimPt` holds the aimed point (null = none). */
+const _aimsOnLift = (editor, e) => ((e && e.pointerType) || editor._pointerType) === 'touch';
+
 export const stripeHandler = {
   hover(editor, pt) {
     const el = cuttableUnder(editor, pt);
@@ -287,12 +295,34 @@ export const stripeHandler = {
     if (plan && editor._stripeHoverEl !== el) _announce(editor, plan);
     editor._stripeHoverEl = el;
   },
-  start(editor, pt) {
-    const el = cuttableUnder(editor, pt);
-    clearStripeMarker(editor);
-    if (!el) return;
-    const plan = stripePlan(editor, el);
-    const stripes = stripeAt(editor, el);
-    if (stripes) _announce(editor, plan);
+  start(editor, pt, e) {
+    if (_aimsOnLift(editor, e)) { // touch: aim now, stripe on lift (finish)
+      editor._isDrawing = true;
+      editor._touchAimPt = pt;
+      stripeHandler.hover(editor, pt);
+      return;
+    }
+    _stripeAtPoint(editor, pt);
+  },
+  update(editor, pt) {
+    if (!editor._touchAimPt) return;
+    editor._touchAimPt = pt;
+    stripeHandler.hover(editor, pt);
+  },
+  finish(editor) {
+    const pt = editor._touchAimPt;
+    editor._touchAimPt = null;
+    editor._isDrawing = false;
+    if (pt) _stripeAtPoint(editor, pt);
+    else clearStripeMarker(editor);
   },
 };
+
+function _stripeAtPoint(editor, pt) {
+  const el = cuttableUnder(editor, pt);
+  clearStripeMarker(editor);
+  if (!el) return;
+  const plan = stripePlan(editor, el);
+  const stripes = stripeAt(editor, el);
+  if (stripes) _announce(editor, plan);
+}

@@ -11,7 +11,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-hit.js', async
   return { ...m, getDynamicTolerance: (ed, px, key) => (TOL.override && key in TOL.override ? TOL.override[key] : m.getDynamicTolerance(ed, px, key)) };
 });
 import { latticeChains, splitLine, chainOf, withChain, writeChainRow, updateJointSlide, pushTieJoints, JOINT_TOL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
-import { cutAt, join, jointAt, snapOnLine, cutIntent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-cut-tool.js';
+import { cutAt, join, jointAt, snapOnLine, cutIntent, cutHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-cut-tool.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { drawnFromPattern } from './helpers/drawn-lattice.js';
 import { moveRailAlongAxis, orient, fromLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
@@ -135,6 +135,22 @@ describe('U2 cutAt / join', () => {
       expect(['#020202', '#030303']).toContain(b.store.stroke);
       expect(b.store.stroke).not.toBe(a.store.stroke);
     }
+  });
+
+  it('touch: the press only AIMS (nothing cut), a slide re-aims, LIFTING cuts at the aim; mouse cuts on the click (Fred: "hard to use on mobile")', () => {
+    const touch = { pointerType: 'touch' };
+    cutHandler.start(ed, { x: 1.5, y: 1 }, touch);
+    expect(ed.layer.list.filter((el) => el.store['data-lattice'] === 'rail')).toHaveLength(1); // not cut yet
+    expect(ed._isDrawing).toBe(true);
+    cutHandler.update(ed, { x: 2.5, y: 1 });
+    cutHandler.finish(ed);
+    const rails = ed.layer.list.filter((el) => el.store['data-lattice'] === 'rail');
+    expect(rails).toHaveLength(2);
+    expect(rails.map((r) => +r.store.x2).sort((a, b) => a - b)[0]).toBeCloseTo(2.5, 9); // cut where the aim ENDED
+    expect(ed._touchAimPt).toBeNull();
+    expect(ed._isDrawing).toBe(false);
+    cutHandler.start(ed, { x: 1, y: 1 }, { pointerType: 'mouse' }); // mouse: immediate
+    expect(ed.layer.list.filter((el) => el.store['data-lattice'] === 'rail')).toHaveLength(3);
   });
 
   it('the only minimum is the piece\'s own stroke width (Fred: "The only distance it should use is the stroke width"), not one lattice cell', () => {

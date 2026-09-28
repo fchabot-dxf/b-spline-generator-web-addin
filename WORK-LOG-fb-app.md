@@ -3204,3 +3204,15 @@ Tests: frame-handles (new pinch test); undo-mock tests gain `_snapshotState`. Fu
 - Panning "jump" (Fred): not reproduced headless at 390 px with real touch -- one-finger Frame pan, two-finger pan,
   pinch then lift one finger and keep moving (the remaining finger is ignored, no zoom/jump), one-finger on empty
   artwork. Asked Fred for the exact gesture.
+
+## Scissors + Stripe on touch: press aims, lift confirms -- 2026-09-28
+
+Fred: "Stripe tool, I don't understand how to confirm the action on mobile" (and earlier: the scissors "very hard to
+use on mobile"). Reproduced headless at 390 px with real touch: both tools acted on the PRESS, at the touch-marker
+point 40 px ABOVE the finger, and a phone has no hover, so the marker/preview of what would be hit never showed --
+a tap on one rail striped the rail above it; a tap on the contour missed it entirely. Now on touch (pointerType
+'touch') `start` only aims (editor._touchAimPt + the same marker hover draws: orange cut ring / join diamond, the
+stripe preview), `update` re-aims as the finger slides, and `finish` (finger lift) acts at the aim. Mouse/pen: the
+click still acts at once. A pinch landing mid-aim drops it (_abortTouchGesture). Verified with real touch: press ->
+marker, nothing done; slide onto a rail -> marker on it; lift -> exactly that rail striped / cut. Test: cut-tool
+(touch aim vs mouse). Full vitest passing.
