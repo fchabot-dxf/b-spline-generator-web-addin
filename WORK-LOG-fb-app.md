@@ -3487,3 +3487,7 @@ study checked the design against generate/cuts/manifest/undo/fill-key/orientatio
   -> Generate: identical, +1 undo step; undo/redo; 2 more Generates; vertical flip clears; Unprotect all -> plain.
   Shape lattice -- recoloured + striped rail + striped contour -> Generate identical; waistReach change: stripes
   rescaled on the longer rail, contour kept; Unprotect all -> 12 plain contour segments, +1 undo; undo restores.
+- Save file (Fred: "what about project save file"): nothing extra needed -- the protection is read from the drawing
+  itself (data-override-color / data-stripe / the cut pieces, all in P.editorSvg) and railSpan rides in the pattern
+  (data-editor-layers). Verified headless: styled rails + striped contour -> saveForRasterization -> cleared ->
+  open(svg) -> identical; Generate after reopening -> identical.
