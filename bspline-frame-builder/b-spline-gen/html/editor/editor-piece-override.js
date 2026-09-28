@@ -11,6 +11,10 @@
  * a plain attribute-name + DOM-read/write module, safe to import from
  * anywhere without a circular-dependency risk.
  *
+ * Protected rails (Fred, 2026-09): item 3's "an override clears on the next Generate" no longer holds for a
+ * generated RAIL -- a recoloured / striped / cut rail is protected, and Generate redraws it with its colours
+ * (editor-lattice-pattern.js _captureProtectedRails / _reapplyProtectedRail). Ties and nodes still clear.
+ *
  * Scope decision (UI5, this turn): rails/ties/nodes only. A CONTOUR
  * segment already has its OWN, older per-segment colour mechanism
  * (`PATTERN.contour.segmentColors[i]`, properties-shape-lattice.js) with

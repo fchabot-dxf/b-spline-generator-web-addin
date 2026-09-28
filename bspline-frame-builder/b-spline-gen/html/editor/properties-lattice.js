@@ -10,13 +10,14 @@
 import { el, on } from './dom.js';
 import { LATTICE_DRAW_KINDS } from './editor-lattice.js';
 import {
-    PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
+    PATTERN_DEFAULTS, generatePattern, detachAllOwned, unprotectRails, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     _findBoundaryElements, resolvePatternLayer, freshPattern,
 } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
 import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
 import { latticeScope, attachLatticeFormulaFields } from './lattice-formula-fields.js';
+import { commitEdit } from './editor-commit.js';
 
 /** SE7i: Pattern settings live ON THE ACTIVE LAYER now (`layer.pattern`),
  *  not once per file — Generate/Regenerate write into whichever layer is
@@ -602,6 +603,11 @@ export function initLatticeProperties(editor) {
 
     on(detachAllBtn, 'click', () => {
         detachAllOwned(editor, getActiveLayer(editor));
+    });
+
+    // Fred: recoloured / striped / cut rails are protected from Generate -- this puts them all back to plain
+    on(el('latticeUnprotectAll'), 'click', () => {
+        if (unprotectRails(editor, getActiveLayer(editor))) commitEdit(editor);
     });
 
     // SE7i: settings are per-LAYER now — switching the active layer must

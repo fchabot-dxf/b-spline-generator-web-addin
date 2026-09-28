@@ -3456,3 +3456,34 @@ should also have highlight feedback when the cut preview is activated")
 - `drawTargetHighlight` (editor-cut-tool.js): the scissors (cut: the piece; join: both pieces) and the stripe tool
   (the run) light their target with the shared segment highlight (drawSegmentHighlight) under the ring / ticks,
   on hover and on the touch preview with the check/X. Verified at 390px touch (screenshots).
+
+## Protected rails and contour: styling survives Generate
+(Fred: "what if an over ridden part gets a protection from generate?" -- "Moved doesnt get protection" -- "Dont keep
+dimensions of rail if i modified them" -- "Vertical switch doesnt keep pins" -- "in doubt give up the protection" --
+"contour and rail are easier to maintain" -- "Contour, even if its shape changes its always 12 segments". A read-only
+study checked the design against generate/cuts/manifest/undo/fill-key/orientation/tests before building.)
+- What protects: a generated rail that is recoloured (piece panel, long-press menu, OR the toolbar Colour --
+  editor.setColor now writes the per-piece override for rails/ties/nodes, which also fixes a kind recolour wiping
+  it), striped, or cut with the scissors. Moving alone never protects. Ties and nodes are not protected.
+- generatePattern: `_captureProtectedRails` reads the drawn owned rails (Rails layer, running along the current rail
+  direction) BEFORE clearing them; each chain of touching pieces is a rail; protected when >1 piece or an override.
+  Stored per rail: row fraction `at` of the extent it was drawn in (`PATTERN.railSpan`, kept each run, so it follows
+  the frame), which of the row's rails it is (`span`/`spans`), each piece's length share / override / stripe id.
+- computePattern: `_placeProtectedRails` puts each on the nearest generated row within half a row gap (replacing
+  that rail -- counts unchanged) or adds its own row; outside the extent it is dropped. A row with a different number
+  of pieces gives the protection up (Fred: "in doubt give up"); the matching segment carries `protect`. No protected
+  rails: output unchanged (byte-identical tests pass).
+- `_reapplyProtectedRail`: the fresh full-length rail is cut at the same fractions (both ends from the same numbers),
+  overrides + stripe ids put back; a piece shorter than the stroke width gives the protection up. No commit --
+  Generate stays one undo step. `PATTERN.protectedRails` keeps only what was applied (the manifest's computePattern
+  sees the same rows). `protectedRails`/`railSpan` are excluded from boundaryFillInputs (no refill on a style change).
+- Orientation flip: the old rails no longer run along the rail direction, so nothing is captured -- protection drops.
+- Contour: already kept by regenerateSilhouette (per-segment colours; cut/striped pieces carried by fraction, the 12
+  segments map one-to-one).
+- "Unprotect all" button (Box + Shape Lattice footers, next to Detach all; mounted with it in the desktop column):
+  `unprotectRails` joins cut rails, clears overrides/stripes; `unprotectContour` merges each segment's pieces back,
+  clears segment colours, redraws the contour. One undo step.
+- Tests: tests/lattice-protected-rails.test.js (7). Verified headless: box lattice -- recolour (toolbar), cut, stripe
+  -> Generate: identical, +1 undo step; undo/redo; 2 more Generates; vertical flip clears; Unprotect all -> plain.
+  Shape lattice -- recoloured + striped rail + striped contour -> Generate identical; waistReach change: stripes
+  rescaled on the longer rail, contour kept; Unprotect all -> 12 plain contour segments, +1 undo; undo restores.

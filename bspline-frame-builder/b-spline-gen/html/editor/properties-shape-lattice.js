@@ -20,7 +20,7 @@
  */
 import { el, on } from './dom.js';
 import {
-    PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
+    PATTERN_DEFAULTS, generatePattern, detachAllOwned, unprotectRails, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
     _ensureKindLayers, resolvePatternLayer, freshPattern, latticeColorPool, contourPiecesKey,
 } from './editor-lattice-pattern.js';
@@ -277,6 +277,31 @@ function _reapplyContourPieces(segEls, primitives, groups, p) {
     out.forEach((e, idx) => e.attr(CONTOUR_SEG_INDEX_ATTR, idx));
     p.contour.segmentColors = colors;
     return out;
+}
+
+/** Fred ("Unprotect all"): the contour back to plain -- every segment's cut / striped pieces joined back into one
+ *  (the first piece of each segment kept, the rest removed; regenerateSilhouette then rewrites each segment's exact
+ *  path, the same count as its primitives), per-segment colours cleared. Returns whether anything changed. No commit. */
+export function unprotectContour(editor, p) {
+    if (!hasGeneratedSilhouette(p) || !p.boundary || !p.boundary.shapeId) return false;
+    const els = _findBoundaryElements(editor, p.boundary.shapeId);
+    const coloured = Array.isArray(p.contour && p.contour.segmentColors) && p.contour.segmentColors.some(Boolean);
+    const keep = [];
+    let cur = null;
+    for (const e of els) {
+        const prim = e.node.getAttribute('transform') ? null : primitiveFromContourD(e.attr('d'));
+        const merged = cur && prim ? mergeContourPrimitives(cur, prim) : null;
+        if (merged) { cur = merged; e.remove(); } else { cur = prim; keep.push(e); }
+    }
+    if (keep.length === els.length && !coloured && !els.some((e) => e.node.hasAttribute(STRIPE_ATTR))) return false;
+    keep.forEach((e, i) => {
+        e.attr(CONTOUR_SEG_INDEX_ATTR, i);
+        e.node.removeAttribute(STRIPE_ATTR);
+        e.node.removeAttribute(STRIPE_SRC_ATTR);
+    });
+    p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}), segmentColors: [] };
+    regenerateSilhouette(editor, p);
+    return true;
 }
 
 export function regenerateSilhouette(editor, p) {
@@ -1550,6 +1575,14 @@ export function initShapeLatticeProperties(editor) {
             detachAllOwned(editor, getActiveLayer(editor));
         });
     }
+    // Fred: recoloured / striped / cut rails and contour segments are protected from Generate -- this puts them
+    // all back to plain, in one undo step
+    on(el('shapeLatticeUnprotectAll'), 'click', () => {
+        const p = currentPattern(editor);
+        const rails = unprotectRails(editor, getActiveLayer(editor));
+        const contour = p ? unprotectContour(editor, p) : false;
+        if (rails || contour) commitEdit(editor);
+    });
 
     document.addEventListener('editorLayersChanged', (e) => {
         if (e.detail && e.detail.editor === editor) syncFieldsFromPattern();

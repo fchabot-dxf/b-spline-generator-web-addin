@@ -184,6 +184,7 @@ const TOOL_PANEL_MOUNTS = {
     footerId: 'editorLatticePanelFooter',
     generateId: 'latticeGenerate',
     detachAllId: 'latticeDetachAll',
+    unprotectAllId: 'latticeUnprotectAll',
   },
   shapeLattice: {
     panelId: 'editorShapeLatticePanel',
@@ -191,6 +192,7 @@ const TOOL_PANEL_MOUNTS = {
     footerId: 'editorShapeLatticePanelFooter',
     generateId: 'shapeLatticeGenerate',
     detachAllId: 'shapeLatticeDetachAll',
+    unprotectAllId: 'shapeLatticeUnprotectAll',
   },
 };
 
@@ -234,6 +236,7 @@ function _unmount(mode) {
   const footerEl = el(cfg.footerId);
   const generateEl = el(cfg.generateId);
   const detachAllEl = el(cfg.detachAllId);
+  const unprotectAllEl = el(cfg.unprotectAllId);
   // generateEl is found by id regardless of which parent currently
   // wraps it — closest() unwraps it from the pinned slot before that
   // slot (created fresh on every _mount) is discarded below.
@@ -241,6 +244,7 @@ function _unmount(mode) {
   if (panelEl && bodyEl) panelEl.insertBefore(bodyEl, footerEl || null);
   if (footerEl && generateEl) footerEl.insertBefore(generateEl, footerEl.firstChild);
   if (footerEl && detachAllEl) footerEl.appendChild(detachAllEl);
+  if (footerEl && unprotectAllEl) footerEl.appendChild(unprotectAllEl);
   if (pinnedSlot) pinnedSlot.remove();
   // Clears the inline override this module itself added in _mount — the
   // panel goes back to relying purely on editor-ui.js's own
@@ -256,6 +260,7 @@ function _mount(mode, layersPanelEl) {
   const bodyEl = el(cfg.bodyId);
   const generateEl = el(cfg.generateId);
   const detachAllEl = el(cfg.detachAllId);
+  const unprotectAllEl = el(cfg.unprotectAllId);
   if (!panelEl || !bodyEl) return;
   const layersList = layersPanelEl.querySelector('.layers-list');
   // Order: [pinned Generate, in its own opaque slot] -> [layers-header +
@@ -268,6 +273,7 @@ function _mount(mode, layersPanelEl) {
   }
   layersPanelEl.insertBefore(bodyEl, layersList ? layersList.nextSibling : null);
   if (detachAllEl) layersPanelEl.appendChild(detachAllEl);
+  if (unprotectAllEl) layersPanelEl.appendChild(unprotectAllEl);
   // The original middle column is now an empty shell (its own header +
   // now-vacated footer) — force it out of layout so the canvas reclaims
   // the width, regardless of what TOOLBAR_GROUPS' own `.hidden` class

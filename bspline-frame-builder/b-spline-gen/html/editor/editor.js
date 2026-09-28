@@ -3,6 +3,7 @@
  * Refactored into a modular ES6 architecture.
  */
 
+import { pieceKindOf, applyColorOverride } from './editor-piece-override.js';
 import { initIO, save, saveWithTextCopies, saveForRasterization, open, sync3DBackground, getPointerPos } from './editor-io.js';
 import { commitText, cancelText } from './editor-text-session.js';
 import { initText, setFontFamily, setFontSize } from './editor-text-style.js';
@@ -321,6 +322,10 @@ export class VectorEditor {
         if (!sel || !sel.length) return;
         for (const el of sel) {
             if (!el || typeof el.stroke !== 'function') continue;
+            // a rail/tie/node recoloured here is a per-piece override like the piece panel's (a later kind recolour
+            // keeps it, and a generated rail is protected from Generate)
+            const kind = pieceKindOf(el);
+            if (kind) { applyColorOverride(el, kind, color); continue; }
             el.stroke({ color });
             _storeContourSegmentColor(this, el, color);
             if (typeof el.fill !== 'function') continue;

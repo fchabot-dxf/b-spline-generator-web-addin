@@ -26,7 +26,9 @@ import {
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved, getElementLayer } from './layers.js';
-import { OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
+import { OVERRIDE_COLOR_ATTR, applyColorOverride } from './editor-piece-override.js';
+import { latticeChains, JOINT_TOL, minPieceLength } from './editor-lattice-chains.js';
+import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { lcgPoints } from '../core/terrain.js';
 import { setEditorStatusHint } from './editor-ui.js';
 // T48 (SE13 Slice 2): the pure boundary-cutting engine (T47) — computePattern's
@@ -1533,6 +1535,39 @@ function _colScanLine(i, orientation) {
  *   -> the node's own {i,j} — a slice-1 convention, open to refinement
  *   once slice 2/3 writes the real occupied-set builder.
  */
+/**
+ * Fred (protected rails: "what if an over ridden part gets a protection from generate"): the rail rows with every
+ * protected rail placed. `protectedRails` (generatePattern's _captureProtectedRails) hold each rail's row as a
+ * fraction `at` of the rail extent when it was captured, so a protected rail follows the frame when the extent moves
+ * or resizes. It takes the nearest generated row (within half a row gap) -- it replaces that rail, the rail count
+ * is unchanged -- or, with none that close (or that row already taken), becomes a row of its own. Outside the
+ * extent it is dropped. No protected rails: the generated rows, untouched. Pure.
+ */
+function _placeProtectedRails(railRows, protectedRails, jMin, jMax) {
+  const protectOfRow = new Map();
+  if (!Array.isArray(protectedRails) || !protectedRails.length) return { rows: railRows, protectOfRow };
+  const rows = railRows.slice();
+  let gap = Infinity;
+  for (let k = 1; k < railRows.length; k++) gap = Math.min(gap, Math.abs(railRows[k] - railRows[k - 1]));
+  const eps = 1e-9;
+  protectedRails.forEach((pr, k) => {
+    const target = Number.isFinite(pr.at) && jMax > jMin ? jMin + pr.at * (jMax - jMin) : pr.j;
+    if (!Number.isFinite(target) || target < jMin - eps || target > jMax + eps) return;
+    let best = null;
+    for (const r of rows) {
+      if (protectOfRow.has(r)) continue;
+      if (best == null || Math.abs(r - target) < Math.abs(best - target)) best = r;
+    }
+    if (best != null && Math.abs(best - target) <= gap / 2 + eps) { protectOfRow.set(best, k); return; }
+    const row = Math.round(target / eps) * eps;
+    if (protectOfRow.has(row)) return;
+    rows.push(row);
+    protectOfRow.set(row, k);
+  });
+  rows.sort((x, y) => x - y);
+  return { rows, protectOfRow };
+}
+
 export function computePattern(PATTERN, opts = {}) {
   const P = { ...PATTERN_DEFAULTS, ...PATTERN };
   // T56: an EXISTING saved pattern's `rails`/`ties` object, written
@@ -1703,11 +1738,13 @@ export function computePattern(PATTERN, opts = {}) {
   // why an old saved pattern (mode 'every' by its own fallback) never
   // reaches this branch, and _railRowsBySpacing's own comment for the
   // layout rule itself.
-  const railRows = rails.mode === 'every'
+  const generatedRailRows = rails.mode === 'every'
     ? _railRows(jMin, jMax, rails.every, rails.offset)
     : rails.mode === 'spacing'
     ? _railRowsBySpacing(jMin, jMax, rails, P.spacing)
     : _railRowsByCount(jMin, jMax, rails.count, seed);
+  // Fred (protected rails): a recoloured / striped / cut rail keeps its row -- see _placeProtectedRails
+  const { rows: railRows, protectOfRow } = _placeProtectedRails(generatedRailRows, P.protectedRails, jMin, jMax);
   const halfRail = widths.rails / 2 / P.spacing;
   for (const j of railRows) {
     let pieces;
@@ -1720,19 +1757,27 @@ export function computePattern(PATTERN, opts = {}) {
     } else {
       pieces = [{ a: iMin, b: iMax, aIsCrossing: false, bIsCrossing: false }];
     }
+    const kept = [];
     for (const piece of pieces) {
       // T51: `piece.a`/`piece.b` are ALREADY the boundary's own true
       // inner-stroke crossing (the primitives THEMSELVES are the inset
       // shape now, not the raw one) — the ending rule applies directly,
       // no separate per-crossing shrink step (T50's own dead end, deleted).
-      const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfRail);
+      const ended = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfRail);
       // T73 AMEND 3b: only a genuinely SPLIT row (a boundary crossing
       // divided it into >1 piece — e.g. a near-tangent graze at the waist
       // leaving a tiny sliver) is checked against MIN_RAIL_PIECE; an
       // ordinary un-split, full-length rail is never at risk of this,
       // whatever its own length happens to be.
-      if (pieces.length > 1 && Math.abs(b - a) < minRailPieceLattice) continue;
-      if (_occupiedHas(occupied, a, j, 'rail')) continue;
+      if (pieces.length > 1 && Math.abs(ended.b - ended.a) < minRailPieceLattice) continue;
+      if (_occupiedHas(occupied, ended.a, j, 'rail')) continue;
+      kept.push({ piece, ...ended });
+    }
+    // Fred ("in doubt give up the protection"): a protected rail comes back only when its row has the same
+    // number of pieces as when it was styled -- then it is the piece at the same place along the row
+    const pk = protectOfRow.get(j);
+    const pr = pk != null ? P.protectedRails[pk] : null;
+    kept.forEach(({ piece, a, b, aJoint, bJoint }, idx) => {
       segments.push({
         kind: 'rail', a: { i: a, j }, b: { i: b, j },
         aContourHit: rowScan ? contourHit(rowScan, a, piece.aIsCrossing) : undefined,
@@ -1742,10 +1787,11 @@ export function computePattern(PATTERN, opts = {}) {
         // crossing the hourglass waist twice) -- `j` is already a stable,
         // unique-per-row key, reused directly rather than a second counter.
         railGroup: j,
+        ...(pr && pr.spans === kept.length && pr.span === idx ? { protect: pk } : {}),
       });
       if (aJoint && !_occupiedHas(occupied, a, j, 'node')) addNode(a, j);
       if (bJoint && !_occupiedHas(occupied, b, j, 'node')) addNode(b, j);
-    }
+    });
   }
 
   // SE7h ADD-ON 2 (Fred: nodes "at rail ends"): its own step, deliberately
@@ -1998,6 +2044,7 @@ export function computePattern(PATTERN, opts = {}) {
       // T73 AMEND 3c: a row/column key, not a lattice point — also
       // orientation-independent, passed through unchanged.
       railGroup: s.railGroup,
+      ...(s.protect != null ? { protect: s.protect } : {}),
     })),
     nodePoints: nodePoints.map((p) => orient(p, orientation)),
   };
@@ -2218,6 +2265,107 @@ function _showTieShortfall(shortfall) {
   }
 }
 
+/** The rail extent's row range in the canonical (rails-horizontal) frame computePattern works in. */
+function _canonicalRailSpan(extent, orientation) {
+  const a = orient({ i: extent.iMin, j: extent.jMin }, orientation);
+  const b = orient({ i: extent.iMax, j: extent.jMax }, orientation);
+  return { jMin: Math.min(a.j, b.j), jMax: Math.max(a.j, b.j) };
+}
+
+/**
+ * Fred (protected rails): a generated rail the user recoloured, striped or cut with the scissors is protected from
+ * Generate -- the next run redraws it at full length on its row and puts its colours / stripes / cuts back, scaled
+ * to the new length. Moving alone never protects. Read from the drawn rails (owned, on the Rails layer, running
+ * along the current rail direction -- after an orientation flip none do, so the flip drops every protection):
+ * each chain of touching pieces (latticeChains) is one rail; it is protected when it has more than one piece or a
+ * colour override. Per rail: its row as a fraction `at` of `span` (the extent it was drawn in), which of the
+ * row's rails it is (`span`/`spans`, so a row that now splits differently gives the protection up), and each
+ * piece's share of the rail's length, override colour and stripe run id. Pure DOM read.
+ */
+function _captureProtectedRails(editor, railLayerId, spacing, orientation, span) {
+  if (!railLayerId || !editor._sketchLayer) return [];
+  const tol = JOINT_TOL / spacing;
+  const pieces = [];
+  for (const ch of editor._sketchLayer.children().toArray()) {
+    if (!ch || !ch.node || ch.type !== 'line') continue;
+    if (ch.node.getAttribute('data-layer') !== railLayerId || ch.node.getAttribute(LATTICE_ATTR) !== 'rail') continue;
+    if (!ch.node.hasAttribute(OWNERSHIP_ATTR)) continue;
+    const n = (k) => parseFloat(ch.node.getAttribute(k));
+    const w1 = worldPoint(ch, { x: n('x1'), y: n('y1') }), w2 = worldPoint(ch, { x: n('x2'), y: n('y2') });
+    if ([w1.x, w1.y, w2.x, w2.y].some(Number.isNaN)) continue;
+    const c1 = orient({ i: w1.x / spacing, j: w1.y / spacing }, orientation);
+    const c2 = orient({ i: w2.x / spacing, j: w2.y / spacing }, orientation);
+    pieces.push({ el: ch, kind: 'rail', a: { x: c1.i, y: c1.j }, b: { x: c2.i, y: c2.j } });
+  }
+  const rows = new Map();
+  for (const chain of latticeChains(pieces, tol)) {
+    if (chain.axis !== 'x') continue;
+    const key = Math.round(chain.segments[0].a.y / tol);
+    if (!rows.has(key)) rows.set(key, []);
+    rows.get(key).push(chain);
+  }
+  const out = [];
+  const lo = (p) => Math.min(p.a.x, p.b.x), hi = (p) => Math.max(p.a.x, p.b.x);
+  for (const chains of rows.values()) {
+    chains.sort((c, d) => lo(c.segments[0]) - lo(d.segments[0]));
+    chains.forEach((chain, idx) => {
+      const segs = chain.segments;
+      const styled = segs.length > 1 || segs.some((s) => s.el.node.hasAttribute(OVERRIDE_COLOR_ATTR));
+      if (!styled) return;
+      const j = segs[0].a.y;
+      out.push({
+        j,
+        at: span && span.jMax > span.jMin ? (j - span.jMin) / (span.jMax - span.jMin) : null,
+        span: idx,
+        spans: chains.length,
+        pieces: segs.map((s) => ({
+          len: hi(s) - lo(s),
+          color: s.el.node.getAttribute(OVERRIDE_COLOR_ATTR) || null,
+          stripe: s.el.node.getAttribute(STRIPE_ATTR) || null,
+        })),
+      });
+    });
+  }
+  return out;
+}
+
+/** Puts protected rail `pr`'s pieces back on freshly generated rail `el`: cut at the same fractions of its length
+ *  (both ends of each cut written from the same numbers, like the scissors), then each piece's colour override and
+ *  stripe run. A piece that would come out shorter than the rail's stroke width gives the protection up (the rail
+ *  stays plain). Returns whether it was applied. No commit -- Generate stays one undo step. */
+function _reapplyProtectedRail(el, pr) {
+  if (!pr || !Array.isArray(pr.pieces) || !pr.pieces.length) return false;
+  const n = (k) => parseFloat(el.node.getAttribute(k));
+  let a = { x: n('x1'), y: n('y1') }, b = { x: n('x2'), y: n('y2') };
+  // the pieces were captured from the low end of the row; walk the line from that end
+  const pieces = (a.x + a.y <= b.x + b.y) ? pr.pieces : pr.pieces.slice().reverse();
+  const total = pieces.reduce((acc, q) => acc + q.len, 0);
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  if (!(total > 0)) return false;
+  const min = minPieceLength(el);
+  if (pieces.some((q) => (q.len / total) * length < min - 1e-9)) return false;
+  const els = [el];
+  let cur = el, acc = 0;
+  for (let k = 0; k < pieces.length - 1; k++) {
+    acc += pieces[k].len;
+    const f = acc / total;
+    const pt = { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+    const next = cur.clone();
+    next.insertAfter(cur);
+    if (next.node.hasAttribute('id')) next.node.removeAttribute('id');
+    cur.attr({ x2: pt.x, y2: pt.y });
+    next.attr({ x1: pt.x, y1: pt.y });
+    els.push(next);
+    cur = next;
+  }
+  els.forEach((e, k) => {
+    const q = pieces[k];
+    if (q.color) applyColorOverride(e, 'rails', q.color);
+    if (q.stripe) e.attr(STRIPE_ATTR, q.stripe);
+  });
+  return true;
+}
+
 export async function generatePattern(editor, PATTERN, { amendUndo = false } = {}) {
   if (!editor || !editor._sketchLayer) return null;
   if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
@@ -2267,6 +2415,14 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
   // against a live child's data-layer attribute.
   const kindLayerList = [kindLayerIds.rails, kindLayerIds.ties, kindLayerIds.nodes].filter(Boolean);
   const occupied = _collectOccupied(editor, kindLayerList, spacing);
+  // Fred (protected rails): read what the user styled BEFORE the owned pieces are cleared. The row fractions are
+  // measured against the extent the rails were drawn in (railSpan, stored by the previous run).
+  const orientation = PATTERN.orientation || PATTERN_DEFAULTS.orientation;
+  const railSpan = _canonicalRailSpan(extent, orientation);
+  const protectedRails = _captureProtectedRails(editor, kindLayerIds.rails, spacing, orientation, PATTERN.railSpan || railSpan);
+  if (protectedRails.length) PATTERN.protectedRails = protectedRails;
+  else delete PATTERN.protectedRails;
+  PATTERN.railSpan = railSpan;
 
   // Remove every element EACH kind-layer already owns — the "replace",
   // not "diff", half of one-way generation, now scoped by layer rather
@@ -2307,12 +2463,19 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
   // comment below.
   editor._activeLayer = kindLayerIds.rails;
   editor._color = colors.rails;
+  const keptProtected = [];
   for (const seg of segments) {
     if (seg.kind !== 'rail') continue;
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
-    tagOwned(emitSegment(editor, 'rail', p1, p2, widths.rails));
+    const el = tagOwned(emitSegment(editor, 'rail', p1, p2, widths.rails));
+    if (el && seg.protect != null && _reapplyProtectedRail(el, protectedRails[seg.protect])) {
+      keptProtected.push(protectedRails[seg.protect]);
+    }
   }
+  // a protection that found no matching piece this run is given up (Fred: "in doubt give up the protection")
+  if (keptProtected.length) PATTERN.protectedRails = keptProtected;
+  else delete PATTERN.protectedRails;
   // H20 item 6: kindLayerIds.ties/.nodes is absent when the user deleted
   // that layer (_ensureKindLayers skips recreating a removedKinds entry) —
   // guarded so a removed kind's loop never runs (which would otherwise set
@@ -2497,7 +2660,8 @@ export function boundaryFillInputs(editor, pattern) {
   const geometry = contourKey || els.map((el) => [el.type,
     ...BOUNDARY_GEOMETRY_ATTRS.map((k) => el.node.getAttribute(k)), el.node.textContent ?? null]);
   // style-only: colours (the kind colours, the contour's per-segment colours) never move a piece
-  const { colors, fillInputs, contour, ...settings } = pattern || {};
+  // protectedRails / railSpan: what the user styled, re-read every run -- never a reason to refill
+  const { colors, fillInputs, contour, protectedRails, railSpan, ...settings } = pattern || {};
   const contourGeometry = contour ? Object.fromEntries(Object.entries(contour).filter(([k]) => k !== 'segmentColors')) : contour;
   return JSON.stringify({ geometry, settings: { ...settings, contour: contourGeometry } });
 }
@@ -2762,6 +2926,43 @@ export function rewidthOwnedKinds(editor, layerId, kindValuePairs) {
  *   owned — callers can use this to skip the undo push entirely when
  *   there was nothing to do).
  */
+/**
+ * Fred ("Unprotect all"): every generated rail of the pattern on `layerId` goes back to plain -- each chain of cut
+ * pieces joined back into one line, colour overrides and stripe runs removed -- so the next Generate redraws it like
+ * any other rail. Returns how many rails changed. No commit (the caller commits once, with the contour's own reset).
+ */
+export function unprotectRails(editor, layerId) {
+  const patternLayer = resolvePatternLayer(editor, layerId);
+  const pattern = patternLayer && patternLayer.pattern;
+  if (!pattern) return 0;
+  const railLayerId = _kindLayerId(pattern, patternLayer.id, 'rails');
+  const colors = { ...PATTERN_DEFAULTS.colors, ...(pattern.colors || {}) };
+  const pieces = _ownedOnLayer(editor, railLayerId, 'rail').filter((ch) => ch.type === 'line').map((ch) => {
+    const n = (k) => parseFloat(ch.node.getAttribute(k));
+    return { el: ch, kind: 'rail', a: worldPoint(ch, { x: n('x1'), y: n('y1') }), b: worldPoint(ch, { x: n('x2'), y: n('y2') }) };
+  });
+  let count = 0;
+  for (const chain of latticeChains(pieces)) {
+    const segs = chain.segments;
+    const styled = segs.length > 1 || segs.some((s) => s.el.node.hasAttribute(OVERRIDE_COLOR_ATTR) || s.el.node.hasAttribute(STRIPE_ATTR));
+    if (!styled) continue;
+    count++;
+    const first = segs[0].el;
+    if (segs.length > 1 && chain.axis) {
+      const ax = chain.axis;
+      const lo = segs.reduce((m, s) => (Math.min(s.a[ax], s.b[ax]) < m[ax] ? (s.a[ax] < s.b[ax] ? s.a : s.b) : m), segs[0].a[ax] < segs[0].b[ax] ? segs[0].a : segs[0].b);
+      const hi = segs.reduce((m, s) => (Math.max(s.a[ax], s.b[ax]) > m[ax] ? (s.a[ax] > s.b[ax] ? s.a : s.b) : m), segs[0].a[ax] > segs[0].b[ax] ? segs[0].a : segs[0].b);
+      first.attr({ x1: lo.x, y1: lo.y, x2: hi.x, y2: hi.y, transform: null });
+      for (const s of segs.slice(1)) s.el.remove();
+    }
+    first.node.removeAttribute(OVERRIDE_COLOR_ATTR);
+    first.node.removeAttribute(STRIPE_ATTR);
+    first.stroke({ color: colors.rails });
+  }
+  delete pattern.protectedRails;
+  return count;
+}
+
 export function detachAllOwned(editor, layerId) {
   // T76 (SE17, "Detach acts on all of them"): detaches across ALL of this
   // pattern's own rails/ties/nodes kind-layers, not just whichever one
