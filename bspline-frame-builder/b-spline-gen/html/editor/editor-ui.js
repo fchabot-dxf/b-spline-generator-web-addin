@@ -1,6 +1,7 @@
 /**
  * editor-ui.js - Mode management, toolbar sync, and selection highlights for VectorEditor.
  */
+import { clearTouchConfirm } from './editor-touch-confirm.js';
 import { el as getEl, queryAll, query } from './dom.js';
 import { worldBbox } from './editor-coords.js';
 import { fusLog } from '../core/fusion-bridge.js';
@@ -135,7 +136,9 @@ export function setMode(editor, mode) {
     try { fusLog(`[STROKE] setMode  from=${editor._currentMode}  to=${mode}  wasDrawing=${wasDrawing}  wasEditingText=${wasEditingText}  hasCurrentPath=${!!editor._currentPath}`); } catch (_) {}
     if (editor._editingTextEl) editor._commitText();
     if (editor._isDrawing) editor._cancelDrawing();
-    
+    clearTouchConfirm(editor); // a pending scissors / stripe check + X belongs to the tool being left
+    editor._touchAim = null;
+
     editor._currentMode = mode;
     updateToolbarVisibility(editor, mode, editor._selectedElement);
     // MOB3: the mobile drawer (editor-drawer.js) needs to know a tool

@@ -69,6 +69,7 @@ import {
 // write/regenerate logic, not a second copy of it).
 import { generateSilhouette, joinSegmentPathsIntoClosedD } from './editor-shape-lattice-generator.js';
 import { hitTestSegment, hitTestArcGrip, nearestSegment } from './editor-shape-lattice-interaction.js';
+import { renderTouchConfirm } from './editor-touch-confirm.js';
 import {
     currentPattern, currentShape, regenerateSilhouette, regenerateSilhouetteAndFill,
     paramHandleRecords, renderShapeLatticeHandles, openSegmentStyleBar, _shapeContourRegion,
@@ -224,8 +225,9 @@ function _abortTouchGesture(editor) {
     editor._shapeLatticeDragOffsetY = 0;
     editor._shapeArcPress = null;
     editor._railEndDrag = null;
-    editor._touchAimPt = null; // a scissors / stripe aim (acts on lift): dropped, nothing cut or striped
-    for (const id of ['cut-marker', 'stripe-marker']) document.getElementById(id)?.remove();
+    // a scissors / stripe AIM in progress (editor-touch-confirm.js) is dropped; a PENDING check/X stays (its
+    // preview is re-drawn with the handles), so zooming in to check before confirming is fine.
+    if (editor._touchAim) { editor._touchAim = null; for (const id of ['cut-marker', 'stripe-marker']) document.getElementById(id)?.remove(); }
     document.querySelectorAll('.shape-lattice-segment-bar').forEach((bar) => bar.remove());
     setHandleCursor(null);
     if (snap && typeof editor._restoreState === 'function') editor._restoreState(snap);
@@ -2792,6 +2794,7 @@ export function updateHandles(editor) {
     if (!editor._handleLayer) return;
     editor._handleLayer.clear();
     editor._transformHandles = [];
+    renderTouchConfirm(editor); // a pending scissors / stripe check + X survives every handle re-render
     // T59: the Shape Lattice tool's own param handles don't depend on
     // `_selectedElements` at all (a generated silhouette needs no
     // selection to be draggable) — branch BEFORE the selection-gated

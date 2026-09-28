@@ -3216,3 +3216,16 @@ stripe preview), `update` re-aims as the finger slides, and `finish` (finger lif
 click still acts at once. A pinch landing mid-aim drops it (_abortTouchGesture). Verified with real touch: press ->
 marker, nothing done; slide onto a rail -> marker on it; lift -> exactly that rail striped / cut. Test: cut-tool
 (touch aim vs mouse). Full vitest passing.
+
+## Scissors + Stripe on touch: press-drag to aim, release shows check / X, tap to confirm -- 2026-09-28
+
+Fred: "the mechanics of the tool aren't ideal on mobile ... Could a green check mark and a red x on screen help with
+mobile confirmation? Like line drawing in Fusion, I'd like to press anywhere and hold drag to selection with hover
+feedback, release show the confirm or abort, click anywhere to cancel" + "not release over check or x, I want to
+click again on it". Replaces the same-day "act on lift" version. New editor-touch-confirm.js (shared by both tools):
+touch press ANYWHERE -> drag aims (touch-marker point, the tool's own hover preview); release -> if on a target the
+preview stays + a green check / red X (22 px radius, 58 px above the target, 34 px apart); a separate TAP on the check
+acts (tool stays active), on the X or anywhere else cancels; press-and-drag again re-aims. Pending survives
+pinch/pan and handle re-renders (renderTouchConfirm from updateHandles); a tool switch drops it (setMode). Mouse/pen
+unchanged (instant click). Verified with real touch at 390 px: stripe + cut both -- aim from empty space, release =
+pending + buttons, nothing done; tap check = the aimed rail striped/cut; re-aim + tap elsewhere = cancelled.

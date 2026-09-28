@@ -43,6 +43,7 @@
  * every other attribute. A re-stripe takes the CONTIGUOUS run of pieces with that id containing the tapped piece
  * (a stripe the user later deleted leaves two runs, each re-striped on its own).
  */
+import { isTouchPress, touchConfirmStart, touchConfirmUpdate, touchConfirmFinish } from './editor-touch-confirm.js';
 import {
   isCuttable, isContourPath, pieceEnds, cutAtNoCommit, joinNoCommit, writePieceColor, commitCutEdit,
   cuttableUnder, minPieceLength, CUT_MIN_PLAIN_IN,
@@ -280,12 +281,15 @@ function _drawStripeMarker(editor, plan) {
 }
 
 /** Touch (Fred: "Stripe tool, I don't understand how to confirm the action on mobile"; the scissors were
- *  "very hard to use on mobile"): a phone has no hover, and the action fired on the PRESS at the touch
- *  marker point (offset above the finger), so the preview of WHAT it would hit never showed and the finger
- *  landed on one line while another got the action. On touch the press now only AIMS -- the same marker /
- *  preview hover draws, following the finger while it slides -- and LIFTING the finger confirms it there.
- *  Mouse and pen keep the instant click. `editor._touchAimPt` holds the aimed point (null = none). */
-const _aimsOnLift = (editor, e) => ((e && e.pointerType) || editor._pointerType) === 'touch';
+ *  "very hard to use on mobile"): press anywhere and drag to aim (hover preview), release to show a green
+ *  check / red X, tap the check to act -- editor-touch-confirm.js. Mouse and pen keep the instant click. */
+/** The stripe tool as a touch-confirm tool: the preview is the stripe marker on the aimed line. */
+const STRIPE_TOUCH_TOOL = {
+  name: 'stripe',
+  preview(editor, pt) { const el = cuttableUnder(editor, pt); _drawStripeMarker(editor, el ? stripePlan(editor, el) : null); return !!el; },
+  clearPreview(editor) { clearStripeMarker(editor); },
+  act(editor, pt) { _stripeAtPoint(editor, pt); },
+};
 
 export const stripeHandler = {
   hover(editor, pt) {
@@ -296,26 +300,14 @@ export const stripeHandler = {
     editor._stripeHoverEl = el;
   },
   start(editor, pt, e) {
-    if (_aimsOnLift(editor, e)) { // touch: aim now, stripe on lift (finish)
-      editor._isDrawing = true;
-      editor._touchAimPt = pt;
-      stripeHandler.hover(editor, pt);
+    if (isTouchPress(editor, e)) {
+      touchConfirmStart(editor, STRIPE_TOUCH_TOOL, pt, e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt);
       return;
     }
     _stripeAtPoint(editor, pt);
   },
-  update(editor, pt) {
-    if (!editor._touchAimPt) return;
-    editor._touchAimPt = pt;
-    stripeHandler.hover(editor, pt);
-  },
-  finish(editor) {
-    const pt = editor._touchAimPt;
-    editor._touchAimPt = null;
-    editor._isDrawing = false;
-    if (pt) _stripeAtPoint(editor, pt);
-    else clearStripeMarker(editor);
-  },
+  update(editor, pt) { touchConfirmUpdate(editor, STRIPE_TOUCH_TOOL, pt); },
+  finish(editor) { touchConfirmFinish(editor, STRIPE_TOUCH_TOOL); },
 };
 
 function _stripeAtPoint(editor, pt) {

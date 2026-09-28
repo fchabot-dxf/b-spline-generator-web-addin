@@ -22,6 +22,7 @@
  * `cutAt(editor, piece, point)` and `join(editor, joint)` are plain commands (seat A's H6 context menu registers
  * them); the tool's mode handler below is one caller of them.
  */
+import { isTouchPress, touchConfirmStart, touchConfirmUpdate, touchConfirmFinish } from './editor-touch-confirm.js';
 import { LATTICE_ATTR } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { getDynamicTolerance } from './editor-hit.js';
@@ -527,36 +528,27 @@ function _drawCutMarker(editor, intent) {
 }
 
 /** Touch (Fred: "Stripe tool, I don't understand how to confirm the action on mobile"; the scissors were
- *  "very hard to use on mobile"): a phone has no hover, and the action fired on the PRESS at the touch
- *  marker point (offset above the finger), so the preview of WHAT it would hit never showed and the finger
- *  landed on one line while another got the action. On touch the press now only AIMS -- the same marker /
- *  preview hover draws, following the finger while it slides -- and LIFTING the finger confirms it there.
- *  Mouse and pen keep the instant click. `editor._touchAimPt` holds the aimed point (null = none). */
-const _aimsOnLift = (editor, e) => ((e && e.pointerType) || editor._pointerType) === 'touch';
+ *  "very hard to use on mobile"): press anywhere and drag to aim (hover preview), release to show a green
+ *  check / red X, tap the check to act -- editor-touch-confirm.js. Mouse and pen keep the instant click. */
+/** The scissors as a touch-confirm tool: the preview is the cut ring / join diamond on the aimed line. */
+const CUT_TOUCH_TOOL = {
+  name: 'cut',
+  preview(editor, pt) { const intent = cutIntent(editor, pt); _drawCutMarker(editor, intent); return !!intent; },
+  clearPreview(editor) { clearCutMarker(editor); },
+  act(editor, pt) { _cutAtPoint(editor, pt, false); },
+};
 
 export const cutHandler = {
   hover(editor, pt) { _drawCutMarker(editor, cutIntent(editor, pt)); }, // the snapped landing point (Alt: exact, on the tap)
   start(editor, pt, e) {
-    if (_aimsOnLift(editor, e)) { // touch: aim now (the marker shows the cut / join), act on lift (finish)
-      editor._isDrawing = true;
-      editor._touchAimPt = pt;
-      cutHandler.hover(editor, pt);
+    if (isTouchPress(editor, e)) {
+      touchConfirmStart(editor, CUT_TOUCH_TOOL, pt, e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt);
       return;
     }
     _cutAtPoint(editor, pt, !!(e && e.altKey));
   },
-  update(editor, pt) {
-    if (!editor._touchAimPt) return;
-    editor._touchAimPt = pt;
-    cutHandler.hover(editor, pt);
-  },
-  finish(editor) {
-    const pt = editor._touchAimPt;
-    editor._touchAimPt = null;
-    editor._isDrawing = false;
-    if (pt) _cutAtPoint(editor, pt, false);
-    else clearCutMarker(editor);
-  },
+  update(editor, pt) { touchConfirmUpdate(editor, CUT_TOUCH_TOOL, pt); },
+  finish(editor) { touchConfirmFinish(editor, CUT_TOUCH_TOOL); },
 };
 
 function _cutAtPoint(editor, pt, exact) {

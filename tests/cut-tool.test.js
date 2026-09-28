@@ -12,6 +12,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-hit.js', async
 });
 import { latticeChains, splitLine, chainOf, withChain, writeChainRow, updateJointSlide, pushTieJoints, JOINT_TOL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
 import { cutAt, join, jointAt, snapOnLine, cutIntent, cutHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-cut-tool.js';
+import { confirmButtons } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-touch-confirm.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { drawnFromPattern } from './helpers/drawn-lattice.js';
 import { moveRailAlongAxis, orient, fromLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
@@ -137,21 +138,33 @@ describe('U2 cutAt / join', () => {
     }
   });
 
-  it('touch: the press only AIMS (nothing cut), a slide re-aims, LIFTING cuts at the aim; mouse cuts on the click (Fred: "hard to use on mobile")', () => {
+  it('touch: press+drag aims, release shows check/X (nothing cut), a TAP on the check cuts; X or elsewhere cancels; mouse cuts on the click (Fred: "a green check mark and a red x")', () => {
     const touch = { pointerType: 'touch' };
-    cutHandler.start(ed, { x: 1.5, y: 1 }, touch);
-    expect(ed.layer.list.filter((el) => el.store['data-lattice'] === 'rail')).toHaveLength(1); // not cut yet
-    expect(ed._isDrawing).toBe(true);
-    cutHandler.update(ed, { x: 2.5, y: 1 });
-    cutHandler.finish(ed);
-    const rails = ed.layer.list.filter((el) => el.store['data-lattice'] === 'rail');
-    expect(rails).toHaveLength(2);
-    expect(rails.map((r) => +r.store.x2).sort((a, b) => a - b)[0]).toBeCloseTo(2.5, 9); // cut where the aim ENDED
-    expect(ed._touchAimPt).toBeNull();
-    expect(ed._isDrawing).toBe(false);
+    const rails = () => ed.layer.list.filter((el) => el.store['data-lattice'] === 'rail');
+    cutHandler.start(ed, { x: 1.5, y: 1 }, touch);          // press anywhere...
+    cutHandler.update(ed, { x: 2.5, y: 1 });                 // ...drag the aim onto the rail
+    cutHandler.finish(ed);                                   // release: pending, NOT cut
+    expect(rails()).toHaveLength(1);
+    expect(ed._touchConfirm && ed._touchConfirm.pt).toEqual({ x: 2.5, y: 1 });
+    const b = confirmButtons(ed, ed._touchConfirm.pt);
+    cutHandler.start(ed, b.ok, touch); cutHandler.finish(ed); // a separate tap ON the check
+    expect(rails()).toHaveLength(2);
+    expect(rails().map((r) => +r.store.x2).sort((p, q) => p - q)[0]).toBeCloseTo(2.5, 9); // cut where the aim was
+    expect(ed._touchConfirm).toBeNull();
+    // aim again, then cancel: on the X, and by a tap anywhere else
+    for (const where of ['cancel', 'elsewhere']) {
+      cutHandler.start(ed, { x: 3.2, y: 1 }, touch); cutHandler.finish(ed);
+      expect(ed._touchConfirm).toBeTruthy();
+      const bb = confirmButtons(ed, ed._touchConfirm.pt);
+      const tapAt = where === 'cancel' ? bb.cancel : { x: 0.1, y: 5 };
+      cutHandler.start(ed, tapAt, touch); cutHandler.finish(ed);
+      expect(ed._touchConfirm).toBeNull();
+      expect(rails()).toHaveLength(2); // nothing cut
+    }
     cutHandler.start(ed, { x: 1, y: 1 }, { pointerType: 'mouse' }); // mouse: immediate
-    expect(ed.layer.list.filter((el) => el.store['data-lattice'] === 'rail')).toHaveLength(3);
+    expect(rails()).toHaveLength(3);
   });
+
 
   it('the only minimum is the piece\'s own stroke width (Fred: "The only distance it should use is the stroke width"), not one lattice cell', () => {
     expect(cutAt(ed, rail, { x: 0.06, y: 1 })).toBeNull();      // closer than the rail's 0.07 stroke width: refused
