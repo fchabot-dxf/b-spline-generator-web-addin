@@ -103,26 +103,47 @@ describe('resolvePatternLayer (T76 item 2)', () => {
 });
 
 describe('_ensureKindLayers (T76 item 2)', () => {
-  it('on the FIRST split, the CURRENT layer becomes rails directly (renamed, same id) -- no orphaned empty container', () => {
+  it('on the FIRST split, Rails is a NEW layer holding the pattern (Fred: "shouldn\'t it make 4 new layers?"); the origin layer, left empty, is dropped; Rails becomes active', () => {
     const editor = makeMockEditor();
     const pattern = {};
     const ids = _ensureKindLayers(editor, pattern, '0', ['rails', 'ties', 'nodes']);
-    expect(ids.rails).toBe('0');
-    expect(editor._layers[0].name).toBe('Rails');
-    expect(editor._layers[0].pattern).toBe(pattern);
+    expect(ids.rails).not.toBe('0');
+    const rails = editor._layers.find((l) => l.id === ids.rails);
+    expect(rails.name).toBe('Rails');
+    expect(rails.pattern).toBe(pattern);
+    expect(editor._layers.some((l) => l.id === '0')).toBe(false); // the empty "Layer 1" is not left behind
+    expect(editor._activeLayer).toBe(ids.rails);
+  });
+
+  it('an origin layer with drawings on it is KEPT as-is (name, drawings, no pattern) -- never renamed or mixed into Rails', () => {
+    const editor = makeMockEditor();
+    const drawing = { attr: (k) => (k === 'data-layer' ? '0' : null), node: { classList: { toggle() {}, add() {}, remove() {} } } };
+    for (const m of ['addClass', 'removeClass', 'toggleClass', 'css']) drawing[m] = () => drawing;
+    drawing.hasClass = () => false;
+    editor._sketchLayer = { children() { const a = [drawing]; a.toArray = () => a; return a; }, node: {} };
+    editor._layers[0].pattern = {};
+    const pattern = editor._layers[0].pattern;
+    const ids = _ensureKindLayers(editor, pattern, '0', ['rails', 'ties', 'nodes']);
+    const origin = editor._layers.find((l) => l.id === '0');
+    expect(origin).toBeTruthy();
+    expect(origin.name).toBe('Layer 1');
+    expect(origin.pattern).toBeUndefined(); // the pattern moved to the new Rails layer
+    expect(origin.carve).not.toBe(false);   // its own settings untouched
+    expect(editor._layers.find((l) => l.id === ids.rails).pattern).toBe(pattern);
+    expect(editor._layers).toHaveLength(4);
   });
 
   it('creates the OTHER requested kinds as new sibling layers, each pointing back at rails via patternOwner', () => {
     const editor = makeMockEditor();
     const pattern = {};
     const ids = _ensureKindLayers(editor, pattern, '0', ['rails', 'ties', 'nodes']);
-    expect(editor._layers).toHaveLength(3);
+    expect(editor._layers).toHaveLength(3); // Rails, Ties, Nodes (the empty origin dropped)
     const ties = editor._layers.find((l) => l.id === ids.ties);
     const nodes = editor._layers.find((l) => l.id === ids.nodes);
     expect(ties.name).toBe('Ties');
-    expect(ties.patternOwner).toBe('0');
+    expect(ties.patternOwner).toBe(ids.rails);
     expect(nodes.name).toBe('Nodes');
-    expect(nodes.patternOwner).toBe('0');
+    expect(nodes.patternOwner).toBe(ids.rails);
     // the recovered SE7b tooling values, not the generic TOOLING_DEFAULTS.
     expect(ties.depth).toBe(0.08);
     expect(nodes.profile).toBe('ballnose');
@@ -141,22 +162,23 @@ describe('_ensureKindLayers (T76 item 2)', () => {
     const editor = makeMockEditor();
     const pattern = {};
     const ids = _ensureKindLayers(editor, pattern, '0', ['contour']);
-    expect(ids.rails).toBe('0'); // ensured as a side effect, even though only 'contour' was asked for
+    expect(ids.rails).toBeTruthy(); // ensured as a side effect, even though only 'contour' was asked for
     expect(ids.contour).toBeTruthy();
     const contourLayer = editor._layers.find((l) => l.id === ids.contour);
-    expect(contourLayer.patternOwner).toBe('0');
+    expect(contourLayer.patternOwner).toBe(ids.rails);
     expect(contourLayer.name).toBe('Contour');
   });
 
   it('a LATER call for a NEW kind (e.g. converting an existing box lattice to a shape lattice) reuses the EXISTING rails id, not the current active layer', () => {
     const editor = makeMockEditor();
     const pattern = {};
-    _ensureKindLayers(editor, pattern, '0', ['rails', 'ties', 'nodes']);
-    // the user has since switched to the Ties layer -- '1' is NOT rails.
-    const ids = _ensureKindLayers(editor, pattern, '1', ['contour']);
-    expect(ids.rails).toBe('0'); // untouched -- NOT reassigned to '1'
+    const first = _ensureKindLayers(editor, pattern, '0', ['rails', 'ties', 'nodes']);
+    const railsId = first.rails;
+    // the user has since switched to the Ties layer -- it is NOT rails.
+    const ids = _ensureKindLayers(editor, pattern, first.ties, ['contour']);
+    expect(ids.rails).toBe(railsId); // untouched -- NOT reassigned to the active (Ties) layer
     const contourLayer = editor._layers.find((l) => l.id === ids.contour);
-    expect(contourLayer.patternOwner).toBe('0');
+    expect(contourLayer.patternOwner).toBe(railsId);
   });
 });
 

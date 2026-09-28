@@ -24,7 +24,7 @@ import {
   LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
-import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved } from './layers.js';
+import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved, getElementLayer } from './layers.js';
 import { OVERRIDE_COLOR_ATTR } from './editor-piece-override.js';
 import { lcgPoints } from '../core/terrain.js';
 import { setEditorStatusHint } from './editor-ui.js';
@@ -2800,25 +2800,33 @@ export function clearContourSegmentColor(editor, el, defaultColor) {
  * valid rails layer yet to point back to.
  *
  * On the VERY FIRST split for this pattern (no `rails` id recorded yet),
- * `currentLayerId` — wherever the pattern object is ALREADY living,
- * `currentPattern`'s own lazy-create having put it there — BECOMES the
- * rails layer directly (renamed, same id) rather than creating a fresh
- * layer and leaving the original one an orphaned, empty "container" (the
- * recovered SE7b design's own three-kind precursor to this feature always
- * created three brand new layers, even when the user's current layer had
- * nothing else on it — simpler to avoid than to inherit here).
+ * the pattern moves from `currentLayerId` (wherever `currentPattern`'s
+ * lazy-create put it) onto a NEW Rails layer -- all four kind layers are
+ * new (Fred: "shouldn't it make 4 new layers?"); the old takeover renamed
+ * the user's layer and mixed its drawings into Rails. The origin layer is
+ * dropped only if it is left completely empty; Rails becomes active.
  */
 export function _ensureKindLayers(editor, pattern, currentLayerId, kinds) {
   pattern.layers = pattern.layers || {};
   const ids = pattern.layers;
   const layerExists = (id) => id && editor._layers.some((l) => l.id === id);
   if (!layerExists(ids.rails)) {
-    ids.rails = currentLayerId;
+    // Fred ("shouldn't it make 4 new layers?"): the first split used to TAKE OVER the current layer as
+    // Rails (renamed, its drawings sharing the rails' layer and tooling). Now every kind layer is NEW, with
+    // its own declared defaults; the layer the pattern was started on keeps its name, drawings and
+    // settings, and gives the pattern to the new Rails layer. If it is left completely empty (nothing drawn
+    // on it, no other pattern role), it is dropped -- no orphan "Layer 1" -- and the new Rails layer becomes
+    // active either way, since the lattice panels find their pattern through the ACTIVE layer.
+    const rails = addLayer(editor, { ...LATTICE_KIND_LAYER_DEFAULTS.rails, skipUndo: true });
+    ids.rails = rails.id;
     const currentLayer = editor._layers.find((l) => l.id === currentLayerId);
-    if (currentLayer) {
-      currentLayer.name = LATTICE_KIND_LAYER_DEFAULTS.rails.name;
-      currentLayer.carve = LATTICE_KIND_LAYER_DEFAULTS.rails.carve; // becoming the Rails layer: 3D off, once
+    if (currentLayer && currentLayer.pattern === pattern) delete currentLayer.pattern;
+    const hasGeometry = !!editor._sketchLayer && editor._sketchLayer.children().toArray()
+      .some((c) => getElementLayer(c) === String(currentLayerId));
+    if (currentLayer && !hasGeometry && !currentLayer.pattern && !currentLayer.patternOwner) {
+      editor._layers = editor._layers.filter((l) => l !== currentLayer);
     }
+    setActiveLayer(editor, rails.id);
   }
   // Always keep the rails layer's own `.pattern` pointing at THIS pattern
   // object -- the one authoritative place it lives (every sibling kind-

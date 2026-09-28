@@ -108,13 +108,13 @@ describe('generatePattern: first Generate', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
 
-  it('T76 (SE17, supersedes SE7i): creates/uses ONE layer per kind (rails/ties/nodes) -- the CURRENT layer becomes Rails directly, Ties/Nodes are new siblings', () => {
+  it('T76 (SE17, supersedes SE7i): creates ONE NEW layer per kind (rails/ties/nodes); the empty original layer is dropped (Fred: "shouldn\'t it make 4 new layers?")', () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 1, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.5 } };
     generatePattern(editor, pattern);
 
-    expect(editor._layers).toHaveLength(3); // the original layer (now Rails) + new Ties + new Nodes
+    expect(editor._layers).toHaveLength(3); // new Rails + new Ties + new Nodes (the empty original is not left behind)
     const [railsLayer, tiesLayer, nodesLayer] = editor._layers;
-    expect(railsLayer.id).toBe('0'); // the ORIGINAL layer -- reused, not left an orphaned empty container
+    expect(railsLayer.id).not.toBe('0'); // a NEW layer -- the user's layer is never taken over
     expect(railsLayer.name).toBe('Rails');
     expect(tiesLayer.name).toBe('Ties');
     expect(nodesLayer.name).toBe('Nodes');

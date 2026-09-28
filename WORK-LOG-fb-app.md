@@ -3246,3 +3246,16 @@ Fred: "I think lattice should be created with the 3d relief off by default". LAT
 nodes, contour) now carry carve:false (addLayer takes any TOOLING_DEFAULTS key from its options), and the current
 layer that the first split turns into Rails gets carve:false at that moment only -- so a user turning 3D back on is
 never overridden by a later Regenerate. Tests: editor-lattice-kind-layers (defaults + all four layers created off).
+
+## Lattice always creates four NEW layers -- 2026-09-28
+
+Fred, on why Rails needed a carve special case: "won't that make bugs later? Shouldn't it make 4 new layers?" -> "Yes".
+`_ensureKindLayers` no longer takes over the current layer as Rails (renamed, its drawings mixed into Rails' layer and
+tooling, and now its 3D switched off). On the first split every kind layer is NEW (LATTICE_KIND_LAYER_DEFAULTS, 3D
+off); the pattern moves from the origin layer to the new Rails layer; the origin is dropped only if completely empty
+(no drawings, no other pattern role) -- raw removal, no extra undo step; Rails becomes active (the lattice panels
+find their pattern through the active layer). The carve special case is gone. Verified in the browser: blank editor
+-> Rails/Contour/Ties/Nodes (all 3D off, no empty Layer 1, Rails active); with a drawing on Layer 1 -> Layer 1 kept
+(name, drawing, 3D on) + the four new layers; a second Regenerate reuses them. Tests: editor-lattice-kind-layers
+(rewritten + origin-with-drawings), editor-lattice-pattern-emit. Existing saved lattices (Rails = an old taken-over
+layer) keep working: the rails id is only chosen when none exists yet.
