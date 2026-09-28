@@ -3279,3 +3279,11 @@ overflow-x hidden -> auto, 600px of scroll range. (Headless synthesized swipes d
 the tool row that scrolls on Fred's phone, so that part is confirmed by the computed style, not a swipe.)
 Undo after moving lattice geometry: not reproduced -- rail and tie moves undo correctly in both lattice tools, mouse
 and touch, via the on-screen undo button; asked Fred for the exact steps.
+
+## Header layer pill removed; slider scroll guard holds events (Fred: "I don't think it's useful to have the layer drop down in the header" / "Scrolling on forms is changing slider values")
+- `#editorActiveLayerLabel` removed from the editor header (HTML, phone CSS, `_syncActiveLabel` in editor/layers.js).
+- main/slider-scroll-guard.js: while a touch on a range input is undecided, its input/change events are held
+  (capture phase, before app listeners). Vertical first or `pointercancel` (the browser took it as a pan) -> value
+  put back silently, the app never sees it (previously the jump reached the app first, and a pointercancel before
+  8px reset WITHOUT restoring). Horizontal drag or tap -> released as one input; the browser's own change follows.
+  Guard attaches once. Verified headless with real touch events: vertical swipe = no change seen; drag/tap = set.

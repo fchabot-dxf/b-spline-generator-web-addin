@@ -530,7 +530,6 @@ export function setActiveLayer(editor, layerId) {
   editor._activeLayer = normalized;
 
   _syncLegacySelect(editor);
-  _syncActiveLabel(editor);
   renderLayersPanel(editor);
   applyLayerState(editor);
   // SE12 T38: covers BOTH "layer switch" and "document open/restore" —
@@ -659,7 +658,6 @@ export function renderLayersPanel(editor) {
   if (stampList) renderLayerList(stampList, editor, { compact: true });
 
   _syncLegacySelect(editor);
-  _syncActiveLabel(editor);
 
   // Notify other UI (main/stamp/layer.js keeps P.activeLayerIdx and a
   // couple of sidebar-owned bits — the V-Bit Angle row, the file-name
@@ -982,15 +980,6 @@ function _syncLegacySelect(editor) {
   }
 }
 
-/** Update the small "Active Layer" pill in the editor header. */
-function _syncActiveLabel(editor) {
-  const label = document.getElementById('editorActiveLayerLabel');
-  if (!label) return;
-  const layers = Array.isArray(editor._layers) ? editor._layers : [];
-  const active = layers.find(l => l.id === getActiveLayer(editor));
-  label.textContent = active ? active.name : '—';
-}
-
 // ----------- Init -----------
 
 export function initLayerControls(editor) {
@@ -1031,5 +1020,4 @@ export function initLayerControls(editor) {
 
   renderLayersPanel(editor);
   _syncLegacySelect(editor);
-  _syncActiveLabel(editor);
 }

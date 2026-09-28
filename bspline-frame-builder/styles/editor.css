@@ -1100,14 +1100,6 @@
         gap: 6px !important;
     }
     #svgEditorHeader > div:first-child { gap: 6px !important; min-width: 0; flex: 0 1 auto; }
-    #editorActiveLayerLabel {
-        min-width: 0 !important;
-        max-width: 76px;
-        padding: 3px 6px !important;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
     #editorModeTabs .editor-fillmode-btn { padding: 3px 8px !important; }
     #editorCancel, #editorApply { padding: 4px 8px !important; }
     #editorHeaderMore { padding: 4px 6px !important; }

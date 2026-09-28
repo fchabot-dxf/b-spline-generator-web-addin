@@ -35,7 +35,22 @@
 
 const DIRECTION_THRESHOLD_PX = 8;
 
+/*
+ * Fred (again, phone: "Scrolling on forms is changing slider values"): restoring the value AFTER the fact
+ * wasn't enough. The app had already seen the jumped value (a live regen, a history step), and a scroll the
+ * browser claimed before an 8px move ended in `pointercancel`, which used to reset WITHOUT restoring. Now:
+ *   - while the gesture is undecided, the slider's own `input`/`change` events are HELD (swallowed in the
+ *     capture phase, before any app listener), so nothing reacts to the touched position yet;
+ *   - scroll (vertical first, or the browser cancelling the pointer = it took the gesture as a pan):
+ *     the value is put back silently, and the app never saw a change;
+ *   - drag (horizontal first) or a plain tap (released without scrolling): the held value is released as
+ *     an input (the browser's own change follows on release), and the rest of a drag flows normally.
+ */
+let attached = false;
+
 export function attachSliderScrollGuard() {
+  if (attached) return; // one document-level guard; a second copy would hold the first one's released events
+  attached = true;
   let target = null;
   let startValue = null;
   let startX = 0;
@@ -48,34 +63,50 @@ export function attachSliderScrollGuard() {
     resolved = null;
   }
 
+  function release() {
+    const el = target;
+    resolved = 'drag';
+    // input only: the browser's own `change` still arrives on release (a second one would be a duplicate)
+    if (el && el.value !== startValue) el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function restore() {
+    resolved = 'scroll';
+    if (target && target.value !== startValue) target.value = startValue; // silent: nobody saw the jump
+  }
+
+  const hold = (e) => {
+    if (!target || e.target !== target) return;
+    if (resolved === 'drag') return;
+    e.stopImmediatePropagation();
+    if (resolved === 'scroll' && target.value !== startValue) target.value = startValue;
+  };
+  document.addEventListener('input', hold, true);
+  document.addEventListener('change', hold, true);
+
   document.addEventListener('pointerdown', (e) => {
     if (e.pointerType !== 'touch' || e.target?.type !== 'range') return;
     target = e.target;
-    startValue = target.value;
+    startValue = target.value; // pointerdown comes before the browser moves the value (verified in Chromium)
     startX = e.clientX;
     startY = e.clientY;
     resolved = null;
-  }, { passive: true });
+  }, { passive: true, capture: true });
 
   document.addEventListener('pointermove', (e) => {
     if (!target || resolved) return;
     const dx = Math.abs(e.clientX - startX);
     const dy = Math.abs(e.clientY - startY);
-    if (dy > DIRECTION_THRESHOLD_PX && dy > dx) {
-      resolved = 'scroll';
-      if (target.value !== startValue) {
-        target.value = startValue;
-        // Real events (not just a property set) so anything already
-        // listening for live updates (bind()/syncPair, core/ui-utils.js)
-        // sees the restored value the same way it'd see a real edit.
-        target.dispatchEvent(new Event('input', { bubbles: true }));
-        target.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    } else if (dx > DIRECTION_THRESHOLD_PX && dx >= dy) {
-      resolved = 'drag';
-    }
+    if (dy > DIRECTION_THRESHOLD_PX && dy > dx) restore();
+    else if (dx > DIRECTION_THRESHOLD_PX && dx >= dy) release();
   }, { passive: true });
 
-  document.addEventListener('pointerup', reset, { passive: true });
-  document.addEventListener('pointercancel', reset, { passive: true });
+  document.addEventListener('pointerup', () => {
+    if (target && !resolved) release(); // a tap sets the value, as before
+    reset();
+  }, { passive: true });
+  document.addEventListener('pointercancel', () => {
+    if (target && resolved !== 'drag') restore(); // the browser took it as a scroll
+    reset();
+  }, { passive: true });
 }
