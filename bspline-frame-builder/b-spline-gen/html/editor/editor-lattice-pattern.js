@@ -93,11 +93,13 @@ export const OWNERSHIP_ATTR = 'data-lattice-gen';
  */
 export const LATTICE_FUSION_BUILD_ORDER = Object.freeze(['contour', 'rails', 'ties', 'nodes']);
 
+// Fred: "I think lattice should be created with the 3d relief off by default" -- every kind layer starts with
+// carve:false (the layer row's 3D toggle off); turning it on is one click, and it is never forced back off.
 export const LATTICE_KIND_LAYER_DEFAULTS = Object.freeze({
-  contour: Object.freeze({ name: 'Contour' }),
-  rails: Object.freeze({ name: 'Rails', depth: 0.15, profile: 'vbit', angle: 90 }),
-  ties: Object.freeze({ name: 'Ties', depth: 0.08, profile: 'vbit', angle: 90 }),
-  nodes: Object.freeze({ name: 'Nodes', depth: 0.12, profile: 'ballnose', angle: 90 }),
+  contour: Object.freeze({ name: 'Contour', carve: false }),
+  rails: Object.freeze({ name: 'Rails', depth: 0.15, profile: 'vbit', angle: 90, carve: false }),
+  ties: Object.freeze({ name: 'Ties', depth: 0.08, profile: 'vbit', angle: 90, carve: false }),
+  nodes: Object.freeze({ name: 'Nodes', depth: 0.12, profile: 'ballnose', angle: 90, carve: false }),
 });
 
 /** T49 (SE13 §1): the boundary-shape LINK — "linked by id, not copied;
@@ -2813,7 +2815,10 @@ export function _ensureKindLayers(editor, pattern, currentLayerId, kinds) {
   if (!layerExists(ids.rails)) {
     ids.rails = currentLayerId;
     const currentLayer = editor._layers.find((l) => l.id === currentLayerId);
-    if (currentLayer) currentLayer.name = LATTICE_KIND_LAYER_DEFAULTS.rails.name;
+    if (currentLayer) {
+      currentLayer.name = LATTICE_KIND_LAYER_DEFAULTS.rails.name;
+      currentLayer.carve = LATTICE_KIND_LAYER_DEFAULTS.rails.carve; // becoming the Rails layer: 3D off, once
+    }
   }
   // Always keep the rails layer's own `.pattern` pointing at THIS pattern
   // object -- the one authoritative place it lives (every sibling kind-

@@ -51,13 +51,22 @@ describe('LATTICE_KIND_LAYER_DEFAULTS', () => {
   });
 
   it('rails/ties/nodes keep the recovered SE7b tuned tooling (rails/ties V-bit, ties shallower; nodes ballnose)', () => {
-    expect(LATTICE_KIND_LAYER_DEFAULTS.rails).toEqual({ name: 'Rails', depth: 0.15, profile: 'vbit', angle: 90 });
-    expect(LATTICE_KIND_LAYER_DEFAULTS.ties).toEqual({ name: 'Ties', depth: 0.08, profile: 'vbit', angle: 90 });
-    expect(LATTICE_KIND_LAYER_DEFAULTS.nodes).toEqual({ name: 'Nodes', depth: 0.12, profile: 'ballnose', angle: 90 });
+    expect(LATTICE_KIND_LAYER_DEFAULTS.rails).toEqual({ name: 'Rails', depth: 0.15, profile: 'vbit', angle: 90, carve: false });
+    expect(LATTICE_KIND_LAYER_DEFAULTS.ties).toEqual({ name: 'Ties', depth: 0.08, profile: 'vbit', angle: 90, carve: false });
+    expect(LATTICE_KIND_LAYER_DEFAULTS.nodes).toEqual({ name: 'Nodes', depth: 0.12, profile: 'ballnose', angle: 90, carve: false });
   });
 
-  it('contour (a genuinely new kind-layer, no SE7b precedent) declares only its own name, deferring every tooling field to addLayer\'s own generic TOOLING_DEFAULTS', () => {
-    expect(LATTICE_KIND_LAYER_DEFAULTS.contour).toEqual({ name: 'Contour' });
+  it('contour (a genuinely new kind-layer, no SE7b precedent) declares only its own name (+ carve off), deferring every other tooling field to addLayer\'s own generic TOOLING_DEFAULTS', () => {
+    expect(LATTICE_KIND_LAYER_DEFAULTS.contour).toEqual({ name: 'Contour', carve: false });
+  });
+
+  it('every lattice layer is created with the 3D relief OFF (Fred: "lattice should be created with the 3d relief off by default"), including the current layer that becomes Rails', () => {
+    const editor = makeMockEditor();
+    expect(editor._layers[0].carve).not.toBe(false); // non-vacuous: an ordinary layer carves by default
+    const ids = _ensureKindLayers(editor, { seed: 1 }, editor._layers[0].id, [...LATTICE_FUSION_BUILD_ORDER]);
+    for (const kind of LATTICE_FUSION_BUILD_ORDER) {
+      expect(editor._layers.find((l) => l.id === ids[kind]).carve, kind).toBe(false);
+    }
   });
 
   it('is frozen, including every per-kind entry -- a declared table, never mutated by a consumer', () => {

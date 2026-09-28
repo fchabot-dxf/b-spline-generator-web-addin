@@ -3239,3 +3239,10 @@ the second finger's pinch moved the view but never ended that pan, so the leftov
 stale pan start. Fix (editor-interaction.js): a pinch starting ends any one-finger pan (resetPanState) and sets
 _afterPinch; the finger left down after a pinch is inert until every finger is up (cleared at 0 pointers). After:
 0.0 px change for either lift order, both tabs; pinch/pan/zoom-safety checks unchanged.
+
+## Lattice layers created with the 3D relief off -- 2026-09-28
+
+Fred: "I think lattice should be created with the 3d relief off by default". LATTICE_KIND_LAYER_DEFAULTS (rails, ties,
+nodes, contour) now carry carve:false (addLayer takes any TOOLING_DEFAULTS key from its options), and the current
+layer that the first split turns into Rails gets carve:false at that moment only -- so a user turning 3D back on is
+never overridden by a later Regenerate. Tests: editor-lattice-kind-layers (defaults + all four layers created off).
