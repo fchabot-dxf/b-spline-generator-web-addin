@@ -3575,3 +3575,12 @@ are Generate + Unprotect all, no errors. vitest 2438 passed.
 - Verified at 390px touch, Select tool, Shape Lattice: long-press on the rail 14 px from a tie-end node -> rail
   selected, menu "Colour… / Cut here / Duplicate / Select all rails / Delete" (before: node, "Select all nodes");
   long-press on the node dot -> node. vitest 2438 passed.
+
+## Box-select preview (Fred: "Higlight selection preview")
+- A tap / long-press already shows the selection highlight the moment the finger lands (checked mid-press at 390px),
+  so the missing preview was the box select: it only showed what it caught after release. editor-marquee.js:
+  updateMarquee now outlines (hover outline, editor-ui renderPreviewHighlight) every piece the box WILL select,
+  re-evaluated each move (WINDOW / CROSSING); the pick rule is one function, marqueePicks, used by the preview and
+  by finalizeMarquee, so the preview matches the result. Cleared with the marquee.
+- Verified headless (mouse, 1400px): mid-drag 15 previewed -> release selects the same 15, preview removed.
+  (On a phone a one-finger drag on empty canvas pans, MOB5 -- box select stays mouse/pen.) vitest 2438 passed.

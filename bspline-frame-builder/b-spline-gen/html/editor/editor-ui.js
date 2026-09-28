@@ -388,6 +388,14 @@ function _renderHighlight(editor, el, color, opts) {
     return shape;
 }
 
+/** Fred ("highlight selection preview"): the hover outline for a piece that WILL be selected (the box select's live
+ *  preview, editor-marquee.js). Returns the drawn shape (the caller removes it). */
+export function renderPreviewHighlight(editor, el) {
+    return _renderHighlight(editor, el, HOVER_OUTLINE_COLOR, {
+        textFillOpacity: 0.15, textStrokeOpacity: 0, lineStrokeOpacity: 0.8, back: false,
+    });
+}
+
 export function updateSelectionHighlight(editor) {
     // Tear down the legacy single-handle if anything still uses it.
     if (editor._selectionHighlight) {

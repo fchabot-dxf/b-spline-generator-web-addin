@@ -26,6 +26,7 @@
  */
 import { worldBbox } from './editor-coords.js';
 import { _sampleElement } from './editor-eraser.js';
+import { renderPreviewHighlight } from './editor-ui.js';
 
 // CROSSING keeps the pre-H20 look (the only style that existed before) --
 // WINDOW is new, so it gets a visually distinct treatment per the dispatch
@@ -63,11 +64,34 @@ export function updateMarquee(editor, pt) {
             .fill({ color: style.color, opacity: style.fillOpacity })
             .stroke({ color: style.color, width: strokeW, dasharray })
             .attr('pointer-events', 'none');
-        return;
+    } else {
+        editor._marqueeRect.size(w, h).move(x, y)
+            .fill({ color: style.color, opacity: style.fillOpacity })
+            .stroke({ color: style.color, width: strokeW, dasharray });
     }
-    editor._marqueeRect.size(w, h).move(x, y)
-        .fill({ color: style.color, opacity: style.fillOpacity })
-        .stroke({ color: style.color, width: strokeW, dasharray });
+    _updatePreview(editor, { x, y, x2: x + w, y2: y + h }, mode);
+}
+
+/** Fred ("highlight selection preview"): while the box is dragged, every piece it WILL select is outlined (the
+ *  hover outline) -- the same rule finalizeMarquee applies at release, so the preview never lies. */
+function _updatePreview(editor, marquee, mode) {
+    const picked = new Set(w0(marquee) ? marqueePicks(editor, marquee, mode, editor._marqueeRect) : []);
+    const prev = editor._marqueePreview || new Map();
+    for (const [el, shape] of prev) {
+        if (!picked.has(el)) { try { shape.remove(); } catch (_) {} prev.delete(el); }
+    }
+    for (const el of picked) {
+        if (prev.has(el)) continue;
+        const shape = renderPreviewHighlight(editor, el);
+        if (shape) prev.set(el, shape);
+    }
+    editor._marqueePreview = prev;
+}
+const w0 = (m) => m.x2 > m.x && m.y2 > m.y;
+
+function _clearPreview(editor) {
+    for (const shape of (editor._marqueePreview || new Map()).values()) { try { shape.remove(); } catch (_) {} }
+    editor._marqueePreview = null;
 }
 
 /**
@@ -108,6 +132,32 @@ export function finalizeMarquee(editor) {
     if (w <= 0 || h <= 0) return 0;
     const marquee = { x, y, x2: x + w, y2: y + h };
 
+    const picked = marqueePicks(editor, marquee, mode, r);
+
+    if (!picked.length) {
+        // Empty marquee: when additive, keep what was there; otherwise
+        // already deselected at start.
+        return 0;
+    }
+
+    if (additive) {
+        // Merge with the existing selection. Order: existing first,
+        // newcomers appended so the last picked element becomes the
+        // primary (consistent with shift-click semantics).
+        const merged = (editor._selectedElements || []).slice();
+        for (const el of picked) {
+            if (!merged.includes(el)) merged.push(el);
+        }
+        editor._selectMany(merged);
+    } else {
+        editor._selectMany(picked);
+    }
+
+    return picked.length;
+}
+
+/** The sketch pieces a box `marquee` (model space) selects in `mode` ('window': fully inside; 'crossing': touched). */
+export function marqueePicks(editor, marquee, mode, r = null) {
     const sketchChildren = editor._sketchLayer
         ? editor._sketchLayer.children().toArray()
         : [];
@@ -150,30 +200,12 @@ export function finalizeMarquee(editor) {
         }
     }
 
-    if (!picked.length) {
-        // Empty marquee: when additive, keep what was there; otherwise
-        // already deselected at start.
-        return 0;
-    }
-
-    if (additive) {
-        // Merge with the existing selection. Order: existing first,
-        // newcomers appended so the last picked element becomes the
-        // primary (consistent with shift-click semantics).
-        const merged = (editor._selectedElements || []).slice();
-        for (const el of picked) {
-            if (!merged.includes(el)) merged.push(el);
-        }
-        editor._selectMany(merged);
-    } else {
-        editor._selectMany(picked);
-    }
-
-    return picked.length;
+    return picked;
 }
 
 /** Tear down the marquee rect + per-drag flags. Safe to call any time. */
 export function clearMarquee(editor) {
+    _clearPreview(editor);
     if (editor._marqueeRect) {
         try { editor._marqueeRect.remove(); } catch (_) {}
     }
