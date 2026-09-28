@@ -72,10 +72,15 @@ export function shapeParamOverrides(tpl, record, region) {
  *  only those the table declares, each with its binding. */
 export function frameHandles(tpl, prof, t = _templateThickness(tpl)) {
   const table = new Map(frameHandleTable(tpl).map((h) => [h.key, h]));
-  const R = frameParamRanges(tpl, prof.region, prof.params, t); // F13: a drag honours the frame opening too
-  return computeParamHandles(tpl.silhouettePreset, prof.region, prof.params, [...table.keys()])
+  // F13: a drag honours the frame opening too -- F27 item 2 arc pull: handed IN as the catalogue's one range
+  // source (a coupled waist drag checks each candidate pair against it), not clamped on afterwards. And the arc
+  // grips re-solve over the frame's OWN params (prof.shapeParams: the fitted model + the record's seeds),
+  // exactly what the seeds they write will produce.
+  const opts = { rangesFor: (params) => frameParamRanges(tpl, prof.region, params, t) };
+  if (prof.shapeParams) opts.shape = { params: prof.shapeParams };
+  return computeParamHandles(tpl.silhouettePreset, prof.region, prof.params, [...table.keys()], opts)
     .map((h) => ({ ...h, label: table.get(h.key).label, binding: table.get(h.key).binding, basis: table.get(h.key).basis,
-      valueFromWorld: (pt) => Math.max(R[h.key].min, Math.min(R[h.key].max, h.valueFromWorld(pt))) }));
+      table })); // F27 item 2 arc pull: a waist drag also writes its partner key, through the partner's binding
 }
 
 /**
@@ -134,9 +139,23 @@ export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl
   return seeds;
 }
 
-/** The record patch a drag of `handle` to board point `pt` writes (per its binding). */
-export function handleDragPatch(record, handle, pt, region) {
-  const v = handle.valueFromWorld(pt);
-  if (handle.binding === 'seeded') return { seeds: { ...(record.seeds || {}), [handle.key]: v } };
-  return { params: { ...(record.params || {}), [handle.binding.param]: v * BASIS[handle.basis](region) } };
+/** The record patch a drag of `handle` to board point `pt` writes (per its binding). `ctx` (F27 item 2 arc
+ *  pull): the drag's `{side, grab}` -- which arc was grabbed (1 = the mirrored left one) and the value at the
+ *  grab. The handle's own `patchFromWorld` says which shape params one drag sets: its own key, or for the
+ *  hourglass waist (a CAD circle) BOTH waistReach and waistRadius, each written through ITS binding in the
+ *  table (a key the table does not declare is not written: the shape keeps its fitted value). */
+export function handleDragPatch(record, handle, pt, region, ctx = {}) {
+  const patch = handle.patchFromWorld ? handle.patchFromWorld(pt, ctx) : { [handle.key]: handle.valueFromWorld(pt, ctx) };
+  const table = handle.table || new Map();
+  const seeds = { ...(record.seeds || {}) }, params = { ...(record.params || {}) };
+  let seeded = false, bound = false;
+  for (const [key, v] of Object.entries(patch)) {
+    const b = key === handle.key ? handle : table.get(key);
+    if (!b) continue;
+    if (b.binding === 'seeded') { seeds[key] = v; seeded = true; } else if (b.binding && b.binding.param) {
+      params[b.binding.param] = v * BASIS[b.basis](region);
+      bound = true;
+    }
+  }
+  return { ...(seeded ? { seeds } : {}), ...(bound ? { params } : {}) };
 }

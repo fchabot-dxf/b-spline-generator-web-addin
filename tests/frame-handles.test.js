@@ -15,7 +15,7 @@ import {
 import { frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { generateSilhouette, paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
-import { initFramePanel, setEditorTab, HANDLE_HIT_PX } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { initFramePanel, setEditorTab, HANDLE_HIT_PX, frameHistoryDepth, undoFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { FRAME_HANDLE_RADIUS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { HANDLE_HOVER_SCALE, HANDLE_HOVER_FILL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 
@@ -276,6 +276,90 @@ describe('Frame tab: dragging a handle through the shield', () => {
 
     expect(ed._frameHandleHover).toBeNull();
     expect(cssState()).toEqual([]);
+  });
+});
+
+describe('F27 item 2 arc pull (Fred: "more intuitive to pull the arc than the arc center"): the Frame tab, real pointer events', () => {
+  let root, ed;
+  beforeEach(() => {
+    root = document.createElement('div');
+    root.innerHTML = `<input id="widthIn" value="7"><input id="heightIn" value="9">
+      <select id="frameTemplate"></select><div id="frameSettings"><select id="frameAppearance"></select></div>
+      <button id="btnStampEdit"></button><div id="editorSVGContainer"></div><div id="editorFrameShield"></div>
+      <aside id="editorFramePanel"></aside><aside id="editorLayersPanel"></aside>`;
+    document.body.appendChild(root);
+    P.frame = null; P.widthIn = 7; P.heightIn = 9;
+    ed = mockCanvasEditor();
+    window.svgEditor = ed;
+    initFramePanel();
+    while (undoFrame()) { /* a fresh history */ }
+    setFrameRecord({ templateId: 'template_1' });
+    setEditorTab('frame');
+  });
+  afterEach(() => { setEditorTab('artwork'); root.remove(); window.svgEditor = null; P.frame = null; });
+
+  const fire = (type, x, y) => document.getElementById('editorFrameShield')
+    .dispatchEvent(new MouseEvent(type, { clientX: x * ed.PX, clientY: y * ed.PX, bubbles: true, cancelable: true }));
+  const onArc = (a, t, d = 0) => { const th = a.theta1 + a.dTheta * t; return { x: a.cx + (a.rx + d) * Math.cos(th), y: a.cy + (a.rx + d) * Math.sin(th) }; };
+  const highlights = () => ed._bgLayer.findOne('#frame-profile').children.filter((c) => !c.isCircle && !c.isSquare).length;
+  const cls = () => Array.from(document.getElementById('editorSVGContainer').classList).sort();
+
+  it('hovering an arc ANYWHERE (here the mirrored left waist, away from its dot) lights that arc on both sides; the cursor stays the normal pointer', () => {
+    const idle = highlights();
+    const h = ed._frameHandles.find((q) => q.key === 'waistRadius');
+    const q = onArc(h.arcs[1], 0.25, 0.03); // the LEFT waist arc, 0.03 in off the curve
+    fire('pointermove', q.x, q.y);
+    expect(ed._frameHandleHover).toBe('waistRadius');
+    expect(highlights()).toBe(idle + 2); // the waist arc + its mirror
+    expect(cls()).toEqual(['handle-axis-plain', 'handle-hover-ready']);
+    fire('pointermove', 3.5, 1); // the top middle, nothing there
+    expect(ed._frameHandleHover).toBeNull();
+    expect(highlights()).toBe(idle);
+  });
+
+  it('dragging the mirrored LEFT shoulder arc: the arc follows the pointer, only the seed is written, ONE undo step', () => {
+    const h = ed._frameHandles.find((q) => q.key === 'cornerRadiusTop');
+    const left = h.arcs[1];
+    const from = onArc(left, 0.5), to = onArc(left, 0.5, 0.08);
+    const depth0 = frameHistoryDepth();
+    fire('pointerdown', from.x, from.y);
+    expect(ed._frameHandleDrag).toBe('cornerRadiusTop');
+    expect(highlights()).toBeGreaterThan(0); // Touch has no hover: the press itself lights it
+    fire('pointermove', (from.x + to.x) / 2, (from.y + to.y) / 2);
+    fire('pointermove', to.x, to.y);
+    fire('pointerup', to.x, to.y);
+    expect(frameHistoryDepth()).toBe(depth0 + 1);
+    expect(Object.keys(getFrameRecord().seeds)).toEqual(['cornerRadiusTop']);
+    expect(getFrameRecord().params).toEqual({});
+    const a1 = ed._frameProfile.primitives[h.mirrorSegment];
+    expect(Math.hypot(to.x - a1.cx, to.y - a1.cy)).toBeCloseTo(a1.rx, 6); // the left arc under the pointer
+    expect(ed._frameProfile.primitives[h.segment].rx).toBeCloseTo(a1.rx, 9); // and the right one mirrors it
+    undoFrame();
+    expect(getFrameRecord().seeds).toEqual({});
+  });
+
+  it('the waist dot, dragged: the pinch follows, the centre (the waistReach square) stays put; both seeds written', () => {
+    const dot = ed._frameHandles.find((q) => q.key === 'waistRadius').anchor;
+    const sq = ed._frameHandles.find((q) => q.key === 'waistReach').anchor;
+    fire('pointerdown', dot.x, dot.y);
+    expect(ed._frameHandleDrag).toBe('waistRadius');
+    fire('pointermove', dot.x - 0.25, dot.y);
+    fire('pointerup', dot.x - 0.25, dot.y);
+    expect(Object.keys(getFrameRecord().seeds).sort()).toEqual(['waistRadius', 'waistReach']);
+    expect(ed._frameHandles.find((q) => q.key === 'waistRadius').anchor.x).toBeCloseTo(dot.x - 0.25, 9);
+    expect(ed._frameHandles.find((q) => q.key === 'waistReach').anchor.x).toBeCloseTo(sq.x, 9);
+  });
+
+  it('a position square in reach wins over an arc (T2: the Shoulder height square sits where the neck arc starts)', () => {
+    setFrameRecord({ templateId: 'template_2', seeds: {} });
+    setEditorTab('frame');
+    const sq = ed._frameHandles.find((q) => q.key === 'neckLength');
+    const neck = ed._frameHandles.find((q) => q.key === 'skeletonX');
+    const start = onArc(neck.arcs[0], 0);
+    expect(Math.hypot(start.x - sq.anchor.x, start.y - sq.anchor.y)).toBeLessThan(1e-6); // non-vacuous: both in reach
+    fire('pointerdown', sq.anchor.x, sq.anchor.y);
+    expect(ed._frameHandleDrag).toBe('neckLength');
+    fire('pointerup', sq.anchor.x, sq.anchor.y);
   });
 });
 

@@ -247,3 +247,123 @@ describe('F27 item 2: Shape Lattice handles are drawn by their declared KIND', (
     expect(c.store.stroke).toBe('#ffffff');
   });
 });
+
+describe('F27 item 2 arc pull (Fred: "more intuitive to pull the arc than the arc center"): Shape Lattice arcs', () => {
+  const at = (a, t, d = 0) => { const th = a.theta1 + a.dTheta * t; return { x: a.cx + (a.rx + d) * Math.cos(th), y: a.cy + (a.rx + d) * Math.sin(th) }; };
+  const rec = (editor, key) => editor._paramHandles.find((r) => r.key === key);
+  const segEl = (editor, i) => editor._sketchLayer.children().toArray().find((e) => e.attr('data-contour-seg') === i);
+  const bar = () => document.querySelector('.shape-lattice-segment-bar');
+
+  it('hovering an arc away from its dot (the mirrored LEFT shoulder) highlights both sides; the cursor stays the normal pointer', async () => {
+    const editor = await shapeLatticeEditor();
+    const top = rec(editor, 'cornerRadiusTop');
+    h.hover(editor, at(top.arcs[1], 0.3, 0.02));
+    expect(editor._shapeHandleHover).toBe('cornerRadiusTop');
+    expect(overlayPaths(editor).map((o) => o.store.d).sort()).toEqual([segEl(editor, 1).attr('d'), segEl(editor, 9).attr('d')].sort());
+    expect(Array.from(document.getElementById('editorSVGContainer').classList).sort()).toEqual(['handle-axis-plain', 'handle-hover-ready']);
+  });
+
+  it('a TAP on an arc is today\'s segment tap exactly: the segment is selected, the style bar opens, nothing reshaped, no undo step', async () => {
+    const editor = await shapeLatticeEditor();
+    let pushes = 0;
+    editor.pushState = () => { pushes++; };
+    const p = currentPattern(editor);
+    const params0 = JSON.stringify(p.shape.params);
+    const q = at(rec(editor, 'cornerRadiusTop').arcs[1], 0.5);
+    h.start(editor, q, { x: q.x, y: q.y });
+    expect(editor._selectedElements).toEqual([segEl(editor, 9)]);
+    expect(bar()).toBeTruthy();
+    expect(overlayPaths(editor).length).toBe(2); // pressed: lit (Touch has no hover)
+    h.update(editor, { x: q.x + 0.02, y: q.y }); // a wobble inside the click threshold
+    await h.finish(editor);
+    expect(JSON.stringify(p.shape.params)).toBe(params0);
+    expect(pushes).toBe(0);
+    expect(bar()).toBeTruthy(); // still open, as a tap leaves it
+    expect(editor._shapeArcPress).toBeNull();
+    expect(editor._isDrawing).toBe(false);
+  });
+
+  it('a DRAG past the click threshold on the mirrored LEFT arc reshapes it under the pointer: one param, one undo step, the style bar gone', async () => {
+    const editor = await shapeLatticeEditor();
+    let pushes = 0;
+    editor.pushState = () => { pushes++; };
+    const p = currentPattern(editor);
+    const top = rec(editor, 'cornerRadiusTop');
+    const from = at(top.arcs[1], 0.5), to = at(top.arcs[1], 0.5, -0.25);
+    h.start(editor, from, { x: from.x, y: from.y });
+    h.update(editor, { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
+    h.update(editor, to);
+    expect(bar()).toBeNull();
+    expect(editor._shapeLatticeDragKey).toBe('cornerRadiusTop');
+    expect(Object.keys(p.shape.params)).toEqual(['cornerRadiusTop']);
+    const a1 = rec(editor, 'cornerRadiusTop').arcs[1];
+    expect(Math.hypot(to.x - a1.cx, to.y - a1.cy)).toBeCloseTo(a1.rx, 6); // the drawn left arc passes under the pointer
+    expect(rec(editor, 'cornerRadiusTop').arcs[0].rx).toBeCloseTo(a1.rx, 9); // the right one mirrors it
+    expect(overlayPaths(editor).length).toBe(2); // lit for the whole drag
+    await h.finish(editor);
+    expect(pushes).toBe(1);
+    expect(editor._shapeLatticeDragKey).toBeNull();
+  });
+
+  it('the waist is a CAD circle: dragging its dot moves the pinch about a FIXED centre (both params written); the square sits at that centre', async () => {
+    const editor = await shapeLatticeEditor();
+    const p = currentPattern(editor);
+    const w = rec(editor, 'waistRadius'), sq = rec(editor, 'waistReach');
+    const c0 = { x: w.arcs[0].cx, y: w.arcs[0].cy };
+    expect(sq.hx).toBeCloseTo(Math.min(c0.x, editor._mW), 9);
+    expect(sq.hy).toBeCloseTo(c0.y, 9);
+    expect(w.hx).toBeCloseTo(c0.x - w.arcs[0].rx, 9); // the dot on the pinch
+    h.start(editor, { x: w.hx, y: w.hy }, { x: w.hx, y: w.hy });
+    expect(editor._shapeLatticeDragKey).toBe('waistRadius'); // the dot grabs at once, like any handle mark
+    h.update(editor, { x: w.hx - 0.2, y: w.hy });
+    expect(Object.keys(p.shape.params).sort()).toEqual(['waistRadius', 'waistReach']);
+    const a1 = rec(editor, 'waistRadius').arcs[0];
+    expect(a1.cx).toBeCloseTo(c0.x, 9);
+    expect(a1.cy).toBeCloseTo(c0.y, 9);
+    expect(a1.rx).toBeCloseTo(w.arcs[0].rx + 0.2, 9);
+    await h.finish(editor);
+  });
+
+  it('the waistReach square slides the waist with its radius held, even where the pattern left the radius to its default', async () => {
+    const editor = await shapeLatticeEditor();
+    const p = currentPattern(editor);
+    expect(p.shape.params.waistRadius).toBeUndefined(); // non-vacuous: the derived default
+    const sq = rec(editor, 'waistReach'), r0 = rec(editor, 'waistRadius').arcs[0].rx;
+    h.start(editor, { x: sq.hx, y: sq.hy }, { x: sq.hx, y: sq.hy });
+    h.update(editor, { x: sq.hx - 0.1, y: sq.hy });
+    const a1 = rec(editor, 'waistRadius').arcs[0];
+    expect(a1.rx).toBeCloseTo(r0, 9);
+    expect(a1.cx).toBeCloseTo(sq.hx - 0.1, 9);
+    await h.finish(editor);
+  });
+
+  it('a position square in reach wins over an arc (bottle: the Shoulder height square sits where the neck arc starts)', async () => {
+    const editor = makeMockEditor(7, 9);
+    const p = currentPattern(editor);
+    Object.assign(p, { seed: 17, spacing: 0.25, extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'bottle', seed: 17, params: {}, segments: null } });
+    regenerateSilhouette(editor, p);
+    await generatePattern(editor, p);
+    editor._updateHandles();
+    const sq = rec(editor, 'neckLength');
+    const start = at(rec(editor, 'skeletonX').arcs[0], 0);
+    expect(Math.hypot(start.x - sq.hx, start.y - sq.hy)).toBeLessThan(sq.hitR); // non-vacuous: both in reach
+    h.hover(editor, { x: sq.hx, y: sq.hy });
+    expect(editor._shapeHandleHover).toBe('neckLength');
+    h.start(editor, { x: sq.hx, y: sq.hy }, { x: sq.hx, y: sq.hy });
+    expect(editor._shapeLatticeDragKey).toBe('neckLength');
+    await h.finish(editor);
+  });
+
+  it('a straight segment is not a grip: hovering a horn lights nothing', async () => {
+    const editor = await shapeLatticeEditor();
+    const p = currentPattern(editor);
+    const params0 = JSON.stringify(p.shape.params);
+    const top = rec(editor, 'cornerRadiusTop').arcs[0];
+    const horn = { x: at(top, 0).x, y: at(top, 0).y - 0.4 }; // up the right horn, clear of the shoulder arc
+    h.hover(editor, horn);
+    expect(editor._shapeHandleHover).toBeNull();
+    expect(overlayPaths(editor).length).toBe(0);
+    expect(JSON.stringify(p.shape.params)).toBe(params0);
+  });
+});
