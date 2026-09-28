@@ -470,7 +470,21 @@ export class VectorEditor {
         // spurious snapshots that are erroneously grouping strokes.
         const caller = _shortCaller();
         const childCount = this._sketchLayer.children().toArray().length;
-        const state = {
+        const state = this._snapshotState();
+        this._redoStack.length = 0;
+        this._undoStack.push(state);
+        if (this._undoStack.length > this._maxUndo) this._undoStack.shift();
+        _undoLog( `pushState  caller=${caller}  children=${childCount}  stack=${this._undoStack.length}  redo=${this._redoStack.length}  svgLen=${state.svg.length}`);
+        if (this._onCommit) this._onCommit('push');
+        updateHistoryButtons(this);
+    }
+
+    /** The snapshot pushState records (sketch SVG + deep-cloned layers + active
+     *  layer), without touching the undo stack -- also taken at the start of a
+     *  one-finger touch gesture so a pinch landing mid-gesture can put the drawing
+     *  back exactly (editor-interaction.js, _abortTouchGesture). */
+    _snapshotState() {
+        return {
             svg: this._sketchLayer.children().map(el => el.svg()).join(''),
             // SE7i: each layer's own `.pattern` (seed/colors/rails/ties/
             // nodes/widths config — generatePattern's own PATTERN object,
@@ -489,12 +503,6 @@ export class VectorEditor {
                 : [],
             activeLayer: this._activeLayer,
         };
-        this._redoStack.length = 0;
-        this._undoStack.push(state);
-        if (this._undoStack.length > this._maxUndo) this._undoStack.shift();
-        _undoLog( `pushState  caller=${caller}  children=${childCount}  stack=${this._undoStack.length}  redo=${this._redoStack.length}  svgLen=${state.svg.length}`);
-        if (this._onCommit) this._onCommit('push');
-        updateHistoryButtons(this);
     }
 
     undo() {

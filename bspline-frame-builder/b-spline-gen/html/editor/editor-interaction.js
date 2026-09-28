@@ -174,9 +174,17 @@ function handlePointerDown(editor, e) {
     try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* defensive: capture can fail on some UAs/synthetic events */ }
     const count = editor._activePointers.size;
 
-    if (shouldCancelDrawOnPointerDown(count, editor._isDrawing)) {
+    // Fred: "Zooming shouldn't move geometry inadvertently". The first finger of a
+    // pinch starts a normal one-finger gesture (select/move a piece, drag a handle,
+    // pull an arc...) and can move things before the second finger lands; cancelling
+    // only a pen stroke left those moves in place. Now a second finger puts the
+    // drawing back exactly as it was when the first finger touched down.
+    if (count === 2 && editor._touchGestureSnapshot && (editor._isDrawing || editor._isDragging)) {
+        _abortTouchGesture(editor);
+    } else if (shouldCancelDrawOnPointerDown(count, editor._isDrawing)) {
         if (typeof editor._cancelDrawing === 'function') editor._cancelDrawing();
     }
+    if (count !== 1) editor._touchGestureSnapshot = null;
 
     if (isPinching(count)) {
         e.preventDefault();
@@ -193,7 +201,33 @@ function handlePointerDown(editor, e) {
     // start on a frame handle: the frame panel takes those first) PANS the canvas; pinch is above. No tool starts.
     if (editor._artworkLocked) { _startPan(editor, e); return; }
 
+    // The drawing as this touch found it, for _abortTouchGesture (mouse/pen never pinch).
+    editor._touchGestureSnapshot = (e.pointerType === 'touch' && typeof editor._snapshotState === 'function')
+        ? editor._snapshotState() : null;
     handleStart(editor, e);
+}
+
+/** A pinch took over a one-finger touch gesture: drop every in-progress gesture
+ *  WITHOUT committing it and restore the drawing (sketch + layer patterns, i.e.
+ *  shape params too) to the snapshot taken when that finger touched down. No
+ *  undo step is added or removed; the pinch then zooms as usual. */
+function _abortTouchGesture(editor) {
+    const snap = editor._touchGestureSnapshot;
+    editor._touchGestureSnapshot = null;
+    if (typeof editor._cancelDrawing === 'function') editor._cancelDrawing(); // a pen path in progress
+    editor._isDrawing = false;
+    editor._isDragging = false;
+    editor._latticeMove = null;
+    editor._latticeStart = null;
+    editor._shapeLatticeDragKey = null;
+    editor._shapeLatticeDragCtx = null;
+    editor._shapeLatticeDragOffsetY = 0;
+    editor._shapeArcPress = null;
+    editor._railEndDrag = null;
+    document.querySelectorAll('.shape-lattice-segment-bar').forEach((bar) => bar.remove());
+    setHandleCursor(null);
+    if (snap && typeof editor._restoreState === 'function') editor._restoreState(snap);
+    if (typeof editor._updateHandles === 'function') editor._updateHandles();
 }
 
 function _startPan(editor, e) {

@@ -237,6 +237,31 @@ describe('Frame tab: dragging a handle through the shield', () => {
     expect(ed._bgLayer.findOne('#frame-profile').children.filter((c) => !c.isCircle && !c.isSquare).length).toBe(idlePaths);
   });
 
+  it('a second finger during a handle drag (a pinch) puts the frame back and ends the drag; only the dragging finger ever moves the handle (Fred: "Zooming shouldn\'t move geometry inadvertently")', () => {
+    setEditorTab('frame');
+    ed._activePointers = new Map();
+    const firePtr = (type, x, y, id) => {
+      const ev = new MouseEvent(type, { clientX: x * ed.PX, clientY: y * ed.PX, bubbles: true, cancelable: true });
+      Object.defineProperty(ev, 'pointerId', { value: id });
+      document.getElementById('editorFrameShield').dispatchEvent(ev);
+    };
+    const before = JSON.stringify(getFrameRecord());
+    const h = ed._frameHandles.find((q) => q.key === 'waistReach');
+    firePtr('pointerdown', h.anchor.x, h.anchor.y, 1);
+    firePtr('pointermove', h.anchor.x - 0.3, h.anchor.y, 1);
+    expect(JSON.stringify(getFrameRecord())).not.toBe(before); // non-vacuous: the drag really moved it
+    firePtr('pointermove', h.anchor.x - 0.6, h.anchor.y, 2); // another finger's move: ignored
+    const mid = JSON.stringify(getFrameRecord());
+    firePtr('pointermove', h.anchor.x - 0.3, h.anchor.y, 1);
+    expect(JSON.stringify(getFrameRecord())).toBe(mid);
+    firePtr('pointerdown', h.anchor.x + 2, h.anchor.y + 2, 2); // second finger lands: a pinch
+    expect(JSON.stringify(getFrameRecord())).toBe(before);
+    expect(ed._frameHandleDrag).toBeNull();
+    expect(ed._activePointers.has(1)).toBe(true); // the editor's pinch gets the first finger too
+    firePtr('pointermove', h.anchor.x - 1, h.anchor.y, 1);
+    expect(JSON.stringify(getFrameRecord())).toBe(before); // the pinch never drags the frame
+  });
+
   it('moving off a handle clears the hover look', () => {
     setEditorTab('frame');
     const h = ed._frameHandles.find((q) => q.key === 'waistReach');

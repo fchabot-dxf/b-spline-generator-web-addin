@@ -255,6 +255,13 @@ function _wireHandleDrag() {
   const surface = shield.parentElement;
   let dragKey = null;
   let dragCtx = {}; // F27 item 2 arc pull: { side, grab } for the whole drag
+  // Fred: "Zooming shouldn't move geometry inadvertently". The finger that grabbed the handle
+  // (only ITS moves drag it -- a pinch's second finger used to drag it too), the record as the
+  // drag found it (restored if a second finger turns the gesture into a pinch), and that
+  // finger's last position (handed to the editor so the pinch it joins has both fingers).
+  let dragPointerId = null;
+  let dragStartRecord = null;
+  let dragLastPt = null;
   const editor = () => (typeof window !== 'undefined' ? window.svgEditor : null);
   const inFrameTab = () => _editorTab === 'frame';
   // T81 item 1: hover state lives on the editor (ed._frameHandleHover/Drag)
@@ -270,6 +277,23 @@ function _wireHandleDrag() {
   };
   surface.addEventListener('pointerdown', (e) => {
     if (!inFrameTab()) return;
+    if (dragKey && e.pointerId !== dragPointerId) {
+      // A second finger during a handle drag = a pinch: put the frame back, end the drag, and
+      // let this press through to the editor with the first finger registered, so it zooms.
+      const ed = editor();
+      setFrameRecord(dragStartRecord);
+      dragKey = null;
+      dragCtx = {};
+      if (ed) {
+        ed._frameHandleDrag = null;
+        if (ed._activePointers && dragLastPt) ed._activePointers.set(dragPointerId, dragLastPt);
+        if (ed._frameProfile) drawFrameProfile(ed);
+      }
+      dragPointerId = null;
+      setHandleCursor(null);
+      syncFramePanel();
+      return;
+    }
     const ed = editor();
     if (!ed || !ed._frameProfile || !(ed._frameHandles || []).length) return;
     const hit = _hitFrameHandle(ed, e.clientX, e.clientY);
@@ -277,6 +301,9 @@ function _wireHandleDrag() {
     const best = hit.handle;
     dragKey = best.key;
     dragCtx = { side: hit.side, grab: { value: best.value } };
+    dragPointerId = e.pointerId;
+    dragStartRecord = JSON.parse(JSON.stringify(getFrameRecord()));
+    dragLastPt = { x: e.clientX, y: e.clientY };
     ed._frameHandleDrag = dragKey; // T81 item 1: the SAME hover/press look for the whole drag
     setHandleCursor('active', paramHandleCursorAxis(best));
     drawFrameProfile(ed); // show it immediately -- a bare press with no movement yet (Touch has no hover at all) must not wait for the first move tick
@@ -292,6 +319,8 @@ function _wireHandleDrag() {
       setHover(ed, inFrameTab() && ed && ed._frameProfile ? (_hitFrameHandle(ed, e.clientX, e.clientY)?.handle.key ?? null) : null);
       return;
     }
+    if (e.pointerId !== dragPointerId) return; // another finger (a pinch): never drags the handle
+    dragLastPt = { x: e.clientX, y: e.clientY };
     const h = (ed?._frameHandles || []).find((q) => q.key === dragKey);
     if (!h) return;
     setFrameRecord(handleDragPatch(getFrameRecord(), h, ed._getMousePoint(e), ed._frameProfile.region, dragCtx));
@@ -300,8 +329,9 @@ function _wireHandleDrag() {
     e.stopPropagation();
   }, true);
   const end = (e) => {
-    if (!dragKey) return;
+    if (!dragKey || e.pointerId !== dragPointerId) return;
     dragKey = null;
+    dragPointerId = null;
     dragCtx = {};
     const ed = editor();
     if (ed) {

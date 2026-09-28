@@ -81,6 +81,7 @@ function makeEditor() {
     _onCommit: null,
     _deselect() {},
     pushState: VectorEditor.prototype.pushState,
+    _snapshotState: VectorEditor.prototype._snapshotState,
     undo: VectorEditor.prototype.undo,
     redo: VectorEditor.prototype.redo,
     _restoreState: VectorEditor.prototype._restoreState,

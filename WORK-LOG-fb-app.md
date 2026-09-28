@@ -3174,3 +3174,20 @@ Result (touch): 10/12 segments select; the other 2 are points where a rail/tie e
 (random per Generate) -- a tap elsewhere on that segment selects it. A touch drag on a dot still reshapes
 (cornerRadiusTop default -> 1.32). The rect Lattice tool's border is not split into selectable segments at all
 (0 contour segments there) -- unchanged, separate question for Fred.
+
+## Pinch-zoom never moves geometry -- 2026-09-28
+
+Fred: "Zooming shouldn't move geometry inadvertently". Reproduced headless at 390 px with real two-finger touch
+(finger 1 lands on a rail / frame handle and slides, finger 2 lands, both spread): the rail moved; the frame
+changed AND the view did not zoom. Two causes, two fixes:
+- Artwork (editor-interaction.js): a second finger only cancelled a PEN stroke; a piece/handle/arc drag the first
+  finger had started stayed moved. Now a one-finger touch press snapshots the drawing (`editor._snapshotState()`,
+  pushState's own snapshot, factored out) and a second finger landing mid-gesture runs `_abortTouchGesture`:
+  every in-progress gesture dropped uncommitted, the drawing (sketch + layer patterns = shape params) restored,
+  no undo step added. Mouse/pen never snapshot.
+- Frame tab (frame-panel.js): the handle drag took pointermoves from ANY finger, so a pinch's second finger
+  dragged the handle, and the editor never saw finger 1 so no pinch started. Now only the grabbing finger drags;
+  a second finger restores the record as the drag found it, ends the drag, and hands finger 1 to the editor's
+  pointer map so the pinch zooms.
+Verified: unfixed = artwork geometry changed / frame changed + no zoom; fixed = both unchanged and both zoom.
+Tests: frame-handles (new pinch test); undo-mock tests gain `_snapshotState`. Full vitest 2418/2418.
