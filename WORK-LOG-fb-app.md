@@ -3705,3 +3705,11 @@ floats there pointing at nothing")
   (TerrainPreview._visibleWorstPts, the same frameLoopsWorld panel loop the panel trim uses). Verified: thickness
   forced thin -> 20 thin spots, 7 inside the trimmed board shown, all on the top surface, labels "thin 0.7xx"".
   vitest 2437 passed.
+
+## Stale-save warning (Fred: "9 ok")
+- cloud-project-manager: each project's cloud save time as THIS device last saw it (its own save response, or the
+  list entry of the load) is kept in localStorage ('bspline.pm.knownSavedAt'). _saveTo checks a fresh list first:
+  a newer cloud savedAt (another device saved since) -> confirm "saved from another device since you opened it
+  (<time>) -- Overwrite?" (Cancel = not saved, load it from Projects for the other version). Client-only (the worker
+  already stamps and lists savedAt); KV list lag (~60 s) can hide a save seconds old. Verified with a KV mock:
+  save, save again (no question), other device saves -> question; Cancel keeps theirs; Overwrite writes ours.

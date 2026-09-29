@@ -921,8 +921,49 @@ export async function quickSave() {
 /** Inner save implementation. Takes a fully-qualified name. */
 const _projectExists = (name) => _projects.some((p) => p.name === name);
 
+// Workflow audit #9 (Fred: "9 ok"): the cloud's save time of each project as THIS device last saw it (its own save,
+// or the load it came from). Before overwriting a project, a newer save time in the cloud means another device
+// (the phone, the PC) saved it since -- asked, never silently overwritten. Client-side only: the worker already
+// stamps savedAt on every PUT and lists it. (KV's list can lag ~60 s, so a save seconds old may go unseen.)
+const KNOWN_SAVED_LS_KEY = 'bspline.pm.knownSavedAt';
+const _savedMs = (v) => (v == null ? 0 : (typeof v === 'number' ? v : (new Date(v).getTime() || 0)));
+function _knownSavedAt(name) {
+  try { return (JSON.parse(localStorage.getItem(KNOWN_SAVED_LS_KEY) || '{}'))[name] || 0; } catch { return 0; }
+}
+function _rememberSavedAt(name, savedAt) {
+  const ms = _savedMs(savedAt);
+  if (!ms) return;
+  try {
+    const m = JSON.parse(localStorage.getItem(KNOWN_SAVED_LS_KEY) || '{}');
+    m[name] = ms;
+    localStorage.setItem(KNOWN_SAVED_LS_KEY, JSON.stringify(m));
+  } catch { /* storage full / unavailable: no check next time */ }
+}
+/** The cloud's current save time of `name` (a fresh list), or 0 when unknown / offline. */
+async function _cloudSavedAt(name) {
+  try {
+    const r = await fetch(`${_API_URL}/projects?_=${Date.now()}`, { cache: 'no-store' });
+    if (!r.ok) return 0;
+    const data = await r.json();
+    const item = (data.items || []).find((p) => p.name === name);
+    return item ? _savedMs(item.savedAt) : 0;
+  } catch { return 0; }
+}
+
 async function _saveTo(fullName) {
   if (!_API_URL) { setMsg('No cloud API configured.', 'warn'); return; }
+
+  const known = _knownSavedAt(fullName);
+  if (known) {
+    const cloud = await _cloudSavedAt(fullName);
+    if (cloud > known + 1000) {
+      const when = new Date(cloud).toLocaleString();
+      const ok = await confirmDialog(`"${fullName}" was saved from another device since you opened it (${when}).\n`
+        + 'Overwrite it with this version? (Cancel, then load it from Projects to get the other version.)',
+        { okLabel: 'Overwrite', zIndex: 20000 });
+      if (!ok) { setMsg('Not saved — the cloud version is newer.', 'warn'); return; }
+    }
+  }
 
   if (_btnSave) _btnSave.disabled = true;
   setMsg(`Saving "${fullName}"…`);
@@ -933,6 +974,7 @@ async function _saveTo(fullName) {
       body:    JSON.stringify(buildSnapshot()),
     });
     if (!r.ok) throw new Error((await safeJson(r)).error || `HTTP ${r.status}`);
+    _rememberSavedAt(fullName, (await safeJson(r)).savedAt || Date.now());
     setMsg(`✓ Saved "${fullName}"`, 'ok');
     showToast(`✓ Saved "${fullName}"`);
     markClean();
@@ -1055,6 +1097,9 @@ async function _loadFrom(name) {
     const r    = await fetch(`${_API_URL}/projects/${encodeURIComponent(name)}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const snap = await r.json();
+    // #9: the cloud save time this load is based on (the list's, else a fresh look)
+    const listed = _projects.find((p) => p.name === name);
+    _rememberSavedAt(name, (listed && listed.savedAt) || await _cloudSavedAt(name) || Date.now());
     await applySnapshot(unpackPoints(snap), _preview, { source: 'load' });
     // Establish file association — subsequent quick-saves overwrite this.
     setCurrentFile(name);
