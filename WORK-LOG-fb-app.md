@@ -3723,3 +3723,11 @@ floats there pointing at nothing")
   for operations; any -> 'build_confirm' {setups:[{name, ops}]} -> the palette's own box (window.confirm is off
   in CEF) "BUILD rebuilds these setups and deletes what is in them … Rebuild / Cancel" -> Rebuild resends 'build'
   with confirmed. Parses; no Fusion here to run it.
+
+## "Continue from phone" banner (Fred: "8 continue from phone ok")
+- cloud-project-manager _checkContinueBanner (2.5 s after boot, any device): the newest project saved in the last
+  24 h that THIS device has not seen (its own save / load: _knownSavedAt, the stale-save map) -> a banner under the
+  header: "📱 "<name>" was saved N min ago on another device." Load / Load & Send (Fusion only: loads, then presses
+  the one Send) / ✕ (hides that save for good, 'bspline.pm.continueDismissed'). Load goes through _loadFrom (asks
+  when there are unsaved changes). Verified with the KV mock + adsk stub: banner shown; Load & Send -> 6x8 loaded,
+  project name set, Send started (generate_start); next start -> no banner (already seen). vitest 2437 passed.

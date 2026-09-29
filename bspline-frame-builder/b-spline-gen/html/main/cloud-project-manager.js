@@ -14,7 +14,7 @@
 // 'splineGenPresets' (old local preset store), offers to upload them to cloud.
 // Marks completion with 'splineGenProjectsMigrated' so the prompt never repeats.
 
-import { P, preDelta, postDelta, extraThickenThinMask, persistableP } from '../core/state.js';
+import { P, preDelta, postDelta, extraThickenThinMask, persistableP, isFusionMode } from '../core/state.js';
 import { COORD_SYSTEM } from '../core/coords.js';
 import { applySnapshot } from './snapshot-manager.js';
 import { isDirty, markClean, onDirtyChange } from '../core/dirty.js';
@@ -160,6 +160,7 @@ export function bindProjectManager(preview) {
   document.querySelectorAll('#btnOpenProjectManager')
     .forEach((el) => el.addEventListener('click', openModal));
   document.getElementById('btnNewProject')?.addEventListener('click', () => { newProject(); });
+  if (_API_URL) setTimeout(() => { _checkContinueBanner().catch(() => {}); }, 2500);
 
   // Navbar quick-save button: silent overwrite if a file is associated,
   // otherwise opens the modal and starts a Save As prompt.
@@ -903,6 +904,61 @@ export async function newProject() {
   markClean();
   showToast('✓ New project');
   return true;
+}
+
+// ─── "Continue from phone" (workflow audit #8, Fred: "8 continue from phone ok") ─────────────────────────────────
+// On opening the app (in Fusion, or on any device): the newest project saved in the last CONTINUE_WINDOW_MS that
+// THIS device has not seen (its own save / load, _knownSavedAt) is offered in a banner -- Load, and inside Fusion
+// Load & Send -- so the design just saved on the phone is one tap away on the PC. ✕ hides that save for good.
+const CONTINUE_WINDOW_MS = 24 * 3600 * 1000;
+const CONTINUE_DISMISSED_LS_KEY = 'bspline.pm.continueDismissed';
+
+async function _checkContinueBanner() {
+  const r = await fetch(`${_API_URL}/projects?_=${Date.now()}`, { cache: 'no-store' });
+  if (!r.ok) return;
+  const data = await r.json();
+  const now = Date.now();
+  let dismissed = '';
+  try { dismissed = localStorage.getItem(CONTINUE_DISMISSED_LS_KEY) || ''; } catch { /* none */ }
+  const newest = (data.items || [])
+    .filter((p) => p && p.name && !String(p.name).startsWith('cam-profile::'))
+    .map((p) => ({ name: p.name, t: _savedMs(p.savedAt) }))
+    .filter((p) => p.t && now - p.t < CONTINUE_WINDOW_MS)
+    .sort((a, b) => b.t - a.t)[0];
+  if (!newest) return;
+  if (_knownSavedAt(newest.name) >= newest.t - 1000) return; // this device saved or loaded that version
+  if (dismissed === `${newest.name}@${newest.t}`) return;
+  _showContinueBanner(newest);
+}
+
+function _showContinueBanner({ name, t }) {
+  document.getElementById('continueBanner')?.remove();
+  const bar = document.createElement('div');
+  bar.id = 'continueBanner';
+  bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:64px;z-index:9000;max-width:min(94vw,560px);'
+    + 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #c9d7f2;border-radius:8px;'
+    + 'box-shadow:0 4px 14px rgba(0,0,0,.18);padding:8px 10px;font-size:13px;';
+  const mins = Math.max(1, Math.round((Date.now() - t) / 60000));
+  const ago = mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} h ago`;
+  bar.innerHTML = `<span style="flex:1;min-width:180px;">📱 <b></b> was saved ${ago} on another device.</span>`
+    + '<button type="button" data-a="load" class="cad-btn cad-btn-secondary" style="height:30px;">Load</button>'
+    + (isFusionMode ? '<button type="button" data-a="send" class="cad-btn cad-btn-primary" style="height:30px;">Load &amp; Send</button>' : '')
+    + '<button type="button" data-a="x" title="Hide" style="height:30px;border:none;background:none;font-size:16px;cursor:pointer;">✕</button>';
+  bar.querySelector('b').textContent = `"${name}"`;
+  document.body.appendChild(bar);
+  bar.addEventListener('click', async (e) => {
+    const a = e.target && e.target.getAttribute && e.target.getAttribute('data-a');
+    if (!a) return;
+    if (a === 'x') {
+      try { localStorage.setItem(CONTINUE_DISMISSED_LS_KEY, `${name}@${t}`); } catch { /* storage off */ }
+      bar.remove();
+      return;
+    }
+    const ok = await _loadFrom(name);
+    if (!ok) return;
+    bar.remove();
+    if (a === 'send') setTimeout(() => document.getElementById('btnDownload')?.click(), 800); // the one Send
+  });
 }
 
 /** Quick Save from outside the modal (navbar button). Same Save behavior:
