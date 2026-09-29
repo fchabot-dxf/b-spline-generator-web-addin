@@ -97,7 +97,7 @@ export class LeaderLineOverlay {
 
       text.setAttribute('x', (lx + 5).toFixed(1));
       text.setAttribute('y', (ly - 1).toFixed(1));
-      text.textContent = pt.actual.toFixed(3) + '"';
+      text.textContent = 'thin ' + pt.actual.toFixed(3) + '"'; // what it is: the solid's thinnest spot
     }
   }
 
@@ -118,7 +118,7 @@ export class LeaderLineOverlay {
     svg.appendChild(line);
 
     const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    bg.setAttribute('width', '52');
+    bg.setAttribute('width', '76');
     bg.setAttribute('height', '14');
     bg.setAttribute('rx', '3');
     bg.setAttribute('fill', 'rgba(20,20,40,0.85)');

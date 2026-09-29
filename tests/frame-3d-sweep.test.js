@@ -116,7 +116,7 @@ describe('frame geometry is rebuilt only when frame inputs or the panel change',
     Object.assign(fake, {
       _orbit: { step: () => true }, _viewCube: null, _renderer: { render: vi.fn() }, _scene: { add() {}, remove() {} },
       _camera: {}, _mesh: { geometry: { index: { array: [0, 1, 2] }, attributes: { position: { array: [0, 0, 0, 1, 0, 0, 0, 1, 0] } }, userData: {}, setIndex() {} } },
-      _canvas: { classList: { add() {} } }, _worstPts: [], _leaders: { update() {} }, _sculpt: { updateValueBoxPos() {} },
+      _canvas: { classList: { add() {} } }, _worstPts: [], _leaders: { update() {}, setData() {} }, _sculpt: { updateValueBoxPos() {} },
       _lastGrid: { W: 7, H: 9, nx: 2, nz: 2, topPos: null, botPos: null }, _frameMeshes: [], _frameProvider: provider,
       _THREE: FakeTHREE,
     });

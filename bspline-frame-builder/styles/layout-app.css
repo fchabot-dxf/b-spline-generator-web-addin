@@ -547,5 +547,6 @@ aside {
    (you install the add-in on the PC), and the project name gets a narrower ellipsis. */
 @media (pointer: coarse) and (max-width: 720px) {
     #btnDownloadAddin { display: none !important; }
+    #btnNewProject { display: none !important; } /* phone: New is in the Projects window (no room in the header) */
     #fmCurrentFileLabel { max-width: 22vw !important; }
 }

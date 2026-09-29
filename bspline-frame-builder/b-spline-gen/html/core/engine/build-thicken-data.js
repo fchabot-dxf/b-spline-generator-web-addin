@@ -186,7 +186,10 @@ function analyseThickness({
     const isThin = !isSelfIntersect && !isTopBotIntersect &&
                    (physicalThickness < thickness - yellowOffset - INTERSECT_TOLERANCE);
 
-    const pt = { x: xB, y: yB, z: zB, actual: physicalThickness };
+    // the leader marks the spot on the TOP surface above the thin cell (Fred: "the 0.112 label just floats there
+    // pointing at nothing") -- the bottom offset point it used is hidden under the board in the preview, and near
+    // an edge it lies OUTSIDE the board (the offset follows the edge normals outward)
+    const pt = { x: xT, y: yT, z: zT, actual: physicalThickness };
     if (isTopBotIntersect || isSelfIntersect) {
       intersectPts.push(pt); worstClamped.push(pt);
       if (isSelfIntersect) self++; else topBot++;

@@ -159,6 +159,7 @@ export function bindProjectManager(preview) {
   // removed in PM2 — the navbar folder icon is the one door now).
   document.querySelectorAll('#btnOpenProjectManager')
     .forEach((el) => el.addEventListener('click', openModal));
+  document.getElementById('btnNewProject')?.addEventListener('click', () => { newProject(); });
 
   // Navbar quick-save button: silent overwrite if a file is associated,
   // otherwise opens the modal and starts a Save As prompt.
@@ -271,6 +272,7 @@ function wireModalListeners() {
   _btnRename?.addEventListener('click', onRename);
   _btnDelete?.addEventListener('click', onDelete);
   _btnNewFolder?.addEventListener('click', onNewFolder);
+  document.getElementById('fmBtnNew')?.addEventListener('click', async () => { if (await newProject()) closeModal(); });
 
   // View toggle
   _viewBtnTiles?.addEventListener('click', () => setViewMode('tiles'));
@@ -881,6 +883,26 @@ async function onSaveAs() {
   if (fullName !== _currentFile && _projectExists(fullName)
       && !(await confirmDialog(`"${fullName}" already exists. Replace it?`))) return;
   return _saveTo(fullName);
+}
+
+/**
+ * Fred ("i dont think there a way to make a new file" -> "yes please"): start a new project. The drawing is emptied,
+ * the sculpt edits dropped and a fresh terrain seed rolled; the stock size, the frame and every other setting are
+ * kept as the starting point. The project association is dropped, so the next Save asks for a name instead of
+ * overwriting the project that was open. Asks first when there are unsaved changes. Runs through the same apply
+ * step as a project load (applySnapshot 'load': editor reopened empty, masks / preview rebuilt). Returns whether it ran.
+ */
+export async function newProject() {
+  if (isDirty() && !(await confirmDialog('Start a new project? Your unsaved changes will be lost.',
+    { okLabel: 'New project', zIndex: 20000 }))) return false;
+  const snapP = JSON.parse(JSON.stringify(persistableP()));
+  snapP.editorSvg = null;
+  snapP.seed = Math.floor(Math.random() * 99999);
+  await applySnapshot({ P: snapP }, _preview, { source: 'load' }); // no deltas in the snapshot: sculpt cleared
+  setCurrentFile(null);
+  markClean();
+  showToast('✓ New project');
+  return true;
 }
 
 /** Quick Save from outside the modal (navbar button). Same Save behavior:

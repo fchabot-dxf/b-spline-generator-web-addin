@@ -38,7 +38,7 @@ import { DRAPE_TEXTURE_FLIPY } from './drape-svg.js';
 import { ViewCube } from './view-cube.js';
 import { GroundGrid } from './ground-grid.js';
 import { LeaderLineOverlay } from './leader-lines.js';
-import { applyFrameToPanel } from './frame-mesh.js';
+import { applyFrameToPanel, frameLoopsWorld, pointInPolygon } from './frame-mesh.js';
 import { OrbitController } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
 import { renderTopView } from './top-view.js';
@@ -236,7 +236,7 @@ export class TerrainPreview {
     this._applyFrame();
 
     this._sculpt.reapplySelection(heights, nx, nz, W, H);
-    this._leaders.setData(this._worstPts, this._showLeaders);
+    this._leaders.setData(this._visibleWorstPts(), this._showLeaders);
 
     // SE11e: a fresh terrain mesh (new geometry) was just built above —
     // rebuild the drape overlay mesh against it (if a drape texture is
@@ -279,7 +279,7 @@ export class TerrainPreview {
       this._mesh.material.needsUpdate = true;
       geom.attributes.color && (geom.attributes.color.needsUpdate = true);
     }
-    this._leaders.setData(this._worstPts, this._showLeaders);
+    this._leaders.setData(this._visibleWorstPts(), this._showLeaders);
     this._needsRender = true;
   }
 
@@ -538,11 +538,21 @@ export class TerrainPreview {
     this._frameMeshes = [];
   }
 
+  /** The thin-spot markers that are on the board as drawn: a spot in stock the frame trims away is skipped (Fred:
+   *  the "0.112" label pointed at nothing -- the thicken check runs on the whole stock rectangle). */
+  _visibleWorstPts() {
+    const pts = this._worstPts || [];
+    const poly = this._trimPoly;
+    return poly ? pts.filter((p) => pointInPolygon(p.x, p.y, poly)) : pts;
+  }
+
   _applyFrame() {
     this._clearFrameMeshes();
     if (!this._mesh || !this._lastGrid) return;
     const g = this._lastGrid;
     const spec = this._frameProvider ? this._frameProvider(g.W, g.H) : null;
+    try { this._trimPoly = spec ? frameLoopsWorld(spec, g).panel : null; } catch (_) { this._trimPoly = null; }
+    this._leaders.setData(this._visibleWorstPts(), this._showLeaders);
     for (const m of applyFrameToPanel(this._THREE, this._mesh, g, spec)) {
       this._scene.add(m);
       this._frameMeshes.push(m);

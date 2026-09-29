@@ -3687,3 +3687,21 @@ bspline" -- "no send frame" -- "id rather have a delete everything button")
   the result shows ON the button for 3.5 s ("✓ Saved <name> + copied (N KB)") -- the corner toast was easy to miss
   on a 2560 px screen. Verified headless: the file lands in the download folder, the button says so.
 - vitest 2437 passed (a context-menu test's layers.js mock gains syncLayerZOrder).
+
+## New project; the thin-spot label pointing at nothing
+(Fred: "i dont think there a way to make a new file" -> "yes please!" / "dont understand why the 0.112 label just
+floats there pointing at nothing")
+- New project (header "📄 New" on desktop -- hidden on a phone, where the header is full -- and "New" in the
+  Projects window toolbar): cloud-project-manager newProject: confirm when there are unsaved changes, then the same
+  apply step as a load (applySnapshot 'load') with the current settings, an EMPTY drawing, no sculpt deltas and a
+  fresh terrain seed -- stock size, frame and every other setting kept; setCurrentFile(null) so the next Save asks a
+  name instead of overwriting the project that was open; clean. Verified at 390px (mock cloud): 52 pieces, 8x9,
+  Hourglass, dirty -> New -> confirm -> 0 pieces, 8x9, Hourglass kept, new seed, clean.
+- The label is the thicken check's thinnest spot ("worst clamped" points). Two causes: (1) it marked the BOTTOM
+  offset point -- under the board in the preview, and near an edge outside the board (the offset follows the edge
+  normals outward); now the TOP-surface point above the thin cell (build-thicken-data.js), labelled "thin 0.112"";
+  (2) the check runs on the whole stock rectangle, so a thin spot in stock the frame trims away (the hourglass
+  notch) pointed at empty space; the preview now shows only markers inside the frame's panel outline
+  (TerrainPreview._visibleWorstPts, the same frameLoopsWorld panel loop the panel trim uses). Verified: thickness
+  forced thin -> 20 thin spots, 7 inside the trimmed board shown, all on the top surface, labels "thin 0.7xx"".
+  vitest 2437 passed.

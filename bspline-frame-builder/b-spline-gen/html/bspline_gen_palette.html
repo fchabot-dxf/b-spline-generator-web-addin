@@ -495,6 +495,11 @@
         <span style="font-size:18px; line-height:1;">💾</span>
         <span id="btnQuickSaveLabel" class="cad-nav-label">Save…</span>
       </button>
+      <!-- Fred ("yes please" to a New project button): main/cloud-project-manager.js newProject -->
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnNewProject" title="New project: empty drawing, keeps the stock size and frame">
+        <span style="font-size:18px; line-height:1;">📄</span>
+        <span class="cad-nav-label">New</span>
+      </button>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnOpenProjectManager" title="Open Project Manager">
         <span style="font-size:18px; line-height:1;">📁</span>
         <span class="cad-nav-label">Projects</span>
@@ -3090,6 +3095,11 @@
           <button id="fmBtnNewFolder" class="pm-toolbar-btn" title="Create a new (virtual) folder here">
             <span class="material-symbols-outlined" style="font-size:14px;">create_new_folder</span>
             New Folder
+          </button>
+          <button id="fmBtnNew" class="pm-toolbar-btn"
+                  title="New project: empty drawing, keeps the stock size and frame">
+            <span class="material-symbols-outlined" style="font-size:14px;">note_add</span>
+            <span>New</span>
           </button>
           <button id="fmBtnSaveAs" class="pm-toolbar-btn"
                   title="Save current state under a new name (Save As…)">
