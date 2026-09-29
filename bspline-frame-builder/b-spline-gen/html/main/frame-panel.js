@@ -104,6 +104,14 @@ let _editorTab = 'artwork';
 let _openEditorOn = null;
 
 /** Switch the editor between its Frame and Artwork modes. */
+/** A frame template's name as shown: numbered (Fred: "Number the other frames too") -- "Template 1 - Hourglass"
+ *  -> "1. Hourglass"; a name without the "Template N - " prefix is shown as is. */
+export function frameLabel(tpl) {
+  const name = String((tpl && tpl.name) || '');
+  const m = name.match(/^Template\s*(\d+)\s*[-–]\s*(.+)$/i);
+  return m ? `${m[1]}. ${m[2]}` : name;
+}
+
 export function setEditorTab(tab) {
   _editorTab = tab === 'frame' ? 'frame' : 'artwork';
   const frame = _editorTab === 'frame';
@@ -185,7 +193,7 @@ export function syncFramePanel() {
   }
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
-  if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${tpl.name.split(' - ').pop()}` : '— none';
+  if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${frameLabel(tpl)}` : '— none';
 
   const warn = $('frameFitWarning');
   if (warn) {
@@ -369,7 +377,7 @@ export function initFramePanel() {
 
   for (const sel of [tplSel, $('editorFrameTemplate')].filter(Boolean)) {
     sel.appendChild(_option('', 'None'));
-    for (const t of FRAME_DEFS.templates || []) sel.appendChild(_option(t.id, t.name.split(' - ').pop()));
+    for (const t of FRAME_DEFS.templates || []) sel.appendChild(_option(t.id, frameLabel(t)));
   }
   for (const sel of [woodSel, $('editorFrameWood')].filter(Boolean)) {
     for (const w of FRAME_DEFS.appearance?.options || []) sel.appendChild(_option(w, w.replace(/^3D /, '')));
