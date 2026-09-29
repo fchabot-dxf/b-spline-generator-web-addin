@@ -3669,3 +3669,21 @@ bspline" -- "no send frame" -- "id rather have a delete everything button")
 - Settings > "Copy log (JSON)" (main/copy-log.js): navigator.clipboard; refused (Fusion palette) -> a box with the
   JSON selected + a Copy button. Verified at 390px: Generate, an aim-select, Apply, Copy -> toast "Log copied
   (10 KB)", 20 entries in order, 46 pieces. vitest 2437 passed.
+
+## Nodes under a rail -- found from Fred's log; Save log as a .json file
+- Fred's pasted log: the covered nodes (and their ties) were HAND-DRAWN (no data-lattice-gen) on the Rails layer
+  (layer 1), placed in the DOM BEFORE that layer's rails -- the next Generate appended fresh rails after them in the
+  same layer, drawn on top. Two fixes:
+  1. layers.js syncLayerZOrder: roster order between layers, and within a layer rails < ties < nodes (other pieces
+     rank with the rails; stable; DOM moved only when the order differs). Called by a layer reorder (replaces its
+     inline copy), every commitEdit (before the snapshot), generatePattern (before its push) and editor-io open (so
+     an existing drawing like Fred's is fixed on open).
+  2. editor-interaction _emitStyled: a hand-drawn rail / tie / node goes onto the pattern's own kind layer
+     (pattern.layers[rails|ties|nodes]) instead of whichever layer is active.
+  Verified headless: a node inserted before a rail on the Rails layer (2 violations) -> Generate -> 0. (The
+  hand-draw layer routing is not driven live here.)
+- Save log (Fred: "the copy button has no feedback, and i thought you would make an actual .json file"): the button
+  is now "Save log (.json)": saves bspline-log-YYYY-MM-DD_HHMM.json (FileSaver / an <a download>) AND copies it, and
+  the result shows ON the button for 3.5 s ("✓ Saved <name> + copied (N KB)") -- the corner toast was easy to miss
+  on a 2560 px screen. Verified headless: the file lands in the download folder, the button says so.
+- vitest 2437 passed (a context-menu test's layers.js mock gains syncLayerZOrder).

@@ -1993,9 +1993,16 @@ function _emitStyled(editor, kind, a, b) {
     const styleKey = kind === 'rail' ? 'rails' : kind === 'tie' ? 'ties' : 'nodes';
     const previousColor = editor._color;
     editor._color = colors[styleKey];
+    // a hand-drawn rail / tie / node goes onto the lattice's own layer for its kind (Rails / Ties / Nodes), not
+    // whichever layer happens to be active -- a tie drawn with Rails active used to land on Rails (and under it)
+    const pattern = getLayerPattern(editor);
+    const kindLayer = pattern && pattern.layers && pattern.layers[styleKey];
+    const previousLayer = editor._activeLayer;
+    if (kindLayer && (editor._layers || []).some((l) => l.id === kindLayer)) editor._activeLayer = kindLayer;
     const el = kind === 'node'
         ? emitNode(editor, a, widths.nodeDiameter / 2)
         : emitSegment(editor, kind, a, b, widths[styleKey]);
+    editor._activeLayer = previousLayer;
     editor._color = previousColor;
     return el;
 }

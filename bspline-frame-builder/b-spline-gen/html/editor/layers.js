@@ -413,6 +413,33 @@ function renameLayer(editor, id, newName) {
   if (editor._onChange) editor._onChange();
 }
 
+const _KIND_RANK = { rail: 0, tie: 1, node: 2 };
+
+/**
+ * The drawing's z-order, from the roster: earlier layers in _layers render first (bottom of the z-stack), and
+ * within one layer lattice pieces go rails, then ties, then nodes (Fred: "how are these nodes under the rail" --
+ * hand-drawn ties/nodes on the Rails layer ended up under the rails the next Generate appended after them). Other
+ * pieces keep their order (rank 0, with the rails). Children whose layer is not in the roster stay where they are.
+ * Moves DOM nodes only when the order actually differs. Called by a layer reorder, every commit (editor-commit.js)
+ * and Generate.
+ */
+export function syncLayerZOrder(editor) {
+  if (!editor || !editor._sketchLayer || !Array.isArray(editor._layers)) return;
+  const sketchNode = editor._sketchLayer.node;
+  if (!sketchNode || !sketchNode.children || typeof sketchNode.appendChild !== 'function') return;
+  const kids = [...sketchNode.children];
+  const layerIdx = new Map(editor._layers.map((l, i) => [String(l.id), i]));
+  const keyed = [];
+  kids.forEach((node, pos) => {
+    const li = layerIdx.get(node.getAttribute('data-layer'));
+    if (li == null) return;
+    keyed.push({ node, pos, li, rank: _KIND_RANK[node.getAttribute('data-lattice')] || 0 });
+  });
+  const sorted = keyed.slice().sort((a, b) => (a.li - b.li) || (a.rank - b.rank) || (a.pos - b.pos));
+  if (sorted.every((k, i) => k === keyed[i])) return;
+  sorted.forEach((k) => sketchNode.appendChild(k.node));
+}
+
 /** Move sourceId to be just before/after targetId in render order. The
  *  display list shows _layers in reverse (top of list = on top of
  *  z-stack). 'before' in display terms means HIGHER in z-order =
@@ -433,21 +460,7 @@ function reorderLayer(editor, sourceId, targetId, displaySide /* 'before' | 'aft
   const insertAt = displaySide === 'before' ? newTIdx + 1 : newTIdx;
   editor._layers.splice(insertAt, 0, moved);
 
-  // Sync SVG DOM z-order: re-append children in the new layer order so
-  // earlier layers in _layers render first (bottom of z-stack).
-  if (editor._sketchLayer) {
-    const sketchNode = editor._sketchLayer.node;
-    const byLayer = new Map(editor._layers.map(l => [l.id, []]));
-    editor._sketchLayer.children().toArray().forEach(ch => {
-      const lid = getElementLayer(ch);
-      if (byLayer.has(lid)) byLayer.get(lid).push(ch);
-      // children with a layer id not in the roster stay where they are
-      // (orphans; shouldn't happen post-reconcile, but defend against it)
-    });
-    editor._layers.forEach(layer => {
-      byLayer.get(layer.id).forEach(ch => sketchNode.appendChild(ch.node));
-    });
-  }
+  syncLayerZOrder(editor);
 
   renderLayersPanel(editor);
   applyLayerState(editor);

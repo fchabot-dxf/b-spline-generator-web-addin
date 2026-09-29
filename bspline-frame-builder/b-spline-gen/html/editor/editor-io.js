@@ -7,7 +7,7 @@ import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, addLayer, setActiveLayer, isExported } from './layers.js';
+import { applyToolingDefaults, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
 import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
@@ -1045,6 +1045,8 @@ export function open(editor, svgString, w, h) {
         }
     } catch (err) { console.error('[SVG EDITOR] Re-import failure:', err); }
 
+    // a document saved before the z-order rule (or by an older build) is put in order on open
+    syncLayerZOrder(editor);
     // Capture the post-load state as the baseline. The first user edit
     // pushes state #2, and Ctrl+Z restores #1 (this freshly-loaded state)
     // — so even an edit applied to the very first stroke is reversible.

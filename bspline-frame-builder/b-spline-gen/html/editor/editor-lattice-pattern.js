@@ -25,7 +25,7 @@ import {
   LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
-import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved, getElementLayer } from './layers.js';
+import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved, getElementLayer, syncLayerZOrder } from './layers.js';
 import { OVERRIDE_COLOR_ATTR, applyColorOverride } from './editor-piece-override.js';
 import { latticeChains, JOINT_TOL, minPieceLength } from './editor-lattice-chains.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
@@ -2518,6 +2518,7 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
   // Audit (batch 3): `amendUndo = { restored }` -- this refill follows an UNDO/REDO restore (editor._restoring):
   // it corrects that restored step IN PLACE (still on top) and pushes nothing, so redo survives and the next Undo
   // moves on instead of landing on the same state again.
+  syncLayerZOrder(editor); // rails < ties < nodes within a layer (hand-drawn pieces kept by Generate sit among them)
   const stack = Array.isArray(editor._undoStack) ? editor._undoStack : null;
   if (amendUndo && amendUndo.restored && stack && stack[stack.length - 1] === amendUndo.restored
       && typeof editor._snapshotState === 'function') {

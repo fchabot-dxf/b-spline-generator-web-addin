@@ -37,7 +37,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-interaction.js
   copySelection, pasteClipboard, selectAllVisible,
 }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js', () => ({ openColorMosaic }));
-vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/layers.js', () => ({ applyLayerState, addLayer }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/layers.js', () => ({ applyLayerState, addLayer, syncLayerZOrder: () => {} }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-piece-override.js', () => ({
   pieceKindOf: (...args) => pieceKindOf(...args), applyColorOverride,
 }));

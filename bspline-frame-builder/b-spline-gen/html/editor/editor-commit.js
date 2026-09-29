@@ -5,8 +5,11 @@
  * refill / detach / preview / guides (a deleted contour piece's refill then landed inside the NEXT edit's step).
  * Tolerant of test doubles that lack one of the methods.
  */
+import { syncLayerZOrder } from './layers.js';
+
 export function commitEdit(editor) {
   if (!editor) return;
+  syncLayerZOrder(editor); // before the snapshot: the step stores the drawing in its proper order
   if (typeof editor.pushState === 'function') editor.pushState();
   if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   else if (editor._onChange) editor._onChange();
