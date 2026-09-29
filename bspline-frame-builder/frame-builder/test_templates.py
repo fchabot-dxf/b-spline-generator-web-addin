@@ -55,6 +55,11 @@ EXPECTED = {
         'name': 'Template 4 - Offset Hourglass',
         'phase_counts': {1: 2, 2: 11, 3: 5},
     },
+    # T5 HOURGLASS DIPPED TOP: Template 1's phases (same files; p02_03..p02_11 add the dipped top, p03_01..04 use it).
+    'template_5': {
+        'name': 'Template 5 - Hourglass Dipped Top',
+        'phase_counts': {1: 2, 2: 11, 3: 5},
+    },
 }
 
 
@@ -161,6 +166,10 @@ def test_cross_template_regression():
         ('template_1', 'template_4'),
         ('template_4', 'template_1'),
         ('template_3', 'template_4'),
+        # T5 is a copy of T1's folder too (same phase file names).
+        ('template_1', 'template_5'),
+        ('template_5', 'template_1'),
+        ('template_4', 'template_5'),
     ]
     for first, second in sequences:
         try:

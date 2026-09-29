@@ -1,5 +1,5 @@
 # F20 live (run INSIDE Fusion, exec'd with globals app, CASE=<case json from f20_seed_case.mjs>, optional SHOT=<png>):
-# build T1 (or the case's `templateId`, T3 / T4) with the app's seed geometry in ONE tagged scratch doc (the Send path, build_sketch_logic_v3; NOT
+# build T1 (or the case's `templateId`, T3 / T4 / T5) with the app's seed geometry in ONE tagged scratch doc (the Send path, build_sketch_logic_v3; NOT
 # build_frame_logic, which ignores seeds), read every outline arc + each constraint/dimension touching the corner
 # geometry, compare with the app, close the doc by its own handle. Nothing is added to sys.path / sys.modules.
 import json, os, sys, math

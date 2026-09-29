@@ -598,6 +598,33 @@ function _ellipticalArcPointAt(arc) {
  * above, that IS world x directly, since `point.x=0` and `dir=(1,0)`).
  */
 export function insideSpans(scanLine, primitives) {
+  const spans = _parityInsideSpans(scanLine, primitives);
+  // T5 HOURGLASS DIPPED TOP (the coordinator's lattice check): the crossing parity above miscounts a scan line
+  // that runs ALONG a straight edge and only touches an arc tangentially where that edge ends (a rail on the
+  // dipped top's stub line meets each top shoulder arc at its tangent start / end: one touch counted, one not),
+  // which pairs up a span that is OUTSIDE the boundary (a rail straight across the dip). Generic guard, for any
+  // boundary with a straight edge beside a concave piece (a dipped top, a future notched base): when the scan
+  // line runs along an edge (collinearSpans), a span is kept unless its midpoint is outside the boundary, read
+  // along two skewed lines through it (never both degenerate there). A span along the edge (its midpoint ON the
+  // boundary) and every ordinary span (midpoint inside) are kept exactly. Scan lines along no edge are returned
+  // exactly as before (every existing pattern's output unchanged).
+  if (spans.length === 0 || collinearSpans(scanLine, primitives).length === 0) return spans;
+  return spans.filter(([lo, hi]) => _midpointNotOutside(scanLine, (lo + hi) / 2, primitives));
+}
+
+const SKEW_ANGLES = [0.6154797, 1.1071487]; // radians, off every axis and diagonal
+function _midpointNotOutside(scanLine, along, primitives) {
+  const { point, dir } = scanLine;
+  const m = { x: point.x + dir.x * along, y: point.y + dir.y * along };
+  for (const a of SKEW_ANGLES) {
+    const c = Math.cos(a), sn = Math.sin(a);
+    const skew = { point: m, dir: { x: dir.x * c - dir.y * sn, y: dir.x * sn + dir.y * c } };
+    if (_parityInsideSpans(skew, primitives).some(([lo, hi]) => lo - 1e-6 <= 0 && 0 <= hi + 1e-6)) return true;
+  }
+  return false;
+}
+
+function _parityInsideSpans(scanLine, primitives) {
   const { point, dir } = scanLine;
   const crossings = [];
   for (const prim of primitives) {

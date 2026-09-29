@@ -111,8 +111,31 @@ def _hourglass_offset_waist(curves, hw, hh, tol=2e-3):
     return ok, feats
 
 
+def _hourglass_dipped_top(curves, hw, hh, tol=2e-3):
+    """T5 HOURGLASS DIPPED TOP: Template 1 with the top edge dipped in the middle (stub, convex shoulder arc,
+    concave dip arc, convex shoulder arc, stub; the corners square).
+
+    The sides are Template 1's own extraction (so every Template 1 feature means what it does there); the top adds
+    the dip's half width (centre line -> each stub's end = the top shoulder centres' x) and its depth below the top
+    edge (at hh, Fusion y up). Valid when the sides are (Template 1's test), both top shoulders are tangent to the
+    top edge, the dip centre is on the centre line and the dip is tangent to both shoulders.
+    """
+    ok, feats = _hourglass(curves, hw, hh, tol)
+    sl, dip, sr = curves["arc_top_shoulder_L"], curves["arc_top_dip"], curves["arc_top_shoulder_R"]
+    ok = (ok and abs(sr["center"][1] - (hh - sr["radius"])) < tol
+          and abs(sl["center"][1] - (hh - sl["radius"])) < tol
+          and abs(dip["center"][0]) < tol
+          and abs(math.dist(sr["center"], dip["center"]) - (sr["radius"] + dip["radius"])) < tol
+          and abs(math.dist(sl["center"], dip["center"]) - (sl["radius"] + dip["radius"])) < tol)
+    feats.update({
+        "topDipHalfWidth": (sr["center"][0] - sl["center"][0]) / 2,
+        "topDipDepth": hh - (dip["center"][1] - dip["radius"]),   # the dip's lowest point, below the top edge
+    })
+    return ok, feats
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
-                      "hourglass_offset_waist": _hourglass_offset_waist}
+                      "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top}
 
 
 def provisional_shape_model(base_model, top_inset_of_depth):
@@ -156,6 +179,27 @@ def provisional_offset_waist_model(base_model, waist_offset_of_hh):
             "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
             "baseModel": "the fitted Template 1 model",
             "waistOffsetOfHh": waist_offset_of_hh,
+        },
+    }
+
+
+def provisional_dipped_top_model(base_model, depth_of_hh, half_width_of_hw):
+    """T5 HOURGLASS DIPPED TOP, until its goldens are recorded live: a PROVISIONAL model (never none), from Template
+    1's fitted one (the same sides). Its features unchanged, plus the top dip: `topDipDepth` = `depth_of_hh` x hh
+    and `topDipHalfWidth` = `half_width_of_hw` x hw (0.14 / 0.72: 7x9, a 0.6 in deep dip with 0.91 in straight
+    stubs from the corners). The app clamps both into their feasible ranges. Marked `provisional` so nothing
+    mistakes it for a fit."""
+    feats = {k: dict(v) for k, v in base_model["features"].items()}
+    feats["topDipDepth"] = {"hw": 0.0, "hh": depth_of_hh}
+    feats["topDipHalfWidth"] = {"hw": half_width_of_hw, "hh": 0.0}
+    return {
+        "features": feats,
+        "fit": dict(base_model["fit"]),
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": "the fitted Template 1 model",
+            "topDipDepthOfHh": depth_of_hh,
+            "topDipHalfWidthOfHw": half_width_of_hw,
         },
     }
 

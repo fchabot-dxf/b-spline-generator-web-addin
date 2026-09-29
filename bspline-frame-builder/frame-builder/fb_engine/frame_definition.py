@@ -161,8 +161,11 @@ def template_shape_model(template_id, frame, goldens_dir):
     one (frame_shape_fit.provisional_shape_model), so the app never gets a null shapeModel for it. Recording
     its goldens and re-running tools/gen_frame_defs.py replaces it with the real fit.
     T4 OFFSET HOURGLASS: {"from": <template id>, "waistOffsetOfHh": k} instead builds
-    frame_shape_fit.provisional_offset_waist_model (the two pinches k x hh apart from the middle, each way)."""
-    from fb_engine.frame_shape_fit import fit_shape_model, provisional_shape_model, provisional_offset_waist_model
+    frame_shape_fit.provisional_offset_waist_model (the two pinches k x hh apart from the middle, each way).
+    T5 HOURGLASS DIPPED TOP: {"from": <template id>, "topDipDepthOfHh": d, "topDipHalfWidthOfHw": w} builds
+    frame_shape_fit.provisional_dipped_top_model (the base model plus a top dip d x hh deep, w x hw half wide)."""
+    from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
+                                           provisional_dipped_top_model)
     from fb_engine.template_resolver import resolve_template
     model = fit_shape_model(template_id, frame.get("shapeExtractor") or frame.get("silhouettePreset"), goldens_dir)
     prov = frame.get("provisionalShape")
@@ -172,6 +175,8 @@ def template_shape_model(template_id, frame, goldens_dir):
         if base is not None:
             if "waistOffsetOfHh" in prov:
                 model = provisional_offset_waist_model(base, prov["waistOffsetOfHh"])
+            elif "topDipDepthOfHh" in prov:
+                model = provisional_dipped_top_model(base, prov["topDipDepthOfHh"], prov["topDipHalfWidthOfHw"])
             else:
                 model = provisional_shape_model(base, prov["topInsetOfDepth"])
     return model

@@ -52,7 +52,7 @@ function distTo(q, prims) {
 
 describe('the frame-offset contour == the frame OUTER edge offset by Distance (to its outside edge) -- F26', () => {
   const CASES = [];
-  for (const id of ['template_1', 'template_2', 'template_3', 'template_4']) for (const [W, H] of [[7, 9], [12, 6], [9, 12]]) for (const d of [0.1, 0.25, 0.5]) CASES.push([id, W, H, d]);
+  for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5']) for (const [W, H] of [[7, 9], [12, 6], [9, 12]]) for (const d of [0.1, 0.25, 0.5]) CASES.push([id, W, H, d]);
   it.each(CASES)('%s %sx%s, distance %s', (id, W, H, d) => {
     const frame = frameOf(id, W, H);
     const sil = frameContourSilhouette(frame, d, SW);
@@ -108,7 +108,7 @@ describe('the frame-offset contour == the frame OUTER edge offset by Distance (t
  * OUTWARD of it (accepted everywhere, not clamped away). MEASURED at the checklist's own 0 / +0.5 / -0.25.
  */
 describe('F26: distance is measured from the OUTER edge, negatives offset outward', () => {
-  it.each(['template_1', 'template_2', 'template_3', 'template_4'])('%s: distance 0 sits exactly on the outer edge (stroke/2 in)', (id) => {
+  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: distance 0 sits exactly on the outer edge (stroke/2 in)', (id) => {
     const frame = frameOf(id, 9, 12);
     const sil = frameContourSilhouette(frame, 0, SW);
     expect(sil.error).toBeUndefined();
@@ -128,7 +128,7 @@ describe('F26: distance is measured from the OUTER edge, negatives offset outwar
     return { x: p.p0.x + (p.p1.x - p.p0.x) * t, y: p.p0.y + (p.p1.y - p.p0.y) * t };
   });
 
-  it.each(['template_1', 'template_2', 'template_3', 'template_4'])('%s: distance +0.5 sits 0.5 + stroke/2 INSIDE the outer edge (unchanged direction from before F26)', (id) => {
+  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: distance +0.5 sits 0.5 + stroke/2 INSIDE the outer edge (unchanged direction from before F26)', (id) => {
     const frame = frameOf(id, 9, 12);
     const sil = frameContourSilhouette(frame, 0.5, SW);
     expect(sil.error).toBeUndefined();
@@ -138,7 +138,7 @@ describe('F26: distance is measured from the OUTER edge, negatives offset outwar
     for (const q of midLines) expect(Math.abs(distTo(q, outer) - (0.5 + SW / 2))).toBeLessThan(2e-3);
   });
 
-  it.each(['template_1', 'template_2', 'template_3', 'template_4'])('%s: distance -0.25 (NEW: negative is accepted, not clamped to the default) sits 0.25 - stroke/2 OUTSIDE the outer edge', (id) => {
+  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: distance -0.25 (NEW: negative is accepted, not clamped to the default) sits 0.25 - stroke/2 OUTSIDE the outer edge', (id) => {
     const frame = frameOf(id, 9, 12);
     const sil = frameContourSilhouette(frame, -0.25, SW);
     expect(sil.error).toBeUndefined();

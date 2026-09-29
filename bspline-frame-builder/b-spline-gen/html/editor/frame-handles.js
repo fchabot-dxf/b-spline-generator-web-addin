@@ -16,6 +16,7 @@
 import { computeParamHandles } from './editor-shape-lattice-interaction.js';
 import {
   PARAM_ORDER, feasibleParamRanges, generateSilhouette, paramsFromShapeModel, seededUnit,
+  MIN_ARC_RADIUS_IN, topDipDepthForRadius, HORN_MIN_OF_HALF_HEIGHT,
 } from './editor-shape-lattice-generator.js';
 
 /** F13 (FRAME-GEN): a generated value is drawn from this band of its feasible
@@ -39,6 +40,32 @@ const _narrow = (r, lo, hi) => {
   return a <= b ? { min: a, max: b } : { min: b, max: b }; // no room: validity (the frame rule) wins
 };
 
+/**
+ * T5 HOURGLASS DIPPED TOP: the sides' outline (Template 1's pieces 0..4 and 6..10, the left ones mirrored onto
+ * the right) as points, board coordinates (y down), from the generator's own solve of `resolved` without the dip.
+ * `sideX(y1)` = the sides' smallest x over every point at or above y1, the room the top dip has across down to
+ * that depth; `yInside(x)` = the highest side point closer in than x (Infinity: none).
+ */
+function _sideRoom(region, resolved) {
+  const flat = { ...resolved, topDipWidth: undefined, topDipDepth: undefined };
+  const sil = generateSilhouette(region, { preset: 'hourglass', params: flat });
+  const cx0 = region.x + region.w / 2, pts = [];
+  sil.primitives.forEach((p, i) => {
+    if (i === 5 || i > 10) return; // the bottom and top edges
+    const mirror = i > 5;
+    const add = (q) => pts.push({ x: mirror ? 2 * cx0 - q.x : q.x, y: q.y });
+    if (p.type === 'L') { add(p.p0); add(p.p1); return; }
+    for (let k = 0; k <= 48; k++) {
+      const th = p.theta1 + (p.dTheta * k) / 48;
+      add({ x: p.cx + p.rx * Math.cos(th), y: p.cy + p.rx * Math.sin(th) });
+    }
+  });
+  return {
+    sideX: (y1) => pts.reduce((m, q) => (q.y <= y1 && q.x < m ? q.x : m), Infinity),
+    yInside: (x) => pts.reduce((m, q) => (q.x < x && q.y < m ? q.y : m), Infinity),
+  };
+}
+
 /** The silhouette's feasible ranges narrowed by the frame opening rule (frame thickness `t`, inches). */
 export function frameParamRanges(tpl, region, resolved, t = _templateThickness(tpl)) {
   const R = feasibleParamRanges(tpl.silhouettePreset, region, resolved);
@@ -48,6 +75,23 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     R.waistReach = _narrow(R.waistReach, -Infinity, 1 - (t + half) / hw); // the pinch: hw - depth - t >= half
     // T4 OFFSET HOURGLASS: the left pinch obeys the same rule on its own side.
     if (R.waistReachLeft) R.waistReachLeft = _narrow(R.waistReachLeft, -Infinity, 1 - (t + half) / hw);
+    // T5 HOURGLASS DIPPED TOP (only a frame whose outline has the dip: its resolved params carry it). The dip's
+    // inner edge (the dip offset down by t) lies within |x| <= a, from t to D + t below the top; the sides' inner
+    // edge is t in from the sides. So the opening rule on the dip: at every height the dip's inner edge can
+    // reach (the sides' outline down to D + 2t below the top) the sides stay at least a + t + half out
+    // (`_sideRoom`), which also keeps each straight stub's inner edge (the inner corner at hw - t to the dip's
+    // start) at least half the opening long, the square corner and its miter clean. The width reads it at the
+    // smallest depth (so the depth range is never empty), the depth at the resolved width. And the top
+    // shoulders' inner offset (radius r - t) keeps MIN_ARC_RADIUS_IN, so it never collapses.
+    if (R.topDipWidth && Number.isFinite(resolved.topDipWidth)) {
+      const hh = region.h / 2, cx0 = region.x + hw, top = region.y, { sideX, yInside } = _sideRoom(region, resolved);
+      R.topDipWidth = _narrow(R.topDipWidth, -Infinity,
+        (Math.min(cx0 + hw - t - half, sideX(top + HORN_MIN_OF_HALF_HEIGHT * hh + 2 * t) - t - half) - cx0) / hw);
+      const a = hw * resolved.topDipWidth, need = cx0 + a + t + half;
+      // the highest side point closer in than `need` stops the dip's inner edge 2t above it
+      const dRoom = yInside(need) - top - 2 * t;
+      R.topDipDepth = _narrow(R.topDipDepth, -Infinity, Math.min(dRoom, topDipDepthForRadius(a, t + MIN_ARC_RADIUS_IN)) / hh);
+    }
   }
   return R;
 }
@@ -105,7 +149,10 @@ export function frameSeedGeometry(tpl, prof, W, H) {
       const pts = [F(p.p0), F(p.p1)];
       out[e.id] = { points: e.reverse ? pts.reverse() : pts };
     } else if (e.kind === 'arc') {
-      const [s, m, t] = [F(at(p, 0)), F(at(p, 0.5)), F(at(p, 1))];
+      let [s, m, t] = [F(at(p, 0)), F(at(p, 0.5)), F(at(p, 1))];
+      // T5 HOURGLASS DIPPED TOP: an arc whose centre is on the Y axis (the top dip) is seeded `nudgeX` in off it
+      // (the pins' own anti-auto-coincidence nudge); its phase puts the centre on the axis explicitly.
+      if (e.nudgeX) [s, m, t] = [s, m, t].map(([x, y]) => [x + e.nudgeX, y]);
       out[e.id] = { points: e.reverse ? [t, m, s] : [s, m, t] };
     } else if (e.kind === 'pin') {
       const c = F({ x: p.cx, y: p.cy });

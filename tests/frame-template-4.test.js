@@ -79,7 +79,8 @@ describe('no left pinch set: Template 1, bit for bit', () => {
   });
 
   it('PARAM_ORDER keeps every earlier key at its old index (the [Generate] salt); the left keys come last', () => {
-    expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
+    // (T5 HOURGLASS DIPPED TOP appends its top dip keys AFTER these: every earlier index unchanged.)
+    expect(PARAM_ORDER.hourglass.slice(0, 9)).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
       'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft']);
   });
 });

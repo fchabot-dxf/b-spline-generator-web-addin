@@ -2,17 +2,20 @@
 // geometry [Send frame] sends, plus the app's own expected outline arcs (every seedMap arc: shoulder, waist, hip)
 // in Fusion sketch coordinates (inches, centred, y up). f20_live.py (in Fusion) builds it and compares.
 //   node tools/repro/f20_seed_case.mjs <out.json> <W> <H> <shoulder|-> <hip|-> [topInset|-] [waistCenterYLeft|-] [waistReachLeft|-]
+//     [topDipDepth|-] [topDipWidth|-]
 //   ("-" = not seeded)
 // T3: TEMPLATE=template_3 (env; default template_1) builds the case for that template instead; `topInset` (the
 // Template 3 "Top width" handle, a fraction of hw) is only declared (seeded) by Template 3. T4: TEMPLATE=template_4, the
-// 7th / 8th args = its "Left waist position" (fraction of hh, y down) / "Left waist reach" (fraction of hw).
+// 7th / 8th args = its "Left waist position" (fraction of hh, y down) / "Left waist reach" (fraction of hw). T5:
+// TEMPLATE=template_5, the 9th / 10th args = its "Top dip depth" (fraction of hh) / "Top dip width" (half width,
+// fraction of hw).
 import { writeFileSync } from 'node:fs';
 import FRAME_DEFS from '../../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile } from '../../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameSeedGeometry } from '../../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 
-const [OUT, Ws, Hs, S = '-', P = '-', T = '-', YL = '-', DL = '-'] = process.argv.slice(2);
+const [OUT, Ws, Hs, S = '-', P = '-', T = '-', YL = '-', DL = '-', TD = '-', TW = '-'] = process.argv.slice(2);
 const TID = process.env.TEMPLATE || 'template_1';
 const W = Number(Ws), H = Number(Hs);
 const tpl = FRAME_DEFS.templates.find((t) => t.id === TID);
@@ -22,6 +25,8 @@ if (P !== '-') seeds.cornerRadiusBottom = Number(P);
 if (T !== '-') seeds.topInset = Number(T);
 if (YL !== '-') seeds.waistCenterYLeft = Number(YL);
 if (DL !== '-') seeds.waistReachLeft = Number(DL);
+if (TD !== '-') seeds.topDipDepth = Number(TD);
+if (TW !== '-') seeds.topDipWidth = Number(TW);
 const rec = normalizeFrameRecord({ templateId: TID, seeds }); // the real gate: only declared seeded keys
 const prof = frameCutProfile(FRAME_DEFS, rec, { widthIn: W, heightIn: H });
 const F = (p) => [p.x - W / 2, H / 2 - p.y];

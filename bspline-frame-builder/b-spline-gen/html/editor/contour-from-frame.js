@@ -114,6 +114,11 @@ export function frameContourSilhouette(frame, distance, strokeWidth) {
   const segments = primitives.map((p) => (p.type === 'A'
     ? { style: 'curve', bulge: 0, dir: 'out', cornerRadius: 0 } : { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 }));
   const sil = generateSilhouette(prof.region, { preset: tpl.silhouettePreset, params: prof.params });
+  // T5 HOURGLASS DIPPED TOP: a dipped frame outline carries its own mirror table (16 segments); carried over to
+  // the kept pieces (a dropped piece's partner mirrors itself), so the Fusion manifest pairs the right entities.
+  // Absent (every other frame): no `mirror`, the manifest's plain mirrorSegmentIndex rule, exactly as before.
+  const at = new Map(kept.map((orig, k) => [orig, k]));
+  const mirror = Array.isArray(sil.mirror) ? kept.map((orig, k) => at.get(sil.mirror[orig]) ?? k) : null;
   // the OUTSIDE bounding box (the manifest's contour_width / contour_height): the centerline's extent + half stroke
   const pts = primitives.flatMap((p) => (p.type === 'L' ? [p.p0, p.p1]
     : Array.from({ length: 33 }, (_, k) => ({ x: p.cx + p.rx * Math.cos(p.theta1 + (p.dTheta * k) / 32), y: p.cy + p.rx * Math.sin(p.theta1 + (p.dTheta * k) / 32) }))));
@@ -121,7 +126,7 @@ export function frameContourSilhouette(frame, distance, strokeWidth) {
   const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y);
   const region = { x: Math.min(...xs) - h, y: Math.min(...ys) - h, w: Math.max(...xs) - Math.min(...xs) + 2 * h, h: Math.max(...ys) - Math.min(...ys) + 2 * h };
   return { preset: 'frame', fromFrame: true, primitives, segments, corners, region, params: {}, cx: sil.cx,
-    hasUserSegments: false, thickness: t, distance };
+    hasUserSegments: false, thickness: t, distance, ...(mirror ? { mirror } : {}) };
 }
 
 /**

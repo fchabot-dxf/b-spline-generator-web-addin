@@ -46,7 +46,10 @@
  * built here. (The arc pull's LEFT arc grip mirrors the pointer onto the
  * right arc and solves there.)
  */
-import { feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS } from './editor-shape-lattice-generator.js';
+import {
+  feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
+  TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex,
+} from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
 /** SE14 §3 Q5 ruling default, duplicated from properties-shape-lattice.
@@ -261,6 +264,20 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         return within('waistReachLeft', want);
       },
     },
+    {
+      // T5 HOURGLASS DIPPED TOP: the top dip's depth, a POSITION square at the dip's lowest point (on the centre
+      // line); a vertical drag deepens or flattens the dip, its width held. Value = depth below the top / hh.
+      key: 'topDipDepth', label: 'Top dip depth', axis: 'y', handleKind: 'position',
+      anchor: { x: cx0, y: cy0 - hh + (g.topDip ? g.topDip.depth : 0) },
+      valueFromWorld: (pt) => within('topDipDepth', (pt.y - (cy0 - hh)) / hh),
+    },
+    {
+      // T5: the top dip's width, a POSITION square where the right straight stub ends (the dip starts); a
+      // horizontal drag moves both stub ends (mirrored) in or out, the depth held. Value = (x - centre) / hw.
+      key: 'topDipWidth', label: 'Top dip width', axis: 'x', handleKind: 'position',
+      anchor: { x: cx0 + (g.topDip ? g.topDip.halfWidth : hw * (resolvedParams.topDipWidth ?? 0)), y: cy0 - hh },
+      valueFromWorld: (pt) => within('topDipWidth', (pt.x - cx0) / hw),
+    },
   ]));
 }
 
@@ -314,7 +331,8 @@ export function waistReachFromCentre(geo, px, grabValue) {
  *  longer drives it). `primIndex` = the right arc's primitive index. */
 function _segmentArcs(key, c) {
   const segment = HANDLE_SEGMENT_INDEX[c.preset][key];
-  const mirrorSegment = mirrorSegmentIndex(segment, c.sil.segments.length);
+  // T5 HOURGLASS DIPPED TOP: a dipped outline carries its own mirror table (16 segments, the top is not one edge)
+  const mirrorSegment = c.sil.mirror ? c.sil.mirror[segment] : mirrorSegmentIndex(segment, c.sil.segments.length);
   const map = primitiveSegmentMap(c.sil.segments);
   const primIndex = (i) => {
     const k = map.indexOf(i);
@@ -446,6 +464,8 @@ export function hitTestArcGrip(handles, pt, tolerance) {
  *              6 horn, 7 hip(L), 8 waist(L), 9 shoulder(L), 10 horn, 11 top edge.
  *   (T3 `topInset`, the top width, maps to 0: the right top horn it slides. T4's left pinch keys map to 8,
  *   the LEFT waist, and highlight only it: LEFT_ONLY_KEYS.)
+ *   T5 dipped top (16 segments: 0..10 as above, 11 stub(L), 12 top shoulder(L), 13 DIP, 14 TOP SHOULDER,
+ *   15 stub): `topDipDepth` maps to 13 (the dip), `topDipWidth` to 14 (the right top shoulder, mirror 12).
  *   bottle:    0 horn, 1 NECK/WAIST, 2 HIP/BODY, 3 horn, 4 bottom edge,
  *              5 horn, 6 hip/body(L), 7 neck/waist(L), 8 horn, 9 top edge.
  * `waistCenterY` repositions the pinch itself (shoulderY/hipY are BOTH
@@ -457,7 +477,7 @@ export function hitTestArcGrip(handles, pt, tolerance) {
  */
 export const HANDLE_SEGMENT_INDEX = {
   hourglass: { cornerRadiusTop: 1, waistReach: 2, cornerRadiusBottom: 3, waistCenterY: 2, waistRadius: 2, topInset: 0,
-    waistCenterYLeft: 8, waistReachLeft: 8 },
+    waistCenterYLeft: 8, waistReachLeft: 8, topDipDepth: 13, topDipWidth: 14 },
   bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2 },
 };
 
@@ -523,6 +543,7 @@ export function controlledSegments(preset, key, n) {
   const i = HANDLE_SEGMENT_INDEX[preset]?.[key];
   if (i == null || !(n > 0)) return [];
   if (LEFT_ONLY_KEYS.has(key)) return [i];
-  const m = mirrorSegmentIndex(i, n);
+  // T5 HOURGLASS DIPPED TOP: the 16-segment dipped outline mirrors by its own table (topDipMirrorIndex)
+  const m = preset === 'hourglass' && n === TOP_DIP_SEGMENT_COUNT ? topDipMirrorIndex(i) : mirrorSegmentIndex(i, n);
   return m === i ? [i] : [i, m];
 }

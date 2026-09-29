@@ -236,6 +236,101 @@ def test_template_4_pins_are_not_merged_left_to_right_and_only_the_radii_are_tie
     assert y["skel_waist_pin_L"] > 0.5 > -0.5 > y["skel_waist_pin_R"]
 
 
+# ------------------------------------------------------- T5 hourglass dipped top
+_T5_TOP = ["top_edge_L", "arc_top_shoulder_L", "arc_top_dip", "arc_top_shoulder_R", "top_edge_R"]
+
+
+def test_template_5_is_template_1_with_a_dipped_top(defs):
+    t = {x["id"]: x for x in defs["templates"]}
+    t1, t5 = t["template_1"], t["template_5"]
+    assert t5["name"] == "Template 5 - Hourglass Dipped Top" and t5["silhouettePreset"] == "hourglass"
+    assert t5["params"] == t1["params"] and t5["features"] == t1["features"]  # no new parameter, the same 4 bars
+    assert t5["handles"] == t1["handles"] + [
+        {"key": "topDipDepth", "label": "Top dip depth", "basis": "hh", "binding": "seeded"},
+        {"key": "topDipWidth", "label": "Top dip width", "basis": "hw", "binding": "seeded"},
+    ]
+    assert t5["handleMigrations"] == {}
+    # the outline: the dipped top's five pieces, then Template 1's sides and base; the TL miter on the left stub
+    assert t5["regions"]["outline"] == ["proj_" + c for c in _T5_TOP] + t1["regions"]["outline"][1:]
+    assert t5["regions"]["inner"] == ["inner_" + c for c in t5["regions"]["outline"]]
+    assert t5["regions"]["miters"] == [["proj_top_edge_L:S", "inner_proj_top_edge_L:S"]] + t1["regions"]["miters"][1:]
+    # the seed map: Template 1's without the one top edge, plus the top's five pieces (app primitives 11..15)
+    # and their three seed radii
+    m1 = [e for e in t1["seedMap"] if e["id"] != "top_edge"]
+    assert [e for e in t5["seedMap"] if e["id"] in {x["id"] for x in m1}] == m1
+    prims = {e["id"]: e["prim"] for e in t5["seedMap"] if e["kind"] in ("line", "arc")}
+    assert [prims[c] for c in _T5_TOP] == [11, 12, 13, 14, 15]
+    assert {e["id"]: e["prim"] for e in t5["seedMap"] if e["kind"] == "radius" and "top" in e["id"]} == {
+        "seed_rad_top_shoulder_L": 12, "seed_rad_top_dip": 13, "seed_rad_top_shoulder_R": 14}
+    f5, f1 = t5["shapeModel"]["features"], t1["shapeModel"]["features"]
+    assert {"topDipDepth", "topDipHalfWidth"} <= set(f5) and not {"topDipDepth", "topDipHalfWidth"} & set(f1)
+    assert {k: v for k, v in f5.items() if k in f1} == f1  # the sides: Template 1's model
+
+
+def _t5_steps():
+    from fb_engine.template_resolver import resolve_template
+    spec = resolve_template("template_5")[0]
+    return {sk["Name"]: [st for b in sk["Blocks"] for st in (b.get("BuildSequence", []) + b.get("Steps", []))]
+            for sk in spec["Sketches"]}, spec
+
+
+def test_template_5_sketch_builds_the_dipped_top_and_leaves_it_three_seeded_values():
+    """The Fusion side of the dipped top (sketches/template_5/phases): the five pieces replace top_edge, chained,
+    tangent, the stubs flat from their corners, the dip centred, the shoulders tied; and a DOF count of the top
+    (the corners and the Y axis fixed): 23 - 20 = 3 free values (stub length, shoulder radius, dip radius), left
+    to the seeds like Template 1's radii -- nothing repeats another constraint."""
+    steps, _ = _t5_steps()
+    sk2 = steps["2_shape_outline"]
+    ids = [st["ID"] for st in sk2 if "ID" in st]
+    assert "top_edge" not in ids and all(c in ids for c in _T5_TOP)
+    geo = {st["ID"]: st["Type"] for st in sk2 if "ID" in st}
+    top = set(_T5_TOP)
+    fixed = {"proj_off_corner_TL", "proj_off_corner_TR", "Y_AXIS"}
+    ent = lambda t: t.split(":")[0]
+    dof = sum(4 if geo[c] == "Line" else 5 for c in _T5_TOP)
+    eqs, cons = 0, []
+    for st in sk2:
+        if st.get("Type") not in ("Coincident", "Horizontal", "Tangent", "Equal"):
+            continue
+        tg = st["Targets"]
+        if not all(ent(x) in top or x in fixed for x in tg):
+            continue
+        cons.append((st["Type"], tuple(tg)))
+        if st["Type"] == "Coincident":
+            eqs += 1 if any(x in ("Y_AXIS",) for x in tg) else 2
+        else:
+            eqs += len(tg) if st["Type"] == "Horizontal" else 1
+    assert ("Coincident", ("top_edge_L:S", "proj_off_corner_TL")) in cons
+    assert ("Coincident", ("top_edge_R:E", "proj_off_corner_TR")) in cons
+    assert ("Horizontal", ("top_edge_L", "top_edge_R")) in cons
+    assert ("Coincident", ("arc_top_dip:C", "Y_AXIS")) in cons
+    assert ("Equal", ("arc_top_shoulder_L", "arc_top_shoulder_R")) in cons
+    assert sum(1 for c in cons if c[0] == "Tangent") == 4
+    assert dof - eqs == 3
+    # the square corners: each horn starts on its stub's corner end
+    co = [tuple(st["Targets"]) for st in sk2 if st.get("Type") == "Coincident"]
+    assert ("horn_TL:S", "top_edge_L:S") in co and ("horn_TR:S", "top_edge_R:E") in co
+    # every seed radius set on the top is deleted again (p02_09), as Template 1's
+    made = {st["Name"] for st in sk2 if st.get("Type") == "Radius"}
+    gone = {st["Name"] for st in sk2 if st.get("Type") == "DeleteDimension"}
+    assert {"seed_rad_top_shoulder_L", "seed_rad_top_dip", "seed_rad_top_shoulder_R"} <= made and made == gone
+
+
+def test_template_5_enclosure_uses_the_dipped_top():
+    """p03_*: the projections, the offset loop, the inner corner resolve and the TL miter read the new top."""
+    steps, spec = _t5_steps()
+    sk3 = spec["Sketches"][2]
+    projs = [p["TargetID"] for b in sk3["Blocks"] for p in b.get("Projections", [])]
+    outline = spec["Frame"]["regions"]["outline"]
+    assert projs == outline and "proj_top_edge" not in projs
+    offs = [st for st in steps["3_frame_enclosure"] if st.get("Type") == "Offset"]
+    assert offs[0]["SourceID"] == outline
+    res = [st for st in steps["3_frame_enclosure"] if st.get("Type") == "ResolveInnerCorners"][0]
+    assert res["Corners"]["TL"]["OuterID"] == "proj_top_edge_L:S" and res["Corners"]["TL"]["InnerID"] == "inner_proj_top_edge_L:S"
+    miters = [(m["Source"], m["Target"]) for b in sk3["Blocks"] for m in b.get("Miters", [])]
+    assert [list(m) for m in miters] == spec["Frame"]["regions"]["miters"]
+
+
 # ------------------------------------------------------------- F12 woods
 _LIBRARY_FIXTURE = os.path.join(_REPO, "tests", "fixtures", "fusion-appearance-library.json")
 

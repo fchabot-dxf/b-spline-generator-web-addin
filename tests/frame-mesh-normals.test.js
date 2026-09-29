@@ -89,7 +89,7 @@ describe('creasedNormals: hard edges stay hard', () => {
 });
 
 describe('the real frame meshes (applyFrameToPanel): bars and outline wall', () => {
-  it.each(['template_1', 'template_2', 'template_3', 'template_4'])('%s: the bars\' bottom and walls keep their own flat normals; no hard edge is shared', (id) => {
+  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: the bars\' bottom and walls keep their own flat normals; no hard edge is shared', (id) => {
     const W = 7, H = 9;
     const { mesh, grid } = carvedPanel(W, H, 36, 46, (x, y) => 1.2 + 0.3 * Math.sin(1.9 * x) * Math.cos(1.4 * y), 0.4);
     const spec = frameSolidSpec(FRAME_DEFS, normalizeFrameRecord({ templateId: id, frameBottomZ: -1 }), { widthIn: W, heightIn: H });

@@ -3819,3 +3819,68 @@ floats there pointing at nothing")
   Headless (390x844, CDP): dropdown "None | 1. Hourglass | 2. Narrow Neck | 3. Tapered Hourglass | 4. Offset
   Hourglass"; T4 7x9 12 prims, 0 defects, waist centres 60% / 40% up; 7 handles; a left-position drag moved only the
   left waist; Shape Lattice from frame on T4 ok; T1 identical before/after; no console errors.
+
+## Template 5 - Hourglass Dipped Top (Template 1 with the top edge dipped in the middle) -- Fusion side untested live
+- Fusion: sketches/template_5/ = a copy of template_1 (auto-discovered). The one flat top_edge becomes five pieces,
+  clockwise from TL: top_edge_L (straight stub), arc_top_shoulder_L (convex), arc_top_dip (concave),
+  arc_top_shoulder_R (convex), top_edge_R (stub): 16 pieces. Built like a side waist: p02_03 the seeds + a seed
+  radius each (the 7x9 solve of the app's provisional shape), each stub's corner end Coincident with its projected
+  corner, Horizontal(top_edge_L, top_edge_R), the horns on the stubs' corner ends (square corners); p02_04 / p02_05
+  the joints (Fusion's CCW arc ends: shoulder_L:S = dip:S, dip:E = shoulder_R:E, stub_L:E = shoulder_L:E,
+  stub_R:S = shoulder_R:S); p02_06 Coincident(arc_top_dip:C, Y_AXIS); p02_07 / p02_08 the four Tangents; p02_09
+  deletes the three seed radii; p02_11 Equal(arc_top_shoulder_L, arc_top_shoulder_R). DOF of the top (corners and
+  axis fixed): 23 - 20 = 3 seeded values (stub length, shoulder radius, dip radius), no constraint repeated (no
+  Symmetry on the stub ends: its "same height" half repeats the Horizontals). The dip's midpoint seed sits 0.001 off
+  the Y axis (T1's pin nudge). p03_01..04: projections / offset loop / inner corner TL / TL miter all read
+  proj_top_edge_L:S. Sides, base, other corners, params: Template 1's.
+- template_data: "Template 5 - Hourglass Dipped Top", regions (16-piece outline), seed map = T1's minus top_edge plus
+  the five top pieces (prims 11..15, the dip with a new optional `nudgeX`: 0.01 in, the pins' nudge) and their seed
+  radii; handles = T1's + {"topDipDepth", "Top dip depth", hh, seeded} + {"topDipWidth", "Top dip width", hw,
+  seeded}; handleMigrations {}. shapeExtractor "hourglass_dipped_top", provisionalShape {from: template_1,
+  topDipDepthOfHh: 0.14, topDipHalfWidthOfHw: 0.72} (7x9: 0.6 in deep, 0.91 in stubs).
+- frame_shape_fit: _hourglass_dipped_top (T1's extraction + topDipHalfWidth / topDipDepth, valid when the top
+  shoulders are tangent to the top edge and the dip is centred and tangent) for when goldens exist;
+  provisional_dipped_top_model; frame_definition picks it by the provisionalShape key. frame-defs regenerated:
+  T1-T4 entries identical, only sourceHash moved.
+- App generator: frame-only topDipWidth (default 0.72) / topDipDepth (default 0 = NO dip) appended LAST to
+  PARAM_ORDER.hourglass (every earlier salt index kept), FRAME_ONLY_PARAM_KEYS. hourglassConstruction returns
+  `topDip` only when a depth > 0 is set: all three arcs one radius r = (a^2 + D^2) / 4D, joints at (+/-a/2, D/2).
+  _solveHourglass replaces segment 11 by stub, shoulder, dip, shoulder, stub (sides 0..10 untouched), and the
+  top arcs bulge UP (`outward: 'up'` on the segment, read by _arcPrimitive; the side rule "away from the centre
+  line" is wrong for a top arc). The silhouette then carries `mirror` (topDipMirrorIndex: sides 10 - i, top
+  26 - i): the plain mirrorSegmentIndex(i, 16) would pair a side shoulder with the dip. Ranges: width keeps a
+  minimum stub; depth <= 0.8 a, above the top horns' ends, arcs >= MIN_ARC_RADIUS_IN, never below the minimum
+  (the outline always has 16 pieces, like the sketch). frameParamRanges adds the frame rule: the dip's inner edge
+  keeps a + t + half opening clear of the sides (sampled side outline down to D + 2t), and r - t >= 0.125.
+- Handles: "Top dip depth" (square at the dip's lowest point, y) and "Top dip width" (square where the right stub
+  ends, x); HANDLE_SEGMENT_INDEX 13 / 14; controlledSegments and the arc grips use the dipped mirror table
+  (Shoulder grips arcs 1 / 9, not the dip). Shape Lattice from frame: contour-from-frame carries the mirror over
+  to the kept pieces and the manifest's Mirror-Equal pairs by it (only when present: T1-T4 unchanged).
+- CAM / bars: checked, nothing to change. Bars are split by the declared miters (declared_profiles.bar_index: the
+  five top curves all map to frame_top, one curved bar); mm_builder lays bodies out by name and bounding box; the
+  panel lip is a generic outward offset of the outline; frameMiters finds the 4 square corners (line-line joints).
+- Byte-identical check (scratch A/B against a HEAD worktree): 400 random Shape Lattice hourglass shapes + T1-T4
+  frames at 5 boards (profile, inner edge, handles, 5 Generates + their profiles, handle drags, seed geometry,
+  from-frame contours at 3 distances + their manifests): the same sha256 (ignoring only the two new range keys).
+- Tools: f20_seed_case.mjs takes 9th / 10th args (top dip depth / width) for TEMPLATE=template_5.
+  LIVE_CHECK.md (sketches/template_5) = Fred's one Fusion session, as T3's / T4's.
+- Tests: tests/frame-template-5.test.js (31) and T5 in the frame test lists; T4's PARAM_ORDER assert relaxed to
+  the unchanged prefix, frame-defs EXTRA features extended. pytest: T5 extractor / provisional / fitted-once-
+  goldens, frame-defs T5 table + sketch (pieces, constraints, 3 seeded DOF) + enclosure, templates isolation +
+  cross-load (T1<->T5, T4->T5), T5 in the declared-profile / panel-lip / seed-basis lists.
+- Lattice fix (coordinator, from the v25 lattice screenshot): a rail on a row inside the dip's y-range meets the
+  contour 4 times and was already split in two by insideSpans (the same span rule that splits a rail at a pinched
+  waist). The real miss was a rail row lying exactly ON the stub line (12x6 default): the crossing parity counts
+  one of the two tangent touches where the stubs meet the shoulder arcs, so it paired a span straight across the
+  dip, outside the contour. editor-lattice-boundary.js insideSpans: when the scan line runs along a straight edge
+  (collinearSpans), a span is dropped if its midpoint is outside the boundary (read along two skewed lines).
+  Generic; the same miss hit plain Shape Lattice hourglass / bottle columns lying on a horn line (measured: 108
+  pieces outside over 60 random shapes, vertical orientation), which it now also drops. Only those outside pieces
+  (and 20 downstream ties they displaced) changed: 0 new pieces outside; the T1-T4 frame A/B and the T1-T4
+  from-frame lattice A/B are byte-identical. Tests: every rail / tie / node inside the dipped contour (7x9, 12x6,
+  4 dips, 8 seeds, 3 rail modes, the in-dip rows in exactly 2 pieces) and the 60-shape side-edge case.
+- vitest 2631 passed (was 2554); pytest frame-builder 257 passed / 2 skipped, b-spline-gen 89, root 436 / 2 skipped.
+  Headless (390x844, CDP): dropdown "None | 1. Hourglass | ... | 5. Hourglass Dipped Top"; T5 7x9 16 prims, 0
+  defects, dip 0.595 in, stubs 0.91 in, 4 miters; 7 handles; the depth drag deepened the dip only, the width drag
+  moved both stub ends; Shape Lattice from frame on T5: 16 contour segments, 4 Regenerates with 0 rail / tie samples
+  outside the contour; T1 identical before/after; no console errors.

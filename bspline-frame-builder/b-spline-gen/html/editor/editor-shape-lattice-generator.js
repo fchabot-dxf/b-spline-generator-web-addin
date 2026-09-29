@@ -159,8 +159,10 @@ export const PARAM_ORDER = {
   // earlier ranges ignore it on purpose (a narrower top only relaxes them: see _hourglassRange).
   // T4 OFFSET HOURGLASS: the LEFT pinch's own height and depth come after topInset, for the same reason (every
   // earlier key keeps its index), and after every radius they read (the radii stay shared L/R).
+  // T5 HOURGLASS DIPPED TOP: the top dip's half width and depth come LAST again (every earlier key keeps its
+  // index); the width before the depth, whose range reads it.
   hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset',
-    'waistCenterYLeft', 'waistReachLeft'],
+    'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth'],
   bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
 };
 const BASE_RANGES = {
@@ -206,6 +208,12 @@ export const DERIVED_PARAM_DEFAULTS = {
     // `waistReach` then set the RIGHT pinch alone. The radii (corners, waist) stay shared by both sides.
     waistCenterYLeft: (v) => v.waistCenterY,
     waistReachLeft: (v) => v.waistReach,
+    // T5 HOURGLASS DIPPED TOP (Template 1 with the top edge dipped in the middle): the dip's half width (centre
+    // line -> where each short straight stub from a top corner ends, fraction of hw) and depth (below the top
+    // edge, fraction of hh). Depth default 0 = NO dip: the flat Template 1 top, bit for bit (hourglassConstruction
+    // `topDip`). Frame-only params (FRAME_ONLY_PARAM_KEYS).
+    topDipWidth: () => TOP_DIP_DEFAULT_WIDTH,
+    topDipDepth: () => 0,
   },
   bottle: { bodyRadius: (v) => 1 - v.skeletonX },
 };
@@ -221,7 +229,31 @@ const EPS_FRAC = 1e-3;
 
 /** T3 TAPERED HOURGLASS: resolved params that only a FRAME template sets. The Shape Lattice never offers them and
  *  its Fusion manifest never sends them (editor-sketch-manifest.js; Fred's rule: no new parameters). */
-export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLeft', 'waistReachLeft']);
+export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth']);
+
+/**
+ * T5 HOURGLASS DIPPED TOP: the top edge is a short straight stub from each top corner, then a smooth inward dip
+ * built like a side waist: a convex shoulder arc, a concave dip arc, a convex shoulder arc (the frame's four
+ * mitered corners stay square). Symmetric about the centre line, all three arcs one radius r: with the half
+ * width a (centre line -> the stub's end) and the depth D, the shoulder centre (a, top + r) and the dip centre
+ * (0, top + D - r) (y down) are r + r apart, so r = (a^2 + D^2) / 4D, and the joints sit at (+/-a/2, top + D/2).
+ * The outline then has 16 segments: Template 1's 0..10 unchanged, 11 left stub, 12 left shoulder, 13 dip,
+ * 14 right shoulder, 15 right stub (the flat top edge, segment 11, is what it replaces).
+ */
+export const TOP_DIP_SEGMENT_COUNT = 16;
+const TOP_DIP_DEFAULT_WIDTH = 0.72;
+const TOP_DIP_MIN_WIDTH = 0.15; // fraction of hw: a dip narrower than this is a notch, not a dip
+const TOP_DIP_MAX_OF_WIDTH = 0.8; // D <= 0.8 a: each shoulder arc sweeps under ~77 deg (at D = a it is 90)
+/** T5: the mirror of segment `i` of the 16-segment dipped outline (the sides as Template 1, the top 11 <-> 15,
+ *  12 <-> 14, the dip 13 itself). */
+export function topDipMirrorIndex(i) {
+  return i <= 10 ? 10 - i : 26 - i;
+}
+/** T5: the largest dip depth whose three arcs keep radius >= rMin at half width a (r = (a^2 + D^2) / 4D falls
+ *  as D grows up to a). */
+export function topDipDepthForRadius(a, rMin) {
+  return a >= 2 * rMin ? Infinity : 2 * rMin - Math.sqrt(4 * rMin * rMin - a * a);
+}
 
 /** Narrow [lo, hi] by a geometric bound; if the geometry leaves no room
  *  inside the base range, validity wins (min = max = the geometric bound). */
@@ -240,6 +272,7 @@ function _hourglassRange(key, region, stroke, v) {
   // value feasible at i = 0 stays feasible at every i in range: those ranges keep reading the full depth.
   if (key === 'topInset') return _range(0, Infinity, -Infinity, v.waistReach - EPS_FRAC);
   if (key === 'waistCenterYLeft' || key === 'waistReachLeft') return _hourglassLeftRange(key, region, stroke, v);
+  if (key === 'topDipWidth' || key === 'topDipDepth') return _topDipRange(key, region, stroke, v);
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // F12: each corner has its OWN vertical room (y-down: a lower waist leaves
     // more above it): its arc centre may not rise above the top (sink below
@@ -334,6 +367,27 @@ function _hourglassLeftRange(key, region, stroke, v) {
   return _range(lo, hi, geoLo / hw, geoHi / hw);
 }
 
+/**
+ * T5 HOURGLASS DIPPED TOP: the dip's ranges, resolved after every other param. Its width a (fraction of hw):
+ * each straight stub keeps at least the minimum horn length (from the top corner, drawn at hw - stroke, to a).
+ * Its depth D (fraction of hh), read at that width: at least the minimum horn (a real dip, so the outline keeps
+ * its 16 segments), at most TOP_DIP_MAX_OF_WIDTH x a, above the top horns' lower ends (the side shoulders
+ * start there: the dip never reaches down to them), and shallow enough that the drawn arcs keep
+ * MIN_ARC_RADIUS_IN (r - stroke >= it, topDipDepthForRadius).
+ */
+function _topDipRange(key, region, stroke, v) {
+  const hw = region.w / 2, hh = region.h / 2, horn = HORN_MIN_OF_HALF_HEIGHT * hh;
+  const inset = hw * (v.topInset ?? DERIVED_PARAM_DEFAULTS.hourglass.topInset(v));
+  if (key === 'topDipWidth') return _range(TOP_DIP_MIN_WIDTH, Infinity, -Infinity, (hw - stroke - inset - horn) / hw);
+  const a = hw * v.topDipWidth;
+  const g = hourglassConstruction(region, { ...v, topDipDepth: undefined });
+  const hornLen = Math.min(hh + g.shoulderY, g.left ? hh + g.left.shoulderY : Infinity); // y down: top at -hh
+  const dMax = Math.min(TOP_DIP_MAX_OF_WIDTH * a, hornLen - horn, topDipDepthForRadius(a, MIN_ARC_RADIUS_IN + stroke));
+  // never below the minimum, even where the top horns are shorter than it (a tiny board): the outline keeps its
+  // 16 segments, as the Fusion sketch always has them (the dip sits between the stubs, clear of the sides)
+  return _range(HORN_MIN_OF_HALF_HEIGHT, Infinity, -Infinity, Math.max(dMax, horn) / hh);
+}
+
 function _bottleRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   if (key === 'bodyRadius') return _optionalRange('bottle', region, stroke, v);
@@ -419,6 +473,10 @@ export function paramsFromShapeModel(preset, model, region) {
     const discL = Math.sqrt(Math.max(0, S * S - f.notchLeft * f.notchLeft)), ref = f.depthLeft ?? f.depth;
     out.waistReachLeft = (Math.abs(S - discL - ref) <= Math.abs(S + discL - ref) ? S - discL : S + discL) / hw;
   }
+  // T5 HOURGLASS DIPPED TOP: a dipped-top model (frame_shape_fit.py `hourglass_dipped_top`) also carries the top
+  // dip's half width (centre line -> the stub's end) and its depth below the top edge.
+  if (f.topDipHalfWidth != null) out.topDipWidth = f.topDipHalfWidth / hw;
+  if (f.topDipDepth != null) out.topDipDepth = f.topDipDepth / hh;
   return out;
 }
 
@@ -545,8 +603,18 @@ export function hourglassConstruction(region, resolved) {
     cornerRadiusBottom: resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved),
     topInset: resolved.topInset ?? D.topInset(resolved),
   }) : undefined;
+  // T5 HOURGLASS DIPPED TOP: the top dip (see TOP_DIP_SEGMENT_COUNT), only when a depth is set (> 0); absent
+  // (Templates 1-4, the Shape Lattice): no `topDip`, the flat top edge.
+  const dipDepth = hh * (resolved.topDipDepth ?? D.topDipDepth(resolved));
+  let topDip = null;
+  if (dipDepth > 0) {
+    const a = hw * (resolved.topDipWidth ?? D.topDipWidth(resolved)), r = (a * a + dipDepth * dipDepth) / (4 * dipDepth);
+    // y down, the top edge at -hh: the shoulder centres (+/-a, -hh + r), the dip centre (0, -hh + D - r)
+    topDip = { halfWidth: a, depth: dipDepth, radius: r, shoulderCy: -hh + r, dipCy: -hh + dipDepth - r };
+  }
   return {
     ...(left ? { left } : {}),
+    ...(topDip ? { topDip } : {}),
     hw, hh, depth, radiusWaist, waistCenterY, waistCx,
     topInset, topX: hw - topInset, // T3: the top horns' x (hw for Template 1)
     waistX: hw - depth, // the pinch's innermost x
@@ -628,13 +696,14 @@ function _bulgeApex(a, b, signedBulge, cx) {
  *  from the chord midpoint (a semicircle's center IS its chord's
  *  midpoint, since a chord of length===diameter is a diameter) rather
  *  than round-tripping through `arcCenterParam` with a clamped bulge. */
-function _arcPrimitive(a, b, signedBulge, cx) {
+function _arcPrimitive(a, b, signedBulge, cx, up = false) {
   const dx = b.x - a.x, dy = b.y - a.y;
   const len = Math.hypot(dx, dy) || 1;
   const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
   const od = mx >= cx ? 1 : -1;
   const perpLeftX = -dy / len;
-  const perpLeftIsOutward = perpLeftX * od > 0;
+  // T5 HOURGLASS DIPPED TOP (`up`): a top-edge arc's outside is up, (0, -1): perpLeft (-dy, dx)/len . (0, -1).
+  const perpLeftIsOutward = up ? -dx / len > 0 : perpLeftX * od > 0;
   // Sign is unaffected by the clamp below (it only clips MAGNITUDE), so
   // this same boolean is valid whether or not the semicircle branch below
   // fires — computed once, from the unclamped sign, and reused by both.
@@ -682,7 +751,7 @@ function _segmentToPrimitives(a, b, seg, cx) {
     const apex = _bulgeApex(a, b, signedBulge, cx);
     return [{ type: 'L', p0: a, p1: apex }, { type: 'L', p0: apex, p1: b }];
   }
-  return [_arcPrimitive(a, b, signedBulge, cx)];
+  return [_arcPrimitive(a, b, signedBulge, cx, seg.outward === 'up')];
 }
 
 /** A solved arc's own {centerLocal, radius, outward} plus its two chord
@@ -694,10 +763,11 @@ function _segmentToPrimitives(a, b, seg, cx) {
  *  the known center sits, not re-derived from `od`/`perpLeftIsOutward`
  *  (those are `_arcPrimitive`'s own internal, reused only to BUILD the
  *  final primitive, not to classify direction here). */
-function _curveSegment(a, b, radius, outward, major = false) {
+function _curveSegment(a, b, radius, outward, major = false, up = false) {
   const halfChord = Math.hypot(b.x - a.x, b.y - a.y) / 2;
   const bulge = _bulgeFromRadius(radius, halfChord, major);
-  return { style: 'curve', bulge, dir: outward ? 'out' : 'in', cornerRadius: 0 };
+  // T5 HOURGLASS DIPPED TOP: `up` = a TOP-edge arc, whose outside is up (-y), not away from the centre line.
+  return { style: 'curve', bulge, dir: outward ? 'out' : 'in', cornerRadius: 0, ...(up ? { outward: 'up' } : {}) };
 }
 const STRAIGHT_SEGMENT = { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
 
@@ -762,7 +832,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // while above the declared floor; below it the centres separate and the
   // arcs stay externally tangent instead of going negative (Fred's loop).
   const { hw, hh, cornerRadiusTop, cornerRadiusBottom, radiusWaist, shoulderCx, shoulderY, hipCx, hipY,
-    ux, uy, uxBottom, uyBottom, waistMajor, topInset, left } = hourglassConstruction(region, resolvedAll);
+    ux, uy, uxBottom, uyBottom, waistMajor, topInset, left, topDip } = hourglassConstruction(region, resolvedAll);
   // T4 OFFSET HOURGLASS: the left side from its own construction (the right one's when no left pinch is set).
   const L = left || { shoulderCx, shoulderY, hipCx, hipY, ux, uy, uxBottom, uyBottom, waistMajor };
 
@@ -818,6 +888,26 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
     STRAIGHT_SEGMENT, // lShoulderHorn -> lTop (horn)
     STRAIGHT_SEGMENT, // top edge: lTop -> rTop
   ];
+  // T5 HOURGLASS DIPPED TOP: the flat top edge (segment 11) becomes stub, shoulder, dip, shoulder, stub. The
+  // joints sit on the line between the shoulder and dip centres, the DRAWN radius out from each (a convex arc
+  // shrinks by the stroke, the concave dip grows by it: the same joint either way). Their bulge is outward UP
+  // (the top edge's own outside), not away from the centre line as for a side arc.
+  let mirror = null;
+  if (topDip) {
+    const { halfWidth: a, depth: dd, radius: r } = topDip;
+    const rsDrawn = r - strokeHalfWidth, rdDrawn = r + strokeHalfWidth;
+    const ux2 = -a / (2 * r), uy2 = (dd - 2 * r) / (2 * r); // unit, shoulder centre -> dip centre (right side)
+    const rDipStart = P(a, -hhDrawn), lDipStart = M(a, -hhDrawn);
+    const rDipJct = P(a + rsDrawn * ux2, -hh + r + rsDrawn * uy2), lDipJct = M(a + rsDrawn * ux2, -hh + r + rsDrawn * uy2);
+    keypoints.push(lDipStart, lDipJct, rDipJct, rDipStart);
+    fresh.splice(11, 1,
+      STRAIGHT_SEGMENT, // left stub: lTop -> lDipStart
+      _curveSegment(lDipStart, lDipJct, rsDrawn, true, false, true), // left top shoulder, convex
+      _curveSegment(lDipJct, rDipJct, rdDrawn, false, false, true), // the dip, concave
+      _curveSegment(rDipJct, rDipStart, rsDrawn, true, false, true), // right top shoulder, convex
+      STRAIGHT_SEGMENT); // right stub: rDipStart -> rTop
+    mirror = fresh.map((_, i) => topDipMirrorIndex(i));
+  }
   const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
 
   // T59 (SE14 Slice 3's own deferred "axis-locked parametric handles"):
@@ -835,7 +925,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // walks -- are exactly what they were before it existed.
   for (const k of FRAME_ONLY_PARAM_KEYS) if (!params || params[k] == null) delete resolvedParams[k];
 
-  return { keypoints, segments, cx: cxWorld, params: resolvedParams, hasUserSegments };
+  return { keypoints, segments, cx: cxWorld, params: resolvedParams, hasUserSegments, ...(mirror ? { mirror } : {}) };
 }
 
 function _normalizeSegment(seg) {
@@ -999,14 +1089,16 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
       ? _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth)
       : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
-  const { keypoints, segments, cx, params: resolvedParams, hasUserSegments } = solved;
+  const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;
   const primitives = [];
   for (let i = 0; i < n; i++) {
     primitives.push(..._segmentToPrimitives(keypoints[i], keypoints[(i + 1) % n], segments[i], cx));
   }
 
-  return { preset, keypoints, segments, primitives, cx, params: resolvedParams, hasUserSegments };
+  // T5 HOURGLASS DIPPED TOP: a dipped outline says which segment mirrors which (topDipMirrorIndex); absent
+  // (every other outline): the plain mirrorSegmentIndex rule holds.
+  return { preset, keypoints, segments, primitives, cx, params: resolvedParams, hasUserSegments, ...(mirror ? { mirror } : {}) };
 }
 
 /**

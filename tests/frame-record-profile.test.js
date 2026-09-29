@@ -14,7 +14,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameColorFor } from '../bspline-frame-builder/b-spline-gen/html/core/color-utils.js';
 
-const T1 = 'template_1', T2 = 'template_2', T3 = 'template_3', T4 = 'template_4';
+const T1 = 'template_1', T2 = 'template_2', T3 = 'template_3', T4 = 'template_4', T5 = 'template_5';
 
 describe('frame record', () => {
   beforeEach(() => { P.frame = null; });
@@ -62,7 +62,7 @@ describe('cut profile', () => {
     expect(frameCutProfile(FRAME_DEFS, defaultFrameRecord(), board)).toBeNull();
   });
 
-  it.each([T1, T2, T3, T4])('%s on 7x9: a clean outline inside the safe zone', (id) => {
+  it.each([T1, T2, T3, T4, T5])('%s on 7x9: a clean outline inside the safe zone', (id) => {
     const prof = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: id }), board);
     expect(prof.defects).toEqual([]);
     expect(prof.region).toEqual({ x: 0.25, y: 0.25, w: 6.5, h: 8.5 });
@@ -164,7 +164,7 @@ describe('drawFrameProfile (editor background)', () => {
 });
 
 describe('frame thickness + miters (F8, Fred)', () => {
-  it.each([T1, T2, T3, T4])('%s: 4 miters, from each outer corner to its inner corner (the frame thickness down, and inward)', (id) => {
+  it.each([T1, T2, T3, T4, T5])('%s: 4 miters, from each outer corner to its inner corner (the frame thickness down, and inward)', (id) => {
     const r = normalizeFrameRecord({ templateId: id });
     const outer = frameCutProfile(FRAME_DEFS, r, { widthIn: 7, heightIn: 9 });
     const inner = frameInnerProfile(FRAME_DEFS, r, { widthIn: 7, heightIn: 9 });

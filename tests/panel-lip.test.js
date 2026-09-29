@@ -82,7 +82,7 @@ describe('the record: declared default 0, range 0 .. the Trim offset, old record
 
 describe('the panel trim outline == the frame outline offset OUTWARD by the lip', () => {
   const CASES = [];
-  for (const id of ['template_1', 'template_2', 'template_3', 'template_4']) for (const [W, H] of [[7, 9], [12, 6], [9, 12]]) for (const lip of [0.0625, 0.125, 0.25]) CASES.push([id, W, H, lip]);
+  for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5']) for (const [W, H] of [[7, 9], [12, 6], [9, 12]]) for (const lip of [0.0625, 0.125, 0.25]) CASES.push([id, W, H, lip]);
   it.each(CASES)('%s %sx%s lip %s', (id, W, H, lip) => {
     const r = rec(id, { panelLip: lip });
     const prof = frameCutProfile(FRAME_DEFS, r, { widthIn: W, heightIn: H });

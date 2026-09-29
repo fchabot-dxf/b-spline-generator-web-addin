@@ -793,8 +793,11 @@ export function manifestFromShape(shape, region, opts = {}) {
   // kink-pairing narrowing right above it; buildSketchManifest sets this
   // only when it substituted the DRAWN (post-cut) primitives in.
   const seen = new Set();
+  // T5 HOURGLASS DIPPED TOP: a contour that carries its own mirror table (a frame-offset contour of the dipped
+  // 16-segment frame, contour-from-frame.js) pairs by it; every other contour by the plain index formula.
+  const mirrorOf = Array.isArray(result.mirror) && result.mirror.length === n ? (i) => result.mirror[i] : (i) => mirrorSegmentIndex(i, n);
   for (let i = 0; !opts.noMirror && i < n; i++) {
-    const mi = mirrorSegmentIndex(i, n);
+    const mi = mirrorOf(i);
     if (mi === i || seen.has(i) || seen.has(mi)) continue;
     seen.add(i); seen.add(mi);
     const primIdxI = segMap.indexOf(i), primIdxMi = segMap.indexOf(mi);

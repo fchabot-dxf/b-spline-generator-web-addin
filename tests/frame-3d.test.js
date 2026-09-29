@@ -22,7 +22,7 @@ const rec = (id, extra = {}) => normalizeFrameRecord({ templateId: id, ...extra 
 const panel = (W, H, nx, nz, topZ = 2, botZ = 0.5) => carvedPanel(W, H, nx, nz, () => topZ, topZ - botZ);
 
 describe('one outline source (editor profile == 3D outline == the definition the build reads)', () => {
-  it.each(['template_1', 'template_2', 'template_3', 'template_4'])('%s: the 3D spec samples exactly the editor cut profile', (id) => {
+  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: the 3D spec samples exactly the editor cut profile', (id) => {
     const prof = frameCutProfile(FRAME_DEFS, rec(id), BOARD);
     const spec = frameSolidSpec(FRAME_DEFS, rec(id), BOARD);
     expect(spec.outline).toEqual(sampleOutline(prof.primitives));
@@ -44,7 +44,7 @@ describe('one outline source (editor profile == 3D outline == the definition the
 });
 
 describe('trimmed panel', () => {
-  it.each(['template_1', 'template_2', 'template_3', 'template_4'])('%s: every kept triangle lies inside the outline, the cut ones become the rim', (id) => {
+  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: every kept triangle lies inside the outline, the cut ones become the rim', (id) => {
     const { mesh, grid } = panel(7, 9, 71, 91);
     const full = mesh.geometry.index.array.length;
     const extra = applyFrameToPanel(FakeTHREE, mesh, grid, frameSolidSpec(FRAME_DEFS, rec(id), BOARD));

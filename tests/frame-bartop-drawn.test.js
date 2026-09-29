@@ -31,7 +31,7 @@ const W = 7, H = 9;
 const build = (spacing, thick) => carvedPanel(W, H, Math.round(W / spacing) + 1, Math.round(H / spacing) + 1, TERRAIN, thick);
 
 const CASES = [];
-for (const id of ['template_1', 'template_2', 'template_3', 'template_4']) for (const [spacing, thick] of [[0.4, 0.2], [0.15, 1.0], [0.05, 0.2]]) CASES.push([id, spacing, thick]);
+for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5']) for (const [spacing, thick] of [[0.4, 0.2], [0.15, 1.0], [0.05, 0.2]]) CASES.push([id, spacing, thick]);
 
 describe('bar tops vs the DRAWN panel faces (normal-offset underside)', () => {
   it.each(CASES)('%s spacing %s thicken %s', (id, spacing, thick) => {

@@ -217,3 +217,89 @@ def test_template_4_is_fitted_once_goldens_exist(tmp_path):
     assert {"waistCyLeft", "notchLeft", "depthLeft"} <= set(m["features"])
     d = m["features"]["waistCy"]["hh"] - m["features"]["waistCyLeft"]["hh"]
     assert d == pytest.approx(0.2, abs=1e-6)
+
+
+# ------------------------------------------------------------------ T5 hourglass dipped top
+def _dipped(g, a_of_hw, d_of_hh):
+    """A Template 1 golden with a dipped top added (Fusion y up): top shoulders at (+/-a, hh - r), the dip centre at
+    (0, hh - d + r), all three radius r = (a^2 + d^2) / 4d (tangent, as the app draws it)."""
+    g = copy.deepcopy(g)
+    hw, hh = fsf._safe_half(g["meta"])
+    a, d = a_of_hw * hw, d_of_hh * hh
+    r = (a * a + d * d) / (4 * d)
+    c = g["sketch2_shape_outline"]
+    c["arc_top_shoulder_L"] = {"center": [-a, hh - r], "radius": r}
+    c["arc_top_shoulder_R"] = {"center": [a, hh - r], "radius": r}
+    c["arc_top_dip"] = {"center": [0.0, hh - d + r], "radius": r}
+    return g
+
+
+def test_the_dipped_top_extractor_reads_the_sides_as_template_1_and_measures_the_dip():
+    for size in _SIZES:
+        g = _dipped(_golden("template_1", size), 0.6, 0.1)
+        hw, hh = fsf._safe_half(g["meta"])
+        ok, f = fsf.FEATURE_EXTRACTORS["hourglass_dipped_top"](g["sketch2_shape_outline"], hw, hh)
+        ok1, f1 = fsf.FEATURE_EXTRACTORS["hourglass"](g["sketch2_shape_outline"], hw, hh)
+        assert ok == ok1, size
+        for k, v in f1.items():
+            assert f[k] == v  # the sides are Template 1's own extraction
+        assert f["topDipHalfWidth"] == pytest.approx(0.6 * hw, abs=1e-9)
+        assert f["topDipDepth"] == pytest.approx(0.1 * hh, abs=1e-9)
+
+
+def test_the_dipped_top_extractor_rejects_an_off_centre_or_untangent_dip():
+    g = _dipped(_golden("template_1", "7x9"), 0.6, 0.1)
+    hw, hh = fsf._safe_half(g["meta"])
+    assert fsf.FEATURE_EXTRACTORS["hourglass_dipped_top"](g["sketch2_shape_outline"], hw, hh)[0]
+    bad = copy.deepcopy(g)
+    bad["sketch2_shape_outline"]["arc_top_dip"]["center"][0] += 0.05
+    assert not fsf.FEATURE_EXTRACTORS["hourglass_dipped_top"](bad["sketch2_shape_outline"], hw, hh)[0]
+    bad = copy.deepcopy(g)
+    bad["sketch2_shape_outline"]["arc_top_shoulder_R"]["center"][1] -= 0.05
+    assert not fsf.FEATURE_EXTRACTORS["hourglass_dipped_top"](bad["sketch2_shape_outline"], hw, hh)[0]
+
+
+def test_the_provisional_dipped_top_model_is_template_1_plus_the_dip():
+    t1 = fsf.fit_shape_model("template_1", "hourglass", _GOLDENS)
+    p = fsf.provisional_dipped_top_model(t1, 0.14, 0.72)
+    assert set(p["features"]) == set(t1["features"]) | {"topDipDepth", "topDipHalfWidth"}
+    for k, v in t1["features"].items():
+        assert p["features"][k] == v
+    assert p["features"]["topDipDepth"] == {"hw": 0.0, "hh": 0.14}
+    assert p["features"]["topDipHalfWidth"] == {"hw": 0.72, "hh": 0.0}
+    assert p["provisional"]["topDipDepthOfHh"] == 0.14 and p["provisional"]["topDipHalfWidthOfHw"] == 0.72
+    assert "provisional" not in t1
+
+
+def test_template_5_gets_the_provisional_model_until_its_goldens_exist():
+    frame = resolve_template("template_5")[0]["Frame"]
+    assert frame["shapeExtractor"] == "hourglass_dipped_top"
+    if glob.glob(os.path.join(_GOLDENS, "template_5_*.json")):
+        pytest.skip("Template 5's goldens are recorded: the real fit applies")
+    m = template_shape_model("template_5", frame, _GOLDENS)
+    assert m is not None and m["provisional"]
+    prov = frame["provisionalShape"]
+    assert m == fsf.provisional_dipped_top_model(fsf.fit_shape_model("template_1", "hourglass", _GOLDENS),
+                                                 prov["topDipDepthOfHh"], prov["topDipHalfWidthOfHw"])
+    # Templates 3 and 4 keep their own provisional models
+    assert "topInset" in template_shape_model("template_3", resolve_template("template_3")[0]["Frame"], _GOLDENS)["features"]
+    assert "waistCyLeft" in template_shape_model("template_4", resolve_template("template_4")[0]["Frame"], _GOLDENS)["features"]
+
+
+def test_template_5_is_fitted_once_goldens_exist(tmp_path):
+    """Recorded goldens (here: Template 1's with a 0.6 hw wide, 0.1 hh deep dip added per size) replace the
+    provisional model with a real dipped-top fit."""
+    for path in glob.glob(os.path.join(_GOLDENS, "*.json")):
+        shutil.copy(path, tmp_path)
+    for size in _SIZES:
+        n = _dipped(_golden("template_1", size), 0.6, 0.1)
+        n["meta"]["template"] = "template_5"
+        (tmp_path / f"template_5_{size}.json").write_text(json.dumps(n), encoding="utf-8")
+    frame = resolve_template("template_5")[0]["Frame"]
+    m = template_shape_model("template_5", frame, str(tmp_path))
+    t1 = fsf.fit_shape_model("template_1", "hourglass", _GOLDENS)
+    assert m is not None and "provisional" not in m
+    assert m["fit"]["fittedFrom"] == t1["fit"]["fittedFrom"]
+    w, d = m["features"]["topDipHalfWidth"], m["features"]["topDipDepth"]
+    assert w["hw"] == pytest.approx(0.6, abs=1e-6) and w["hh"] == pytest.approx(0, abs=1e-6)
+    assert d["hh"] == pytest.approx(0.1, abs=1e-6) and d["hw"] == pytest.approx(0, abs=1e-6)
