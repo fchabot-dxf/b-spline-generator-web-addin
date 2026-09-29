@@ -33,7 +33,7 @@ const evalIn = (e) => {
 };
 const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-describe.each(['template_1', 'template_2', 'template_3'])('%s seed map', (id) => {
+describe.each(['template_1', 'template_2', 'template_3', 'template_4'])('%s seed map', (id) => {
   const tpl = tplOf(id);
   const prof = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: id }), { widthIn: W, heightIn: H });
   const geo = frameSeedGeometry(tpl, prof, W, H);

@@ -3771,3 +3771,51 @@ floats there pointing at nothing")
   the returned error list; counts fixed, T3 + T1<->T3 cross-load added, test_every_check_passes asserts.
 - vitest 2493 passed (was 2437; + tests/frame-template-3.test.js and T3 in the frame test lists); pytest
   frame-builder 220 passed / 2 skipped, b-spline-gen 89 passed.
+
+## Template 4 - Offset Hourglass (the Hourglass NOT mirrored: each waist pinch at its own height) -- Fusion side untested live
+- Fusion: sketches/template_4/ = a copy of template_1 (auto-discovered). Three phases edited: p02_02 drops T1's three
+  pin-pair merges (Coincident R:S = L:S, which forced each level's L and R to one height) for Coincident(L:S, Y_AXIS),
+  so every pin's inner end rides the Y axis on its own; p02_11 drops the two pin Equals (they would force the
+  depths equal) for Equal(arc_shoulder_R/L), Equal(arc_waist_R/L), Equal(arc_hip_R/L): the radii stay tied L/R,
+  the pinch heights and depths do not. DOF: per side 5 free values (waist cy, depth, 3 radii); T1 removes 5 of the
+  10 (3 height merges + 2 pin Equals); T4 removes 3 (one per radius, each on a different free value: independent,
+  and no height rule is repeated) -> 7 seeded DOF. The shoulder / waist arc Equals are gated by the existing
+  ck_skel_shoulder_equal / ck_skel_waist_equal toggles (same meaning: "equal L/R"), the hip one ungated: no new
+  param. p02_03: same topology as T1 (all four corners pinned, full-width top and base); its seeds and p02_02's
+  pins are the 7x9 solve of the app's provisional T4 shape (left pinch high, right low).
+- template_data: "Template 4 - Offset Hourglass", T1's regions / seed map / features / params; handles = T1's (the
+  waist reach / position relabelled "Right ...") + {"waistCenterYLeft", "Left waist position", hh, seeded} +
+  {"waistReachLeft", "Left waist reach", hw, seeded}; handleMigrations {}. shapeExtractor "hourglass_offset_waist",
+  provisionalShape {from: template_1, waistOffsetOfHh: 0.2}.
+- frame_shape_fit: _hourglass_offset_waist (the right side = T1's own extraction, + waistCyLeft / notchLeft /
+  depthLeft off the left arcs) for when T4 goldens exist; provisional_offset_waist_model = T1's fitted model with
+  waistCy + 0.2 hh (right, y down) and waistCyLeft = waistCy - 0.2 hh (7x9: right centre 40% up, left 60%),
+  notchLeft / depthLeft copies. frame_definition.template_shape_model picks it by the provisionalShape key.
+  frame-defs regenerated (gen_frame_defs.py): T1 / T2 / T3 entries identical, only sourceHash moved.
+- App generator: PARAM_ORDER.hourglass gains waistCenterYLeft, waistReachLeft LAST (after topInset: every earlier
+  salt index kept); DERIVED defaults = the right pinch's (so absent = the mirrored T1 side); FRAME_ONLY_PARAM_KEYS
+  (never a Fusion user parameter, never reported unless set). _hourglassLeftRange: the right side's own rules read
+  the other way round (radii fixed, pinch moves): 2S > d, keyhole, notch fits vertically at the left height, d <=
+  H - |wcy|; the left height's range reads the right depth, the depth's range takes the valid interval holding the
+  right depth; both always hold the right pinch's own values (so equal left = mirrored outline, bit for bit).
+  hourglassConstruction returns `left` (its own construction, the shared radii) only when a left key is set;
+  _solveHourglass draws the left side from it. paramsFromShapeModel passes the left pinch when a model has it.
+  frameParamRanges applies the frame opening rule to waistReachLeft too.
+- Handles: "Left waist position" (position square midway between the centre line and the left pinch, at its
+  height), "Left waist reach" (the waistReach square mirrored, at the left waist centre). With a left pinch set
+  (`asym`), a corner arc grabbed on the LEFT side solves on the left arc itself (not the mirrored right one), and
+  the waist radius drag keeps both centres (writes waistReachLeft too). HANDLE_SEGMENT_INDEX left keys = 8, and
+  controlledSegments highlights only the left waist for them.
+- Byte-identical check (scratch A/B against a HEAD worktree): 400 random Shape Lattice hourglass shapes
+  (silhouette, ranges, contour, handles + their patches, manifest) + T1 / T2 / T3 frames at 5 boards (profile,
+  inner edge, handles, 5 Generates, handle drags, seed geometry): the same sha256 (ignoring only the two new range
+  keys and the new primIndexL handle field).
+- Tools: f20_seed_case.mjs takes 7th / 8th args (left waist position / reach) for TEMPLATE=template_4.
+  LIVE_CHECK.md (sketches/template_4) = Fred's one Fusion session, as T3's.
+- Tests: tests/frame-template-4.test.js (24) and T4 in the frame test lists; T3's PARAM_ORDER / FRAME_ONLY
+  asserts relaxed to "unchanged prefix" / "contains". pytest: T4 extractor / provisional / fitted-once-goldens,
+  frame-defs T4 table + "pins not merged, only radii tied", templates isolation + cross-load (T1<->T4, T3->T4).
+- vitest 2554 passed (was 2493); pytest frame-builder 238 passed / 2 skipped, b-spline-gen 89, root 417 / 2 skipped.
+  Headless (390x844, CDP): dropdown "None | 1. Hourglass | 2. Narrow Neck | 3. Tapered Hourglass | 4. Offset
+  Hourglass"; T4 7x9 12 prims, 0 defects, waist centres 60% / 40% up; 7 handles; a left-position drag moved only the
+  left waist; Shape Lattice from frame on T4 ok; T1 identical before/after; no console errors.

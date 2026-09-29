@@ -50,6 +50,11 @@ EXPECTED = {
         'name': 'Template 3 - Tapered Hourglass',
         'phase_counts': {1: 2, 2: 11, 3: 5},
     },
+    # T4 OFFSET HOURGLASS: Template 1's phases (same files, only p02_02/03/11 edited).
+    'template_4': {
+        'name': 'Template 4 - Offset Hourglass',
+        'phase_counts': {1: 2, 2: 11, 3: 5},
+    },
 }
 
 
@@ -152,6 +157,10 @@ def test_cross_template_regression():
         # T3 is a copy of T1's folder with the SAME phase file names: the likeliest leak.
         ('template_1', 'template_3'),
         ('template_3', 'template_1'),
+        # T4 is also a copy of T1's folder (same phase file names).
+        ('template_1', 'template_4'),
+        ('template_4', 'template_1'),
+        ('template_3', 'template_4'),
     ]
     for first, second in sequences:
         try:

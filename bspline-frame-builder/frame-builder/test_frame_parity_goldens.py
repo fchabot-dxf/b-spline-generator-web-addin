@@ -24,7 +24,10 @@ def test_all_six_goldens_exist():
     # until then it has none and the app uses its provisional shape model. Once recorded: all three sizes.
     t3 = {n for n in names if n.startswith("template_3_")}
     assert t3 in (set(), {f"template_3_{s}.json" for s in _SIZES}), sorted(t3)
-    assert names - t3 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
+    # T4 OFFSET HOURGLASS: the same (sketches/template_4/LIVE_CHECK.md).
+    t4 = {n for n in names if n.startswith("template_4_")}
+    assert t4 in (set(), {f"template_4_{s}.json" for s in _SIZES}), sorted(t4)
+    assert names - t3 - t4 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
 
 
 @pytest.mark.parametrize("path", _FILES, ids=os.path.basename)

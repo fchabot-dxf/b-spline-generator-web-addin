@@ -198,6 +198,44 @@ def test_template_3_is_template_1_plus_a_top_width(defs):
     assert "topInset" in t3["shapeModel"]["features"] and "topInset" not in t1["shapeModel"]["features"]
 
 
+# ------------------------------------------------------- T4 offset hourglass
+def test_template_4_is_template_1_with_its_own_left_pinch(defs):
+    t = {x["id"]: x for x in defs["templates"]}
+    t1, t4 = t["template_1"], t["template_4"]
+    assert t4["name"] == "Template 4 - Offset Hourglass" and t4["silhouettePreset"] == "hourglass"
+    assert t4["regions"] == t1["regions"] and t4["seedMap"] == t1["seedMap"] and t4["features"] == t1["features"]
+    assert t4["params"] == t1["params"]  # no new parameter
+    relabel = {"waistReach": "Right waist reach", "waistCenterY": "Right waist position"}
+    assert t4["handles"] == [dict(h, label=relabel.get(h["key"], h["label"])) for h in t1["handles"]] + [
+        {"key": "waistCenterYLeft", "label": "Left waist position", "basis": "hh", "binding": "seeded"},
+        {"key": "waistReachLeft", "label": "Left waist reach", "basis": "hw", "binding": "seeded"},
+    ]
+    assert t4["handleMigrations"] == {}
+    f4, f1 = t4["shapeModel"]["features"], t1["shapeModel"]["features"]
+    assert {"waistCyLeft", "notchLeft", "depthLeft"} <= set(f4) and not {"waistCyLeft", "notchLeft", "depthLeft"} & set(f1)
+    # default: the left pinch HIGH (app y-down: a smaller waistCy), the right one low
+    assert f4["waistCyLeft"]["hh"] < f1["waistCy"]["hh"] < f4["waistCy"]["hh"]
+
+
+def test_template_4_pins_are_not_merged_left_to_right_and_only_the_radii_are_tied():
+    """The Fusion side of 'independent pinches': no R:S = L:S pin merge (each inner end on the Y axis alone), no
+    pin Equal, and the three arc radius Equals instead (sketches/template_4/phases/p02_02, p02_11)."""
+    from fb_engine.template_resolver import resolve_template
+    steps = [st for sk in resolve_template("template_4")[0]["Sketches"] for b in sk["Blocks"] for st in b.get("BuildSequence", [])]
+    co = [tuple(st["Targets"]) for st in steps if st.get("Type") == "Coincident"]
+    for lvl in ("shoulder", "waist", "hip"):
+        assert (f"skel_{lvl}_pin_R:S", f"skel_{lvl}_pin_L:S") not in co
+        for side in "RL":
+            assert (f"skel_{lvl}_pin_{side}:S", "Y_AXIS") in co
+    eq = [tuple(st["Targets"]) for st in steps if st.get("Type") == "Equal"]
+    assert sorted(eq) == sorted([("arc_shoulder_R", "arc_shoulder_L"), ("arc_waist_R", "arc_waist_L"), ("arc_hip_R", "arc_hip_L")])
+    # the literal seeds put the left waist pin above the right one
+    pins = {st["ID"]: st for st in steps if st.get("ID", "").startswith("skel_waist_pin_")}
+    y = {k: eval(v["Points"][1][1].replace(" in", ""), {"widthIn": 7, "heightIn": 9, "boundingboxoffset": 0.25})
+         for k, v in pins.items()}
+    assert y["skel_waist_pin_L"] > 0.5 > -0.5 > y["skel_waist_pin_R"]
+
+
 # ------------------------------------------------------------- F12 woods
 _LIBRARY_FIXTURE = os.path.join(_REPO, "tests", "fixtures", "fusion-appearance-library.json")
 

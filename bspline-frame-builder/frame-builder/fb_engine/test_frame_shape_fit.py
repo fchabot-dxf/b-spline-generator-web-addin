@@ -127,3 +127,93 @@ def test_template_3_is_fitted_once_goldens_exist(tmp_path):
     assert {"topInset", "cornerRTop", "cornerRBottom"} <= set(m["features"])
     t = m["features"]["topInset"]
     assert t["hw"] == pytest.approx(0.2, abs=1e-6) and t["hh"] == pytest.approx(0, abs=1e-6)
+
+
+# ------------------------------------------------------------------ T4 offset hourglass
+def _offset(g, dy_right, dy_left):
+    """A Template 1 golden with each side's shoulder / waist / hip moved vertically by its own amount (Fusion y
+    up), the horns' arc ends with them: each side stays tangent (a pure translation), the two sides now at their
+    own heights."""
+    g = copy.deepcopy(g)
+    c = g["sketch2_shape_outline"]
+    for side, dy in (("R", dy_right), ("L", dy_left)):
+        for arc in ("arc_shoulder_", "arc_waist_", "arc_hip_"):
+            for k in ("start", "mid", "end", "center"):
+                c[arc + side][k][1] += dy
+    return g
+
+
+def test_the_offset_extractor_reads_template_1_as_level_pinches():
+    for size in _SIZES:
+        g = _golden("template_1", size)
+        hw, hh = fsf._safe_half(g["meta"])
+        ok, f = fsf.FEATURE_EXTRACTORS["hourglass_offset_waist"](g["sketch2_shape_outline"], hw, hh)
+        ok1, f1 = fsf.FEATURE_EXTRACTORS["hourglass"](g["sketch2_shape_outline"], hw, hh)
+        assert ok == ok1, size
+        for k, v in f1.items():
+            assert f[k] == v  # the right side is Template 1's own extraction
+        if ok:
+            assert f["waistCyLeft"] == pytest.approx(f["waistCy"], abs=2e-3)
+            assert f["depthLeft"] == pytest.approx(f["depth"], abs=2e-3)
+            assert f["notchLeft"] == pytest.approx(f["notch"], abs=2e-3)
+
+
+def test_the_offset_extractor_measures_each_pinch_height():
+    g = _golden("template_1", "7x9")
+    hw, hh = fsf._safe_half(g["meta"])
+    base = fsf.FEATURE_EXTRACTORS["hourglass_offset_waist"](g["sketch2_shape_outline"], hw, hh)[1]
+    ok, f = fsf.FEATURE_EXTRACTORS["hourglass_offset_waist"](_offset(g, -0.6, 0.8)["sketch2_shape_outline"], hw, hh)
+    assert ok
+    assert f["waistCy"] == pytest.approx(base["waistCy"] + 0.6, abs=1e-9)  # app y-down: the right pinch lower
+    assert f["waistCyLeft"] == pytest.approx(base["waistCyLeft"] - 0.8, abs=1e-9)  # the left one higher
+    assert f["notchLeft"] == pytest.approx(base["notchLeft"], abs=1e-9)
+
+
+def test_the_provisional_offset_model_is_template_1_with_the_pinches_apart():
+    t1 = fsf.fit_shape_model("template_1", "hourglass", _GOLDENS)
+    p = fsf.provisional_offset_waist_model(t1, 0.2)
+    assert set(p["features"]) == set(t1["features"]) | {"waistCyLeft", "notchLeft", "depthLeft"}
+    for k, v in t1["features"].items():
+        if k != "waistCy":
+            assert p["features"][k] == v
+    cy = t1["features"]["waistCy"]
+    assert p["features"]["waistCy"] == {"hw": cy["hw"], "hh": round(cy["hh"] + 0.2, 6)}
+    assert p["features"]["waistCyLeft"] == {"hw": cy["hw"], "hh": round(cy["hh"] - 0.2, 6)}
+    assert p["features"]["notchLeft"] == t1["features"]["notch"] and p["features"]["depthLeft"] == t1["features"]["depth"]
+    assert p["provisional"]["waistOffsetOfHh"] == 0.2
+    assert "provisional" not in t1
+
+
+def test_template_4_gets_the_provisional_model_until_its_goldens_exist():
+    frame = resolve_template("template_4")[0]["Frame"]
+    assert frame["shapeExtractor"] == "hourglass_offset_waist"
+    if glob.glob(os.path.join(_GOLDENS, "template_4_*.json")):
+        pytest.skip("Template 4's goldens are recorded: the real fit applies")
+    m = template_shape_model("template_4", frame, _GOLDENS)
+    assert m is not None and m["provisional"]
+    assert m == fsf.provisional_offset_waist_model(fsf.fit_shape_model("template_1", "hourglass", _GOLDENS),
+                                                   frame["provisionalShape"]["waistOffsetOfHh"])
+    # Template 3's provisional model is still the narrow-top one
+    f3 = resolve_template("template_3")[0]["Frame"]
+    assert "topInset" in template_shape_model("template_3", f3, _GOLDENS)["features"]
+
+
+def test_template_4_is_fitted_once_goldens_exist(tmp_path):
+    """Recorded goldens (here: Template 1's, the right side 0.1 hh down and the left 0.1 hh up per size) replace
+    the provisional model with a real offset fit."""
+    for path in glob.glob(os.path.join(_GOLDENS, "*.json")):
+        shutil.copy(path, tmp_path)
+    for size in _SIZES:
+        g = _golden("template_1", size)
+        hh = fsf._safe_half(g["meta"])[1]
+        n = _offset(g, -0.1 * hh, 0.1 * hh)
+        n["meta"]["template"] = "template_4"
+        (tmp_path / f"template_4_{size}.json").write_text(json.dumps(n), encoding="utf-8")
+    frame = resolve_template("template_4")[0]["Frame"]
+    m = template_shape_model("template_4", frame, str(tmp_path))
+    t1 = fsf.fit_shape_model("template_1", "hourglass", _GOLDENS)
+    assert m is not None and "provisional" not in m
+    assert m["fit"]["fittedFrom"] == t1["fit"]["fittedFrom"]
+    assert {"waistCyLeft", "notchLeft", "depthLeft"} <= set(m["features"])
+    d = m["features"]["waistCy"]["hh"] - m["features"]["waistCyLeft"]["hh"]
+    assert d == pytest.approx(0.2, abs=1e-6)

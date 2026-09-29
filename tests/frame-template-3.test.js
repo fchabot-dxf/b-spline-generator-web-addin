@@ -72,7 +72,8 @@ describe('topInset 0 is Template 1, bit for bit', () => {
   });
 
   it('PARAM_ORDER keeps every Template 1 key at its old index (the [Generate] salt)', () => {
-    expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset']);
+    // (T4 OFFSET HOURGLASS appends its left pinch keys AFTER topInset: every earlier index unchanged.)
+    expect(PARAM_ORDER.hourglass.slice(0, 7)).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset']);
   });
 });
 
@@ -203,7 +204,7 @@ describe('Template 3: the Top width handle', () => {
 
 describe('the Shape Lattice never gets topInset', () => {
   it('it is a frame-only param: not a Shape Lattice param, not a default handle', () => {
-    expect(FRAME_ONLY_PARAM_KEYS).toEqual(['topInset']);
+    expect(FRAME_ONLY_PARAM_KEYS).toContain('topInset'); // (T4 adds its left pinch keys: tests/frame-template-4.test.js)
     expect(SHAPE_PARAM_KEYS.hourglass).not.toContain('topInset');
     const region = { x: 0, y: 0, w: 6, h: 8 };
     const sil = generateSilhouette(region, { preset: 'hourglass', params: {} });

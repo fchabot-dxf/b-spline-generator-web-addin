@@ -44,7 +44,11 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
   const R = feasibleParamRanges(tpl.silhouettePreset, region, resolved);
   const hw = region.w / 2, half = FRAME_MIN_OPENING_IN / 2;
   if (tpl.silhouettePreset === 'bottle') R.neckWidth = _narrow(R.neckWidth, (t + half) / hw, Infinity);
-  else R.waistReach = _narrow(R.waistReach, -Infinity, 1 - (t + half) / hw); // the pinch: hw - depth - t >= half
+  else {
+    R.waistReach = _narrow(R.waistReach, -Infinity, 1 - (t + half) / hw); // the pinch: hw - depth - t >= half
+    // T4 OFFSET HOURGLASS: the left pinch obeys the same rule on its own side.
+    if (R.waistReachLeft) R.waistReachLeft = _narrow(R.waistReachLeft, -Infinity, 1 - (t + half) / hw);
+  }
   return R;
 }
 

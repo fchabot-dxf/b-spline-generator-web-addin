@@ -157,7 +157,10 @@ export const PARAM_ORDER = {
   // -- the frame [Generate] salt (frame-handles.js generateFrameSeeds: FRAME_GEN_SALT + index) -- is unchanged
   // and a Template 1 Generate draws exactly the shape it always did. Its range reads only waistReach; the
   // earlier ranges ignore it on purpose (a narrower top only relaxes them: see _hourglassRange).
-  hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset'],
+  // T4 OFFSET HOURGLASS: the LEFT pinch's own height and depth come after topInset, for the same reason (every
+  // earlier key keeps its index), and after every radius they read (the radii stay shared L/R).
+  hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset',
+    'waistCenterYLeft', 'waistReachLeft'],
   bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
 };
 const BASE_RANGES = {
@@ -197,6 +200,12 @@ export const DERIVED_PARAM_DEFAULTS = {
     // pattern), bit for bit. A frame-only param: never in SHAPE_PARAM_KEYS, never a Fusion user parameter
     // (FRAME_ONLY_PARAM_KEYS).
     topInset: () => 0,
+    // T4 OFFSET HOURGLASS (the Hourglass NOT mirrored: each waist pinch at its own height and depth): the LEFT
+    // pinch's centre height (fraction of hh) and depth (fraction of hw). Default = the right one's, i.e. the
+    // mirrored Template 1 pinch, bit for bit. Frame-only params (FRAME_ONLY_PARAM_KEYS); `waistCenterY` /
+    // `waistReach` then set the RIGHT pinch alone. The radii (corners, waist) stay shared by both sides.
+    waistCenterYLeft: (v) => v.waistCenterY,
+    waistReachLeft: (v) => v.waistReach,
   },
   bottle: { bodyRadius: (v) => 1 - v.skeletonX },
 };
@@ -212,7 +221,7 @@ const EPS_FRAC = 1e-3;
 
 /** T3 TAPERED HOURGLASS: resolved params that only a FRAME template sets. The Shape Lattice never offers them and
  *  its Fusion manifest never sends them (editor-sketch-manifest.js; Fred's rule: no new parameters). */
-export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset']);
+export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLeft', 'waistReachLeft']);
 
 /** Narrow [lo, hi] by a geometric bound; if the geometry leaves no room
  *  inside the base range, validity wins (min = max = the geometric bound). */
@@ -230,6 +239,7 @@ function _hourglassRange(key, region, stroke, v) {
   // the corners and the waist radius (2S > d, the keyhole, dy <= H) only RELAXES as d shrinks (d <= H), so a
   // value feasible at i = 0 stays feasible at every i in range: those ranges keep reading the full depth.
   if (key === 'topInset') return _range(0, Infinity, -Infinity, v.waistReach - EPS_FRAC);
+  if (key === 'waistCenterYLeft' || key === 'waistReachLeft') return _hourglassLeftRange(key, region, stroke, v);
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // F12: each corner has its OWN vertical room (y-down: a lower waist leaves
     // more above it): its arc centre may not rise above the top (sink below
@@ -271,6 +281,57 @@ function _hourglassRange(key, region, stroke, v) {
   // In the Rw = d - Rs branch S = d always fits; past it Rs = S - k*d.
   const rsMax = Math.max(sMax - k * d, (1 - k) * d);
   return _range(lo, hi, (stroke + EPS_FRAC * hw) / hw, rsMax / hw);
+}
+
+/**
+ * T4 OFFSET HOURGLASS: the LEFT pinch's own range, resolved after every radius (shared L/R) and after the right
+ * pinch. Exactly the conditions the ranges above put on the right side, now read the other way round (the radii
+ * are fixed, the pinch moves): per corner c (top: the depth measured from its own horn, d - topInset),
+ *   2 S_c > d_c (a real tangency, S_c = r_c + Rw), the keyhole d_c - sqrt(2 d_c Rw) <= r_c, and the notch
+ *   dy_c = sqrt(d_c (2 S_c - d_c)) fits vertically: dy_top <= H + wcy, dy_bottom <= H - wcy (y down, H = hh -
+ *   stroke - the minimum horn); plus the right side's own d <= H - |wcy| and the base bands.
+ * waistCenterYLeft reads the RIGHT depth (the left one is resolved after it and defaults to it), so the right
+ * pinch's own height is always inside it; waistReachLeft then takes the interval of valid depths that holds the
+ * right depth (valid at that height by the rule above), so neither range is ever empty.
+ */
+function _hourglassLeftRange(key, region, stroke, v) {
+  const hw = region.w / 2, hh = region.h / 2, eps = EPS_FRAC * hw;
+  const D = DERIVED_PARAM_DEFAULTS.hourglass;
+  const Hc = hh - stroke - HORN_MIN_OF_HALF_HEIGHT * hh;
+  const rw = hw * (v.waistRadius ?? D.waistRadius(v));
+  const inset = hw * (v.topInset ?? D.topInset(v));
+  const corners = [
+    { r: hw * (v.cornerRadiusTop ?? D.cornerRadiusTop(v)), inset, sign: +1 }, // top: room above = H + wcy
+    { r: hw * (v.cornerRadiusBottom ?? D.cornerRadiusBottom(v)), inset: 0, sign: -1 },
+  ];
+  const d0 = hw * v.waistReach; // the right pinch's depth
+  if (key === 'waistCenterYLeft') {
+    const [lo, hi] = BASE_RANGES.hourglass.waistCenterY;
+    let geoLo = -(Hc - d0), geoHi = Hc - d0;
+    for (const c of corners) {
+      const d = d0 - c.inset, S = c.r + rw, dy = Math.sqrt(Math.max(0, d * (2 * S - d)));
+      if (c.sign > 0) geoLo = Math.max(geoLo, dy - Hc); else geoHi = Math.min(geoHi, Hc - dy);
+    }
+    // the right pinch's own height is valid by the right side's rules: never lost to rounding at an edge
+    return _range(lo, hi, Math.min(geoLo / hh, v.waistCenterY), Math.max(geoHi / hh, v.waistCenterY));
+  }
+  const wcy = hh * v.waistCenterYLeft;
+  const [lo, hi] = BASE_RANGES.hourglass.waistReach;
+  let geoLo = corners[0].inset + eps, geoHi = Hc - Math.abs(wcy);
+  for (const c of corners) {
+    const S = c.r + rw, H = Hc + c.sign * wcy;
+    geoHi = Math.min(geoHi, c.inset + 2 * S - 2 * eps); // 2S > d (the corner ranges' own margin)
+    const t = (Math.sqrt(2 * rw) + Math.sqrt(2 * rw + 4 * c.r)) / 2; // keyhole: sqrt(d) <= t
+    geoHi = Math.min(geoHi, c.inset + t * t);
+    if (H < S) { // the notch fits outside (S - q, S + q): keep the side the right depth is on
+      const q = Math.sqrt(S * S - Math.max(0, H) * H), dRef = d0 - c.inset;
+      if (dRef <= S) geoHi = Math.min(geoHi, c.inset + S - q); else geoLo = Math.max(geoLo, c.inset + S + q);
+    }
+  }
+  // at the right pinch's own height the right depth is valid (the right side's rules): kept exactly, so a left
+  // pinch equal to the right one draws the mirrored Template 1 outline bit for bit
+  if (v.waistCenterYLeft === v.waistCenterY) return _range(lo, hi, Math.min(geoLo / hw, v.waistReach), Math.max(geoHi / hw, v.waistReach));
+  return _range(lo, hi, geoLo / hw, geoHi / hw);
 }
 
 function _bottleRange(key, region, stroke, v) {
@@ -351,6 +412,13 @@ export function paramsFromShapeModel(preset, model, region) {
   if (f.topInset != null) out.topInset = f.topInset / hw;
   if (f.cornerRTop != null) out.cornerRadiusTop = f.cornerRTop / hw;
   if (f.cornerRBottom != null) out.cornerRadiusBottom = f.cornerRBottom / hw;
+  // T4 OFFSET HOURGLASS: an offset-waist model (frame_shape_fit.py `hourglass_offset_waist`) also carries the LEFT
+  // pinch: its own centre height and notch (+ depth, to pick the root), the radii shared with the right.
+  if (f.waistCyLeft != null) out.waistCenterYLeft = f.waistCyLeft / hh;
+  if (f.notchLeft != null) {
+    const discL = Math.sqrt(Math.max(0, S * S - f.notchLeft * f.notchLeft)), ref = f.depthLeft ?? f.depth;
+    out.waistReachLeft = (Math.abs(S - discL - ref) <= Math.abs(S + discL - ref) ? S - discL : S + discL) / hw;
+  }
   return out;
 }
 
@@ -464,7 +532,21 @@ export function hourglassConstruction(region, resolved) {
   };
   const top = side(resolved.cornerRadiusTop ?? D.cornerRadiusTop(resolved), -1, topInset);
   const bot = side(resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved), +1, 0);
+  // T4 OFFSET HOURGLASS: the LEFT side's own construction (in mirrored local coordinates: +x = outward), only
+  // when a left pinch is set: the same algebra at its own height and depth, every radius the right side's.
+  // Absent (Template 1-3, the Shape Lattice): no `left`, the left side is the exact mirror of this one.
+  const left = (resolved.waistCenterYLeft != null || resolved.waistReachLeft != null) ? hourglassConstruction(region, {
+    ...resolved, waistCenterYLeft: undefined, waistReachLeft: undefined,
+    waistCenterY: resolved.waistCenterYLeft ?? resolved.waistCenterY,
+    waistReach: resolved.waistReachLeft ?? resolved.waistReach,
+    // the right side's own fractions (not r / hw: no round trip), resolved by the right side's rules
+    waistRadius: resolved.waistRadius ?? D.waistRadius(resolved),
+    cornerRadiusTop: resolved.cornerRadiusTop ?? D.cornerRadiusTop(resolved),
+    cornerRadiusBottom: resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved),
+    topInset: resolved.topInset ?? D.topInset(resolved),
+  }) : undefined;
   return {
+    ...(left ? { left } : {}),
     hw, hh, depth, radiusWaist, waistCenterY, waistCx,
     topInset, topX: hw - topInset, // T3: the top horns' x (hw for Template 1)
     waistX: hw - depth, // the pinch's innermost x
@@ -680,7 +762,9 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // while above the declared floor; below it the centres separate and the
   // arcs stay externally tangent instead of going negative (Fred's loop).
   const { hw, hh, cornerRadiusTop, cornerRadiusBottom, radiusWaist, shoulderCx, shoulderY, hipCx, hipY,
-    ux, uy, uxBottom, uyBottom, waistMajor, topInset } = hourglassConstruction(region, resolvedAll);
+    ux, uy, uxBottom, uyBottom, waistMajor, topInset, left } = hourglassConstruction(region, resolvedAll);
+  // T4 OFFSET HOURGLASS: the left side from its own construction (the right one's when no left pinch is set).
+  const L = left || { shoulderCx, shoulderY, hipCx, hipY, ux, uy, uxBottom, uyBottom, waistMajor };
 
   // The ACTUAL drawn radii/walls (§ (2)/(1) above) -- everything from here
   // down uses these, never the raw params computed above directly.
@@ -702,12 +786,12 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const rWaistHipJct = P(hipCx + bottomDrawn * uxBottom, hipY - bottomDrawn * uyBottom);
   const rHipHorn = P(hwDrawn, hipY);
   const rBottom = P(hwDrawn, hhDrawn);
-  // Left side (exact mirror), bottom -> top.
+  // Left side (the mirror of its own construction `L`: exactly the right side's unless T4 sets a left pinch), bottom -> top.
   const lBottom = M(hwDrawn, hhDrawn);
-  const lHipHorn = M(hwDrawn, hipY);
-  const lWaistHipJct = M(hipCx + bottomDrawn * uxBottom, hipY - bottomDrawn * uyBottom);
-  const lShoulderWaistJct = M(shoulderCx + topDrawn * ux, shoulderY + topDrawn * uy);
-  const lShoulderHorn = M(topDrawnX, shoulderY);
+  const lHipHorn = M(hwDrawn, L.hipY);
+  const lWaistHipJct = M(L.hipCx + bottomDrawn * L.uxBottom, L.hipY - bottomDrawn * L.uyBottom);
+  const lShoulderWaistJct = M(L.shoulderCx + topDrawn * L.ux, L.shoulderY + topDrawn * L.uy);
+  const lShoulderHorn = M(topDrawnX, L.shoulderY);
   const lTop = M(topDrawnX, -hhDrawn);
 
   const keypoints = [
@@ -729,7 +813,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
     STRAIGHT_SEGMENT, // bottom edge: rBottom -> lBottom
     STRAIGHT_SEGMENT, // lBottom -> lHipHorn (horn)
     _curveSegment(lHipHorn, lWaistHipJct, bottomDrawn, true), // hip, convex
-    _curveSegment(lWaistHipJct, lShoulderWaistJct, radiusWaistDrawn, false, waistMajor), // waist, concave
+    _curveSegment(lWaistHipJct, lShoulderWaistJct, radiusWaistDrawn, false, L.waistMajor), // waist, concave
     _curveSegment(lShoulderWaistJct, lShoulderHorn, topDrawn, true), // shoulder, convex
     STRAIGHT_SEGMENT, // lShoulderHorn -> lTop (horn)
     STRAIGHT_SEGMENT, // top edge: lTop -> rTop

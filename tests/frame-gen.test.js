@@ -21,7 +21,7 @@ const BOARD = { widthIn: 7, heightIn: 9 };
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const regionOf = (id) => frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: id }), BOARD).region;
 
-describe.each(['template_1', 'template_2', 'template_3'])('%s: the frame opening rule', (id) => {
+describe.each(['template_1', 'template_2', 'template_3', 'template_4'])('%s: the frame opening rule', (id) => {
   it('a handle drag can not close the frame opening at the pinch (the inner edge stays one open loop)', () => {
     const tpl = tplOf(id);
     const rec = normalizeFrameRecord({ templateId: id });
@@ -40,7 +40,7 @@ describe.each(['template_1', 'template_2', 'template_3'])('%s: the frame opening
   });
 });
 
-describe.each(['template_1', 'template_2', 'template_3'])('%s: [Generate] shapes', (id) => {
+describe.each(['template_1', 'template_2', 'template_3', 'template_4'])('%s: [Generate] shapes', (id) => {
   const tpl = tplOf(id), region = regionOf(id);
   const keys = frameHandleTable(tpl).filter((h) => h.binding === 'seeded').map((h) => h.key).sort();
 

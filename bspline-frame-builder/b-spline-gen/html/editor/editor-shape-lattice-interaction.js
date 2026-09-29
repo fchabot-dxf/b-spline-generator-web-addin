@@ -120,7 +120,10 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
   // F27 item 2 arc pull: the radius params' arc grips, over the DRAWN silhouette.
   const base = { preset, params: resolvedParams, ...(opts.shape || {}) };
   const sil = generateSilhouette(region, base, sh);
-  const ctx = { preset, region, base, sh, sil, R, within };
+  // T4 OFFSET HOURGLASS: a left pinch of its own (only a frame template sets it): the left arcs are no longer the
+  // mirror of the right ones, so a grip grabbed on the LEFT arc solves on that arc itself.
+  const asym = preset === 'hourglass' && (resolvedParams.waistCenterYLeft != null || resolvedParams.waistReachLeft != null);
+  const ctx = { preset, region, base, sh, sil, R, within, asym };
   const arc = (key, label) => (keys.includes(key) ? _arcGrip(key, label, resolvedParams[key], ctx) : null);
 
   if (preset === 'bottle') {
@@ -155,6 +158,9 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
   const g = hourglassConstruction(region, resolvedParams); // the generator's own construction, not a copy
   const edge = cx0 + hw; // the region's outer edge (the frame's outer edge in the Frame tab)
   const centre = { x: cx0 + g.waistCx, y: cy0 + g.waistCenterY }; // the waist arc's own centre
+  // T4 OFFSET HOURGLASS: the left pinch's own construction and centre (world); the right one's when not set.
+  const gl = g.left || g;
+  const centreL = { x: cx0 - gl.waistCx, y: cy0 + gl.waistCenterY };
   // F27 item 2 arc pull, the WAIST as a CAD circle (Fred): a centre point (the
   // waistReach square) and a point on the rim (the waistRadius arc). Both drags
   // write BOTH params: waistReach = (hw + Rw - (centre - cx0)) / hw ties the
@@ -164,6 +170,15 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
   const waistOk = (reach, rw) => reach >= R.waistReach.min && reach <= R.waistReach.max
     && (() => { const r = rangesFor({ ...resolvedParams, waistReach: reach }).waistRadius; return rw >= r.min && rw <= r.max; })();
   const reachFor = (rwFrac, centreX) => 1 + rwFrac - (centreX - cx0) / hw;
+  // T4: a waist radius drag keeps BOTH centres put, so it also writes the left depth; `leftOk` = that left
+  // pinch (height and depth, held) still inside its own ranges for the new radius and right depth.
+  const reachForLeft = (rwFrac) => 1 + rwFrac - (cx0 - centreL.x) / hw;
+  const leftOk = (reach, rw) => {
+    if (!asym) return true;
+    const r = rangesFor({ ...resolvedParams, waistReach: reach, waistRadius: rw, waistReachLeft: reachForLeft(rw) });
+    const y = resolvedParams.waistCenterYLeft, dl = reachForLeft(rw);
+    return y >= r.waistCenterYLeft.min && y <= r.waistCenterYLeft.max && dl >= r.waistReachLeft.min && dl <= r.waistReachLeft.max;
+  };
   return withRange(pick([
     {
       // F27 item 2 arc pull (Fred: "Then the position for waist reach can be the
@@ -209,10 +224,12 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         key: 'waistRadius', label: 'Waist radius', axis: 'arc', handleKind: 'radius', ...grip,
         anchor: { x: centre.x - r0, y: centre.y },
         ..._patchHandle('waistRadius', (pt, c = {}) => {
-          const q = c.side === 1 ? { x: 2 * cx0 - pt.x, y: pt.y } : pt;
-          const want = (Math.hypot(q.x - centre.x, q.y - centre.y) - sh) / hw;
-          const rw = _furthest(resolvedParams.waistRadius, want, (v) => waistOk(reachFor(v, centre.x), v));
-          return { waistRadius: rw, waistReach: reachFor(rw, centre.x) };
+          // T4: the left arc (side 1) is its own circle about the left centre; otherwise mirrored onto the right.
+          const q = c.side === 1 && !asym ? { x: 2 * cx0 - pt.x, y: pt.y } : pt;
+          const about = c.side === 1 && asym ? centreL : centre;
+          const want = (Math.hypot(q.x - about.x, q.y - about.y) - sh) / hw;
+          const rw = _furthest(resolvedParams.waistRadius, want, (v) => waistOk(reachFor(v, centre.x), v) && leftOk(reachFor(v, centre.x), v));
+          return { waistRadius: rw, waistReach: reachFor(rw, centre.x), ...(asym ? { waistReachLeft: reachForLeft(rw) } : {}) };
         }),
       };
     })(),
@@ -224,6 +241,25 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
       key: 'topInset', label: 'Top width', axis: 'x', handleKind: 'position',
       anchor: { x: edge - g.topInset, y: cy0 + (-hh + g.shoulderY) / 2 },
       valueFromWorld: (pt) => within('topInset', (edge - pt.x) / hw),
+    },
+    {
+      // T4 OFFSET HOURGLASS (the Hourglass with each waist pinch at its own height): the LEFT pinch's height, a
+      // POSITION square midway between the centre line and the left pinch, at its centre height (clear of the
+      // right pinch's square, which sits ON the centre line). The right pinch keeps `waistCenterY`'s square.
+      key: 'waistCenterYLeft', label: 'Left waist position', axis: 'y', handleKind: 'position',
+      anchor: { x: cx0 - (hw - gl.depth) / 2, y: centreL.y },
+      valueFromWorld: (pt) => within('waistCenterYLeft', (pt.y - cy0) / hh),
+    },
+    {
+      // T4: the LEFT pinch's depth, the waistReach square mirrored: at the left waist arc's centre (parked on the
+      // left edge when a flat waist puts it past it), sliding the left waist sideways, its radius (shared) held.
+      key: 'waistReachLeft', label: 'Left waist reach', axis: 'x', handleKind: 'position',
+      anchor: { x: Math.max(centreL.x, cx0 - hw), y: centreL.y },
+      valueFromWorld: (pt, c = {}) => {
+        const want = waistReachFromCentre({ cx0, hw, edge, radiusWaist: gl.radiusWaist }, 2 * cx0 - pt.x,
+          c.grab ? c.grab.value : resolvedParams.waistReachLeft);
+        return within('waistReachLeft', want);
+      },
     },
   ]));
 }
@@ -286,7 +322,7 @@ function _segmentArcs(key, c) {
   };
   const kR = primIndex(segment), kL = primIndex(mirrorSegment);
   if (kR < 0 || kL < 0) return null;
-  return { segment, mirrorSegment, arcs: [c.sil.primitives[kR], c.sil.primitives[kL]], primIndex: kR };
+  return { segment, mirrorSegment, arcs: [c.sil.primitives[kR], c.sil.primitives[kL]], primIndex: kR, primIndexL: kL };
 }
 
 /** F27 item 2 arc pull: one radius param's arc grip (every arc but the
@@ -297,8 +333,8 @@ function _segmentArcs(key, c) {
 function _arcGrip(key, label, current, c) {
   const grip = _segmentArcs(key, c);
   if (!grip) return null;
-  const circleAt = (v) => {
-    const p = generateSilhouette(c.region, { ...c.base, params: { ...c.base.params, [key]: v } }, c.sh).primitives[grip.primIndex];
+  const circleAt = (v, k = grip.primIndex) => {
+    const p = generateSilhouette(c.region, { ...c.base, params: { ...c.base.params, [key]: v } }, c.sh).primitives[k];
     return p && p.type === 'A' ? { cx: p.cx, cy: p.cy, r: p.rx } : { cx: NaN, cy: NaN, r: NaN };
   };
   const axisX = c.region.x + c.region.w / 2; // the centre line the two sides mirror across
@@ -308,6 +344,8 @@ function _arcGrip(key, label, current, c) {
     // ctx.side: 0 = the right arc (and its dot), 1 = the mirrored left arc, whose
     // pointer is mirrored across the centre line onto the right arc first.
     valueFromWorld: (pt, ctx = {}) => {
+      // T4 OFFSET HOURGLASS (`c.asym`): the left arc is not the right one's mirror; solve on the left arc itself.
+      if (ctx.side === 1 && c.asym) return c.within(key, radiusThroughPoint((v) => circleAt(v, grip.primIndexL), c.R[key], current, pt));
       const q = ctx.side === 1 ? { x: 2 * axisX - pt.x, y: pt.y } : pt;
       return c.within(key, radiusThroughPoint(circleAt, c.R[key], current, q));
     },
@@ -406,7 +444,8 @@ export function hitTestArcGrip(handles, pt, tolerance) {
  * rTop, starts at the first real edge out of rTop"):
  *   hourglass: 0 horn, 1 SHOULDER, 2 WAIST, 3 HIP, 4 horn, 5 bottom edge,
  *              6 horn, 7 hip(L), 8 waist(L), 9 shoulder(L), 10 horn, 11 top edge.
- *   (T3 `topInset`, the top width, maps to 0: the right top horn it slides.)
+ *   (T3 `topInset`, the top width, maps to 0: the right top horn it slides. T4's left pinch keys map to 8,
+ *   the LEFT waist, and highlight only it: LEFT_ONLY_KEYS.)
  *   bottle:    0 horn, 1 NECK/WAIST, 2 HIP/BODY, 3 horn, 4 bottom edge,
  *              5 horn, 6 hip/body(L), 7 neck/waist(L), 8 horn, 9 top edge.
  * `waistCenterY` repositions the pinch itself (shoulderY/hipY are BOTH
@@ -417,7 +456,8 @@ export function hitTestArcGrip(handles, pt, tolerance) {
  * is no automatic check tying the two together.
  */
 export const HANDLE_SEGMENT_INDEX = {
-  hourglass: { cornerRadiusTop: 1, waistReach: 2, cornerRadiusBottom: 3, waistCenterY: 2, waistRadius: 2, topInset: 0 },
+  hourglass: { cornerRadiusTop: 1, waistReach: 2, cornerRadiusBottom: 3, waistCenterY: 2, waistRadius: 2, topInset: 0,
+    waistCenterYLeft: 8, waistReachLeft: 8 },
   bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2 },
 };
 
@@ -478,9 +518,11 @@ export function mirrorSegmentIndex(i, n) {
  *  (T81 item 1; Fred: "How about highlighting the geometry it control"): its
  *  HANDLE_SEGMENT_INDEX segment AND that segment's mirror (the param drives
  *  both sides), deduped for a self-mirrored one. `n` = segment count. */
+const LEFT_ONLY_KEYS = new Set(['waistCenterYLeft', 'waistReachLeft']); // T4: they move the left pinch alone
 export function controlledSegments(preset, key, n) {
   const i = HANDLE_SEGMENT_INDEX[preset]?.[key];
   if (i == null || !(n > 0)) return [];
+  if (LEFT_ONLY_KEYS.has(key)) return [i];
   const m = mirrorSegmentIndex(i, n);
   return m === i ? [i] : [i, m];
 }

@@ -87,7 +87,32 @@ def _hourglass_narrow_top(curves, hw, hh, tol=2e-3):
     }
 
 
-FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top}
+def _hourglass_offset_waist(curves, hw, hh, tol=2e-3):
+    """T4 OFFSET HOURGLASS: the hourglass with each waist pinch at its OWN height and depth (the radii shared L/R).
+
+    The right side is Template 1's own extraction (so `depth` / `cornerR` / `waistR` / `waistCy` / `notch` mean
+    exactly what they do for Template 1 and the app's depth root is picked the same way); the LEFT pinch adds its
+    own centre height, notch and depth, read off the left arcs (Fusion x is mirrored: the left centre's x < 0).
+    Valid when the right side is (Template 1's test) and the left corners are tangent to the side at -hw and to
+    the left waist.
+    """
+    ok, feats = _hourglass(curves, hw, hh, tol)
+    sh, wa, hp = curves["arc_shoulder_L"], curves["arc_waist_L"], curves["arc_hip_L"]
+    ok = (ok and abs(sh["center"][0] + (hw - sh["radius"])) < tol
+          and abs(hp["center"][0] + (hw - hp["radius"])) < tol
+          and abs(math.dist(sh["center"], wa["center"]) - (sh["radius"] + wa["radius"])) < tol
+          and abs(math.dist(hp["center"], wa["center"]) - (hp["radius"] + wa["radius"])) < tol)
+    wy = wa["center"][1]
+    feats.update({
+        "depthLeft": hw - (-wa["center"][0] - wa["radius"]),
+        "waistCyLeft": -wy,                                  # app is y-down; Fusion is y-up
+        "notchLeft": ((sh["center"][1] - wy) + (wy - hp["center"][1])) / 2,
+    })
+    return ok, feats
+
+
+FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
+                      "hourglass_offset_waist": _hourglass_offset_waist}
 
 
 def provisional_shape_model(base_model, top_inset_of_depth):
@@ -107,6 +132,30 @@ def provisional_shape_model(base_model, top_inset_of_depth):
             "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
             "baseModel": "the fitted Template 1 model",
             "topInsetOfDepth": top_inset_of_depth,
+        },
+    }
+
+
+def provisional_offset_waist_model(base_model, waist_offset_of_hh):
+    """T4 OFFSET HOURGLASS, until its goldens are recorded live: a PROVISIONAL model (never none), from Template
+    1's fitted one. Its features unchanged except the pinch heights: the RIGHT waist centre moves DOWN and the LEFT
+    one UP by `waist_offset_of_hh` x hh each (app y-down: waistCy + k hh, waistCyLeft = waistCy - k hh), the left
+    pinch otherwise a copy of the right (notchLeft = notch, depthLeft = depth: the same depth). 0.2: the left
+    centre ~60% up the safe zone, the right ~40% (Template 1's sits at the middle). The app clamps each pinch into
+    its own feasible range. Marked `provisional` so nothing mistakes it for a fit."""
+    feats = {k: dict(v) for k, v in base_model["features"].items()}
+    cy, k = feats["waistCy"], waist_offset_of_hh
+    feats["waistCy"] = {"hw": cy["hw"], "hh": round(cy["hh"] + k, 6)}
+    feats["waistCyLeft"] = {"hw": cy["hw"], "hh": round(cy["hh"] - k, 6)}
+    feats["notchLeft"] = dict(feats["notch"])
+    feats["depthLeft"] = dict(feats["depth"])
+    return {
+        "features": feats,
+        "fit": dict(base_model["fit"]),
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": "the fitted Template 1 model",
+            "waistOffsetOfHh": waist_offset_of_hh,
         },
     }
 

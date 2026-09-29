@@ -12,7 +12,7 @@ from fb_engine.declared_profiles import classify, DeclaredProfileError  # noqa: 
 from fb_engine.parameter_schema import ParameterSchema, PANEL_LIP_PARAM  # noqa: E402
 from fb_engine.frame_definition import EXTRUSION_SETTINGS  # noqa: E402
 
-TEMPLATES = ["template_1", "template_2", "template_3"]
+TEMPLATES = ["template_1", "template_2", "template_3", "template_4"]
 
 
 def _blocks(t):

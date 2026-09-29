@@ -37,7 +37,7 @@ def _seeds(tid):
     return out
 
 
-@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3"])
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4"])
 def test_every_board_relative_seed_is_on_the_seed_board(tid):
     seeds = _seeds(tid)
     board = [(i, e) for i, e in seeds if isinstance(e, str) and re.search(r"\b(widthIn|heightIn)\b", e)]
@@ -48,7 +48,7 @@ def test_every_board_relative_seed_is_on_the_seed_board(tid):
             pytest.fail(f"{i}: a bare {tok} in {e}")
 
 
-@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3"])
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4"])
 @pytest.mark.parametrize("w, h", [(7, 9), (12, 6), (5.51, 1.97), (10, 14)])
 def test_at_the_default_offset_the_seeds_are_unchanged(tid, w, h, monkeypatch):
     new = _seeds(tid)
