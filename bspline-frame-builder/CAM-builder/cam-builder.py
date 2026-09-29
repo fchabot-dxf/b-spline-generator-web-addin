@@ -237,7 +237,7 @@ class _CamHtmlEventHandler(adsk.core.HTMLEventHandler):
             if action == 'preview_bodies':
                 _do_preview()
             elif action == 'build':
-                _do_generate()
+                _do_generate(confirmed=bool(data.get('confirmed')))
             elif action == 'add_machine':
                 _do_add_machine()
             elif action == 'sync_table_attach':
@@ -1162,7 +1162,31 @@ def _do_preview():
     })
 
 
-def _do_generate():
+# Fred ("5 ok"): BUILD rebuilds these setups by name (cam_coordinator._cleanup_previous_build deletes them first),
+# taking any operations added by hand -- and NC programs pointing at them -- with them. BUILD now asks first.
+_BUILD_SETUP_NAMES = ('Stock', 'B-spline Back', 'B-spline Top', 'Frame')
+
+
+def _setups_with_operations():
+    """[{name, ops}] for each existing build setup that holds operations, in the active document's CAM."""
+    out = []
+    try:
+        doc = app.activeDocument
+        for i in range(doc.products.count):
+            p = doc.products.item(i)
+            if p.objectType == 'adsk::cam::CAM':
+                cam = adsk.cam.CAM.cast(p)
+                for j in range(cam.setups.count):
+                    st = cam.setups.item(j)
+                    if st.name in _BUILD_SETUP_NAMES and st.operations.count > 0:
+                        out.append({'name': st.name, 'ops': st.operations.count})
+                break
+    except Exception:
+        _log_error("setup scan failed\n" + traceback.format_exc())
+    return out
+
+
+def _do_generate(confirmed=False):
     """B-spline CAM: build the 3 MMs + 4 Setups for the active design.
 
     Always runs in 'bspline' mode (hardcoded pipeline). The GENERIC tab
@@ -1180,6 +1204,12 @@ def _do_generate():
             'errors': ['Engine load failed — see log.'],
         })
         return
+
+    if not confirmed:
+        busy = _setups_with_operations()
+        if busy:
+            _send_to_html('build_confirm', {'setups': busy})
+            return
 
     # Phase: build only — no templates, no machine, no toolpath gen.
     # User attaches machine via ADD MACHINE button, picks origin via
@@ -1590,13 +1620,32 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                 for j in range(cam.setups.item(i).operations.count):
                     _diag_op(cam.setups.item(i).operations.item(j), 'PRE-GEN')
 
-            try:
-                f = cam.generateToolpath(op_collection)
-            except Exception as e:
-                _log(f"DEFERRED TPGEN: collection generateToolpath raised: "
-                     f"{type(e).__name__}: {e}", "WARNING")
-                _log_error(traceback.format_exc())
-                f = None
+            # Fred ("5 ok"; CAM_BUILDER_CONTEXT.md "Toolpath generation API -- collection-of-ops vs per-setup"):
+            # the one COLLECTION call left the first op of a setup (Pocket back) orange "out of date" -- Fusion's
+            # batch scheduler invalidates it mid-batch. Generating ONE SETUP AT A TIME, each awaited before the
+            # next, was verified to leave every op green and still honours the cross-setup stock chain (B-spline
+            # Back completes before B-spline Top reads it). The collection watch block below is skipped (f = None);
+            # the PRE/POST-GEN diagnostics stay.
+            f = None
+            per_setup_timeout = 900.0
+            for i in range(cam.setups.count):
+                setup = cam.setups.item(i)
+                if setup.operations.count == 0:
+                    continue
+                t_setup = time.time()
+                try:
+                    fs = cam.generateToolpath(setup)
+                except Exception as e:
+                    _log(f"DEFERRED TPGEN: generateToolpath('{setup.name}') raised: {type(e).__name__}: {e}", "WARNING")
+                    _log_error(traceback.format_exc())
+                    continue
+                while not fs.isGenerationCompleted:
+                    if time.time() - t_setup > per_setup_timeout:
+                        _log(f"DEFERRED TPGEN: '{setup.name}' still generating after {per_setup_timeout:.0f}s -- moving on", "WARNING")
+                        break
+                    adsk.doEvents()
+                    time.sleep(0.2)
+                _log(f"DEFERRED TPGEN: setup '{setup.name}' generated in {time.time() - t_setup:.1f}s")
 
             if f is not None:
                 bulk_timeout = 1800.0

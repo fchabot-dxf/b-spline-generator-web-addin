@@ -3713,3 +3713,13 @@ floats there pointing at nothing")
   (<time>) -- Overwrite?" (Cancel = not saved, load it from Projects for the other version). Client-only (the worker
   already stamps and lists savedAt); KV list lag (~60 s) can hide a save seconds old. Verified with a KV mock:
   save, save again (no question), other device saves -> question; Cancel keeps theirs; Overwrite writes ours.
+
+## CAM fixes (Fred: "5 ok") -- Fusion side, untested live
+- cam-builder.py _DeferredTPGenHandler: toolpaths generated ONE SETUP AT A TIME (cam.generateToolpath(setup), each
+  awaited, 900 s guard) instead of one collection call -- CAM_BUILDER_CONTEXT.md's verified fix for the first op of a
+  setup (Pocket back) coming back orange "out of date"; the collection watch block is skipped (f = None), the
+  PRE/POST-GEN diagnostics stay.
+- BUILD asks first: _do_generate(confirmed) scans the build setups (Stock / B-spline Back / B-spline Top / Frame)
+  for operations; any -> 'build_confirm' {setups:[{name, ops}]} -> the palette's own box (window.confirm is off
+  in CEF) "BUILD rebuilds these setups and deletes what is in them … Rebuild / Cancel" -> Rebuild resends 'build'
+  with confirmed. Parses; no Fusion here to run it.

@@ -770,10 +770,32 @@
     send('preview_bodies');
   }
 
-  function runBuild() {
+  function runBuild(confirmed) {
     SETUP_KEYS.forEach(k => setSetupState(k, 'pending'));
     setStatus('building setups...');
-    send('build', { mode: 'bspline' });
+    send('build', { mode: 'bspline', confirmed: confirmed === true });
+  }
+
+  // Fred ("5 ok"): BUILD rebuilds its setups by name, deleting the operations inside them -- the add-in asks
+  // first ('build_confirm') when any hold operations. window.confirm is disabled in Fusion's palette: own box.
+  function confirmBuild(setups) {
+    const list = setups.map(s => s.name + ' (' + s.ops + ' operation' + (s.ops === 1 ? '' : 's') + ')').join(', ');
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    box.innerHTML = '<div style="background:#fff;border-radius:6px;padding:14px;max-width:320px;font-size:12px;line-height:1.4;">'
+      + '<div style="margin-bottom:10px;">BUILD rebuilds these setups and deletes what is in them: <b></b>.<br>'
+      + 'Operations you added by hand, and NC programs using these setups, will be lost.</div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      + '<button type="button" data-a="no">Cancel</button><button type="button" data-a="yes" style="color:#c62828;font-weight:600;">Rebuild</button></div></div>';
+    box.querySelector('b').textContent = list;
+    document.body.appendChild(box);
+    box.addEventListener('click', (e) => {
+      const a = e.target && e.target.getAttribute && e.target.getAttribute('data-a');
+      if (e.target !== box && !a) return;
+      box.remove();
+      if (a === 'yes') runBuild(true);
+      else { SETUP_KEYS.forEach(k => setSetupState(k, 'idle')); setStatus('BUILD cancelled — setups kept.'); }
+    });
   }
 
   function runAddMachine() {
@@ -1456,6 +1478,8 @@
           } catch (e) { /* version badge is best-effort */ }
           return;
         }
+
+        if (action === 'build_confirm') { confirmBuild(payload.setups || []); return; }
 
         // ── report: BOTH tabs' operations complete via this one event
         // name — gated on which tab actually triggered it, since the two
