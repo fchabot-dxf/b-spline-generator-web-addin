@@ -152,11 +152,30 @@ def _param_entry(p_info):
     return entry
 
 
+def template_shape_model(template_id, frame, goldens_dir):
+    """F8: one template's app shape model, fitted from its recorded goldens by its extractor (the Frame's
+    optional `shapeExtractor`, T3; else its silhouette preset's own).
+
+    T3 TAPERED HOURGLASS: a template with too few goldens that declares a `provisionalShape`
+    ({"from": <template id>, "topInsetOfDepth": k}) gets a PROVISIONAL model built from that template's fitted
+    one (frame_shape_fit.provisional_shape_model), so the app never gets a null shapeModel for it. Recording
+    its goldens and re-running tools/gen_frame_defs.py replaces it with the real fit."""
+    from fb_engine.frame_shape_fit import fit_shape_model, provisional_shape_model
+    from fb_engine.template_resolver import resolve_template
+    model = fit_shape_model(template_id, frame.get("shapeExtractor") or frame.get("silhouettePreset"), goldens_dir)
+    prov = frame.get("provisionalShape")
+    if model is None and prov:
+        base_frame = resolve_template(prov["from"])[0].get("Frame") or {}
+        base = template_shape_model(prov["from"], base_frame, goldens_dir)
+        if base is not None:
+            model = provisional_shape_model(base, prov["topInsetOfDepth"])
+    return model
+
+
 def build_frame_defs(source_hash, goldens_dir=None):
     """The dict frame-defs.json is serialized from. Templates come from
     template_resolver's own folder discovery, not a hand-kept list."""
     from fb_engine.template_resolver import get_available_templates, resolve_template
-    from fb_engine.frame_shape_fit import fit_shape_model
     templates = []
     for t in get_available_templates():
         spec, prefix = resolve_template(t["value"])
@@ -168,7 +187,7 @@ def build_frame_defs(source_hash, goldens_dir=None):
             "prefix": prefix,
             "silhouettePreset": frame.get("silhouettePreset"),
             # F8: fitted from the recorded Fusion goldens (frame_shape_fit.py)
-            "shapeModel": fit_shape_model(t["value"], frame.get("silhouettePreset"), goldens_dir) if goldens_dir else None,
+            "shapeModel": template_shape_model(t["value"], frame, goldens_dir) if goldens_dir else None,
             "params": params,
             "regions": frame.get("regions"),
             "features": frame.get("features"),

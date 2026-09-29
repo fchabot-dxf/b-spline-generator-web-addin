@@ -31,10 +31,10 @@ function drag(defs, rec, key, dx, dy) {
 }
 
 describe('the binding table is the ONE source', () => {
-  it.each(['template_1', 'template_2'])('%s: the handles drawn are exactly the declared ones, all seeded today', (id) => {
+  it.each(['template_1', 'template_2', 'template_3'])('%s: the handles drawn are exactly the declared ones, all seeded today', (id) => {
     const rec = normalizeFrameRecord({ templateId: id });
     const table = frameHandleTable(tplOf(FRAME_DEFS, id));
-    expect(table.length).toBe(id === 'template_1' ? 5 : 4); // F20: T1 has a Shoulder AND a Hip; F27 item 2: + one radius handle each
+    expect(table.length).toBe({ template_1: 5, template_2: 4, template_3: 6 }[id]); // F20: T1 has a Shoulder AND a Hip; F27 item 2: + one radius handle each; T3: T1's + Top width
     expect(table.every((h) => h.binding === 'seeded')).toBe(true); // no Frame Builder param controls the shape (phases/p02_*)
     expect(frameHandles(tplOf(FRAME_DEFS, id), profile(FRAME_DEFS, rec)).map((h) => h.key)).toEqual(table.map((h) => h.key));
   });
@@ -48,7 +48,7 @@ describe('the binding table is the ONE source', () => {
 });
 
 describe('seeded handle: the record + the payload, never a parameter', () => {
-  it.each([['template_1', 'waistReach', -0.4, 0], ['template_2', 'neckLength', 0, 0.5]])('%s %s', (id, key, dx, dy) => {
+  it.each([['template_1', 'waistReach', -0.4, 0], ['template_2', 'neckLength', 0, 0.5], ['template_3', 'topInset', -0.3, 0]])('%s %s', (id, key, dx, dy) => {
     const rec = normalizeFrameRecord({ templateId: id });
     const { h, patch } = drag(FRAME_DEFS, rec, key, dx, dy);
     const next = normalizeFrameRecord({ ...rec, ...patch });

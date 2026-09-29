@@ -153,7 +153,11 @@ export const WAIST_MIN_RADIUS_OF_DEPTH = 0.5;
 // zero-length line (and a zero-length entity in the Fusion export).
 export const HORN_MIN_OF_HALF_HEIGHT = 0.02;
 export const PARAM_ORDER = {
-  hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom'],
+  // T3 TAPERED HOURGLASS: `topInset` is resolved LAST (not beside waistReach), so the index of every other key
+  // -- the frame [Generate] salt (frame-handles.js generateFrameSeeds: FRAME_GEN_SALT + index) -- is unchanged
+  // and a Template 1 Generate draws exactly the shape it always did. Its range reads only waistReach; the
+  // earlier ranges ignore it on purpose (a narrower top only relaxes them: see _hourglassRange).
+  hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset'],
   bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
 };
 const BASE_RANGES = {
@@ -188,6 +192,11 @@ export const DERIVED_PARAM_DEFAULTS = {
     waistRadius: (v) => Math.max(v.waistReach - v.cornerRadius, WAIST_MIN_RADIUS_OF_DEPTH * v.waistReach),
     cornerRadiusTop: (v) => v.cornerRadius,
     cornerRadiusBottom: (v) => v.cornerRadius,
+    // T3 TAPERED HOURGLASS (Fred: "the top narrower than the base"): how far the TOP horns sit in from the
+    // outer edge, a fraction of hw. Default 0 = the full-width top of Template 1 (and of every Shape Lattice
+    // pattern), bit for bit. A frame-only param: never in SHAPE_PARAM_KEYS, never a Fusion user parameter
+    // (FRAME_ONLY_PARAM_KEYS).
+    topInset: () => 0,
   },
   bottle: { bodyRadius: (v) => 1 - v.skeletonX },
 };
@@ -201,6 +210,10 @@ export const SHAPE_PARAM_KEYS = {
 };
 const EPS_FRAC = 1e-3;
 
+/** T3 TAPERED HOURGLASS: resolved params that only a FRAME template sets. The Shape Lattice never offers them and
+ *  its Fusion manifest never sends them (editor-sketch-manifest.js; Fred's rule: no new parameters). */
+export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset']);
+
 /** Narrow [lo, hi] by a geometric bound; if the geometry leaves no room
  *  inside the base range, validity wins (min = max = the geometric bound). */
 function _range(lo, hi, geoLo = -Infinity, geoHi = Infinity) {
@@ -211,6 +224,12 @@ function _range(lo, hi, geoLo = -Infinity, geoHi = Infinity) {
 function _hourglassRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   if (key === 'waistRadius') return _optionalRange('hourglass', region, stroke, v);
+  // T3 TAPERED HOURGLASS: the top horns move in by i = topInset * hw, never past the waist pinch (the top is
+  // never narrower than the waist): 0 <= i < d. With the waist centre fixed, the top corner's own tangency is
+  // the full-width one with d -> d - i (hourglassConstruction), and every bound the ranges above/below put on
+  // the corners and the waist radius (2S > d, the keyhole, dy <= H) only RELAXES as d shrinks (d <= H), so a
+  // value feasible at i = 0 stays feasible at every i in range: those ranges keep reading the full depth.
+  if (key === 'topInset') return _range(0, Infinity, -Infinity, v.waistReach - EPS_FRAC);
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // F12: each corner has its OWN vertical room (y-down: a lower waist leaves
     // more above it): its arc centre may not rise above the top (sink below
@@ -325,7 +344,14 @@ export function paramsFromShapeModel(preset, model, region) {
   const S = f.cornerR + f.waistR;
   const disc = Math.sqrt(Math.max(0, S * S - f.notch * f.notch));
   const depth = Math.abs(S - disc - f.depth) <= Math.abs(S + disc - f.depth) ? S - disc : S + disc;
-  return { waistReach: depth / hw, cornerRadius: f.cornerR / hw, waistRadius: f.waistR / hw, waistCenterY: f.waistCy / hh };
+  const out = { waistReach: depth / hw, cornerRadius: f.cornerR / hw, waistRadius: f.waistR / hw, waistCenterY: f.waistCy / hh };
+  // T3 TAPERED HOURGLASS: a narrow-top model (frame_shape_fit.py `hourglass_narrow_top`) also carries the top
+  // inset and the two corners separately (its cornerR / notch are then the HIP's: the full-width side, the one
+  // the depth root above is for). Absent (Template 1): exactly the four params above.
+  if (f.topInset != null) out.topInset = f.topInset / hw;
+  if (f.cornerRTop != null) out.cornerRadiusTop = f.cornerRTop / hw;
+  if (f.cornerRBottom != null) out.cornerRadiusBottom = f.cornerRBottom / hw;
+  return out;
 }
 
 function _optionalRange(preset, region, stroke, v) {
@@ -425,24 +451,29 @@ export function hourglassConstruction(region, resolved) {
   const waistCenterY = hh * resolved.waistCenterY;
   const radiusWaist = hw * (resolved.waistRadius ?? D.waistRadius(resolved));
   const waistCx = hw - depth + radiusWaist;
+  // T3 TAPERED HOURGLASS: the top horns sit `topInset` in from the edge (0 = Template 1).
+  const topInset = hw * (resolved.topInset ?? D.topInset(resolved));
   // F12: each corner arc (radius r, centre (hw - r, y)) externally tangent to the
   // waist arc: centre distance r + Rw, so dy = sqrt(d (2 (r + Rw) - d)); the unit
   // vector corner-centre -> waist-centre carries the tangent junction.
-  const side = (frac, sign) => {
-    const r = hw * frac, S = r + radiusWaist, dy = Math.sqrt(Math.max(0, depth * (2 * S - depth)));
-    return { r, S, dy, cx: hw - r, y: waistCenterY + sign * dy, ux: (S - depth) / S, uy: dy / S };
+  // T3: a side whose horn sits `inset` in has its corner centre at hw - inset - r, so
+  // the same algebra holds with the depth measured from that horn: d -> d - inset.
+  const side = (frac, sign, inset) => {
+    const r = hw * frac, S = r + radiusWaist, d = depth - inset, dy = Math.sqrt(Math.max(0, d * (2 * S - d)));
+    return { r, S, d, dy, cx: hw - inset - r, y: waistCenterY + sign * dy, ux: (S - d) / S, uy: dy / S };
   };
-  const top = side(resolved.cornerRadiusTop ?? D.cornerRadiusTop(resolved), -1);
-  const bot = side(resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved), +1);
+  const top = side(resolved.cornerRadiusTop ?? D.cornerRadiusTop(resolved), -1, topInset);
+  const bot = side(resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved), +1, 0);
   return {
     hw, hh, depth, radiusWaist, waistCenterY, waistCx,
+    topInset, topX: hw - topInset, // T3: the top horns' x (hw for Template 1)
     waistX: hw - depth, // the pinch's innermost x
     cornerRadiusTop: top.r, cornerRadiusBottom: bot.r, cornerRadius: top.r,
     shoulderCx: top.cx, shoulderY: top.y, hipCx: bot.cx, hipY: bot.y, notchHalfSpan: top.dy,
     ux: top.ux, uy: top.uy, uxBottom: bot.ux, uyBottom: bot.uy,
     // F8: the concave waist is a MAJOR arc when its two junctions subtend more
     // than a half-turn about its centre (symmetric: exactly when Rs + Rw < d).
-    waistMajor: Math.atan2(top.dy, top.S - depth) + Math.atan2(bot.dy, bot.S - depth) > Math.PI,
+    waistMajor: Math.atan2(top.dy, top.S - top.d) + Math.atan2(bot.dy, bot.S - bot.d) > Math.PI,
   };
 }
 
@@ -649,7 +680,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // while above the declared floor; below it the centres separate and the
   // arcs stay externally tangent instead of going negative (Fred's loop).
   const { hw, hh, cornerRadiusTop, cornerRadiusBottom, radiusWaist, shoulderCx, shoulderY, hipCx, hipY,
-    ux, uy, uxBottom, uyBottom, waistMajor } = hourglassConstruction(region, resolvedAll);
+    ux, uy, uxBottom, uyBottom, waistMajor, topInset } = hourglassConstruction(region, resolvedAll);
 
   // The ACTUAL drawn radii/walls (§ (2)/(1) above) -- everything from here
   // down uses these, never the raw params computed above directly.
@@ -658,13 +689,14 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const radiusWaistDrawn = radiusWaist + strokeHalfWidth; // concave: grows
   const hwDrawn = hw - strokeHalfWidth;
   const hhDrawn = hh - strokeHalfWidth;
+  const topDrawnX = hwDrawn - topInset; // T3: the top horns' drawn x (hwDrawn exactly when topInset is 0)
 
   const P = (x, y) => ({ x: cx0 + x, y: cy0 + y }); // local (right-positive, Y-down) -> world
   const M = (x, y) => ({ x: cx0 - x, y: cy0 + y }); // mirrored (left side)
 
   // Right side, top -> bottom.
-  const rTop = P(hwDrawn, -hhDrawn);
-  const rShoulderHorn = P(hwDrawn, shoulderY);
+  const rTop = P(topDrawnX, -hhDrawn);
+  const rShoulderHorn = P(topDrawnX, shoulderY);
   // Tangent junctions lie on the centre line, the drawn radius out from each centre.
   const rShoulderWaistJct = P(shoulderCx + topDrawn * ux, shoulderY + topDrawn * uy);
   const rWaistHipJct = P(hipCx + bottomDrawn * uxBottom, hipY - bottomDrawn * uyBottom);
@@ -675,8 +707,8 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const lHipHorn = M(hwDrawn, hipY);
   const lWaistHipJct = M(hipCx + bottomDrawn * uxBottom, hipY - bottomDrawn * uyBottom);
   const lShoulderWaistJct = M(shoulderCx + topDrawn * ux, shoulderY + topDrawn * uy);
-  const lShoulderHorn = M(hwDrawn, shoulderY);
-  const lTop = M(hwDrawn, -hhDrawn);
+  const lShoulderHorn = M(topDrawnX, shoulderY);
+  const lTop = M(topDrawnX, -hhDrawn);
 
   const keypoints = [
     rTop, rShoulderHorn, rShoulderWaistJct, rWaistHipJct, rHipHorn, rBottom,
@@ -714,6 +746,10 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // unit values computed just above).
   // F12: every declared param, the derived ones (waistRadius, the two corners) included.
   const resolvedParams = { ...resolvedAll };
+  // T3 TAPERED HOURGLASS: a frame-only param is reported only when the caller set it, so a Shape Lattice
+  // pattern's (and Template 1's) resolved params -- what a handle seeds from and what the Fusion manifest
+  // walks -- are exactly what they were before it existed.
+  for (const k of FRAME_ONLY_PARAM_KEYS) if (!params || params[k] == null) delete resolvedParams[k];
 
   return { keypoints, segments, cx: cxWorld, params: resolvedParams, hasUserSegments };
 }

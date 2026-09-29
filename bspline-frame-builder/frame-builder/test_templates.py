@@ -32,15 +32,23 @@ _SKETCHES_ROOT = os.path.join(_HERE, 'sketches')
 
 
 # Expected shape of each template, hand-derived from the phase files on
-# disk. Updating phases? Bump these counts.
+# disk. Updating phases? Bump these counts. (T3 session: the sketch-2 counts
+# were stale -- 12 / 7 against the 11 / 6 phase files on disk -- unnoticed
+# because pytest only warned on the returned error list; see
+# test_every_check_passes below.)
 EXPECTED = {
     'template_1': {
         'name': 'Template 1 - Hourglass',
-        'phase_counts': {1: 2, 2: 12, 3: 5},
+        'phase_counts': {1: 2, 2: 11, 3: 5},
     },
     'template_2': {
         'name': 'Template 2 - Narrow Neck',
-        'phase_counts': {1: 2, 2: 7, 3: 5},
+        'phase_counts': {1: 2, 2: 6, 3: 5},
+    },
+    # T3 TAPERED HOURGLASS: Template 1's phases (same files, only p02_01/02/03/11 edited).
+    'template_3': {
+        'name': 'Template 3 - Tapered Hourglass',
+        'phase_counts': {1: 2, 2: 11, 3: 5},
     },
 }
 
@@ -141,6 +149,9 @@ def test_cross_template_regression():
     sequences = [
         ('template_1', 'template_2'),
         ('template_2', 'template_1'),
+        # T3 is a copy of T1's folder with the SAME phase file names: the likeliest leak.
+        ('template_1', 'template_3'),
+        ('template_3', 'template_1'),
     ]
     for first, second in sequences:
         try:
@@ -162,6 +173,12 @@ def test_cross_template_regression():
                 f"{traceback.format_exc()}"
             )
     return errors
+
+
+def test_every_check_passes():
+    """The two checks above RETURN their errors (for main()); under pytest
+    that was only a warning. This makes a returned error fail the run."""
+    assert test_each_template_in_isolation() + test_cross_template_regression() == []
 
 
 # ---------------------------------------------------------------------------

@@ -49,7 +49,13 @@ describe('frame-defs (generated) — schema', () => {
     expect(PRESETS[t.silhouettePreset]).toBeTruthy();
     // F8: the shape is a model fitted from the recorded Fusion goldens, with its fit report.
     const FEATURES = { hourglass: ['cornerR', 'depth', 'notch', 'waistCy', 'waistR'], bottle: ['bodyR', 'neckHalfW', 'neckR', 'neckTop'] };
-    expect(Object.keys(t.shapeModel.features).sort()).toEqual(FEATURES[t.silhouettePreset]);
+    // T3 TAPERED HOURGLASS: a narrow-top hourglass model also carries topInset (and, once fitted from its own
+    // goldens, the two corners separately) -- the only extras paramsFromShapeModel reads.
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset'], bottle: [] };
+    const keys = Object.keys(t.shapeModel.features);
+    expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
+    expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);
+    if (t.id !== 'template_3') expect(keys.sort()).toEqual(FEATURES[t.silhouettePreset]); // Template 1 / 2: exactly as before
     expect(t.shapeModel.fit.fittedFrom.length).toBeGreaterThanOrEqual(2);
     for (const p of t.params) {
       expect(p).toHaveProperty('unit');

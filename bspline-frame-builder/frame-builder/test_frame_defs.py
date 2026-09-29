@@ -184,6 +184,20 @@ def test_every_handle_binding_is_declared_and_valid(defs):
 
 
 
+
+# ------------------------------------------------------ T3 tapered hourglass
+def test_template_3_is_template_1_plus_a_top_width(defs):
+    t = {x["id"]: x for x in defs["templates"]}
+    t1, t3 = t["template_1"], t["template_3"]
+    assert t3["name"] == "Template 3 - Tapered Hourglass" and t3["silhouettePreset"] == "hourglass"
+    assert t3["regions"] == t1["regions"] and t3["seedMap"] == t1["seedMap"] and t3["features"] == t1["features"]
+    assert t3["params"] == t1["params"]  # no new parameter
+    assert t3["handles"] == t1["handles"] + [{"key": "topInset", "label": "Top width", "basis": "hw", "binding": "seeded"}]
+    assert t3["handleMigrations"] == {}
+    # the app never gets a null model (paramsFromShapeModel reads model.features); Template 1's has no topInset
+    assert "topInset" in t3["shapeModel"]["features"] and "topInset" not in t1["shapeModel"]["features"]
+
+
 # ------------------------------------------------------------- F12 woods
 _LIBRARY_FIXTURE = os.path.join(_REPO, "tests", "fixtures", "fusion-appearance-library.json")
 

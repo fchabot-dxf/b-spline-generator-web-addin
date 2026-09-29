@@ -15,9 +15,16 @@ _FILES = sorted(glob.glob(os.path.join(_DIR, "*.json")))
 _DEGENERATE = {"5.51x1.97"}
 
 
+_SIZES = ("7x9", "5.51x1.97", "12x6")
+
+
 def test_all_six_goldens_exist():
     names = {os.path.basename(f) for f in _FILES}
-    assert names == {f"template_{t}_{s}.json" for t in (1, 2) for s in ("7x9", "5.51x1.97", "12x6")}
+    # T3 TAPERED HOURGLASS: its goldens are recorded in a live Fusion session (sketches/template_3/LIVE_CHECK.md);
+    # until then it has none and the app uses its provisional shape model. Once recorded: all three sizes.
+    t3 = {n for n in names if n.startswith("template_3_")}
+    assert t3 in (set(), {f"template_3_{s}.json" for s in _SIZES}), sorted(t3)
+    assert names - t3 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
 
 
 @pytest.mark.parametrize("path", _FILES, ids=os.path.basename)

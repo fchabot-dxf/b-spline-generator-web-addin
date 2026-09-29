@@ -216,6 +216,15 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         }),
       };
     })(),
+    {
+      // T3 TAPERED HOURGLASS (Fred: "the top narrower than the base"): the top width, a POSITION square midway
+      // down the right top horn; a horizontal drag moves both top horns (mirrored) in or out. Value = how far
+      // in from the outer edge, (edge - x) / hw, clamped to [0, waist) by the generator's own range. Only a
+      // template whose binding table declares it (Template 3) asks for it; the Shape Lattice never does.
+      key: 'topInset', label: 'Top width', axis: 'x', handleKind: 'position',
+      anchor: { x: edge - g.topInset, y: cy0 + (-hh + g.shoulderY) / 2 },
+      valueFromWorld: (pt) => within('topInset', (edge - pt.x) / hw),
+    },
   ]));
 }
 
@@ -397,6 +406,7 @@ export function hitTestArcGrip(handles, pt, tolerance) {
  * rTop, starts at the first real edge out of rTop"):
  *   hourglass: 0 horn, 1 SHOULDER, 2 WAIST, 3 HIP, 4 horn, 5 bottom edge,
  *              6 horn, 7 hip(L), 8 waist(L), 9 shoulder(L), 10 horn, 11 top edge.
+ *   (T3 `topInset`, the top width, maps to 0: the right top horn it slides.)
  *   bottle:    0 horn, 1 NECK/WAIST, 2 HIP/BODY, 3 horn, 4 bottom edge,
  *              5 horn, 6 hip/body(L), 7 neck/waist(L), 8 horn, 9 top edge.
  * `waistCenterY` repositions the pinch itself (shoulderY/hipY are BOTH
@@ -407,7 +417,7 @@ export function hitTestArcGrip(handles, pt, tolerance) {
  * is no automatic check tying the two together.
  */
 export const HANDLE_SEGMENT_INDEX = {
-  hourglass: { cornerRadiusTop: 1, waistReach: 2, cornerRadiusBottom: 3, waistCenterY: 2, waistRadius: 2 },
+  hourglass: { cornerRadiusTop: 1, waistReach: 2, cornerRadiusBottom: 3, waistCenterY: 2, waistRadius: 2, topInset: 0 },
   bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2 },
 };
 

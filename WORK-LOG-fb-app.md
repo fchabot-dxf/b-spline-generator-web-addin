@@ -3731,3 +3731,43 @@ floats there pointing at nothing")
   the one Send) / ✕ (hides that save for good, 'bspline.pm.continueDismissed'). Load goes through _loadFrom (asks
   when there are unsaved changes). Verified with the KV mock + adsk stub: banner shown; Load & Send -> 6x8 loaded,
   project name set, Send started (generate_start); next start -> no banner (already seen). vitest 2437 passed.
+
+## Template 3 - Tapered Hourglass (Fred: the Hourglass with the top narrower than the base) -- Fusion side untested live
+- Fusion: sketches/template_3/ = a copy of template_1 (auto-discovered by its folder). Four phases edited:
+  p02_01 also projects offset_BB_top (proj_off_BB_top, as T2); p02_03 drops T1's two TOP-corner Coincidents
+  (they forced top width == base width) for T2's proven pattern, Horizontal(top_edge) + Coincident(top_edge:S,
+  proj_off_BB_top), bottom corners unchanged; its seeds (and p02_02's pins, the shoulder pin now 0.27 w) are the
+  7x9 solve of the app's provisional T3 shape, so the seeded loop is closed and tangent; p02_11 adds ONE top L/R
+  tie, Equal(arc_shoulder_R, arc_shoulder_L). DOF count: with the top corners free each side keeps one DOF
+  (shoulder radius vs top horn x); the arc Equal removes exactly the L/R one. Symmetry(top_edge:S, :E, Y_AXIS)
+  was not used: its "same height" half repeats Horizontal (over-constraint risk). No ck_ gate (no new param).
+- template_data: "Template 3 - Tapered Hourglass", preset hourglass, T1's regions / seed map / features, handles
+  = T1's + {"topInset", "Top width", hw, seeded}, handleMigrations {}. Frame["shapeExtractor"] =
+  "hourglass_narrow_top", Frame["provisionalShape"] = {from: template_1, topInsetOfDepth: 0.7}.
+- frame_shape_fit: _hourglass_narrow_top (hip tangent at hw, shoulder tangent to its OWN top horn, cornerR/notch =
+  the hip's, + cornerRTop / cornerRBottom / topInset) for when T3 goldens exist; provisional_shape_model = T1's
+  fitted model + topInset = 0.7 x depth (7x9: a 5.03 in top over the 6.5 in base), marked `provisional`.
+  frame_definition.template_shape_model picks the extractor and falls back to the provisional model, so the app
+  never gets shapeModel null for T3. frame-defs regenerated: T1 / T2 entries identical (only sourceHash moved).
+- App generator: DERIVED_PARAM_DEFAULTS.hourglass.topInset = 0; PARAM_ORDER.hourglass gains topInset LAST (the
+  plan said after waistReach: that would shift the [Generate] salt index of every later key and change every T1
+  Generate); range [0, waistReach - eps] (never past the waist); the corner / waist-radius ranges keep the full
+  depth on purpose (a narrower top only relaxes them, proved in the comment). hourglassConstruction: the top side
+  uses d -> d - i (corner centre hw - i - r); _solveHourglass: top horn / corner at hw - i. paramsFromShapeModel
+  passes topInset / cornerRTop / cornerRBottom when a model has them. A frame-only param is reported in the
+  resolved params only when set (FRAME_ONLY_PARAM_KEYS), and editor-sketch-manifest filters it too: never a
+  Fusion user parameter. Not in SHAPE_PARAM_KEYS (the Shape Lattice panel is unchanged).
+- Handle: "Top width", a position square midway down the right top horn, value (edge - x) / hw;
+  HANDLE_SEGMENT_INDEX.hourglass.topInset = 0. Frame record / Generate / seed geometry / 3D / contour-from-frame /
+  panel lip are generic (T3 added to their test lists, all pass).
+- Byte-identical check (scratch A/B against a HEAD worktree): 400 random Shape Lattice hourglass shapes
+  (silhouette, ranges, contour, manifest, handles) + T1 frames at 5 boards (profile, inner edge, 5 Generates,
+  handles, seed geometry): the same sha256.
+- Tools: f20_seed_case.mjs takes TEMPLATE=template_3 and a 6th arg (topInset); f20_live_parity.py builds the
+  case's templateId. LIVE_CHECK.md (sketches/template_3) = Fred's one Fusion session: build, record goldens
+  (7x9, 12x6, 5.51x1.97), seeded parity, bbox 0.5 / 1.0 inversion sweep, what to send back, then re-run
+  gen_frame_defs.py to replace the provisional model.
+- test_templates.py: its sketch-2 counts were stale (12 / 7 vs the 11 / 6 phase files) and pytest only WARNED on
+  the returned error list; counts fixed, T3 + T1<->T3 cross-load added, test_every_check_passes asserts.
+- vitest 2493 passed (was 2437; + tests/frame-template-3.test.js and T3 in the frame test lists); pytest
+  frame-builder 220 passed / 2 skipped, b-spline-gen 89 passed.

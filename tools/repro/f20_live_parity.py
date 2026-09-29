@@ -1,5 +1,5 @@
 # F20 live (run INSIDE Fusion, exec'd with globals app, CASE=<case json from f20_seed_case.mjs>, optional SHOT=<png>):
-# build T1 with the app's seed geometry in ONE tagged scratch doc (the Send path, build_sketch_logic_v3; NOT
+# build T1 (or the case's `templateId`, T3) with the app's seed geometry in ONE tagged scratch doc (the Send path, build_sketch_logic_v3; NOT
 # build_frame_logic, which ignores seeds), read every outline arc + each constraint/dimension touching the corner
 # geometry, compare with the app, close the doc by its own handle. Nothing is added to sys.path / sys.modules.
 import json, os, sys, math
@@ -64,7 +64,7 @@ def run_case(case_file, tag, shot=None):
         ns['_make_core'](d, W, H)
         fe = sys.modules['frame_engine_core']
         lg = sys.modules['fb_utils.fb_logger'].DebugLogger(os.path.dirname(os.path.dirname(fe.__file__)))
-        fe.build_sketch_logic_v3('template_1', 'joint', external_logger=lg,
+        fe.build_sketch_logic_v3(case.get('templateId', 'template_1'), 'joint', external_logger=lg,
                              data={'ui_data': {}, 'seed_geometry': case['seedGeometry']})
         root = d.rootComponent
         fc = [o for o in root.occurrences if o.component.name.startswith('Frame_')][0].component

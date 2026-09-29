@@ -58,7 +58,7 @@ import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js
 import {
   primitivesBBox, insetGeneratedPresetPathDToPrimitives, sizedBoardRegion, latticeBoundaryGuide, GUIDE_ROLE,
 } from './editor-lattice-boundary.js';
-import { generateContourSilhouette, primitivesToPathD, PRESETS } from './editor-shape-lattice-generator.js';
+import { generateContourSilhouette, primitivesToPathD, PRESETS, FRAME_ONLY_PARAM_KEYS } from './editor-shape-lattice-generator.js';
 import { contourSilhouette } from './contour-from-frame.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
@@ -845,7 +845,9 @@ export function manifestFromShape(shape, region, opts = {}) {
   const heightPairIds = (topId && bottomId) ? [topId, bottomId] : [];
 
   const nameTable = PARAM_FUSION_NAMES[preset] || {};
-  const parameters = Object.entries(params).map(([key, value]) => ({
+  // T3 TAPERED HOURGLASS: a frame-only shape param (topInset) is never a Fusion user parameter (Fred's rule:
+  // no new parameters), even if one ever reached a pattern's params.
+  const parameters = Object.entries(params).filter(([key]) => !FRAME_ONLY_PARAM_KEYS.includes(key)).map(([key, value]) => ({
     name: nameTable[key] || key, value, unit: null,
   }));
   parameters.push({ name: 'half_width', value: region.w / 2, unit: 'in' });
