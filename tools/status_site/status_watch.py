@@ -84,7 +84,8 @@ NOWIN = {"creationflags": 0x08000000} if os.name == "nt" else {}
 INTERVAL_S = 60
 # declared screenshot drop folder: workers save <seat key>/<HHMM>_<tag>_<what>.png here; newest SHOTS_PER_SEAT are published
 SHOTS_DIR = os.path.join(os.path.expanduser("~"), ".bspline-status", "shots")
-SHOTS_PER_SEAT = 6
+SHOTS_PER_SEAT = 60   # published per seat (newest first); the lightbox swipes through all of them
+SHOTS_THUMBS = 6      # thumbnails shown in the seat card grid
 
 
 def _env():
@@ -171,7 +172,8 @@ def render(seats, commits, roadmap):
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p>'
-        + ('<div class="shots">' + "".join(f'<img class="thumb" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for x in s["shots"]) + "</div>" if s["shots"] else "")
+        + ('<div class="shots">' + "".join(f'<img class="thumb{" more" if i >= SHOTS_THUMBS else ""}" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for i, x in enumerate(s["shots"]))
+           + (f'<span class="morec">+{len(s["shots"]) - SHOTS_THUMBS} more, swipe in the viewer</span>' if len(s["shots"]) > SHOTS_THUMBS else "") + "</div>" if s["shots"] else "")
         + '</section>')
     cards = "".join(f'<h2 class="station">{e(STATIONS.get(st, st))}</h2><div class="grid">'
                     + "".join(card(s) for s in seats if s["station"] == st) + "</div>"
@@ -182,7 +184,7 @@ def render(seats, commits, roadmap):
         f'<li><code>{e(c.split("|")[0])}</code> {e(c.split("|")[2])} <span>{e(c.split("|")[1])}</span></li>'
         for c in cs if c.count("|") >= 2) + "</ul></details>" for b, cs in commits.items())
     page = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="60"><title>B-Spline progress</title><style>
+<title>B-Spline progress</title><style>
 :root{{--bg:#f6f7f9;--fg:#1c2330;--mut:#667085;--card:#fff;--w:#1d6fd8;--a:#b86a00;--line:#e3e6eb}}
 @media(prefers-color-scheme:dark){{:root{{--bg:#12151b;--fg:#e6e9ef;--mut:#98a2b3;--card:#1b2029;--line:#2a313c}}}}
 body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif;padding:16px;max-width:900px;margin-inline:auto}}
@@ -194,17 +196,31 @@ h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} sm
 .fill{{height:100%;background:var(--w)}} .lbl{{font-size:12px;color:var(--mut)}}
 img.thumb{{cursor:zoom-in}} dialog#lb{{border:0;padding:0;background:transparent;max-width:96vw;max-height:94vh}} dialog#lb::backdrop{{background:rgba(0,0,0,.8)}}
 dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cursor:zoom-out}} dialog#lb figcaption{{color:#ddd;font-size:12px;text-align:center;padding-top:4px}}
+dialog#lb figure{{margin:0;position:relative;touch-action:pan-y}} .nav{{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:0;font-size:28px;width:44px;height:64px;border-radius:8px;cursor:pointer}} .nav.p{{left:4px}} .nav.n{{right:4px}} .x{{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}}
+.shots img.more{{display:none}} .morec{{grid-column:1/-1;font-size:12px;color:var(--mut)}}
 .shots{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}} .shots img{{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line)}}
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
 {cards}{com}
-<dialog id="lb"><figure><img id="lbImg" alt=""><figcaption id="lbCap"></figcaption></figure></dialog>
+<dialog id="lb"><figure><img id="lbImg" alt=""><button class="nav p" id="lbPrev" aria-label="Previous">&#8249;</button><button class="nav n" id="lbNext" aria-label="Next">&#8250;</button><button class="x" id="lbClose" aria-label="Close">&#10005;</button><figcaption id="lbCap"></figcaption></figure></dialog>
 <script>
 const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
-function openShot(t){{ im.src=t.src; cap.textContent=t.alt; lb.showModal(); }}
+let set=[], idx=0;
+function show(){{ const t=set[idx]; im.src=t.src; cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }}
+function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')]; idx=set.indexOf(t); show(); lb.showModal(); }}
+function step(d){{ if(!set.length) return; idx=(idx+d+set.length)%set.length; show(); }}
+document.getElementById('lbPrev').addEventListener('click',ev=>{{ev.stopPropagation();step(-1);}});
+document.getElementById('lbNext').addEventListener('click',ev=>{{ev.stopPropagation();step(1);}});
+document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();lb.close();}});
 document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog')){{ lb.close(); }} }});
-document.addEventListener('keydown',ev=>{{ const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
+document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
+  const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
+let x0=null,y0=null;
+lb.addEventListener('touchstart',ev=>{{ x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; }},{{passive:true}});
+lb.addEventListener('touchend',ev=>{{ if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
+  if(Math.abs(dx)>40 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1); ev.preventDefault(); }} }});
+setInterval(()=>{{ if(!lb.open) location.reload(); }}, 60000);
 </script></body></html>"""
     return body, page
 
