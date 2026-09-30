@@ -216,7 +216,7 @@ document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropaga
 document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target===lb && !moved){{ lb.close(); }} }});
 document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
   const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
-// zoom + pan: pinch to zoom, one finger to pan while zoomed (Fred: just pinch and pan); swipe changes image only at 1x; swipe changes image only at 1x
+// zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); no double-tap (Fred); swipe changes image only at 1x; swipe changes image only at 1x
 let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, drag=null;
 function za(){{ im.style.transform='translate('+zx+'px,'+zy+'px) scale('+zs+')';  }}
 function zr(){{ zs=1; zx=0; zy=0; za(); }}
@@ -236,6 +236,11 @@ lb.addEventListener('touchend',ev=>{{
   if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
   if(zs===1 && Math.abs(dx)>40 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1); moved=true; ev.preventDefault(); return; }}
   }});
+lb.addEventListener('wheel',ev=>{{ ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); }},{{passive:false}});
+im.addEventListener('mousedown',ev=>{{ if(zs===1) return; ev.preventDefault(); moved=false; drag={{mx:ev.clientX,my:ev.clientY,x:zx,y:zy}};
+  const mv=e=>{{ zx=drag.x+e.clientX-drag.mx; zy=drag.y+e.clientY-drag.my; if(Math.abs(e.clientX-drag.mx)+Math.abs(e.clientY-drag.my)>3) moved=true; za(); }};
+  const up=()=>{{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); setTimeout(()=>{{moved=false;}},0); }};
+  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); }});
 lb.addEventListener('close',zr);
 setInterval(()=>{{ if(!lb.open) location.reload(); }}, 60000);
 </script></body></html>"""
