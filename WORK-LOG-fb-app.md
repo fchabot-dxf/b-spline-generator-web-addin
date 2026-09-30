@@ -4036,3 +4036,34 @@ floats there pointing at nothing")
   - all six sidebar fields are shown;
   - changing thickness in the sidebar updates `P.frame` and the 3D frame bars;
   - the editor Frame tab holds only template, Generate and Undo.
+
+## 2026-09-30: H23 item 1 — Template 3 (Tapered Hourglass) live Fusion check (worker)
+
+Full results in `LIVE-RESULTS-ranchy.md`. Summary: **passed clean, no template code fix needed.**
+
+- Deployed from a clean scratch worktree at `origin/main` (`git worktree add --detach ../bsg-fusion-scratch
+  origin/main`), per the deploy-from-clean-checkout rule: stopped the add-in via its live `sys.modules` entry
+  (`stop(None)` alone), ran `DEPLOY_bspline-frame-builder.py` from the scratch worktree, `run(None)` alone.
+  No stale palette to delete this time (`stop()` had already cleared it; confirmed via `ui.palettes` before
+  and after).
+- Built Template 3 by hand (7x9), recorded its 3 parity goldens, ran the 4-case f20 seeded parity check, and
+  the inversion sweep (7x9/12x6 x offset 0.5/1.0) — every check passed on the first try (details in
+  LIVE-RESULTS-ranchy.md). Regenerated `frame-defs.json/js`; Templates 1/2 confirmed byte-identical via
+  direct diff read (only Template 3's own entry and the top-level `sourceHash` changed).
+- Fixed 2 stale tests in `tests/frame-template-3.test.js` that hardcoded a provisional-era coincidence
+  (topInset 0 being bit-identical to Template 1, true only because T3's old shapeModel WAS T1's model plus
+  an offset) — rewrote them to check the real invariant (same topology, full width, no defects) instead,
+  mutation-tested against a deliberately broken topInset-0 boundary to confirm they're not vacuous.
+- Found and recorded (not fixed) a real degenerate-geometry bug: at 5.51x1.97 in, Template 3's solver
+  reports healthy but produces an asymmetric, partially-collapsed shape (one arc radius zero, another arc +
+  a construction line landing outside the board) instead of the clean 0 bars Templates 1/2 give at that same
+  size. Updated `test_frame_parity_goldens.py` to assert the MEASURED count for Template 3 specifically
+  (a new template-keyed override), not to mask it — flagged as a follow-up (Template 3 needs the same
+  "too small, don't try" guard 1/2 already have).
+- Scratch documents: every one tagged (`design.attributes.add("claude", "scratch", <tag>)`) and closed by
+  its own verified handle; Fred's own open "Untitled" document was never touched. Screenshot taken via a
+  Fusion-window-bounded PowerShell capture (Win32 `FindWindow`/`GetWindowRect` + `CopyFromScreen`), not a
+  full-desktop grab — an early full-desktop attempt caught unrelated content on the other monitor and was
+  deleted immediately without being read further.
+- `npx vitest run`: 2725 passed. `pytest` (frame-builder / b-spline-gen / repo root): 287+89+470 passed,
+  4+0+4 skipped.
