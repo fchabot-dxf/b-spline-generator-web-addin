@@ -216,9 +216,9 @@ document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropaga
 document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target===lb && !moved){{ lb.close(); }} }});
 document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
   const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
-// zoom + pan: pinch / double-tap (touch), wheel / drag (mouse); swipe changes image only at 1x
-let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, lastTap=0, drag=null;
-function za(){{ im.style.transform='translate('+zx+'px,'+zy+'px) scale('+zs+')'; im.style.cursor=zs>1?'grab':'zoom-out'; }}
+// zoom + pan: pinch to zoom, one finger to pan while zoomed (Fred: just pinch and pan); swipe changes image only at 1x; swipe changes image only at 1x
+let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, drag=null;
+function za(){{ im.style.transform='translate('+zx+'px,'+zy+'px) scale('+zs+')';  }}
 function zr(){{ zs=1; zx=0; zy=0; za(); }}
 im.style.transformOrigin='center center'; im.style.transition='none';
 function zoomAt(ns,cx,cy){{ const r=im.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
@@ -235,13 +235,7 @@ lb.addEventListener('touchend',ev=>{{
   if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; x0=null; return; }}
   if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
   if(zs===1 && Math.abs(dx)>40 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1); moved=true; ev.preventDefault(); return; }}
-  if(Math.abs(dx)<10&&Math.abs(dy)<10){{ const now=Date.now();
-    if(now-lastTap<300){{ zoomAt(zs>1?1:2.5,ev.changedTouches[0].clientX,ev.changedTouches[0].clientY); moved=true; ev.preventDefault(); lastTap=0; }} else lastTap=now; }} }});
-lb.addEventListener('wheel',ev=>{{ ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); }},{{passive:false}});
-im.addEventListener('mousedown',ev=>{{ if(zs===1) return; ev.preventDefault(); moved=false; drag={{mx:ev.clientX,my:ev.clientY,x:zx,y:zy}};
-  const mv=e=>{{ zx=drag.x+e.clientX-drag.mx; zy=drag.y+e.clientY-drag.my; if(Math.abs(e.clientX-drag.mx)+Math.abs(e.clientY-drag.my)>3) moved=true; za(); }};
-  const up=()=>{{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); setTimeout(()=>{{moved=false;}},0); }};
-  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); }});
+  }});
 lb.addEventListener('close',zr);
 setInterval(()=>{{ if(!lb.open) location.reload(); }}, 60000);
 </script></body></html>"""
