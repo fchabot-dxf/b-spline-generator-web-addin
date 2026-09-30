@@ -101,7 +101,7 @@ await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
   document.getElementById('shapeLatticeGenerate').click(); await W(2500); })()`);
 
 const pick = (id, v) => evalJS(`(async()=>{ const e = document.getElementById('${id}'); e.value = '${v}'; e.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,1500)); })()`);
-await pick('frameTemplate', 'template_1');
+await pick('editorFrameTemplate', 'template_1');
 await evalJS(`(async()=>{ const e = document.getElementById('shapeLatticeContourFromFrame'); e.checked = true; e.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); })()`);
 
 const field = (fid, v) => evalJS(`(async()=>{ const e = document.getElementById('${fid}'); e.value = '${v}'; e.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); })()`);

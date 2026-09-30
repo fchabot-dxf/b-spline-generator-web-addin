@@ -104,8 +104,8 @@ describe('F15 Frame bottom + thickness: formulas through the frame panel', () =>
         <input type="number" id="frameBottomZ" value="-1" step="0.125">
         <input type="number" id="frameTrimOffset" step="0.0625"></div>
       <button id="btnStampEdit"></button><div id="editorFrameShield"></div>
-      <aside id="editorFramePanel">
-        <div id="editorFrameThicknessRow"><input type="number" id="editorFrameThickness" step="0.0625"></div>
+      <aside id="editorFramePanel"><select id="editorFrameTemplate"></select>
+        <div id="frameThicknessRow"><input type="number" id="frameThickness" step="0.0625"></div>
         <button id="editorFrameGenerate"></button><button id="editorFrameUndo" disabled></button></aside>
       <aside id="editorLayersPanel"></aside><div id="fusion-status"></div>`;
     document.body.appendChild(root);
@@ -123,7 +123,7 @@ describe('F15 Frame bottom + thickness: formulas through the frame panel', () =>
   const $ = (id) => document.getElementById(id);
 
   it('both fields are attached with the FRAME scope', () => {
-    for (const id of ['frameBottomZ', 'editorFrameThickness']) {
+    for (const id of ['frameBottomZ', 'frameThickness']) {
       expect(isFormulaField($(id)), id).toBe(true);
       expect(FORMULA_FIELDS.find((f) => f.id === id).section).toBe('FRAME');
     }
@@ -132,29 +132,29 @@ describe('F15 Frame bottom + thickness: formulas through the frame panel', () =>
   it('a formula evaluates into the frame record', () => {
     typeAndCommit($('frameBottomZ'), '-height / 9 - trim');   // -1 - 0.25
     expect(getFrameRecord().frameBottomZ).toBeCloseTo(-1.25, 12);
-    typeAndCommit($('editorFrameThickness'), 'width / 10');
+    typeAndCommit($('frameThickness'), 'width / 10');
     expect(getFrameRecord().params.frame_thickness).toBeCloseTo(0.7, 12);
     typeAndCommit($('frameBottomZ'), 'bottom - thickness');   // the frame's own current values
     expect(getFrameRecord().frameBottomZ).toBeCloseTo(-1.95, 12);
   });
 
   it('the thickness result is clamped to the template range (0.25 .. 1.5)', () => {
-    typeAndCommit($('editorFrameThickness'), 'width');
+    typeAndCommit($('frameThickness'), 'width');
     expect(getFrameRecord().params.frame_thickness).toBe(1.5);
-    typeAndCommit($('editorFrameThickness'), 'width / 100');
+    typeAndCommit($('frameThickness'), 'width / 100');
     expect(getFrameRecord().params.frame_thickness).toBe(0.25);
   });
 
   it('a bad formula keeps the old value', () => {
     typeAndCommit($('frameBottomZ'), 'height +');
     expect(getFrameRecord().frameBottomZ).toBe(-1);
-    typeAndCommit($('editorFrameThickness'), 'thick * 2');
+    typeAndCommit($('frameThickness'), 'thick * 2');
     expect(getFrameRecord().params.frame_thickness).toBeUndefined();
   });
 
   it('the autocomplete lists the declared names', () => {
     expect(offered($('frameBottomZ'), 'th')).toEqual(['thickness']);
-    expect(offered($('editorFrameThickness'), 'b')).toEqual(['bottom']);
+    expect(offered($('frameThickness'), 'b')).toEqual(['bottom']);
     expect(offered($('frameBottomZ'), 't')).toEqual(['trim', 'thickness']);
   });
 });

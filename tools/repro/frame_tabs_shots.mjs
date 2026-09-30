@@ -57,7 +57,7 @@ const frameTab = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout
   ${ART_JS} window.__artBefore = ${ART_SVG}; await W(300);
   const vis = (id) => { const el = document.getElementById(id); return !!el && el.offsetParent !== null; };
   return JSON.stringify({ framePanel: vis('editorFramePanel'), layersPanel: vis('editorLayersPanel'), shield: vis('editorFrameShield'),
-    template: document.getElementById('frameTemplate').value, thickness: document.getElementById('editorFrameThickness').value,
+    template: document.getElementById('editorFrameTemplate').value, thickness: document.getElementById('frameThickness').value,
     profileDrawn: !!document.getElementById('frame-profile'), artShapes: window.svgEditor._sketchLayer.children().length,
     artOpacity: window.svgEditor._sketchLayer.attr('opacity'), artLocked: window.svgEditor._artworkLocked });
 })()`);

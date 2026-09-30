@@ -407,8 +407,7 @@ describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
       // panel lip), not to a P key.
       if (section === 'FRAME') expect([...FRAME_PARAM_FIELDS.map((f) => f.id), 'frameBottomZ', 'framePanelLip'], id).toContain(id);
       else expect(pKeyFor(id), `${id} has no P key`).toBeTruthy();
-      // F15 / item 14: every FRAME field lives in the editor's Frame tab, every other field in its sidebar section
-      if (section === 'FRAME') { expect(el.closest('#editorFramePanel'), id).not.toBeNull(); continue; }
+      // every FRAME field, thickness included, lives in the sidebar FRAME section (Fred: they show in the 3D preview)
       const hdr = el.closest('.panel')?.querySelector('.panel-header')?.textContent || '';
       expect(hdr, id).toContain(section);
     }
@@ -416,11 +415,11 @@ describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
   it('never declares the excluded fields (seed id, lattice/editor panels); F15 covers the rest', () => {
     const ids = FORMULA_FIELDS.map((f) => f.id);
     expect(ids).not.toContain('seed');
-    // the lattice panels have their own (R3); the only editor field is the Frame tab's thickness (F15)
-    expect(ids.filter((id) => /^(lattice|shapeLattice|editor|skel)/.test(id))).toEqual(['editorFrameThickness']);
+    // the lattice panels have their own (R3); no editor-panel field (the thickness moved to the sidebar)
+    expect(ids.filter((id) => /^(lattice|shapeLattice|editor|skel)/.test(id))).toEqual([]);
     expect(new Set(ids).size).toBe(ids.length);
     // F15: Frame bottom + thickness and the sculpt Strength / Hardness are formula fields now
-    for (const id of ['frameBottomZ', 'editorFrameThickness', 'sculptTopHardness', 'sculptBotHardness']) expect(ids).toContain(id);
+    for (const id of ['frameBottomZ', 'frameThickness', 'sculptTopHardness', 'sculptBotHardness']) expect(ids).toContain(id);
     // the stamp transform is per LAYER: not a sidebar P field, attached by its own binder (STAMP_TRANSFORM_FIELDS)
     for (const id of ['stampTx', 'stampTy', 'stampRotation', 'stampScale']) expect(ids).not.toContain(id);
   });

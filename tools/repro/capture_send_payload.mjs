@@ -64,7 +64,7 @@ const steps = {
      document.getElementById('shapeLatticeGenerate').click(); await W(3000);`,
   'box-lattice': `document.getElementById('toolLattice').click(); await W(900);
      document.getElementById('latticeGenerate').click(); await W(2500);`,
-  'shape-lattice-frame': `const t = document.getElementById('frameTemplate'); t.value = 'template_1'; t.dispatchEvent(new Event('change')); await W(1500);
+  'shape-lattice-frame': `const t = document.getElementById('editorFrameTemplate'); t.value = 'template_1'; t.dispatchEvent(new Event('change')); await W(1500);
      document.getElementById('editorFrameGenerate').click(); await W(1500); // SEEDED: Fusion follows the app's seeds exactly (F11)
      document.getElementById('toolShapeLattice').click(); await W(900);
      document.getElementById('shapeLatticeGenerate').click(); await W(3000);

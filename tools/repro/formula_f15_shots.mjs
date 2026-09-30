@@ -114,7 +114,7 @@ await typeInto('#frameBottomZ', 'bottom +'); await press('Enter');
 checks.frameBadKept = (await read()).frame?.frameBottomZ === checks.frameBottomZ;
 await press('Escape');
 await evalJS(`document.getElementById('btnEditFrameShape').click()`); await sleep(2500);
-checks.thicknessTyping = await typeInto('#editorFrameThickness', 'width/10');
+checks.thicknessTyping = await typeInto('#frameThickness', 'width/10');
 await shot('thickness');
 await press('Enter');
 checks.thickness = (await read()).frame?.params?.frame_thickness;

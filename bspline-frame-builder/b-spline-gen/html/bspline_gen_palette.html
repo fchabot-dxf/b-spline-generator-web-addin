@@ -579,13 +579,42 @@
       <div class="panel panel-frame">
         <div class="panel-header collapsed" id="framePanelHeader" onclick="togglePanel(this)">🖼 FRAME <span id="frameSummary" style="font-weight:400; opacity:0.7;">— none</span></div>
         <div class="panel-body hidden">
-          <!-- Item 14 ("all frame settings in one place"): every frame setting is edited in the editor's Frame tab
-               (#editorFramePanel). The sidebar keeps a one-line summary (main/frame-panel.js frameSummaryText, live)
-               and the door. Fred: "I'd still want the editor door even if no frame yet exists" -- always shown. -->
-          <div id="frameSummaryLine" style="font-size:12px; line-height:1.4; margin-bottom:8px;">No frame</div>
-          <button type="button" id="btnEditFrameShape" class="cad-btn cad-btn-secondary" style="width:100%; height:36px; font-size:13px; margin-bottom:8px;">Edit frame ✎</button>
-          <!-- A status, not a setting: it depends on the board size, which is edited on this page. -->
-          <div id="frameFitWarning" style="display:none; color:#ff3b30; font-size:11px; margin-bottom:10px;"></div>
+          <!-- Fred: "I'd still want the editor door even if no frame yet exists" -- outside #frameSettings (which
+               hides with template "None"), so the editor's Frame tab (template picker + Generate) is always reachable.
+               Fred: "can the edit frame button be at the top like in vector" -- first in the section, the same place
+               as the vector section's Open SVG Editor. -->
+          <button type="button" id="btnEditFrameShape" class="cad-btn cad-btn-secondary" style="width:100%; height:34px; font-size:13px; margin-bottom:12px;">Edit frame ✎</button>
+          <label class="cad-label">Template</label>
+          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+            <select id="frameTemplate" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
+          </div>
+          <div id="frameSettings" style="display:none;">
+            <div id="frameThicknessRow">
+              <label class="cad-label">Frame thickness (in)</label>
+              <div class="cad-stepper" style="margin-bottom:12px;">
+                <input type="number" id="frameThickness" step="0.0625">
+              </div>
+            </div>
+            <label class="cad-label">Frame bottom (z)</label>
+            <div class="cad-stepper" style="margin-bottom:12px;">
+              <input type="number" id="frameBottomZ" value="-1" step="0.125">
+            </div>
+            <!-- FB-APP F9: the template's boundingboxoffset (the gap between the board edge and the frame). -->
+            <label class="cad-label">Trim offset (in)</label>
+            <div class="cad-stepper" style="margin-bottom:12px;">
+              <input type="number" id="frameTrimOffset" step="0.0625">
+            </div>
+            <!-- F22: the panel is trimmed this far OUTSIDE the frame outline (flush-trim allowance); 0 = on the outline. -->
+            <label class="cad-label">Panel lip (in)</label>
+            <div class="cad-stepper" style="margin-bottom:12px;">
+              <input type="number" id="framePanelLip" step="0.0625" min="0" value="0">
+            </div>
+            <label class="cad-label">Wood</label>
+            <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+              <select id="frameAppearance" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
+            </div>
+            <div id="frameFitWarning" style="display:none; color:#ff3b30; font-size:11px; margin-bottom:10px;"></div>
+          </div>
           <!-- Fred ("no send frame"): the frame goes with the one Send (export-flow payload.frame) -- no button here. -->
         </div>
       </div>
@@ -2397,7 +2426,7 @@
               <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">distance from outer edge (in, +in/-out)
                 <input id="shapeLatticeContourFromFrameDistance" type="number" step="0.05" value="0" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
               </label>
-              <span id="shapeLatticeContourFromFrameHint" style="display:none; font-size:11px; color:#777;">Choose a frame first (Frame tab).</span>
+              <span id="shapeLatticeContourFromFrameHint" style="display:none; font-size:11px; color:#777;">Choose a frame first (Frame panel).</span>
               <!-- F12 (Fred: "shape goes in contour", "segment too"): the silhouette's preset + sliders,
                    then its per-segment styles, are part of the Contour section (same ids, same wiring). -->
               <div id="shapeLatticeShapeBlock" style="display:flex; flex-direction:column; gap:3px;">
@@ -2704,36 +2733,15 @@
           </div>
         </aside>
 
-        <!-- FB-APP F8: the Frame tab's right column (the frame's template + params + wood;
+        <!-- FB-APP F8: the Frame tab's right column -- only what shapes the frame: template, thickness, Generate/Undo and
+             the handles (Fred: every other frame setting -- trim, lip, bottom, wood -- lives in the sidebar FRAME panel);
              gate 3.2 (c): numeric fields, no on-canvas handles yet). -->
         <aside class="editor-layers-panel" id="editorFramePanel" style="display:none;">
           <div class="layers-header"><span>Frame</span></div>
           <div style="padding:10px; display:flex; flex-direction:column; gap:10px; font-size:11px;">
-            <!-- Item 14: the ONE place for every frame setting. The sidebar's controls moved here with their ids
-                 and handlers (main/frame-panel.js); #frameSettings hides with template "None". -->
             <label>Template
-              <select id="frameTemplate" style="width:100%; margin-top:4px;"></select>
+              <select id="editorFrameTemplate" style="width:100%; margin-top:4px;"></select>
             </label>
-            <div id="frameSettings" class="editor-frame-settings" style="display:none;">
-              <label id="editorFrameThicknessRow">Frame thickness (in)
-                <input type="number" id="editorFrameThickness" step="0.0625" style="width:100%; margin-top:4px;">
-              </label>
-              <!-- FB-APP F9: the template's boundingboxoffset (the gap between the board edge and the frame). -->
-              <label>Trim offset (in)
-                <input type="number" id="frameTrimOffset" step="0.0625" style="width:100%; margin-top:4px;">
-              </label>
-              <!-- F22: the panel is trimmed this far OUTSIDE the frame outline (flush-trim allowance); 0 = on the outline. -->
-              <label>Panel lip (in)
-                <input type="number" id="framePanelLip" step="0.0625" min="0" value="0" style="width:100%; margin-top:4px;">
-              </label>
-              <label>Frame bottom (z)
-                <input type="number" id="frameBottomZ" value="-1" step="0.125" style="width:100%; margin-top:4px;">
-              </label>
-              <label id="editorFrameWoodRow">Wood
-                <select id="frameAppearance" style="width:100%; margin-top:4px;"></select>
-              </label>
-              <div id="editorFrameFitWarning" style="display:none; color:#ff3b30;"></div>
-            </div>
             <!-- FB-APP F13 (FRAME-GEN): a new random frame shape each press, then tweak it with the handles. -->
             <div style="display:flex; gap:6px;">
               <button type="button" id="editorFrameGenerate" class="cad-btn cad-btn-primary" style="flex:1;">Generate</button>

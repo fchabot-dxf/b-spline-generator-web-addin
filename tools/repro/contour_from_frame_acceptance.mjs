@@ -93,7 +93,7 @@ await step('1_generated_noframe');
 
 // choose T1 in the Frame tab's own select (the real path: setFrameRecord + syncFramePanel)
 const pick = (id, v) => evalJS(`(async()=>{ const e = document.getElementById('${id}'); e.value = '${v}'; e.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,1500)); })()`);
-await pick('frameTemplate', 'template_1');
+await pick('editorFrameTemplate', 'template_1');
 await step('2_frame_chosen');
 
 // toggle ON
@@ -116,7 +116,7 @@ await evalJS(`(async()=>{ document.getElementById('editorTabArtwork').click(); a
 const shoulder = await step('4_linked_shoulder');
 // LINKED 2/3: thickness and Trim offset (the real fields)
 const field = (fid, v) => evalJS(`(async()=>{ const e = document.getElementById('${fid}'); e.value = '${v}'; e.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2500)); })()`);
-await field('editorFrameThickness', '0.5');
+await field('frameThickness', '0.5');
 const thick = await step('5_linked_thickness');
 await field('frameTrimOffset', '0.5');
 const trim = await step('6_linked_trim');

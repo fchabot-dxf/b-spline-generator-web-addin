@@ -4026,15 +4026,13 @@ floats there pointing at nothing")
 - Tests: 3 new ones in `tests/lattice-side-column.test.js`. vitest 2719 passed.
 - Screenshots are in `scratchpad/wf/out_v30/` (before and after, phone and desktop; 09-14 are after the Shape fold).
 
-## 2026-09-30: All frame settings in one place (item 14)
+## 2026-09-30: Frame settings: the sidebar has them, the editor keeps only the shape (Fred)
 
-- **Audit:** in `scratchpad/frame14_audit.md`. Frame thickness was only in the editor's Frame tab. Trim offset, panel lip, frame bottom and the fit warning were only in the sidebar FRAME panel. Template and wood were in both places, as two separate pickers each (`#frameTemplate` / `#editorFrameTemplate`, `#frameAppearance` / `#editorFrameWood`). Every control writes through `editFrame` (one Frame-undo step, then `setFrameRecord`, which marks the project dirty and saves the session). Every change applies at once (3D preview `refreshFrame`), not on the editor's Apply. Save/load and the Fusion Send read `P.frame`, not the DOM.
-- **Moved:** `#frameTemplate`, `#frameTrimOffset`, `#framePanelLip`, `#frameBottomZ` and `#frameAppearance` now sit in `#editorFramePanel`, with the same ids and handlers. They are grouped with `#editorFrameThickness` in `#frameSettings` (class `.editor-frame-settings`), which hides when the template is None, as before. The duplicate pickers `#editorFrameTemplate` / `#editorFrameWood` and their wiring are deleted, so each setting has one control.
-- **Sidebar:** the FRAME panel now shows `#frameSummaryLine` (`frameSummaryText()` in `main/frame-panel.js`, e.g. `1. Hourglass · 0.75" frame · trim 0.25" · lip 0" · Ash - Unfinished`), updated by `syncFramePanel`. Below it are the Edit frame button (36px) and the fit warning, which stays because the board size is edited on the main page. The Frame tab has its own copy, `#editorFrameFitWarning`.
-- **Phone:** Frame tab controls in the drawer are at least 36px (steppers 44px) (`styles/editor.css`).
-- **Tests:** only the updates the move needed. `frame-tabs.test.js`: fixture, plus one test rewritten to check that everything is in the Frame tab and the summary line is live. `frame-gen.test.js`: template id. `formula.test.js`: every FRAME formula field is in `#editorFramePanel`. `formula-fields-f15.test.js`: fixture. The 4 `tools/repro` scripts now use `frameTemplate`. vitest 2719 passed.
-- **Headless checks:** phone 390x844 and desktop 1280x800, `scratchpad/wf/v31.mjs`, screenshots in `scratchpad/wf/out_v31/`.
-  - No duplicate ids.
-  - Each setting changed with a real tap on its stepper in the Frame tab, and the preview frame meshes changed with it. Thickness, trim, lip and bottom Z changed the geometry; wood changed the colour; the summary line followed.
-  - Frame Undo restored the wood.
-  - Save to the KV mock, then change the template, then load: the record came back and the project was clean. No page errors.
+- Item 14 (5cfc1fa, every frame setting in the editor) is reverted. Fred prefers the settings in the sidebar, because thickness, trim, lip, bottom and wood are seen in the 3D preview.
+- **Sidebar FRAME panel:** template, **frame thickness** (moved from the editor; the id is now `frameThickness`, row `frameThicknessRow`), frame bottom, trim offset, panel lip, wood, and the fit warning.
+- **Editor Frame tab:** only the shape, meaning template, Generate / Undo and the on-canvas handles. The editor's wood picker (`editorFrameWood`) is removed.
+- Tests updated for the move: frame-tabs, formula, formula-fields-f15, and the repro scripts' ids.
+- Checked headless at phone size:
+  - all six sidebar fields are shown;
+  - changing thickness in the sidebar updates `P.frame` and the 3D frame bars;
+  - the editor Frame tab holds only template, Generate and Undo.
