@@ -3980,3 +3980,17 @@ floats there pointing at nothing")
   - Still open, for Fred: a dedicated way to enter Sculpt (not built).
 - **3D frame highlights:** the frame bars' specular is darkened (0x0a0a0a), and a shader clamp caps every lit pixel at 0.88 per channel (`capFrameBrightness` in `frame-mesh.js`). Measured headless on bars-only renders from 5 views: max channel 255 → 224.
 - Tests: two default-distance expectations updated. vitest 2716 passed.
+
+## 2026-09-30: Sculpt turns on and off with its panel (Fred picked option 3)
+
+- Tapping a tool in the SCULPT TOP or BOTTOM panel turns Sculpt on, and tapping the same tool again turns it off.
+- It also turns itself off when:
+  - its own panel is closed (a MutationObserver on the panel body);
+  - another page opens: the drawing editor, Settings or Projects (observers on `svgEditorModal`, `settings-panel-overlay`, `projectManagerModal`).
+- The Draw buttons no longer start with a stray `active` class in the HTML.
+- Checked headless at phone size:
+  - tap on, tap again off, switch tool;
+  - close the panel: off;
+  - closing the other layer's panel: stays on;
+  - opening Projects or Settings: off.
+- The drawing editor uses the same observer, but it wasn't driven in that run.

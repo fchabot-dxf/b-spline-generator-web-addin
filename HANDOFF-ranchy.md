@@ -71,7 +71,7 @@ The frame is **cut as separate mitered bars on the CNC and glued up**. So:
 - Thumbnails are centre-cropped instead of stretched. Older thumbnails stay stretched until that project is saved again.
 - Sculpt is never active after a load or restore.
 - The frame highlight is capped at 0.88, so it never reaches pure white.
-- **Open:** Fred wants a new, dedicated way to turn Sculpt on. Ask him to pick a design before building it.
+- **Sculpt activation (Fred picked option 3):** tapping a tool in the Sculpt Top/Bottom panel turns Sculpt on, and tapping the same tool again turns it off. It also turns itself off when its panel is closed or when the editor, Settings or Projects opens (`main/ui-bindings.js`).
 
 ## 4. Your first job: live Fusion checks
 

@@ -61,12 +61,29 @@ export function bindControls(preview) {
     if (btn) {
       btn.addEventListener('click', () => {
         console.log(`[DEBUG] Sculpt ${layer} ${mode} button pressed`);
+        // Fred (option 3): picking a tool turns Sculpt on; tapping the tool that is already on turns it off
+        const cur = layer === 'top' ? P.sculptTopMode : P.sculptBotMode;
+        if (P.activeSculptLayer === layer && cur === mode) { sculptOff(); return; }
         applyParam('activeSculptLayer', layer);
         applyParam(layer === 'top' ? 'sculptTopMode' : 'sculptBotMode', mode);
         updateSculptToolButtons();
       });
     }
   };
+
+  // Fred (option 3): Sculpt is only on while you are in its panel. It turns itself off when that panel is closed,
+  // or when another page opens (the drawing editor, Settings, Projects).
+  const sculptOff = () => { if (P.activeSculptLayer) { applyParam('activeSculptLayer', null); updateSculptToolButtons(); } };
+  const watch = (el, isGone, onlyLayer) => {
+    if (!el || typeof MutationObserver === 'undefined') return;
+    new MutationObserver(() => { if (isGone(el) && (!onlyLayer || P.activeSculptLayer === onlyLayer)) sculptOff(); })
+      .observe(el, { attributes: true, attributeFilter: ['class', 'style', 'aria-hidden'] });
+  };
+  const hiddenBody = (el) => el.classList.contains('hidden');
+  const shown = (el) => el.style.display && el.style.display !== 'none';
+  watch(document.querySelector('.panel-sculpt-top > .panel-body'), hiddenBody, 'top');
+  watch(document.querySelector('.panel-sculpt-bot > .panel-body'), hiddenBody, 'bot');
+  for (const id of ['svgEditorModal', 'settings-panel-overlay', 'projectManagerModal']) watch(document.getElementById(id), shown);
 
   updateSculptToolButtons();
   bindToolBtn('btnToolTopDraw', 'top', 'draw');
