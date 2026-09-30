@@ -1,90 +1,178 @@
-# Handoff: local Fusion session on ranchy
+# Handoff: the local session on ranchy takes over
 
-From the cloud session (branch `claude/lucid-ride-jycpox`) to the local Claude session on ranchy,
-which has the Fusion 360 bridge. Written 2026-09-30.
+From the cloud session (branch `claude/lucid-ride-jycpox`, last commit fd82744 + this file) to the local
+Claude session on ranchy, which has Fusion 360 and the Fusion bridge. Written 2026-09-30.
 
-The cloud session **cannot run Fusion**. It has built three new frame templates plus several
-Send/CAM changes that have only been tested in the browser and with Python tests. Your job is the
-live Fusion side: build, measure, and report back. Fix only what's listed as yours below.
+**From here on, the local session owns the B-spline frame builder work.** The cloud session has stopped.
+Nothing is in progress: the working tree was clean when this was written.
 
-## 0. Before anything
+The cloud session could not run Fusion, so everything below marked *untested live* has only been checked
+in a headless browser and with unit tests. Your first job is the live checks. After that, continue with
+Fred's ideas in section 5.
 
-1. `git pull origin claude/lucid-ride-jycpox` (it's also merged to `main`; the latest is 20620b2 or newer).
-2. Deploy the add-in: `python DEPLOY_bspline-frame-builder.py` from `bspline-frame-builder/`.
-3. In Fusion: Utilities > Add-Ins, then Stop and Run `bspline-frame-builder`.
-4. Every test below uses its **own scratch document**, closed without saving. Never touch Fred's own designs.
+---
 
-## 1. Don't collide with the cloud session
+## 1. Rules (Fred's standing rules for this repo)
 
-The cloud session is **right now** changing the frame engine so it can handle more than 4 bars
-(the "N-bar" work, with Template 6 - Tab Top coming). While that runs:
+- **Log every change** in `WORK-LOG-fb-app.md` (repo root).
+- **Push every commit to both** `claude/lucid-ride-jycpox` and `main`. `main` deploys the web app to
+  bspline-generator.pages.dev (Cloudflare Pages), so push to `main` only after tests pass.
+- **Scope:** only the integrated `bspline-frame-builder/`.
+- **Don't build when Fred is "just asking".** He gets annoyed by building before approval, and also by
+  over-asking. Asking "is X possible / does it conflict?" means: answer, don't code.
+- **Keep answers short and plain.** Fred said "Too complex" to long explanations. He mostly works from his phone.
+- **Frame templates:** never hand-edit `frame-defs.json/.js`. Regenerate them with `python tools/gen_frame_defs.py`,
+  and check with `--check`.
+- **New templates must not change old ones.** Every template change so far was A/B-checked
+  byte-identical on Templates 1..N-1 (see section 6).
+- Fred's shop: an Ultimate Bee CNC with a DDCS Expert controller. He designs and posts in Fusion 360.
 
-- **Do not edit** anything under `fb_engine/`, `b-spline-gen/html/`, `CAM-builder/`, `tools/gen_frame_defs.py`,
-  `frame-defs.json/.js`, or `sketches/template_1`/`template_2`.
-- **Do not run** `gen_frame_defs.py` to regenerate the defs. The cloud session does that once your goldens arrive.
-- **You may add**:
-  - new golden files in `tests/fixtures/frame-parity/`;
-  - your results file `LIVE-RESULTS-ranchy.md` at the repo root;
-  - the raw logs, in a new folder `tools/repro/live_logs/`.
-- **You may fix** a template's Fusion phases (`sketches/template_3`, `template_4` or `template_5`, the `phases/*.py` and
-  `template_data.py` files) only when a live build fails and the fix is clear, like dropping one over-constraining
-  Equal. Keep each fix to one small commit and explain it in your results file.
-- Commit and push **only to `claude/lucid-ride-jycpox`**. Don't push to `main`: `main` deploys straight to the live
-  website, and the cloud session merges after re-generating the defs.
+## 2. Frame design rules (learned from Fred this round)
 
-## 2. The three new templates (main job)
+The frame is **cut as separate mitered bars on the CNC and glued up**. So:
 
-Each template has its own step-by-step checklist. Follow it exactly and tick the boxes:
+- Every corner is a clean miter. Square corners get a 45° miter; any corner angle works, since the miter
+  bisects it.
+- Each bar runs corner to corner at an even width.
+- Accepted shapes: square corners with a short straight stub on both legs of each corner. Between corners
+  an edge may pinch inward with smooth tangent arcs; the top edge may dip too. Flat top and base are
+  **not** required.
+- Rejected, and why:
+  - vase: no real corners;
+  - pillow and four-way pinch: curved edges meeting at non-square corners without stubs;
+  - wave: the corners aren't 90° and the shape looked wrong to Fred;
+  - pointed-top ideas: Fred said no.
+- More than 4 bars is fine. Inside (270°) corners are fine.
 
-| Template | Checklist | What's new / most likely to break |
-|---|---|---|
-| 3. Tapered Hourglass | `bspline-frame-builder/frame-builder/sketches/template_3/LIVE_CHECK.md` | The top edge sits on its own projected line. Watch `shoulder_arc_equal` for over-constraint. |
-| 4. Offset Hourglass | `.../template_4/LIVE_CHECK.md` | The pin pairs are no longer merged; left/right pinch heights are held only by the seeds. The arc Equals may over-constrain (most likely `hip_arc_equal`: drop it if so). A pinch could drift or flip. |
-| 5. Hourglass Dipped Top | `.../template_5/LIVE_CHECK.md` | The top is now stub + 3 arcs + stub (16 pieces). The inner corner stub is only 0.16" long at 7x9 with a 0.75" frame, so the TL/TR offset and `ResolveInnerCorners` are the likeliest to fail. Arc end order assumes counter-clockwise. |
+## 3. What's built (all pushed, all live on the website)
 
-Each checklist has the same sections:
-- **0. Install:** covered by step 0 above.
-- **1. Build by hand:** check that the timeline has no red or yellow items and there are 4 bars.
-- **2. Record goldens:** use `tools/repro/record_frame_parity.py` at 7x9, 12x6 and 5.51x1.97. This writes
-  `tests/fixtures/frame-parity/template_N_*.json`; commit those.
-- **3. f20 seeded parity check:** first set the `SP` / `PARITY` paths at the top of `tools/repro/f20_live_parity.py`.
-- **4. Inversion sweep:** bounding-box offset 0.5 and 1.0, recorded to scratch, not to fixtures.
-- **5. What to send back.**
+| # | Template | Commit | Notes |
+|---|---|---|---|
+| 1 | Hourglass | old | measured live (goldens exist) |
+| 2 | Narrow Neck | old | measured live (goldens exist) |
+| 3 | Tapered Hourglass | 3b30de9 | top narrower than the base; "Top width" handle. *Untested live* |
+| 4 | Offset Hourglass | 30fa2b6 | left/right pinches move independently; "Left waist position/reach" handles. *Untested live* |
+| 5 | Hourglass Dipped Top | 20620b2 | top = stub + 3 arcs + stub (16 pieces); "Top dip depth/width". *Untested live* |
+| 6 | Tab Top | fd82744 | battery shape, **8 bars**, 2 inside corners; "Tab width/height". *Untested live* |
 
-## 3. Older Fusion items never tested live
+- **Multiple bars (fd82744).** A template can now declare `regions.corners` and `regions.bars`, and miters and bar
+  names come from those. The classic 4-bar layout stays the default.
+- **CAM.** Frames without the 4 classic bar names get a minimal one-row layout in `CAM-builder/cam_engine/mm_builder.py`.
+- **Provisional shapes.** Templates 3-6 use a provisional `shapeModel` (estimated, not measured) until live goldens
+  are recorded. After recording, rerun `gen_frame_defs.py` so the app draws the real measured shape.
+- **Lattice fix (20620b2).** `insideSpans` in `editor-lattice-boundary.js` now drops rail and tie pieces lying outside the
+  contour when a scan line runs along a straight edge.
 
-After the templates, check these. They're app → Fusion flows, driven from the palette in Fusion:
+## 4. Your first job: live Fusion checks
 
-1. **One Send:** Send carries the B-spline and the frame together.
-   - The previous frames and B-Spline Sets are deleted first.
-   - The B-spline is built, then the frame, then `importing_done`.
-   - Check: exactly one B-Spline Set (tagged attribute `Bspline`/`set`) and one frame. No leftovers after a second Send.
-2. **Send with no frame template (None):** the B-spline only. No error, and no stale frame left behind.
-3. **Clear Fusion design** (Settings → Clear): removes the B-Spline Sets and frames. The confirm dialog shows above the Settings panel.
-4. **import_failed:** force an import error (e.g. a broken payload through the bridge). The palette should show the error toast, not hang.
-5. **CAM builder:**
-   - Toolpaths generate per setup, and only for setups that have operations.
-   - The BUILD button asks to confirm before it generates.
-6. **Continue banner → Load & Send** from the phone flow: it loads the last project and sends it.
+Setup:
+1. Run `git pull`.
+2. Run `python DEPLOY_bspline-frame-builder.py` from `bspline-frame-builder/`.
+3. In Fusion, go to Utilities > Add-Ins, then Stop and Run `bspline-frame-builder`.
 
-## 4. Report back
+Use **scratch documents only**, closed without saving. Never touch Fred's own designs.
 
-Write `LIVE-RESULTS-ranchy.md` at the repo root. For each template and each item in section 3, give:
-- **pass or fail**;
-- the **exact** Fusion error text, if any;
-- the log file path under `tools/repro/live_logs/`;
-- any fix you made, with its commit hash.
+### 4a. Templates 3-6
 
-Then commit (goldens + results + logs + any template fixes) and push to `claude/lucid-ride-jycpox`, and tell Fred it's
-pushed. The cloud session will then pull, re-run `gen_frame_defs.py` so the app uses the real measured shapes instead
-of the provisional ones, re-test and merge to `main`.
+Each template folder has a `LIVE_CHECK.md` with ticks to fill in:
+- build by hand
+- record goldens with `tools/repro/record_frame_parity.py` at 7x9, 12x6 and 5.51x1.97
+- the f20 seeded parity check (first set the `SP` / `PARITY` paths at the top of `tools/repro/f20_live_parity.py`)
+- the inversion sweep
 
-## 5. Context you may need
+Most likely failures:
 
-- Standing rules in this repo:
-  - Log every change in `WORK-LOG-fb-app.md`.
-  - Keep explanations to Fred short and plain.
-  - Don't build things Fred is only asking about.
-- The frame is cut from separate mitered bars and glued up. Every corner must stay a clean miter; the square
-  corners with straight stubs are what make 45° miters possible.
-- Fred's machine: an Ultimate Bee CNC with a DDCS Expert controller, and designs are made in Fusion 360.
+| Template | Watch for |
+|---|---|
+| 3 | `shoulder_arc_equal` over-constrained; top edge on `proj_off_BB_top` |
+| 4 | an arc Equal over-constrained (most likely `hip_arc_equal`: drop it); a pinch drifting or flipping, since the pin pairs are no longer merged |
+| 5 | the TL/TR inner corner: the stub's inner length is only 0.16" at 7x9 with a 0.75" frame; arc end order (counter-clockwise is assumed) |
+| 6 | **the inward Offset at the 2 inside corners must be sharp, not rounded.** If rounded, the inner-corner lookup misses them, 2 miters go missing and the bars at those corners don't split. Also check the 2 left/right Equals for over-constraint |
+
+When a live build fails and the fix is clear (like dropping one Equal), fix it in that template's `phases/*.py`.
+Then rerun the tests and the A/B check.
+
+After goldens: commit `tests/fixtures/frame-parity/template_N_*.json`, run `python tools/gen_frame_defs.py`
+(the shapeModel becomes measured), run the tests, and commit.
+
+### 4b. Older flows never tested live
+
+1. **One Send** (B-spline and frame together):
+   - It deletes the old frames and the B-Spline Sets tagged `Bspline`/`set`, then builds the B-spline, then the frame, then `importing_done`.
+   - A second Send must leave no leftovers.
+2. **Send with template None:** the B-spline only, with no error and no stale frame.
+3. **Settings → Clear Fusion design:** it removes the sets and frames. The confirm dialog shows on top of Settings.
+4. **import_failed:** a broken Send shows an error toast and doesn't hang.
+5. **CAM builder:** toolpaths are generated per setup (only setups with operations), and BUILD asks to confirm first.
+6. **Continue banner → Load & Send** (a project saved from the phone).
+7. **Hand-drawn layers:** draw a rail, tie or node with another layer active. It must land on its own kind's layer.
+
+Write the results in `LIVE-RESULTS-ranchy.md`: pass or fail, the exact Fusion error text, the log path and the fix commit.
+
+## 5. What's next (Fred's backlog, in his order)
+
+### Open questions for Fred about Template 6 (ask him, keep it short)
+
+1. **CAM layout for 8 small parts.** One row may be longer than the stock. Should mirrored bars be paired? Should the angled pieces be nested? Which way should the grain run?
+2. **Default tab size and thickness limits.** The default tab is half the width and half the height. The limits are: tab side ≥ 2 × thickness, other bars ≥ thickness, openings ≥ thickness. Are those right?
+3. **Bar names:** `frame_tab_top`, `frame_tab_right`, `frame_shoulder_right`, `frame_side_right`, `frame_base`, `frame_side_left`, `frame_shoulder_left`, `frame_tab_left`. OK?
+
+### More templates Fred sketched (not built)
+
+- **Diamond-top Hourglass, 5 bars.**
+  - Fred chose this. A 90° diamond peak (45° miters), pinched waist, round hips, flat base.
+  - The 5 parts: two straight roof bars, two curvy sides and the base.
+  - The side points are sharp, so the side-part tips are thin. Fred saw this and still chose 5 parts.
+  - Now possible thanks to the multiple-bars work.
+- **Stepped / interlocking shape, about 12 straight bars,** with many inside corners. Every part between notches must stay
+  wider than the frame thickness.
+- **Dipped top + left-only wave,** 4 bars: Template 5 with a pinch on the left side only. A small variation of T5/T4.
+- Mockup images from this round are in the cloud scratchpad, which you can't reach. Ask Fred if you need his sketch
+  photos again.
+
+### Workflow proposals not yet picked by Fred
+
+Items 1-5, 8 and 9 are done; item 10 (project name sent to Fusion) was dropped.
+
+- **6. Automatic NC programs** (Fusion): one NC program per setup, with the DDCS post, named after the project.
+- **7. One "Prepare CAM" button** (Fusion): it replaces Build, Add machine, Sync and Apply.
+- **11. My defaults:** save the usual lattice style and stock sizes as quick buttons.
+- **12. Phone layout pass:** fit the board above the drawer, and make the 3D preview on the main page smaller.
+- **13. Simpler Shape Lattice panel:** fold away the rare sections and use bigger touch targets.
+- **14. All frame settings in one place:** in the editor's Frame tab, with a one-line summary in the sidebar.
+- **15. Inlay and lattice toolpaths** (large, Fusion): CAM builds each layer's toolpath from its bit and depth.
+- **16. Job card:** a phone page at the machine with tool order, zero corner, stock size and time per setup.
+
+## 6. How to verify changes
+
+- **JS:** `npx vitest run` (2716 pass at fd82744).
+- **Python:** in `bspline-frame-builder/frame-builder`, `b-spline-gen` and the repo root, run `python -m pytest -q`.
+  - Expected: 280+2 skipped, 89, and 463+2 skipped.
+  - At the root, add `--ignore=.claude` if agent worktrees exist.
+- **Defs:** `python tools/gen_frame_defs.py --check` should say fresh.
+- **A/B byte-identical check:** use the scripts in `tools/repro/ab/` (`ab6.mjs`, `ablat6.mjs`, `ab3d.mjs`, `abpy.py`, `abcam.py`).
+  1. Make a HEAD worktree: `git worktree add ../bsg-head HEAD`.
+  2. Run each script with that tree's path, then with this repo's path. `ab3d.mjs` also takes an output file as its second argument.
+  3. The hashes must match for the old templates. When adding a template, append it to the lists inside the scripts only after the check.
+- **Browser check:** the cloud session used headless Chromium at phone size (390x844, touch) against
+  `python -m http.server` in `bspline-frame-builder/`, with the app at `/b-spline-gen/html/bspline_gen_palette.html`.
+  Locally you can just open it in a browser, or use Fusion's palette.
+
+## 7. Key places
+
+- **Templates:** `bspline-frame-builder/frame-builder/sketches/template_N/`.
+  - `phases/` holds the Fusion sketch steps, `template_data.py` the name, handles and regions, `LIVE_CHECK.md` the live checklist.
+  - Auto-discovered by `tools/gen_frame_defs.py`.
+- **Engine:** `frame-builder/fb_engine/` (`frame_definition.py`, `declared_profiles.py`, `frame_shape_fit.py`).
+- **App editor:** `b-spline-gen/html/editor/`.
+  - `editor-shape-lattice-generator.js` (PARAM_ORDER, FRAME_ONLY_PARAM_KEYS: new keys always go at the END)
+  - `editor-shape-lattice-interaction.js` (handles)
+  - `frame-handles.js`
+  - `editor-frame-profile.js`
+  - `editor-lattice-boundary.js`
+- **3D preview:** `b-spline-gen/html/core/preview/frame-mesh.js`.
+- **Send:**
+  - `b-spline-gen/html/main/export-flow.js` (the payload carries `frame`)
+  - `b-spline-gen/b-spline-gen.py` (delete, build, frame, Clear)
+- **CAM:** `CAM-builder/cam-builder.py`, `CAM-builder/cam_engine/mm_builder.py`.
+- **History:** `WORK-LOG-fb-app.md`. The newest entries at the bottom explain each template in detail.

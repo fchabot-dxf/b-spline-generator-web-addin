@@ -3956,3 +3956,12 @@ floats there pointing at nothing")
 - Open for Fred: (1) the CAM layout for 8 small parts (one row may be longer than the stock; pairing the mirrored
   bars or nesting the parallelograms; grain direction per bar); (2) the provisional tab (0.5 hw half width, 0.5 hh
   tall) and the rule's numbers (tab side >= 2t, other bars >= t long); (3) the bar names.
+
+## 2026-09-30: Handover to the local session on ranchy
+
+- `HANDOFF-ranchy.md` rewritten as a full handover. The local session (with Fusion) owns the work from here.
+  It covers the live checks for T3-T6 and the older Send/Clear/CAM flows, the open T6 questions, the
+  sketched templates not yet built, the unpicked workflow proposals, and how to verify.
+- The A/B byte-identical scripts moved from the cloud scratchpad into `tools/repro/ab/`
+  (`ab6.mjs`, `ablat6.mjs`, `ab3d.mjs`, `abpy.py`, `abcam.py`). Their paths are now relative to the repo; each takes
+  the tree to hash as its first argument.
