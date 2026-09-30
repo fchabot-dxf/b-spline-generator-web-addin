@@ -319,7 +319,7 @@ function _saveSectionOpen(label, open) {
  *  header + list, a different DOM shape but the same behaviour). `title`
  *  is the persistence key; `label` gets the chevron + click handler;
  *  `body` is the list of sibling nodes the toggle shows/hides. */
-function _wireCollapse(title, label, body) {
+function _wireCollapse(title, label, body, defaultOpen = true) {
   // Captured BEFORE any toggle ever runs — most of these rows declare
   // their own layout inline (`style="display:flex; ..."`, no CSS class
   // backing it), so `node.style.display = ''` does NOT restore "flex" the
@@ -341,10 +341,15 @@ function _wireCollapse(title, label, body) {
   label.appendChild(chevron);
 
   const applyOpen = (open) => {
-    body.forEach((node, i) => { node.style.display = open ? bodyOriginalDisplay[i] : 'none'; });
+    body.forEach((node, i) => {
+      node.style.display = open ? bodyOriginalDisplay[i] : 'none';
+      // Item 13: a class too, for a row whose phone CSS forces its display with !important
+      // (.panel-row-3 {display:grid !important}), which the inline none above can't beat.
+      node.classList.toggle('lattice-section-folded', !open);
+    });
     chevron.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
   };
-  let open = _loadSectionOpen(title, true);
+  let open = _loadSectionOpen(title, defaultOpen);
   applyOpen(open);
   on(label, 'click', () => {
     open = !open;
@@ -357,7 +362,7 @@ function _wireCollapse(title, label, body) {
  *  bold-span-first-child section shape collapsible. `data-no-collapse`
  *  opts a section out — AMEND 1's new icon tool row (replacing Add:) must
  *  always stay visible, same as Add: itself always was. */
-function _makeSectionsCollapsible(bodyEl) {
+function _makeSectionsCollapsible(bodyEl, folded = {}) {
   if (!bodyEl) return;
   for (const section of Array.from(bodyEl.children)) {
     if (section.hasAttribute('data-no-collapse')) continue;
@@ -366,8 +371,38 @@ function _makeSectionsCollapsible(bodyEl) {
     const title = label.textContent.trim();
     if (!title || section.dataset.collapsibleInit) continue;
     section.dataset.collapsibleInit = '1';
-    _wireCollapse(title, label, Array.from(section.children).filter((c) => c !== label));
+    const body = Array.from(section.children).filter((c) => c !== label);
+    if (folded[title]) _wireCollapse(folded[title], label, body, _isDesktop());
+    else _wireCollapse(title, label, body);
   }
+}
+
+/** Item 13 (Fred: the Shape Lattice panel was ~4 screens tall on a phone): the rarely used parts start
+ *  folded -- Boundary, Widths, and under Contour the Shape preset/sliders and the per-segment controls. Each keeps
+ *  its own remembered open/closed state, under a Shape-Lattice-only key (so the box Lattice panel's own
+ *  Boundary/Widths, which share a title, are unaffected and a state remembered from before doesn't
+ *  override the new folded default). Folded by default on a phone only; the desktop column starts open,
+ *  as before. Value = the storage key suffix. */
+export const SHAPE_LATTICE_FOLDED_SECTIONS = {
+  Boundary: 'shapeLattice.Boundary',
+  Widths: 'shapeLattice.Widths',
+};
+/** The two sub-blocks inside Contour that fold under their own small label: the silhouette's preset +
+ *  sliders (Shape) and the per-segment controls (Segments). Folded by default on a phone. While Offset
+ *  from frame is on, both blocks are inert (properties-shape-lattice.js), so they stay as they are. */
+export const SHAPE_LATTICE_FOLDED_SUBBLOCKS = [
+  { blockId: 'shapeLatticeShapeBlock', bodyId: 'shapeLatticeShapeFoldBody', key: 'shapeLattice.Shape' },
+  { blockId: 'shapeLatticeSegmentsBlock', bodyId: 'shapeLatticeSegmentsFoldBody', key: 'shapeLattice.Segments' },
+];
+
+function _foldShapeLatticeSubBlock({ blockId, bodyId, key }) {
+  const block = el(blockId);
+  const body = el(bodyId);
+  const label = block ? block.firstElementChild : null;
+  if (!block || !body || !label || label === body || block.dataset.collapsibleInit) return;
+  block.dataset.collapsibleInit = '1';
+  label.classList.add('lattice-subsection-label');
+  _wireCollapse(key, label, [body], _isDesktop());
 }
 
 /** UI3: "the Layers block in the side column is collapsible too" — same
@@ -516,8 +551,9 @@ export function initLatticeSideColumn(editor) {
     if (!bodyEl) continue;
     _tagSections(bodyEl);
     _wireLiveColors(cfg.panelId, bodyEl);
-    _makeSectionsCollapsible(bodyEl);
+    _makeSectionsCollapsible(bodyEl, bodyEl === shapeBody ? SHAPE_LATTICE_FOLDED_SECTIONS : {});
   }
+  SHAPE_LATTICE_FOLDED_SUBBLOCKS.forEach(_foldShapeLatticeSubBlock);
   _makeLayersCollapsible(el('editorLayersPanel'));
 
   // T80 item 2 (Fred: "where are add geometry tools"): Shape Lattice gets

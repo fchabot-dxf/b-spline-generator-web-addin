@@ -3995,3 +3995,33 @@ floats there pointing at nothing")
   - opening Projects or Settings: off.
 - The drawing editor uses the same observer, but it wasn't driven in that run.
 - **Follow-up (Fred: "dismiss by clicking empty space or pressing Escape?"):** Esc now turns Sculpt off, except while typing in a field. So does a quick tap or click on the empty background around the board: under 8 px of movement, under 400 ms, and off the board by the sculpt raycast (`preview.isOnSculptBoard`). A drag on the background still orbits and keeps Sculpt on, and a tap on the board keeps it on. All four were checked headless at phone size (CDP touch + key events).
+
+## 2026-09-30: Phone layout pass (item 12) and a shorter Shape Lattice panel (item 13)
+
+- **12a, drawing editor fit on a phone:**
+  - Before, the SVG box ran under the fixed bottom drawer. Fit centred the board in the full height, which left grey above the board and hid its bottom behind the drawer.
+  - Now `#editorCanvasContainer` has `padding-bottom: var(--drawer-height)`, in the portrait phone block of `styles/editor.css`. Fit (zoom 1) and the viewBox's `xMidYMid meet` place the whole board in the part you can see. It follows the drawer live, because `--drawer-height` comes from a ResizeObserver.
+  - Desktop gets 0px padding, so it is unchanged.
+  - Measured at 390x844:
+    - Frame tab, drawer at 96px: the board is 194-696 and the drawer top is at 748, leaving 52px above and below.
+    - After Generate, drawer at 226px: the board is 142-618 and the drawer top is at 618.
+    - Drawer dragged to 422px: the board is 142-422 and the drawer top is at 422.
+    - Before the change, the board sat at 242-744 in every case, and the drawer top was at 632 and then 422.
+- **12b, main-page preview on a phone:**
+  - It measured 316px (37% of an 844px screen). Its default is now 30% of the area under the header, down from 40%. The splitter's `default` snap is in `main/mobile-resizer.js`, and the CSS fallback in `layout-app.css` is now 30vh (was 40vh, or 35vh under 400px).
+  - It now measures 237px (28%). The drag handle still works: +80px, then back.
+- **13, Shape Lattice panel:**
+  - These start folded on a phone:
+    - Boundary and Widths.
+    - Two new folds under Contour: Shape (the preset buttons and sliders, wrapped in `#shapeLatticeShapeFoldBody`) and Segments (the per-segment controls, wrapped in `#shapeLatticeSegmentsFoldBody`).
+    - While Offset from frame is on, both of those blocks are already inert, so they stay folded. Each remembers its state under its own `bspline.editor.drawerSection.shapeLattice.*` key.
+  - The desktop column and the box Lattice panel keep today's open default.
+  - A folded row now also gets `.lattice-section-folded`. `.panel-row-3`'s phone `display:grid !important` used to keep Widths and Nodes showing while "folded".
+  - Touch targets in the phone drawer are at least 36px: buttons, number and formula inputs, selects, checkbox label rows, and section labels (`styles/editor.css`). Desktop sizes are unchanged.
+  - Measured:
+    - Minimum target height: 22px before, 36px after.
+    - Panel scroll height: 1703px before, 1504px after. With only Boundary, Segments and Widths folded, it was 1785px.
+  - No ids renamed.
+- Checked headless: with Offset from frame off, tapping the Shape label opens the fold. It stays open after Apply and a page reload, and tapping it again folds it.
+- Tests: 3 new ones in `tests/lattice-side-column.test.js`. vitest 2719 passed.
+- Screenshots are in `scratchpad/wf/out_v30/` (before and after, phone and desktop; 09-14 are after the Shape fold).

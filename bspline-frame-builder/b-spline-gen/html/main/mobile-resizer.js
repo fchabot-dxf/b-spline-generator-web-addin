@@ -48,7 +48,9 @@ export function initMobilePreviewResizer() {
     const h = mainContent.getBoundingClientRect().height;
     return [
       { name: 'small', px: Math.round(h * 0.25) },
-      { name: 'default', px: Math.round(h * 0.4) }, // matches the CSS default (40vh) so a first load doesn't visibly jump
+      // Item 12b (Fred: the phone preview was too tall): 30% of the area under the header, was 40% (316px of an
+      // 844px phone, 37% of the screen; now ~237px). The CSS default (layout-app.css, 30vh) is close, so a first load doesn't visibly jump.
+      { name: 'default', px: Math.round(h * 0.3) },
       { name: 'large', px: Math.round(h * 0.65) },
     ];
   }

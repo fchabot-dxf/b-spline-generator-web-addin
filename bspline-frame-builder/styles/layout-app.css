@@ -455,7 +455,7 @@ aside {
    The desktop layout (defined in Section 9 above as a 3-column grid:
    sidebar | resizer | viewport) flips to a single-column vertical
    stack on narrow viewports:
-     row 1 — .cad-viewport (3D preview, 40vh — 35vh under 400px)
+     row 1 — .cad-viewport (3D preview, 30vh; item 12b, was 40vh / 35vh under 400px)
      row 2 — .cad-resizer  (horizontal grip, 12px tall)
      row 3 — .cad-sidebar  (panels, scrollable, takes remaining space)
    The sticky `.cad-panel-section` at the top of .cad-sidebar is already
@@ -478,7 +478,7 @@ aside {
 @media (max-width: 720px) {
     .cad-main-content {
         grid-template-columns: 1fr;
-        grid-template-rows: 40vh 12px 1fr;
+        grid-template-rows: 30vh 12px 1fr; /* item 12b: was 40vh (35vh under 400px) */
     }
 
     .cad-main-content > .cad-viewport {
@@ -514,11 +514,6 @@ aside {
     }
 }
 
-@media (max-width: 400px) {
-    .cad-main-content {
-        grid-template-rows: 35vh 12px 1fr;
-    }
-}
 
 /* MOB4 (Fred: landscape phone side-by-side, "canvas/preview LEFT, the
    tool panel/sidebar RIGHT") — a landscape phone matches DESKTOP's own

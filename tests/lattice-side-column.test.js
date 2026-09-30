@@ -387,6 +387,70 @@ describe('UI3 — collapsible sections', () => {
   });
 });
 
+// Item 13 (Fred: the Shape Lattice panel was ~4 screens tall on a phone): Boundary, Widths and the
+// Segments sub-block start folded on a phone, remembered under Shape-Lattice-only keys; desktop and the
+// box Lattice panel keep today's open default.
+describe('Item 13 — Shape Lattice folds its rarely used sections (and the Shape sub-block) on a phone', () => {
+  const addSegmentsBlock = () => {
+    const body = document.getElementById('editorShapeLatticePanelBody');
+    body.insertAdjacentHTML('beforeend', `
+      <div><span style="font-weight:600;">Contour</span>
+        <div id="shapeLatticeShapeBlock"><span>Shape</span>
+          <div id="shapeLatticeShapeFoldBody" style="display:flex;"><button id="shapePresetHourglass"></button></div>
+        </div>
+        <div id="shapeLatticeSegmentsBlock"><span>Segments</span>
+          <div id="shapeLatticeSegmentsFoldBody" style="display:flex;"><select id="shapeSegmentIndex"></select></div>
+        </div>
+      </div>`);
+  };
+  const sectionIn = (bodyId, title) => Array.from(document.getElementById(bodyId).children)
+    .find((c) => c.firstElementChild && c.firstElementChild.textContent.trim().startsWith(title));
+  const isOpen = (sectionEl) => sectionEl.firstElementChild.querySelector('.lattice-section-chevron').style.transform === 'rotate(0deg)';
+
+  beforeEach(() => { buildFixture(); addSegmentsBlock(); localStorage.clear(); });
+  afterEach(() => { document.body.innerHTML = ''; localStorage.clear(); });
+
+  it('on a phone: Boundary, Widths and Segments start folded; everyday sections stay open; the box Lattice is untouched', () => {
+    setDesktop(false);
+    initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
+    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Boundary'))).toBe(false);
+    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Widths'))).toBe(false);
+    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Ties'))).toBe(true);
+    expect(isOpen(sectionIn('editorLatticePanelBody', 'Widths'))).toBe(true);
+    const shapeFold = document.getElementById('shapeLatticeShapeFoldBody');
+    expect(shapeFold.style.display).toBe('none');
+    document.querySelector('#shapeLatticeShapeBlock > span').click();
+    expect(shapeFold.style.display).toBe('flex');
+    expect(localStorage.getItem(SECTION_STATE_PREFIX + 'shapeLattice.Shape')).toBe('1');
+    const foldBody = document.getElementById('shapeLatticeSegmentsFoldBody');
+    expect(foldBody.style.display).toBe('none');
+    expect(foldBody.classList.contains('lattice-section-folded')).toBe(true);
+    // Opening it restores its own inline display and remembers it under its own key.
+    document.querySelector('#shapeLatticeSegmentsBlock > span').click();
+    expect(foldBody.style.display).toBe('flex');
+    expect(localStorage.getItem(SECTION_STATE_PREFIX + 'shapeLattice.Segments')).toBe('1');
+    sectionIn('editorShapeLatticePanelBody', 'Widths').firstElementChild.click();
+    expect(localStorage.getItem(SECTION_STATE_PREFIX + 'shapeLattice.Widths')).toBe('1');
+    expect(localStorage.getItem(SECTION_STATE_PREFIX + 'Widths')).toBeNull();
+  });
+
+  it('on desktop they start open, as before', () => {
+    setDesktop(true);
+    initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
+    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Boundary'))).toBe(true);
+    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Widths'))).toBe(true);
+    expect(document.getElementById('shapeLatticeSegmentsFoldBody').style.display).toBe('flex');
+    expect(document.getElementById('shapeLatticeShapeFoldBody').style.display).toBe('flex');
+  });
+
+  it('a remembered open state wins over the phone default', () => {
+    setDesktop(false);
+    localStorage.setItem(SECTION_STATE_PREFIX + 'shapeLattice.Boundary', '1');
+    initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
+    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Boundary'))).toBe(true);
+  });
+});
+
 describe('UI3 AMEND 1/2 — icon tool row replacing Add', () => {
   beforeEach(() => {
     buildFixture();

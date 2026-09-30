@@ -844,6 +844,11 @@
         min-height: 0;
         height: 100%;
         overflow: hidden;
+        /* Item 12a (Fred, phone: grey above the board, its bottom hidden behind the drawer): the
+           fixed drawer covers the canvas bottom, so the SVG box stops at the drawer's top edge.
+           Fit (zoom 1) and the viewBox's xMidYMid meet then centre the whole board in the part you
+           can see, and follow the drawer live as it is dragged (--drawer-height, editor-drawer.js). */
+        padding-bottom: var(--drawer-height, 0px);
     }
 
     #editorSVGContainer {
@@ -1844,6 +1849,31 @@
 }
 .lattice-icon-tool-btn {
     flex-shrink: 0;
+}
+
+/* Item 13 (Fred: the Shape Lattice panel's controls were tiny on a phone): touch targets at least 36px
+   tall in the phone drawer (portrait or landscape; the same query as the drawer itself). min-height beats
+   the controls' own inline height:22-28px without !important; desktop sizes are untouched. A segmented
+   group's fixed 24px height (base.css) is released so its buttons can grow. Section and sub-section
+   labels (the fold toggles) get the same height. */
+@media (max-width: 720px), (pointer: coarse) and (max-height: 500px) and (min-width: 721px) {
+    #editorShapeLatticePanel .segmented-group {
+        height: auto;
+    }
+    /* A folded section's rows (lattice-side-column.js): .panel-row-3's phone rule sets display:grid
+       !important, which otherwise keeps Widths / Nodes showing while folded. */
+    #editorShapeLatticePanel .lattice-section-folded {
+        display: none !important;
+    }
+    #editorShapeLatticePanel button,
+    #editorShapeLatticePanel input[type="number"],
+    #editorShapeLatticePanel input[data-formula-orig-type="number"],
+    #editorShapeLatticePanel select,
+    #editorShapeLatticePanel label:has(> input[type="checkbox"]),
+    #editorShapeLatticePanelBody > [data-collapsible-init] > span:first-child,
+    #editorShapeLatticePanel .lattice-subsection-label {
+        min-height: 36px;
+    }
 }
 
 /* When a layer is hidden, dim and hide its SVG elements in the editor view.

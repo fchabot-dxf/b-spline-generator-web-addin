@@ -73,6 +73,15 @@ The frame is **cut as separate mitered bars on the CNC and glued up**. So:
 - The frame highlight is capped at 0.88, so it never reaches pure white.
 - **Sculpt activation (Fred picked option 3):** tapping a tool in the Sculpt Top/Bottom panel turns Sculpt on, and tapping the same tool again turns it off. It also turns itself off with Esc, with a quick tap on the empty background around the board (a drag still orbits), when its panel is closed, or when the editor, Settings or Projects opens (`main/ui-bindings.js`, `isOnSculptBoard`).
 
+### Phone layout and a shorter Shape Lattice panel (workflow items 12 and 13, done)
+
+- **Drawing editor:** the board fits above the drawer and follows it as the drawer moves (`styles/editor.css`, `padding-bottom: var(--drawer-height)`).
+- **Main page:** the 3D preview on a phone defaults to 30% of the screen (`main/mobile-resizer.js`, `styles/layout-app.css`).
+- **Shape Lattice panel:**
+  - On a phone, Boundary, Widths, Shape and Segments start folded and remember their state; desktop starts open (`editor/lattice-side-column.js`).
+  - Touch targets are at least 36px on a phone.
+  - The panel is now 1504px tall on a phone, down from 1703px.
+
 ## 4. Your first job: live Fusion checks
 
 Setup:
