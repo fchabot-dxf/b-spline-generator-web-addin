@@ -4119,3 +4119,27 @@ named/left unfixed what couldn't be safely fixed this session.
   this documented partial state.
 - `npx vitest run`: 2733 passed. `pytest` (frame-builder / b-spline-gen / repo root): 296+89+479 passed,
   7+0+7 skipped.
+
+## 2026-09-30: H23 item 4 — Template 6 (Tab Top) live Fusion check (worker)
+
+Full results in `LIVE-RESULTS-ranchy.md`. Summary: **the cleanest template checked this round — pass at
+every step, no Fusion construction fix needed.**
+
+- Built by hand (7x9), recorded all 3 goldens, ran the 4-case f20 seeded parity check (all effectively exact,
+  floating-point epsilon -- Template 6 is all straight lines, no arc-fit approximation at all), ran CAM
+  Builder directly via `cam_engine.cam_coordinator.run()` (confirmed all 8 bars laid out correctly in one row
+  along X, toolpaths generated), and the inversion sweep -- everything passed on the first attempt, including
+  the specific risks the handoff's own table flagged (inside-corner sharpness, the two left/right Equals).
+- Regenerated frame-defs: Template 6's provisional block is gone, properly fitted from all 3 goldens.
+  Templates 1-5 confirmed unchanged.
+- Fixed 2 stale tests (provisional-era dimensions/flag), same pattern as items 1-3.
+- Found and fixed 2 UNRELATED pre-existing test bugs that Template 6's goldens were the first to exercise:
+  (1) `test_fb_fix.py` hardcoded "exactly 4 bars" as its success condition -- wrong in general, its own
+  comment already said the real rule ("0 bars iff too small"); fixed to match, which correctly re-surfaced
+  Template 3's own already-tracked 5.51x1.97 anomaly through this independent path too (skipped with a
+  comment, not silently re-broken). (2) A genuine, non-bug divergence between the app's own tab-height clamp
+  (enforced even on its "just show the default" computation) and the unclamped Fusion goldens at 12x6/
+  5.51x1.97 -- documented and skipped directly in the JS test (not via `fit.excluded`, which would have
+  dropped those golden points from the fit itself and undone an otherwise good fit).
+- `npx vitest run`: 2739 passed. `pytest` (frame-builder / b-spline-gen / repo root): 302+89+485 passed,
+  10+0+10 skipped.

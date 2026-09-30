@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "467ac95f40ca7b410b16f2ca792351d5d16ed3e2085e62150381f78fd8cf60b1",
+  "sourceHash": "2ec95b223b2faf01d3c6d2c3b8859f4f40f0a6e32133dcee7b07b1b2164781ed",
   "templates": [
     {
       "features": [
@@ -8332,27 +8332,36 @@
       "shapeModel": {
         "features": {
           "tabHalfWidth": {
-            "hh": 0.0,
-            "hw": 0.5
+            "hh": 0.026411,
+            "hw": 0.456397
           },
           "tabHeight": {
-            "hh": 0.5,
-            "hw": 0.0
+            "hh": 0.55653,
+            "hw": -0.064483
           }
         },
         "fit": {
           "exactAtFittedSizes": false,
           "excluded": [],
-          "fittedFrom": [],
-          "maxResidualIn": null,
+          "fittedFrom": [
+            "12x6",
+            "5.51x1.97",
+            "7x9"
+          ],
+          "maxResidualIn": 0.1718,
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
-          "residualsIn": {}
-        },
-        "provisional": {
-          "baseModel": null,
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-          "tabHalfWidthOfHw": 0.5,
-          "tabHeightOfHh": 0.5
+          "residualsIn": {
+            "tabHalfWidth": [
+              0.0902,
+              -0.1692,
+              -0.0291
+            ],
+            "tabHeight": [
+              -0.0915,
+              0.1718,
+              0.0295
+            ]
+          }
         }
       },
       "silhouettePreset": "tabTop",

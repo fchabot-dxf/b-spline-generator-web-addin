@@ -58,11 +58,30 @@ const CASES = readdirSync(DIR).filter((f) => f.endsWith('.json')).map((f) => {
   return [f.replace('.json', ''), g];
 });
 
+/**
+ * H23 item 4: Template 6's tab genuinely needs a minimum height (>= 2x the
+ * frame thickness, frameParamRanges) to stay a buildable part. `frameCutProfile`
+ * (no seeds -- the same "just show the default" call this test makes) clamps
+ * to that minimum; the recorded Fusion golden does NOT (`phases/p02_03`'s own
+ * fixed seed fractions have no such clamp) -- at 7x9 both sides naturally clear
+ * the minimum so they agree, but at 12x6 the golden's tab is 1.251in raw against
+ * the app's own clamped 1.5in, and 5.51x1.97's is smaller still on both sides.
+ * Fusion's OWN build is healthy and correct at every size here (unlike Template
+ * 3/5's real bugs elsewhere in this same H23 batch) -- this is a genuine, known
+ * clamp-vs-unclamped-golden divergence, not a construction defect, so it isn't
+ * routed through `fit.excluded` (that would also drop these 2 of 3 points from
+ * the least-squares fit itself, undoing the real, good fit these goldens gave
+ * Template 6's tabHalfWidth/tabHeight -- see LIVE-RESULTS-ranchy.md item 4).
+ */
+const CLAMP_DIVERGENT_OUTLINE = new Set(['template_6_12x6', 'template_6_5.51x1.97']);
+const CLAMP_DIVERGENT_INNER = new Set(['template_6_12x6']); // 5.51x1.97 already skips via the fit.ok===false branch below
+
 describe('S4 parity: app cut profile vs the recorded Fusion outline', () => {
-  it.each(CASES)('%s', (_name, g) => {
+  it.each(CASES)('%s', (name, g) => {
     const tpl = FRAME_DEFS.templates.find((t) => t.id === g.meta.template);
     const size = `${g.meta.widthIn}x${g.meta.heightIn}`;
     if (tpl.shapeModel.fit.excluded.includes(size)) return; // declared: Fusion's own outline breaks the construction here
+    if (CLAMP_DIVERGENT_OUTLINE.has(name)) return;
     const W = g.meta.widthIn, H = g.meta.heightIn;
     const prof = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id }), { widthIn: W, heightIn: H });
     expect(prof.defects).toEqual([]);
@@ -87,10 +106,11 @@ describe('S4 parity: app cut profile vs the recorded Fusion outline', () => {
  * 5.51x1.97 the frame does not fit (1.5 in of frame, 1.47 in safe zone).
  */
 describe('S4 parity: app inner edge vs the recorded Fusion offset', () => {
-  it.each(CASES)('%s', (_name, g) => {
+  it.each(CASES)('%s', (name, g) => {
     const tpl = FRAME_DEFS.templates.find((t) => t.id === g.meta.template);
     const size = `${g.meta.widthIn}x${g.meta.heightIn}`;
     if (tpl.shapeModel.fit.excluded.includes(size)) return;
+    if (CLAMP_DIVERGENT_INNER.has(name)) return;
     const W = g.meta.widthIn, H = g.meta.heightIn;
     const inner = frameInnerProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id }), { widthIn: W, heightIn: H });
     const fus = goldenPoints(g.sketch3_frame_enclosure, W, H, (id) => id.startsWith('inner_'));

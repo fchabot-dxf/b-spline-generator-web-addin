@@ -66,7 +66,12 @@ describe('Template 6: listing and declaration', () => {
     expect(T6.regions.miters).toHaveLength(8);
     expect(T6.regions.bars.map((b) => b.name)).toEqual(T6.features[0].bodyNames);
     expect(T6.regions.corners.filter((c) => c.reflex).map((c) => c.id)).toEqual(['inside_R', 'inside_L']);
-    expect(T6.shapeModel.provisional).toBeTruthy();
+    // H23 item 4: the provisional shim is retired -- T6 now has its own
+    // shapeModel fitted from live Fusion goldens (all 3 golden sizes were
+    // valid for its extractor, none excluded).
+    expect(T6.shapeModel.provisional).toBeUndefined();
+    expect(T6.shapeModel.fit.fittedFrom).toEqual(['12x6', '5.51x1.97', '7x9']);
+    expect(T6.shapeModel.fit.excluded).toEqual([]);
   });
 });
 
@@ -92,10 +97,10 @@ describe('Template 6: the outline', () => {
     expect(ruleOk(prof, T)).toBe(true);
   });
 
-  it('7x9 defaults: a 3.25 in wide, 2.125 in tall tab (the provisional model, 0.5 hw / 0.5 hh)', () => {
+  it('7x9 defaults: a ~3.19 in wide, ~2.156 in tall tab (H23 item 4: now the FITTED model, not the old provisional 0.5 hw / 0.5 hh estimate)', () => {
     const m = measure(profile({}));
-    expect(m.a).toBeCloseTo(1.625, 9);
-    expect(m.h).toBeCloseTo(2.125, 9);
+    expect(m.a).toBeCloseTo(1.595537, 9);
+    expect(m.h).toBeCloseTo(2.15568275, 9);
   });
 
   it('12x6: the provisional 1.375 in tab height is clamped up to 2 x the frame thickness (a tab side >= 2t)', () => {
