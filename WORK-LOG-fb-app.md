@@ -4085,3 +4085,37 @@ including the one place Template 3 broke (Template 4 correctly builds 0 bars at 
   mutation-tested via `git stash` against the pre-fix frame-defs to confirm it fails there.
 - `npx vitest run`: 2731 passed. `pytest` (frame-builder / b-spline-gen / repo root): 294+89+477 passed,
   6+0+6 skipped.
+
+## 2026-09-30: H23 item 3 — Template 5 (Hourglass Dipped Top) live Fusion check (worker)
+
+Full results in `LIVE-RESULTS-ranchy.md`. Summary: **7x9 passes clean; 12x6 and 5.51x1.97 are real Fusion
+build bugs, not fixed** (an attempted fix made 12x6 outright unsolvable instead of just wrong-shaped, so it
+was reverted). Per the advisor's own guidance mid-item: recorded goldens only where the build is genuinely
+correct, fixed the real Fusion bug where possible rather than routing around it with `fit.excluded`, and
+named/left unfixed what couldn't be safely fixed this session.
+
+- **Root cause of the 12x6 flip**: `top_shoulder_equal` (an `Equal` on the two top-dip shoulder arcs' radius)
+  ties size only, not position -- at 12x6 (far from the 7x9 the phase's hardcoded seed fractions were solved
+  for) the solver satisfies every constraint with the right shoulder arc mirrored onto the LEFT half of the
+  board instead. `outline_violations()` correctly flags both it and its stub as "on the wrong side."
+- **Fix attempted**: a `Symmetry` constraint on the two shoulder arcs' centers about `Y_AXIS` (true mirror,
+  not just equal-size). Along the way found and fixed a real, separate engine bug this exposed:
+  `fb_engine/parametric_engine.py`'s `_process_sequence` dispatcher never had `"Symmetry"` in its allowlist,
+  even though `fb_engine/constraints.py` already implements it and claims to support it -- the constraint was
+  silently dropped with no log line at all. Kept that dispatcher fix (safe, additive, verified live). But once
+  the Symmetry constraint actually reached Fusion, it made the 12x6 sketch UNSOLVABLE
+  (`VCS_SKETCH_SOLVING_FAILED`) rather than fixing the flip -- reverted the phase file back to `Equal`.
+- Tracing this took most of the item's time: THREE session-lifetime caching layers in the Fusion engine
+  (template registry, per-loader phase cache, and Python's own module cache for `parametric_engine`) made it
+  very hard to tell whether an edited phase file's effect was actually live. Resolved by monkeypatching
+  `_resolve_template` to trace exactly what spec reaches the builder -- confirmed the spec was always
+  correct, which isolated the real bug to the dispatcher's allowlist, not caching.
+- Also found (inversion sweep): 7x9 at a large trim offset loses 2 of 4 bars asymmetrically; 12x6 at a large
+  offset produces an actual unhealthy timeline (not just a bad shape) -- same underlying "no too-small/too-
+  degenerate guard" class of bug as Template 3's own H23 item 1 finding.
+- Committed only the 7x9 golden; 12x6/5.51x1.97 recorded live but discarded as genuinely broken, not
+  committed as-is and not routed around via `fit.excluded` (reserved for geometrically impossible sizes, not
+  build bugs, per the advisor). `test_frame_parity_goldens.py::test_all_six_goldens_exist` updated to allow
+  this documented partial state.
+- `npx vitest run`: 2733 passed. `pytest` (frame-builder / b-spline-gen / repo root): 296+89+479 passed,
+  7+0+7 skipped.

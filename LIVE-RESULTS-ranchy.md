@@ -62,6 +62,71 @@ still strictly require 0. Recommend a follow-up item: port whichever feasibility
 (likely a minimum-safe-zone-height check before attempting the shoulder/waist/hip arc stack) into Template
 3's own construction.
 
+## Item 3 — Template 5 (Hourglass Dipped Top)
+
+**PARTIAL — 7x9 passes clean; 12x6 and 5.51x1.97 are genuine Fusion build bugs, NOT fixed.** An attempted
+fix made things worse (an unsolvable sketch instead of a wrong shape) and was reverted. A separate, real,
+now-fixed engine bug was found and kept.
+
+- **Step 1, build by hand (7x9, defaults):** timeline 7 items (sketch phases only), 0 unhealthy. Bars:
+  `frame_bottom`, `frame_left`, `frame_right`, `frame_top` (all 4). Dip depth 0.594 in (spec: ~0.6), stub
+  length 0.91 in (spec: ~0.9), all three top arcs (`arc_top_shoulder_L`, `arc_top_dip`, `arc_top_shoulder_R`)
+  share one radius (2.4494 in), centered and mirrored (+/-2.34 in). Screenshot:
+  `C:/Users/danse/.bspline-status/shots/seatA/1842_H23-item3_template5_top.png`.
+- **Step 2, goldens:** `template_5_7x9.json` committed (clean). `template_5_12x6.json` and
+  `template_5_5.51x1.97.json` recorded live but **discarded, not committed** — both are genuinely broken
+  Fusion builds, detailed below, not "hard to fit precisely" cases that `fit.excluded` exists for.
+- **Step 3, f20 seeded parity (4 cases):** `healthy` true and no stray `userParams` in all 4, including the
+  seeded 12x6 case (which stays symmetric — see below). `maxErr` **fails all 4** (0.011–0.29 in vs the 0.001
+  threshold) — expected while the dip's shapeModel is still fully provisional (never fitted; see Step 2), but
+  the residual is far larger than Template 1/2's real-fit residuals, worth a fresh look once real goldens
+  exist.
+- **Step 4, inversion sweep:** `outline_violations()` gave `[]` for all 4 (7x9/12x6 × offset 0.5/1.0), but bar
+  count/health told a different story: 7x9 @ 1.0 → only 2 of 4 bars (`frame_left`/`frame_top` missing,
+  otherwise healthy); 12x6 @ 0.5 → 3 of 4 bars; **12x6 @ 1.0 → only 1 bar, timeline UNHEALTHY** — a real
+  build failure. Traced directly: `top_edge_L`/`top_edge_R` collapse to meet at exactly (0, 2) (the dip
+  width driven to 0) but the arc chain collapses degenerately instead of cleanly vanishing.
+
+**The core bug** (12x6, plain default build, no seeds): `top_shoulder_equal` (`Equal` on the two top-shoulder
+arcs' radius) ties SIZE only, not POSITION. At 12x6 — an aspect ratio far from the 7x9 the phase's own
+hardcoded seed fractions were solved for — the solver satisfies every constraint (the Equal, the Tangents,
+the dip-centered-on-`Y_AXIS` Coincident) with `arc_top_shoulder_R` landing on the LEFT half of the board
+(center x = -3.266) instead of the right — same size as its mirror, wrong position.
+`outline_violations()` correctly flags it: `arc_top_shoulder_R on the wrong side`, `top_edge_R on the wrong
+side`. Likely cause: `phases/p02_03_loop.py`'s seed radius scales with `heightIn` only
+(`heightIn * 0.272158`) while the horizontal span the arc chain must bridge scales with `widthIn` — at 12x6
+(wide, short) this seed is proportioned very differently than at 7x9, plausibly far enough from any valid
+configuration that the solver lands on the mirrored branch instead of the intended one.
+
+**Fix attempted, made it WORSE, reverted:** replaced `top_shoulder_equal` (`Equal`) with a `Symmetry`
+constraint on the two shoulder arcs' CENTER points about `Y_AXIS` (`arc_top_shoulder_L:C`,
+`arc_top_shoulder_R:C`, `Y_AXIS`) — a true mirror constraint, not just equal-size. Along the way, discovered
+and fixed a genuine, SEPARATE engine bug this exposed: `fb_engine/parametric_engine.py`'s `_process_sequence`
+(the dispatcher every phase file's `BuildSequence` goes through) never had `"Symmetry"` in its `constr_types`
+allowlist, even though `fb_engine/constraints.py` already implements `addSymmetry` and its own module
+docstring claims Symmetry as a supported type — the constraint was silently dropped (no log line at all, not
+even a "skip" warning) before ever reaching Fusion's API. **Kept this dispatcher fix** (`constr_types` now
+includes `"Symmetry"`) — it's minimal, purely additive, verified via `importlib.reload` + a live rebuild to
+actually route to `addSymmetry`, and safe regardless of Template 5's own outcome (no other template currently
+uses Symmetry via BuildSequence, so nothing else is affected). However, once the Symmetry constraint actually
+reached Fusion at 12x6, it made the sketch **UNSOLVABLE**
+(`VCS_SKETCH_SOLVING_FAILED - Failed to solve. Please try revising dimensions or constraints.`) rather than
+fixing the flip — worse than the original wrong-but-buildable shape. Reverted `p02_11_symmetry.py` back to
+the original `Equal`. The debugging process to reach this point took a very long time (most of this item's
+session) due to THREE STACKED layers of session-lifetime caching in the Fusion-side engine
+(`fb_engine.template_resolver`'s `_TEMPLATE_REGISTRY`, per-`TemplateLoader` `_phase_cache`, and
+`importlib`-cached engine modules like `parametric_engine` itself) that made an edited phase file's effect
+very hard to verify was (or wasn't) actually live — traced with a monkeypatch around `_resolve_template`
+that confirmed the correct spec WAS being resolved and passed to the builder, which is what isolated the real
+bug to the dispatcher's allowlist rather than any caching issue.
+
+**Not fixed — recommend a dedicated follow-up**, ideally with more room to iterate on the seed geometry
+itself (e.g., making the dip's radius seed depend on both width and height, not height alone) rather than
+adding more constraints on top of a seed that's already far from a valid solution at extreme aspect ratios.
+`test_frame_parity_goldens.py::test_all_six_goldens_exist` was updated to allow Template 5's deliberately
+partial state (7x9 only, or all 3, or none) with a comment explaining why, rather than force an all-or-
+nothing choice that would have meant discarding the one good golden or fabricating the two bad ones.
+
 ## Item 2 — Template 4 (Offset Hourglass)
 
 **PASS.** No fix needed — every step passed on the first attempt, including the one place Template 3 broke.
