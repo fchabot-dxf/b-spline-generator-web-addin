@@ -14,7 +14,7 @@
 import { generateSilhouette, outlineDefects, primitivesToPathD, primitiveToPathD, paramsFromShapeModel } from './editor-shape-lattice-generator.js';
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { offsetOutlineInward } from './outline-offset.js';
-import { shapeParamOverrides, frameHandles } from './frame-handles.js';
+import { shapeParamOverrides, frameHandles, clampToFrameRanges, FRAME_CLAMPED_PRESETS } from './frame-handles.js';
 import { frameColorFor } from '../core/color-utils.js';
 import { handleKindVisual, drawParamHandle, drawSegmentHighlight } from './editor-transform-handles.js';
 import { controlledSegments } from './editor-shape-lattice-interaction.js';
@@ -85,14 +85,18 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
   const bbo = _param(tpl, record, 'boundingboxoffset') ?? 0;
   const ft = _param(tpl, record, 'frame_thickness') ?? 0;
   const region = { x: bbo, y: bbo, w: widthIn - 2 * bbo, h: heightIn - 2 * bbo };
-  const shapeParams = _shapeParams(tpl, region, record);
+  const fit = frameFit(widthIn, heightIn, ft, bbo);
+  let shapeParams = _shapeParams(tpl, region, record);
+  // T6 TAB TOP: a preset whose drawn frame obeys the thickness rule (frame-handles.js FRAME_CLAMPED_PRESETS);
+  // every other template is drawn exactly as before.
+  if (fit.ok && FRAME_CLAMPED_PRESETS.includes(tpl.silhouettePreset)) shapeParams = clampToFrameRanges(tpl, region, shapeParams, ft);
   const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: shapeParams });
   const defects = outlineDefects(sil.primitives);
   return {
     // F27 item 2 arc pull: `shapeParams` = the params the outline was generated FROM (the arc grips re-solve over them)
     templateId: tpl.id, name: tpl.name, region, primitives: sil.primitives, params: sil.params, shapeParams,
     pathD: primitivesToPathD(sil.primitives), polygon: sampleOutline(sil.primitives),
-    defects, fit: frameFit(widthIn, heightIn, ft, bbo),
+    defects, fit,
   };
 }
 

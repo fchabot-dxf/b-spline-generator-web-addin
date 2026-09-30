@@ -33,14 +33,14 @@ const evalIn = (e) => {
 };
 const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-describe.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s seed map', (id) => {
+describe.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6'])('%s seed map', (id) => {
   const tpl = tplOf(id);
   const prof = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: id }), { widthIn: W, heightIn: H });
   const geo = frameSeedGeometry(tpl, prof, W, H);
   const lit = literalSteps(tpl);
 
   it('names only seeds the template declares, every declared outline arc included', () => {
-    expect(tpl.seedMap.length).toBeGreaterThan(8);
+    expect(tpl.seedMap.length).toBeGreaterThan(id === 'template_6' ? 7 : 8); // T6: 8 straight pieces, no arcs or pins
     for (const e of tpl.seedMap) expect(lit[e.id], e.id).toBeTruthy();
     const arcs = Object.values(lit).filter((st) => st.Type === 'Arc3Point').map((st) => st.ID).sort();
     expect(tpl.seedMap.filter((e) => e.kind === 'arc').map((e) => e.id).sort()).toEqual(arcs);

@@ -153,24 +153,38 @@ function _trianglePolygonPieces(tri, poly) {
   let start = -1;
   for (let k = 0; k < n && start < 0; k++) if (planes.some((pl) => side(pl, poly[k]) < 0)) start = k;
   if (start < 0) return [poly.slice()]; // the polygon lies inside the triangle
-  const chains = [];
-  let cur = null;
-  for (let m = 0; m < n; m++) {
-    const P = poly[(start + m) % n], Q = poly[(start + m + 1) % n], d = { x: Q.x - P.x, y: Q.y - P.y };
-    let te = 0, tx = 1, ee = -1, ex = -1, empty = false;
-    planes.forEach((pl, e) => { // Cyrus-Beck
-      const f0 = side(pl, P), fd = (pl.B.x - pl.A.x) * d.y - (pl.B.y - pl.A.y) * d.x;
-      if (fd === 0) { if (f0 < 0) empty = true; return; }
-      const t = -f0 / fd;
-      // ties count: a chain may enter / leave exactly at a polygon vertex on the boundary
-      if (fd > 0) { if (t >= te) { te = t; ee = e; } } else if (t <= tx) { tx = t; ex = e; }
-    });
-    if (empty || te >= tx) continue; // outside, or only touching the triangle at one point
-    const at = (t) => ({ x: P.x + d.x * t, y: P.y + d.y * t });
-    if (ee >= 0 && !cur) { const X = at(te); cur = { entry: perim(ee, X), pts: [X] }; }
-    if (!cur) continue;
-    if (ex >= 0) { const X = at(tx); cur.pts.push(X); cur.exit = perim(ex, X); chains.push(cur); cur = null; } else cur.pts.push(Q);
-  }
+  // T6 TAB TOP: `exitAtStart` -- an OPEN chain that leaves exactly at a segment's start (a polygon vertex ON the
+  // triangle's boundary where the outline turns back out: a reflex vertex on a triangle edge, e.g. 7x9 at 0.05 in
+  // cells) exits there. The plain walk skips such a segment ("only touching"); that is harmless when the chain
+  // closes further on (every convex corner of Templates 1-5, walked exactly as before), but at a reflex vertex the
+  // chain never closed and the whole triangle was lost to the centroid test. So the walk is redone with the rule
+  // only when the plain one leaves a chain open.
+  const walk = (exitAtStart) => {
+    const chains = [];
+    let cur = null;
+    for (let m = 0; m < n; m++) {
+      const P = poly[(start + m) % n], Q = poly[(start + m + 1) % n], d = { x: Q.x - P.x, y: Q.y - P.y };
+      let te = 0, tx = 1, ee = -1, ex = -1, empty = false;
+      planes.forEach((pl, e) => { // Cyrus-Beck
+        const f0 = side(pl, P), fd = (pl.B.x - pl.A.x) * d.y - (pl.B.y - pl.A.y) * d.x;
+        if (fd === 0) { if (f0 < 0) empty = true; return; }
+        const t = -f0 / fd;
+        // ties count: a chain may enter / leave exactly at a polygon vertex on the boundary
+        if (fd > 0) { if (t >= te) { te = t; ee = e; } } else if (t <= tx) { tx = t; ex = e; }
+      });
+      if (empty || te >= tx) { // outside, or only touching the triangle at one point
+        if (exitAtStart && cur && !empty && ex >= 0 && tx === 0) { cur.exit = perim(ex, P); chains.push(cur); cur = null; }
+        continue;
+      }
+      const at = (t) => ({ x: P.x + d.x * t, y: P.y + d.y * t });
+      if (ee >= 0 && !cur) { const X = at(te); cur = { entry: perim(ee, X), pts: [X] }; }
+      if (!cur) continue;
+      if (ex >= 0) { const X = at(tx); cur.pts.push(X); cur.exit = perim(ex, X); chains.push(cur); cur = null; } else cur.pts.push(Q);
+    }
+    return { chains, open: !!cur };
+  };
+  let { chains, open } = walk(false);
+  if (open) ({ chains } = walk(true));
   // A chain lying ON the triangle's boundary with the polygon's interior on the
   // far side (the outline running along a triangle edge the other way) has no
   // area inside: every segment's left side is outside the triangle. Drop it.
@@ -185,6 +199,23 @@ function _trianglePolygonPieces(tri, poly) {
   }));
   if (!live.length) return null; // no crossing: decided by the caller
   const fwd = (from, to) => ((to - from) % 3 + 3) % 3; // CCW distance along the boundary
+  // T6 TAB TOP: a reflex vertex of the outline lying ON a triangle edge ends one chain and starts the next at the
+  // SAME boundary point. At such a RIGHT turn, linking them straight through is right only when the outline turns
+  // there before the triangle's boundary does (clockwise from the incoming direction reversed: the region stays on
+  // the left); otherwise the two are separate pieces touching at that point, and the boundary walk goes on to the
+  // next entry. A left turn (every corner of Templates 1-5) links straight through, as before.
+  const dirOf = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy); return l > 0 ? { x: dx / l, y: dy / l } : null; };
+  const lastDir = (pts) => { for (let i = pts.length - 1; i > 0; i--) { const u = dirOf(pts[i - 1], pts[i]); if (u) return u; } return null; };
+  const firstDir = (pts) => { for (let i = 1; i < pts.length; i++) { const u = dirOf(pts[0], pts[i]); if (u) return u; } return null; };
+  const cw = (r, v) => { let a = (Math.atan2(r.y, r.x) - Math.atan2(v.y, v.x)) % (2 * Math.PI); if (a <= 0) a += 2 * Math.PI; return a; };
+  const linkOk = (c, o) => {
+    const din = lastDir(c.pts), dout = firstDir(o.pts), { A, B } = planes[Math.floor(c.exit) % 3], b = dirOf(A, B);
+    if (!din || !dout || !b) return true;
+    if (din.x * dout.y - din.y * dout.x >= 0) return true; // a left turn (a convex vertex of the CCW outline): as before
+    const rev = { x: -din.x, y: -din.y };
+    return cw(rev, dout) < cw(rev, b);
+  };
+  const reach = (c, o) => { const f = fwd(c.exit, o.entry); return f === 0 && o !== c && !linkOk(c, o) ? 3 : f; };
   const loops = [], used = new Set();
   for (const c0 of live) {
     if (used.has(c0)) continue;
@@ -194,8 +225,8 @@ function _trianglePolygonPieces(tri, poly) {
       used.add(c);
       loop.push(...c.pts);
       let next = null;
-      for (const o of live) if (!next || fwd(c.exit, o.entry) < fwd(c.exit, next.entry)) next = o;
-      for (const v of [0, 1, 2].filter((v) => fwd(c.exit, v) > 0 && fwd(c.exit, v) < fwd(c.exit, next.entry)).sort((u, v) => fwd(c.exit, u) - fwd(c.exit, v))) {
+      for (const o of live) if (!next || reach(c, o) < reach(c, next)) next = o;
+      for (const v of [0, 1, 2].filter((v) => fwd(c.exit, v) > 0 && fwd(c.exit, v) < reach(c, next)).sort((u, v) => fwd(c.exit, u) - fwd(c.exit, v))) {
         loop.push(tri[v]);
       }
       c = next;

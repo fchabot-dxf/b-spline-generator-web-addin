@@ -71,7 +71,16 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
   const R = feasibleParamRanges(tpl.silhouettePreset, region, resolved);
   const hw = region.w / 2, half = FRAME_MIN_OPENING_IN / 2;
   if (tpl.silhouettePreset === 'bottle') R.neckWidth = _narrow(R.neckWidth, (t + half) / hw, Infinity);
-  else {
+  else if (tpl.silhouettePreset === 'tabTop') {
+    // T6 TAB TOP (Fred: no bar thinner than the frame thickness, no tab side shorter than ~2 x the thickness).
+    // Every piece is a bar t wide, so "thinner than t" = a bar shorter than t along the outline:
+    //   tab width a (half): the tab top's inner edge 2a - 2t >= max(t, the minimum opening), and each shoulder
+    //     bar (hw - a long, a parallelogram) >= t;
+    //   tab height h: each tab side >= 2t, and the body's opening below the shoulders (2hh - h - 2t) >= t.
+    const hh = region.h / 2;
+    R.tabWidth = _narrow(R.tabWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
+    R.tabHeight = _narrow(R.tabHeight, (2 * t) / hh, (2 * hh - 3 * t) / hh);
+  } else {
     R.waistReach = _narrow(R.waistReach, -Infinity, 1 - (t + half) / hw); // the pinch: hw - depth - t >= half
     // T4 OFFSET HOURGLASS: the left pinch obeys the same rule on its own side.
     if (R.waistReachLeft) R.waistReachLeft = _narrow(R.waistReachLeft, -Infinity, 1 - (t + half) / hw);
@@ -97,6 +106,26 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
 }
 
 const BASIS = { hw: (r) => r.w / 2, hh: (r) => r.h / 2, h: (r) => r.h };
+
+/**
+ * T6 TAB TOP: presets whose DRAWN frame (not only a drag) obeys the frame rule (frameParamRanges): their shape
+ * params are clamped into it before the outline is solved (editor-frame-profile.js frameCutProfile), so a model
+ * value or a saved seed that breaks the thickness rule (e.g. the 12x6 provisional tab, 1.375 in for a 0.75 in
+ * frame) is drawn, seeded and sent at the nearest valid size. Only a frame that fits the board: the rule is
+ * undefined when the frame does not (FRAME_FIT). The hourglass / bottle frames are not clamped (as before).
+ */
+export const FRAME_CLAMPED_PRESETS = Object.freeze(['tabTop']);
+export function clampToFrameRanges(tpl, region, params, t = _templateThickness(tpl)) {
+  const preset = tpl.silhouettePreset;
+  if (!FRAME_CLAMPED_PRESETS.includes(preset)) return params;
+  const out = { ...params };
+  for (const key of PARAM_ORDER[preset]) {
+    const resolved = generateSilhouette(region, { preset, params: out }).params;
+    const r = frameParamRanges(tpl, region, resolved, t)[key];
+    out[key] = Math.max(r.min, Math.min(r.max, resolved[key]));
+  }
+  return out;
+}
 
 /** The template's declared handles (the binding table). */
 export const frameHandleTable = (tpl) => (tpl && tpl.handles) || [];

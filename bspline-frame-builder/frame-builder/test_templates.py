@@ -60,6 +60,12 @@ EXPECTED = {
         'name': 'Template 5 - Hourglass Dipped Top',
         'phase_counts': {1: 2, 2: 11, 3: 5},
     },
+    # T6 TAB TOP: straight lines only (p02_01 projections, p02_02 loop, p02_03 welds, p02_04 orientation,
+    # p02_05 symmetry); sketch 1 / sketch 3's five phases as every template (8 corners, 8 miters).
+    'template_6': {
+        'name': 'Template 6 - Tab Top',
+        'phase_counts': {1: 2, 2: 5, 3: 5},
+    },
 }
 
 
@@ -170,6 +176,10 @@ def test_cross_template_regression():
         ('template_1', 'template_5'),
         ('template_5', 'template_1'),
         ('template_4', 'template_5'),
+        # T6 shares Template 2's phase file names (p02_01_projs) and every template's p03 names.
+        ('template_2', 'template_6'),
+        ('template_6', 'template_1'),
+        ('template_5', 'template_6'),
     ]
     for first, second in sequences:
         try:

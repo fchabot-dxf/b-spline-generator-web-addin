@@ -30,7 +30,10 @@ def test_all_six_goldens_exist():
     # T5 HOURGLASS DIPPED TOP: the same (sketches/template_5/LIVE_CHECK.md).
     t5 = {n for n in names if n.startswith("template_5_")}
     assert t5 in (set(), {f"template_5_{s}.json" for s in _SIZES}), sorted(t5)
-    assert names - t3 - t4 - t5 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
+    # T6 TAB TOP: the same (sketches/template_6/LIVE_CHECK.md).
+    t6 = {n for n in names if n.startswith("template_6_")}
+    assert t6 in (set(), {f"template_6_{s}.json" for s in _SIZES}), sorted(t6)
+    assert names - t3 - t4 - t5 - t6 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
 
 
 @pytest.mark.parametrize("path", _FILES, ids=os.path.basename)
@@ -40,7 +43,17 @@ def test_golden_is_consistent(path):
     m = d["meta"]
     assert m["template"] == template and f"{m['widthIn']:g}x{m['heightIn']:g}" == size
     assert m["timelineHealthy"] is True
-    assert len(d["bars"]) == (0 if size in _DEGENERATE else 4)
+    # N-BAR: the template's own declared bar count (4 for Templates 1-5; Template 6's 8, by these names)
+    import sys
+    _fb = os.path.dirname(os.path.realpath(__file__))
+    if _fb not in sys.path:
+        sys.path.insert(0, _fb)
+    from fb_engine.declared_profiles import frame_bars
+    from fb_engine.template_resolver import resolve_template
+    names = [b["name"] for b in frame_bars(resolve_template(template)[0]["Frame"])]
+    assert len(d["bars"]) == (0 if size in _DEGENERATE else len(names))
+    if size not in _DEGENERATE:
+        assert sorted(d["bars"]) == sorted(names)
     for bar in d["bars"].values():  # bars run from z = -1 in (frame bottom) up to the flat core underside z = 0
         assert bar["bbox"]["min"][2] == pytest.approx(-1.0) and bar["bbox"]["max"][2] == pytest.approx(0.0)
 

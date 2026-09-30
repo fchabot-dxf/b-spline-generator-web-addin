@@ -48,17 +48,22 @@ describe('frame-defs (generated) — schema', () => {
   it.each(FRAME_DEFS.templates.map((t) => [t.id, t]))('%s: preset, shape params and params are complete', (_id, t) => {
     expect(PRESETS[t.silhouettePreset]).toBeTruthy();
     // F8: the shape is a model fitted from the recorded Fusion goldens, with its fit report.
-    const FEATURES = { hourglass: ['cornerR', 'depth', 'notch', 'waistCy', 'waistR'], bottle: ['bodyR', 'neckHalfW', 'neckR', 'neckTop'] };
+    // T6 TAB TOP: the frame-only tabTop preset's model: the tab's half width and height.
+    const FEATURES = { hourglass: ['cornerR', 'depth', 'notch', 'waistCy', 'waistR'], bottle: ['bodyR', 'neckHalfW', 'neckR', 'neckTop'],
+      tabTop: ['tabHalfWidth', 'tabHeight'] };
     // T3 TAPERED HOURGLASS: a narrow-top hourglass model also carries topInset (and, once fitted from its own
     // goldens, the two corners separately) -- the only extras paramsFromShapeModel reads.
     // T4 OFFSET HOURGLASS: an offset-waist model also carries the left pinch (waistCyLeft, notchLeft, depthLeft).
     // T5 HOURGLASS DIPPED TOP: a dipped-top model also carries the top dip (topDipDepth, topDipHalfWidth).
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth'], bottle: [] };
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth'], bottle: [], tabTop: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);
     if (!['template_3', 'template_4', 'template_5'].includes(t.id)) expect(keys.sort()).toEqual(FEATURES[t.silhouettePreset]); // Template 1 / 2: exactly as before
-    expect(t.shapeModel.fit.fittedFrom.length).toBeGreaterThanOrEqual(2);
+    // T6: a provisional model of its own (no base template, frame_shape_fit.provisional_tab_top_model) is fitted
+    // from nothing yet; every other model (T3-T5's provisional ones carry Template 1's fit) from 2+ goldens.
+    if (t.shapeModel.provisional && t.shapeModel.provisional.baseModel === null) expect(t.shapeModel.fit.fittedFrom).toEqual([]);
+    else expect(t.shapeModel.fit.fittedFrom.length).toBeGreaterThanOrEqual(2);
     for (const p of t.params) {
       expect(p).toHaveProperty('unit');
       expect(p).toHaveProperty('default');

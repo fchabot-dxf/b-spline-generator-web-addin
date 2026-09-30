@@ -776,6 +776,7 @@ def _populate_frame_geometry(mm, source_design, logger):
         except Exception:
             pass
 
+    other_bars = {}  # N-BAR: every other frame_* body (a template with its own bar names, e.g. Template 6)
     try:
         for body in _yield_all_bodies(root_comp):
             try:
@@ -784,9 +785,16 @@ def _populate_frame_geometry(mm, source_design, logger):
                 continue
             if bn in expected_names and bn not in frame_bodies:
                 frame_bodies[bn] = body
+            elif bn.startswith('frame_') and bn not in other_bars:
+                other_bars[bn] = body
     except Exception as e:
         _log(logger, f"FRAME LAYOUT ({mm.name}): body walk failed: {e}", "WARNING")
         return False
+
+    # N-BAR: a frame with none of the four Template 1-5 bar names (Template 6's 8 bars) takes the generic row
+    # layout. Any of the four names present = the 4-bar layout below, exactly as before.
+    if not frame_bodies and other_bars:
+        return _populate_n_bar_frame_geometry(mm, mm_design, other_bars, logger)
 
     if len(frame_bodies) < 4:
         missing = expected_names - set(frame_bodies.keys())
@@ -921,6 +929,106 @@ def _populate_frame_geometry(mm, source_design, logger):
          f"FRAME LAYOUT ({mm.name}): laid out 4 pieces in row "
          f"(anchor=frame_right, clearance={clearance_cm:.4f} cm, "
          f"row span ≈ {prev_right_edge - centers['frame_right'][0] + sizes['frame_right'][0] / 2:.2f} cm)")
+    return True
+
+
+def n_bar_layout_plan(sizes, clearance_cm):
+    """N-BAR (pure): the generic lay-flat row for any number of frame bars.
+
+    ``sizes`` = {name: (sizeX, sizeY)} in cm, as the bodies lie in the frame (the frame's own XY). A bar wider
+    than tall is turned 90 deg about Z (its long axis onto Y, as the 4-bar layout turns frame_top / frame_bottom).
+    The bars then sit in ONE row along +X in name order, the first one the anchor (not moved), each next centre
+    (previous width / 2 + clearance + own width / 2) further, all centred on Y = 0 like the 4-bar row.
+    Returns (rotate: [names], order: [names], widths: {name: post-rotation sizeX}).
+
+    DESIGN QUESTION (Fred): this is the MINIMAL generic path, not a nesting. 8 small parallelogram bars in one row
+    can be longer than the stock; pairing the mirrored bars, nesting the parallelograms, and which way the grain
+    should run are open."""
+    rotate = sorted(n for n, (sx, sy) in sizes.items() if sx > sy)
+    order = sorted(sizes)
+    widths = {n: (sizes[n][1] if n in rotate else sizes[n][0]) for n in order}
+    return rotate, order, widths
+
+
+def _populate_n_bar_frame_geometry(mm, mm_design, frame_bodies, logger):
+    """N-BAR: lay any number of ``frame_*`` bodies flat in one row (n_bar_layout_plan), with the same Move
+    features, clearance parameter and idempotent rule as the 4-bar layout (_populate_frame_geometry)."""
+    clearance_cm = 1.397  # 0.55 in default, as the 4-bar layout
+    try:
+        p = mm_design.userParameters.itemByName('lay_flat_clearance')
+        if p is not None:
+            clearance_cm = float(p.value)
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): lay_flat_clearance read failed (using {clearance_cm:.4f} cm default): {e}", "DEBUG")
+
+    sample_body = next(iter(frame_bodies.values()))
+    try:
+        owner_comp = sample_body.parentComponent
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): body.parentComponent read failed: {e}", "WARNING")
+        return False
+    if owner_comp is None:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): body.parentComponent is None; skipping", "WARNING")
+        return False
+    try:
+        existing_moves = owner_comp.features.moveFeatures.count
+    except Exception:
+        existing_moves = 0
+    if existing_moves > 0:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): {existing_moves} moveFeature(s) already on {owner_comp.name}; skipping (idempotent)", "DEBUG")
+        return False
+    move_features = owner_comp.features.moveFeatures
+
+    def _bbox(name):
+        bb = frame_bodies[name].boundingBox
+        mn, mx = bb.minPoint, bb.maxPoint
+        return (mx.x - mn.x, mx.y - mn.y), ((mx.x + mn.x) / 2, (mx.y + mn.y) / 2)
+
+    try:
+        sizes = {n: _bbox(n)[0] for n in frame_bodies}
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): bbox read failed: {e}", "WARNING")
+        return False
+    rotate, order, _ = n_bar_layout_plan(sizes, clearance_cm)
+
+    rot_z_90 = adsk.core.Matrix3D.create()
+    rot_z_90.setToRotation(math.pi / 2, adsk.core.Vector3D.create(0.0, 0.0, 1.0), adsk.core.Point3D.create(0.0, 0.0, 0.0))
+    for name in rotate:
+        try:
+            coll = adsk.core.ObjectCollection.create()
+            coll.add(frame_bodies[name])
+            move_input = move_features.createInput2(coll)
+            move_input.defineAsFreeMove(rot_z_90)
+            move_features.add(move_input)
+            _log(logger, f"FRAME LAYOUT ({mm.name}): rotated {name} by 90° around world Z (N-bar)")
+        except Exception as e:
+            _log(logger, f"FRAME LAYOUT ({mm.name}): rotate {name} failed: {e}", "WARNING")
+
+    try:
+        after = {n: _bbox(n) for n in order}  # post-rotation sizes and centres
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): bbox read failed: {e}", "WARNING")
+        return False
+    anchor = order[0]
+    prev_right = after[anchor][1][0] + after[anchor][0][0] / 2
+    for name in order[1:]:
+        (w, _h), (cx, cy) = after[name]
+        tx = prev_right + clearance_cm + w / 2
+        prev_right = tx + w / 2
+        dx, dy = tx - cx, 0.0 - cy
+        if abs(dx) < 1e-4 and abs(dy) < 1e-4:
+            continue
+        try:
+            coll = adsk.core.ObjectCollection.create()
+            coll.add(frame_bodies[name])
+            move_input = move_features.createInput2(coll)
+            move_input.defineAsTranslateXYZ(adsk.core.ValueInput.createByReal(dx), adsk.core.ValueInput.createByReal(dy),
+                                            adsk.core.ValueInput.createByReal(0.0), True)
+            move_features.add(move_input)
+        except Exception as e:
+            _log(logger, f"FRAME LAYOUT ({mm.name}): translate {name} failed: {e}", "WARNING")
+    _log(logger, f"FRAME LAYOUT ({mm.name}): laid out {len(order)} pieces in row (N-bar, anchor={anchor}, "
+                 f"clearance={clearance_cm:.4f} cm)")
     return True
 
 

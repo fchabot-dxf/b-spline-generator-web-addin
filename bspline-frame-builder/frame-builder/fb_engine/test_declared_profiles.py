@@ -50,7 +50,7 @@ def test_each_bar_profile_gets_its_declared_body_name(tid):
     assert [n for _, n in names] == ["frame_top", "frame_right", "frame_bottom", "frame_left"] == bars["bodyNames"]
 
 
-@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5"])
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5", "template_6"])
 def test_trim_and_opening(tid):
     frame = _frame(tid)
     reg = frame["regions"]
@@ -60,6 +60,37 @@ def test_trim_and_opening(tid):
     assert dp.classify(set(reg["inner"][:5]), frame) == (None, None)  # the opening: inner curves only
     # MEASURED F14 (T2 12x6): the re-solved inner offset curves carry no id at all
     assert dp.classify(set(), frame) == (None, None)
+
+
+# ------------------------------------------------------------------ N-BAR
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5"])
+def test_templates_1_to_5_keep_the_4_bar_default(tid):
+    """N-BAR: no declared bar / corner list: the bars come from the miter walk and the 4 default names."""
+    frame = _frame(tid)
+    assert "bars" not in frame["regions"] and "corners" not in frame["regions"]
+    bars = dp.frame_bars(frame)
+    assert [b["name"] for b in bars] == ["frame_top", "frame_right", "frame_bottom", "frame_left"]
+    assert sorted(c for b in bars for c in b["curves"]) == sorted(frame["regions"]["outline"])  # every curve, once
+
+
+def test_template_6_declares_8_bars_one_per_outline_piece():
+    """Template 6 (Tab Top): the declared bars ARE the classification: 8 profiles -> 8 named bodies, each bounded by
+    its one outline piece, its inner offset and the two miters at its ends (the inside corners included)."""
+    frame = _frame("template_6")
+    reg = frame["regions"]
+    names = ["frame_tab_top", "frame_tab_right", "frame_shoulder_right", "frame_side_right",
+             "frame_base", "frame_side_left", "frame_shoulder_left", "frame_tab_left"]
+    assert [b["name"] for b in dp.frame_bars(frame)] == names == frame["features"][0]["bodyNames"]
+    assert [b["curves"] for b in reg["bars"]] == [[c] for c in reg["outline"]]
+    n = len(reg["miters"])
+    for k, c in enumerate(reg["outline"]):
+        ids = {c, "inner_" + c, dp.miter_curve_id(*reg["miters"][k]), dp.miter_curve_id(*reg["miters"][(k + 1) % n])}
+        assert dp.classify(ids, frame) == (frame["features"][0], names[k])
+        # the miter walk (the default rule) agrees with the declaration
+        assert dp.bar_index(c, {k2: v for k2, v in reg.items() if k2 != "bars"}) == k
+    # a profile spanning two pieces means a miter did not split it: refused, never guessed
+    with pytest.raises(dp.DeclaredProfileError):
+        dp.classify({reg["outline"][1], reg["outline"][2]}, frame)
 
 
 def test_the_plan_reads_start_extent_and_op_from_the_declaration():

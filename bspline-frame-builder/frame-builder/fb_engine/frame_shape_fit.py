@@ -134,8 +134,57 @@ def _hourglass_dipped_top(curves, hw, hh, tol=2e-3):
     return ok, feats
 
 
+def _tab_top(curves, hw, hh, tol=2e-3):
+    """T6 TAB TOP: a rectangle with a narrower rectangular tab centred on top (8 straight pieces).
+
+    Features: the tab's half width (centre line -> each tab side) and its height (the top edge down to the
+    shoulders). Valid when the tab top lies on the safe zone's top line, the base and sides on its edges, the tab
+    centred, and the pieces axis-aligned (Fusion y up)."""
+    tt, sr, sl = curves["tab_top"], curves["shoulder_R"], curves["shoulder_L"]
+    tr, tl, rr, ll = curves["tab_side_R"], curves["tab_side_L"], curves["side_R"], curves["side_L"]
+    xs = sorted([tt["start"][0], tt["end"][0]])
+    ok = (abs(tt["start"][1] - hh) < tol and abs(tt["end"][1] - hh) < tol
+          and abs(xs[0] + xs[1]) < tol
+          and abs(sr["start"][1] - sr["end"][1]) < tol and abs(sr["start"][1] - sl["start"][1]) < tol
+          and all(abs(c["start"][0] - c["end"][0]) < tol for c in (tr, tl, rr, ll))
+          and abs(rr["start"][0] - hw) < tol and abs(ll["start"][0] + hw) < tol)
+    return ok, {
+        "tabHalfWidth": (xs[1] - xs[0]) / 2,
+        "tabHeight": hh - sr["start"][1],
+    }
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
-                      "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top}
+                      "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
+                      "tab_top": _tab_top}
+
+
+def provisional_tab_top_model(half_width_of_hw, height_of_hh):
+    """T6 TAB TOP, until its goldens are recorded live: a PROVISIONAL model (never none). There is no base template
+    to derive it from (no arcs, nothing shared with the hourglass), so it is the provisional shape itself:
+    `tabHalfWidth` = `half_width_of_hw` x hw, `tabHeight` = `height_of_hh` x hh. The app clamps both into their
+    feasible ranges (the frame thickness rule: a tab side >= 2 x thickness, every bar >= the thickness long).
+    Marked `provisional` so nothing mistakes it for a fit."""
+    return {
+        "features": {
+            "tabHalfWidth": {"hw": half_width_of_hw, "hh": 0.0},
+            "tabHeight": {"hw": 0.0, "hh": height_of_hh},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "tabHalfWidthOfHw": half_width_of_hw,
+            "tabHeightOfHh": height_of_hh,
+        },
+    }
 
 
 def provisional_shape_model(base_model, top_inset_of_depth):

@@ -108,6 +108,18 @@ COMMON_FRAME_FEATURES = (
 )
 
 
+def frame_features(body_names=None):
+    """N-BAR: the common features with the bars' `bodyNames` set to a template's own bar list (in its `miters`
+    order; a template that declares `regions["bars"]` passes their names). None = COMMON_FRAME_FEATURES as is,
+    the 4-bar default every template before Template 6 uses."""
+    out = [dict(f) for f in COMMON_FRAME_FEATURES]
+    if body_names is not None:
+        for f in out:
+            if f["id"] == "bars":
+                f["bodyNames"] = list(body_names)
+    return tuple(out)
+
+
 # FB-FIX (F4): "board too small for this frame". Measured on the S4 goldens:
 # at 5.51 x 1.97 in the safe zone is 1.97 - 2*0.25 = 1.47 in < 2*0.75 in, the
 # inner offset collapses, and the build gives 0 bars with no error. Declared
@@ -163,12 +175,18 @@ def template_shape_model(template_id, frame, goldens_dir):
     T4 OFFSET HOURGLASS: {"from": <template id>, "waistOffsetOfHh": k} instead builds
     frame_shape_fit.provisional_offset_waist_model (the two pinches k x hh apart from the middle, each way).
     T5 HOURGLASS DIPPED TOP: {"from": <template id>, "topDipDepthOfHh": d, "topDipHalfWidthOfHw": w} builds
-    frame_shape_fit.provisional_dipped_top_model (the base model plus a top dip d x hh deep, w x hw half wide)."""
+    frame_shape_fit.provisional_dipped_top_model (the base model plus a top dip d x hh deep, w x hw half wide).
+    T6 TAB TOP: {"tabHalfWidthOfHw": w, "tabHeightOfHh": h} (no `from`: nothing to derive it from) builds
+    frame_shape_fit.provisional_tab_top_model."""
     from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
                                            provisional_dipped_top_model)
     from fb_engine.template_resolver import resolve_template
     model = fit_shape_model(template_id, frame.get("shapeExtractor") or frame.get("silhouettePreset"), goldens_dir)
     prov = frame.get("provisionalShape")
+    if model is None and prov and "from" not in prov:
+        # T6 TAB TOP: a shape of its own (no base template): {"tabHalfWidthOfHw": w, "tabHeightOfHh": h}
+        from fb_engine.frame_shape_fit import provisional_tab_top_model
+        return provisional_tab_top_model(prov["tabHalfWidthOfHw"], prov["tabHeightOfHh"])
     if model is None and prov:
         base_frame = resolve_template(prov["from"])[0].get("Frame") or {}
         base = template_shape_model(prov["from"], base_frame, goldens_dir)

@@ -303,3 +303,48 @@ def test_template_5_is_fitted_once_goldens_exist(tmp_path):
     w, d = m["features"]["topDipHalfWidth"], m["features"]["topDipDepth"]
     assert w["hw"] == pytest.approx(0.6, abs=1e-6) and w["hh"] == pytest.approx(0, abs=1e-6)
     assert d["hh"] == pytest.approx(0.1, abs=1e-6) and d["hw"] == pytest.approx(0, abs=1e-6)
+
+
+# ------------------------------------------------------------------ T6 tab top
+def _tab_outline(hw, hh, a, h):
+    """A Template 6 sketch-2 outline (Fusion y up) with tab half width a and height h."""
+    ys = hh - h
+    pts = {"tab_top": ((-a, hh), (a, hh)), "tab_side_R": ((a, hh), (a, ys)), "shoulder_R": ((a, ys), (hw, ys)),
+           "side_R": ((hw, ys), (hw, -hh)), "bottom_edge": ((hw, -hh), (-hw, -hh)), "side_L": ((-hw, -hh), (-hw, ys)),
+           "shoulder_L": ((-hw, ys), (-a, ys)), "tab_side_L": ((-a, ys), (-a, hh))}
+    return {k: {"start": list(s), "end": list(e)} for k, (s, e) in pts.items()}
+
+
+def test_the_tab_top_extractor_measures_the_tab_and_rejects_an_off_centre_one():
+    ok, f = fsf._tab_top(_tab_outline(3.25, 4.25, 1.6, 2.0), 3.25, 4.25)
+    assert ok and f["tabHalfWidth"] == pytest.approx(1.6) and f["tabHeight"] == pytest.approx(2.0)
+    c = _tab_outline(3.25, 4.25, 1.6, 2.0)
+    c["tab_top"]["end"][0] += 0.1  # off centre
+    assert fsf._tab_top(c, 3.25, 4.25)[0] is False
+
+
+def test_template_6_gets_its_own_provisional_model_until_its_goldens_exist():
+    frame = resolve_template("template_6")[0]["Frame"]
+    assert frame["shapeExtractor"] == "tab_top" and "from" not in frame["provisionalShape"]
+    if glob.glob(os.path.join(_GOLDENS, "template_6_*.json")):
+        pytest.skip("Template 6's goldens are recorded: the real fit applies")
+    m = template_shape_model("template_6", frame, _GOLDENS)
+    assert m == fsf.provisional_tab_top_model(0.5, 0.5)
+    assert m["features"] == {"tabHalfWidth": {"hw": 0.5, "hh": 0.0}, "tabHeight": {"hw": 0.0, "hh": 0.5}}
+    assert m["provisional"]["baseModel"] is None
+
+
+def test_template_6_is_fitted_once_goldens_exist(tmp_path):
+    """Recorded goldens (synthetic tab outlines, a = 0.45 hw, h = 0.4 hh per size) replace the provisional model."""
+    for path in glob.glob(os.path.join(_GOLDENS, "*.json")):
+        shutil.copy(path, tmp_path)
+    for size, (w, h) in {"7x9": (7, 9), "12x6": (12, 6), "5.51x1.97": (5.51, 1.97)}.items():
+        hw, hh = w / 2 - 0.25, h / 2 - 0.25
+        g = {"meta": {"template": "template_6", "widthIn": w, "heightIn": h},
+             "sketch2_shape_outline": _tab_outline(hw, hh, 0.45 * hw, 0.4 * hh)}
+        (tmp_path / f"template_6_{size}.json").write_text(json.dumps(g), encoding="utf-8")
+    m = template_shape_model("template_6", resolve_template("template_6")[0]["Frame"], str(tmp_path))
+    assert m is not None and "provisional" not in m
+    a, h = m["features"]["tabHalfWidth"], m["features"]["tabHeight"]
+    assert a["hw"] == pytest.approx(0.45, abs=1e-6) and a["hh"] == pytest.approx(0, abs=1e-6)
+    assert h["hh"] == pytest.approx(0.4, abs=1e-6) and h["hw"] == pytest.approx(0, abs=1e-6)

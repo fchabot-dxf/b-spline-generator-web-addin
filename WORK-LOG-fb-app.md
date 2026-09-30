@@ -3884,3 +3884,75 @@ floats there pointing at nothing")
   defects, dip 0.595 in, stubs 0.91 in, 4 miters; 7 handles; the depth drag deepened the dip only, the width drag
   moved both stub ends; Shape Lattice from frame on T5: 16 contour segments, 4 Regenerates with 0 rail / tie samples
   outside the contour; T1 identical before/after; no console errors.
+
+## N-bar frames + Template 6 - Tab Top (Fred's sketch: a rectangle with a narrower tab centred on top) -- Fusion side untested live
+
+- Audit first (scratchpad nbar_audit.md): the Python bar split (declared_profiles: miters + bodyNames), the inner
+  corner resolver (a Corners dict of any size, axis-aligned inward (dx, dy): right at a reflex corner too), the
+  miters, the app miters (frameMiters: every line-line corner), the inner edge (outline-offset.js) and the 3D ring
+  were already N-bar. Four places assumed 4 bars or 2 presets: COMMON_FRAME_FEATURES' 4 bodyNames, the app's
+  preset branches (bottle else hourglass; frameParamRanges would crash on a third preset), the CAM lay-flat (only
+  frame_top / right / bottom / left, anything else "skipping") and 2 test asserts.
+- N-bar (Templates 1-5 unchanged): a template may declare `regions.corners` ([{id, curve, direction, reflex,
+  outer, inner}], one per outline piece start) and `regions.bars` ([{name, curves}] in miter order). T6 derives its
+  miters and bar body names from them; declared_profiles.bar_index reads declared bars first, the miter walk stays
+  the default; declared_profiles.frame_bars gives either. frame_definition.frame_features(body_names) = the common
+  features with a template's own bar names. frame-defs carries the new keys only for T6.
+- sketches/template_6: 8 straight pieces clockwise from the tab's top-left: tab_top, tab_side_R, shoulder_R, side_R,
+  bottom_edge, side_L, shoulder_L, tab_side_L. p02_01 Template 2's projections; p02_02 the 8 seed lines (the 7x9
+  solve of the provisional shape, each starting on its corner, ending 0.001 short); p02_03 8 head-to-tail welds, the
+  base on the BR / BL corners, tab_top:S on the top line; p02_04 4 Vertical + 3 Horizontal (not the pinned base);
+  p02_05 Equal(side_L, side_R) + Equal(shoulder_L, shoulder_R). DOF 32 - 16 - 14 = 2 seeded values (tab half width,
+  tab height). No Symmetry on the tab (its "same height" half repeats Horizontal, T3's finding). p03_03 8 corners,
+  p03_04 8 miters (the 2 inside ones from the reflex vertex to the inner corner); both checked equal to the declared
+  corners. Bars: frame_tab_top, frame_tab_right, frame_shoulder_right, frame_side_right, frame_base, frame_side_left,
+  frame_shoulder_left, frame_tab_left. No new parameter (no ck_* gates).
+- Shape model: frame_shape_fit `tab_top` extractor (tabHalfWidth, tabHeight) for when goldens exist;
+  provisional_tab_top_model (no base template: {"tabHalfWidthOfHw": 0.5, "tabHeightOfHh": 0.5}, fittedFrom []).
+  frame-defs regenerated: T1-T5 entries identical, only sourceHash moved; --check fresh.
+- App: the frame-only preset `tabTop` (PRESETS entry marked frameOnly, no Shape Lattice button): PARAM_ORDER.tabTop
+  = [tabWidth, tabHeight]; FRAME_ONLY_PARAM_KEYS + tabWidth, tabHeight appended last; tabTopConstruction /
+  _solveTabTop (8 lines, 0 tab side R ... 7 tab top, the hourglass's start and direction, so mirrorSegmentIndex(i, 8)
+  holds; it also returns the mirror table for from-frame contours); tabTop branches in paramsFromShapeModel,
+  feasibleParamRanges / _resolveParams (_rangeFn), _arcFloorFrac, generateSilhouette. Handles: "Tab width" (square
+  on the right tab side, x) and "Tab height" (square on the right shoulder, y); HANDLE_SEGMENT_INDEX.tabTop.
+- Frame rule (Fred: no bar thinner than the thickness, tab sides >= ~2 x thickness): frameParamRanges tabTop: tab
+  half width a in [t + max(t/2, 0.125), hw - t] (tab top inner edge >= t, shoulder bars >= t), tab height in [2t,
+  2hh - 3t] (tab sides >= 2t, body opening >= t). It CLAMPS the drawn frame too (frame-handles clampToFrameRanges,
+  FRAME_CLAMPED_PRESETS = [tabTop] only, only when the frame fits): 12x6's provisional 1.375 in tab becomes 1.5 in.
+- 3D trim fix (frame-mesh.js _trianglePolygonPieces), found by frame-bartop-drawn on T6 at 0.05 in cells (7x9: each
+  inside corner is a grid square's centre, ON its diagonal): (1) an open chain that leaves exactly at a segment's
+  start was skipped as "touching" and never closed, so the triangle fell to the centroid test (panel outside the
+  outline); the walk is redone with an exit-at-start rule only when the plain walk leaves a chain open; (2) an exit
+  and an entry at the same boundary point were linked straight through, merging two pieces touching at the vertex
+  (panel missing); at a RIGHT turn only, the link now follows the turn order. Both leave every left turn (all T1-T5
+  corners) as before: the 3D A/B below is byte-identical.
+- CAM (mm_builder._populate_frame_geometry): the 4-bar layout unchanged whenever any of its 4 names is present;
+  a frame with none of them (T6) takes n_bar_layout_plan: every frame_* body, turned 90 deg when wider than tall,
+  one row along +X in name order, the same lay_flat_clearance, Y centred, idempotent. Toolpaths run on the whole
+  MM-Frame, nothing to change. Open questions for Fred below. Test on a fake Fusion (Move features applied to the
+  bounding boxes): CAM-builder/test_mm_builder_frame_layout.py.
+- Tools: f20_seed_case.mjs 11th / 12th args (tab width / height) and a `lines` block; f20_live_parity.py compares
+  the lines too (no max() on an empty arc list). LIVE_CHECK.md (sketches/template_6), incl. a CAM step.
+- Tests: tests/frame-template-6.test.js (49); T6 in the frame test lists (contour-from-frame skips the samples next
+  to a reflex vertex in its exact-distance checks: an offset corner there is sqrt(2) x the offset from it, by
+  geometry; frame-record-profile expects a miter per declared corner; frame-defs knows the tabTop model;
+  frame-3d-sweep's limit 30 -> 90 s, a 6th template on a slow container). pytest: T6 extractor / provisional /
+  fitted, frame-defs T6 table + sketch (8 lines, 2 DOF) + enclosure (= declared corners) + inner-corner directions,
+  the 4-bar default for T1-T5 and the 8 declared bars, goldens count bars by the declared list.
+- A/B vs a HEAD worktree (7562637 = 20620b2 + a handoff .md), sha256 identical: 400 Shape Lattice hourglass shapes +
+  T1-T5 frames at 5 boards (profiles, inner edges, miters, hover segments, 4 thicknesses, handles, 5 Generates, drags,
+  seed geometry, from-frame contours + manifests); the T1-T5 from-frame lattice (11040 lines); the 3D meshes (panel,
+  rim, wall, bars) of T1-T5 at 10 boards / cell sizes x 2 lips; the T1-T5 Fusion phase blocks (with and without
+  ui_data, with the panel lip) and declared-profile classification; the CAM 4-bar Move features (4 bars, a missing
+  bar, an extra frame_ body, no frame). Worktree removed.
+- vitest 2716 passed (was 2631); pytest frame-builder 280 passed / 2 skipped (was 257), b-spline-gen 89, root
+  (--ignore=.claude) 463 / 2 skipped. Headless (390x844, CDP, out_v26): dropdown "None | 1. Hourglass | ... |
+  6. Tab Top"; T6 7x9: 8 straight prims, 0 defects, 0 inner defects, 8 miters (8 drawn), tab 3.25 x 2.125 in; handles
+  "Tab width", "Tab height"; the width drag widened the tab only (3.25 -> 3.93 in), the height drag moved the
+  shoulders only (2.125 -> 2.55 in); 12x6: tab 5.75 x 1.5 (clamped), 8 miters; 5.51x1.97: 8 clean prims, no inner
+  edge (0 bars); 3D trimmed to the tab outline; Shape Lattice from frame: 8 contour segments, 5 Generates with 0 rail /
+  tie samples outside; T1 identical before/after; no console errors.
+- Open for Fred: (1) the CAM layout for 8 small parts (one row may be longer than the stock; pairing the mirrored
+  bars or nesting the parallelograms; grain direction per bar); (2) the provisional tab (0.5 hw half width, 0.5 hh
+  tall) and the rule's numbers (tab side >= 2t, other bars >= t long); (3) the bar names.

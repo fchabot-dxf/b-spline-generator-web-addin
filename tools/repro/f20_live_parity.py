@@ -1,5 +1,5 @@
 # F20 live (run INSIDE Fusion, exec'd with globals app, CASE=<case json from f20_seed_case.mjs>, optional SHOT=<png>):
-# build T1 (or the case's `templateId`, T3 / T4 / T5) with the app's seed geometry in ONE tagged scratch doc (the Send path, build_sketch_logic_v3; NOT
+# build T1 (or the case's `templateId`, T3 / T4 / T5 / T6) with the app's seed geometry in ONE tagged scratch doc (the Send path, build_sketch_logic_v3; NOT
 # build_frame_logic, which ignores seeds), read every outline arc + each constraint/dimension touching the corner
 # geometry, compare with the app, close the doc by its own handle. Nothing is added to sys.path / sys.modules.
 import json, os, sys, math
@@ -75,6 +75,12 @@ def run_case(case_file, tag, shot=None):
             if i in case['arcs']:
                 p = c.centerSketchPoint.geometry
                 arcs[i] = {'center': [round(p.x / CM, 4), round(p.y / CM, 4)], 'radius': round(c.radius / CM, 4)}
+        # T6 (all lines): each expected line's ends (the case's `lines`, absent in older cases) against Fusion's
+        lines = {}
+        for c in sk.sketchCurves.sketchLines:
+            i = fid(c)
+            if i in case.get('lines', {}):
+                lines[i] = [[round(q.x / CM, 4), round(q.y / CM, 4)] for q in (c.startSketchPoint.geometry, c.endSketchPoint.geometry)]
         cons = []
         for c in sk.geometricConstraints:
             ids = ents_of(c)
@@ -90,9 +96,12 @@ def run_case(case_file, tag, shot=None):
             if any(x.split(':')[0] in CORNER for x in ids):
                 dims.append([dm.objectType.split('::')[-1], round(dm.parameter.value / CM, 4) if dm.parameter else None, sorted(set(ids))])
         tl = d.timeline
+        errs = [max(abs(case['arcs'][k]['radius'] - arcs[k]['radius']), math.dist(case['arcs'][k]['center'], arcs[k]['center']))
+                for k in case['arcs']]
+        errs += [max(math.dist(a, b) for a, b in zip(v, lines[k])) for k, v in case.get('lines', {}).items()]
         res = {'case': case_file, 'seeds': case['seeds'], 'expected': case['arcs'], 'fusion': arcs,
-               'maxErr': max(max(abs(case['arcs'][k]['radius'] - arcs[k]['radius']),
-                                 math.dist(case['arcs'][k]['center'], arcs[k]['center'])) for k in case['arcs']),
+               'expectedLines': case.get('lines', {}), 'fusionLines': lines,
+               'maxErr': max(errs) if errs else None,
                'constraints': cons, 'dims': dims, 'fullyConstrained': sk.isFullyConstrained,
                'healthy': all(tl.item(i).healthState == 0 for i in range(tl.count)),
                'userParams': [p.name for p in d.userParameters]}

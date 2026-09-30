@@ -44,7 +44,15 @@ def _feature_for(features, region):
 
 
 def bar_index(curve_id, regions):
-    """Which bar (index into the miter list, = bodyNames index) an outline curve belongs to."""
+    """Which bar (index into the miter list, = bodyNames index) an outline curve belongs to.
+
+    N-BAR: a template that declares its bars (`regions["bars"]`: [{"name", "curves"}], in miter order, Template
+    6) is read directly; otherwise (every earlier template) the miter walk below, the 4-bar default."""
+    if regions.get("bars"):
+        for k, bar in enumerate(regions["bars"]):
+            if curve_id in bar["curves"]:
+                return k
+        raise ValueError(f"outline curve {curve_id!r} is in no declared bar")
     outline = list(regions["outline"])
     starts = [outline.index(m[0].split(":")[0]) for m in regions["miters"]]
     j = outline.index(curve_id)
@@ -52,6 +60,19 @@ def bar_index(curve_id, regions):
     if before:
         return max(before, key=lambda k: starts[k])
     return max(range(len(starts)), key=lambda k: starts[k])  # wraps round to the last miter's bar
+
+
+def frame_bars(frame):
+    """N-BAR: a template's bars as [{"name", "curves"}] in miter order: its declared `regions["bars"]`, or (the
+    default, Templates 1-5) derived from the miter walk and the bars feature's `bodyNames`."""
+    regions = frame["regions"]
+    if regions.get("bars"):
+        return [{"name": b["name"], "curves": list(b["curves"])} for b in regions["bars"]]
+    names = _feature_for(frame["features"], BAR_REGION)["bodyNames"]
+    out = [{"name": n, "curves": []} for n in names]
+    for c in regions["outline"]:
+        out[bar_index(c, regions)]["curves"].append(c)
+    return out
 
 
 def classify(curve_ids, frame):

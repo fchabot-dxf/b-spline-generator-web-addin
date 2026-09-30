@@ -48,7 +48,7 @@
  */
 import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
-  TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex,
+  TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -128,6 +128,26 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
   const asym = preset === 'hourglass' && (resolvedParams.waistCenterYLeft != null || resolvedParams.waistReachLeft != null);
   const ctx = { preset, region, base, sh, sil, R, within, asym };
   const arc = (key, label) => (keys.includes(key) ? _arcGrip(key, label, resolvedParams[key], ctx) : null);
+
+  if (preset === 'tabTop') {
+    // T6 TAB TOP (a frame-only preset): two POSITION squares. Tab width: on the right tab side, halfway up it; a
+    // horizontal drag moves both tab sides (mirrored) in or out. Tab height: on the right shoulder, halfway
+    // along it; a vertical drag moves both shoulders (the tab top stays on the top edge). Right side only.
+    const g = tabTopConstruction(region, resolvedParams);
+    const top = cy0 - hh;
+    return withRange(pick([
+      {
+        key: 'tabWidth', label: 'Tab width', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.halfWidth, y: top + g.height / 2 },
+        valueFromWorld: (pt) => within('tabWidth', (pt.x - cx0) / hw),
+      },
+      {
+        key: 'tabHeight', label: 'Tab height', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0 + (g.halfWidth + hw) / 2, y: top + g.height },
+        valueFromWorld: (pt) => within('tabHeight', (pt.y - top) / hh),
+      },
+    ]));
+  }
 
   if (preset === 'bottle') {
     const b = bottleConstruction(region, resolvedParams); // the generator's own construction
@@ -479,6 +499,9 @@ export const HANDLE_SEGMENT_INDEX = {
   hourglass: { cornerRadiusTop: 1, waistReach: 2, cornerRadiusBottom: 3, waistCenterY: 2, waistRadius: 2, topInset: 0,
     waistCenterYLeft: 8, waistReachLeft: 8, topDipDepth: 13, topDipWidth: 14 },
   bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2 },
+  // T6 TAB TOP (8 pieces: 0 tab side R, 1 shoulder R, 2 side R, 3 base, 4 side L, 5 shoulder L, 6 tab side L,
+  // 7 tab top): the width moves the tab sides, the height the shoulders (each with its mirror, mirrorSegmentIndex).
+  tabTop: { tabWidth: 0, tabHeight: 1 },
 };
 
 // Arc point / segment and arc distance: editor-primitives.js (audit tidy-up -- the one copy of each).

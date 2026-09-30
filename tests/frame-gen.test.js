@@ -40,7 +40,7 @@ describe.each(['template_1', 'template_2', 'template_3', 'template_4', 'template
   });
 });
 
-describe.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: [Generate] shapes', (id) => {
+describe.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6'])('%s: [Generate] shapes', (id) => {
   const tpl = tplOf(id), region = regionOf(id);
   const keys = frameHandleTable(tpl).filter((h) => h.binding === 'seeded').map((h) => h.key).sort();
 

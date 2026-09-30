@@ -124,6 +124,15 @@ export const PRESETS = {
     },
     jitter: { neckWidth: 0.06, skeletonX: 0.05, neckLength: 0.06 },
   },
+  // T6 TAB TOP: a FRAME-ONLY preset (Template 6): no Shape Lattice button offers it (properties-shape-lattice.js
+  // lists hourglass / bottle by hand). Its params are frame-only keys with plain defaults (DERIVED_PARAM_DEFAULTS
+  // .tabTop, the same values), so there is no seeded jitter.
+  tabTop: {
+    label: 'Tab Top',
+    frameOnly: true,
+    params: { tabWidth: 0.5, tabHeight: 0.5 }, // = TAB_TOP_DEFAULT_WIDTH / _HEIGHT (declared below; literal here)
+    jitter: { tabWidth: 0, tabHeight: 0 },
+  },
 };
 
 /**
@@ -164,6 +173,8 @@ export const PARAM_ORDER = {
   hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset',
     'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth'],
   bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
+  // T6 TAB TOP (frame-only preset): the tab's half width, then its height (both frame-only keys, FRAME_ONLY_PARAM_KEYS).
+  tabTop: ['tabWidth', 'tabHeight'],
 };
 const BASE_RANGES = {
   // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
@@ -216,6 +227,8 @@ export const DERIVED_PARAM_DEFAULTS = {
     topDipDepth: () => 0,
   },
   bottle: { bodyRadius: (v) => 1 - v.skeletonX },
+  // T6 TAB TOP: every param has a plain default (no seeded jitter: a frame always sets both from its model).
+  tabTop: { tabWidth: () => TAB_TOP_DEFAULT_WIDTH, tabHeight: () => TAB_TOP_DEFAULT_HEIGHT },
 };
 
 /** F12: the params the Shape Lattice panel offers (a slider and a handle each).
@@ -229,7 +242,23 @@ const EPS_FRAC = 1e-3;
 
 /** T3 TAPERED HOURGLASS: resolved params that only a FRAME template sets. The Shape Lattice never offers them and
  *  its Fusion manifest never sends them (editor-sketch-manifest.js; Fred's rule: no new parameters). */
-export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth']);
+export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth',
+  'tabWidth', 'tabHeight']);
+
+/**
+ * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
+ * tab centred on top, all straight lines, 8 pieces and 8 corners (2 of them INSIDE, reflex corners where a shoulder
+ * meets a tab side). Params (region-local): `tabWidth` = the tab's half width a, a fraction of hw; `tabHeight` =
+ * the tab's height (the top edge down to the shoulders), a fraction of hh. Pieces, clockwise from the tab's top
+ * right corner (the hourglass's own start and direction, so `mirrorSegmentIndex(i, 8)` pairs them):
+ *   0 tab side R, 1 shoulder R, 2 side R, 3 base, 4 side L, 5 shoulder L, 6 tab side L, 7 tab top.
+ */
+export const TAB_TOP_SEGMENT_COUNT = 8;
+const TAB_TOP_DEFAULT_WIDTH = 0.5;
+const TAB_TOP_DEFAULT_HEIGHT = 0.5;
+// The silhouette alone (no frame): a tab, shoulders and a body always there. The frame's own rule (a tab side
+// at least 2 x the frame thickness, every bar at least the thickness long) narrows these (frame-handles.js).
+const TAB_TOP_RANGES = { tabWidth: [0.05, 0.95], tabHeight: [0.05, 1.9] };
 
 /**
  * T5 HOURGLASS DIPPED TOP: the top edge is a short straight stub from each top corner, then a smooth inward dip
@@ -388,6 +417,14 @@ function _topDipRange(key, region, stroke, v) {
   return _range(HORN_MIN_OF_HALF_HEIGHT, Infinity, -Infinity, Math.max(dMax, horn) / hh);
 }
 
+/** T6 TAB TOP: the silhouette's own ranges (fractions): the tab inside the sides, the shoulders below the top, a
+ *  body below the shoulders; with a stroke inset the drawn tab keeps a positive width. */
+function _tabTopRange(key, region, stroke) {
+  const hw = region.w / 2, [lo, hi] = TAB_TOP_RANGES[key];
+  if (key === 'tabWidth') return _range(lo, hi, (2 * stroke + EPS_FRAC * hw) / hw);
+  return _range(lo, hi);
+}
+
 function _bottleRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   if (key === 'bodyRadius') return _optionalRange('bottle', region, stroke, v);
@@ -449,6 +486,8 @@ export function paramsFromShapeModel(preset, model, region) {
   const hw = region.w / 2, hh = region.h / 2;
   const f = {};
   for (const [name, c] of Object.entries(model.features)) f[name] = c.hw * hw + c.hh * hh;
+  // T6 TAB TOP (frame_shape_fit.py `tab_top`): the tab's half width and height, in inches.
+  if (preset === 'tabTop') return { tabWidth: f.tabHalfWidth / hw, tabHeight: f.tabHeight / hh };
   if (preset === 'bottle') {
     return { neckWidth: f.neckHalfW / hw, skeletonX: (f.neckHalfW + f.neckR) / hw,
       neckLength: f.neckTop / (2 * hh), bodyRadius: f.bodyR / hw };
@@ -511,6 +550,7 @@ function _optionalRange(preset, region, stroke, v) {
  *  wins (min = max), the same "validity wins" rule `_range` already uses. */
 export const MIN_ARC_RADIUS_IN = 0.125;
 function _arcFloorFrac(preset, key, region, stroke, v) {
+  if (preset === 'tabTop') return -Infinity; // T6: no arcs
   const hw = region.w / 2;
   const convex = (MIN_ARC_RADIUS_IN + stroke) / hw, concave = Math.max(0, MIN_ARC_RADIUS_IN - stroke) / hw;
   if (preset === 'bottle') {
@@ -530,8 +570,11 @@ function _withArcFloor(preset, key, region, stroke, v, r) {
 /** `{ param: {min, max} }` for `preset` on `region`, each conditional on the
  *  params resolved before it (PARAM_ORDER). `params` supplies those earlier
  *  values (e.g. a solver's own `params` output). */
+/** The preset's own range function (T6: `tabTop` has one of its own; hourglass is the default). */
+const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 'tabTop' ? _tabTopRange : _hourglassRange);
+
 export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
-  const fn = preset === 'bottle' ? _bottleRange : _hourglassRange;
+  const fn = _rangeFn(preset);
   const derived = DERIVED_PARAM_DEFAULTS[preset];
   const v = { ...params };
   const out = {};
@@ -547,7 +590,7 @@ export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0)
  *  default + seeded jitter. */
 function _resolveParams(preset, region, params, seed, strokeHalfWidth) {
   const p = PRESETS[preset].params, j = PRESETS[preset].jitter, salt = SALT[preset];
-  const fn = preset === 'bottle' ? _bottleRange : _hourglassRange;
+  const fn = _rangeFn(preset);
   const derived = DERIVED_PARAM_DEFAULTS[preset];
   const v = {};
   for (const key of PARAM_ORDER[preset]) {
@@ -1055,6 +1098,37 @@ function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 
   return { keypoints, segments, cx: cx0, params: resolvedParams, hasUserSegments };
 }
 
+/** T6 TAB TOP: the construction from RESOLVED params (region-local, Y-down, inches): the tab's half width and
+ *  height, and the shoulders' y (region top + height). The ONE place this algebra lives (solver and handles). */
+export function tabTopConstruction(region, resolved) {
+  const hw = region.w / 2, hh = region.h / 2, D = DERIVED_PARAM_DEFAULTS.tabTop;
+  const halfWidth = hw * (resolved.tabWidth ?? D.tabWidth(resolved));
+  const height = hh * (resolved.tabHeight ?? D.tabHeight(resolved));
+  return { hw, hh, halfWidth, height, shoulderY: -hh + height };
+}
+
+/**
+ * T6 TAB TOP solver: 8 straight pieces (see TAB_TOP_SEGMENT_COUNT). `strokeHalfWidth` insets the drawn outline
+ * (every wall moves in by it: the tab sides in, the shoulders down, the top down, the sides and base in). The
+ * outline carries its own mirror table (= mirrorSegmentIndex(i, 8)) so a from-frame contour that drops a piece
+ * still pairs the right ones.
+ */
+function _solveTabTop(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  const resolvedAll = _resolveParams('tabTop', region, params, seed, strokeHalfWidth);
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  const { hw, hh, halfWidth, shoulderY } = tabTopConstruction(region, resolvedAll);
+  const s = strokeHalfWidth, hwD = hw - s, hhD = hh - s, aD = halfWidth - s, yS = shoulderY + s;
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
+  const keypoints = [
+    P(aD, -hhD), P(aD, yS), P(hwD, yS), P(hwD, hhD), // tab top R, inside R, shoulder R, bottom R
+    P(-hwD, hhD), P(-hwD, yS), P(-aD, yS), P(-aD, -hhD), // bottom L, shoulder L, inside L, tab top L
+  ];
+  const fresh = keypoints.map(() => STRAIGHT_SEGMENT);
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
+  const mirror = fresh.map((_, i) => (i === 3 || i === 7 ? i : 6 - i));
+  return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments, mirror };
+}
+
 /**
  * `region: {x,y,w,h}` (SE14 §3, Q5 ruling) + `shape` ->
  * `{ keypoints, segments, primitives, cx, params }`. `shape.preset`
@@ -1087,7 +1161,9 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
   const solved =
     preset === 'bottle'
       ? _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth)
-      : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
+      : preset === 'tabTop' // T6 TAB TOP (a frame-only preset)
+        ? _solveTabTop(region, params, segmentsOverride, seed, strokeHalfWidth)
+        : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;

@@ -50,9 +50,28 @@ function distTo(q, prims) {
   return best;
 }
 
+/** T6 TAB TOP: the outline's INSIDE (reflex) corners -- line-line joints turning against the loop's own turn. An offset
+ *  corner there is the two offset lines' meeting point (Fusion's sharp offset), sqrt(2) x the offset from the reflex
+ *  vertex, not the offset itself; the exact-distance checks skip the few samples that near. None on Templates 1-5. */
+function reflexVertices(prims) {
+  const n = prims.length, pts = prims.map((p) => (p.type === 'L' ? p.p0 : null));
+  let area = 0;
+  const loop = sampleOutline(prims);
+  for (let i = 0; i < loop.length; i++) { const a = loop[i], b = loop[(i + 1) % loop.length]; area += a.x * b.y - b.x * a.y; }
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const a = prims[(i - 1 + n) % n], b = prims[i];
+    if (a.type !== 'L' || b.type !== 'L') continue;
+    const cr = (a.p1.x - a.p0.x) * (b.p1.y - b.p0.y) - (a.p1.y - a.p0.y) * (b.p1.x - b.p0.x);
+    if (Math.abs(cr) > 1e-12 && Math.sign(cr) !== Math.sign(area)) out.push(pts[i]);
+  }
+  return out;
+}
+const nearAny = (q, vs, r) => vs.some((v) => Math.hypot(q.x - v.x, q.y - v.y) < r);
+
 describe('the frame-offset contour == the frame OUTER edge offset by Distance (to its outside edge) -- F26', () => {
   const CASES = [];
-  for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5']) for (const [W, H] of [[7, 9], [12, 6], [9, 12]]) for (const d of [0.1, 0.25, 0.5]) CASES.push([id, W, H, d]);
+  for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6']) for (const [W, H] of [[7, 9], [12, 6], [9, 12]]) for (const d of [0.1, 0.25, 0.5]) CASES.push([id, W, H, d]);
   it.each(CASES)('%s %sx%s, distance %s', (id, W, H, d) => {
     const frame = frameOf(id, W, H);
     const sil = frameContourSilhouette(frame, d, SW);
@@ -64,7 +83,8 @@ describe('the frame-offset contour == the frame OUTER edge offset by Distance (t
     // at a merged corner a point may only be FARTHER (the corner cuts inside the collapsed arc)
     const ds = samples(sil.primitives).map((q) => distTo(q, outer));
     for (const v of ds) expect(v).toBeGreaterThan(d + SW / 2 - 2e-3);
-    const onLines = sil.primitives.filter((p) => p.type === 'L').flatMap((p) => samples([p]));
+    const reflex = reflexVertices(outer);
+    const onLines = sil.primitives.filter((p) => p.type === 'L').flatMap((p) => samples([p])).filter((q) => !nearAny(q, reflex, 1.5 * (d + SW / 2)));
     for (const q of onLines) expect(Math.abs(distTo(q, outer) - (d + SW / 2))).toBeLessThan(2e-3);
     // validity: simple, positive radii; tangent everywhere except the declared merged corners
     expect(outlineDefects(sil.primitives, { requireTangency: false })).toEqual([]);
@@ -108,12 +128,12 @@ describe('the frame-offset contour == the frame OUTER edge offset by Distance (t
  * OUTWARD of it (accepted everywhere, not clamped away). MEASURED at the checklist's own 0 / +0.5 / -0.25.
  */
 describe('F26: distance is measured from the OUTER edge, negatives offset outward', () => {
-  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: distance 0 sits exactly on the outer edge (stroke/2 in)', (id) => {
+  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6'])('%s: distance 0 sits exactly on the outer edge (stroke/2 in)', (id) => {
     const frame = frameOf(id, 9, 12);
     const sil = frameContourSilhouette(frame, 0, SW);
     expect(sil.error).toBeUndefined();
-    const outer = frameCutProfile(frame.defs, frame.record, frame.board).primitives;
-    for (const q of samples(sil.primitives)) expect(Math.abs(distTo(q, outer) - SW / 2)).toBeLessThan(2e-3);
+    const outer = frameCutProfile(frame.defs, frame.record, frame.board).primitives, reflex = reflexVertices(outer);
+    for (const q of samples(sil.primitives).filter((q) => !nearAny(q, reflex, 1.5 * SW / 2))) expect(Math.abs(distTo(q, outer) - SW / 2)).toBeLessThan(2e-3);
   });
 
   // Only the MIDDLE of each straight segment, not its own ends: an outward offset (F26, new) makes a line
@@ -128,7 +148,7 @@ describe('F26: distance is measured from the OUTER edge, negatives offset outwar
     return { x: p.p0.x + (p.p1.x - p.p0.x) * t, y: p.p0.y + (p.p1.y - p.p0.y) * t };
   });
 
-  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: distance +0.5 sits 0.5 + stroke/2 INSIDE the outer edge (unchanged direction from before F26)', (id) => {
+  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6'])('%s: distance +0.5 sits 0.5 + stroke/2 INSIDE the outer edge (unchanged direction from before F26)', (id) => {
     const frame = frameOf(id, 9, 12);
     const sil = frameContourSilhouette(frame, 0.5, SW);
     expect(sil.error).toBeUndefined();
@@ -138,7 +158,7 @@ describe('F26: distance is measured from the OUTER edge, negatives offset outwar
     for (const q of midLines) expect(Math.abs(distTo(q, outer) - (0.5 + SW / 2))).toBeLessThan(2e-3);
   });
 
-  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])('%s: distance -0.25 (NEW: negative is accepted, not clamped to the default) sits 0.25 - stroke/2 OUTSIDE the outer edge', (id) => {
+  it.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6'])('%s: distance -0.25 (NEW: negative is accepted, not clamped to the default) sits 0.25 - stroke/2 OUTSIDE the outer edge', (id) => {
     const frame = frameOf(id, 9, 12);
     const sil = frameContourSilhouette(frame, -0.25, SW);
     expect(sil.error).toBeUndefined();

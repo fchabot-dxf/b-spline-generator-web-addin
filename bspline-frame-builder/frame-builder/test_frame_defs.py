@@ -331,6 +331,110 @@ def test_template_5_enclosure_uses_the_dipped_top():
     assert [list(m) for m in miters] == spec["Frame"]["regions"]["miters"]
 
 
+# ------------------------------------------------------------- T6 tab top (N-BAR)
+_T6_PIECES = ["tab_top", "tab_side_R", "shoulder_R", "side_R", "bottom_edge", "side_L", "shoulder_L", "tab_side_L"]
+
+
+def test_template_6_is_an_8_bar_tab_top(defs):
+    t = {x["id"]: x for x in defs["templates"]}
+    t1, t6 = t["template_1"], t["template_6"]
+    assert t6["name"] == "Template 6 - Tab Top" and t6["silhouettePreset"] == "tabTop"
+    # no new parameter: the board, the trim offset and the frame thickness only (no ck_* gates)
+    assert [p["name"] for p in t6["params"]] == ["widthIn", "heightIn", "boundingboxoffset", "frame_thickness"]
+    assert [p for p in t6["params"] if p["name"] in ("frame_thickness", "boundingboxoffset")] == \
+        [p for p in t1["params"] if p["name"] in ("frame_thickness", "boundingboxoffset")]
+    assert t6["handles"] == [
+        {"key": "tabWidth", "label": "Tab width", "basis": "hw", "binding": "seeded"},
+        {"key": "tabHeight", "label": "Tab height", "basis": "hh", "binding": "seeded"},
+    ]
+    reg = t6["regions"]
+    assert reg["outline"] == ["proj_" + c for c in _T6_PIECES]
+    assert reg["inner"] == ["inner_" + c for c in reg["outline"]]
+    # one corner per piece (where it starts), 2 of them inside (reflex); miters and bars follow from them
+    assert [c["outer"] for c in reg["corners"]] == [c + ":S" for c in reg["outline"]]
+    assert [c["id"] for c in reg["corners"] if c["reflex"]] == ["inside_R", "inside_L"]
+    assert reg["miters"] == [[c["outer"], c["inner"]] for c in reg["corners"]]
+    assert len(reg["miters"]) == len(reg["bars"]) == 8
+    bars = [f for f in t6["features"] if f["id"] == "bars"][0]
+    assert bars["bodyNames"] == [b["name"] for b in reg["bars"]] and all(n.startswith("frame_") for n in bars["bodyNames"])
+    assert not set(bars["bodyNames"]) & {"frame_top", "frame_right", "frame_bottom", "frame_left"}  # the CAM N-bar path
+    # the features are the common ones, only the bar names differ
+    strip = lambda fs: [{k: v for k, v in f.items() if k != "bodyNames"} for f in fs]
+    assert strip(t6["features"]) == strip(t1["features"])
+    # the seed map: one line per piece, the app's tabTop primitive order (tab side R = 0 ... tab top = 7)
+    assert {e["id"]: e["prim"] for e in t6["seedMap"]} == {c: (i - 1) % 8 for i, c in enumerate(_T6_PIECES)}
+    assert all(e["kind"] == "line" and e["reverse"] is False for e in t6["seedMap"])
+    assert t6["shapeModel"]["provisional"] and set(t6["shapeModel"]["features"]) == {"tabHalfWidth", "tabHeight"}
+    # Templates 1-5 declare no corners / bars (the 4-bar default)
+    for tid in ("template_1", "template_2", "template_3", "template_4", "template_5"):
+        assert "corners" not in t[tid]["regions"] and "bars" not in t[tid]["regions"]
+
+
+def _t6_steps():
+    spec = resolve_template("template_6")[0]
+    return {sk["Name"]: [st for b in sk["Blocks"] for st in (b.get("BuildSequence", []) + b.get("Steps", []))]
+            for sk in spec["Sketches"]}, spec
+
+
+def test_template_6_sketch_is_8_axis_aligned_lines_with_exactly_two_seeded_values():
+    """The Fusion side (sketches/template_6/phases): 8 lines chained head to tail, the base on the two projected
+    bottom corners, the tab top on the safe zone's top line, every piece H/V, two left/right Equals; a DOF count
+    of the loop: 8 lines (32) - 8 welds (16) - 14 = 2 free values (the tab's half width and height), left to the
+    seeds -- nothing repeats another constraint (no Horizontal on the pinned base, no Symmetry on the tab)."""
+    steps, _ = _t6_steps()
+    sk2 = steps["2_shape_outline"]
+    lines = [st["ID"] for st in sk2 if st.get("Type") == "Line"]
+    assert lines == _T6_PIECES and not any(st.get("Type") in ("Arc3Point", "Radius", "Symmetry") for st in sk2)
+    co = [tuple(st["Targets"]) for st in sk2 if st.get("Type") == "Coincident"]
+    for a, b in zip(_T6_PIECES, _T6_PIECES[1:] + _T6_PIECES[:1]):
+        assert (f"{a}:E", f"{b}:S") in co
+    assert ("bottom_edge:S", "proj_off_corner_BR") in co and ("bottom_edge:E", "proj_off_corner_BL") in co
+    assert ("tab_top:S", "proj_off_BB_top") in co
+    hv = {st["Type"]: st["Targets"] for st in sk2 if st.get("Type") in ("Horizontal", "Vertical")}
+    assert sorted(hv["Vertical"]) == sorted(["side_R", "side_L", "tab_side_R", "tab_side_L"])
+    assert sorted(hv["Horizontal"]) == sorted(["tab_top", "shoulder_R", "shoulder_L"])  # not the pinned base
+    eq = [tuple(st["Targets"]) for st in sk2 if st.get("Type") == "Equal"]
+    assert eq == [("side_L", "side_R"), ("shoulder_L", "shoulder_R")]
+    dof = 4 * len(lines)
+    eqs = 2 * len(co) - 1  # every Coincident fixes 2 values, but a point ON a line (the top line) only 1
+    eqs += len(hv["Vertical"]) + len(hv["Horizontal"]) + len(eq)
+    assert dof - eqs == 2
+
+
+def test_template_6_enclosure_miters_every_corner_the_inside_ones_included():
+    """p03_*: the 8 projections, the offset loop, the 8 inner corners (the declared corner list: same outer, inner
+    and inward direction) and the 8 miters (the declared miters)."""
+    steps, spec = _t6_steps()
+    sk3 = spec["Sketches"][2]
+    reg = spec["Frame"]["regions"]
+    projs = [p["TargetID"] for b in sk3["Blocks"] for p in b.get("Projections", [])]
+    assert projs == reg["outline"]
+    offs = [st for st in steps["3_frame_enclosure"] if st.get("Type") == "Offset"]
+    assert offs[0]["SourceID"] == reg["outline"] and offs[0]["TargetIDs"] == reg["inner"]
+    res = [st for st in steps["3_frame_enclosure"] if st.get("Type") == "ResolveInnerCorners"][0]["Corners"]
+    assert list(res) == [c["id"] for c in reg["corners"]]
+    for c in reg["corners"]:
+        assert res[c["id"]] == {"OuterID": c["outer"], "InnerID": c["inner"], "Direction": tuple(c["direction"])}
+    miters = [[m["Source"], m["Target"]] for b in sk3["Blocks"] for m in b.get("Miters", [])]
+    assert miters == reg["miters"]
+
+
+def test_template_6_inner_corner_directions_point_into_the_band():
+    """Each corner's (dx, dy) takes the outer corner t in from BOTH of its lines (Fusion y up), so the resolver
+    finds the inner offset vertex -- at an inside (reflex) corner too."""
+    _, spec = _t6_steps()
+    hw, hh, a, h, t = 3.25, 4.25, 1.625, 2.125, 0.75
+    ys = hh - h
+    outer = {"tab_TL": (-a, hh), "tab_TR": (a, hh), "inside_R": (a, ys), "shoulder_R": (hw, ys),
+             "BR": (hw, -hh), "BL": (-hw, -hh), "shoulder_L": (-hw, ys), "inside_L": (-a, ys)}
+    inner = {"tab_TL": (-a + t, hh - t), "tab_TR": (a - t, hh - t), "inside_R": (a - t, ys - t),
+             "shoulder_R": (hw - t, ys - t), "BR": (hw - t, -hh + t), "BL": (-hw + t, -hh + t),
+             "shoulder_L": (-hw + t, ys - t), "inside_L": (-a + t, ys - t)}
+    for c in spec["Frame"]["regions"]["corners"]:
+        (ox, oy), (dx, dy) = outer[c["id"]], c["direction"]
+        assert (ox + dx * t, oy + dy * t) == pytest.approx(inner[c["id"]]), c["id"]
+
+
 # ------------------------------------------------------------- F12 woods
 _LIBRARY_FIXTURE = os.path.join(_REPO, "tests", "fixtures", "fusion-appearance-library.json")
 

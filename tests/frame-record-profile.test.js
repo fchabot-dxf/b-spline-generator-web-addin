@@ -14,7 +14,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameColorFor } from '../bspline-frame-builder/b-spline-gen/html/core/color-utils.js';
 
-const T1 = 'template_1', T2 = 'template_2', T3 = 'template_3', T4 = 'template_4', T5 = 'template_5';
+const T1 = 'template_1', T2 = 'template_2', T3 = 'template_3', T4 = 'template_4', T5 = 'template_5', T6 = 'template_6';
 
 describe('frame record', () => {
   beforeEach(() => { P.frame = null; });
@@ -62,7 +62,7 @@ describe('cut profile', () => {
     expect(frameCutProfile(FRAME_DEFS, defaultFrameRecord(), board)).toBeNull();
   });
 
-  it.each([T1, T2, T3, T4, T5])('%s on 7x9: a clean outline inside the safe zone', (id) => {
+  it.each([T1, T2, T3, T4, T5, T6])('%s on 7x9: a clean outline inside the safe zone', (id) => {
     const prof = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: id }), board);
     expect(prof.defects).toEqual([]);
     expect(prof.region).toEqual({ x: 0.25, y: 0.25, w: 6.5, h: 8.5 });
@@ -164,12 +164,14 @@ describe('drawFrameProfile (editor background)', () => {
 });
 
 describe('frame thickness + miters (F8, Fred)', () => {
-  it.each([T1, T2, T3, T4, T5])('%s: 4 miters, from each outer corner to its inner corner (the frame thickness down, and inward)', (id) => {
+  // N-BAR: one miter per DECLARED corner (4 for Templates 1-5; T6 Tab Top: 8, its 2 inside corners included)
+  it.each([T1, T2, T3, T4, T5, T6])('%s: a miter per declared corner, from each outer corner to its inner corner (the frame thickness down, and inward)', (id) => {
     const r = normalizeFrameRecord({ templateId: id });
     const outer = frameCutProfile(FRAME_DEFS, r, { widthIn: 7, heightIn: 9 });
     const inner = frameInnerProfile(FRAME_DEFS, r, { widthIn: 7, heightIn: 9 });
     const miters = frameMiters(outer.primitives, inner.primitives);
-    expect(miters).toHaveLength(4);
+    expect(miters).toHaveLength(FRAME_DEFS.templates.find((t) => t.id === id).regions.miters.length);
+    expect(miters).toHaveLength(id === T6 ? 8 : 4);
     for (const m of miters) {
       expect(Math.abs(m.inner.y - m.outer.y)).toBeCloseTo(0.75, 9); // frame_thickness 0.75 in
       expect(Math.abs(Math.abs(m.inner.x - m.outer.x))).toBeGreaterThan(0); // runs inward, not along an edge
