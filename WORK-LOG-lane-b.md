@@ -11023,3 +11023,12 @@ is outside this item).
 Verify: 2343/2343 vitest (with --testTimeout=60000: CPU-heavy frame/silhouette tests time out at 5 s only
 under this machine's concurrent load; they pass alone). NO FUSION. LIVE CHECKS REMAIN FOR FRED: the feel of the
 end grab zone on a real mouse and on the phone (touch marker offset), and the held handle under the halo.
+
+## 2026-09-30 (advisor): stale uncommitted WIP in the lane-b worktree, reviewed and dropped
+
+The previous seat B was cut off by the usage limit on 2026-09-27 with 4 uncommitted files (editor-color.js,
+editor-cut-tool.js, editor-lattice-pattern.js, properties-shape-lattice.js; +93/-73): an earlier draft of
+T81 item 8 (one colour helper `pickColorDiffering(pool, …)` fed by `latticeColorPool`). Compared against main:
+the finished item 8 is already there (5bea337, merged in 5c8f1e6) with the same design and callers, so nothing in
+the draft was unique. Dropped it, so the worktree is clean for the new seat B (T82). Left untouched: the untracked
+`reference/svgcreator-deployed/` folder (a deliberate reference copy from 2026-09-25).
