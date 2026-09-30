@@ -471,6 +471,7 @@ export class TerrainPreview {
   goHome()                    { this._orbit.goHome(this._lastWidth, this._lastHeight); }
   animateTo(theta, phi)       { this._orbit.animateTo(theta, phi); }
   setSculptMode(config)       { this._sculpt.setMode(config); }
+  isOnSculptBoard(x, y)       { return this._sculpt.isOnBoard(x, y); }
   setCurvesVisible(visible) {
     this._curvesVisible = visible;
     if (this._mesh)      this._mesh.visible      = !visible;

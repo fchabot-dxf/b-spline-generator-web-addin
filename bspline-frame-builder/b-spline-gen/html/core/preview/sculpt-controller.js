@@ -165,6 +165,13 @@ export class SculptController {
     });
   }
 
+  /** Fred: a quick tap on the empty background (off the board) turns Sculpt off -- is this screen point on the board? */
+  isOnBoard(clientX, clientY) {
+    if (!this._sculpt) return false;
+    const rect = this._canvas.getBoundingClientRect();
+    return this._raycast(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1).hit;
+  }
+
   /** Returns true if sculpt consumed the mousedown (left-click in sculpt mode). */
   tryHandleCanvasMousedown(e) {
     if (!this._sculpt || e.button !== 0) return false;

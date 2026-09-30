@@ -84,6 +84,29 @@ export function bindControls(preview) {
   watch(document.querySelector('.panel-sculpt-top > .panel-body'), hiddenBody, 'top');
   watch(document.querySelector('.panel-sculpt-bot > .panel-body'), hiddenBody, 'bot');
   for (const id of ['svgEditorModal', 'settings-panel-overlay', 'projectManagerModal']) watch(document.getElementById(id), shown);
+  // Fred: Esc, or a quick tap on the empty background around the board (not a drag -- that still turns the view),
+  // also turns Sculpt off
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !P.activeSculptLayer) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    sculptOff();
+  });
+  const cv = preview && preview._canvas;
+  if (cv) {
+    let down = null;
+    const start = (x, y) => { down = P.activeSculptLayer ? { x, y, t: Date.now() } : null; };
+    const end = (x, y) => {
+      const d = down; down = null;
+      if (!d || !P.activeSculptLayer) return;
+      if (Math.hypot(x - d.x, y - d.y) > 8 || Date.now() - d.t > 400) return;       // a drag or a hold, not a tap
+      if (typeof preview.isOnSculptBoard === 'function' && !preview.isOnSculptBoard(x, y)) sculptOff();
+    };
+    cv.addEventListener('mousedown', (e) => { if (e.button === 0) start(e.clientX, e.clientY); });
+    window.addEventListener('mouseup', (e) => { if (e.button === 0) end(e.clientX, e.clientY); });
+    cv.addEventListener('touchstart', (e) => { if (e.touches.length === 1) start(e.touches[0].clientX, e.touches[0].clientY); else down = null; }, { passive: true });
+    cv.addEventListener('touchend', (e) => { const t = e.changedTouches && e.changedTouches[0]; if (t && e.touches.length === 0) end(t.clientX, t.clientY); }, { passive: true });
+  }
 
   updateSculptToolButtons();
   bindToolBtn('btnToolTopDraw', 'top', 'draw');

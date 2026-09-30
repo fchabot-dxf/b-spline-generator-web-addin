@@ -3994,3 +3994,4 @@ floats there pointing at nothing")
   - closing the other layer's panel: stays on;
   - opening Projects or Settings: off.
 - The drawing editor uses the same observer, but it wasn't driven in that run.
+- **Follow-up (Fred: "dismiss by clicking empty space or pressing Escape?"):** Esc now turns Sculpt off, except while typing in a field. So does a quick tap or click on the empty background around the board: under 8 px of movement, under 400 ms, and off the board by the sculpt raycast (`preview.isOnSculptBoard`). A drag on the background still orbits and keeps Sculpt on, and a tap on the board keeps it on. All four were checked headless at phone size (CDP touch + key events).
