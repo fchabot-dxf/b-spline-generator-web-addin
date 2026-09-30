@@ -63,6 +63,16 @@ The frame is **cut as separate mitered bars on the CNC and glued up**. So:
 - **Lattice fix (20620b2).** `insideSpans` in `editor-lattice-boundary.js` now drops rail and tie pieces lying outside the
   contour when a scan line runs along a straight edge.
 
+### Web-app notes done after the handover (569fec3)
+
+- The left/right orbit drag is inverted.
+- Offset from frame defaults to 0.
+- A never-saved project shows an "Unsaved" label, in the header and in the project window.
+- Thumbnails are centre-cropped instead of stretched. Older thumbnails stay stretched until that project is saved again.
+- Sculpt is never active after a load or restore.
+- The frame highlight is capped at 0.88, so it never reaches pure white.
+- **Open:** Fred wants a new, dedicated way to turn Sculpt on. Ask him to pick a design before building it.
+
 ## 4. Your first job: live Fusion checks
 
 Setup:
