@@ -407,8 +407,8 @@ describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
       // panel lip), not to a P key.
       if (section === 'FRAME') expect([...FRAME_PARAM_FIELDS.map((f) => f.id), 'frameBottomZ', 'framePanelLip'], id).toContain(id);
       else expect(pKeyFor(id), `${id} has no P key`).toBeTruthy();
-      // F15: the frame thickness lives in the editor's Frame tab, every other field in its sidebar section
-      if (id === 'editorFrameThickness') { expect(el.closest('#editorFramePanel'), id).not.toBeNull(); continue; }
+      // F15 / item 14: every FRAME field lives in the editor's Frame tab, every other field in its sidebar section
+      if (section === 'FRAME') { expect(el.closest('#editorFramePanel'), id).not.toBeNull(); continue; }
       const hdr = el.closest('.panel')?.querySelector('.panel-header')?.textContent || '';
       expect(hdr, id).toContain(section);
     }

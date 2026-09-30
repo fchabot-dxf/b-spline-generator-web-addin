@@ -8,7 +8,8 @@
  *
  * Covered: the generic sidebar number fields whose handler is bind() -> applyParam (main/ui-bindings.js) — stage 1
  * (R1) proved it on Stock Width/Height, R2 extends it to every such section outside the frozen/other-seat files.
- * FRAME (FB-APP F9, F15): Trim offset, Frame bottom and the Frame tab's thickness (values in the frame record, not P).
+ * FRAME (FB-APP F9, F15, F22): Trim offset, Frame bottom, Panel lip and thickness -- all in the editor's Frame tab since
+ * item 14 (values in the frame record, not P).
  * SCULPT (F15): Strength / Hardness, now bound to P.sculpt{Top,Bot}Strength through INPUT_PAIRS (core/state.js).
  * STAMP TRANSFORM (F15): tx/ty/rotation/scale live on the LAYER, written by bindLayerOnlyNumber
  * (main/stamp/_dom-binders.js), which attaches them with STAMP_TRANSFORM_FIELDS' per-layer scope below.

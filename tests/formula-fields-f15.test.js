@@ -104,7 +104,7 @@ describe('F15 Frame bottom + thickness: formulas through the frame panel', () =>
         <input type="number" id="frameBottomZ" value="-1" step="0.125">
         <input type="number" id="frameTrimOffset" step="0.0625"></div>
       <button id="btnStampEdit"></button><div id="editorFrameShield"></div>
-      <aside id="editorFramePanel"><select id="editorFrameTemplate"></select>
+      <aside id="editorFramePanel">
         <div id="editorFrameThicknessRow"><input type="number" id="editorFrameThickness" step="0.0625"></div>
         <button id="editorFrameGenerate"></button><button id="editorFrameUndo" disabled></button></aside>
       <aside id="editorLayersPanel"></aside><div id="fusion-status"></div>`;

@@ -1876,6 +1876,28 @@
     }
 }
 
+/* Item 14: the Frame tab's settings group (#frameSettings, shown/hidden by main/frame-panel.js via
+   style.display, so the flex layout lives here, not inline). */
+.editor-frame-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Item 14: every frame setting is edited in the Frame tab, which on a phone is the bottom drawer -- touch targets
+   at least 36px there (same query as item 13's Shape Lattice rule above). */
+@media (max-width: 720px), (pointer: coarse) and (max-height: 500px) and (min-width: 721px) {
+    #editorFramePanel button,
+    #editorFramePanel input[type="number"],
+    #editorFramePanel input[data-formula-orig-type="number"],
+    #editorFramePanel select {
+        min-height: 36px;
+    }
+    #editorFramePanel {
+        font-size: 13px;
+    }
+}
+
 /* When a layer is hidden, dim and hide its SVG elements in the editor view.
    The expand-time geometry filter (task 4) makes sure hidden layers are
    also excluded from the stamp output. */

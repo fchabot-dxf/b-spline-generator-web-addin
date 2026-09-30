@@ -93,7 +93,7 @@ await step('1_generated_noframe');
 
 // choose T1 in the Frame tab's own select (the real path: setFrameRecord + syncFramePanel)
 const pick = (id, v) => evalJS(`(async()=>{ const e = document.getElementById('${id}'); e.value = '${v}'; e.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,1500)); })()`);
-await pick('editorFrameTemplate', 'template_1');
+await pick('frameTemplate', 'template_1');
 await step('2_frame_chosen');
 
 // toggle ON

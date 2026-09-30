@@ -16,16 +16,18 @@ import { FORMULA_FIELDS } from '../bspline-frame-builder/b-spline-gen/html/main/
 const FIXTURE = `
   <input id="widthIn" value="7"><input id="heightIn" value="9">
   <span id="frameSummary"></span><div id="framePanelHeader" class="collapsed"></div>
-  <select id="frameTemplate"></select>
-  <div id="frameSettings"><input id="frameBottomZ"><input id="frameTrimOffset" type="number"><select id="frameAppearance"></select>
-    <div id="frameFitWarning"></div><button id="btnEditFrameShape"></button></div>
+  <div id="frameSummaryLine"></div><button id="btnEditFrameShape"></button><div id="frameFitWarning"></div>
   <button id="btnStampEdit"></button>
   <button id="editorTabFrame"></button><button id="editorTabArtwork" class="active"></button>
   <div id="editorFrameShield" style="display:none"></div>
   <aside id="editorFramePanel" style="display:none">
-    <select id="editorFrameTemplate"></select>
-    <label id="editorFrameThicknessRow"><input id="editorFrameThickness" type="number"></label>
-    <label id="editorFrameWoodRow"><select id="editorFrameWood"></select></label>
+    <select id="frameTemplate"></select>
+    <div id="frameSettings">
+      <label id="editorFrameThicknessRow"><input id="editorFrameThickness" type="number"></label>
+      <input id="frameTrimOffset" type="number"><input id="framePanelLip" type="number"><input id="frameBottomZ">
+      <label id="editorFrameWoodRow"><select id="frameAppearance"></select></label>
+      <div id="editorFrameFitWarning"></div>
+    </div>
   </aside>
   <aside id="editorLayersPanel"></aside>
   <button id="editorDrawerTab-layers">Layers</button>`;
@@ -71,16 +73,25 @@ describe('editor [Frame | Artwork] tabs', () => {
     expect($('editorDrawerTab-layers').textContent).toBe('Layers');
   });
 
-  it('the Frame tab edits the SAME record as the sidebar (template, thickness, wood)', () => {
+  it('item 14: every frame setting is in the Frame tab, the sidebar shows a live one-line summary', () => {
+    for (const id of ['frameTemplate', 'editorFrameThickness', 'frameTrimOffset', 'framePanelLip', 'frameBottomZ', 'frameAppearance']) {
+      expect($(id).closest('#editorFramePanel'), id).not.toBeNull();
+    }
+    expect($('frameSummaryLine').textContent).toBe('No frame');
     setEditorTab('frame');
-    change('editorFrameTemplate', 'template_2');
+    change('frameTemplate', 'template_2');
     expect(getFrameRecord().templateId).toBe('template_2');
-    expect($('frameTemplate').value).toBe('template_2'); // the sidebar follows
     change('editorFrameThickness', '0.5');
     expect(getFrameRecord().params.frame_thickness).toBe(0.5);
-    change('frameAppearance', '3D Maple - Painted'); // sidebar -> the editor follows
-    expect($('editorFrameWood').value).toBe('3D Maple - Painted');
+    change('frameAppearance', '3D Maple - Painted');
+    expect(getFrameRecord().appearance).toBe('3D Maple - Painted');
+    change('framePanelLip', '0.125');
+    expect(getFrameRecord().panelLip).toBe(0.125);
     expect(Number($('editorFrameThickness').max)).toBe(1.5); // limits come from the definition
+    const line = $('frameSummaryLine').textContent;
+    expect(line).toMatch(/^2\. .+ · 0\.5" frame · trim [\d.]+" · lip 0\.125" · Maple - Painted$/);
+    change('frameTemplate', ''); // None: the settings hide, the summary says so
+    expect([shown('frameSettings'), $('frameSummaryLine').textContent]).toEqual([false, 'No frame']);
   });
 
   it('the Frame tab shows the artwork faded and LOCKED; the Artwork tab restores it exactly', () => {
@@ -146,12 +157,12 @@ describe('round trip: Frame -> Artwork -> Frame -> save -> reload', () => {
   it('keeps the record intact and never touches the artwork', () => {
     const artworkBefore = JSON.parse(JSON.stringify(mock.artwork));
     $('btnEditFrameShape').click(); // Frame
-    change('editorFrameTemplate', 'template_1');
+    change('frameTemplate', 'template_1');
     change('editorFrameThickness', '0.625');
-    change('editorFrameWood', '3D Oak - Painted');
+    change('frameAppearance', '3D Oak - Painted');
     $('editorTabArtwork').click(); // Artwork
-    change('frameBottomZ', '-1.5'); // a sidebar edit meanwhile
     $('editorTabFrame').click(); // Frame again
+    change('frameBottomZ', '-1.5');
     const expected = { templateId: 'template_1', params: { frame_thickness: 0.625 }, frameBottomZ: -1.5, appearance: '3D Oak - Painted' };
     expect(getFrameRecord()).toMatchObject(expected);
     // save -> reload (the project serializer, then the load's own P restore)

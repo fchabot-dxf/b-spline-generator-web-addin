@@ -7,6 +7,11 @@
  * normalizing gate). It also registers the editor's cut-profile provider, so
  * the editor draws the board as the chosen frame's cut profile.
  *
+ * Item 14 ("all frame settings in one place"): every frame control (template, thickness, trim offset, panel
+ * lip, frame bottom, wood) lives in the editor's Frame tab (#editorFramePanel) -- the sidebar's controls moved
+ * there with their ids and handlers, and the editor's duplicate template / wood pickers are gone (one control per
+ * setting). The sidebar FRAME section shows frameSummaryText (one line, live) + the "Edit frame" door.
+ *
  * F8: the editor's [Frame | Artwork] tabs. "Edit frame shape" opens the editor
  * on the Frame tab (the frame's template + params + wood, with the live cut
  * profile; gate 3.2 = (c): numeric fields, no on-canvas handles), "Open SVG
@@ -167,13 +172,28 @@ export function onFrameResult(data) {
   return r;
 }
 
-/** Push the current record into the section (and the editor, if open). */
+/** Item 14: a length as the summary shows it (inches, up to 4 decimals, no trailing zeros): 0.75 -> 0.75". */
+const _inches = (v) => (Number.isFinite(Number(v)) ? `${Number(Number(v).toFixed(4))}"` : '');
+
+/** Item 14: the sidebar's one-line frame summary, e.g. `1. Hourglass · 0.75" frame · trim 0.25" · lip 0.125" · Walnut`
+ *  ("No frame" with template None). */
+export function frameSummaryText(rec = getFrameRecord()) {
+  const tpl = findFrameTemplate(FRAME_DEFS, rec.templateId);
+  if (!tpl) return 'No frame';
+  const parts = [frameLabel(tpl)];
+  const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
+  if (t != null) parts.push(`${_inches(t)} frame`);
+  const trim = frameParam(FRAME_DEFS, rec, 'boundingboxoffset');
+  if (trim != null) parts.push(`trim ${_inches(trim)}`);
+  parts.push(`lip ${_inches(rec.panelLip ?? 0)}`);
+  if (rec.appearance) parts.push(String(rec.appearance).replace(/^3D /, ''));
+  return parts.join(' · ');
+}
+
+/** Push the current record into the Frame tab's controls and the sidebar summary. */
 export function syncFramePanel() {
   const rec = getFrameRecord();
   const tpl = findFrameTemplate(FRAME_DEFS, rec.templateId);
-  // The editor's Frame tab mirrors the same record.
-  if ($('editorFrameTemplate')) $('editorFrameTemplate').value = rec.templateId || '';
-  if ($('editorFrameWood')) $('editorFrameWood').value = rec.appearance;
   for (const f of FRAME_PARAM_FIELDS) {
     const el = $(f.id);
     if (!el) continue;
@@ -194,11 +214,15 @@ export function syncFramePanel() {
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${frameLabel(tpl)}` : '— none';
+  if ($('frameSummaryLine')) { // item 14: the sidebar's one-line summary (the settings live in the Frame tab)
+    $('frameSummaryLine').textContent = frameSummaryText(rec);
+    $('frameSummaryLine').title = frameSummaryText(rec);
+  }
 
-  const warn = $('frameFitWarning');
-  if (warn) {
-    const fit = tpl ? frameFit(P.widthIn, P.heightIn, frameParam(FRAME_DEFS, rec, 'frame_thickness'),
-      frameParam(FRAME_DEFS, rec, 'boundingboxoffset')) : { ok: true };
+  // The fit warning: shown in the sidebar (the board size is edited there) and in the Frame tab.
+  const fit = tpl ? frameFit(P.widthIn, P.heightIn, frameParam(FRAME_DEFS, rec, 'frame_thickness'),
+    frameParam(FRAME_DEFS, rec, 'boundingboxoffset')) : { ok: true };
+  for (const warn of [$('frameFitWarning'), $('editorFrameFitWarning')].filter(Boolean)) {
     warn.style.display = fit.ok ? 'none' : '';
     warn.textContent = fit.ok ? '' : `Board too small for this frame: the safe zone is ${fit.safeZoneIn.toFixed(2)} in `
       + `but the frame needs more than ${fit.requiredIn.toFixed(2)} in.`;
@@ -375,14 +399,10 @@ export function initFramePanel() {
   const woodSel = $('frameAppearance');
   if (!tplSel || !woodSel) return;
 
-  for (const sel of [tplSel, $('editorFrameTemplate')].filter(Boolean)) {
-    sel.appendChild(_option('', 'None'));
-    for (const t of FRAME_DEFS.templates || []) sel.appendChild(_option(t.id, frameLabel(t)));
-  }
-  for (const sel of [woodSel, $('editorFrameWood')].filter(Boolean)) {
-    for (const w of FRAME_DEFS.appearance?.options || []) sel.appendChild(_option(w, w.replace(/^3D /, '')));
-  }
-  $('editorFrameTemplate')?.addEventListener('change', (e) => editFrame({ templateId: e.target.value || null, params: {} }));
+  // Item 14: one picker per setting (the Frame tab's), so the options are filled once.
+  tplSel.appendChild(_option('', 'None'));
+  for (const t of FRAME_DEFS.templates || []) tplSel.appendChild(_option(t.id, frameLabel(t)));
+  for (const w of FRAME_DEFS.appearance?.options || []) woodSel.appendChild(_option(w, w.replace(/^3D /, '')));
   $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
   $('editorFrameUndo')?.addEventListener('click', () => undoFrame());
   // Ctrl/Cmd+Z in the Frame tab undoes the FRAME (the artwork's undo is locked there, F8)
@@ -395,7 +415,6 @@ export function initFramePanel() {
     });
   }
   _syncUndo();
-  $('editorFrameWood')?.addEventListener('change', (e) => editFrame({ appearance: e.target.value }));
   for (const f of FRAME_PARAM_FIELDS) {
     $(f.id)?.addEventListener('change', (e) => editFrame({ params: { ...getFrameRecord().params, [f.param]: parseFloat(e.target.value) } }));
   }

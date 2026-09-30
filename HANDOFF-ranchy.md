@@ -82,6 +82,13 @@ The frame is **cut as separate mitered bars on the CNC and glued up**. So:
   - Touch targets are at least 36px on a phone.
   - The panel is now 1504px tall on a phone, down from 1703px.
 
+### All frame settings in one place (workflow item 14, done)
+
+- **Frame tab:** every frame setting is in the drawing editor's Frame tab: template, thickness, trim, lip, bottom (z) and wood.
+- **Sidebar:** the FRAME panel shows a live one-line summary and an Edit frame button.
+- **Wiring:** the ids and handlers are unchanged, and the duplicate editor pickers (`editorFrameTemplate`, `editorFrameWood`) were removed. Save/load and the Send read `P.frame`, so they're unaffected. Frame undo is still the Frame tab's own Undo.
+- **Please check live:** the Fusion palette (the same page) with the moved controls.
+
 ## 4. Your first job: live Fusion checks
 
 Setup:

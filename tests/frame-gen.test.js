@@ -148,9 +148,8 @@ describe('Frame tab: Generate, tweak, save/reload, Undo', () => {
   beforeEach(() => {
     root = document.createElement('div');
     root.innerHTML = `<input id="widthIn" value="7"><input id="heightIn" value="9">
-      <select id="frameTemplate"></select><div id="frameSettings"><select id="frameAppearance"></select></div>
       <button id="btnStampEdit"></button><div id="editorFrameShield"></div>
-      <aside id="editorFramePanel"><select id="editorFrameTemplate"></select>
+      <aside id="editorFramePanel"><select id="frameTemplate"></select><div id="frameSettings"><select id="frameAppearance"></select></div>
         <button id="editorFrameGenerate"></button><button id="editorFrameUndo" disabled></button></aside>
       <aside id="editorLayersPanel"></aside><div id="fusion-status"></div>`;
     document.body.appendChild(root);
@@ -202,7 +201,7 @@ describe('Frame tab: Generate, tweak, save/reload, Undo', () => {
   it('a template change resets the generated shape; Undo brings it back', () => {
     generateFrame(99);
     const generated = JSON.parse(JSON.stringify(getFrameRecord()));
-    const sel = document.getElementById('editorFrameTemplate');
+    const sel = document.getElementById('frameTemplate');
     sel.value = 'template_2'; sel.dispatchEvent(new Event('change'));
     expect(getFrameRecord()).toMatchObject({ templateId: 'template_2', seeds: {}, genSeed: null });
     undoFrame();
