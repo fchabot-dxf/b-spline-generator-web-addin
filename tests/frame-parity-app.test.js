@@ -72,6 +72,10 @@ const CASES = readdirSync(DIR).filter((f) => f.endsWith('.json')).map((f) => {
  * routed through `fit.excluded` (that would also drop these 2 of 3 points from
  * the least-squares fit itself, undoing the real, good fit these goldens gave
  * Template 6's tabHalfWidth/tabHeight -- see LIVE-RESULTS-ranchy.md item 4).
+ * TRACKED as [H23-item-7] (NEXT-SESSION.md) -- a real app-vs-Fusion shape
+ * difference for a user opening this template at these sizes, not just a test
+ * tolerance nuisance, so it isn't left as a bare skip. Update this set (or
+ * remove it) once that item resolves which side is correct.
  */
 const CLAMP_DIVERGENT_OUTLINE = new Set(['template_6_12x6', 'template_6_5.51x1.97']);
 const CLAMP_DIVERGENT_INNER = new Set(['template_6_12x6']); // 5.51x1.97 already skips via the fit.ok===false branch below
