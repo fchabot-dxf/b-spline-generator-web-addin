@@ -207,19 +207,42 @@ ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}}
 <script>
 const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
 let set=[], idx=0;
-function show(){{ const t=set[idx]; im.src=t.src; cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }}
+function show(){{ zr(); const t=set[idx]; im.src=t.src; cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }}
 function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')]; idx=set.indexOf(t); show(); lb.showModal(); }}
 function step(d){{ if(!set.length) return; idx=(idx+d+set.length)%set.length; show(); }}
 document.getElementById('lbPrev').addEventListener('click',ev=>{{ev.stopPropagation();step(-1);}});
 document.getElementById('lbNext').addEventListener('click',ev=>{{ev.stopPropagation();step(1);}});
 document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();lb.close();}});
-document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog')){{ lb.close(); }} }});
+document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target===lb && !moved){{ lb.close(); }} }});
 document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
   const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
-let x0=null,y0=null;
-lb.addEventListener('touchstart',ev=>{{ x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; }},{{passive:true}});
-lb.addEventListener('touchend',ev=>{{ if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
-  if(Math.abs(dx)>40 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1); ev.preventDefault(); }} }});
+// zoom + pan: pinch / double-tap (touch), wheel / drag (mouse); swipe changes image only at 1x
+let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, lastTap=0, drag=null;
+function za(){{ im.style.transform='translate('+zx+'px,'+zy+'px) scale('+zs+')'; im.style.cursor=zs>1?'grab':'zoom-out'; }}
+function zr(){{ zs=1; zx=0; zy=0; za(); }}
+im.style.transformOrigin='center center'; im.style.transition='none';
+function zoomAt(ns,cx,cy){{ const r=im.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
+  ns=Math.max(1,Math.min(6,ns)); const k=ns/zs; zx=zx*k-ox*(k-1); zy=zy*k-oy*(k-1); zs=ns; if(zs===1){{zx=0;zy=0;}} za(); }}
+const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+lb.addEventListener('touchstart',ev=>{{ moved=false;
+  if(ev.touches.length===2){{ pd=dist(ev.touches); ps=zs; x0=null; return; }}
+  x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; drag={{x:zx,y:zy}}; }},{{passive:true}});
+lb.addEventListener('touchmove',ev=>{{
+  if(ev.touches.length===2&&pd){{ const c={{x:(ev.touches[0].clientX+ev.touches[1].clientX)/2,y:(ev.touches[0].clientY+ev.touches[1].clientY)/2}};
+    zoomAt(ps*dist(ev.touches)/pd,c.x,c.y); moved=true; ev.preventDefault(); return; }}
+  if(zs>1&&x0!==null&&drag){{ zx=drag.x+ev.touches[0].clientX-x0; zy=drag.y+ev.touches[0].clientY-y0; za(); moved=true; ev.preventDefault(); }} }},{{passive:false}});
+lb.addEventListener('touchend',ev=>{{
+  if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; x0=null; return; }}
+  if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
+  if(zs===1 && Math.abs(dx)>40 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1); moved=true; ev.preventDefault(); return; }}
+  if(Math.abs(dx)<10&&Math.abs(dy)<10){{ const now=Date.now();
+    if(now-lastTap<300){{ zoomAt(zs>1?1:2.5,ev.changedTouches[0].clientX,ev.changedTouches[0].clientY); moved=true; ev.preventDefault(); lastTap=0; }} else lastTap=now; }} }});
+lb.addEventListener('wheel',ev=>{{ ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); }},{{passive:false}});
+im.addEventListener('mousedown',ev=>{{ if(zs===1) return; ev.preventDefault(); moved=false; drag={{mx:ev.clientX,my:ev.clientY,x:zx,y:zy}};
+  const mv=e=>{{ zx=drag.x+e.clientX-drag.mx; zy=drag.y+e.clientY-drag.my; if(Math.abs(e.clientX-drag.mx)+Math.abs(e.clientY-drag.my)>3) moved=true; za(); }};
+  const up=()=>{{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); setTimeout(()=>{{moved=false;}},0); }};
+  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); }});
+lb.addEventListener('close',zr);
 setInterval(()=>{{ if(!lb.open) location.reload(); }}, 60000);
 </script></body></html>"""
     return body, page
