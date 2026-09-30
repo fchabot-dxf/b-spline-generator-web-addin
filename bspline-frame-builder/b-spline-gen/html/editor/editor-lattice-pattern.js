@@ -659,7 +659,7 @@ export const PATTERN_DEFAULTS = {
   // (+ inward, - outward); `distanceRef: 'outer'` declares this pattern is already in that (current) scheme
   // -- main/app-init.js's `contour-from-frame-outer-edge` migration is the one place that ever needs to know
   // a saved pattern ISN'T, so it must be present here too (a fresh pattern must never look unmigrated).
-  contour: { show: true, width: null, segmentColors: [], fromFrame: { on: false, distance: 0.25, distanceRef: 'outer' } },
+  contour: { show: true, width: null, segmentColors: [], fromFrame: { on: false, distance: 0, distanceRef: 'outer' } },
 };
 
 /** R7 carry-over 2 (RAIL-SPACING ruling 4, "one grid"): the ONE place a

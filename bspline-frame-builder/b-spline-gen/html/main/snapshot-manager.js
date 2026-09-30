@@ -8,6 +8,7 @@ import { resolveGrid } from '../core/terrain.js';
 import { AppState } from './app-state.js';
 import { runMigrations, editorRestoreSvg, refreshDrape } from './app-init.js';
 import { syncFramePanel } from './frame-panel.js';
+import { updateSculptToolButtons } from './param-manager.js';
 
 /**
  * T45 (Fred: "on open, a loaded project doesn't have the SVG until I open
@@ -44,11 +45,14 @@ export async function applySnapshot(snap, preview, { source } = {}) {
       syncUItoParam(k, P[k]);
     }
   }
+  // Fred: the Sculpt tool is never active after opening/loading a project (and an undo never switches it on/off)
   Object.keys(snap.P).forEach(k => {
+    if (k === 'activeSculptLayer') return;
     if (source === 'undo' && UNDO_KEEPS.has(k)) return;
     P[k] = snap.P[k];
     syncUItoParam(k, P[k]);
   });
+  if (source === 'load') { P.activeSculptLayer = null; syncUItoParam('activeSculptLayer', null); if (typeof document !== 'undefined') updateSculptToolButtons(); }
   syncFramePanel();
   setUndoRestoring(false);
   // a global undo/redo of the stock size: the drawing follows the board (app-init _resyncEditorToStock -- a no-op

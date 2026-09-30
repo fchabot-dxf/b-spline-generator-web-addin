@@ -3965,3 +3965,18 @@ floats there pointing at nothing")
 - The A/B byte-identical scripts moved from the cloud scratchpad into `tools/repro/ab/`
   (`ab6.mjs`, `ablat6.mjs`, `ab3d.mjs`, `abpy.py`, `abcam.py`). Their paths are now relative to the repo; each takes
   the tree to hash as its first argument.
+
+## 2026-09-30: Fred's developer notes (web app)
+
+- **3D orbit:** left/right drag direction inverted. This covers the mouse turntable, shift+drag trackball and one-finger touch, in `core/preview/orbit-controller.js`. Vertical is unchanged.
+- **Offset from frame:** the default distance is now 0 (on the frame's outer edge), in `CONTOUR_FROM_FRAME_DEFAULTS`, `PATTERN_DEFAULTS` and the palette input. Saved patterns keep their own stored distance.
+- **Unsaved label:**
+  - In the header, a project never saved shows "· Unsaved" in italics.
+  - The project window header shows the current file name, or an amber "Unsaved project" label. On a phone it sits on its own line under the title.
+- **Thumbnails:** they were stretched. `captureThumbnail` squashed the viewport, which is tall on a phone, into 256x192. It now centre-crops to 4:3, like object-fit: cover. Thumbnails saved before this stay stretched until the project is saved again.
+- **Sculpt:** it is never active after a project load or a session restore, and an undo never switches it on or off.
+  - `activeSculptLayer` is skipped in `applySnapshot`, set to null on load, and its tool buttons are cleared.
+  - `loadLastSession` skips it too.
+  - Still open, for Fred: a dedicated way to enter Sculpt (not built).
+- **3D frame highlights:** the frame bars' specular is darkened (0x0a0a0a), and a shader clamp caps every lit pixel at 0.88 per channel (`capFrameBrightness` in `frame-mesh.js`). Measured headless on bars-only renders from 5 views: max channel 255 → 224.
+- Tests: two default-distance expectations updated. vitest 2716 passed.

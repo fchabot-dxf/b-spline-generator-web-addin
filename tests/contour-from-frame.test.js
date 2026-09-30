@@ -184,12 +184,12 @@ describe('the toggle, the default, the fallbacks', () => {
   const pattern = (fromFrame) => ({ shape: { ...PATTERN_DEFAULTS.shape }, contour: { ...PATTERN_DEFAULTS.contour, ...(fromFrame ? { fromFrame } : {}) } });
 
   it('old patterns (no key) are OFF; the declared default is off, 0.25 in from the outer edge (F26)', () => {
-    expect(PATTERN_DEFAULTS.contour.fromFrame).toEqual({ on: false, distance: 0.25, distanceRef: 'outer' });
-    expect(CONTOUR_FROM_FRAME_DEFAULTS).toEqual({ on: false, distance: 0.25, distanceRef: 'outer' });
+    expect(PATTERN_DEFAULTS.contour.fromFrame).toEqual({ on: false, distance: 0, distanceRef: 'outer' });
+    expect(CONTOUR_FROM_FRAME_DEFAULTS).toEqual({ on: false, distance: 0, distanceRef: 'outer' });
     // contourFromFrameOf's own return shape is unchanged (on/distance only) -- distanceRef is the
     // MIGRATION's own concern (app-init.js), not a runtime reader's.
-    expect(contourFromFrameOf({ contour: { show: true } })).toEqual({ on: false, distance: 0.25 });
-    expect(contourFromFrameOf({})).toEqual({ on: false, distance: 0.25 });
+    expect(contourFromFrameOf({ contour: { show: true } })).toEqual({ on: false, distance: 0 });
+    expect(contourFromFrameOf({})).toEqual({ on: false, distance: 0 });
   });
 
   it('OFF = exactly the preset contour (even with a frame chosen), and ON never touches the preset shape', () => {

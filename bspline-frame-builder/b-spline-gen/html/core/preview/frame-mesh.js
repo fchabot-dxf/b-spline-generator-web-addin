@@ -513,11 +513,27 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
       // H8: spec.color is already the declared frame colour (frameSolidSpec,
       // editor-frame-profile.js) — this fallback only fires when it's null
       // (no matching wood found); Ash's own declared entry keeps it consistent.
-      const barMat = new THREE.MeshPhongMaterial({ color: spec.color || FRAME_COLORS['3D Ash - Unfinished'], side: THREE.DoubleSide, shininess: 12 });
+      const barMat = new THREE.MeshPhongMaterial({ color: spec.color || FRAME_COLORS['3D Ash - Unfinished'], side: THREE.DoubleSide,
+        shininess: 12, specular: 0x0a0a0a });
+      capFrameBrightness(barMat);
       const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
       bars.name = 'frame-bars';
       extra.push(bars);
     }
   }
   return extra;
+}
+
+/** Fred: highlights on the 3D frame must never reach pure white. Every lit pixel of the frame bars is capped at
+ *  FRAME_MAX_BRIGHTNESS per channel (a shader clamp after lighting), and their specular is kept dark. */
+export const FRAME_MAX_BRIGHTNESS = 0.88;
+export function capFrameBrightness(mat, max = FRAME_MAX_BRIGHTNESS) {
+  if (!mat) return mat;
+  const cap = Number(max).toFixed(3);
+  mat.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>',
+      `#include <dithering_fragment>\n  gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(${cap}));`);
+  };
+  mat.customProgramCacheKey = () => `frameCap${cap}`;
+  return mat;
 }

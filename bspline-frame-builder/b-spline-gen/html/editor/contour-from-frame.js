@@ -47,7 +47,7 @@ function _distToLoop(q, prims) {
   return best;
 }
 
-export const CONTOUR_FROM_FRAME_DEFAULTS = Object.freeze({ on: false, distance: 0.25, distanceRef: 'outer' });
+export const CONTOUR_FROM_FRAME_DEFAULTS = Object.freeze({ on: false, distance: 0, distanceRef: 'outer' }); // Fred: default distance 0 (on the frame's outer edge)
 
 /** The effective `{ on, distance }` of a pattern (absent = off: old patterns keep their preset contour).
  *  F26: negative `distance` (outward) is accepted; only a genuinely non-finite value falls back. */

@@ -56,7 +56,12 @@ function captureThumbnail(preview, w = 256, h = 192, quality = 0.7) {
     // White background so transparent corners don't bleed black on dark UI
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(src, 0, 0, w, h);
+    // Fred: thumbnails looked skewed -- the viewport (tall on a phone) was stretched into w x h.
+    // Centre-crop the source to the thumbnail's aspect instead (like CSS object-fit: cover).
+    const tA = w / h, sA = src.width / src.height;
+    let sw = src.width, sh = src.height;
+    if (sA > tA) sw = Math.round(src.height * tA); else sh = Math.round(src.width / tA);
+    ctx.drawImage(src, Math.round((src.width - sw) / 2), Math.round((src.height - sh) / 2), sw, sh, 0, 0, w, h);
     return off.toDataURL('image/jpeg', quality);
   } catch (err) {
     console.warn('[project-manager] thumbnail capture failed:', err);
@@ -1090,13 +1095,16 @@ function setCurrentFile(name) {
 function updateHeaderFileIndicator() {
   const el = document.getElementById('fmCurrentFileLabel');
   if (!el) return;
-  if (_currentFile) {
-    el.textContent = '· ' + _currentFile;
-    el.title = _currentFile;
-    el.style.display = 'inline-block'; // inline-block: its max-width / ellipsis apply
-  } else {
-    el.textContent = '';
-    el.style.display = 'none';
+  // Fred: a project that was never saved shows an "Unsaved" label instead of nothing
+  el.textContent = '· ' + (_currentFile || 'Unsaved');
+  el.title = _currentFile || 'Not saved yet';
+  el.style.fontStyle = _currentFile ? '' : 'italic';
+  el.style.display = 'inline-block'; // inline-block: its max-width / ellipsis apply
+  const m = document.getElementById('fmModalCurrentFile');
+  if (m) {
+    m.textContent = _currentFile ? _currentFile : 'Unsaved project';
+    m.title = _currentFile || 'Not saved yet';
+    m.classList.toggle('pm-current-unsaved', !_currentFile);
   }
 }
 

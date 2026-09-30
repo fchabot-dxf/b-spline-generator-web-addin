@@ -185,11 +185,11 @@ export class OrbitController {
       if (e.shiftKey) {
         // Free trackball orbit (legacy, useful for unconstrained inspection).
         const qX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), dy * speed);
-        const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dx * speed);
+        const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * speed); // horizontal inverted (Fred: feels more natural)
         this._targetOrb.q.copy(this._drag.q).multiply(qX).multiply(qY);
       } else {
         // Inventor-style turntable: horizontal=spin around world Z, vertical=elevation.
-        const newTheta = this._drag.theta + dx * speed;
+        const newTheta = this._drag.theta - dx * speed; // horizontal inverted (Fred)
         const eps = 0.01;
         const newPhi = Math.max(eps, Math.min(Math.PI - eps, this._drag.phi + dy * speed));
         this._targetOrb.q.setFromEuler(new THREE.Euler(newPhi, 0, newTheta, 'ZXY'));
@@ -278,7 +278,7 @@ export class OrbitController {
     const ddx = touch.clientX - this._touchOrbit.x;
     const ddy = touch.clientY - this._touchOrbit.y;
     const qX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), ddy * 0.008);
-    const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ddx * 0.008);
+    const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -ddx * 0.008); // horizontal inverted (Fred)
     this._targetOrb.q.copy(this._touchOrbit.q).multiply(qX).multiply(qY);
   }
 

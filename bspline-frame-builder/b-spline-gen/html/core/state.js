@@ -295,7 +295,7 @@ export function loadLastSession() {
         if (!sess || !sess.P) return false;
 
         Object.keys(sess.P).forEach(k => {
-            if (k in P && k !== 'showMesh') {
+            if (k in P && k !== 'showMesh' && k !== 'activeSculptLayer') { // Fred: Sculpt never active on open
                 let val = sess.P[k];
                 // Convert points from physical to UI units if present
                 if (k === 'points' && Array.isArray(val)) {
