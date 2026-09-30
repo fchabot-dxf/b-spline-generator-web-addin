@@ -61,3 +61,42 @@ Template 3 specifically, rather than either masking it as a clean 0 or leaving t
 still strictly require 0. Recommend a follow-up item: port whichever feasibility guard Templates 1/2 use
 (likely a minimum-safe-zone-height check before attempting the shoulder/waist/hip arc stack) into Template
 3's own construction.
+
+## Item 2 — Template 4 (Offset Hourglass)
+
+**PASS.** No fix needed — every step passed on the first attempt, including the one place Template 3 broke.
+
+- **Step 1, build by hand (7x9, defaults):** timeline 12 items, 0 unhealthy. Bars: `frame_bottom`,
+  `frame_left`, `frame_right`, `frame_top`. Left waist pinch at 59.4% up, right at 40.5% up (spec: ~60%/40%).
+  All 6 arcs (both shoulders, both waists, both hips) share one radius (0.6429 in) exactly. Screenshot:
+  `C:/Users/danse/.bspline-status/shots/seatA/H23-item2_template4_top.png`. The step's own "drag the left
+  waist, right should stay put" check was verified via step 3's seeded cases instead of a manual sketch
+  drag (see there) — a more precise, reproducible version of the same check.
+- **Step 2, goldens recorded:** `tests/fixtures/frame-parity/template_4_{7x9,12x6,5.51x1.97}.json`. 7x9 and
+  12x6 build all 4 bars, timeline healthy. **5.51x1.97 correctly builds 0 bars** (unlike Template 3 at the
+  same size) — Template 4 does have whatever feasibility guard Template 3 is missing.
+  (One `record_frame_parity.py`'s own `main()` call timed out on the MCP bridge partway through case 1 of 3,
+  leaving one blank, untagged scratch document open — `main()` doesn't pass `scratch_tag` to `record_case`.
+  Verified it was empty (0 timeline items, no frame component) before closing it, then re-ran the 3 sizes
+  one at a time via `record_case(..., scratch_tag=...)` directly, which completed within the timeout every
+  time.)
+- **Step 3, f20 seeded parity (4 cases: default, high (-0.35), deep (0.4), 12x6@(0.1,0.2)):** all 4 —
+  `maxErr` <= 6.2e-05 (threshold 0.001), `healthy` true, no `waistCenterYLeft`/`waistReachLeft` in
+  `userParams`. Left/right independence confirmed directly: the `default` case's right waist arc center
+  (y=-0.8527) is IDENTICAL in the `high` case (which seeds only the left waist to y=1.4875) — moving the
+  left waist provably does not move the right one.
+- **Step 4, inversion sweep (7x9 and 12x6, boundingboxoffset 0.5 and 1.0):** all 4 combinations gave
+  `outline_violations() == []`, timeline healthy.
+- **Fusion log:** no errors; not needed.
+- **Frame defs regenerated:** Template 4's `provisional` block is gone; its shapeModel is now fitted from
+  ALL THREE goldens (unlike Template 3, `5.51x1.97` was NOT excluded here — its sketch curves were valid for
+  the offset-waist extractor even though 0 bars were built, since bar-building and curve-validity are
+  separate checks). Templates 1/2/3 confirmed unchanged in the diff (only `sourceHash` and Template 4's own
+  entry moved).
+- **Tests:** one pre-existing test in `tests/frame-template-4.test.js` asserted `T4.shapeModel.provisional`
+  truthy — updated to assert the provisional block is gone and the fit's `fittedFrom`/`excluded` match the
+  measured goldens instead (same shim-retirement shape as Template 3's item 1 fix, mutation-tested against
+  the pre-fix frame-defs via `git stash` to confirm it fails there). Also renamed one test title that still
+  said "the provisional shape" now that it isn't. Final: `npx vitest run` 2731 passed. `pytest`:
+  frame-builder 294 passed (up from 287; +7 from the 3 new goldens plus fit-consistency checks), 6 skipped;
+  b-spline-gen 89 passed; repo root 477 passed, 6 skipped.

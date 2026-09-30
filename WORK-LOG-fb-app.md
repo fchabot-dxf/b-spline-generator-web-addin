@@ -4067,3 +4067,21 @@ Full results in `LIVE-RESULTS-ranchy.md`. Summary: **passed clean, no template c
   deleted immediately without being read further.
 - `npx vitest run`: 2725 passed. `pytest` (frame-builder / b-spline-gen / repo root): 287+89+470 passed,
   4+0+4 skipped.
+
+## 2026-09-30: H23 item 2 — Template 4 (Offset Hourglass) live Fusion check (worker)
+
+Full results in `LIVE-RESULTS-ranchy.md`. Summary: **passed clean, no template code fix needed** —
+including the one place Template 3 broke (Template 4 correctly builds 0 bars at 5.51x1.97).
+
+- Same Fusion session/add-in deploy as item 1 (no redeploy needed). Built by hand, recorded goldens at all
+  3 sizes, ran the 4-case f20 seeded parity check, and the inversion sweep — all passed on the first try.
+- `record_frame_parity.py`'s own `main()` timed out on the MCP bridge mid-run, leaving one blank untagged
+  scratch doc open (`main()` doesn't pass `scratch_tag` through to `record_case`) — verified it was empty
+  before closing it, then recorded the 3 sizes one at a time via `record_case(..., scratch_tag=...)`
+  directly, which stayed under the timeout each time.
+- Regenerated frame-defs: Template 4's provisional block is gone, fitted from all 3 goldens (none excluded,
+  unlike Template 3). Templates 1/2/3 confirmed unchanged.
+- Updated 1 stale test (`T4.shapeModel.provisional` truthy -> gone) the same way as item 1's Template 3 fix;
+  mutation-tested via `git stash` against the pre-fix frame-defs to confirm it fails there.
+- `npx vitest run`: 2731 passed. `pytest` (frame-builder / b-spline-gen / repo root): 294+89+477 passed,
+  6+0+6 skipped.
