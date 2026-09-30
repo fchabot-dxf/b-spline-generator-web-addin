@@ -11032,3 +11032,11 @@ T81 item 8 (one colour helper `pickColorDiffering(pool, …)` fed by `latticeCol
 the finished item 8 is already there (5bea337, merged in 5c8f1e6) with the same design and callers, so nothing in
 the draft was unique. Dropped it, so the worktree is clean for the new seat B (T82). Left untouched: the untracked
 `reference/svgcreator-deployed/` folder (a deliberate reference copy from 2026-09-25).
+
+Also reviewed and dropped two old GitHub Desktop auto-stashes (they live in the shared .git, so every worktree
+listed them): 2026-04-20 on `unified-frame-builder-palette` (a local project_path.json pointing at an old
+TOOLS\template-maker path + pytest cache files; branch fully merged) and 2026-04-10 on
+`framebuilder-unified-palette-ui` (an early opentype.js text-to-path helper + edits to html/editor.js and
+html/editor-ui.js, files that no longer exist; the feature now lives in editor/editor-expand-text.js,
+editor-expand-path.js and editor-fonts.js). The untracked `reference/svgcreator-deployed/` stays (cited by
+SE13/SE14 design docs and ROADMAP); it is now in .git/info/exclude so it stops showing as untracked.
