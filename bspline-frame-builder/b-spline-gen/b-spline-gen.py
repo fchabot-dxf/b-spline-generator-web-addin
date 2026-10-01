@@ -1254,7 +1254,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not des:
                 _log('ERROR: no active Design product')
                 if not is_preview: _send_import_failed('No active Fusion design -- open or create a design, then Send again.')
-                if ui: ui.messageBox('No active Fusion design found.')
                 return
 
             # Sync User Parameters (if not preview)
@@ -1391,7 +1390,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     _log('ERROR: stepText is empty — import aborted')
                     if not is_preview:
                         _send_import_failed('No STEP data reached Fusion -- Send again.')
-                    if ui: ui.messageBox('No STEP data received from palette.')
                     return
 
                 tmp_path = os.path.join(tempfile.gettempdir(), filename)
@@ -1480,7 +1478,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     except Exception as e2:
                         _log(f'Final failure: {e2}')
                         _send_import_failed(f'Fusion could not import the STEP: {e2}')
-                        if ui: ui.messageBox('Failed to import STEP:\n{}'.format(e2))
                         return
 
             # ── UNIFIED post-import consolidation ────────────────────────────────
@@ -1690,7 +1687,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _log(f'_handle_generate EXCEPTION:\n{tb}')
             if not data.get('isPreview', False):
                 _send_import_failed('The Send failed in Fusion -- see the message there (and the add-in log).')
-            if ui: ui.messageBox('Error in generate:\n{}'.format(tb))
 
     def _import_all_svg_layers(self, sketch_target, body_target, stamp_data, orientation='z-up', params=None, design=None):
         """Processes multiple SVG layers if available, otherwise falls back to single SVG.

@@ -4202,3 +4202,17 @@ hunt. Added `tests/frame-within-board.test.js`: every template's outer profile (
 Template 6 is clamped to the thickness rule at all). Included a tiny sanity test proving the boundary-check
 helper itself can fail, before trusting it against the app. All 18 cases (6 templates x 3 sizes) pass — no
 overflow bug exists on main today. `npx vitest run`: 2759 passed (+20).
+
+## 2026-09-30: H23 item 9 — import_failed must not freeze Fusion (worker)
+
+Advisor-authorized fix of my own item 5 finding. Removed the blocking `ui.messageBox(...)` at all 4 call
+sites Flow 4 found, keeping each site's existing log line and the `_send_import_failed` toast — a 4-line
+deletion, nothing else touched. Swept the file for any other `ui.messageBox` sites first: the remaining ones
+are unrelated code paths (STEP-payload parsing, the generic palette exception, workspace/command lifecycle),
+none in scope. Added `test_import_failed_no_modal.py` (same fake-adsk idiom as the stale-params test),
+driving the real `_handle_generate` against the "no active Design" early exit — the simplest of the 4 sites
+to reach without mocking the whole import pipeline. Proved non-vacuous: `git stash` of the fix made both new
+tests fail for the right reason, confirmed, restored. Noted but didn't treat as a new problem: a failed
+live-preview attempt is now fully silent (the toast's own preview gate is pre-existing/untouched) — previously
+it would still have popped a blocking dialog on every failed auto-preview, arguably worse. `pytest`:
+b-spline-gen 91 passed (+2), frame-builder 302 unchanged, repo root 487 passed (+2), 10 skipped throughout.

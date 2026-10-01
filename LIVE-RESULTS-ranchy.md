@@ -361,3 +361,27 @@ consistent with the advisor's own finding that the real bug was elsewhere.
 
 **Tests:** `npx vitest run` 2759 passed (+20, this item's new file). Python suites unchanged (no Python
 touched by this item).
+
+## Item 9 — import_failed must not freeze Fusion (advisor-authorized fix of the item 5 finding)
+
+Removed the blocking `ui.messageBox(...)` call at all 4 sites Flow 4 found
+(`b-spline-gen.py` — "no active Fusion design", "No STEP data reached Fusion", "Fusion could not import the
+STEP", and the generic `_handle_generate` exception handler), keeping each site's existing `_log(...)` call
+and the `_send_import_failed` toast exactly as before — a 4-line deletion, nothing else touched. Verified no
+OTHER unrelated `ui.messageBox` call sites exist in the import_failed path (swept the file: the remaining
+`ui.messageBox` calls are in different code paths — STEP-payload parsing, the generic palette-handler
+exception, workspace/command lifecycle errors — none of them part of this item's scope or the advisor's
+authorization).
+
+Added `test_import_failed_no_modal.py` (same fake-`adsk`-module idiom as
+`test_b_spline_gen_stale_params_wiring.py`), driving the REAL `_handle_generate` against the simplest of the
+4 sites to reach without mocking the whole import pipeline (the "no active Design" early exit). Proved
+non-vacuous: `git stash` of the `.py` fix made both new tests fail for the right reason (`ui.messageBox`
+actually got called), confirmed, then restored. One side note caught by the test itself, not a problem:
+`isPreview` calls now go fully silent on both the toast AND the (removed) messageBox for a failed live-preview
+attempt — the toast's own `if not is_preview:` gate is pre-existing and untouched; previously a failed
+auto-live-preview would still have popped a blocking dialog on every failed attempt during live editing,
+arguably its own latent problem this fix incidentally also removes, not a new regression.
+
+**Tests:** `pytest` b-spline-gen 91 passed (+2, this item's new file), frame-builder 302 passed (unchanged),
+repo root 487 passed (+2), 10 skipped throughout. `npx vitest run` unaffected (no JS touched).
