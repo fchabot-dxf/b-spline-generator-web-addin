@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "3a4884b86479caa9a1298682052e8e4f58a444ea7edd9c3208882ef62c4589ba",
+  "sourceHash": "5acde3731309c8e85cfd5f5197599def2f84ade3d5d6f32d33d3977f83d6c724",
   "templates": [
     {
       "features": [
@@ -9624,8 +9624,8 @@ export default {
                       "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001"
                     ],
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.259286",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                      "-(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4) + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)"
                     ]
                   ],
                   "StartID": "top_edge_L:S",
@@ -9636,8 +9636,8 @@ export default {
                   "ID": "top_edge_R",
                   "Points": [
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.40928600000000004",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                      "(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4) + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)"
                     ],
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001",
@@ -9832,23 +9832,23 @@ export default {
                   "ID": "arc_top_shoulder_L",
                   "Points": [
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.259286",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                      "-(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4) + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)"
                     ],
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.17305500000000001",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.463829"
+                      "-(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4)*0.742 + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)*0.128"
                     ],
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.09214300000000002",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.439167"
+                      "-(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4)*0.5 + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)*0.5"
                     ]
                   ],
                   "StartID": "arc_top_shoulder_L:S",
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.272158",
+                  "Expression": "(((((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4)*(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4) + (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)*(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)) / (4*(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)))",
                   "Name": "seed_rad_top_shoulder_L",
                   "Target": "arc_top_shoulder_L",
                   "Type": "Radius"
@@ -9858,23 +9858,23 @@ export default {
                   "ID": "arc_top_dip",
                   "Points": [
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.09214300000000002",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.439167"
+                      "-(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4)*0.5 + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)*0.5"
                     ],
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.076",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.406111"
+                      "(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15) + 0.001",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)"
                     ],
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.242143",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.439167"
+                      "(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4)*0.5 + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)*0.5"
                     ]
                   ],
                   "StartID": "arc_top_dip:S",
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.272158",
+                  "Expression": "(((((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4)*(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4) + (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)*(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)) / (4*(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)))",
                   "Name": "seed_rad_top_dip",
                   "Target": "arc_top_dip",
                   "Type": "Radius"
@@ -9884,23 +9884,23 @@ export default {
                   "ID": "arc_top_shoulder_R",
                   "Points": [
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.242143",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.439167"
+                      "(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4)*0.5 + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)*0.5"
                     ],
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.323055",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.463829"
+                      "(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4)*0.742 + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)*0.128"
                     ],
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.40928600000000004",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                      "(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4) + (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.15)",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)"
                     ]
                   ],
                   "StartID": "arc_top_shoulder_R:S",
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.272158",
+                  "Expression": "(((((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4)*(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.4) + (((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)*(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)) / (4*(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) * 0.14)))",
                   "Name": "seed_rad_top_shoulder_R",
                   "Target": "arc_top_shoulder_R",
                   "Type": "Radius"

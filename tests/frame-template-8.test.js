@@ -20,6 +20,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-interaction.js';
 import { manifestFromShape } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { frameLabel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { sampleOutline } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const T8 = tplOf('template_8');
@@ -108,6 +109,25 @@ describe('Template 8: listing and declaration', () => {
             expect(prof.defects, J({ W, H, seeds })).toEqual([]);
           }
         }
+      }
+    }
+  });
+
+  it('the outer profile stays within the BOARD (not just the safe zone), at every board', () => {
+    // HEADS-UP amendment (Fred's phone screenshot): a frame (Template 3) drew past the board edge in the
+    // editor. Seat A owns that general fix; this is this template's own guard: every outer-profile point
+    // (densely sampled, arcs included -- sampleOutline, as the lattice-boundary tests already use) stays
+    // within the actual board rectangle, not merely the inset safe zone `region` describes.
+    const BBO = 0.25;
+    for (const [W, H] of BOARDS) {
+      const prof = profile({}, W, H);
+      const poly = sampleOutline(prof.primitives, 96);
+      const minX = -BBO, maxX = W - BBO, minY = -BBO, maxY = H - BBO;
+      for (const p of poly) {
+        expect(p.x, `${W}x${H} x=${p.x}`).toBeGreaterThanOrEqual(minX - 1e-6);
+        expect(p.x, `${W}x${H} x=${p.x}`).toBeLessThanOrEqual(maxX + 1e-6);
+        expect(p.y, `${W}x${H} y=${p.y}`).toBeGreaterThanOrEqual(minY - 1e-6);
+        expect(p.y, `${W}x${H} y=${p.y}`).toBeLessThanOrEqual(maxY + 1e-6);
       }
     }
   });
