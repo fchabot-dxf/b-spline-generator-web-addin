@@ -151,15 +151,28 @@ class Vec:
         self.z = z
 
 
+class Vertex:
+    def __init__(self, z):
+        self.geometry = Vec(z)  # a stand-in "point", tagged with its own intended normal z
+
+
 class Face:
-    def __init__(self, nz):
-        self.pointOnFace = object()
-        self.evaluator = type("Ev", (), {"getNormalAtPoint": lambda _s, _p, nz=nz: (True, Vec(nz))})()
+    def __init__(self, nz, vertex_nz=None):
+        """`vertex_nz` defaults to 4 copies of `nz` (a uniform/planar face, matching
+        every pre-H23-item-22 test exactly: average of N identical values is that
+        value). Pass a differing list to model a non-planar face whose pointOnFace
+        sample disagrees with its own corners (H23 item 22's measured case)."""
+        self.pointOnFace = Vec(nz)
+        self.vertices = [Vertex(z) for z in (vertex_nz if vertex_nz is not None else [nz, nz, nz, nz])]
+
+        def get_normal(_self, point):
+            return True, Vec(point.z)
+        self.evaluator = type("Ev", (), {"getNormalAtPoint": get_normal})()
 
 
 class Body:
-    def __init__(self, normals=(1.0, -0.3, -0.998, 0.2)):
-        self.faces = [Face(z) for z in normals]
+    def __init__(self, normals=(1.0, -0.3, -0.998, 0.2), faces=None):
+        self.faces = faces if faces is not None else [Face(z) for z in normals]
 
 
 class Log:
@@ -298,6 +311,21 @@ class TestSendFrame:
         call = b.solid_calls[0]
         assert call["to_face"] is body.faces[2]  # n.z = -0.998, the downward face
         assert (call["start"], call["wood"]) == ("-1.5 in", "3D Oak - Painted")
+
+    def test_a_sculpted_underside_with_one_tilted_sample_point_is_still_found(self):
+        # H23 item 22, MEASURED live: the real 6x9 Template 10 send failed with
+        # "no downward face" even though the panel's true underside was there --
+        # its pointOnFace sample (-0.8963) narrowly missed UNDERSIDE_MAX_NORMAL_Z
+        # (-0.9) while its own 4 corners (-0.9949..-0.9955) were solidly downward.
+        # Values below are the exact ones measured on that body.
+        w = World()
+        send_bspline(w)
+        top = Face(0.9189, vertex_nz=[0.9055, 0.9055, 0.9839, 0.9839])
+        tilted_underside = Face(-0.8963, vertex_nz=[-0.9949, -0.9955, -0.9955, -0.9949])
+        edge = Face(-0.6862, vertex_nz=[-0.6793, -0.4762, -0.3855, -0.6248])  # genuinely not the underside
+        r, b = run(w, payload(), body=Body(faces=[top, tilted_underside, edge]))
+        assert r["ok"] and r["error"] is None
+        assert b.solid_calls[0]["to_face"] is tilted_underside
 
     def test_seeds_are_reported_not_applied_never_dropped_silently(self):
         w = World()

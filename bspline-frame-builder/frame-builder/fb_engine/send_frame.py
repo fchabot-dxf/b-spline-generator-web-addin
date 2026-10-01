@@ -139,14 +139,38 @@ def delete_previous_frames(design, log):
     return names
 
 
+def _face_downward_z(face):
+    """A face's own "how downward is it" score: the average n.z over pointOnFace
+    and the face's own vertices, not a single arbitrary sample. MEASURED live
+    (H23 item 22): a sculpted b-spline panel's underside is a NurbsSurface, not a
+    plane, and Fusion's own pointOnFace can land in a locally-tilted spot
+    (n.z = -0.8963 measured) even though the SAME face's own corners -- and the
+    face as a whole, by far the body's largest downward face -- are solidly
+    underside (-0.995 at every corner). A single noisy sample silently refused a
+    perfectly good body. Averaging a few real, always-available points (the face
+    already has its vertices; no extra Fusion call) is robust to that one bad
+    sample without risking a genuinely non-downward face passing -- the body's
+    other (edge) faces average -0.5 to -0.6 here, nowhere near the bound."""
+    zs = []
+    ok, n = face.evaluator.getNormalAtPoint(face.pointOnFace)
+    if ok:
+        zs.append(n.z)
+    for v in face.vertices:
+        ok, n = face.evaluator.getNormalAtPoint(v.geometry)
+        if ok:
+            zs.append(n.z)
+    return sum(zs) / len(zs) if zs else None
+
+
 def underside_face(body):
-    """The core body's face pointing down the most (n.z at pointOnFace), when it
-    is within the declared bound; else None."""
+    """The core body's face pointing down the most (its own averaged downward
+    score, see _face_downward_z), when it is within the declared bound; else
+    None."""
     best, best_z = None, 0.0
     for face in body.faces:
-        ok, n = face.evaluator.getNormalAtPoint(face.pointOnFace)
-        if ok and n.z < best_z:
-            best, best_z = face, n.z
+        z = _face_downward_z(face)
+        if z is not None and z < best_z:
+            best, best_z = face, z
     return best if best is not None and best_z <= UNDERSIDE_MAX_NORMAL_Z else None
 
 
