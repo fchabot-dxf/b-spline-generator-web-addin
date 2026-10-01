@@ -164,13 +164,16 @@ FRAME_FEATURES = COMMON_FRAME_FEATURES
 # right side is a plain straight edge and the dip sits off centre, neither of which any earlier template's
 # fitted features describe), never none. 0.2 wave reach (MEASURED: 0.4 collapsed the LEFT horn at 12x6, hornLen
 # 0.34in < frame_thickness 0.75in; 0.2 keeps a safe hornLen 1.04in margin there) / 0 wave height keep the wave
-# modest but visible; 0.14 deep / 0.4 half-wide / 0.15 hw right of centre match a modest, visible dip off centre
-# (see editor-shape-lattice-generator.js PRESETS.dippedLeftWave's own literal defaults, kept in sync).
+# modest but visible; 0.14 deep / 0.5 half-wide / 0.15 hw right of centre match a modest, visible dip off centre
+# (see editor-shape-lattice-generator.js PRESETS.dippedLeftWave's own literal defaults, kept in sync). The top
+# shoulder arcs' own drawn length at the half width this used to be (0.4) was 0.737in at 7x9 -- MEASURED just
+# under frame_thickness (0.75in), the exact band-too-thin cause behind Template 7's "wing" artifacts; 0.5 gives
+# a real margin (0.883in at 7x9, 1.455in at 12x6).
 FRAME_SHAPE_EXTRACTOR = "dipped_left_wave"
 FRAME_PROVISIONAL_SHAPE = {
     "waveReachOfHw": 0.2,
     "waveHeightOfHh": 0.0,
-    "topDipHalfWidthOfHw": 0.4,
+    "topDipHalfWidthOfHw": 0.5,
     "topDipDepthOfHh": 0.14,
     "topDipPositionOfHw": 0.15,
 }

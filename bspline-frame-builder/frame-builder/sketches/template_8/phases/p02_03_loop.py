@@ -57,8 +57,10 @@ def get_block(ui_data=None):
     HW = '(widthIn/2 - boundingboxoffset)'
     HH = '(heightIn/2 - boundingboxoffset)'
     # This template's own dip defaults (fractions of HW/HH, matching FRAME_PROVISIONAL_SHAPE in template_data.py
-    # and PRESETS.dippedLeftWave in editor-shape-lattice-generator.js).
-    A = f'({HW} * 0.4)'        # half width
+    # and PRESETS.dippedLeftWave in editor-shape-lattice-generator.js). 0.5 half-width (not 0.4): MEASURED, the
+    # drawn top shoulder arcs come out just under frame_thickness at 0.4 (0.737in at 7x9 vs 0.75in) -- the exact
+    # band-too-thin cause behind Template 7's own "wing" artifacts; 0.5 gives a real margin (0.883in at 7x9).
+    A = f'({HW} * 0.5)'        # half width
     D = f'({HH} * 0.14)'       # depth
     POS = f'({HW} * 0.15)'     # shift right of centre
     R = f'(({A}*{A} + {D}*{D}) / (4*{D}))'  # the exact tangent-triple radius, any board

@@ -89,7 +89,7 @@ def test_template_8_dip_seed_radius_tracks_both_dimensions_not_just_one():
     names = ("seed_rad_top_shoulder_L", "seed_rad_top_dip", "seed_rad_top_shoulder_R")
     for w, h in ((7, 9), (12, 6), (5.51, 1.97)):
         hw, hh = w / 2 - 0.25, h / 2 - 0.25
-        a, d = hw * 0.4, hh * 0.14
+        a, d = hw * 0.5, hh * 0.14
         expected = (a * a + d * d) / (4 * d)  # editor-shape-lattice-generator.js's own exact tangent-triple formula
         for name in names:
             got = _eval(seeds[name], w, h, 0.25)
@@ -103,10 +103,10 @@ def test_template_8_dip_seed_radius_would_have_caught_the_heightin_only_bug():
     the real phase file. At 7x9 a heightIn-only constant CAN be tuned to match; at 12x6 (same height ratio
     tuned for a different width) it must not, which is exactly the bug seat A found live."""
     hw7, hh7 = 7 / 2 - 0.25, 9 / 2 - 0.25
-    a7, d7 = hw7 * 0.4, hh7 * 0.14
+    a7, d7 = hw7 * 0.5, hh7 * 0.14
     tuned_const = ((a7 * a7 + d7 * d7) / (4 * d7)) / 9  # "heightIn * k" calibrated to match AT 7x9 only
     wrong_12x6 = tuned_const * 6  # heightIn-only formula's own value at 12x6
     hw12, hh12 = 12 / 2 - 0.25, 6 / 2 - 0.25
-    a12, d12 = hw12 * 0.4, hh12 * 0.14
+    a12, d12 = hw12 * 0.5, hh12 * 0.14
     correct_12x6 = (a12 * a12 + d12 * d12) / (4 * d12)
     assert wrong_12x6 != pytest.approx(correct_12x6, rel=1e-6)

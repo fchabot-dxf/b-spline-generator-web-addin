@@ -79,6 +79,22 @@ describe('Template 8: listing and declaration', () => {
     expect(prof.fit.ok).toBe(false);
   });
 
+  it('at the defaults, every piece along the band is at least frame_thickness long (no "wing" risk, Template 7\'s own finding)', () => {
+    // Seat B found a bar segment shorter than frame_thickness is what caused T7's "wing" artifacts (a sliver
+    // that, offset inward by the frame thickness, collapses or flips). MEASURED here at this template's own
+    // default seeds: at 7x9 the top shoulder arcs came out at 0.737in with a 0.4 half-width default (just UNDER
+    // the 0.75in frame_thickness) -- the half-width default was widened to 0.5 (0.883in there) specifically to
+    // clear this. 5.51x1.97 is excluded: `fit.ok` is already false there (too small for the frame, like every
+    // other template), so no bars are built and the rule doesn't apply.
+    const primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : p.rx * Math.abs(p.dTheta));
+    const THICK = T8.params.find((p) => p.name === 'frame_thickness').default;
+    for (const [W, H] of BOARDS) {
+      const prof = profile({}, W, H);
+      if (!prof.fit.ok) continue;
+      prof.primitives.forEach((p, i) => expect(primLength(p), `${W}x${H} piece ${i}`).toBeGreaterThanOrEqual(THICK));
+    }
+  });
+
   it('the top dip sits off centre by default (middle-right, Fred\'s sketch), the wave is on the left only', () => {
     const prof = profile({});
     const { region } = prof, cx0 = region.x + region.w / 2, y0 = region.y;
