@@ -7,6 +7,16 @@ told apart "T10's own bug" from "a pre-existing Template 1 bug T10 now inherits"
 assuming. The 4 new `fusion360-quirks` entries are exactly the right content for that skill — good instinct using it
 unprompted. Spot-checked independently: pytest 351/19skip, gen_frame_defs --check clean.
 
+**Your 79438b4 blocking finding, RESOLVED — Fred looked at the actual verified shape (0939_F3_t10_item17_fixed_deployed.png)
+and confirmed the near-zero waist pinch is fine as-is.** So this is Part 2's option (a), not (b): do NOT re-derive the
+Fusion-side seed chain (item 17's live-verified geometry stays exactly as it is — don't reopen it). Instead, give
+`hourglassConstruction` a second, T10-specific top-corner formula (the outward-bulging convention you found, `cx = topX +
+r`, decoupled from `depth`) alongside T3's existing one, so the app correctly represents the shape that's already right.
+Redo Part 1 (the extractor fix — topology/sign/snapshot numbers are already captured in your 79438b4 writeup, should be a
+fast redo), then add the new corner-formula branch for Part 2. Verify T3/T4/T5 stay byte-identical (they share
+`hourglassConstruction`'s inset mechanism but never hit this edge case, per your own finding) — that's the test that
+matters here, not just T10 looking right in isolation.
+
 **Your 12x6 question — my call: ship it.** Template 1 itself already reflexes at 12x6 (you confirmed this live, unmodified
 HEAD) and has been live this whole time without issue — Fred's standing rule is portrait-only, landscape sizes get a
 graceful fallback, never a reason to withhold a template. T10 inheriting T1's own pre-existing landscape limitation is
