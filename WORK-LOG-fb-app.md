@@ -5093,3 +5093,70 @@ Diagram: `C:/Users/danse/.bspline-status/shots/seatC/0700_F30-item1-proposed_mit
 the ADVISOR (not Fred directly -- this session's own standing correction after F29 item 2), per the dispatch.
 Passing back for Fred's sign-off before any `template_11/` code is written; STEP 2 (the actual build) also
 waits on Template 7 merging to main first (shared roof code, reused not forked).
+
+**Routing mistake, caught and flagged immediately:** reached for `SendUserFile` on this diagram out of habit right
+after committing to route through the advisor -- that tool has no concept of "the advisor," it always delivers
+to Fred directly regardless of intent. Flagged to the advisor the moment it was noticed (no cross-session tool
+sends a FILE to a peer; a peer only ever gets a path string in a message). Re-sent correctly as a path in a
+SendMessage body. Saved to this session's own memory so it doesn't repeat.
+
+## 2026-10-01: F30 item 3 -- taper-variant miter diagram, (a) Hourglass + (b) Narrow Neck, 7x9 / 8 deg (seat C,
+epoch 5, STEP 1 of 2, no code)
+
+Dispatch (replaces the earlier, now-withdrawn F30 item 2 single "Template 12"): Fred wants the upper-side taper
+(the side above the pinch leans inward going up, by `taperAngle` from vertical, instead of running straight up
+to the board's own full top) DECLARED ONCE as a shared construction element, then applied as NEW template copies
+-- (a) Hourglass + taper (from Template 1), (b) Narrow Neck + taper (from Template 2), (c) Arched + taper (from
+Template 10, only once T10's own Fusion fix lands) -- rather than a new param on the originals (which stay byte-
+identical). `taperAngle`: 0-15 deg, default 8. STEP 1: one diagram, (a)+(b) at 7x9/8 deg (c "as a sketch if
+possible"), to the advisor, no code.
+
+**The shared construction, derived from scratch (no existing code handles a non-vertical horn at all):** the
+existing shoulder/neck arc's own circle (centre, radius) is REUSED EXACTLY AS THE BASE TEMPLATE ALREADY HAS IT
+-- the dispatch's own "the shoulder arc stays tangent to it" reads as "the SAME arc, not a redefined one." A
+circle has exactly two tangent lines at any given direction (the two sides, offset +/-r along the direction's own
+normal); picking the correct side (verified empirically: at `taperAngle=0` the formula's own line must reduce to
+the ORIGINAL vertical horn, a hard algebraic check, not an assumption) gives the new tangent line in closed form:
+for a circle (cx,cy,r) and a "lean" direction `dir=(sin(taperAngle), cos(taperAngle))` (travelling down from the
+narrower top), the tangent point is `centre + sign*r*normal` where `normal=(dir.y,-dir.x)` and `sign=+1` for a
+CONVEX arc (Template 1's own shoulder), `sign=-1` for a CONCAVE one (Template 2's own neck -- the sign flip is
+the same convex/concave distinction the inner-offset rule everywhere else in this codebase already makes, just
+applied to which side of a tangent LINE a circle sits on instead of to an offset radius). The new, narrower top
+edge's own half-width (`topX`, no longer `hw`/`neckHalfW`) is wherever this tangent line crosses the safe zone's
+own top (`y=-hh`) -- DERIVED from `taperAngle` alone, not a second free parameter, so the dispatch's own "ONE
+param" holds. The top corner (top edge meets the slanted side) is a genuine miter -- a true line-line
+intersection of the two pieces' own T-offset inner lines (the same "true bisector" rigor as T10's own eave,
+not a fixed angle), confirmed by the hourglass case alone needing a visibly different d than the narrow-neck
+case at the identical 8 deg (0.994in vs 1.143in) since the two base shapes' own shoulder/neck geometry differ.
+
+**A real bug in the scratch script, named rather than silently fixed:** both outlines initially closed straight
+from the mirrored side's own last arc point back to the FIRST (right) top corner, skipping the actual top edge
+and the LEFT top corner entirely -- the exact "wrong end dropped before mirroring" stitching mistake this
+session's own T11 diagram already named once (WORK-LOG-lane-b.md's own T7 turn 197 first), now caught a second
+time in a different shape. Fixed the same way: keep the shared bridge point (here, the mirrored LEFT top corner)
+explicit at the end of the sequence, closing the path through it (drawing the top edge itself as the closing
+segment) instead of past it.
+
+**One MEASURED limitation, not silently worked around:** Template 1's own real shoulder radius (0.6233in, its
+actual fitted value, not a choice made for this diagram) is already narrower than frame_thickness (0.75in) --
+same "merged corner" case `outline-offset.js` already handles live for Template 1 today, that this standalone
+script does not reimplement. Floored the shoulder's own inner radius to a small positive value purely so the
+diagram stays drawable; when the true inner circle can't be reached at all (confirmed: the offset line misses
+it, not just a thin arc), fell back to connecting the inner lines directly rather than inventing a bogus
+tangency. This is a pre-existing Template 1 trait surfaced by drawing its own true inner offset, not something
+`taperAngle` introduces -- Template 2's own concave neck has no such floor (a concave inner radius only grows).
+
+**Verified, not assumed:** both outlines, 0 out-of-bounds samples at 7x9; the top edge visibly narrows (Hourglass:
+2.837in from centre vs the untapered 3.25in; Narrow Neck: 1.811in vs the untapered 2.009in) at the SAME 8 deg,
+by a different amount each, because each base shape's own shoulder/neck geometry differs -- not a shared magic
+constant. All 4 base-corner miters per shape still land on the exact `T*sqrt(2)=1.061in` (unaffected by taper,
+as expected: the base is untouched), while the 2 new top corners come out shorter and shape-specific, confirming
+they are genuinely not assumed/copied.
+
+(c) Arched + taper (Template 10) deferred, not forgotten -- it was explicitly "if possible," and combining
+T10's own archCornerAngle derivation with this one is a real third derivation in its own right, best done
+carefully rather than rushed alongside (a)/(b); T10 is Fusion-gated anyway, so there is no schedule pressure to
+rush it now.
+
+Diagram: `C:/Users/danse/.bspline-status/shots/seatC/0745_F30-item3-proposed_taper-diagram_a-hourglass_
+b-narrowneck_7x9_8deg.png`. Sent to the advisor as a path (not SendUserFile). No code; no template files touched.
