@@ -1,13 +1,32 @@
-# NEXT (lane-b) — T78: FILTER REWORK — Moon, Mars, Wind Dunes, Coral Reef (Fred)
+# NEXT (lane-b) — T82 item 1 continued: Template 7 APP-SIDE (preset, handles, tests, LIVE_CHECK)
 
-**Ball: worker (seat B) · epoch 6 · T78.** You're back on (the regular add-in is home; seat A = the header/stepper pass + frame
-handle reach; seat C is stood down). Your files ONLY: core/noise/{moon,mars,dunes,reef}.js (+ their tweaks, tests, a render
-tool). NO FUSION. PROGRESS automatic ("T78 item N: …"); shots -> shots\seatB\ as each filter lands; push each item.
+**Ball: worker (seat B) · epoch 9 · T82 item 1.** Reviewed cf74636 (Fusion sketch build + shape-fit wiring) fresh-eyes: good
+work, consistent with T6/T8 precedent, honestly scoped (you correctly flagged app-side JS as not-yet-started rather than
+rushing it). Accepted, continue on the SAME item.
 
-Fred (seeing them next to Simplex, which he likes): "I don't like Wind Dune, Moon Surface, Mars Surface, Coral Reef; these all
-need adjusting" / "the planet ones aren't planet-like at all, craters don't look like craters either". Advisor's diagnosis
-(same seed, same board): all four have far less relief + detail than Simplex; Moon = near-flat shallow dents; Mars = soft
-blobby lumps; Dunes = a low flat slab with fine ripples, no real crests; Reef = large FLAT-TOPPED plateaus (clipped heights).
+**One accuracy note for next time, not a blocker:** your pass-back said "pytest: 404 passed, 24 skipped" with no failures
+mentioned. I ran the suite myself and got `2 failed, 404 passed, 24 skipped` —
+`test_every_silhouette_preset_exists_in_the_app` and `test_every_handle_binding_is_declared_and_valid`, both failing because
+`template_7`'s app-side preset (`diamondTopHourglass`) and `PARAM_ORDER` entry don't exist yet. That's the exact gap you
+already named in prose, so not a surprise, not gating — but say "N passed, 2 known-failing (named), M skipped" rather than
+omitting failures from the count, even expected ones; a bare "404 passed" reads as all-green when it wasn't.
+
+## This task: finish T82 item 1 (app-side)
+- Add the `diamondTopHourglass` preset to `editor-shape-lattice-generator.js` PRESETS + its `PARAM_ORDER` entry (this alone
+  fixes the 2 failing tests above — treat them as your done-check, not just a target to silence).
+- Declared on-canvas handles for T7's own shape params, following the established per-template convention (every
+  shape-defining frame param gets a position-square handle: see T3's "Top width", the asym pinch's "Left waist
+  position/reach", T8's "Top dip depth/width", tabTop's "Tab width/height" — `HANDLE_SEGMENT_INDEX` + label each).
+- JS tests (within-board, pieces >= thickness, miters inside band, Generate never broken) + A/B JS scripts updated once T7
+  joins the checked-template lists (per the ab script convention: append only after the check passes).
+- `template_7/LIVE_CHECK.md`: write the stub now (seat A or Fred runs it live later, no Fusion on lane-b). Make sure it
+  explicitly includes the three risk points your own commit flagged, as their own ticks, so they don't get lost: (1) the
+  `min(0.62*hw, 0.84*hh)` Fusion expression string actually evaluates (first use of `min()` in this project's Fusion
+  expressions — genuinely unverified, not just unlikely), (2) the eave corner's default-handle-fraction assumption holds
+  against live `ui_data`, (3) no skeleton pins — confirm the sketch is still fully constrained live.
+- Frame-tab phone shots to the advisor when it lands. Per the new standing rule (Fred, today): also drop a quick progress
+  shot now and then WHILE you work on this, even before it's done — whatever's on screen.
+- After this is fully done (both named tests passing, LIVE_CHECK.md stub written, shots sent): move to T82 item 3 below.
 
 ## Checklist
 - [ ] [T78-item-1] A render tool first: tools/repro/filter_shots.mjs (headless, the #noiseType select, same seed, 3D iso) so every
