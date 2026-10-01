@@ -219,7 +219,15 @@ function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')
 const fig=lb.querySelector('figure');
 function slideClose(dy){{ if(!lb.open||lb.classList.contains('down')) return; fig.style.setProperty('--dy',(dy||0)+'px'); fig.style.transform=''; lb.classList.add('down');
   const done=()=>{{ lb.classList.remove('down'); fig.style.removeProperty('--dy'); lb.close(); }}; fig.addEventListener('animationend',done,{{once:true}}); setTimeout(()=>{{ if(lb.open) done(); }},300); }}
-function step(d){{ if(!set.length) return; idx=(idx+d+set.length)%set.length; show(); }}
+let stepping=false;
+function step(d,fromX){{ if(!set.length||stepping) return; const f=lb.querySelector('figure'); const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const swap=()=>{{ idx=(idx+d+set.length)%set.length; show(); }};
+  if(reduce||!f.animate){{ f.style.transform=''; swap(); return; }}
+  stepping=true; const w=innerWidth, x0=fromX||0;
+  f.style.transform=''; f.animate([{{transform:'translateX('+x0+'px)'}},{{transform:'translateX('+(-d*w)+'px)'}}],{{duration:150,easing:'ease-in',fill:'forwards'}});
+  setTimeout(()=>{{ f.getAnimations().forEach(a=>a.cancel()); swap();     // timer-driven, never waits on animation events
+    f.animate([{{transform:'translateX('+(d*w)+'px)'}},{{transform:'translateX(0)'}}],{{duration:170,easing:'cubic-bezier(.2,.8,.2,1)'}});
+    setTimeout(()=>{{ stepping=false; }},180); }},150); }}
 document.getElementById('lbPrev').addEventListener('click',ev=>{{ev.stopPropagation();step(-1);}});
 document.getElementById('lbNext').addEventListener('click',ev=>{{ev.stopPropagation();step(1);}});
 document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();slideClose(0);}});
@@ -240,14 +248,15 @@ lb.addEventListener('touchstart',ev=>{{ moved=false;
 lb.addEventListener('touchmove',ev=>{{
   if(ev.touches.length===2&&pd){{ const c={{x:(ev.touches[0].clientX+ev.touches[1].clientX)/2,y:(ev.touches[0].clientY+ev.touches[1].clientY)/2}};
     zoomAt(ps*dist(ev.touches)/pd,c.x,c.y); moved=true; ev.preventDefault(); return; }}
-  if(zs===1&&x0!==null&&ev.touches.length===1){{ const ddy=ev.touches[0].clientY-y0, ddx=ev.touches[0].clientX-x0; if(ddy>0&&ddy>Math.abs(ddx)){{ fig.style.transform='translateY('+ddy+'px)'; moved=true; ev.preventDefault(); return; }} }}
+  if(zs===1&&x0!==null&&ev.touches.length===1){{ const ddy=ev.touches[0].clientY-y0, ddx=ev.touches[0].clientX-x0; if(ddy>0&&ddy>Math.abs(ddx)){{ fig.style.transform='translateY('+ddy+'px)'; moved=true; ev.preventDefault(); return; }}
+    if(Math.abs(ddx)>Math.abs(ddy)&&!stepping){{ fig.style.transform='translateX('+ddx+'px)'; moved=true; ev.preventDefault(); return; }} }}
   if(zs>1&&x0!==null&&drag){{ zx=drag.x+ev.touches[0].clientX-x0; zy=drag.y+ev.touches[0].clientY-y0; za(); moved=true; ev.preventDefault(); }} }},{{passive:false}});
 lb.addEventListener('touchend',ev=>{{
   if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; x0=null; return; }}
   if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
   if(zs===1 && dy>90 && dy>Math.abs(dx)){{ moved=true; slideClose(dy); return; }}
+  if(zs===1 && Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1,dx); moved=true; ev.preventDefault(); return; }}
   fig.style.transform='';
-  if(zs===1 && Math.abs(dx)>40 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1); moved=true; ev.preventDefault(); return; }}
   }});
 lb.addEventListener('wheel',ev=>{{ ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); }},{{passive:false}});
 im.addEventListener('mousedown',ev=>{{ if(zs===1) return; ev.preventDefault(); moved=false; drag={{mx:ev.clientX,my:ev.clientY,x:zx,y:zy}};
