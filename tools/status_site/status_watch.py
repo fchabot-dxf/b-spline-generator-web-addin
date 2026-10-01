@@ -199,18 +199,18 @@ dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cu
 dialog#lb figure{{margin:0;position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}} .nav{{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:0;font-size:28px;width:44px;height:64px;border-radius:8px;cursor:pointer}} @keyframes lbDown{{from{{transform:translateY(var(--dy,0px))}}to{{transform:translateY(100vh)}}}}
 dialog#lb.down figure{{animation:lbDown .17s ease-in forwards}}
 @media(prefers-reduced-motion:reduce){{dialog#lb.down figure{{animation-duration:1ms}}}}
-.nav.p{{left:4px}} .nav.n{{right:4px}} .x{{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}}
+.nav.p{{left:4px}} .nav.n{{right:4px}} #lbInk{{position:absolute;display:none;touch-action:none;cursor:crosshair}} .mk{{position:absolute;top:6px;left:6px;display:flex;gap:6px}} .mk button{{background:rgba(0,0,0,.55);color:#fff;border:0;font-size:19px;width:40px;height:40px;border-radius:50%;cursor:pointer}} .mk .mko{{display:none}} .mk.on .mko{{display:inline-block}} .mk.on #mkPen{{background:#d32f2f}} .x{{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}}
 .shots img.more{{display:none}} .morec{{grid-column:1/-1;font-size:12px;color:var(--mut)}}
 .shots{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}} .shots img{{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line)}}
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
 {cards}{com}
-<dialog id="lb"><figure><img id="lbImg" alt=""><button class="x" id="lbClose" aria-label="Close">&#10005;</button><figcaption id="lbCap"></figcaption></figure></dialog>
+<dialog id="lb"><figure><img id="lbImg" alt=""><button class="x" id="lbClose" aria-label="Close">&#10005;</button><canvas id="lbInk"></canvas><div class="mk" id="lbMk"><button id="mkPen" aria-label="Draw" title="Draw">&#9998;</button><button id="mkUndo" class="mko" aria-label="Undo" title="Undo">&#8630;</button><button id="mkClear" class="mko" aria-label="Clear" title="Clear">&#128465;</button><button id="mkSave" class="mko" aria-label="Save" title="Save / share">&#11015;</button></div><figcaption id="lbCap"></figcaption></figure></dialog>
 <script>
 const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
 let set=[], idx=0;
-function show(){{ zr(); const t=set[idx]; im.src=t.src; cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }}
+function show(){{ zr(); if(typeof inkReset==='function') inkReset(); const t=set[idx]; im.src=t.src; cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }}
 function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')]; idx=set.indexOf(t); lb.classList.remove('down');
   const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches, pre=new Image(); pre.src=t.src;
   const go=()=>{{ show(); fig.style.transform=''; lb.showModal(); lb.scrollTop=0;
@@ -230,7 +230,7 @@ function step(d,fromX){{ if(!set.length||stepping) return; const f=lb.querySelec
     f.animate([{{transform:'translateX('+(d*w)+'px)'}},{{transform:'translateX(0)'}}],{{duration:170,easing:'cubic-bezier(.2,.8,.2,1)'}});
     setTimeout(()=>{{ stepping=false; }},180); }},150); }}
 document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();slideClose(0);}});
-document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved){{
+document.addEventListener('click',ev=>{{ if(drawOn && ev.target.closest('dialog')) return; const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved){{
     if(lastPtr==='mouse' && ev.target!==im){{ slideClose(0); }}           // mouse: click outside the image closes
     else if(zs===1){{ step(ev.clientX<innerWidth/2?-1:1); }} }} }});
 document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
@@ -243,28 +243,59 @@ im.style.transformOrigin='center center'; im.style.transition='none';
 function zoomAt(ns,cx,cy){{ const r=im.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
   ns=Math.max(1,Math.min(6,ns)); const k=ns/zs; zx=zx*k-ox*(k-1); zy=zy*k-oy*(k-1); zs=ns; if(zs===1){{zx=0;zy=0;}} za(); }}
 const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
-lb.addEventListener('touchstart',ev=>{{ moved=false;
+lb.addEventListener('touchstart',ev=>{{ if(drawOn) return; moved=false;
   if(ev.touches.length===2){{ pd=dist(ev.touches); ps=zs; x0=null; return; }}
   x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; drag={{x:zx,y:zy}}; }},{{passive:true}});
-lb.addEventListener('touchmove',ev=>{{
+lb.addEventListener('touchmove',ev=>{{ if(drawOn) return;
   if(ev.touches.length===2&&pd){{ const c={{x:(ev.touches[0].clientX+ev.touches[1].clientX)/2,y:(ev.touches[0].clientY+ev.touches[1].clientY)/2}};
     zoomAt(ps*dist(ev.touches)/pd,c.x,c.y); moved=true; ev.preventDefault(); return; }}
   if(zs===1&&x0!==null&&ev.touches.length===1){{ const ddy=ev.touches[0].clientY-y0, ddx=ev.touches[0].clientX-x0; if(ddy>0&&ddy>Math.abs(ddx)){{ fig.style.transform='translateY('+ddy+'px)'; moved=true; ev.preventDefault(); return; }}
     if(Math.abs(ddx)>Math.abs(ddy)&&!stepping){{ fig.style.transform='translateX('+ddx+'px)'; moved=true; ev.preventDefault(); return; }} }}
   if(zs>1&&x0!==null&&drag){{ zx=drag.x+ev.touches[0].clientX-x0; zy=drag.y+ev.touches[0].clientY-y0; za(); moved=true; ev.preventDefault(); }} }},{{passive:false}});
-lb.addEventListener('touchend',ev=>{{
+lb.addEventListener('touchend',ev=>{{ if(drawOn) return;
   if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; x0=null; return; }}
   if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
   if(zs===1 && dy>90 && dy>Math.abs(dx)){{ moved=true; slideClose(dy); return; }}
   if(zs===1 && Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1,dx); moved=true; ev.preventDefault(); return; }}
   fig.style.transform='';
   }});
-lb.addEventListener('wheel',ev=>{{ ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); }},{{passive:false}});
-im.addEventListener('mousedown',ev=>{{ if(zs===1) return; ev.preventDefault(); moved=false; drag={{mx:ev.clientX,my:ev.clientY,x:zx,y:zy}};
+lb.addEventListener('wheel',ev=>{{ if(drawOn) return; ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); }},{{passive:false}});
+im.addEventListener('mousedown',ev=>{{ if(drawOn||zs===1) return; ev.preventDefault(); moved=false; drag={{mx:ev.clientX,my:ev.clientY,x:zx,y:zy}};
   const mv=e=>{{ zx=drag.x+e.clientX-drag.mx; zy=drag.y+e.clientY-drag.my; if(Math.abs(e.clientX-drag.mx)+Math.abs(e.clientY-drag.my)>3) moved=true; za(); }};
   const up=()=>{{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); setTimeout(()=>{{moved=false;}},0); }};
   document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); }});
 lb.addEventListener('close',zr);
+// markup: draw red strokes over the screenshot, undo / clear, save the composite at full resolution
+let drawOn=false, strokes=[], cur=null;
+const ink=document.getElementById('lbInk'), mk=document.getElementById('lbMk'), ictx=ink.getContext('2d');
+function inkFit(){{ const r=im.getBoundingClientRect(), fr=fig.getBoundingClientRect();
+  ink.style.left=(r.left-fr.left)+'px'; ink.style.top=(r.top-fr.top)+'px'; ink.style.width=r.width+'px'; ink.style.height=r.height+'px';
+  ink.width=Math.round(r.width*devicePixelRatio); ink.height=Math.round(r.height*devicePixelRatio); inkDraw(); }}
+function nat(ev){{ const r=ink.getBoundingClientRect(); return [(ev.clientX-r.left)*im.naturalWidth/r.width,(ev.clientY-r.top)*im.naturalHeight/r.height]; }}
+function paint(ctx,scale){{ ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#e53935';
+  for(const s of strokes){{ ctx.lineWidth=s.w*scale; ctx.beginPath(); s.p.forEach((q,i)=>i?ctx.lineTo(q[0]*scale,q[1]*scale):ctx.moveTo(q[0]*scale,q[1]*scale)); if(s.p.length===1) ctx.lineTo(s.p[0][0]*scale+0.1,s.p[0][1]*scale); ctx.stroke(); }} }}
+function inkDraw(){{ ictx.clearRect(0,0,ink.width,ink.height); paint(ictx, ink.width/(im.naturalWidth||1)); }}
+function inkReset(){{ strokes=[]; cur=null; if(drawOn) inkDraw(); }}
+function setDraw(on){{ drawOn=on; mk.classList.toggle('on',on); ink.style.display=on?'block':'none'; if(on){{ zr(); requestAnimationFrame(inkFit); }} }}
+ink.addEventListener('pointerdown',ev=>{{ ev.preventDefault(); ev.stopPropagation(); ink.setPointerCapture(ev.pointerId);
+  const r=ink.getBoundingClientRect(); cur={{w:5*im.naturalWidth/r.width, p:[nat(ev)]}}; strokes.push(cur); inkDraw(); }});
+ink.addEventListener('pointermove',ev=>{{ if(!cur) return; ev.preventDefault(); cur.p.push(nat(ev)); inkDraw(); }});
+['pointerup','pointercancel'].forEach(t=>ink.addEventListener(t,()=>{{ cur=null; }}));
+['click','touchstart','touchmove','touchend'].forEach(t=>ink.addEventListener(t,ev=>ev.stopPropagation(),{{passive:true}}));
+mk.addEventListener('click',ev=>ev.stopPropagation());
+document.getElementById('mkPen').addEventListener('click',()=>setDraw(!drawOn));
+document.getElementById('mkUndo').addEventListener('click',()=>{{ strokes.pop(); inkDraw(); }});
+document.getElementById('mkClear').addEventListener('click',()=>{{ strokes=[]; inkDraw(); }});
+document.getElementById('mkSave').addEventListener('click',async()=>{{
+  const c=document.createElement('canvas'); c.width=im.naturalWidth; c.height=im.naturalHeight; const x=c.getContext('2d');
+  x.drawImage(im,0,0); paint(x,1);
+  const base=(set[idx]&&set[idx].alt||'shot').replace(/[.](png|jpe?g)$/i,'');
+  const blob=await new Promise(res=>c.toBlob(res,'image/png')); const file=new File([blob],base+'_marked.png',{{type:'image/png'}});
+  if(navigator.canShare&&navigator.canShare({{files:[file]}})){{ try{{ await navigator.share({{files:[file],title:file.name}}); return; }}catch(e){{ if(e.name==='AbortError') return; }} }}
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name; document.body.appendChild(a); a.click(); setTimeout(()=>{{URL.revokeObjectURL(a.href); a.remove();}},1000); }});
+addEventListener('resize',()=>{{ if(drawOn) inkFit(); }});
+lb.addEventListener('close',()=>setDraw(false));
+
 setInterval(()=>{{ if(!lb.open) location.reload(); }}, 60000);
 </script></body></html>"""
     return body, page
