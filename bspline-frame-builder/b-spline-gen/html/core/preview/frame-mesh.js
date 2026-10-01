@@ -631,7 +631,18 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
       // the same way the outline's own wall is (not just the 4 corners), so it follows the sculpted
       // underside along each side.
       const winHoleLoop = toWorld(samplePairedOutlines(rectToPrimitives(win.hole), rectToPrimitives(win.hole), cell).outer, W, H);
-      const winWall = _mesh(THREE, wallArrays(winHoleLoop, bot, top), wallMat.clone());
+      // Same "panel's own colours at the top edge" sampling the outline's own wall does above (wallAttrs) --
+      // wallMat inherits vertexColors:true from panelMesh.material whenever the board has a carved/terrain
+      // colour map (terrain-mesh.js's own useColours), and without a matching `color` attribute on THIS
+      // geometry too, that material renders flat black here (the vertex colour attribute is simply unset,
+      // not "no tint") instead of just losing its own per-vertex shading -- the exact reported symptom.
+      const winWallAttrs = {};
+      if (attrs.color) {
+        const col = [];
+        for (const p of winHoleLoop) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
+        winWallAttrs.color = { array: col, itemSize: 3 };
+      }
+      const winWall = _mesh(THREE, wallArrays(winHoleLoop, bot, top), wallMat.clone(), winWallAttrs);
       winWall.name = 'frame-window-wall';
       extra.push(winWall);
     }
