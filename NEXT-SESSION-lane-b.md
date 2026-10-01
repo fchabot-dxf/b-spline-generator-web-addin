@@ -1,23 +1,16 @@
-# NEXT (lane-b) — T83 item 1: Template 11 diagram (diagram first, to the advisor)
+# NEXT (lane-b) — T83 item 1 continued: Template 11, FULL BUILD (Fred approved the diagram)
 
-**Ball: worker (seat B) · epoch 9 · T83 item 1.** T81 item 6 ACCEPTED (e07a91f) — thorough: found THREE separate wiring
-gaps (hand-picked boundaries had no segments for the existing arbitration; rect Lattice's own press handler had no
-contour arbitration at all; the main Select tool never reconsidered against the contour's precise edge), fixed with
-ONE declared comparison (`_contourWinsPick`) reused identically at all 3 call sites rather than three one-off patches —
-exactly the "declare the pick priority once" the dispatch asked for. Mutation-tested each wiring point
-INDEPENDENTLY (3 separate revert/confirm/restore cycles). Spot-checked independently: vitest 2941/0 failed. Honest
-about no live screenshot this turn (a hand-picked boundary isn't a simple single-button UI gesture) — fine, the fix is
-proven through the real production handlers with full mutation coverage, same bar already accepted for the Shape
-Lattice gap in item 5. That closes the whole T81/T82 backlog.
+**Ball: worker (seat B) · epoch 9 · T83 item 1.** Diagram ACCEPTED — your independent re-derivation agreed exactly with
+seat C's own earlier one (a cross-branch duplicate due to an advisor coordination gap, not your fault; see the
+separate correction message on that). Fred looked at both and said "go." Build it now, same process as T7
+(cf74636/45e66bb): Fusion sketches/template_11 phases (reuse T7's roof_geometry() and T1's hourglassConstruction
+verbatim, the same composition your own scratch script already proved out — same topInset-derived link point, same
+base-bar stitching fix you already found once), template_data.py (5 bars: 2 roof, 2 sides, 1 base — confirm against
+your own diagram), frame_shape_fit.py/frame_definition.py wiring, app-side preset/handles/tests following the
+established per-template handle convention, provisional shapeModel, gen_frame_defs, JS + Python tests, A/B all
+other templates unchanged, `template_11/LIVE_CHECK.md` for seat A's later live Fusion check (no Fusion bridge needed
+on lane-b for any of this — same as T7). Per the standing rule: progress shots as you go, even mid-build.
 
-## This task: T83 item 1 — Template 11, DIAGRAM ONLY (do not build the Fusion/app geometry yet)
-Template 11: Template 7's diamond roof + eaves, but with a 3-ARC hourglass side below the eave (small convex shoulder,
-concave waist, convex hip to full width — reuse T1's chain), the same combination Fred already said he liked when both
-halves were separately approved. T7 (its roof/eave dependency) is now merged to main, so this is unblocked. Per the
-project's own "new templates go diagram first" rule: render the proposed Template 11 outline (reuse whatever rendering
-approach you used for T7's own miter diagrams) at 7x9 and 6x9, send it to me (the advisor) — NOT straight to Fred — and
-stop there. I'll review it before anything goes to Fred for approval. Do not start the Fusion phases or app geometry
-until that approval comes back.
 - [T81-item-6] PRIORITY BUG: CAN'T SELECT A CONTOUR SEGMENT (Fred: "I can't seem to select contour segment"). Per-segment
   colour (Selected piece panel, scissors recolour) depends on it. REPRODUCE with real pointer events (mouse + touch) in
   Shape Lattice AND rect Lattice, with the lattice [Select] icon tool AND the main Select tool: click on a contour
