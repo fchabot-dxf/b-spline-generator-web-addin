@@ -494,3 +494,55 @@ an actual user would take.
 
 **Tests:** `pytest` CAM-builder: 7 passed (+3, this item's new file). Other suites unaffected (no shared code
 touched).
+
+## Item 11 — Template 8 (Dipped Top + Left-Only Wave), live Fusion check
+
+**PASS at every normal-use step; one genuine, measured finding at an extreme stress-test input, flagged not
+fixed.** Same process as items 1-4. Template 8 already had a well-designed, width-and-height-aware seed radius
+(`R = (A*A + D*D) / (4*D)`, seat C's own "exact tangent-triple radius" formula) — unlike Template 5, this
+session did not need to fix a seed bug here; it only needed to run and record the live check.
+
+- **Step 1, build by hand (7x9, defaults):** timeline 4 items, 0 unhealthy. All geometry checks confirmed by
+  direct measurement: `side_R` is a plain vertical line corner-to-corner (no pinch); `arc_waist_L` centred at
+  x=-2.862 (left, vertically centred); `arc_top_dip` centred at x=+0.506 (right of centre, as specified); the
+  right stub (1.10in) shorter than the left (2.11in); both top-left and top-right corners square (a horizontal
+  line meeting a vertical line at the exact same point); all 4 bars present. The two "drag" checks were
+  verified by constraint topology rather than a literal UI drag (this item avoids on-screen automation): the
+  LEFT pinch's full constraint list has no reference to any `arc_top_*`/`side_R` entity and vice versa, so
+  neither can propagate into the other by construction. Screenshot:
+  `C:/Users/danse/.bspline-status/shots/seatA/2310_H23-item11_template8_top.png`.
+- **Step 2, goldens recorded:** `template_8_{7x9,12x6,5.51x1.97}.json`. 7x9/12x6 give all 4 bars, healthy;
+  5.51x1.97 correctly gives 0 bars (same "too small for the frame" guard as every other template there) — and
+  critically, the two top shoulder arc centres stay well separated (-0.88/+1.71) at this size, unlike Template
+  5's own dip, which collapses there (item 6's own finding) — seat C's more rigorous radius formula holds up
+  where Template 5's heightIn-only one didn't.
+- **Step 3, f20 seeded parity (4 cases: default, deepwave, rightdip, 12x6):** all 4 — `maxErr` between 2.6e-05
+  and 4.4e-05 (threshold 0.001, so 20-40x margin), `healthy` true, clean `userParams`, the two top shoulder
+  arcs exactly equal-radius in every case including the asymmetric ones. The cleanest parity result of any
+  template checked this round (compare Template 5's own lingering ~0.2-0.3in gap, item 6).
+- **Step 4, inversion sweep (7x9/12x6 x boundingboxoffset 0.5/1.0): 2 of 4 combinations give a genuine
+  violation, not hidden.** Both failures are at boundingboxoffset=1.0 specifically (0.5 is clean at both
+  sizes) — a stress-test value well beyond the app's own normal range (default 0.25). 7x9@1.0:
+  `arc_top_shoulder_L on the wrong side` — measured directly: `arc_top_dip`'s own start/end points are only
+  0.0004in apart (a near-zero-length collapse, not a full mirror-branch flip), consistent with the dip
+  construction becoming fragile as its allotted space shrinks toward zero. 12x6@1.0: `arc_top_shoulder_R`/
+  `top_edge_R` land outside the safe zone entirely, and the build drops to only 3 of 4 bars (`frame_right`
+  missing) — a more serious breakdown than 7x9's. Both report `healthy: true` from Fusion's own constraint
+  solver either way (the degeneracy isn't caught there). Not root-caused or fixed this session — this is the
+  same class of "construction gets fragile at an extreme stress-test input, not a mainstream usage break" as
+  seat C's own already-logged Template 1 extreme-landscape finding; recommending a follow-up rather than
+  extending this already-large item into Template 8's own construction phases.
+- **Frame defs regenerated:** Template 8's `provisional` block is gone; fitted from all 3 goldens, no size
+  excluded (`maxResidualIn: 0.0685`, comparable to Template 1's own 0.0832). **Templates 1-7, 9, 10 confirmed
+  byte-identical** (diffed the full JSON — only `template_8` and `sourceHash` changed).
+- **Tests:** fixed 3 stale assertions across `tests/frame-template-8.test.js` and
+  `test_frame_defs.py` that checked the retired `provisional` flag/dimensions or a fixed 5-key feature set
+  (the fitted model carries 3 more measured features — `waveCornerR`, `waveNotch`, `waveR` — that the
+  provisional shim never declared), same pattern as every other template's own provisional-retirement fix this
+  round. Found and documented one new, small (0.11in vs 0.1in tolerance), one-directional app-vs-Fusion
+  divergence at 5.51x1.97 in `frame-parity-app.test.js` (both sides agree the frame doesn't fit this board —
+  not a feasibility disagreement, and NOT Template 6's own clamp story since nothing is excluded from the fit
+  here — just the 2-coefficient linear fit not perfectly reproducing Fusion's true geometry this far outside
+  the normal aspect-ratio range); named as its own exception set with a full explanation rather than silently
+  skipped, mutation-tested via `git stash`. `npx vitest run`: 2855 passed. `pytest`: frame-builder +1 (527
+  total, repo root), b-spline-gen unaffected, 13 skipped throughout.

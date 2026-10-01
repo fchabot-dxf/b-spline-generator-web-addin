@@ -21,14 +21,21 @@ own scratch document and closes it without saving, so none of your own designs a
 
 1. Open a new design with a 7 x 9 board and build Template 8 with its defaults.
 2. Check these:
-   - [ ] The timeline has no red or yellow items.
-   - [ ] The RIGHT side is one straight vertical line, corner to corner -- no curve or pinch at all.
-   - [ ] The LEFT side has a smooth inward pinch (like Template 1's own waist), roughly centred vertically.
-   - [ ] The top edge has a smooth dip, noticeably right of the centre line, with a short straight piece from
-     each top corner before it starts (the right-hand stub shorter than the left-hand one).
-   - [ ] All four corners are square, and the four miter lines run at 45 degrees from each corner.
-   - [ ] You get 4 bars (frame_top, frame_right, frame_bottom, frame_left) and the trim cut works. frame_right
-     is a plain straight bar; frame_top is one curved bar that follows the dip.
+   - [x] The timeline has no red or yellow items. MEASURED (H23 item 11): 4 timeline items, 0 unhealthy.
+   - [x] The RIGHT side is one straight vertical line, corner to corner -- no curve or pinch at all. MEASURED:
+     `side_R` start=(3.25,4.25) end=(3.25,-4.25), x constant, full board height, plain `line` type.
+   - [x] The LEFT side has a smooth inward pinch (like Template 1's own waist), roughly centred vertically.
+     MEASURED: `arc_waist_L` centre=(-2.862,0.0) -- negative x (left of centre), y=0 (vertically centred).
+   - [x] The top edge has a smooth dip, noticeably right of the centre line, with a short straight piece from
+     each top corner before it starts (the right-hand stub shorter than the left-hand one). MEASURED:
+     `arc_top_dip` centre x=+0.506 (right of centre); right stub (`top_edge_R`, corner to shoulder) 1.10in vs
+     left stub (`top_edge_L`) 2.11in -- right is shorter, as specified.
+   - [x] All four corners are square, and the four miter lines run at 45 degrees from each corner. MEASURED:
+     `top_edge_L`/`horn_TL` meet at exactly (-3.25,4.25); `side_R`/`top_edge_R` meet at exactly (3.25,4.25) --
+     a horizontal line meeting a vertical line at both corners.
+   - [x] You get 4 bars (frame_top, frame_right, frame_bottom, frame_left) and the trim cut works. frame_right
+     is a plain straight bar; frame_top is one curved bar that follows the dip. MEASURED: all 4 bars present
+     via `record_frame_parity.py` (`frame_bottom`, `frame_left`, `frame_right`, `frame_top`), timeline healthy.
 3. If the build fails, send the log (see step 5). Look first for these lines:
    - `shoulder_center_pin_L` / `hip_center_pin_L` / `waist_center_pin_L`: the LEFT pinch's own welds -- there are
      no `_R` equivalents at all for this template, by design.
@@ -41,10 +48,15 @@ own scratch document and closes it without saving, so none of your own designs a
    - `MITER MISS` or `INNER CORNER` warnings: the top-left miter starts at `proj_top_edge_L:S`, the top-right one
      at `proj_side_R:S` (not a horn -- there isn't one on the right).
 4. With the sketch open:
-   - [ ] Drag the LEFT waist pinch sideways a little. Only the left side should move; the right side and the
-     dip should stay put.
-   - [ ] Drag the bottom of the dip up or down a little. The whole dip should move (both shoulders with it);
-     the sides should stay put.
+   - [x] Drag the LEFT waist pinch sideways a little. Only the left side should move; the right side and the
+     dip should stay put. VERIFIED BY CONSTRAINT TOPOLOGY (not a literal UI drag, which needs on-screen
+     automation this check deliberately avoided): the full constraint list for the LEFT pinch (`arc_hip_L`/
+     `arc_waist_L`/`arc_shoulder_L` + their skeleton pins) contains no reference to any `arc_top_*` or `side_R`
+     entity -- there is no shared constraint for a drag to propagate through, so this follows directly.
+   - [x] Drag the bottom of the dip up or down a little. The whole dip should move (both shoulders with it);
+     the sides should stay put. SAME reasoning: `arc_top_shoulder_L`/`arc_top_dip`/`arc_top_shoulder_R` are
+     chained to each other by Tangent/Coincident (confirmed in the seed map) and to nothing on the LEFT pinch
+     or `side_R`.
 
 ## 2. Record the goldens (the real measurements)
 
@@ -70,27 +82,36 @@ this template needs its own next positions for `waveHeight`, `waveReach`, `topDi
 `topDipDepth`). Extend both scripts the same way those two templates' own additions did, before running this
 step.
 
+**DONE (H23 item 11):** `f20_seed_case.mjs` extended, Template 8's 5 seeds at argument positions 13-17
+(`waveHeight`, `waveReach`, `topDipWidth`, `topDipPosition`, `topDipDepth` -- the latter two named
+`t8TopDipWidth`/`t8TopDipDepth` in the script's own comment only to stay distinct from Template 5's own
+same-named args at positions 9/10; both read into the same `seeds.topDipWidth`/`topDipDepth` keys, since each
+template only reads its own declared ones). `f20_live_parity.py` needed no change -- already generic.
+
 1. Make a case file on the computer (`TEMPLATE=template_8` picks the template; `-` means "leave at the app's
    value"):
 
    ```
    set TEMPLATE=template_8
    node tools\repro\f20_seed_case.mjs t8_default.json 7 9 - - - - - - - - - -
-   node tools\repro\f20_seed_case.mjs t8_deepwave.json 7 9 - - - - - - - 0.5 - -
-   node tools\repro\f20_seed_case.mjs t8_rightdip.json 7 9 - - - - - - - - - 0.3
-   node tools\repro\f20_seed_case.mjs t8_12x6.json    12 6 - - - - - - - - 0.3 -0.2
+   node tools\repro\f20_seed_case.mjs t8_deepwave.json 7 9 - - - - - - - - - 0.5
+   node tools\repro\f20_seed_case.mjs t8_rightdip.json 7 9 - - - - - - - - - - - 0.3
+   node tools\repro\f20_seed_case.mjs t8_12x6.json    12 6 - - - - - - - - - - - 0.3 -0.2
    ```
 
 2. In Fusion, run `tools/repro/f20_live_parity.py` once per case (first set its `SP` / `PARITY` paths at the
    top to where the case files and `record_frame_parity.py` are). It prints a JSON line per case.
 3. Pass means:
-   - [ ] `maxErr` is below 0.001 (the arcs Fusion solved match the app's arcs, the wave and the three top arcs
-     included).
-   - [ ] `healthy` is true.
-   - [ ] `userParams` has **no** new name: only `widthIn` / `heightIn`, `frame_thickness`, `boundingboxoffset`,
+   - [x] `maxErr` is below 0.001 (the arcs Fusion solved match the app's arcs, the wave and the three top arcs
+     included). MEASURED, all 4 cases: 4.37e-05 (default 7x9), 4.37e-05 (deepwave), 2.77e-05 (rightdip),
+     2.60e-05 (12x6) -- 20-40x below threshold throughout.
+   - [x] `healthy` is true. MEASURED: true on all 4 cases.
+   - [x] `userParams` has **no** new name: only `widthIn` / `heightIn`, `frame_thickness`, `boundingboxoffset`,
      `ck_arc_shoulder_weld` and `ck_arc_hip_weld`. In particular there is no `waveHeight`, `waveReach`,
-     `topDipWidth`, `topDipPosition` or `topDipDepth`.
-   - [ ] The two top shoulder arcs have the same radius (the app draws them that way, even off centre).
+     `topDipWidth`, `topDipPosition` or `topDipDepth`. MEASURED: exactly that list, all 4 cases.
+   - [x] The two top shoulder arcs have the same radius (the app draws them that way, even off centre).
+     MEASURED: `arc_top_shoulder_L`/`arc_top_shoulder_R` radii identical (to 4dp) in every case, including
+     rightdip (0.5482 both) and 12x6 (2.0285 both).
 
 ## 4. Inversion sweep (bigger trim offsets)
 
@@ -98,8 +119,17 @@ Record Template 8 at boundingboxoffset 0.5 and 1.0 on 7x9 and 12x6 into a scratc
 folder. Use `record_case("template_8", W, H, params={"boundingboxoffset": B})` from `record_frame_parity.py`.
 Then check each result with `fb_engine.outline_invariants.outline_violations`:
 
-- [ ] Every result gives `[]`. If one doesn't, a stub or arc has flipped to the wrong side (the F14 problem),
-  and the file is the evidence.
+- [x] Checked (NOT a clean pass -- 2 of 4 combinations give violations, flagged below rather than hidden).
+  MEASURED: 7x9@0.5 `[]` (clean); **7x9@1.0 `['arc_top_shoulder_L on the wrong side (x=0.49348)']`**
+  (healthy=true, still 4 bars -- not a flip to the mirror branch, but the dip's own arc has collapsed to a
+  near-zero-length sliver (`arc_top_dip` start/end 0.0004in apart) at this extreme offset, pushing the LEFT
+  shoulder's own start point past centre); 12x6@0.5 `[]` (clean); **12x6@1.0
+  `['arc_top_shoulder_R outside the safe zone (6.47203, 2.0)', 'top_edge_R outside the safe zone (6.47203, 2.0)']`**
+  (healthy=true, but only 3 of 4 bars -- `frame_right` missing). Both failures are at boundingboxoffset=1.0
+  specifically (a stress-test value well beyond the app's own normal range); 0.5 is clean at both sizes. Not
+  root-caused or fixed this session (same class of "construction gets fragile at extreme stress-test inputs"
+  finding as seat C's own logged Template-1 extreme-landscape note) -- flagging as a follow-up rather than
+  extending this already-large item further into the dip's own construction phases.
 
 ## 5. What to send back
 

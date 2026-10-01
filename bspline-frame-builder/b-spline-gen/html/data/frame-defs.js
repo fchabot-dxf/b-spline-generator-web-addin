@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "79cb428f96624c8f0b5ace532bcf30afc7845b454e059bab777cb6052f0281db",
+  "sourceHash": "206bdb0af6da9f83cd6df53252852e2e0a4bf160fd2f63f9df29c83b512565c5",
   "templates": [
     {
       "features": [
@@ -10919,42 +10919,90 @@ export default {
       "shapeModel": {
         "features": {
           "topDipDepth": {
-            "hh": 0.14,
-            "hw": 0.0
+            "hh": 0.144496,
+            "hw": -0.001032
           },
           "topDipHalfWidth": {
-            "hh": 0.0,
-            "hw": 0.5
+            "hh": -8e-05,
+            "hw": 0.504685
           },
           "topDipPosition": {
-            "hh": 0.0,
-            "hw": 0.15
+            "hh": -0.00029,
+            "hw": 0.15459
+          },
+          "waveCornerR": {
+            "hh": 0.145571,
+            "hw": 0.006523
           },
           "waveCy": {
-            "hh": 0.0,
-            "hw": 0.0
+            "hh": -0.021748,
+            "hw": 0.029305
           },
           "waveDepth": {
-            "hh": 0.0,
-            "hw": 0.2
+            "hh": 0.122026,
+            "hw": 0.161215
+          },
+          "waveNotch": {
+            "hh": 0.304514,
+            "hw": -0.013164
+          },
+          "waveR": {
+            "hh": 0.145571,
+            "hw": 0.006523
           }
         },
         "fit": {
           "exactAtFittedSizes": false,
           "excluded": [],
-          "fittedFrom": [],
-          "maxResidualIn": null,
+          "fittedFrom": [
+            "12x6",
+            "5.51x1.97",
+            "7x9"
+          ],
+          "maxResidualIn": 0.0685,
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
-          "residualsIn": {}
-        },
-        "provisional": {
-          "baseModel": null,
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-          "topDipDepthOfHh": 0.14,
-          "topDipHalfWidthOfHw": 0.5,
-          "topDipPositionOfHw": 0.15,
-          "waveHeightOfHh": 0.0,
-          "waveReachOfHw": 0.2
+          "residualsIn": {
+            "topDipDepth": [
+              0.0031,
+              -0.0059,
+              -0.001
+            ],
+            "topDipHalfWidth": [
+              0.0147,
+              -0.0275,
+              -0.0047
+            ],
+            "topDipPosition": [
+              0.0147,
+              -0.0276,
+              -0.0047
+            ],
+            "waveCornerR": [
+              0.0093,
+              -0.0174,
+              -0.003
+            ],
+            "waveCy": [
+              -0.0087,
+              0.0164,
+              0.0028
+            ],
+            "waveDepth": [
+              -0.0365,
+              0.0685,
+              0.0118
+            ],
+            "waveNotch": [
+              0.0273,
+              -0.0512,
+              -0.0088
+            ],
+            "waveR": [
+              0.0093,
+              -0.0174,
+              -0.003
+            ]
+          }
         }
       },
       "silhouettePreset": "dippedLeftWave",

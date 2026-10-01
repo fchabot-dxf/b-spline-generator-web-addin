@@ -374,10 +374,15 @@ def test_template_8_is_a_plain_right_side_plus_the_wave_and_an_off_centre_dip(de
     assert {e["id"] for e in t8["seedMap"] if e["kind"] == "radius"} == {
         "seed_rad_hip_L", "seed_rad_waist_L", "seed_rad_shoulder_L",
         "seed_rad_top_shoulder_L", "seed_rad_top_dip", "seed_rad_top_shoulder_R"}
-    # a provisional model (no goldens yet), no base template (like Template 6's tab top): the wave's own depth
-    # and height, the dip's half width, depth and (new) position -- none of Template 1's own features at all
-    assert t8["shapeModel"]["provisional"] and t8["shapeModel"]["provisional"]["baseModel"] is None
-    assert set(t8["shapeModel"]["features"]) == {"waveDepth", "waveCy", "topDipHalfWidth", "topDipDepth", "topDipPosition"}
+    # H23 item 11: the provisional shim is retired -- fitted from its own live goldens, no base template (like
+    # Template 6's tab top): the wave's own depth, height, corner radius, notch and arc radius, the dip's half
+    # width, depth and position -- none of Template 1's own features at all (own key names throughout, even
+    # where a wave feature is analogous to one of Template 1's -- e.g. waveR vs waistR -- the names don't match).
+    assert t8["shapeModel"].get("provisional") is None
+    assert t8["shapeModel"]["fit"]["fittedFrom"] == ["12x6", "5.51x1.97", "7x9"]
+    assert t8["shapeModel"]["fit"]["excluded"] == []
+    assert set(t8["shapeModel"]["features"]) == {
+        "waveDepth", "waveCy", "waveCornerR", "waveNotch", "waveR", "topDipHalfWidth", "topDipDepth", "topDipPosition"}
     assert not set(t8["shapeModel"]["features"]) & set(t1["shapeModel"]["features"])
 
 

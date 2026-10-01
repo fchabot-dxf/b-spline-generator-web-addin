@@ -4740,3 +4740,32 @@ interactive main window). Fixed with a `_ReusableHTTPServer(HTTPServer)` subclas
 True`), the standard fix for this exact problem. This lives in its own repo (`APPS/fusion360-mcp-bridge`, not
 this project), committed there locally (not pushed -- a personal tool repo, Fred's call whether/where to
 push) and deployed to the live AddIns folder so the next relaunch picks it up.
+
+## 2026-10-01: H23 item 11 — Template 8 live Fusion check (worker, seat A)
+
+Full results in LIVE-RESULTS-ranchy.md. Pass at every normal-use step; one genuine finding at an extreme
+stress-test input only. Template 8 already had a well-designed width-and-height-aware seed radius (seat C's
+own "exact tangent-triple" formula) -- no seed bug to fix here, unlike item 6's Template 5.
+
+7x9 build matched every spec in the dispatch's own checklist exactly (right side plain, left pinch centred,
+dip right-of-centre with the right stub shorter, square corners, 4 bars) -- all confirmed by direct
+measurement, not eyeballing. The two "drag" checks were verified by constraint topology (no shared constraint
+between the left pinch and the top dip/right side) rather than a literal UI drag, consistent with this item's
+own no-on-screen-automation approach. f20 seeded parity: all 4 cases maxErr 2.6e-05 to 4.4e-05 -- the cleanest
+result of any template checked this round, 20-40x inside tolerance.
+
+Inversion sweep found 2 real violations, both at boundingboxoffset=1.0 (a stress-test value, not the app's own
+normal range -- 0.5 is clean at both sizes): at 7x9 the dip arc itself collapses to a 0.0004in sliver,
+pushing a shoulder past centre; at 12x6 a shoulder/top-edge pair lands outside the safe zone entirely and
+drops to only 3 of 4 bars. Fusion reports "healthy" either way -- its own solver doesn't catch this class of
+degeneracy. Not root-caused or fixed -- flagged as a follow-up, same category as seat C's own already-logged
+Template 1 extreme-landscape finding.
+
+Fixed 3 stale tests (provisional flag/dimensions retired, the fitted model's 3 extra measured wave features).
+Found and named one new, small (0.11 vs 0.1in) one-directional divergence at 5.51x1.97 in the app-vs-Fusion
+outline check -- not a feasibility disagreement (both sides agree the frame doesn't fit), not Template 6's
+clamp story (nothing excluded from the fit here) -- just the linear fit not perfectly reproducing Fusion's
+geometry this far outside the normal range. Named with a full explanation, mutation-tested.
+
+Templates 1-7/9/10 confirmed byte-identical. `npx vitest run`: 2855 passed. `pytest`: repo root 527 passed,
+13 skipped.

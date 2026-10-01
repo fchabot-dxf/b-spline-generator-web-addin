@@ -39,7 +39,12 @@ describe('Template 8: listing and declaration', () => {
     expect(T8.silhouettePreset).toBe('dippedLeftWave');
     expect(T8.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset', 'ck_arc_shoulder_weld', 'ck_arc_hip_weld', 'frame_thickness']);
     expect(T8.features).toEqual(tplOf('template_1').features); // the same 4-bar + trim layout
-    expect(T8.shapeModel.provisional).toBeTruthy();
+    // H23 item 11: the provisional shim is retired -- T8 now has its own shapeModel,
+    // fitted from its own live goldens (no size excluded -- unlike T5's own dip, T8's
+    // "exact tangent-triple radius" seed stays well-conditioned even at 5.51x1.97).
+    expect(T8.shapeModel.provisional).toBeUndefined();
+    expect(T8.shapeModel.fit.fittedFrom).toEqual(['12x6', '5.51x1.97', '7x9']);
+    expect(T8.shapeModel.fit.excluded).toEqual([]);
     expect(T8.regions.outline).toHaveLength(12);
     expect(T8.regions.outline).toEqual(['proj_side_R', 'proj_bottom_edge', 'proj_horn_BL', 'proj_arc_hip_L',
       'proj_arc_waist_L', 'proj_arc_shoulder_L', 'proj_horn_TL', 'proj_top_edge_L', 'proj_arc_top_shoulder_L',
@@ -286,10 +291,12 @@ describe('the Shape Lattice and every other template never get the wave or the d
     for (const k of KEYS) expect(m.parameters.map((p) => p.name)).not.toContain(k);
   });
 
-  it('paramsFromShapeModel maps the provisional model back to exactly these 5 params', () => {
+  it('paramsFromShapeModel maps the fitted model back to its params (H23 item 11: +2 once fitted -- waveCornerRadius/waveRadius, measured features the provisional model never declared)', () => {
     const region = profile({}).region;
     const out = paramsFromShapeModel('dippedLeftWave', T8.shapeModel, region);
-    expect(Object.keys(out).sort()).toEqual(['topDipDepth', 'topDipPosition', 'topDipWidth', 'waveHeight', 'waveReach'].sort());
+    expect(Object.keys(out).sort()).toEqual(
+      ['topDipDepth', 'topDipPosition', 'topDipWidth', 'waveCornerRadius', 'waveHeight', 'waveRadius', 'waveReach'].sort(),
+    );
   });
 
   it('Templates 1-6 are unaffected: their own params, models and handles are untouched', () => {

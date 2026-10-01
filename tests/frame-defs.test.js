@@ -61,11 +61,15 @@ describe('frame-defs (generated) — schema', () => {
     // T4 OFFSET HOURGLASS: an offset-waist model also carries the left pinch (waistCyLeft, notchLeft, depthLeft).
     // T5 HOURGLASS DIPPED TOP: a dipped-top model also carries the top dip (topDipDepth, topDipHalfWidth).
     // T10 ARCHED HOURGLASS: an arched-top model also carries the arch's own rise (archRise).
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise'], bottle: [], tabTop: [], dippedLeftWave: [], iShape: [] };
+    // T8 DIPPED TOP + LEFT-ONLY WAVE: H23 item 11 -- fitted (not provisional) from its own live goldens, the
+    // dippedLeftWave model also carries the wave's own corner radius, notch and arc radius (waveCornerR,
+    // waveNotch, waveR), measured the same way Template 1's own cornerR/notch/waistR are, not declared by
+    // the provisional shim.
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise'], bottle: [], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);
-    if (!['template_3', 'template_4', 'template_5', 'template_10'].includes(t.id)) expect(keys.sort()).toEqual(FEATURES[t.silhouettePreset]); // Template 1 / 2: exactly as before
+    if (!['template_3', 'template_4', 'template_5', 'template_8', 'template_10'].includes(t.id)) expect(keys.sort()).toEqual(FEATURES[t.silhouettePreset]); // Template 1 / 2: exactly as before
     // T6: a provisional model of its own (no base template, frame_shape_fit.provisional_tab_top_model) is fitted
     // from nothing yet; every other model (T3-T5's provisional ones carry Template 1's fit) from 2+ goldens.
     if (t.shapeModel.provisional && t.shapeModel.provisional.baseModel === null) expect(t.shapeModel.fit.fittedFrom).toEqual([]);
