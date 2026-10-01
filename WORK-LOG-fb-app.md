@@ -4182,6 +4182,39 @@ floats there pointing at nothing")
   b-spline-gen 89, root (--ignore=.claude) 507+10 skipped -- all green, template_8 and the 4 newly-fitted
   templates present together.
 
+## 2026-09-30: F28 item 1 (cont'd) — merge-readiness check for Fred (seat C, epoch 4)
+
+- Advisor's ask before merging T8: Frame-tab phone shots at 3 board sizes, a miter diagram like seat B's, and a
+  check that no band segment is shorter than `frame_thickness` at the defaults (seat B's own finding behind
+  T7's "wing" artifacts).
+- **The band-length check found a real bug**: at the default `topDipHalfWidthOfHw` (0.4), the top shoulder arcs
+  measured 0.7373in at 7x9 -- just under `frame_thickness` (0.75in), the exact T7 failure mode. Root cause: the
+  JS preset (`PRESETS.dippedLeftWave.params.topDipWidth`) was already 0.5, but the actual default the app
+  resolves comes from Python's `FRAME_PROVISIONAL_SHAPE["topDipHalfWidthOfHw"]`, which was still 0.4 -- the two
+  "default" sources had drifted apart. Fixed by widening the Python default to 0.5 (shoulder arcs 0.883in at
+  7x9, safe margin), updating the one other hardcoded 0.4 in `p02_03_loop.py` and the two in
+  `fb_engine/test_seed_basis.py`, and adding a durable, mutation-tested regression test
+  (`frame-template-8.test.js`) asserting every outline piece is >= `frame_thickness` whenever `fit.ok`.
+  Committed and pushed separately as `62d04ce` ("F28 item 1: widen the dip's default half width to clear
+  frame_thickness").
+- **Frame-tab phone shots** (390x844, cache busted via CDP `Network.setCacheDisabled`) at 7x9, 12x6 and
+  5.51x1.97, saved to `C:/Users/danse/.bspline-status/shots/seatC/2034_F28-item1_<size>.png`. Built with a
+  headless-Chrome CDP script (same pattern as the session's other `tools/repro/*.mjs` capture scripts);
+  `fitView(editor)` had to be called after reopening the Frame tab at each new board size, since the editor's
+  fit-to-view doesn't recompute on `applyParam` alone and the first pass otherwise rendered the shape tiny in a
+  corner.
+- **Miter diagram**, matching seat B's visual style (dark brown outer outline, blue dotted inner outline, 4 red
+  miter lines with endpoint dots, bold green bar labels, light-red dashed board boundary): generated at 7x9 by
+  calling the app's own `frameCutProfile`/`frameInnerProfile`/`frameMiters`/`primitiveToPathD` directly (same
+  modules the editor uses, not a re-derivation), confirming the piece order (0=`frame_right`, 1=`frame_bottom`,
+  2-6=`frame_left` wave bar, 7-11=`frame_top` dip bar) by printing endpoints rather than assuming it, and
+  label-midpointing with a small per-primitive sampler (frame-mesh.js's own `sampleOutline` returns only the
+  start point for a straight line, which undersamples a single-line bar like `frame_right`). Saved to
+  `C:/Users/danse/.bspline-status/shots/seatC/2051_F28-item1_miter-diagram.png`. The shape confirms the spec
+  visually: dip off-centre to the right on top, wave only on the left, right and bottom perfectly straight.
+- Full regression re-run clean after the band-width fix (committed in `62d04ce`); no further code changes this
+  round beyond that commit. Messaged the advisor that both deliverables are up.
+
 ## 2026-09-30: H23 item 1 — Template 3 (Tapered Hourglass) live Fusion check (worker)
 
 Full results in `LIVE-RESULTS-ranchy.md`. Summary: **passed clean, no template code fix needed.**
