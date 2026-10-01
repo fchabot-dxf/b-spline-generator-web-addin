@@ -2,21 +2,23 @@
  * F30 item 3 (Fred's own taper copies): Template 12 ("Hourglass - Tapered sides", from Template 1) and
  * Template 13 ("Narrow Neck - Tapered sides", from Template 2). Both are COPIES of their base template with
  * taperAngle switched on (default 8 deg) -- the shared construction itself is covered thoroughly by
- * tests/frame-taper-construction.test.js; this file covers the TEMPLATE declaration and the frame-level
- * pipeline (frameCutProfile/frameInnerProfile/frameMiters/Generate) each one now drives.
+ * tests/frame-taper-construction.test.js; this file covers the TEMPLATE declaration, the frame-level pipeline
+ * (frameCutProfile/frameInnerProfile/frameMiters/Generate) each one now drives, and the "Taper angle" handle.
  *
- * Both are FRAME_HIDDEN (no recorded Fusion goldens yet; a provisional shapeModel built from the base
- * template's own fit, same pattern as Template 3/4/5/10) until live-verified in Fusion -- done this pass
- * (sketch 2 "Shape Outline" only, at 7x9 and 6x9: converges to the correct arc branch, symmetric, the top
- * horn slanted at exactly the default 8 deg, no reflex/wrong-branch arcs -- see WORK-LOG-fb-app.md for the
- * live constraint-solve values). Sketch 3 (enclosure/miters/solid) and a saved Fusion golden are not yet
- * recorded, hence still hidden.
+ * Both are FRAME_HIDDEN (no Fusion golden for Template 12 -- its tapered goldens don't pass the generic
+ * hourglass extractor's own validity check at 2+ sizes, so it stays on a provisional shapeModel built from
+ * Template 1's own fit, same pattern as Template 3/4/5/10; Template 13 DOES have a real fit, from its own
+ * recorded goldens via a taper-aware `bottle_taper` extractor) until Fred has seen an actual built solid, not
+ * just these numeric/sketch confirmations -- both sketch 2 (shape outline) AND sketch 3 (enclosure/miters/solid
+ * cut) are live-Fusion-verified, at multiple board sizes, with real recorded goldens for both templates (see
+ * WORK-LOG-fb-app.md for the live constraint-solve values and the golden-recording session).
  */
 import { describe, it, expect } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile, frameInnerProfile, frameMiters } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
-import { generateFrameSeeds, generateValidFrameSeeds } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
+import { frameHandles, handleDragPatch, generateFrameSeeds, generateValidFrameSeeds } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
+import { HANDLE_SEGMENT_INDEX } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-interaction.js';
 import { frameLabel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
@@ -63,8 +65,70 @@ describe('Template 12/13: declaration', () => {
     }
   });
 
-  it('neither gets a taperAngle handle yet (lands in a later pass, advisor-confirmed 2026-10-01)', () => {
-    for (const t of [T12, T13]) expect(t.handles.map((h) => h.key)).not.toContain('taperAngle');
+  it('both carry a "Taper angle" handle, seeded, basis hw (advisor-confirmed design, 2026-10-01)', () => {
+    for (const t of [T12, T13]) {
+      const h = t.handles.find((x) => x.key === 'taperAngle');
+      expect(h, t.id).toMatchObject({ label: 'Taper angle', basis: 'hw', binding: 'seeded' });
+    }
+  });
+});
+
+describe('Template 12/13: the "Taper angle" handle (advisor-confirmed design: a position square at the top '
+  + 'corner, mirrored left, a horizontal drag narrows/widens it)', () => {
+  const drag = (id, key, seeds, dx, dy, W = 7, H = 9) => {
+    const r = rec(id, seeds);
+    const prof = frameCutProfile(FRAME_DEFS, r, board(W, H));
+    const hs = frameHandles(tplOf(id), prof);
+    const h = hs.find((q) => q.key === key);
+    const pt = { x: h.anchor.x + dx, y: h.anchor.y + dy };
+    return { h, hs, prof, rec: r, next: normalizeFrameRecord({ ...r, ...handleDragPatch(r, h, pt, prof.region) }) };
+  };
+
+  it.each([['template_12', 'x'], ['template_13', 'x']])('%s: the handle is axis %s (horizontal), its own ONE '
+    + 'segment index declared', (id) => {
+    const { h, hs } = drag(id, 'taperAngle', {}, 0, 0);
+    expect(h.axis).toBe('x');
+    expect(h.handleKind).toBe('position');
+    expect(hs.map((x) => x.key)).toContain('taperAngle');
+    const preset = tplOf(id).silhouettePreset;
+    expect(HANDLE_SEGMENT_INDEX[preset].taperAngle).toBe(0); // the horn itself, same convention as topInset's own
+  });
+
+  it.each(['template_12', 'template_13'])('%s: dragging left/right at 7x9 narrows/widens the top corner, '
+    + 'staying inside the declared [-15, 15] band, and the shape stays clean', (id) => {
+    const { prof: base } = drag(id, 'taperAngle', {}, 0, 0);
+    const baseDeg = base.params.taperAngle;
+    // the top corner's own x decreases as taperAngle increases (frame-taper-construction.test.js's own finding):
+    // dragging the right-side handle RIGHTWARD (toward the board edge, +dx) widens it (more negative taperAngle);
+    // dragging it LEFTWARD (toward the centre, -dx) narrows it (more positive).
+    const { next: wider } = drag(id, 'taperAngle', {}, 0.5, 0);
+    const { next: narrower } = drag(id, 'taperAngle', {}, -0.5, 0);
+    const widerProf = frameCutProfile(FRAME_DEFS, wider, board(7, 9));
+    const narrowerProf = frameCutProfile(FRAME_DEFS, narrower, board(7, 9));
+    expect(widerProf.params.taperAngle).toBeLessThan(baseDeg);
+    expect(narrowerProf.params.taperAngle).toBeGreaterThan(baseDeg);
+    for (const p of [widerProf, narrowerProf]) {
+      expect(p.params.taperAngle).toBeGreaterThanOrEqual(-15 - 1e-6);
+      expect(p.params.taperAngle).toBeLessThanOrEqual(15 + 1e-6);
+      expect(p.defects).toEqual([]);
+    }
+  });
+
+  it.each(['template_12', 'template_13'])('%s: dragged far past the band, the handle stops at its own feasible '
+    + 'range and the frame stays valid (real miters)', (id) => {
+    const { next: lo } = drag(id, 'taperAngle', {}, -50, 0);
+    const { next: hi } = drag(id, 'taperAngle', {}, 50, 0);
+    for (const rec_ of [lo, hi]) {
+      const p = frameCutProfile(FRAME_DEFS, rec_, board(7, 9));
+      expect(p.defects).toEqual([]);
+      expect(p.params.taperAngle).toBeGreaterThanOrEqual(-15 - 1e-6);
+      expect(p.params.taperAngle).toBeLessThanOrEqual(15 + 1e-6);
+      if (p.fit.ok) {
+        const innr = frameInnerProfile(FRAME_DEFS, rec_, board(7, 9));
+        expect(innr.defects).toEqual([]);
+        expect(frameMiters(p.primitives, innr.primitives).length).toBeGreaterThan(0);
+      }
+    }
   });
 });
 

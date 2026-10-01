@@ -48,7 +48,7 @@
  */
 import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
-  TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, iShapeConstruction,
+  TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, iShapeConstruction, taperAngleForTopCornerX,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -246,6 +246,18 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
       // to the side and to the neck arc: no point common to its family), its dot
       // at the angular midpoint.
       arc('bodyRadius', 'Body shoulder radius'),
+      keys.includes('taperAngle') && (() => {
+        // F30 item 3 (Template 13): the same "Taper angle" handle as the hourglass's own, on the neck's top
+        // corner instead of the shoulder's -- concave (convexSign -1), see that entry's own doc comment.
+        const b0 = bottleConstruction(region, { ...resolvedParams, taperAngle: 0 });
+        const circle = { cx: b0.skelX, cy: b0.neckCenterY, r: b0.radiusNeck };
+        const pinch = { cx: b0.bodyCx, cy: b0.hipCenterY, r: b0.radiusBody };
+        return {
+          key: 'taperAngle', label: 'Taper angle', axis: 'x', handleKind: 'position',
+          anchor: { x: cx0 + b.neckTopX, y: cy0 + (-hh + b.neckCenterY) / 2 },
+          valueFromWorld: (pt) => within('taperAngle', taperAngleForTopCornerX(circle, pinch, -1, pt.x - cx0, hw, hh)),
+        };
+      })(),
     ]));
   }
 
@@ -385,6 +397,21 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         return within('archCornerAngle', deg);
       },
     },
+    keys.includes('taperAngle') && (() => {
+      // F30 item 3 (Template 12/13, advisor-confirmed design): a POSITION square at the top corner -- where the
+      // (possibly slanted) horn meets the flat top edge -- a horizontal drag narrows (in) or widens (out) it,
+      // taperAngleForTopCornerX's own bisection inverting the SAME `_taperedCorner` construction the generator
+      // itself resolves with (its only closed form; see that export's own doc comment). The UNTAPERED shoulder
+      // circle (taperAngle: 0) is what the inverse needs -- the CURRENT one may already be inset (Branch B).
+      const g0 = hourglassConstruction(region, { ...resolvedParams, taperAngle: 0 });
+      const circle = { cx: g0.shoulderCx, cy: g0.shoulderY, r: g0.cornerRadiusTop };
+      const pinch = { cx: g0.waistCx, cy: g0.waistCenterY, r: g0.radiusWaist };
+      return {
+        key: 'taperAngle', label: 'Taper angle', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.topX, y: cy0 + (-hh + g.shoulderY) / 2 },
+        valueFromWorld: (pt) => within('taperAngle', taperAngleForTopCornerX(circle, pinch, +1, pt.x - cx0, hw, hh)),
+      };
+    })(),
   ]));
 }
 
@@ -587,8 +614,13 @@ export const HANDLE_SEGMENT_INDEX = {
     waistCenterYLeft: 8, waistReachLeft: 8, topDipDepth: 13, topDipWidth: 14,
     // T10 ARCHED HOURGLASS: no splice (unlike T5's own dip), segment 11 is still the top piece, just an arc
     // instead of a line -- its own mirror is itself (mirrorSegmentIndex(11, 12) === 11, T1's own flat top too).
-    archCornerAngle: 11 },
-  bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2 },
+    archCornerAngle: 11,
+    // F30 item 3 (Template 12): the horn itself (0), same convention as topInset's own entry above -- the piece
+    // whose own direction the drag actually changes (the top edge, 11, also narrows/widens but isn't re-shaped).
+    taperAngle: 0 },
+  bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2,
+    // F30 item 3 (Template 13): same convention as the hourglass's own entry above.
+    taperAngle: 0 },
   // T6 TAB TOP (8 pieces: 0 tab side R, 1 shoulder R, 2 side R, 3 base, 4 side L, 5 shoulder L, 6 tab side L,
   // 7 tab top): the width moves the tab sides, the height the shoulders (each with its mirror, mirrorSegmentIndex).
   tabTop: { tabWidth: 0, tabHeight: 1 },

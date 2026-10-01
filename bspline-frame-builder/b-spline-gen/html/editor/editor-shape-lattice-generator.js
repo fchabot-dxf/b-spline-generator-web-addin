@@ -956,6 +956,29 @@ function _taperRange(circle, pinchCircle, convexSign, hw, hh, lo = -15) {
   return b;
 }
 
+/** F30 item 3: the "Taper angle" handle's own inverse -- given the UNTAPERED circle (`circle`, e.g. the
+ *  shoulder/neck at taperAngle 0: callers get this the same way `_taperRange`'s own callers do, by resolving the
+ *  construction once with `taperAngle: 0`) and a desired top-corner X (a horizontal drag's own position, region-
+ *  local), the taperDeg whose `_taperedCorner(...).topCornerX` matches it. `topCornerX` has no closed-form
+ *  inverse (unlike archCornerAngle's own pure sagitta relationship: taper's own two branches and Branch B's
+ *  line-circle intersection make it transcendental) but IS monotonic in taperDeg (editor-shape-lattice-
+ *  interaction.js's own handle test confirms this, narrower as the angle increases) across the declared
+ *  [-15, 15] band, narrowed to this circle's own true floor exactly like `_taperRange` -- so a bisection on the
+ *  SAME closed-form corner is exact and cheap (one drag frame, not a hot resolve loop).
+ */
+export function taperAngleForTopCornerX(circle, pinchCircle, convexSign, desiredX, hw, hh) {
+  const floor = _taperRange(circle, pinchCircle, convexSign, hw, hh);
+  const xAt = (deg) => _taperedCorner(circle, pinchCircle, convexSign, deg, hw, hh).topCornerX;
+  if (desiredX >= xAt(floor)) return floor; // dragged past the floor: clamp (the range function clamps again anyway)
+  if (desiredX <= xAt(15)) return 15;
+  let a = floor, b = 15; // xAt is monotonically decreasing: xAt(a) > desiredX > xAt(b)
+  for (let i = 0; i < 24; i++) {
+    const mid = (a + b) / 2;
+    if (xAt(mid) > desiredX) a = mid; else b = mid;
+  }
+  return b;
+}
+
 /** SIL-RESOLVE (F5): the hourglass construction from RESOLVED fraction params
  *  (region-local, right side, Y-down). The ONE place this algebra lives; the
  *  solver and the on-canvas handles (editor-shape-lattice-interaction.js)

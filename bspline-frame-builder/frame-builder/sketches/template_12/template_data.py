@@ -128,8 +128,12 @@ FRAME_HANDLES = [
     # phases seed it: seed_rad_waist_R/L + the arc_waist_R/L seed arcs, FRAME_SEED_MAP below), so it
     # is seeded like the others (Fred's ruling: no new Fusion parameter unless allowed).
     {"key": "waistRadius",  "label": "Waist radius",    "basis": "hw", "binding": "seeded"},
-    # F30 item 3 (Fred's own taper copies): the "Taper angle" handle (advisor-confirmed, 2026-10-01) lands in a
-    # later pass, once the template itself is built and Fusion-verified -- see WORK-LOG-fb-app.md.
+    # F30 item 3 (Fred's own taper copies, advisor-confirmed design, 2026-10-01): a POSITION square at the top
+    # corner, mirrored left; a horizontal drag narrows (in) or widens (out) it, clamped to this template's own
+    # feasible taperAngle range (editor-shape-lattice-generator.js's own _taperedCorner/_taperRange). Seeded,
+    # like every other handle here: no new Fusion parameter, the shape comes from the literal horn/shoulder-arc
+    # seeds this template's own p02_03_loop declares, moved by the app's own taper construction.
+    {"key": "taperAngle",   "label": "Taper angle",     "basis": "hw", "binding": "seeded"},
 ]
 # F20: a frame record saved before the split carries the ONE seeded `cornerRadius`:
 # it becomes both corners (the record gate, core/frame-record.js), so its shape is exact.

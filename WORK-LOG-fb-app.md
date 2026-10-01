@@ -5520,3 +5520,48 @@ gen_frame_defs.py --check` fresh.
 mirrored left, horizontal drag into taperAngle, standard `HANDLE_SEGMENT_INDEX` entry). FRAME_HIDDEN stays True
 for both templates until Fred has seen an actual built solid (not just these numeric/sketch confirmations) and
 the handle lands.
+
+## 2026-10-01: F30 item 3 -- the "Taper angle" handle landed (seat C, epoch 5)
+
+Advisor's own design, built as specified: a POSITION square at the top corner -- where the (possibly slanted)
+horn meets the flat top edge -- mirrored left, a horizontal drag narrows (in, more positive taperAngle) or
+widens (out, more negative) it.
+
+**The one real design problem: inverting the drag.** Every other frame-only angle handle this codebase has
+(`archCornerAngle`, T10) inverts its own forward construction with a closed-form formula (a plain sagitta/cosine
+relationship) duplicated directly in the handle's own `valueFromWorld` -- the established pattern for THIS
+file's own geometric inverses. `_taperedCorner`'s own forward map (taperDeg -> topCornerX) has no such closed
+form (two branches, Branch B's own line-circle intersection), but IS monotonic (already measured, both presets,
+in `frame-taper-construction.test.js`), so a bisection inverts it exactly the way `_taperRange` itself already
+bisects the SAME function for a different purpose (the negative floor). New exported
+`taperAngleForTopCornerX(circle, pinchCircle, convexSign, desiredX, hw, hh)` in editor-shape-lattice-
+generator.js, next to `_taperedCorner`/`_taperRange`: narrows to this circle's own true floor first (reusing
+`_taperRange`), then 24 halvings of the remaining span. One function, shared by both presets' own handle entries
+(hourglass's shoulder, convexSign +1; bottle's neck, convexSign -1) -- the SAME "declare once" pattern the whole
+taper construction has followed throughout.
+
+The handle itself needs the UNTAPERED shoulder/neck circle (an extra `hourglassConstruction`/`bottleConstruction`
+call with `taperAngle: 0`), not the current one -- the current circle may already be inset (Branch B) once a
+negative drag has happened, and the inverse's own bisection needs the TRUE base circle `_taperedCorner` itself
+always starts from. Wired into `computeParamHandles`'s own candidate catalogue (both the hourglass and bottle
+branches, gated the same way every other conditional handle here already is: `keys.includes('taperAngle') &&
+...`, filtered out for every template but 12/13 by the existing `pick()` mechanism) and
+`HANDLE_SEGMENT_INDEX` (both presets map it to segment 0, the horn itself -- the same convention `topInset`'s
+own entry already set: the piece the drag actually reshapes, not the top edge it also narrows/widens).
+`FRAME_HANDLES` in both `template_12`/`template_13`'s own `template_data.py` gained the declared entry (seeded,
+no new Fusion parameter, basis `hw`); regenerated frame-defs.
+
+**Verified, not just wired:** the handle's own axis (`x`), kind (`position`), and `HANDLE_SEGMENT_INDEX` entry;
+a horizontal drag genuinely narrows (toward centre) or widens (toward the edge) the resolved `taperAngle` in the
+expected direction for BOTH templates (measured, not assumed -- the sign wasn't obvious up front: a drag TOWARD
+the board edge turned out to WIDEN, i.e. more NEGATIVE taperAngle, since `_taperedCorner`'s own topCornerX
+decreases as the angle increases); a drag far past the declared band clamps to the template's own true feasible
+range (Template 12's own -13.666 floor at 7x9, same one `_taperRange` already established) and the frame stays
+a clean, real, miter-able shape throughout. New tests in `tests/frame-template-12-13.test.js` (6 more, 31 total
+in that file).
+
+Full suite: JS 156 files / 2977 tests, Python 368 tests, green.
+
+**Still open, unchanged from the last entry:** FRAME_HIDDEN stays True for both templates -- this was explicitly
+about Fred seeing an actual built solid, not a remaining code task, so it's a decision for the advisor/Fred to
+make now that sketch 3, the goldens, and the handle are all done, not something to flip unilaterally here.

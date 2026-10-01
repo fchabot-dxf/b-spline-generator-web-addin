@@ -107,8 +107,11 @@ FRAME_HANDLES = [
     # (skeletonX, "S-curve tightness": radius = skeletonX - neckWidth); the body arc had none. No
     # template param sets it (the arc_hip_R/L seed arcs carry it, FRAME_SEED_MAP below): seeded.
     {"key": "bodyRadius", "label": "Body radius",       "basis": "hw", "binding": "seeded"},
-    # F30 item 3 (Fred's own taper copies): the "Taper angle" handle (advisor-confirmed, 2026-10-01) lands in a
-    # later pass, once the template itself is built and Fusion-verified -- see WORK-LOG-fb-app.md.
+    # F30 item 3 (Fred's own taper copies, advisor-confirmed design, 2026-10-01): a POSITION square at the neck's
+    # own top corner, mirrored left; a horizontal drag narrows (in) or widens (out) it, clamped to this
+    # template's own feasible taperAngle range (editor-shape-lattice-generator.js's own _taperedCorner/
+    # _taperRange). Seeded, like every other handle here: no new Fusion parameter.
+    {"key": "taperAngle",  "label": "Taper angle",       "basis": "hw", "binding": "seeded"},
 ]
 # FB-APP F11 (option B, Fred: "simply seed it in position"): where each of
 # this template's shape-outline SEEDS comes from when the app sends seeded

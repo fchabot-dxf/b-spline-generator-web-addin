@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "992037eb054fdf4afdfc3f40c7f075d531aaf706e6d42516ad345063c508d7b6",
+  "sourceHash": "edf7ccdc2c3a1471727acfa86db02c6696e4b00a08e52a5eb37303c12cf248f6",
   "templates": [
     {
       "features": [
@@ -3338,6 +3338,12 @@ export default {
           "binding": "seeded",
           "key": "waistRadius",
           "label": "Waist radius"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "taperAngle",
+          "label": "Taper angle"
         }
       ],
       "hidden": true,
@@ -4936,6 +4942,12 @@ export default {
           "binding": "seeded",
           "key": "bodyRadius",
           "label": "Body radius"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "taperAngle",
+          "label": "Taper angle"
         }
       ],
       "hidden": true,
