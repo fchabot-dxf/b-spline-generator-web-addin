@@ -9,6 +9,46 @@ import json
 import random
 
 
+def _fix_rebuild_start_end(ctx, s_name, geom, geo_id, entity):
+    """H23 item 17: on a `Rebuild`, re-running `addByThreePoints` on a sketch that already has significant
+    other content does NOT reliably keep `startSketchPoint`/`endSketchPoint` matching the FIRST/THIRD seed
+    point the way the entity's original (first-ever) creation did -- MEASURED live: rebuilding `top_edge`
+    with the identical seed Points it was first created with swapped which physical point ended up tagged
+    `:S` vs `:E`, silently sending a downstream miter to the wrong corner. Re-tag `:S`/`:E` (and the
+    FrameBuilder StartID/EndID attributes `set_id` already wrote) to match the REQUESTED point order, not
+    whatever Fusion happened to call "start" this time.
+    """
+    try:
+        want_sx = ctx.resolve_val(geom["Points"][0][0])
+        actual_sx = entity.startSketchPoint.geometry.x
+        if abs(want_sx - actual_sx) > 0.01:  # cm; a real swap, not float noise
+            start_id = geom.get("StartID", f"{geo_id}:S")
+            end_id = geom.get("EndID", f"{geo_id}:E")
+            ctx.set_id(entity.startSketchPoint, s_name, "point", override_id=end_id)
+            ctx.set_id(entity.endSketchPoint, s_name, "point", override_id=start_id)
+            ctx.logger.log(f"REBUILD: {geo_id} start/end swapped vs. requested order -- re-tagged")
+    except Exception as e:
+        ctx.logger.log(f"REBUILD START/END CHECK FAILED: {geo_id}: {e}", "WARNING")
+
+
+def _delete_existing(ctx, s_name, geo_id):
+    """H23 item 17: `Rebuild` support for `Arc3Point` -- delete whatever entity is
+    currently registered under `geo_id` (if any) before recreating it. For an arc
+    whose branch (short vs. reflex) a constraint-based Fix/Coincident chain cannot
+    reliably hold (see template_10/phases/p02_03_loop.py's own docstring), the only
+    sure fix is to re-run `addByThreePoints` fresh, with no constraint history at
+    all, using the NOW-confirmed-correct endpoints -- the same deterministic
+    construction that already gets the branch right on first creation, every time.
+    """
+    existing = ctx.entity_map.get(s_name, {}).get(geo_id)
+    if existing:
+        try:
+            existing.deleteMe()
+            ctx.logger.log(f"REBUILD: deleted existing {geo_id} before recreating")
+        except Exception as e:
+            ctx.logger.log(f"REBUILD DELETE FAILED: {geo_id}: {e}", "WARNING")
+
+
 def nudge_point_to_target(ctx, point, target, radius=0.01):
     """
     Displaces a sketch point by a random amount within a specified radius
@@ -63,7 +103,11 @@ def geom_step(ctx, sketch, s_name, geom):
     if geo_type == "Line":
         entity = _create_line(ctx, curves, s_name, geom, geo_id)
     elif geo_type == "Arc3Point":
+        if geom.get("Rebuild"):
+            _delete_existing(ctx, s_name, geo_id)
         entity = _create_arc3(ctx, sketch, curves, s_name, geom, geo_id)
+        if geom.get("Rebuild") and entity:
+            _fix_rebuild_start_end(ctx, s_name, geom, geo_id, entity)
     elif geo_type in ("Rectangle", "RectangleCenter"):
         entity = _create_rectangle(ctx, sketch, curves, s_name, geom, geo_id)
     elif geo_type == "Point":

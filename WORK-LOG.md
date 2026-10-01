@@ -13039,3 +13039,17 @@ so no existing constraint controlled branch selection; fixed by seeding the exac
 `Fix`-ing the arc's own endpoints directly (two new shared `fb_engine` primitives, `Point`/`Fix`, A/B
 byte-identical on Templates 1-9). Shoulder/waist/hip "ears" confirmed as a separate, still-open bug (H23 item
 17). Committed `3f7a893`, pushed to `main` + `claude/lucid-ride-jycpox`.
+
+## H23 item 17 — T10 shoulder/waist/hip "ears" FIXED live (pointer entry; full writeup lives elsewhere)
+
+Same track as item 15 above, same pointer rule: full writeup in `LIVE-RESULTS-ranchy.md`'s "Item 17" section
+and `WORK-LOG-fb-app.md`'s own matching dated entry. Short version: the "ears" bug was never separate from
+the arch's own — item 15's arch anchor used a decimal (`widthIn * 0.464286`) that only matched the TRUE
+board-corner formula at ONE board size; making it exact for any size (an algebraic trick against
+`seed_basis.py`'s own seed-board rewrite) fixed the whole shoulder/waist/hip chain with zero new logic for
+it specifically. 7x9 and 6x9 now build completely (sketch 2 AND 3, all 4 bars) — a new shared `Rebuild`
+primitive plus two independently-found `start`/`end`-swap bugs (one in entity rebuilds, one in
+`sketch.project()`) were needed along the way; both are now generic `fb_engine` fixes, not T10-specific
+hacks. 12x6 still fails -- confirmed a PRE-EXISTING Template 1 bug (same failure class, T1 itself reflexes
+there), not this item's own regression. A/B byte-identical on Templates 1-9. `FRAME_HIDDEN` left `True`,
+advisor's own call on whether 12x6's T1-inherited limitation blocks un-hiding.

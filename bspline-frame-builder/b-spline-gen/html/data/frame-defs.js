@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "8ae0c2b9696896ff900f87e01fbf5321f6ba0172b0aa0ba6b1d5cb0084b7a51c",
+  "sourceHash": "cb1a17b72412286ae02dd23a4d0b2c82bd484c56bdfed94c6d4eba04974bfa6c",
   "templates": [
     {
       "features": [
@@ -2401,20 +2401,65 @@ export default {
                   "ID": "top_edge",
                   "Points": [
                     [
-                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286)",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.345833"
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in)",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.175 * (widthIn - 2 * (boundingboxoffset - 0.25 in)) - 0.1625 in"
                     ],
                     [
                       "0.001",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in"
                     ],
                     [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.345833"
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.175 * (widthIn - 2 * (boundingboxoffset - 0.25 in)) - 0.1625 in"
                     ]
                   ],
                   "StartID": "top_edge:S",
                   "Type": "Arc3Point"
+                },
+                {
+                  "ID": "top_S_anchor",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "-(widthIn/2 - 0.25 in)",
+                      "heightIn/2 - 0.175 * widthIn - 0.1625 in"
+                    ]
+                  ],
+                  "Type": "Point"
+                },
+                {
+                  "ID": "top_E_anchor",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "widthIn/2 - 0.25 in",
+                      "heightIn/2 - 0.175 * widthIn - 0.1625 in"
+                    ]
+                  ],
+                  "Type": "Point"
+                },
+                {
+                  "Targets": [
+                    "top_S_anchor",
+                    "top_E_anchor"
+                  ],
+                  "Type": "Fix"
+                },
+                {
+                  "Name": "top_edge_pin_S",
+                  "Targets": [
+                    "top_edge:S",
+                    "top_S_anchor"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "top_edge_pin_E",
+                  "Targets": [
+                    "top_edge:E",
+                    "top_E_anchor"
+                  ],
+                  "Type": "Coincident"
                 },
                 {
                   "EndID": "bottom_edge:E",
@@ -2438,7 +2483,7 @@ export default {
                   "Points": [
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.345833"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.175 * (widthIn - 2 * (boundingboxoffset - 0.25 in)) - 0.1625 in"
                     ],
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
@@ -2470,7 +2515,7 @@ export default {
                   "Points": [
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.345833"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.175 * (widthIn - 2 * (boundingboxoffset - 0.25 in)) - 0.1625 in"
                     ],
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
@@ -2546,13 +2591,6 @@ export default {
                     "top_edge:S"
                   ],
                   "Type": "Coincident"
-                },
-                {
-                  "Targets": [
-                    "top_edge:S",
-                    "top_edge:E"
-                  ],
-                  "Type": "Fix"
                 },
                 {
                   "EndID": "arc_shoulder_R:E",
@@ -2990,6 +3028,55 @@ export default {
               "Name": "Symmetry",
               "PhaseFile": "p02_11_symmetry.py",
               "PhaseID": "p02_11_symmetry"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "EndID": "top_edge:E",
+                  "ID": "top_edge",
+                  "Points": [
+                    [
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in)",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.175 * (widthIn - 2 * (boundingboxoffset - 0.25 in)) - 0.1625 in"
+                    ],
+                    [
+                      "0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.175 * (widthIn - 2 * (boundingboxoffset - 0.25 in)) - 0.1625 in"
+                    ]
+                  ],
+                  "Rebuild": true,
+                  "StartID": "top_edge:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "Targets": [
+                    "top_edge:S",
+                    "top_edge:E"
+                  ],
+                  "Type": "Fix"
+                },
+                {
+                  "Targets": [
+                    "horn_TR:S",
+                    "top_edge:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "horn_TL:S",
+                    "top_edge:S"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "ArchRebuild",
+              "PhaseFile": "p02_12_arch_rebuild.py",
+              "PhaseID": "p02_12_arch_rebuild"
             }
           ],
           "Label": "Shape Outline",

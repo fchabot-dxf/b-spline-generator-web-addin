@@ -978,3 +978,96 @@ pass, 19 skipped — unrelated to T10), `b-spline-gen` (91 pass) and the repo ro
 on every script. `FRAME_HIDDEN` left `True` (shoulder/hip still blocks a clean Send). Live Fusion state left
 clean: every scratch doc closed via its own handle in a `finally`, only the 2 pre-existing untagged `Untitled`
 docs from before this session remain open, untouched.
+
+## Item 17 — Template 10 shoulder/waist/hip "ears": FIXED live, root cause was the arch's own fix (item 15)
+
+**Fresh seat A session (epoch 6), dispatched as the "other half" of item 15. Shoulder/waist/hip now match
+Template 1's own arc geometry bit-for-bit at 7x9 and 6x9 (sweeps 78.2/156.2/78.0 deg, exactly T1's own
+numbers) — a direct consequence of making the arch's own anchor EXACT rather than a new, separate mechanism
+for the side chain. A newly-discovered (never-reached-before) downstream bug in the frame-enclosure
+miter/projection pipeline was found and fixed along the way. 12x6 still fails — confirmed a PRE-EXISTING
+Template 1 bug (T1 itself reflexes its own waist arc at 12x6, 244.6 deg), not introduced by this item and
+out of scope here.**
+
+**The root cause was never a second, independent bug.** `hw` (the chord half-width) was the SAME literal
+decimal (`widthIn * 0.464286`) for the arch's OWN anchor as item 15 shipped it — and that decimal is
+`(widthIn/2 - boundingboxoffset) / widthIn` evaluated ONLY at the templates' fit board (width 7in,
+boundingboxoffset 0.25in), then hardcoded. It happens to equal the TRUE safe-zone half-width there, but
+drifts at every OTHER board size — and the whole shoulder-waist-hip chain needs the TOP anchor (the arch) to
+EXACTLY equal the BOTTOM anchor (the real board corner, `proj_off_corner_BR/BL`) to behave like Template 1's
+own already-correct chain (same hw at both ends is literally what Template 1 has, since its own flat top is
+anchored to the SAME corner the bottom is). Fixing the arch's own `hw` formula to be exact for ANY board
+size — not re-deriving anything for shoulder/waist/hip specifically — made the whole chain resolve exactly
+like Template 1's own.
+
+**Getting `hw`/`cy` exact needed its own trick, since `top_edge`'s seed Points go through
+`seed_basis.seed_sketch`'s automatic `widthIn -> (widthIn - 2*(boundingboxoffset - 0.25in))` rewrite (every
+template's seed gets this, Line/Arc3Point/Radius only) — writing the TRUE formula directly would get rewritten
+TWICE. Solved algebraically (`seed_basis`'s rewrite is a known linear substitution, so solving for the written
+form that reduces to the TRUE formula after rewrite is just algebra): `widthIn/2 - 0.25 in` (hw) and
+`heightIn/2 - 0.175*widthIn - 0.1625 in` (cy) — neither expression even mentions `boundingboxoffset` — reduce
+to EXACTLY `widthIn/2 - boundingboxoffset` and the matching cy formula, for ANY width/height/boundingboxoffset
+(verified by hand at the default offset and a non-default one, and live via `horn_TR`/`horn_BR` matching to
+10 decimal places).
+
+**A `Fix`'d exact seed alone was not enough — TWO separate mechanisms were needed, confirmed by elimination:**
+1. `top_edge:S`/`:E` must be pinned via Fixed construction `Point` anchors + `Coincident` (NOT a direct `Fix`
+   on `top_edge`'s own points). MEASURED: a direct Fix (same exact values, no anchor) reliably held the ARCH
+   correct but sent shoulder back to 357.9 deg — the anchor's own PRESENCE (not just the final S/E value) is
+   what the shoulder/waist/hip chain needs present throughout p02_04-p02_11 to resolve correctly. Why this is
+   true was not fully root-caused (Fusion solver internals, not this codebase's own logic) — treated as a
+   MEASURED, reproducible fact (3 independent tests, consistent every time) rather than guessed at further.
+2. That same anchor-plus-Coincident layer leaves `top_edge` ITSELF on the reflex branch (323 deg) — a bare
+   `Coincident`, even to an exactly-Fixed anchor, does not stop an Arc3Point from reinterpreting its own trim
+   between two now-correctly-placed endpoints (same ambiguity class as item 15's own point-on-curve finding,
+   confirmed again: isolating the Coincident+Pulse from the rest of the sketch made no difference, ruling out
+   cross-coupling as the cause). Fixed by accepting the reflex state through the WHOLE main build (nothing
+   downstream cares what `top_edge`'s own bulge looks like, only its endpoints), then a NEW final phase
+   (`p02_12_arch_rebuild.py`) deletes and recreates `top_edge` fresh with `Rebuild: True` (a new
+   `fb_engine/geometry.py` primitive) — a brand-new `addByThreePoints` call with no constraint history
+   reliably lands on the short branch, same as every FIRST creation always does.
+
+**`Rebuild` needed two more MEASURED fixes, both now shared `fb_engine` capability, not T10-specific hacks:**
+- Deleting the old arc silently drops any constraint that referenced its endpoints (p02_03's own
+  `Coincident(horn_TR:S, top_edge:E)` welds) — `horn_TR`/`TL` don't visibly move (nothing else asks them to)
+  but are left with a silently-freed DOF. `p02_12_arch_rebuild.py` re-welds them explicitly.
+- Re-running `addByThreePoints` on a sketch that already has substantial other content does NOT reliably keep
+  `startSketchPoint`/`endSketchPoint` matching the first/third seed point the way the very FIRST creation did
+  — the identical seed Points came back with `:S`/`:E` swapped. `fb_engine/geometry.py`'s new
+  `_fix_rebuild_start_end` cross-checks and re-tags.
+
+**A SEPARATE instance of the exact same swap, found only because this session is the first to ever reach
+sketch 3 (frame enclosure) for T10** (every prior attempt crashed on the reflex check before getting this
+far): `sketch.project()` (sketch 3's own projection of `top_edge` into the enclosure sketch) has the SAME
+start/end-swap problem independently, on its OWN copy of the curve — and does NOT inherit the sketch-2-level
+fix above, since it's a brand-new Fusion object with its own, independently-determined start/end. Symptom:
+`proj_top_edge:S` and `proj_horn_TR:S` landed on the SAME (wrong) corner, merging `frame_top` and `frame_left`
+into one undivided profile that `declared_profiles.classify` then rejected ("a miter did not split it") —
+only 2 of 4 bars built. Fixed generically in `fb_engine/projections.py`'s own `_register_endpoints`: when a
+projection produces exactly one result, cross-check its `startSketchPoint` against the SOURCE's own
+(already-corrected) `:S` via `ctx.resolve_entity` (NOT the raw Fusion `.startSketchPoint` property, which
+does not reflect any earlier re-tagging) and swap the projected tags if they don't match.
+
+**Confirmed pre-existing, NOT this item's own regression:** Template 1 itself reflexes `arc_waist_R/L` at
+12x6 (244.6 deg, built live, unmodified HEAD) — the exact same failure class (an uncontrolled branch) in the
+waist's own tangent-to-2-circles construction, independent of anything T10-specific. T10 now inherits this
+bug bit-for-bit from T1 (same numbers), which is the correct/expected outcome of making T10 behave exactly
+like T1 — fixing T1's own 12x6 bug is a separate, cross-template item (matches H23 item 18's own "declare the
+derivation, audit existing seeds" scope), not part of this item.
+
+**`FRAME_HIDDEN` left `True`, deliberately** — 2 of the 3 required verification sizes (7x9, 6x9) now build
+completely clean with all 4 bars; 12x6 fails only for the confirmed-pre-existing T1 reason above. Whether
+that's an acceptable bar to un-hide T10 (matching T1's own existing limitation) or whether T1's 12x6 bug
+should be fixed first is the advisor's own call, not made here.
+
+**Verification:** live at 7x9/6x9/12x6 via direct `frame_engine_core.build_frame_logic` calls (arc sweeps) and
+`tools/repro/record_frame_parity.py` (full build incl. sketch 3, bars, `timelineHealthy`); `npx vitest run`
+(2895 pass), `pytest -q` in `frame-builder`/`b-spline-gen`/repo root (351+91+539 pass, 19 skipped, unrelated);
+`python tools/gen_frame_defs.py --check` clean; the full A/B byte-identical suite against a fresh HEAD
+worktree (`ab6.mjs`, `ablat6.mjs`, `ab3d.mjs`, `abpy.py`, `abcam.py`) — Templates 1-9 unaffected. Live Fusion
+redeployed clean from a scratch worktree at the pushed commit before finishing (see WORK-LOG entries for the
+exact sha). A genuinely useful, reproducible Fusion quirk found along the way and worth flagging for anyone
+debugging similar flakiness: this machine's Fusion session appears to DEGRADE after many scratch-document
+create/close cycles within one long session (both sketch-solver results AND `userParameters` creation were
+observed to intermittently misbehave, both resolved by a plain add-in stop/run) — not caused by this item's
+own code, confirmed reproducible independent of which template was being tested.

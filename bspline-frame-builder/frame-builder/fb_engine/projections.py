@@ -75,7 +75,8 @@ def project_step(ctx, sketch, s_name, proj):
             )
             ent = res.item(i)
             ctx.set_id(ent, s_name, "proj", override_id=proj_name)
-            _register_endpoints(ctx, s_name, ent, proj_name)
+            src_start = ctx.resolve_entity(src_name, f"{base_id}:S") if (res.count == 1 and ":" not in full_source_id) else None
+            _register_endpoints(ctx, s_name, ent, proj_name, src_start)
             _log_projection(ctx, proj, proj_name, ent, s_name)
             proj_names.append(proj_name)
 
@@ -90,7 +91,7 @@ def project_step(ctx, sketch, s_name, proj):
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
-def _register_endpoints(ctx, s_name, ent, base_id):
+def _register_endpoints(ctx, s_name, ent, base_id, src_start=None):
     """
     Register :S / :E (and :C for arcs) sub-IDs for a projected curve.
 
@@ -104,6 +105,18 @@ def _register_endpoints(ctx, s_name, ent, base_id):
     ``proj_top_edge:S`` etc. fail with MITER MISS even though the curve
     itself is correctly tagged. SketchPoint projections (single points)
     have no endpoints; this function silently no-ops on them.
+
+    H23 item 17: `sketch.project()`'s own result does NOT reliably keep its
+    `startSketchPoint` on the same physical point as the SOURCE entity's own
+    `:S` -- MEASURED live, projecting `top_edge` (an arc whose own `:S`/`:E`
+    had already been verified/corrected in its SOURCE sketch) landed with
+    `:S`/`:E` swapped in the PROJECTED copy, silently sending a downstream
+    miter to the wrong corner even though the source geometry was right.
+    `src_start` is the SEMANTICALLY correct source `:S` point (the caller's
+    own `ctx.resolve_entity` lookup, which reflects any earlier re-tagging --
+    NOT the raw Fusion `.startSketchPoint` property, which does not) --
+    cross-check the projected result against it and swap the tags here if
+    Fusion's own projection flipped them.
     """
     if not ent:
         return
@@ -111,6 +124,15 @@ def _register_endpoints(ctx, s_name, ent, base_id):
         sp = getattr(ent, 'startSketchPoint', None)
         ep = getattr(ent, 'endSketchPoint', None)
         cp = getattr(ent, 'centerSketchPoint', None)
+        if sp and ep and src_start is not None and hasattr(src_start, 'geometry'):
+            try:
+                want_x = src_start.geometry.x
+                got_x = sp.geometry.x
+                if abs(want_x - got_x) > 0.01:  # cm; a real swap, not float noise
+                    sp, ep = ep, sp
+                    ctx.logger.log(f"PROJ ENDPOINT SWAP: {base_id} start/end did not match source -- re-tagged")
+            except Exception:
+                pass
         if sp:
             ctx.set_id(sp, s_name, "point", override_id=f"{base_id}:S")
         if ep:

@@ -5137,3 +5137,44 @@ decisions and verification.
   after use) — Templates 1-9 unaffected, every script byte-identical. Live Fusion state left clean: every
   scratch doc closed via its own handle in a `finally`, only the 2 pre-existing untagged `Untitled` docs from
   before this session remain open, untouched. No lingering processes (`proc_health.py watch`: clean).
+
+## 2026-10-01: H23 item 17 — T10 shoulder/waist/hip "ears" FIXED live; root cause was item 15's own arch fix (worker, seat A, epoch 6)
+
+**Shoulder/waist/hip now match Template 1's own arc geometry bit-for-bit at 7x9/6x9 (78.2/156.2/78.0 deg).
+7x9 and 6x9 now build COMPLETELY (sketch 2 AND sketch 3, all 4 bars). 12x6 still fails, confirmed a
+pre-existing Template 1 bug (T1 itself reflexes at 12x6, out of scope). Full narrative in
+`LIVE-RESULTS-ranchy.md`'s own "Item 17" section — not duplicated here in full.**
+
+- **The real finding**: the "ears" bug was never a separate bug from the arch's own. Item 15's arch fix used
+  `widthIn * 0.464286` as the chord half-width — a decimal that happens to equal the TRUE safe-zone
+  half-width ONLY at the templates' fit board (7in, boundingboxoffset 0.25in), and drifts everywhere else.
+  The side chain needs the TOP anchor (arch) to exactly match the BOTTOM anchor (real board corner) to behave
+  like Template 1's own already-correct chain. Fixed the arch's OWN formula to be exact for any board size
+  (an algebraic trick against `seed_basis.py`'s own automatic rewrite — see the phase file's own docstring) —
+  the whole chain then resolved correctly with ZERO new code for shoulder/waist/hip specifically.
+- **Two more MEASURED mechanisms needed, both now in `p02_03_loop.py`/`p02_12_arch_rebuild.py` (new,
+  final phase)**: (1) the arch's own endpoints need a Fixed-anchor-plus-Coincident layer PRESENT throughout
+  the whole build for the side chain to resolve right (a direct Fix alone breaks shoulder again — not fully
+  root-caused, treated as measured fact); (2) that same layer leaves the arch itself reflex, fixed by
+  deliberately leaving it that way until everything else has resolved, then deleting and recreating it fresh
+  in a new LAST phase (`Rebuild: True`, a new `fb_engine/geometry.py` primitive).
+- **A genuinely new discovery, only possible because this is the first time T10 ever reached sketch 3**: a
+  rebuild's `addByThreePoints` doesn't reliably preserve which physical point is `:S` vs `:E` (fixed with a
+  cross-check/re-tag), AND `sketch.project()` has the SAME swap problem independently on its own copy when
+  projecting into sketch 3 (fixed separately in `fb_engine/projections.py`) — without the second fix, the
+  TOP-LEFT corner's own miter silently failed, merging frame_top/frame_left into one undivided profile (only
+  2 of 4 bars built, no error, easy to miss).
+- **A real, reproducible Fusion quirk found and now documented** (`fusion360-quirks` skill, 3 new entries,
+  committed+pushed to `fred-skills` separately): this session's own long sequence of scratch-doc
+  create/closes appears to degrade the live Fusion session's own state over time (a previously-correct sketch
+  solve started giving a DIFFERENT result with zero code change; `userParameters.add` intermittently failed
+  to register) — both resolved by a plain add-in stop/run, confirmed not caused by this item's own code.
+- **Capacity note**: did not run out. This closes out the H23 item 14/15/17 arc, 4 sessions' worth of the
+  same underlying bug class now fully understood and fixed.
+- **Tests / A/B**: `npx vitest run` (2895 pass); `pytest -q` in `frame-builder`/`b-spline-gen`/repo root
+  (351+91+539 pass, 19 skipped); `gen_frame_defs.py --check` clean; full A/B suite (`ab6.mjs`, `ablat6.mjs`,
+  `ab3d.mjs`, `abpy.py`, `abcam.py`) against a fresh HEAD worktree — Templates 1-9 byte-identical. Live at
+  7x9/6x9/12x6 via `record_frame_parity.py` (full build incl. bars) and direct arc-sweep queries. `FRAME_HIDDEN`
+  left `True` — the advisor's own call whether 12x6's pre-existing T1 limitation is an acceptable bar to
+  un-hide. Fusion state left clean (own scratch docs only, closed via their own handles); redeployed from the
+  pushed commit via a clean scratch worktree before finishing.
