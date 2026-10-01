@@ -5294,3 +5294,80 @@ properly as part of item 18, which would change what item 17's own "FIXED" live 
 HEAD (`ebe5e42`), all tests green, nothing uncommitted. Nothing lost: Part 1's exact fix (topology + sign +
 snapshot numbers) is captured above for a fast redo once the Part 2 question has an answer. No live Fusion
 calls made.
+
+## 2026-10-01: H23 item 19 Part 2 attempt -- most of it landed and verified, one sign puzzle left unsolved
+
+**All code reverted to HEAD again.** Redid Part 1 cleanly (re-applied `b31f5ed`'s JS + the extractor/
+provisional/dispatch fix from the previous entry -- worked exactly as documented, no surprises). Then
+implemented Part 2 per Fred's direction (option a: `hourglassConstruction` gets a second, T10-specific
+top-corner formula; item 17's Fusion geometry untouched). Three real, VERIFIED sub-fixes, plus one puzzle I
+could not close -- writing up precisely so a redo is fast, not a re-investigation.
+
+**Fix 1 (solid): the outward corner formula itself.** Added `sideOutward(frac, sign)` next to the existing
+`side()` in `hourglassConstruction`: `cx = topX + r` (T10's own measured sign, vs T3's `topX - r`), then
+generalizes the SAME tangency algebra `side()` already uses (`dx = cx - waistCx`, `dy = sqrt(max(0, S*S -
+dx*dx))`, `d = S + dx` -- algebraically identical to `side()`'s own `d` for the T3 case, verified by hand).
+Switches on `topOutward = topInset > 0 && topInset - depth > 0` (exactly when `side()`'s own `d` would already
+be invalid) -- a geometric condition, not a template-identity check, so it's a no-op for T1/T3/T4/T5 by
+construction (their own topInset never approaches `depth`). VERIFIED: the reconstructed shoulder centre
+(world) matched the real 7x9 golden's `arc_shoulder_R.center` to 5 decimal places.
+
+**Fix 2 (solid, a genuinely separate pre-existing bug, NOT part of Fred's "corner formula" ask but blocking it
+outright): `waistReach`'s own `BASE_RANGES.hourglass` floor (0.05) silently overrides T10's real near-zero
+pinch.** `waistReach` is a plain (non-derived) param, so `_resolveParams` ALWAYS clamps it via
+`_jitteredParam`, with no "explicit -> unclamped" exception -- it was forcing `depth` up to 0.1625in instead
+of the real fitted ~0.02in, at EVERY board size, independent of the corner-formula work, which cascades into
+EVERYTHING built from `waistCx` (the waist's own position, both corners' tangency). MEASURED: Fred's own "near
+-zero pinch is fine" directly means this floor must yield for T10. Fixed by threading the raw (pre-resolution)
+`params` object into `_hourglassRange` (both call sites, `feasibleParamRanges` and `_resolveParams` -- the
+latter needed it since its own `v` builds progressively in `PARAM_ORDER` and `topInset` resolves AFTER
+`waistReach`, so only the RAW params object has `topInset` available this early) and relaxing the floor to
+`EPS_FRAC` whenever `rawParams.topInset > lo` (the old floor) -- which only a topology already needing
+`sideOutward` would ever set. VERIFIED: `waistReach` then resolved to exactly `0.006236932901670728`,
+matching the real fitted fraction to full precision. Safe for T1/T3/T4/T5 by the same "already sits above the
+new, lower floor" argument Fix 1 uses.
+
+**Fix 3 (solid, surprising, and the key to the puzzle below): the shoulder's real Fusion arc is MAJOR
+(reflex), not minor.** Checked the recorded golden's own `mid` point (`arc_shoulder_R.mid`, a third point
+`record_frame_parity.py` already captures, exactly the disambiguator an `addByThreePoints` arc needs) against
+`start`/`end` -- converting Fusion's Y-UP coordinates to the app's Y-DOWN convention FIRST (got this backwards
+on a first pass, chased a false lead for a while as a direct result -- a reminder for next time this specific
+golden-vs-app coordinate conversion comes up again). Properly converted: the shoulder sweeps ~208.45 deg at
+7x9 (confirmed independently at 6x9's own numbers too, though 6x9 never actually exercises `sideOutward` --
+its topInset stays under its own depth). This is a real, Fred-described shape ("a huge gentle shoulder"),
+consistent with a large radius (1.209) swinging most of the way around a short chord.
+
+**The unsolved puzzle: `_curveSegment`'s generic (outward, major) bulge interface cannot express "major
+magnitude + the sign that's tangent-consistent with the horn" for this specific chord, at least not that I
+could find.** Of the 4 `(outward, major)` combinations, only 2 reconstruct the CORRECT circle (confirmed via
+the same `cx/cy` matching the golden): `(false,false)` gives the minor arc (-151.55 deg, CW) which IS tangent-
+consistent with the horn (`rTop -> rShoulderHorn` is a plain vertical segment, direction `(0,+1)`) but NOT
+with the waist arc's own start tangent; `(true,true)` gives the major arc (+208.45 deg, CCW) which -- after
+properly re-deriving the required sweep through the Y-flip (Fix 3's own correction) -- IS the physically
+correct sweep (matches Fusion exactly, confirmed), but is NOT tangent-consistent with the horn segment at
+index 0 (`outlineDefects`' own `notTangent`, detail exactly -1: the two tangent vectors come out as exact
+opposites, not a rounding issue). The other 2 combinations reconstruct a DIFFERENT (wrong) circle entirely.
+Swapping the two endpoints' call order would get the right sweep SIGN relative to the swapped ends, but then
+the primitive's own `theta1` lands on the wrong point for how `_mergeSegments`/`dirAt` expect segment 1 to
+start (at `rShoulderHorn`, matching segment 0's own end) -- so that's not a free fix either without deeper
+surgery on how the declarative `{style,bulge,dir}` segment gets turned into a primitive.
+
+I could not tell, from pure trig, whether this means (a) the HORN segment's own endpoint/direction needs to
+change too for this topology (not just the shoulder), (b) `_curveSegment`'s bulge abstraction has a real gap
+for this reflex case that needs a direct atan2-based primitive construction bypassing it entirely (the same
+pattern `_arcPrimitive`'s own exact-semicircle special case already uses), or (c) something about my own
+tangent-direction bookkeeping is STILL wrong in a way I haven't caught -- I already found and corrected one
+real error in this exact spot (the Y-flip) during this same pass, so I don't trust my own unaided symbolic
+checking enough to declare a fourth, untested combination "right" without a way to actually SEE the result.
+**Recommend resolving this with a live visual check once Fusion is free** (render the candidate outline as an
+SVG/preview and compare side-by-side against a Fusion screenshot of T10 at 7x9, or against the Frame-tab
+preview seat C's own earlier shot used) rather than more unaided trig -- this is exactly the kind of case
+where "measure, don't re-reason" argues for a direct visual oracle over a third symbolic pass.
+
+**All 3 fixes above are precise enough to redo quickly** (exact formulas, exact verified numbers) from this
+entry alone; the full diff of the Part 2 generator.js attempt (before revert) is saved at
+`t10_part2_generator_diff.patch` in this session's own scratchpad for reference, not committed (scratch, not
+canonical -- the numbers/formulas above are the durable record).
+
+Reverted all code changes this pass (`git checkout --` on all 11 touched files) -- working tree back to clean
+HEAD, all tests green, nothing uncommitted. No live Fusion calls made.
