@@ -211,11 +211,11 @@ ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}}
 const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
 let set=[], idx=0;
 function show(){{ zr(); const t=set[idx]; im.src=t.src; cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }}
-function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')]; idx=set.indexOf(t); show(); lb.classList.remove('down');
-  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  fig.style.transform='translateY(100vh)'; lb.showModal();
-  const go=()=>{{ fig.style.transform=''; if(!reduce) fig.animate([{{transform:'translateY(100vh)'}},{{transform:'translateY(0)'}}],{{duration:190,easing:'cubic-bezier(.2,.8,.2,1)'}}); }};
-  (im.decode?im.decode():Promise.resolve()).then(go,go); }}
+function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')]; idx=set.indexOf(t); lb.classList.remove('down');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches, pre=new Image(); pre.src=t.src;
+  const go=()=>{{ show(); fig.style.transform=''; lb.showModal(); lb.scrollTop=0;
+    if(!reduce) fig.animate([{{transform:'translateY(100vh)'}},{{transform:'translateY(0)'}}],{{duration:190,easing:'cubic-bezier(.2,.8,.2,1)'}}); }};
+  (pre.decode?pre.decode():Promise.resolve()).then(go,go); }}
 const fig=lb.querySelector('figure');
 function slideClose(dy){{ if(!lb.open||lb.classList.contains('down')) return; fig.style.setProperty('--dy',(dy||0)+'px'); fig.style.transform=''; lb.classList.add('down');
   const done=()=>{{ lb.classList.remove('down'); fig.style.removeProperty('--dy'); lb.close(); }}; fig.addEventListener('animationend',done,{{once:true}}); setTimeout(()=>{{ if(lb.open) done(); }},300); }}
