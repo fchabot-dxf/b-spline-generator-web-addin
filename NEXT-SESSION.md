@@ -1,8 +1,33 @@
-# NEXT — seat A — H16: unsaved-changes shown ON the Save (disk) button, not a lone dot
+# NEXT — seat A — H23 item 17: Template 10 shoulder/waist/hip "ears", the other half of item 15
 
-**Ball: worker (seat A) · epoch 3 · H16.** H15 ACCEPTED (c185d7e). NO FUSION. Fred (phone, pointing at "‹ •" in the header): "what is the
-point [dot] for?" -> "it should be signalled by the save (disk) button". The "‹" is the apploader's launcher button (fred-host.js,
-injected: not ours, leave it). The "•" is #dirty-dot (main/cloud-project-manager.js ~l.177). PROGRESS: commit subjects "H16 item N: …".
+**Ball: worker (seat A) · epoch 6 · H23 item 17.** H23 item 15 ACCEPTED (3f7a893) — the arch (`top_edge`) is genuinely fixed and
+verified live at all 3 board sizes; excellent root-cause writeup (Fusion's `Coincident(point,curve)` only pins the supporting
+circle, never trim/branch selection — no constraint in this codebase controls that) and a clean, reusable fix (seed the exact
+closed-form circle, then `Fix` the two endpoints directly; new shared `Point`/`Fix` primitives, A/B byte-identical on T1-9,
+spot-checked independently: pytest 351/19skip, gen_frame_defs --check clean). Genuinely good work — say so.
+
+**One housekeeping gap, fix in your next commit (not blocking, do it alongside item 17):** 3f7a893's writeup landed in
+`LIVE-RESULTS-ranchy.md` and `WORK-LOG-fb-app.md`, but `WORK-LOG.md` (seat A's own log, main checkout) has no entry for it —
+anyone reading your own log would never know this happened. Add a short entry there (point at the other two docs rather than
+duplicating all 57 lines).
+
+**This task (H23 item 17):** the pre-existing, board-size-dependent shoulder/waist/hip "ears" bug, confirmed independent of
+the arch fix (reproduces on unmodified `p02_10_welds.py`): at 7x9/6x9 `arc_shoulder_R/L` reflex (356-358°), at 12x6
+`arc_waist_R/L` reflex instead (198-209°) — same failure CLASS as the arch (an uncontrolled `Tangent` branch), a harder
+instance (3 mutually-tangent arcs sharing 2 fixed anchors: the board corner at one end, now the fixed arch at the other).
+Your own item-15 recommendation is the plan: adapt the arch's technique (closed-form seed + direct `Fix`) but solve for all 3
+arcs' centres/radii simultaneously rather than reusing the single-arc formula — or decide which 1-2 points can be `Fix`-ed
+without over-determining the rest. Point 3 from item 15's writeup (hip tip-weld `VCS_SKETCH_SOLVING_FAILED` once both chain
+ends are rigid) is likely the SAME root cause, not a second bug — resolve together.
+
+**STOP condition:** this is the second half of something that's already taken 4+ seats to get half fixed. Verify at 7x9, 6x9
+AND 12x6 every time (this bug's own board-size-dependence is why single-size checks missed it before). If a clean fix
+doesn't land after a solid attempt, STOP, write up findings the same quality as item 15's (what was tried, measured,
+ruled out), and report back rather than burning further rounds alone — I'll loop Fred in to sit with it in Fusion if needed.
+Only once BOTH halves are clean: `FRAME_HIDDEN = False` in `template_10/template_data.py`, regenerate, full verification,
+merge with seat C's parked app-side (`b31f5ed`, F29 item 2).
+
+Per the standing rule: drop a quick Fusion viewport shot now and then while you work this, even mid-debug.
 
 ## Checklist
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
@@ -45,4 +70,5 @@ injected: not ours, leave it). The "•" is #dirty-dot (main/cloud-project-manag
 - [ ] [H23-item-14] PRIORITY: TEMPLATE 10 FAILS IN FUSION AT EVERY SIZE (your item 13 finding: the top arch SketchArc sweeps the wrong way around the correct circle, ~331 deg at 12x6, cascading into addOffset2 + miter/extrude failures). T10 is LIVE on the website, so a Send with it breaks now. Fix in template_10's own phases (not shared T1/3/4/5 code): create the arch so its sweep is the SHORT way (e.g. addByThreePoints with the apex as the middle point, or explicit start/end ordering + a sweep-direction check), keep the 1-DOF Symmetry + Tangent constraint scheme, verify live at 7x9, 6x9, 12x6 (sweep angle measured < 180 deg, offset + 4 miters + extrudes healthy), record goldens, gen_frame_defs, full suites, A/B T1-9 unchanged. Leave latest main deployed. Commit as 'H23 item 14: ...'.
 - [ ] [H23-item-15] T10 ARCH, NEXT APPROACH (for a fresh seat A session; read item 14 in LIVE-RESULTS-ranchy.md first): force the short branch GEOMETRICALLY instead of fighting the solver: add an APEX sketch point that is (a) Coincident to the arch SketchArc, (b) on the vertical symmetry line, and (c) on the board's top edge (or at the declared rise). The 331-deg long-way arc cannot pass through that apex point, so the only solution is the short arc. Seed the arc with addByThreePoints(start, apex, end) so the initial guess is already the right branch. Keep it parametric. Only if that fails, fall back to item 14's isolated pre-solve idea. Remember the TemplateLoader phase-module cache (stop/run the add-in after editing phases). Verify live at 7x9 / 6x9 / 12x6, goldens, gen_frame_defs, suites, A/B. Then un-hide T10 (flip the flag seat C adds in F29 item 1). Commit as 'H23 item 15: ...'.
 - [ ] [H23-item-16] INSET WINDOW, FUSION + CAM SIDE (app side merged 244c096; design INSET-WINDOW-DESIGN.md sections 5 + 8; steps in INSET-WINDOW-LIVE_CHECK.md): build the 4 hidden frame_window_* bars behind the panel (start at the panel underside, same frame_height_offset) + the window_cut pocket through the panel (hole = subframe inner rect shrunk by panel_lip), declared_profiles mapping, CAM picks the bars up via the N-bar path. Off = byte-identical. Verify live (scratch doc), tests. After item 15. Commit as 'H23 item 16: ...'.
-Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 3 — H16 — <shas>"`.
+- [ ] [H23-item-17] TEMPLATE 10, SECOND HALF: shoulder/waist/hip "ears" (item 15's own confirmed-separate finding; see this file's top section for the full writeup/recommendation). Board-size-dependent reflex arcs in the 3-arc mutually-tangent side chain. Adapt the arch's closed-form-seed + direct-`Fix` technique to the 3-arc system (solve simultaneously, or decide which 1-2 points can be `Fix`-ed without over-determining the rest); treat the hip tip-weld `VCS_SKETCH_SOLVING_FAILED` as the same root cause. Verify at 7x9, 6x9 AND 12x6. STOP and report (don't keep burning rounds alone) if a clean fix doesn't land after a solid attempt. Only then: `FRAME_HIDDEN = False`, regenerate, full verification, merge with seat C's parked app-side (b31f5ed). Commit as 'H23 item 17: ...'.
+Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 17 — <shas>"`.
