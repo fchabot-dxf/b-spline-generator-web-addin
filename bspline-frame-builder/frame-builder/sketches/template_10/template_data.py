@@ -141,6 +141,14 @@ FRAME_FEATURES = COMMON_FRAME_FEATURES
 FRAME_SHAPE_EXTRACTOR = "hourglass_arched_top"
 FRAME_PROVISIONAL_SHAPE = {"from": "template_1", "archRiseOfHw": 0.35}
 
+# F29 item 1 (seat A's live Fusion check, H23 item 14: the arch sweeps the wrong branch in Fusion at every
+# board size -- the app's own preview/tests are unaffected, this is a Fusion-build-only defect): hidden from
+# the template picker until that fix lands. A saved project that already picked Template 10 keeps loading and
+# drawing exactly as before -- every lookup is still by id over the full template list (frame-record.js
+# findFrameTemplate); only the picker's own dropdown (frame-panel.js) reads this flag. Flip back to False once
+# the Fusion fix is in.
+FRAME_HIDDEN = True
+
 
 def get_template_logic(ui_data=None):
     """
@@ -182,5 +190,6 @@ def get_template_logic(ui_data=None):
             "seedMap": [dict(e) for e in FRAME_SEED_MAP],
             "shapeExtractor": FRAME_SHAPE_EXTRACTOR,
             "provisionalShape": dict(FRAME_PROVISIONAL_SHAPE),
+            "hidden": FRAME_HIDDEN,
         },
     }

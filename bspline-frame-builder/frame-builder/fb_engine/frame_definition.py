@@ -245,6 +245,10 @@ def build_frame_defs(source_hash, goldens_dir=None):
             "handles": frame.get("handles") or [],  # F9: the shape handle binding table
             "handleMigrations": frame.get("handleMigrations") or {},  # F20: old seed key -> the keys it became
             "seedMap": frame.get("seedMap") or [],   # F11: where each outline seed comes from (option B)
+            # F29 item 1: a template can be hidden from the picker (its own shape isn't ready yet) while a
+            # saved record that already uses it keeps loading and drawing normally -- every lookup here is
+            # still by id over the FULL templates list; only the app's own dropdown reads this flag.
+            "hidden": frame.get("hidden", False),
             "sketches": spec["Sketches"],
         })
     return {
