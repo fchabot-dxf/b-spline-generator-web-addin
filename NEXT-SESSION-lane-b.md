@@ -1,32 +1,25 @@
-# NEXT (lane-b) — T82 item 1 continued: Template 7 APP-SIDE (preset, handles, tests, LIVE_CHECK)
+# NEXT (lane-b) — T82 item 3: Inset Window subframe, visible like the main frame
 
-**Ball: worker (seat B) · epoch 9 · T82 item 1.** Reviewed cf74636 (Fusion sketch build + shape-fit wiring) fresh-eyes: good
-work, consistent with T6/T8 precedent, honestly scoped (you correctly flagged app-side JS as not-yet-started rather than
-rushing it). Accepted, continue on the SAME item.
+**Ball: worker (seat B) · epoch 9 · T82 item 3.** T82 item 1 ACCEPTED (45e66bb) — excellent finish: 5 real bugs found and
+fixed before shipping (the silent param-key collision with Bottle is the standout — caught by the suite, not luck),
+self-verified arc directions against the real pipeline rather than predicting signs, honest about the handle-range
+limitation instead of overclaiming a closed form that doesn't exist. Spot-checked independently: pytest 406/24 skipped/0
+failed, and the real headless-Chrome screenshot (t7_frame_tab_editor.png) shows a clean, correctly-formed gable peak over
+a concave neck pinch flaring into a convex body. Accuracy note from last time landed too — good. `LIVE_CHECK.md` is ready
+for seat A whenever it reaches Template 7's live Fusion check.
 
-**One accuracy note for next time, not a blocker:** your pass-back said "pytest: 404 passed, 24 skipped" with no failures
-mentioned. I ran the suite myself and got `2 failed, 404 passed, 24 skipped` —
-`test_every_silhouette_preset_exists_in_the_app` and `test_every_handle_binding_is_declared_and_valid`, both failing because
-`template_7`'s app-side preset (`diamondTopHourglass`) and `PARAM_ORDER` entry don't exist yet. That's the exact gap you
-already named in prose, so not a surprise, not gating — but say "N passed, 2 known-failing (named), M skipped" rather than
-omitting failures from the count, even expected ones; a bare "404 passed" reads as all-green when it wasn't.
-
-## This task: finish T82 item 1 (app-side)
-- Add the `diamondTopHourglass` preset to `editor-shape-lattice-generator.js` PRESETS + its `PARAM_ORDER` entry (this alone
-  fixes the 2 failing tests above — treat them as your done-check, not just a target to silence).
-- Declared on-canvas handles for T7's own shape params, following the established per-template convention (every
-  shape-defining frame param gets a position-square handle: see T3's "Top width", the asym pinch's "Left waist
-  position/reach", T8's "Top dip depth/width", tabTop's "Tab width/height" — `HANDLE_SEGMENT_INDEX` + label each).
-- JS tests (within-board, pieces >= thickness, miters inside band, Generate never broken) + A/B JS scripts updated once T7
-  joins the checked-template lists (per the ab script convention: append only after the check passes).
-- `template_7/LIVE_CHECK.md`: write the stub now (seat A or Fred runs it live later, no Fusion on lane-b). Make sure it
-  explicitly includes the three risk points your own commit flagged, as their own ticks, so they don't get lost: (1) the
-  `min(0.62*hw, 0.84*hh)` Fusion expression string actually evaluates (first use of `min()` in this project's Fusion
-  expressions — genuinely unverified, not just unlikely), (2) the eave corner's default-handle-fraction assumption holds
-  against live `ui_data`, (3) no skeleton pins — confirm the sketch is still fully constrained live.
-- Frame-tab phone shots to the advisor when it lands. Per the new standing rule (Fred, today): also drop a quick progress
-  shot now and then WHILE you work on this, even before it's done — whatever's on screen.
-- After this is fully done (both named tests passing, LIVE_CHECK.md stub written, shots sent): move to T82 item 3 below.
+## This task: T82 item 3 (inset window subframe)
+- **INSET WINDOW 3D: SHOW THE SUBFRAME** (Fred, phone shot from the BOTTOM view: shots/fred/inset_window_3d_no_frame_2026-10-01.png:
+  "inset window doesn't show a frame in 3D"). The design's "never add the window bars to the 3D scene" was a misreading of
+  "hidden": they are hidden FROM THE FRONT by the panel overhang, but they EXIST — render the 4 `frame_window_*` bars in
+  the 3D preview with the frame's own material, placed behind/under the panel exactly like Fusion will build them (start
+  at the panel underside, `frame_height_offset` depth, outer rect -> inner rect), so they show from the back/side/bottom
+  and through the hole edge.
+- Also fix the hole's JAGGED/aliased black edge (clean straight cut edge, same quality as the main frame's trim).
+- Off = byte-identical.
+- Phone shots front + bottom view to the advisor. Per the standing rule: also drop a progress shot mid-work, even before
+  it's done.
+- Commit as 'T82 item 3: ...', push, pass back.
 
 ## Checklist
 - [ ] [T78-item-1] A render tool first: tools/repro/filter_shots.mjs (headless, the #noiseType select, same seed, 3D iso) so every
