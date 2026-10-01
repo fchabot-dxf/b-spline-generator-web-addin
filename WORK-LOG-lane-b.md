@@ -11980,3 +11980,73 @@ change touches drag-commit/selection bookkeeping, not geometry generation).
 Committing `editor-interaction.js` + `tests/lattice-drag-highlight.test.js` + the new repro script + this
 entry, pushing lane-b, passing back with the full honest numbers (pytest 406/24/0, vitest 2934/155/0)
 stated in the pass note itself.
+
+## Lane B — Turn 216 — T81 item 6: can't select a contour segment — DONE
+
+Dispatch: Fred, "I can't seem to select contour segment." Delegated the investigation to a background
+research agent first (same discipline as item 5): it found the GENERATED Shape Lattice case (tapping
+directly on a parametric segment, nothing else competing) was ALREADY fixed and covered by
+`tests/shape-lattice-segment-select.test.js` -- confirmed by reading that file and its own git history
+(a prior turn's commit, same day as the T81 item 5 fix). The gap Fred is hitting now is different: a
+HAND-PICKED boundary ("Pick shape…" in Shape Lattice, or Box Lattice's own ONLY kind of boundary) and
+rect Lattice's own press handler having NO arbitration against the contour at all.
+
+**Root cause** (3 separate but related gaps, confirmed by reading each function in full):
+1. `_contourSegmentNear`/`_contourSegmentAt` (the existing distance/hit-test used to arbitrate "a nearby
+   rail/tie/node vs. the contour") re-derive geometry from `shape.segments` -- gated on
+   `shape.source === 'generated'`. A hand-picked boundary has no `shape.segments` at all, so this returned
+   `null` FOREVER for that case, and the nearby rail/tie/node always won.
+2. `latticeHandler.start` (rect/"Box" Lattice's own press handler) had **no such arbitration whatsoever**
+   -- any rail/tie/node within tolerance committed unconditionally, never even checking whether a
+   boundary/contour was closer. Box Lattice's only kind of boundary IS the hand-picked one, so this tool
+   was broken for contour selection in every case where a rail/tie/node sat nearby (which is the common
+   case: rails are clipped to reach the boundary's own edge by design).
+3. `_pickSelectable` (the MAIN Select tool + touch aim-select) trusted the generic `getNearbyElement`'s
+   crude search outright whenever ITS OWN winner was a lattice piece, never reconsidering it against the
+   contour's own precise, stroke-width-aware edge distance.
+
+**Fix** (`editor-interaction.js`): `_boundaryNear(editor, pt)` generalizes the distance check -- for a
+GENERATED shape it IS `_contourSegmentNear` (unchanged, analytic, zero behavior change for the case that
+already worked); for a HAND-PICKED boundary it reads the ACTUAL drawn element(s) via
+`_findBoundaryElements` + `primitiveFromContourD`/`nearestOnContourPrimitive` -- the SAME machinery
+`_contourPieceAt` already used to resolve a confirmed tap into an element, just reused here for the
+DISTANCE a pick-priority decision needs (not a new geometry mechanism). `_contourWinsPick(seg, near)` is
+the ONE declared comparison (edge distance, dist as tiebreak), used identically by all three call sites
+above -- "declare the pick priority once" per the dispatch's own instruction, not copied three times.
+Uses `getLayerPattern`, not Shape Lattice's own `currentPattern` (which has lazy-init/offset-from-frame
+side effects a tool-agnostic check in `latticeHandler.start`/`_pickSelectable` must not trigger for a
+plain Box Lattice layer that never touches `.shape` at all).
+
+**Tests** (new `tests/lattice-contour-pick-priority.test.js`, 7 tests): a hand-picked boundary (a real
+`<path>` element with `BOUNDARY_REF_ATTR`, matching how one is actually drawn -- caught my OWN first draft
+using a `<line>` mock element instead, which `primitiveFromContourD` can't parse at all since it has no
+`d` attribute; found by debugging an unexpectedly-passing-then-failing test rather than assumed correct)
+plus a nearby rail, for BOTH tools (`for` loop) and the main Select tool separately: a tap genuinely
+closer to the boundary's own visible edge selects the boundary, not the rail, even though the rail is
+within range; a regression guard confirms a tap genuinely closer to the rail still selects the rail (UI4
+item 0's own rule, unbroken). **Mutation-tested each of the 3 wiring points INDEPENDENTLY** (not just
+once): reverted `latticeHandler.start`'s own call -> exactly its 2 Box-Lattice tests go red, the other 5
+stay green; restored, reverted `shapeLatticeHandler.start`'s own call (back to the old
+`_contourSegmentNear` direct call) -> exactly its 2 Shape-Lattice tests go red; restored, reverted
+`_pickSelectable` -> the main-Select-tool test (specifically engineered so the generic search's own
+crude metric disagrees with the precise edge-aware one -- a thin rail raw-centreline-closer than a much
+WIDER boundary stroke whose edge the tap already sits inside) goes red alone; restored, confirmed `diff`
+byte-identical to the pre-mutation-test file after all three.
+
+**Verification**: `npx vitest run`: **2941 passed, 0 failed**, 156 files (up from 2934 -- 7 new tests).
+`python -m pytest -q`: 406 passed, 24 skipped, 0 failed, unchanged (no Python touched -- pure JS). A/B not
+run: this change touches pointer pick-priority for an EXISTING, already-tested selection/drag path,
+not geometry generation (the templates/lattice-pattern generators the A/B scripts check are untouched).
+
+**NOT done this turn, named honestly**: no live headless-Chrome screenshot. Setting up a genuinely
+hand-picked boundary through the real UI (Box Lattice's own "Pick shape"-equivalent gesture) wasn't a
+simple single-button click reachable the way earlier screenshot scripts' `latticeGenerate`/
+`shapePresetHourglass` buttons were -- grepped the panel/properties files for an obvious id and found
+none, and did not spend further time reverse-engineering the exact UI gesture this turn. The fix itself
+is proven through the REAL production `getModeHandler` functions (not a simulation of the logic), with
+each of the 3 wiring points independently mutation-tested -- the same standard T81 item 5's own
+Shape-Lattice gap was accepted against previously.
+
+Committing `editor-interaction.js` + the new `tests/lattice-contour-pick-priority.test.js` + this entry,
+pushing lane-b, passing back with the full honest numbers (pytest 406/24/0, vitest 2941/156/0) stated in
+the pass note itself.
