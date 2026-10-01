@@ -1,31 +1,30 @@
-# NEXT — seat A — H23 item 17: Template 10 shoulder/waist/hip "ears", the other half of item 15
+# NEXT — seat A — H23 item 19: finish + un-hide Template 10
 
-**Ball: worker (seat A) · epoch 6 · H23 item 17.** H23 item 15 ACCEPTED (3f7a893) — the arch (`top_edge`) is genuinely fixed and
-verified live at all 3 board sizes; excellent root-cause writeup (Fusion's `Coincident(point,curve)` only pins the supporting
-circle, never trim/branch selection — no constraint in this codebase controls that) and a clean, reusable fix (seed the exact
-closed-form circle, then `Fix` the two endpoints directly; new shared `Point`/`Fix` primitives, A/B byte-identical on T1-9,
-spot-checked independently: pytest 351/19skip, gen_frame_defs --check clean). Genuinely good work — say so.
+**Ball: worker (seat A) · epoch 6 · H23 item 19.** H23 item 17 ACCEPTED (c008a43) — genuinely excellent work: the root-cause
+insight (shoulder/waist/hip was never a separate bug, just the arch's own `hw` not being exact at every board size) is the
+right kind of finding, the two new solver mechanisms were confirmed by elimination rather than guessed, and you correctly
+told apart "T10's own bug" from "a pre-existing Template 1 bug T10 now inherits" by building unmodified T1 live rather than
+assuming. The 4 new `fusion360-quirks` entries are exactly the right content for that skill — good instinct using it
+unprompted. Spot-checked independently: pytest 351/19skip, gen_frame_defs --check clean.
 
-**One housekeeping gap, fix in your next commit (not blocking, do it alongside item 17):** 3f7a893's writeup landed in
-`LIVE-RESULTS-ranchy.md` and `WORK-LOG-fb-app.md`, but `WORK-LOG.md` (seat A's own log, main checkout) has no entry for it —
-anyone reading your own log would never know this happened. Add a short entry there (point at the other two docs rather than
-duplicating all 57 lines).
+**Your 12x6 question — my call: ship it.** Template 1 itself already reflexes at 12x6 (you confirmed this live, unmodified
+HEAD) and has been live this whole time without issue — Fred's standing rule is portrait-only, landscape sizes get a
+graceful fallback, never a reason to withhold a template. T10 inheriting T1's own pre-existing landscape limitation is
+parity, not a new defect. Fixing T1's own 12x6 bug belongs to H23 item 18 (the cross-cutting seed-derivation audit, already
+queued), not here.
 
-**This task (H23 item 17):** the pre-existing, board-size-dependent shoulder/waist/hip "ears" bug, confirmed independent of
-the arch fix (reproduces on unmodified `p02_10_welds.py`): at 7x9/6x9 `arc_shoulder_R/L` reflex (356-358°), at 12x6
-`arc_waist_R/L` reflex instead (198-209°) — same failure CLASS as the arch (an uncontrolled `Tangent` branch), a harder
-instance (3 mutually-tangent arcs sharing 2 fixed anchors: the board corner at one end, now the fixed arch at the other).
-Your own item-15 recommendation is the plan: adapt the arch's technique (closed-form seed + direct `Fix`) but solve for all 3
-arcs' centres/radii simultaneously rather than reusing the single-arc formula — or decide which 1-2 points can be `Fix`-ed
-without over-determining the rest. Point 3 from item 15's writeup (hip tip-weld `VCS_SKETCH_SOLVING_FAILED` once both chain
-ends are rigid) is likely the SAME root cause, not a second bug — resolve together.
-
-**STOP condition:** this is the second half of something that's already taken 4+ seats to get half fixed. Verify at 7x9, 6x9
-AND 12x6 every time (this bug's own board-size-dependence is why single-size checks missed it before). If a clean fix
-doesn't land after a solid attempt, STOP, write up findings the same quality as item 15's (what was tried, measured,
-ruled out), and report back rather than burning further rounds alone — I'll loop Fred in to sit with it in Fusion if needed.
-Only once BOTH halves are clean: `FRAME_HIDDEN = False` in `template_10/template_data.py`, regenerate, full verification,
-merge with seat C's parked app-side (`b31f5ed`, F29 item 2).
+**This task (H23 item 19):**
+1. Merge seat C's parked app-side T10 work (`fb-app` `b31f5ed`, F29 item 2) with the now-measured Fusion geometry
+   (`frame-defs.js/.json` already regenerated this item from the live goldens) — seat C's app-side model was built from
+   Fred's own hand-reconstructed JSON, from before any of this was fixed live; reconcile any drift between that and the
+   real measured shapeModel.
+2. Same live check I just required of seat C's new taper templates, applied to T10: draw/import a REAL (non-blank)
+   b-spline design in the editor, select Template 10, Send, and confirm in Fusion that the B-spline body AND the frame
+   both build, AND the panel actually joins/trims correctly into the frame opening — not just that the bare frame looks
+   right. T10 has been broken the longest of any template; it gets the same bar as the newest ones, not a lower one.
+3. Flip `FRAME_HIDDEN = False` in `template_10/template_data.py`, regenerate, full suite + A/B (T1-9 byte-identical,
+   unaffected).
+4. Document 12x6's T1-inherited limitation where a user would find it if they hit it (not a fix — H23 item 18 covers that).
 
 Per the standing rule: drop a quick Fusion viewport shot now and then while you work this, even mid-debug.
 
@@ -72,4 +71,5 @@ Per the standing rule: drop a quick Fusion viewport shot now and then while you 
 - [ ] [H23-item-16] INSET WINDOW, FUSION + CAM SIDE (app side merged 244c096; design INSET-WINDOW-DESIGN.md sections 5 + 8; steps in INSET-WINDOW-LIVE_CHECK.md): build the 4 hidden frame_window_* bars behind the panel (start at the panel underside, same frame_height_offset) + the window_cut pocket through the panel (hole = subframe inner rect shrunk by panel_lip), declared_profiles mapping, CAM picks the bars up via the N-bar path. Off = byte-identical. Verify live (scratch doc), tests. After item 15. Commit as 'H23 item 16: ...'.
 - [ ] [H23-item-17] TEMPLATE 10, SECOND HALF: shoulder/waist/hip "ears" (item 15's own confirmed-separate finding; see this file's top section for the full writeup/recommendation). Board-size-dependent reflex arcs in the 3-arc mutually-tangent side chain. Adapt the arch's closed-form-seed + direct-`Fix` technique to the 3-arc system (solve simultaneously, or decide which 1-2 points can be `Fix`-ed without over-determining the rest); treat the hip tip-weld `VCS_SKETCH_SOLVING_FAILED` as the same root cause. Verify at 7x9, 6x9 AND 12x6. STOP and report (don't keep burning rounds alone) if a clean fix doesn't land after a solid attempt. Only then: `FRAME_HIDDEN = False`, regenerate, full verification, merge with seat C's parked app-side (b31f5ed). Commit as 'H23 item 17: ...'.
 - [ ] [H23-item-18] DECLARE SEED DERIVATION (cross-cutting, after item 17; Fred: "seeds are still using width height multiplicator formulas?" — yes, confirmed, and it's a recurring bug class, not cosmetic). Every template seeds its shape-outline with literal `widthIn * k` / `heightIn * k` magic constants, hand-picked per template, often copied from a sibling template without re-deriving for the new chain. Three confirmed incidents from this one root cause: Template 5's seed radius scaling with heightIn while the span it bridges scales with widthIn (H23 item 6); Template 10's `hw = widthIn * 0.464286` reused from Template 1, never derived for T10's own hip/shoulder chain (items 14/15/17); Template 12/13's seed computed off the raw board dimension instead of routing through `seed_basis.py` (seat C, F30 item 3). Pull the CLOSED-FORM DERIVATION TECHNIQUE item 17 used (solve the seed's radius/position from the actual geometric relationship it must satisfy, not a fitted fraction of one board dimension) into a declared, documented helper/convention in `fb_engine` — the one worked example plus a clear pattern to follow, not a framework. Then audit the EXISTING literal-constant seeds for which are actually suspect (reused across templates without re-derivation, or scaled by the wrong dimension for what they bridge) and fix those. This is NOT "rewrite every template's seeds" — leave seeds alone that are provably fine (fit directly for their own template, correct single-dimension span). Document the convention (a short addition to HANDOFF-ranchy.md's template-design rules) so a new template derives its seeds instead of copying a sibling's constants. Commit as 'H23 item 18: ...'.
-Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 17 — <shas>"`.
+- [ ] [H23-item-19] FINISH + UN-HIDE TEMPLATE 10 (item 17's own open question; see this file's top section for the full reasoning). Merge seat C's parked app-side T10 work (fb-app b31f5ed, F29 item 2) with the now-measured Fusion geometry, reconciling any drift from Fred's hand-reconstructed model. Live-verify a REAL b-spline design sends, builds, AND joins/trims correctly into T10's frame (same bar just required of seat C's new taper templates) — not just the bare frame. Then `FRAME_HIDDEN = False`, regenerate, full suite + A/B (T1-9 unchanged). Document (don't fix) 12x6's T1-inherited limitation. Commit as 'H23 item 19: ...'.
+Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 19 — <shas>"`.
