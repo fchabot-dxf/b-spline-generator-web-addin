@@ -4968,3 +4968,115 @@ project.
   diff (above), which is exactly the one new key per template and nothing else.
 - **Undo**: flipping this back is exactly the one flag, `FRAME_HIDDEN = False` in `template_10/template_data.py`,
   then regenerate frame-defs -- no other code to revert.
+
+
+## 2026-10-01: H23 item 15 -- T10 arch, two more mechanisms tried live: NOT fixed, reporting capacity (worker, seat A, epoch 5)
+
+**Priority dispatch (fresh seat A, replacing session af). Investigated and live-tested at length; the arch's
+own wrong-branch sweep is still unresolved. T10 stays hidden (`FRAME_HIDDEN` untouched, still `True`). All
+`template_10` phase files reverted to the exact committed state (verified `git diff` empty) before passing
+back -- no regression risk. One genuinely new, kept, verified piece of engine infrastructure did land (below).**
+
+This item ran live and in parallel with Fred himself inspecting/rebuilding the sketch in Fusion and the advisor
+relaying his findings turn by turn; the spec changed several times over the session as Fred looked closer.
+Full trail, so a future attempt doesn't re-walk the same ground:
+
+- **Lead 1 (drop a joint's Coincident to a horizontal skeleton line)**: checked every phase file in
+  `template_10/phases/` for any Coincident between `horn_TR:S`/`horn_TL:S`/`top_edge:S`/`top_edge:E` and a
+  `skel_*_pin` line -- none exists. The horizontal-looking joint Fred saw was almost certainly the BROKEN
+  arc's own wrong-branch geometry happening to land near a skeleton pin's height, not a real constraint. Not
+  actioned (nothing to drop).
+- **Lead 2 (reseed `arc_shoulder_R/L` so the horn-tangent branch starts on the correct side)**: Fred's own
+  live inspection found a SECOND, independent reflex defect beyond the arch -- `arc_shoulder_R/L` itself sweeps
+  ~208-230 deg (the "ear" shapes in his screenshot), present in the UNMODIFIED committed code too (confirmed:
+  same defect reproduces on a clean rebuild with zero phase-file changes, see the regression table below). Tried
+  two different 3-point reseeds for `arc_shoulder_R/L` (first matching a hand-measured target shape, then using
+  the EXACT tangent-to-`horn_TR` point as the seed's own horn-end, which is derivable in closed form once the
+  arc's centre is known to be pinned to `skel_shoulder_pin_R:E` -- radius = horizontal distance from that fixed
+  centre to the horn's vertical line, tangent point = the centre's own Y projected onto the horn line). NEITHER
+  reseed fixed it live. Root cause not fully isolated: `arc_shoulder_R`'s own centre is NOT pinned until
+  `p02_10_welds` (phase 10), which runs AFTER chain/weld/tangency (phases 4-8) where the arc instead carries a
+  TEMPORARY fixed-radius seed dimension (`heightIn/14`) while its centre is still free -- the branch is likely
+  decided during THIS earlier window, while `arc_waist_R`'s centre is ALREADY pinned (phase 6) and tangent to
+  `arc_shoulder_R`'s free-centre/fixed-radius circle, not at the final (phase 10+) configuration this reseed
+  assumed. A real fix needs tracing the sketch's actual intermediate state phase-by-phase, not just the final
+  one -- not done this session (capacity).
+- **Lead 3 (anchor `horn_TL/TR` to the offset BB side edge, like `horn_BL/BR`)**: based on a live entity dump
+  that measured `horn_TR` at x=0.2735W against an expected 0.4643W. RETRACTED by the advisor before any phase
+  change was made -- the dump was of Fred's own HAND-RECONSTRUCTED target sketch (built by dragging points in
+  Fusion's UI), not the broken build; the "wrong" position was in fact the new, intended narrower-neck shape he
+  was designing. No code touched for this lead.
+- **Mechanism attempt 1 (tangent construction line + angle dimension)**: designed but never implemented --
+  Fred's own next message simplified the ask before this was built (see attempt 2).
+- **Mechanism attempt 2 (pin the arch's centre directly, drive the rise by a corner-angle DISTANCE dimension)**:
+  implemented and live-tested. Replaces the old `Tangent(top_edge, proj_off_BB_top)` (which left the arc's
+  radius entirely to the solver -- exactly the "accepts either branch" freedom Fred and item 14 both pointed
+  at) with: `Coincident(top_edge:C, Y_AXIS)` [FAILED live -- `VCS_SKETCH_OVER_CONSTRAINTS`; harmless, since
+  `Symmetry(top_edge:S, top_edge:E, Y_AXIS)` already pins the arc's own centre x=0 as a built-in consequence for
+  an arc entity, confirmed by the error itself, not just inferred -- this redundant line should be left OUT
+  entirely in any future attempt] + a new `VerticalDistance(top_edge:E, top_edge:C)` dimension driven by
+  `d = a / tan(archCornerAngle - 90 deg)` (`a` = the arch's own half-width, `archCornerAngle` a new parameter,
+  default 127 deg, range 100-130 deg per Fred's "must stay soft, must not near 180 deg tangent-to-vertical").
+  MEASURED live at 7x9, isolated (shoulder/waist/hip/horn seeds left at their ORIGINAL committed values, one
+  variable at a time, after an earlier combined attempt that ALSO retuned the neck proportions produced brand
+  new reflex arcs on `arc_waist_R/L` and made triage impossible): `top_edge` still sweeps 301-332 deg depending
+  on exactly which other seeds were touched -- NOT fixed. The DOF reasoning behind this mechanism (pin centre +
+  pin the one remaining distance -> radius is a trivial derived consequence -> no remaining freedom to
+  re-branch) is sound for an ISOLATED arc, but doesn't by itself prevent Fusion's full-sketch nonlinear solve
+  from still walking the ARC ENTITY's own topological sense (which portion of the circle it was created to
+  represent) across the chord-line during intermediate iterations while OTHER geometry (the still-broken
+  `arc_shoulder_R/L`, the horn chain) is simultaneously resolving -- same class of cross-coupling item 14's own
+  isolated-test finding already flagged, just not yet defeated by a centre pin either. Reverted (see below).
+- **A real, separate infrastructure bug found and fixed along the way**: the live Fusion session was NOT
+  picking up phase-file edits after a `stop(None)`/`run(None)` add-in restart, even though that is the
+  documented fix for item 14's own "TemplateLoader phase cache" finding. Root-caused: this machine's Fusion
+  add-in runs from a DEPLOYED COPY under
+  `AppData\Roaming\Autodesk\Autodesk Fusion 360\API\AddIns\bspline-frame-builder\`, a real directory (confirmed
+  not a symlink/junction), separate from the repo checkout. `stop`/`run` only clears Python's IN-MEMORY module
+  cache; it never re-copies files from disk. A plain restart after editing a repo file therefore keeps running
+  the OLD deployed bytes indefinitely -- confirmed directly: a resolved seed expression in the debug log still
+  showed the pre-edit fraction after two separate stop/run cycles, byte-identical to the unedited file, while a
+  fresh out-of-process import of the SAME repo path showed the edit was really on disk. **The fix, now the
+  necessary step for editing anything under `bspline-frame-builder/frame-builder/fb_engine/*` or any
+  `sketches/template_*/` phase file and testing it live: `stop` the add-in, run
+  `python DEPLOY_bspline-frame-builder.py` (it refuses to run while the add-in is live, by design), THEN
+  `run` it again.** This is a DIFFERENT gotcha from the already-known phase-cache one (that one only needed a
+  restart; this one needs a restart AND a redeploy first) and easily wastes several live-Fusion round trips
+  before it's recognized, as it did this session.
+- **Kept: a new, generically useful build-time safety net** (Fred's own explicit ask, independent of whether
+  T10 itself gets fixed): `fb_engine/diagnostics.py` gained `assert_no_reflex_arcs(ctx, sketch, sketch_name)`,
+  called once at the end of every sketch's own build (`parametric_engine.py`, right after its "BUILD COMPLETE"
+  log line) -- raises `RuntimeError` naming the offending arc and its sweep in degrees the moment ANY arc in
+  ANY template's build ends up sweeping >= 180 deg (checked via the arc's own `startAngle`/`endAngle`, not a
+  sampled-point heuristic), since that is always a wrong-solver-branch defect, never an intended shape. Verified
+  three ways: (1) called directly against a known-reflex sketch -- raises with the correct message; (2) a REAL
+  build of the UNMODIFIED `template_10` -- fires exactly as designed (log: `REFLEX ARC: [unknown_arc] ... sweeps
+  273.1 deg`), caught by `parametric_engine.py`'s own PRE-EXISTING per-sketch crash isolation (`BUILD HALTED
+  after sketch crash - subsequent sketches skipped`), which is why `build_frame_logic` itself still returns
+  without raising to its own caller -- loud in the log (ERROR + full traceback), not loud as an uncaught
+  Python exception, which is the existing, intentional resilience behaviour of that outer loop and was left
+  alone; (3) a REGRESSION SWEEP, unmodified templates 1/5/9 at 7x9 -- template_1 and template_5 both build
+  clean (max sweep 156.2 deg, well under the 180 deg gate, no false positive); template_9 built with no crash
+  either. `fb_engine/dimensions.py` also gained a small, independently useful, DECLARED (not hand-rolled)
+  capability while implementing attempt 2: an `"AngularDistance"` branch in `_create_dimension` (the dispatcher
+  already reserved this `Type` name in `parametric_engine.py`'s `dim_types` list; only the creation branch was
+  missing) -- calls `sketch.sketchDimensions.addAngularDimension`, following the exact same pattern the
+  existing `"Radius"`/`"Diameter"` branches use. Unused by any template right now (the mechanism that would
+  have used it was reverted), but it's a clean, reusable, zero-risk addition for whichever future top mechanism
+  ends up needing an angle dimension.
+- **Capacity note, as the worker skill asks to report plainly**: this item ran through three materially
+  different mechanisms across a long, fast-moving live session (Fred iterating in Fusion in parallel), plus a
+  genuinely separate deploy-staleness bug that cost several blind round trips before being root-caused. Neither
+  of the two implemented mechanisms converged live, and a second, independent reflex defect
+  (`arc_shoulder_R/L`) turned out to block full verification even if the arch's own branch were pinned.
+  Recommending either a fresh session with room to trace the sketch's phase-by-phase intermediate state (not
+  just its final one, which is what both failed attempts reasoned from), or the advisor's own call on whether
+  `arc_shoulder_R/L`'s own defect should be split out as its own item first, since it's independent of the arch
+  and already has a closed-form candidate fix (the tangent-point-in-closed-form seed above) that just hasn't
+  been traced through the RIGHT (earlier) phase window yet.
+- **Tests / A/B**: not run -- no phase file ended up changed (verified via `git diff`, clean on every
+  `template_10` file), so there is nothing new for the existing suites or the T1-9 A/B harness to regress
+  against. The three `fb_engine` files that DID change are additive (a new dispatcher branch, a new function, a
+  new call site) and were regression-tested live against templates 1/5/9 above rather than via the unit suites
+  (no live-Fusion access from the test runner); recommending the next session run the full `pytest`/`vitest`
+  suites too before relying on this finding, since they weren't run live-Fusion-side this turn.

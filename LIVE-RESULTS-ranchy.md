@@ -834,3 +834,47 @@ rebuild cycle, plus the caching-gotcha detour). Reverted every experiment back t
 and a direct `diff` against the tracked file. No regression risk from this investigation, but also no fix
 landed. Recommending either a fresh session with more room for the isolated-pre-solve redesign, or the
 advisor's own call on priority given the depth now understood.
+
+## Item 15 — Template 10 arch, second attempt (centre-pin + corner-angle dimension): investigated live, NOT fixed
+
+**Fresh seat A session, continuing item 14. Two more mechanisms tried live (full detail in
+WORK-LOG-fb-app.md's own 2026-10-01 entry); neither converged. `template_10`'s phase files are back at the
+exact committed state (`git diff` clean) — no code changed, no regression risk.**
+
+- **A second, independent reflex defect was found**, beyond item 14's own `top_edge` finding: `arc_shoulder_R/L`
+  itself sweeps ~208-230 deg on the UNMODIFIED committed code (Fred's own live inspection in Fusion spotted the
+  "ear"-shaped result first; confirmed by a clean rebuild with zero phase-file changes). This is NOT something
+  this session's own edits caused — it reproduces from HEAD. Two closed-form reseed attempts (matching the
+  horn's own exact tangent point, derived from the arc's fixed centre + the horn's known vertical line) did not
+  fix it live; the likely reason is that this arc's centre isn't actually pinned until phase 10
+  (`p02_10_welds`), several phases AFTER the tangency/chain phases (4-8) where it instead carries a temporary
+  fixed-radius seed with a still-free centre — the branch is probably decided in that earlier window, which
+  neither reseed attempt accounted for.
+- **A centre-pin + driven-distance mechanism for `top_edge` itself** (replacing the old free-rise-via-Tangent
+  with a DOF-correct pinned centre + a `VerticalDistance` dimension computed from a new `archCornerAngle`
+  parameter, 127 deg default / 100-130 deg range per Fred) was implemented and live-tested at 7x9. Did not
+  converge either (still 301-332 deg depending on exactly which other seeds were touched) — most likely because
+  pinning the centre doesn't, by itself, stop Fusion's full-sketch nonlinear solve from walking the ARC
+  ENTITY's own topological sense across the chord during intermediate iterations while the (also still broken)
+  `arc_shoulder_R/L` and horn chain are simultaneously resolving — the same cross-coupling item 14's own
+  isolated-test finding already pointed at, just not yet defeated by a centre pin either.
+- **A genuinely new, separate infrastructure gotcha was found and should be read before any future live
+  session touches `fb_engine/*` shared modules** (not just per-template phase files, which item 14's own
+  "TemplateLoader phase cache" finding already covers): this machine's Fusion add-in runs from a DEPLOYED COPY
+  under `AppData\Roaming\...\AddIns\bspline-frame-builder\`, separate from the repo checkout. `stop`/`run`
+  alone only clears Python's in-memory module cache — it does NOT re-copy edited files from disk. Editing a
+  shared `fb_engine/*` file (or any phase file) and testing live needs: stop the add-in, run
+  `python DEPLOY_bspline-frame-builder.py` (it refuses while the add-in is live), THEN run it again. Confirmed
+  directly (a resolved seed expression in the debug log still showed pre-edit numbers after two stop/run
+  cycles with no redeploy, while a fresh out-of-process import of the same file showed the edit was really on
+  disk) — cost several blind round trips before being root-caused this session.
+- **Kept** (independent of T10's own fix): `fb_engine/diagnostics.py` now has `assert_no_reflex_arcs`, called
+  at the end of every sketch's build, raising loudly (Fred's own explicit ask) the moment any arc in any
+  template sweeps >= 180 deg. Regression-tested clean on templates 1/5/9 (no false positives) and confirmed to
+  fire correctly, unchanged, on the known `template_10` defect. `fb_engine/dimensions.py` also gained an
+  `AngularDistance` dimension branch (the dispatcher already reserved the `Type` name; only the creation code
+  was missing) — unused right now, zero risk, available for a future top mechanism.
+- **Recommendation**: either a fresh session with room to trace the sketch's own intermediate (not just final)
+  state phase-by-phase, or split `arc_shoulder_R/L`'s own defect out as its own item first, since it's
+  independent of the arch and already has a candidate closed-form fix that hasn't been traced through the
+  right (earlier) phase window yet.
