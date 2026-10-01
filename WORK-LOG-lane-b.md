@@ -12205,3 +12205,38 @@ suite: 319 passed, 10 skipped (Fusion-dependent, expected outside Fusion), 0 fai
 
 **Not done yet**: Fusion phase files (sketches/template_11/), template_data.py, and app-side JS wiring --
 next step, same as T7's own Turn 203/205/207-208 arc. This commit is the geometry-layer milestone only.
+
+## Lane B — ad-hoc (Fred via advisor, interleaved with T11) — inset window wall rendering flat black — DONE
+
+Fred's report: on a real Shape Lattice hourglass board with an inset window, the window's own inner wall
+(`frame-window-wall`, T82 item 2/3) rendered as flat solid black in the 3D preview instead of
+shaded/textured like everything else. Advisor's own lead pointed at `wallArrays()` (frame-mesh.js) having
+no UVs/relying on auto-computed normals -- that lead didn't pan out, but comparing the window wall's own
+`_mesh()` call against the OUTER panel wall's (`frame-panel-wall`) right above it found the real cause
+directly.
+
+**Root cause**: a real carved/terrain board's material has `vertexColors: true` whenever it has colour data
+(`terrain-mesh.js`'s own `buildTopOnlyMesh`/`buildSolidMesh`, `useColours`) -- this is the mechanism behind
+the wood-grain look itself, not a texture map. `wallMat = panelMesh.material.clone()` (frame-mesh.js) so
+EVERY wall built from it inherits that same `vertexColors: true`. The outer wall (line ~591) samples the
+panel's own colours at each loop point and passes them to `_mesh()` as `wallAttrs.color` -- but the window
+wall's own call, a few lines below, passed NO 4th argument at all, so its geometry got no `color` attribute
+whatsoever. A material with `vertexColors:true` reading a geometry with no matching attribute does not
+fall back to "untinted" -- it reads an unbound vertex attribute (WebGL default 0,0,0), multiplying the
+whole surface by black. Every OTHER wall/bar either carries its own sampled colours (the outer wall) or
+uses a fresh, non-cloned material with no vertexColors at all (`frame-window-bars`' own `barMat`) -- the
+window wall was the one piece built from the colour-aware cloned material without ever being given colours
+to match.
+
+**Fix**: sample the panel's own colours along `winHoleLoop` the exact same way the outer wall already does
+(same `lerpAttr(attrs.color.array, 3, full, surf.at(p.x,p.y).hi)` call, same `...c, ...c` bottom/top
+duplication) and pass it as the window wall's own `winWallAttrs.color` to `_mesh()`.
+
+**Verified non-vacuous**: the existing test asserting `frame-window-wall` merely EXISTS by name never caught
+this (the mesh is built either way, only its colour data differs) -- added a new test asserting the wall's
+own `color` attribute is actually present and matches the panel's declared colour throughout.
+MUTATION-TESTED: reverting to the old no-attrs call makes exactly this one new test fail
+(`expected undefined to be truthy` -- the attribute is absent, not merely wrong), every other test
+(29 others in this file) stays green; restored byte-identical via diff, confirmed green again (30/30).
+Ran the file's own full suite plus the two most related other suites (lattice-drag-highlight,
+lattice-contour-pick-priority) as this change's fast tier: 49/49 passed, 0 failed.

@@ -11,7 +11,7 @@ import {
 import {
   sampleOutline, toWorld, pointInPolygon, ringArrays, applyFrameToPanel, frameLoopsWorld,
 } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
-import { FakeTHREE, carvedPanel } from './helpers/drawn-panel.js';
+import { FakeTHREE, carvedPanel, PANEL_COLOUR } from './helpers/drawn-panel.js';
 import { fitView } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-view.js';
 import { frameColorFor } from '../bspline-frame-builder/b-spline-gen/html/core/color-utils.js';
 
@@ -237,6 +237,21 @@ describe('inset window (T82 item 3): subframe shown + exact hole clip', () => {
     ];
     for (const [x, y] of edges) expect(coveredAtTop(meshes, x, y, 2)).toBe(true);
     for (const [x, y] of insides) expect(coveredAtTop(meshes, x, y, 2)).toBe(false);
+  });
+
+  it('the window wall carries the panel\'s own vertex colours, not unset (Fred: the window wall rendered flat black on a real carved board) -- wallMat inherits vertexColors:true from the panel\'s own material whenever the board has carved colour data, so a geometry with no matching `color` attribute renders solid black there, not merely untinted. MUTATION-TESTED: dropping the window wall\'s own colour sampling (passing no 4th arg to _mesh) makes this fail -- the attribute is absent entirely, not just zero.', () => {
+    const { mesh, grid } = panel(7, 9, 36, 46, 2, 0.5); // carvedPanel always supplies colour data (PANEL_COLOUR)
+    const spec = frameSolidSpec(FRAME_DEFS, winRec(), BOARD);
+    const winWall = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-window-wall');
+    const color = winWall.geometry.attributes.color;
+    expect(color).toBeTruthy();
+    const arr = color.array;
+    expect(arr.length).toBeGreaterThan(0);
+    for (let i = 0; i < arr.length; i += 3) {
+      expect(arr[i]).toBeCloseTo(PANEL_COLOUR[0], 5);
+      expect(arr[i + 1]).toBeCloseTo(PANEL_COLOUR[1], 5);
+      expect(arr[i + 2]).toBeCloseTo(PANEL_COLOUR[2], 5);
+    }
   });
 });
 
