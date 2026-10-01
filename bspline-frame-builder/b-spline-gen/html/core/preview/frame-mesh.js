@@ -495,15 +495,22 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
   }
   if (botPos) { // a solid panel (thickened): the outline wall and the bars
     const surf = panelSurface(pos, full, W, H, nx, nz);
-    const top = (p) => surf.at(p.x, p.y).hi.z;
-    const bot = (p) => surf.at(p.x, p.y).lo.z;
+    // T7 DIAMOND-TOP HOURGLASS (a frame whose own outline can reach past the panel's own W x H domain --
+    // MEASURED: the diamond peak's own apex sits `hw` above the panel's top edge, always, regardless of
+    // height): `surf.at` returns null for a query point outside every triangle (its own documented "no hit"
+    // contract, genuinely needed elsewhere) -- a wall point out there has no real panel surface to hug, so the
+    // nearest EDGE sample is the closest sensible height, not a crash. Every template before this one always
+    // drew its own outline entirely inside the panel, so this never fired before.
+    const atClamped = (x, y) => surf.at(Math.max(-W / 2, Math.min(W / 2, x)), Math.max(-H / 2, Math.min(H / 2, y)));
+    const top = (p) => atClamped(p.x, p.y).hi.z;
+    const bot = (p) => atClamped(p.x, p.y).lo.z;
     const wallMat = panelMesh.material.clone();
     wallMat.side = THREE.DoubleSide;
     const w = wallArrays(panel, bot, top);
     const wallAttrs = {};
     if (attrs.color) { // the panel's own colours at the top edge, as its own side walls
       const col = [];
-      for (const p of panel) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
+      for (const p of panel) { const c = lerpAttr(attrs.color.array, 3, full, atClamped(p.x, p.y).hi); col.push(...c, ...c); }
       wallAttrs.color = { array: col, itemSize: 3 };
     }
     const wall = _mesh(THREE, w, wallMat, wallAttrs);

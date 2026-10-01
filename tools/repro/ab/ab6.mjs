@@ -23,13 +23,13 @@ for (let i = 0; i < 400; i++) {
   const region = { x: rnd(), y: rnd(), w: 2 + rnd() * 10, h: 2 + rnd() * 10 }, stroke = rnd() < 0.5 ? 0 : 0.1;
   const sil = G.generateSilhouette(region, { preset: 'hourglass', params, seed: i }, stroke);
   const r = G.feasibleParamRanges('hourglass', region, sil.params, stroke);
-  delete r.topDipWidth; delete r.topDipDepth;
+  delete r.topDipWidth; delete r.topDipDepth; delete r.topPeak; delete r.shoulderLedgeWidth; delete r.hipFlare; // T7: new frame-only range keys, same as T5's own two
   const hs = I.computeParamHandles('hourglass', region, sil.params);
   const pt = { x: region.x + rnd() * region.w, y: region.y + rnd() * region.h };
   out.push(strip([sil, r, G.outlineDefects(sil.primitives), G.generateContourSilhouette(region, { preset: 'hourglass', params, seed: i }, 0.1),
     hs, hs.map((h) => h.patchFromWorld(pt, { side: i % 2 })), M.manifestFromShape({ preset: 'hourglass', params }, region)]));
 }
-for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5']) {
+for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_7']) {
   const tpl = FRAME_DEFS.templates.find((t) => t.id === id);
   for (const [W, Hh] of [[7, 9], [12, 6], [9, 12], [5.51, 1.97], [8, 8]]) {
     const rec = normalizeFrameRecord({ templateId: id });
@@ -50,7 +50,7 @@ for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'templ
 const TERRAIN = (x, y) => 1.2 + 0.5 * Math.sin(1.9 * x) * Math.cos(1.4 * y) + 0.25 * Math.sin(3.1 * y + 0.4 * x);
 const h3 = createHash('sha256');
 let n3 = 0;
-for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5']) {
+for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_7']) {
   for (const [W, Hh, spacing, thick] of [[7, 9, 0.4, 0.2], [7, 9, 0.15, 1.0], [7, 9, 0.05, 0.2], [12, 6, 0.1, 0.3], [9, 7, 0.1, 0.6], [5, 5, 0.1, 0.2]]) {
     for (const lip of [0, 0.125]) {
       const { mesh, grid } = carvedPanel(W, Hh, Math.round(W / spacing) + 1, Math.round(Hh / spacing) + 1, TERRAIN, thick);

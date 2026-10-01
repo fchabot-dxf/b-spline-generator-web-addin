@@ -12,7 +12,7 @@ const FM = await import(`${H}/core/preview/frame-mesh.js`);
 const { FakeTHREE, carvedPanel } = await import(REPO + 'tests/helpers/drawn-panel.js');
 const TERRAIN = (x, y) => 1.2 + 0.5 * Math.sin(1.9 * x) * Math.cos(1.4 * y) + 0.25 * Math.sin(3.1 * y + 0.4 * x);
 const out = {};
-for (const id of (process.argv[4] || 'template_1,template_2,template_3,template_4,template_5').split(',')) {
+for (const id of (process.argv[4] || 'template_1,template_2,template_3,template_4,template_5,template_7').split(',')) {
   for (const [W, Hh, spacing, thick] of JSON.parse(process.argv[5] || '[[7,9,0.4,0.2],[7,9,0.15,1.0],[7,9,0.05,0.2],[12,6,0.1,0.3],[9,7,0.1,0.6],[5,5,0.1,0.2]]')) {
     for (const lip of [0, 0.125]) {
       const key = `${id} ${W}x${Hh} s${spacing} t${thick} lip${lip}`;

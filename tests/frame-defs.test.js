@@ -55,11 +55,16 @@ describe('frame-defs (generated) — schema', () => {
     // goldens, the two corners separately) -- the only extras paramsFromShapeModel reads.
     // T4 OFFSET HOURGLASS: an offset-waist model also carries the left pinch (waistCyLeft, notchLeft, depthLeft).
     // T5 HOURGLASS DIPPED TOP: a dipped-top model also carries the top dip (topDipDepth, topDipHalfWidth).
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth'], bottle: [], tabTop: [] };
+    // T7 DIAMOND-TOP HOURGLASS: inherits Template 1's own model unchanged, plus a `topPeak` feature whose own
+    // fitted VALUE never matters (it is present purely as an on/off signal -- see paramsFromShapeModel's own
+    // `topPeak` branch and frame_definition.py's own template_shape_model doc comment), plus `shoulderLedge`/
+    // `hipFlare` (both carry a real fraction-of-hw default -- T7_SHOULDER_LEDGE_DEFAULT_OF_HW /
+    // T7_HIP_FLARE_DEFAULT_OF_HW in frame_definition.py).
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'topPeak', 'shoulderLedge', 'hipFlare'], bottle: [], tabTop: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);
-    if (!['template_3', 'template_4', 'template_5'].includes(t.id)) expect(keys.sort()).toEqual(FEATURES[t.silhouettePreset]); // Template 1 / 2: exactly as before
+    if (!['template_3', 'template_4', 'template_5', 'template_7'].includes(t.id)) expect(keys.sort()).toEqual(FEATURES[t.silhouettePreset]); // Template 1 / 2: exactly as before
     // T6: a provisional model of its own (no base template, frame_shape_fit.provisional_tab_top_model) is fitted
     // from nothing yet; every other model (T3-T5's provisional ones carry Template 1's fit) from 2+ goldens.
     if (t.shapeModel.provisional && t.shapeModel.provisional.baseModel === null) expect(t.shapeModel.fit.fittedFrom).toEqual([]);

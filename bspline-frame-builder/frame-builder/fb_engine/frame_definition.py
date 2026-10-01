@@ -164,6 +164,21 @@ def _param_entry(p_info):
     return entry
 
 
+# T7 DIAMOND-TOP HOURGLASS (Fred's reference sketch, template_sketches_2026-09-30.jpg, bottom-right): the
+# shoulder ledge and hip flare's own DEFAULT proportions (fraction of hw), declared once here since they are
+# T7's own design constants, not a fitted/measured quantity -- PROVISIONAL pending a live Fusion / screenshot
+# check against the reference sketch (see template_7/LIVE_CHECK.md).
+# T7_SHOULDER_LEDGE_DEFAULT_OF_HW: the peak is pinned to the board's own top edge (Fred, 2026-09-30 screenshot:
+# "the diamond apex sits ON the top edge of the board") -- its rise comes out of the horn's own existing
+# length, so a WIDE board (short horn) needs a WIDER ledge to keep that rise small enough to fit (MEASURED:
+# feasibleParamRanges gives >= 0.29 at 7x9, >= 0.96 at 12x6, >= 0.97 at 5.51x1.97 -- editor-shape-lattice-
+# generator.js's own `shoulderLedgeWidth` range clamps this default UP automatically wherever 0.35 itself is
+# not feasible, so every board still gets a valid, on-the-board peak -- this default is only "preferred", not a
+# promise of exactly this ledge width on every board).
+T7_SHOULDER_LEDGE_DEFAULT_OF_HW = 0.35
+T7_HIP_FLARE_DEFAULT_OF_HW = 0.2
+
+
 def template_shape_model(template_id, frame, goldens_dir):
     """F8: one template's app shape model, fitted from its recorded goldens by its extractor (the Frame's
     optional `shapeExtractor`, T3; else its silhouette preset's own).
@@ -177,7 +192,11 @@ def template_shape_model(template_id, frame, goldens_dir):
     T5 HOURGLASS DIPPED TOP: {"from": <template id>, "topDipDepthOfHh": d, "topDipHalfWidthOfHw": w} builds
     frame_shape_fit.provisional_dipped_top_model (the base model plus a top dip d x hh deep, w x hw half wide).
     T6 TAB TOP: {"tabHalfWidthOfHw": w, "tabHeightOfHh": h} (no `from`: nothing to derive it from) builds
-    frame_shape_fit.provisional_tab_top_model."""
+    frame_shape_fit.provisional_tab_top_model.
+    T7 DIAMOND-TOP HOURGLASS: {"from": <template id>} alone (no extra key at all) -- the peak itself has no
+    feature of its own (its height is DERIVED, never an independent fitted/provisional quantity: see
+    template_7/template_data.py's own doc comment), but the base model gains three fixed features (`topPeak`,
+    `shoulderLedge`, `hipFlare`) carrying the shape's own default proportions -- see below."""
     from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
                                            provisional_dipped_top_model)
     from fb_engine.template_resolver import resolve_template
@@ -195,8 +214,27 @@ def template_shape_model(template_id, frame, goldens_dir):
                 model = provisional_offset_waist_model(base, prov["waistOffsetOfHh"])
             elif "topDipDepthOfHh" in prov:
                 model = provisional_dipped_top_model(base, prov["topDipDepthOfHh"], prov["topDipHalfWidthOfHw"])
-            else:
+            elif "topInsetOfDepth" in prov:
                 model = provisional_shape_model(base, prov["topInsetOfDepth"])
+            else:
+                # T7 DIAMOND-TOP HOURGLASS: the base model applies as is, PLUS three fixed features. `topPeak`'s
+                # own fitted VALUE never matters (it's the same {0,0} constant at every board size) -- its role
+                # is purely to be PRESENT, the same "f.<name> != null activates the param" signal
+                # paramsFromShapeModel already uses for every other frame-only feature (topDipDepth etc.), just
+                # with a fixed output (1, always on) instead of a board-scaled one. `shoulderLedge`/`hipFlare`
+                # DO carry a real value (a fraction of hw, encoded directly as the `hw` coefficient with `hh`
+                # left 0, so paramsFromShapeModel's own `f.name / hw` round-trips it back to that exact
+                # fraction) -- this is the ONE place T7's default proportions are declared; both are FRAME-ONLY
+                # (never a Fusion parameter) and default to 0 everywhere else (hourglassConstruction's own
+                # `hipFlare` is shared, generic machinery every hourglass preset resolves through, so its
+                # DERIVED_PARAM_DEFAULTS fallback must stay 0 for Templates 1-6 to stay byte-identical -- see
+                # that function's own doc comment). See that function's own `topPeak`/`shoulderLedge`/`hipFlare`
+                # branches.
+                model = {**base, "features": {**base["features"],
+                    "topPeak": {"hw": 0, "hh": 0},
+                    "shoulderLedge": {"hw": T7_SHOULDER_LEDGE_DEFAULT_OF_HW, "hh": 0},
+                    "hipFlare": {"hw": T7_HIP_FLARE_DEFAULT_OF_HW, "hh": 0},
+                }}
     return model
 
 

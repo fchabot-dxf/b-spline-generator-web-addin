@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "ef5ed9daa6909a9e84245b67be44342ed22808685fd3e3ff50cf28c5ca27325f",
+  "sourceHash": "a37a43b8018a31fa652b4dbbc31f8848be7bc06034ea0527d577eb6bb0428f7d",
   "templates": [
     {
       "features": [
@@ -8950,6 +8950,1949 @@ export default {
                   "IsConstruction": false,
                   "Source": "proj_tab_side_L:S",
                   "Target": "inner_proj_tab_side_L:S"
+                }
+              ],
+              "Name": "Enclosure Miters",
+              "PhaseFile": "p03_04_encl_miters.py",
+              "PhaseID": "p03_04_encl_miters"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Center": [
+                    "0.001",
+                    "0.001"
+                  ],
+                  "ID": "surround_rect",
+                  "LineIDs": [
+                    "surround_top",
+                    "surround_right",
+                    "surround_bottom",
+                    "surround_left"
+                  ],
+                  "Size": [
+                    "widthIn * 1.25",
+                    "heightIn * 1.25"
+                  ],
+                  "Type": "RectangleCenter"
+                },
+                {
+                  "AllowNudge": true,
+                  "Targets": [
+                    "surround_rect:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Enclosure Surround Rectangle",
+              "PhaseFile": "p03_05_encl_surround_rect.py",
+              "PhaseID": "p03_05_encl_surround_rect"
+            }
+          ],
+          "Label": "Frame Enclosure",
+          "Name": "3_frame_enclosure",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "Frame thickness",
+              "Max": 1.5,
+              "Min": 0.25,
+              "Name": "frame_thickness",
+              "Unit": "in",
+              "Val": 0.75
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "features": [
+        {
+          "bodyNames": [
+            "frame_roof_right",
+            "frame_side_right",
+            "frame_base",
+            "frame_side_left",
+            "frame_roof_left"
+          ],
+          "extent": {
+            "offset": "0 in",
+            "toFace": "core.underside"
+          },
+          "id": "bars",
+          "op": "newBody",
+          "region": "outline-minus-inner",
+          "splitBy": "miters",
+          "start": "frame_height_offset",
+          "taper": "0 deg"
+        },
+        {
+          "extent": "throughAll",
+          "id": "trim",
+          "op": "cut",
+          "region": "surround-minus-outline",
+          "start": "0 in",
+          "taper": "0 deg"
+        }
+      ],
+      "handleMigrations": {},
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "waistReach",
+          "label": "Waist reach"
+        },
+        {
+          "basis": "hh",
+          "binding": "seeded",
+          "key": "waistCenterY",
+          "label": "Waist height"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "shoulderLedgeWidth",
+          "label": "Shoulder ledge"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "hipFlare",
+          "label": "Hip flare"
+        }
+      ],
+      "id": "template_7",
+      "name": "Template 7 - Diamond-top Hourglass",
+      "params": [
+        {
+          "category": "Frame Spec",
+          "default": 5.51,
+          "label": "Width (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "widthIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 1.97,
+          "label": "Height (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "heightIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.25,
+          "expose": true,
+          "label": "BBox Border",
+          "min": 0.0,
+          "name": "boundingboxoffset",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "Constraints",
+          "default": 1.0,
+          "expose": true,
+          "label": "Shoulder Arc Weld",
+          "name": "ck_arc_shoulder_weld",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "Constraints",
+          "default": 1.0,
+          "expose": true,
+          "label": "Hip Arc Weld",
+          "name": "ck_arc_hip_weld",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "Constraints",
+          "default": 1.0,
+          "expose": true,
+          "label": "Shoulder Skeleton Equal",
+          "name": "ck_skel_shoulder_equal",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "Constraints",
+          "default": 1.0,
+          "expose": true,
+          "label": "Waist Skeleton Equal",
+          "name": "ck_skel_waist_equal",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.75,
+          "expose": true,
+          "label": "Frame thickness",
+          "max": 1.5,
+          "min": 0.25,
+          "name": "frame_thickness",
+          "owner": "frame",
+          "unit": "in"
+        }
+      ],
+      "prefix": "T7",
+      "regions": {
+        "bars": [
+          {
+            "curves": [
+              "proj_roof_R"
+            ],
+            "name": "frame_roof_right"
+          },
+          {
+            "curves": [
+              "proj_ledge_R",
+              "proj_horn_TR",
+              "proj_arc_shoulder_R",
+              "proj_arc_waist_R",
+              "proj_arc_hip_R",
+              "proj_horn_BR"
+            ],
+            "name": "frame_side_right"
+          },
+          {
+            "curves": [
+              "proj_bottom_edge"
+            ],
+            "name": "frame_base"
+          },
+          {
+            "curves": [
+              "proj_horn_BL",
+              "proj_arc_hip_L",
+              "proj_arc_waist_L",
+              "proj_arc_shoulder_L",
+              "proj_horn_TL",
+              "proj_ledge_L"
+            ],
+            "name": "frame_side_left"
+          },
+          {
+            "curves": [
+              "proj_roof_L"
+            ],
+            "name": "frame_roof_left"
+          }
+        ],
+        "corners": [
+          {
+            "curve": "proj_roof_R",
+            "direction": [
+              0,
+              -1.4142135623730951
+            ],
+            "id": "peak",
+            "inner": "inner_proj_roof_R:S",
+            "outer": "proj_roof_R:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_ledge_R",
+            "direction": [
+              -1,
+              -1
+            ],
+            "id": "shoulder_R",
+            "inner": "inner_proj_ledge_R:S",
+            "outer": "proj_ledge_R:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_bottom_edge",
+            "direction": [
+              -1,
+              1
+            ],
+            "id": "BR",
+            "inner": "inner_proj_bottom_edge:S",
+            "outer": "proj_bottom_edge:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_horn_BL",
+            "direction": [
+              1,
+              1
+            ],
+            "id": "BL",
+            "inner": "inner_proj_horn_BL:S",
+            "outer": "proj_horn_BL:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_roof_L",
+            "direction": [
+              1,
+              -1
+            ],
+            "id": "shoulder_L",
+            "inner": "inner_proj_roof_L:S",
+            "outer": "proj_roof_L:S",
+            "reflex": false
+          }
+        ],
+        "inner": [
+          "inner_proj_roof_R",
+          "inner_proj_ledge_R",
+          "inner_proj_horn_TR",
+          "inner_proj_arc_shoulder_R",
+          "inner_proj_arc_waist_R",
+          "inner_proj_arc_hip_R",
+          "inner_proj_horn_BR",
+          "inner_proj_bottom_edge",
+          "inner_proj_horn_BL",
+          "inner_proj_arc_hip_L",
+          "inner_proj_arc_waist_L",
+          "inner_proj_arc_shoulder_L",
+          "inner_proj_horn_TL",
+          "inner_proj_ledge_L",
+          "inner_proj_roof_L"
+        ],
+        "miters": [
+          [
+            "proj_roof_R:S",
+            "inner_proj_roof_R:S"
+          ],
+          [
+            "proj_ledge_R:S",
+            "inner_proj_ledge_R:S"
+          ],
+          [
+            "proj_bottom_edge:S",
+            "inner_proj_bottom_edge:S"
+          ],
+          [
+            "proj_horn_BL:S",
+            "inner_proj_horn_BL:S"
+          ],
+          [
+            "proj_roof_L:S",
+            "inner_proj_roof_L:S"
+          ]
+        ],
+        "outline": [
+          "proj_roof_R",
+          "proj_ledge_R",
+          "proj_horn_TR",
+          "proj_arc_shoulder_R",
+          "proj_arc_waist_R",
+          "proj_arc_hip_R",
+          "proj_horn_BR",
+          "proj_bottom_edge",
+          "proj_horn_BL",
+          "proj_arc_hip_L",
+          "proj_arc_waist_L",
+          "proj_arc_shoulder_L",
+          "proj_horn_TL",
+          "proj_ledge_L",
+          "proj_roof_L"
+        ],
+        "surround": "surround_rect"
+      },
+      "seedMap": [
+        {
+          "id": "roof_R",
+          "kind": "line",
+          "prim": 13,
+          "reverse": false
+        },
+        {
+          "id": "roof_L",
+          "kind": "line",
+          "prim": 12,
+          "reverse": false
+        },
+        {
+          "id": "ledge_R",
+          "kind": "line",
+          "prim": 14,
+          "reverse": false
+        },
+        {
+          "id": "ledge_L",
+          "kind": "line",
+          "prim": 11,
+          "reverse": false
+        },
+        {
+          "id": "horn_TR",
+          "kind": "line",
+          "prim": 0,
+          "reverse": false
+        },
+        {
+          "id": "horn_BR",
+          "kind": "line",
+          "prim": 4,
+          "reverse": true
+        },
+        {
+          "id": "horn_TL",
+          "kind": "line",
+          "prim": 10,
+          "reverse": true
+        },
+        {
+          "id": "horn_BL",
+          "kind": "line",
+          "prim": 6,
+          "reverse": false
+        },
+        {
+          "id": "arc_shoulder_R",
+          "kind": "arc",
+          "prim": 1,
+          "reverse": false
+        },
+        {
+          "id": "arc_waist_R",
+          "kind": "arc",
+          "prim": 2,
+          "reverse": true
+        },
+        {
+          "id": "arc_hip_R",
+          "kind": "arc",
+          "prim": 3,
+          "reverse": false
+        },
+        {
+          "id": "arc_hip_L",
+          "kind": "arc",
+          "prim": 7,
+          "reverse": true
+        },
+        {
+          "id": "arc_waist_L",
+          "kind": "arc",
+          "prim": 8,
+          "reverse": false
+        },
+        {
+          "id": "arc_shoulder_L",
+          "kind": "arc",
+          "prim": 9,
+          "reverse": true
+        },
+        {
+          "id": "skel_shoulder_pin_R",
+          "kind": "pin",
+          "outer": "E",
+          "prim": 1
+        },
+        {
+          "id": "skel_shoulder_pin_L",
+          "kind": "pin",
+          "outer": "E",
+          "prim": 9
+        },
+        {
+          "id": "skel_waist_pin_R",
+          "kind": "pin",
+          "outer": "E",
+          "prim": 2
+        },
+        {
+          "id": "skel_waist_pin_L",
+          "kind": "pin",
+          "outer": "E",
+          "prim": 8
+        },
+        {
+          "id": "skel_hip_pin_R",
+          "kind": "pin",
+          "outer": "E",
+          "prim": 3
+        },
+        {
+          "id": "skel_hip_pin_L",
+          "kind": "pin",
+          "outer": "E",
+          "prim": 7
+        },
+        {
+          "id": "seed_rad_shoulder_R",
+          "kind": "radius",
+          "prim": 1
+        },
+        {
+          "id": "seed_rad_waist_R",
+          "kind": "radius",
+          "prim": 2
+        },
+        {
+          "id": "seed_rad_hip_R",
+          "kind": "radius",
+          "prim": 3
+        },
+        {
+          "id": "seed_rad_hip_L",
+          "kind": "radius",
+          "prim": 7
+        },
+        {
+          "id": "seed_rad_waist_L",
+          "kind": "radius",
+          "prim": 8
+        },
+        {
+          "id": "seed_rad_shoulder_L",
+          "kind": "radius",
+          "prim": 9
+        }
+      ],
+      "shapeModel": {
+        "features": {
+          "cornerR": {
+            "hh": 0.142066,
+            "hw": 0.005992
+          },
+          "depth": {
+            "hh": 0.106231,
+            "hw": 0.185089
+          },
+          "hipFlare": {
+            "hh": 0,
+            "hw": 0.2
+          },
+          "notch": {
+            "hh": 0.305363,
+            "hw": -0.007805
+          },
+          "shoulderLedge": {
+            "hh": 0,
+            "hw": 0.35
+          },
+          "topPeak": {
+            "hh": 0,
+            "hw": 0
+          },
+          "waistCy": {
+            "hh": -0.009779,
+            "hw": 0.01363
+          },
+          "waistR": {
+            "hh": 0.147077,
+            "hw": 0.016953
+          }
+        },
+        "fit": {
+          "exactAtFittedSizes": false,
+          "excluded": [],
+          "fittedFrom": [
+            "12x6",
+            "5.51x1.97",
+            "7x9"
+          ],
+          "maxResidualIn": 0.0832,
+          "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+          "residualsIn": {
+            "cornerR": [
+              0.0093,
+              -0.0174,
+              -0.003
+            ],
+            "depth": [
+              -0.0443,
+              0.0832,
+              0.0143
+            ],
+            "notch": [
+              0.0236,
+              -0.0443,
+              -0.0076
+            ],
+            "waistCy": [
+              -0.0069,
+              0.013,
+              0.0022
+            ],
+            "waistR": [
+              0.0051,
+              -0.0096,
+              -0.0016
+            ]
+          }
+        }
+      },
+      "silhouettePreset": "hourglass",
+      "sketches": [
+        {
+          "Blocks": [
+            {
+              "Constraints": [
+                {
+                  "Targets": [
+                    "BB_RECT:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Dimensions": [
+                {
+                  "Expression": "widthIn",
+                  "Name": "dim_width",
+                  "Target": "BB_top"
+                },
+                {
+                  "Expression": "heightIn",
+                  "Name": "dim_height",
+                  "Target": "BB_right"
+                }
+              ],
+              "Geometry": [
+                {
+                  "Center": [
+                    0.0,
+                    0.0
+                  ],
+                  "ID": "BB_RECT",
+                  "LineIDs": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "Size": [
+                    "widthIn",
+                    "heightIn"
+                  ],
+                  "Type": "Rectangle"
+                }
+              ],
+              "Name": "BB Layout",
+              "PhaseFile": "p01_01_bb_layout.py",
+              "PhaseID": "p01_01_bb_layout"
+            },
+            {
+              "Name": "Safe Zone Offset",
+              "PhaseFile": "p01_02_bb_offset.py",
+              "PhaseID": "p01_02_bb_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "boundingboxoffset",
+                  "SourceID": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "TargetIDs": [
+                    "offset_BB_top",
+                    "offset_BB_right",
+                    "offset_BB_bottom",
+                    "offset_BB_left"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            }
+          ],
+          "Label": "Bounding Box",
+          "Name": "1_bounding_box",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Label": "Width (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "widthIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 5.51
+            },
+            {
+              "Category": "Frame Spec",
+              "Label": "Height (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "heightIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 1.97
+            },
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "BBox Border",
+              "Min": 0.0,
+              "Name": "boundingboxoffset",
+              "Unit": "in",
+              "Val": 0.25
+            }
+          ]
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Projections",
+              "PhaseFile": "p02_01_projs.py",
+              "PhaseID": "p02_01_projs",
+              "Projections": [
+                {
+                  "SourceID": "offset_BB_top:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_TL"
+                },
+                {
+                  "SourceID": "offset_BB_right:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_TR"
+                },
+                {
+                  "SourceID": "offset_BB_bottom:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BR"
+                },
+                {
+                  "SourceID": "offset_BB_left:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BL"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "EndID": "skel_shoulder_pin_R:E",
+                  "ID": "skel_shoulder_pin_R",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.34996",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
+                    ]
+                  ],
+                  "StartID": "skel_shoulder_pin_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "skel_shoulder_pin_L:E",
+                  "ID": "skel_shoulder_pin_L",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "-0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.350521",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
+                    ]
+                  ],
+                  "StartID": "skel_shoulder_pin_L:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "skel_waist_pin_R:E",
+                  "ID": "skel_waist_pin_R",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "0.001",
+                      "0"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.35",
+                      "0"
+                    ]
+                  ],
+                  "StartID": "skel_waist_pin_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "skel_waist_pin_L:E",
+                  "ID": "skel_waist_pin_L",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "-0.001",
+                      "0"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * -0.35",
+                      "0"
+                    ]
+                  ],
+                  "StartID": "skel_waist_pin_L:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "skel_hip_pin_R:E",
+                  "ID": "skel_hip_pin_R",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.34996",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
+                    ]
+                  ],
+                  "StartID": "skel_hip_pin_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "skel_hip_pin_L:E",
+                  "ID": "skel_hip_pin_L",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "-0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.34996",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
+                    ]
+                  ],
+                  "StartID": "skel_hip_pin_L:S",
+                  "Type": "Line"
+                },
+                {
+                  "Targets": [
+                    "skel_shoulder_pin_R"
+                  ],
+                  "Type": "Horizontal"
+                },
+                {
+                  "Targets": [
+                    "skel_shoulder_pin_L"
+                  ],
+                  "Type": "Horizontal"
+                },
+                {
+                  "Targets": [
+                    "skel_waist_pin_R"
+                  ],
+                  "Type": "Horizontal"
+                },
+                {
+                  "Targets": [
+                    "skel_waist_pin_L"
+                  ],
+                  "Type": "Horizontal"
+                },
+                {
+                  "Targets": [
+                    "skel_hip_pin_R"
+                  ],
+                  "Type": "Horizontal"
+                },
+                {
+                  "Targets": [
+                    "skel_hip_pin_L"
+                  ],
+                  "Type": "Horizontal"
+                },
+                {
+                  "Targets": [
+                    "skel_shoulder_pin_R:S",
+                    "Y_AXIS"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "skel_waist_pin_R:S",
+                    "Y_AXIS"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "skel_hip_pin_R:S",
+                    "Y_AXIS"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "skel_shoulder_pin_R:S",
+                    "skel_shoulder_pin_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "skel_waist_pin_R:S",
+                    "skel_waist_pin_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "skel_hip_pin_R:S",
+                    "skel_hip_pin_L:S"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Anatomy",
+              "PhaseFile": "p02_02_anatomy.py",
+              "PhaseID": "p02_02_anatomy"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "EndID": "bottom_edge:E",
+                  "ID": "bottom_edge",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001"
+                    ]
+                  ],
+                  "StartID": "bottom_edge:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "horn_TR:E",
+                  "ID": "horn_TR",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.183"
+                    ]
+                  ],
+                  "StartID": "horn_TR:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "horn_BR:E",
+                  "ID": "horn_BR",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.183"
+                    ]
+                  ],
+                  "StartID": "horn_BR:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "horn_TL:E",
+                  "ID": "horn_TL",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.183"
+                    ]
+                  ],
+                  "StartID": "horn_TL:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "horn_BL:E",
+                  "ID": "horn_BL",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.001"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.183"
+                    ]
+                  ],
+                  "StartID": "horn_BL:S",
+                  "Type": "Line"
+                },
+                {
+                  "Targets": [
+                    "horn_TR",
+                    "horn_BR",
+                    "horn_TL",
+                    "horn_BL"
+                  ],
+                  "Type": "Vertical"
+                },
+                {
+                  "EndID": "roof_R:E",
+                  "ID": "roof_R",
+                  "Points": [
+                    [
+                      "0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + (widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325 - 0.001"
+                    ]
+                  ],
+                  "StartID": "roof_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "ledge_R:E",
+                  "ID": "ledge_R",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325 + 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.002",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325"
+                    ]
+                  ],
+                  "StartID": "ledge_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "ledge_L:E",
+                  "ID": "ledge_L",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 + 0.002",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325 - 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325"
+                    ]
+                  ],
+                  "StartID": "ledge_L:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "roof_L:E",
+                  "ID": "roof_L",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325 - 0.001"
+                    ],
+                    [
+                      "-0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + (widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325"
+                    ]
+                  ],
+                  "StartID": "roof_L:S",
+                  "Type": "Line"
+                },
+                {
+                  "Targets": [
+                    "ledge_R",
+                    "ledge_L"
+                  ],
+                  "Type": "Horizontal"
+                },
+                {
+                  "EndID": "safe_top_level:E",
+                  "ID": "safe_top_level",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.003",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.002"
+                    ],
+                    [
+                      "0.004",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.002"
+                    ]
+                  ],
+                  "StartID": "safe_top_level:S",
+                  "Type": "Line"
+                },
+                {
+                  "Targets": [
+                    "safe_top_level"
+                  ],
+                  "Type": "Horizontal"
+                },
+                {
+                  "Targets": [
+                    "safe_top_level:S",
+                    "proj_off_corner_TR"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "safe_top_level:E",
+                    "Y_AXIS"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "peak_on_safe_top",
+                  "Targets": [
+                    "roof_R:S",
+                    "safe_top_level:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "EndID": "peak_level_R:E",
+                  "ID": "peak_level_R",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325 - 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325 - 0.001"
+                    ],
+                    [
+                      "0.002",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325 - 0.001"
+                    ]
+                  ],
+                  "StartID": "peak_level_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "peak_rise_R:E",
+                  "ID": "peak_rise_R",
+                  "IsConstruction": true,
+                  "Points": [
+                    [
+                      "0.003",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325 - 0.001"
+                    ],
+                    [
+                      "0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 + (widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.325"
+                    ]
+                  ],
+                  "StartID": "peak_rise_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "Targets": [
+                    "peak_level_R"
+                  ],
+                  "Type": "Horizontal"
+                },
+                {
+                  "Targets": [
+                    "peak_rise_R"
+                  ],
+                  "Type": "Vertical"
+                },
+                {
+                  "Targets": [
+                    "peak_level_R:S",
+                    "roof_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "peak_level_R:E",
+                    "Y_AXIS"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "peak_rise_R:S",
+                    "peak_level_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "peak_rise_R:E",
+                    "roof_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "peak_45_equal",
+                  "Targets": [
+                    "peak_level_R",
+                    "peak_rise_R"
+                  ],
+                  "Type": "Equal"
+                },
+                {
+                  "Targets": [
+                    "bottom_edge:S",
+                    "proj_off_corner_BR"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "bottom_edge:E",
+                    "proj_off_corner_BL"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "horn_BR:S",
+                    "bottom_edge:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "horn_BL:S",
+                    "bottom_edge:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "ledge_R:S",
+                    "roof_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "ledge_R:E",
+                    "horn_TR:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "ledge_L:S",
+                    "horn_TL:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "ledge_L:E",
+                    "roof_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "peak_merge",
+                  "Targets": [
+                    "roof_R:S",
+                    "roof_L:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "EndID": "arc_shoulder_R:E",
+                  "ID": "arc_shoulder_R",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.476432",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.452856",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.099912"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.078992"
+                    ]
+                  ],
+                  "StartID": "arc_shoulder_R:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
+                  "Name": "seed_rad_shoulder_R",
+                  "Target": "arc_shoulder_R",
+                  "Type": "Radius"
+                },
+                {
+                  "EndID": "arc_waist_R:E",
+                  "ID": "arc_waist_R",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.071429"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.315446",
+                      "0"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.071429"
+                    ]
+                  ],
+                  "StartID": "arc_waist_R:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
+                  "Name": "seed_rad_waist_R",
+                  "Target": "arc_waist_R",
+                  "Type": "Radius"
+                },
+                {
+                  "EndID": "arc_hip_R:E",
+                  "ID": "arc_hip_R",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.079718"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.452856",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.100638"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.476432",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
+                    ]
+                  ],
+                  "StartID": "arc_hip_R:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
+                  "Name": "seed_rad_hip_R",
+                  "Target": "arc_hip_R",
+                  "Type": "Radius"
+                },
+                {
+                  "EndID": "arc_hip_L:E",
+                  "ID": "arc_hip_L",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.079718"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.452856",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.100638"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.476432",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.151146"
+                    ]
+                  ],
+                  "StartID": "arc_hip_L:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
+                  "Name": "seed_rad_hip_L",
+                  "Target": "arc_hip_L",
+                  "Type": "Radius"
+                },
+                {
+                  "EndID": "arc_waist_L:E",
+                  "ID": "arc_waist_L",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.071429"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.315446",
+                      "0"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.071429"
+                    ]
+                  ],
+                  "StartID": "arc_waist_L:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
+                  "Name": "seed_rad_waist_L",
+                  "Target": "arc_waist_L",
+                  "Type": "Radius"
+                },
+                {
+                  "EndID": "arc_shoulder_L:E",
+                  "ID": "arc_shoulder_L",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.476432",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.15042"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.452856",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.099912"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.395939",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.078992"
+                    ]
+                  ],
+                  "StartID": "arc_shoulder_L:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in))/14",
+                  "Name": "seed_rad_shoulder_L",
+                  "Target": "arc_shoulder_L",
+                  "Type": "Radius"
+                }
+              ],
+              "Name": "Silhouette",
+              "PhaseFile": "p02_03_loop.py",
+              "PhaseID": "p02_03_loop"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Targets": [
+                    "arc_waist_R:S",
+                    "arc_shoulder_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "arc_waist_R:E",
+                    "arc_hip_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "arc_waist_L:S",
+                    "arc_hip_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "arc_waist_L:E",
+                    "arc_shoulder_L:E"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "ArcChain",
+              "PhaseFile": "p02_04_chain.py",
+              "PhaseID": "p02_04_chain"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Name": "horn_tip_weld_TR",
+                  "Targets": [
+                    "horn_TR:E",
+                    "arc_shoulder_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "horn_tip_weld_BR",
+                  "Targets": [
+                    "horn_BR:E",
+                    "arc_hip_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "horn_tip_weld_TL",
+                  "Targets": [
+                    "horn_TL:E",
+                    "arc_shoulder_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "horn_tip_weld_BL",
+                  "Targets": [
+                    "horn_BL:E",
+                    "arc_hip_L:E"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "HornTips",
+              "PhaseFile": "p02_05_horns.py",
+              "PhaseID": "p02_05_horns"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Name": "waist_center_pin_R",
+                  "Targets": [
+                    "arc_waist_R:C",
+                    "skel_waist_pin_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "waist_center_pin_L",
+                  "Targets": [
+                    "arc_waist_L:C",
+                    "skel_waist_pin_L:E"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Waist Pins",
+              "PhaseFile": "p02_06_waist_pins.py",
+              "PhaseID": "p02_06_waist_pins"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Targets": [
+                    "arc_shoulder_R",
+                    "arc_waist_R"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_waist_R",
+                    "arc_hip_R"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_hip_L",
+                    "arc_waist_L"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_waist_L",
+                    "arc_shoulder_L"
+                  ],
+                  "Type": "Tangent"
+                }
+              ],
+              "Name": "ArcTangency",
+              "PhaseFile": "p02_07_tangency.py",
+              "PhaseID": "p02_07_tangency"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Targets": [
+                    "arc_shoulder_R",
+                    "horn_TR"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_shoulder_L",
+                    "horn_TL"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_hip_R",
+                    "horn_BR"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_hip_L",
+                    "horn_BL"
+                  ],
+                  "Type": "Tangent"
+                }
+              ],
+              "Name": "Horn Tangency",
+              "PhaseFile": "p02_08_horn_tangency.py",
+              "PhaseID": "p02_08_horn_tangency"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Name": "seed_rad_shoulder_R",
+                  "Type": "DeleteDimension"
+                },
+                {
+                  "Name": "seed_rad_waist_R",
+                  "Type": "DeleteDimension"
+                },
+                {
+                  "Name": "seed_rad_hip_R",
+                  "Type": "DeleteDimension"
+                },
+                {
+                  "Name": "seed_rad_shoulder_L",
+                  "Type": "DeleteDimension"
+                },
+                {
+                  "Name": "seed_rad_waist_L",
+                  "Type": "DeleteDimension"
+                },
+                {
+                  "Name": "seed_rad_hip_L",
+                  "Type": "DeleteDimension"
+                }
+              ],
+              "Name": "Radius Removal",
+              "PhaseFile": "p02_09_radius_removal.py",
+              "PhaseID": "p02_09_radius_removal"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "AllowNudge": true,
+                  "CK": "ck_arc_shoulder_weld",
+                  "Name": "shoulder_center_pin_R",
+                  "Targets": [
+                    "arc_shoulder_R:C",
+                    "skel_shoulder_pin_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "AllowNudge": true,
+                  "CK": "ck_arc_hip_weld",
+                  "Name": "hip_center_pin_R",
+                  "Targets": [
+                    "arc_hip_R:C",
+                    "skel_hip_pin_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Type": "Pulse"
+                },
+                {
+                  "AllowNudge": true,
+                  "CK": "ck_arc_shoulder_weld",
+                  "Name": "shoulder_center_pin_L",
+                  "Targets": [
+                    "arc_shoulder_L:C",
+                    "skel_shoulder_pin_L:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "AllowNudge": true,
+                  "CK": "ck_arc_hip_weld",
+                  "Name": "hip_center_pin_L",
+                  "Targets": [
+                    "arc_hip_L:C",
+                    "skel_hip_pin_L:E"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Welds",
+              "PhaseFile": "p02_10_welds.py",
+              "PhaseID": "p02_10_welds"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "CK": "ck_skel_shoulder_equal",
+                  "Name": "shoulder_equal",
+                  "Targets": [
+                    "skel_shoulder_pin_R",
+                    "skel_shoulder_pin_L"
+                  ],
+                  "Type": "Equal"
+                },
+                {
+                  "CK": "ck_skel_waist_equal",
+                  "Name": "waist_equal",
+                  "Targets": [
+                    "skel_waist_pin_R",
+                    "skel_waist_pin_L"
+                  ],
+                  "Type": "Equal"
+                },
+                {
+                  "Type": "Pulse"
+                }
+              ],
+              "Name": "Symmetry",
+              "PhaseFile": "p02_11_symmetry.py",
+              "PhaseID": "p02_11_symmetry"
+            }
+          ],
+          "Label": "Shape Outline",
+          "Name": "2_shape_outline",
+          "Parameters": [
+            {
+              "Category": "Constraints",
+              "Expose": true,
+              "Label": "Shoulder Arc Weld",
+              "Name": "ck_arc_shoulder_weld",
+              "Unit": "",
+              "Val": 1.0
+            },
+            {
+              "Category": "Constraints",
+              "Expose": true,
+              "Label": "Hip Arc Weld",
+              "Name": "ck_arc_hip_weld",
+              "Unit": "",
+              "Val": 1.0
+            },
+            {
+              "Category": "Constraints",
+              "Expose": true,
+              "Label": "Shoulder Skeleton Equal",
+              "Name": "ck_skel_shoulder_equal",
+              "Unit": "",
+              "Val": 1.0
+            },
+            {
+              "Category": "Constraints",
+              "Expose": true,
+              "Label": "Waist Skeleton Equal",
+              "Name": "ck_skel_waist_equal",
+              "Unit": "",
+              "Val": 1.0
+            }
+          ]
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Enclosure Projections",
+              "PhaseFile": "p03_01_encl_projs.py",
+              "PhaseID": "p03_01_encl_projs",
+              "Projections": [
+                {
+                  "SourceID": "roof_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_roof_R"
+                },
+                {
+                  "SourceID": "ledge_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_ledge_R"
+                },
+                {
+                  "SourceID": "horn_TR",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_horn_TR"
+                },
+                {
+                  "SourceID": "arc_shoulder_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_shoulder_R"
+                },
+                {
+                  "SourceID": "arc_waist_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_waist_R"
+                },
+                {
+                  "SourceID": "arc_hip_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_hip_R"
+                },
+                {
+                  "SourceID": "horn_BR",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_horn_BR"
+                },
+                {
+                  "SourceID": "bottom_edge",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_bottom_edge"
+                },
+                {
+                  "SourceID": "horn_BL",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_horn_BL"
+                },
+                {
+                  "SourceID": "arc_hip_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_hip_L"
+                },
+                {
+                  "SourceID": "arc_waist_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_waist_L"
+                },
+                {
+                  "SourceID": "arc_shoulder_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_shoulder_L"
+                },
+                {
+                  "SourceID": "horn_TL",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_horn_TL"
+                },
+                {
+                  "SourceID": "ledge_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_ledge_L"
+                },
+                {
+                  "SourceID": "roof_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_roof_L"
+                }
+              ]
+            },
+            {
+              "Name": "Enclosure Offset",
+              "PhaseFile": "p03_02_encl_offset.py",
+              "PhaseID": "p03_02_encl_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "frame_thickness",
+                  "SourceID": [
+                    "proj_roof_R",
+                    "proj_ledge_R",
+                    "proj_horn_TR",
+                    "proj_arc_shoulder_R",
+                    "proj_arc_waist_R",
+                    "proj_arc_hip_R",
+                    "proj_horn_BR",
+                    "proj_bottom_edge",
+                    "proj_horn_BL",
+                    "proj_arc_hip_L",
+                    "proj_arc_waist_L",
+                    "proj_arc_shoulder_L",
+                    "proj_horn_TL",
+                    "proj_ledge_L",
+                    "proj_roof_L"
+                  ],
+                  "TargetIDs": [
+                    "inner_proj_roof_R",
+                    "inner_proj_ledge_R",
+                    "inner_proj_horn_TR",
+                    "inner_proj_arc_shoulder_R",
+                    "inner_proj_arc_waist_R",
+                    "inner_proj_arc_hip_R",
+                    "inner_proj_horn_BR",
+                    "inner_proj_bottom_edge",
+                    "inner_proj_horn_BL",
+                    "inner_proj_arc_hip_L",
+                    "inner_proj_arc_waist_L",
+                    "inner_proj_arc_shoulder_L",
+                    "inner_proj_horn_TL",
+                    "inner_proj_ledge_L",
+                    "inner_proj_roof_L"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Corners": {
+                    "BL": {
+                      "Direction": [
+                        1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_horn_BL:S",
+                      "OuterID": "proj_horn_BL:S"
+                    },
+                    "BR": {
+                      "Direction": [
+                        -1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_bottom_edge:S",
+                      "OuterID": "proj_bottom_edge:S"
+                    },
+                    "peak": {
+                      "Direction": [
+                        0,
+                        -1.4142135623730951
+                      ],
+                      "InnerID": "inner_proj_roof_R:S",
+                      "OuterID": "proj_roof_R:S"
+                    },
+                    "shoulder_L": {
+                      "Direction": [
+                        1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_roof_L:S",
+                      "OuterID": "proj_roof_L:S"
+                    },
+                    "shoulder_R": {
+                      "Direction": [
+                        -1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_ledge_R:S",
+                      "OuterID": "proj_ledge_R:S"
+                    }
+                  },
+                  "Distance": "frame_thickness",
+                  "Tolerance": 0.05,
+                  "Type": "ResolveInnerCorners"
+                }
+              ],
+              "Name": "Inner Corner Resolve",
+              "PhaseFile": "p03_03_inner_corner_resolve.py",
+              "PhaseID": "p03_03_inner_corner_resolve"
+            },
+            {
+              "Miters": [
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_roof_R:S",
+                  "Target": "inner_proj_roof_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_ledge_R:S",
+                  "Target": "inner_proj_ledge_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_bottom_edge:S",
+                  "Target": "inner_proj_bottom_edge:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_horn_BL:S",
+                  "Target": "inner_proj_horn_BL:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_roof_L:S",
+                  "Target": "inner_proj_roof_L:S"
                 }
               ],
               "Name": "Enclosure Miters",

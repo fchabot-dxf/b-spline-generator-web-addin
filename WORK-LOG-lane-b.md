@@ -11040,3 +11040,115 @@ TOOLS\template-maker path + pytest cache files; branch fully merged) and 2026-04
 html/editor-ui.js, files that no longer exist; the feature now lives in editor/editor-expand-text.js,
 editor-expand-path.js and editor-fonts.js). The untracked `reference/svgcreator-deployed/` stays (cited by
 SE13/SE14 design docs and ROADMAP); it is now in .git/info/exclude so it stops showing as untracked.
+
+## 2026-09-30: T82 item 1 follow-up -- Template 7 reworked for Fred's reference sketch + a board-overflow fix
+
+**Ball: worker (seat B) - epoch 7 - T82.** CHANNEL NOTE, flagged not silently fixed: the FIRST build of this
+same item (same epoch, same ball) was logged to `WORK-LOG-fb-app.md` (`## T82 item 1 -- Template 7, Diamond-top
+Hourglass -- 2026-09-30`, line ~4040) instead of this file -- a channel mistake from earlier in this session,
+left as-is there (append-only; not this entry's place to edit another file). This entry is the follow-up, in
+the correct channel, and stands alone (it restates enough of the original design to be read without the other
+file, but see that entry for the original 45-45-90/N-bar derivation in full).
+
+**Two amendments arrived after the first build, both now absorbed:**
+
+1. **T82 item 1 REFERENCE** (Fred's own sketch, `template_sketches_2026-09-30.jpg`, bottom-right, viewed this
+   session): the diamond-top silhouette is NOT "Template 1's sides + a full-width peak" (the first build's own
+   literal reading) -- it has a short horizontal LEDGE where each roof line meets the curvy side, and the hips
+   FLARE OUTWARD to a base WIDER than the shoulders (bell-like). Handles approved: shoulder ledge width, waist
+   reach, waist height, hip flare (the shoulder/hip corner radii and the waist radius are no longer independent
+   T7 handles -- they keep their usual defaults).
+2. **A live screenshot bug report** (advisor session -54, relaying Fred's phone screenshot,
+   `frame_outside_canvas_2026-09-30.png`): "the diamond roof bars run above the board edge. The frame's outer
+   profile must equal the board outline, so the diamond apex sits ON the top edge of the board" -- the EXACT
+   overflow this session's own first build had already measured and disclosed (LIVE_CHECK.md section 0), now
+   confirmed live and required as a FIX, not a documented limitation.
+
+**The fix, in one sentence:** the peak is now PINNED to the safe zone's own top edge (`-hhDrawn`, exactly where
+every other template's own topmost point sits) instead of extending above it -- the roof's own rise comes OUT
+OF the horn's existing length (the horn gets shorter), never adds height past the board. Verified algebraically
+(the same 45-45-90 relationship, just measured from the ledge instead of the horn) and by direct measurement
+(`frameCutProfile`'s own sampled polygon stays inside `[0,W]x[0,H]` at 7x9, 12x6 and 5.51x1.97 -- the three
+golden sizes).
+
+**A SECOND overflow was found while fixing the first, not assumed away:** `hipFlare` (the new "wider base"
+mechanism, reusing `hourglassConstruction`'s own `side()` tangency algebra with a NEGATIVE inset, the mirror of
+how `topInset` narrows the top) pushed the widened base PAST the board's own left/right edge for a default
+value that looked reasonable in isolation (0.2 x hw) but ignored the ACTUAL available margin (`boundingboxoffset`,
+0.25 in by default on a 7 in board -- `region.x` in `frameCutProfile`'s own region construction). MEASURED: a
+first pass without the fix put the hip 0.4 in past a 7x9 board's own edge. Fixed by capping `hipFlare`'s own
+feasible range at that margin (`editor-shape-lattice-generator.js`'s own `hipFlare` range branch) -- the SAME
+"outer profile = board outline" rule, applied sideways. A related bug surfaced by the SAME fix: the cap's own
+formula could go slightly negative at `region.x=0` (a lattice/pattern-style region with no board margin at all),
+which would have excluded `hipFlare=0` -- the "no flare" default -- from its own feasible range; clamped with
+`Math.max(0, ...)` so the default is always reachable regardless of margin.
+
+**The shape's own segment layout grew from 13 to 15** (the flat top edge -> ledge, roof, roof, ledge instead of
+roof, roof): `TOP_PEAK_SEGMENT_COUNT` and `topPeakMirrorIndex` both updated (the new mirror table is simpler
+than the old one -- `14 - i` uniformly, no self-mirrored piece at all, since a ledge on each side is inherently
+a pair, unlike the old single flat top edge). `template_data.py`'s own `_OUTLINE`/`FRAME_CORNERS`/`FRAME_BARS`
+rebuilt to match: the ledge is WELDED to the curvy side (same physical bar, 6 pieces per side now, not 5), not
+its own bar -- Fred's own "5 bars" count is unchanged. The app's own `frameMiters` (purely geometric, unaware of
+the bar declaration) still draws a corner line at the ledge-to-horn weld (a real 90 deg kink in the drawn
+outline) alongside the 5 real bar-to-bar miters -- 7 visible corner lines, 5 real miters; documented in the
+test and in LIVE_CHECK.md rather than left as an unexplained discrepancy.
+
+**Both new params' own DEFAULTS are declared data, not hand-rolled constants:** `T7_SHOULDER_LEDGE_DEFAULT_OF_HW`
+(0.35) and `T7_HIP_FLARE_DEFAULT_OF_HW` (0.2) in `fb_engine/frame_definition.py`, encoded as fixed-fraction
+`shoulderLedge`/`hipFlare` features on T7's own inherited shape model, reaching the app via
+`paramsFromShapeModel` exactly like `topPeak` already does -- a one-line change each if Fred wants different
+proportions, not a rebuild. (`DERIVED_PARAM_DEFAULTS.hourglass`'s own `shoulderLedgeWidth`/`hipFlare` functions
+stay at a flat 0 -- the ONLY way Templates 1-6 stay byte-identical, since `hipFlare` feeds the SAME shared
+corner algebra every hourglass preset resolves through.)
+
+**Tests:** `tests/frame-template-7.test.js` fully rewritten (21 tests: declaration/handles/shapeModel, the
+board-bounds regression at all three golden sizes, the peak-pin regression, the hip-flare-margin regression,
+the 90 deg apex re-derivation, the ledge/rise relationship, hip-flare widening, the new 15-segment mirror
+table). `tests/frame-3d-sweep.test.js`'s own Template 7 exclusion REMOVED (it now passes the full sweep: 5
+board sizes x 3 bottoms x 3 sculpts, 8 assertions, all green) -- a strictly stronger confirmation than the
+dedicated test alone. MUTATION-TESTED both fixes directly (not just the surrounding tests): reverted the
+peak-pin to `-hhDrawn - roofRunR` (the old bug) -> 7 tests across both files went red; reverted the hip-flare
+cap to `Infinity` -> 4 tests went red, including the 3D sweep itself; both restored and reconfirmed clean
+(`diff` against a saved copy showed byte-identical restoration). Full suites green: 149 JS files / 2741 tests;
+Python 283 passed + 2 skipped (frame-builder), 89 passed (b-spline-gen). `gen_frame_defs.py --check`: fresh.
+
+**A/B check, re-run (this touches `hourglassConstruction`/`_solveHourglass`, shared by every hourglass-preset
+template):** a scratch worktree at lane-b's own HEAD (pre-rework) vs. the working tree. The GENERIC hourglass
+path (400 random param/region draws, no `topPeak`/`shoulderLedgeWidth`/`hipFlare` ever set) hashed BYTE
+IDENTICAL between the two trees. Per-template hashes for `template_1` through `template_6` (silhouette, inner
+profile, miters, handles, generated seeds, handle drags, across 5 board sizes) were ALSO byte identical;
+`template_7` itself differs, correctly (its own declaration did not exist yet at that HEAD at all -- the first
+build's own `frame-defs.json` regeneration was itself uncommitted work). `ab6.mjs`'s own range-key strip list
+extended (`shoulderLedgeWidth`, `hipFlare`, alongside the existing `topPeak`/`topDipWidth`/`topDipDepth`) so the
+two new additive keys don't register as a false hash mismatch. Scratch worktree removed after.
+
+**Shots:** a fresh `frame_tabs_shots.mjs` run (desktop, port 9352, a temporary `python -m http.server` on 8099,
+stopped after) -- `t7fix_frame-tab.png` reviewed directly: the diamond peak sits on the board's own top edge
+(no overflow), the ledges are visible on both sides, the waist pinches, and the base is visibly a touch wider
+than the shoulders (the hip flare, subtle at the default 0.25 in `boundingboxoffset` -- matches the
+architectural finding above, not a rendering miss). `errors: []`, `profileDrawn: true` on both tabs.
+
+**`LIVE_CHECK.md` rewritten**, not just amended: section 0 now documents BOTH bugs as found-and-fixed (not an
+open question any more), the shape's own new ledge/flare description, the updated handle list, the 7-vs-5
+corner-line note for whoever runs the live Fusion check, and a note that a normal 7x9 board is fine now (no
+longer "use a tall board").
+
+**Fusion phases updated for consistency** (still UNVERIFIED in real Fusion -- no bridge this seat, same
+situation as the first build): `p02_03_loop.py` rebuilt (ledge_R/ledge_L entities, a NEW `safe_top_level`
+construction line pinning the peak to `proj_off_corner_TR`'s own Y via a horizontal projection -- the Fusion
+counterpart of the JS-side `topEdgeY` fix, since nothing in the FIRST build's own constraint set actually tied
+the peak's absolute height to the safe zone at all, only its RELATIVE rise/run; Fusion's solver had evidently
+just settled near the seed, which is exactly how the overflow bug reproduced there too, by construction, not
+coincidence); `p02_01_projs.py`/`p02_02_anatomy.py` untouched (the TR/TL safe-zone projections were already
+there, unused by T7 until now); `p03_01/02/03/04_*.py` updated for the new 15-piece outline and the
+`shoulder_R`/`shoulder_L` corners' own new location (the roof/ledge junction, not the roof/horn junction).
+`frame_shape_fit.py`'s own `_diamond_top_hourglass` extractor needed NO logic change (its rise=run check
+already operates on `roof_R`'s own endpoints, which is still the right relationship either way) -- only its own
+doc comment, since it used to say "down to the horn's own start" and that's now the ledge instead.
+
+**Capacity:** another heavy turn (absorbing two real amendments mid-flight, one of them a reported LIVE bug,
+required reworking a meaningful fraction of the first build's own geometry -- not a redo, but not a small
+patch either) but finished cleanly in one wake: both bugs fixed and mutation-tested, the reference sketch's own
+shape matched (ledge + flare + a correctly-pinned peak), full test suites green, A/B re-confirmed, a fresh shot
+reviewed. The live Fusion check (LIVE_CHECK.md) remains the one thing this seat genuinely cannot do (no bridge)
+-- same disclosed limitation as the first build, not a new one.

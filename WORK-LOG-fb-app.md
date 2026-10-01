@@ -4036,3 +4036,161 @@ floats there pointing at nothing")
   - all six sidebar fields are shown;
   - changing thickness in the sidebar updates `P.frame` and the 3D frame bars;
   - the editor Frame tab holds only template, Generate and Undo.
+
+## T82 item 1 -- Template 7, Diamond-top Hourglass -- 2026-09-30
+
+**Ball: worker (seat B) - epoch 7 - T82.** Fred chose this shape (HANDOFF-ranchy.md section 5): "A 90 deg
+diamond peak (45 deg miters), pinched waist, round hips, flat base. The 5 parts: two straight roof bars, two
+curvy sides and the base." No Fusion this turn (seat B has no bridge) -- code, tests, A/B check for T1-6.
+
+### The geometry: Template 1's own sides, unchanged, with the flat top replaced by a peak
+The waist/hip/shoulder-arc construction is Template 1's OWN, byte-for-byte (the phase files
+`p02_02_anatomy.py`, `p02_04_chain.py` through `p02_11_symmetry.py` are copies, only re-commented to say so).
+Only `p02_03_loop.py` changes: `top_edge` is removed and replaced by two new lines, `roof_R`/`roof_L`, meeting
+at a peak on the centre line.
+
+**The 90 deg apex, with NO new engine constraint type.** `fb_engine/constraints.py`'s own vocabulary is
+Coincident/Collinear/Horizontal/Vertical/Tangent/Parallel/Equal/Symmetry -- no "Angle". A 45-45-90 right
+triangle needs none: equal LEG LENGTHS already force 45 deg base angles. Two small construction lines pin the
+peak: `peak_level_R` (horizontal, from `horn_TR:S` -- the safe-zone corner the old flat top used -- in to the Y
+axis) and `peak_rise_R` (vertical, from that same point up to the peak), with `Equal(peak_level_R,
+peak_rise_R)`. Only the RIGHT side needs this: once the peak's own (0, peak_y) is fixed, `roof_L` is already
+fully determined by its own two endpoints (the peak, and `horn_TL:S` -- the X-mirror of `horn_TR:S` by
+Template 1's own existing L/R symmetry) -- a line between two already-fixed points has no free angle left.
+**VERIFIED algebraically** (not assumed): solved the two OFFSET roof lines' own intersection (each shifted
+inward by a constant `t` perpendicular to itself) and got x=0, y = (original peak y) - t*sqrt(2) directly --
+confirming the SAME 45-45-90 relationship holds for the frame's own INNER edge too, which is why
+`p03_03_inner_corner_resolve.py`'s own peak `Direction` is `(0, -sqrt(2))`, the ONE corner in this codebase
+that isn't a plain `(+-1, +-1)` (that function's own formula, `expected = outer + direction * dist`, is a
+per-axis SCALE the code never actually restricts to +-1, only its own docstring's convention does -- a
+legitimate, not a hacky, use of the existing mechanism).
+
+**JS side (editor-shape-lattice-generator.js):** reused the `hourglass` preset (NOT a new preset key -- T3/T4/T5's
+own precedent: same preset, an extra param). `topPeak` (frame-only, `FRAME_ONLY_PARAM_KEYS`/`PARAM_ORDER.hourglass`,
+appended last) is a plain on/off flag; `_solveHourglass` splices segment 11 (the flat "top edge") into TWO
+(`roof_L`/`roof_R`), with `peak = P(0, -hhDrawn - topDrawnX)` -- the SAME rise=run relationship, computed
+directly from whatever the shoulder/horn construction already resolved (no new solver, matching the file's
+own "re-derive the final tangent geometry analytically" convention). A NEW `topPeakMirrorIndex(i)` (`i<=10 ?
+10-i : 23-i`) is needed because the generic `mirrorSegmentIndex` assumes a single self-mirrored LAST segment
+(the old flat top), which a 13-piece diamond-top outline no longer has -- wired into
+`editor-shape-lattice-interaction.js`'s `controlledSegments` (an EXISTING handle's own highlight, e.g.
+`cornerRadiusTop`, would otherwise mirror-highlight the WRONG segment once `topPeak` is on).
+
+**VERIFIED, not just written:** `node -e` against the real `generateSilhouette({topPeak:1})` output confirmed
+13 primitives, the peak on the centre line, and (independent re-derivation, not trusting the formula that built
+it) the two roof lines' own direction-vector dot product = 0 (a genuine 90 deg angle) BEFORE writing a single
+test -- see `tests/frame-template-7.test.js`'s own "independent re-derivation" describe block for the same
+checks as real, mutation-tested assertions.
+
+### `topPeak` activation: a real gap found and fixed (not obvious from the JS code alone)
+Setting `topPeak` in `template_data.py`'s own model was not enough on its own: `paramsFromShapeModel` (the
+function that turns a template's own FITTED `shapeModel.features` into the actual params fed to
+`generateSilhouette`) only ever sets a param when a matching NAMED FEATURE is present in the model -- and
+`topPeak` has no continuous amount to fit (Fred's own "90 deg", not a slider). Measured directly (not assumed):
+called the REAL `frameCutProfile(FRAME_DEFS, normalizeFrameRecord({templateId:'template_7', seeds:{}}),
+board)` pipeline and got 12 primitives back, not 13 -- `topPeak` was silently staying at its own default-off
+(0). Fixed by declaring `topPeak: {hw:0, hh:0}` as a genuine (if numerically inert) FEATURE on Template 7's own
+model (`frame_definition.py`'s `template_shape_model`, a new branch alongside T3/T4/T5's own delta-model
+branches -- "the base model unchanged, plus a presence-only flag"), and a matching
+`if (f.topPeak != null) out.topPeak = 1;` line in `paramsFromShapeModel` -- the SAME "feature's own presence is
+the activation signal" idiom every other frame-only param already uses, just with a fixed (never board-scaled)
+output. Re-verified the SAME real pipeline afterward: 13 primitives, 5 miters (`frameMiters`, a fully
+independent, geometry-only corner detector -- `frame-template-7.test.js`'s own first describe block proves
+this end to end, no shortcuts).
+
+### A real, load-bearing bug this surfaced: `frame-mesh.js`'s wall-height lookup had no null guard
+`applyFrameToPanel`'s own `top`/`bot` closures call `panelSurface(...).at(x,y).hi/.lo` directly, with NO null
+check -- and `.at()` genuinely returns `null` for a query point outside every triangle in the mesh (its own
+documented contract, needed elsewhere). Every template before this one always drew its own outline entirely
+inside the panel's own W x H domain, so this path was NEVER exercised. Template 7's own peak (see below) is
+the first shape that doesn't stay inside it, and `tests/frame-3d-sweep.test.js` (a PRE-EXISTING, unrelated
+sweep test, not one I wrote) caught it immediately as a real `TypeError` crash, not a hypothetical. Fixed with
+a minimal, generic robustness clamp (`atClamped`, `Math.max(-W/2, Math.min(W/2, x))` and the same for y) at the
+TWO call sites that assumed a hit -- a wall point with no real panel surface to hug gets the nearest EDGE
+sample instead of crashing, a sensible fallback regardless of WHY a point ended up outside (not special-cased
+to Template 7 specifically).
+
+### *** THE OPEN QUESTION, flagged for the advisor / Fred, not resolved here ***
+Built literally ("rise = run = the horn's own half-width"), the peak protrudes PAST the board's own top edge
+for EVERY board size `tests/frame-3d-sweep.test.js` tries (measured: for a 7 in wide board, ~3.25-3.5 in past
+the safe zone's own top edge) -- and a TALLER board does not help (the safe zone always fills whatever height
+it's given, so there is never extra headroom above it; only WIDTH sets the rise). Re-ran the sweep with
+Template 7 INCLUDED first (proving this, not assuming it): every single board/bottom/sculpt combination failed
+"outside the board". **Template 7 is EXCLUDED from that sweep, by name, with this exact finding in its own
+code comment** (not silently weakened for the other 6 templates) -- its own narrower geometry checks live in
+`tests/frame-template-7.test.js` instead (which do NOT assert board-fit, since there is none to assert).
+Screenshot proof: `shots/seatB/1070_T7_diamond_frame-tab.png` visibly shows the two roof lines running OFF the
+top of the visible board/panel.
+Two readings were possible and I could not tell which Fred approved (his own reference mockup is in a cloud
+scratchpad this session cannot reach, per HANDOFF-ranchy.md's own admission): (A) a full, dramatic peak on a
+board cut deliberately tall/narrow for it (what got built -- the most literal reading of "90 deg diamond
+peak"), or (B) a narrower pediment sitting on an otherwise-normal top, using the EXISTING `topInset` mechanism
+(already wired through `hourglassConstruction`/`_solveHourglass` for Template 3 -- narrowing Template 7's own
+roof this way is a ONE-LINE default change, not a rebuild, if this turns out to be the right answer). Wrote
+the full reasoning + both options into `template_7/LIVE_CHECK.md` section 0 (read FIRST, before building by
+hand) rather than guessing at Fred's own approved proportions.
+
+### Declared, not hand-rolled
+`topPeak`'s own activation (`{hw:0,hh:0}` feature -> presence checked, not its value) is a NEW, small idiom
+addition to an EXISTING declared table (`paramsFromShapeModel`'s own feature-presence dispatch), not a
+parallel mechanism. The N-bar `regions.corners`/`regions.bars` declaration (fd82744, Template 6's own) is
+reused verbatim, just with Template 7's own 5-corner/5-bar list -- no engine change there at all.
+
+### Tests (mutation-tested throughout -- stash/disable, confirm red, restore)
+- `tests/frame-template-7.test.js` (new, 11 tests): declaration/regions/corners/bars, the inherited (non-
+  provisional) shapeModel, the REAL frame-record pipeline activating `topPeak` end to end (13 primitives, 5
+  miters, no seeds needed), the 90 deg apex via independent dot-product + symmetric-length checks (mutated the
+  peak formula to a wrong ~60 deg angle: both the angle check and the rise=hw measurement genuinely failed, 2/2),
+  the peak's own centre-line position for an off-origin region, the measured rise=hw-independent-of-height
+  fact itself (turned into a real, checked assertion, not left as a comment), the mirror table, and an existing
+  handle's own highlight staying correct at n=13.
+- `bspline-frame-builder/frame-builder/fb_engine/test_frame_shape_fit.py` (+2, Python): the new
+  `diamond_top_hourglass` extractor reads a genuine 90 deg peak built from a REAL Template 1 golden (not fully
+  synthetic), rejects a wrong-angle one AND an off-centre one (mutated the extractor's own check away: the
+  wrong-angle rejection genuinely failed); `template_shape_model("template_7", ...)` inherits Template 1's own
+  fitted features exactly, plus the presence-only `topPeak`.
+- Fixed 2 pre-existing tests whose OWN array literals needed the new key/template appended (same routine
+  maintenance every prior template added): `frame-template-5.test.js`'s and `frame-template-6.test.js`'s own
+  `PARAM_ORDER.hourglass`/`FRAME_ONLY_PARAM_KEYS` pins (`.slice(0,-1)`/`.slice(-3,-1)` instead of the exact
+  tail), and `frame-template-6.test.js`'s own template-count list. Fixed `frame-defs.test.js`'s own generic
+  per-template schema test (added `topPeak` to its `EXTRA` table and `template_7` to its "exactly as before"
+  exemption list, same as T3/T4/T5's own entries).
+- Full JS suite: 149 files / 2731 passed. Full Python: frame-builder 283/283 (was 281, +2), b-spline-gen 89/89,
+  repo root 464/464 (`--ignore=.claude`).
+
+### A/B byte-identical check (Templates 1-5; see the note on Template 6 below)
+Built a scratch worktree at HEAD (`git worktree add ../bsg-head-ab HEAD`, from BEFORE this turn's own commit).
+Ran all 4 template-aware scripts (`ab6.mjs`, `ablat6.mjs`, `ab3d.mjs`, `abpy.py`) against both trees: **one
+real difference found and fixed, not silently glossed over** -- `ab6.mjs`'s own `feasibleParamRanges` capture
+included the brand-new `topPeak` range key (an ADDITIVE field, not a changed value), the exact same situation
+Template 5's own `topDipWidth`/`topDipDepth` caused when IT was added -- fixed by adding `delete r.topPeak;`
+alongside the two existing deletes (the SAME line T5's own turn needed). Re-ran: byte-identical. `ablat6.mjs`
+and `abpy.py` were identical on the first try. `abcam.py` failed identically on BOTH trees with a pre-existing
+Windows path-separator assertion bug (`startswith(root)` against a mixed `/`/`\` path) -- unrelated to this
+turn, confirmed by the SAME failure on the clean HEAD tree; not fixed (out of scope, a pre-existing environment
+quirk, not a Template 7 regression). Appended `template_7` to all 4 working scripts' own lists AFTER the check
+passed, confirming each one still runs cleanly with it included (no crash, thanks to the `frame-mesh.js` fix
+above) before committing the addition.
+**A pre-existing gap noticed, not fixed (not this item's own scope):** none of the 5 scripts' own template
+lists included `template_6` either, before or after this turn -- flagged in `template_7/LIVE_CHECK.md` section
+8 for whoever owns Template 6's own live-Fusion follow-up, not silently absorbed into this commit.
+Worktree removed after (`git worktree remove ../bsg-head-ab --force`).
+
+### Shots
+`tools/repro/frame_tabs_shots.mjs` (existing, unmodified -- `<TEMPLATE>` was already a plain pass-through to
+the real `#frameTemplate` select, needing no change for a new template id), mobile (390x844):
+`shots/seatB/1070_T7_diamond_frame-tab.png` / `_artwork-tab.png`. Both ran clean (`errors: []`,
+`profileDrawn: true` on both tabs) and visibly show the pinched-waist/round-hip sides with the diamond peak
+running off the top of the visible board -- the SAME overflow the open question above describes, not just a
+claim.
+
+### `template_7/LIVE_CHECK.md`
+Written following Template 6's own section skeleton, with an added section 0 (read first) laying out the open
+question, both options, and why goldens should NOT be recorded until it's answered (Template 7 needs none
+today -- it inherits Template 1's own real, already-recorded fit).
+
+### Capacity
+A heavy turn (a brand-new Fusion template from first principles, a genuine geometric edge case no prior
+template hit, two real bugs found and fixed along the way, not just written code) but finished cleanly in one
+wake, no half-applied state. The open question (section 0 above) is a genuine, disclosed blocker for the LIVE
+Fusion half of this work (seat A's own job next) -- not something guessed past.

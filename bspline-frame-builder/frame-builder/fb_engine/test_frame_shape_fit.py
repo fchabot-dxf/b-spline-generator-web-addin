@@ -15,6 +15,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from fb_engine import frame_shape_fit as fsf  # noqa: E402
+from fb_engine import frame_definition as fd  # noqa: E402
 from fb_engine.frame_definition import template_shape_model  # noqa: E402
 from fb_engine.template_resolver import resolve_template  # noqa: E402
 
@@ -348,3 +349,64 @@ def test_template_6_is_fitted_once_goldens_exist(tmp_path):
     a, h = m["features"]["tabHalfWidth"], m["features"]["tabHeight"]
     assert a["hw"] == pytest.approx(0.45, abs=1e-6) and a["hh"] == pytest.approx(0, abs=1e-6)
     assert h["hh"] == pytest.approx(0.4, abs=1e-6) and h["hw"] == pytest.approx(0, abs=1e-6)
+
+
+def _diamond_roof(g, rise_of_run=1.0):
+    """A Template 1 golden with its own flat `top_edge` replaced by a synthetic `roof_R`/`roof_L` pair: each
+    runs from its own top horn's own corner (`horn_TR`/`horn_TL`'s own `start`, UNCHANGED) up to a peak on the
+    centre line, at `rise_of_run` x the horn's own half-width above it (1.0 = a genuine 90 deg apex; any other
+    value is deliberately WRONG, to prove the extractor's own validation actually checks it, not just reads
+    whatever two points it is given)."""
+    g = copy.deepcopy(g)
+    c = g["sketch2_shape_outline"]
+    hTR, hTL = c["horn_TR"]["start"], c["horn_TL"]["start"]
+    run = hTR[0]
+    peak = [0.0, hTR[1] + rise_of_run * run]
+    c["roof_R"] = {"construction": False, "type": "line", "start": list(peak), "end": list(hTR)}
+    c["roof_L"] = {"construction": False, "type": "line", "start": list(hTL), "end": list(peak)}
+    del c["top_edge"]
+    return g
+
+
+def test_the_diamond_top_extractor_reads_a_genuine_90_deg_peak_and_rejects_a_wrong_one():
+    for size in _SIZES:
+        base = _golden("template_1", size)
+        hw, hh = fsf._safe_half(base["meta"])
+        g_ok = _diamond_roof(base, rise_of_run=1.0)
+        ok, f = fsf.FEATURE_EXTRACTORS["diamond_top_hourglass"](g_ok["sketch2_shape_outline"], hw, hh)
+        assert ok, size
+        # the SAME features Template 1's own extractor reads (the sides are unchanged) -- non-vacuous: this is
+        # not just "ok is always True", the feature VALUES genuinely come from the (unchanged) side geometry
+        ok1, f1 = fsf.FEATURE_EXTRACTORS["hourglass"](base["sketch2_shape_outline"], hw, hh)
+        assert ok1 and f == f1
+        # a wrong apex (not rise = run) is REJECTED, proving the check is real
+        g_bad = _diamond_roof(base, rise_of_run=0.5)
+        ok_bad, _ = fsf.FEATURE_EXTRACTORS["diamond_top_hourglass"](g_bad["sketch2_shape_outline"], hw, hh)
+        assert not ok_bad, size
+        # an off-centre peak is ALSO rejected (the two roof lines must actually meet on the centre line)
+        g_off = _diamond_roof(base, rise_of_run=1.0)
+        g_off["sketch2_shape_outline"]["roof_R"]["start"][0] += 0.2
+        ok_off, _ = fsf.FEATURE_EXTRACTORS["diamond_top_hourglass"](g_off["sketch2_shape_outline"], hw, hh)
+        assert not ok_off, size
+
+
+def test_template_7_inherits_template_1s_own_fitted_model_plus_a_presence_only_topPeak_feature():
+    """T7 DIAMOND-TOP HOURGLASS needs no goldens of its own: `{"from": "template_1"}` (no extra key) asks for
+    Template 1's own model UNCHANGED, plus `topPeak`/`shoulderLedge`/`hipFlare` (frame_definition.py's own
+    template_shape_model doc comment) -- the EXISTING goldens already in _GOLDENS (recorded for Template 1)
+    are enough."""
+    t1_frame = resolve_template("template_1")[0]["Frame"]
+    t1_model = template_shape_model("template_1", t1_frame, _GOLDENS)
+    t7_frame = resolve_template("template_7")[0]["Frame"]
+    m = template_shape_model("template_7", t7_frame, _GOLDENS)
+    assert m is not None
+    assert m["provisional"] is None if "provisional" in m else True  # a REAL fit, not a provisional stub
+    for name in ("cornerR", "depth", "notch", "waistCy", "waistR"):
+        assert m["features"][name] == t1_model["features"][name]
+    assert m["features"]["topPeak"] == {"hw": 0, "hh": 0}
+    # shoulderLedge/hipFlare carry T7's own default proportions (fd.T7_SHOULDER_LEDGE_DEFAULT_OF_HW /
+    # T7_HIP_FLARE_DEFAULT_OF_HW), encoded as the feature's `hw` coefficient (paramsFromShapeModel's own
+    # `f.name / hw` round-trips it back to that exact fraction).
+    assert m["features"]["shoulderLedge"] == {"hw": fd.T7_SHOULDER_LEDGE_DEFAULT_OF_HW, "hh": 0}
+    assert m["features"]["hipFlare"] == {"hw": fd.T7_HIP_FLARE_DEFAULT_OF_HW, "hh": 0}
+    assert m["fit"]["fittedFrom"] == t1_model["fit"]["fittedFrom"]  # the SAME fit report, not re-derived

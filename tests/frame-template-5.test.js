@@ -79,7 +79,10 @@ describe('no dip set: Template 1, bit for bit', () => {
   });
 
   it('PARAM_ORDER keeps every earlier key at its old index (the [Generate] salt); the dip keys come last', () => {
-    expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
+    // T7 DIAMOND-TOP HOURGLASS appended 'topPeak', then 'shoulderLedgeWidth', 'hipFlare' after the dip keys --
+    // this test's own name ("come last") is now historical (T5's own turn); the dip keys' own index is still
+    // unmoved, which is what matters.
+    expect(PARAM_ORDER.hourglass.slice(0, -3)).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
       'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth']);
   });
 });

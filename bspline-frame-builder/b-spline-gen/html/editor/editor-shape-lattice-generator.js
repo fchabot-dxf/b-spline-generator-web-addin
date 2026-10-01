@@ -170,8 +170,17 @@ export const PARAM_ORDER = {
   // earlier key keeps its index), and after every radius they read (the radii stay shared L/R).
   // T5 HOURGLASS DIPPED TOP: the top dip's half width and depth come LAST again (every earlier key keeps its
   // index); the width before the depth, whose range reads it.
+  // T7 DIAMOND-TOP HOURGLASS: `topPeak` comes last again (every earlier key keeps its index) -- a frame-only
+  // flag (FRAME_ONLY_PARAM_KEYS), 0 = the flat Template 1 top (default), 1 = the diamond peak. No amount to
+  // drag: the peak's own height is fully DERIVED (see _solveHourglass's own doc comment on the 45-45-90
+  // construction), never an independent handle, so it needs no seeded-jitter range beyond a plain [0, 1] flag.
+  // `shoulderLedgeWidth`/`hipFlare` come after it (Fred's reference sketch, T82 item 1 REFERENCE amendment:
+  // "a short horizontal ledge where each roof bar meets the side", "hips that FLARE OUTWARD down to a wider
+  // flat base") -- both frame-only (FRAME_ONLY_PARAM_KEYS), both default to 0 (see DERIVED_PARAM_DEFAULTS'
+  // own doc comment on each) so Templates 1-6 stay byte-identical; T7's own nonzero defaults come from its
+  // shapeModel via paramsFromShapeModel, not from here.
   hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset',
-    'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth'],
+    'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'topPeak', 'shoulderLedgeWidth', 'hipFlare'],
   bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
   // T6 TAB TOP (frame-only preset): the tab's half width, then its height (both frame-only keys, FRAME_ONLY_PARAM_KEYS).
   tabTop: ['tabWidth', 'tabHeight'],
@@ -225,6 +234,21 @@ export const DERIVED_PARAM_DEFAULTS = {
     // `topDip`). Frame-only params (FRAME_ONLY_PARAM_KEYS).
     topDipWidth: () => TOP_DIP_DEFAULT_WIDTH,
     topDipDepth: () => 0,
+    // T7 DIAMOND-TOP HOURGLASS (Fred: "a 90 deg diamond peak"): default 0 = NO peak, the flat Template 1 top,
+    // bit for bit. Frame-only (FRAME_ONLY_PARAM_KEYS): never in SHAPE_PARAM_KEYS, never a Fusion user parameter
+    // (the peak has no free amount to drive one with -- see _solveHourglass).
+    topPeak: () => 0,
+    // T7 DIAMOND-TOP HOURGLASS (reference sketch): the shoulder ledge's own width, a fraction of hw. Default 0
+    // = no ledge (read only inside _solveHourglass's own `topPeak` branch, so 0 is safe for every other
+    // template regardless). T7's own nonzero default is declared in frame_definition.py's
+    // T7_SHOULDER_LEDGE_DEFAULT_OF_HW and reaches here via paramsFromShapeModel, never through this fallback.
+    shoulderLedgeWidth: () => 0,
+    // T7 DIAMOND-TOP HOURGLASS (reference sketch): how much wider the base is than the shoulders, a fraction
+    // of hw. Default 0 = Template 1's own symmetric hip (hourglassConstruction's own `bot` corner, SHARED by
+    // every hourglass preset -- this default must stay 0 or Templates 1-6 stop being byte-identical). T7's own
+    // nonzero default is declared in frame_definition.py's T7_HIP_FLARE_DEFAULT_OF_HW and reaches here via
+    // paramsFromShapeModel, never through this fallback.
+    hipFlare: () => 0,
   },
   bottle: { bodyRadius: (v) => 1 - v.skeletonX },
   // T6 TAB TOP: every param has a plain default (no seeded jitter: a frame always sets both from its model).
@@ -243,7 +267,7 @@ const EPS_FRAC = 1e-3;
 /** T3 TAPERED HOURGLASS: resolved params that only a FRAME template sets. The Shape Lattice never offers them and
  *  its Fusion manifest never sends them (editor-sketch-manifest.js; Fred's rule: no new parameters). */
 export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth',
-  'tabWidth', 'tabHeight']);
+  'tabWidth', 'tabHeight', 'topPeak', 'shoulderLedgeWidth', 'hipFlare']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -284,6 +308,26 @@ export function topDipDepthForRadius(a, rMin) {
   return a >= 2 * rMin ? Infinity : 2 * rMin - Math.sqrt(4 * rMin * rMin - a * a);
 }
 
+/**
+ * T7 DIAMOND-TOP HOURGLASS (reference sketch, template_sketches_2026-09-30.jpg, bottom-right: "a 90 deg
+ * diamond peak (two straight roof bars), a short horizontal ledge where each roof bar meets the side"): the
+ * flat top edge (segment 11 of Template 1's own 12) is replaced by four straight segments -- a ledge stub, the
+ * left roof line, the right roof line, and its own mirror ledge stub -- meeting at a peak on the centre line,
+ * each roof line at 45 deg off vertical (a 90 deg apex, bisected 45/45 -- ROADMAP.md's own "any corner angle
+ * works, the miter bisects it"). The peak's own height above the ledge is that ledge's own horizontal run
+ * (rise = run: a 45-45-90 right triangle), so the peak needs no independent parameter of its own -- see
+ * _solveHourglass's own construction. The outline then has 15 segments: Template 1's 0..10 unchanged, 11 left
+ * ledge (lTop -> ledgeInnerL), 12 left roof (ledgeInnerL -> peak), 13 right roof (peak -> ledgeInnerR), 14
+ * right ledge (ledgeInnerR -> rTop) (the flat top edge, segment 11, is what they replace).
+ */
+export const TOP_PEAK_SEGMENT_COUNT = 15;
+/** T7: the mirror of segment `i` of the 15-segment diamond-top outline (the sides as Template 1, the new top
+ *  four pair ledge<->ledge and roof<->roof, 11 <-> 14 and 12 <-> 13 -- no self-mirrored piece at the top any
+ *  more, unlike the old single flat top edge: a ledge on each side is inherently a pair). */
+export function topPeakMirrorIndex(i) {
+  return i <= 10 ? 10 - i : 25 - i;
+}
+
 /** Narrow [lo, hi] by a geometric bound; if the geometry leaves no room
  *  inside the base range, validity wins (min = max = the geometric bound). */
 function _range(lo, hi, geoLo = -Infinity, geoHi = Infinity) {
@@ -302,6 +346,54 @@ function _hourglassRange(key, region, stroke, v) {
   if (key === 'topInset') return _range(0, Infinity, -Infinity, v.waistReach - EPS_FRAC);
   if (key === 'waistCenterYLeft' || key === 'waistReachLeft') return _hourglassLeftRange(key, region, stroke, v);
   if (key === 'topDipWidth' || key === 'topDipDepth') return _topDipRange(key, region, stroke, v);
+  // T7 DIAMOND-TOP HOURGLASS: a plain on/off flag, no geometry-dependent bound (the peak's own height is
+  // derived, never independently clamped -- see _solveHourglass).
+  if (key === 'topPeak') return _range(0, 1);
+  // T7 DIAMOND-TOP HOURGLASS: the ledge's own width has TWO bounds. Upper: it must leave a positive roof run
+  // (topDrawnX - ledgeW > 0, _solveHourglass's own `roofRunR`), else the peak construction degenerates (rise =
+  // run = 0). Lower: since the peak is pinned to the board's own top edge (topEdgeY's own doc comment in
+  // _solveHourglass), the roof's own rise comes OUT OF the horn's existing length (shoulderY - (-hhDrawn)) --
+  // a ledge too narrow gives a roof run bigger than the horn has to spare, so the horn would need to go
+  // negative (or below its own usual floor, HORN_MIN_OF_HALF_HEIGHT). Both bounds read the RIGHT side's own
+  // shoulderY, computed the same way `side()` does (cornerRadiusTop/waistRadius/waistReach/waistCenterY/
+  // topInset are all resolved earlier in PARAM_ORDER, so `v` already carries them here).
+  if (key === 'shoulderLedgeWidth') {
+    const topInset = hw * (v.topInset ?? DERIVED_PARAM_DEFAULTS.hourglass.topInset(v));
+    const topDrawnX = (hw - stroke) - topInset;
+    const wcy = hh * v.waistCenterY;
+    const depthV = hw * v.waistReach;
+    const rTopV = hw * (v.cornerRadiusTop ?? DERIVED_PARAM_DEFAULTS.hourglass.cornerRadiusTop(v));
+    const rwV = hw * (v.waistRadius ?? DERIVED_PARAM_DEFAULTS.hourglass.waistRadius(v));
+    const S = rTopV + rwV, d = depthV - topInset;
+    const dy = Math.sqrt(Math.max(0, d * (2 * S - d)));
+    const shoulderY = wcy - dy;
+    const hornLen = shoulderY + (hh - stroke);
+    const hornFloor = HORN_MIN_OF_HALF_HEIGHT * hh;
+    return _range(0, 1, (topDrawnX - hornLen + hornFloor) / hw, topDrawnX / hw - EPS_FRAC);
+  }
+  // T7 DIAMOND-TOP HOURGLASS: the hip's own `d = depth + hipFlare*hw` (hourglassConstruction's own `side`,
+  // inset = -hipFlare*hw) must stay <= 2S (S = bottom corner radius + waist radius) for a real tangency (the
+  // same keyhole bound cornerRadiusBottom's own range reads below, solved for hipFlare instead of the radius).
+  // SECOND, TIGHTER bound (MEASURED, not assumed: a first pass without it put the hip 0.4 in past a 7x9
+  // board's own edge): "the outer profile must equal the board outline" (Fred, 2026-09-30, the same rule that
+  // pinned the peak) applies here too -- `region` is the SAFE ZONE inset from the true board edge by
+  // `boundingboxoffset` on every side (frameCutProfile's own `region = {x: bbo, y: bbo, ...}`), so `region.x`
+  // IS that margin, symmetric left and right. hipFlare is the one param that deliberately draws OUTSIDE the
+  // safe zone's own edge (that is the whole point of a flare), so it may use AT MOST that margin, never more
+  // -- a bound this function can read only because hipFlare is FRAME-ONLY (a Shape Lattice/pattern caller,
+  // where `region.x` means something else entirely, never sets it above 0 in the first place).
+  if (key === 'hipFlare') {
+    const depth = hw * v.waistReach;
+    const rBottom = hw * (v.cornerRadiusBottom ?? DERIVED_PARAM_DEFAULTS.hourglass.cornerRadiusBottom(v));
+    const rw = hw * (v.waistRadius ?? DERIVED_PARAM_DEFAULTS.hourglass.waistRadius(v));
+    const S = rBottom + rw;
+    const tangencyHi = (2 * S - depth) / hw - EPS_FRAC;
+    // hipFlare=0 (no flare at all) must ALWAYS be feasible regardless of margin -- a zero-margin region
+    // (region.x=0, e.g. boundingboxoffset=0) would otherwise push this bound slightly NEGATIVE and exclude
+    // the default itself (MEASURED: found via a test that set hipFlare explicitly to 0 and got -0.001 back).
+    const boardHi = Math.max(0, (region.x - stroke) / hw - EPS_FRAC);
+    return _range(0, 1, -Infinity, Math.min(tangencyHi, boardHi));
+  }
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // F12: each corner has its OWN vertical room (y-down: a lower waist leaves
     // more above it): its arc centre may not rise above the top (sink below
@@ -516,6 +608,18 @@ export function paramsFromShapeModel(preset, model, region) {
   // dip's half width (centre line -> the stub's end) and its depth below the top edge.
   if (f.topDipHalfWidth != null) out.topDipWidth = f.topDipHalfWidth / hw;
   if (f.topDipDepth != null) out.topDipDepth = f.topDipDepth / hh;
+  // T7 DIAMOND-TOP HOURGLASS: `topPeak` has no continuous amount of its own (frame_definition.py's own
+  // `template_shape_model` declares it as a fixed {hw:0, hh:0} feature) -- its PRESENCE in the model is the
+  // signal (the same "this template's own model carries this feature" idiom every branch above already
+  // uses), turned into a fixed on/off 1, never a board-scaled value. `shoulderLedge`/`hipFlare` DO carry a
+  // real fraction-of-hw value (frame_definition.py's own T7_SHOULDER_LEDGE_DEFAULT_OF_HW /
+  // T7_HIP_FLARE_DEFAULT_OF_HW, encoded as the feature's `hw` coefficient) -- this is the ONLY path either
+  // ever gets a nonzero value: DERIVED_PARAM_DEFAULTS.hourglass defaults both to 0 (shoulderLedgeWidth is
+  // read only inside _solveHourglass's own `topPeak` branch, but hipFlare feeds the SHARED corner algebra
+  // every hourglass preset resolves through, so it must default to 0 for Templates 1-6 to stay byte-identical).
+  if (f.topPeak != null) out.topPeak = 1;
+  if (f.shoulderLedge != null) out.shoulderLedgeWidth = f.shoulderLedge / hw;
+  if (f.hipFlare != null) out.hipFlare = f.hipFlare / hw;
   return out;
 }
 
@@ -632,7 +736,13 @@ export function hourglassConstruction(region, resolved) {
     return { r, S, d, dy, cx: hw - inset - r, y: waistCenterY + sign * dy, ux: (S - d) / S, uy: dy / S };
   };
   const top = side(resolved.cornerRadiusTop ?? D.cornerRadiusTop(resolved), -1, topInset);
-  const bot = side(resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved), +1, 0);
+  // T7 DIAMOND-TOP HOURGLASS: the hip's own `hipFlare` (reference sketch: hips that "FLARE OUTWARD down to a
+  // wider flat base") is topInset's own mechanism run backwards -- a NEGATIVE inset pushes the bottom corner's
+  // centre OUTWARD by `hipFlare` instead of a positive one pulling the top corner in, so `side`'s existing
+  // tangency algebra (unchanged) produces a wider hip/base, still exactly tangent to the now-wider vertical
+  // horn (see _solveHourglass's own `bottomDrawnX`, the bottom's counterpart to `topDrawnX` above).
+  const hipFlare = hw * (resolved.hipFlare ?? D.hipFlare(resolved));
+  const bot = side(resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved), +1, -hipFlare);
   // T4 OFFSET HOURGLASS: the LEFT side's own construction (in mirrored local coordinates: +x = outward), only
   // when a left pinch is set: the same algebra at its own height and depth, every radius the right side's.
   // Absent (Template 1-3, the Shape Lattice): no `left`, the left side is the exact mirror of this one.
@@ -645,6 +755,7 @@ export function hourglassConstruction(region, resolved) {
     cornerRadiusTop: resolved.cornerRadiusTop ?? D.cornerRadiusTop(resolved),
     cornerRadiusBottom: resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved),
     topInset: resolved.topInset ?? D.topInset(resolved),
+    hipFlare: resolved.hipFlare ?? D.hipFlare(resolved),
   }) : undefined;
   // T5 HOURGLASS DIPPED TOP: the top dip (see TOP_DIP_SEGMENT_COUNT), only when a depth is set (> 0); absent
   // (Templates 1-4, the Shape Lattice): no `topDip`, the flat top edge.
@@ -660,6 +771,7 @@ export function hourglassConstruction(region, resolved) {
     ...(topDip ? { topDip } : {}),
     hw, hh, depth, radiusWaist, waistCenterY, waistCx,
     topInset, topX: hw - topInset, // T3: the top horns' x (hw for Template 1)
+    hipFlare, bottomX: hw + hipFlare, // T7: the bottom horns'/base's own x (hw for Templates 1-6)
     waistX: hw - depth, // the pinch's innermost x
     cornerRadiusTop: top.r, cornerRadiusBottom: bot.r, cornerRadius: top.r,
     shoulderCx: top.cx, shoulderY: top.y, hipCx: bot.cx, hipY: bot.y, notchHalfSpan: top.dy,
@@ -875,7 +987,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // while above the declared floor; below it the centres separate and the
   // arcs stay externally tangent instead of going negative (Fred's loop).
   const { hw, hh, cornerRadiusTop, cornerRadiusBottom, radiusWaist, shoulderCx, shoulderY, hipCx, hipY,
-    ux, uy, uxBottom, uyBottom, waistMajor, topInset, left, topDip } = hourglassConstruction(region, resolvedAll);
+    ux, uy, uxBottom, uyBottom, waistMajor, topInset, hipFlare, left, topDip } = hourglassConstruction(region, resolvedAll);
   // T4 OFFSET HOURGLASS: the left side from its own construction (the right one's when no left pinch is set).
   const L = left || { shoulderCx, shoulderY, hipCx, hipY, ux, uy, uxBottom, uyBottom, waistMajor };
 
@@ -887,25 +999,40 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const hwDrawn = hw - strokeHalfWidth;
   const hhDrawn = hh - strokeHalfWidth;
   const topDrawnX = hwDrawn - topInset; // T3: the top horns' drawn x (hwDrawn exactly when topInset is 0)
+  const bottomDrawnX = hwDrawn + hipFlare; // T7: the bottom horns'/base's own drawn x (hwDrawn when hipFlare is 0)
+
+  // T7 DIAMOND-TOP HOURGLASS (Fred, 2026-09-30, after a live screenshot showed the peak above the board: "the
+  // frame's outer profile must equal the board outline, so the diamond apex sits ON the top edge of the
+  // board"): the peak is PINNED at -hhDrawn, same as every other template's own topmost point -- it can never
+  // protrude past the board again, by construction, not by a clamp. The roof's own rise then eats INTO the
+  // horn's existing length from the top instead of adding height above it: the horn/shoulder/waist/hip
+  // geometry below it is entirely untouched (Template 1's own, still), only the horn's own TOP endpoint moves
+  // down from -hhDrawn to `topEdgeY`. Absent (topPeak off): roofRunR = 0, topEdgeY = -hhDrawn, bit for bit.
+  let roofRunR = 0;
+  if (resolvedAll.topPeak) {
+    const ledgeW = hw * (resolvedAll.shoulderLedgeWidth ?? DERIVED_PARAM_DEFAULTS.hourglass.shoulderLedgeWidth(resolvedAll));
+    roofRunR = topDrawnX - ledgeW; // the roof's own horizontal run = its own vertical rise (45-45-90)
+  }
+  const topEdgeY = -hhDrawn + roofRunR;
 
   const P = (x, y) => ({ x: cx0 + x, y: cy0 + y }); // local (right-positive, Y-down) -> world
   const M = (x, y) => ({ x: cx0 - x, y: cy0 + y }); // mirrored (left side)
 
   // Right side, top -> bottom.
-  const rTop = P(topDrawnX, -hhDrawn);
+  const rTop = P(topDrawnX, topEdgeY);
   const rShoulderHorn = P(topDrawnX, shoulderY);
   // Tangent junctions lie on the centre line, the drawn radius out from each centre.
   const rShoulderWaistJct = P(shoulderCx + topDrawn * ux, shoulderY + topDrawn * uy);
   const rWaistHipJct = P(hipCx + bottomDrawn * uxBottom, hipY - bottomDrawn * uyBottom);
-  const rHipHorn = P(hwDrawn, hipY);
-  const rBottom = P(hwDrawn, hhDrawn);
+  const rHipHorn = P(bottomDrawnX, hipY);
+  const rBottom = P(bottomDrawnX, hhDrawn);
   // Left side (the mirror of its own construction `L`: exactly the right side's unless T4 sets a left pinch), bottom -> top.
-  const lBottom = M(hwDrawn, hhDrawn);
-  const lHipHorn = M(hwDrawn, L.hipY);
+  const lBottom = M(bottomDrawnX, hhDrawn);
+  const lHipHorn = M(bottomDrawnX, L.hipY);
   const lWaistHipJct = M(L.hipCx + bottomDrawn * L.uxBottom, L.hipY - bottomDrawn * L.uyBottom);
   const lShoulderWaistJct = M(L.shoulderCx + topDrawn * L.ux, L.shoulderY + topDrawn * L.uy);
   const lShoulderHorn = M(topDrawnX, L.shoulderY);
-  const lTop = M(topDrawnX, -hhDrawn);
+  const lTop = M(topDrawnX, topEdgeY);
 
   const keypoints = [
     rTop, rShoulderHorn, rShoulderWaistJct, rWaistHipJct, rHipHorn, rBottom,
@@ -950,6 +1077,23 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
       _curveSegment(rDipJct, rDipStart, rsDrawn, true, false, true), // right top shoulder, convex
       STRAIGHT_SEGMENT); // right stub: rDipStart -> rTop
     mirror = fresh.map((_, i) => topDipMirrorIndex(i));
+  } else if (resolvedAll.topPeak) {
+    // T7 DIAMOND-TOP HOURGLASS (reference sketch, template_sketches_2026-09-30.jpg, bottom-right): the flat
+    // top edge (segment 11) becomes, left to right: a short horizontal LEDGE stub (lTop -> the roof's own
+    // start), the left roof line, the right roof line, and its own mirror ledge stub (the roof's own end ->
+    // rTop). THE 90 DEG APEX: each roof line's own horizontal run is `roofRunR` (computed above, before
+    // rTop/lTop, since it also sets their own Y); rise = run (a 45-45-90 right triangle) gives exactly a 90
+    // deg apex, bisected 45/45 by its own miter -- PINNED at the board's own top edge (peakY = -hhDrawn, see
+    // `topEdgeY`'s own doc comment above: the roof's rise comes out of the horn's length, never adds above it).
+    const ledgeInnerR = P(roofRunR, topEdgeY), ledgeInnerL = M(roofRunR, topEdgeY);
+    const peak = P(0, -hhDrawn);
+    keypoints.push(ledgeInnerL, peak, ledgeInnerR);
+    fresh.splice(11, 1,
+      STRAIGHT_SEGMENT, // left ledge: lTop -> ledgeInnerL
+      STRAIGHT_SEGMENT, // left roof: ledgeInnerL -> peak
+      STRAIGHT_SEGMENT, // right roof: peak -> ledgeInnerR
+      STRAIGHT_SEGMENT); // right ledge: ledgeInnerR -> rTop
+    mirror = fresh.map((_, i) => topPeakMirrorIndex(i));
   }
   const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
 

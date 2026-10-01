@@ -58,8 +58,9 @@ describe('Template 6: listing and declaration', () => {
   it('is listed as "6. Tab Top", the frame-only tabTop preset, no new parameter, 8 bars', () => {
     expect(T6.name).toBe('Template 6 - Tab Top');
     expect(frameLabel(T6)).toBe('6. Tab Top');
+    // T7 DIAMOND-TOP HOURGLASS added a 7th template after this one.
     expect(FRAME_DEFS.templates.map(frameLabel)).toEqual(['1. Hourglass', '2. Narrow Neck', '3. Tapered Hourglass',
-      '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top']);
+      '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top', '7. Diamond-top Hourglass']);
     expect(T6.silhouettePreset).toBe('tabTop');
     expect(PRESETS.tabTop.frameOnly).toBe(true);
     expect(T6.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset', 'frame_thickness']);
@@ -384,9 +385,12 @@ describe('Shape Lattice "from frame" follows the 8-corner contour', () => {
 
 describe('the Shape Lattice and Templates 1-5 never get the tab', () => {
   it('frame-only keys, appended last; the hourglass / bottle orders are untouched', () => {
-    expect(FRAME_ONLY_PARAM_KEYS.slice(-2)).toEqual(TAB);
+    // T7 DIAMOND-TOP HOURGLASS appended 'topPeak', 'shoulderLedgeWidth', 'hipFlare' after the tab keys -- this
+    // test's own name ("appended last") is now historical (T6's own turn); the tab keys' own two-in-a-row
+    // placement is what matters.
+    expect(FRAME_ONLY_PARAM_KEYS.slice(-5, -3)).toEqual(TAB);
     expect(PARAM_ORDER.tabTop).toEqual(TAB);
-    expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
+    expect(PARAM_ORDER.hourglass.slice(0, -3)).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
       'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth']);
     expect(PARAM_ORDER.bottle).toEqual(['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius']);
     for (const k of TAB) {

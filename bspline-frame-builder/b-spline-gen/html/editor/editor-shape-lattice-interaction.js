@@ -48,7 +48,7 @@
  */
 import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
-  TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction,
+  TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, TOP_PEAK_SEGMENT_COUNT, topPeakMirrorIndex,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -486,6 +486,10 @@ export function hitTestArcGrip(handles, pt, tolerance) {
  *   the LEFT waist, and highlight only it: LEFT_ONLY_KEYS.)
  *   T5 dipped top (16 segments: 0..10 as above, 11 stub(L), 12 top shoulder(L), 13 DIP, 14 TOP SHOULDER,
  *   15 stub): `topDipDepth` maps to 13 (the dip), `topDipWidth` to 14 (the right top shoulder, mirror 12).
+ *   T7 diamond top (15 segments: 0..10 as above, 11 LEDGE(L), 12 roof(L), 13 roof(R), 14 LEDGE(R)):
+ *   `shoulderLedgeWidth` maps to 14 (the right ledge, mirror 11); `hipFlare` widens the bottom horn/base it
+ *   already shares with Template 1, so it maps to 4 (the right bottom horn, mirror 6) like `topInset` maps to
+ *   the right TOP horn (0) for the same reason.
  *   bottle:    0 horn, 1 NECK/WAIST, 2 HIP/BODY, 3 horn, 4 bottom edge,
  *              5 horn, 6 hip/body(L), 7 neck/waist(L), 8 horn, 9 top edge.
  * `waistCenterY` repositions the pinch itself (shoulderY/hipY are BOTH
@@ -497,7 +501,7 @@ export function hitTestArcGrip(handles, pt, tolerance) {
  */
 export const HANDLE_SEGMENT_INDEX = {
   hourglass: { cornerRadiusTop: 1, waistReach: 2, cornerRadiusBottom: 3, waistCenterY: 2, waistRadius: 2, topInset: 0,
-    waistCenterYLeft: 8, waistReachLeft: 8, topDipDepth: 13, topDipWidth: 14 },
+    waistCenterYLeft: 8, waistReachLeft: 8, topDipDepth: 13, topDipWidth: 14, shoulderLedgeWidth: 14, hipFlare: 4 },
   bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2 },
   // T6 TAB TOP (8 pieces: 0 tab side R, 1 shoulder R, 2 side R, 3 base, 4 side L, 5 shoulder L, 6 tab side L,
   // 7 tab top): the width moves the tab sides, the height the shoulders (each with its mirror, mirrorSegmentIndex).
@@ -566,7 +570,13 @@ export function controlledSegments(preset, key, n) {
   const i = HANDLE_SEGMENT_INDEX[preset]?.[key];
   if (i == null || !(n > 0)) return [];
   if (LEFT_ONLY_KEYS.has(key)) return [i];
-  // T5 HOURGLASS DIPPED TOP: the 16-segment dipped outline mirrors by its own table (topDipMirrorIndex)
-  const m = preset === 'hourglass' && n === TOP_DIP_SEGMENT_COUNT ? topDipMirrorIndex(i) : mirrorSegmentIndex(i, n);
+  // T5 HOURGLASS DIPPED TOP: the 16-segment dipped outline mirrors by its own table (topDipMirrorIndex).
+  // T7 DIAMOND-TOP HOURGLASS: the 15-segment diamond-top outline mirrors by its own table (topPeakMirrorIndex)
+  // -- an existing handle (cornerRadiusTop, waistReach, ...) still indexes into 0..10 unchanged, but the
+  // GENERIC mirrorSegmentIndex(i, 15) would pair it wrong (it assumes a single self-mirrored LAST segment,
+  // which the diamond top no longer has -- see topPeakMirrorIndex's own doc comment).
+  const m = preset === 'hourglass' && n === TOP_DIP_SEGMENT_COUNT ? topDipMirrorIndex(i)
+    : preset === 'hourglass' && n === TOP_PEAK_SEGMENT_COUNT ? topPeakMirrorIndex(i)
+      : mirrorSegmentIndex(i, n);
   return m === i ? [i] : [i, m];
 }

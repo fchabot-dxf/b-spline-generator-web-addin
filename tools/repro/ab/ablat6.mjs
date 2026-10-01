@@ -20,7 +20,7 @@ const run = (prims) => {
       }
 };
 const parsed = (ps) => B.insetGeneratedPresetPathDToPrimitives(G.joinSegmentPathsIntoClosedD(ps.map((p) => G.primitiveToPathD(p))), 0);
-for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5'])
+for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_7'])
   for (const [W, Hh] of [[7, 9], [12, 6], [9, 12], [8, 8]])
     for (const d of [0, 0.25, 0.6]) {
       const sil = C.frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: id }), board: { widthIn: W, heightIn: Hh } }, d, 0.25);

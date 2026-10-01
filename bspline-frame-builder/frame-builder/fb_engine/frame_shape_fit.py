@@ -154,9 +154,29 @@ def _tab_top(curves, hw, hh, tol=2e-3):
     }
 
 
+def _diamond_top_hourglass(curves, hw, hh, tol=2e-3):
+    """T7 DIAMOND-TOP HOURGLASS: Template 1's own sides/waist/hip (the SAME features, no new ones -- the peak
+    has nothing of its own to fit, see template_7/template_data.py's own module doc comment), plus validation
+    that the roof/peak actually built the 45-45-90 relationship the phases (p02_03_loop.py) ask for: the peak
+    sits on the centre line, and each roof line's own rise equals its own run (measured from the peak down to
+    where the roof meets its own shoulder ledge, `roof_R`/`roof_L` in the recorded golden's own curve dict --
+    NOT all the way to the horn's own start any more: the reference-sketch amendment inserted a ledge between
+    them, but the rise/run relationship the roof line itself must satisfy is unchanged either way)."""
+    ok, feats = _hourglass(curves, hw, hh, tol)
+    roof_r, roof_l = curves["roof_R"], curves["roof_L"]
+    # By the phases' own declared StartID/EndID (p02_03_loop.py): roof_R runs peak -> ledge_R (its own start),
+    # roof_L runs ledge_L (its own end) -> peak (the SAME :S/:E convention every other outline piece already uses).
+    peak, horn_r = roof_r["start"], roof_r["end"]
+    horn_l, peak_l = roof_l["start"], roof_l["end"]
+    ok = (ok and abs(peak[0]) < tol and abs(peak_l[0] - peak[0]) < tol and abs(peak_l[1] - peak[1]) < tol
+          and abs((peak[1] - horn_r[1]) - (horn_r[0] - peak[0])) < tol  # right: rise == run
+          and abs((peak[1] - horn_l[1]) - (peak[0] - horn_l[0])) < tol)  # left: rise == run (mirrored)
+    return ok, feats
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
-                      "tab_top": _tab_top}
+                      "tab_top": _tab_top, "diamond_top_hourglass": _diamond_top_hourglass}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):

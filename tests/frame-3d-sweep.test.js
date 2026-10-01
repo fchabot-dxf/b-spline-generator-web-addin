@@ -36,6 +36,18 @@ describe('sweep: every bar is valid', () => {
     let checked = 0;
     const bad = [];
     for (const tpl of FRAME_DEFS.templates) {
+      // T7 DIAMOND-TOP HOURGLASS: no longer excluded here (was, until the board-overflow bug it exposed was
+      // fixed). MEASURED, not assumed: an earlier build put the peak's own rise ABOVE the board's own top edge
+      // for every board size this sweep tries (confirmed by running it unexcluded: every case failed "outside
+      // the board") -- Fred saw the SAME bug live (a phone screenshot of this sweep's own real-world
+      // counterpart, the app's 3D preview) and named the rule this sweep already enforces: "the frame's outer
+      // profile must equal the board outline". Fixed by pinning the peak to the safe zone's own top edge
+      // (editor-shape-lattice-generator.js's own `topEdgeY`) instead of letting its rise extend past it, and
+      // capping `hipFlare` at the boundingboxoffset margin so the widened base can't do the same thing
+      // sideways (that fix found and closed a SECOND real overflow, past the board's own LEFT/RIGHT edge, this
+      // sweep's own `Math.abs(x) > W/2` check below would have caught too). Dedicated, narrower T7 geometry
+      // checks (the 45-45-90 apex, the ledge, the mirror table, the board-bounds regression itself) live in
+      // tests/frame-template-7.test.js.
       for (const [W, H] of BOARDS) {
         for (const z0 of BOTTOMS) {
           for (const [sname, f] of Object.entries(SCULPTS)) {
