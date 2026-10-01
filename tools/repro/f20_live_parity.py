@@ -5,8 +5,8 @@
 import json, os, sys, math
 import adsk.core, adsk.fusion
 
-SP = r'C:\Users\danse\AppData\Local\Temp\claude\c--Users-danse-APPS-b-spline-generator-web-addin\5b27ea4a-07e7-4af1-a081-b1c20a1c2fd1\scratchpad\f20'
-PARITY = r'C:\Users\danse\APPS\b-spline-generator-web-addin-fb-app\tools\repro\record_frame_parity.py'
+SP = r'C:\Users\danse\AppData\Local\Temp\claude\c--Users-danse-APPS-b-spline-generator-web-addin\4670a598-bbb6-4719-b490-cb8e4b2a824a\scratchpad\f20'
+PARITY = r'C:\Users\danse\APPS\b-spline-generator-web-addin\tools\repro\record_frame_parity.py'
 CM = 2.54
 CORNER = ('arc_shoulder_R', 'arc_shoulder_L', 'arc_hip_R', 'arc_hip_L',
           'skel_shoulder_pin_R', 'skel_shoulder_pin_L', 'skel_hip_pin_R', 'skel_hip_pin_L')

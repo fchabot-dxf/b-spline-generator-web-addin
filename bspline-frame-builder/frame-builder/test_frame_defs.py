@@ -452,7 +452,9 @@ def test_template_6_is_an_8_bar_tab_top(defs):
     # the seed map: one line per piece, the app's tabTop primitive order (tab side R = 0 ... tab top = 7)
     assert {e["id"]: e["prim"] for e in t6["seedMap"]} == {c: (i - 1) % 8 for i, c in enumerate(_T6_PIECES)}
     assert all(e["kind"] == "line" and e["reverse"] is False for e in t6["seedMap"])
-    assert t6["shapeModel"]["provisional"] and set(t6["shapeModel"]["features"]) == {"tabHalfWidth", "tabHeight"}
+    # H23 item 4: the provisional shim is retired -- t6's shapeModel is now fitted from live Fusion goldens.
+    assert "provisional" not in t6["shapeModel"] and set(t6["shapeModel"]["features"]) == {"tabHalfWidth", "tabHeight"}
+    assert t6["shapeModel"]["fit"]["fittedFrom"] == ["12x6", "5.51x1.97", "7x9"] and t6["shapeModel"]["fit"]["excluded"] == []
     # Templates 1-5 (and 8, also 4-bar) declare no corners / bars (the 4-bar default)
     for tid in ("template_1", "template_2", "template_3", "template_4", "template_5", "template_8"):
         assert "corners" not in t[tid]["regions"] and "bars" not in t[tid]["regions"]

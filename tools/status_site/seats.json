@@ -12,7 +12,7 @@
       "branch": "main",
       "task": "NEXT-SESSION.md",
       "checkout": "",
-      "session": "b-spline-generator-web-addin-b1"
+      "session": "b-spline-generator-web-addin-af"
     },
     {
       "key": "seatB",
@@ -21,7 +21,7 @@
       "branch": "lane-b",
       "task": "NEXT-SESSION-lane-b.md",
       "checkout": "-lane-b",
-      "session": "b-spline-generator-web-addin-51"
+      "session": "b-spline-generator-web-addin-66"
     },
     {
       "key": "seatC",
@@ -30,7 +30,7 @@
       "branch": "fb-app",
       "task": "NEXT-SESSION-fb-app.md",
       "checkout": "-fb-app",
-      "session": "b-spline-generator-web-addin-6d"
+      "session": "b-spline-generator-web-addin-de"
     }
   ]
 }

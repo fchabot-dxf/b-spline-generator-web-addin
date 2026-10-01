@@ -93,10 +93,14 @@ describe('Template 4: the offset pinches', () => {
     expect(T4.regions).toEqual(T1.regions);
     expect(T4.seedMap).toEqual(T1.seedMap);
     expect(T4.params).toEqual(T1.params); // no new parameter
-    expect(T4.shapeModel.provisional).toBeTruthy();
+    // H23 item 2: the provisional shim is retired -- T4 now has its own shapeModel
+    // fitted from live Fusion goldens (all 3 golden sizes were valid for its extractor).
+    expect(T4.shapeModel.provisional).toBeUndefined();
+    expect(T4.shapeModel.fit.fittedFrom).toEqual(['12x6', '5.51x1.97', '7x9']);
+    expect(T4.shapeModel.fit.excluded).toEqual([]);
   });
 
-  it.each(BOARDS)('%dx%d: the provisional shape is a clean frame, left pinch clearly higher than the right, full-width top and base', (W, H) => {
+  it.each(BOARDS)('%dx%d: the shape is a clean frame, left pinch clearly higher than the right, full-width top and base', (W, H) => {
     const prof = profile('template_4', {}, W, H);
     expect(prof.primitives.length).toBe(12);
     expect(prof.defects).toEqual([]);

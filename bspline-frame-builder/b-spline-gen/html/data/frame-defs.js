@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "5acde3731309c8e85cfd5f5197599def2f84ade3d5d6f32d33d3977f83d6c724",
+  "sourceHash": "d7e54b8f4091b107479dd0f875f4b222be10e18bd148ae50c7ee456824e239f2",
   "templates": [
     {
       "features": [
@@ -3184,72 +3184,83 @@ export default {
       "shapeModel": {
         "features": {
           "cornerR": {
-            "hh": 0.142066,
-            "hw": 0.005992
+            "hh": 0.074944,
+            "hw": 0.09259
+          },
+          "cornerRBottom": {
+            "hh": 0.074944,
+            "hw": 0.09259
+          },
+          "cornerRTop": {
+            "hh": 0.1491,
+            "hw": 0.003076
           },
           "depth": {
-            "hh": 0.106231,
-            "hw": 0.185089
+            "hh": -0.103278,
+            "hw": 0.443821
           },
           "notch": {
-            "hh": 0.305363,
-            "hw": -0.007805
+            "hh": 0.302447,
+            "hw": -0.010384
           },
           "topInset": {
-            "hh": 0.074362,
-            "hw": 0.129562
+            "hh": -0.172345,
+            "hw": 0.446193
           },
           "waistCy": {
-            "hh": -0.009779,
-            "hw": 0.01363
+            "hh": -0.001581,
+            "hw": 0.003803
           },
           "waistR": {
-            "hh": 0.147077,
-            "hw": 0.016953
+            "hh": 0.135434,
+            "hw": 0.02686
           }
         },
         "fit": {
-          "exactAtFittedSizes": false,
-          "excluded": [],
+          "exactAtFittedSizes": true,
+          "excluded": [
+            "5.51x1.97"
+          ],
           "fittedFrom": [
             "12x6",
-            "5.51x1.97",
             "7x9"
           ],
-          "maxResidualIn": 0.0832,
+          "maxResidualIn": 0.0,
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
           "residualsIn": {
             "cornerR": [
-              0.0093,
-              -0.0174,
-              -0.003
+              -0.0,
+              -0.0
+            ],
+            "cornerRBottom": [
+              -0.0,
+              -0.0
+            ],
+            "cornerRTop": [
+              0.0,
+              0.0
             ],
             "depth": [
-              -0.0443,
-              0.0832,
-              0.0143
+              0.0,
+              0.0
             ],
             "notch": [
-              0.0236,
-              -0.0443,
-              -0.0076
+              -0.0,
+              -0.0
+            ],
+            "topInset": [
+              0.0,
+              0.0
             ],
             "waistCy": [
-              -0.0069,
-              0.013,
-              0.0022
+              0.0,
+              -0.0
             ],
             "waistR": [
-              0.0051,
-              -0.0096,
-              -0.0016
+              -0.0,
+              -0.0
             ]
           }
-        },
-        "provisional": {
-          "baseModel": "the fitted Template 1 model",
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-          "topInsetOfDepth": 0.7
         }
       },
       "silhouettePreset": "hourglass",
@@ -4808,36 +4819,36 @@ export default {
       "shapeModel": {
         "features": {
           "cornerR": {
-            "hh": 0.142066,
-            "hw": 0.005992
+            "hh": 0.145571,
+            "hw": 0.006523
           },
           "depth": {
-            "hh": 0.106231,
-            "hw": 0.185089
+            "hh": 0.123267,
+            "hw": 0.144067
           },
           "depthLeft": {
-            "hh": 0.106231,
-            "hw": 0.185089
+            "hh": 0.118328,
+            "hw": 0.154871
           },
           "notch": {
-            "hh": 0.305363,
-            "hw": -0.007805
+            "hh": 0.2915,
+            "hw": 0.001143
           },
           "notchLeft": {
-            "hh": 0.305363,
-            "hw": -0.007805
+            "hh": 0.297936,
+            "hw": -0.005876
           },
           "waistCy": {
-            "hh": 0.190221,
-            "hw": 0.01363
+            "hh": 0.194856,
+            "hw": 0.005944
           },
           "waistCyLeft": {
-            "hh": -0.209779,
-            "hw": 0.01363
+            "hh": -0.237435,
+            "hw": 0.053707
           },
           "waistR": {
-            "hh": 0.147077,
-            "hw": 0.016953
+            "hh": 0.145571,
+            "hw": 0.006523
           }
         },
         "fit": {
@@ -4848,7 +4859,7 @@ export default {
             "5.51x1.97",
             "7x9"
           ],
-          "maxResidualIn": 0.0832,
+          "maxResidualIn": 0.0733,
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
           "residualsIn": {
             "cornerR": [
@@ -4857,31 +4868,41 @@ export default {
               -0.003
             ],
             "depth": [
-              -0.0443,
-              0.0832,
-              0.0143
+              -0.0297,
+              0.0557,
+              0.0096
+            ],
+            "depthLeft": [
+              -0.0244,
+              0.0458,
+              0.0079
             ],
             "notch": [
-              0.0236,
-              -0.0443,
-              -0.0076
+              0.0213,
+              -0.04,
+              -0.0069
+            ],
+            "notchLeft": [
+              0.0188,
+              -0.0353,
+              -0.0061
             ],
             "waistCy": [
-              -0.0069,
-              0.013,
-              0.0022
+              0.016,
+              -0.0301,
+              -0.0052
+            ],
+            "waistCyLeft": [
+              -0.0391,
+              0.0733,
+              0.0126
             ],
             "waistR": [
-              0.0051,
-              -0.0096,
-              -0.0016
+              0.0093,
+              -0.0174,
+              -0.003
             ]
           }
-        },
-        "provisional": {
-          "baseModel": "the fitted Template 1 model",
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-          "waistOffsetOfHh": 0.2
         }
       },
       "silhouettePreset": "hourglass",
@@ -8312,27 +8333,36 @@ export default {
       "shapeModel": {
         "features": {
           "tabHalfWidth": {
-            "hh": 0.0,
-            "hw": 0.5
+            "hh": 0.026411,
+            "hw": 0.456397
           },
           "tabHeight": {
-            "hh": 0.5,
-            "hw": 0.0
+            "hh": 0.55653,
+            "hw": -0.064483
           }
         },
         "fit": {
           "exactAtFittedSizes": false,
           "excluded": [],
-          "fittedFrom": [],
-          "maxResidualIn": null,
+          "fittedFrom": [
+            "12x6",
+            "5.51x1.97",
+            "7x9"
+          ],
+          "maxResidualIn": 0.1718,
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
-          "residualsIn": {}
-        },
-        "provisional": {
-          "baseModel": null,
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-          "tabHalfWidthOfHw": 0.5,
-          "tabHeightOfHh": 0.5
+          "residualsIn": {
+            "tabHalfWidth": [
+              0.0902,
+              -0.1692,
+              -0.0291
+            ],
+            "tabHeight": [
+              -0.0915,
+              0.1718,
+              0.0295
+            ]
+          }
         }
       },
       "silhouettePreset": "tabTop",
