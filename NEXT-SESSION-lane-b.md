@@ -1,22 +1,24 @@
-# NEXT (lane-b) — T81 item 5: yellow highlight stays after moving a tie
+# NEXT (lane-b) — T81 item 6: can't select a contour segment
 
-**Ball: worker (seat B) · epoch 9 · T81 item 5.** T82 item 3 follow-up ACCEPTED (f5d79d0) — exactly right: code change
-matches intent precisely (plain `spec.frameBottomZ` constant, same as the main frame's own call), comment updated
-accurately, mutation-tested (2 tests red on the old bug, 27 stay green), and the new screenshot confirms it visually —
-flat bottom, terrain-following top. Spot-checked independently (full gate, not just this item): vitest 2932/0 failed,
-pytest 406+91+594/0 failed, gen_frame_defs --check clean. **Merged lane-b into main (43886cb)** — Template 7 and the
-inset window fix are both on main now. Good find and write-up on the http.server zombie process too (saved to project
-memory) — that curl-diff-against-disk instinct is exactly right when a result looks like a regression but might not be.
+**Ball: worker (seat B) · epoch 9 · T81 item 6.** T81 item 5 ACCEPTED (1e204e9) — good root-causing: traced the orphan
+to a LATER feature (item 7's `pruneAfterRailStretch`) interacting with an EARLIER, still-correct fix, not a flaw in
+either one alone — read the original fix in full before touching anything, rather than assuming it was wrong. Fix is a
+clean liveness check reusing an existing pattern (`editor-grid.js`'s own `_connected()`), not a new mechanism.
+Reproduced first, mutation-tested after (2 red on revert, 31 stay green). Spot-checked independently: vitest 2934/0
+failed. Screenshot confirms it visually — rail shortened, no orphaned halo anywhere. Honest about the Shape Lattice
+screenshot script hanging (not root-caused, noted rather than hidden) — not blocking, the fix itself is still proven
+for Shape Lattice via the mutation-tested unit coverage.
 
-## This task: T81 item 5 (priority bug, from the backlog — T83/Template 11 still waits on a diagram, not scheduled yet)
-- [T81-item-5] PRIORITY BUG: YELLOW HIGHLIGHT STAYS AFTER MOVING A TIE (Fred: "the yellow highlight is persistent even
-  after I released a moved tie"). REPRODUCE with real pointer events (mouse and touch): drag a tie (rect Lattice and
-  Shape Lattice), release; identify which overlay is yellow (drag/snap/target highlight, rail-slide guide, selection
-  halo, hover...) and why it survives pointerup (likely a missing clear on pointerup/pointercancel/lostpointercapture,
-  or an early-return path that skips cleanup). Fix at the cause: every drag-time overlay is cleared by ONE end-of-drag
-  cleanup that runs on every exit path (up, cancel, lost capture, Esc, drag aborted by a no-op move). The selection
-  halo that is MEANT to stay while the tie is selected is fine — say which one it is, don't remove it. Test: after
-  release, no drag overlay nodes remain (each exit path). Before/after shots to shots\seatB\. Commit as 'T81 item 5: ...'.
+## This task: T81 item 6 (priority bug, from the backlog — T83/Template 11 still waits on a diagram, not scheduled yet)
+- [T81-item-6] PRIORITY BUG: CAN'T SELECT A CONTOUR SEGMENT (Fred: "I can't seem to select contour segment"). Per-segment
+  colour (Selected piece panel, scissors recolour) depends on it. REPRODUCE with real pointer events (mouse + touch) in
+  Shape Lattice AND rect Lattice, with the lattice [Select] icon tool AND the main Select tool: click on a contour
+  segment (line and arc, on the stroke centre and near its edge, with rails/ties/nodes crossing nearby). Find the cause:
+  hit-test order (rails/ties/nodes or the boundary guide/shape handles grabbing the pointer first), the contour not
+  being in the selectable set, a hit-area thinner than the drawn stroke, or pointer-events on the contour group. Fix: a
+  click anywhere on the drawn contour stroke selects THAT segment (Selected piece panel shows it; colour works),
+  without breaking rail/tie/node/handle picking where they overlap (declare the pick priority once). Test: clicking
+  each segment kind selects it. Commit as 'T81 item 6: ...'.
 - After this: T81 item 6 (can't select a contour segment) is next in the backlog if you finish with room to spare.
 - **INSET WINDOW 3D: SHOW THE SUBFRAME** (Fred, phone shot from the BOTTOM view: shots/fred/inset_window_3d_no_frame_2026-10-01.png:
   "inset window doesn't show a frame in 3D"). The design's "never add the window bars to the 3D scene" was a misreading of
