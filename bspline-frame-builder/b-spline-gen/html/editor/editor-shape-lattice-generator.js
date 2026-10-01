@@ -204,9 +204,15 @@ export const PARAM_ORDER = {
   // and the arch's own tangent at their shared point (100-130 deg, soft, never near the 180 deg tangent-join
   // the old free-rise T10 used, which built wrong in Fusion) -- `archRise` (the sagitta) is now DERIVED from it
   // and the top half-width inside hourglassConstruction, not resolved as its own param any more.
+  // F30 item 3 (Fred's own taper copies): `taperAngle` resolved LAST of ALL (after archCornerAngle -- every
+  // earlier key, including it, keeps its index): the upper side (above the pinch) leans by this many degrees
+  // from vertical, +in/-out (see hourglassConstruction's own taper doc comment). A frame-only key, like every
+  // other param this far down the list.
   hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset',
-    'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archCornerAngle'],
-  bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
+    'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archCornerAngle', 'taperAngle'],
+  // F30 item 3: `taperAngle` resolved last here too, same meaning, the SAME shared construction applied to the
+  // neck's own concave tangency instead of the shoulder's convex one (bottleConstruction's own taper doc comment).
+  bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius', 'taperAngle'],
   // T6 TAB TOP (frame-only preset): the tab's half width, then its height (both frame-only keys, FRAME_ONLY_PARAM_KEYS).
   tabTop: ['tabWidth', 'tabHeight'],
   // T8 DIPPED TOP + LEFT-ONLY WAVE (frame-only preset): the wave's height then reach (waveCornerRadius/waveRadius
@@ -274,8 +280,15 @@ export const DERIVED_PARAM_DEFAULTS = {
     // `_archRiseFromCornerAngle`) -- the flat Template 1 top, bit for bit (hourglassConstruction `arch`). A
     // frame-only param (FRAME_ONLY_PARAM_KEYS); T10 itself always sets an explicit 100-130 deg value.
     archCornerAngle: () => 90,
+    // F30 item 3 (Fred's own taper copies): the upper side's own lean, degrees from vertical, +in/-out. Default
+    // 0 = perfectly vertical, the flat Template 1 side, bit for bit. A frame-only param; the taper copies always
+    // set an explicit value (default 8, Fred's own call).
+    taperAngle: () => 0,
   },
-  bottle: { bodyRadius: (v) => 1 - v.skeletonX },
+  bottle: {
+    bodyRadius: (v) => 1 - v.skeletonX,
+    taperAngle: () => 0, // F30 item 3: same meaning as the hourglass preset's own, see above
+  },
   // T6 TAB TOP: every param has a plain default (no seeded jitter: a frame always sets both from its model).
   tabTop: { tabWidth: () => TAB_TOP_DEFAULT_WIDTH, tabHeight: () => TAB_TOP_DEFAULT_HEIGHT },
   // T8 DIPPED TOP + LEFT-ONLY WAVE: ONLY `waveRadius` is derived (Template 1's own `waistRadius` formula,
@@ -313,7 +326,9 @@ export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLef
   // T9 I SHAPE (frame-only preset):
   'stemWidth', 'flangeHeight',
   // T10 ARCHED HOURGLASS (F29 item 2: the corner angle, not a free rise):
-  'archCornerAngle']);
+  'archCornerAngle',
+  // F30 item 3 (the taper copies, both the hourglass and bottle presets):
+  'taperAngle']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -409,6 +424,23 @@ function _hourglassRange(key, region, stroke, v) {
     const maxRise = Math.max(hornLen - horn, horn);
     const ceilingDeg = Math.min(ARCH_CORNER_ANGLE_MAX, _archCornerAngleForRise(maxRise, g.topX));
     return _range(ARCH_CORNER_ANGLE_MIN, ARCH_CORNER_ANGLE_MAX, ARCH_CORNER_ANGLE_MIN, Math.max(ceilingDeg, ARCH_CORNER_ANGLE_MIN));
+  }
+  // F30 item 3 (Fred's own taper copies): the declared band is [-15, 15] (0 = Template 1/2 exactly); only the
+  // negative (outward-leaning) side can ever run past the point _taperedCorner's own tangency has a real
+  // solution (MEASURED there: the hourglass shoulder is already at full board width, so every negative angle
+  // takes its inset branch; the bottle neck never does) -- `_taperRange` finds that floor directly. The shoulder
+  // and waist circles are the same `side()` algebra `hourglassConstruction` uses, inlined (not a full call: this
+  // runs on every resolve, for every template, taper or not -- the F12 dense sweep timed out before this inline).
+  if (key === 'taperAngle') {
+    const waistCenterY = hh * v.waistCenterY;
+    const radiusWaist = hw * (v.waistRadius ?? DERIVED_PARAM_DEFAULTS.hourglass.waistRadius(v));
+    const waistCx = hw - hw * v.waistReach + radiusWaist;
+    const topInset = hw * (v.topInset ?? DERIVED_PARAM_DEFAULTS.hourglass.topInset(v));
+    const r = hw * (v.cornerRadiusTop ?? DERIVED_PARAM_DEFAULTS.hourglass.cornerRadiusTop(v));
+    const S = r + radiusWaist, d = hw * v.waistReach - topInset, dy = Math.sqrt(Math.max(0, d * (2 * S - d)));
+    const circle = { cx: hw - topInset - r, cy: waistCenterY - dy, r };
+    const pinch = { cx: waistCx, cy: waistCenterY, r: radiusWaist };
+    return _range(-15, 15, _taperRange(circle, pinch, +1, hw, hh), 15);
   }
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // F12: each corner has its OWN vertical room (y-down: a lower waist leaves
@@ -545,6 +577,20 @@ function _iShapeRange(key, region, stroke) {
 function _bottleRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   if (key === 'bodyRadius') return _optionalRange('bottle', region, stroke, v);
+  // F30 item 3: the SAME taper floor as the hourglass shoulder, just the neck's own concave tangency (convexSign
+  // -1) against the body as the pinch -- see _hourglassRange's own doc comment on this branch (same reason this
+  // inlines bottleConstruction's own pre-taper algebra instead of calling it: every resolve pays for this).
+  if (key === 'taperAngle') {
+    const neckHalfW = hw * v.neckWidth, skelX = hw * v.skeletonX, radiusNeck = skelX - neckHalfW;
+    const radiusBody = hw * (v.bodyRadius ?? DERIVED_PARAM_DEFAULTS.bottle.bodyRadius(v));
+    const bodyCx = hw - radiusBody;
+    const neckCenterY = -hh + hh * 2 * v.neckLength;
+    const sumNB = radiusNeck + radiusBody;
+    const hipCenterY = neckCenterY + Math.sqrt(Math.max(0, sumNB * sumNB - (bodyCx - skelX) ** 2));
+    const circle = { cx: skelX, cy: neckCenterY, r: radiusNeck };
+    const pinch = { cx: bodyCx, cy: hipCenterY, r: radiusBody };
+    return _range(-15, 15, _taperRange(circle, pinch, -1, hw, hh), 15);
+  }
   if (key === 'neckLength') {
     // F24: used to be clamped into a declared [0.08, 0.85] UI-slider band
     // (BASE_RANGES) -- the same "panel slider limit predates the geometric
@@ -833,6 +879,77 @@ function _archCornerAngleForRise(rise, topX) {
   return (Math.acos(Math.max(-1, Math.min(1, cosT))) * 180) / Math.PI;
 }
 
+/**
+ * F30 item 3 (Fred's own taper copies, "Hourglass - Tapered sides" / "Narrow Neck - Tapered sides"): the upper
+ * side's own corner (the shoulder's convex arc for the hourglass preset, the neck's concave arc for bottle),
+ * tapered by `taperDeg` from vertical, +in/-out. ONE shared construction, declared once, used by both presets'
+ * own corner (`convexSign` +1/-1 is the only thing that differs between them).
+ *
+ * Positive (leans INWARD going up, narrower top): the corner's own circle stays exactly where the preset's
+ * existing tangency algebra already puts it (untouched); the NEW tangent line at this angle crosses the safe
+ * zone's own top (y=-hh) at a SMALLER half-width than before -- that crossing is the new, narrower top corner.
+ *
+ * Negative (leans OUTWARD going up, wider top): the SAME construction would put that crossing PAST the board's
+ * own side edge for a shape already at (or near) full width there -- past the board, which the frame can never
+ * do. So the branch flips: the top corner is pinned to the board's own side edge instead (hw, -hh -- the
+ * preset's own UNTAPERED corner position), and the circle's own POSITION insets instead (same radius, still
+ * externally tangent to the pinch at the same centre-distance S -- only WHERE it sits moves): the set of valid
+ * centres is the line parallel to the (now fully known: fixed point + given angle) tangent line, offset inward
+ * by the radius, intersected with the circle of radius S around the pinch's own centre.
+ *
+ * ONE rule picks the branch (does the first approach's own corner stay inside the board?), not a per-preset or
+ * per-sign special case -- MEASURED: Template 1 (already full board width at the top) needs the inset branch
+ * for every negative angle; Template 2 (already narrower at the top) stays on the first branch across the whole
+ * declared band. Falls back to the closest point on the tangent line (never throws) if no exact tangency exists
+ * at all (a steep angle + an already-tight pinch) -- `_taperRange` keeps normal resolution well clear of that
+ * case; this is a backstop for a pathological combination, not the normal path (Fred: "don't worry too much
+ * about extremes... enough that it never crashes").
+ */
+function _taperedCorner(circle, pinchCircle, convexSign, taperDeg, hw, hh) {
+  if (!taperDeg) return { cx: circle.cx, cy: circle.cy, hornX: circle.cx + convexSign * circle.r, hornY: circle.cy, topCornerX: circle.cx + convexSign * circle.r, exact: true };
+  const r = circle.r, S = r + pinchCircle.r;
+  const th = (taperDeg * Math.PI) / 180;
+  const dir = { x: Math.sin(th), y: Math.cos(th) }; // the "down" direction of the slanted side
+  const n = { x: dir.y, y: -dir.x };
+  const tanA = { x: circle.cx + convexSign * r * n.x, y: circle.cy + convexSign * r * n.y };
+  const topXA = tanA.x + ((-hh - tanA.y) / dir.y) * dir.x;
+  if (topXA <= hw + 1e-9) return { cx: circle.cx, cy: circle.cy, hornX: tanA.x, hornY: tanA.y, topCornerX: topXA, exact: true };
+  const p0 = { x: hw - convexSign * r * n.x, y: -hh - convexSign * r * n.y };
+  const fx = p0.x - pinchCircle.cx, fy = p0.y - pinchCircle.cy;
+  const A = dir.x * dir.x + dir.y * dir.y, B = 2 * (fx * dir.x + fy * dir.y), C = fx * fx + fy * fy - S * S;
+  const disc = B * B - 4 * A * C;
+  let cx, cy;
+  if (disc < 0) { // no exact tangency: the closest point on the line (never throw; _taperRange avoids this in normal use)
+    const t = -(fx * dir.x + fy * dir.y) / A;
+    cx = p0.x + t * dir.x; cy = p0.y + t * dir.y;
+  } else {
+    const s = Math.sqrt(disc), t1 = (-B + s) / (2 * A), t2 = (-B - s) / (2 * A);
+    const p1 = { x: p0.x + t1 * dir.x, y: p0.y + t1 * dir.y }, p2 = { x: p0.x + t2 * dir.x, y: p0.y + t2 * dir.y };
+    const d1 = Math.hypot(p1.x - circle.cx, p1.y - circle.cy), d2 = Math.hypot(p2.x - circle.cx, p2.y - circle.cy);
+    ({ x: cx, y: cy } = d1 < d2 ? p1 : p2);
+  }
+  return { cx, cy, hornX: cx + convexSign * r * n.x, hornY: cy + convexSign * r * n.y, topCornerX: hw, exact: disc >= 0 };
+}
+
+/** F30 item 3: the negative-taper floor, shared by both presets -- bisects `_taperedCorner`'s own `exact` flag
+ *  (false only in its pathological fallback, see its doc comment) down from 0 toward `lo` (-15 declared), so a
+ *  resolved/generated/dragged taperAngle never reaches the one case that draws a non-tangent, self-crossing
+ *  corner. Positive never needs this (the inward lean only narrows, _taperedCorner's branch A the whole way, see
+ *  its own doc comment's MEASURED note) -- callers only use this for the negative side. Cheap (no outline/defect
+ *  build, just the same closed-form corner): fine to call from a range function on every resolve.
+ */
+function _taperRange(circle, pinchCircle, convexSign, hw, hh, lo = -15) {
+  if (_taperedCorner(circle, pinchCircle, convexSign, lo, hw, hh).exact) return lo;
+  let a = lo, b = 0; // _taperedCorner(...,0,...) is always exact (the early return)
+  // 18 halvings of a 15 deg span resolve the floor to ~6e-5 deg -- far past "clean" (Fred: "don't worry too much
+  // about extremes"), and this runs on every resolve of every hourglass/bottle shape, taper or not.
+  for (let i = 0; i < 18; i++) {
+    const mid = (a + b) / 2;
+    if (_taperedCorner(circle, pinchCircle, convexSign, mid, hw, hh).exact) b = mid; else a = mid;
+  }
+  return b;
+}
+
 /** SIL-RESOLVE (F5): the hourglass construction from RESOLVED fraction params
  *  (region-local, right side, Y-down). The ONE place this algebra lives; the
  *  solver and the on-canvas handles (editor-shape-lattice-interaction.js)
@@ -855,8 +972,15 @@ export function hourglassConstruction(region, resolved) {
     const r = hw * frac, S = r + radiusWaist, d = depth - inset, dy = Math.sqrt(Math.max(0, d * (2 * S - d)));
     return { r, S, d, dy, cx: hw - inset - r, y: waistCenterY + sign * dy, ux: (S - d) / S, uy: dy / S };
   };
-  const top = side(resolved.cornerRadiusTop ?? D.cornerRadiusTop(resolved), -1, topInset);
+  const top0 = side(resolved.cornerRadiusTop ?? D.cornerRadiusTop(resolved), -1, topInset);
   const bot = side(resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved), +1, 0);
+  // F30 item 3 (Fred's own taper copies): the shoulder's own corner, tapered -- see _taperedCorner's own doc
+  // comment. Untouched (top === top0, bit for bit) when taperAngle is 0, the default for every template but the
+  // two new copies.
+  const taperAngle = resolved.taperAngle ?? D.taperAngle(resolved);
+  const topTaper = _taperedCorner({ cx: top0.cx, cy: top0.y, r: top0.r }, { cx: waistCx, cy: waistCenterY, r: radiusWaist }, +1, taperAngle, hw, hh);
+  const topDist = Math.hypot(waistCx - topTaper.cx, waistCenterY - topTaper.cy) || 1;
+  const top = taperAngle ? { ...top0, cx: topTaper.cx, y: topTaper.cy, ux: (waistCx - topTaper.cx) / topDist, uy: (waistCenterY - topTaper.cy) / topDist } : top0;
   // T4 OFFSET HOURGLASS: the LEFT side's own construction (in mirrored local coordinates: +x = outward), only
   // when a left pinch is set: the same algebra at its own height and depth, every radius the right side's.
   // Absent (Template 1-3, the Shape Lattice): no `left`, the left side is the exact mirror of this one.
@@ -891,7 +1015,9 @@ export function hourglassConstruction(region, resolved) {
   // through both chord ends tangent to the top edge (sagitta over half-chord: R = (a^2 + rise^2) / (2 rise) --
   // the same construction T5's own dip arcs use, here a single arc instead of three chained ones, so no stub,
   // no separate shoulder arc, and the Fusion phase ties it to the top line with a Tangent, not an expression).
-  const topX = hw - topInset; // T3: the top horns' x (hw for Template 1)
+  // F30 item 3: the top horns' own x is now the TAPERED corner's (identical to `hw - topInset` at taperAngle 0,
+  // the removed line's own formula -- confirmed by _taperedCorner's own early return).
+  const topX = topTaper.topCornerX;
   const archCornerAngle = resolved.archCornerAngle ?? D.archCornerAngle(resolved);
   const archRise = _archRiseFromCornerAngle(archCornerAngle, topX);
   let arch = null;
@@ -905,6 +1031,9 @@ export function hourglassConstruction(region, resolved) {
     ...(arch ? { arch } : {}),
     hw, hh, depth, radiusWaist, waistCenterY, waistCx,
     topInset, topX, // T3: the top horns' x (hw for Template 1)
+    taperAngle, shoulderHornX: topTaper.hornX, shoulderHornY: topTaper.hornY, // F30 item 3: the horn's own actual
+    // end where it meets the shoulder arc -- equals (topX, shoulderY) when untapered, since the tangent is then
+    // vertical; a DIFFERENT point once the horn is slanted, so _solveHourglass can no longer assume the same x.
     waistX: hw - depth, // the pinch's innermost x
     cornerRadiusTop: top.r, cornerRadiusBottom: bot.r, cornerRadius: top.r,
     shoulderCx: top.cx, shoulderY: top.y, hipCx: bot.cx, hipY: bot.y, notchHalfSpan: top.dy,
@@ -919,16 +1048,32 @@ export function hourglassConstruction(region, resolved) {
  *  Y-down), the ONE place this algebra lives (the solver and the handles). */
 export function bottleConstruction(region, resolved) {
   const hw = region.w / 2, hh = region.h / 2;
+  const D = DERIVED_PARAM_DEFAULTS.bottle;
   const neckHalfW = hw * resolved.neckWidth;
   const skelX = hw * resolved.skeletonX; // the neck arc's centre column
   const radiusNeck = skelX - neckHalfW; // concave (upper) arc
-  const radiusBody = hw * (resolved.bodyRadius ?? DERIVED_PARAM_DEFAULTS.bottle.bodyRadius(resolved)); // convex (lower)
+  const radiusBody = hw * (resolved.bodyRadius ?? D.bodyRadius(resolved)); // convex (lower)
   const bodyCx = hw - radiusBody;
   const neckCenterY = -hh + hh * 2 * resolved.neckLength;
   const sumNB = radiusNeck + radiusBody;
+  // The body's own position, from the UNTAPERED neck column -- fixed once, here, same as hourglassConstruction's
+  // `bot` is computed independent of any top taper: a neck taper (below) never moves the body.
   const hipCenterY = neckCenterY + Math.sqrt(Math.max(0, sumNB * sumNB - (bodyCx - skelX) ** 2)); // derived (tangency)
-  return { hw, hh, neckHalfW, skelX, radiusNeck, radiusBody, bodyCx, neckCenterY, hipCenterY,
-    bux: (bodyCx - skelX) / sumNB, buy: (hipCenterY - neckCenterY) / sumNB };
+  // F30 item 3 (Fred's own taper copies): the neck's own corner, tapered -- the shared _taperedCorner (see its own
+  // doc comment), concave this time (convexSign -1: at taperAngle 0 the early return reproduces (skelX,
+  // neckCenterY, neckHalfW) exactly, bit for bit). The body circle above is the fixed pinch it tapers against.
+  const taperAngle = resolved.taperAngle ?? D.taperAngle(resolved);
+  const neckTaper = _taperedCorner({ cx: skelX, cy: neckCenterY, r: radiusNeck }, { cx: bodyCx, cy: hipCenterY, r: radiusBody }, -1, taperAngle, hw, hh);
+  const neckDist = Math.hypot(bodyCx - neckTaper.cx, hipCenterY - neckTaper.cy) || 1;
+  const skelXTaper = taperAngle ? neckTaper.cx : skelX;
+  const neckCenterYTaper = taperAngle ? neckTaper.cy : neckCenterY;
+  const bux = taperAngle ? (bodyCx - neckTaper.cx) / neckDist : (bodyCx - skelX) / sumNB;
+  const buy = taperAngle ? (hipCenterY - neckTaper.cy) / neckDist : (hipCenterY - neckCenterY) / sumNB;
+  return { hw, hh, neckHalfW, skelX: skelXTaper, radiusNeck, radiusBody, bodyCx, neckCenterY: neckCenterYTaper, hipCenterY,
+    bux, buy,
+    taperAngle, neckTopX: neckTaper.topCornerX, // F30 item 3: the horn's own flat-top x (neckHalfW untapered)
+    neckHornX: neckTaper.hornX, neckHornY: neckTaper.hornY, // the horn's own end where it meets the neck arc
+  };
 }
 
 const SALT = {
@@ -1126,9 +1271,10 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // while above the declared floor; below it the centres separate and the
   // arcs stay externally tangent instead of going negative (Fred's loop).
   const { hw, hh, cornerRadiusTop, cornerRadiusBottom, radiusWaist, shoulderCx, shoulderY, hipCx, hipY,
-    ux, uy, uxBottom, uyBottom, waistMajor, topInset, left, topDip, arch } = hourglassConstruction(region, resolvedAll);
+    ux, uy, uxBottom, uyBottom, waistMajor, topInset, topX, shoulderHornX, shoulderHornY, left, topDip, arch,
+  } = hourglassConstruction(region, resolvedAll);
   // T4 OFFSET HOURGLASS: the left side from its own construction (the right one's when no left pinch is set).
-  const L = left || { shoulderCx, shoulderY, hipCx, hipY, ux, uy, uxBottom, uyBottom, waistMajor };
+  const L = left || { shoulderCx, shoulderY, hipCx, hipY, ux, uy, uxBottom, uyBottom, waistMajor, shoulderHornX, shoulderHornY };
 
   // The ACTUAL drawn radii/walls (§ (2)/(1) above) -- everything from here
   // down uses these, never the raw params computed above directly.
@@ -1137,7 +1283,14 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const radiusWaistDrawn = radiusWaist + strokeHalfWidth; // concave: grows
   const hwDrawn = hw - strokeHalfWidth;
   const hhDrawn = hh - strokeHalfWidth;
-  const topDrawnX = hwDrawn - topInset; // T3: the top horns' drawn x (hwDrawn exactly when topInset is 0)
+  const topDrawnX = topX - strokeHalfWidth; // T3/F30 item 3: the top horns' own drawn x (hwDrawn - topInset when untapered)
+  // F30 item 3: the horn's own end where it meets the shoulder arc, drawn -- same unit direction from the
+  // (untouched) shoulder centre, scaled by the DRAWN radius instead of the full one (same pattern as the
+  // existing shoulder/waist junction below). Equals (topDrawnX, shoulderY) when untapered (the normal is then
+  // purely horizontal), so every existing template's own output is unchanged, confirmed bit for bit.
+  const hornN = (cx, cy, hx, hy, r) => ({ x: (hx - cx) / r, y: (hy - cy) / r });
+  const rHornN = hornN(shoulderCx, shoulderY, shoulderHornX, shoulderHornY, cornerRadiusTop);
+  const lHornN = hornN(L.shoulderCx, L.shoulderY, L.shoulderHornX, L.shoulderHornY, cornerRadiusTop);
 
   const P = (x, y) => ({ x: cx0 + x, y: cy0 + y }); // local (right-positive, Y-down) -> world
   const M = (x, y) => ({ x: cx0 - x, y: cy0 + y }); // mirrored (left side)
@@ -1147,7 +1300,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const topY = -hhDrawn + (arch ? arch.rise : 0);
   // Right side, top -> bottom.
   const rTop = P(topDrawnX, topY);
-  const rShoulderHorn = P(topDrawnX, shoulderY);
+  const rShoulderHorn = P(shoulderCx + topDrawn * rHornN.x, shoulderY + topDrawn * rHornN.y);
   // Tangent junctions lie on the centre line, the drawn radius out from each centre.
   const rShoulderWaistJct = P(shoulderCx + topDrawn * ux, shoulderY + topDrawn * uy);
   const rWaistHipJct = P(hipCx + bottomDrawn * uxBottom, hipY - bottomDrawn * uyBottom);
@@ -1158,7 +1311,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const lHipHorn = M(hwDrawn, L.hipY);
   const lWaistHipJct = M(L.hipCx + bottomDrawn * L.uxBottom, L.hipY - bottomDrawn * L.uyBottom);
   const lShoulderWaistJct = M(L.shoulderCx + topDrawn * L.ux, L.shoulderY + topDrawn * L.uy);
-  const lShoulderHorn = M(topDrawnX, L.shoulderY);
+  const lShoulderHorn = M(L.shoulderCx + topDrawn * lHornN.x, L.shoulderY + topDrawn * lHornN.y);
   const lTop = M(topDrawnX, topY);
 
   const keypoints = [
@@ -1312,15 +1465,19 @@ function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 
   const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
   // F8/F12: the body radius (bodyRadius, default the shared column) sets the body
   // centre at hw - rB; the external tangency with the neck arc gives its height.
-  const { hw, hh, neckHalfW, skelX, radiusNeck, radiusBody, neckCenterY, hipCenterY, bux, buy } =
-    bottleConstruction(region, resolvedAll);
+  const { hw, hh, neckHalfW, skelX, radiusNeck, radiusBody, neckCenterY, hipCenterY, bux, buy, neckTopX,
+    neckHornX, neckHornY } = bottleConstruction(region, resolvedAll);
 
   // The ACTUAL drawn radii/walls -- everything from here down uses these.
   const radiusNeckDrawn = radiusNeck + strokeHalfWidth; // concave: grows
   const radiusBodyDrawn = radiusBody - strokeHalfWidth; // convex: shrinks
   const hwDrawn = hw - strokeHalfWidth;
   const hhDrawn = hh - strokeHalfWidth;
-  const neckHalfWDrawn = neckHalfW - strokeHalfWidth;
+  const neckTopXDrawn = neckTopX - strokeHalfWidth; // F30 item 3: the top horns' own drawn x (neckHalfWDrawn untapered)
+  // F30 item 3: the horn's own end where it meets the neck arc, drawn -- same unit direction from the (untouched)
+  // neck centre, scaled by the drawn radius (same pattern as _solveHourglass's own rShoulderHorn). Equals
+  // (neckTopXDrawn, neckCenterY) when untapered, confirmed bit for bit.
+  const neckHornN = { x: (neckHornX - skelX) / radiusNeck, y: (neckHornY - neckCenterY) / radiusNeck };
   // Shared tangent point: on the centre line, the drawn neck radius out from the neck centre.
   const junctionX = skelX + bux * radiusNeckDrawn;
   const junctionY = neckCenterY + buy * radiusNeckDrawn;
@@ -1328,16 +1485,16 @@ function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 
   const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
   const M = (x, y) => ({ x: cx0 - x, y: cy0 + y });
 
-  const rTop = P(neckHalfWDrawn, -hhDrawn);
-  const rNeckHorn = P(neckHalfWDrawn, neckCenterY);
+  const rTop = P(neckTopXDrawn, -hhDrawn);
+  const rNeckHorn = P(skelX + radiusNeckDrawn * neckHornN.x, neckCenterY + radiusNeckDrawn * neckHornN.y);
   const rJunction = P(junctionX, junctionY);
   const rHipHorn = P(hwDrawn, hipCenterY);
   const rBottom = P(hwDrawn, hhDrawn);
   const lBottom = M(hwDrawn, hhDrawn);
   const lHipHorn = M(hwDrawn, hipCenterY);
   const lJunction = M(junctionX, junctionY);
-  const lNeckHorn = M(neckHalfWDrawn, neckCenterY);
-  const lTop = M(neckHalfWDrawn, -hhDrawn);
+  const lNeckHorn = M(skelX + radiusNeckDrawn * neckHornN.x, neckCenterY + radiusNeckDrawn * neckHornN.y);
+  const lTop = M(neckTopXDrawn, -hhDrawn);
 
   const keypoints = [rTop, rNeckHorn, rJunction, rHipHorn, rBottom, lBottom, lHipHorn, lJunction, lNeckHorn, lTop];
 
@@ -1361,6 +1518,10 @@ function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 
   // T59: see _solveHourglass's own doc comment on why this is returned.
   // F12: every declared param, the derived bodyRadius included.
   const resolvedParams = { ...resolvedAll };
+  // F30 item 3: taperAngle is bottle's own first frame-only param (see _solveHourglass's own doc comment on
+  // this exact loop, T3) -- reported only when the caller set it, so a Shape Lattice pattern's (and Template 2's)
+  // resolved params stay exactly what they were before it existed.
+  for (const k of FRAME_ONLY_PARAM_KEYS) if (!params || params[k] == null) delete resolvedParams[k];
 
   return { keypoints, segments, cx: cx0, params: resolvedParams, hasUserSegments };
 }

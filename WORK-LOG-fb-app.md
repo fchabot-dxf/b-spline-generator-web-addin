@@ -5196,3 +5196,113 @@ looks exactly like this today.)
 Re-rendered both at 8 deg from the SAME production primitives: `C:/Users/danse/.bspline-status/shots/seatC/
 0815_F30-item3-proposed_taper-diagram_PRODUCTION_7x9_8deg.png`. Visually confirmed: no inner/outer crossing, even
 band width throughout, clean miters inside the band at all 4 corners of each. Sent to the advisor as a path.
+
+## 2026-10-01: F30 item 3 -- Fred extends the range to -15..+15 deg; a real defect caught, a false alarm cleared
+(seat C, epoch 5)
+
+Fred approved 8 deg ("Beauty") and extended the param: taperAngle now runs -15..+15, not 0..15. Positive (already
+built) leans inward, narrower top. Negative leans OUTWARD, wider top -- but the frame must stay inside the board,
+so for negative angles the top corners sit ON the board's own side edge instead, and the shoulder/neck circle's
+own position insets to keep the same external tangency with the pinch. Derived this as a SECOND branch of the
+same `_taperedCorner` construction (see its own doc comment, written this pass): Branch A (the free tangent line,
+used whenever its own top corner stays inside the board) vs Branch B (the corner pinned at the board edge, the
+circle's own centre solved via a line-circle intersection instead). ONE rule picks the branch -- does Branch A's
+own corner exceed hw? -- not a per-template or per-sign special case. MEASURED, not assumed: Template 1 (already
+full board width at the top) needs Branch B for literally every negative angle; Template 2 (narrower top) stays on
+Branch A across the whole declared band.
+
+First negative preview (`0900_F30-item3-proposed_taper-diagram_negative_7x9_-8_-15deg.png`) was not clean. The
+advisor caught two things: (1) Hourglass at -15 deg is a REAL self-crossing defect, not "a small kink" as I first
+(wrongly) called it -- `outlineDefects` confirmed 4 `notTangent` defects, the shoulder arc gone, the slanted line
+running straight into the waist. Root cause: past a certain angle Branch B's own line-circle intersection has no
+real solution (the pinch is too shallow for that steep a line at that distance), and my fallback (closest point on
+the line) draws a non-tangent, self-crossing result instead of refusing. (2) The advisor also flagged Narrow
+Neck's sign as backwards. Re-verified this one by hand (a direct numeric re-derivation of `topCorner.x` at 0/-8/-15
+deg, monotonically widening as advertised) and found the advisor's own read was the false alarm -- there was no
+0-deg baseline in the 0900 image to compare against, so a genuinely zero-length horn at 0 deg (topCorner.x ==
+hornPt.x exactly for Narrow Neck) made -8/-15's new slanted segment look like it was narrowing instead of
+widening. Measure, don't re-reason: presented the exact numbers + a 0/-8/-15 side-by-side instead of re-guessing.
+
+**Fix for (1), per the advisor's own instruction:** stop drawing the fallback at all -- clamp the negative range to
+each template's own TRUE feasible floor instead. Added `minFeasibleTaper`-style bisection (30 iterations at the
+time, later tightened, see the next entry) on a `clean` criterion (zero outer/inner defects, zero out-of-board,
+thin pieces tolerated per Fred's own "don't worry about extremes") to find Template 1's real floor at 7x9: exactly
+-13.75 deg (bisection-confirmed). Template 2 needs no floor at all (full -15 already clean).
+
+Re-rendered (`0930_F30-item3-proposed_taper-diagram_negative-fixed_7x9.png`) with Hourglass clamped to -13.75 and
+Narrow Neck shown at 0/-8/-15 side by side. Advisor: "0930 looks good... I misread the 0900 render, sorry for the
+false alarm... Carry on with the build, and put the range clamp into the real range function as you said." Fred:
+"don't worry too much about extremes. Make the normal range clean (about -10 to +10 with default proportions). At
+the far ends (+/-15 with a very deep pinch), it's enough that Generate never produces a broken frame (it already
+redraws) and that tests confirm nothing crashes. Don't build special handling or extra machinery for extreme
+manual combos."
+
+## 2026-10-01: F30 item 3 -- taperAngle wired into the PRODUCTION engine (shared construction, both presets,
+range-function floor, tests); the two new template copies are next (seat C, epoch 5)
+
+Ported the verified `_taperedCorner` construction (identical math to the scratch preview's own `taperedCorner`,
+see the entry above) into `editor-shape-lattice-generator.js` itself, as the one shared place both new templates
+will read from:
+- `PARAM_ORDER.hourglass`/`.bottle` and `FRAME_ONLY_PARAM_KEYS` both gain `taperAngle` (resolved last of all, like
+  `archCornerAngle`); `DERIVED_PARAM_DEFAULTS` defaults it to 0 for both presets (0 = Template 1/2 exactly).
+- `_taperedCorner(circle, pinchCircle, convexSign, taperDeg, hw, hh)`: the shared two-branch construction, now
+  returning an `exact` flag (true for the early return and Branch A, `disc >= 0` for Branch B) so a range function
+  can find the real floor WITHOUT ever rendering the fallback it flags.
+- `hourglassConstruction`: the shoulder corner (`convexSign +1`) runs through `_taperedCorner` against the waist as
+  the pinch; new `taperAngle`, `shoulderHornX/Y` fields returned (the horn's own actual end on the shoulder arc --
+  equals `(topX, shoulderY)` only when untapered; a genuinely different point once the horn is slanted).
+- `bottleConstruction`: the neck corner (`convexSign -1`, concave) runs through the SAME function against the body
+  as the pinch (the body's own position computed from the UNTAPERED neck column first, exactly like the
+  hourglass's waist stays fixed under a shoulder taper); new `taperAngle`, `neckTopX`, `neckHornX/Y` fields.
+- `_solveHourglass`/`_solveBottle`: `rTop`/`lTop` (the flat-top corner) now read the tapered `topX`/`neckTopX`;
+  `rShoulderHorn`/`rNeckHorn` (and their mirrors) now read the NEW horn fields instead of assuming the same x as
+  the flat-top corner -- the one real behavioral bug this pass would have shipped silently (both points
+  coincide only at taperAngle 0, so nothing in the existing test suite could have caught a mix-up).
+  Drawn-stroke adjustment for the horn point: same unit direction from the (untouched) arc centre, scaled by the
+  DRAWN radius instead of the full one (the same pattern the existing shoulder/waist junction already used).
+- `_hourglassRange`/`_bottleRange`: new `taperAngle` branch, declared band `[-15, 15]`, floor from a shared
+  `_taperRange` bisection (18 iterations -- ~6e-5 deg resolution, far past "clean") on the SAME `exact` flag. The
+  shoulder/waist (or neck/body) circles are computed INLINE from the resolved params here, not via a full
+  `hourglassConstruction`/`bottleConstruction` call -- see the perf note below for why.
+- `_solveBottle` gained the same "a frame-only param is reported only when the caller set it" delete loop
+  `_solveHourglass` already had for `archCornerAngle` (T3) -- bottle never needed it before (none of its old
+  params were frame-only); `taperAngle` is its first one.
+
+**Perf regression, caught by the existing suite, fixed before commit:** the dense `silhouette-resolve.test.js`
+sweep (`F12 dense sweep of the NEW params`, `checked > 10000` combinations) started timing out at 5000ms under
+full-suite parallel load -- passed every time standalone, failed every time under contention, reproduced
+identically on a clean re-run, and confirmed via `git stash` that the baseline (no taper code) passes under the
+exact same load. Root cause: the first version of the `taperAngle` range branch called the FULL
+`hourglassConstruction`/`bottleConstruction` (cheap in isolation, ~0.3us/call benchmarked) but ran the 30-iteration
+floor bisection on every single resolve for every preset, taper or not -- adversarial corner-radius sweeps hit the
+Branch-B-infeasible case often, each needing the full bisection. Fixed two ways: (1) inlined the shoulder/waist
+(and neck/body) circle algebra directly from the already-resolved params instead of calling the full construction
+function (skips the T4/T5/T10 branches entirely, irrelevant here); (2) cut the bisection from 30 to 18 iterations
+(still ~6e-5 deg resolution). Re-measured: the standalone hourglass dense-sweep test's own "tests" time dropped
+from +0.89s over baseline to +0.31s; the full suite (155 files after adding the new test file below) now passes
+twice in a row under the same full-parallel load that reproduced the timeout.
+
+**Verified against the real engine, not the scratch preview, across all 4 of Fred's current portrait board sizes
+(7x9, 6x9, 11x14, 5x7):** taperAngle 0 reproduces Template 1/Template 2 primitives bit for bit; the full declared
+[-15, 15] band (pre-clamp) gives zero `outlineDefects` on both the outer outline AND the real inward offset
+(`offsetOutlineInward` + the `.collapsed` filter `frameInnerProfile` itself uses), with 4 real miters throughout,
+at every board and every angle tested (2.5 deg steps) -- the resolved (post-clamp) value is what actually gets
+used, so the fallback this file's own doc comment calls "a backstop for a pathological combination" is never
+reached by any value `_resolveParams` can produce. Added `tests/frame-taper-construction.test.js` (27 tests) to
+make this permanent at the shared-construction level, ahead of the template-specific tests Templates 12/13 will
+need once they exist; existing `PARAM_ORDER`/`FRAME_ONLY_PARAM_KEYS` exact-array assertions in
+frame-template-5/6/9/10's own test files updated for the new trailing key (expected: appending a declared param
+always ages the templates that pin the full array literally, same as every previous one of these additions).
+
+Also fixed two existing frame-template-10.test.js nits while here: the `archCornerAngle`-last assertion now checks
+`length - 2` (taperAngle is last now) and explicitly checks Templates 1/3/4/5 never gain a taperAngle handle
+either.
+
+Full suite: 155 files, 2926 tests, green (run twice to confirm the perf fix holds under load).
+
+Not yet done (next): the two new template folders (`sketches/template_12`, `sketches/template_13`), their
+`template_data.py` (provisional shape model, `"from": "template_1"`/`"template_2"`), `frame_shape_fit.py` +
+`frame_definition.py` wiring, `tools/gen_frame_defs.py` regeneration, template-level tests (declaration, within-
+board, miters, a Generate sweep per template), A/B regression against every existing template, and a decision --
+flagged to the advisor, not yet answered -- on whether taperAngle gets its own draggable handle (T10's own
+`archCornerAngle` does; the F30 item 3 dispatch itself never listed one, unlike T7/T10/T11's own dispatches).

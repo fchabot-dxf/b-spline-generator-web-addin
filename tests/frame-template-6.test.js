@@ -395,9 +395,10 @@ describe('the Shape Lattice and Templates 1-5 never get the tab', () => {
     // comment), so TAB's own pair is no longer the trailing slice -- fixed indices instead of `.slice(-2)`.
     expect(FRAME_ONLY_PARAM_KEYS.slice(5, 7)).toEqual(TAB);
     expect(PARAM_ORDER.tabTop).toEqual(TAB);
+    // F30 item 3 appended its own 'taperAngle' after archCornerAngle (hourglass) and at the end (bottle).
     expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
-      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archCornerAngle']);
-    expect(PARAM_ORDER.bottle).toEqual(['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius']);
+      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archCornerAngle', 'taperAngle']);
+    expect(PARAM_ORDER.bottle).toEqual(['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius', 'taperAngle']);
     for (const k of TAB) {
       expect(SHAPE_PARAM_KEYS.hourglass).not.toContain(k);
       expect(SHAPE_PARAM_KEYS.bottle).not.toContain(k);

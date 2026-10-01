@@ -297,11 +297,15 @@ describe('Template 10: the Arch corner angle / Waist reach / Waist position hand
 });
 
 describe('the Shape Lattice and Templates 1-9 never get the arch', () => {
-  it('archCornerAngle is frame-only, appended last; the hourglass order for Templates 1-9 is untouched', () => {
-    expect(PARAM_ORDER.hourglass[PARAM_ORDER.hourglass.length - 1]).toBe('archCornerAngle');
+  it('archCornerAngle is frame-only, appended last (before F30 item 3\'s own taperAngle); the hourglass order '
+    + 'for Templates 1-9 is untouched', () => {
+    // F30 item 3: taperAngle is appended AFTER archCornerAngle (every earlier key, it included, keeps its index).
+    expect(PARAM_ORDER.hourglass[PARAM_ORDER.hourglass.length - 2]).toBe('archCornerAngle');
+    expect(PARAM_ORDER.hourglass[PARAM_ORDER.hourglass.length - 1]).toBe('taperAngle');
     for (const id of ['template_1', 'template_3', 'template_4', 'template_5']) {
       const t = tplOf(id);
       expect(t.handles.map((h) => h.key)).not.toContain('archCornerAngle');
+      expect(t.handles.map((h) => h.key)).not.toContain('taperAngle');
     }
   });
 
