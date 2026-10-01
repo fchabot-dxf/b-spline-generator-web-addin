@@ -133,6 +133,24 @@ export const PRESETS = {
     params: { tabWidth: 0.5, tabHeight: 0.5 }, // = TAB_TOP_DEFAULT_WIDTH / _HEIGHT (declared below; literal here)
     jitter: { tabWidth: 0, tabHeight: 0 },
   },
+  // T8 DIPPED TOP + LEFT-ONLY WAVE: a FRAME-ONLY preset (Template 8), like tabTop: no Shape Lattice button offers
+  // it. `waveHeight`/`waveReach` are Template 1's own per-side pinch construction (`hourglassConstruction`'s
+  // `left`), reused for the ONLY pinch this preset has (the right side is a plain straight edge, Template 1's
+  // classic corners, no pinch at all); `topDipWidth`/`topDipDepth`/`topDipPosition` are Template 5's dip
+  // (`topDip`), `topDipPosition` new (0 = T5's own centred dip). `waveCornerRadius` is Template 1's own plain
+  // `cornerRadius`, renamed (this preset's only side, so no Top/Bottom split): a PLAIN preset param on purpose,
+  // not a DERIVED_PARAM_DEFAULTS entry -- see that table's own doc comment for why (a literal default needs the
+  // SAME always-clamped treatment an explicit value gets, which only the plain/jittered path gives it).
+  dippedLeftWave: {
+    label: 'Dipped Top + Left-Only Wave',
+    frameOnly: true,
+    // MEASURED: 0.4 collapsed the LEFT horn at 12x6 (hornLen 0.34in < frame_thickness 0.75in) -- 0.2 keeps a safe
+    // margin (hornLen 1.04in) at every board this template's own tests cover.
+    params: { waveHeight: 0, waveReach: 0.2, waveCornerRadius: 0.22, topDipWidth: 0.5, topDipPosition: 0, topDipDepth: 0.14 },
+    // frameOnly, no seeded variation (a frame always sets every one from its model, as T6) -- SALT entries exist
+    // only so `_jitteredParam` has one to read; jitterHalf 0 makes the draw itself inert.
+    jitter: { waveHeight: 0, waveReach: 0, waveCornerRadius: 0, topDipWidth: 0, topDipPosition: 0, topDipDepth: 0 },
+  },
 };
 
 /**
@@ -184,6 +202,10 @@ export const PARAM_ORDER = {
   bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
   // T6 TAB TOP (frame-only preset): the tab's half width, then its height (both frame-only keys, FRAME_ONLY_PARAM_KEYS).
   tabTop: ['tabWidth', 'tabHeight'],
+  // T8 DIPPED TOP + LEFT-ONLY WAVE (frame-only preset): the wave's height then reach (waveCornerRadius/waveRadius
+  // right after, since they read it), then the dip's width, position, then depth (as T5: width before the params
+  // that read it).
+  dippedLeftWave: ['waveHeight', 'waveReach', 'waveCornerRadius', 'waveRadius', 'topDipWidth', 'topDipPosition', 'topDipDepth'],
 };
 const BASE_RANGES = {
   // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
@@ -253,6 +275,18 @@ export const DERIVED_PARAM_DEFAULTS = {
   bottle: { bodyRadius: (v) => 1 - v.skeletonX },
   // T6 TAB TOP: every param has a plain default (no seeded jitter: a frame always sets both from its model).
   tabTop: { tabWidth: () => TAB_TOP_DEFAULT_WIDTH, tabHeight: () => TAB_TOP_DEFAULT_HEIGHT },
+  // T8 DIPPED TOP + LEFT-ONLY WAVE: ONLY `waveRadius` is derived (Template 1's own `waistRadius` formula,
+  // guaranteed feasible by construction once `waveReach`/`waveCornerRadius` are ALREADY resolved -- the same
+  // trust T1's own `waistRadius` default relies on). Every OTHER key (waveHeight, waveReach, waveCornerRadius,
+  // topDipWidth, topDipPosition, topDipDepth) is a PLAIN preset param instead (PRESETS.dippedLeftWave.params),
+  // on purpose: `_resolveParams`'s "absent -> derived(v), UNCLAMPED" rule (this file's own header comment: "it is
+  // feasible by construction") only holds for a default that genuinely IS always feasible, the way hourglass's
+  // `topDipDepth: () => 0` trivially is -- MEASURED at 5.51x1.97 (a very short, wide board), this preset's own
+  // literal defaults (waveReach 0.4, waveCornerRadius 0.22, topDipDepth 0.14) are NOT always feasible, so they
+  // need the SAME always-clamped treatment an explicit value gets (`_jitteredParam`, the plain-param path).
+  dippedLeftWave: {
+    waveRadius: (v) => Math.max(v.waveReach - v.waveCornerRadius, WAIST_MIN_RADIUS_OF_DEPTH * v.waveReach),
+  },
 };
 
 /** F12: the params the Shape Lattice panel offers (a slider and a handle each).
@@ -267,7 +301,12 @@ const EPS_FRAC = 1e-3;
 /** T3 TAPERED HOURGLASS: resolved params that only a FRAME template sets. The Shape Lattice never offers them and
  *  its Fusion manifest never sends them (editor-sketch-manifest.js; Fred's rule: no new parameters). */
 export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth',
-  'tabWidth', 'tabHeight', 'topPeak', 'shoulderLedgeWidth', 'hipFlare']);
+  'tabWidth', 'tabHeight',
+  // T8 DIPPED TOP + LEFT-ONLY WAVE (frame-only preset; topDipWidth/topDipDepth already listed above are shared
+  // with T5's identically-named keys, so only its OWN new keys are added here):
+  'topDipPosition', 'waveHeight', 'waveReach', 'waveCornerRadius', 'waveRadius',
+  // T7 DIAMOND-TOP HOURGLASS (merged in alongside T8's own above): its own 3 new keys.
+  'topPeak', 'shoulderLedgeWidth', 'hipFlare']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -295,7 +334,7 @@ const TAB_TOP_RANGES = { tabWidth: [0.05, 0.95], tabHeight: [0.05, 1.9] };
  */
 export const TOP_DIP_SEGMENT_COUNT = 16;
 const TOP_DIP_DEFAULT_WIDTH = 0.72;
-const TOP_DIP_MIN_WIDTH = 0.15; // fraction of hw: a dip narrower than this is a notch, not a dip
+export const TOP_DIP_MIN_WIDTH = 0.15; // fraction of hw: a dip narrower than this is a notch, not a dip
 const TOP_DIP_MAX_OF_WIDTH = 0.8; // D <= 0.8 a: each shoulder arc sweeps under ~77 deg (at D = a it is 90)
 /** T5: the mirror of segment `i` of the 16-segment dipped outline (the sides as Template 1, the top 11 <-> 15,
  *  12 <-> 14, the dip 13 itself). */
@@ -580,6 +619,25 @@ export function paramsFromShapeModel(preset, model, region) {
   for (const [name, c] of Object.entries(model.features)) f[name] = c.hw * hw + c.hh * hh;
   // T6 TAB TOP (frame_shape_fit.py `tab_top`): the tab's half width and height, in inches.
   if (preset === 'tabTop') return { tabWidth: f.tabHalfWidth / hw, tabHeight: f.tabHeight / hh };
+  // T8 DIPPED TOP + LEFT-ONLY WAVE (frame_shape_fit.py `dipped_left_wave`): self-contained, like tabTop -- no
+  // right pinch to share a depth-root pick with, so `waveDepth` (the extractor's own DIRECT measurement, not a
+  // fitted approximation needing reconciling against the tangency equation the way T1's LEAST-SQUARES-fitted
+  // `depth` does) is read straight, simplifying T4's own `notchLeft` root-picking dance away. NOT yet exercised
+  // by a real fit (no goldens recorded for this template: only the provisional model, built directly from the
+  // SAME fraction it will read back out, so this direct reading is exactly correct there); once goldens exist,
+  // a real fitted `waveDepth`/`waveNotch` pair could, in principle, want the same root-picking treatment T1/T4's
+  // `depth`/`notch` get -- deferred, and NAMED here, rather than built and left untestable without live goldens.
+  if (preset === 'dippedLeftWave') {
+    const out = {};
+    if (f.waveDepth != null) out.waveReach = f.waveDepth / hw;
+    if (f.waveCy != null) out.waveHeight = f.waveCy / hh;
+    if (f.waveCornerR != null) out.waveCornerRadius = f.waveCornerR / hw;
+    if (f.waveR != null) out.waveRadius = f.waveR / hw;
+    if (f.topDipHalfWidth != null) out.topDipWidth = f.topDipHalfWidth / hw;
+    if (f.topDipPosition != null) out.topDipPosition = f.topDipPosition / hw;
+    if (f.topDipDepth != null) out.topDipDepth = f.topDipDepth / hh;
+    return out;
+  }
   if (preset === 'bottle') {
     return { neckWidth: f.neckHalfW / hw, skeletonX: (f.neckHalfW + f.neckR) / hw,
       neckLength: f.neckTop / (2 * hh), bodyRadius: f.bodyR / hw };
@@ -662,8 +720,8 @@ function _arcFloorFrac(preset, key, region, stroke, v) {
     if (key === 'skeletonX') return v.neckWidth + concave;
     return -Infinity;
   }
-  if (key === 'waistRadius') return concave;
-  return ['cornerRadius', 'cornerRadiusTop', 'cornerRadiusBottom'].includes(key) ? convex : -Infinity;
+  if (key === 'waistRadius' || key === 'waveRadius') return concave;
+  return ['cornerRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'waveCornerRadius'].includes(key) ? convex : -Infinity;
 }
 function _withArcFloor(preset, key, region, stroke, v, r) {
   const f = _arcFloorFrac(preset, key, region, stroke, v);
@@ -671,11 +729,66 @@ function _withArcFloor(preset, key, region, stroke, v, r) {
   return f <= r.max ? { min: f, max: r.max } : { min: r.max, max: r.max };
 }
 
+/**
+ * T8 DIPPED TOP + LEFT-ONLY WAVE: ranges for the one pinch this preset has (`waveHeight`/`waveReach`, Template
+ * 1's own per-side construction, `_hourglassRange`'s plain waistCenterY/waistReach branches with no right pinch
+ * to stay consistent with -- so, unlike `_hourglassLeftRange`, there is no "at the right pinch's own height..."
+ * fallback: each corner's room is measured directly against the full half height) and the dip (`topDipWidth`/
+ * `topDipPosition`/`topDipDepth`, `_topDipRange`'s own formula, `topDipPosition` new: the dip's stubs stay clear
+ * of BOTH top corners at its shifted position).
+ */
+function _dippedLeftWaveRange(key, region, stroke, v) {
+  const hw = region.w / 2, hh = region.h / 2, horn = HORN_MIN_OF_HALF_HEIGHT * hh;
+  // waveHeight resolves FIRST (PARAM_ORDER), same as hourglass's own waistCenterY: an unconditional band, never
+  // reading waveReach (not yet resolved) -- waveReach's own range below reads the now-resolved waveHeight instead.
+  if (key === 'waveHeight') return _range(-0.6, 0.6);
+  if (key === 'waveReach') {
+    const H = hh - stroke - horn - Math.abs(hh * v.waveHeight);
+    return _range(0.05, 0.92, -Infinity, H / hw);
+  }
+  if (key === 'waveCornerRadius') {
+    // Template 1's own PLAIN `cornerRadius` range (not the later F12 cornerRadiusTop/Bottom split, which reads an
+    // already-resolved waistRadius this preset's own PARAM_ORDER doesn't have yet at this point): rsMax's own
+    // Math.max(sMax - k*d, (1-k)*d) fallback (not simply sMax - k*d) is what keeps this finite and sane at a
+    // small, wide board like 5.51x1.97 (MEASURED: the plain subtraction alone went negative there).
+    const H = hh - stroke - horn - Math.abs(hh * v.waveHeight);
+    const d = hw * v.waveReach, k = WAIST_MIN_RADIUS_OF_DEPTH;
+    const sMax = (H * H / d + d) / 2;
+    const rsMax = Math.max(sMax - k * d, (1 - k) * d);
+    return _range(0.04, 0.95, (stroke + EPS_FRAC * hw) / hw, rsMax / hw);
+  }
+  if (key === 'waveRadius') {
+    const d = hw * v.waveReach, rs = hw * v.waveCornerRadius;
+    const H = hh - stroke - horn - Math.abs(hh * v.waveHeight);
+    const sMax = (H * H / d + d) / 2;
+    const keyhole = rs < d ? (d - rs) * (d - rs) / (2 * d) : 0;
+    return _range(0, Infinity, Math.max(d / 2 - rs + EPS_FRAC * hw, keyhole, EPS_FRAC * hw) / hw, (sMax - rs) / hw);
+  }
+  if (key === 'topDipWidth') return _range(TOP_DIP_MIN_WIDTH, Infinity, -Infinity, (hw - stroke - horn) / hw);
+  const a = hw * v.topDipWidth;
+  if (key === 'topDipPosition') {
+    // both stubs stay clear of their own corner: a shift right shortens the right stub and lengthens the left one.
+    const room = (hw - stroke - horn - a) / hw;
+    return _range(-Infinity, Infinity, -room, room);
+  }
+  // topDipDepth, read at this width (T5's own `_topDipRange`, mirrored: this preset's only side is the LEFT one,
+  // so the depth ceiling is how far down the wave's OWN shoulder arc starts, not a min() over both sides -- the
+  // plain right side has no shoulder to collide with at all).
+  const g = hourglassConstruction(region, {
+    waistReach: v.waveReach, waistCenterY: v.waveHeight, cornerRadius: v.waveCornerRadius, waistRadius: v.waveRadius,
+    waistCenterYLeft: v.waveHeight, waistReachLeft: v.waveReach,
+  });
+  const hornLen = hh + g.left.shoulderY; // y down, top at -hh
+  const dMax = Math.min(TOP_DIP_MAX_OF_WIDTH * a, hornLen - horn, topDipDepthForRadius(a, MIN_ARC_RADIUS_IN + stroke));
+  return _range(HORN_MIN_OF_HALF_HEIGHT, Infinity, -Infinity, Math.max(dMax, horn) / hh);
+}
+
 /** `{ param: {min, max} }` for `preset` on `region`, each conditional on the
  *  params resolved before it (PARAM_ORDER). `params` supplies those earlier
  *  values (e.g. a solver's own `params` output). */
-/** The preset's own range function (T6: `tabTop` has one of its own; hourglass is the default). */
-const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 'tabTop' ? _tabTopRange : _hourglassRange);
+/** The preset's own range function (T6: `tabTop`, T8: `dippedLeftWave`; hourglass is the default). */
+const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 'tabTop' ? _tabTopRange
+  : preset === 'dippedLeftWave' ? _dippedLeftWaveRange : _hourglassRange);
 
 export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
   const fn = _rangeFn(preset);
@@ -759,12 +872,17 @@ export function hourglassConstruction(region, resolved) {
   }) : undefined;
   // T5 HOURGLASS DIPPED TOP: the top dip (see TOP_DIP_SEGMENT_COUNT), only when a depth is set (> 0); absent
   // (Templates 1-4, the Shape Lattice): no `topDip`, the flat top edge.
+  // T8 DIPPED TOP + LEFT-ONLY WAVE: `topDipPosition` (default 0, Template 5's own centred dip) shifts the whole
+  // dip left/right by that many hw -- the two shoulder centres and the dip centre all move by the same amount,
+  // so the three arcs keep their T5 radius formula (a, D unchanged by a shift) and stay mutually tangent; only
+  // each centre's X gains the offset.
   const dipDepth = hh * (resolved.topDipDepth ?? D.topDipDepth(resolved));
+  const dipPosition = hw * (resolved.topDipPosition ?? 0);
   let topDip = null;
   if (dipDepth > 0) {
     const a = hw * (resolved.topDipWidth ?? D.topDipWidth(resolved)), r = (a * a + dipDepth * dipDepth) / (4 * dipDepth);
     // y down, the top edge at -hh: the shoulder centres (+/-a, -hh + r), the dip centre (0, -hh + D - r)
-    topDip = { halfWidth: a, depth: dipDepth, radius: r, shoulderCy: -hh + r, dipCy: -hh + dipDepth - r };
+    topDip = { halfWidth: a, depth: dipDepth, radius: r, position: dipPosition, shoulderCy: -hh + r, dipCy: -hh + dipDepth - r };
   }
   return {
     ...(left ? { left } : {}),
@@ -801,6 +919,10 @@ export function bottleConstruction(region, resolved) {
 const SALT = {
   hourglass: { waistReach: 601, cornerRadius: 602, waistCenterY: 603 },
   bottle: { neckWidth: 611, skeletonX: 613, neckLength: 614 },
+  // T8 DIPPED TOP + LEFT-ONLY WAVE: frameOnly (jitter 0 for every one), so these values are never actually drawn
+  // from -- present only because the plain/jittered resolution path (PRESETS.dippedLeftWave.params, see
+  // DERIVED_PARAM_DEFAULTS.dippedLeftWave's own doc comment) reads `salt[key]` unconditionally.
+  dippedLeftWave: { waveHeight: 621, waveReach: 622, waveCornerRadius: 623, topDipWidth: 624, topDipPosition: 625, topDipDepth: 626 },
 };
 
 /** Explicit param value wins; else default + a gentle seeded jitter,
@@ -1064,11 +1186,15 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // (the top edge's own outside), not away from the centre line as for a side arc.
   let mirror = null;
   if (topDip) {
-    const { halfWidth: a, depth: dd, radius: r } = topDip;
+    const { halfWidth: a, depth: dd, radius: r, position: pos = 0 } = topDip;
     const rsDrawn = r - strokeHalfWidth, rdDrawn = r + strokeHalfWidth;
     const ux2 = -a / (2 * r), uy2 = (dd - 2 * r) / (2 * r); // unit, shoulder centre -> dip centre (right side)
-    const rDipStart = P(a, -hhDrawn), lDipStart = M(a, -hhDrawn);
-    const rDipJct = P(a + rsDrawn * ux2, -hh + r + rsDrawn * uy2), lDipJct = M(a + rsDrawn * ux2, -hh + r + rsDrawn * uy2);
+    // T8 DIPPED TOP + LEFT-ONLY WAVE: `pos` shifts the whole dip (both shoulders + the dip itself) right by that
+    // many world units (0 = Template 5's own centred dip): added to every RIGHT-side local x before P(), and
+    // subtracted before M() (which itself negates x), so a left- and right-side point at the same nominal local
+    // x end up `pos` apart from their un-shifted (centred) position, in the SAME world direction.
+    const rDipStart = P(a + pos, -hhDrawn), lDipStart = M(a - pos, -hhDrawn);
+    const rDipJct = P(a + pos + rsDrawn * ux2, -hh + r + rsDrawn * uy2), lDipJct = M(a - pos + rsDrawn * ux2, -hh + r + rsDrawn * uy2);
     keypoints.push(lDipStart, lDipJct, rDipJct, rDipStart);
     fresh.splice(11, 1,
       STRAIGHT_SEGMENT, // left stub: lTop -> lDipStart
@@ -1274,6 +1400,88 @@ function _solveTabTop(region, params, segmentsOverride, seed, strokeHalfWidth = 
 }
 
 /**
+ * T8 DIPPED TOP + LEFT-ONLY WAVE solver: 12 pieces. The right side and base are a plain straight edge (Template
+ * 1's classic square corners, no pinch at all); the left side reuses `hourglassConstruction`'s own `left`
+ * sub-construction (this preset's `waveHeight`/`waveReach` standing in for `waistCenterYLeft`/`waistReachLeft`,
+ * the SAME per-side arc algebra Template 1's own leg uses); the top reuses its `topDip` (Template 5's dip,
+ * this preset's own `topDipPosition` shifting it off the centre line). `strokeHalfWidth` insets the drawn
+ * outline exactly as `_solveHourglass` does (every wall in, a convex radius shrinks, a concave one grows, an
+ * arc centre never moves) -- not a new algebra, the same one applied to one side's arcs plus the dip.
+ *
+ * Piece order, clockwise from the top-right corner (matches FRAME_SEED_MAP's own `prim` indices in
+ * template_data.py):
+ *   0 side_R (the WHOLE right side, one straight line, corner to corner), 1 bottom edge, 2 left horn (at the BL
+ *   corner), 3 hip arc, 4 waist/wave arc (the pinch), 5 shoulder arc, 6 left horn (at the TL corner), 7 left top
+ *   stub, 8 left top shoulder arc, 9 the dip, 10 right top shoulder arc, 11 right top stub.
+ */
+function _solveDippedLeftWave(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  const resolvedAll = _resolveParams('dippedLeftWave', region, params, seed, strokeHalfWidth);
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  const hw = region.w / 2, hh = region.h / 2;
+
+  // Reuse hourglassConstruction's own `left` (Template 1's per-side arc construction, region-local/right-side/
+  // Y-down until mirrored below) and `topDip` (Template 5's dip, extended for `topDipPosition`) by feeding it
+  // this preset's own params under the hourglass preset's own key names. The base/"right" waistReach/waistCenterY
+  // below are never actually read (the `??` in hourglassConstruction's own `left` branch always prefers
+  // waistReachLeft/waistCenterYLeft, both always set here), so they carry the SAME wave values rather than an
+  // unrelated placeholder -- inert, but not a magic number either.
+  const g = hourglassConstruction(region, {
+    waistReach: resolvedAll.waveReach, waistCenterY: resolvedAll.waveHeight,
+    cornerRadius: resolvedAll.waveCornerRadius, waistRadius: resolvedAll.waveRadius,
+    waistCenterYLeft: resolvedAll.waveHeight, waistReachLeft: resolvedAll.waveReach,
+    topDipWidth: resolvedAll.topDipWidth, topDipDepth: resolvedAll.topDipDepth, topDipPosition: resolvedAll.topDipPosition,
+  });
+  const L = g.left, { halfWidth: a, depth: dd, radius: r, position: pos } = g.topDip;
+
+  // The ACTUAL drawn radii/walls -- everything from here down uses these.
+  const cornerDrawn = resolvedAll.waveCornerRadius * hw - strokeHalfWidth; // convex: shrinks
+  const waveRadiusDrawn = resolvedAll.waveRadius * hw + strokeHalfWidth; // concave: grows
+  const hwDrawn = hw - strokeHalfWidth, hhDrawn = hh - strokeHalfWidth;
+
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y }); // local (right-positive, Y-down) -> world
+  const M = (x, y) => ({ x: cx0 - x, y: cy0 + y }); // mirrored (left side)
+
+  // Right side + base: plain corner-to-corner, no arcs.
+  const rTop = P(hwDrawn, -hhDrawn);
+  const rBottom = P(hwDrawn, hhDrawn);
+  // Left side (the wave), bottom -> top, exactly `_solveHourglass`'s own left-side construction.
+  const lBottom = M(hwDrawn, hhDrawn);
+  const lHipHorn = M(hwDrawn, L.hipY);
+  const lWaistHipJct = M(L.hipCx + cornerDrawn * L.uxBottom, L.hipY - cornerDrawn * L.uyBottom);
+  const lShoulderWaistJct = M(L.shoulderCx + cornerDrawn * L.ux, L.shoulderY + cornerDrawn * L.uy);
+  const lShoulderHorn = M(hwDrawn, L.shoulderY);
+  const lTop = M(hwDrawn, -hhDrawn);
+
+  // Top dip, exactly `_solveHourglass`'s own topDip construction (position-shifted).
+  const rsDrawn = r - strokeHalfWidth, rdDrawn = r + strokeHalfWidth;
+  const ux2 = -a / (2 * r), uy2 = (dd - 2 * r) / (2 * r);
+  const rDipStart = P(a + pos, -hhDrawn), lDipStart = M(a - pos, -hhDrawn);
+  const rDipJct = P(a + pos + rsDrawn * ux2, -hh + r + rsDrawn * uy2);
+  const lDipJct = M(a - pos + rsDrawn * ux2, -hh + r + rsDrawn * uy2);
+
+  const keypoints = [rTop, rBottom, lBottom, lHipHorn, lWaistHipJct, lShoulderWaistJct, lShoulderHorn, lTop,
+    lDipStart, lDipJct, rDipJct, rDipStart];
+
+  const fresh = [
+    STRAIGHT_SEGMENT, // 0: rTop -> rBottom (the whole right side)
+    STRAIGHT_SEGMENT, // 1: rBottom -> lBottom (bottom edge)
+    STRAIGHT_SEGMENT, // 2: lBottom -> lHipHorn (horn)
+    _curveSegment(lHipHorn, lWaistHipJct, cornerDrawn, true), // 3: hip, convex
+    _curveSegment(lWaistHipJct, lShoulderWaistJct, waveRadiusDrawn, false, L.waistMajor), // 4: the wave, concave
+    _curveSegment(lShoulderWaistJct, lShoulderHorn, cornerDrawn, true), // 5: shoulder, convex
+    STRAIGHT_SEGMENT, // 6: lShoulderHorn -> lTop (horn)
+    STRAIGHT_SEGMENT, // 7: lTop -> lDipStart (left stub)
+    _curveSegment(lDipStart, lDipJct, rsDrawn, true, false, true), // 8: left top shoulder, convex
+    _curveSegment(lDipJct, rDipJct, rdDrawn, false, false, true), // 9: the dip, concave
+    _curveSegment(rDipJct, rDipStart, rsDrawn, true, false, true), // 10: right top shoulder, convex
+    STRAIGHT_SEGMENT, // 11: rDipStart -> rTop (right stub)
+  ];
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
+
+  return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments };
+}
+
+/**
  * `region: {x,y,w,h}` (SE14 §3, Q5 ruling) + `shape` ->
  * `{ keypoints, segments, primitives, cx, params }`. `shape.preset`
  * selects `'hourglass'` (default) or `'bottle'`; `shape.params` overrides
@@ -1307,7 +1515,9 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
       ? _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth)
       : preset === 'tabTop' // T6 TAB TOP (a frame-only preset)
         ? _solveTabTop(region, params, segmentsOverride, seed, strokeHalfWidth)
-        : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
+        : preset === 'dippedLeftWave' // T8 DIPPED TOP + LEFT-ONLY WAVE (a frame-only preset)
+          ? _solveDippedLeftWave(region, params, segmentsOverride, seed, strokeHalfWidth)
+          : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;

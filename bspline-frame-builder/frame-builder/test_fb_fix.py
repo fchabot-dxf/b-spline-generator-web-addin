@@ -49,10 +49,22 @@ class TestFrameFit:
     def test_normal_board_fits(self):
         assert frame_fit(7, 9, 0.75, 0.25) == {"ok": True, "safeZoneIn": 6.5, "requiredIn": 1.5, "message": None}
 
+    # H23 item 1 (Template 3, 5.51x1.97): the live Fusion build gives 3 malformed bars instead
+    # of the clean 0 the rule (correctly) predicts for "too small" -- a genuine, already-flagged
+    # Fusion construction bug (Template 3 has no "too small" guard the other templates evidently
+    # have), not a fault in `frame_fit`'s own rule. See LIVE-RESULTS-ranchy.md item 1.
+    _KNOWN_BROKEN_GOLDENS = {"template_3_5.51x1.97.json"}
+
     @pytest.mark.parametrize("path", _GOLDENS, ids=os.path.basename)
     def test_rule_predicts_every_live_golden(self, path):
         # The live Fusion build is the ground truth: 0 bars <=> the rule says "too small".
+        # H23 item 4: was hardcoded to "== 4" -- true for every golden that existed when this
+        # was written (Templates 1/2, then 3/4/5, all 4-bar), but Template 6 is the first
+        # N-bar template (8 bars) and correctly breaks that assumption. Fixed to match the
+        # test's own comment: the real invariant is "some bars" vs "none", not "exactly 4".
+        if os.path.basename(path) in self._KNOWN_BROKEN_GOLDENS:
+            pytest.skip("known Fusion construction bug, not a frame_fit rule mismatch -- see LIVE-RESULTS-ranchy.md")
         d = json.load(open(path, encoding="utf-8"))
         m = d["meta"]
         fit = frame_fit(m["widthIn"], m["heightIn"], 0.75, 0.25)
-        assert fit["ok"] == (len(d["bars"]) == 4), (os.path.basename(path), fit)
+        assert fit["ok"] == (len(d["bars"]) > 0), (os.path.basename(path), fit)

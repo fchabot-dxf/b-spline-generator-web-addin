@@ -16,7 +16,7 @@
 import { computeParamHandles } from './editor-shape-lattice-interaction.js';
 import {
   PARAM_ORDER, feasibleParamRanges, generateSilhouette, paramsFromShapeModel, seededUnit,
-  MIN_ARC_RADIUS_IN, topDipDepthForRadius, HORN_MIN_OF_HALF_HEIGHT,
+  MIN_ARC_RADIUS_IN, topDipDepthForRadius, HORN_MIN_OF_HALF_HEIGHT, TOP_DIP_MIN_WIDTH,
 } from './editor-shape-lattice-generator.js';
 
 /** F13 (FRAME-GEN): a generated value is drawn from this band of its feasible
@@ -66,6 +66,20 @@ function _sideRoom(region, resolved) {
   };
 }
 
+/**
+ * T8 DIPPED TOP + LEFT-ONLY WAVE: `_sideRoom`'s own computation (see its doc comment), fed this preset's own wave
+ * params translated to the hourglass preset's key names (waveReach -> waistReach, waveHeight -> waistCenterY,
+ * waveCornerRadius -> cornerRadius, waveRadius -> waistRadius) so BOTH of `_sideRoom`'s own mirrored "sides" are
+ * copies of the SAME wave -- since T8 has only the one (left) side, `sideX`/`yInside` (both computed in
+ * `_sideRoom`'s own "mirrored onto the right" convention) already read exactly as the wave's own room.
+ */
+function _sideRoomDippedLeftWave(region, resolved) {
+  return _sideRoom(region, {
+    waistReach: resolved.waveReach, waistCenterY: resolved.waveHeight,
+    cornerRadius: resolved.waveCornerRadius, waistRadius: resolved.waveRadius,
+  });
+}
+
 /** The silhouette's feasible ranges narrowed by the frame opening rule (frame thickness `t`, inches). */
 export function frameParamRanges(tpl, region, resolved, t = _templateThickness(tpl)) {
   const R = feasibleParamRanges(tpl.silhouettePreset, region, resolved);
@@ -80,6 +94,34 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     const hh = region.h / 2;
     R.tabWidth = _narrow(R.tabWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
     R.tabHeight = _narrow(R.tabHeight, (2 * t) / hh, (2 * hh - 3 * t) / hh);
+  } else if (tpl.silhouettePreset === 'dippedLeftWave') {
+    // T8: the wave's own opening rule (Template 1's waistReach rule, same formula: this preset's only pinch).
+    R.waveReach = _narrow(R.waveReach, -Infinity, 1 - (t + half) / hw);
+    // The dip's own opening rule: its inner edge must stay clear of BOTH the plain right side (a fixed vertical
+    // line, its own inner edge always exactly `t` in from hw, so height never matters there) and the wave (the
+    // SAME curved-side check T5's own dip uses, `_sideRoom`, fed the wave's own params). `pos` shifts the dip's
+    // own reach on each side unevenly (the right stub reaches `a + pos` from centre, the left one `a - pos`), so
+    // each side's own room is checked against its OWN reach, not a single shared `a`.
+    if (R.topDipWidth && Number.isFinite(resolved.topDipWidth)) {
+      const hh = region.h / 2, cx0 = region.x + hw, top = region.y;
+      const { sideX, yInside } = _sideRoomDippedLeftWave(region, resolved);
+      const pos = hw * (resolved.topDipPosition ?? 0);
+      // width ceiling: both a+pos (right, vs the fixed hw - t) and a-pos (left, vs the wave's own room) must fit;
+      // read at the smallest depth (as T5's own comment: never emptying the depth range). A sufficiently extreme
+      // wave (independent of the dip, T8's own combination T5 never had to face) can leave NO room at all for
+      // the opening rule's own margin -- floored at the dip's own geometric minimum (TOP_DIP_MIN_WIDTH) rather
+      // than collapsing negative: the dip's own existence outranks the opening-rule's safety margin here.
+      const rightMax = hw - t - half - pos;
+      const leftMax = sideX(top + HORN_MIN_OF_HALF_HEIGHT * hh + 2 * t) - t - half + pos - cx0;
+      R.topDipWidth = _narrow(R.topDipWidth, -Infinity, Math.max(TOP_DIP_MIN_WIDTH, Math.min(rightMax, leftMax) / hw));
+      const a = hw * resolved.topDipWidth;
+      // depth ceiling: the plain right side never narrows with depth (a fixed vertical line); only the wave does.
+      // Floored the same way as the width, for the same reason.
+      const needLeft = cx0 - (a - pos) - t - half;
+      const dRoomLeft = yInside(2 * cx0 - needLeft) - top - 2 * t; // yInside's own "mirrored onto the right" input
+      R.topDipDepth = _narrow(R.topDipDepth, -Infinity,
+        Math.max(HORN_MIN_OF_HALF_HEIGHT, Math.min(dRoomLeft, topDipDepthForRadius(a, t + MIN_ARC_RADIUS_IN)) / hh));
+    }
   } else {
     R.waistReach = _narrow(R.waistReach, -Infinity, 1 - (t + half) / hw); // the pinch: hw - depth - t >= half
     // T4 OFFSET HOURGLASS: the left pinch obeys the same rule on its own side.

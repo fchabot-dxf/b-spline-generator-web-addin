@@ -58,16 +58,22 @@ describe('Template 6: listing and declaration', () => {
   it('is listed as "6. Tab Top", the frame-only tabTop preset, no new parameter, 8 bars', () => {
     expect(T6.name).toBe('Template 6 - Tab Top');
     expect(frameLabel(T6)).toBe('6. Tab Top');
-    // T7 DIAMOND-TOP HOURGLASS added a 7th template after this one.
+    // T7 DIAMOND-TOP HOURGLASS and T8 DIPPED TOP + LEFT-ONLY WAVE both added a template after this one.
     expect(FRAME_DEFS.templates.map(frameLabel)).toEqual(['1. Hourglass', '2. Narrow Neck', '3. Tapered Hourglass',
-      '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top', '7. Diamond-top Hourglass']);
+      '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top', '7. Diamond-top Hourglass',
+      '8. Dipped Top + Left-Only Wave']);
     expect(T6.silhouettePreset).toBe('tabTop');
     expect(PRESETS.tabTop.frameOnly).toBe(true);
     expect(T6.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset', 'frame_thickness']);
     expect(T6.regions.miters).toHaveLength(8);
     expect(T6.regions.bars.map((b) => b.name)).toEqual(T6.features[0].bodyNames);
     expect(T6.regions.corners.filter((c) => c.reflex).map((c) => c.id)).toEqual(['inside_R', 'inside_L']);
-    expect(T6.shapeModel.provisional).toBeTruthy();
+    // H23 item 4: the provisional shim is retired -- T6 now has its own
+    // shapeModel fitted from live Fusion goldens (all 3 golden sizes were
+    // valid for its extractor, none excluded).
+    expect(T6.shapeModel.provisional).toBeUndefined();
+    expect(T6.shapeModel.fit.fittedFrom).toEqual(['12x6', '5.51x1.97', '7x9']);
+    expect(T6.shapeModel.fit.excluded).toEqual([]);
   });
 });
 
@@ -93,10 +99,10 @@ describe('Template 6: the outline', () => {
     expect(ruleOk(prof, T)).toBe(true);
   });
 
-  it('7x9 defaults: a 3.25 in wide, 2.125 in tall tab (the provisional model, 0.5 hw / 0.5 hh)', () => {
+  it('7x9 defaults: a ~3.19 in wide, ~2.156 in tall tab (H23 item 4: now the FITTED model, not the old provisional 0.5 hw / 0.5 hh estimate)', () => {
     const m = measure(profile({}));
-    expect(m.a).toBeCloseTo(1.625, 9);
-    expect(m.h).toBeCloseTo(2.125, 9);
+    expect(m.a).toBeCloseTo(1.595537, 9);
+    expect(m.h).toBeCloseTo(2.15568275, 9);
   });
 
   it('12x6: the provisional 1.375 in tab height is clamped up to 2 x the frame thickness (a tab side >= 2t)', () => {
@@ -385,10 +391,10 @@ describe('Shape Lattice "from frame" follows the 8-corner contour', () => {
 
 describe('the Shape Lattice and Templates 1-5 never get the tab', () => {
   it('frame-only keys, appended last; the hourglass / bottle orders are untouched', () => {
-    // T7 DIAMOND-TOP HOURGLASS appended 'topPeak', 'shoulderLedgeWidth', 'hipFlare' after the tab keys -- this
-    // test's own name ("appended last") is now historical (T6's own turn); the tab keys' own two-in-a-row
-    // placement is what matters.
-    expect(FRAME_ONLY_PARAM_KEYS.slice(-5, -3)).toEqual(TAB);
+    // T8 DIPPED TOP + LEFT-ONLY WAVE appended its own 5 keys after these two, then T7 DIAMOND-TOP HOURGLASS its
+    // own 3 (FRAME_ONLY_PARAM_KEYS' own doc comment) -- this test's own name ("appended last") is now
+    // historical; TAB's own pair is no longer the trailing slice either, so fixed indices, not `.slice(-2)`.
+    expect(FRAME_ONLY_PARAM_KEYS.slice(5, 7)).toEqual(TAB);
     expect(PARAM_ORDER.tabTop).toEqual(TAB);
     expect(PARAM_ORDER.hourglass.slice(0, -3)).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
       'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth']);

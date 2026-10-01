@@ -84,7 +84,8 @@ NOWIN = {"creationflags": 0x08000000} if os.name == "nt" else {}
 INTERVAL_S = 60
 # declared screenshot drop folder: workers save <seat key>/<HHMM>_<tag>_<what>.png here; newest SHOTS_PER_SEAT are published
 SHOTS_DIR = os.path.join(os.path.expanduser("~"), ".bspline-status", "shots")
-SHOTS_PER_SEAT = 6
+SHOTS_PER_SEAT = 60   # published per seat (newest first); the lightbox swipes through all of them
+SHOTS_THUMBS = 6      # thumbnails shown in the seat card grid
 
 
 def _env():
@@ -171,7 +172,8 @@ def render(seats, commits, roadmap):
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p>'
-        + ('<div class="shots">' + "".join(f'<img class="thumb" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for x in s["shots"]) + "</div>" if s["shots"] else "")
+        + ('<div class="shots">' + "".join(f'<img class="thumb{" more" if i >= SHOTS_THUMBS else ""}" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for i, x in enumerate(s["shots"]))
+           + (f'<span class="morec">+{len(s["shots"]) - SHOTS_THUMBS} more, swipe in the viewer</span>' if len(s["shots"]) > SHOTS_THUMBS else "") + "</div>" if s["shots"] else "")
         + '</section>')
     cards = "".join(f'<h2 class="station">{e(STATIONS.get(st, st))}</h2><div class="grid">'
                     + "".join(card(s) for s in seats if s["station"] == st) + "</div>"
@@ -182,7 +184,7 @@ def render(seats, commits, roadmap):
         f'<li><code>{e(c.split("|")[0])}</code> {e(c.split("|")[2])} <span>{e(c.split("|")[1])}</span></li>'
         for c in cs if c.count("|") >= 2) + "</ul></details>" for b, cs in commits.items())
     page = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="60"><title>B-Spline progress</title><style>
+<title>B-Spline progress</title><style>
 :root{{--bg:#f6f7f9;--fg:#1c2330;--mut:#667085;--card:#fff;--w:#1d6fd8;--a:#b86a00;--line:#e3e6eb}}
 @media(prefers-color-scheme:dark){{:root{{--bg:#12151b;--fg:#e6e9ef;--mut:#98a2b3;--card:#1b2029;--line:#2a313c}}}}
 body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif;padding:16px;max-width:900px;margin-inline:auto}}
@@ -192,19 +194,75 @@ h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} sm
 .ball{{font-weight:700;margin:4px 0}} .ball.w{{color:var(--w)}} .ball.a{{color:var(--a)}}
 .bar{{margin:8px 0}} .track{{height:8px;background:var(--line);border-radius:4px;overflow:hidden}}
 .fill{{height:100%;background:var(--w)}} .lbl{{font-size:12px;color:var(--mut)}}
-img.thumb{{cursor:zoom-in}} dialog#lb{{border:0;padding:0;background:transparent;max-width:96vw;max-height:94vh}} dialog#lb::backdrop{{background:rgba(0,0,0,.8)}}
+img.thumb{{cursor:zoom-in}} dialog#lb{{border:0;padding:0;margin:0;background:transparent;width:100vw;height:100vh;max-width:100vw;max-height:100vh;overflow:hidden}} dialog#lb::backdrop{{background:rgba(0,0,0,.8)}}
 dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cursor:zoom-out}} dialog#lb figcaption{{color:#ddd;font-size:12px;text-align:center;padding-top:4px}}
+dialog#lb figure{{margin:0;position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}} .nav{{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:0;font-size:28px;width:44px;height:64px;border-radius:8px;cursor:pointer}} @keyframes lbDown{{from{{transform:translateY(var(--dy,0px))}}to{{transform:translateY(100vh)}}}}
+dialog#lb.down figure{{animation:lbDown .17s ease-in forwards}}
+@media(prefers-reduced-motion:reduce){{dialog#lb.down figure{{animation-duration:1ms}}}}
+.nav.p{{left:4px}} .nav.n{{right:4px}} .x{{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}}
+.shots img.more{{display:none}} .morec{{grid-column:1/-1;font-size:12px;color:var(--mut)}}
 .shots{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}} .shots img{{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line)}}
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
 {cards}{com}
-<dialog id="lb"><figure><img id="lbImg" alt=""><figcaption id="lbCap"></figcaption></figure></dialog>
+<dialog id="lb"><figure><img id="lbImg" alt=""><button class="x" id="lbClose" aria-label="Close">&#10005;</button><figcaption id="lbCap"></figcaption></figure></dialog>
 <script>
 const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
-function openShot(t){{ im.src=t.src; cap.textContent=t.alt; lb.showModal(); }}
-document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog')){{ lb.close(); }} }});
-document.addEventListener('keydown',ev=>{{ const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
+let set=[], idx=0;
+function show(){{ zr(); const t=set[idx]; im.src=t.src; cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }}
+function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')]; idx=set.indexOf(t); lb.classList.remove('down');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches, pre=new Image(); pre.src=t.src;
+  const go=()=>{{ show(); fig.style.transform=''; lb.showModal(); lb.scrollTop=0;
+    if(!reduce) fig.animate([{{transform:'translateY(100vh)'}},{{transform:'translateY(0)'}}],{{duration:190,easing:'cubic-bezier(.2,.8,.2,1)'}}); }};
+  (pre.decode?pre.decode():Promise.resolve()).then(go,go); }}
+const fig=lb.querySelector('figure');
+function slideClose(dy){{ if(!lb.open||lb.classList.contains('down')) return; fig.style.setProperty('--dy',(dy||0)+'px'); fig.style.transform=''; lb.classList.add('down');
+  const done=()=>{{ lb.classList.remove('down'); fig.style.removeProperty('--dy'); lb.close(); }}; fig.addEventListener('animationend',done,{{once:true}}); setTimeout(()=>{{ if(lb.open) done(); }},300); }}
+let stepping=false;
+function step(d,fromX){{ if(!set.length||stepping) return; const f=lb.querySelector('figure'); const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const swap=()=>{{ idx=(idx+d+set.length)%set.length; show(); }};
+  if(reduce||!f.animate){{ f.style.transform=''; swap(); return; }}
+  stepping=true; const w=innerWidth, x0=fromX||0;
+  f.style.transform=''; f.animate([{{transform:'translateX('+x0+'px)'}},{{transform:'translateX('+(-d*w)+'px)'}}],{{duration:150,easing:'ease-in',fill:'forwards'}});
+  setTimeout(()=>{{ f.getAnimations().forEach(a=>a.cancel()); swap();     // timer-driven, never waits on animation events
+    f.animate([{{transform:'translateX('+(d*w)+'px)'}},{{transform:'translateX(0)'}}],{{duration:170,easing:'cubic-bezier(.2,.8,.2,1)'}});
+    setTimeout(()=>{{ stepping=false; }},180); }},150); }}
+document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();slideClose(0);}});
+document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved && zs===1){{ step(ev.clientX<innerWidth/2?-1:1); }} }});
+document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
+  const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
+// zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); no double-tap (Fred); swipe changes image only at 1x; swipe changes image only at 1x
+let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, drag=null;
+function za(){{ im.style.transform='translate('+zx+'px,'+zy+'px) scale('+zs+')';  }}
+function zr(){{ zs=1; zx=0; zy=0; za(); }}
+im.style.transformOrigin='center center'; im.style.transition='none';
+function zoomAt(ns,cx,cy){{ const r=im.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
+  ns=Math.max(1,Math.min(6,ns)); const k=ns/zs; zx=zx*k-ox*(k-1); zy=zy*k-oy*(k-1); zs=ns; if(zs===1){{zx=0;zy=0;}} za(); }}
+const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+lb.addEventListener('touchstart',ev=>{{ moved=false;
+  if(ev.touches.length===2){{ pd=dist(ev.touches); ps=zs; x0=null; return; }}
+  x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; drag={{x:zx,y:zy}}; }},{{passive:true}});
+lb.addEventListener('touchmove',ev=>{{
+  if(ev.touches.length===2&&pd){{ const c={{x:(ev.touches[0].clientX+ev.touches[1].clientX)/2,y:(ev.touches[0].clientY+ev.touches[1].clientY)/2}};
+    zoomAt(ps*dist(ev.touches)/pd,c.x,c.y); moved=true; ev.preventDefault(); return; }}
+  if(zs===1&&x0!==null&&ev.touches.length===1){{ const ddy=ev.touches[0].clientY-y0, ddx=ev.touches[0].clientX-x0; if(ddy>0&&ddy>Math.abs(ddx)){{ fig.style.transform='translateY('+ddy+'px)'; moved=true; ev.preventDefault(); return; }}
+    if(Math.abs(ddx)>Math.abs(ddy)&&!stepping){{ fig.style.transform='translateX('+ddx+'px)'; moved=true; ev.preventDefault(); return; }} }}
+  if(zs>1&&x0!==null&&drag){{ zx=drag.x+ev.touches[0].clientX-x0; zy=drag.y+ev.touches[0].clientY-y0; za(); moved=true; ev.preventDefault(); }} }},{{passive:false}});
+lb.addEventListener('touchend',ev=>{{
+  if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; x0=null; return; }}
+  if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
+  if(zs===1 && dy>90 && dy>Math.abs(dx)){{ moved=true; slideClose(dy); return; }}
+  if(zs===1 && Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1,dx); moved=true; ev.preventDefault(); return; }}
+  fig.style.transform='';
+  }});
+lb.addEventListener('wheel',ev=>{{ ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); }},{{passive:false}});
+im.addEventListener('mousedown',ev=>{{ if(zs===1) return; ev.preventDefault(); moved=false; drag={{mx:ev.clientX,my:ev.clientY,x:zx,y:zy}};
+  const mv=e=>{{ zx=drag.x+e.clientX-drag.mx; zy=drag.y+e.clientY-drag.my; if(Math.abs(e.clientX-drag.mx)+Math.abs(e.clientY-drag.my)>3) moved=true; za(); }};
+  const up=()=>{{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); setTimeout(()=>{{moved=false;}},0); }};
+  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); }});
+lb.addEventListener('close',zr);
+setInterval(()=>{{ if(!lb.open) location.reload(); }}, 60000);
 </script></body></html>"""
     return body, page
 

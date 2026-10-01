@@ -66,6 +66,12 @@ EXPECTED = {
         'name': 'Template 6 - Tab Top',
         'phase_counts': {1: 2, 2: 5, 3: 5},
     },
+    # T8 DIPPED TOP + LEFT-ONLY WAVE: Template 1/5's own 11-phase sketch-2 shape (p02_01..p02_11), the LEFT side's
+    # own arcs/pins plus the dip, no right-side arcs or skeleton Equal at all; sketch 1 / 3 as every template.
+    'template_8': {
+        'name': 'Template 8 - Dipped Top + Left-Only Wave',
+        'phase_counts': {1: 2, 2: 11, 3: 5},
+    },
 }
 
 
@@ -180,6 +186,12 @@ def test_cross_template_regression():
         ('template_2', 'template_6'),
         ('template_6', 'template_1'),
         ('template_5', 'template_6'),
+        # T8 is also a copy of T1/T5's folder (same phase file names: p02_01..p02_11, p03_01..05).
+        ('template_1', 'template_8'),
+        ('template_8', 'template_1'),
+        ('template_4', 'template_8'),
+        ('template_5', 'template_8'),
+        ('template_8', 'template_6'),
     ]
     for first, second in sequences:
         try:

@@ -19,12 +19,12 @@ designs are touched.
 
 1. Open a new design with a 7 x 9 board and build Template 3 with its defaults.
 2. Check these:
-   - [ ] The timeline has no red or yellow items.
-   - [ ] The top edge is narrower than the bottom edge (about 5 in against 6.5 in).
-   - [ ] The top is centred: the left and right top corners are the same distance from the centre.
-   - [ ] The sides are straight, and the waist is narrower than the top.
-   - [ ] The top and bottom edges are flat.
-   - [ ] You get 4 bars (frame_top, frame_right, frame_bottom, frame_left) and the trim cut works.
+   - [x] The timeline has no red or yellow items. (12 timeline items, 0 unhealthy)
+   - [x] The top edge is narrower than the bottom edge (about 5 in against 6.5 in). (measured: top 5.064 in, bottom 6.5 in)
+   - [x] The top is centred: the left and right top corners are the same distance from the centre. (+/-2.532 in)
+   - [x] The sides are straight, and the waist is narrower than the top. (waist inner extent 2.246 in < top 2.532 in)
+   - [x] The top and bottom edges are flat.
+   - [x] You get 4 bars (frame_top, frame_right, frame_bottom, frame_left) and the trim cut works. (bar names: frame_bottom, frame_left, frame_right, frame_top)
 3. If the build fails, send the log (see step 5). Look first for these two lines:
    - `shoulder_arc_equal`: this is the one new constraint that ties the left and right top corners
      together. "Over constrained" on this line means it has to be removed or replaced.
@@ -62,12 +62,12 @@ Fusion must end up with the same shape.
 2. In Fusion, run `tools/repro/f20_live_parity.py` once per case (first set its `SP` / `PARITY` paths at
    the top to where the case files and `record_frame_parity.py` are). It prints a JSON line per case.
 3. Pass means:
-   - [ ] `maxErr` is below 0.001 (the arcs Fusion solved match the app's arcs).
-   - [ ] `healthy` is true.
-   - [ ] `userParams` has **no** new name. In particular there is no `topInset` or `top_inset`: only
-     `widthIn` / `heightIn` and what Template 1 already has.
-   - [ ] The top width is the app's width: for the right shoulder arc, `center x + radius` equals the
-     app's top half-width.
+   - [x] `maxErr` is below 0.001 (the arcs Fusion solved match the app's arcs). (max observed 6.11e-05 across all 4 cases)
+   - [x] `healthy` is true. (all 4 cases)
+   - [x] `userParams` has **no** new name. In particular there is no `topInset` or `top_inset`: only
+     `widthIn` / `heightIn` and what Template 1 already has. (confirmed: widthIn, heightIn, boundingboxoffset, ck_arc_shoulder_weld, ck_arc_hip_weld, ck_skel_shoulder_equal, ck_skel_waist_equal, frame_thickness)
+   - [x] The top width is the app's width: for the right shoulder arc, `center x + radius` equals the
+     app's top half-width. (verified in all 4 cases, e.g. default: 1.8896+0.6233=2.5129 = top half-width)
 
 ## 4. Inversion sweep (bigger trim offsets)
 
@@ -75,8 +75,8 @@ Record Template 3 at boundingboxoffset 0.5 and 1.0 on 7x9 and 12x6 into a scratc
 fixtures folder. Use `record_case("template_3", W, H, params={"boundingboxoffset": B})` from
 `record_frame_parity.py`. Then check each result with `fb_engine.outline_invariants.outline_violations`:
 
-- [ ] Every result gives `[]`. If one doesn't, a horn or arc has flipped to the wrong side (the F14
-  problem), and the file is the evidence.
+- [x] Every result gives `[]`. If one doesn't, a horn or arc has flipped to the wrong side (the F14
+  problem), and the file is the evidence. (all 4 combos -- 7x9/12x6 x 0.5/1.0 -- gave `[]`, timeline healthy)
 
 ## 5. What to send back
 

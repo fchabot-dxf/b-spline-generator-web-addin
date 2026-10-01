@@ -8,7 +8,7 @@ from fb_engine.panel_lip import apply_panel_lip
 from fb_engine.seed_geometry import apply_seed_geometry
 from fb_engine import frame_definition as fd
 out = []
-for tid in ["template_1", "template_2", "template_3", "template_4", "template_5", "template_7"]:
+for tid in ["template_1", "template_2", "template_3", "template_4", "template_5", "template_7", "template_8"]:
     for ui in (None, {"frame_thickness": 0.5, "boundingboxoffset": 0.4}):
         spec, prefix = resolve_template(tid, ui) if ui is not None else resolve_template(tid)
         out.append(json.dumps([tid, prefix, spec], sort_keys=True, default=str))

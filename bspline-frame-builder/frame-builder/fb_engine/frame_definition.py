@@ -196,16 +196,26 @@ def template_shape_model(template_id, frame, goldens_dir):
     T7 DIAMOND-TOP HOURGLASS: {"from": <template id>} alone (no extra key at all) -- the peak itself has no
     feature of its own (its height is DERIVED, never an independent fitted/provisional quantity: see
     template_7/template_data.py's own doc comment), but the base model gains three fixed features (`topPeak`,
-    `shoulderLedge`, `hipFlare`) carrying the shape's own default proportions -- see below."""
+    `shoulderLedge`, `hipFlare`) carrying the shape's own default proportions -- see below.
+    T8 DIPPED TOP + LEFT-ONLY WAVE: {"waveReachOfHw": ..., "waveHeightOfHh": ..., "topDipHalfWidthOfHw": ...,
+    "topDipDepthOfHh": ..., "topDipPositionOfHw": ...} (no `from` either: like T6, no earlier template's fitted
+    features describe a plain straight side or an off-centre dip) builds
+    frame_shape_fit.provisional_dipped_left_wave_model."""
     from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
                                            provisional_dipped_top_model)
     from fb_engine.template_resolver import resolve_template
     model = fit_shape_model(template_id, frame.get("shapeExtractor") or frame.get("silhouettePreset"), goldens_dir)
     prov = frame.get("provisionalShape")
     if model is None and prov and "from" not in prov:
-        # T6 TAB TOP: a shape of its own (no base template): {"tabHalfWidthOfHw": w, "tabHeightOfHh": h}
-        from fb_engine.frame_shape_fit import provisional_tab_top_model
-        return provisional_tab_top_model(prov["tabHalfWidthOfHw"], prov["tabHeightOfHh"])
+        if "tabHalfWidthOfHw" in prov:
+            # T6 TAB TOP: a shape of its own (no base template): {"tabHalfWidthOfHw": w, "tabHeightOfHh": h}
+            from fb_engine.frame_shape_fit import provisional_tab_top_model
+            return provisional_tab_top_model(prov["tabHalfWidthOfHw"], prov["tabHeightOfHh"])
+        # T8 DIPPED TOP + LEFT-ONLY WAVE: also a shape of its own (see this function's own doc comment).
+        from fb_engine.frame_shape_fit import provisional_dipped_left_wave_model
+        return provisional_dipped_left_wave_model(prov["waveReachOfHw"], prov["waveHeightOfHh"],
+                                                  prov["topDipHalfWidthOfHw"], prov["topDipDepthOfHh"],
+                                                  prov["topDipPositionOfHw"])
     if model is None and prov:
         base_frame = resolve_template(prov["from"])[0].get("Frame") or {}
         base = template_shape_model(prov["from"], base_frame, goldens_dir)
