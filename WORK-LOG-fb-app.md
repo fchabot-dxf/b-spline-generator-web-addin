@@ -5178,3 +5178,56 @@ pre-existing Template 1 bug (T1 itself reflexes at 12x6, out of scope). Full nar
   left `True` — the advisor's own call whether 12x6's pre-existing T1 limitation is an acceptable bar to
   un-hide. Fusion state left clean (own scratch docs only, closed via their own handles); redeployed from the
   pushed commit via a clean scratch worktree before finishing.
+
+## 2026-10-01: H23 item 19 (in progress — cut short, Fred needs Fusion)
+
+**Status: analysis only, no code changed.** Stopped before any edits/live-Fusion work because Fred needs the
+Fusion session back. Leaving this writeup so the next pickup doesn't re-derive it.
+
+- **Confirmed (measured, not assumed): seat C's `b31f5ed` (fb-app branch, F29 item 2) does NOT yet reconcile
+  against the real goldens item 17 recorded.** `fit_shape_model('template_10', 'hourglass_arched_top',
+  goldens_dir)` against `tests/fixtures/frame-parity/template_10_{7x9,6x9,12x6}.json` returns `None` on
+  current main — `_hourglass_arched_top`'s validity check (inherited unmodified from `_hourglass`, i.e.
+  "shoulder tangent to hw") fails, because item 15/17's real T10 is a NARROW-TOP construction (hip tangent to
+  hw, shoulder tangent to the horn at `top_x`, not to hw) — `b31f5ed` renamed `archRise`→`archCornerAngle`
+  end-to-end and rewrote the *provisional* model's feature set (depth/cornerRTop/cornerRBottom/waistR/
+  waistCy/notch/topInset/archCornerAngle) to match this narrow-top shape, correctly anticipating it, but left
+  the actual *extractor* function's body as the old T1-style `_hourglass` call — so `fit_shape_model` still
+  silently falls through to the (now-superseded) provisional branch using Fred's separately-hand-built-sketch
+  numbers, not item 17's real build. `gen_frame_defs.py --check` is clean on main only because nothing has
+  tried to regenerate against the merged extractor yet.
+- **Verified the correct extractor topology/sign by hand against the real golden JSON** (7x9: shoulder
+  r=1.20901 center=[2.3504,1.36676], waist r=1.52162, hip r=7.73588 center=[-4.48588,-0.54621], top_edge
+  chord half-width 1.14139): hip IS tangent to `hw` (`hp.center.x == hw - hp.radius`, residual 0.00000);
+  shoulder is tangent to the horn at `top_x` but with the OPPOSITE sign T3's `_hourglass_narrow_top` uses —
+  `sh.center.x == top_x + sh.radius` (residual 0.00000), not `top_x - sh.radius` (residual 2.4). Both
+  shoulder-waist and hip-waist tangency hold exactly. Confirmed the same pattern at 6x9. **12x6 does NOT
+  follow this pattern** (sign flips, waist radius collapses to ~0.00001 — a degenerate/cusp solve) — this is
+  the same already-reported T1-inherited 12x6 limitation (item 17's own writeup), so the fix is to let the
+  extractor's validity check legitimately exclude 12x6 from the fit, same precedent as T5's degenerate-size
+  exclusion (H23 item 6) — NOT to special-case it or force a fit through it.
+- **Cross-checked the app-side math independently and it matches exactly**: derived
+  `cos(cornerAngle) = -2*topX*rise/(topX^2+rise^2)` from scratch before reading `b31f5ed`'s JS, then found
+  `_archCornerAngleForRise` in `editor-shape-lattice-generator.js` uses the identical formula. Plugging the
+  real golden's measured topX/rise gives archCornerAngle ≈ 103.55° at 7x9, ≈115.78° at 6x9 — i.e. **NOT scale-
+  invariant** in the real Fusion build, unlike `b31f5ed`'s provisional assumption (Fred's own fixed-angle
+  design intent, a single hand-picked value applied at any size). This isn't a contradiction needing a fix:
+  the REAL fit should just treat `archCornerAngle` as an ordinary `hw`/`hh`-linear feature like every other
+  one (the existing `_lsq2` machinery already does this generically) rather than forcing the `const`-only
+  form — the `const` plumbing `b31f5ed` added to `paramsFromShapeModel`/the provisional model stays correct
+  and untouched, it's just dormant for the real (non-provisional) fit.
+- **Planned fix, not yet written**: rewrite `_hourglass_arched_top` in `frame_shape_fit.py` with the corrected
+  topology above (own tangency checks, not `_hourglass`'s), keep the existing archCornerAngle tail logic;
+  port `provisional_reconstructed_arched_hourglass_model` + the `frame_definition.py` dispatch branch + T10's
+  `template_data.py` (FRAME_HANDLES rename, FRAME_PROVISIONAL_SHAPE) from `b31f5ed`, re-deriving the
+  provisional's snapshot numbers from the REAL 7x9 golden instead of Fred's separate hand-sketch numbers
+  (same single-point-snapshot pattern T3/T5 already use for their own dead-unless-needed fallback). Still
+  open/unverified: whether `FRAME_HANDLES`' "seeded" binding actually wires an app-side archCornerAngle drag
+  through to anything live-adjustable in the current Fusion phases (my item 17 arch is a fixed closed-form
+  CY expression, not an exposed parameter) — dispatched a research-only Explore agent on this before the
+  interrupt, result not yet read.
+- **Not started**: the live-Fusion verification step (real b-spline send + T10 build + panel join/trim,
+  `FRAME_HIDDEN=False` flip, full suite + A/B). Needs Fusion, which Fred needs back now.
+
+No files changed this entry; nothing to commit. Passing back to the advisor for direction on resuming
+(continue same task next wake once Fusion is free again, vs. something else meanwhile).
