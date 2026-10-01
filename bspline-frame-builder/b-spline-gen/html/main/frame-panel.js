@@ -73,6 +73,11 @@ export function editFrame(patch) {
 }
 function _syncUndo() { if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0; }
 
+/** A primitive's own length (line: chord; arc: this generator's own circular arcs, rx === ry). Same formula
+ *  tests/frame-template-*.test.js's own `primLength` already uses for the "no wing risk" check (Template 7's
+ *  own finding: a bar segment shorter than frame_thickness causes a "wing" artifact). */
+const _primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : Math.abs(p.rx * p.dTheta));
+
 /** F13 [Generate]: a new seeded random frame shape, written as the handles' seeds. */
 export function generateFrame(seed = nextSeed()) {
   const rec = getFrameRecord();
@@ -81,10 +86,20 @@ export function generateFrame(seed = nextSeed()) {
   const region = frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }).region;
   const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
   // Generate must never produce a broken frame (Fred): checked against the real inner profile, not just the
-  // bare outline every seed's own ranges already guarantee (frame-handles.js generateValidFrameSeeds).
+  // bare outline every seed's own ranges already guarantee (frame-handles.js generateValidFrameSeeds). H23
+  // item 21: ALSO checked against every OUTER piece staying at least frame_thickness long -- a template whose
+  // handle table doesn't expose every param that shapes a piece's own length (T10's archRise handle moves the
+  // shoulder toward the arch's own top, which the shape-only range keeps geometrically non-degenerate but has
+  // no reason to know about frame_thickness at all) can draw a bare outline with 0 defects whose own horn
+  // piece is still too short for Fusion's real inward offset -- MEASURED live: addOffset2 fails on topology,
+  // 2 of 4 bars never get built. Same "retry against the real check" declared pattern as the inner-profile
+  // rule above, not a hand-derived range on top of the existing one (frame-handles.js's own comment on
+  // generateValidFrameSeeds): a template-agnostic "no wing" rule, not special-cased to T10's own archRise.
   const seeds = generateValidFrameSeeds(tpl, region, seed, t, (s) => {
     const inner = frameInnerProfile(FRAME_DEFS, { ...rec, seeds: s }, { widthIn: P.widthIn, heightIn: P.heightIn });
-    return !inner || inner.defects.length === 0; // no inner edge (the frame doesn't fit): a different seed can't fix that
+    if (inner && inner.defects.length > 0) return false;
+    const outer = frameCutProfile(FRAME_DEFS, { ...rec, seeds: s }, { widthIn: P.widthIn, heightIn: P.heightIn });
+    return outer.primitives.every((p) => _primLength(p) >= t);
   });
   pushFrameHistory();
   setFrameRecord({ seeds, genSeed: seed });

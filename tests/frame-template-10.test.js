@@ -240,19 +240,15 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     }
   });
 
-  it('H23 item 21: no [Generate] draw leaves the horn shorter than frame_thickness (a real live-Fusion ' +
-    'find -- a horn can be geometrically "valid" by the shape-only range\'s tiny margin while still too ' +
-    'short for Fusion\'s own inward offset, breaking the frame_top/frame_right miter)', () => {
+  it('H23 item 21: archRise\'s own range keeps the APP\'s OWN preview from drawing an absurdly tall dome ' +
+    '(a real, if partial, improvement -- see the next test for the REAL fix)', () => {
     // A real app [Generate] + Send drew archRise 0.2377 (within the OLD shape-only range, 0 defects) and
-    // left horn_TR at 0.414 in -- shorter than frame_thickness (0.75 in). Passing that exact seed set
-    // directly still reproduces the short horn (explicit seeds are never clamped, same as every other
-    // hourglass-family template, `clampToFrameRanges`'s own doc comment) -- the fix below is about
-    // `[Generate]` never DRAWING it in the first place, not retroactively repairing an explicit value.
+    // the app's OWN preview showed horn_TR at 0.414 in -- shorter than frame_thickness (0.75 in). Passing
+    // that exact seed set directly still reproduces it (explicit seeds are never clamped, same as every
+    // other hourglass-family template, `clampToFrameRanges`'s own doc comment).
     const CAPTURED_BAD_SEEDS = { waistCenterY: -0.3818701319168019, waistReach: 0.24322918082707384, archRise: 0.23766942425966095 };
     const bad = profile(CAPTURED_BAD_SEEDS);
     expect(primLength(bad.primitives[0]), 'horn_TR (explicit seed, not clamped)').toBeLessThan(T);
-    // The real fix: every [Generate] draw, at the sizes this item itself verified live, keeps every horn
-    // at least frame_thickness long (the same rule every other pinch/corner already gets via frameParamRanges).
     for (const [W, H] of [[7, 9], [6, 9]]) {
       const region = profile({}, W, H).region;
       for (let seed = 1; seed <= 500; seed++) {
@@ -260,6 +256,27 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
         const prof = profile(seeds, W, H);
         expect(primLength(prof.primitives[0]), `${W}x${H} seed ${seed} horn_TR`).toBeGreaterThanOrEqual(T);
         expect(primLength(prof.primitives[10]), `${W}x${H} seed ${seed} horn_TL`).toBeGreaterThanOrEqual(T);
+      }
+    }
+  });
+
+  it('H23 item 21, the REAL fix: top_edge is hardcoded in Fusion (archRise never actually moves it ' +
+    'there -- MEASURED, a live default build and a live bad-seed build produced BIT-IDENTICAL top_edge ' +
+    'geometry), so the app\'s own archRise-based horn-length model doesn\'t match reality -- the REAL ' +
+    'live-Fusion fix is frame-panel.js\'s own generateFrame() [Generate] retry, now ALSO gated on every ' +
+    'OUTER piece (not just the inner profile) staying >= frame_thickness, the same declared "retry against ' +
+    'the real check" pattern as the existing inner-profile rule, a template-agnostic "no wing" rule', () => {
+    const isValid = (seeds, W, H) => {
+      const inn = inner(seeds, W, H);
+      if (inn && inn.defects.length > 0) return false;
+      const outer = profile(seeds, W, H);
+      return outer.primitives.every((p) => primLength(p) >= T);
+    };
+    for (const [W, H] of [[7, 9], [6, 9]]) {
+      const region = profile({}, W, H).region;
+      for (let seed = 1; seed <= 500; seed++) {
+        const seeds = generateValidFrameSeeds(T10, region, seed, T, (s) => isValid(s, W, H));
+        expect(isValid(seeds, W, H), `${W}x${H} seed ${seed}`).toBe(true);
       }
     }
   });

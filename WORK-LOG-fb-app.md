@@ -5558,3 +5558,42 @@ payload, replayed via `_handle_generate`/`_handle_send_frame`) hasn't been re-ru
 payload is intentionally still the bad one (kept as the regression test's own fixture value, not something to
 re-send). `FRAME_HIDDEN` stays `True` until that live re-check passes at 7x9 and 6x9, plus a fresh A/B/full-
 suite pass post-live-check per the dispatch's own ordering.
+
+## 2026-10-01: H23 item 21, CORRECTION — the archRise range fix was insufficient; the real fix is elsewhere
+
+**Found this myself, before the live re-check, by re-examining the actual Fusion data already captured during
+item 19's own diagnosis.** Comparing `top_edge`'s own recorded geometry between a live DEFAULT build and the
+live BAD-SEED build (both already captured, no new Fusion calls needed): they're **bit-identical** --
+`center/radius/start/end/mid` all match exactly. This confirms directly what `p02_03_loop.py`'s own docstring
+already said in passing ("archRise's own 0.35 ... is baked into CY this way rather than wired as a template
+parameter -- still not independently adjustable"): **`top_edge` is hardcoded in Fusion at the equivalent of
+`archRise = 0.35`, always, regardless of what the app seeds or the user drags.** `archRise` only changes the
+APP's OWN preview (`hourglassConstruction` genuinely treats it as moving the arch), never the real Fusion build.
+
+So the earlier fix (narrowing `archRise`'s own range in `frameParamRanges`) only protects the APP's OWN
+(inaccurate, for this one piece) model of horn length -- verified this is STILL true and harmless, kept it --
+but does nothing for the REAL Fusion geometry, where the horn's own top end never moves. Proved this
+numerically: cross-referencing a FIXED arch-end point (from a default build) against each `[Generate]` draw's
+own (real, archRise-independent) shoulder position, the REAL horn length collapses to ~0.0001 in for some
+draws even with the archRise fix in place -- the true culprit is `waistReach`/`waistCenterY` (T10's other two
+handles) moving the shoulder too close to that fixed point, something nothing previously checked for at all.
+
+**The real fix**: rather than deriving a new closed-form range for `waistReach`/`waistCenterY` (two
+interdependent, order-constrained params -- a real but much harder derivation), followed the SAME declared
+pattern this exact codebase already uses for an analogous T10 problem (`frame-handles.js`'s own
+`generateValidFrameSeeds` doc comment: "a retry, not a hand-derived inequality... the caller's own real
+validity check... gates each draw"). `frame-panel.js`'s own `generateFrame()` -- the actual production
+`[Generate]` handler -- already retries against one real check (inner-profile defects); added a second,
+general one: every OUTER piece (any template, not just T10) stays at least `frame_thickness` long, the same
+"no wing" rule the project already named for a different template. Template-agnostic by construction, not a
+T10-specific patch.
+
+**Verified**: raw (single-draw, no retry) rejection rate is real and non-trivial -- 523/2000 at 7x9, 806/2000
+at 6x9 -- confirming this isn't a rare edge case. With the retry (`GENERATE_MAX_ATTEMPTS = 20`, already a
+generous bound proven elsewhere in this same file), 0/2000 draws at either size are still bad after retrying.
+Added a new test (`tests/frame-template-10.test.js`) reproducing `frame-panel.js`'s own exact validity logic
+and sweeping 500 seeds x 2 sizes; mutation-tested it properly this time (weaken ONLY the retry gate, keep the
+final assertion strict) -- confirmed it fails (seed 8 at 7x9) without the real fix, passes with it. Full suite:
+vitest 2934/2934, kept the earlier (still-true, now correctly-scoped-down) archRise test alongside the new one.
+
+Both fixes are now committed together. Proceeding to the live Fusion re-check (bridge confirmed up).
