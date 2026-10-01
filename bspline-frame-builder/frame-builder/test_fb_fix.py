@@ -58,15 +58,13 @@ class TestFrameFit:
     # flange height shrinks relative to frame_thickness (66% ratio at 12x6), so NO bars
     # get built even though `frame_fit`'s rule correctly says this board fits. See
     # LIVE-RESULTS-ranchy.md item 13 and KNOWN_BROKEN_BUILD in frame-parity-app.test.js.
-    # H23 item 13 (Template 10, 7x9/6x9): the shared hourglass top-arc construction solves to
-    # the wrong branch (a circle swept the long way around instead of through its apex), so
-    # the enclosure/offset/miter chain built on it produces 0 bars even though `frame_fit`'s
-    # rule correctly says these boards fit (12x6 needs no exception here: it gets 2 of 4 bars,
-    # which is still > 0, matching the rule -- its own inconsistency is caught elsewhere, by
-    # test_golden_is_consistent's KNOWN_BROKEN_BUILD).
+    # H23 item 13 (Template 10, 7x9/6x9): FIXED by H23 items 14/15/17, re-recorded live by item
+    # 19 -- removed from this set, 4/4 bars now, matching `frame_fit`'s own rule with no
+    # exception needed. (12x6 never needed an exception here either: its own build gets some
+    # bars either way -- its own inconsistency is caught elsewhere, by test_golden_is_
+    # consistent's KNOWN_BROKEN_BUILD.)
     _KNOWN_BROKEN_GOLDENS = {
         "template_3_5.51x1.97.json", "template_9_12x6.json",
-        "template_10_7x9.json", "template_10_6x9.json",
     }
 
     @pytest.mark.parametrize("path", _GOLDENS, ids=os.path.basename)

@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "30f23773da2614a40e73841cf3bd7db2e57e854af87972b7aa93ae148ef534bb",
+  "sourceHash": "39e6d5abee19506d12c7ae65d0683e4256f91d89bd07e0ff81d67af78c29ef11",
   "templates": [
     {
       "features": [
@@ -2000,68 +2000,63 @@
             "hw": 0.35
           },
           "cornerR": {
-            "hh": 0.142066,
-            "hw": 0.005992
+            "hh": 0.134309,
+            "hw": 0.01741
           },
           "depth": {
-            "hh": 0.106231,
-            "hw": 0.185089
+            "hh": -0.052481,
+            "hw": 0.38866
           },
           "notch": {
-            "hh": 0.305363,
-            "hw": -0.007805
+            "hh": 0.232589,
+            "hw": 0.09041
           },
           "waistCy": {
-            "hh": -0.009779,
-            "hw": 0.01363
+            "hh": 0.000101,
+            "hw": 8e-05
           },
           "waistR": {
-            "hh": 0.147077,
-            "hw": 0.016953
+            "hh": 0.200276,
+            "hw": -0.0517
           }
         },
         "fit": {
-          "exactAtFittedSizes": false,
-          "excluded": [],
+          "exactAtFittedSizes": true,
+          "excluded": [
+            "12x6"
+          ],
           "fittedFrom": [
-            "12x6",
-            "5.51x1.97",
+            "6x9",
             "7x9"
           ],
-          "maxResidualIn": 0.0832,
+          "maxResidualIn": 0.0,
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
           "residualsIn": {
+            "archRise": [
+              -0.0,
+              -0.0
+            ],
             "cornerR": [
-              0.0093,
-              -0.0174,
-              -0.003
+              0.0,
+              0.0
             ],
             "depth": [
-              -0.0443,
-              0.0832,
-              0.0143
+              -0.0,
+              -0.0
             ],
             "notch": [
-              0.0236,
-              -0.0443,
-              -0.0076
+              0.0,
+              0.0
             ],
             "waistCy": [
-              -0.0069,
-              0.013,
-              0.0022
+              0.0,
+              0.0
             ],
             "waistR": [
-              0.0051,
-              -0.0096,
-              -0.0016
+              0.0,
+              0.0
             ]
           }
-        },
-        "provisional": {
-          "archRiseOfHw": 0.35,
-          "baseModel": "the fitted Template 1 model",
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)"
         }
       },
       "silhouettePreset": "hourglass",

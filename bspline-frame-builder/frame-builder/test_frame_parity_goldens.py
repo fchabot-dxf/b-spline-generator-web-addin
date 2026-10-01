@@ -38,11 +38,14 @@ _SIZES_PORTRAIT = ("7x9", "6x9", "12x6")
 # count doesn't match the template's own declared count, for a build-defect reason, not a
 # "too small" _DEGENERATE one) -- not asserted here at all (no "correct" count to check
 # against); see test_fb_fix.py's matching _KNOWN_BROKEN_GOLDENS and LIVE-RESULTS-ranchy.md
-# item 13. T9 12x6: 0 of 12 bars (2 corners fail miter resolution). T10 7x9/6x9: 0 of 4
-# bars; T10 12x6: only 2 of 4 (frame_top/bottom/left all fail extrusion) -- the shared
-# `hourglass` top-arc construction solves to the WRONG branch (a circle swept the long way
-# around, ~331 deg at 12x6, confirmed via the sketch's own real Fusion boundingBox).
-_KNOWN_BROKEN_BUILD = {"template_9_12x6.json", "template_10_7x9.json", "template_10_6x9.json", "template_10_12x6.json"}
+# item 13. T9 12x6: 0 of 12 bars (2 corners fail miter resolution).
+# H23 item 19: T10 7x9/6x9 re-recorded live and FIXED (items 14/15/17's own work) -- full
+# 4/4 bars now, removed from this set. T10 12x6 stays broken, re-confirmed live: sketch 3/
+# frame enclosure still fails to form at all there (a pre-existing Template 1 limitation
+# T10 inherits, "ship it" per the advisor/Fred) -- its own golden here is still the item-13
+# era recording (2 malformed bars, a different failure shape than today's "no sketch 3 at
+# all", but broken either way; not re-recorded since there is no "correct" shape to capture).
+_KNOWN_BROKEN_BUILD = {"template_9_12x6.json", "template_10_12x6.json"}
 
 
 def test_all_six_goldens_exist():

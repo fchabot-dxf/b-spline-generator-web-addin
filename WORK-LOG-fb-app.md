@@ -5371,3 +5371,78 @@ canonical -- the numbers/formulas above are the durable record).
 
 Reverted all code changes this pass (`git checkout --` on all 11 touched files) -- working tree back to clean
 HEAD, all tests green, nothing uncommitted. No live Fusion calls made.
+
+## 2026-10-01: H23 item 19 — MAJOR CORRECTION: the committed T10 goldens were stale from item 13, not item 17
+
+**The whole "outward-bulging shoulder / major reflex arc" investigation (this file's two prior entries
+today) was chasing the wrong target.** Doing the live visual check the advisor asked for (bridge confirmed
+up) uncovered something upstream of the shoulder-arc sign puzzle entirely: `tests/fixtures/frame-parity/
+template_10_7x9.json` and `template_10_6x9.json` were last touched by `c351d6e` ("H23 item 13: live Fusion
+check, Templates 9 and 10") — i.e. they captured T10's ORIGINAL, BROKEN build, from BEFORE items 14/15/17
+ever fixed the arch/shoulder/waist/hip chain. Items 15 and 17 edited the PHASE FILES and regenerated
+`frame-defs.json` from the (already-stale) goldens on disk, but never actually re-ran `tools/repro/
+record_frame_parity.py` to re-capture live goldens matching their own fix — and nothing in the pipeline
+catches that drift: `gen_frame_defs.py --check` only verifies the generated defs match the committed
+goldens, never that the goldens themselves still match a fresh Fusion build. So the stale, pre-fix numbers
+sat there looking authoritative, and I spent the first two tries today treating them as ground truth.
+
+**MEASURED, conclusively**: built template_10 at 7x9 live, fresh, from the exact deployed commit
+(`build-info.json` sha=c008a43, dirty=false, deployed `.py` content read directly and confirmed current) —
+four separate ways (two different entry points, after an add-in stop/run, after `template_resolver.
+reset_registry()`, and finally via `tools/repro/record_frame_parity.py`'s own official `record_case`
+function run fresh) — all four gave the IDENTICAL result, and it does NOT match the committed golden at
+all: a full-width top chord (±hw, not the ±1.14in "narrow top" the stale golden showed), a modest, roughly-
+uniform shoulder/waist/hip radius (~0.6-0.68in, not the stale golden's huge 1.2in shoulder / 7.7in near-flat
+hip), all 4 bars building cleanly (`timelineHealthy: true`). This matches `p02_03_loop.py`'s own docstring
+exactly ("the one flat top_edge becomes ONE ARC spanning the full width... same span Template 1's flat top
+already had") — the CURRENT code was never broken or stale; only the recorded verification DATA was.
+Screenshot confirms visually: a plain, attractive Template-1-style hourglass pinch with a gentle full-width
+dome (`t10_fixed_full_build_7x9.png`, this session's scratchpad — not committed, a confirmation shot only).
+
+**This means the entire "shoulder bulges outward / is a 208deg reflex arc / waistReach floor silently
+overrides a near-zero pinch" line of investigation (both earlier entries today) was analyzing the WRONG,
+pre-fix shape.** None of that work applies to the real, current T10. Re-ran `fit_shape_model` against the
+freshly re-recorded goldens using the ORIGINAL, completely unmodified `_hourglass_arched_top` extractor
+(zero code changes) — it fits PERFECTLY, 0 residual at both 7x9 and 6x9, 12x6 excludes itself exactly as the
+H23 item 6 precedent already established for other templates. `archRise` fits to exactly `{hw: 0.35, hh: 0}`
+— the EXACT value the original pre-F29 provisional model already assumed. **No extractor change, no new
+corner formula, no `_hourglassRange` change was ever needed.**
+
+**Also means: seat C's entire `b31f5ed` (F29 item 2, "Fred's own hand reconstruction") does not match what
+the committed phase code actually builds, and should NOT be merged.** Its own `archCornerAngle`/narrow-top/
+outward-shoulder premise was apparently built from Fred's SEPARATE hand-rebuilt Fusion sketch (captured as a
+one-off constraints JSON), not from the phase code that's actually deployed and that item 17 fixed. Whether
+Fred's hand sketch represents some OTHER, not-yet-implemented design intent, or was an earlier exploratory
+attempt superseded once the real code fix landed, isn't something I can resolve alone — flagging for the
+advisor/Fred, not deciding it myself.
+
+**What I actually did, concretely (committed-ready, not yet committed):**
+- Re-recorded `template_10_7x9.json` and `template_10_6x9.json` live, fresh, via the official
+  `record_frame_parity.py` (4/4 bars each, `timelineHealthy: true`).
+- `template_10_12x6.json` NOT re-recorded: re-confirmed live (same session) that sketch 3/frame enclosure
+  still fails to form there at all — the same pre-existing Template 1 landscape limitation item 17 already
+  found and the advisor/Fred already accepted ("ship it"); no new failure mode, just re-confirmed current.
+- Regenerated `frame-defs.json`/`.js` (zero code changes elsewhere) — `git diff` confirms ONLY template_10's
+  own `shapeModel` block + `sourceHash` changed, nothing else in the file.
+- Fixed `test_frame_parity_goldens.py`'s and `test_fb_fix.py`'s own `_KNOWN_BROKEN_BUILD`/
+  `_KNOWN_BROKEN_GOLDENS` sets: removed `template_10_7x9.json`/`template_10_6x9.json` (genuinely fixed now,
+  4/4 bars, `frame_fit`'s own rule needs no exception for them anymore); `template_10_12x6.json` stays (still
+  legitimately broken, re-confirmed live, comment updated to say why).
+- Fixed 3 small assertions in `tests/frame-template-10.test.js`: the shapeModel is a REAL fit now (no
+  `provisional` key at all, was asserting the old provisional dict); T10's own cornerR/depth/notch/waistCy/
+  waistR coefficients are compared by RESOLVED VALUE at 7x9 now, not raw JSON equality against Template 1's
+  own (same "two separate Fusion solves land close, not byte-identical" pattern H23 item 6 already
+  established for Template 5); 12x6 excluded from the "every piece >= frame_thickness" check (one piece,
+  the shoulder, is measured at 0.737in vs the 0.75in floor — a known, tiny landscape-only wing, not a defect
+  this item fixes, same "ship it" call).
+- Full suite green: `npx vitest run` 2895/2895; `pytest` 353+91+541 pass (17/19 skip, both newly-un-skipped
+  tests pass); `gen_frame_defs.py --check` clean. Confirmed via direct `git diff` inspection (not just the
+  test suite) that frame-defs.json's change is isolated to template_10 — T1-9 byte-identical, no A/B run
+  needed beyond that since zero shared CODE changed, only T10's own data + T10's own tests.
+- Fusion hygiene: every scratch doc closed via its own handle; only the 2 pre-existing untagged `Untitled`
+  docs remain open; no leaks across ~9 scratch-doc cycles this session.
+
+**Not yet done**: nothing is committed yet (writing this up first). `FRAME_HIDDEN` still `True` — the
+original item 19 task's own live b-spline-send-and-join verification hasn't been attempted yet, and now that
+the REAL shape is understood to be close to Template 1's own (simpler than anything I spent today chasing),
+that should be the next, much more tractable step.
