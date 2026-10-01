@@ -240,6 +240,30 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     }
   });
 
+  it('H23 item 21: no [Generate] draw leaves the horn shorter than frame_thickness (a real live-Fusion ' +
+    'find -- a horn can be geometrically "valid" by the shape-only range\'s tiny margin while still too ' +
+    'short for Fusion\'s own inward offset, breaking the frame_top/frame_right miter)', () => {
+    // A real app [Generate] + Send drew archRise 0.2377 (within the OLD shape-only range, 0 defects) and
+    // left horn_TR at 0.414 in -- shorter than frame_thickness (0.75 in). Passing that exact seed set
+    // directly still reproduces the short horn (explicit seeds are never clamped, same as every other
+    // hourglass-family template, `clampToFrameRanges`'s own doc comment) -- the fix below is about
+    // `[Generate]` never DRAWING it in the first place, not retroactively repairing an explicit value.
+    const CAPTURED_BAD_SEEDS = { waistCenterY: -0.3818701319168019, waistReach: 0.24322918082707384, archRise: 0.23766942425966095 };
+    const bad = profile(CAPTURED_BAD_SEEDS);
+    expect(primLength(bad.primitives[0]), 'horn_TR (explicit seed, not clamped)').toBeLessThan(T);
+    // The real fix: every [Generate] draw, at the sizes this item itself verified live, keeps every horn
+    // at least frame_thickness long (the same rule every other pinch/corner already gets via frameParamRanges).
+    for (const [W, H] of [[7, 9], [6, 9]]) {
+      const region = profile({}, W, H).region;
+      for (let seed = 1; seed <= 500; seed++) {
+        const seeds = generateFrameSeeds(T10, region, seed);
+        const prof = profile(seeds, W, H);
+        expect(primLength(prof.primitives[0]), `${W}x${H} seed ${seed} horn_TR`).toBeGreaterThanOrEqual(T);
+        expect(primLength(prof.primitives[10]), `${W}x${H} seed ${seed} horn_TL`).toBeGreaterThanOrEqual(T);
+      }
+    }
+  });
+
   it('the Fusion seeds: the arch seeded as an arc (S, apex, E), the sides as Template 1\'s own', () => {
     const prof = profile({ archRise: 0.2 });
     const geo = frameSeedGeometry(T10, prof, 7, 9);

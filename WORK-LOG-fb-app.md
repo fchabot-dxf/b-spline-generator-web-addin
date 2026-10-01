@@ -5507,3 +5507,54 @@ case — the same general class of problem (Fusion's solver/offset landing somew
 exactly which numbers it's fed) that has needed careful, bounded, live-verified work every other time it's come
 up in this template's own history (items 14/15/17). Recommend treating it as its own item rather than pushing
 through now.
+
+## 2026-10-01: H23 item 21 — root cause found and fixed (locally verified; live re-check still pending, Fusion down)
+
+**Fix, not yet live-reverified** (Fusion's bridge went down mid-session, confirmed by the advisor and seat b5
+independently hitting the same timeout; this item's own diagnosis work continued entirely from already-captured
+local data while waiting).
+
+**Root cause, precisely isolated** (no more guessing beyond item 19's own log trace): the captured payload that
+broke Fusion's `addOffset2` (`t10_send.frame.json`, item 19's own scratch capture) was from a real app
+`[Generate]` draw, NOT T10's plain defaults — `seeds: {waistCenterY: -0.38187, waistReach: 0.24323,
+archRise: 0.23767}`. Reconstructing that exact seed set locally (no Fusion needed) and measuring the resulting
+`horn_TR` piece: **0.414 in long — shorter than `frame_thickness` (0.75 in)**, while the app's own existing
+validity checks (`outlineDefects`, the "no broken inner profile" `[Generate]` retry) report it as completely
+clean (0 defects). That's the gap: `_hourglassRange`'s own `archRise` branch (editor-shape-lattice-
+generator.js) only keeps the horn above `HORN_MIN_OF_HALF_HEIGHT * hh` (0.02 * hh = 0.085 in at 7x9) — a tiny
+geometric-validity floor, with NO awareness of `frame_thickness` at all. A horn that's "valid" by that floor
+(0.414 in, comfortably above 0.085) can still be far too short for Fusion's own real inward offset (0.75 in) to
+have anywhere to go at that corner — `addOffset2` fails on topology exactly as item 19 traced, falls back to a
+cruder merge, and `frame_top`/`frame_right` never split out.
+
+**Why `frameParamRanges` (the FRAME-aware wrapper that DOES narrow `waistReach`/`topDipWidth`/etc. for
+`frame_thickness`, `frame-handles.js`) didn't already catch this**: `archRise` simply isn't mentioned there at
+all — every other hourglass-family pinch/corner gets a thickness-aware ceiling in that function's own generic
+`else` branch, archRise (T10's own, newest handle) was never added to it.
+
+**Fix**: added an `archRise` branch to `frameParamRanges`'s generic hourglass `else` (`frame-handles.js`),
+narrowing its ceiling so the horn keeps at least `frame_thickness` remaining (not just the tiny geometric
+floor) — same shape every other rule in that function already uses, reusing `hourglassConstruction`'s own
+"horn length before eating into it" computation (`hh + shoulderY`) that `_hourglassRange`'s own archRise branch
+already computes, just with `t` (frame_thickness) in place of the geometric-only margin. `archRise` is T10-
+exclusive (not in any other template's `PARAM_ORDER`), so `R.archRise` is `undefined`/falsy for every other
+hourglass-family template -- the new branch is a no-op for them by construction, confirmed by the full suite.
+
+**Verified, locally (no Fusion)**:
+- MUTATION-TESTED the new regression test itself: `git stash` on just the fix, reran — 2000 `[Generate]` draws
+  at 7x9 produced horns as short as 0.190 in (confirms the bug is real and the test can fail); with the fix
+  restored, the same 2000 draws' minimum horn length is 0.775 in (safely above 0.75). Not a vacuous assertion.
+- New test in `tests/frame-template-10.test.js`: the exact captured bad seed set still reproduces the short
+  horn when passed EXPLICITLY (confirms explicit seeds are correctly left unclamped, same as every other
+  hourglass-family template -- this fix is about what `[Generate]` draws, not a retroactive repair), and a
+  500-seed x 2-size (7x9, 6x9) sweep through `generateFrameSeeds` now keeps every horn >= `frame_thickness`.
+- Full suite: `npx vitest run` 2933/2933 (up from 2932, the one new test); `pytest` 596/22 skip, all green,
+  unaffected (pure JS change). No other template's own tests moved at all -- confirms the fix is properly
+  scoped to T10's own `archRise` only.
+
+**Not yet done, blocked on Fusion**: the SAME live b-spline-send-and-join check item 19 used (the real captured
+payload, replayed via `_handle_generate`/`_handle_send_frame`) hasn't been re-run against the FIXED app code --
+`generateFrameSeeds` itself needs to draw a NEW (now-safe) seed and get sent fresh, since the OLD captured
+payload is intentionally still the bad one (kept as the regression test's own fixture value, not something to
+re-send). `FRAME_HIDDEN` stays `True` until that live re-check passes at 7x9 and 6x9, plus a fresh A/B/full-
+suite pass post-live-check per the dispatch's own ordering.
