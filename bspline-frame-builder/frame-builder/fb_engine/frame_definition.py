@@ -187,9 +187,13 @@ def template_shape_model(template_id, frame, goldens_dir):
     T10 ARCHED HOURGLASS v2 (F29 item 2): {"from": <template id>, "cornerRTopOfHw": ...} (distinguished by that
     key, since it also carries an "archCornerAngleDeg") builds frame_shape_fit.
     provisional_reconstructed_arched_hourglass_model (every one of the base model's own features replaced, not
-    kept -- Fred's own hand-rebuilt sketch)."""
+    kept -- Fred's own hand-rebuilt sketch).
+    F30 item 3 (the taper copies, Template 12/13): {"from": <template id>, "taperAngleDeg": d} builds
+    frame_shape_fit.provisional_taper_model (every one of the base model's own features KEPT, plus a new
+    scale-invariant `taperAngle` -- unlike every other provisional model above, nothing about the base shape
+    itself changes)."""
     from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
-                                           provisional_dipped_top_model)
+                                           provisional_dipped_top_model, provisional_taper_model)
     from fb_engine.template_resolver import resolve_template
     model = fit_shape_model(template_id, frame.get("shapeExtractor") or frame.get("silhouettePreset"), goldens_dir)
     prov = frame.get("provisionalShape")
@@ -221,6 +225,9 @@ def template_shape_model(template_id, frame, goldens_dir):
                 model = provisional_reconstructed_arched_hourglass_model(
                     base, prov["depthOfHw"], prov["cornerRTopOfHw"], prov["cornerRBottomOfHw"], prov["waistROfHw"],
                     prov["waistCyOfHh"], prov["notchOfHw"], prov["topInsetOfHw"], prov["archCornerAngleDeg"])
+            elif "taperAngleDeg" in prov:
+                # F30 item 3: Template 12/13, every base feature kept (see provisional_taper_model's own doc).
+                model = provisional_taper_model(base, prov["taperAngleDeg"])
             else:
                 model = provisional_shape_model(base, prov["topInsetOfDepth"])
     return model

@@ -5306,3 +5306,123 @@ Not yet done (next): the two new template folders (`sketches/template_12`, `sket
 board, miters, a Generate sweep per template), A/B regression against every existing template, and a decision --
 flagged to the advisor, not yet answered -- on whether taperAngle gets its own draggable handle (T10's own
 `archCornerAngle` does; the F30 item 3 dispatch itself never listed one, unlike T7/T10/T11's own dispatches).
+
+## 2026-10-01: F30 item 3 -- Template 12 and Template 13 built, LIVE in Fusion (seat C, epoch 5)
+
+Advisor answer on the handle question: yes, taperAngle gets one (every shape-defining frame param in this app
+has one by declared convention), a "Taper angle" position-square handle on the top-right corner mirrored left,
+standard `HANDLE_SEGMENT_INDEX` entry -- non-blocking, lands in a later pass after the template folders and
+Python wiring. Also: this machine's Fusion bridge is live and connected (`mcp__fusion360__fusion_execute`), with
+an existing unsaved scratch document already at 7x9 (`B-Spline Set` + `Frame_1`/`Frame_2` occurrences, not mine,
+left untouched throughout) -- so this pass could verify the actual Fusion build live, not just the web editor.
+
+**Python scaffolding:** cloned `sketches/template_1` -> `template_12` and `template_2` -> `template_13` (the stale
+per-template semantic-description .md files deleted, not reproduced -- unmaintained even in the originals).
+`template_data.py` for each: `TEMPLATE_NAME` ("Template 12 - Hourglass - Tapered sides" / "Template 13 - Narrow
+Neck - Tapered sides"), `FRAME_PROVISIONAL_SHAPE = {"from": "template_1"/"template_2", "taperAngleDeg": 8.0}`,
+`FRAME_HIDDEN = True` (T10's own "not Fusion-verified yet" precedent -- flipped once the full pipeline, not just
+sketch 2, is confirmed), the "Taper angle" handle left out per the advisor's own sequencing. New
+`frame_shape_fit.provisional_taper_model(base_model, taper_angle_deg)`: unlike every other provisional model
+here (T3's topInset, T4's offset waist, T5's dip, T10's full rebuild), this one changes NOTHING about the base
+model's own features -- taper only ever touches the shoulder/neck's own tangent-line construction, which the
+base template's own fit already describes exactly -- it just adds one new scale-invariant `taperAngle` feature
+(the `const` pattern `archCornerAngle` already uses). New `elif "taperAngleDeg" in prov` branch in
+`frame_definition.py`'s own dispatch chain, inserted before the final `else` (T3's own catch-all) so a stray
+dict shape never silently calls the wrong provisional function.
+
+**First `tools/gen_frame_defs.py` regen produced `shapeModel: null` and `hidden: false` for both** -- caught
+immediately by the JS side (`node -e` probing the JSON directly before touching tests). Root cause: unlike
+Template 10's own `get_template_logic()`, my cloned `get_template_logic()` never added `"provisionalShape"` /
+`"hidden"` to its own returned `"Frame"` dict -- declaring the module-level constants isn't enough, they have to
+be wired into the return value by hand, the same way T10's own file does it. Fixed in both files; regen then
+produced the correct `shapeModel.features.taperAngle = {hw:0, hh:0, const:8}`, `hidden: true`.
+
+**The Fusion phase files were the hard part, in three rounds, each caught by actually running `run_sketch_only`
+live rather than static-reading the phase files.** The production add-in loads from the MAIN checkout
+(`project_path.json`), not this worktree, so every live call pushed this worktree's own `frame-builder` to the
+FRONT of `sys.path`, cleared `fb_engine`/`sketches`/`template_loader` from `sys.modules` first (so nothing stale
+survives from the main checkout's own cached import), built, read results, and restored `sys.path`/`sys.modules`
+back -- all inside single short `fusion_execute` calls, never leaving a swap stranded across calls (the
+established "Fusion one-session suspend" risk). Every test component this created (`Frame_3`/`Frame_4`, Fusion's
+own auto-incrementing name) was deleted immediately after reading its result; the document (`Untitled`, unsaved)
+ended the session with the exact 3 occurrences (`B-Spline Set`, `Frame_1`, `Frame_2`) it started with.
+
+Round 1 (`RESOLVE MISS: proj_off_BB_top not found`): Template 12's own `p02_01_projs.py`, cloned from Template 1
+(which never needed a narrow top), was missing the one projection line Template 2/3 both already declare for
+their own narrow top (`{'SourceSketch': '1_bounding_box', 'SourceID': 'offset_BB_top', 'TargetID':
+'proj_off_BB_top'}`). Without it the new `Coincident(top_edge:S, proj_off_BB_top)` constraint silently no-opped
+(`CONSTRAINT SKIP: needs different target count`), leaving `top_edge` free to drift whole-sketch. Added.
+
+Round 2 (no errors logged, but the solved shoulder/waist/hip centres were wildly wrong, ~3.9/3.2/0.2 in instead
+of the intended ~2.6/2.9/1.3): `fb_engine/seed_basis.py`'s own documented "seed board" substitution --
+`widthIn`/`heightIn` inside ANY sketch-2 seed expression get rewritten to `(widthIn - 2*(boundingboxoffset -
+0.25in))`, which AT THE DEFAULT 0.25in offset reduces to exactly the RAW board size, not the safe zone. My own
+seed-computation script had instead called `hourglassConstruction`/`bottleConstruction` with `region = {w:
+widthIn, h: heightIn}` (the raw board) and written the result as `widthIn * (value/widthIn)` -- silently placing
+the WEB APP's own silhouette (built on the SAFE ZONE, `widthIn - 2*bbo`) a half-border too wide/tall, every
+seed consistently off by the same scale factor. Fixed: compute every absolute position using the actual safe
+zone (6.5x8.5 at 7x9/0.25in), THEN divide by the RAW board size for the literal fraction -- confirmed correct by
+an exact match (not just "close"): the recomputed waist/hip anatomy-pin fractions for Template 12 (untouched by
+its own taper, so directly comparable) landed EXACTLY on Template 3's own already-shipped `0.41562`/`0.375249`/
+`-0.000304`/`-0.141685` -- cross-validation against a template I didn't touch, not just self-consistency.
+
+Round 3 (hip/waist tangency wildly broken even after the region fix: the waist-hip junction point landed nearly
+2 in from either circle, not on the circle at all): my own verification script's `hipWaistY` used `hipY +
+cornerRadiusBottom*uyBottom` (plus), copying the shoulder side's own `+` pattern -- but `_solveHourglass` itself
+(the already-shipped, trusted production code) uses `hipY - bottomDrawn*uyBottom` (MINUS) for this exact
+junction. `uxBottom`/`uyBottom` are NOT simply "hip centre toward waist centre" the way `ux`/`uy` are for the
+shoulder; the asymmetric sign is baked into `side()`'s own `sign` parameter and only correctly unwound by
+matching `_solveHourglass`'s own formula exactly, not by analogy. Caught by a disciplined check (not assumed):
+before writing a single number to the phase file, verified `dist(hipCentre, hipWaistPoint) == cornerRadiusBottom`
+and `dist(waistCentre, hipWaistPoint) == radiusWaist` in a throwaway script; the first attempt failed outright
+(1.89 vs the expected 0.68), confirming the bug BEFORE it ever reached Fusion, not after a confusing live drift.
+Fixed the sign, re-verified both distances match to 1e-10, then rewrote the phase file.
+
+**Verified, live, after the fix (not assumed from the corrected numbers alone):** `run_sketch_only` for both
+templates at 7x9 produced, read directly off the solved `SketchArc`/`SketchLine` geometry (not the logged solve
+audit, which is pre-settle): shoulder/waist/hip (or neck/body) radii and centres symmetric L/R to within
+~0.1-0.3% (ordinary solver settling, same as every existing template tolerates), closely matching the intended
+values, and the top horn's own measured angle from vertical exactly 8.0 deg for BOTH templates -- the taper is
+really there, not just a narrower top. A top-down screenshot of each sketch (saved:
+`.bspline-status/shots/seatC/1130_..._template12_..._7x9_8deg.png`,
+`.bspline-status/shots/seatC/1135_..._template13_..._7x9_8deg.png`) shows the intended shape directly: Template
+12 a classic hourglass with a visibly slanted, narrower top; Template 13 a narrow neck leaning inward into a
+smooth S-curve down to the full-width body.
+
+**Branch-selection check (the advisor pointed at a newly-shared `fusion360-quirks` skill after I'd already found
+it myself and used it):** that skill's own field note warns that `Coincident(point, curve)` only pins an arc to
+its FULL supporting circle, not which of the two possible sweeps (short way / long way around) the solver
+picks, and that ordinary constraints (Tangent included) can't fix a wrong branch once chosen -- the fix is
+seeding `addByThreePoints` already on the intended branch and, for real robustness, `Fix`-ing the arc's own
+endpoints afterward. This codebase's own existing templates (T1/T2) do the FIRST (closed-form 3-point seeds
+confirmed by inspection) but not the second (no `isFixed` anywhere in the phase files read this session) --
+re-ran both new templates' `run_sketch_only` at a SECOND board (6x9, portrait) specifically to probe for a
+branch flip the 7x9 run alone couldn't rule out: every arc's measured sweep (computed from raw start/end/centre
+angles, not trusted from the log) came back a sane 67-140 deg minor arc, nowhere near a 270 deg+ reflex, at
+both boards, for both templates. Not adding `Fix` here either -- it would be a NEW mechanism this codebase has
+never used, a bigger call than this pass's own scope, and the measured evidence (two boards, no reflex, matches
+Template 3's own cross-validated numbers) doesn't show the problem the skill warns about actually occurring.
+Flagging it rather than silently deciding: if `Fix` is wanted as a general hardening across every template
+(not just these two), that is its own task for the advisor/Fred to scope.
+
+**Full suite, both languages, after every fix:** `tools/gen_frame_defs.py --check` fresh; JS 156 files / 2959
+tests green (added `tests/frame-template-12-13.test.js`, 25 tests: declaration, provisional shapeModel content
+cross-checked against each base template's own fitted features, no handle yet, within-board at the 4 current
+portrait boards, inner-profile cleanliness, real miters, a 50-seed Generate sweep per board, and the declared
++/-15 deg extremes never throwing through the full `frameCutProfile`/`frameInnerProfile`/`frameMiters` pipeline);
+updated `tests/frame-defs.test.js` (`EXTRA.hourglass`/`EXTRA.bottle` now list `taperAngle`; the two new ids join
+template_3/4/5/8/10 in the "extra feature" exclusion list) and `tests/frame-hidden-template.test.js` (both new
+ids join template_10 in `HIDDEN_IDS`, the dropdown-exclusion checks generalized) and
+`tests/frame-template-6.test.js` (the hardcoded, string-sorted full template-label list gets the two new
+labels in their correct lexicographic slot). Python `pytest` (frame-builder, full suite): 353 passed, 19 skipped
+(pre-existing, Fusion-only), unchanged.
+
+**Still open, flagged to the advisor:** (1) sketch 3 (frame enclosure: offset, inner-corner-resolve, miters,
+solid extrusion) was only glanced at this pass (confirmed it builds without error and the arc radii/centres it
+carries forward match sketch 2's own, including the SAME frame_thickness-vs-small-radius "merged corner" case
+Template 1 already has at 7x9 -- not a new issue) -- not yet walked through piece by piece the way sketch 2 was.
+(2) No Fusion golden has been recorded for either template, so the provisional shapeModel stays the one source
+of truth; recording one and re-running `tools/gen_frame_defs.py` would let `fit_shape_model` take over, per F8's
+own established pattern. (3) FRAME_HIDDEN stays True until (1) and (2) are addressed and Fred has seen a built
+solid, not just the sketch. (4) The "Taper angle" handle (advisor-confirmed) is not yet added -- a later pass,
+as sequenced.

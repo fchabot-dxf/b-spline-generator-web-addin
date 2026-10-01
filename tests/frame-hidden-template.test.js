@@ -41,16 +41,22 @@ beforeEach(() => {
 });
 afterEach(() => { root.remove(); setEditorTab('artwork'); });
 
+// F30 item 3: Template 12/13 (the taper copies) are hidden the same way, until verified live in Fusion --
+// same flag, same mechanism, so this file's own assertions now cover all three ids instead of just T10's.
+const HIDDEN_IDS = ['template_10', 'template_12', 'template_13'];
+
 describe('F29 item 1: Template 10 hidden from the picker, not from the data', () => {
-  it('frame-defs: template_10 alone carries hidden: true', () => {
-    for (const t of FRAME_DEFS.templates) expect(t.hidden, t.id).toBe(t.id === 'template_10');
+  it('frame-defs: template_10, 12 and 13 carry hidden: true, no others', () => {
+    for (const t of FRAME_DEFS.templates) expect(t.hidden, t.id).toBe(HIDDEN_IDS.includes(t.id));
   });
 
-  it('neither template <select> offers it for a fresh pick', () => {
-    expect(optionIds($('frameTemplate'))).not.toContain('template_10');
-    expect(optionIds($('editorFrameTemplate'))).not.toContain('template_10');
+  it('neither template <select> offers any of them for a fresh pick', () => {
+    for (const id of HIDDEN_IDS) {
+      expect(optionIds($('frameTemplate'))).not.toContain(id);
+      expect(optionIds($('editorFrameTemplate'))).not.toContain(id);
+    }
     // every OTHER template is still offered (nothing over-filtered)
-    for (const t of FRAME_DEFS.templates) if (t.id !== 'template_10') {
+    for (const t of FRAME_DEFS.templates) if (!HIDDEN_IDS.includes(t.id)) {
       expect(optionIds($('frameTemplate'))).toContain(t.id);
     }
   });

@@ -376,6 +376,28 @@ def provisional_shape_model(base_model, top_inset_of_depth):
     }
 
 
+def provisional_taper_model(base_model, taper_angle_deg):
+    """F30 item 3 (Fred's own taper copies, Template 12 from Template 1 / Template 13 from Template 2), until
+    their goldens are recorded live: a PROVISIONAL model, never none. Unlike T3/T4/T5/T10's own provisional
+    models, nothing about the base shape changes here -- the shoulder/waist (or neck/body) tangency the base
+    template already fits is exactly what Template 12/13 build on (editor-shape-lattice-generator.js's own
+    `_taperedCorner` only ever repositions the TOP horn and, past its own feasible floor, the shoulder/neck
+    circle -- it never touches the rest of the silhouette). So `base_model`'s features are kept verbatim, plus
+    one new scale-invariant `taperAngle` feature (degrees, the `const` pattern `archCornerAngle` already uses:
+    0 = the base template exactly, Fred's own default 8). Marked `provisional` so nothing mistakes it for a fit."""
+    feats = {k: dict(v) for k, v in base_model["features"].items()}
+    feats["taperAngle"] = {"hw": 0.0, "hh": 0.0, "const": taper_angle_deg}
+    return {
+        "features": feats,
+        "fit": dict(base_model["fit"]),
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": "the fitted base template's own model, every feature kept",
+            "taperAngleDeg": taper_angle_deg,
+        },
+    }
+
+
 def provisional_reconstructed_arched_hourglass_model(base_model, depth_of_hw, corner_r_top_of_hw,
                                                       corner_r_bottom_of_hw, waist_r_of_hw, waist_cy_of_hh,
                                                       notch_of_hw, top_inset_of_hw, arch_corner_angle_deg):
