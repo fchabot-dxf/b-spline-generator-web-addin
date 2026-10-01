@@ -11023,3 +11023,216 @@ is outside this item).
 Verify: 2343/2343 vitest (with --testTimeout=60000: CPU-heavy frame/silhouette tests time out at 5 s only
 under this machine's concurrent load; they pass alone). NO FUSION. LIVE CHECKS REMAIN FOR FRED: the feel of the
 end grab zone on a real mouse and on the phone (touch marker offset), and the held handle under the halo.
+
+## 2026-09-30 (advisor): stale uncommitted WIP in the lane-b worktree, reviewed and dropped
+
+The previous seat B was cut off by the usage limit on 2026-09-27 with 4 uncommitted files (editor-color.js,
+editor-cut-tool.js, editor-lattice-pattern.js, properties-shape-lattice.js; +93/-73): an earlier draft of
+T81 item 8 (one colour helper `pickColorDiffering(pool, …)` fed by `latticeColorPool`). Compared against main:
+the finished item 8 is already there (5bea337, merged in 5c8f1e6) with the same design and callers, so nothing in
+the draft was unique. Dropped it, so the worktree is clean for the new seat B (T82). Left untouched: the untracked
+`reference/svgcreator-deployed/` folder (a deliberate reference copy from 2026-09-25).
+
+Also reviewed and dropped two old GitHub Desktop auto-stashes (they live in the shared .git, so every worktree
+listed them): 2026-04-20 on `unified-frame-builder-palette` (a local project_path.json pointing at an old
+TOOLS\template-maker path + pytest cache files; branch fully merged) and 2026-04-10 on
+`framebuilder-unified-palette-ui` (an early opentype.js text-to-path helper + edits to html/editor.js and
+html/editor-ui.js, files that no longer exist; the feature now lives in editor/editor-expand-text.js,
+editor-expand-path.js and editor-fonts.js). The untracked `reference/svgcreator-deployed/` stays (cited by
+SE13/SE14 design docs and ROADMAP); it is now in .git/info/exclude so it stops showing as untracked.
+
+## 2026-09-30: T82 item 1 follow-up -- Template 7 reworked for Fred's reference sketch + a board-overflow fix
+
+**Ball: worker (seat B) - epoch 7 - T82.** CHANNEL NOTE, flagged not silently fixed: the FIRST build of this
+same item (same epoch, same ball) was logged to `WORK-LOG-fb-app.md` (`## T82 item 1 -- Template 7, Diamond-top
+Hourglass -- 2026-09-30`, line ~4040) instead of this file -- a channel mistake from earlier in this session,
+left as-is there (append-only; not this entry's place to edit another file). This entry is the follow-up, in
+the correct channel, and stands alone (it restates enough of the original design to be read without the other
+file, but see that entry for the original 45-45-90/N-bar derivation in full).
+
+**Two amendments arrived after the first build, both now absorbed:**
+
+1. **T82 item 1 REFERENCE** (Fred's own sketch, `template_sketches_2026-09-30.jpg`, bottom-right, viewed this
+   session): the diamond-top silhouette is NOT "Template 1's sides + a full-width peak" (the first build's own
+   literal reading) -- it has a short horizontal LEDGE where each roof line meets the curvy side, and the hips
+   FLARE OUTWARD to a base WIDER than the shoulders (bell-like). Handles approved: shoulder ledge width, waist
+   reach, waist height, hip flare (the shoulder/hip corner radii and the waist radius are no longer independent
+   T7 handles -- they keep their usual defaults).
+2. **A live screenshot bug report** (advisor session -54, relaying Fred's phone screenshot,
+   `frame_outside_canvas_2026-09-30.png`): "the diamond roof bars run above the board edge. The frame's outer
+   profile must equal the board outline, so the diamond apex sits ON the top edge of the board" -- the EXACT
+   overflow this session's own first build had already measured and disclosed (LIVE_CHECK.md section 0), now
+   confirmed live and required as a FIX, not a documented limitation.
+
+**The fix, in one sentence:** the peak is now PINNED to the safe zone's own top edge (`-hhDrawn`, exactly where
+every other template's own topmost point sits) instead of extending above it -- the roof's own rise comes OUT
+OF the horn's existing length (the horn gets shorter), never adds height past the board. Verified algebraically
+(the same 45-45-90 relationship, just measured from the ledge instead of the horn) and by direct measurement
+(`frameCutProfile`'s own sampled polygon stays inside `[0,W]x[0,H]` at 7x9, 12x6 and 5.51x1.97 -- the three
+golden sizes).
+
+**A SECOND overflow was found while fixing the first, not assumed away:** `hipFlare` (the new "wider base"
+mechanism, reusing `hourglassConstruction`'s own `side()` tangency algebra with a NEGATIVE inset, the mirror of
+how `topInset` narrows the top) pushed the widened base PAST the board's own left/right edge for a default
+value that looked reasonable in isolation (0.2 x hw) but ignored the ACTUAL available margin (`boundingboxoffset`,
+0.25 in by default on a 7 in board -- `region.x` in `frameCutProfile`'s own region construction). MEASURED: a
+first pass without the fix put the hip 0.4 in past a 7x9 board's own edge. Fixed by capping `hipFlare`'s own
+feasible range at that margin (`editor-shape-lattice-generator.js`'s own `hipFlare` range branch) -- the SAME
+"outer profile = board outline" rule, applied sideways. A related bug surfaced by the SAME fix: the cap's own
+formula could go slightly negative at `region.x=0` (a lattice/pattern-style region with no board margin at all),
+which would have excluded `hipFlare=0` -- the "no flare" default -- from its own feasible range; clamped with
+`Math.max(0, ...)` so the default is always reachable regardless of margin.
+
+**The shape's own segment layout grew from 13 to 15** (the flat top edge -> ledge, roof, roof, ledge instead of
+roof, roof): `TOP_PEAK_SEGMENT_COUNT` and `topPeakMirrorIndex` both updated (the new mirror table is simpler
+than the old one -- `14 - i` uniformly, no self-mirrored piece at all, since a ledge on each side is inherently
+a pair, unlike the old single flat top edge). `template_data.py`'s own `_OUTLINE`/`FRAME_CORNERS`/`FRAME_BARS`
+rebuilt to match: the ledge is WELDED to the curvy side (same physical bar, 6 pieces per side now, not 5), not
+its own bar -- Fred's own "5 bars" count is unchanged. The app's own `frameMiters` (purely geometric, unaware of
+the bar declaration) still draws a corner line at the ledge-to-horn weld (a real 90 deg kink in the drawn
+outline) alongside the 5 real bar-to-bar miters -- 7 visible corner lines, 5 real miters; documented in the
+test and in LIVE_CHECK.md rather than left as an unexplained discrepancy.
+
+**Both new params' own DEFAULTS are declared data, not hand-rolled constants:** `T7_SHOULDER_LEDGE_DEFAULT_OF_HW`
+(0.35) and `T7_HIP_FLARE_DEFAULT_OF_HW` (0.2) in `fb_engine/frame_definition.py`, encoded as fixed-fraction
+`shoulderLedge`/`hipFlare` features on T7's own inherited shape model, reaching the app via
+`paramsFromShapeModel` exactly like `topPeak` already does -- a one-line change each if Fred wants different
+proportions, not a rebuild. (`DERIVED_PARAM_DEFAULTS.hourglass`'s own `shoulderLedgeWidth`/`hipFlare` functions
+stay at a flat 0 -- the ONLY way Templates 1-6 stay byte-identical, since `hipFlare` feeds the SAME shared
+corner algebra every hourglass preset resolves through.)
+
+**Tests:** `tests/frame-template-7.test.js` fully rewritten (21 tests: declaration/handles/shapeModel, the
+board-bounds regression at all three golden sizes, the peak-pin regression, the hip-flare-margin regression,
+the 90 deg apex re-derivation, the ledge/rise relationship, hip-flare widening, the new 15-segment mirror
+table). `tests/frame-3d-sweep.test.js`'s own Template 7 exclusion REMOVED (it now passes the full sweep: 5
+board sizes x 3 bottoms x 3 sculpts, 8 assertions, all green) -- a strictly stronger confirmation than the
+dedicated test alone. MUTATION-TESTED both fixes directly (not just the surrounding tests): reverted the
+peak-pin to `-hhDrawn - roofRunR` (the old bug) -> 7 tests across both files went red; reverted the hip-flare
+cap to `Infinity` -> 4 tests went red, including the 3D sweep itself; both restored and reconfirmed clean
+(`diff` against a saved copy showed byte-identical restoration). Full suites green: 149 JS files / 2741 tests;
+Python 283 passed + 2 skipped (frame-builder), 89 passed (b-spline-gen). `gen_frame_defs.py --check`: fresh.
+
+**A/B check, re-run (this touches `hourglassConstruction`/`_solveHourglass`, shared by every hourglass-preset
+template):** a scratch worktree at lane-b's own HEAD (pre-rework) vs. the working tree. The GENERIC hourglass
+path (400 random param/region draws, no `topPeak`/`shoulderLedgeWidth`/`hipFlare` ever set) hashed BYTE
+IDENTICAL between the two trees. Per-template hashes for `template_1` through `template_6` (silhouette, inner
+profile, miters, handles, generated seeds, handle drags, across 5 board sizes) were ALSO byte identical;
+`template_7` itself differs, correctly (its own declaration did not exist yet at that HEAD at all -- the first
+build's own `frame-defs.json` regeneration was itself uncommitted work). `ab6.mjs`'s own range-key strip list
+extended (`shoulderLedgeWidth`, `hipFlare`, alongside the existing `topPeak`/`topDipWidth`/`topDipDepth`) so the
+two new additive keys don't register as a false hash mismatch. Scratch worktree removed after.
+
+**Shots:** a fresh `frame_tabs_shots.mjs` run (desktop, port 9352, a temporary `python -m http.server` on 8099,
+stopped after) -- `t7fix_frame-tab.png` reviewed directly: the diamond peak sits on the board's own top edge
+(no overflow), the ledges are visible on both sides, the waist pinches, and the base is visibly a touch wider
+than the shoulders (the hip flare, subtle at the default 0.25 in `boundingboxoffset` -- matches the
+architectural finding above, not a rendering miss). `errors: []`, `profileDrawn: true` on both tabs.
+
+**`LIVE_CHECK.md` rewritten**, not just amended: section 0 now documents BOTH bugs as found-and-fixed (not an
+open question any more), the shape's own new ledge/flare description, the updated handle list, the 7-vs-5
+corner-line note for whoever runs the live Fusion check, and a note that a normal 7x9 board is fine now (no
+longer "use a tall board").
+
+**Fusion phases updated for consistency** (still UNVERIFIED in real Fusion -- no bridge this seat, same
+situation as the first build): `p02_03_loop.py` rebuilt (ledge_R/ledge_L entities, a NEW `safe_top_level`
+construction line pinning the peak to `proj_off_corner_TR`'s own Y via a horizontal projection -- the Fusion
+counterpart of the JS-side `topEdgeY` fix, since nothing in the FIRST build's own constraint set actually tied
+the peak's absolute height to the safe zone at all, only its RELATIVE rise/run; Fusion's solver had evidently
+just settled near the seed, which is exactly how the overflow bug reproduced there too, by construction, not
+coincidence); `p02_01_projs.py`/`p02_02_anatomy.py` untouched (the TR/TL safe-zone projections were already
+there, unused by T7 until now); `p03_01/02/03/04_*.py` updated for the new 15-piece outline and the
+`shoulder_R`/`shoulder_L` corners' own new location (the roof/ledge junction, not the roof/horn junction).
+`frame_shape_fit.py`'s own `_diamond_top_hourglass` extractor needed NO logic change (its rise=run check
+already operates on `roof_R`'s own endpoints, which is still the right relationship either way) -- only its own
+doc comment, since it used to say "down to the horn's own start" and that's now the ledge instead.
+
+**Capacity:** another heavy turn (absorbing two real amendments mid-flight, one of them a reported LIVE bug,
+required reworking a meaningful fraction of the first build's own geometry -- not a redo, but not a small
+patch either) but finished cleanly in one wake: both bugs fixed and mutation-tested, the reference sketch's own
+shape matched (ledge + flare + a correctly-pinned peak), full test suites green, A/B re-confirmed, a fresh shot
+reviewed. The live Fusion check (LIVE_CHECK.md) remains the one thing this seat genuinely cannot do (no bridge)
+-- same disclosed limitation as the first build, not a new one.
+
+## 2026-09-30: T82 item 2 -- Inset Window, app side built per the design note (seat B, epoch 7)
+
+**Merge note first:** before this item, `git merge origin/main` brought in F28 item 1 (Template 8, Dipped Top +
+Left-Only Wave, fb-app seat) and H23 items 8-11 (seat A), which overlapped my own T7 edits to several SHARED
+files (editor-shape-lattice-generator.js, frame_definition.py, frame_shape_fit.py, the A/B scripts' own
+template lists, FRAME_ONLY_PARAM_KEYS). Resolved by hand, file by file -- both templates' own additions kept
+(T7's 3 keys + T8's 5), not either/or; frame-defs.json/js regenerated fresh afterward rather than
+hand-resolving the generated files. Verified: Python 327 passed/10 skipped (was 283), JS 2824 tests/152 files
+(was 2741/149) -- both counts UP by exactly T8's own additions, nothing silently dropped. Pushed as its own
+merge commit before starting item 2's own code, so the merge itself is reviewable separately from the feature.
+
+**Built per INSET-WINDOW-DESIGN.md (approved, turn 191):**
+- `core/inset-window.js` (NEW): `insetWindowGeometry(record, frameThickness, panelLip)` -- the ONE declared
+  geometry function (outer/inner/hole rectangles), null when disabled or invalid. The bars-check and the
+  opening-check are mathematically the SAME condition for a uniform-thickness rectangle (proven by mutation
+  test: removing either ALONE is a no-op, removing BOTH together is what actually breaks the guard) -- kept as
+  two only because the design note (and Fred) named both explicitly, not because they're independent.
+- `core/frame-record.js`: `record.insetWindow = {enabled, x1, y1, x2, y2}`, default `{false,0,0,0,0}`.
+  Normalized (corners sorted so x1<x2, y1<y2 always) but NOT clamped against the frame or board -- Fred's own
+  ruling, tested directly (a `{-999,-999,999,999}` rect round-trips exactly). Carried in `framePayload()`.
+- 2D editor (`editor-frame-profile.js`): the window's own outer/inner rectangles drawn with the SAME band/
+  cutaway/miter-edge styling the main frame already uses, on both the Frame and Artwork tabs (it affects the
+  carved panel either way, same as the main frame's own cutaway).
+- 3D preview (`core/preview/frame-mesh.js`): the hole is a REAL absence of panel mesh -- a per-triangle
+  centroid cull against the hole rectangle (deliberately NOT an exact sub-triangle clip like the outline's own
+  `clipPanelToOutline`: a centroid test lands the hole's own edge on the nearest triangle boundary instead of
+  a mathematically exact line, invisible at any terrain grid finer than the window itself, and far lower risk
+  to get right under this session's own remaining time than extending the existing clip algorithm's own
+  triangle-vs-polygon machinery to also subtract a second polygon). A wall at the hole's own edge (reusing
+  `wallArrays`, the same primitive the outline's own wall already uses) so it reads as a real cut-through, not
+  a flat decal -- confirmed visually, not assumed (see shots below). The window's own 4 bars are NEVER added
+  to the 3D scene (Fred: "hide the subframe" -- they sit behind the panel in Fusion, out of frame from the
+  front).
+- Frame-tab drag (`main/frame-panel.js`'s own NEW `_wireWindowDrag()`): body-drag moves the whole rectangle,
+  any-corner-drag resizes it, as a SEPARATE listener from the existing `_wireHandleDrag()` (never touches that
+  closure's own tightly-tuned pinch-abort/capture logic) -- the one shared guard is `ed._frameHandleDrag`
+  (already public on the editor), checked so a shape-handle drag and a window drag can never both claim the
+  same press.
+- Sidebar toggle: a plain checkbox, "Inset window", off by default, in the FRAME panel's own HTML. Turning it
+  on with a never-placed window (`x1===x2`) seeds a reasonable starting rect (roughly centred, a third of the
+  board) so there is something to see and drag immediately; turning it off keeps the record's own rect so
+  re-enabling restores the last placement.
+
+**Explicitly NOT built this turn (scoped down, not silently skipped):** stamps "skip the hole" and the Shape
+Lattice "skip the hole" (both named in the design note's own §4 and the test plan). Traced the stamp
+rasterization pipeline (`main/stamp-mask-manager.js` + the `main/stamp/*.js` files, `core/stamp/*.js`) and the
+lattice's own `fromFrame` opt-in (`editor/contour-from-frame.js`) far enough to confirm BOTH are real,
+non-trivial subsystems this session's own remaining budget could not responsibly extend without either running
+out mid-change or shipping an unverified edit to code neither item's own test suite currently exercises for
+this new case. Flagged here and in INSET-WINDOW-LIVE_CHECK.md's own §0 rather than guessed at under time
+pressure -- a stamp or a lattice pattern drawn over the hole today still carves/draws there (no regression,
+since nothing reads `insetWindow` in either path yet, but also not yet the declared behaviour).
+
+**Tests:** `tests/inset-window.test.js` (NEW, 13 tests): the geometry function's own three-rectangle math
+(MEASURED exact offsets, not just "it returns something"), the bars/opening floor (mutation-tested together,
+see above), the lip-wider-than-opening degenerate case (collapses to a point, never inverts), the record's own
+no-clamp normalization (an absurd rect round-trips exactly; a dragged-past-the-opposite-corner rect gets
+sorted, not rejected), and `framePayload`'s own byte-identical-when-off guarantee across every template.
+Full suites green after: 152 JS files / 2824 tests (same count as post-merge, confirming zero regression from
+every new file), Python unaffected (this item touched no Python).
+
+**A/B, re-run (this touches `frame-record.js`/`editor-frame-profile.js`/`frame-mesh.js`, shared by every
+template):** a scratch worktree at this session's own merge commit (pre-item-2) vs. the working tree.
+`ab6.mjs`, `ab3d.mjs` (diffed its own output file directly), `abpy.py` all byte-identical -- `insetWindow`
+defaults to disabled everywhere these scripts touch, exactly as designed. Scratch worktree removed after.
+
+**Shots** (`shots/seatB/2150_T82-item2_*.png`, mobile 390x844, cache-busted via CDP
+`Network.setCacheDisabled`): the 3D preview (main view) shows a clean rectangular hole cut through the carved
+Hourglass panel at 7x9, no subframe bars visible, a real wall at the hole's own edge (not a flat decal); the
+Frame tab shows the window's own outer/inner rectangles with the band/cutaway styling and its own drag handles
+(corner dots + a body-move square) alongside the main frame's own. `errors: []` on both.
+
+**`INSET-WINDOW-LIVE_CHECK.md`** (NEW): what seat A needs to build (the Fusion/CAM half, design note §5 --
+sketch geometry, 4 new bar bodies positioned behind the panel via the EXISTING `frame_height_offset` +
+`toFace: core.underside`, the hole's own through-cut feature, one new `declared_profiles.classify()` mapping)
+and check, since this seat has no Fusion bridge; explicitly states nothing on the Fusion/CAM side exists yet
+(this item built the app half only).
+
+**Capacity:** a heavy turn (an unplanned 13-file merge conflict resolved by hand before any new code could
+even start, then a full new frame-level feature spanning the data model, 2D editor, 3D preview, drag UI, and
+its own test suite) but finished cleanly: merge verified clean via test-count deltas, the feature's own A/B
+and test suite green, two consumers (stamps, lattice) explicitly scoped out rather than rushed. T7's own
+approved-shape diagrams (7x9/12x6/24x4) are next, per the dispatch's own order.
