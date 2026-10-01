@@ -27,9 +27,12 @@ function makeMockEditor() {
   let elements = [];
   function makeElement(type, initial) {
     const store = { ...initial };
+    // isConnected: true/false on .remove(), the same convention editor-grid.test.js's own mocks use for
+    // the real source's "is this element still live" check (editor-grid.js's own _connected()).
+    const node = { getAttribute: (k) => (store[k] !== undefined ? store[k] : null), hasAttribute: (k) => store[k] !== undefined, isConnected: true };
     const elObj = {
       type,
-      node: { getAttribute: (k) => (store[k] !== undefined ? store[k] : null), hasAttribute: (k) => store[k] !== undefined },
+      node,
       attr(k, ...rest) {
         if (k && typeof k === 'object') { Object.assign(store, k); return elObj; }
         if (rest.length === 0) return store[k]; const v = rest[0]; if (v === null || v === undefined) delete store[k]; else store[k] = v; return elObj;
@@ -40,7 +43,7 @@ function makeMockEditor() {
       clone() { return makeElement(type, { ...store }); }, // a REAL snapshot-at-this-instant, same as svg.js's own .clone()
       addClass() { return elObj; }, removeClass() { return elObj; }, hasClass() { return false; },
       back() { return elObj; },
-      remove() { elements = elements.filter((e) => e !== elObj); },
+      remove() { node.isConnected = false; elements = elements.filter((e) => e !== elObj); },
     };
     elements.push(elObj);
     return elObj;
@@ -99,7 +102,14 @@ function addTie(editor, x1, y1, x2, y2) {
   return el;
 }
 
+function addRail(editor, x1, y1, x2, y2) {
+  const el = editor._sketchLayer.line(x1, y1, x2, y2);
+  el.attr({ 'data-lattice': 'rail', 'data-layer': '0', 'stroke-width': 0.05 });
+  return el;
+}
+
 const haloItems = (editor) => editor._sketchLayer.children().toArray().filter((e) => e._isHalo);
+const liveTies = (editor) => editor._sketchLayer.children().toArray().filter((e) => e.attr('data-lattice') === 'tie');
 
 beforeEach(() => { document.body.innerHTML = ''; });
 
@@ -167,6 +177,38 @@ for (const [label, mode] of [['rect Lattice', 'lattice'], ['Shape Lattice', 'sha
       // handler.finish (editor-interaction.js) -- exercised directly here.
       await h().finish(editor);
       expect(haloItems(editor)[0].attr('x1')).toBeCloseTo(5, 6);
+    });
+
+    // T81 item 5 re-reported (Fred saw the yellow highlight persist again): the general case above was
+    // genuinely fixed on 2026-09-27, but T81 item 7 (grab a rail end to change its length, same day, ~1h
+    // later) added pruneAfterRailStretch -- removing a tie/node left past a shortened rail's new end --
+    // without telling the selection/halo machinery. A tie pruned while SELECTED stays in
+    // editor._selectedElements (now pointing at a detached element) and its halo clone is never torn down.
+    // Reproduced via the one real-world path that can leave a PRUNED piece still selected at the moment of
+    // pruning: grabbing a rail end that is ALREADY part of a multi-selection does not replace the
+    // selection (editor-interaction.js only calls _select() when the hit is NOT already selected), so a
+    // tie multi-selected alongside that rail rides along, selected, right up to the moment it is pruned.
+    it('a MULTI-selected tie pruned by a rail-end stretch loses its halo too, not just its DOM element (must fail before the fix)', async () => {
+      const editor = makeMockEditor();
+      const rail = addRail(editor, 0.5, 1, 3, 1);
+      addRail(editor, 0.5, 2, 3, 2);
+      const farTie = addTie(editor, 2.5, 1, 2.5, 2); // on the rail's row at i=2.5 -> pruned once the rail shortens to i=2
+      addTie(editor, 1, 1, 1, 2); // kept, well inside the shortened rail
+
+      editor._select(rail);
+      editor._selectAdd(farTie);
+      expect(editor._selectedElements).toEqual([rail, farTie]);
+      expect(haloItems(editor).length).toBe(2);
+
+      // Grab the rail's own END (x=3,y=1): it's already selected, so this does NOT replace the selection.
+      h().start(editor, { x: 3, y: 1 }, { x: 3, y: 1 });
+      h().update(editor, { x: 2, y: 1 }); // shortens the rail past farTie at i=2.5
+      await h().finish(editor);
+
+      expect(liveTies(editor)).not.toContain(farTie); // pruned, as T81 item 7 intends
+      expect(editor._selectedElements).not.toContain(farTie); // must not linger as a detached "selected" element
+      expect(editor._selectedElements).toContain(rail);
+      expect(haloItems(editor).length).toBe(1); // only the rail's own halo -- no orphaned clone for the pruned tie
     });
   });
 }

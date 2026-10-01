@@ -11921,3 +11921,62 @@ with the flat-bottom relationship in place (`shots/seatB/t82i3_flatfix_{front,be
 
 Committing `core/preview/frame-mesh.js` + `tests/frame-3d.test.js` + this entry, pushing lane-b, passing
 back with the full honest numbers (pytest 406/24/0, vitest 2932/155/0) stated in the pass note itself.
+
+## Lane B — Turn 214 — T81 item 5 re-reported: a MULTI-selected tie pruned by a rail-end stretch orphaned its halo — DONE
+
+Dispatch: Fred saw the yellow highlight persist again. The ORIGINAL T81 item 5 (870ff2a, 2026-09-27) is a
+real, complete fix for its own case -- confirmed by reading `_commitLatticeMove` and
+`tests/lattice-drag-highlight.test.js` in full before writing anything new. Delegated the investigation to
+a background research agent first (same discipline the original fix's own commit message names): traced
+every yellow-drawing mechanism, confirmed there is still only ONE (`editor._selectionHighlights`,
+editor-ui.js `updateSelectionHighlight`, `#ffcc00`), and that `_commitLatticeMove`'s own unconditional halo
+refresh (line ~1952) already runs on every drag exit path.
+
+**Root cause, found by git history, not guesswork**: T81 item 7 (grab a rail end to change its length,
+`d063309`) landed ~75 minutes AFTER the item 5 fix, same day, and added `pruneAfterRailStretch` --
+`el.remove()`'d directly on ties/nodes left past a shortened rail's new end, called from
+`_commitLatticeMove` AFTER the halo refresh, with zero awareness of selection. A later feature introduced a
+new DOM-removal path the earlier (otherwise complete) fix had no way to know about. The gap only shows when
+the PRUNED piece is itself selected at the moment of pruning -- normally impossible (grabbing a different
+piece replaces the selection, per `editor-interaction.js`'s own `if (!selected.includes(hit)) _select(hit)`
+branch), EXCEPT when the grabbed rail is ALREADY part of a multi-selection that also includes the doomed
+tie: that branch's own guard means the grab never touches the selection at all, so the tie rides along,
+selected, into the prune.
+
+**Fix** (`_commitLatticeMove`, editor-interaction.js): after `pruneAfterRailStretch`, filter
+`editor._selectedElements` down to elements still `.node.isConnected` (the same liveness check
+editor-grid.js's own `_connected()` already uses for a stale snap-cursor wrapper -- reused, not
+reinvented) and re-run `_updateSelectionHighlight()` if anything was dropped. `updateSelectionHighlight`
+itself fully rebuilds every halo from `_selectedElements` on each call, so correcting the selection array is
+the whole fix -- no separate halo-removal logic needed.
+
+**Tests** (`tests/lattice-drag-highlight.test.js`, both rect Lattice and Shape Lattice, driven through the
+real `getModeHandler`): new test multi-selects a rail + a tie that sits on its row, grabs the rail's own
+end (already selected, so the grab doesn't replace the selection), drags it past the tie, releases --
+confirms the tie is pruned from the DOM, dropped from `_selectedElements`, and the halo count returns to
+1 (just the rail's). **Reproduced FIRST**: ran it against the pre-fix code, confirmed both tool variants
+failed at the `_selectedElements` assertion (tie still referenced despite being pruned) before writing the
+fix. Mutation-tested after: reverted the fix in a scratch copy, re-ran -- exactly these 2 tests go red, the
+other 31 stay green; restored, confirmed `diff` byte-identical to the pre-mutation-test file. Added
+`isConnected: true` / `isConnected = false` on `.remove()` to the shared mock's node object, matching the
+SAME convention `editor-grid.test.js`'s own mocks already use for this exact kind of check (not invented
+fresh).
+
+**Real app screenshots, headless Chrome** (new `tools/repro/t81_item5_multiselect_prune_shots.mjs`, modeled
+on `rail_end_stretch_shots.mjs`): click a tie to select it, SHIFT+click a rail's own end to ADD it to the
+selection, drag the end past the tie, release. rect Lattice run completed cleanly: step 1 shows the tie
+selected; step 2 shows the rail ALSO selected (its own end-handle grabbed) with the tie still visibly
+yellow; step 3, after the drag, shows the rail shortened ("Rail shortened: removed 1 tie and 2 nodes...")
+with the tie's former position now clean -- NO orphaned halo, confirming the fix visually in the real app
+(`shots/seatB/t81i5_{1_tie_selected,2_rail_added_to_selection,3_after_stretch_no_orphan}.png`). Shape
+Lattice's own run hung mid-script (not root-caused this turn -- noted honestly in the script's own header);
+the fix itself is still proven for Shape Lattice via the unit test's own `for` loop over both tools.
+
+**Verification**: `npx vitest run`: **2934 passed, 0 failed**, 155 files (up from 2932 -- 2 new tests, one
+per tool). `python -m pytest -q`: 406 passed, 24 skipped, 0 failed, unchanged (no Python touched -- this
+bug and fix are pure JS). A/B (`ab6.mjs`/`ablat6.mjs`): same hashes as before this turn (expected -- this
+change touches drag-commit/selection bookkeeping, not geometry generation).
+
+Committing `editor-interaction.js` + `tests/lattice-drag-highlight.test.js` + the new repro script + this
+entry, pushing lane-b, passing back with the full honest numbers (pytest 406/24/0, vitest 2934/155/0)
+stated in the pass note itself.
