@@ -21,6 +21,7 @@ import { setFusionStatus } from '../core/fusion-bridge.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
+import { paramsFromShapeModel } from '../editor/editor-shape-lattice-generator.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
 import { frameCutProfile, frameInnerProfile } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
@@ -87,18 +88,25 @@ export function generateFrame(seed = nextSeed()) {
   const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
   // Generate must never produce a broken frame (Fred): checked against the real inner profile, not just the
   // bare outline every seed's own ranges already guarantee (frame-handles.js generateValidFrameSeeds). H23
-  // item 21: ALSO checked against every OUTER piece staying at least frame_thickness long -- a template whose
-  // handle table doesn't expose every param that shapes a piece's own length (T10's archRise handle moves the
-  // shoulder toward the arch's own top, which the shape-only range keeps geometrically non-degenerate but has
-  // no reason to know about frame_thickness at all) can draw a bare outline with 0 defects whose own horn
-  // piece is still too short for Fusion's real inward offset -- MEASURED live: addOffset2 fails on topology,
-  // 2 of 4 bars never get built. Same "retry against the real check" declared pattern as the inner-profile
-  // rule above, not a hand-derived range on top of the existing one (frame-handles.js's own comment on
-  // generateValidFrameSeeds): a template-agnostic "no wing" rule, not special-cased to T10's own archRise.
+  // item 21: ALSO checked against every OUTER piece staying at least frame_thickness long (Template 7's own
+  // "no wing" finding, generalized) -- a template whose handle table doesn't expose every param that shapes a
+  // piece's own length can draw a bare outline with 0 defects whose own horn piece is still too short for
+  // Fusion's real inward offset -- MEASURED live: addOffset2 fails on topology, 2 of 4 bars never get built.
+  // T10's own archRise needs one more correction here: MEASURED live (a default build and a bad-seed build
+  // produced BIT-IDENTICAL top_edge geometry), archRise is never actually seeded to Fusion for the arch
+  // itself -- p02_12_arch_rebuild.py's own formula always builds it at the template's own FITTED default,
+  // regardless of what's drawn/dragged. Validating against the DRAWN archRise checks the wrong (app-preview-
+  // only) geometry for the horn piece specifically, so the outer profile used here is built with archRise
+  // pinned to that same fitted default -- what Fusion will really build -- not whatever this draw's own
+  // archRise happens to be. Same "retry against the real check" declared pattern as the inner-profile rule
+  // above (frame-handles.js's own comment on generateValidFrameSeeds), not a hand-derived range.
+  const realSeedsFor = tpl.shapeModel?.features?.archRise
+    ? (s) => ({ ...s, archRise: paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region).archRise })
+    : (s) => s;
   const seeds = generateValidFrameSeeds(tpl, region, seed, t, (s) => {
     const inner = frameInnerProfile(FRAME_DEFS, { ...rec, seeds: s }, { widthIn: P.widthIn, heightIn: P.heightIn });
     if (inner && inner.defects.length > 0) return false;
-    const outer = frameCutProfile(FRAME_DEFS, { ...rec, seeds: s }, { widthIn: P.widthIn, heightIn: P.heightIn });
+    const outer = frameCutProfile(FRAME_DEFS, { ...rec, seeds: realSeedsFor(s) }, { widthIn: P.widthIn, heightIn: P.heightIn });
     return outer.primitives.every((p) => _primLength(p) >= t);
   });
   pushFrameHistory();

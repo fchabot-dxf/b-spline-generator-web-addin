@@ -262,21 +262,30 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
 
   it('H23 item 21, the REAL fix: top_edge is hardcoded in Fusion (archRise never actually moves it ' +
     'there -- MEASURED, a live default build and a live bad-seed build produced BIT-IDENTICAL top_edge ' +
-    'geometry), so the app\'s own archRise-based horn-length model doesn\'t match reality -- the REAL ' +
-    'live-Fusion fix is frame-panel.js\'s own generateFrame() [Generate] retry, now ALSO gated on every ' +
-    'OUTER piece (not just the inner profile) staying >= frame_thickness, the same declared "retry against ' +
-    'the real check" pattern as the existing inner-profile rule, a template-agnostic "no wing" rule', () => {
+    'geometry), so even the app\'s own "every outer piece >= frame_thickness" check is wrong for the horn ' +
+    'piece unless it pins archRise to the template\'s own FITTED default first (what Fusion really builds), ' +
+    'not whatever this draw\'s own archRise happens to be -- frame-panel.js\'s own generateFrame() does ' +
+    'exactly that now; this test reproduces its exact logic and cross-checks against the TRUE ' +
+    '(archRise-independent) horn length, not just a differently-wrong app model', () => {
     const isValid = (seeds, W, H) => {
       const inn = inner(seeds, W, H);
       if (inn && inn.defects.length > 0) return false;
-      const outer = profile(seeds, W, H);
+      const realArchRise = paramsFromShapeModel('hourglass', T10.shapeModel, profile({}, W, H).region).archRise;
+      const outer = profile({ ...seeds, archRise: realArchRise }, W, H);
       return outer.primitives.every((p) => primLength(p) >= T);
     };
     for (const [W, H] of [[7, 9], [6, 9]]) {
       const region = profile({}, W, H).region;
+      // The TRUE reference: the arch's own real (archRise-independent) end point, cross-referenced against
+      // each draw's own (accurate, archRise-independent) shoulder point -- not the app's own archRise-biased
+      // horn primitive, which this test's whole point is NOT to trust for the arch's own end.
+      const fixedArchEndPt = profile({}, W, H).primitives[0].p0;
       for (let seed = 1; seed <= 500; seed++) {
         const seeds = generateValidFrameSeeds(T10, region, seed, T, (s) => isValid(s, W, H));
         expect(isValid(seeds, W, H), `${W}x${H} seed ${seed}`).toBe(true);
+        const shoulderPt = profile(seeds, W, H).primitives[0].p1;
+        const realHornLen = Math.hypot(shoulderPt.x - fixedArchEndPt.x, shoulderPt.y - fixedArchEndPt.y);
+        expect(realHornLen, `${W}x${H} seed ${seed} REAL horn length`).toBeGreaterThanOrEqual(T);
       }
     }
   });
