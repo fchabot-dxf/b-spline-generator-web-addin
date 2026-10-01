@@ -11494,3 +11494,70 @@ plausible-but-wrong. Fixed to one plain forward walk per half; all 10 checks (5 
 
 Re-rendered: `shots/seatB/t7_miter_diagram_tangent_arcs_7x9_6x9_2026-10-01_v3.png`. Not sent to Fred --
 passing back for review first, same as last round.
+
+## Lane B — Turn 203 — T82 item 1: real build started — the tested geometry foundation, paused there — DONE (partial)
+
+Fred approved v3 ("diamond is good"); advisor dispatched the real build: Fusion phases, app geometry, tests,
+A/B, LIVE_CHECK.md, phone shots. A brief detour arrived and resolved mid-turn: Fred floated a 3-arc
+hourglass-side variant, then confirmed "both are fine -> ship 2-arc now", with the 3-arc idea becoming a
+later Template 11 (since reassigned to seat C -- dropped from this seat's list per their own note, but T7's
+roof/eave code is kept factored into its own reusable module per their ask, since T11 builds on it).
+
+**Research first** (an Explore agent, full report in this turn's transcript): mapped Template 6 (the N-bar/
+`regions.corners`+`regions.bars` precedent) and Template 8 (the Arc3Point-seed + Tangent-constraint
+mechanics for an S-curve, i.e. exactly the neck-to-body join) end to end, plus the shared engine hooks
+(`frame_definition.py`, `declared_profiles.py`, CAM's `_populate_n_bar_frame_geometry` auto-pickup) and the
+JS app-side preset wiring. **One critical finding up front, verified by hand before writing any code**:
+`fb_engine/inner_corners.py`'s `ResolveInnerCorners` (the shared inner-corner-tagging step every template
+uses) assumes an axis-aligned `(Direction=(+-1,+-1), Distance=frame_thickness)` pair -- correct for every
+corner in Templates 1-10 (each is two perpendicular, axis-aligned edges), but WRONG for T7's peak (both
+edges are 45deg roof lines: the true distance is `frame_thickness*sqrt(2)`, not `frame_thickness`) and
+UNUSABLE as a constant at all for the eave (one edge is the neck arc, whose tangent direction varies with
+board size and the handle values) -- a verbatim copy of Template 6's own corner-resolve phase would have
+silently produced "no SketchPoint within 0.05cm" warnings or mis-tagged the wrong point, with no way to
+catch it without a live Fusion build. Also confirmed `ResolveInnerCorners` itself needs NO changes: its
+`Direction`/`Distance` are plain Python numbers (not Fusion expressions), evaluated once per corner to find
+an ALREADY-Fusion-offset-correct SketchPoint -- so the fix is computing the RIGHT numbers per corner in a
+T7-specific phase file (which already receives live `ui_data`, confirmed by reading `template_loader.py`),
+not inventing a new mechanism.
+
+**Built and thoroughly tested: the pure-Python geometry foundation** (no adsk.* dependency, runs without
+Fusion) -- the part carrying the real, novel risk, so it got the most direct testing before anything else:
+
+- `fb_engine/t7_roof_eave.py` (deliberately factored out, reusable by Template 11 per the advisor's own
+  ask): `roof_geometry` (peak + the 90deg roof's own half-width/height `a = min(0.62*hw, 0.42*H)` + the
+  eave tip), `peak_inner_corner` (the exact `frame_thickness*sqrt(2)`, vertical-down formula), and
+  `eave_inner_corner` (the real line-circle intersection between the offset roof line and the offset neck
+  arc -- NOT the bisector-of-edge-directions formula the scratch diagram's own v2 got wrong; see Turn 201).
+- `fb_engine/t7_geometry.py`: the full outline (neck/body S-curve solve, ported from the scratch diagram's
+  own closed-form math), `inner_corner_directions` (all 3 distinct corners' Direction/Distance, ready to
+  drop into a `ResolveInnerCorners` step), and `clamp_t7_handles` -- a real finding, not assumed: a sweep
+  across the 3 handles' own plausible ranges found genuine invalid combinations (negative/collapsed radii,
+  points leaving the board) that no single handle's own independent min/max would catch, since they're
+  cross-coupled. Rather than hand-deriving a closed-form safe range for 3 coupled parameters (intricate, and
+  unverifiable without Fusion), `clamp_t7_handles` blends the requested values toward the PROVEN-safe
+  defaults by a bisected shrink factor until the result validates -- "clamped, never refused", the same
+  guarantee T6's own test suite asserts by name, just reached by a numeric fallback instead of a closed-form
+  formula.
+
+**59 tests** (`fb_engine/test_t7_roof_eave.py` 19, `test_t7_geometry.py` 40; `python -m pytest` at the repo
+root: 405 passed, 24 skipped, up from 351/19, zero regressions): board containment at every supported size
+(7x9 through the extremes 5.51x1.97 and 24x4), the peak/eave inner-corner formulas checked against an
+independently-computed oracle (not just re-running the function under test), every bar clearing
+frame_thickness (Template 7's OWN prior rejected build's "wing" finding, the exact thing being guarded
+against here), the handle-sweep's real invalid combinations documented AND the clamp's guarantee proven
+across every board size. **Mutation-tested, not argued**: flipped the neck arc's inner-offset sign twice --
+the first check (a "closer to interior" heuristic) only caught it at 1 of 6 board sizes, which is itself a
+finding (a loose heuristic can pass by coincidence); replaced with a strict on-both-offset-curves check that
+fails at all 6/6 under the same mutation, restored clean.
+
+**NOT done this turn (Fred's own call, after I reported the remaining scope honestly mid-turn)**: the
+Fusion phase files (`sketches/template_7/`), `template_data.py` (bars/corners/handles declaration), the
+app-side JS preset (`editor-shape-lattice-generator.js`), `frame-defs` regeneration, the JS test suite, the
+A/B check, `LIVE_CHECK.md`, and phone shots are all still outstanding -- this is a large remaining checklist,
+all of it unverifiable live (no Fusion bridge this seat), and Fred chose to pass back now with the tested
+foundation rather than push through the rest in one continuous turn. The geometry this remaining work needs
+is now solid and in place; nothing here should need to be re-derived.
+
+Committing the 4 new files (`t7_roof_eave.py`, `t7_geometry.py`, their 2 test files) and pushing; passing
+back with an honest status (foundation done and tested, build not yet started) rather than claiming more.
