@@ -196,9 +196,9 @@ h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} sm
 .fill{{height:100%;background:var(--w)}} .lbl{{font-size:12px;color:var(--mut)}}
 img.thumb{{cursor:zoom-in}} dialog#lb{{border:0;padding:0;margin:0;background:transparent;width:100vw;height:100vh;max-width:100vw;max-height:100vh;overflow:hidden}} dialog#lb::backdrop{{background:rgba(0,0,0,.8)}}
 dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cursor:zoom-out}} dialog#lb figcaption{{color:#ddd;font-size:12px;text-align:center;padding-top:4px}}
-dialog#lb figure{{margin:0;position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}} .nav{{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:0;font-size:28px;width:44px;height:64px;border-radius:8px;cursor:pointer}} @keyframes lbUp{{from{{transform:translateY(100vh)}}to{{transform:none}}}} @keyframes lbDown{{from{{transform:translateY(var(--dy,0px))}}to{{transform:translateY(100vh)}}}}
-dialog#lb.up figure{{animation:lbUp .28s ease-out}} dialog#lb.down figure{{animation:lbDown .25s ease-in forwards}}
-@media(prefers-reduced-motion:reduce){{dialog#lb.up figure,dialog#lb.down figure{{animation-duration:1ms}}}}
+dialog#lb figure{{margin:0;position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}} .nav{{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:0;font-size:28px;width:44px;height:64px;border-radius:8px;cursor:pointer}} @keyframes lbDown{{from{{transform:translateY(var(--dy,0px))}}to{{transform:translateY(100vh)}}}}
+dialog#lb.down figure{{animation:lbDown .25s ease-in forwards}}
+@media(prefers-reduced-motion:reduce){{dialog#lb.down figure{{animation-duration:1ms}}}}
 .nav.p{{left:4px}} .nav.n{{right:4px}} .x{{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}}
 .shots img.more{{display:none}} .morec{{grid-column:1/-1;font-size:12px;color:var(--mut)}}
 .shots{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}} .shots img{{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line)}}
@@ -211,9 +211,13 @@ ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}}
 const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
 let set=[], idx=0;
 function show(){{ zr(); const t=set[idx]; im.src=t.src; cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }}
-function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')]; idx=set.indexOf(t); show(); lb.classList.remove('down'); lb.classList.add('up'); lb.showModal(); }}
+function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')]; idx=set.indexOf(t); show(); lb.classList.remove('down');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  fig.style.transform='translateY(100vh)'; lb.showModal();
+  const go=()=>{{ fig.style.transform=''; if(!reduce) fig.animate([{{transform:'translateY(100vh)'}},{{transform:'translateY(0)'}}],{{duration:320,easing:'cubic-bezier(.2,.8,.2,1)'}}); }};
+  (im.decode?im.decode():Promise.resolve()).then(go,go); }}
 const fig=lb.querySelector('figure');
-function slideClose(dy){{ if(!lb.open||lb.classList.contains('down')) return; fig.style.setProperty('--dy',(dy||0)+'px'); fig.style.transform=''; lb.classList.remove('up'); lb.classList.add('down');
+function slideClose(dy){{ if(!lb.open||lb.classList.contains('down')) return; fig.style.setProperty('--dy',(dy||0)+'px'); fig.style.transform=''; lb.classList.add('down');
   const done=()=>{{ lb.classList.remove('down'); fig.style.removeProperty('--dy'); lb.close(); }}; fig.addEventListener('animationend',done,{{once:true}}); setTimeout(()=>{{ if(lb.open) done(); }},400); }}
 function step(d){{ if(!set.length) return; idx=(idx+d+set.length)%set.length; show(); }}
 document.getElementById('lbPrev').addEventListener('click',ev=>{{ev.stopPropagation();step(-1);}});
