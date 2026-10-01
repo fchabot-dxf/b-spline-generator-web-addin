@@ -1,48 +1,32 @@
-# NEXT — seat A — H23 item 19, final piece: live b-spline-join check, then un-hide
+# NEXT — seat A — H23 item 21: T10's real-geometry frame enclosure defect (2 of 4 bars missing)
 
-**Ball: worker (seat A) · epoch 6 · H23 item 19.** d7ec983 ACCEPTED — exceptional debugging discipline: you caught your
-OWN false premise (two passes chasing a shoulder-arc sign puzzle in a STALE golden, not the real geometry) rather than
-either declaring victory on a plausible-looking partial result or quietly burying the wasted passes, confirmed the real
-shape 4 independent ways before concluding, and correctly flagged the b31f5ed call to me instead of deciding it alone.
-Spot-checked independently: pytest 408/22 skipped/0 failed, gen_frame_defs --check clean, no phase-code changes (exactly
-as you said — zero needed).
+**Ball: worker (seat A) · epoch 6 · H23 item 21.** H23 item 19 ACCEPTED (38fff7a) — the live b-spline-join check did
+exactly what it was required for: found a real, previously-untested defect before anything shipped. Clean reproduction
+(twice), precise root-cause trace (addOffset2's topology failure → silent fallback to a cruder non-parametric offset →
+curve count collapses 12→6 → a corner's projected horn is lost → that miter never splits → 2 bars missing), full clean
+revert rather than a rushed patch, and the right call recommending this become its own item. `FRAME_HIDDEN` correctly
+stays `True`.
 
-**b31f5ed — my call: do NOT merge it.** Fred already looked at and approved the REAL built shape
-(0939_F3_t10_item17_fixed_deployed.png, captured live right after item 17's actual fix, unaffected by the stale-golden
-issue) and said "T10 is fine." That real shape is the plain, modest-pinch, Template-1-style hourglass your fresh goldens
-now confirm — not Fred's own earlier hand-reconstruction, made before any of this was fixed. b31f5ed is superseded;
-leave it parked on fb-app, don't touch it.
+## This task: H23 item 21 — fix the addOffset2 topology failure
+Your own diagnosis is the starting point (full log excerpts in WORK-LOG-fb-app.md, 38fff7a): T10_3_frame_enclosure's
+`addOffset2` call fails on this seeded geometry's topology ("does not match the original"), and whatever's catching
+that failure falls back to a non-parametric offset that merges what should stay 12 separate source curves into only 6,
+losing `inner_proj_horn_TR` and the frame_top/frame_right miter with it. You flagged that parametric-offset topology
+issues have needed careful bounded live work every other time in this template's history — same caution applies here.
+Find why THIS seeded geometry (not Fusion's own unseeded defaults) trips the topology mismatch — likely something about
+how the real seed values shape the enclosure curves differently enough that `addOffset2` can't match them — and fix at
+that cause rather than patching the fallback path to merge curves more carefully (a corner that can't offset cleanly is
+the actual bug; a smarter merge just hides it better). Verify with the SAME real seeded b-spline send-and-join check
+(all 4 bars, clean miters), at 7x9 and 6x9, plus the usual full suite + A/B. Same stop condition as always: if it
+doesn't yield to a bounded attempt, write up what you tried same-quality as today's entries and stop rather than
+grinding — this one's genuinely been hard for T10 every time before.
 
-**The stale-golden gap you found is real and worth closing — queued as H23 item 20** (not this item's job, don't do it
-now): `gen_frame_defs.py --check` only verifies generated defs against committed goldens, never goldens against a FRESH
-Fusion build, so a golden can silently drift arbitrarily stale (here, by 3 whole fix iterations) with nothing in the
-pipeline ever flagging it. Worth a declared freshness check — e.g., compare each golden's own recorded git commit/
-timestamp against the last commit that touched that template's phase files, flag if the phase files moved after the
-golden was recorded. Full item text is in the checklist below for whoever picks it up.
+**H23 item 20 (golden freshness check) stays queued, lower priority than this** — pick it up after, or hand to whoever's
+next; it doesn't need T10-specific context the way this does.
 
-## This task: H23 item 19's last piece
-Same live check already required of seat C's new taper templates, now much more tractable since the real shape is
-simple: draw/import a REAL (non-blank) b-spline design in the editor, select Template 10, Send, and confirm in Fusion
-that the B-spline body AND the frame both build, AND the panel actually joins/trims correctly into the frame opening —
-not just that the bare frame looks right (same question Fred raised for T12/T13: does a real b-spline import and join
-to the frame correctly). Then `FRAME_HIDDEN = False` in `template_10/template_data.py`, regenerate, full suite + A/B
-(T1-9 unchanged). Shots to the advisor. Per the standing rule: a quick Fusion viewport shot now and then while you work,
-even mid-check.
-
-**This task (H23 item 19):**
-1. Merge seat C's parked app-side T10 work (`fb-app` `b31f5ed`, F29 item 2) with the now-measured Fusion geometry
-   (`frame-defs.js/.json` already regenerated this item from the live goldens) — seat C's app-side model was built from
-   Fred's own hand-reconstructed JSON, from before any of this was fixed live; reconcile any drift between that and the
-   real measured shapeModel.
-2. Same live check I just required of seat C's new taper templates, applied to T10: draw/import a REAL (non-blank)
-   b-spline design in the editor, select Template 10, Send, and confirm in Fusion that the B-spline body AND the frame
-   both build, AND the panel actually joins/trims correctly into the frame opening — not just that the bare frame looks
-   right. T10 has been broken the longest of any template; it gets the same bar as the newest ones, not a lower one.
-3. Flip `FRAME_HIDDEN = False` in `template_10/template_data.py`, regenerate, full suite + A/B (T1-9 byte-identical,
-   unaffected).
-4. Document 12x6's T1-inherited limitation where a user would find it if they hit it (not a fix — H23 item 18 covers that).
-
-Per the standing rule: drop a quick Fusion viewport shot now and then while you work this, even mid-debug.
+Once item 21 lands: `FRAME_HIDDEN = False`, regenerate, full suite + A/B, document 12x6's T1-inherited limitation
+(H23 item 18 covers fixing it, not this). Per the standing rule: drop a quick Fusion viewport shot now and then while
+you work, even mid-debug.
 
 ## Checklist
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
@@ -89,4 +73,5 @@ Per the standing rule: drop a quick Fusion viewport shot now and then while you 
 - [ ] [H23-item-18] DECLARE SEED DERIVATION (cross-cutting, after item 17; Fred: "seeds are still using width height multiplicator formulas?" — yes, confirmed, and it's a recurring bug class, not cosmetic). Every template seeds its shape-outline with literal `widthIn * k` / `heightIn * k` magic constants, hand-picked per template, often copied from a sibling template without re-deriving for the new chain. Three confirmed incidents from this one root cause: Template 5's seed radius scaling with heightIn while the span it bridges scales with widthIn (H23 item 6); Template 10's `hw = widthIn * 0.464286` reused from Template 1, never derived for T10's own hip/shoulder chain (items 14/15/17); Template 12/13's seed computed off the raw board dimension instead of routing through `seed_basis.py` (seat C, F30 item 3). Pull the CLOSED-FORM DERIVATION TECHNIQUE item 17 used (solve the seed's radius/position from the actual geometric relationship it must satisfy, not a fitted fraction of one board dimension) into a declared, documented helper/convention in `fb_engine` — the one worked example plus a clear pattern to follow, not a framework. Then audit the EXISTING literal-constant seeds for which are actually suspect (reused across templates without re-derivation, or scaled by the wrong dimension for what they bridge) and fix those. This is NOT "rewrite every template's seeds" — leave seeds alone that are provably fine (fit directly for their own template, correct single-dimension span). Document the convention (a short addition to HANDOFF-ranchy.md's template-design rules) so a new template derives its seeds instead of copying a sibling's constants. Commit as 'H23 item 18: ...'.
 - [ ] [H23-item-19] FINISH + UN-HIDE TEMPLATE 10 (item 17's own open question; see this file's top section for the full reasoning). Merge seat C's parked app-side T10 work (fb-app b31f5ed, F29 item 2) with the now-measured Fusion geometry, reconciling any drift from Fred's hand-reconstructed model. Live-verify a REAL b-spline design sends, builds, AND joins/trims correctly into T10's frame (same bar just required of seat C's new taper templates) — not just the bare frame. Then `FRAME_HIDDEN = False`, regenerate, full suite + A/B (T1-9 unchanged). Document (don't fix) 12x6's T1-inherited limitation. Commit as 'H23 item 19: ...'.
 - [ ] [H23-item-20] GOLDEN FRESHNESS CHECK (from item 19's own finding, d7ec983: template_10's goldens sat stale through 3 real fix iterations, 14/15/17, with nothing in the pipeline ever flagging it — gen_frame_defs.py --check only validates generated defs against committed goldens, never goldens against a fresh Fusion build). Declare a freshness check: for each template's committed golden fixture (tests/fixtures/frame-parity/template_N_*.json), compare its own recorded source commit (or the golden file's own last-modified commit) against the last commit that touched that template's phases/*.py — if the phase files moved more recently than the golden, flag it (a test failure or a `--check`-style report, whichever fits the existing gen_frame_defs convention). Should have caught item 19's own 2-pass detour immediately. Commit as 'H23 item 20: ...'.
-Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 19 — <shas>"`.
+- [ ] [H23-item-21] TEMPLATE 10'S REAL FRAME ENCLOSURE DEFECT (item 19's own finding, 38fff7a: live-verified with a real seeded b-spline send, only 2 of 4 bars build — frame_top/frame_right missing). Root cause already traced: `addOffset2` fails this seeded geometry's topology in `T10_3_frame_enclosure`, falls back to a non-parametric offset that merges 12 source curves into 6, losing `inner_proj_horn_TR` and the miter that depends on it. Find why the REAL seeded geometry (not Fusion's own unseeded defaults) trips this, and fix at that cause — not by patching the fallback to merge more carefully. Verify with the same real-seeded send-and-join check, 7x9 + 6x9, full suite + A/B. Parametric-offset topology issues have been hard for this template every time before — bounded attempt, stop and write up if it doesn't yield. Then `FRAME_HIDDEN = False`, regenerate, document 12x6. Commit as 'H23 item 21: ...'.
+Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 21 — <shas>"`.
