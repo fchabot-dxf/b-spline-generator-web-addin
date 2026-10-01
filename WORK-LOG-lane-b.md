@@ -12161,3 +12161,47 @@ instruction -- standing by for the target-shape confirmation.
 
 Committing `t11_geometry.py` (new file, WIP) and this WORK-LOG entry together, pushing lane-b, passing
 back.
+
+## Lane B — Turn 220 (resumed) — T83 item 1: Template 11 geometry fixed, tested, two real bugs found — DONE (partial)
+
+Fred confirmed the hourglass-pinch side is correct as designed (no change needed) -- resumed from the WIP
+checkpoint (f3c23e3) to finish the sample_arc investigation.
+
+**Root cause of the pause-era bug, found by direct numeric cross-check, not by re-reasoning about
+sample_arc's own sweep logic**: `C_waist` was computed as `to_board(hw - hc["depth"], waist_center_y)`.
+`hw - depth` is the waist pinch's own DEEPEST point (its closest approach to the centreline) -- NOT the
+arc's centre. The concave arc's true centre sits one more `radius_waist` further out. Checked by hand:
+neither `shoulder_waist_jct` nor `waist_hip_jct` (each independently solved to lie on the shoulder/hip
+circle, tangent to the waist circle) was actually at distance `r_waist` from the old C_waist -- adding
+`+ hc["radius_waist"]` to C_waist's own x made both land exactly on the corrected circle (to 1e-9, every
+board size tried). This is why `sample_arc` could never find a matching sweep: p0/p1 were never really on
+the circle it was searching, regardless of direction.
+
+**A SECOND, more serious bug found while writing an independent cross-check for the eave corner, not
+previously suspected**: `_line_line_inner_corner`'s own `interior_probe = -(dir_in + dir_out)` heuristic
+(inferring "inward" purely from the two edge directions, no reference point) gets the eave corner BACKWARDS
+-- the computed "inner" point landed FARTHER from the board centre than the outer eave vertex, i.e. outside
+the material, not inside it. This is the EXACT bug class `t7_roof_eave.eave_inner_corner`'s own docstring
+already documents and had already fixed once ("a bisector-of-edge-directions formula... points the WRONG
+way at a cusp-like corner such as this eave") -- T11's own eave is exactly that kind of cusp (both edges
+head the same general direction away from the shared point), so the same failure reproduced right on
+schedule. FIXED by changing `_line_line_inner_corner` to take an explicit `interior_point` (the board
+centre, same reference `eave_inner_corner` already uses) instead of inferring one -- cross-validated
+against T7's own already-proven `peak_inner_corner` (feeding the general function T7's symmetric peak
+corner now reproduces peak_inner_corner's exact answer, which it did NOT before the fix).
+
+**Both fixes MUTATION-TESTED** (reverted each in turn, confirmed the specific new regression tests go red
+-- 20 failures for the C_waist mutation, 7 for the eave-direction mutation -- then restored byte-identical
+via diff, confirmed green again). Wrote `fb_engine/test_t11_geometry.py` (72 tests, mirrors
+test_t7_geometry.py's own structure/coverage: outline-stays-inside-board, 7x9 regression pin, both bug's
+own regression tests, the peak-oracle cross-check, straight-run thickness margins, inner-corner directions,
+and the full raw-sweep/clamp/no-op handle-sweep trio). Split board-size test fixtures into PORTRAIT_BOARDS
+(where the construction is well-posed, used for "must be exactly right" assertions) vs EXTREME_BOARDS
+(very short/wide landscape sizes where `top_inset` can exceed the waist's own pinch `depth` entirely -- a
+real, pre-existing structural limit of this construction at extreme aspect ratios, not a bug; this project
+is portrait-only in practice, so these are only swept to prove clamp_t11_handles/every_outer_point_inside_board
+degrade gracefully, per [[project-portrait-only]], never to assert they're perfect there). Full fb_engine
+suite: 319 passed, 10 skipped (Fusion-dependent, expected outside Fusion), 0 failed.
+
+**Not done yet**: Fusion phase files (sketches/template_11/), template_data.py, and app-side JS wiring --
+next step, same as T7's own Turn 203/205/207-208 arc. This commit is the geometry-layer milestone only.

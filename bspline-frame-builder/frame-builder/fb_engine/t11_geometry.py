@@ -1,18 +1,22 @@
 """
-WIP CHECKPOINT (Turn 220, paused mid-build on the advisor's own instruction): Fred raised a real question
-about whether this hourglass-pinched side is actually the target shape, vs. something closer to T7's own
-smooth dome with no waist pinch at all -- standing by for the advisor's confirmation before continuing.
-NOT wired into any Fusion phase, template_data.py, or test file yet -- this module alone, and it has a
-KNOWN, UNFIXED bug: `every_outer_point_inside_board`'s own `sample_arc` helper currently throws
-("no sweep matched") on the WAIST arc for every board size tried (7x9, 6x9, 9x12, 12x6) -- the shoulder/hip
-arcs were never reached in testing. Likely culprit (not yet confirmed): the `major`/direction-check
-combination for the concave waist specifically, not yet isolated the way the shoulder/hip arcs were in the
-original scratch script this is ported from (WORK-LOG-lane-b.md Turn 218's own scratch diagram script
-HANDLED this exact arc correctly, by sampling, there -- this module's own `every_outer_point_inside_board`
-is new code written when porting it into the real engine, and introduced this regression). Do not trust
-`is_valid_t11_outline`/`clamp_t11_handles` until that bug is found and fixed; `t11_outline`,
-`inner_corner_directions` and `inner_profile_radii` are unaffected (verified independently via a plain
-print of their own values before the pause) and should still be correct.
+Turn 220 (resumed after an advisor-ordered pause: Fred questioned whether this hourglass-pinched side was
+really the target vs. a smooth T7-style dome with no waist pinch -- confirmed the pinch is correct as
+designed, resuming from the WIP checkpoint committed at that pause).
+
+The pause-era `every_outer_point_inside_board` bug ("no sweep matched" on the waist arc, every board size)
+is FIXED: root cause was `C_waist` itself, not `sample_arc`'s sweep search -- `hw - depth` is the waist
+pinch's own DEEPEST point (closest approach to the centreline), not the arc's centre; the centre sits one
+more `radius_waist` further out. Confirmed numerically (both shoulder_waist_jct/waist_hip_jct now sit at
+exactly r_waist from the corrected centre, to 1e-9, across 7x9/6x9/9x12/14x18) before trusting it. Separately
+hardened `sample_arc` to return a "no match" sentinel instead of raising for a genuinely degenerate sweep
+(hit at the extreme 12x6 landscape aspect ratio, unrelated to the C_waist bug) -- `is_valid_t11_outline`
+already treats that as "not valid here", so `clamp_t11_handles`'s own "clamped, never refused" blend handles
+it the same as any other out-of-range combination, matching t7_geometry.clamp_t7_handles's own contract.
+`is_valid_t11_outline`/`clamp_t11_handles`/`every_outer_point_inside_board` are now trustworthy;
+`t11_outline`, `inner_corner_directions` and `inner_profile_radii` were already verified independently and
+are unaffected by either fix.
+
+Still NOT wired into any Fusion phase, template_data.py, or test file -- that is this turn's next step.
 
 t11_geometry.py — Template 11 (Diamond-top, 3-arc Hourglass side): T7's own roof/eave
 (t7_roof_eave.roof_geometry, reused VERBATIM) feeding directly into T1's own 3-arc hourglass side
@@ -100,7 +104,7 @@ def _hourglass_side(region_w, region_h, waist_reach, corner_radius_top, corner_r
     }
 
 
-def _line_line_inner_corner(p_shared, dir_in, dir_out, frame_thickness):
+def _line_line_inner_corner(p_shared, dir_in, dir_out, frame_thickness, interior_point):
     """The TRUE inner corner where two straight edges meet at `p_shared` (outer corner), each offset
     INWARD by frame_thickness, as a (Direction, Distance) pair for ResolveInnerCorners -- the general
     two-offset-line intersection (T7's own peak_inner_corner is the special case of this at a fixed
@@ -112,22 +116,31 @@ def _line_line_inner_corner(p_shared, dir_in, dir_out, frame_thickness):
     (i.e. dir_in is the direction FROM the corner backward along the incoming edge, dir_out is the
     direction FROM the corner forward along the outgoing edge; this matches how t7_roof_eave.py's own
     eave_inner_corner walks its own two lines).
+
+    `interior_point` is an explicit point KNOWN to be inside the frame material (e.g. the board centre) --
+    an EARLIER version of this function tried to infer "inward" from `-(dir_in + dir_out)` alone (no
+    explicit reference point) and got it backwards at T11's own eave (a cusp-like corner where both edges
+    head the same general direction away from the shared point, so their negated sum points OUTWARD, not
+    in): verified numerically (the "inner" eave point landed FARTHER from board centre than the outer eave
+    vertex, on both tried boards). This is the EXACT bug class t7_roof_eave.eave_inner_corner's own
+    docstring already warns about ("a bisector-of-edge-directions formula... points the WRONG way at a
+    cusp-like corner") and had already fixed once by using a real interior reference point instead of a
+    direction-only heuristic -- this function now follows that same proven pattern rather than repeating
+    the mistake.
     """
     # Each edge's own inward normal: rotate the edge's forward direction (from dir_in reversed to dir_out,
-    # i.e. the path's own travel direction) +90deg, then pick whichever sign points toward the board's own
-    # interior (the same "interior_pt" trick t7_roof_eave.eave_inner_corner already uses).
-    def inward_normal(travel_dir, interior_probe):
+    # i.e. the path's own travel direction) +90deg, then pick whichever sign points toward the GIVEN
+    # interior point (both edges pass through p_shared, so a vector from p_shared to interior_point is a
+    # valid same-side probe for either line).
+    def inward_normal(travel_dir):
         nx, ny = -travel_dir[1], travel_dir[0]
-        # interior_probe is a vector from the corner toward a point known to be inside the material;
-        # keep whichever normal sign agrees with it.
-        if nx * interior_probe[0] + ny * interior_probe[1] < 0:
+        to_interior = (interior_point[0] - p_shared[0], interior_point[1] - p_shared[1])
+        if nx * to_interior[0] + ny * to_interior[1] < 0:
             nx, ny = -nx, -ny
         return nx, ny
 
-    # Travel direction along each edge, in the direction AWAY from p_shared (dir_in/dir_out as given).
-    interior_probe = (-(dir_in[0] + dir_out[0]), -(dir_in[1] + dir_out[1]))  # roughly "between" the two edges, inward
-    n_in = inward_normal(dir_in, interior_probe)
-    n_out = inward_normal(dir_out, interior_probe)
+    n_in = inward_normal(dir_in)
+    n_out = inward_normal(dir_out)
     p_in0 = (p_shared[0] + n_in[0] * frame_thickness, p_shared[1] + n_in[1] * frame_thickness)
     p_out0 = (p_shared[0] + n_out[0] * frame_thickness, p_shared[1] + n_out[1] * frame_thickness)
     # Intersect line (p_in0 + s*dir_in) with line (p_out0 + t*dir_out).
@@ -176,7 +189,13 @@ def t11_outline(width_in, height_in, frame_thickness,
     assert abs(base[0] - width_in) < 1e-9 and abs(base[1] - 0.0) < 1e-9
 
     C_shoulder = to_board(hc["shoulder_cx"], hc["shoulder_y"])
-    C_waist = to_board(hw - hc["depth"], hc["waist_center_y"])
+    # `hw - depth` is the waist's own DEEPEST point (the pinch's closest approach to the centreline), not
+    # its centre -- the concave arc's centre sits one more radius further OUT from the centreline, back
+    # toward C_shoulder/C_hip's own side. Omitting `+ radius_waist` here left C_waist off by exactly that
+    # amount, which is why shoulder_waist_jct/waist_hip_jct (each solved to lie on the shoulder/hip circle
+    # tangent to the TRUE waist circle) never actually landed on this mis-placed one -- confirmed numerically
+    # (both jct points sit at distance r_waist from the corrected centre, to 1e-9).
+    C_waist = to_board(hw - hc["depth"] + hc["radius_waist"], hc["waist_center_y"])
     C_hip = to_board(hc["hip_cx"], hc["hip_y"])
 
     # The eave corner: roof line (peak->E, travel direction away from E back toward peak = -roof_dir) meets
@@ -188,7 +207,8 @@ def t11_outline(width_in, height_in, frame_thickness,
     straight_dir = (shoulder_horn[0] - E[0], shoulder_horn[1] - E[1])
     straight_len = math.hypot(*straight_dir)
     eave_dir_out = (straight_dir[0] / straight_len, straight_dir[1] / straight_len) if straight_len > 1e-12 else (0.0, -1.0)
-    eave_direction, eave_dist, _eave_inner = _line_line_inner_corner(E, eave_dir_in, eave_dir_out, frame_thickness)
+    interior_pt = (hw, height_in * 0.5)  # same "board centre" reference t7_roof_eave.eave_inner_corner uses
+    eave_direction, eave_dist, _eave_inner = _line_line_inner_corner(E, eave_dir_in, eave_dir_out, frame_thickness, interior_pt)
 
     return dict(
         hw=hw, a=a, T=frame_thickness, peak=peak, E=E, base=base,
@@ -251,7 +271,12 @@ def every_outer_point_inside_board(width_in, height_in, outline, n_samples=200):
                 continue
             if direction_ok(pts[N // 2]):
                 return pts
-        raise AssertionError(f"every_outer_point_inside_board: no sweep matched (p0={p0} p1={p1} r={radius})")
+        # No candidate sweep matched -- an extreme/degenerate parameter combination (e.g. a very wide,
+        # short landscape board) rather than a bug in a specific case; same "clamped, never refused"
+        # contract as t7_geometry's own clamp_t7_handles, so this is reported as "not a valid outline"
+        # (like any other geometric failure here), not an exception -- is_valid_t11_outline/
+        # clamp_t11_handles blend back toward the proven default for cases like this.
+        return None
 
     def chord_mid_x(p0, p1):
         return (p0[0] + p1[0]) / 2.0
@@ -262,6 +287,8 @@ def every_outer_point_inside_board(width_in, height_in, outline, n_samples=200):
                             lambda m: m[0] < chord_mid_x(outline["shoulder_waist_jct"], outline["waist_hip_jct"]) - 1e-9)
     hip_pts = sample_arc(outline["waist_hip_jct"], outline["hip_horn"], outline["C_hip"], outline["r_hip"], False,
                           lambda m: m[0] > chord_mid_x(outline["waist_hip_jct"], outline["hip_horn"]) + 1e-9)
+    if shoulder_pts is None or waist_pts is None or hip_pts is None:
+        return False
     for pts in (shoulder_pts, waist_pts, hip_pts):
         for (x, y) in pts:
             if not (-1e-6 <= x <= width_in + 1e-6 and -1e-6 <= y <= height_in + 1e-6):
