@@ -1957,7 +1957,22 @@ function _commitLatticeMove(editor, move) {
     if (!moved) return;
     // T81 item 7: ties/nodes left past a stretched rail's new end go in
     // THIS same undo step (before the one pushState below).
-    if (move.railEnd) move.railEndPruned = pruneAfterRailStretch(editor, move);
+    if (move.railEnd) {
+        move.railEndPruned = pruneAfterRailStretch(editor, move);
+        // T81 item 5 (re-reported): pruneAfterRailStretch removes elements from the DOM directly and knows
+        // nothing about selection -- a tie/node that rode along SELECTED (possible when the grabbed rail
+        // end was already part of a multi-selection, so the grab above never replaced it) is now a detached
+        // element still sitting in editor._selectedElements, and the halo refresh above already ran before
+        // this prune, so its clone is never torn down either. Drop anything no longer in the document and
+        // resync the halo to match -- the same "is this element still live" check editor-grid.js's own
+        // _connected() uses for a stale snap-cursor wrapper.
+        const sel = editor._selectedElements || [];
+        const live = sel.filter((el) => el && el.node && el.node.isConnected);
+        if (live.length !== sel.length) {
+            editor._selectedElements = live;
+            if (typeof editor._updateSelectionHighlight === 'function') editor._updateSelectionHighlight();
+        }
+    }
     applyLayerState(editor);
     if (typeof editor.pushState === 'function') editor.pushState();
     // audit batch 2: through the commit hooks like every other edit (a pending refill is settled in THIS step)
