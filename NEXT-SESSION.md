@@ -1,18 +1,39 @@
-# NEXT — seat A — H23 item 21: T10's real-geometry frame enclosure defect (2 of 4 bars missing)
+# NEXT — seat A — H23 item 22: send_frame's underside_face() failure at 6x9
 
-**Ball: worker (seat A) · epoch 6 · H23 item 21.** H23 item 19 ACCEPTED (38fff7a) — the live b-spline-join check did
-exactly what it was required for: found a real, previously-untested defect before anything shipped. Clean reproduction
-(twice), precise root-cause trace (addOffset2's topology failure → silent fallback to a cruder non-parametric offset →
-curve count collapses 12→6 → a corner's projected horn is lost → that miter never splits → 2 bars missing), full clean
-revert rather than a rushed patch, and the right call recommending this become its own item. `FRAME_HIDDEN` correctly
-stays `True`.
+**Ball: worker (seat A) · epoch 6 · H23 item 22.** H23 item 21 ACCEPTED (41455a0) — the real fix (Fix 3: pin `archRise`
+to the fitted default when validating, since it's never actually seeded to Fusion) is solid, with the strongest evidence
+chain of anything today: 0/1000 bad draws numerically at BOTH sizes, AND live-verified end-to-end at 7x9 (real capture,
+real Send, 4/4 bars, healthy timeline). Good catch too on Fix 1→2→3 each correcting the last rather than stacking
+patches, and on the Template 1 "no wing" retry side-effect (template-agnostic by construction, not a T10 special case).
 
-## This task: H23 item 21 — fix the addOffset2 topology failure
-Your own diagnosis is the starting point (full log excerpts in WORK-LOG-fb-app.md, 38fff7a): T10_3_frame_enclosure's
-`addOffset2` call fails on this seeded geometry's topology ("does not match the original"), and whatever's catching
-that failure falls back to a non-parametric offset that merges what should stay 12 separate source curves into only 6,
-losing `inner_proj_horn_TR` and the frame_top/frame_right miter with it. You flagged that parametric-offset topology
-issues have needed careful bounded live work every other time in this template's history — same caution applies here.
+**My call on your gate: HOLD the un-hide (option B), not option A.** This isn't the same judgment call as 12x6/T1-parity
+(a degraded-but-functional shape at a landscape size nobody uses) — 6x9 is a mainstream PORTRAIT size, and the failure
+mode isn't degraded geometry, it's a COMPLETE empty Send (0 bars, `frame_occurrences: []`) via the REAL production
+handlers with a REAL captured payload, twice. Shipping a brand-new template that can totally fail to Send at a size
+Fred actually uses is worse than leaving it hidden a little longer, especially after how much careful work already
+went into getting it right.
+
+## This task: H23 item 22 — why does `underside_face()` reject this body at 6x9
+Read `send_frame.py`'s `underside_face()` yourself (it's short: scans `body.faces`, picks the most-downward-normal one,
+rejects if nothing clears `UNDERSIDE_MAX_NORMAL_Z`). **Priority order, cheapest/most-informative first:**
+1. **Does Template 1 (or any already-SHIPPED template) ALSO fail Send at 6x9 with a similarly sparse Shape Lattice
+   pattern?** This is the single fastest way to learn the real scope — if yes, this is a pre-existing, already-live
+   bug affecting shipped templates today, not something to gate T10 on alone (dispatch it as its own urgent item,
+   unblock T10 separately). If no, it's specific to T10's own 6x9 geometry/pattern somehow, and stays this item's job.
+2. Your flat-box repro (bypassing b-spline search) hit the SAME refusal — that's surprising (a flat box's bottom
+   normal should trivially pass), which makes me suspect the repro itself, not `underside_face()`'s logic: check
+   whether it used a FRESH body/face reference at the moment of evaluation, or a stale one — `send_frame()`'s OWN
+   docstring already documents a near-identical "face resolved before a delete+rebuild went invalid" gotcha
+   (`send_frame` itself re-resolves the core body twice for exactly this reason). Rule this out explicitly before
+   concluding the real bug is as deep as the flat-box result suggests.
+3. Once you understand the real cause: debug-print each face's actual `normal.z` on the REAL captured 6x9 body (not
+   guess) to see how close the true underside face comes to `UNDERSIDE_MAX_NORMAL_Z` — is it missing the threshold
+   narrowly (a tolerance issue) or is there genuinely no face Fusion considers "the bottom" (a topology issue from the
+   sparser 34-piece pattern)?
+4. Fix at the real cause. Re-verify the SAME live send-and-join check at 6x9 (and re-confirm 7x9 still clean). Then
+   `FRAME_HIDDEN = False`, regenerate, full suite + A/B, un-hide.
+
+Same stop condition as always: bounded attempt, write up and stop rather than grinding if it doesn't yield.
 Find why THIS seeded geometry (not Fusion's own unseeded defaults) trips the topology mismatch — likely something about
 how the real seed values shape the enclosure curves differently enough that `addOffset2` can't match them — and fix at
 that cause rather than patching the fallback path to merge curves more carefully (a corner that can't offset cleanly is
@@ -74,4 +95,5 @@ you work, even mid-debug.
 - [ ] [H23-item-19] FINISH + UN-HIDE TEMPLATE 10 (item 17's own open question; see this file's top section for the full reasoning). Merge seat C's parked app-side T10 work (fb-app b31f5ed, F29 item 2) with the now-measured Fusion geometry, reconciling any drift from Fred's hand-reconstructed model. Live-verify a REAL b-spline design sends, builds, AND joins/trims correctly into T10's frame (same bar just required of seat C's new taper templates) — not just the bare frame. Then `FRAME_HIDDEN = False`, regenerate, full suite + A/B (T1-9 unchanged). Document (don't fix) 12x6's T1-inherited limitation. Commit as 'H23 item 19: ...'.
 - [ ] [H23-item-20] GOLDEN FRESHNESS CHECK (from item 19's own finding, d7ec983: template_10's goldens sat stale through 3 real fix iterations, 14/15/17, with nothing in the pipeline ever flagging it — gen_frame_defs.py --check only validates generated defs against committed goldens, never goldens against a fresh Fusion build). Declare a freshness check: for each template's committed golden fixture (tests/fixtures/frame-parity/template_N_*.json), compare its own recorded source commit (or the golden file's own last-modified commit) against the last commit that touched that template's phases/*.py — if the phase files moved more recently than the golden, flag it (a test failure or a `--check`-style report, whichever fits the existing gen_frame_defs convention). Should have caught item 19's own 2-pass detour immediately. Commit as 'H23 item 20: ...'.
 - [ ] [H23-item-21] TEMPLATE 10'S REAL FRAME ENCLOSURE DEFECT (item 19's own finding, 38fff7a: live-verified with a real seeded b-spline send, only 2 of 4 bars build — frame_top/frame_right missing). Root cause already traced: `addOffset2` fails this seeded geometry's topology in `T10_3_frame_enclosure`, falls back to a non-parametric offset that merges 12 source curves into 6, losing `inner_proj_horn_TR` and the miter that depends on it. Find why the REAL seeded geometry (not Fusion's own unseeded defaults) trips this, and fix at that cause — not by patching the fallback to merge more carefully. Verify with the same real-seeded send-and-join check, 7x9 + 6x9, full suite + A/B. Parametric-offset topology issues have been hard for this template every time before — bounded attempt, stop and write up if it doesn't yield. Then `FRAME_HIDDEN = False`, regenerate, document 12x6. Commit as 'H23 item 21: ...'.
-Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 21 — <shas>"`.
+- [ ] [H23-item-22] send_frame's `underside_face()` fails at 6x9 (item 21's own finding, 41455a0: real captured 6x9 payload gets empty `frame_occurrences: []` via the real production handlers, "no downward face" refusal). See this file's top section for the investigation priority order (check T1 at 6x9 first — tells you if this is a pre-existing general bug or T10-specific). Fix at the real cause, re-verify 6x9 AND 7x9 live, then un-hide T10. Commit as 'H23 item 22: ...'.
+Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 22 — <shas>"`.
