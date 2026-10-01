@@ -12110,3 +12110,54 @@ instead of redone).
 Committing this WORK-LOG entry only (no code, no template files -- diagram-only turn, matching T7's own
 turn-197 precedent), pushing lane-b, passing back with the cross-branch finding as the headline, not an
 aside.
+
+## Lane B — Turn 220 — T83 item 1: Template 11 full build — PAUSED mid-build (advisor hold)
+
+Dispatch: "full build (Fusion phases + app geometry + tests), same process as T7." Followed T7's own
+pattern (t7_geometry.py / t7_roof_eave.py, the phase files under sketches/template_7/phases/) as the
+template to mirror. Wrote `bspline-frame-builder/frame-builder/fb_engine/t11_geometry.py`: T7's own
+roof/eave (`roof_geometry`, reused verbatim) feeding T1's own 3-arc hourglass side algebra (shoulder/
+waist/hip, ported from editor-shape-lattice-generator.js's `hourglassConstruction` unmodified), linked by
+pulling T1's own already-declared `topInset` knob in to sit exactly on the eave tip (`topInset = hw - a`)
+instead of T1's own default plain half-width. New `_line_line_inner_corner` generalizes T7's own
+fixed-90-degree-only `peak_inner_corner` to an arbitrary two-line miter (T11's eave corner is line-line,
+simpler than T7's own line-circle one, since the piece touching T11's eave is straight, not an arc).
+Numeric assertions inside `t11_outline` itself verify the topInset link holds exactly, both tried board
+sizes (7x9, 6x9).
+
+**Interrupted mid-debugging by the advisor**: "Fred raised a real question about whether the
+hourglass-pinched sides are actually what he wants, vs. something closer to T7's own smooth dome shape
+with no waist pinch." Told to pause exactly where I was, commit a WIP checkpoint, hold for the advisor's
+confirmation on the actual target shape before continuing -- no Fusion phase files, template_data.py, or
+test file started yet, only this one geometry module.
+
+**Known, unfixed bug, documented in the file's own WIP docstring rather than fixed blind**:
+`every_outer_point_inside_board`'s `sample_arc` helper throws ("no sweep matched") on the WAIST arc for
+every board size tried. First fix attempt (re-deriving the arc's center from its chord and matching
+against the already-known analytic center) failed on float-precision grounds and was replaced with
+sweeping directly from the GIVEN analytic center -- the error persisted past that fix, root cause not yet
+isolated (shoulder/hip arcs never reached in testing since the waist call comes first and throws). The
+Turn 218 scratch script this module is ported from handled the identical arc correctly by the same
+sampling approach, so this is a regression introduced while porting into the real engine, not a gap in the
+underlying math -- `t11_outline`, `inner_corner_directions`, and `inner_profile_radii` were checked
+independently (plain prints of their own values) before the pause and are unaffected; `is_valid_t11_outline`
+and `clamp_t11_handles` should not be trusted until the bug is found.
+
+**Ad-hoc, interleaved with the pause** (both direct from Fred via the advisor, not turn-dispatched): built
+a full 1-11 template sample montage (one consistent 7x9 board, templates 1-10 as live screenshots from the
+app's own Frame tab via headless Chrome, T11 as the Turn 218 concept sketch) so Fred could compare T11
+against the existing set while the shape question is open -- `shots/seatB/templates_1-11_montage_2026-10-01.png`,
+sent to the advisor directly (not Fred), per standing convention. Found and fixed a real tooling bug in the
+process: `node:child_process`'s `spawn()` with `stdio: 'ignore'` reliably prevents headless Chrome from
+binding its own CDP port on this Windows/Git-Bash setup (reproduced standalone, root cause not pinned
+down) -- direct `chrome.exe ... &` via Bash, or a connect-only script pointed at an already-running
+instance, both work reliably. Also caught my own first screenshot pass opening the Artwork tab
+(`btnStampEdit` with no `_openEditorOn` set) instead of the Frame tab (`btnEditFrameShape`), which rendered
+every template through its default carved-wood-texture preview instead of the shape editor's own view --
+re-ran via the Frame tab for the real montage.
+
+**Not done**: no further T11 Fusion/geometry work past this checkpoint, per the advisor's own hold
+instruction -- standing by for the target-shape confirmation.
+
+Committing `t11_geometry.py` (new file, WIP) and this WORK-LOG entry together, pushing lane-b, passing
+back.
