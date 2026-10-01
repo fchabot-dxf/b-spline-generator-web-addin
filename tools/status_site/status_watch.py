@@ -194,8 +194,8 @@ h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} sm
 .ball{{font-weight:700;margin:4px 0}} .ball.w{{color:var(--w)}} .ball.a{{color:var(--a)}}
 .bar{{margin:8px 0}} .track{{height:8px;background:var(--line);border-radius:4px;overflow:hidden}}
 .fill{{height:100%;background:var(--w)}} .lbl{{font-size:12px;color:var(--mut)}}
-img.thumb{{cursor:zoom-in}} dialog#lb{{border:0;padding:0;margin:0;background:transparent;width:100vw;height:100vh;max-width:100vw;max-height:100vh;overflow:hidden}} dialog#lb::backdrop{{background:rgba(0,0,0,.8)}}
-dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cursor:zoom-out}} dialog#lb figcaption{{color:#ddd;font-size:12px;text-align:center;padding-top:4px}}
+img.thumb{{cursor:pointer}} dialog#lb{{border:0;padding:0;margin:0;background:transparent;width:100vw;height:100vh;max-width:100vw;max-height:100vh;overflow:hidden}} dialog#lb::backdrop{{background:rgba(0,0,0,.8)}}
+dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cursor:pointer}} dialog#lb figcaption{{color:#ddd;font-size:12px;text-align:center;padding-top:4px}}
 dialog#lb figure{{margin:0;position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}} .nav{{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:0;font-size:28px;width:44px;height:64px;border-radius:8px;cursor:pointer}} @keyframes lbDown{{from{{transform:translateY(var(--dy,0px))}}to{{transform:translateY(100vh)}}}}
 dialog#lb.down figure{{animation:lbDown .17s ease-in forwards}}
 @media(prefers-reduced-motion:reduce){{dialog#lb.down figure{{animation-duration:1ms}}}}
@@ -237,7 +237,7 @@ document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight
   const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
 // zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); no double-tap (Fred); swipe changes image only at 1x; swipe changes image only at 1x
 let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, drag=null;
-function za(){{ im.style.transform='translate('+zx+'px,'+zy+'px) scale('+zs+')';  }}
+function za(){{ im.style.transform='translate('+zx+'px,'+zy+'px) scale('+zs+')'; im.style.cursor=zs>1?'grab':''; }}
 function zr(){{ zs=1; zx=0; zy=0; za(); }}
 im.style.transformOrigin='center center'; im.style.transition='none';
 function zoomAt(ns,cx,cy){{ const r=im.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
