@@ -11438,3 +11438,30 @@ approval step, not a build step; its full derivation is repeated here in prose s
 `template_7/phases/*.py` build doesn't have to re-derive it from the picture alone.
 
 Passing back with the diagram for Fred's sign-off before any `template_7/` code is written.
+
+## Lane B — Turn 199 — T82 item 1: two fixes from the advisor's review of the first diagram — DONE
+
+Advisor's review of the first diagram caught two real defects (own message, not a self-review):
+
+1. **Missing base bar.** `base_in_right`/`base_in_left` only shifted x by `T`, leaving `y` at the outer
+   base's own 0 -- so the "inner" base corner sat ON the bottom edge and no base bar was ever drawn.
+   Root cause: I treated the base as a continuation of the vertical side's own offset instead of giving
+   the BASE LINE (a horizontal edge, same as the roof/side lines) its own inward offset. Fix: the true
+   inner base corner is where the two offset lines actually meet -- `x=W-T` (vertical side) and `y=T`
+   (base line) -- not `(W-T, 0)`. Re-rendered: a clean, closed base band now, miters landing correctly on
+   the new inner line.
+
+2. **Neck opening read as pinched almost shut** vs. the approved concept. MEASURED first, not assumed: the
+   actual inner opening at the neck's narrowest point was 2.24in (7x9) / 1.62in (6x9) -- already past the
+   advisor's own "~1in at 7x9" floor by a good margin, so the numbers and the visual impression disagreed.
+   Widened anyway (a visually-open neck is the actual goal, not just clearing a floor number) rather than
+   arguing the measurement: swept the neck-width factor (0.44 -> 0.60) and checked TWO things at every step,
+   not just the opening width -- whether the neck arc stays inside the board. 0.55 looked fine at 7x9 but
+   pushed the 6x9 neck arc OUTSIDE the board (checking only one size would have missed this -- the narrower
+   board has less room to widen into). Landed on 0.50: the largest factor that still clears 6x9's boundary
+   with real margin (0.136in to spare). Result: inner_full_opening 2.55in (7x9) / 1.89in (6x9), both wider
+   than before, both still fully inside the board (201-sample sweep per arc per size, zero out-of-bounds),
+   `r_body - T` still comfortably positive both sizes (4.01 / 4.96, no band collapse).
+
+Re-rendered both sizes: `shots/seatB/t7_miter_diagram_tangent_arcs_7x9_6x9_2026-10-01_v2.png`. Per the
+advisor's own instruction this round, NOT sent to Fred directly -- passing back for their review first.
