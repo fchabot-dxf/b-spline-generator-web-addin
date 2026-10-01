@@ -4800,3 +4800,90 @@ sketch_builder_ui.py and solid_builder_ui.py -- does the same. For contrast: b-s
 DOES surface (a blocking messageBox with the raw traceback, unpolished but visible); template_bridge.py
 returns an explicit `returnData: 'error'`; both builder UIs' palette-launch handlers show a messageBox. Named
 these as the real gaps specifically because other dispatchers in the same codebase already do better.
+
+## 2026-10-01: H23 item 13 — Template 9 live Fusion check (worker, seat A)
+
+Full results in LIVE-RESULTS-ranchy.md. Redeployed main from a clean scratch worktree (7661a36) first. 7x9/6x9
+build clean (12 bars, healthy, outline fits to maxResidualIn 0.008 -- tightest of any template this round);
+12x6 builds ZERO bars. Root-caused: not a shapeModel-fit issue (the outline is a valid I-shape, nothing
+excluded) -- the frame enclosure's own miter resolution fails at 2 of 12 corners (shoulder_TL/flange_side_TL)
+when flange height shrinks relative to frame_thickness (66% ratio at 12x6 vs ~44% at 7x9/6x9), and the
+enclosure build is all-or-nothing so 2 failed corners take all 12 bars with them. `run_full_synthesis` logs 2
+WARNING "MITER MISS" lines but returns healthy -- no exception fires, so item 12's own except-Exception sweep
+wouldn't have caught this even if the file had matched its entry-point patterns (it doesn't: no
+HTMLEventHandler class in frame_engine.py).
+
+This is NOT a new bug out of nowhere -- it's live-Fusion confirmation of a limit seat C already predicted from
+the app side (F28 item 2, note #3: at hh < 3t + 0.05, the flange floor and stem ceiling spend the same height
+budget twice, and the app's own test already skips the inner-edge guarantee at 12x6 for exactly this reason).
+What's new here: in real Fusion construction this isn't a slightly-imprecise inner edge, it's a total build
+failure. Flagging as a priority follow-up, not fixing -- this is a real construction issue, not a quick patch,
+and 12x6 is a mainstream size, not an extreme stress-test input like T8's own item-11 finding.
+
+Inversion sweep: 7x9/6x9 both clean at boundingboxoffset 0.5, both fail the SAME way as 12x6 at 1.0 (same root
+cause -- a larger offset shrinks the safe zone the same way a smaller board does). f20 parity not attempted
+(f20_seed_case.mjs isn't extended for stemWidth/flangeHeight yet).
+
+Fixed 2 stale provisional-era assertions in frame-template-9.test.js (provisional flag; hardcoded 7x9 dims ->
+the live-fitted 1.4705457499999994/1.7018597500000001). Added KNOWN_BROKEN_BUILD/_KNOWN_BROKEN_GOLDENS
+exceptions (JS + both Python test files) for the 12x6 known-broken golden, same pattern as every other named
+exception this round, and fixed test_all_six_goldens_exist for T9's own non-standard size set (6x9 in place of
+5.51x1.97, per this item's own dispatch). vitest 2861 passed; pytest green in every directory run separately
+(frame-builder 347+14 skipped, b-spline-gen 91, CAM-builder 7, template-maker 86).
+
+Found, did not fix: running b-spline-gen + CAM-builder's pytest suites in ONE invocation cross-contaminates --
+some b-spline-gen file installs a fake adsk.core into sys.modules that test_mm_builder_frame_layout.py's own
+cooperative setdefault/hasattr pattern then reuses instead of its own Vector3D/Matrix3D, breaking its lay-flat
+clearance math. Confirmed pre-existing (reproduces on a clean origin/main checkout, nothing from this item
+touched) and confirmed each directory is green in isolation (the project's own convention -- no shared root
+conftest/runner exists). Out of scope for this item; flagging for a follow-up.
+
+Still open: Template 10 (Arched Hourglass) live check, the other half of item 13's dispatch.
+
+## 2026-10-01: H23 item 13 (part 2) — Template 10 live Fusion check (worker, seat A)
+
+Full results in LIVE-RESULTS-ranchy.md. First-ever live-Fusion verification of Template 10's own construction
+(seat C's F28 item 3 explicitly deferred this). Result: broken at every size tested, worse than Template 9's
+own finding. 7x9/6x9 build 0 of 4 bars; 12x6 builds 2 of 4 (frame_right twice over; top/bottom/left all fail
+extrusion).
+
+Root-caused precisely by querying the live sketch directly rather than just reading logs: the shared hourglass
+preset's top_edge arc (the 1-DOF "circle through 2 chord points tangent to the line above" solve, Template
+10's own archRise construction) finds the right circle but Fusion's solver sweeps the SketchArc the wrong way
+around it -- confirmed at 12x6 by querying the live Arc3D directly: parameter extents 0-5.784 rad (331 degrees,
+not a few degrees near the apex), and the sketch's own NATIVE Fusion boundingBox (not my recording script's own
+curve sampling) spans y=[-98.7, 5.3]cm, x=[-52.8, 52.8]cm for a nominally 12x6in board. Real geometry, directly
+verified, not an artifact.
+
+That one defect cascades through everything else measured: outline_violations correctly flags the wrong-branch
+curve as outside the safe zone (7x9/12x6); Fusion's own addOffset2 then fails on it ("topology of the offset
+curves does not match") and falls back to a non-parametric offset whose topology the corner-resolve/miter code
+wasn't built against; inner corners land ~2.69cm off, most miters fail to split, most extrudes fail with
+"profile falls outside the boundary of the selected body". All one root cause, not several independent bugs.
+
+Not fixed, deliberately: the real fix is in p02_03_loop.py's own seed/constraint sequence (a tighter declared
+seed closer to the true small-arc solution, similar in spirit to this session's own item 6 T5 fix) -- real,
+non-mechanical work, and this is a live CHECK item. The file is confirmed isolated to Template 10 (diffed
+against Template 1's own copy: 107 vs 79 lines, substantially different, not shared code), so a future fix
+carries no cross-template risk, but it's still a construction change breaking the template's DEFAULT look at
+every size -- flagging for the advisor rather than fixing solo, and naming it the HIGHER-PRIORITY of this
+item's two findings (Template 9's is one size of three; this is all three).
+
+gen_frame_defs.py made no change for template_10 -- there's no live-fit extractor wired up for it yet (unlike
+T9's own _i_shape), so the new goldens don't retire its provisional Template-1-borrowed shapeModel on their
+own, and fitting one now would be low-value until the construction itself is fixed (any fix would likely shift
+the true outline, needing re-recording anyway). Left alongside the construction fix as a follow-up.
+
+Tests: extended the same KNOWN_BROKEN_BUILD set (frame-parity-app.test.js) to cover template_10's 3 sizes on
+BOTH the outline and inner-edge checks (not just inner-edge like T9 -- here the outline itself is built on the
+wrong-branch arc). Matching Python-side fixes: _KNOWN_BROKEN_GOLDENS (test_fb_fix.py, 7x9/6x9 only -- 12x6's
+2-of-4 bars already satisfies the ok/not-ok rule), rewrote test_golden_is_consistent's known-broken branch to
+assert "fewer bars than declared" instead of an exact count (T10 12x6 isn't a clean 0 the way T9 12x6 is), a
+t10 entry in test_all_six_goldens_exist (renamed _SIZES_T9 -> _SIZES_PORTRAIT, now shared by T9/T10), and a new
+_KNOWN_BROKEN_OUTLINE skip in test_frame_inversion.py (a file item 13's T9 portion didn't need to touch, caught
+by the same automatic fixture glob here). vitest 2867 passed; pytest green in every directory run separately
+(frame-builder 351+19 skipped, b-spline-gen 91, CAM-builder 7, template-maker 86). gen_frame_defs.py --check:
+fresh.
+
+Item 13 now complete (both templates). Redeployed add-in unchanged since 7661a36 (no add-in code touched this
+item, only tests/docs/goldens) -- "leave latest main deployed" is already satisfied once this commits.

@@ -1,0 +1,1075 @@
+{
+  "bars": {
+    "frame_bottom": {
+      "bbox": {
+        "max": [
+          2.75,
+          -3.5,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          -4.25,
+          -1.0
+        ]
+      },
+      "volume": 3.5625
+    },
+    "frame_flange_BL": {
+      "bbox": {
+        "max": [
+          -2.0,
+          -2.55039,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          -4.25,
+          -1.0
+        ]
+      },
+      "volume": 0.71221
+    },
+    "frame_flange_BR": {
+      "bbox": {
+        "max": [
+          2.75,
+          -2.55039,
+          0.0
+        ],
+        "min": [
+          2.0,
+          -4.25,
+          -1.0
+        ]
+      },
+      "volume": 0.71221
+    },
+    "frame_flange_TL": {
+      "bbox": {
+        "max": [
+          -2.0,
+          4.25,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          2.55039,
+          -1.0
+        ]
+      },
+      "volume": 0.71221
+    },
+    "frame_flange_TR": {
+      "bbox": {
+        "max": [
+          2.75,
+          4.25,
+          0.0
+        ],
+        "min": [
+          2.0,
+          2.55039,
+          -1.0
+        ]
+      },
+      "volume": 0.71221
+    },
+    "frame_shoulder_BL": {
+      "bbox": {
+        "max": [
+          -0.53928,
+          -2.55039,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          -3.30039,
+          -1.0
+        ]
+      },
+      "volume": 1.09554
+    },
+    "frame_shoulder_BR": {
+      "bbox": {
+        "max": [
+          2.75,
+          -2.55039,
+          0.0
+        ],
+        "min": [
+          0.53928,
+          -3.30039,
+          -1.0
+        ]
+      },
+      "volume": 1.09554
+    },
+    "frame_shoulder_TL": {
+      "bbox": {
+        "max": [
+          -0.53928,
+          3.30039,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          2.55039,
+          -1.0
+        ]
+      },
+      "volume": 1.09554
+    },
+    "frame_shoulder_TR": {
+      "bbox": {
+        "max": [
+          2.75,
+          3.30039,
+          0.0
+        ],
+        "min": [
+          0.53928,
+          2.55039,
+          -1.0
+        ]
+      },
+      "volume": 1.09554
+    },
+    "frame_stem_left": {
+      "bbox": {
+        "max": [
+          -0.53928,
+          3.30039,
+          0.0
+        ],
+        "min": [
+          -1.28928,
+          -3.30039,
+          -1.0
+        ]
+      },
+      "volume": 4.38809
+    },
+    "frame_stem_right": {
+      "bbox": {
+        "max": [
+          1.28928,
+          3.30039,
+          0.0
+        ],
+        "min": [
+          0.53928,
+          -3.30039,
+          -1.0
+        ]
+      },
+      "volume": 4.38809
+    },
+    "frame_top": {
+      "bbox": {
+        "max": [
+          2.75,
+          4.25,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          3.5,
+          -1.0
+        ]
+      },
+      "volume": 3.5625
+    }
+  },
+  "meta": {
+    "core": "flat box 6x9x0.75 in, underside z=0",
+    "frame_height_offset": "-1 in",
+    "frame_thickness": "template default (0.75 in)",
+    "heightIn": 9,
+    "recorded": "2026-09-30",
+    "recorder": "tools/repro/record_frame_parity.py",
+    "template": "template_9",
+    "timelineHealthy": true,
+    "units": "in / in^2 / in^3",
+    "widthIn": 6
+  },
+  "panelAfterTrim": {
+    "bbox": {
+      "max": [
+        2.75,
+        4.25,
+        0.75
+      ],
+      "min": [
+        -2.75,
+        -4.25,
+        0.0
+      ]
+    },
+    "volume": 23.8863
+  },
+  "sketch2_shape_outline": {
+    "bottom_edge": {
+      "construction": false,
+      "end": [
+        -2.75,
+        -4.25
+      ],
+      "start": [
+        2.75,
+        -4.25
+      ],
+      "type": "line"
+    },
+    "flange_side_BL": {
+      "construction": false,
+      "end": [
+        -2.75,
+        -2.55039
+      ],
+      "start": [
+        -2.75,
+        -4.25
+      ],
+      "type": "line"
+    },
+    "flange_side_BR": {
+      "construction": false,
+      "end": [
+        2.75,
+        -4.25
+      ],
+      "start": [
+        2.75,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "flange_side_R": {
+      "construction": false,
+      "end": [
+        2.75,
+        2.55039
+      ],
+      "start": [
+        2.75,
+        4.25
+      ],
+      "type": "line"
+    },
+    "flange_side_TL": {
+      "construction": false,
+      "end": [
+        -2.75,
+        4.25
+      ],
+      "start": [
+        -2.75,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "shoulder_BL": {
+      "construction": false,
+      "end": [
+        -1.28928,
+        -2.55039
+      ],
+      "start": [
+        -2.75,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "shoulder_BR": {
+      "construction": false,
+      "end": [
+        2.75,
+        -2.55039
+      ],
+      "start": [
+        1.28928,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "shoulder_TL": {
+      "construction": false,
+      "end": [
+        -2.75,
+        2.55039
+      ],
+      "start": [
+        -1.28928,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "shoulder_TR": {
+      "construction": false,
+      "end": [
+        1.28928,
+        2.55039
+      ],
+      "start": [
+        2.75,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "stem_side_L": {
+      "construction": false,
+      "end": [
+        -1.28928,
+        2.55039
+      ],
+      "start": [
+        -1.28928,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "stem_side_R": {
+      "construction": false,
+      "end": [
+        1.28928,
+        -2.55039
+      ],
+      "start": [
+        1.28928,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "top_edge": {
+      "construction": false,
+      "end": [
+        2.75,
+        4.25
+      ],
+      "start": [
+        -2.75,
+        4.25
+      ],
+      "type": "line"
+    }
+  },
+  "sketch3_frame_enclosure": {
+    "inner_proj_bottom_edge": {
+      "construction": false,
+      "end": [
+        -2.0,
+        -3.5
+      ],
+      "start": [
+        2.0,
+        -3.5
+      ],
+      "type": "line"
+    },
+    "inner_proj_flange_side_BL": {
+      "construction": false,
+      "end": [
+        -2.0,
+        -3.30039
+      ],
+      "start": [
+        -2.0,
+        -3.5
+      ],
+      "type": "line"
+    },
+    "inner_proj_flange_side_BR": {
+      "construction": false,
+      "end": [
+        2.0,
+        -3.5
+      ],
+      "start": [
+        2.0,
+        -3.30039
+      ],
+      "type": "line"
+    },
+    "inner_proj_flange_side_R": {
+      "construction": false,
+      "end": [
+        2.0,
+        3.30039
+      ],
+      "start": [
+        2.0,
+        3.5
+      ],
+      "type": "line"
+    },
+    "inner_proj_flange_side_TL": {
+      "construction": false,
+      "end": [
+        -2.0,
+        3.5
+      ],
+      "start": [
+        -2.0,
+        3.30039
+      ],
+      "type": "line"
+    },
+    "inner_proj_shoulder_BL": {
+      "construction": false,
+      "end": [
+        -0.53928,
+        -3.30039
+      ],
+      "start": [
+        -2.0,
+        -3.30039
+      ],
+      "type": "line"
+    },
+    "inner_proj_shoulder_BR": {
+      "construction": false,
+      "end": [
+        2.0,
+        -3.30039
+      ],
+      "start": [
+        0.53928,
+        -3.30039
+      ],
+      "type": "line"
+    },
+    "inner_proj_shoulder_TL": {
+      "construction": false,
+      "end": [
+        -2.0,
+        3.30039
+      ],
+      "start": [
+        -0.53928,
+        3.30039
+      ],
+      "type": "line"
+    },
+    "inner_proj_shoulder_TR": {
+      "construction": false,
+      "end": [
+        0.53928,
+        3.30039
+      ],
+      "start": [
+        2.0,
+        3.30039
+      ],
+      "type": "line"
+    },
+    "inner_proj_stem_side_L": {
+      "construction": false,
+      "end": [
+        -0.53928,
+        3.30039
+      ],
+      "start": [
+        -0.53928,
+        -3.30039
+      ],
+      "type": "line"
+    },
+    "inner_proj_stem_side_R": {
+      "construction": false,
+      "end": [
+        0.53928,
+        -3.30039
+      ],
+      "start": [
+        0.53928,
+        3.30039
+      ],
+      "type": "line"
+    },
+    "inner_proj_top_edge": {
+      "construction": false,
+      "end": [
+        2.0,
+        3.5
+      ],
+      "start": [
+        -2.0,
+        3.5
+      ],
+      "type": "line"
+    },
+    "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S": {
+      "construction": false,
+      "end": [
+        2.0,
+        -3.5
+      ],
+      "start": [
+        2.75,
+        -4.25
+      ],
+      "type": "line"
+    },
+    "miter-proj_flange_side_BL:S_inner_proj_flange_side_BL:S": {
+      "construction": false,
+      "end": [
+        -2.0,
+        -3.5
+      ],
+      "start": [
+        -2.75,
+        -4.25
+      ],
+      "type": "line"
+    },
+    "miter-proj_flange_side_BR:S_inner_proj_flange_side_BR:S": {
+      "construction": false,
+      "end": [
+        2.0,
+        -3.30039
+      ],
+      "start": [
+        2.75,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "miter-proj_flange_side_R:S_inner_proj_flange_side_R:S": {
+      "construction": false,
+      "end": [
+        2.0,
+        3.5
+      ],
+      "start": [
+        2.75,
+        4.25
+      ],
+      "type": "line"
+    },
+    "miter-proj_flange_side_TL:S_inner_proj_flange_side_TL:S": {
+      "construction": false,
+      "end": [
+        -2.0,
+        3.30039
+      ],
+      "start": [
+        -2.75,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "miter-proj_shoulder_BL:S_inner_proj_shoulder_BL:S": {
+      "construction": false,
+      "end": [
+        -2.0,
+        -3.30039
+      ],
+      "start": [
+        -2.75,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "miter-proj_shoulder_BR:S_inner_proj_shoulder_BR:S": {
+      "construction": false,
+      "end": [
+        0.53928,
+        -3.30039
+      ],
+      "start": [
+        1.28928,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "miter-proj_shoulder_TL:S_inner_proj_shoulder_TL:S": {
+      "construction": false,
+      "end": [
+        -0.53928,
+        3.30039
+      ],
+      "start": [
+        -1.28928,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "miter-proj_shoulder_TR:S_inner_proj_shoulder_TR:S": {
+      "construction": false,
+      "end": [
+        2.0,
+        3.30039
+      ],
+      "start": [
+        2.75,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "miter-proj_stem_side_L:S_inner_proj_stem_side_L:S": {
+      "construction": false,
+      "end": [
+        -0.53928,
+        -3.30039
+      ],
+      "start": [
+        -1.28928,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "miter-proj_stem_side_R:S_inner_proj_stem_side_R:S": {
+      "construction": false,
+      "end": [
+        0.53928,
+        3.30039
+      ],
+      "start": [
+        1.28928,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "miter-proj_top_edge:S_inner_proj_top_edge:S": {
+      "construction": false,
+      "end": [
+        -2.0,
+        3.5
+      ],
+      "start": [
+        -2.75,
+        4.25
+      ],
+      "type": "line"
+    },
+    "proj_bottom_edge": {
+      "construction": false,
+      "end": [
+        -2.75,
+        -4.25
+      ],
+      "start": [
+        2.75,
+        -4.25
+      ],
+      "type": "line"
+    },
+    "proj_flange_side_BL": {
+      "construction": false,
+      "end": [
+        -2.75,
+        -2.55039
+      ],
+      "start": [
+        -2.75,
+        -4.25
+      ],
+      "type": "line"
+    },
+    "proj_flange_side_BR": {
+      "construction": false,
+      "end": [
+        2.75,
+        -4.25
+      ],
+      "start": [
+        2.75,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "proj_flange_side_R": {
+      "construction": false,
+      "end": [
+        2.75,
+        2.55039
+      ],
+      "start": [
+        2.75,
+        4.25
+      ],
+      "type": "line"
+    },
+    "proj_flange_side_TL": {
+      "construction": false,
+      "end": [
+        -2.75,
+        4.25
+      ],
+      "start": [
+        -2.75,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "proj_shoulder_BL": {
+      "construction": false,
+      "end": [
+        -1.28928,
+        -2.55039
+      ],
+      "start": [
+        -2.75,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "proj_shoulder_BR": {
+      "construction": false,
+      "end": [
+        2.75,
+        -2.55039
+      ],
+      "start": [
+        1.28928,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "proj_shoulder_TL": {
+      "construction": false,
+      "end": [
+        -2.75,
+        2.55039
+      ],
+      "start": [
+        -1.28928,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "proj_shoulder_TR": {
+      "construction": false,
+      "end": [
+        1.28928,
+        2.55039
+      ],
+      "start": [
+        2.75,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "proj_stem_side_L": {
+      "construction": false,
+      "end": [
+        -1.28928,
+        2.55039
+      ],
+      "start": [
+        -1.28928,
+        -2.55039
+      ],
+      "type": "line"
+    },
+    "proj_stem_side_R": {
+      "construction": false,
+      "end": [
+        1.28928,
+        -2.55039
+      ],
+      "start": [
+        1.28928,
+        2.55039
+      ],
+      "type": "line"
+    },
+    "proj_top_edge": {
+      "construction": false,
+      "end": [
+        2.75,
+        4.25
+      ],
+      "start": [
+        -2.75,
+        4.25
+      ],
+      "type": "line"
+    },
+    "surround_bottom": {
+      "construction": false,
+      "end": [
+        -3.75,
+        -5.625
+      ],
+      "start": [
+        3.75,
+        -5.625
+      ],
+      "type": "line"
+    },
+    "surround_left": {
+      "construction": false,
+      "end": [
+        -3.75,
+        5.625
+      ],
+      "start": [
+        -3.75,
+        -5.625
+      ],
+      "type": "line"
+    },
+    "surround_rect": {
+      "construction": false,
+      "end": [
+        3.75,
+        5.625
+      ],
+      "start": [
+        -3.75,
+        5.625
+      ],
+      "type": "line"
+    },
+    "surround_rect_diag1": {
+      "construction": true,
+      "end": [
+        3.75,
+        -5.625
+      ],
+      "start": [
+        -3.75,
+        5.625
+      ],
+      "type": "line"
+    },
+    "surround_rect_diag2": {
+      "construction": true,
+      "end": [
+        -3.75,
+        -5.625
+      ],
+      "start": [
+        3.75,
+        5.625
+      ],
+      "type": "line"
+    },
+    "surround_right": {
+      "construction": false,
+      "end": [
+        3.75,
+        -5.625
+      ],
+      "start": [
+        3.75,
+        5.625
+      ],
+      "type": "line"
+    }
+  },
+  "sketch3_profiles": [
+    {
+      "area": 52.5266,
+      "bbox": {
+        "max": [
+          3.75,
+          5.625,
+          0.0
+        ],
+        "min": [
+          -3.75,
+          -5.625,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.71221,
+      "bbox": {
+        "max": [
+          -2.0,
+          -2.55039,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          -4.25,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 3.5625,
+      "bbox": {
+        "max": [
+          2.75,
+          -3.5,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          -4.25,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.09554,
+      "bbox": {
+        "max": [
+          -0.53928,
+          -2.55039,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          -3.30039,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.71221,
+      "bbox": {
+        "max": [
+          -2.0,
+          4.25,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          2.55039,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.09554,
+      "bbox": {
+        "max": [
+          -0.53928,
+          3.30039,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          2.55039,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 3.5625,
+      "bbox": {
+        "max": [
+          2.75,
+          4.25,
+          0.0
+        ],
+        "min": [
+          -2.75,
+          3.5,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 8.71625,
+      "bbox": {
+        "max": [
+          2.0,
+          3.5,
+          0.0
+        ],
+        "min": [
+          -2.0,
+          -3.5,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 4.38809,
+      "bbox": {
+        "max": [
+          -0.53928,
+          3.30039,
+          0.0
+        ],
+        "min": [
+          -1.28928,
+          -3.30039,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.09554,
+      "bbox": {
+        "max": [
+          2.75,
+          -2.55039,
+          0.0
+        ],
+        "min": [
+          0.53928,
+          -3.30039,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 4.38809,
+      "bbox": {
+        "max": [
+          1.28928,
+          3.30039,
+          0.0
+        ],
+        "min": [
+          0.53928,
+          -3.30039,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.09554,
+      "bbox": {
+        "max": [
+          2.75,
+          3.30039,
+          0.0
+        ],
+        "min": [
+          0.53928,
+          2.55039,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.71221,
+      "bbox": {
+        "max": [
+          2.75,
+          -2.55039,
+          0.0
+        ],
+        "min": [
+          2.0,
+          -4.25,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.71221,
+      "bbox": {
+        "max": [
+          2.75,
+          4.25,
+          0.0
+        ],
+        "min": [
+          2.0,
+          2.55039,
+          0.0
+        ]
+      }
+    }
+  ]
+}

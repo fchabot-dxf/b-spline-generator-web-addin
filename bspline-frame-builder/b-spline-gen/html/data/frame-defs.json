@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "206bdb0af6da9f83cd6df53252852e2e0a4bf160fd2f63f9df29c83b512565c5",
+  "sourceHash": "56d5f43f37e2ad7aed99f73a4b0499fe7a9b61cd0d0dbf2a14a96cab3853ebff",
   "templates": [
     {
       "features": [
@@ -12522,27 +12522,36 @@
       "shapeModel": {
         "features": {
           "flangeHeight": {
-            "hh": 0.4,
-            "hw": 0.0
+            "hh": 0.393842,
+            "hw": 0.008625
           },
           "stemHalfWidth": {
-            "hh": 0.0,
-            "hw": 0.45
+            "hh": 0.057488,
+            "hw": 0.377299
           }
         },
         "fit": {
           "exactAtFittedSizes": false,
           "excluded": [],
-          "fittedFrom": [],
-          "maxResidualIn": null,
+          "fittedFrom": [
+            "12x6",
+            "6x9",
+            "7x9"
+          ],
+          "maxResidualIn": 0.008,
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
-          "residualsIn": {}
-        },
-        "provisional": {
-          "baseModel": null,
-          "flangeHeightOfHh": 0.4,
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-          "stemHalfWidthOfHw": 0.45
+          "residualsIn": {
+            "flangeHeight": [
+              -0.0003,
+              -0.0021,
+              0.0022
+            ],
+            "stemHalfWidth": [
+              -0.001,
+              -0.0074,
+              0.008
+            ]
+          }
         }
       },
       "silhouettePreset": "iShape",

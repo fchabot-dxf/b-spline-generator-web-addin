@@ -96,6 +96,47 @@ const CLAMP_DIVERGENT_INNER = new Set(['template_6_12x6']); // 5.51x1.97 already
  */
 const OUTSIDE_FIT_RANGE_OUTLINE = new Set(['template_8_5.51x1.97']);
 
+/**
+ * H23 item 13: Template 9 at 12x6 -- NOT a shapeModel-fit issue (the outline extractor correctly
+ * finds this a perfectly valid I-shape silhouette, `fit.excluded` stays empty, maxResidualIn 0.008in
+ * across all 3 sizes) -- the recorded Fusion GOLDEN itself is from a known-broken build: the frame
+ * enclosure's own inner-offset miter resolution fails at 2 of 12 corners (`shoulder_TL`/
+ * `flange_side_TL`) specifically when the flange's own available height shrinks relative to
+ * frame_thickness (MEASURED: flange height 1.13in vs frame_thickness 0.75in at 12x6 -- a 66% ratio,
+ * vs ~44% at 7x9/6x9 where it works), so NO bars get built at all (not just those 2) and the golden's
+ * own `sketch3_frame_enclosure` inner curves are left partial/malformed. Comparing the app's correct
+ * prediction against that broken golden is comparing against known-bad data, not a real app-vs-Fusion
+ * divergence -- excluded here, not via `fit.excluded` (the shape itself isn't invalid), same
+ * reasoning as the other named exceptions above. NOT fixed this session -- flagged as a priority
+ * follow-up (LIVE-RESULTS-ranchy.md item 13): this breaks at 12x6, a MAINSTREAM board size, not an
+ * extreme stress-test value like Template 8's own item-11 finding.
+ *
+ * H23 item 13: Template 10 at ALL 3 sizes (7x9/6x9/12x6) -- root-caused precisely, a genuine
+ * construction defect, more severe than Template 9's: `p02_03_loop.py`'s own "circle through 2 fixed
+ * symmetric chord points, tangent to the line above them" 1-DOF solve for `top_edge` finds the
+ * CORRECT circle (right center, right radius for the requested archRise) but builds the SketchArc
+ * sweeping the WRONG way around it -- the LONG way (331 deg at 12x6, confirmed via direct Fusion
+ * query: param extents 0..5.784 rad, the arc's own real sketch boundingBox spans y=[-98.7, 5.3]cm,
+ * x=[-52.8, 52.8]cm, not the few-cm-tall dome the template draws) instead of the short way through
+ * the apex. This is REAL Fusion geometry (the sketch's own native boundingBox, not a recording-script
+ * sampling artifact) -- MEASURED to cascade into everything downstream: `outline_violations` flags
+ * `top_edge`/`arc_shoulder_L` as outside the safe zone (their curves genuinely pass through points
+ * ~40-100cm from the board), Fusion's own `addOffset2` then fails ("topology of the offset curves
+ * does not match the topology of the original curves") offsetting a curve that nearly closes on
+ * itself, and the fallback non-parametric offset's own corners land ~2.69cm off, failing most miters
+ * -- 0 of 4 bars at 7x9/6x9, 2 of 4 at 12x6. Both the OUTLINE and INNER EDGE comparisons are excluded
+ * here: comparing against a golden built from a genuinely wrong base curve isn't a real app-vs-Fusion
+ * divergence to chase (the app's own shapeModel, still the Template-1-borrowed provisional guess,
+ * was never going to match a golden this malformed anyway). NOT fixed this session -- `p02_03_loop.py`
+ * is SHARED by Templates 1/3/4/5/10 (the whole `hourglass` preset), so a fix there is a
+ * schema/construction change across every one of them, out of scope for a live CHECK; flagged as the
+ * HIGHER-PRIORITY follow-up of the two findings this item (every tested size broken, not one edge
+ * case), see LIVE-RESULTS-ranchy.md item 13.
+ */
+const KNOWN_BROKEN_BUILD = new Set([
+  'template_9_12x6', 'template_10_7x9', 'template_10_6x9', 'template_10_12x6',
+]);
+
 describe('S4 parity: app cut profile vs the recorded Fusion outline', () => {
   it.each(CASES)('%s', (name, g) => {
     const tpl = FRAME_DEFS.templates.find((t) => t.id === g.meta.template);
@@ -103,6 +144,7 @@ describe('S4 parity: app cut profile vs the recorded Fusion outline', () => {
     if (tpl.shapeModel.fit.excluded.includes(size)) return; // declared: Fusion's own outline breaks the construction here
     if (CLAMP_DIVERGENT_OUTLINE.has(name)) return;
     if (OUTSIDE_FIT_RANGE_OUTLINE.has(name)) return;
+    if (KNOWN_BROKEN_BUILD.has(name)) return;
     const W = g.meta.widthIn, H = g.meta.heightIn;
     const prof = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id }), { widthIn: W, heightIn: H });
     expect(prof.defects).toEqual([]);
@@ -132,6 +174,7 @@ describe('S4 parity: app inner edge vs the recorded Fusion offset', () => {
     const size = `${g.meta.widthIn}x${g.meta.heightIn}`;
     if (tpl.shapeModel.fit.excluded.includes(size)) return;
     if (CLAMP_DIVERGENT_INNER.has(name)) return;
+    if (KNOWN_BROKEN_BUILD.has(name)) return;
     const W = g.meta.widthIn, H = g.meta.heightIn;
     const inner = frameInnerProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id }), { widthIn: W, heightIn: H });
     const fus = goldenPoints(g.sketch3_frame_enclosure, W, H, (id) => id.startsWith('inner_'));

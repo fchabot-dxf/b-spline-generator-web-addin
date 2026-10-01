@@ -53,7 +53,21 @@ class TestFrameFit:
     # of the clean 0 the rule (correctly) predicts for "too small" -- a genuine, already-flagged
     # Fusion construction bug (Template 3 has no "too small" guard the other templates evidently
     # have), not a fault in `frame_fit`'s own rule. See LIVE-RESULTS-ranchy.md item 1.
-    _KNOWN_BROKEN_GOLDENS = {"template_3_5.51x1.97.json"}
+    # H23 item 13 (Template 9, 12x6): the golden is a known-broken build -- the frame
+    # enclosure's own inner-offset miter resolution fails at 2 of 12 corners when the
+    # flange height shrinks relative to frame_thickness (66% ratio at 12x6), so NO bars
+    # get built even though `frame_fit`'s rule correctly says this board fits. See
+    # LIVE-RESULTS-ranchy.md item 13 and KNOWN_BROKEN_BUILD in frame-parity-app.test.js.
+    # H23 item 13 (Template 10, 7x9/6x9): the shared hourglass top-arc construction solves to
+    # the wrong branch (a circle swept the long way around instead of through its apex), so
+    # the enclosure/offset/miter chain built on it produces 0 bars even though `frame_fit`'s
+    # rule correctly says these boards fit (12x6 needs no exception here: it gets 2 of 4 bars,
+    # which is still > 0, matching the rule -- its own inconsistency is caught elsewhere, by
+    # test_golden_is_consistent's KNOWN_BROKEN_BUILD).
+    _KNOWN_BROKEN_GOLDENS = {
+        "template_3_5.51x1.97.json", "template_9_12x6.json",
+        "template_10_7x9.json", "template_10_6x9.json",
+    }
 
     @pytest.mark.parametrize("path", _GOLDENS, ids=os.path.basename)
     def test_rule_predicts_every_live_golden(self, path):

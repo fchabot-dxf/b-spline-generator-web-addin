@@ -60,8 +60,13 @@ describe('Template 9: listing and declaration', () => {
     expect(T9.regions.bars.map((b) => b.name)).toEqual(T9.features[0].bodyNames);
     expect(T9.regions.corners.filter((c) => c.reflex).map((c) => c.id)).toEqual(
       ['notch_TR_inner', 'notch_BR_inner', 'notch_BL_inner', 'notch_TL_inner']);
-    // Brand new: no live Fusion goldens recorded yet, so a provisional model (like T6/T8 before their own live checks).
-    expect(T9.shapeModel.provisional).toBeTruthy();
+    // H23 item 13: the provisional shim is retired -- T9 now has its own shapeModel,
+    // fitted from its own live goldens (12x6's golden is a known-broken build -- see
+    // KNOWN_BROKEN_BUILD in frame-parity-app.test.js -- but its OUTLINE still fits cleanly,
+    // so it stays in the fit; nothing is excluded).
+    expect(T9.shapeModel.provisional).toBeUndefined();
+    expect(T9.shapeModel.fit.fittedFrom).toEqual(['12x6', '6x9', '7x9']);
+    expect(T9.shapeModel.fit.excluded).toEqual([]);
     expect(T9.handles.map((h) => h.key)).toEqual(KEYS);
     for (const h of T9.handles) expect(h.binding).toBe('seeded'); // never a Fusion user parameter
   });
@@ -93,10 +98,10 @@ describe('Template 9: the outline', () => {
     expect(ruleOk(prof, T)).toBe(true);
   });
 
-  it('7x9 defaults: a 1.4625 in half-width stem, a 1.7 in flange height (the declared provisional model)', () => {
+  it('7x9 defaults: a ~1.47 in half-width stem, a ~1.70 in flange height (H23 item 13: the live-fitted model)', () => {
     const prof = profile({});
-    expect(stemHalfWidth(prof)).toBeCloseTo(1.4625, 9);
-    expect(flangeHeightIn(prof)).toBeCloseTo(1.7, 9);
+    expect(stemHalfWidth(prof)).toBeCloseTo(1.4705457499999994, 9);
+    expect(flangeHeightIn(prof)).toBeCloseTo(1.7018597500000001, 9);
   });
 
   it('12x6: the provisional flange height is clamped up near the frame\'s own floor (a flange side >= ~2 x the thickness)', () => {
