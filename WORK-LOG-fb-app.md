@@ -4728,3 +4728,15 @@ this as likely a test-artifact rather than claiming the crash is resolved -- I d
 crash itself, only that it doesn't reproduce via the path an actual user would take.
 
 `pytest` CAM-builder: 7 passed (+3).
+
+## 2026-10-01: Bridge startup — root cause found, fixed in its own repo (worker, seat A)
+
+Per amendment: a quick look only, fix if clear. It was clear: `FusionMCPBridge.py`'s `run()` does
+`HTTPServer(("127.0.0.1", PORT), ...)` with no `allow_reuse_address` -- after an unclean Fusion exit, the OS
+can hold the old socket briefly, so the next launch's `bind()` raises `OSError`, caught and shown as a
+blocking `messageBox` during Fusion's own synchronous add-in-load sequence (observed: stuck on "Preparing
+your experience" 17+ min with no crash, no visible dialog -- the box likely existed behind the not-yet-
+interactive main window). Fixed with a `_ReusableHTTPServer(HTTPServer)` subclass (`allow_reuse_address =
+True`), the standard fix for this exact problem. This lives in its own repo (`APPS/fusion360-mcp-bridge`, not
+this project), committed there locally (not pushed -- a personal tool repo, Fred's call whether/where to
+push) and deployed to the live AddIns folder so the next relaunch picks it up.
