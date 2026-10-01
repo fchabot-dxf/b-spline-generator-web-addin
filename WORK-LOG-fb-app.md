@@ -5666,3 +5666,102 @@ underside-face detection, not by anything item 21 touched. Options: (A) treat 7x
 covering 6x9 as sufficient, un-hide T10 now, and track the underside-face issue separately; (B) hold the
 un-hide until 6x9 is live-verified too, and someone picks up the `underside_face()`/flat-box investigation
 first. Leaving `FRAME_HIDDEN = True` and this decision to the advisor rather than picking one unilaterally.
+
+## 2026-10-01: Correction — the H23 item 21 "screenshot confirmed" claim pointed nowhere Fred could see it
+
+Fred asked why no screenshot came with the 7x9 live-verification update. The prior entry's "screenshot confirmed
+(`t10_v2_live_7x9.png`)" was misleading: that file genuinely exists, but only in this session's own private
+scratchpad (a Temp directory), never copied to `C:/Users/danse/.bspline-status/shots/seatA/` where Fred and the
+advisor actually look. The claim was true in a narrow sense (a screenshot was taken and I did look at it) but
+useless in the sense that mattered. Copied it there now as `h23_item21_t10_7x9_live_success.png`, plus the
+fresh shots from today's item 22 work (below) as `h23_item22_*`. Going forward: "screenshot confirmed" in a
+WORK-LOG entry means the file is in the shared shots dir, not just that I looked at bytes in my own scratchpad.
+
+## 2026-10-01: H23 item 22 — underside_face() fixed (general bug, not T10-specific); a NEW, separate T10 6x9 bug found behind it
+
+**Priority 1 (scope check, per the dispatch's own ordering): does the SHIPPED Template 1 also fail Send at 6x9
+with a similarly sparse Shape Lattice pattern?** Captured a real Template 1 6x9 send payload the same way as
+every prior capture (headless-Chrome CDP, `capture_send_payload.mjs`'s `shape-lattice-frame` scenario, a
+scratch copy setting `#widthIn` to 6; the canonical script already defaults to `template_1`). Replayed through
+the real production handlers in a fresh scratch doc: **all 4 bars built cleanly**, healthy timeline
+(`frame_right`, `frame_bottom`, `frame_top`, `frame_left`), same sparse-lattice regime as T10's own failing
+capture. Screenshot: `h23_item22_t1_6x9_scope_check_success.png`. So per the dispatch's own branching this is
+NOT a general template-scope bug in the naive sense -- but see below, the real cause turned out to be
+panel-geometry-dependent rather than template-dependent, which refines rather than contradicts that reading.
+
+**Root cause, found by debug-printing the real captured T10 6x9 body's own face normals** (priority 3): the
+body's true underside face is a `NurbsSurface` (the panel's sculpted bottom follows the carved terrain, not a
+flat plane). Its 4 corner vertices read n.z = -0.9949 .. -0.9955 -- solidly downward -- but Fusion's own
+pointOnFace (the ONE point `underside_face()` samples) landed at n.z = -0.8963, just 0.0037 short of
+`UNDERSIDE_MAX_NORMAL_Z` (-0.9). A tolerance issue from a single noisy sample on a non-planar face, not a
+topology issue -- the face is unambiguously the body's largest, most-downward face (area 349 vs the
+next-closest edge face's ~10-12) by every other measure. This explains why T1's own capture happened to pass:
+it is a property of where Fusion's sampler lands on THAT capture's own sculpted terrain, not of which frame
+template is attached -- T10's capture was unlucky, T1's wasn't. A general, latent bug in `send_frame.py` shared
+by every template.
+
+**Fix**: `fb_engine/send_frame.py`'s new `_face_downward_z()` averages n.z over pointOnFace AND the face's own
+vertices (always available on a BRepFace, no extra Fusion call) instead of trusting one arbitrary sample.
+Verified safe on the real measured values: the true underside averages -0.9754 (clears the bound with room to
+spare), the next-closest face (an edge) averages only -0.52 to -0.57 -- a wide margin, no risk of pulling a
+genuinely wrong face over the line. New test
+`test_a_sculpted_underside_with_one_tilted_sample_point_is_still_found` reproduces the exact measured numbers;
+mutation-tested (reverted to the single-point check, confirmed the new test fails; restored, purged the stale
+.pyc, confirmed 20/20 green). Full frame-builder suite: 409 passed, 22 skipped. Committed (7f37f8c).
+
+**Priority 2 (rule out a stale-reference artifact in the earlier flat-box repro) -- answered, and it explains
+more than expected.** Deployed the fix (stop add-in -> `DEPLOY_bspline-frame-builder.py` -> run add-in) and
+re-ran the real captured T10 6x9 payload through the real handlers: still got the exact same "no downward face"
+refusal. Investigating why turned up something bigger than a stale object reference: `sys.modules` showed the
+ENTIRE live `fb_engine` package -- all 20+ submodules, including `send_frame` -- loaded from
+`C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\...`, a DIFFERENT worktree entirely, not the deployed
+add-in. `fb_shared` was correctly loaded from the real deployed path, so this was not a blanket path problem --
+just `fb_engine`. Two duplicate `lane-b` entries sat in `sys.path` ahead of the real AddIns path. This is
+leftover contamination from an earlier `importlib.reload(fb_value_resolver)` / `importlib.reload(frame_engine)`
+experiment in this same session (see the item-21 writeup above) that never got cleaned up -- exactly the class
+of issue the project's own memory warns about ("stale scratch fb_engine broke Fred's Frame Builder"), caught
+live before it could do the same here. This also fully explains the earlier flat-box repro's own surprising
+"no downward face" result: it was running against lane-b's own (older/different) fb_engine.send_frame, not the
+real one, the whole time -- not a deep bug in a trivial box's geometry at all.
+
+**Fixed live**: removed both lane-b entries from sys.path, purged all 28 contaminated modules from sys.modules
+(every fb_engine.*, plus fb_utils/fb_utils.fb_logger), did a full add-in stop/run cycle. Confirmed clean:
+`sys.modules['fb_engine.send_frame'].__file__` now resolves to the real deployed path, with `_face_downward_z`
+present.
+
+**Re-ran the real captured T10 6x9 payload a third time, now genuinely clean.** The fix works exactly as
+designed: `underside_face()` now clears on BOTH checks (the early refusal AND the post-sketch-build re-resolve)
+-- "SEND FRAME: underside face resolved fresh for the solid build" appears in the log, past the point that was
+refusing before entirely. But a frame sketch build now runs and crashes on something new and genuinely
+T10-specific: `p02_12_arch_rebuild.py`'s own Shape Outline rebuild hits "REFLEX ARC: [unknown_arc] in Shape
+Outline sweeps 200.3 deg (>= 180) -- wrong solver branch, not a valid shape" for this exact 6x9 seed
+combination -- the same class of problem the project's own fusion360-quirks skill documents first and in the
+most detail ("Coincident(point, curve) only pins the supporting geometry, not which branch gets drawn... seed
+the arc with addByThreePoints... then Fix the arc's own endpoints"). The sketch crash halts the build before the
+frame-enclosure sketch (T10_3_frame_enclosure, which actually defines the bar/trim profiles) is ever created, so
+the solid-build phase falls back to the wrong sketch (T10_2_shape_outline) and finds none of its curves in the
+declared bar/trim regions -- 0 bars, same outward symptom as the fixed bug, but a completely different, deeper
+cause. Screenshot of the sketch where it happens: `h23_item22_t10_6x9_shape_outline_reflexarc.png` (the T10
+Shape Outline construction sketch, 6x9, at the point of the crash -- the b-spline panel itself is out of this
+particular camera framing, Fusion auto-fit to the just-edited sketch).
+
+**7x9 regression-checked with the fix in place**: re-ran the same real captured 7x9 payload used for item 21's
+own live verification -- still clean, 4/4 bars, healthy timeline. Screenshot:
+`h23_item22_t10_7x9_regression_recheck.png`. No regression from either the underside_face fix or the
+sys.path/sys.modules cleanup.
+
+**Where this leaves H23 item 22 and T10's un-hide**: the bug item 22 was dispatched to investigate
+(underside_face()'s 6x9 failure) is fixed, general, tested, and live-verified -- it benefits every frame
+template, not just T10, and should be considered done. T10 at 6x9 still cannot ship: a SEPARATE, genuinely
+T10-specific reflex-arc solver-branch-selection bug in p02_12_arch_rebuild.py's Shape Outline rebuild is now the
+actual blocker. This is a different class of fix (sketch-solver branch selection, likely the same
+addByThreePoints + Fix-the-endpoints pattern the quirks skill already documents) in a different file, and per
+this item's own stop condition I am not diving into it without a fresh dispatch -- "this one's genuinely been
+hard for T10 every time before" turned out to be layered even deeper than item 21 found. `FRAME_HIDDEN` stays
+`True`. Suggest this becomes its own H23 item (23?): fix the reflex-arc branch selection in T10's Shape Outline
+rebuild at 6x9, verify with the same live send-and-join check, then proceed to the un-hide.
+
+Cleaned up: all 5 of my own scratch Fusion documents closed by their own tagged handles (the 4 pre-existing
+ambiguous "Untitled" docs from before this session untouched, still 4, same as the advisor last confirmed); the
+scratch http.server on port 8793 killed by its real Windows PID (not the Git-Bash subshell PID, which did not
+match -- worth remembering for next time).
