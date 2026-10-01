@@ -25,7 +25,7 @@
  * surface normal, so its vertices are not on the x,y grid.
  */
 import { FRAME_COLORS } from '../color-utils.js';
-import { rectContains } from '../inset-window.js';
+import { rectContains, rectToPrimitives } from '../inset-window.js';
 
 /** Sample a closed primitive loop (editor coords) at fixed fractions per
  *  primitive, so two loops of the same topology correspond point-for-point. */
@@ -258,6 +258,49 @@ function _earClip(pts) {
   return tris;
 }
 
+/** Sutherland-Hodgman: convex `poly` (any winding) clipped to `inside(p)`; `cut(a,b)` interpolates the
+ *  boundary crossing between two consecutive points where exactly one is inside. Winding is preserved. */
+function _clipConvex(poly, inside, cut) {
+  if (poly.length < 3) return [];
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const cur = poly[i], prev = poly[(i + poly.length - 1) % poly.length];
+    const curIn = inside(cur), prevIn = inside(prev);
+    if (curIn !== prevIn) out.push(cut(prev, cur));
+    if (curIn) out.push(cur);
+  }
+  return out;
+}
+
+/**
+ * T82 item 3 (Fred: the hole's edge was JAGGED -- whole-triangle centroid culling left it wherever a
+ * terrain triangle happened to straddle the rectangle, a staircase the shape of the terrain grid): convex
+ * `poly` (a CCW triangle here) minus axis-aligned `rect`, as 0-4 convex polygons covering everything
+ * outside the rect. Four sequential half-plane clips, each peeling one stripe (left of x1, right of x2,
+ * below y1, above y2) off whatever is left; what remains after all four is inside the rect on every axis
+ * -- i.e. the hole itself -- and is dropped. This sidesteps the "polygon with a hole" problem entirely
+ * (never needed when the pieces are returned separately instead of as one loop), so it is exact even when
+ * the rect sits fully inside `poly` with no shared edge.
+ */
+function _polyMinusRect(poly, rect) {
+  const pieces = [];
+  const atX = (x) => (a, b) => ({ x, y: a.y + (b.y - a.y) * ((x - a.x) / (b.x - a.x)) });
+  const atY = (y) => (a, b) => ({ x: a.x + (b.x - a.x) * ((y - a.y) / (b.y - a.y)), y });
+  let rest = poly;
+  const left = _clipConvex(rest, (p) => p.x < rect.x1, atX(rect.x1));
+  if (left.length >= 3) pieces.push(left);
+  rest = _clipConvex(rest, (p) => p.x >= rect.x1, atX(rect.x1));
+  const right = _clipConvex(rest, (p) => p.x > rect.x2, atX(rect.x2));
+  if (right.length >= 3) pieces.push(right);
+  rest = _clipConvex(rest, (p) => p.x <= rect.x2, atX(rect.x2));
+  const below = _clipConvex(rest, (p) => p.y < rect.y1, atY(rect.y1));
+  if (below.length >= 3) pieces.push(below);
+  rest = _clipConvex(rest, (p) => p.y >= rect.y1, atY(rect.y1));
+  const above = _clipConvex(rest, (p) => p.y > rect.y2, atY(rect.y2));
+  if (above.length >= 3) pieces.push(above);
+  return pieces;
+}
+
 /**
  * Exact trim of the panel to `poly` (world, closed). Triangles wholly inside
  * stay (`kept`, indices into the panel); the ones the outline crosses become
@@ -339,13 +382,16 @@ export function wallArrays(poly, zBot, zTop) {
   return { positions, index };
 }
 
-/** The bar ring between corresponding `outer`/`inner` loops: top (at the
- *  underside), bottom (at zBottom), outer wall and inner wall. */
+/** The bar ring between corresponding `outer`/`inner` loops: top (at zTop) and bottom (at zBottom), outer
+ *  wall and inner wall. `zTop`/`zBottom` are each a per-point function OR a fixed number (T82 item 3: the
+ *  window's own subframe bottom follows the underside too, offset by a fixed depth, unlike the main frame's
+ *  own flat bottom plane -- the SAME ring primitive serves both by accepting either shape for either side). */
 export function ringArrays(outer, inner, zBottom, zTop, maxStep = Infinity) {
   const n = outer.length;
   if (inner.length !== n) throw new Error(`ringArrays: loops do not correspond (${n} vs ${inner.length})`);
   const positions = [], index = [];
   const v = (p, z) => { positions.push(p.x, p.y, z); return positions.length / 3 - 1; };
+  const zb = typeof zBottom === 'function' ? zBottom : () => zBottom;
   // Rows across the ring width (outer -> inner), so the TOP follows the
   // underside across the bar too, not just along its edges.
   let widest = 0;
@@ -354,14 +400,14 @@ export function ringArrays(outer, inner, zBottom, zTop, maxStep = Infinity) {
   const at = (k, r) => ({ x: outer[k].x + (inner[k].x - outer[k].x) * (r / rows), y: outer[k].y + (inner[k].y - outer[k].y) * (r / rows) });
   const top = [];
   for (let r = 0; r <= rows; r++) top.push(Array.from({ length: n }, (_, k) => { const p = at(k, r); return v(p, zTop(p)); }));
-  const oB = outer.map((p) => v(p, zBottom)), iB = inner.map((p) => v(p, zBottom));
+  const oB = outer.map((p) => v(p, zb(p))), iB = inner.map((p) => v(p, zb(p)));
   for (let k = 0; k < n; k++) {
     const m = (k + 1) % n;
     for (let r = 0; r < rows; r++) {
       const a = top[r], b = top[r + 1];
       index.push(a[k], a[m], b[k], b[k], a[m], b[m]); // top, row r
     }
-    index.push(oB[k], iB[k], oB[m], iB[k], iB[m], oB[m]); // bottom (flat, at frame-bottom z)
+    index.push(oB[k], iB[k], oB[m], iB[k], iB[m], oB[m]); // bottom, per zBottom(p)
     const oT = top[0], iT = top[rows];
     index.push(oB[k], oB[m], oT[k], oT[k], oB[m], oT[m]); // outer wall
     index.push(iB[k], iT[k], iB[m], iT[k], iT[m], iB[m]); // inner wall
@@ -482,20 +528,44 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
   const attrs = {};
   for (const nm of ['color', 'uv', 'normal']) if (geom.attributes[nm]) attrs[nm] = geom.attributes[nm];
   const { kept, rim } = clipPanelToOutline(pos, full, panel, attrs, cell); // F22: the lip, else the outline
-  // T82 item 2: the inset window is a literal hole -- no panel triangle may stay inside it. A per-triangle
-  // centroid test (not an exact sub-triangle clip like clipPanelToOutline's own outer trim) is deliberately
-  // simpler: the hole's own edge lands on the nearest triangle boundary rather than a mathematically exact
-  // line, a difference invisible at any terrain grid spacing finer than the window itself. World mapping per
-  // this file's own header comment: editor (x, y-down) -> world (x - W/2, H/2 - y), x unflipped, y flipped
-  // (and therefore sorted the OTHER way: editor y1 < y2 becomes world y2' < y1').
+  const names = Object.keys(attrs);
+  // The inset window is a literal hole -- no panel triangle may stay inside it. World mapping per this
+  // file's own header comment: editor (x, y-down) -> world (x - W/2, H/2 - y), x unflipped, y flipped (and
+  // therefore sorted the OTHER way: editor y1 < y2 becomes world y2' < y1').
   const win = spec.insetWindow;
   const windowed = win ? { x1: win.hole.x1 - W / 2, x2: win.hole.x2 - W / 2, y1: H / 2 - win.hole.y2, y2: H / 2 - win.hole.y1 } : null;
-  const keptFinal = windowed ? [] : kept;
+  let keptFinal = kept;
   if (windowed) {
+    // T82 item 3 (Fred, phone shot from below: the hole's own edge was JAGGED): an EXACT clip against the
+    // hole rectangle, the same quality as clipPanelToOutline's own outer trim above -- a straddling triangle
+    // is cut to its true outside-the-rect pieces (_polyMinusRect) instead of being kept or dropped whole by
+    // its centroid, which is what produced the staircase (the terrain grid's own shape) Fred saw.
+    keptFinal = [];
     for (let t = 0; t < kept.length; t += 3) {
-      const [ia, ib, ic] = [kept[t], kept[t + 1], kept[t + 2]];
-      const cx = (pos[ia * 3] + pos[ib * 3] + pos[ic * 3]) / 3, cy = (pos[ia * 3 + 1] + pos[ib * 3 + 1] + pos[ic * 3 + 1]) / 3;
-      if (!rectContains(windowed, cx, cy)) keptFinal.push(ia, ib, ic);
+      const ia = kept[t], ib = kept[t + 1], ic = kept[t + 2];
+      const a = { x: pos[ia * 3], y: pos[ia * 3 + 1] }, b = { x: pos[ib * 3], y: pos[ib * 3 + 1] }, c = { x: pos[ic * 3], y: pos[ic * 3 + 1] };
+      const overlapsHole = Math.max(a.x, b.x, c.x) >= windowed.x1 && Math.min(a.x, b.x, c.x) <= windowed.x2
+        && Math.max(a.y, b.y, c.y) >= windowed.y1 && Math.min(a.y, b.y, c.y) <= windowed.y2;
+      if (!overlapsHole) { keptFinal.push(ia, ib, ic); continue; }
+      const s2 = _area2([a, b, c]);
+      if (Math.abs(s2) < 1e-14) { // zero-area: decide by centroid, as clipPanelToOutline's own trim does
+        const cx = (a.x + b.x + c.x) / 3, cy = (a.y + b.y + c.y) / 3;
+        if (!rectContains(windowed, cx, cy)) keptFinal.push(ia, ib, ic);
+        continue;
+      }
+      const triCCW = s2 > 0 ? [a, b, c] : [a, c, b];
+      for (const piece of _polyMinusRect(triCCW, windowed)) {
+        const base = rim.position.length / 3;
+        for (const q of piece) {
+          const h = baryHit(pos, kept, t, q.x, q.y, Infinity);
+          rim.position.push(q.x, q.y, h.z);
+          for (const nm of names) rim[nm].push(...lerpAttr(attrs[nm].array, attrs[nm].itemSize, kept, h));
+        }
+        for (let k = 1; k < piece.length - 1; k++) {
+          if (s2 > 0) rim.index.push(base, base + k, base + k + 1);
+          else rim.index.push(base, base + k + 1, base + k); // keep the source triangle's facing
+        }
+      }
     }
   }
   geom.setIndex(keptFinal);
@@ -526,25 +596,42 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
     const wall = _mesh(THREE, w, wallMat, wallAttrs);
     wall.name = 'frame-panel-wall';
     extra.push(wall);
-    if (inner) {
+    if (inner || windowed) {
       // H8: spec.color is already the declared frame colour (frameSolidSpec,
       // editor-frame-profile.js) — this fallback only fires when it's null
       // (no matching wood found); Ash's own declared entry keeps it consistent.
       const barMat = new THREE.MeshPhongMaterial({ color: spec.color || FRAME_COLORS['3D Ash - Unfinished'], side: THREE.DoubleSide,
         shininess: 12, specular: 0x0a0a0a });
       capFrameBrightness(barMat);
-      const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
-      bars.name = 'frame-bars';
-      extra.push(bars);
+      if (inner) {
+        const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
+        bars.name = 'frame-bars';
+        extra.push(bars);
+      }
+      if (windowed) {
+        // T82 item 3 (Fred, phone shot from the BOTTOM: "inset window doesn't show a frame in 3D" -- the
+        // design's own "hide the subframe" meant hidden FROM THE FRONT by the panel overhang, not absent).
+        // The SAME ring primitive as the main frame's own bars, between the window's outer and inner
+        // (thickness-offset) rectangles, in the frame's own material (barMat). Z follows Fusion's own
+        // start/extent rule for the window (design note §5 step 3) ported to the preview's zBottom/zTop:
+        // the bar TOP is the panel's own underside (it is mounted to the panel's back, not a fixed floor),
+        // the bar BOTTOM is that same underside offset down by frame_height_offset (spec.frameBottomZ) --
+        // a FIXED depth regardless of terrain, unlike the main frame's own flat-at-frameBottomZ bottom.
+        const winPaired = samplePairedOutlines(rectToPrimitives(win.outer), rectToPrimitives(win.inner), cell);
+        const winBarBottom = (p) => bot(p) + spec.frameBottomZ;
+        const winBars = _mesh(THREE,
+          ringArrays(toWorld(winPaired.outer, W, H), toWorld(winPaired.inner, W, H), winBarBottom, bot, cell), barMat);
+        winBars.name = 'frame-window-bars';
+        extra.push(winBars);
+      }
     }
     if (windowed) {
-      // T82 item 2: a real hole needs a wall at its own edge too (same top/bot hug as the outline's own wall
-      // above), or it would look like a flat decal rather than an opening through the panel's own thickness.
-      // The subframe bars themselves are NEVER added here (Fred: "the b-spline should hide the subframe" --
-      // they sit behind the panel, out of the 3D preview entirely; only the hole they frame is visible).
-      const winPoly = [{ x: windowed.x1, y: windowed.y1 }, { x: windowed.x2, y: windowed.y1 },
-        { x: windowed.x2, y: windowed.y2 }, { x: windowed.x1, y: windowed.y2 }];
-      const winWall = _mesh(THREE, wallArrays(winPoly, bot, top), wallMat.clone());
+      // A real hole needs a wall at its own edge too (same top/bot hug as the outline's own wall above), or
+      // it would look like a flat decal rather than an opening through the panel's own thickness -- sampled
+      // the same way the outline's own wall is (not just the 4 corners), so it follows the sculpted
+      // underside along each side.
+      const winHoleLoop = toWorld(samplePairedOutlines(rectToPrimitives(win.hole), rectToPrimitives(win.hole), cell).outer, W, H);
+      const winWall = _mesh(THREE, wallArrays(winHoleLoop, bot, top), wallMat.clone());
       winWall.name = 'frame-window-wall';
       extra.push(winWall);
     }

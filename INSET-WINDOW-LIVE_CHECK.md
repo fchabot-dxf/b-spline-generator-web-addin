@@ -14,11 +14,15 @@ and check once it picks that up, not a report of something already working in Fu
   NOT clamped against the frame or board (Fred's own ruling, design note §3). Carried in `framePayload()`.
 - 2D editor (Frame tab): the window's own outer/inner rectangles drawn, a dark cutaway for the hole, drag to
   move (body) or resize (any corner) — `main/frame-panel.js`'s own `_wireWindowDrag()`.
-- 3D preview: the hole is a real absence of panel mesh (triangle-centroid cull against the hole rectangle,
-  `core/preview/frame-mesh.js`'s own `applyFrameToPanel`), with a wall at the hole's own edge so it reads as a
-  real cut, not a flat decal. The window's own 4 bars are NEVER drawn in the 3D preview (Fred: "hide the
-  subframe" — they are meant to sit behind the panel in Fusion; the preview only shows what a from-the-front
-  photo of a physical build would show).
+- 3D preview: the hole is a real absence of panel mesh — an EXACT clip against the hole rectangle
+  (`core/preview/frame-mesh.js`'s own `applyFrameToPanel`, `_polyMinusRect`; T82 item 3 replaced the
+  original whole-triangle centroid cull, which left a jagged terrain-grid-shaped edge), with a wall at the
+  hole's own edge so it reads as a real cut, not a flat decal. **T82 item 3 (superseded the line below):**
+  the window's own 4 bars ARE now drawn in the 3D preview too, in the frame's own material, between the
+  window's outer/inner rectangles — their top follows the panel's own underside and their bottom is that
+  underside offset down by `frame_height_offset` (so they sit behind/under the panel by construction and
+  are hidden from the front by the panel's own overhang, never visible from the top/front view, but visible
+  from the back/side/bottom — matching Fred's own phone shot and what a real Fusion build will look like).
 - Sidebar toggle: "Inset window" checkbox, off by default, in the FRAME panel.
 
 **NOT built (this seat has no Fusion bridge):**

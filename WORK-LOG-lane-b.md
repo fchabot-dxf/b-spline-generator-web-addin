@@ -11773,3 +11773,90 @@ on-canvas handles (the STATIC profile is confirmed, not yet an actual drag); a 3
 Committing the JS changes + `LIVE_CHECK.md` + this entry, pushing lane-b, passing back with the
 honest full-suite numbers (pytest 406/24/0, vitest 2926/155/0) stated explicitly in the pass note
 itself this time, not just in this WORK-LOG entry.
+
+## Lane B — Turn 210 — T82 item 3: inset window subframe shown in 3D + exact hole clip — DONE
+
+Dispatch (NEXT-SESSION-lane-b.md, Fred's phone shot from the BOTTOM,
+`shots/fred/inset_window_3d_no_frame_2026-10-01.png`): the inset window's own subframe was never drawn in
+the 3D preview at all -- T82 item 2's own design note explicitly said "never add the window bars to the 3D
+scene", reading Fred's "hide the subframe" as absent rather than hidden FROM THE FRONT by the panel
+overhang. Fred corrected this: the bars exist, mounted behind the panel, and should show from the
+back/side/bottom. Also named: the hole's own cut edge was JAGGED.
+
+**The subframe bars** (`core/preview/frame-mesh.js applyFrameToPanel`): the SAME `ringArrays` primitive the
+main frame's own bars already use, between the window's outer and inner (thickness-offset) rectangles
+(`win.outer`/`win.inner`, sampled via the SAME `rectToPrimitives` + `samplePairedOutlines` pipeline the
+main outline already uses), in the frame's own material (the SAME `barMat` object the main bars use --
+verified `winBars.material === bars.material`, not just visually similar). Z placement ports Fusion's own
+start/extent rule for the window (`INSET-WINDOW-DESIGN.md` §5 step 3) into the preview's zBottom/zTop
+functions: TOP = the panel's own underside (`bot(p)`, so it's mounted to the panel's own back, not a fixed
+floor), BOTTOM = that same underside offset down by `frame_height_offset` (`spec.frameBottomZ`) -- a FIXED
+depth regardless of terrain, unlike the main frame's own flat-at-frameBottomZ bottom. This needed
+`ringArrays` itself to accept a per-point zBottom FUNCTION, not just the scalar the main frame always
+passed -- generalized it (`typeof zBottom === 'function'`), backward-compatible (every existing scalar
+caller, including all of `tests/frame-mesh-normals.test.js`'s own direct `ringArrays` calls, unchanged).
+
+**The hole's jagged edge, root cause and fix**: the OLD code (`T82 item 2`) culled whole triangles by
+CENTROID against the hole rectangle -- a straddling triangle survived entirely if its centroid fell
+outside the hole, or vanished entirely if inside, so the cut edge followed the terrain grid's own shape,
+not the rectangle. Fixed with an EXACT clip: a new `_polyMinusRect(triangle, rect)` decomposes
+"triangle minus axis-aligned rect" into 0-4 convex pieces via four sequential half-plane clips (left of
+x1, right of x2, below y1, above y2, each peeling one stripe off whatever remains; what's left after all
+four is inside the rect on every axis and is dropped) -- this sidesteps the "polygon with a hole" topology
+problem entirely (never needed, since pieces are returned separately rather than as one loop), so it's
+exact even when the rect sits fully inside a triangle with no shared edge. Straddling triangles' outside
+pieces are fan-triangulated and added to the SAME `frame-panel-rim` mesh the outer trim's own crossing
+triangles already use (same material, same mechanism, not a second rim type).
+
+**Verification (measured, not eyeballed)**:
+- `_polyMinusRect` cross-checked against brute-force Monte-Carlo sampling (200-300 samples/axis) on both
+  synthetic random triangles and the REAL triangles the with-window test fixture actually produces: zero
+  mismatches beyond sampling noise (worst diff 0.004 on a 300x300 grid).
+- New test `the hole cuts an EXACT rectangle...`: samples just outside each of the hole's 4 edges stay
+  covered by panel surface; samples just inside are cut away. **Mutation-tested**: reverted this file's
+  clip to the old centroid cull (scratch copy, not committed) and re-ran -- this ONE test goes red (every
+  "inside" probe wrongly comes back covered, since the whole straddling triangle survived), all 27 others
+  stay green; restored the fix, confirmed byte-identical to pre-mutation-test state via `diff`.
+- New test `the subframe bars exist, in the frame's own material...`: z-range on a flat test panel is
+  exactly `[-0.5, 0.5]` (underside 0.5, minus frame_height_offset 1), material is literally the same object
+  as the main bars'.
+- New test (area-conservation sanity check, kept despite NOT being the discriminating one -- see below):
+  with-window kept+rim footprint area equals the no-window area minus TWICE the hole's own area (a solid
+  panel's index carries both the top surface and the underside, each losing the hole's footprint
+  independently -- measured directly, not assumed, after this test's first version assumed `1x` and failed
+  by exactly one hole-area against the real numbers).
+- Pre-existing `ringArrays refuses loops that do not correspond` test untouched; new
+  `ringArrays accepts a per-point zBottom function` test added beside it (fails against the pre-change
+  scalar-only `ringArrays` with a NaN, since a function stored as a raw z coordinate is not a number).
+- `python -m pytest -q` (frame-builder root, no Python touched this turn): 406 passed, 24 skipped, 0
+  failed, unchanged. `npx vitest run` (repo root): **2931 passed, 0 failed**, 155 files (up from 2926/155 --
+  5 new tests, as listed above).
+- A/B: `tools/repro/ab/ab3d.mjs` (the one that actually exercises `applyFrameToPanel`/`frame-mesh.js`) run
+  against this tree vs a scratch worktree at this turn's own starting commit, for ALL 10 templates (none
+  use `insetWindow`, so `windowed`/`win` are null throughout) -- byte-identical JSON via `diff`.
+  `ab6.mjs`/`ablat6.mjs` (JS outline/lattice, don't touch this file's own changed functions) also confirmed
+  byte-identical, as a sanity check rather than because they were expected to move.
+- **Real app screenshot, headless Chrome**, new `tools/repro/inset_window_3d_shots.mjs` (modeled on the
+  established `frame_3d_shots.mjs`/`frame_profile_shots.mjs` pattern): enabled a 3x3in window on
+  template_1 7x9 through the real app (`rec.setFrameRecord` + `panel.syncFramePanel()`, not a unit test),
+  read back `AppState.preview._frameMeshes` names -- `frame-window-bars`/`frame-window-wall` both present,
+  zero console errors. Front/iso shot (`_front.png`): the hole is clean, NO visible subframe (hidden by the
+  panel's own overhang, matching Fred's own design intent). Below shot (`_below.png`, reusing the F17
+  "below" camera angle): the subframe's grey bars are now clearly visible around the hole, in the same
+  material as the main frame, with a straight (not jagged) cut edge -- this is the actual fix Fred asked
+  for, confirmed visually in the real app, not just by the numeric tests above.
+
+**Docs updated in the same act** (worker-skill rule: a claim my own change proves stale gets fixed, not
+left): `INSET-WINDOW-DESIGN.md` §4's own "3D preview bars"/"3D preview clip" rows and
+`INSET-WINDOW-LIVE_CHECK.md`'s own "what exists today" bullet both still said "the window's own 4 bars are
+NEVER drawn in the 3D preview" and "centroid cull" -- both marked SUPERSEDED with the new behaviour, so
+seat A doesn't pick up the Fusion side against a now-false app-side description.
+
+**NOT in scope this turn**: the Fusion-side build for the MAIN window (bars/cut feature/CAM, design note
+§5) remains entirely unbuilt on the Python/Fusion side, same gap `INSET-WINDOW-LIVE_CHECK.md` already
+named before this turn -- this turn only changed the app-side 3D PREVIEW, which is JS-only and needed no
+Fusion bridge.
+
+Committing `core/preview/frame-mesh.js` + `tests/frame-3d.test.js` + the new
+`tools/repro/inset_window_3d_shots.mjs` + the two doc updates + this entry, pushing lane-b, passing back
+with the full honest numbers (pytest 406/24/0, vitest 2931/155/0) stated in the pass note itself.
