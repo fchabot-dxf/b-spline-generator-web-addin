@@ -11328,3 +11328,51 @@ covers the Fusion half, which needs the bridge (seat A's). T82 item 2 is now ful
 
 Pushing, then on to T82 item 1 (T7 Diamond-top) per the dispatch's own order: miter diagrams at 7x9 + 6x9
 BEFORE any template code, per HANDOFF-ranchy.md section 5's own shape spec.
+
+## Lane B — Turn 195 — remove the rejected Template 7 (e2ab242) from lane-b, keep the inset-window commits — DONE
+
+Advisor's review of T82 item 2: lane-b still carried a REJECTED Template 7 (e2ab242, "wing" artifacts --
+Fred rejected the shape; T8's own later band-length-vs-frame_thickness check exists BECAUSE of that finding)
+and needed to merge to main without shipping it.
+
+**First approach tried: `git revert e2ab242 --no-commit`.** Conflicted in 15 files (frame-defs.js/.json, the
+Python frame engine, the shape-lattice generator/interaction param tables, several tests, all 4 A/B scripts,
+both WORK-LOGs) -- expected, since main's own later Template 8/9/10 work and this session's own inset-window
+commits both touched some of the same shared files e2ab242 did. Fred, asked directly (the harness itself
+flagged continuing a 15-file conflict resolution on a shared branch for a check-in): **abort it** --
+`git revert --abort`, clean, nothing lost (confirmed: working tree clean, HEAD back at 3b621fc).
+
+**Second approach (advisor, after the abort): rebuild instead of revert.** `git branch lane-b-with-old-t7
+HEAD` + pushed it (the old history, T7 included, still reachable on GitHub for anyone who wants it) -- THEN
+`git checkout -B lane-b origin/main` (local lane-b now IS main's own tip, no T7 ever in this line's history)
+-- THEN cherry-pick only the 3 inset-window commits (e869873 design, 4154659 app side, 3b621fc stamps+
+lattice) on top. Fred approved this specific plan (not the revert) before it ran.
+
+**Conflicts, for real this time: exactly one line-insertion ambiguity**, not the 15-file mess above --
+`WORK-LOG-lane-b.md` in the 4154659 cherry-pick (main's own history of this file doesn't share the same
+preceding lines lane-b's old history did, so git couldn't place the insertion automatically; the "ours" side
+of the conflict was empty, so resolution was "keep theirs, drop the markers," not an actual merge decision).
+Every other file (frame-defs.js/.json, frame-mesh.js, editor-frame-profile.js, frame-panel.js, and the whole
+second cherry-pick) auto-merged clean -- confirms main's T8/9/10 work and this session's inset-window work
+never actually touched the same lines, only the same FILES.
+
+**Verified, not assumed:** `grep -r template_7` (non-markdown) -- zero hits; `grep -r 'shoulderLedgeWidth\|
+hipFlare'` -- zero hits outside WORK-LOG prose and this session's own INSET-WINDOW-DESIGN.md (which cites T7
+only as a precedent example, never as live code); `tools/gen_frame_defs.py --check` -- fresh, no regeneration
+needed (the cherry-picks' own clean auto-merge already left frame-defs.js/.json correct, consistent with main's
+real templates). One stale, untracked `__pycache__` directory survived under the now-git-removed
+`sketches/template_7/` (compiled bytecode with no source .py beside it -- inert, never importable -- a known
+trap this project's own memory already names: "same-size mutation... leaves stale bytecode"); left in place
+rather than forcing a permission-denied `rm -rf` for a cosmetic, harmless leftover -- flagging it here instead.
+
+`npx vitest run` -> **2895 passed** (154 files, up from 2835 -- main's own T8/9/10 work added tests lane-b
+never had). Python (`frame-builder`): **351 passed, 19 skipped**. A/B byte-identical against a scratch
+`origin/main` worktree (`ab6.mjs`, `ablat6.mjs`, `ab3d.mjs`) -- hash-for-hash match on every existing
+template/case, confirming the rebuild didn't silently disturb Templates 1-6/8/9/10. Worktree removed after.
+
+Pushed `lane-b-with-old-t7` first (old history preserved on GitHub), then `git push --force-with-lease origin
+lane-b` (never a bare `--force`) -- lane-b on GitHub now IS main's tip + exactly the 3 inset-window commits,
+nothing else.
+
+Passing back right away per the advisor's own ask (they merge the inset window now); T82 item 1 (T7 Diamond-
+top miter diagrams, 7x9 + 6x9) is next.
