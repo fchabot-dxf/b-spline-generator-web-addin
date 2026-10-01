@@ -12050,3 +12050,63 @@ Shape-Lattice gap was accepted against previously.
 Committing `editor-interaction.js` + the new `tests/lattice-contour-pick-priority.test.js` + this entry,
 pushing lane-b, passing back with the full honest numbers (pytest 406/24/0, vitest 2941/156/0) stated in
 the pass note itself.
+
+## Lane B — Turn 218 — T83 item 1: Template 11 diagram-first — DONE, but a real cross-branch duplicate found
+
+Dispatch: Template 11 = T7's own roof/eave + T1's own 3-arc hourglass side, diagram only, send to the
+advisor (not Fred), stop there. Derived it independently (no code, scratch only, matching T7's own
+turn-197 precedent):
+
+**Derivation**: reused `fb_engine/t7_roof_eave.py`'s own `roof_geometry(W,H)` VERBATIM (peak=(hw,H),
+`a=min(0.62hw,0.42H)`, eave E=(hw+a, H-a)) and `editor-shape-lattice-generator.js`'s own
+`hourglassConstruction` VERBATIM (T1's literal defaults: waistReach=0.55, cornerRadius=0.22,
+waistCenterY=0, waistRadius=max(0.55-0.22, 0.5*0.55)=0.33) -- ONE derived link, no new geometry: the
+hourglass's own ALREADY-DECLARED `topInset` knob (T3 TAPERED HOURGLASS) set to `hw-a` so its own "virtual
+top corner" lands EXACTLY on the eave tip E (asserted numerically, not assumed) instead of the board's
+plain half-width. The sub-region height is `eaveY` (span from the eave down to the base), width stays the
+full board width so the hip still reaches the board's own true full width, same as T7's current body does
+today. Below the hip: T1's own unmodified square bottom corner into the flat base.
+
+**Verification, not assumed**: wrote a from-scratch Python geometry+SVG script (session scratchpad, no
+repo code, per the dispatch's own "no code"), with every arc sampled as a real polyline (many points on
+the TRUE circle) rather than drawn via an SVG arc command -- T7's own turn-197 diagram hit a real SVG
+sweep-flag sign bug doing it the other way; sampling points directly and checking them sidesteps that
+whole bug class. Each arc's rotation direction picked by an explicit geometric check (convex bulges AWAY
+from the board's own vertical centreline; concave bulges TOWARD it) rather than copying sign conventions
+out of the JS. **Hit the EXACT SAME base-bar stitching bug T7's own turn-197 diagram hit** (dropping the
+wrong end of the point array before mirroring the left half skips the flat base edge and the left base
+corner entirely) -- caught by eye in the first render, fixed the same way, re-verified. Both board sizes
+(7x9, 6x9): every sampled point stays within the board, the "virtual top corner == eave" assertion holds
+exactly, all radii stay positive.
+
+**A SIGNIFICANT finding, not a code bug**: while investigating, found this EXACT task was already done,
+hours earlier today, on an entirely different, UNMERGED branch (`fb-app`, `git log --oneline fb-app`):
+commit `a5dacbe` "F30 item 1: Template 11 miter diagram, 7x9 + 6x9 (no code)", 2026-10-01 06:45 -0400 --
+BEFORE this session's own lane-b work started. Read its own WORK-LOG-fb-app.md entry in full: it used the
+SAME formula (T7 roof/eave verbatim + T1's hourglassConstruction verbatim + topInset derived from the
+eave's own position) and independently hit AND fixed the SAME base-bar stitching bug. Its own diagram
+(`C:/Users/danse/.bspline-status/shots/seatC/0700_F30-item1-proposed_miter-diagram_7x9_6x9.png` -- still on
+disk, the shared shots location survives across branches) shows the full miter/bar-width rendering (inner
++ outer offset, 5 miters marked in red) of the IDENTICAL overall shape my own independent outer-silhouette
+derivation produced. That branch did not stop at the diagram either -- `git log fb-app` shows it went on
+to build Templates 12 and 13 (taper-angle variants), Fusion-verified, with live goldens recorded, its own
+tip (`30f3568`) dated 2026-10-01 09:51 -0400 -- roughly when this machine's own lane-a/b/c fleet's work for
+today was ramping up. None of that is merged into `main` or `lane-b`. `HANDOFF-ranchy.md` (repo root)
+explains `fb-app` is a SEPARATE, longer-running lane (a session on a different physical machine, "ranchy",
+with its own WORK-LOG-fb-app.md) that has been building out the Frame Templates independently.
+
+Flagging this to the advisor rather than deciding unilaterally: this looks like the advisor coordinating
+this machine's own lane-a/b/c fleet may not know the `ranchy`/`fb-app` line already finished this exact
+diagram AND built two more templates past it, unmerged. Worth reconciling (cherry-pick/merge `fb-app`'s
+own work rather than lane-b redoing Templates 11-13 from scratch) before any further Template 11
+engineering starts on this fleet -- a real risk of duplicate work across machines, not a hypothetical.
+
+**Not done, per the dispatch's own instruction regardless of the above**: no Fusion/app code, nothing sent
+to Fred directly. Diagram: `shots/seatB/t11_outer_silhouette_7x9_6x9_2026-10-01.png` (outer silhouette
+only, no bar-width offset modeled this round -- sufficient for a first silhouette-concept pass; the
+fb-app branch's own diagram already has the fuller bar-width rendering if that branch's work is adopted
+instead of redone).
+
+Committing this WORK-LOG entry only (no code, no template files -- diagram-only turn, matching T7's own
+turn-197 precedent), pushing lane-b, passing back with the cross-branch finding as the headline, not an
+aside.
