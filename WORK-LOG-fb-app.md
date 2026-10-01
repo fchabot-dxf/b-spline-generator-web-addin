@@ -4579,3 +4579,51 @@ b-spline-gen 91 passed (+2), frame-builder 302 unchanged, repo root 487 passed (
   / `frameInnerProfile` / `frameMiters` on `template_10` itself, same visual style as every prior one: `C:/Users/
   danse/.bspline-status/shots/seatC/2310_F28-item3_miter-diagram.png`. Confirms the 4 real bars and the top 2
   miters' own genuinely varying angle, straight from production code.
+
+## 2026-09-30: F28 item 3 follow-up — Generate must never break the frame (seat C, epoch 4)
+
+The advisor merge-blocked T10 on the 3/50 `[Generate]` inner-profile finding above (archive note): "Generate must
+never produce a broken frame. Fix the 3/50 self-intersection for T10, either with tighter Generate ranges or a
+declared reject-and-redraw, and test 500 seeds at portrait sizes with zero defects. Manual drags may still reach
+the true limit. T1's extreme-landscape thin arcs: just log them as a follow-up."
+
+- **Root cause, precisely**: Template 1's own `[Generate]` draws `cornerRadiusTop`/`cornerRadiusBottom`/
+  `waistRadius` too (5 handles total), each narrowed by `_hourglassRange` to fit whatever waist was just drawn
+  (PARAM_ORDER runs waistCenterY, waistReach, THEN the corners). Template 10 seeds only 3 of those (the advisor's
+  own approved set), so the corner radii stay at the shape model's own FIXED default regardless of the drawn
+  waist. The BARE outline stays a valid simple shape either way (confirmed: `prof.defects` was always `[]`,
+  every seed, in the original 50-seed test) -- the bug is strictly in the frame's own INNER (thickness-offset)
+  edge: an extreme (reach, position) pair leaves the fixed 0.192 in shoulder/hip radius with no room once offset
+  inward by a 0.75 in frame, and `outline-offset.js`'s own arc reconstruction wraps a full `-2*PI` turn instead
+  (`outlineDefects`' `reversedArc`), crossing the opposite side (`selfIntersection`). MEASURED (seed 2, 7x9):
+  `waistReach 0.488 / waistCenterY -0.427` with the default 0.192 in corner -> inner primitive 2 (and its mirror,
+  8) both land at `dTheta = -6.283185307179586` exactly.
+- **Considered, not chosen: tighter analytic ranges.** `_hourglassLeftRange` (Template 4's own left-pinch range,
+  "the radii are fixed, the pinch moves") is the closest existing precedent -- but inverting it exactly for a
+  single symmetric pinch, correctly accounting for the INNER offset (not the bare-shape tangency/keyhole math
+  `_hourglassRange` already does at `stroke = 0`) rather than approximating it, turned out to be a real second
+  derivation, not a reuse of the existing one -- more hand-rolled inequality than the declared, provably-correct
+  alternative below.
+- **Fix: a declared reject-and-redraw, generic to every template, not special-cased to Template 10's id**
+  (`generateValidFrameSeeds`, frame-handles.js): draw seeds exactly as before; if the caller's own validity check
+  fails, redraw with the seed salted by a large prime x the attempt number (so the external seed still always
+  lands on the same final shape -- reproducible -- and the ALREADY-valid 47-50 seeds are untouched: the first
+  attempt is the bare `generateFrameSeeds` call, byte for byte); give up after 20 attempts and return the last
+  draw rather than loop forever. The actual `[Generate]` button (`frame-panel.js generateFrame`) now supplies the
+  real validity check: the production `frameInnerProfile(...).defects` (not an approximation), for WHATEVER
+  template is active -- not an `if (templateId === 'template_10')` branch. `generateFrameSeeds` itself (the
+  ranges, the per-key draw) is untouched; every existing caller of it directly (every other test file, the
+  Fusion seed path) sees no change at all.
+- **Bonus, unasked but in scope of the advisor's own stated principle**: the same generic check also silently
+  repairs a PRE-EXISTING Template 1 bug at 12x6 (an extreme landscape size) -- 9/500 seeds there hit the same
+  `reversedArc` failure Template 1's own corner-adapting handles don't fully guard against either. Not introduced
+  by this change; the universal wrapper just happens to catch it too, for free, because it checks the real
+  profile rather than trusting any one template's own range math. The advisor's own T1-thin-arc landscape note is
+  a DIFFERENT, cosmetic (not self-intersecting) finding -- left as its own logged follow-up, per the advisor's
+  explicit call.
+- **Tests**: `tests/frame-template-10.test.js` gained one test -- 500 seeds x 4 PORTRAIT sizes (7x9, 6x9, 11x14,
+  5x7), asserting `generateValidFrameSeeds`'s own output has zero defects on BOTH the outer and inner profile at
+  every one of the 2000 draws. Mutation-tested: reverting `generateValidFrameSeeds` to skip the retry loop turns
+  this test red on the exact 4 primitives (`reversedArc` x2 + `selfIntersection` x2) from the original finding;
+  restoring the retry turns it green again. Full suite green: vitest 2845 passed (152 files, unchanged file
+  count -- the new test lives in the existing T10 file).

@@ -280,6 +280,27 @@ export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl
   return seeds;
 }
 
+// T10 ARCHED HOURGLASS (Fred: "Generate must never produce a broken frame"): a template whose handle table
+// doesn't expose every param that shapes the frame's own INNER edge (T10 seeds only 3 of the shared hourglass
+// preset's params; the shoulder/hip/waist radii stay at the shape model's own fixed default rather than being
+// redrawn to fit the generated waist, unlike T1/T3/T4/T5's own full handle set) can still draw a (reach,
+// position) pair whose BARE outline is a valid simple shape -- everything generateFrameSeeds' own ranges already
+// guarantee -- yet whose frame-thickness-offset INNER edge collapses a fixed corner into a reversed, self-
+// crossing arc (MEASURED: T10 7x9, ~3/50 seeds). Declared as a retry, not a hand-derived inequality on top of
+// the existing range math: redraw with a salted seed (the external seed always retries the same way, so
+// [Generate] stays reproducible) until the caller's own real validity check (the actual inner profile's
+// defects, computed from production code) passes, or give up after a bounded number of attempts and return the
+// last draw rather than loop forever (this should be rare enough it is never reached in practice).
+const GENERATE_RETRY_SALT = 104729; // a prime, decorrelated from FRAME_GEN_SALT's own small offsets
+const GENERATE_MAX_ATTEMPTS = 20;
+export function generateValidFrameSeeds(tpl, region, seed, t, isValid) {
+  let seeds = generateFrameSeeds(tpl, region, seed, t);
+  for (let attempt = 1; attempt < GENERATE_MAX_ATTEMPTS && !isValid(seeds); attempt++) {
+    seeds = generateFrameSeeds(tpl, region, seed + attempt * GENERATE_RETRY_SALT, t);
+  }
+  return seeds;
+}
+
 /** The record patch a drag of `handle` to board point `pt` writes (per its binding). `ctx` (F27 item 2 arc
  *  pull): the drag's `{side, grab}` -- which arc was grabbed (1 = the mirrored left one) and the value at the
  *  grab. The handle's own `patchFromWorld` says which shape params one drag sets: its own key, or for the

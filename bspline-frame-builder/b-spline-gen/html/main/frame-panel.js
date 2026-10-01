@@ -20,9 +20,9 @@ import { P } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
-import { handleDragPatch, frameSeedGeometry, generateFrameSeeds } from '../editor/frame-handles.js';
+import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
-import { frameCutProfile } from '../editor/editor-frame-profile.js';
+import { frameCutProfile, frameInnerProfile } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { syncDrawerForMode } from '../editor/editor-drawer.js';
@@ -78,8 +78,15 @@ export function generateFrame(seed = nextSeed()) {
   const tpl = findFrameTemplate(FRAME_DEFS, rec.templateId);
   if (!tpl) return null;
   const region = frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }).region;
+  const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
+  // Generate must never produce a broken frame (Fred): checked against the real inner profile, not just the
+  // bare outline every seed's own ranges already guarantee (frame-handles.js generateValidFrameSeeds).
+  const seeds = generateValidFrameSeeds(tpl, region, seed, t, (s) => {
+    const inner = frameInnerProfile(FRAME_DEFS, { ...rec, seeds: s }, { widthIn: P.widthIn, heightIn: P.heightIn });
+    return !inner || inner.defects.length === 0; // no inner edge (the frame doesn't fit): a different seed can't fix that
+  });
   pushFrameHistory();
-  setFrameRecord({ seeds: generateFrameSeeds(tpl, region, seed, frameParam(FRAME_DEFS, rec, 'frame_thickness')), genSeed: seed });
+  setFrameRecord({ seeds, genSeed: seed });
   syncFramePanel();
   return getFrameRecord();
 }

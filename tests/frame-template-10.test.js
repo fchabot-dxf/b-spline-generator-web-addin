@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord, framePayload } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile, frameInnerProfile, frameMiters } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
-import { frameHandles, handleDragPatch, frameSeedGeometry, generateFrameSeeds } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
+import { frameHandles, handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { generateSilhouette, outlineDefects, paramsFromShapeModel, PARAM_ORDER } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { frameLabel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { sampleOutline } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
@@ -193,13 +193,6 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
   });
 
   it('[Generate] draws all 3 handles inside the rule, always a valid OUTER outline', () => {
-    // MEASURED: unlike Template 1 (5 handles, including the two corner radii, which [Generate] also draws to fit
-    // whatever waist it just drew), Template 10 exposes only the 3 the advisor approved -- the corner radii stay
-    // at their own shared default regardless of the drawn waist, so an extreme generated (deep, off-centre) waist
-    // can occasionally still collapse the INNER profile on one side (3/50 seeds here), independent of archRise
-    // (every one of those 3 seeds has a different archRise; the shared pattern is waistReach > ~0.48 with
-    // waistCenterY < ~-0.33). The outer outline itself -- what every seed in this sweep actually promises -- stays
-    // clean regardless; flagged to the advisor rather than silently special-cased here.
     const region = profile({}).region;
     for (let seed = 1; seed <= 50; seed++) {
       const seeds = generateFrameSeeds(T10, region, seed);
@@ -210,6 +203,32 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     }
     const payload = framePayload(FRAME_DEFS, rec10(generateFrameSeeds(T10, region, 3)));
     expect(Object.keys(payload.params).sort()).toEqual(T10.params.filter((p) => p.owner === 'frame').map((p) => p.name).sort());
+  });
+
+  it('[Generate] never produces a broken INNER profile either, 500 seeds x 4 portrait sizes (the advisor: '
+    + '"Generate must never produce a broken frame")', () => {
+    // MEASURED: unlike Template 1 (5 handles, including the two corner radii, which [Generate] also draws to fit
+    // whatever waist it just drew), Template 10 exposes only the 3 the advisor approved -- the corner radii stay
+    // at their own shared default regardless of the drawn waist, so an extreme generated (deep, off-centre) waist
+    // could occasionally collapse the INNER profile on one side (3/50 seeds at 7x9), independent of archRise.
+    // Fixed as a declared reject-and-redraw (frame-handles.js generateValidFrameSeeds), not a hand-derived
+    // inequality layered on top of the existing range math: the real inner profile (the same production
+    // defects check, not an approximation) gates each draw; a bad draw is redrawn with a salted seed until clean.
+    // The SAME external seed still always lands on the same final shape (reproducible), and the 47-50 already-
+    // clean seeds are untouched (the retry's first attempt is the bare generateFrameSeeds call, byte for byte).
+    const isValid = (seeds, W, H) => {
+      const inn = inner(seeds, W, H);
+      return !inn || inn.defects.length === 0;
+    };
+    for (const [W, H] of [[7, 9], [6, 9], [11, 14], [5, 7]]) { // portrait only (Fred's own current usage)
+      const region = profile({}, W, H).region;
+      for (let seed = 1; seed <= 500; seed++) {
+        const seeds = generateValidFrameSeeds(T10, region, seed, T, (s) => isValid(s, W, H));
+        const prof = profile(seeds, W, H), innr = inner(seeds, W, H);
+        expect(prof.defects, `${W}x${H} seed ${seed}`).toEqual([]);
+        if (prof.fit.ok) expect(innr.defects, `${W}x${H} seed ${seed}`).toEqual([]); // no inner edge when the frame doesn't fit
+      }
+    }
   });
 
   it('the Fusion seeds: the arch seeded as an arc (S, apex, E), the sides as Template 1\'s own', () => {
