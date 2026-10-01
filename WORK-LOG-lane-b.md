@@ -11236,3 +11236,95 @@ even start, then a full new frame-level feature spanning the data model, 2D edit
 its own test suite) but finished cleanly: merge verified clean via test-count deltas, the feature's own A/B
 and test suite green, two consumers (stamps, lattice) explicitly scoped out rather than rushed. T7's own
 approved-shape diagrams (7x9/12x6/24x4) are next, per the dispatch's own order.
+
+## Lane B — Turn 193 — T82 item 2: the two consumers scoped out last turn (stamps, Shape Lattice skip the hole) — DONE
+
+Picked up exactly where 4154659 left off: "stamps and the Shape Lattice do not yet skip the hole." Both now
+do, per INSET-WINDOW-DESIGN.md §4, reusing `core/inset-window.js`'s own `insetWindowGeometry` -- no second
+geometry computation anywhere.
+
+**Shared wiring, once:** `editor/contour-from-frame.js` gained `frameWindowGeometry(frame)` (resolves the
+SAME frame_thickness lookup `frameContourSilhouette` itself uses -- factored into a private `_frameThickness`
+helper so neither derives it differently) and `frameWindowHoleLoop(frame)` (the hole rectangle as a closed
+4-line loop, via a new `rectToPrimitives` in `inset-window.js`). THE source both consumers below read.
+
+**Shape Lattice (`editor-lattice-pattern.js`'s `_resolveBoundaryPrimitives`, and the Fusion/manifest-side
+mirror `editor-sketch-manifest.js`'s `resolveShapeBoundaryExtent`):** when `contourFromFrameOf(pattern).on`
+(opt-in, per the design note -- a hand-picked or non-frame boundary is unaffected), the window's hole loop is
+appended as a SECOND closed loop to the same world-space primitive list each function already builds.
+`insideSpans`' own even-odd scan (`editor-lattice-boundary.js`, its header comment: "handles holes for free --
+no subpath-identity bookkeeping needed") already treats an extra closed loop as an excluded island with ZERO
+changes to `insideSpans`/`computePattern` themselves -- confirmed by the pre-existing "donut boundary" test
+in `editor-lattice-pattern-boundary.test.js`, not re-proven here. Two call sites because there are genuinely
+two engines ("two tools sharing one engine", this file's own header comment): the live app's DOM-based
+boundary resolution (reads the already-drawn contour elements) and the Fusion-manifest's pure equivalent
+(reads `contourSilhouette` directly, no DOM) -- skipping the second would have left the 3D-preview-and-app
+in sync with each other but NOT with what Fusion actually builds, a silent mismatch between preview and
+manufactured part. Both patched with the identical two-line gate-and-append; `clipHandRailToBoundary`
+(hand-drawn rail clipping) shares `_resolveBoundaryPrimitives` and gets the exclusion for free too.
+
+**Stamps (`main/stamp-mask-manager.js`):** new `clearStampMaskInWindow(result, hole, nx, nz, widthIn,
+heightIn)` zeroes `result.body`/`.fillet`/`.isStamped` at every grid cell whose board (x,y) falls inside the
+hole -- unconditional (not opt-in like the lattice; the window is a literal hole in the panel regardless of
+what any individual stamp layer is doing), called once per `updateStampMasks` refresh (frame-level, not
+per-layer) right before each layer's mask is assigned. **MEASURED, not assumed, and it would have been wrong
+by construction otherwise:** `rasterizeSvg`'s own mask grid is Y-FLIPPED relative to board inches (row 0 =
+board BOTTOM, row nz-1 = board TOP -- `core/coords.js`'s `gridRowToRasterY`/`rasterYToGridRow`, the same
+convention `core/render-topview.js`'s own top view already reads back by and documents as a prior H20 item 1
+bug class: "canvas py=0 is at the Back"). Column mapping is direct, no flip (`rasterizeSvg`'s own `fx`
+formula). Traced this from the reference site rather than guessing from the function name alone, then
+proved both axes independently with concrete row/column mutation tests (below) -- exactly the kind of
+coordinate claim this project's own discipline says to measure, not re-derive the same way twice.
+
+**Tests** (`tests/contour-from-frame.test.js` +8, `tests/stamp-mask-clear.test.js` +3): `frameWindowGeometry`/
+`frameWindowHoleLoop` wiring (null with no frame/window, resolves the record-override vs template-default
+thickness correctly, below-the-validity-floor stays null); the Fusion fill extent gated on `fromFrame` (ON
+appends exactly the hole's 4 primitives vs OFF, byte-identical when the record has no window at all); an
+end-to-end `computePattern` case (MEASURED window corners precondition-checked via `pointInPolygon` before
+asserting anything, so the test cannot pass vacuously against a window that was never really inside the
+contour) -- a rail row through the window splits into exactly two pieces, clipped to the hole's own measured
+edges, with a same-frame/no-window sanity case proving one unbroken rail at the identical row otherwise.
+`clearStampMaskInWindow`: no-op with no window; the Y-flip row case and the un-flipped column case, each
+checking every cell in a 5x5 grid, not just a sample point. **Mutation-tested, not argued:** stashed the
+`resolveShapeBoundaryExtent` hole-append (forced it to `null`) and reran -- 3 of the new tests fail exactly as
+predicted; separately flipped `clearStampMaskInWindow`'s own row formula to the (wrong) un-flipped version and
+reran -- the row-mapping test fails exactly as predicted, clearing the wrong half of the board. Both restored,
+reran clean. Full suite: `npx vitest run` -> **2835 passed** (152 files, up from 2824 at 4154659), zero
+regressions. A/B byte-identical (`tools/repro/ab/ab6.mjs`, `ablat6.mjs`, `ab3d.mjs`, a scratch HEAD worktree at
+4154659) confirmed hash-for-hash against the HEAD worktree for every existing template/case (the two
+consumers touched here are universally reused, so this was the real regression risk, not a formality). Python:
+`frame-builder`'s own suite untouched by this turn's JS-only change, reran anyway for sanity -- 327 passed, 10
+skipped, matching HANDOFF-ranchy.md's own expected range.
+
+**Live, in the real app, not just unit tests** (`scripts/smoke-inset-window.mjs`, NEW -- headless Chrome CDP,
+mobile 390x844, served from the repo root): drives the real UI handlers directly (`setFrameRecord`/
+`drawFrameProfile` via a dynamic import of the SAME already-loaded singleton modules the page itself uses --
+not a second/mocked state -- then the real `shapeLatticeContourFromFrame` checkbox click, which is the actual
+production handler, `regenerateSilhouetteAndFill`) rather than reconstructing a long click sequence by hand.
+**One real bug found only by doing this, not by reading the code:** my first pass added an extra
+`latticeGenerate` click as a "safety net" after the checkbox toggle -- that button id turned out to be SHARED
+with the plain (board-mode) Lattice tool's own panel, whose handler fires regardless of which tool is active
+and silently overwrote the fromFrame-clipped rails with full-board-width ones, even though `layer.pattern`
+itself still correctly read `extent.mode:'boundary'` the whole time (confirmed by dumping the live pattern
+state before/after each click, not assumed from the absence of a console error). Removed the redundant click;
+the checkbox's own handler already both regenerates and refills. With that fixed: a 7x9 Hourglass, inset
+window at roughly the waist center, dense rails (every row) -- live DOM readback shows 36 rail elements, the 5
+rows whose board-y falls inside the window's own computed hole (not the raw record rect -- `insetWindowGeometry`
+offsets it inward by frame_thickness first) are each split into exactly two segments landing EXACTLY on the
+hole's measured x1/x2 (`offendingMidpointsInsideHole: 0` across all 36), and the screenshot shows a clean
+rectangular gap in the red rail fill with the board's own terrain texture visible through it. Shots:
+`C:/Users/danse/.bspline-status/shots/seatB/t82item2_01_frame_tab_window.png` (Frame tab, the window's own
+band/cutaway, re-confirming the already-shipped app-half visual still works) and
+`t82item2_02_lattice_skips_window.png` (Artwork tab, the hole visible in the lattice fill). Dev server and
+headless Chrome both torn down after (confirmed via `Get-NetTCPConnection` on every port used, not assumed
+from the script's own `chrome.kill()` alone -- the `python -m http.server` was started detached in a
+background subshell and did NOT show up in `proc_health.py watch`'s own tree walk, so it needed a manual,
+PID-confirmed `Stop-Process` -- noting this as a real gap in that tool's coverage for next time, not
+silently worked around).
+
+**Not built this turn (Fusion/CAM side):** unchanged from 4154659 -- `INSET-WINDOW-LIVE_CHECK.md` still
+covers the Fusion half, which needs the bridge (seat A's). T82 item 2 is now fully done on the app side (data,
+2D/3D preview, drag UI, stamps, lattice, tests, live confirmation).
+
+Pushing, then on to T82 item 1 (T7 Diamond-top) per the dispatch's own order: miter diagrams at 7x9 + 6x9
+BEFORE any template code, per HANDOFF-ranchy.md section 5's own shape spec.

@@ -8,9 +8,11 @@ import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html
 import { frameInnerProfile, frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import {
   contourSilhouette, frameContourSilhouette, contourFromFrameOf, CONTOUR_FROM_FRAME_DEFAULTS,
+  frameWindowGeometry, frameWindowHoleLoop,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
+import { insetWindowGeometry, rectToPrimitives } from '../bspline-frame-builder/b-spline-gen/html/core/inset-window.js';
 import { generateContourSilhouette, outlineDefects } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
-import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, computePattern } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { buildSketchManifest, latticeExtentFor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { boardRegion } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-interaction.js';
 import { sizedBoardRegion } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
@@ -253,5 +255,142 @@ describe('Send: the manifest contour and its fill clip read the SAME frame-offse
   it('OFF: the manifest is byte-identical with or without a frame passed', () => {
     const off = { ...p, contour: { ...p.contour, fromFrame: { on: false, distance: 0.25 } } };
     expect(JSON.stringify(buildSketchManifest(off, region, { frame }))).toBe(JSON.stringify(buildSketchManifest(off, region, {})));
+  });
+});
+
+/**
+ * T82 item 2 (INSET-WINDOW-DESIGN.md): the frame's own inset window, as the Shape Lattice pattern generator
+ * and the Fusion fill extent need it. inset-window.js's own insetWindowGeometry/rectContains are covered in
+ * tests/inset-window.test.js; this covers the frame-thickness WIRING (frameWindowGeometry/frameWindowHoleLoop)
+ * and the fromFrame-gated hole exclusion in the Fusion/manifest fill path (resolveShapeBoundaryExtent via
+ * latticeExtentFor) -- the app-side DOM path (_resolveBoundaryPrimitives, editor-lattice-pattern.js) shares
+ * the identical helper and gate, a two-line difference from the manifest path proven here.
+ */
+describe('T82 item 2: frameWindowGeometry / frameWindowHoleLoop', () => {
+  it('null with no frame, no window, or a disabled window (the default)', () => {
+    expect(frameWindowGeometry(null)).toBeNull();
+    expect(frameWindowHoleLoop(null)).toBeNull();
+    expect(frameWindowGeometry(frameOf('template_1', 9, 12))).toBeNull(); // normalizeFrameRecord's own default: disabled
+  });
+
+  it('resolves the SAME frame_thickness frameContourSilhouette itself uses (record override, else the template default)', () => {
+    const win = { enabled: true, x1: 2, y1: 2, x2: 6, y2: 6 };
+    const frame = frameOf('template_1', 9, 12, { insetWindow: win });
+    const tpl = FRAME_DEFS.templates.find((t) => t.id === 'template_1');
+    const ft = tpl.params.find((p) => p.name === 'frame_thickness').default;
+    expect(frameWindowGeometry(frame)).toEqual(insetWindowGeometry(frame.record, ft, frame.record.panelLip));
+
+    const overridden = frameOf('template_1', 9, 12, { insetWindow: win, params: { frame_thickness: ft + 0.2 } });
+    const g = frameWindowGeometry(overridden);
+    expect(g).toEqual(insetWindowGeometry(overridden.record, ft + 0.2, overridden.record.panelLip));
+    // non-vacuous: the override actually moves the inner/hole rectangles vs the default thickness
+    expect(g.inner).not.toEqual(frameWindowGeometry(frame).inner);
+  });
+
+  it('frameWindowHoleLoop is the hole rectangle as a closed 4-line loop, matching rectToPrimitives directly', () => {
+    const win = { enabled: true, x1: 2, y1: 2, x2: 6, y2: 6 };
+    const frame = frameOf('template_1', 9, 12, { insetWindow: win });
+    const geom = frameWindowGeometry(frame);
+    expect(frameWindowHoleLoop(frame)).toEqual(rectToPrimitives(geom.hole));
+  });
+
+  it('below insetWindowGeometry\'s own validity floor (window bars <= 2*frame_thickness): null, not a degenerate loop', () => {
+    const frame = frameOf('template_1', 9, 12, { insetWindow: { enabled: true, x1: 0, y1: 0, x2: 1, y2: 1 } });
+    expect(frameWindowGeometry(frame)).toBeNull();
+    expect(frameWindowHoleLoop(frame)).toBeNull();
+  });
+});
+
+describe('T82 item 2: the Fusion fill extent (resolveShapeBoundaryExtent via latticeExtentFor) skips the inset window, gated on fromFrame', () => {
+  const W = 9, H = 12;
+  const win = { enabled: true, x1: 3, y1: 4, x2: 6, y2: 8 };
+  const frame = frameOf('template_1', W, H, { insetWindow: win });
+  const region = boardRegion({ _mW: W, _mH: H });
+  const spacing = PATTERN_DEFAULTS.spacing;
+  const basePattern = (fromFrameOn) => ({
+    ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
+    shape: { ...PATTERN_DEFAULTS.shape, source: 'generated' },
+    extent: { mode: 'boundary' },
+    contour: { ...PATTERN_DEFAULTS.contour, fromFrame: { on: fromFrameOn, distance: 0.25 } },
+  });
+
+  it('fromFrame ON: the extent\'s primitives include the window\'s own hole loop, scaled to lattice units', () => {
+    const extent = latticeExtentFor(basePattern(true), region, frame);
+    const holeLatticeLoop = frameWindowHoleLoop(frame).map((pr) => ({
+      type: 'L', p0: { x: pr.p0.x / spacing, y: pr.p0.y / spacing }, p1: { x: pr.p1.x / spacing, y: pr.p1.y / spacing },
+    }));
+    for (const seg of holeLatticeLoop) {
+      expect(extent.primitives.some((p) => p.type === 'L'
+        && Math.abs(p.p0.x - seg.p0.x) < 1e-9 && Math.abs(p.p0.y - seg.p0.y) < 1e-9
+        && Math.abs(p.p1.x - seg.p1.x) < 1e-9 && Math.abs(p.p1.y - seg.p1.y) < 1e-9)).toBe(true);
+    }
+  });
+
+  it('fromFrame OFF: byte-identical to before T82 item 2 -- the window is never appended even though the record has one', () => {
+    const extentOn = latticeExtentFor(basePattern(true), region, frame);
+    const extentOff = latticeExtentFor(basePattern(false), region, frame);
+    // non-vacuous: ON really did add exactly the hole's 4 line primitives vs OFF
+    expect(extentOn.primitives.length).toBe(extentOff.primitives.length + 4);
+    expect(extentOff.primitives).toEqual(latticeExtentFor(basePattern(false), region, null).primitives);
+  });
+
+  it('fromFrame ON but no window on the record: unaffected (same primitives as a frame with no insetWindow at all)', () => {
+    const plainFrame = frameOf('template_1', W, H);
+    const withDisabledWindow = frameOf('template_1', W, H, { insetWindow: { ...win, enabled: false } });
+    expect(latticeExtentFor(basePattern(true), region, withDisabledWindow).primitives)
+      .toEqual(latticeExtentFor(basePattern(true), region, plainFrame).primitives);
+  });
+});
+
+describe('T82 item 2: end to end -- a rail row crossing the window is split into two pieces at the hole\'s own edges', () => {
+  it('MEASURED: the row at board y=6 (inside the window) emits two rail segments, clipped exactly to the hole', () => {
+    const W = 12, H = 16;
+    const win = { x1: 5, y1: 5, x2: 7, y2: 7 }; // a small window near board center, away from template_1's own waist pinch
+    const frame = frameOf('template_1', W, H, { insetWindow: { enabled: true, ...win } });
+    const region = boardRegion({ _mW: W, _mH: H });
+    const spacing = PATTERN_DEFAULTS.spacing;
+    const pattern = {
+      ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
+      shape: { ...PATTERN_DEFAULTS.shape, source: 'generated' },
+      extent: { mode: 'boundary' },
+      contour: { ...PATTERN_DEFAULTS.contour, fromFrame: { on: true, distance: 0.25 } },
+      rails: { every: 1, offset: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
+      boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' },
+    };
+
+    // Precondition, MEASURED not assumed: all 4 window corners must sit strictly inside the frame-offset
+    // contour, or the frame's own outline -- not the window -- would be doing any clipping seen below.
+    const sil = frameContourSilhouette(frame, 0.25, PATTERN_DEFAULTS.widths.rails);
+    expect(sil.error).toBeUndefined();
+    const outline = sampleOutline(sil.primitives);
+    for (const [x, y] of [[win.x1, win.y1], [win.x2, win.y1], [win.x2, win.y2], [win.x1, win.y2]]) {
+      expect(pointInPolygon(x, y, outline)).toBe(true);
+    }
+
+    // The actual exclusion boundary is the window's own HOLE (outer rect offset inward by frame_thickness,
+    // then panelLip) per insetWindowGeometry, not the raw outer x1/y1/x2/y2 the record declares -- read back
+    // the real computed hole rather than assuming it equals the outer rect.
+    const hole = frameWindowGeometry(frame).hole;
+    expect(hole.y1).toBeLessThan(6);
+    expect(hole.y2).toBeGreaterThan(6); // precondition: board y=6 really does fall inside the computed hole
+
+    const extent = latticeExtentFor(pattern, region, frame);
+    const { segments } = computePattern(pattern, { extent });
+    const j = Math.round(6 / spacing); // board y=6, inside the hole's own y-range
+    const rowSegs = segments.filter((s) => s.kind === 'rail' && s.a.j === j);
+
+    expect(rowSegs).toHaveLength(2); // split by the hole, not one continuous rail
+    const sorted = rowSegs.slice().sort((a, b) => a.a.i - b.a.i);
+    expect(sorted[0].b.i).toBeCloseTo(hole.x1 / spacing, 6); // left piece ends exactly at the hole's left edge
+    expect(sorted[1].a.i).toBeCloseTo(hole.x2 / spacing, 6); // right piece starts exactly at the hole's right edge
+
+    // Sanity (non-vacuous): the IDENTICAL pattern/contour (fromFrame still ON) against a frame with no
+    // window at all gives ONE unbroken rail at this same row -- isolates the split above to the window,
+    // not to some other difference between the two calls.
+    const plainFrame = frameOf('template_1', W, H); // no insetWindow key -> normalizeFrameRecord's own default: disabled
+    const plainExtent = latticeExtentFor(pattern, region, plainFrame);
+    const { segments: plainSegs } = computePattern(pattern, { extent: plainExtent });
+    expect(plainSegs.filter((s) => s.kind === 'rail' && s.a.j === j)).toHaveLength(1);
   });
 });

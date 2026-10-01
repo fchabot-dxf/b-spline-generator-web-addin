@@ -39,6 +39,7 @@ import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
   clearEmptyLayerMasks,
   updateStampMasks,
+  clearStampMaskInWindow,
 } from '../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js';
 
 describe('clearEmptyLayerMasks', () => {
@@ -139,5 +140,59 @@ describe('updateStampMasks: the Clear -> Apply regression (all layers empty)', (
     await updateStampMasks(4, 4);
 
     expect(editor._layers[0]._mask).not.toBeNull();
+  });
+});
+
+/**
+ * T82 item 2 (INSET-WINDOW-DESIGN.md): a stamp cannot carve material that isn't there -- the frame's inset
+ * window is a literal hole through the panel, so the rasterized mask must read zero inside it. Tested at
+ * the pure `clearStampMaskInWindow` level (same constraint as the describe block above: this test
+ * environment's canvas.getContext('2d') returns null, so a real rasterizeSvg pass can't run here).
+ */
+describe('clearStampMaskInWindow', () => {
+  const fresh = (n) => ({ body: new Float32Array(n).fill(1), fillet: new Float32Array(n).fill(1), isStamped: new Uint8Array(n).fill(1) });
+
+  it('is a no-op when there is no window (hole is null)', () => {
+    const result = fresh(25);
+    const out = clearStampMaskInWindow(result, null, 5, 5, 4, 4);
+    expect(out).toBe(result);
+    expect(Array.from(result.body)).toEqual(new Array(25).fill(1));
+  });
+
+  // MEASURED, not assumed: rasterizeSvg's own grid row is Y-FLIPPED relative to board inches (row 0 = board
+  // BOTTOM, row nz-1 = board TOP -- core/coords.js's gridRowToRasterY/rasterYToGridRow, the same convention
+  // core/render-topview.js's own top view already reads back by). A hole over the TOP half of the board
+  // (y in [0,2] of a 4in-tall board) must therefore clear the HIGH-numbered rows, not row 0 -- getting this
+  // backwards would clear the wrong physical half of the panel.
+  it('row mapping is Y-FLIPPED: a hole over the board\'s TOP half (y in [0,2] of 4in) clears grid rows 2-4, not 0-1', () => {
+    const nx = 5, nz = 5, widthIn = 4, heightIn = 4;
+    const hole = { x1: 0, y1: 0, x2: 4, y2: 2 };
+    const result = fresh(nx * nz);
+    clearStampMaskInWindow(result, hole, nx, nz, widthIn, heightIn);
+    for (let j = 0; j < nz; j++) {
+      const expectCleared = j >= 2; // y(j) = 4*(1 - j/4): j=0->y=4 (bottom), j=4->y=0 (top)
+      for (let i = 0; i < nx; i++) {
+        const k = j * nx + i;
+        expect(result.body[k]).toBe(expectCleared ? 0 : 1);
+        expect(result.fillet[k]).toBe(expectCleared ? 0 : 1);
+        expect(result.isStamped[k]).toBe(expectCleared ? 0 : 1);
+      }
+    }
+  });
+
+  // Column mapping is a DIRECT, un-flipped x/widthIn (rasterizeSvg's own `fx` formula) -- a hole over the
+  // board's LEFT half (x in [0,2] of 4in) clears the LOW-numbered columns, the mirror check to the row test
+  // above so a flip bug in either axis alone would be caught.
+  it('column mapping is direct (no flip): a hole over the board\'s LEFT half (x in [0,2] of 4in) clears columns 0-2, not 3-4', () => {
+    const nx = 5, nz = 5, widthIn = 4, heightIn = 4;
+    const hole = { x1: 0, y1: 0, x2: 2, y2: 4 };
+    const result = fresh(nx * nz);
+    clearStampMaskInWindow(result, hole, nx, nz, widthIn, heightIn);
+    for (let i = 0; i < nx; i++) {
+      const expectCleared = i <= 2; // x(i) = i/4*4 = i
+      for (let j = 0; j < nz; j++) {
+        expect(result.body[j * nx + i]).toBe(expectCleared ? 0 : 1);
+      }
+    }
   });
 });

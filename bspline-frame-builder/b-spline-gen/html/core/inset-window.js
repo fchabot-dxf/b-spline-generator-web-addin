@@ -36,3 +36,12 @@ export function insetWindowGeometry(record, frameThickness, panelLip) {
 export function rectContains(rect, x, y) {
   return x >= rect.x1 && x <= rect.x2 && y >= rect.y1 && y <= rect.y2;
 }
+
+/** A rectangle from `insetWindowGeometry` as a closed loop of 4 line primitives, same board-local frame
+ *  every other contour primitive list in this app uses (origin top-left, y down, inches) -- for callers
+ *  that feed primitive lists into `insideSpans`' own even-odd scan (editor/editor-lattice-boundary.js),
+ *  which already treats any extra closed loop in the SAME list as a hole, no code change needed there. */
+export function rectToPrimitives(rect) {
+  const corners = [{ x: rect.x1, y: rect.y1 }, { x: rect.x2, y: rect.y1 }, { x: rect.x2, y: rect.y2 }, { x: rect.x1, y: rect.y2 }];
+  return corners.map((p0, i) => ({ type: 'L', p0, p1: corners[(i + 1) % 4] }));
+}

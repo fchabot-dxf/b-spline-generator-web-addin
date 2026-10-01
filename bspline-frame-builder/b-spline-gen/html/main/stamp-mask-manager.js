@@ -4,6 +4,9 @@ import { applyLayerTransform } from '../core/stamp/transform.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { getLayerSvg } from '../editor/editor-io.js';
 import { isCarved } from '../editor/layers.js';
+import { frameContext } from '../editor/editor-frame-profile.js';
+import { frameWindowGeometry } from '../editor/contour-from-frame.js';
+import { rectContains } from '../core/inset-window.js';
 
 // Monotonic counter incremented on every refresh. Each in-flight
 // rasterize captures the value at start; if it doesn't match at finish,
@@ -49,6 +52,32 @@ export function resolveLegacyStampLayer(eLayer) {
 }
 
 /**
+ * T82 item 2: zero a rasterized stamp mask inside the frame's own inset window -- a literal hole through
+ * the panel, so a stamp cannot carve material that isn't there. `hole` is insetWindowGeometry's own `.hole`
+ * rectangle (board-local inches, origin top-left, y down -- the same `widthIn`/`heightIn` frame rasterizeSvg
+ * itself renders into). `nx`/`nz` is the mask's own grid (`k = j*nx+i`, rasterizeSvg's own indexing): column
+ * `i` maps directly to x (0 -> left edge, nx-1 -> right edge, no flip -- rasterizeSvg's own `fx` formula);
+ * row `j` maps to y FLIPPED (j=0 -> board BOTTOM, j=nz-1 -> board TOP) -- the same row order
+ * core/coords.js's gridRowToRasterY/rasterYToGridRow declare and core/render-topview.js's own top view
+ * already reads back by, reused here rather than re-derived.
+ */
+export function clearStampMaskInWindow(result, hole, nx, nz, widthIn, heightIn) {
+  if (!hole) return result;
+  const iSpan = Math.max(1, nx - 1), jSpan = Math.max(1, nz - 1);
+  for (let j = 0; j < nz; j++) {
+    const y = heightIn * (1 - j / jSpan);
+    for (let i = 0; i < nx; i++) {
+      if (!rectContains(hole, (i / iSpan) * widthIn, y)) continue;
+      const k = j * nx + i;
+      result.body[k] = 0;
+      result.fillet[k] = 0;
+      result.isStamped[k] = 0;
+    }
+  }
+  return result;
+}
+
+/**
  * Step 3 unification: produce one stamp pass per editor layer. The
  * editor's sketch is the single SVG document; each layer's content is
  * a partition of it (children with `data-layer="<layer.id>"`).
@@ -60,6 +89,10 @@ export async function updateStampMasks(nx, nz) {
   const myGeneration = ++_refreshGeneration;
   const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
   const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : null;
+  // T82 item 2: the frame's own inset window (if any) -- computed once per refresh (frame-level, not
+  // per-layer); unconditional (not opt-in like the Shape Lattice's contour.fromFrame), since the window is
+  // a literal hole in the panel regardless of what any individual stamp layer is doing.
+  const windowHole = frameWindowGeometry(frameContext(editor))?.hole || null;
 
   // Build the work list. Each entry: { idx, layer, svg }
   const work = [];
@@ -128,6 +161,7 @@ export async function updateStampMasks(nx, nz) {
     // global generation (rather than just `myGeneration === current`)
     // means newer raster passes can clobber older ones in any order.
     if (myGeneration !== _refreshGeneration) return;
+    if (windowHole) clearStampMaskInWindow(result, windowHole, nx, nz, P.widthIn, P.heightIn);
     layer._mask = result;
   });
   await Promise.all(promises);
