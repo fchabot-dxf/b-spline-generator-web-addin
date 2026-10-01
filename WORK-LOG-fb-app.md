@@ -4924,3 +4924,47 @@ return a pure declarative dict -- a real design change, not a quick fix.
 
 Capacity: 5 live-Fusion round trips this item, each its own add-in-reload + rebuild cycle. Flagging for either
 a fresh session with more room, or the advisor's own call on priority now that the depth is understood.
+
+## 2026-10-01: F29 item 1 — hide Template 10 from the picker until it builds in Fusion (seat C, epoch 5)
+
+Seat A's own live Fusion check (H23 item 14, above) found the arch sweeps the wrong branch in Fusion at every
+board size -- a Fusion-build-only defect; the app's own preview/tests are unaffected. The advisor's dispatch:
+hide it from the template picker with one declared flag until the fix lands, without breaking an already-saved
+project.
+
+- **Declared, not hand-rolled**: no existing `hidden`/`visible`/`enabled`/`status` field anywhere in
+  `template_data.py` or `frame-defs` (checked every template) -- added ONE new field, `FRAME_HIDDEN` (template_10's
+  own `template_data.py`, next to its other `FRAME_*` declarations, `False` everywhere by default), threaded
+  through `frame_definition.py build_frame_defs` as `"hidden": frame.get("hidden", False)` (the same optional-key-
+  off-the-`Frame`-dict pattern `provisionalShape`/`shapeExtractor` already use) into frame-defs' own per-template
+  `hidden` key. Only `template_10/template_data.py` was touched; the other 8 templates need nothing (the `.get(...,
+  False)` default covers them).
+  - `tools/gen_frame_defs.py` regenerated both outputs; `--check` fresh afterward. The diff is PURELY additive:
+    one `"hidden": true|false,` line per template (`true` for template_10 alone) plus the expected `sourceHash`
+    bump -- nothing else in any template's own data changed (confirmed by reading the full diff, not just a
+    test pass).
+- **The picker, and ONLY the picker**: `main/frame-panel.js`'s dropdown-population loop (`initFramePanel`, both
+  `#frameTemplate` and `#editorFrameTemplate`) now skips `t.hidden` templates. Every lookup-by-id
+  (`findFrameTemplate`/`normalizeFrameRecord`/`framePayload`/`frameCutProfile`/etc.) still searches the FULL,
+  unfiltered template list -- a saved record already on `template_10` keeps loading, drawing and sending exactly
+  as before. Confirmed this is the ONLY enumeration site in the whole app that needed the filter (every other
+  `FRAME_DEFS.templates` walk in both the app and the test suite is either an exact id lookup or a correctness
+  sweep over every real template, neither of which should ever drop template_10).
+  - **Found and fixed one real UI bug this surfaced**: a `<select>`'s own `.value =` silently fails (reverts to
+    blank) when no matching `<option>` exists, so a loaded `template_10` record would have shown an EMPTY
+    dropdown despite drawing correctly underneath -- a saved project "still loading" in substance but looking
+    broken on screen. Fixed with `_syncTemplateSelect` (frame-panel.js): `syncFramePanel` adds the hidden
+    template's own option back in just when the record is actually on it, and removes it again the moment the
+    record moves to anything else (so it's never left sitting there as a pickable choice).
+- **Tests**: new `tests/frame-hidden-template.test.js` (4 tests) -- frame-defs carries `hidden: true` on template_10
+  alone; neither `<select>` offers it fresh while every other template still is; a record already on it loads,
+  draws (0 defects) AND displays correctly in both selects; switching away removes the injected option again.
+  Mutation-tested both the picker filter and `_syncTemplateSelect`'s fallback (reverting either turns the
+  matching assertion red on the exact expected failure; restoring turns it green). Full suite green: vitest 2871
+  passed (153 files); pytest frame-builder 351 passed, 19 skipped.
+- **A/B**: no geometry/derivation code was touched (only a new, inert metadata key plus one UI-only picker
+  filter), so the existing `tools/repro/ab/*` harnesses -- none of which import `main/frame-panel.js` or read a
+  `hidden` field -- could not have been affected; verified directly instead by reading the full `frame-defs.json`
+  diff (above), which is exactly the one new key per template and nothing else.
+- **Undo**: flipping this back is exactly the one flag, `FRAME_HIDDEN = False` in `template_10/template_data.py`,
+  then regenerate frame-defs -- no other code to revert.

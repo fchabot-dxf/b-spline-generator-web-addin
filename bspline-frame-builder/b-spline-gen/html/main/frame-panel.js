@@ -107,6 +107,20 @@ function _option(value, label) {
   return o;
 }
 
+/** F29 item 1: the template `<select>`s only ever OFFER the non-hidden templates (initFramePanel), so a record
+ *  already on a hidden one (an existing saved project, not a fresh pick) needs its own option added back just to
+ *  display correctly -- removed again once the record moves off it, so it is never left sitting there pickable. */
+function _syncTemplateSelect(sel, templateId) {
+  if (!sel) return;
+  const stale = sel.querySelector('option[data-hidden-current]');
+  if (stale && stale.value !== (templateId || '')) stale.remove();
+  if (templateId && !sel.querySelector(`option[value="${templateId}"]`)) {
+    const t = FRAME_DEFS.templates.find((x) => x.id === templateId);
+    if (t) { const o = _option(t.id, frameLabel(t)); o.dataset.hiddenCurrent = '1'; sel.appendChild(o); }
+  }
+  sel.value = templateId || '';
+}
+
 let _editorTab = 'artwork';
 let _openEditorOn = null;
 
@@ -179,7 +193,7 @@ export function syncFramePanel() {
   const rec = getFrameRecord();
   const tpl = findFrameTemplate(FRAME_DEFS, rec.templateId);
   // The editor's Frame tab mirrors the same record.
-  if ($('editorFrameTemplate')) $('editorFrameTemplate').value = rec.templateId || '';
+  _syncTemplateSelect($('editorFrameTemplate'), rec.templateId);
   for (const f of FRAME_PARAM_FIELDS) {
     const el = $(f.id);
     if (!el) continue;
@@ -188,7 +202,7 @@ export function syncFramePanel() {
     if (document.activeElement !== el) el.value = tpl ? frameParam(FRAME_DEFS, rec, f.param) : '';
     if (f.row && $(f.row)) $(f.row).style.display = tpl ? '' : 'none';
   }
-  if ($('frameTemplate')) $('frameTemplate').value = rec.templateId || '';
+  _syncTemplateSelect($('frameTemplate'), rec.templateId);
   if ($('frameBottomZ') && document.activeElement !== $('frameBottomZ')) $('frameBottomZ').value = rec.frameBottomZ;
   if ($('framePanelLip')) { // F22: its declared range follows the Trim offset
     const r = panelLipRange(FRAME_DEFS, rec);
@@ -382,7 +396,10 @@ export function initFramePanel() {
 
   for (const sel of [tplSel, $('editorFrameTemplate')].filter(Boolean)) {
     sel.appendChild(_option('', 'None'));
-    for (const t of FRAME_DEFS.templates || []) sel.appendChild(_option(t.id, frameLabel(t)));
+    // F29 item 1: a hidden template (its own shape isn't ready yet) is never OFFERED for a new pick; a saved
+    // record already on one still loads and draws fine (findFrameTemplate searches the full list) -- its own
+    // option is added back in just for that record by _syncTemplateSelect below, never left there otherwise.
+    for (const t of FRAME_DEFS.templates || []) if (!t.hidden) sel.appendChild(_option(t.id, frameLabel(t)));
   }
   for (const sel of [woodSel].filter(Boolean)) {
     for (const w of FRAME_DEFS.appearance?.options || []) sel.appendChild(_option(w, w.replace(/^3D /, '')));

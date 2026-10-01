@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "56d5f43f37e2ad7aed99f73a4b0499fe7a9b61cd0d0dbf2a14a96cab3853ebff",
+  "sourceHash": "7e134879fa6ebeabdaa3db0278fb5b2f2464d2c5c2bdbd9e7f9c61403a778d52",
   "templates": [
     {
       "features": [
@@ -140,6 +140,7 @@ export default {
           "label": "Waist radius"
         }
       ],
+      "hidden": false,
       "id": "template_1",
       "name": "Template 1 - Hourglass",
       "params": [
@@ -1719,6 +1720,7 @@ export default {
           "label": "Waist position"
         }
       ],
+      "hidden": true,
       "id": "template_10",
       "name": "Template 10 - Arched Hourglass",
       "params": [
@@ -3307,6 +3309,7 @@ export default {
           "label": "Body radius"
         }
       ],
+      "hidden": false,
       "id": "template_2",
       "name": "Template 2 - Narrow Neck",
       "params": [
@@ -4490,6 +4493,7 @@ export default {
           "label": "Top width"
         }
       ],
+      "hidden": false,
       "id": "template_3",
       "name": "Template 3 - Tapered Hourglass",
       "params": [
@@ -6125,6 +6129,7 @@ export default {
           "label": "Left waist reach"
         }
       ],
+      "hidden": false,
       "id": "template_4",
       "name": "Template 4 - Offset Hourglass",
       "params": [
@@ -7763,6 +7768,7 @@ export default {
           "label": "Top dip width"
         }
       ],
+      "hidden": false,
       "id": "template_5",
       "name": "Template 5 - Hourglass Dipped Top",
       "params": [
@@ -9615,6 +9621,7 @@ export default {
           "label": "Tab height"
         }
       ],
+      "hidden": false,
       "id": "template_6",
       "name": "Template 6 - Tab Top",
       "params": [
@@ -10679,6 +10686,7 @@ export default {
           "label": "Top dip depth"
         }
       ],
+      "hidden": false,
       "id": "template_8",
       "name": "Template 8 - Dipped Top + Left-Only Wave",
       "params": [
@@ -12109,6 +12117,7 @@ export default {
           "label": "Flange height"
         }
       ],
+      "hidden": false,
       "id": "template_9",
       "name": "Template 9 - I Shape",
       "params": [
