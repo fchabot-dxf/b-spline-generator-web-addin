@@ -1171,7 +1171,7 @@ def _setups_with_operations():
     """[{name, ops}] for each existing build setup that holds operations, in the active document's CAM."""
     out = []
     try:
-        doc = app.activeDocument
+        doc = adsk.core.Application.get().activeDocument
         for i in range(doc.products.count):
             p = doc.products.item(i)
             if p.objectType == 'adsk::cam::CAM':

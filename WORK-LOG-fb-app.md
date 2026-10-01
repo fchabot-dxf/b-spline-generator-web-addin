@@ -4705,3 +4705,26 @@ the true limit. T1's extreme-landscape thin arcs: just log them as a follow-up."
   this test red on the exact 4 primitives (`reversedArc` x2 + `selfIntersection` x2) from the original finding;
   restoring the retry turns it green again. Full suite green: vitest 2845 passed (152 files, unchanged file
   count -- the new test lives in the existing T10 file).
+
+## 2026-10-01: H23 item 10 — CAM BUILD confirm/busy branch, live (worker, seat A)
+
+Full results in LIVE-RESULTS-ranchy.md. The dispatched question ("does the confirm path crash Fusion?") had
+the wrong premise: the confirm path never fired at all, for anyone. `_setups_with_operations()` referenced a
+bare `app` global never assigned anywhere in cam-builder.py -- every call raised a NameError, silently
+swallowed by its own `except Exception: _log_error(...)`, so it always reported "nothing busy" regardless of
+real state. Confirmed live: BUILD, real APPLY TOOLPATHS (waited for every op's `hasToolpath` to actually
+report True, not just added), then BUILD again -- silently rebuilt over the just-computed toolpaths with zero
+confirmation. A real, 100%-reproducible data-loss bug, found while chasing a crash.
+
+Fixed with a one-line change (`adsk.core.Application.get().activeDocument` instead of the bare `app`),
+deployed live, re-verified: confirm now fires and preserves operations; confirmed=True now correctly rebuilds.
+Swept the whole file via AST for the same bare-global pattern -- nothing else affected. Added
+test_setups_with_operations.py (3 cases), proved non-vacuous via git stash.
+
+The actual crash from item 5 did NOT reproduce against this fully faithful flow (neither branch crashed this
+time). My item 5 repro used a shortcut that produces an intermediate CAM state (operations added, no toolpath
+ever computed) a real user's UI can't reach, since BUILD->APPLY TOOLPATHS always pairs both steps. Flagging
+this as likely a test-artifact rather than claiming the crash is resolved -- I didn't root-cause the native
+crash itself, only that it doesn't reproduce via the path an actual user would take.
+
+`pytest` CAM-builder: 7 passed (+3).

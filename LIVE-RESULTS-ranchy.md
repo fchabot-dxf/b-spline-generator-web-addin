@@ -448,3 +448,49 @@ is independently fit from its own goldens (same class of numeric-coincidence bre
 exact equality, mutation-tested via `git stash` of the regenerated frame-defs to confirm both fail against the
 old provisional data. Added one new pytest case for the collapsed-dip extractor fix. `npx vitest run`: 2822
 passed. `pytest`: frame-builder 331 passed, repo root 516 passed, 11 skipped throughout.
+
+## Item 10 — CAM BUILD confirm/busy branch, live (the item 5 crash finding)
+
+**Reframed by this investigation: the dispatched question ("does the confirm path crash Fusion?") had the
+wrong premise — the confirm path never fired AT ALL, for anyone, ever. Found and fixed the real bug; the crash
+itself did not reproduce against the fully faithful flow.**
+
+`_setups_with_operations()` (`CAM-builder/cam-builder.py`) — the function `_do_generate`'s busy/confirm branch
+calls to decide whether existing setups hold real toolpaths — referenced a bare `app` global that is never
+assigned anywhere in this file (confirmed via an AST sweep of the whole module: no other function has this
+bug). Every call raised `NameError: name 'app' is not defined`, silently swallowed by the function's own
+`except Exception: _log_error(...)`, leaving its `out = []` initial value untouched. **This function has
+always returned "nothing is busy," regardless of the real state, since it was written.**
+
+**Live consequence, confirmed:** built CAM, ran the REAL `_do_apply_toolpaths()` (not a shortcut — this calls
+both `apply_templates_to_existing_setups` AND kicks off the deferred `generateAllToolpaths`), waited for every
+operation's `hasToolpath` to report `True` (genuinely computed, not just added), then called `_do_generate
+(confirmed=False)` again — exactly "click BUILD a second time," the real-user scenario the dispatch named.
+Result: it silently rebuilt over the existing setups, wiping the just-computed toolpaths, with **no confirm
+dialog ever shown**. This is a real, 100%-reproducible data-loss bug for any user who clicks BUILD twice,
+independent of the crash this item was dispatched to chase.
+
+**Fix:** `doc = adsk.core.Application.get().activeDocument` instead of the bare `app.activeDocument`. Deployed
+directly to the live add-in (stop/run cycle) and re-verified in Fusion: `_setups_with_operations()` now
+correctly lists the busy setups; `_do_generate(confirmed=False)` now correctly sends `build_confirm` and
+leaves the real operations untouched (verified op counts unchanged before/after); `_do_generate(confirmed=
+True)` correctly proceeds and rebuilds. Added `CAM-builder/test_setups_with_operations.py` (3 cases, fake-adsk
+idiom matching `test_b_spline_gen_stale_params_wiring.py`), proved non-vacuous via `git stash` (fails against
+the pre-fix code with the exact NameError-swallowed symptom). Swept the whole file via AST for any other
+bare-global-`app` reference: none found.
+
+**The crash itself (item 5's original finding) did NOT reproduce against this fully faithful flow** — neither
+the `confirmed=False` (now correctly blocked) nor the `confirmed=True` (rebuild) call crashed Fusion this
+time. My item 5 repro used a shortcut (`apply_templates_to_existing_setups` called directly, WITHOUT the
+paired toolpath generation `_do_apply_toolpaths()` always runs with it) to cheaply get `operations.count > 0`
+for testing — that shortcut produces operations with templates applied but no toolpath geometry ever
+computed, an intermediate state a real user's UI flow can never produce (BUILD then APPLY TOOLPATHS always
+pairs both steps). The crash reproduced twice against that shortcut state specifically (log + minidump paths
+in the item 5 section above) but not once against the real, fully-computed-toolpaths state this item tested.
+**Assessment: likely a test-artifact of my own shortcut, not a reachable real-user bug** — flagging this
+explicitly rather than claiming it's resolved, since I did not root-cause the native crash itself (no stack
+trace, no Python exception — see item 5's own crash-log analysis), only that it doesn't reproduce via the path
+an actual user would take.
+
+**Tests:** `pytest` CAM-builder: 7 passed (+3, this item's new file). Other suites unaffected (no shared code
+touched).
