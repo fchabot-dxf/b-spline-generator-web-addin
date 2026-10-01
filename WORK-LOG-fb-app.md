@@ -4495,3 +4495,87 @@ b-spline-gen 91 passed (+2), frame-builder 302 unchanged, repo root 487 passed (
   start after" -- update: a new amendment (turn 58) landed during this round assigning Template 10 (Arched
   Hourglass) next, with a changed process this time (miter diagram at 7x9 + 12x6 shown to Fred BEFORE the build,
   not after).
+
+## 2026-09-30: F28 item 3 — Template 10, Arched Hourglass (seat C, epoch 4)
+
+- Fred's own sketch (`t10_arched_hourglass_sketch_2026-09-30.jpg`): a tall rounded dome on top of Template 1's own
+  hourglass pinch, straight base. Previewed FIRST per the amendment's new process (a hand-built arc spliced onto
+  the UNCHANGED hourglass solver, reusing the real inward-offset for provably-correct miters, no template code
+  yet): the advisor caught two real issues in that preview before any build started -- (1) the arch must sit
+  INSIDE the board (apex on the top edge, the two ends eating into the existing top horns, not adding height
+  above them -- my first draft, a true semicircle, nearly doubled the frame's own height past the board); (2) my
+  own miter-diagram script was drawing a red line at every TANGENT joint along the pinch (the shoulder/waist/hip
+  arcs), not just the 4 real corners. Both fixed and re-shown; Fred approved the corrected 7x9 diagram directly
+  ("looks perfect") and separately volunteered he's portrait-only right now, which the advisor used to settle the
+  one open question (12x6 may go flat; no pinch-shrinking machinery) before greenlighting the full build.
+- **Architecture, the key simplification**: unlike every other template this round, T10 is NOT a new frame-only
+  preset -- it is the SAME shared `hourglass` preset Templates 1/3/4/5 already use, with one new frame-only
+  param (`archRise`, default 0 = Template 1's own flat top, bit for bit). The flat top edge (segment 11) becomes
+  ONE arc when `archRise > 0`; the two top horns (segments 0, 10) get shorter at their own TOP end instead of
+  longer; nothing else in the whole hourglass construction changes. This is simpler than Template 5's own dip
+  (5 spliced pieces, a stub+shoulder+dip+shoulder+stub chain) because there is no new corner needing to stay
+  square: the board's own top-left/top-right corners simply don't exist as outline points anymore, replaced by
+  wherever the horn meets the arch, at the TRUE bisector angle Fred asked for (not 45 deg).
+- **The 1-DOF Fusion construction** (p02_03_loop.py's own doc comment has the full derivation): a circle through
+  two FIXED, symmetric chord points that is ALSO tangent to a line above them has, for any one chord height,
+  exactly one radius that satisfies both -- so `Symmetry(top_edge:S, top_edge:E, Y_AXIS)` + `Tangent(top_edge,
+  proj_off_BB_top)` (T6's own free-top-line projection, reused) pins the whole arc down to exactly the one free
+  seeded value (`archRise`), no Radius expression needed at all (unlike the side arcs' own temporary seed-then-
+  remove dance). The two top horns are no longer anchored to the board's own corner; their own X comes for free
+  from the UNCHANGED shoulder-tangent chain (Vertical + the shoulder arc's own existing tangent point), so no new
+  anchor was needed there either. `p03_03_inner_corner_resolve.py` only resolves the 2 BOTTOM corners now (the
+  TOP ones are a line meeting a CURVE at a varying angle -- `ResolveInnerCorners`'s own axis-aligned (dx,dy)
+  formula is only valid for two straight lines; Fusion's own native offset already produces the true line-arc
+  intersection the same way it already handles every tangent joint, with no extra phase needed). None of this is
+  live-Fusion-verified this round (the "no Fusion" dispatch); flagged for a live-Fusion-check round the same way
+  Templates 3-6's own H23 items were.
+- **Two real bugs found in SHARED engine code, not Fusion-side, both because T10 is the first template with a
+  genuine (non-tangent) LINE-meets-ARC corner**:
+  1. `outlineDefects` (editor-shape-lattice-generator.js) already skips its own "an arc-involving joint must stay
+     tangent" check for a line-to-line joint (every existing template's own 4 real corners), but NOT for a
+     line-to-arc one -- so the new horn/arch corner showed up as a FALSE `notTangent` defect on every board.
+     Fixed in `frameCutProfile` (editor-frame-profile.js): filter `notTangent` defects at exactly the corners a
+     template's own `regions.miters` + `seedMap` declare (mapping each miter's curve ID to its own primitive
+     index, the SAME "declared corner excuses it" rule `tests/contour-from-frame.test.js` already applies to a
+     from-frame contour's own corner list) -- a no-op for every other template, confirmed by the full suite.
+  2. `frameMiters` (editor-frame-profile.js) only ever computed a miter when BOTH adjacent pieces were straight
+     LINES (`if (a.type !== 'L' || b.type !== 'L') continue`) -- so the real editor's own visible miter lines (the
+     SAME feature Fred approved in the preview) would have silently drawn only 2 of T10's own 4 miters, missing
+     both top ones entirely. Generalized to a travel-DIRECTION comparison at the shared endpoint (works for any
+     line/arc combination, tangent chains like the shoulder/waist/hip arcs still correctly excluded) rather than
+     a type check. Verified: 4 miters at every board afterward, the top 2 at a genuinely varying (non-45-deg)
+     angle that visibly changes with `archRise`.
+- **Two honest, measured findings, not fixed (out of this task's own scope, flagged for the advisor)**:
+  - The plain Template 1 pinch itself (its own fitted shoulder/hip radii, untouched by this work) already draws
+    thinner than frame_thickness at some aspect ratios the standard 3-board sweep doesn't hit (MEASURED: 0.702 in
+    shoulder/hip arcs at an 8x8 board, same for Template 1 directly) -- pre-existing, not introduced here.
+  - `[Generate]` can occasionally (3/50 seeds, 7x9) still collapse the INNER profile on one side: Template 10
+    exposes only the 3 advisor-approved handles (arch rise, waist reach, waist position), not Template 1's own
+    extra 2 (the corner radii), so a generated deep + off-centre waist combination has nothing to compensate with
+    the way Template 1's own [Generate] already does. The OUTER outline stays clean regardless (every seed, every
+    board); only the inner profile is at risk, only for a minority of random draws.
+- **Tests**: `tests/frame-template-10.test.js`, 22 tests (declaration incl. the provisional model's own `from:
+  template_1` base; the within-board rule at every board, densely sampled; the 7x9 default proportions; the
+  piece-length-vs-thickness guard; the 4 miters with the top 2 proven NOT 45 deg and proven to actually vary with
+  `archRise`; all 3 handles incl. drag/far-drag/Generate; Templates 1-9 and the Shape Lattice guards, including
+  the `contour_height` dimension correctly dropping for a non-flat top, the same already-true consequence
+  Template 5's own dip has). `python tools/gen_frame_defs.py --check`: fresh. Full suite green: vitest 2844
+  passed (151 -> 152 files); pytest frame-builder 326+10 skipped, b-spline-gen 91, root (--ignore=.claude)
+  511+10 skipped.
+- **A/B byte-identical check** (HEAD worktree vs this one, Templates 1-5 and 8): `ablat6.mjs`, `ab3d.mjs`, `abpy.py`
+  all byte-identical. `ab6.mjs`'s own hash DIFFERED -- traced to the exact byte: EVERY one of its 400 differing
+  dump entries is explained SOLELY by `feasibleParamRanges('hourglass', ...)` now also reporting an `archRise`
+  range (expected: it iterates every key in `PARAM_ORDER.hourglass`, which gained one) -- the keypoints/segments/
+  primitives inside every one of those same entries are byte-identical; confirmed with a raw diff, not just the
+  hash. The actual app-facing behaviour for Templates 1/3/4/5 is unaffected (none of them expose `archRise` as a
+  handle, and `computeParamHandles`'s own default catalogue for 'hourglass' filters by `SHAPE_PARAM_KEYS`, which
+  `archRise` was deliberately never added to). `abcam.py` still fails identically on a pristine HEAD checkout too
+  (the same pre-existing, unrelated path issue noted for F28 item 2).
+- **Frame-tab phone shots** (390x844, cache busted): the advisor's own amendment asked for 7x9 + a second
+  PORTRAIT size + 12x6 (not the usual 5.51x1.97 -- Fred's own "portrait only right now" comment): `C:/Users/danse/
+  .bspline-status/shots/seatC/2320_F28-item3_7x9.png`, `_6x9.png`, `_12x6.png`. All 3 confirmed visually: a clean
+  gentle dome within the board at every size, the pinch and straight base unchanged, handle squares visible.
+- **Miter diagram**, this time built directly from the real template (not a hand-rolled preview): `frameCutProfile`
+  / `frameInnerProfile` / `frameMiters` on `template_10` itself, same visual style as every prior one: `C:/Users/
+  danse/.bspline-status/shots/seatC/2310_F28-item3_miter-diagram.png`. Confirms the 4 real bars and the top 2
+  miters' own genuinely varying angle, straight from production code.

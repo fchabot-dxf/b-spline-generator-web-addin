@@ -134,6 +134,26 @@ def _hourglass_dipped_top(curves, hw, hh, tol=2e-3):
     return ok, feats
 
 
+def _hourglass_arched_top(curves, hw, hh, tol=2e-3):
+    """T10 ARCHED HOURGLASS: Template 1 with the flat top edge replaced by one arc spanning the full width, its
+    apex ON the top edge, its own two ends pulled DOWN into the board (eating into the horn's own length, never
+    adding height above it -- the advisor's own correction, confirmed against Fred's sketch and the 7x9 preview).
+
+    The sides are Template 1's own extraction (so every Template 1 feature means what it does there); the top
+    adds the rise (the safe zone's own top edge, at hh Fusion y up, minus the arc's own chord height). Valid when
+    the sides are (Template 1's test), the arc's two ends are symmetric about the centre line (same y, opposite
+    x) and its own apex (centre.y + radius, Fusion up: the HIGHEST point) sits exactly on the safe zone's top.
+    """
+    ok, feats = _hourglass(curves, hw, hh, tol)
+    arch = curves["top_edge"]
+    xs = sorted([arch["start"][0], arch["end"][0]])
+    ok = (ok and abs(arch["start"][1] - arch["end"][1]) < tol  # the two ends symmetric: same y
+          and abs(xs[0] + xs[1]) < tol  # ...and opposite x
+          and abs((arch["center"][1] + arch["radius"]) - hh) < tol)  # the apex on the safe zone's own top edge
+    feats.update({"archRise": hh - arch["start"][1]})
+    return ok, feats
+
+
 def _tab_top(curves, hw, hh, tol=2e-3):
     """T6 TAB TOP: a rectangle with a narrower rectangular tab centred on top (8 straight pieces).
 
@@ -224,6 +244,7 @@ def _i_shape(curves, hw, hh, tol=2e-3):
 
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
+                      "hourglass_arched_top": _hourglass_arched_top,
                       "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape}
 
 
@@ -336,6 +357,26 @@ def provisional_shape_model(base_model, top_inset_of_depth):
             "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
             "baseModel": "the fitted Template 1 model",
             "topInsetOfDepth": top_inset_of_depth,
+        },
+    }
+
+
+def provisional_arched_top_model(base_model, arch_rise_of_hw):
+    """T10 ARCHED HOURGLASS, until its goldens are recorded live: a PROVISIONAL model, never none, from Template
+    1's fitted one. Its features unchanged (the sides/base are Template 1's own pinch, untouched); plus
+    `archRise` = `arch_rise_of_hw` x hw (0.35: a gentle dome, Fred's own sketch, confirmed against the 7x9
+    preview he approved). The app caps it so the pinch always keeps room -- it eats into the existing top horn's
+    own length, never adds height above the board (the advisor's own correction; Fred: going flat on an extreme
+    landscape board is fine, no pinch-shrinking). Marked `provisional` so nothing mistakes it for a fit."""
+    feats = {k: dict(v) for k, v in base_model["features"].items()}
+    feats["archRise"] = {"hw": arch_rise_of_hw, "hh": 0.0}
+    return {
+        "features": feats,
+        "fit": dict(base_model["fit"]),
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": "the fitted Template 1 model",
+            "archRiseOfHw": arch_rise_of_hw,
         },
     }
 

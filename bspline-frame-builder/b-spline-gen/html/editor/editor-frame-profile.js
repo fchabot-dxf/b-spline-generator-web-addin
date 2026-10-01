@@ -91,7 +91,20 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
   // every other template is drawn exactly as before.
   if (fit.ok && FRAME_CLAMPED_PRESETS.includes(tpl.silhouettePreset)) shapeParams = clampToFrameRanges(tpl, region, shapeParams, ft);
   const sil = generateSilhouette(region, { preset: tpl.silhouettePreset, params: shapeParams });
-  const defects = outlineDefects(sil.primitives);
+  // T10 ARCHED HOURGLASS: the first template with a genuine (non-tangent) corner between a LINE and an ARC --
+  // every corner a template declares via `regions.miters` is an EXPECTED real angle, so outlineDefects' own
+  // universal "an arc-involving joint must be tangent" guard (built to catch an ACCIDENTAL break in a tangent
+  // CHAIN, like the shoulder/waist/hip arcs, which never involves a declared corner) is filtered here at exactly
+  // those declared corners -- the SAME "a declared corner excuses its own notTangent" rule tests/contour-from-
+  // frame.test.js already applies to a from-frame contour's own corner list. A no-op for every other template:
+  // their own corners are always line-line, already exempt inside outlineDefects itself.
+  const n = sil.primitives.length;
+  const primOf = (bareId) => tpl.seedMap?.find((e) => e.id === bareId)?.prim;
+  const cornerIndices = new Set((tpl.regions.miters || []).map(([src]) => {
+    const p = primOf(src.replace(/^proj_/, '').replace(/:S$/, ''));
+    return p == null ? null : (p - 1 + n) % n;
+  }).filter((i) => i != null));
+  const defects = outlineDefects(sil.primitives).filter((d) => !(d.kind === 'notTangent' && cornerIndices.has(d.index)));
   return {
     // F27 item 2 arc pull: `shapeParams` = the params the outline was generated FROM (the arc grips re-solve over them)
     templateId: tpl.id, name: tpl.name, region, primitives: sil.primitives, params: sil.params, shapeParams,
@@ -153,23 +166,34 @@ export function frameSolidSpec(defs, record, board) {
   };
 }
 
+/** The travel direction at the start (`atEnd` false) or end (`atEnd` true) of a primitive -- a line's own fixed
+ *  direction, or an arc's tangent there (outline-offset.js's own `_tangent`, re-derived here: a pure geometry
+ *  helper, no reason to import across that module's own boundary for one small function). */
+function _travelDir(p, atEnd) {
+  if (p.type === 'L') { const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, l = Math.hypot(dx, dy) || 1; return { x: dx / l, y: dy / l }; }
+  const th = atEnd ? p.theta1 + p.dTheta : p.theta1, s = p.dTheta > 0 ? 1 : -1;
+  return { x: -Math.sin(th) * s, y: Math.cos(th) * s };
+}
+const _primStart = (p) => (p.type === 'L' ? { ...p.p0 } : { x: p.cx + p.rx * Math.cos(p.theta1), y: p.cy + p.ry * Math.sin(p.theta1) });
+
 /**
  * F8 (Fred: "see the frame thickness and miter lines in the editor"): the
  * frame's miters join each OUTER corner of the cut profile to the matching
- * INNER corner. Corners are the joints where two straight pieces meet at an
- * angle (the bounding-box corners); outline and inner edge share the same
+ * INNER corner. Corners are the joints where two pieces meet at a genuine
+ * angle (every bounding-box corner, straight-to-straight or -- Template 10's
+ * own arch -- straight-to-ARC: its own tangent direction there decides it,
+ * not just "both lines"); a smooth tangent continuation (the shoulder/waist/
+ * hip arc chain) is not a corner. Outline and inner edge share the same
  * primitive topology, so the same index pairs them.
  */
 export function frameMiters(outerPrims, innerPrims) {
   if (!innerPrims || innerPrims.length !== outerPrims.length) return [];
   const n = outerPrims.length, out = [];
-  const dir = (p) => { const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
   for (let i = 0; i < n; i++) {
     const a = outerPrims[(i - 1 + n) % n], b = outerPrims[i];
-    if (a.type !== 'L' || b.type !== 'L') continue;
-    const [ax, ay] = dir(a), [bx, by] = dir(b);
-    if (Math.abs(ax * bx + ay * by) > 0.999) continue; // collinear: not a corner
-    out.push({ outer: { ...b.p0 }, inner: { ...innerPrims[i].p0 } });
+    const ta = _travelDir(a, true), tb = _travelDir(b, false);
+    if (ta.x * tb.x + ta.y * tb.y > 0.999) continue; // tangent: not a corner
+    out.push({ outer: _primStart(b), inner: _primStart(innerPrims[i]) });
   }
   return out;
 }
