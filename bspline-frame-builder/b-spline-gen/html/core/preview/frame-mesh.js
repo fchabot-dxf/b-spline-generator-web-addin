@@ -383,9 +383,9 @@ export function wallArrays(poly, zBot, zTop) {
 }
 
 /** The bar ring between corresponding `outer`/`inner` loops: top (at zTop) and bottom (at zBottom), outer
- *  wall and inner wall. `zTop`/`zBottom` are each a per-point function OR a fixed number (T82 item 3: the
- *  window's own subframe bottom follows the underside too, offset by a fixed depth, unlike the main frame's
- *  own flat bottom plane -- the SAME ring primitive serves both by accepting either shape for either side). */
+ *  wall and inner wall. `zTop`/`zBottom` are each a per-point function OR a fixed number, so the same
+ *  primitive serves a bottom that follows the surface (the top, which always tracks the underside) as well
+ *  as one that stays flat (both bars' own bottom, coplanar with the main frame's own frameBottomZ plane). */
 export function ringArrays(outer, inner, zBottom, zTop, maxStep = Infinity) {
   const n = outer.length;
   if (inner.length !== n) throw new Error(`ringArrays: loops do not correspond (${n} vs ${inner.length})`);
@@ -612,15 +612,15 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
         // T82 item 3 (Fred, phone shot from the BOTTOM: "inset window doesn't show a frame in 3D" -- the
         // design's own "hide the subframe" meant hidden FROM THE FRONT by the panel overhang, not absent).
         // The SAME ring primitive as the main frame's own bars, between the window's outer and inner
-        // (thickness-offset) rectangles, in the frame's own material (barMat). Z follows Fusion's own
-        // start/extent rule for the window (design note §5 step 3) ported to the preview's zBottom/zTop:
-        // the bar TOP is the panel's own underside (it is mounted to the panel's back, not a fixed floor),
-        // the bar BOTTOM is that same underside offset down by frame_height_offset (spec.frameBottomZ) --
-        // a FIXED depth regardless of terrain, unlike the main frame's own flat-at-frameBottomZ bottom.
+        // (thickness-offset) rectangles, in the frame's own material (barMat). Z, per Fred's own follow-up
+        // correction on the first bottom-view shot: the TOP conforms to the panel's own sculpted underside
+        // (the bar mounts flush against it, no gap) but the BOTTOM stays FLAT, coplanar with the main
+        // frame's own bottom (spec.frameBottomZ, the SAME plain constant the main frame's own ring call two
+        // lines above passes) -- not terrain-following. So the bar's thickness genuinely VARIES (thicker
+        // where the terrain dips deeper), which is correct and intended; only its top follows the terrain.
         const winPaired = samplePairedOutlines(rectToPrimitives(win.outer), rectToPrimitives(win.inner), cell);
-        const winBarBottom = (p) => bot(p) + spec.frameBottomZ;
         const winBars = _mesh(THREE,
-          ringArrays(toWorld(winPaired.outer, W, H), toWorld(winPaired.inner, W, H), winBarBottom, bot, cell), barMat);
+          ringArrays(toWorld(winPaired.outer, W, H), toWorld(winPaired.inner, W, H), spec.frameBottomZ, bot, cell), barMat);
         winBars.name = 'frame-window-bars';
         extra.push(winBars);
       }

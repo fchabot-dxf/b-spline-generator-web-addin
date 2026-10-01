@@ -125,7 +125,7 @@ describe('inset window (T82 item 3): subframe shown + exact hole clip', () => {
     insetWindow: { enabled: true, x1: 2, y1: 3, x2: 5, y2: 6 }, frameBottomZ: -1, ...extra,
   });
 
-  it('the subframe bars exist, in the frame\'s own material, between the underside and underside-minus-frame_height_offset', () => {
+  it('the subframe bars exist, in the frame\'s own material, between the underside and the main frame\'s own flat bottom', () => {
     const { mesh, grid } = panel(7, 9, 36, 46, 2, 0.5);
     const spec = frameSolidSpec(FRAME_DEFS, winRec(), BOARD);
     const extra = applyFrameToPanel(FakeTHREE, mesh, grid, spec);
@@ -136,8 +136,25 @@ describe('inset window (T82 item 3): subframe shown + exact hole clip', () => {
     const z = [];
     const p = winBars.geometry.attributes.position.array;
     for (let i = 2; i < p.length; i += 3) z.push(Math.round(p[i] * 1e6) / 1e6);
-    expect([...new Set(z)].sort()).toEqual([-0.5, 0.5]); // underside (0.5) and underside - frame_height_offset (0.5 - 1)
+    // On this FLAT test panel, top and bottom both land flat, so this alone can't distinguish "top follows
+    // the terrain" from "top is flat" -- the sculpted-panel test below proves that part. What this DOES
+    // prove: the bottom is frameBottomZ (-1) itself, the SAME value the main bars' own bottom uses, not
+    // frameBottomZ offset by the (here, coincidentally equal) underside height.
+    expect([...new Set(z)].sort()).toEqual([-1, 0.5]);
     expect(extra.map((m) => m.name)).toContain('frame-window-wall');
+  });
+
+  it('T82 item 3 follow-up (Fred, 2nd look at the bottom-view shot): the subframe\'s BOTTOM is flat at the main frame\'s own frameBottomZ; only its TOP follows the sculpted terrain, so its thickness varies', () => {
+    const { mesh, grid } = carvedPanel(7, 9, 71, 91, (x, y) => 2 + 0.3 * x, 1.5); // a sculpted top (varies with x) within the window's own footprint
+    const spec = frameSolidSpec(FRAME_DEFS, winRec(), BOARD);
+    const winBars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-window-bars');
+    const p = winBars.geometry.attributes.position.array;
+    const z = []; for (let i = 2; i < p.length; i += 3) z.push(Math.round(p[i] * 1e6) / 1e6);
+    const flatCount = z.filter((v) => v === -1).length; // spec.frameBottomZ
+    expect(flatCount).toBeGreaterThan(0); // the flat frame-bottom-z plane is actually present...
+    expect(flatCount).toBeLessThan(z.length); // ...but is not EVERY vertex: the top is not also flat
+    expect(new Set(z).size).toBeGreaterThan(5); // the top genuinely varies across the ring, not just 2 values
+    expect(Math.min(...z)).toBeCloseTo(-1, 6); // nothing sits below the main frame's own floor
   });
 
   it('off by default: no window bars/wall for a record with no insetWindow (byte-identical extras list)', () => {

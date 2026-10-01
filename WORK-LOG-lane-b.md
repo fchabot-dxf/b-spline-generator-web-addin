@@ -11860,3 +11860,64 @@ Fusion bridge.
 Committing `core/preview/frame-mesh.js` + `tests/frame-3d.test.js` + the new
 `tools/repro/inset_window_3d_shots.mjs` + the two doc updates + this entry, pushing lane-b, passing back
 with the full honest numbers (pytest 406/24/0, vitest 2931/155/0) stated in the pass note itself.
+
+## Lane B — Turn 212 — T82 item 3 follow-up: subframe bottom must be FLAT, not terrain-following — DONE
+
+Fred looked at the bottom-view shot from Turn 210 and caught a real one: the subframe bar's BOTTOM was
+following the terrain too (`winBarBottom = (p) => bot(p) + spec.frameBottomZ`), so the whole bar floated
+with the terrain even though its own thickness stayed constant -- wrong. Wanted: TOP keeps conforming to
+the panel's sculpted underside (correct, keep it), BOTTOM stays FLAT, coplanar with the main frame's own
+bottom (`spec.frameBottomZ`, the SAME plain constant the main frame's own `ringArrays` call already
+passes).
+
+**The fix is exactly as scoped**: `core/preview/frame-mesh.js`'s `frame-window-bars` block now passes
+`spec.frameBottomZ` straight into `ringArrays` (the same literal the main bars' own call two lines above
+uses), not a function of `p`. Updated the stale code comment that asserted the old (wrong) Z relationship.
+Since no caller now passes a FUNCTION `zBottom` into `ringArrays` in production, I considered reverting
+last turn's generalization (`ringArrays` accepting zBottom as either a function or a scalar) -- kept it
+instead: it's a cheap, already-tested, backward-compatible capability (not dead code tied to a removed
+feature), and discarding it would also mean deleting a legitimate regression test for no real benefit.
+Updated its own JSDoc so it no longer cites the (now false) window-subframe example as the live case.
+
+**Tests updated/added** (`tests/frame-3d.test.js`):
+- The existing "subframe bars exist..." test's z-range assertion changed from `[-0.5, 0.5]` (the old,
+  wrong terrain-offset value on the flat test fixture) to `[-1, 0.5]` -- `frameBottomZ` itself, matching
+  the main bars' own bottom. Noted in the test's own comment that a FLAT fixture can't distinguish "top
+  follows terrain" from "top is flat", which is what the new test below is for.
+- New test, using a SCULPTED panel (`carvedPanel(..., (x,y) => 2 + 0.3*x, 1.5)`, height varies with x
+  across the window's own footprint) run through the REAL `applyFrameToPanel` pipeline: confirms the
+  flat `frameBottomZ` value is actually present among the bar's own vertices, that NOT every vertex sits
+  there (the top is not also flat), that the full set of z-values has more than a couple of distinct
+  values (the top genuinely varies), and that nothing sits below the main frame's own floor.
+- **Mutation-tested**: reintroduced the old `winBarBottom = (p) => bot(p) + spec.frameBottomZ` in a
+  scratch copy, re-ran -- exactly these 2 tests (the updated one and the new one) go red, the other 27
+  stay green; restored the fix, confirmed `diff` byte-identical to the pre-mutation-test file.
+
+**A REAL process-hygiene finding this turn, worth flagging loudly**: my first attempt at the before/after
+screenshots for this fix came back `hasWindowBars:false` -- looked like a genuine regression. Root cause,
+found by fetching the served file directly with `curl` and comparing line counts against the real one on
+disk (654 vs. a served 567, the file's OWN line count from before T82 item 3 ever existed): **12 leftover
+`python -m http.server` processes** from earlier in this long (pre-compaction) session, backgrounded with
+`(cmd &)` subshells rather than the Bash tool's own `run_in_background`, were still running across 5
+different ports, orphaned from any tracked process tree -- `proc_health.py watch` reported "0 flagged"
+throughout, a real blind spot for this class of leak. TWO of them had, by sheer bad luck, both bound port
+8794 (one a genuine zombie from much earlier serving the MAIN checkout's pre-T82 tree, one mine); Windows
+let both LISTEN, and the zombie happened to be the one actually answering. Killed all 12 via
+`Get-CimInstance Win32_Process`/`Stop-Process` (PowerShell, since `pkill` isn't available in this Git Bash
+environment), confirmed 0 remaining, restarted a single server via the Bash tool's own `run_in_background`
+this time (not a bare subshell), verified the served file's line count and a grep for `winBars` matched
+disk before trusting the screenshot again. **Lesson applied going forward**: verify a locally-served file
+against disk (line count or a distinguishing grep) before trusting a headless-Chrome result, and prefer
+`run_in_background` over `(cmd &)` for anything meant to outlive a single command.
+
+**Verification**: `npx vitest run` (repo root): **2932 passed, 0 failed**, 155 files (up from 2931 -- 1 new
+test; the z-range assertion of an EXISTING test changed, not a new one, for that part).
+`python -m pytest -q`: 406 passed, 24 skipped, 0 failed, unchanged (no Python touched). A/B
+(`tools/repro/ab/ab3d.mjs`, all 10 templates, against a scratch worktree at this turn's own starting
+commit f509b8a): byte-identical. Real app screenshots (`tools/repro/inset_window_3d_shots.mjs`, re-run
+against a VERIFIED-correct server this time): `hasWindowBars:true`, `hasWindowWall:true`, zero console
+errors; front view still shows the subframe correctly hidden, below view still shows it correctly, now
+with the flat-bottom relationship in place (`shots/seatB/t82i3_flatfix_{front,below}.png`).
+
+Committing `core/preview/frame-mesh.js` + `tests/frame-3d.test.js` + this entry, pushing lane-b, passing
+back with the full honest numbers (pytest 406/24/0, vitest 2932/155/0) stated in the pass note itself.
