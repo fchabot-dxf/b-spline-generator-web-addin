@@ -199,8 +199,11 @@ export const PARAM_ORDER = {
   // earlier key keeps its index), and after every radius they read (the radii stay shared L/R).
   // T5 HOURGLASS DIPPED TOP: the top dip's half width and depth come LAST again (every earlier key keeps its
   // index); the width before the depth, whose range reads it.
+  // T10 ARCHED HOURGLASS: `archRise` resolved LAST of all (every earlier key, dip included, keeps its index);
+  // its own range reads the already-resolved shoulder position (hourglassConstruction's own `shoulderY`), the
+  // SAME "eats into the horn, never adds height" cap this template's own preview was built and approved against.
   hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset',
-    'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth'],
+    'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archRise'],
   bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
   // T6 TAB TOP (frame-only preset): the tab's half width, then its height (both frame-only keys, FRAME_ONLY_PARAM_KEYS).
   tabTop: ['tabWidth', 'tabHeight'],
@@ -261,6 +264,11 @@ export const DERIVED_PARAM_DEFAULTS = {
     // `topDip`). Frame-only params (FRAME_ONLY_PARAM_KEYS).
     topDipWidth: () => TOP_DIP_DEFAULT_WIDTH,
     topDipDepth: () => 0,
+    // T10 ARCHED HOURGLASS (Template 1 with the flat top replaced by one arc spanning the full width, its apex
+    // on the top edge, its own two ends pulled DOWN into the board -- eating into the existing top horns, never
+    // adding height above them): the rise, a fraction of hh. Default 0 = NO arch: the flat Template 1 top, bit
+    // for bit (hourglassConstruction `arch`). A frame-only param (FRAME_ONLY_PARAM_KEYS).
+    archRise: () => 0,
   },
   bottle: { bodyRadius: (v) => 1 - v.skeletonX },
   // T6 TAB TOP: every param has a plain default (no seeded jitter: a frame always sets both from its model).
@@ -298,7 +306,9 @@ export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLef
   // with T5's identically-named keys, so only its OWN new keys are added here):
   'topDipPosition', 'waveHeight', 'waveReach', 'waveCornerRadius', 'waveRadius',
   // T9 I SHAPE (frame-only preset):
-  'stemWidth', 'flangeHeight']);
+  'stemWidth', 'flangeHeight',
+  // T10 ARCHED HOURGLASS:
+  'archRise']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -382,6 +392,16 @@ function _hourglassRange(key, region, stroke, v) {
   if (key === 'topInset') return _range(0, Infinity, -Infinity, v.waistReach - EPS_FRAC);
   if (key === 'waistCenterYLeft' || key === 'waistReachLeft') return _hourglassLeftRange(key, region, stroke, v);
   if (key === 'topDipWidth' || key === 'topDipDepth') return _topDipRange(key, region, stroke, v);
+  // T10 ARCHED HOURGLASS: the rise never reaches the shoulder arc (the arch sits ABOVE it, eating into the horn's
+  // own length only -- the advisor's own rule, confirmed by Fred's "flat is fine on extreme landscape" call):
+  // the same `hornLen` / `HORN_MIN_OF_HALF_HEIGHT` margin `_topDipRange`'s own ceiling already uses, read at
+  // whichever side (T4's own left pinch, if ever combined) has the shorter horn.
+  if (key === 'archRise') {
+    const horn = HORN_MIN_OF_HALF_HEIGHT * hh;
+    const g = hourglassConstruction(region, { ...v, archRise: undefined });
+    const hornLen = Math.min(hh + g.shoulderY, g.left ? hh + g.left.shoulderY : Infinity);
+    return _range(0, Infinity, -Infinity, Math.max(hornLen - horn, horn) / hh);
+  }
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // F12: each corner has its OWN vertical room (y-down: a lower waist leaves
     // more above it): its arc centre may not rise above the top (sink below
@@ -626,6 +646,9 @@ export function paramsFromShapeModel(preset, model, region) {
   // dip's half width (centre line -> the stub's end) and its depth below the top edge.
   if (f.topDipHalfWidth != null) out.topDipWidth = f.topDipHalfWidth / hw;
   if (f.topDipDepth != null) out.topDipDepth = f.topDipDepth / hh;
+  // T10 ARCHED HOURGLASS: an arched-top model (frame_shape_fit.py `hourglass_arched_top`) also carries the
+  // arch's own rise (above the top corners, eating into the horn -- hourglassConstruction's own `arch.rise`).
+  if (f.archRise != null) out.archRise = f.archRise / hw;
   return out;
 }
 
@@ -825,11 +848,26 @@ export function hourglassConstruction(region, resolved) {
     // y down, the top edge at -hh: the shoulder centres (+/-a, -hh + r), the dip centre (0, -hh + D - r)
     topDip = { halfWidth: a, depth: dipDepth, radius: r, position: dipPosition, shoulderCy: -hh + r, dipCy: -hh + dipDepth - r };
   }
+  // T10 ARCHED HOURGLASS: the top arc, only when a rise is set (> 0); absent (Templates 1-9, the Shape Lattice):
+  // no `arch`, the flat top edge. Its chord spans the FULL top horn-to-horn width (topX, T3's topInset already
+  // applied) and sits `rise` BELOW the top edge -- eating into the horn's own length, never adding height above
+  // it (the advisor's own correction, confirmed against Fred's sketch). The radius is the exact one circle
+  // through both chord ends tangent to the top edge (sagitta over half-chord: R = (a^2 + rise^2) / (2 rise) --
+  // the same construction T5's own dip arcs use, here a single arc instead of three chained ones, so no stub,
+  // no separate shoulder arc, and the Fusion phase ties it to the top line with a Tangent, not an expression).
+  const topX = hw - topInset; // T3: the top horns' x (hw for Template 1)
+  const archRise = hh * (resolved.archRise ?? D.archRise(resolved));
+  let arch = null;
+  if (archRise > 0) {
+    const r = (topX * topX + archRise * archRise) / (2 * archRise);
+    arch = { rise: archRise, radius: r, halfWidth: topX };
+  }
   return {
     ...(left ? { left } : {}),
     ...(topDip ? { topDip } : {}),
+    ...(arch ? { arch } : {}),
     hw, hh, depth, radiusWaist, waistCenterY, waistCx,
-    topInset, topX: hw - topInset, // T3: the top horns' x (hw for Template 1)
+    topInset, topX, // T3: the top horns' x (hw for Template 1)
     waistX: hw - depth, // the pinch's innermost x
     cornerRadiusTop: top.r, cornerRadiusBottom: bot.r, cornerRadius: top.r,
     shoulderCx: top.cx, shoulderY: top.y, hipCx: bot.cx, hipY: bot.y, notchHalfSpan: top.dy,
@@ -1051,7 +1089,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // while above the declared floor; below it the centres separate and the
   // arcs stay externally tangent instead of going negative (Fred's loop).
   const { hw, hh, cornerRadiusTop, cornerRadiusBottom, radiusWaist, shoulderCx, shoulderY, hipCx, hipY,
-    ux, uy, uxBottom, uyBottom, waistMajor, topInset, left, topDip } = hourglassConstruction(region, resolvedAll);
+    ux, uy, uxBottom, uyBottom, waistMajor, topInset, left, topDip, arch } = hourglassConstruction(region, resolvedAll);
   // T4 OFFSET HOURGLASS: the left side from its own construction (the right one's when no left pinch is set).
   const L = left || { shoulderCx, shoulderY, hipCx, hipY, ux, uy, uxBottom, uyBottom, waistMajor };
 
@@ -1067,8 +1105,11 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const P = (x, y) => ({ x: cx0 + x, y: cy0 + y }); // local (right-positive, Y-down) -> world
   const M = (x, y) => ({ x: cx0 - x, y: cy0 + y }); // mirrored (left side)
 
+  // T10 ARCHED HOURGLASS: the two chord ends sit `rise` BELOW the top edge (not stroke-adjusted, same as the
+  // dip's own chord position above -- only its RADIUS gets the stroke treatment, right where the arc is built).
+  const topY = -hhDrawn + (arch ? arch.rise : 0);
   // Right side, top -> bottom.
-  const rTop = P(topDrawnX, -hhDrawn);
+  const rTop = P(topDrawnX, topY);
   const rShoulderHorn = P(topDrawnX, shoulderY);
   // Tangent junctions lie on the centre line, the drawn radius out from each centre.
   const rShoulderWaistJct = P(shoulderCx + topDrawn * ux, shoulderY + topDrawn * uy);
@@ -1081,7 +1122,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   const lWaistHipJct = M(L.hipCx + bottomDrawn * L.uxBottom, L.hipY - bottomDrawn * L.uyBottom);
   const lShoulderWaistJct = M(L.shoulderCx + topDrawn * L.ux, L.shoulderY + topDrawn * L.uy);
   const lShoulderHorn = M(topDrawnX, L.shoulderY);
-  const lTop = M(topDrawnX, -hhDrawn);
+  const lTop = M(topDrawnX, topY);
 
   const keypoints = [
     rTop, rShoulderHorn, rShoulderWaistJct, rWaistHipJct, rHipHorn, rBottom,
@@ -1130,6 +1171,15 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
       _curveSegment(rDipJct, rDipStart, rsDrawn, true, false, true), // right top shoulder, convex
       STRAIGHT_SEGMENT); // right stub: rDipStart -> rTop
     mirror = fresh.map((_, i) => topDipMirrorIndex(i));
+  } else if (arch) {
+    // T10 ARCHED HOURGLASS: the flat top edge (segment 11) becomes ONE arc, lTop -> rTop directly (no stub, no
+    // separate shoulder arc: unlike T5's dip, this one piece's own two ends ARE the chord, already shifted down
+    // by `rise` above). Its radius shrinks by the stroke like any other convex arc; the stroke does not re-seat
+    // the chord (same simplification T5's own dip radius takes).
+    const archRadiusDrawn = arch.radius - strokeHalfWidth;
+    fresh[11] = _curveSegment(lTop, rTop, archRadiusDrawn, true, false, true); // the arch, convex, bulges UP
+    // No `mirror` override needed: segment 11 (self-mirrored, same as T1's own flat top) stays
+    // `mirrorSegmentIndex(11, 12) === 11`, the plain formula's own fixed point.
   }
   const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
 

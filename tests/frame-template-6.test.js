@@ -58,8 +58,10 @@ describe('Template 6: listing and declaration', () => {
   it('is listed as "6. Tab Top", the frame-only tabTop preset, no new parameter, 8 bars', () => {
     expect(T6.name).toBe('Template 6 - Tab Top');
     expect(frameLabel(T6)).toBe('6. Tab Top');
-    expect(FRAME_DEFS.templates.map(frameLabel)).toEqual(['1. Hourglass', '2. Narrow Neck', '3. Tapered Hourglass',
-      '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top', '8. Dipped Top + Left-Only Wave', '9. I Shape']);
+    // string-sorted labels: "10." lexicographically precedes "2." (both start with the digit comparison "1"<"2").
+    expect(FRAME_DEFS.templates.map(frameLabel)).toEqual(['1. Hourglass', '10. Arched Hourglass', '2. Narrow Neck',
+      '3. Tapered Hourglass', '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top',
+      '8. Dipped Top + Left-Only Wave', '9. I Shape']);
     expect(T6.silhouettePreset).toBe('tabTop');
     expect(PRESETS.tabTop.frameOnly).toBe(true);
     expect(T6.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset', 'frame_thickness']);
@@ -394,7 +396,7 @@ describe('the Shape Lattice and Templates 1-5 never get the tab', () => {
     expect(FRAME_ONLY_PARAM_KEYS.slice(5, 7)).toEqual(TAB);
     expect(PARAM_ORDER.tabTop).toEqual(TAB);
     expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
-      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth']);
+      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archRise']);
     expect(PARAM_ORDER.bottle).toEqual(['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius']);
     for (const k of TAB) {
       expect(SHAPE_PARAM_KEYS.hourglass).not.toContain(k);
