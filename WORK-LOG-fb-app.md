@@ -4395,7 +4395,6 @@ live-preview attempt is now fully silent (the toast's own preview gate is pre-ex
 it would still have popped a blocking dialog on every failed auto-preview, arguably worse. `pytest`:
 b-spline-gen 91 passed (+2), frame-builder 302 unchanged, repo root 487 passed (+2), 10 skipped throughout.
 
-<<<<<<< HEAD
 ## 2026-09-30/10-01: H23 items 10, 6, 11 — in progress, blocked on the bridge (worker)
 
 Redeployed the add-in from a clean scratch worktree at origin/main (53e3463), repointed the deploy's handshake
@@ -4444,7 +4443,6 @@ of waiting, even though Fusion is otherwise healthy and responsive. I have no ch
 without the bridge itself (fusion_execute needs it), and starting an add-in via Tools > Add-Ins > Run is a UI
 click I wasn't authorized for (the crash-recovery grant covers closing a crash window and relaunching the
 exe, not add-in management) — flagging rather than assuming. Passed back rather than continuing to guess.
-=======
 ## 2026-09-30: F28 item 2 — Template 9, I Shape (seat C, epoch 4)
 
 - Dispatched after Fred approved T8 (merged to main, `8c94649`). Advisor's turn: "Template 9, the I shape...
@@ -4545,4 +4543,3 @@ exe, not add-in management) — flagging rather than assuming. Passed back rathe
   start after" -- update: a new amendment (turn 58) landed during this round assigning Template 10 (Arched
   Hourglass) next, with a changed process this time (miter diagram at 7x9 + 12x6 shown to Fred BEFORE the build,
   not after).
->>>>>>> 935d2b7

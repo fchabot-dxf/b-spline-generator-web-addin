@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "0d3747b4a80cc9ef731df65af12b8b5fd366e67759482d1a86be5eb078c26c5c",
+  "sourceHash": "9a416e096ae5b91dcb55b998ca07cd801cb770d3c0d6e547a2217a4f4a0ae5e1",
   "templates": [
     {
       "features": [
@@ -7265,7 +7265,7 @@ export default {
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.272158",
+                  "Expression": "((widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.167143) * ((widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.167143) / (2 * ((heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.033056)) + ((heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.033056) / 2",
                   "Name": "seed_rad_top_shoulder_L",
                   "Target": "arc_top_shoulder_L",
                   "Type": "Radius"
@@ -7291,7 +7291,7 @@ export default {
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.272158",
+                  "Expression": "((widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.167143) * ((widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.167143) / (2 * ((heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.033056)) + ((heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.033056) / 2",
                   "Name": "seed_rad_top_dip",
                   "Target": "arc_top_dip",
                   "Type": "Radius"
@@ -7317,7 +7317,7 @@ export default {
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.272158",
+                  "Expression": "((widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.167143) * ((widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.167143) / (2 * ((heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.033056)) + ((heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.033056) / 2",
                   "Name": "seed_rad_top_shoulder_R",
                   "Target": "arc_top_shoulder_R",
                   "Type": "Radius"
