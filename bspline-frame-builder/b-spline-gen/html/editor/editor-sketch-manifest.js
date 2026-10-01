@@ -59,7 +59,7 @@ import {
   primitivesBBox, insetGeneratedPresetPathDToPrimitives, sizedBoardRegion, latticeBoundaryGuide, GUIDE_ROLE,
 } from './editor-lattice-boundary.js';
 import { generateContourSilhouette, primitivesToPathD, PRESETS, FRAME_ONLY_PARAM_KEYS } from './editor-shape-lattice-generator.js';
-import { contourSilhouette } from './contour-from-frame.js';
+import { contourSilhouette, contourFromFrameOf, frameWindowHoleLoop } from './contour-from-frame.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
 /** §6: below this many rails+ties+nodes, every piece gets its own H/V +
@@ -1023,12 +1023,18 @@ function resolveShapeBoundaryExtent(pattern, region, frame) {
   // piece exists at all — caught live by the T72 AMEND 5 param sweep.
   const insetPrimitives = insetGeneratedPresetPathDToPrimitives(primitivesToPathD(primitives), halfInset);
   const scaled = insetPrimitives.map((p) => scalePrimitiveToLattice(p, spacing));
-  const bbox = primitivesBBox(scaled);
+  // T82 item 2: the SAME fromFrame-gated hole exclusion _resolveBoundaryPrimitives applies on the app side
+  // (editor-lattice-pattern.js) -- "two tools sharing one engine" means the FUSION BUILD must skip the
+  // window exactly where the app's own preview does, not just visually. Appended as a second closed loop in
+  // this SAME lattice-unit primitive list; insideSpans' own even-odd scan treats it as a hole for free.
+  const hole = contourFromFrameOf(pattern).on ? frameWindowHoleLoop(frame) : null;
+  const withHole = hole ? [...scaled, ...hole.map((p) => scalePrimitiveToLattice(p, spacing))] : scaled;
+  const bbox = primitivesBBox(withHole);
   if (!bbox) return { iMin: 0, jMin: 0, iMax: -1, jMax: -1, mode: 'boundary', primitives: [] };
   return {
     iMin: Math.floor(bbox.xMin), jMin: Math.floor(bbox.yMin),
     iMax: Math.ceil(bbox.xMax), jMax: Math.ceil(bbox.yMax),
-    mode: 'boundary', primitives: scaled,
+    mode: 'boundary', primitives: withHole,
   };
 }
 
