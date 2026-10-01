@@ -744,3 +744,93 @@ This is the FIRST live-Fusion verification of Template 10's own construction** (
   violations). `npx vitest run`: 2867 passed. `pytest`, run per-directory per the project's convention:
   frame-builder 351 passed/19 skipped, b-spline-gen 91, CAM-builder 7, template-maker 86 — all clean.
   `gen_frame_defs.py --check`: fresh (no Template 10 change to commit).
+
+## Item 14 — Template 10 arch sweep direction: investigated at length, NOT fixed, reporting capacity
+
+**Priority fix attempt, unsuccessful this session. Reverted all live-Fusion experiments back to the clean
+committed state before passing back; no code changed.** Four distinct, independently-motivated fixes were
+tried and DISPROVEN live (each cost its own add-in reload + rebuild cycle), plus one isolated-Fusion-API unit
+test that produced a genuinely new, important finding. Full detail below so a future attempt doesn't re-walk
+the same ground.
+
+**Fix attempt 1 — exact seed (chord height via the sagitta formula, `0.35*(widthIn/2-boundingboxoffset)` for
+archRise, replacing the fixed-fraction seed).** Reasoning: the same class of fix that solved Template 5's own
+wrong-side dip in item 6 this session. MEASURED: made no difference at all — byte-identical wrong output to
+the unmodified file. Root cause of THAT non-result turned out to be a separate, real discovery (see below), not
+a refutation of the hypothesis.
+
+**Discovery mid-investigation: `TemplateLoader`'s own per-template instance caches phase modules
+(`template_loader.py:73-74`, `_phase_cache`/`_sketch_cache`) for the LIFETIME of the Fusion session once first
+loaded, despite `_exec_module`'s own docstring claiming "we deliberately do not register in sys.modules...
+each build re-execs the source" (true only for the raw `_exec_module` call itself — the CALLER, `load_phase_
+blocks`/`load_all_sketches`, checks its own cache dict FIRST and skips re-exec entirely if already populated).
+Since `template_data.py`'s own `_loader` is a module-level singleton created once at discovery time (confirmed:
+no `template_10`-named entries anywhere in `sys.modules`, meaning the per-template registry itself is held by a
+plain Python reference outside `sys.modules`, by the same "avoid sys.modules" design convention used
+throughout this architecture), every fix attempt made to a deployed phase file after the FIRST build of that
+template in a Fusion session was SILENTLY IGNORED until the add-in itself was stopped/restarted
+(`sys.modules['__main__...'].stop(None)` then `.run(None)`, the already-established hot-reload pattern) to
+force the whole discovery process to run again. This explains fix attempt 1's own null result and is a
+reusable finding for any future live Fusion debugging of phase-file edits: **reload the add-in between every
+single phase-file edit and test, not just once at the start of a session.**
+
+**Fix attempt 2 — explicit `Radius` constraint via the sagitta formula, in place of `Tangent` (removes the
+Tangent-to-line ambiguity entirely by pinning the radius value directly), after confirming the reload fixed
+attempt 1's own testing.** MEASURED (12x6, after a proper reload): radius changed (52.8in -> 22.1in, confirming
+the edit now DID take effect) but the sweep was STILL the wrong, long-way-around branch (280 deg). Traced the
+remaining error to an incorrect `_HW_TOP` assumption (`widthIn * 0.464286`, copied from the ORIGINAL seed's own
+value) — MEASURED directly (querying `horn_TR:S.x` from the live sketch): the true value is NOT a simple
+fraction of `widthIn` alone.
+
+**Fix attempt 3 — matched `horn_TR`/`horn_TL`'s own seed X to the SAME `_HW_TOP` expression used for
+`top_edge` (closing a real, separate seed inconsistency: the original file seeded `top_edge`'s own chord at
+`widthIn * 0.464286` but `horn_TR`/`TL`'s own seed at `widthIn/2` — two different approximations of the same
+point, left to be reconciled by the Coincident weld).** Reverted to `Tangent` (simpler, self-correcting for
+whatever `hw` the shoulder-chain produces, avoiding needing `hw` in closed form at all). MEASURED (12x6, fresh
+reload): still wrong (297 deg). Root cause of THIS non-result: an isolated-Fusion-API test (below) later showed
+`Tangent`'s own branch selection is not actually the issue — the TRUE differentiator is something about the
+full sketch's pre-existing content, not this specific seed mismatch.
+
+**Fix attempt 4 — constraint ORDER: moved `Symmetry`+`Tangent` to apply to `top_edge` IMMEDIATELY after its own
+creation, before ANY `Coincident` weld to the horns (hypothesis: the welds drag the arc's endpoints toward the
+horns' own, less-precise seed BEFORE Symmetry/Tangent get to act on a clean, precise arc).** MEASURED (12x6,
+fresh reload): still wrong (297.6 deg, essentially unchanged from attempt 3). Ruled out constraint order as the
+cause.
+
+**The key new finding — an isolated Fusion-API unit test, run directly (not through the declarative
+BuildSequence engine at all): a brand-new sketch (first on the root component, then independently re-run
+hosted inside a fresh sub-component to rule out a component-local coordinate-frame difference) containing
+ONLY an `Arc3Point`-seeded arc plus ONE construction line, given the SAME seed numbers (measured `hw`, the
+correct `rise`, the correct `topLine_y`) and the SAME two constraints (`addSymmetry` then `addTangent`) in the
+SAME order as the real pipeline, converges to the CORRECT small arc (45.9 deg sweep) EVERY time, including with
+an intentionally imprecise seed (the constraint solve still corrected it). This rules out a bug in the
+reasoning, the formula, or in Fusion's `addTangent`/`addSymmetry` API themselves — the SAME API calls, with
+equivalent numbers, behave correctly stripped down and incorrectly inside the full pipeline. The real sketch
+already holds substantial pre-existing content by the time `p02_03_loop.py` runs (6 fully-resolved
+"skeleton pin" construction lines from `p02_02_anatomy.py`, plus the Phase-1 bounding-box/offset projections
+from `p01_02`/`p02_01`) that the isolated test has no equivalent of. The most likely explanation: Fusion's 2D
+sketch solver treats a whole sketch as ONE simultaneous nonlinear system, and the presence of this additional,
+otherwise-unrelated geometry shifts where Newton's-method iteration lands when `Tangent` (or `Radius`) is
+added, tipping it into the reflex-arc basin of attraction for this specific topology (a genuine arc/line
+tangent bifurcation) even though the LOCAL seed near `top_edge` itself is fine. This was NOT it directly
+reproduced by adding dummy unrelated content to the isolated test (that specific confirming experiment was not
+run, for time) — stated here as the leading hypothesis, not a proven mechanism.
+
+**A concrete next step, not yet implemented:** solve `top_edge`'s own arc in an ISOLATED, temporary sketch at
+BUILD TIME (created and deleted within the phase's own Python execution, using the actual live `widthIn`/
+`heightIn`/`boundingboxoffset` VALUES, not symbolic expressions), read back the resolved center/radius (now
+proven reliable in isolation), and transfer those as a numeric `Radius` dimension (or directly-placed points)
+into the MAIN sketch instead of relying on `Tangent`/`Radius`-by-expression there. This stays genuinely
+parametric (the temporary solve re-runs every build, using whatever the current board/offset values are) while
+sidestepping the full sketch's own branch-selection problem entirely. This requires restructuring
+`p02_03_loop.py`'s own `get_block()` into something that does live Fusion API work rather than returning a
+pure declarative dict (a bigger change than any fix attempted above, needs its own design/review) — flagged as
+the recommended path, not implemented.
+
+**Capacity note, as the worker skill asks to report plainly:** this ballooned well past a "fix the sweep
+direction" scope into real investigative R&D (5 live-Fusion round trips, each costing its own add-in-reload +
+rebuild cycle, plus the caching-gotcha detour). Reverted every experiment back to the clean committed state
+(`c351d6e`) before passing back — the deployed add-in matches origin/main again, confirmed via `build-info.json`
+and a direct `diff` against the tracked file. No regression risk from this investigation, but also no fix
+landed. Recommending either a fresh session with more room for the isolated-pre-solve redesign, or the
+advisor's own call on priority given the depth now understood.

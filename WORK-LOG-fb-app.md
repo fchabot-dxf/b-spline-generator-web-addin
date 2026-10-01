@@ -4887,3 +4887,40 @@ fresh.
 
 Item 13 now complete (both templates). Redeployed add-in unchanged since 7661a36 (no add-in code touched this
 item, only tests/docs/goldens) -- "leave latest main deployed" is already satisfied once this commits.
+
+## 2026-10-01: H23 item 14 — Template 10 arch sweep fix: investigated hard, not landed (worker, seat A)
+
+Full detail in LIVE-RESULTS-ranchy.md. Priority dispatch; no working fix this session, reverted all experiments
+back to the clean committed state before passing back (deployed add-in confirmed matching origin/main via
+build-info.json + a direct diff). This is an honest capacity report, not a quiet stall.
+
+Tried 4 distinct fixes to p02_03_loop.py's own top_edge arc, each live-tested at 12x6 via the Fusion bridge:
+(1) an exact sagitta-formula seed (same class of fix as item 6's T5 dip) -- made zero measured difference,
+traced to a real discovery: TemplateLoader caches phase modules per Fusion session once first loaded
+(template_loader.py:73-74), so edits to a deployed phase file are silently ignored until the add-in itself is
+stopped/restarted -- a reusable gotcha for any future live debugging of phase-file edits. (2) An explicit
+Radius constraint (sagitta formula) in place of Tangent, after fixing the reload issue -- still wrong, traced
+to an incorrect hw assumption (the seed's own widthIn*0.464286 isn't the real horn_TR:S.x). (3) Matched
+horn_TR/TL's own seed X to top_edge's (closing a real seed inconsistency) + reverted to Tangent -- still wrong.
+(4) Reordered Symmetry+Tangent to apply immediately after top_edge's own creation, before any Coincident weld
+to the horns -- still wrong, ruling out constraint order.
+
+The one genuinely useful finding: an isolated Fusion-API unit test (a bare sketch with just the arc + one
+construction line, same seed numbers, same 2 constraints in the same order, tried on both the root component
+and inside a sub-component) converges to the CORRECT small arc every time -- even with an imprecise seed. This
+rules out the math, the formula, and Fusion's own addTangent/addSymmetry APIs as the bug. The real sketch
+already holds a lot of pre-existing, fully-resolved content (6 skeleton pin construction lines from
+p02_02_anatomy.py, plus BB/offset projections) that the isolated test doesn't have -- leading hypothesis is
+that Fusion's single global nonlinear sketch solve lands in a different basin of attraction once that other
+content is present, tipping this specific arc/line tangent bifurcation the wrong way. Not confirmed by directly
+reproducing it (didn't have time to add dummy content to the isolated test and watch it flip).
+
+Recommended next step, not implemented: solve top_edge's own arc in an isolated temporary sketch at BUILD TIME
+(live widthIn/heightIn/boundingboxoffset values, not symbolic expressions), read back the now-reliable
+resolved radius, and feed it into the main sketch as a numeric Radius dimension instead of relying on
+Tangent/Radius-by-expression there -- stays parametric (re-solved every build) while sidestepping the full
+sketch's own branch-selection problem. This needs get_block() restructured to do live Fusion work rather than
+return a pure declarative dict -- a real design change, not a quick fix.
+
+Capacity: 5 live-Fusion round trips this item, each its own add-in-reload + rebuild cycle. Flagging for either
+a fresh session with more room, or the advisor's own call on priority now that the depth is understood.
