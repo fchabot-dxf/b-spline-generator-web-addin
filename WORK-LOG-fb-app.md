@@ -5080,3 +5080,60 @@ Full trail, so a future attempt doesn't re-walk the same ground:
   new call site) and were regression-tested live against templates 1/5/9 above rather than via the unit suites
   (no live-Fusion access from the test runner); recommending the next session run the full `pytest`/`vitest`
   suites too before relying on this finding, since they weren't run live-Fusion-side this turn.
+
+## 2026-10-01: H23 item 15 (3rd attempt) — T10 arch FIXED live; shoulder/hip "ears" confirmed separate, still open (worker, seat A, epoch 6)
+
+**The arch (`top_edge`) is fixed and verified at 7x9, 6x9, 12x6 (sweep 77.2 / 88.8 / 31.0 deg). The
+shoulder/waist/hip "ears" bug from item 15's own earlier attempt is confirmed independent and still open at
+all three sizes. `FRAME_HIDDEN` stays `True` — T10 is not clean enough to un-hide yet.** Full narrative,
+every mechanism tried (including the 4 that didn't work and why), and the recommendation for the next session
+is in `LIVE-RESULTS-ranchy.md`'s own "Item 15 (3rd attempt)" section — not duplicated here in full, only the
+decisions and verification.
+
+- **The real finding**: `Coincident(point, curve)` in Fusion only constrains the point to the curve's
+  supporting CIRCLE, not its trimmed sweep — there is no constraint in this codebase's vocabulary that
+  controls which of the two arcs on a circle is "the arc". Confirmed by diffing Fred's own hand-rebuilt T10
+  sketch (`C:/Users/danse/.bspline-status/shots/fred/t10_fred_reconstructed_constraints_2026-10-01.json`)
+  against a fresh build, and by a live apex-point-Coincident experiment this session that moved the measured
+  sweep by less than 3 deg (269.7 -> 267.0).
+- **The fix**: seed `top_edge` at the exact closed-form circle through `(+-hw, cy)` tangent to the safe zone's
+  own top line from below (`centre_y = (hw^2+cy^2-Ly^2)/(2*(cy-Ly))`), then `Fix` (new primitive) `top_edge:S`
+  and `:E` directly right after creation. Nothing downstream ever touches `top_edge` again, so its one
+  remaining shape DOF (the bulge) can't drift.
+- **Two new shared `fb_engine` primitives** (both declared, not hand-rolled, since neither existed and both
+  are genuinely reusable): a `'Point'` geometry type (`geometry.py`/`parametric_engine.py`, bare
+  `sketch.sketchPoints.add`) and a `'Fix'` constraint type (`constraints.py`/`parametric_engine.py`,
+  `SketchPoint.isFixed = True` — Fusion's `GeometricConstraints` has no `addFix`, confirmed live when the
+  first attempt at that name threw `AttributeError`). MEASURED and worth flagging for reuse: `Fix` only works
+  applied DIRECTLY to the entity's own point — an anchor-point-plus-`Coincident` layer (Fix the anchor, tie the
+  real point to it) still let the solver drag the "fixed" anchor along, since `Coincident` is symmetric.
+- **Confirmed independent, board-size-dependent**: reproduces on `p02_10_welds.py` fully unmodified (the
+  committed baseline). At 7x9/6x9, `arc_shoulder_R/L` are the reflex ones (356-358 deg); at 12x6, shoulder is
+  fine (35.2 deg) but `arc_waist_R/L` are reflex instead (198-209 deg) — rules out a single-size seed fix,
+  points at the 3-arc mutually-tangent chain's own branch selection, same failure class as the arch but with 2
+  fixed anchors (board corner + now the fixed arch) instead of 1. A secondary, MEASURED side effect of the
+  arch's own fix: with both chain ends now rigid, the hip tip welds (`p02_05_horns.py`) throw
+  `VCS_SKETCH_SOLVING_FAILED` (not recovered by `AllowNudge`, tried) — doesn't affect the arch's own
+  correctness, but is almost certainly entangled with the shoulder/hip fix and should be resolved together,
+  not as two separate bugs.
+- **Four things tried and reverted this session** (kept only in LIVE-RESULTS-ranchy.md's longer writeup, not
+  landed in any committed file): `Fix` on `top_edge:C` alone (radius collapsed to a degenerate ~0.26in); `Fix`
+  on `top_edge:C` plus a permanent Radius dimension (made the arch reflex again, 354 deg); `Fix`-ing each side
+  arc's own centre immediately after creation (clears every arc's reflex at 7x9 but breaks the chain/horn
+  welds outright — only 1 of 4 bars built, a shape that passes the reflex check while silently broken, worse
+  than an honest failure); the same centre-Fix moved to run after the welds (partial improvement, 201.8-217.9
+  deg vs 352-357.9 doing nothing, but a new `VCS_SKETCH_OVER_CONSTRAINTS` on `arc_hip_L`/`arc_waist_L`).
+- **Capacity note**: did not run out, but this item has now consumed parts of 3 sessions across the same two
+  defect classes (arch branch selection, side-arc branch selection) — recommending the advisor split
+  shoulder/hip into its own dispatched item (as item 15's own prior recommendation already said) rather than
+  folding it into item 15's own continuation again, since it needs the SAME kind of from-scratch derivation
+  the arch just got, not a quick follow-up.
+- **Tests / A/B**: `npx vitest run` (2895 pass, 154 files); `pytest -q` in `frame-builder` (349 pass, 19
+  skipped, 2 freshness checks initially failed on `frame-defs.json/js` -- fixed by re-running
+  `python tools/gen_frame_defs.py`, confirmed stale ONLY because of this session's own phase-file change via
+  `git stash` + `--check`, not pre-existing), `b-spline-gen` (91 pass), repo root (539 pass, 19 skipped).
+  `tools/gen_frame_defs.py --check` clean after regenerating. Full A/B byte-identical suite (`ab6.mjs`,
+  `ablat6.mjs`, `ab3d.mjs`, `abpy.py`, `abcam.py`) against a scratch HEAD worktree (`../bsg-ab-head`, removed
+  after use) — Templates 1-9 unaffected, every script byte-identical. Live Fusion state left clean: every
+  scratch doc closed via its own handle in a `finally`, only the 2 pre-existing untagged `Untitled` docs from
+  before this session remain open, untouched. No lingering processes (`proc_health.py watch`: clean).

@@ -878,3 +878,103 @@ exact committed state (`git diff` clean) — no code changed, no regression risk
   state phase-by-phase, or split `arc_shoulder_R/L`'s own defect out as its own item first, since it's
   independent of the arch and already has a candidate closed-form fix that hasn't been traced through the
   right (earlier) phase window yet.
+
+## Item 15 (3rd attempt) — Template 10 arch: FIXED live. Shoulder/waist/hip "ears" confirmed separate, still open
+
+**Fresh seat A session (epoch 6), continuing items 14/15. The arch itself (`top_edge`) is now fixed and
+verified live at 7x9, 6x9 and 12x6 (sweep 77.2/88.8/31.0 deg, all well under 180). The pre-existing
+shoulder/waist/hip "ears" bug (item 15's own earlier finding) is confirmed independent, board-size-dependent,
+and NOT fixed this session — `FRAME_HIDDEN` stays `True`.**
+
+**The real bug, found by diffing Fred's hand-rebuilt T10 sketch against a fresh build (his own JSON export,
+`C:/Users/danse/.bspline-status/shots/fred/t10_fred_reconstructed_constraints_2026-10-01.json`):** a bare
+`Coincident` between a point and a curve in Fusion only constrains the point to the curve's SUPPORTING CIRCLE
+— not to its trimmed sweep. So neither `Tangent(top_edge, proj_off_BB_top)` (item 14) nor a literal apex point
+made `Coincident` to `top_edge` (tried this session, see below) can ever disambiguate which of the two arcs on
+the same circle is "the arc" — there is no constraint in this codebase's existing vocabulary that controls
+TRIM SELECTION, only circle shape. Confirmed live: adding the apex-point Coincident moved the measured sweep
+from 269.7 to 267.0 deg — i.e. nothing.
+
+**The fix: stop trying to pin trim selection via constraints at all.** Seed `top_edge` at the exact closed-form
+circle (same `hw`/`cy` fractions the old seed already used, plus the safe zone's own top-line height `Ly`;
+`centre_y = (hw^2 + cy^2 - Ly^2) / (2*(cy - Ly))` is the unique tangent-from-below solution — `addByThreePoints`
+then creates the correct short arc on the first try, same as it always did), then `Fix` (new primitive, see
+below) `top_edge:S` and `top_edge:E` directly, right after creation. Nothing downstream ever applies Tangent/
+Radius/Symmetry to `top_edge` again, so its one remaining shape DOF (the bulge) is never touched by anything
+and simply cannot drift. `horn_TR`/`horn_TL` then derive their own position FROM these fixed points via the
+existing `Coincident`, the same pattern Template 1 already uses for its own board-corner anchor.
+
+**Two new engine primitives, added to `fb_engine` (shared, used only by T10 so far but reusable — A/B-checked
+byte-identical on Templates 1-9, see below):**
+- `geometry.py` / `parametric_engine.py`: a `'Point'` geometry type (`sketch.sketchPoints.add`) — bare
+  construction points weren't previously expressible in the declarative `BuildSequence` vocabulary at all.
+- `constraints.py` / `parametric_engine.py`: a `'Fix'` constraint type (`SketchPoint.isFixed = True` — Fusion's
+  `GeometricConstraints` collection has no `addFix`; this is a property on the point, not a constraint object).
+  **Important, MEASURED finding for whoever reaches for `Fix` next: it is NOT a substitute for a one-directional
+  anchor via `Coincident` to a separately-Fixed point.** A `Coincident` is symmetric — an un-Fixed anchor is
+  just as movable as the point it's tied to, so the solver happily drags the "anchor" along instead of holding
+  it still (confirmed live: an anchor-plus-Coincident layer held through its own phase's audit, then both the
+  anchor AND the arc had visibly moved together two phases later). `Fix` only works reliably when applied
+  DIRECTLY to the entity's own point, not through an intermediary.
+
+**Four more things tried and MEASURED NOT to work as well as the final fix, kept here so the next session
+doesn't re-walk this ground:**
+1. `Fix` on `top_edge:C` (centre) alone, Symmetry doing the rest, S/E left free for the horn chain to derive
+   (preserving the original "hw comes for free" design intent) — the radius then had NOTHING holding it down,
+   and the simultaneous solve found a degenerate "locally convenient" state instead: `hw` collapsed to ~0.26in
+   (should be ~3.25in at 7x9), dragging `arc_shoulder_R` into ITS OWN reflex (217.9 deg) instead of the arch's.
+2. `Fix` on `top_edge:C` PLUS a permanent closed-form `Radius` dimension (pinning the whole circle, not just
+   its centre, while still leaving S/E free to land anywhere along it) — made the ARCH itself reflex again
+   (354 deg). Not yet understood why; flagging rather than guessing.
+3. Fixing `top_edge:S`/`:E` directly (the version that DOES work for the arch) has one confirmed side effect:
+   with `horn_TR`/`horn_TL` now rigid at both ends of the shoulder-waist-hip tangent chain (the bottom end,
+   `horn_BR`/`horn_BL`, was ALWAYS rigid — the real board corner), the hip tip welds
+   (`Coincident(horn_BR:E, arc_hip_R:S)` etc., `p02_05_horns.py`) throw `VCS_SKETCH_SOLVING_FAILED` even with
+   `AllowNudge` (tried, didn't recover) — `hw = widthIn * 0.464286` (reused from Template 1, never actually
+   DERIVED for T10's own chain) is close enough to let `top_edge` itself solve correctly, but not quite
+   consistent with what the hip chain can deliver once both its ends are rigid. The build still completes
+   (these failures don't propagate) and `top_edge`'s own sweep is unaffected, confirmed live at all three
+   board sizes — but this is almost certainly entangled with the shoulder/hip bug below and should be
+   considered together, not as two unrelated bugs, when that item is picked up.
+4. Moving the shoulder/hip centre pin to run BEFORE `p02_05_horns` (ruling out cross-coupling, item 14's own
+   hypothesis) made the shoulder arcs' reflex WORSE (333 deg) and threw a NEW `VCS_SKETCH_OVER_CONSTRAINTS` on
+   `arc_hip_R`/`horn_BR` — reverted. The SAME position waist already uses (before tangency, after horn welds)
+   does not over-constrain, but also measured NOT to fix shoulder/hip's own reflex (352-357.9 deg, essentially
+   unchanged from doing nothing). Directly `Fix`-ing each side arc's own centre (not Coincident-to-skeleton-pin)
+   immediately after its own creation — i.e. applying the SAME successful arch technique to the side arcs —
+   DOES clear every arc's reflex at 7x9 (all 7 arcs < 180 deg, shoulder down to 90.1/89.5 deg from 352-357.9),
+   but breaks the chain/horn welds outright when applied that early (every one of them fails to solve, same
+   class of conflict as above) and the resulting sketch is no longer topologically closed (only 1 of 4 bars
+   built instead of 4, via `record_frame_parity.py`'s own harness) — a shape that passes the reflex check
+   while being silently broken is worse than the honest failure, so this was reverted too. Moving that SAME
+   direct-centre-Fix to run AFTER the chain/horn welds (same ordering that works for the arch) still throws new
+   `VCS_SKETCH_OVER_CONSTRAINTS` (`arc_hip_L`/`arc_waist_L` this time) and only partially helps (201.8-217.9 deg
+   final, vs 352-357.9 doing nothing) — not landed.
+
+**Confirmed independent and board-size-dependent** (not caused by this session's own arch fix — reproduces with
+`p02_10_welds.py` fully unmodified, i.e. the committed baseline mechanism): at 7x9 and 6x9, `arc_shoulder_R/L`
+are the reflex ones (356-358 deg); at 12x6, shoulder is FINE (35.2 deg) but `arc_waist_R/L` are reflex instead
+(198-209 deg). This rules out any single board-size-specific seed value as the culprit and points at the
+shoulder-waist-hip tangent chain's own branch-selection behavior, same failure CLASS as the arch (a `Tangent`
+constraint's branch is not controllable by the constraints this codebase's vocabulary currently expresses) but
+a harder instance (3 mutually-tangent arcs, not 1, with a fixed anchor at BOTH ends of the chain).
+
+**Recommendation for the next session on shoulder/hip:** the arch's own fix (seed the exact closed-form circle,
+then `Fix` two points directly, nothing else touches it afterward) is the right TEMPLATE to adapt, but the
+side-arc chain has 3 arcs sharing 2 fixed anchors (the board corner at one end, now the fixed arch at the
+other) instead of 1 arc with 2 independently-known points — the closed-form math needs to solve for all 3
+arcs' centres/radii simultaneously (or decide which 1-2 points can be `Fix`-ed without over-determining the
+rest), not reuse the arch's single-arc formula directly. Point 3 above (the hip tip-weld failures, a direct
+consequence of the arch's own `hw` not being exactly what the chain wants) should be resolved by the SAME
+fix, since both stem from the chain not actually being free the way the original design assumed. Verify at
+7x9, 6x9 AND 12x6 (not just one size) — this item's own board-size-dependence is why a single-size check
+missed it for so many prior attempts.
+
+**Verification this session:** `npx vitest run` (2895 pass, 154 files), `pytest -q` in `frame-builder` (349
+pass, 19 skipped — unrelated to T10), `b-spline-gen` (91 pass) and the repo root (539 pass, 19 skipped);
+`python tools/gen_frame_defs.py` (re-run, was stale after the phase-file change — `Tangent`/`Symmetry` ->
+`Fix` is now reflected) then `--check` clean; the full A/B byte-identical suite (`ab6.mjs`, `ablat6.mjs`,
+`ab3d.mjs`, `abpy.py`, `abcam.py`) against a HEAD worktree — Templates 1-9 unaffected, confirmed byte-identical
+on every script. `FRAME_HIDDEN` left `True` (shoulder/hip still blocks a clean Send). Live Fusion state left
+clean: every scratch doc closed via its own handle in a `finally`, only the 2 pre-existing untagged `Untitled`
+docs from before this session remain open, untouched.

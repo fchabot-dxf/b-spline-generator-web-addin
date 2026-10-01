@@ -1,5 +1,5 @@
 """
-Geometry Step — Creates sketch entities (Line, Arc3Point, Rectangle).
+Geometry Step — Creates sketch entities (Line, Arc3Point, Rectangle, Point).
 
 Each function takes a BuildContext, the active sketch, the sketch name key,
 and the geometry spec dict from the template data.
@@ -53,7 +53,7 @@ def geom_step(ctx, sketch, s_name, geom):
     """
     Dispatch geometry creation based on geom["Type"].
 
-    Supported types: Line, Arc3Point, Rectangle / RectangleCenter.
+    Supported types: Line, Arc3Point, Rectangle / RectangleCenter, Point.
     """
     geo_type = geom["Type"]
     geo_id = geom["ID"]
@@ -66,6 +66,8 @@ def geom_step(ctx, sketch, s_name, geom):
         entity = _create_arc3(ctx, sketch, curves, s_name, geom, geo_id)
     elif geo_type in ("Rectangle", "RectangleCenter"):
         entity = _create_rectangle(ctx, sketch, curves, s_name, geom, geo_id)
+    elif geo_type == "Point":
+        entity = _create_point(ctx, sketch, s_name, geom, geo_id)
 
     if entity:
         if geom.get("IsConstruction"):
@@ -99,6 +101,18 @@ def _create_line(ctx, curves, s_name, geom, geo_id):
     if end_id:
         ctx.set_id(entity.endSketchPoint, s_name, "point", override_id=end_id)
 
+    return entity
+
+
+# ------------------------------------------------------------------
+# Point (bare construction/reference point, no curve)
+# ------------------------------------------------------------------
+def _create_point(ctx, sketch, s_name, geom, geo_id):
+    p = adsk.core.Point3D.create(
+        ctx.resolve_val(geom["Points"][0][0]),
+        ctx.resolve_val(geom["Points"][0][1]), 0)
+    entity = sketch.sketchPoints.add(p)
+    ctx.logger.log(f"POINT {geo_id}: ({p.x:.2f},{p.y:.2f})")
     return entity
 
 

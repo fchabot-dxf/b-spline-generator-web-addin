@@ -374,8 +374,8 @@ class ParametricSketchBuilder:
 
     def _process_sequence(self, sketch, sketch_name, sequence):
         """Order-aware dispatcher for Procedural Sketching."""
-        geom_types = ["Line", "Arc3Point", "ArcCenterPoint", "Circle", "Rectangle", "RectangleCenter", "Slot"]
-        constr_types = ["Coincident", "Tangent", "Horizontal", "Vertical", "Parallel", "Perpendicular", "Equal", "Concentric", "Midpoint", "PointOnCurve", "Symmetry"]
+        geom_types = ["Line", "Arc3Point", "ArcCenterPoint", "Circle", "Rectangle", "RectangleCenter", "Slot", "Point"]
+        constr_types = ["Coincident", "Tangent", "Horizontal", "Vertical", "Parallel", "Perpendicular", "Equal", "Concentric", "Midpoint", "PointOnCurve", "Symmetry", "Fix"]
         dim_types = ["HorizontalDistance", "VerticalDistance", "Radius", "Diameter", "ParallelDistance", "AngularDistance"]
 
         for step in sequence:

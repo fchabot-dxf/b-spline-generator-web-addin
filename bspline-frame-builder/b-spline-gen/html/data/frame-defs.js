@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "7e134879fa6ebeabdaa3db0278fb5b2f2464d2c5c2bdbd9e7f9c61403a778d52",
+  "sourceHash": "8ae0c2b9696896ff900f87e01fbf5321f6ba0172b0aa0ba6b1d5cb0084b7a51c",
   "templates": [
     {
       "features": [
@@ -2401,12 +2401,12 @@ export default {
                   "ID": "top_edge",
                   "Points": [
                     [
-                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286)",
                       "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.345833"
                     ],
                     [
                       "0.001",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222 - 0.001"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
                     ],
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
@@ -2549,18 +2549,10 @@ export default {
                 },
                 {
                   "Targets": [
-                    "top_edge",
-                    "proj_off_BB_top"
-                  ],
-                  "Type": "Tangent"
-                },
-                {
-                  "Targets": [
                     "top_edge:S",
-                    "top_edge:E",
-                    "Y_AXIS"
+                    "top_edge:E"
                   ],
-                  "Type": "Symmetry"
+                  "Type": "Fix"
                 },
                 {
                   "EndID": "arc_shoulder_R:E",
