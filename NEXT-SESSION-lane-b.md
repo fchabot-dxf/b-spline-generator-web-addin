@@ -1,15 +1,23 @@
-# NEXT (lane-b) — T81 item 6: can't select a contour segment
+# NEXT (lane-b) — T83 item 1: Template 11 diagram (diagram first, to the advisor)
 
-**Ball: worker (seat B) · epoch 9 · T81 item 6.** T81 item 5 ACCEPTED (1e204e9) — good root-causing: traced the orphan
-to a LATER feature (item 7's `pruneAfterRailStretch`) interacting with an EARLIER, still-correct fix, not a flaw in
-either one alone — read the original fix in full before touching anything, rather than assuming it was wrong. Fix is a
-clean liveness check reusing an existing pattern (`editor-grid.js`'s own `_connected()`), not a new mechanism.
-Reproduced first, mutation-tested after (2 red on revert, 31 stay green). Spot-checked independently: vitest 2934/0
-failed. Screenshot confirms it visually — rail shortened, no orphaned halo anywhere. Honest about the Shape Lattice
-screenshot script hanging (not root-caused, noted rather than hidden) — not blocking, the fix itself is still proven
-for Shape Lattice via the mutation-tested unit coverage.
+**Ball: worker (seat B) · epoch 9 · T83 item 1.** T81 item 6 ACCEPTED (e07a91f) — thorough: found THREE separate wiring
+gaps (hand-picked boundaries had no segments for the existing arbitration; rect Lattice's own press handler had no
+contour arbitration at all; the main Select tool never reconsidered against the contour's precise edge), fixed with
+ONE declared comparison (`_contourWinsPick`) reused identically at all 3 call sites rather than three one-off patches —
+exactly the "declare the pick priority once" the dispatch asked for. Mutation-tested each wiring point
+INDEPENDENTLY (3 separate revert/confirm/restore cycles). Spot-checked independently: vitest 2941/0 failed. Honest
+about no live screenshot this turn (a hand-picked boundary isn't a simple single-button UI gesture) — fine, the fix is
+proven through the real production handlers with full mutation coverage, same bar already accepted for the Shape
+Lattice gap in item 5. That closes the whole T81/T82 backlog.
 
-## This task: T81 item 6 (priority bug, from the backlog — T83/Template 11 still waits on a diagram, not scheduled yet)
+## This task: T83 item 1 — Template 11, DIAGRAM ONLY (do not build the Fusion/app geometry yet)
+Template 11: Template 7's diamond roof + eaves, but with a 3-ARC hourglass side below the eave (small convex shoulder,
+concave waist, convex hip to full width — reuse T1's chain), the same combination Fred already said he liked when both
+halves were separately approved. T7 (its roof/eave dependency) is now merged to main, so this is unblocked. Per the
+project's own "new templates go diagram first" rule: render the proposed Template 11 outline (reuse whatever rendering
+approach you used for T7's own miter diagrams) at 7x9 and 6x9, send it to me (the advisor) — NOT straight to Fred — and
+stop there. I'll review it before anything goes to Fred for approval. Do not start the Fusion phases or app geometry
+until that approval comes back.
 - [T81-item-6] PRIORITY BUG: CAN'T SELECT A CONTOUR SEGMENT (Fred: "I can't seem to select contour segment"). Per-segment
   colour (Selected piece panel, scissors recolour) depends on it. REPRODUCE with real pointer events (mouse + touch) in
   Shape Lattice AND rect Lattice, with the lattice [Select] icon tool AND the main Select tool: click on a contour
