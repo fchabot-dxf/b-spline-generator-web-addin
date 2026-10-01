@@ -16,7 +16,22 @@ it the same as any other out-of-range combination, matching t7_geometry.clamp_t7
 `t11_outline`, `inner_corner_directions` and `inner_profile_radii` were already verified independently and
 are unaffected by either fix.
 
-Still NOT wired into any Fusion phase, template_data.py, or test file -- that is this turn's next step.
+Now wired into sketches/template_11/ (phase files + template_data.py) and live-tested against a real
+Fusion session. Two real, CONFIRMED-LIVE findings from that pass, both documented in
+sketches/template_11/phases/p02_02_loop.py's own docstring in full:
+  1. Fusion's `evaluateExpression` does NOT support `min()`/`max()` at all (not a T11-specific issue --
+     Template 7's own copy of this phase assumed it did and was never actually live-verified, per that
+     template's own LIVE_CHECK.md unchecked item). Worked around with the `(a+b-|a-b|)/2` identity.
+  2. WIP, UNRESOLVED: the 3-arc shoulder/waist/hip chain is under-constrained as built -- live, every arc
+     on both sides settled at the literal SEED radius (1.5*HW) rather than its own tangent-solved value,
+     meaning the Tangent constraints + Coincident welds alone do not fully determine 3 chained arcs the
+     way they do Template 7's simpler 2-arc (neck/body) chain. This module's own `t11_outline` math is
+     UNAFFECTED (it was never the source of the live arc values; p03_03_inner_corner_resolve.py's own
+     eave-corner computation, which DOES call into this module, is correspondingly only as good as its
+     own default-proportions caveat, already documented there, independent of this bug). Full details,
+     including the likelier/simpler fix (directly `Fix`-ing the 2 internal joint points, per the
+     fusion360-quirks skill's own already-documented finding, rather than a full T1-style skeleton-pin
+     layer), are in p02_02_loop.py's own docstring. Not yet attempted.
 
 t11_geometry.py — Template 11 (Diamond-top, 3-arc Hourglass side): T7's own roof/eave
 (t7_roof_eave.roof_geometry, reused VERBATIM) feeding directly into T1's own 3-arc hourglass side

@@ -12240,3 +12240,79 @@ MUTATION-TESTED: reverting to the old no-attrs call makes exactly this one new t
 (29 others in this file) stays green; restored byte-identical via diff, confirmed green again (30/30).
 Ran the file's own full suite plus the two most related other suites (lattice-drag-highlight,
 lattice-contour-pick-priority) as this change's fast tier: 49/49 passed, 0 failed.
+
+## Lane B — Turn 220 (continued) — T83 item 1: Template 11 Fusion phase files + live build attempt — DONE (partial, real blocker found)
+
+Wrote the full Fusion phase-file scaffold for `sketches/template_11/` mirroring Template 7's own
+structure exactly: `sketch_1/2/3_*.py` boilerplate, `phases/p01_01/02` shims (shared `_common`),
+`p02_01_projs` through `p02_05_radius_removal` (the 13-piece shoulder/waist/hip silhouette loop, welds,
+tangency, radius removal), `p03_01_encl_projs` through `p03_05_encl_surround_rect` (projections, offset,
+inner-corner-resolve via `fb_engine.t11_geometry.inner_corner_directions`, 5 miters, surround rect), and
+`template_data.py` (TEMPLATE_NAME/DESCRIPTION, SKETCH_N_PARAMETERS, FRAME_CORNERS/BARS/REGIONS/HANDLES
+[mirrors Template 1's own 5 hourglass handles verbatim, same keys]/SEED_MAP [13 curves + 6 radius seeds]/
+FEATURES/SHAPE_EXTRACTOR/PROVISIONAL_SHAPE). `FRAME_SILHOUETTE_PRESET`/`FRAME_SHAPE_EXTRACTOR` are
+forward-declared (not yet registered in editor-shape-lattice-generator.js) -- app-side JS wiring is next,
+same multi-step arc Template 7 itself used (Turn 203/205/207-208).
+
+Every point's own Fusion EXPRESSION STRING (p02_02_loop.py) was derived in closed form from
+fb_engine.t11_geometry's own already-tested algebra and cross-checked NUMERICALLY against
+`t11_outline`'s own independently-computed values before ever touching Fusion -- new
+`fb_engine/test_t11_fusion_expressions.py` (4 board sizes, all pass).
+
+**Fusion bridge came back up this turn (advisor-verified) -- first LIVE build attempt, two real findings:**
+
+1. **Fusion's `evaluateExpression` does NOT support `min()`/`max()` at all** -- confirmed directly
+   (`design.unitsManager.evaluateExpression('min(1.0, 2.0)', 'cm')` itself raises "The expression
+   parameter is not a valid expression"). This is NOT T11-specific: Template 7's own copy of
+   `p02_02_loop.py` uses the identical `min(0.62*hw, 0.84*hh)` pattern and documents it as unverified in
+   its own `LIVE_CHECK.md` ("Fusion's expression editor documents min/max/sqrt/trig as supported but
+   nothing here has exercised it before") -- that checkbox is still unchecked; T7's own Fusion sketch
+   build has apparently never been live-verified either. `abs()` and `sqrt()` DO work (verified directly).
+   Fixed T11's own `A`/`DY_TOP` expressions using the identity `min(a,b) = (a+b-|a-b|)/2` (and the matching
+   `max(0,x) = (x+|x|)/2` for the sqrt's own radicand clamp), verified against 10 random pairs live before
+   trusting it. Not touching Template 7's own copy -- out of scope for this dispatch, flagged to the
+   advisor instead of silently fixing someone else's file.
+
+2. **WIP, UNRESOLVED: the 3-arc shoulder/waist/hip chain is under-constrained.** After a full live build
+   (fresh, empty Fusion document; pre-created `widthIn`/`heightIn` user parameters directly, simulating
+   "Send to Fusion", since `_create_skeletal_parameters` intentionally never takes ReadOnly params from
+   `ui_data` -- learned this live, it is NOT a bug, see that function's own code comment), queried the
+   actual built sketch directly: all 6 arcs (shoulder/waist/hip, both sides) sat at the literal SEED
+   radius (`1.5 * HW`) rather than their own tangent-solved shape. Root cause (not yet fixed): Template 7's
+   2-arc (neck/body) chain works with Tangent + Coincident alone because each arc keeps one end pinned to
+   an independently-fixed point; T11's chain has 2 INTERNAL joins (shoulder<->waist, waist<->hip) free at
+   BOTH ends, which tangency alone apparently doesn't fully determine. T1's own shoulder/waist/hip
+   construction uses explicit SKELETON PINS for exactly this -- an approach I considered and deliberately
+   rejected earlier this turn in favour of mirroring T7's simpler pattern; this live result says that call
+   needs revisiting for a 3-arc chain specifically. Documented in full in both `t11_geometry.py`'s own
+   module docstring and `p02_02_loop.py`'s own docstring (WIP marker) for whoever resumes this -- likely
+   me, next turn.
+
+**Also found, unrelated to the above, flagged not fixed**: `FrameBuilder()` (no `external_logger` arg)
+raises `'DebugLogger' object has no attribute 'DebugLogger'` -- `frame_engine.py`'s own module-level
+`logger` (an INSTANCE) shadows the `fb_logger` MODULE inside `FrameBuilder.__init__`'s own fallback
+branch (`self.logger = logger.DebugLogger(addin_root)`, should be `fb_logger.DebugLogger(...)`).
+Worked around for testing by always passing `external_logger=`; pre-existing, affects every template's
+`FrameBuilder()` construction, not T11-specific -- a one-line fix but out of this dispatch's own scope.
+
+**Also hit, operational**: `frame-builder-debug.log` getting clobbered mid-session by another seat's
+concurrent Fusion activity (f3, live Template 10 re-verification, item 21) -- flagged to the advisor live.
+Turns out this is an ALREADY-DOCUMENTED quirk (`fusion360-quirks` skill, "A shared debug log file can get
+clobbered by a DIFFERENT session's concurrent Fusion activity") -- should have loaded that skill before
+starting this turn's live Fusion work rather than rediscovering it; noting here so the next live-Fusion
+session on this template remembers to load it first. That same skill also reframes the arc-chain finding
+above: its own "Fix is not transitive" notes suggest the likelier, simpler fix is directly `Fix`-ing the 2
+internal joint SketchPoints rather than a full T1-style skeleton-pin layer -- see p02_02_loop.py's own
+updated docstring for the corrected hypothesis.
+
+**Verified, trustworthy as of this commit**: `t11_geometry.py`'s own math (unaffected by either Fusion
+finding above), every phase file's structure/wiring (`get_template_logic()` loads cleanly, 2/5/5 phase
+counts matching Template 7's own, `template_resolver` auto-discovers `template_11` correctly, full
+`fb_engine` suite 323 passed/10 skipped/0 failed, `test_templates.py` smoke test passes). **Not
+trustworthy yet**: the live Fusion arc SHAPE specifically (radius/position of the solved arcs) until the
+`Fix`-the-joint-points fix lands -- the miter/inner-corner-resolve failures seen live are believed to be a
+downstream consequence of this same under-constrained chain (wrong/degenerate arc shapes breaking the
+enclosure offset's own topology), not a separate bug, though not yet re-tested after a fix to confirm.
+
+Committing the phase-file scaffold + both docstring updates + the new cross-check test. Standing by per
+the advisor's own hold instruction (seat f3 live in Fusion) before any further live Fusion work.
