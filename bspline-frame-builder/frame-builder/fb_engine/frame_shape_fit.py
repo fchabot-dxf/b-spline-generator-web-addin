@@ -154,9 +154,48 @@ def _tab_top(curves, hw, hh, tol=2e-3):
     }
 
 
+def _dipped_left_wave(curves, hw, hh, tol=2e-3):
+    """T8 DIPPED TOP + LEFT-ONLY WAVE: a plain straight right side and base (Template 1's classic 4 mitred
+    corners), a Template-1-style pinch (shoulder/waist/hip arcs) on the LEFT side only ("the wave"), and a
+    Template-5-style dipped top whose dip may sit off centre (Fred's sketch: middle-right of the top edge).
+
+    The wave: Template 1's own LEFT-side extraction (`_hourglass`'s own left-arc block, mirrored: x < 0). The
+    top: Template 5's own dip extraction, except the dip's centre is NOT required to sit on the centre line
+    (`topDipPosition` = its own x, instead of asserting it is 0). Valid when: the LEFT arcs are tangent to the
+    side at -hw and to each other; both top shoulders are tangent to the top edge and to the dip; `side_R` is a
+    plain vertical line at x=hw.
+    """
+    sh, wa, hp = curves["arc_shoulder_L"], curves["arc_waist_L"], curves["arc_hip_L"]
+    rs = (sh["radius"] + hp["radius"]) / 2
+    ok = (abs(sh["center"][0] + (hw - sh["radius"])) < tol
+          and abs(math.dist(sh["center"], wa["center"]) - (sh["radius"] + wa["radius"])) < tol
+          and abs(math.dist(hp["center"], wa["center"]) - (hp["radius"] + wa["radius"])) < tol)
+    wy = wa["center"][1]
+    feats = {
+        "waveDepth": hw - (-wa["center"][0] - wa["radius"]),
+        "waveCornerR": rs,
+        "waveR": wa["radius"],
+        "waveCy": -wy,                                   # app is y-down; Fusion is y-up
+        "waveNotch": ((sh["center"][1] - wy) + (wy - hp["center"][1])) / 2,
+    }
+    sl, dip, sr = curves["arc_top_shoulder_L"], curves["arc_top_dip"], curves["arc_top_shoulder_R"]
+    ok = (ok and abs(sr["center"][1] - (hh - sr["radius"])) < tol
+          and abs(sl["center"][1] - (hh - sl["radius"])) < tol
+          and abs(math.dist(sr["center"], dip["center"]) - (sr["radius"] + dip["radius"])) < tol
+          and abs(math.dist(sl["center"], dip["center"]) - (sl["radius"] + dip["radius"])) < tol)
+    feats.update({
+        "topDipHalfWidth": (sr["center"][0] - sl["center"][0]) / 2,
+        "topDipPosition": (sr["center"][0] + sl["center"][0]) / 2,        # NOT asserted to be 0 (off centre, T8)
+        "topDipDepth": hh - (dip["center"][1] - dip["radius"]),
+    })
+    side = curves["side_R"]
+    ok = ok and abs(side["start"][0] - hw) < tol and abs(side["end"][0] - hw) < tol
+    return ok, feats
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
-                      "tab_top": _tab_top}
+                      "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):
@@ -183,6 +222,42 @@ def provisional_tab_top_model(half_width_of_hw, height_of_hh):
             "baseModel": None,
             "tabHalfWidthOfHw": half_width_of_hw,
             "tabHeightOfHh": height_of_hh,
+        },
+    }
+
+
+def provisional_dipped_left_wave_model(wave_reach_of_hw, wave_height_of_hh, top_dip_half_width_of_hw,
+                                        top_dip_depth_of_hh, top_dip_position_of_hw):
+    """T8 DIPPED TOP + LEFT-ONLY WAVE, until its goldens are recorded live: a PROVISIONAL model (never none), like
+    T6's tab top: no base template (the right side is a plain straight edge and the top dip sits off centre,
+    neither of which any earlier template's fitted features describe). Fractions of the safe-zone half sizes
+    (hw/hh), read straight by the app's own dippedLeftWave paramsFromShapeModel branch (editor-shape-lattice-
+    generator.js); it clamps every one into its feasible range. Marked `provisional` so nothing mistakes it for
+    a fit."""
+    return {
+        "features": {
+            "waveDepth": {"hw": wave_reach_of_hw, "hh": 0.0},
+            "waveCy": {"hw": 0.0, "hh": wave_height_of_hh},
+            "topDipHalfWidth": {"hw": top_dip_half_width_of_hw, "hh": 0.0},
+            "topDipDepth": {"hw": 0.0, "hh": top_dip_depth_of_hh},
+            "topDipPosition": {"hw": top_dip_position_of_hw, "hh": 0.0},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "waveReachOfHw": wave_reach_of_hw,
+            "waveHeightOfHh": wave_height_of_hh,
+            "topDipHalfWidthOfHw": top_dip_half_width_of_hw,
+            "topDipDepthOfHh": top_dip_depth_of_hh,
+            "topDipPositionOfHw": top_dip_position_of_hw,
         },
     }
 

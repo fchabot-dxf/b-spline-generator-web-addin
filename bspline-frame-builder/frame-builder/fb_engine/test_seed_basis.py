@@ -37,7 +37,7 @@ def _seeds(tid):
     return out
 
 
-@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5", "template_6"])
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5", "template_6", "template_8"])
 def test_every_board_relative_seed_is_on_the_seed_board(tid):
     seeds = _seeds(tid)
     board = [(i, e) for i, e in seeds if isinstance(e, str) and re.search(r"\b(widthIn|heightIn)\b", e)]
@@ -48,7 +48,7 @@ def test_every_board_relative_seed_is_on_the_seed_board(tid):
             pytest.fail(f"{i}: a bare {tok} in {e}")
 
 
-@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5", "template_6"])
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5", "template_6", "template_8"])
 @pytest.mark.parametrize("w, h", [(7, 9), (12, 6), (5.51, 1.97), (10, 14)])
 def test_at_the_default_offset_the_seeds_are_unchanged(tid, w, h, monkeypatch):
     new = _seeds(tid)
@@ -76,3 +76,37 @@ def test_sketches_1_and_3_keep_the_board():
     for sk in (spec["Sketches"][0], spec["Sketches"][2]):
         text = repr(sk)
         assert "boundingboxoffset - 0.25 in" not in text
+
+
+# T8 DIPPED TOP + LEFT-ONLY WAVE: AMENDMENT (seat A's live finding on Template 5) -- its own dip/shoulder seed
+# RADIUS scaled with heightIn only while the span it bridges (the half width) scales with widthIn, so the seed
+# was only right at the one board it was hand-tuned on and flipped or failed elsewhere. Template 8 reuses
+# Template 5's dipped top, so it must NOT repeat that: every dip seed is a genuine widthIn+heightIn expression
+# (sketches/template_8/phases/p02_03_loop.py), unit-tested here against the app's own exact formula at the same
+# three boards every template is checked at.
+def test_template_8_dip_seed_radius_tracks_both_dimensions_not_just_one():
+    seeds = dict(_seeds("template_8"))
+    names = ("seed_rad_top_shoulder_L", "seed_rad_top_dip", "seed_rad_top_shoulder_R")
+    for w, h in ((7, 9), (12, 6), (5.51, 1.97)):
+        hw, hh = w / 2 - 0.25, h / 2 - 0.25
+        a, d = hw * 0.5, hh * 0.14
+        expected = (a * a + d * d) / (4 * d)  # editor-shape-lattice-generator.js's own exact tangent-triple formula
+        for name in names:
+            got = _eval(seeds[name], w, h, 0.25)
+            assert got == pytest.approx(expected, rel=1e-9), (w, h, name)
+            assert got > 0, (w, h, name)  # sane: a flipped/degenerate seed would go non-positive
+
+
+def test_template_8_dip_seed_radius_would_have_caught_the_heightin_only_bug():
+    """MUTATION-CHECK-BY-CONSTRUCTION: a heightIn-only radius (Template 5's own, pre-amendment) tracks neither
+    board correctly except the one it was tuned on -- demonstrating this test is not vacuous without touching
+    the real phase file. At 7x9 a heightIn-only constant CAN be tuned to match; at 12x6 (same height ratio
+    tuned for a different width) it must not, which is exactly the bug seat A found live."""
+    hw7, hh7 = 7 / 2 - 0.25, 9 / 2 - 0.25
+    a7, d7 = hw7 * 0.5, hh7 * 0.14
+    tuned_const = ((a7 * a7 + d7 * d7) / (4 * d7)) / 9  # "heightIn * k" calibrated to match AT 7x9 only
+    wrong_12x6 = tuned_const * 6  # heightIn-only formula's own value at 12x6
+    hw12, hh12 = 12 / 2 - 0.25, 6 / 2 - 0.25
+    a12, d12 = hw12 * 0.5, hh12 * 0.14
+    correct_12x6 = (a12 * a12 + d12 * d12) / (4 * d12)
+    assert wrong_12x6 != pytest.approx(correct_12x6, rel=1e-6)

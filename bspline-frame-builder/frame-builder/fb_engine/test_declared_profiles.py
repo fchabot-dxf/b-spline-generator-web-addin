@@ -41,7 +41,7 @@ def _bar_profiles(frame):
     return out
 
 
-@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5"])
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5", "template_8"])
 def test_each_bar_profile_gets_its_declared_body_name(tid):
     frame = _frame(tid)
     bars = frame["features"][0]
@@ -50,7 +50,7 @@ def test_each_bar_profile_gets_its_declared_body_name(tid):
     assert [n for _, n in names] == ["frame_top", "frame_right", "frame_bottom", "frame_left"] == bars["bodyNames"]
 
 
-@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5", "template_6"])
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5", "template_6", "template_8"])
 def test_trim_and_opening(tid):
     frame = _frame(tid)
     reg = frame["regions"]
@@ -63,7 +63,7 @@ def test_trim_and_opening(tid):
 
 
 # ------------------------------------------------------------------ N-BAR
-@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5"])
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5", "template_8"])
 def test_templates_1_to_5_keep_the_4_bar_default(tid):
     """N-BAR: no declared bar / corner list: the bars come from the miter walk and the 4 default names."""
     frame = _frame(tid)

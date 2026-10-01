@@ -348,3 +348,94 @@ def test_template_6_is_fitted_once_goldens_exist(tmp_path):
     a, h = m["features"]["tabHalfWidth"], m["features"]["tabHeight"]
     assert a["hw"] == pytest.approx(0.45, abs=1e-6) and a["hh"] == pytest.approx(0, abs=1e-6)
     assert h["hh"] == pytest.approx(0.4, abs=1e-6) and h["hw"] == pytest.approx(0, abs=1e-6)
+
+
+# --------------------------------------------------- T8 dipped top + left-only wave
+def _dipped_left_wave(g, a_of_hw, d_of_hh, pos_of_hw):
+    """A Template 1 golden turned into a T8-style one: the LEFT side's arcs are Template 1's own, kept as-is (the
+    extractor never reads the right-side arcs at all); a plain `side_R` line is added at x=hw (Fusion y up, top
+    to bottom); the top gets Template 5's own dip construction (`_dipped`'s own formula), its centre shifted
+    right by `pos_of_hw` x hw."""
+    g = copy.deepcopy(g)
+    hw, hh = fsf._safe_half(g["meta"])
+    a, d, pos = a_of_hw * hw, d_of_hh * hh, pos_of_hw * hw
+    r = (a * a + d * d) / (4 * d)
+    c = g["sketch2_shape_outline"]
+    c["side_R"] = {"start": [hw, hh], "end": [hw, -hh]}
+    c["arc_top_shoulder_L"] = {"center": [-a + pos, hh - r], "radius": r}
+    c["arc_top_shoulder_R"] = {"center": [a + pos, hh - r], "radius": r}
+    c["arc_top_dip"] = {"center": [pos, hh - d + r], "radius": r}
+    return g
+
+
+def test_the_dipped_left_wave_extractor_reads_the_left_side_as_template_1_and_measures_the_dip():
+    for size in _SIZES:
+        g = _dipped_left_wave(_golden("template_1", size), 0.6, 0.1, 0.15)
+        hw, hh = fsf._safe_half(g["meta"])
+        c = g["sketch2_shape_outline"]
+        ok, f = fsf.FEATURE_EXTRACTORS["dipped_left_wave"](c, hw, hh)
+        assert ok, size
+        sh, wa, hp = c["arc_shoulder_L"], c["arc_waist_L"], c["arc_hip_L"]
+        assert f["waveDepth"] == pytest.approx(hw - (-wa["center"][0] - wa["radius"]), abs=1e-9)
+        assert f["waveCornerR"] == pytest.approx((sh["radius"] + hp["radius"]) / 2, abs=1e-9)
+        assert f["waveR"] == wa["radius"]
+        assert f["topDipHalfWidth"] == pytest.approx(0.6 * hw, abs=1e-9)
+        assert f["topDipPosition"] == pytest.approx(0.15 * hw, abs=1e-9)  # NOT asserted to be 0 (off centre, T8)
+        assert f["topDipDepth"] == pytest.approx(0.1 * hh, abs=1e-9)
+
+
+def test_the_dipped_left_wave_extractor_rejects_an_untangent_dip_or_a_non_vertical_right_side():
+    g = _dipped_left_wave(_golden("template_1", "7x9"), 0.6, 0.1, 0.15)
+    hw, hh = fsf._safe_half(g["meta"])
+    assert fsf.FEATURE_EXTRACTORS["dipped_left_wave"](g["sketch2_shape_outline"], hw, hh)[0]
+    bad = copy.deepcopy(g)
+    bad["sketch2_shape_outline"]["arc_top_shoulder_R"]["center"][1] -= 0.05  # no longer tangent to the top edge
+    assert not fsf.FEATURE_EXTRACTORS["dipped_left_wave"](bad["sketch2_shape_outline"], hw, hh)[0]
+    bad = copy.deepcopy(g)
+    bad["sketch2_shape_outline"]["side_R"]["end"][0] -= 0.1  # no longer vertical / at hw
+    assert not fsf.FEATURE_EXTRACTORS["dipped_left_wave"](bad["sketch2_shape_outline"], hw, hh)[0]
+
+
+def test_the_provisional_dipped_left_wave_model_has_no_base_and_exactly_these_5_features():
+    p = fsf.provisional_dipped_left_wave_model(0.2, 0.0, 0.4, 0.14, 0.15)
+    assert set(p["features"]) == {"waveDepth", "waveCy", "topDipHalfWidth", "topDipDepth", "topDipPosition"}
+    assert p["features"]["waveDepth"] == {"hw": 0.2, "hh": 0.0}
+    assert p["features"]["waveCy"] == {"hw": 0.0, "hh": 0.0}
+    assert p["features"]["topDipHalfWidth"] == {"hw": 0.4, "hh": 0.0}
+    assert p["features"]["topDipDepth"] == {"hw": 0.0, "hh": 0.14}
+    assert p["features"]["topDipPosition"] == {"hw": 0.15, "hh": 0.0}
+    assert p["provisional"]["baseModel"] is None
+    assert p["fit"]["fittedFrom"] == []
+
+
+def test_template_8_gets_its_own_provisional_model_until_its_goldens_exist():
+    frame = resolve_template("template_8")[0]["Frame"]
+    assert frame["shapeExtractor"] == "dipped_left_wave" and "from" not in frame["provisionalShape"]
+    if glob.glob(os.path.join(_GOLDENS, "template_8_*.json")):
+        pytest.skip("Template 8's goldens are recorded: the real fit applies")
+    m = template_shape_model("template_8", frame, _GOLDENS)
+    prov = frame["provisionalShape"]
+    assert m == fsf.provisional_dipped_left_wave_model(prov["waveReachOfHw"], prov["waveHeightOfHh"],
+                                                        prov["topDipHalfWidthOfHw"], prov["topDipDepthOfHh"],
+                                                        prov["topDipPositionOfHw"])
+    assert m["provisional"]["baseModel"] is None
+    # Templates 3-6 keep their own provisional models
+    assert "topInset" in template_shape_model("template_3", resolve_template("template_3")[0]["Frame"], _GOLDENS)["features"]
+    assert "tabHalfWidth" in template_shape_model("template_6", resolve_template("template_6")[0]["Frame"], _GOLDENS)["features"]
+
+
+def test_template_8_is_fitted_once_goldens_exist(tmp_path):
+    """Recorded goldens (Template 1's own sides with a 0.6 hw wide, 0.1 hh deep, 0.15 hw off-centre dip added and a
+    plain side_R, per size) replace the provisional model with a real dipped-left-wave fit."""
+    for path in glob.glob(os.path.join(_GOLDENS, "*.json")):
+        shutil.copy(path, tmp_path)
+    for size in _SIZES:
+        n = _dipped_left_wave(_golden("template_1", size), 0.6, 0.1, 0.15)
+        n["meta"]["template"] = "template_8"
+        (tmp_path / f"template_8_{size}.json").write_text(json.dumps(n), encoding="utf-8")
+    m = template_shape_model("template_8", resolve_template("template_8")[0]["Frame"], str(tmp_path))
+    assert m is not None and "provisional" not in m
+    w, pos, d = m["features"]["topDipHalfWidth"], m["features"]["topDipPosition"], m["features"]["topDipDepth"]
+    assert w["hw"] == pytest.approx(0.6, abs=1e-6) and w["hh"] == pytest.approx(0, abs=1e-6)
+    assert pos["hw"] == pytest.approx(0.15, abs=1e-6) and pos["hh"] == pytest.approx(0, abs=1e-6)
+    assert d["hh"] == pytest.approx(0.1, abs=1e-6) and d["hw"] == pytest.approx(0, abs=1e-6)

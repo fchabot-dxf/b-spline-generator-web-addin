@@ -12,7 +12,7 @@ from fb_engine.declared_profiles import classify, DeclaredProfileError  # noqa: 
 from fb_engine.parameter_schema import ParameterSchema, PANEL_LIP_PARAM  # noqa: E402
 from fb_engine.frame_definition import EXTRUSION_SETTINGS  # noqa: E402
 
-TEMPLATES = ["template_1", "template_2", "template_3", "template_4", "template_5", "template_6"]
+TEMPLATES = ["template_1", "template_2", "template_3", "template_4", "template_5", "template_6", "template_8"]
 
 
 def _blocks(t):
@@ -56,11 +56,16 @@ def test_the_lip_ring_is_no_feature_the_trim_still_cuts_and_the_bars_are_unchang
     from fb_engine.declared_profiles import miter_curve_id
     corner = [miter_curve_id(*reg["miters"][0]), miter_curve_id(*reg["miters"][1])]
     assert classify(lip[:3] + reg["outline"][:3] + corner, frame) == (None, None)
-    # a bar is classified exactly as before
+    # a bar is classified exactly as before. The sample piece is the first MITER's own outline piece, not
+    # reg["outline"][0] directly: every template so far happens to order its outline starting at that same piece
+    # (so this was a no-op there), but Template 8 starts its own outline elsewhere (at the TR corner, matching
+    # _solveDippedLeftWave's own piece order) -- using the miter's own piece keeps this test's intent (a bar
+    # profile including BOTH the outline+inner pair and a corner/miter piece) correct regardless of that ordering.
     m0 = reg["miters"][0]
-    bar = [reg["outline"][0], reg["inner"][0], m0[0].split(":")[0]]
+    piece0 = m0[0].split(":")[0]
+    bar = [piece0, "inner_" + piece0, piece0]
     assert classify(bar, frame) == classify([c for c in bar], frame)
-    assert classify([reg["outline"][0], reg["inner"][0]], frame)[0]["region"] == "outline-minus-inner"
+    assert classify([piece0, "inner_" + piece0], frame)[0]["region"] == "outline-minus-inner"
     # a lip profile with a stray curve is refused, never guessed
     with pytest.raises(DeclaredProfileError):
         classify(lip + ["somewhere_else"], frame)
