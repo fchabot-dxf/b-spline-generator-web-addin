@@ -151,6 +151,17 @@ export const PRESETS = {
     // only so `_jitteredParam` has one to read; jitterHalf 0 makes the draw itself inert.
     jitter: { waveHeight: 0, waveReach: 0, waveCornerRadius: 0, topDipWidth: 0, topDipPosition: 0, topDipDepth: 0 },
   },
+  // T9 I SHAPE: a FRAME-ONLY preset (Template 9): no Shape Lattice button offers it, like tabTop. A capital serif
+  // I -- full-width top/bottom flanges, a narrower stem between them, all straight lines, 12 pieces and 12
+  // corners (4 of them INSIDE, reflex corners where a shoulder meets a stem side) -- Template 6's single notch,
+  // doubled top/bottom. Its params are frame-only keys with plain defaults (DERIVED_PARAM_DEFAULTS.iShape, the
+  // same values), so there is no seeded jitter, exactly as tabTop.
+  iShape: {
+    label: 'I Shape',
+    frameOnly: true,
+    params: { stemWidth: 0.45, flangeHeight: 0.4 }, // = I_SHAPE_DEFAULT_STEM_WIDTH / _FLANGE_HEIGHT (declared below; literal here)
+    jitter: { stemWidth: 0, flangeHeight: 0 },
+  },
 };
 
 /**
@@ -197,6 +208,9 @@ export const PARAM_ORDER = {
   // right after, since they read it), then the dip's width, position, then depth (as T5: width before the params
   // that read it).
   dippedLeftWave: ['waveHeight', 'waveReach', 'waveCornerRadius', 'waveRadius', 'topDipWidth', 'topDipPosition', 'topDipDepth'],
+  // T9 I SHAPE (frame-only preset): the stem's half width, then the flange height (both frame-only keys,
+  // FRAME_ONLY_PARAM_KEYS).
+  iShape: ['stemWidth', 'flangeHeight'],
 };
 const BASE_RANGES = {
   // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
@@ -263,6 +277,8 @@ export const DERIVED_PARAM_DEFAULTS = {
   dippedLeftWave: {
     waveRadius: (v) => Math.max(v.waveReach - v.waveCornerRadius, WAIST_MIN_RADIUS_OF_DEPTH * v.waveReach),
   },
+  // T9 I SHAPE: every param has a plain default (no seeded jitter: a frame always sets both from its model, as T6).
+  iShape: { stemWidth: () => I_SHAPE_DEFAULT_STEM_WIDTH, flangeHeight: () => I_SHAPE_DEFAULT_FLANGE_HEIGHT },
 };
 
 /** F12: the params the Shape Lattice panel offers (a slider and a handle each).
@@ -280,7 +296,9 @@ export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLef
   'tabWidth', 'tabHeight',
   // T8 DIPPED TOP + LEFT-ONLY WAVE (frame-only preset; topDipWidth/topDipDepth already listed above are shared
   // with T5's identically-named keys, so only its OWN new keys are added here):
-  'topDipPosition', 'waveHeight', 'waveReach', 'waveCornerRadius', 'waveRadius']);
+  'topDipPosition', 'waveHeight', 'waveReach', 'waveCornerRadius', 'waveRadius',
+  // T9 I SHAPE (frame-only preset):
+  'stemWidth', 'flangeHeight']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -296,6 +314,31 @@ const TAB_TOP_DEFAULT_HEIGHT = 0.5;
 // The silhouette alone (no frame): a tab, shoulders and a body always there. The frame's own rule (a tab side
 // at least 2 x the frame thickness, every bar at least the thickness long) narrows these (frame-handles.js).
 const TAB_TOP_RANGES = { tabWidth: [0.05, 0.95], tabHeight: [0.05, 1.9] };
+
+/**
+ * T9 I SHAPE (a frame-only preset, like tabTop): a capital serif I -- full-width top and bottom flanges, a
+ * narrower stem between them, all straight lines, 12 pieces and 12 corners (4 of them INSIDE, reflex corners
+ * where a shoulder meets a stem side) -- Template 6's single notch, doubled top AND bottom, with the 4-fold
+ * (left/right AND top/bottom) symmetry p02_05_symmetry builds into the Fusion sketch. Params (region-local):
+ * `stemWidth` = the stem's half width a, a fraction of hw; `flangeHeight` = each flange's height (the top/bottom
+ * edge down/up to its own shoulder), a fraction of hh (shared top and bottom). Pieces, clockwise from the
+ * top-left corner (matching FRAME_SEED_MAP's own `prim` indices in template_data.py):
+ *   0 top edge, 1 flange side TR, 2 shoulder TR, 3 stem side R, 4 shoulder BR, 5 flange side BR, 6 bottom edge,
+ *   7 flange side BL, 8 shoulder BL, 9 stem side L, 10 shoulder TL, 11 flange side TL.
+ */
+export const I_SHAPE_SEGMENT_COUNT = 12;
+const I_SHAPE_DEFAULT_STEM_WIDTH = 0.45;
+const I_SHAPE_DEFAULT_FLANGE_HEIGHT = 0.4;
+// The silhouette alone (no frame): flanges, shoulders and a stem always there. `flangeHeight` is a fraction of hh
+// (NOT 2hh: each flange is its own hh-based measurement, so the stem-positive ceiling is < 1, not < 0.5 -- MEASURED,
+// a wrongly-assumed 0.5-ish ceiling here excluded the frame's own safe window entirely at 12x6, 0.48 vs the frame
+// rule's own [0.545, 0.591], and left `_narrow` (frame-handles.js) no choice but its fallback: AS CLOSE TO 0.48 AS
+// the frame ceiling allowed, a near-zero stem whose offset then broke `outline-offset.js`'s own cascading-collapse
+// re-join -- not a self-intersection the frame rule would have produced, a silhouette ceiling that was simply
+// wrong). 0.95 keeps a safe margin below the true 1.0 (where the stem reaches zero).
+// The frame's own rule (no bar shorter than the thickness, no flange side shorter than ~2 x it) narrows these
+// further (frame-handles.js).
+const I_SHAPE_RANGES = { stemWidth: [0.05, 0.95], flangeHeight: [0.05, 0.95] };
 
 /**
  * T5 HOURGLASS DIPPED TOP: the top edge is a short straight stub from each top corner, then a smooth inward dip
@@ -462,6 +505,15 @@ function _tabTopRange(key, region, stroke) {
   return _range(lo, hi);
 }
 
+/** T9 I SHAPE: the silhouette's own ranges (fractions): the stem inside the flanges, a flange shorter than half
+ *  the height (so the stem keeps a positive length); with a stroke inset the drawn stem/flanges keep a positive
+ *  size. */
+function _iShapeRange(key, region, stroke) {
+  const hw = region.w / 2, hh = region.h / 2, [lo, hi] = I_SHAPE_RANGES[key];
+  if (key === 'stemWidth') return _range(lo, hi, (2 * stroke + EPS_FRAC * hw) / hw);
+  return _range(lo, hi, -Infinity, (hh - stroke - EPS_FRAC * hh) / hh);
+}
+
 function _bottleRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   if (key === 'bodyRadius') return _optionalRange('bottle', region, stroke, v);
@@ -548,6 +600,8 @@ export function paramsFromShapeModel(preset, model, region) {
     return { neckWidth: f.neckHalfW / hw, skeletonX: (f.neckHalfW + f.neckR) / hw,
       neckLength: f.neckTop / (2 * hh), bodyRadius: f.bodyR / hw };
   }
+  // T9 I SHAPE (frame_shape_fit.py `i_shape`): the stem's half width and the flange height, in inches.
+  if (preset === 'iShape') return { stemWidth: f.stemHalfWidth / hw, flangeHeight: f.flangeHeight / hh };
   // Depth from the construction's own tangency: d = S +/- sqrt(S^2 - notch^2); the
   // fitted depth only picks the root (minor when the waist centre is outside the
   // shoulder column, major inside: Fusion's T1 is minor at 7x9, major at 12x6).
@@ -606,7 +660,7 @@ function _optionalRange(preset, region, stroke, v) {
  *  wins (min = max), the same "validity wins" rule `_range` already uses. */
 export const MIN_ARC_RADIUS_IN = 0.125;
 function _arcFloorFrac(preset, key, region, stroke, v) {
-  if (preset === 'tabTop') return -Infinity; // T6: no arcs
+  if (preset === 'tabTop' || preset === 'iShape') return -Infinity; // T6, T9: no arcs
   const hw = region.w / 2;
   const convex = (MIN_ARC_RADIUS_IN + stroke) / hw, concave = Math.max(0, MIN_ARC_RADIUS_IN - stroke) / hw;
   if (preset === 'bottle') {
@@ -680,9 +734,9 @@ function _dippedLeftWaveRange(key, region, stroke, v) {
 /** `{ param: {min, max} }` for `preset` on `region`, each conditional on the
  *  params resolved before it (PARAM_ORDER). `params` supplies those earlier
  *  values (e.g. a solver's own `params` output). */
-/** The preset's own range function (T6: `tabTop`, T8: `dippedLeftWave`; hourglass is the default). */
+/** The preset's own range function (T6: `tabTop`, T8: `dippedLeftWave`, T9: `iShape`; hourglass is the default). */
 const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 'tabTop' ? _tabTopRange
-  : preset === 'dippedLeftWave' ? _dippedLeftWaveRange : _hourglassRange);
+  : preset === 'dippedLeftWave' ? _dippedLeftWaveRange : preset === 'iShape' ? _iShapeRange : _hourglassRange);
 
 export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
   const fn = _rangeFn(preset);
@@ -809,6 +863,8 @@ const SALT = {
   // from -- present only because the plain/jittered resolution path (PRESETS.dippedLeftWave.params, see
   // DERIVED_PARAM_DEFAULTS.dippedLeftWave's own doc comment) reads `salt[key]` unconditionally.
   dippedLeftWave: { waveHeight: 621, waveReach: 622, waveCornerRadius: 623, topDipWidth: 624, topDipPosition: 625, topDipDepth: 626 },
+  // T9 I SHAPE: frameOnly (jitter 0 for both), same reason as dippedLeftWave's own comment above.
+  iShape: { stemWidth: 631, flangeHeight: 632 },
 };
 
 /** Explicit param value wins; else default + a gentle seeded jitter,
@@ -1253,6 +1309,38 @@ function _solveTabTop(region, params, segmentsOverride, seed, strokeHalfWidth = 
   return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments, mirror };
 }
 
+/** T9 I SHAPE: the construction from RESOLVED params (region-local, Y-down, inches): the stem's half width, the
+ *  flange height, and the two shoulders' y (symmetric about the centre: top at -hh + height, bottom at
+ *  hh - height). The ONE place this algebra lives (solver and handles). */
+export function iShapeConstruction(region, resolved) {
+  const hw = region.w / 2, hh = region.h / 2, D = DERIVED_PARAM_DEFAULTS.iShape;
+  const halfWidth = hw * (resolved.stemWidth ?? D.stemWidth(resolved));
+  const height = hh * (resolved.flangeHeight ?? D.flangeHeight(resolved));
+  return { hw, hh, halfWidth, height, topShoulderY: -hh + height, bottomShoulderY: hh - height };
+}
+
+/**
+ * T9 I SHAPE solver: 12 straight pieces (see I_SHAPE_SEGMENT_COUNT). `strokeHalfWidth` insets the drawn outline
+ * (every wall moves in by it: the flange sides in, the shoulders toward the centre, the stem sides in, the top
+ * and base in) -- Template 6's own tab inset, applied at all 4 notches.
+ */
+function _solveIShape(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  const resolvedAll = _resolveParams('iShape', region, params, seed, strokeHalfWidth);
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  const { hw, hh, halfWidth, topShoulderY, bottomShoulderY } = iShapeConstruction(region, resolvedAll);
+  const s = strokeHalfWidth, hwD = hw - s, hhD = hh - s, aD = halfWidth - s;
+  const ysT = topShoulderY + s, ysB = bottomShoulderY - s;
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
+  const keypoints = [
+    P(-hwD, -hhD), P(hwD, -hhD), P(hwD, ysT), P(aD, ysT), // TL, TR, notch TR outer, notch TR inner
+    P(aD, ysB), P(hwD, ysB), P(hwD, hhD), P(-hwD, hhD), // notch BR inner, notch BR outer, BR, BL
+    P(-hwD, ysB), P(-aD, ysB), P(-aD, ysT), P(-hwD, ysT), // notch BL outer, notch BL inner, notch TL inner, notch TL outer
+  ];
+  const fresh = keypoints.map(() => STRAIGHT_SEGMENT);
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
+  return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments };
+}
+
 /**
  * T8 DIPPED TOP + LEFT-ONLY WAVE solver: 12 pieces. The right side and base are a plain straight edge (Template
  * 1's classic square corners, no pinch at all); the left side reuses `hourglassConstruction`'s own `left`
@@ -1371,7 +1459,9 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
         ? _solveTabTop(region, params, segmentsOverride, seed, strokeHalfWidth)
         : preset === 'dippedLeftWave' // T8 DIPPED TOP + LEFT-ONLY WAVE (a frame-only preset)
           ? _solveDippedLeftWave(region, params, segmentsOverride, seed, strokeHalfWidth)
-          : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
+          : preset === 'iShape' // T9 I SHAPE (a frame-only preset)
+            ? _solveIShape(region, params, segmentsOverride, seed, strokeHalfWidth)
+            : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;

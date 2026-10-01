@@ -59,7 +59,7 @@ describe('Template 6: listing and declaration', () => {
     expect(T6.name).toBe('Template 6 - Tab Top');
     expect(frameLabel(T6)).toBe('6. Tab Top');
     expect(FRAME_DEFS.templates.map(frameLabel)).toEqual(['1. Hourglass', '2. Narrow Neck', '3. Tapered Hourglass',
-      '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top', '8. Dipped Top + Left-Only Wave']);
+      '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top', '8. Dipped Top + Left-Only Wave', '9. I Shape']);
     expect(T6.silhouettePreset).toBe('tabTop');
     expect(PRESETS.tabTop.frameOnly).toBe(true);
     expect(T6.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset', 'frame_thickness']);

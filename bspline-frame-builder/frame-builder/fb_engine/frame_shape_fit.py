@@ -193,9 +193,38 @@ def _dipped_left_wave(curves, hw, hh, tol=2e-3):
     return ok, feats
 
 
+def _i_shape(curves, hw, hh, tol=2e-3):
+    """T9 I SHAPE: a capital serif I (12 straight pieces) -- full-width top and bottom flanges, a narrower stem
+    between them, each transition a square (not filleted) step, like Template 6's tab but at all 4 corners.
+
+    Features: the stem's half width (centre line -> either stem side) and the flange height (the top/bottom edge
+    down/up to its own shoulder). Valid when the top and base lie on the safe zone's top/bottom lines, every piece
+    is axis-aligned (Fusion y up), the stem centred, and the top/bottom flange heights equal (the 4-fold symmetry
+    p02_05_symmetry builds in)."""
+    top, base = curves["top_edge"], curves["bottom_edge"]
+    fr, fbr, fbl, fl = curves["flange_side_R"], curves["flange_side_BR"], curves["flange_side_BL"], curves["flange_side_TL"]
+    sTR, sBR, sBL, sTL = curves["shoulder_TR"], curves["shoulder_BR"], curves["shoulder_BL"], curves["shoulder_TL"]
+    stR, stL = curves["stem_side_R"], curves["stem_side_L"]
+    top_xs = sorted([top["start"][0], top["end"][0]])
+    stem_xs = sorted([stR["start"][0], stL["start"][0]])
+    ok = (abs(top["start"][1] - hh) < tol and abs(top["end"][1] - hh) < tol
+          and abs(base["start"][1] + hh) < tol and abs(base["end"][1] + hh) < tol
+          and abs(top_xs[0] + hw) < tol and abs(top_xs[1] - hw) < tol
+          and abs(stem_xs[0] + stem_xs[1]) < tol  # the stem centred
+          and all(abs(c["start"][0] - c["end"][0]) < tol for c in (fr, fbr, fbl, fl, stR, stL))
+          and all(abs(c["start"][1] - c["end"][1]) < tol for c in (sTR, sBR, sBL, sTL))
+          and abs(sTR["start"][1] - sTL["start"][1]) < tol  # the two top shoulders at the same height
+          and abs(sBR["start"][1] - sBL["start"][1]) < tol  # the two bottom shoulders at the same height
+          and abs((hh - sTR["start"][1]) - (hh + sBR["start"][1])) < tol)  # top flange height = bottom's
+    return ok, {
+        "stemHalfWidth": (stem_xs[1] - stem_xs[0]) / 2,
+        "flangeHeight": hh - sTR["start"][1],
+    }
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
-                      "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave}
+                      "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):
@@ -258,6 +287,34 @@ def provisional_dipped_left_wave_model(wave_reach_of_hw, wave_height_of_hh, top_
             "topDipHalfWidthOfHw": top_dip_half_width_of_hw,
             "topDipDepthOfHh": top_dip_depth_of_hh,
             "topDipPositionOfHw": top_dip_position_of_hw,
+        },
+    }
+
+
+def provisional_i_shape_model(stem_half_width_of_hw, flange_height_of_hh):
+    """T9 I SHAPE, until its goldens are recorded live: a PROVISIONAL model (never none), like T6's tab top: no
+    base template to derive it from (no arcs, nothing shared with the hourglass). `stemHalfWidth` = `stem_half_
+    width_of_hw` x hw, `flangeHeight` = `flange_height_of_hh` x hh. The app clamps both into their feasible
+    ranges (the frame thickness rule: no bar shorter than the thickness, no flange side shorter than ~2 x it).
+    Marked `provisional` so nothing mistakes it for a fit."""
+    return {
+        "features": {
+            "stemHalfWidth": {"hw": stem_half_width_of_hw, "hh": 0.0},
+            "flangeHeight": {"hw": 0.0, "hh": flange_height_of_hh},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "stemHalfWidthOfHw": stem_half_width_of_hw,
+            "flangeHeightOfHh": flange_height_of_hh,
         },
     }
 

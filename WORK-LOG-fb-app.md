@@ -4394,3 +4394,104 @@ tests fail for the right reason, confirmed, restored. Noted but didn't treat as 
 live-preview attempt is now fully silent (the toast's own preview gate is pre-existing/untouched) — previously
 it would still have popped a blocking dialog on every failed auto-preview, arguably worse. `pytest`:
 b-spline-gen 91 passed (+2), frame-builder 302 unchanged, repo root 487 passed (+2), 10 skipped throughout.
+
+## 2026-09-30: F28 item 2 — Template 9, I Shape (seat C, epoch 4)
+
+- Dispatched after Fred approved T8 (merged to main, `8c94649`). Advisor's turn: "Template 9, the I shape...
+  Same deliverables as T8: a miter diagram with sharp inside corners, Frame-tab shots at 3 sizes, and the
+  piece-length test." No handle list or proportions given, unlike T8's own amendment -- the backlog
+  (`HANDOFF-ranchy.md`) separately flags Template 9 as "Stepped / interlocking shape, about 12 straight bars,
+  with many inside corners... BLOCKED until Fred sends his sketch." Checked the shots folder before writing any
+  code: `C:/Users/danse/.bspline-status/shots/fred/template_sketches_2026-09-30.jpg` (today's date) has 4
+  shapes; the top-right one is a capital serif "I" -- full-width top and bottom flanges, a narrower stem between
+  them, square (not filleted) steps -- matching the backlog's "about 12 straight bars" exactly (confirmed by
+  construction: 4 true outer corners + 4 convex notch-base corners + 4 reflex notch corners = 12). That resolved
+  the gate without needing a round-trip amendment.
+- **Architecture**: the closest existing precedent is Template 6 (Tab Top) -- the first (and until now, only)
+  frame with INSIDE corners, one notch on top of a wide body. T9 is that same notch mechanism applied to BOTH
+  the top and the bottom of the shape, giving it genuine 4-fold symmetry (left/right AND top/bottom) instead of
+  T6's single asymmetric notch. Copied T6's entire file pattern (phases/p01_01 and p01_02 shims from `_common`,
+  p02_01_projs -> p02_02_loop -> p02_03_welds -> p02_04_orientation -> p02_05_symmetry, p03_01_encl_projs ->
+  p03_02_encl_offset -> p03_03_inner_corner_resolve -> p03_04_encl_miters -> p03_05_encl_surround_rect), scaled
+  to 12 pieces: `top_edge, flange_side_R, shoulder_TR, stem_side_R, shoulder_BR, flange_side_BR, bottom_edge,
+  flange_side_BL, shoulder_BL, stem_side_L, shoulder_TL, flange_side_TL`. DOF count checked by hand before
+  writing the symmetry phase: 12 vertices (24 values) - 4 corner anchors (8) - 6 Vertical - 4 Horizontal (10)
+  = 6 free values, reduced to the 2 seeded ones (stem half width, flange height) by 4 Equal ties (`shoulder_TR`
+  = `shoulder_TL` ties the stem centred; `flange_side_R` = `flange_side_BR` and `flange_side_TL` = `flange_
+  side_BL` each mirror a side's own top/bottom shoulder heights; `flange_side_R` = `flange_side_TL` ties the two
+  sides' shared height together) -- the same "Equal on LINE LENGTHS, not raw coordinates" trick T6's own
+  comment explains, re-derived here for the doubled topology.
+- **Inner-corner directions, derived from first principles, not copied from T6**: each of T9's 4 notches has a
+  convex "outer" corner (flange meets shoulder) and a reflex "inner" corner (shoulder meets stem) sharing ONE
+  direction vector, exactly as T6's single notch does -- but T6's own direction values do NOT transfer: T6's
+  notch narrows going INTO the body (tab above a wide body), while T9's narrows going OUT to a wide flange on
+  BOTH ends, flipping which side is solid at each shoulder. Checked by hand for all 12 corners (which side of
+  each edge is solid vs. the "ear" cutout) and cross-validated the METHOD (not the values) against T6's own 2
+  reflex corners before trusting it on T9's new ones.
+- **Two real bugs found and fixed, both via live measurement, neither visible from the Fusion-side phases
+  alone** (the actual breakage was in the APP's shared JS geometry engine, exercised by `editor-frame-profile.js`
+  / `outline-offset.js`, which every template reuses):
+  1. **Wrong silhouette-level ceiling for `flangeHeight`** (`editor-shape-lattice-generator.js` I_SHAPE_RANGES):
+     assumed the hard "stem must stay positive" limit was 0.5 (reasoning mistakenly treated `flangeHeight` as a
+     fraction of the FULL height, 2 x hh); it is actually a fraction of hh ALONE (each flange measured on its
+     own half), so the true limit is 1.0, not 0.5. Picking 0.48 as "a safe margin under 0.5" silently excluded
+     the FRAME's own legitimate safe window at 12x6 ([0.545, 0.591]) entirely, forcing `_narrow`'s own
+     infeasible-range fallback to land on 0.48 -- a near-zero stem whose offset then broke `outline-offset.js`'s
+     cascading-collapse re-join (a wrong, DIAGONAL inner edge, not merely a thin one). Fixed by raising the
+     ceiling to 0.95 (comfortably past the true 1.0 limit); the frame's own thickness-aware window now reaches
+     correctly.
+  2. **A flange side's inner length is 2t shorter than T6's own tab side at the same relative position, not
+     unchanged**: Template 6's tab side has one convex end (the tab top) and one reflex end (the inside corner)
+     -- a convex end's own inward offset shortens the piece, a reflex end's own offset EXTENDS it, so the net
+     change is zero even clamped exactly to the "2t" floor. T9's flange side has TWO convex ends (the true outer
+     corner and the notch's own outer corner), so clamping its length to EXACTLY `2t` (the bare floor) leaves an
+     inner length of EXACTLY ZERO (a `degenerateLine`), not a thin-but-valid remnant. MEASURED at 12x6: the
+     provisional default (flange height 0.4) clamped up to the floor landed the drawn flange at precisely 1.5 in
+     = 2 x 0.75 in. Fixed with a declared 0.05 in margin above the bare `2t` floor in `frame-handles.js`'s own
+     `flangeHeight` range (comment there explains the T6 contrast). Both fixes mutation-tested: reverted each in
+     turn, confirmed `frame-template-9.test.js` fails with the exact predicted symptom (self-intersection / the
+     same `degenerateLine`), restored, re-verified green.
+  3. **Not a bug, a genuine architectural limit, documented rather than chased further**: at `frame_thickness`
+     large enough relative to the board (`hh < 3t + 0.05`; the one case this template's own tests exercise is
+     12x6 at the user-settable max of 1.0 in), NEITHER the flange-side floor NOR the stem-opening ceiling can be
+     satisfied at once -- unlike Template 6's single notch, T9's doubled notch spends the SAME height budget
+     twice. The test documents this precisely and only skips the inner-edge guarantee for that one case; the
+     outer outline stays clean regardless, same as every board.
+- **Handles**: `Stem width` (hw-based) and `Flange height` (hh-based), both seeded, mirroring T6's own 2-handle
+  pattern exactly -- added the `iShape` branch everywhere T6's `tabTop` one lives (`PRESETS`, `DERIVED_PARAM_
+  DEFAULTS`, `PARAM_ORDER`, `FRAME_ONLY_PARAM_KEYS`, `SALT`, `_iShapeRange`, `iShapeConstruction`, `_solveIShape`,
+  the `generateSilhouette` dispatcher, `frameParamRanges`'s own thickness rule, `FRAME_CLAMPED_PRESETS` so the
+  DRAWN frame -- not only a handle drag -- obeys the rule, `computeParamHandles`'s own two position squares, and
+  a declared `I_SHAPE_SEGMENT_PAIRS` table for the hover-highlight, since the plain `mirrorSegmentIndex` formula
+  assumes a single mirror axis and this shape needs the flange handle to highlight all 4 shoulders at once).
+  Python side: `frame_shape_fit.py` gained `_i_shape` (the live-fit extractor, unused until goldens exist) and
+  `provisional_i_shape_model`; `frame_definition.py`'s `template_shape_model` dispatch got a new branch keyed on
+  `stemHalfWidthOfHw`, mirroring T6/T8's own "a shape of its own, no `from`" pattern.
+- **Tests**: `tests/frame-template-9.test.js`, 28 tests covering declaration, the outline at every board
+  (axis-aligned, centred, on the safe zone), the 7x9/12x6 fitted values, the piece-length-vs-thickness guard (the
+  advisor's explicit ask), the frame-thickness rule across a sweep of boards/thicknesses/seeds (with the one
+  documented architectural-limit exception above), the 12 miters and inner edge (including which pieces are 2t
+  shorter, 2t LONGER -- the 2 stem sides, both ends reflex, a new case T6 never has -- or unchanged), the 2
+  handles (drag, far-drag clamping, Generate), and the usual "every other template/preset untouched" guards.
+  `python tools/gen_frame_defs.py --check`: fresh. Full suite green: vitest 2818 passed (150 -> 151 files);
+  pytest frame-builder 325+10 skipped, b-spline-gen 91, root (--ignore=.claude) 510+10 skipped.
+- **A/B byte-identical check** (HEAD worktree vs this one, Templates 1-5 and 8, the lists `tools/repro/ab/*`
+  already cover): `ab6.mjs` (JS geometry + 3D), `ablat6.mjs`, `ab3d.mjs` all byte-identical; `abpy.py` identical;
+  `abcam.py` fails with the SAME assertion on a pristine HEAD checkout too (a pre-existing path-separator issue
+  in the script itself, unrelated to this work -- not a new regression). template_9 intentionally NOT added to
+  these lists yet, per their own convention ("append only after the check").
+- **Frame-tab phone shots** (390x844, cache busted via CDP `Network.setCacheDisabled`) at 7x9, 12x6 and
+  5.51x1.97: `C:/Users/danse/.bspline-status/shots/seatC/2135_F28-item2_<size>.png`. All 3 confirmed visually: a
+  clean, symmetric serif "I" at 7x9 and the correctly-clamped flatter 12x6 version, both with sharp square
+  corners and visible handle squares; 5.51x1.97 shows the un-mitered silhouette only (`fit.ok` false, same as
+  every other template at that board).
+- **Miter diagram with sharp inside corners**: built directly from the app's own `frameCutProfile`/
+  `frameInnerProfile`/`frameMiters`/`primitiveToPathD` (not a re-derivation) at 7x9, same visual style as seat
+  B's and this seat's own T8 one (dark brown outer, blue dotted inner, 12 red miter lines with endpoint dots, 12
+  bold green bar labels, light-red dashed board boundary): `C:/Users/danse/.bspline-status/shots/seatC/
+  2140_F28-item2_miter-diagram.png`. Visually confirms the 4-fold symmetry and all 12 corners (8 convex, 4
+  reflex) read correctly off the live geometry.
+- Messaged the advisor that both deliverables are up, per the dispatch's "Message me when done, Template 9 can
+  start after" -- update: a new amendment (turn 58) landed during this round assigning Template 10 (Arched
+  Hourglass) next, with a changed process this time (miter diagram at 7x9 + 12x6 shown to Fred BEFORE the build,
+  not after).

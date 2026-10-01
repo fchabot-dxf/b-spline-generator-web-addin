@@ -181,7 +181,9 @@ def template_shape_model(template_id, frame, goldens_dir):
     T8 DIPPED TOP + LEFT-ONLY WAVE: {"waveReachOfHw": ..., "waveHeightOfHh": ..., "topDipHalfWidthOfHw": ...,
     "topDipDepthOfHh": ..., "topDipPositionOfHw": ...} (no `from` either: like T6, no earlier template's fitted
     features describe a plain straight side or an off-centre dip) builds
-    frame_shape_fit.provisional_dipped_left_wave_model."""
+    frame_shape_fit.provisional_dipped_left_wave_model.
+    T9 I SHAPE: {"stemHalfWidthOfHw": w, "flangeHeightOfHh": h} (no `from`: like T6, nothing to derive it from)
+    builds frame_shape_fit.provisional_i_shape_model."""
     from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
                                            provisional_dipped_top_model)
     from fb_engine.template_resolver import resolve_template
@@ -192,6 +194,10 @@ def template_shape_model(template_id, frame, goldens_dir):
             # T6 TAB TOP: a shape of its own (no base template): {"tabHalfWidthOfHw": w, "tabHeightOfHh": h}
             from fb_engine.frame_shape_fit import provisional_tab_top_model
             return provisional_tab_top_model(prov["tabHalfWidthOfHw"], prov["tabHeightOfHh"])
+        if "stemHalfWidthOfHw" in prov:
+            # T9 I SHAPE: also a shape of its own: {"stemHalfWidthOfHw": w, "flangeHeightOfHh": h}
+            from fb_engine.frame_shape_fit import provisional_i_shape_model
+            return provisional_i_shape_model(prov["stemHalfWidthOfHw"], prov["flangeHeightOfHh"])
         # T8 DIPPED TOP + LEFT-ONLY WAVE: also a shape of its own (see this function's own doc comment).
         from fb_engine.frame_shape_fit import provisional_dipped_left_wave_model
         return provisional_dipped_left_wave_model(prov["waveReachOfHw"], prov["waveHeightOfHh"],

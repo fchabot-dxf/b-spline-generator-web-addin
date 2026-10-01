@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "673d6b09d9af9328febd6d32344fba9a3d010812db6485a696b65110777cbef6",
+  "sourceHash": "0d3747b4a80cc9ef731df65af12b8b5fd366e67759482d1a86be5eb078c26c5c",
   "templates": [
     {
       "features": [
@@ -10372,6 +10372,1360 @@ export default {
                   "IsConstruction": false,
                   "Source": "proj_horn_BL:S",
                   "Target": "inner_proj_horn_BL:S"
+                }
+              ],
+              "Name": "Enclosure Miters",
+              "PhaseFile": "p03_04_encl_miters.py",
+              "PhaseID": "p03_04_encl_miters"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Center": [
+                    "0.001",
+                    "0.001"
+                  ],
+                  "ID": "surround_rect",
+                  "LineIDs": [
+                    "surround_top",
+                    "surround_right",
+                    "surround_bottom",
+                    "surround_left"
+                  ],
+                  "Size": [
+                    "widthIn * 1.25",
+                    "heightIn * 1.25"
+                  ],
+                  "Type": "RectangleCenter"
+                },
+                {
+                  "AllowNudge": true,
+                  "Targets": [
+                    "surround_rect:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Enclosure Surround Rectangle",
+              "PhaseFile": "p03_05_encl_surround_rect.py",
+              "PhaseID": "p03_05_encl_surround_rect"
+            }
+          ],
+          "Label": "Frame Enclosure",
+          "Name": "3_frame_enclosure",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "Frame thickness",
+              "Max": 1.5,
+              "Min": 0.25,
+              "Name": "frame_thickness",
+              "Unit": "in",
+              "Val": 0.75
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "features": [
+        {
+          "bodyNames": [
+            "frame_top",
+            "frame_flange_TR",
+            "frame_shoulder_TR",
+            "frame_stem_right",
+            "frame_shoulder_BR",
+            "frame_flange_BR",
+            "frame_bottom",
+            "frame_flange_BL",
+            "frame_shoulder_BL",
+            "frame_stem_left",
+            "frame_shoulder_TL",
+            "frame_flange_TL"
+          ],
+          "extent": {
+            "offset": "0 in",
+            "toFace": "core.underside"
+          },
+          "id": "bars",
+          "op": "newBody",
+          "region": "outline-minus-inner",
+          "splitBy": "miters",
+          "start": "frame_height_offset",
+          "taper": "0 deg"
+        },
+        {
+          "extent": "throughAll",
+          "id": "trim",
+          "op": "cut",
+          "region": "surround-minus-outline",
+          "start": "0 in",
+          "taper": "0 deg"
+        }
+      ],
+      "handleMigrations": {},
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "stemWidth",
+          "label": "Stem width"
+        },
+        {
+          "basis": "hh",
+          "binding": "seeded",
+          "key": "flangeHeight",
+          "label": "Flange height"
+        }
+      ],
+      "id": "template_9",
+      "name": "Template 9 - I Shape",
+      "params": [
+        {
+          "category": "Frame Spec",
+          "default": 5.51,
+          "label": "Width (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "widthIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 1.97,
+          "label": "Height (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "heightIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.25,
+          "expose": true,
+          "label": "BBox Border",
+          "min": 0.0,
+          "name": "boundingboxoffset",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.75,
+          "expose": true,
+          "label": "Frame thickness",
+          "max": 1.5,
+          "min": 0.25,
+          "name": "frame_thickness",
+          "owner": "frame",
+          "unit": "in"
+        }
+      ],
+      "prefix": "T9",
+      "regions": {
+        "bars": [
+          {
+            "curves": [
+              "proj_top_edge"
+            ],
+            "name": "frame_top"
+          },
+          {
+            "curves": [
+              "proj_flange_side_R"
+            ],
+            "name": "frame_flange_TR"
+          },
+          {
+            "curves": [
+              "proj_shoulder_TR"
+            ],
+            "name": "frame_shoulder_TR"
+          },
+          {
+            "curves": [
+              "proj_stem_side_R"
+            ],
+            "name": "frame_stem_right"
+          },
+          {
+            "curves": [
+              "proj_shoulder_BR"
+            ],
+            "name": "frame_shoulder_BR"
+          },
+          {
+            "curves": [
+              "proj_flange_side_BR"
+            ],
+            "name": "frame_flange_BR"
+          },
+          {
+            "curves": [
+              "proj_bottom_edge"
+            ],
+            "name": "frame_bottom"
+          },
+          {
+            "curves": [
+              "proj_flange_side_BL"
+            ],
+            "name": "frame_flange_BL"
+          },
+          {
+            "curves": [
+              "proj_shoulder_BL"
+            ],
+            "name": "frame_shoulder_BL"
+          },
+          {
+            "curves": [
+              "proj_stem_side_L"
+            ],
+            "name": "frame_stem_left"
+          },
+          {
+            "curves": [
+              "proj_shoulder_TL"
+            ],
+            "name": "frame_shoulder_TL"
+          },
+          {
+            "curves": [
+              "proj_flange_side_TL"
+            ],
+            "name": "frame_flange_TL"
+          }
+        ],
+        "corners": [
+          {
+            "curve": "proj_top_edge",
+            "direction": [
+              1,
+              -1
+            ],
+            "id": "TL",
+            "inner": "inner_proj_top_edge:S",
+            "outer": "proj_top_edge:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_flange_side_R",
+            "direction": [
+              -1,
+              -1
+            ],
+            "id": "TR",
+            "inner": "inner_proj_flange_side_R:S",
+            "outer": "proj_flange_side_R:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_shoulder_TR",
+            "direction": [
+              -1,
+              1
+            ],
+            "id": "notch_TR_outer",
+            "inner": "inner_proj_shoulder_TR:S",
+            "outer": "proj_shoulder_TR:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_stem_side_R",
+            "direction": [
+              -1,
+              1
+            ],
+            "id": "notch_TR_inner",
+            "inner": "inner_proj_stem_side_R:S",
+            "outer": "proj_stem_side_R:S",
+            "reflex": true
+          },
+          {
+            "curve": "proj_shoulder_BR",
+            "direction": [
+              -1,
+              -1
+            ],
+            "id": "notch_BR_inner",
+            "inner": "inner_proj_shoulder_BR:S",
+            "outer": "proj_shoulder_BR:S",
+            "reflex": true
+          },
+          {
+            "curve": "proj_flange_side_BR",
+            "direction": [
+              -1,
+              -1
+            ],
+            "id": "notch_BR_outer",
+            "inner": "inner_proj_flange_side_BR:S",
+            "outer": "proj_flange_side_BR:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_bottom_edge",
+            "direction": [
+              -1,
+              1
+            ],
+            "id": "BR",
+            "inner": "inner_proj_bottom_edge:S",
+            "outer": "proj_bottom_edge:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_flange_side_BL",
+            "direction": [
+              1,
+              1
+            ],
+            "id": "BL",
+            "inner": "inner_proj_flange_side_BL:S",
+            "outer": "proj_flange_side_BL:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_shoulder_BL",
+            "direction": [
+              1,
+              -1
+            ],
+            "id": "notch_BL_outer",
+            "inner": "inner_proj_shoulder_BL:S",
+            "outer": "proj_shoulder_BL:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_stem_side_L",
+            "direction": [
+              1,
+              -1
+            ],
+            "id": "notch_BL_inner",
+            "inner": "inner_proj_stem_side_L:S",
+            "outer": "proj_stem_side_L:S",
+            "reflex": true
+          },
+          {
+            "curve": "proj_shoulder_TL",
+            "direction": [
+              1,
+              1
+            ],
+            "id": "notch_TL_inner",
+            "inner": "inner_proj_shoulder_TL:S",
+            "outer": "proj_shoulder_TL:S",
+            "reflex": true
+          },
+          {
+            "curve": "proj_flange_side_TL",
+            "direction": [
+              1,
+              1
+            ],
+            "id": "notch_TL_outer",
+            "inner": "inner_proj_flange_side_TL:S",
+            "outer": "proj_flange_side_TL:S",
+            "reflex": false
+          }
+        ],
+        "inner": [
+          "inner_proj_top_edge",
+          "inner_proj_flange_side_R",
+          "inner_proj_shoulder_TR",
+          "inner_proj_stem_side_R",
+          "inner_proj_shoulder_BR",
+          "inner_proj_flange_side_BR",
+          "inner_proj_bottom_edge",
+          "inner_proj_flange_side_BL",
+          "inner_proj_shoulder_BL",
+          "inner_proj_stem_side_L",
+          "inner_proj_shoulder_TL",
+          "inner_proj_flange_side_TL"
+        ],
+        "miters": [
+          [
+            "proj_top_edge:S",
+            "inner_proj_top_edge:S"
+          ],
+          [
+            "proj_flange_side_R:S",
+            "inner_proj_flange_side_R:S"
+          ],
+          [
+            "proj_shoulder_TR:S",
+            "inner_proj_shoulder_TR:S"
+          ],
+          [
+            "proj_stem_side_R:S",
+            "inner_proj_stem_side_R:S"
+          ],
+          [
+            "proj_shoulder_BR:S",
+            "inner_proj_shoulder_BR:S"
+          ],
+          [
+            "proj_flange_side_BR:S",
+            "inner_proj_flange_side_BR:S"
+          ],
+          [
+            "proj_bottom_edge:S",
+            "inner_proj_bottom_edge:S"
+          ],
+          [
+            "proj_flange_side_BL:S",
+            "inner_proj_flange_side_BL:S"
+          ],
+          [
+            "proj_shoulder_BL:S",
+            "inner_proj_shoulder_BL:S"
+          ],
+          [
+            "proj_stem_side_L:S",
+            "inner_proj_stem_side_L:S"
+          ],
+          [
+            "proj_shoulder_TL:S",
+            "inner_proj_shoulder_TL:S"
+          ],
+          [
+            "proj_flange_side_TL:S",
+            "inner_proj_flange_side_TL:S"
+          ]
+        ],
+        "outline": [
+          "proj_top_edge",
+          "proj_flange_side_R",
+          "proj_shoulder_TR",
+          "proj_stem_side_R",
+          "proj_shoulder_BR",
+          "proj_flange_side_BR",
+          "proj_bottom_edge",
+          "proj_flange_side_BL",
+          "proj_shoulder_BL",
+          "proj_stem_side_L",
+          "proj_shoulder_TL",
+          "proj_flange_side_TL"
+        ],
+        "surround": "surround_rect"
+      },
+      "seedMap": [
+        {
+          "id": "top_edge",
+          "kind": "line",
+          "prim": 0,
+          "reverse": false
+        },
+        {
+          "id": "flange_side_R",
+          "kind": "line",
+          "prim": 1,
+          "reverse": false
+        },
+        {
+          "id": "shoulder_TR",
+          "kind": "line",
+          "prim": 2,
+          "reverse": false
+        },
+        {
+          "id": "stem_side_R",
+          "kind": "line",
+          "prim": 3,
+          "reverse": false
+        },
+        {
+          "id": "shoulder_BR",
+          "kind": "line",
+          "prim": 4,
+          "reverse": false
+        },
+        {
+          "id": "flange_side_BR",
+          "kind": "line",
+          "prim": 5,
+          "reverse": false
+        },
+        {
+          "id": "bottom_edge",
+          "kind": "line",
+          "prim": 6,
+          "reverse": false
+        },
+        {
+          "id": "flange_side_BL",
+          "kind": "line",
+          "prim": 7,
+          "reverse": false
+        },
+        {
+          "id": "shoulder_BL",
+          "kind": "line",
+          "prim": 8,
+          "reverse": false
+        },
+        {
+          "id": "stem_side_L",
+          "kind": "line",
+          "prim": 9,
+          "reverse": false
+        },
+        {
+          "id": "shoulder_TL",
+          "kind": "line",
+          "prim": 10,
+          "reverse": false
+        },
+        {
+          "id": "flange_side_TL",
+          "kind": "line",
+          "prim": 11,
+          "reverse": false
+        }
+      ],
+      "shapeModel": {
+        "features": {
+          "flangeHeight": {
+            "hh": 0.4,
+            "hw": 0.0
+          },
+          "stemHalfWidth": {
+            "hh": 0.0,
+            "hw": 0.45
+          }
+        },
+        "fit": {
+          "exactAtFittedSizes": false,
+          "excluded": [],
+          "fittedFrom": [],
+          "maxResidualIn": null,
+          "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+          "residualsIn": {}
+        },
+        "provisional": {
+          "baseModel": null,
+          "flangeHeightOfHh": 0.4,
+          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+          "stemHalfWidthOfHw": 0.45
+        }
+      },
+      "silhouettePreset": "iShape",
+      "sketches": [
+        {
+          "Blocks": [
+            {
+              "Constraints": [
+                {
+                  "Targets": [
+                    "BB_RECT:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Dimensions": [
+                {
+                  "Expression": "widthIn",
+                  "Name": "dim_width",
+                  "Target": "BB_top"
+                },
+                {
+                  "Expression": "heightIn",
+                  "Name": "dim_height",
+                  "Target": "BB_right"
+                }
+              ],
+              "Geometry": [
+                {
+                  "Center": [
+                    0.0,
+                    0.0
+                  ],
+                  "ID": "BB_RECT",
+                  "LineIDs": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "Size": [
+                    "widthIn",
+                    "heightIn"
+                  ],
+                  "Type": "Rectangle"
+                }
+              ],
+              "Name": "BB Layout",
+              "PhaseFile": "p01_01_bb_layout.py",
+              "PhaseID": "p01_01_bb_layout"
+            },
+            {
+              "Name": "Safe Zone Offset",
+              "PhaseFile": "p01_02_bb_offset.py",
+              "PhaseID": "p01_02_bb_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "boundingboxoffset",
+                  "SourceID": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "TargetIDs": [
+                    "offset_BB_top",
+                    "offset_BB_right",
+                    "offset_BB_bottom",
+                    "offset_BB_left"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            }
+          ],
+          "Label": "Bounding Box",
+          "Name": "1_bounding_box",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Label": "Width (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "widthIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 5.51
+            },
+            {
+              "Category": "Frame Spec",
+              "Label": "Height (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "heightIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 1.97
+            },
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "BBox Border",
+              "Min": 0.0,
+              "Name": "boundingboxoffset",
+              "Unit": "in",
+              "Val": 0.25
+            }
+          ]
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Projections",
+              "PhaseFile": "p02_01_projs.py",
+              "PhaseID": "p02_01_projs",
+              "Projections": [
+                {
+                  "SourceID": "offset_BB_top:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_TL"
+                },
+                {
+                  "SourceID": "offset_BB_right:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_TR"
+                },
+                {
+                  "SourceID": "offset_BB_bottom:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BR"
+                },
+                {
+                  "SourceID": "offset_BB_left:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BL"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "EndID": "top_edge:E",
+                  "ID": "top_edge",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286 - 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                    ]
+                  ],
+                  "StartID": "top_edge:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "flange_side_R:E",
+                  "ID": "flange_side_R",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333 + 0.001"
+                    ]
+                  ],
+                  "StartID": "flange_side_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "shoulder_TR:E",
+                  "ID": "shoulder_TR",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928 + 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ]
+                  ],
+                  "StartID": "shoulder_TR:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "stem_side_R:E",
+                  "ID": "stem_side_R",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333 + 0.001"
+                    ]
+                  ],
+                  "StartID": "stem_side_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "shoulder_BR:E",
+                  "ID": "shoulder_BR",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286 - 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ]
+                  ],
+                  "StartID": "shoulder_BR:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "flange_side_BR:E",
+                  "ID": "flange_side_BR",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ],
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222 + 0.001"
+                    ]
+                  ],
+                  "StartID": "flange_side_BR:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "bottom_edge:E",
+                  "ID": "bottom_edge",
+                  "Points": [
+                    [
+                      "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286 + 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                    ]
+                  ],
+                  "StartID": "bottom_edge:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "flange_side_BL:E",
+                  "ID": "flange_side_BL",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333 - 0.001"
+                    ]
+                  ],
+                  "StartID": "flange_side_BL:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "shoulder_BL:E",
+                  "ID": "shoulder_BL",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928 - 0.001",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ]
+                  ],
+                  "StartID": "shoulder_BL:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "stem_side_L:E",
+                  "ID": "stem_side_L",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333 - 0.001"
+                    ]
+                  ],
+                  "StartID": "stem_side_L:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "shoulder_TL:E",
+                  "ID": "shoulder_TL",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286 + 0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ]
+                  ],
+                  "StartID": "shoulder_TL:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "flange_side_TL:E",
+                  "ID": "flange_side_TL",
+                  "Points": [
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                    ],
+                    [
+                      "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.472222 - 0.001"
+                    ]
+                  ],
+                  "StartID": "flange_side_TL:S",
+                  "Type": "Line"
+                }
+              ],
+              "Name": "Silhouette Loop",
+              "PhaseFile": "p02_02_loop.py",
+              "PhaseID": "p02_02_loop"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Targets": [
+                    "top_edge:E",
+                    "flange_side_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "flange_side_R:E",
+                    "shoulder_TR:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "shoulder_TR:E",
+                    "stem_side_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "stem_side_R:E",
+                    "shoulder_BR:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "shoulder_BR:E",
+                    "flange_side_BR:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "flange_side_BR:E",
+                    "bottom_edge:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "bottom_edge:E",
+                    "flange_side_BL:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "flange_side_BL:E",
+                    "shoulder_BL:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "shoulder_BL:E",
+                    "stem_side_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "stem_side_L:E",
+                    "shoulder_TL:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "shoulder_TL:E",
+                    "flange_side_TL:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "flange_side_TL:E",
+                    "top_edge:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "top_edge:S",
+                    "proj_off_corner_TL"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "top_edge:E",
+                    "proj_off_corner_TR"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "bottom_edge:S",
+                    "proj_off_corner_BR"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "bottom_edge:E",
+                    "proj_off_corner_BL"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Loop Welds",
+              "PhaseFile": "p02_03_welds.py",
+              "PhaseID": "p02_03_welds"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Targets": [
+                    "flange_side_R",
+                    "stem_side_R",
+                    "flange_side_BR",
+                    "flange_side_BL",
+                    "stem_side_L",
+                    "flange_side_TL"
+                  ],
+                  "Type": "Vertical"
+                },
+                {
+                  "Targets": [
+                    "shoulder_TR",
+                    "shoulder_BR",
+                    "shoulder_BL",
+                    "shoulder_TL"
+                  ],
+                  "Type": "Horizontal"
+                }
+              ],
+              "Name": "Orientation",
+              "PhaseFile": "p02_04_orientation.py",
+              "PhaseID": "p02_04_orientation"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Name": "i_shape_stem_centred",
+                  "Targets": [
+                    "shoulder_TR",
+                    "shoulder_TL"
+                  ],
+                  "Type": "Equal"
+                },
+                {
+                  "Name": "i_shape_right_mirrored",
+                  "Targets": [
+                    "flange_side_R",
+                    "flange_side_BR"
+                  ],
+                  "Type": "Equal"
+                },
+                {
+                  "Name": "i_shape_left_mirrored",
+                  "Targets": [
+                    "flange_side_TL",
+                    "flange_side_BL"
+                  ],
+                  "Type": "Equal"
+                },
+                {
+                  "Name": "i_shape_sides_equal",
+                  "Targets": [
+                    "flange_side_R",
+                    "flange_side_TL"
+                  ],
+                  "Type": "Equal"
+                },
+                {
+                  "Type": "Pulse"
+                }
+              ],
+              "Name": "Symmetry",
+              "PhaseFile": "p02_05_symmetry.py",
+              "PhaseID": "p02_05_symmetry"
+            }
+          ],
+          "Label": "Shape Outline",
+          "Name": "2_shape_outline",
+          "Parameters": []
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Enclosure Projections",
+              "PhaseFile": "p03_01_encl_projs.py",
+              "PhaseID": "p03_01_encl_projs",
+              "Projections": [
+                {
+                  "SourceID": "top_edge",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_top_edge"
+                },
+                {
+                  "SourceID": "flange_side_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_flange_side_R"
+                },
+                {
+                  "SourceID": "shoulder_TR",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_shoulder_TR"
+                },
+                {
+                  "SourceID": "stem_side_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_stem_side_R"
+                },
+                {
+                  "SourceID": "shoulder_BR",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_shoulder_BR"
+                },
+                {
+                  "SourceID": "flange_side_BR",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_flange_side_BR"
+                },
+                {
+                  "SourceID": "bottom_edge",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_bottom_edge"
+                },
+                {
+                  "SourceID": "flange_side_BL",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_flange_side_BL"
+                },
+                {
+                  "SourceID": "shoulder_BL",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_shoulder_BL"
+                },
+                {
+                  "SourceID": "stem_side_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_stem_side_L"
+                },
+                {
+                  "SourceID": "shoulder_TL",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_shoulder_TL"
+                },
+                {
+                  "SourceID": "flange_side_TL",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_flange_side_TL"
+                }
+              ]
+            },
+            {
+              "Name": "Enclosure Offset",
+              "PhaseFile": "p03_02_encl_offset.py",
+              "PhaseID": "p03_02_encl_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "frame_thickness",
+                  "SourceID": [
+                    "proj_top_edge",
+                    "proj_flange_side_R",
+                    "proj_shoulder_TR",
+                    "proj_stem_side_R",
+                    "proj_shoulder_BR",
+                    "proj_flange_side_BR",
+                    "proj_bottom_edge",
+                    "proj_flange_side_BL",
+                    "proj_shoulder_BL",
+                    "proj_stem_side_L",
+                    "proj_shoulder_TL",
+                    "proj_flange_side_TL"
+                  ],
+                  "TargetIDs": [
+                    "inner_proj_top_edge",
+                    "inner_proj_flange_side_R",
+                    "inner_proj_shoulder_TR",
+                    "inner_proj_stem_side_R",
+                    "inner_proj_shoulder_BR",
+                    "inner_proj_flange_side_BR",
+                    "inner_proj_bottom_edge",
+                    "inner_proj_flange_side_BL",
+                    "inner_proj_shoulder_BL",
+                    "inner_proj_stem_side_L",
+                    "inner_proj_shoulder_TL",
+                    "inner_proj_flange_side_TL"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Corners": {
+                    "BL": {
+                      "Direction": [
+                        1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_flange_side_BL:S",
+                      "OuterID": "proj_flange_side_BL:S"
+                    },
+                    "BR": {
+                      "Direction": [
+                        -1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_bottom_edge:S",
+                      "OuterID": "proj_bottom_edge:S"
+                    },
+                    "TL": {
+                      "Direction": [
+                        1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_top_edge:S",
+                      "OuterID": "proj_top_edge:S"
+                    },
+                    "TR": {
+                      "Direction": [
+                        -1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_flange_side_R:S",
+                      "OuterID": "proj_flange_side_R:S"
+                    },
+                    "notch_BL_inner": {
+                      "Direction": [
+                        1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_stem_side_L:S",
+                      "OuterID": "proj_stem_side_L:S"
+                    },
+                    "notch_BL_outer": {
+                      "Direction": [
+                        1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_shoulder_BL:S",
+                      "OuterID": "proj_shoulder_BL:S"
+                    },
+                    "notch_BR_inner": {
+                      "Direction": [
+                        -1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_shoulder_BR:S",
+                      "OuterID": "proj_shoulder_BR:S"
+                    },
+                    "notch_BR_outer": {
+                      "Direction": [
+                        -1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_flange_side_BR:S",
+                      "OuterID": "proj_flange_side_BR:S"
+                    },
+                    "notch_TL_inner": {
+                      "Direction": [
+                        1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_shoulder_TL:S",
+                      "OuterID": "proj_shoulder_TL:S"
+                    },
+                    "notch_TL_outer": {
+                      "Direction": [
+                        1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_flange_side_TL:S",
+                      "OuterID": "proj_flange_side_TL:S"
+                    },
+                    "notch_TR_inner": {
+                      "Direction": [
+                        -1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_stem_side_R:S",
+                      "OuterID": "proj_stem_side_R:S"
+                    },
+                    "notch_TR_outer": {
+                      "Direction": [
+                        -1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_shoulder_TR:S",
+                      "OuterID": "proj_shoulder_TR:S"
+                    }
+                  },
+                  "Distance": "frame_thickness",
+                  "Tolerance": 0.05,
+                  "Type": "ResolveInnerCorners"
+                }
+              ],
+              "Name": "Inner Corner Resolve",
+              "PhaseFile": "p03_03_inner_corner_resolve.py",
+              "PhaseID": "p03_03_inner_corner_resolve"
+            },
+            {
+              "Miters": [
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_top_edge:S",
+                  "Target": "inner_proj_top_edge:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_flange_side_R:S",
+                  "Target": "inner_proj_flange_side_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_shoulder_TR:S",
+                  "Target": "inner_proj_shoulder_TR:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_stem_side_R:S",
+                  "Target": "inner_proj_stem_side_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_shoulder_BR:S",
+                  "Target": "inner_proj_shoulder_BR:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_flange_side_BR:S",
+                  "Target": "inner_proj_flange_side_BR:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_bottom_edge:S",
+                  "Target": "inner_proj_bottom_edge:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_flange_side_BL:S",
+                  "Target": "inner_proj_flange_side_BL:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_shoulder_BL:S",
+                  "Target": "inner_proj_shoulder_BL:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_stem_side_L:S",
+                  "Target": "inner_proj_stem_side_L:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_shoulder_TL:S",
+                  "Target": "inner_proj_shoulder_TL:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_flange_side_TL:S",
+                  "Target": "inner_proj_flange_side_TL:S"
                 }
               ],
               "Name": "Enclosure Miters",
