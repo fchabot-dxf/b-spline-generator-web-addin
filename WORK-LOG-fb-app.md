@@ -5160,3 +5160,39 @@ rush it now.
 
 Diagram: `C:/Users/danse/.bspline-status/shots/seatC/0745_F30-item3-proposed_taper-diagram_a-hourglass_
 b-narrowneck_7x9_8deg.png`. Sent to the advisor as a path (not SendUserFile). No code; no template files touched.
+
+## 2026-10-01: F30 item 3 re-render -- the PRODUCTION offset/miter engine, not the scratch one (seat C, epoch 5)
+
+Advisor's review of the 0745 diagram caught it for real: (a)'s inner outline had kinks/spikes at the shoulder/
+waist and waist/hip joints; (b) was worse -- the inner outline poked ABOVE and OUTSIDE the outer at the top, the
+top miters crossed outside the band, and the band width visibly varied down the sides. All from the hand-rolled
+hourglassConstruction. My own `r - T` / `r + T` inner-offset math -- it does not reproduce `outline-offset.js`'s
+own re-join rule at a tangent joint (the offset pieces meet at the JOINT's own offset point, not wherever each
+piece's own independent circle/line offset happens to land) or its own merged-corner handling, and apparently
+diverges badly enough to go outside the outer loop entirely for (b). Told to re-render with the real engine, as
+already done for the T10 preview this session, and report (b)'s own true max taper if 8 deg doesn't hold.
+
+**Fix: stop hand-rolling the inner offset and the miters entirely.** `outline-offset.js`'s own `offsetOutlineInward`
+and `editor-frame-profile.js`'s own `frameMiters` are PURE functions of a primitives array (`{type:'L',p0,p1}` /
+`{type:'A',cx,cy,rx,ry,phi,theta1,dTheta}`) -- they don't need a template or a frame-defs entry to exist, only a
+valid closed loop of primitives. So the only thing still hand-built is the OUTER loop itself (the one piece of
+geometry that is genuinely new -- a slanted horn tangent to the base template's own unchanged shoulder/neck
+circle, same derivation as the first pass); everything downstream (the true inward offset, including its own
+tangent-joint rejoin and merged-corner collapse, and the true per-corner miter) is the SAME production code every
+real template already relies on, not a second, independently-fallible implementation of either.
+
+**Verified, not assumed, with `outlineDefects` + `offsetOutlineInward` + `frameMiters` directly (not a visual
+read):** swept BOTH shapes across the full 0-15 deg range at 7x9 -- zero outer defects, zero inner defects, every
+piece >= frame_thickness (0.75in), 4 real miters, every sample point inside the safe zone, at EVERY angle tested
+for BOTH shapes. The advisor's own worry that (b) might need a smaller max than (a) turned out NOT to be a real
+geometric limit -- it was an artifact of the broken scratch offset math; the real engine handles the full 15 deg
+for Narrow Neck too. (Template 1's own real shoulder/hip radius being under frame_thickness is still true and
+still shows up here -- but correctly, as `offsetOutlineInward`'s own documented merged-corner case: those 2
+pieces per side come back `collapsed` (zero-length placeholders, its own stated contract) and the inner loop
+re-joins straight from the horn line to the waist arc, which `outlineDefects` confirms is a clean, non-
+self-intersecting result -- not a bug, and not something this diagram introduces: Template 1 itself already
+looks exactly like this today.)
+
+Re-rendered both at 8 deg from the SAME production primitives: `C:/Users/danse/.bspline-status/shots/seatC/
+0815_F30-item3-proposed_taper-diagram_PRODUCTION_7x9_8deg.png`. Visually confirmed: no inner/outer crossing, even
+band width throughout, clean miters inside the band at all 4 corners of each. Sent to the advisor as a path.
