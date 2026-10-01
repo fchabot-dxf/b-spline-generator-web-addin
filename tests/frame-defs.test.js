@@ -60,12 +60,13 @@ describe('frame-defs (generated) — schema', () => {
     // goldens, the two corners separately) -- the only extras paramsFromShapeModel reads.
     // T4 OFFSET HOURGLASS: an offset-waist model also carries the left pinch (waistCyLeft, notchLeft, depthLeft).
     // T5 HOURGLASS DIPPED TOP: a dipped-top model also carries the top dip (topDipDepth, topDipHalfWidth).
-    // T10 ARCHED HOURGLASS: an arched-top model also carries the arch's own rise (archRise).
+    // T10 ARCHED HOURGLASS: an arched-top model also carries the arch's own corner angle (F29 item 2: renamed
+    // from a free rise, archCornerAngle).
     // T8 DIPPED TOP + LEFT-ONLY WAVE: H23 item 11 -- fitted (not provisional) from its own live goldens, the
     // dippedLeftWave model also carries the wave's own corner radius, notch and arc radius (waveCornerR,
     // waveNotch, waveR), measured the same way Template 1's own cornerR/notch/waistR are, not declared by
     // the provisional shim.
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise'], bottle: [], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [] };
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archCornerAngle'], bottle: [], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);

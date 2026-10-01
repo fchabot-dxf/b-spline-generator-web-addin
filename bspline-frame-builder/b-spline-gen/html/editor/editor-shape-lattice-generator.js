@@ -199,11 +199,13 @@ export const PARAM_ORDER = {
   // earlier key keeps its index), and after every radius they read (the radii stay shared L/R).
   // T5 HOURGLASS DIPPED TOP: the top dip's half width and depth come LAST again (every earlier key keeps its
   // index); the width before the depth, whose range reads it.
-  // T10 ARCHED HOURGLASS: `archRise` resolved LAST of all (every earlier key, dip included, keeps its index);
-  // its own range reads the already-resolved shoulder position (hourglassConstruction's own `shoulderY`), the
-  // SAME "eats into the horn, never adds height" cap this template's own preview was built and approved against.
+  // T10 ARCHED HOURGLASS: `archCornerAngle` resolved LAST of all (every earlier key, dip included, keeps its
+  // index). F29 item 2 (Fred's own rebuild): the arch is driven by the corner ANGLE between the vertical horn
+  // and the arch's own tangent at their shared point (100-130 deg, soft, never near the 180 deg tangent-join
+  // the old free-rise T10 used, which built wrong in Fusion) -- `archRise` (the sagitta) is now DERIVED from it
+  // and the top half-width inside hourglassConstruction, not resolved as its own param any more.
   hourglass: ['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop', 'cornerRadiusBottom', 'topInset',
-    'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archRise'],
+    'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archCornerAngle'],
   bottle: ['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius'],
   // T6 TAB TOP (frame-only preset): the tab's half width, then its height (both frame-only keys, FRAME_ONLY_PARAM_KEYS).
   tabTop: ['tabWidth', 'tabHeight'],
@@ -266,9 +268,12 @@ export const DERIVED_PARAM_DEFAULTS = {
     topDipDepth: () => 0,
     // T10 ARCHED HOURGLASS (Template 1 with the flat top replaced by one arc spanning the full width, its apex
     // on the top edge, its own two ends pulled DOWN into the board -- eating into the existing top horns, never
-    // adding height above them): the rise, a fraction of hh. Default 0 = NO arch: the flat Template 1 top, bit
-    // for bit (hourglassConstruction `arch`). A frame-only param (FRAME_ONLY_PARAM_KEYS).
-    archRise: () => 0,
+    // adding height above them): F29 item 2, the arch is driven by the corner angle (degrees) between the
+    // vertical horn and the arch's own tangent where they meet, not a free rise. Default 90 deg = perfectly flat
+    // (archRise derives to exactly 0 at 90 deg: the formula's own removable singularity, guarded in
+    // `_archRiseFromCornerAngle`) -- the flat Template 1 top, bit for bit (hourglassConstruction `arch`). A
+    // frame-only param (FRAME_ONLY_PARAM_KEYS); T10 itself always sets an explicit 100-130 deg value.
+    archCornerAngle: () => 90,
   },
   bottle: { bodyRadius: (v) => 1 - v.skeletonX },
   // T6 TAB TOP: every param has a plain default (no seeded jitter: a frame always sets both from its model).
@@ -307,8 +312,8 @@ export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLef
   'topDipPosition', 'waveHeight', 'waveReach', 'waveCornerRadius', 'waveRadius',
   // T9 I SHAPE (frame-only preset):
   'stemWidth', 'flangeHeight',
-  // T10 ARCHED HOURGLASS:
-  'archRise']);
+  // T10 ARCHED HOURGLASS (F29 item 2: the corner angle, not a free rise):
+  'archCornerAngle']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -392,15 +397,18 @@ function _hourglassRange(key, region, stroke, v) {
   if (key === 'topInset') return _range(0, Infinity, -Infinity, v.waistReach - EPS_FRAC);
   if (key === 'waistCenterYLeft' || key === 'waistReachLeft') return _hourglassLeftRange(key, region, stroke, v);
   if (key === 'topDipWidth' || key === 'topDipDepth') return _topDipRange(key, region, stroke, v);
-  // T10 ARCHED HOURGLASS: the rise never reaches the shoulder arc (the arch sits ABOVE it, eating into the horn's
-  // own length only -- the advisor's own rule, confirmed by Fred's "flat is fine on extreme landscape" call):
-  // the same `hornLen` / `HORN_MIN_OF_HALF_HEIGHT` margin `_topDipRange`'s own ceiling already uses, read at
-  // whichever side (T4's own left pinch, if ever combined) has the shorter horn.
-  if (key === 'archRise') {
+  // T10 ARCHED HOURGLASS (F29 item 2): Fred's own fixed 100-130 deg band, narrowed only if the rise it would
+  // imply ever reached the shoulder arc (the arch sits ABOVE it, eating into the horn's own length only -- the
+  // advisor's own rule, confirmed by Fred's "flat is fine on extreme landscape" call): the same `hornLen` /
+  // `HORN_MIN_OF_HALF_HEIGHT` margin `_topDipRange`'s own ceiling already uses, read at whichever side (T4's own
+  // left pinch, if ever combined) has the shorter horn.
+  if (key === 'archCornerAngle') {
     const horn = HORN_MIN_OF_HALF_HEIGHT * hh;
-    const g = hourglassConstruction(region, { ...v, archRise: undefined });
+    const g = hourglassConstruction(region, { ...v, archCornerAngle: undefined });
     const hornLen = Math.min(hh + g.shoulderY, g.left ? hh + g.left.shoulderY : Infinity);
-    return _range(0, Infinity, -Infinity, Math.max(hornLen - horn, horn) / hh);
+    const maxRise = Math.max(hornLen - horn, horn);
+    const ceilingDeg = Math.min(ARCH_CORNER_ANGLE_MAX, _archCornerAngleForRise(maxRise, g.topX));
+    return _range(ARCH_CORNER_ANGLE_MIN, ARCH_CORNER_ANGLE_MAX, ARCH_CORNER_ANGLE_MIN, Math.max(ceilingDeg, ARCH_CORNER_ANGLE_MIN));
   }
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // F12: each corner has its OWN vertical room (y-down: a lower waist leaves
@@ -594,7 +602,10 @@ function _bottleRange(key, region, stroke, v) {
 export function paramsFromShapeModel(preset, model, region) {
   const hw = region.w / 2, hh = region.h / 2;
   const f = {};
-  for (const [name, c] of Object.entries(model.features)) f[name] = c.hw * hw + c.hh * hh;
+  // F29 item 2: a feature can also carry a scale-INVARIANT `const` term (e.g. T10's own archCornerAngle, a
+  // degree value that must not grow/shrink with the board) alongside the usual hw/hh-scaled ones; absent for
+  // every other feature, so every existing fitted/provisional model is unaffected.
+  for (const [name, c] of Object.entries(model.features)) f[name] = c.hw * hw + c.hh * hh + (c.const || 0);
   // T6 TAB TOP (frame_shape_fit.py `tab_top`): the tab's half width and height, in inches.
   if (preset === 'tabTop') return { tabWidth: f.tabHalfWidth / hw, tabHeight: f.tabHeight / hh };
   // T8 DIPPED TOP + LEFT-ONLY WAVE (frame_shape_fit.py `dipped_left_wave`): self-contained, like tabTop -- no
@@ -646,9 +657,9 @@ export function paramsFromShapeModel(preset, model, region) {
   // dip's half width (centre line -> the stub's end) and its depth below the top edge.
   if (f.topDipHalfWidth != null) out.topDipWidth = f.topDipHalfWidth / hw;
   if (f.topDipDepth != null) out.topDipDepth = f.topDipDepth / hh;
-  // T10 ARCHED HOURGLASS: an arched-top model (frame_shape_fit.py `hourglass_arched_top`) also carries the
-  // arch's own rise (above the top corners, eating into the horn -- hourglassConstruction's own `arch.rise`).
-  if (f.archRise != null) out.archRise = f.archRise / hw;
+  // T10 ARCHED HOURGLASS (F29 item 2): a reconstructed model also carries the arch's own corner angle, degrees,
+  // a scale-invariant `const` feature (hourglassConstruction derives the rise from it + topX).
+  if (f.archCornerAngle != null) out.archCornerAngle = f.archCornerAngle;
   return out;
 }
 
@@ -797,6 +808,31 @@ function _resolveParams(preset, region, params, seed, strokeHalfWidth) {
   return v;
 }
 
+/** T10 ARCHED HOURGLASS (F29 item 2, Fred's own rule: drive the arch by the corner ANGLE between the vertical
+ *  horn and the arch's own tangent at their shared point, not a free rise -- seat A's matching Fusion construction
+ *  is a tangent construction line + an angle dimension there). For a circle through the two chord ends (half-width
+ *  `topX`) with sagitta `rise`, the tangent-chord angle at either end equals the circle's own inscribed half-angle,
+ *  giving cos(angle) = -topX / R with R = (topX^2 + rise^2) / (2 rise) the usual sagitta radius -- equivalently
+ *  cos(angle) = -2 topX rise / (topX^2 + rise^2). At 90 deg the chord is flat (rise 0, Template 1's own top, a
+ *  removable singularity guarded below); at 180 deg the arc is tangent to the horn (a smooth S-curve, the OLD
+ *  T10's own construction, which built wrong in Fusion at every size -- 100-130 deg stays well short of it). */
+export const ARCH_CORNER_ANGLE_MIN = 100;
+export const ARCH_CORNER_ANGLE_MAX = 130;
+export function archRiseFromCornerAngle(angleDeg, topX) {
+  if (!(topX > 0) || angleDeg <= 90) return 0;
+  const th = (angleDeg * Math.PI) / 180;
+  const cosT = Math.cos(th);
+  if (cosT >= -1e-9) return 0; // at/below 90 deg: flat
+  return (topX * (Math.sin(th) - 1)) / cosT;
+}
+function _archRiseFromCornerAngle(angleDeg, topX) { return archRiseFromCornerAngle(angleDeg, topX); }
+/** The inverse: the corner angle (degrees) whose sagitta is `rise` at half-width `topX`. */
+function _archCornerAngleForRise(rise, topX) {
+  if (!(rise > 0) || !(topX > 0)) return 90;
+  const cosT = (-2 * topX * rise) / (topX * topX + rise * rise);
+  return (Math.acos(Math.max(-1, Math.min(1, cosT))) * 180) / Math.PI;
+}
+
 /** SIL-RESOLVE (F5): the hourglass construction from RESOLVED fraction params
  *  (region-local, right side, Y-down). The ONE place this algebra lives; the
  *  solver and the on-canvas handles (editor-shape-lattice-interaction.js)
@@ -856,7 +892,8 @@ export function hourglassConstruction(region, resolved) {
   // the same construction T5's own dip arcs use, here a single arc instead of three chained ones, so no stub,
   // no separate shoulder arc, and the Fusion phase ties it to the top line with a Tangent, not an expression).
   const topX = hw - topInset; // T3: the top horns' x (hw for Template 1)
-  const archRise = hh * (resolved.archRise ?? D.archRise(resolved));
+  const archCornerAngle = resolved.archCornerAngle ?? D.archCornerAngle(resolved);
+  const archRise = _archRiseFromCornerAngle(archCornerAngle, topX);
   let arch = null;
   if (archRise > 0) {
     const r = (topX * topX + archRise * archRise) / (2 * archRise);

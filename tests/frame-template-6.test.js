@@ -396,7 +396,7 @@ describe('the Shape Lattice and Templates 1-5 never get the tab', () => {
     expect(FRAME_ONLY_PARAM_KEYS.slice(5, 7)).toEqual(TAB);
     expect(PARAM_ORDER.tabTop).toEqual(TAB);
     expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
-      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archRise']);
+      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archCornerAngle']);
     expect(PARAM_ORDER.bottle).toEqual(['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius']);
     for (const k of TAB) {
       expect(SHAPE_PARAM_KEYS.hourglass).not.toContain(k);

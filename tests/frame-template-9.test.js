@@ -326,8 +326,8 @@ describe('Template 9: the Stem width / Flange height handles', () => {
 
 describe('the Shape Lattice and Templates 1-8 never get the stem or the flange height', () => {
   it('frame-only keys, appended last; every other preset order is untouched', () => {
-    // T10 ARCHED HOURGLASS appended its own 'archRise' after these two, so the stem/flange pair is no longer the
-    // trailing slice -- fixed indices instead of `.slice(-2)` (Template 6's own test applies the same fix).
+    // T10 ARCHED HOURGLASS appended its own 'archCornerAngle' after these two, so the stem/flange pair is no
+    // longer the trailing slice -- fixed indices instead of `.slice(-2)` (Template 6's own test applies the same fix).
     expect(FRAME_ONLY_PARAM_KEYS.slice(-3, -1)).toEqual(KEYS);
     expect(PARAM_ORDER.iShape).toEqual(KEYS);
     expect(PARAM_ORDER.tabTop).toEqual(['tabWidth', 'tabHeight']);

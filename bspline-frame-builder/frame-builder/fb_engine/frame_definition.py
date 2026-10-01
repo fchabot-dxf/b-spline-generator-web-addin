@@ -184,8 +184,10 @@ def template_shape_model(template_id, frame, goldens_dir):
     frame_shape_fit.provisional_dipped_left_wave_model.
     T9 I SHAPE: {"stemHalfWidthOfHw": w, "flangeHeightOfHh": h} (no `from`: like T6, nothing to derive it from)
     builds frame_shape_fit.provisional_i_shape_model.
-    T10 ARCHED HOURGLASS: {"from": <template id>, "archRiseOfHw": r} builds frame_shape_fit.provisional_arched_
-    top_model (the base model's own sides/base unchanged, plus a top arc r x hw tall)."""
+    T10 ARCHED HOURGLASS v2 (F29 item 2): {"from": <template id>, "cornerRTopOfHw": ...} (distinguished by that
+    key, since it also carries an "archCornerAngleDeg") builds frame_shape_fit.
+    provisional_reconstructed_arched_hourglass_model (every one of the base model's own features replaced, not
+    kept -- Fred's own hand-rebuilt sketch)."""
     from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
                                            provisional_dipped_top_model)
     from fb_engine.template_resolver import resolve_template
@@ -213,11 +215,12 @@ def template_shape_model(template_id, frame, goldens_dir):
                 model = provisional_offset_waist_model(base, prov["waistOffsetOfHh"])
             elif "topDipDepthOfHh" in prov:
                 model = provisional_dipped_top_model(base, prov["topDipDepthOfHh"], prov["topDipHalfWidthOfHw"])
-            elif "archRiseOfHw" in prov:
-                # T10 ARCHED HOURGLASS: {"from": <template id>, "archRiseOfHw": r} builds
-                # frame_shape_fit.provisional_arched_top_model (the base model plus a top arc r x hw tall).
-                from fb_engine.frame_shape_fit import provisional_arched_top_model
-                model = provisional_arched_top_model(base, prov["archRiseOfHw"])
+            elif "cornerRTopOfHw" in prov:
+                # T10 ARCHED HOURGLASS v2 (F29 item 2): Fred's own hand-rebuilt sketch, every feature replaced.
+                from fb_engine.frame_shape_fit import provisional_reconstructed_arched_hourglass_model
+                model = provisional_reconstructed_arched_hourglass_model(
+                    base, prov["depthOfHw"], prov["cornerRTopOfHw"], prov["cornerRBottomOfHw"], prov["waistROfHw"],
+                    prov["waistCyOfHh"], prov["notchOfHw"], prov["topInsetOfHw"], prov["archCornerAngleDeg"])
             else:
                 model = provisional_shape_model(base, prov["topInsetOfDepth"])
     return model

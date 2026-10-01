@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "7e134879fa6ebeabdaa3db0278fb5b2f2464d2c5c2bdbd9e7f9c61403a778d52",
+  "sourceHash": "47c60e04b45fd503ad44a72f278c5683583928fa7df4291673e3c2495824213c",
   "templates": [
     {
       "features": [
@@ -1704,8 +1704,8 @@ export default {
         {
           "basis": "hh",
           "binding": "seeded",
-          "key": "archRise",
-          "label": "Arch rise"
+          "key": "archCornerAngle",
+          "label": "Arch corner angle"
         },
         {
           "basis": "hw",
@@ -1996,29 +1996,42 @@ export default {
       ],
       "shapeModel": {
         "features": {
-          "archRise": {
+          "archCornerAngle": {
+            "const": 127.0,
             "hh": 0.0,
-            "hw": 0.35
+            "hw": 0.0
           },
           "cornerR": {
-            "hh": 0.142066,
-            "hw": 0.005992
+            "hh": 0.0,
+            "hw": 0.272753
+          },
+          "cornerRBottom": {
+            "hh": 0.0,
+            "hw": 0.272753
+          },
+          "cornerRTop": {
+            "hh": 0.0,
+            "hw": 1.209444
           },
           "depth": {
-            "hh": 0.106231,
-            "hw": 0.185089
+            "hh": 0.0,
+            "hw": 0.416509
           },
           "notch": {
-            "hh": 0.305363,
-            "hw": -0.007805
+            "hh": 0.0,
+            "hw": 0.522215
+          },
+          "topInset": {
+            "hh": 0.0,
+            "hw": 0.307382
           },
           "waistCy": {
-            "hh": -0.009779,
-            "hw": 0.01363
+            "hh": 0.213614,
+            "hw": 0.0
           },
           "waistR": {
-            "hh": 0.147077,
-            "hw": 0.016953
+            "hh": 0.0,
+            "hw": 0.262875
           }
         },
         "fit": {
@@ -2060,9 +2073,16 @@ export default {
           }
         },
         "provisional": {
-          "archRiseOfHw": 0.35,
-          "baseModel": "the fitted Template 1 model",
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)"
+          "archCornerAngleDeg": 127.0,
+          "baseModel": "the fitted Template 1 model (every feature overridden, not inherited)",
+          "cornerRBottomOfHw": 0.272753,
+          "cornerRTopOfHw": 1.209444,
+          "depthOfHw": 0.416509,
+          "notchOfHw": 0.522215,
+          "reason": "Fred's own hand rebuild in Fusion replaces the old free-rise dome (H23 item 14: it built wrong in Fusion at every size); no recorded goldens yet either",
+          "topInsetOfHw": 0.307382,
+          "waistCyOfHh": 0.213614,
+          "waistROfHw": 0.262875
         }
       },
       "silhouettePreset": "hourglass",

@@ -371,13 +371,19 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
       valueFromWorld: (pt) => within('topDipWidth', (pt.x - cx0) / hw),
     },
     {
-      // T10 ARCHED HOURGLASS: the arch's rise, a POSITION square where the right horn meets it (the chord end,
+      // T10 ARCHED HOURGLASS (F29 item 2): a POSITION square where the right horn meets the arch (the chord end,
       // `rise` below the top edge -- the apex itself never moves, it always touches the top edge, so a handle
-      // anchored there couldn't show a drag at all). A vertical drag deepens or flattens the dome, eating into
-      // (or giving back) the horn's own length; the chord's own half width is fixed (the horn's own x).
-      key: 'archRise', label: 'Arch rise', axis: 'y', handleKind: 'position',
+      // anchored there couldn't show a drag at all). A vertical drag still deepens or flattens the dome (eating
+      // into, or giving back, the horn's own length), but the STORED value is the corner angle the drag implies
+      // (archRiseFromCornerAngle's own exact inverse), not the rise itself -- Fred's own rule.
+      key: 'archCornerAngle', label: 'Arch corner angle', axis: 'y', handleKind: 'position',
       anchor: { x: cx0 + g.topX, y: cy0 - hh + (g.arch ? g.arch.rise : 0) },
-      valueFromWorld: (pt) => within('archRise', (pt.y - (cy0 - hh)) / hh),
+      valueFromWorld: (pt) => {
+        const rise = Math.max(0, pt.y - (cy0 - hh)), topX = g.topX;
+        const cosT = topX > 0 && rise > 0 ? (-2 * topX * rise) / (topX * topX + rise * rise) : 0;
+        const deg = (Math.acos(Math.max(-1, Math.min(1, cosT))) * 180) / Math.PI;
+        return within('archCornerAngle', deg);
+      },
     },
   ]));
 }
@@ -581,7 +587,7 @@ export const HANDLE_SEGMENT_INDEX = {
     waistCenterYLeft: 8, waistReachLeft: 8, topDipDepth: 13, topDipWidth: 14,
     // T10 ARCHED HOURGLASS: no splice (unlike T5's own dip), segment 11 is still the top piece, just an arc
     // instead of a line -- its own mirror is itself (mirrorSegmentIndex(11, 12) === 11, T1's own flat top too).
-    archRise: 11 },
+    archCornerAngle: 11 },
   bottle: { neckWidth: 1, skeletonX: 1, neckLength: 1, bodyRadius: 2 },
   // T6 TAB TOP (8 pieces: 0 tab side R, 1 shoulder R, 2 side R, 3 base, 4 side L, 5 shoulder L, 6 tab side L,
   // 7 tab top): the width moves the tab sides, the height the shoulders (each with its mirror, mirrorSegmentIndex).

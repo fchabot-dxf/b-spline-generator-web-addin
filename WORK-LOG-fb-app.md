@@ -4968,3 +4968,79 @@ project.
   diff (above), which is exactly the one new key per template and nothing else.
 - **Undo**: flipping this back is exactly the one flag, `FRAME_HIDDEN = False` in `template_10/template_data.py`,
   then regenerate frame-defs -- no other code to revert.
+
+## 2026-10-01: F29 item 2 — Template 10 app shape = Fred's own reconstruction (seat C, epoch 5)
+
+Fred rebuilt T10 by hand in Fusion rather than wait on a fix: the dispatch's own first read was "Narrow Neck
+(Template 2) plus an arched top." Before building anything, read BOTH files in `.bspline-status/shots/fred/`
+(the text coordinate dump AND a newer, more complete live constraints/entity JSON sitting right next to it,
+generated 11 min later) and found the entity names -- `arc_shoulder_R`/`arc_waist_R`/`arc_hip_R`,
+`skel_shoulder_pin_R` etc. -- are IDENTICAL to the OLD T10's own (Template 2 only ever has `arc_waist`/`arc_hip`,
+no "shoulder" arc or pin at all), and the three arcs' own radii are pairwise EXTERNALLY tangent (centre-distance
+= radius sum, confirmed to 4-5 significant figures from the live data) -- the signature of T1's own 3-arc
+shoulder/waist/hip chain, not T2's 2-arc neck/body one. Flagged this contradiction to the advisor before writing
+any code (it would have meant building the wrong thing in parallel with seat A's own Fusion work); confirmed:
+Fred started from T10's OWN existing sketch and dragged its existing handles to his own values, not T2.
+
+- **The sides, precisely fitted off the live data** (not eyeballed): solved `hourglassConstruction`'s own
+  tangency algebra backward from the recorded arc centres/radii (`waistCenterY`, `waistCx` directly off the
+  waist arc's own centre; `depth` from `hw - (waistCx - waistR)`; `cornerRTop`/`cornerRBottom` straight off the
+  shoulder/hip radii; `topInset` off the horn's own recorded x). Verified the fit is exact, not approximate: the
+  tangency-derived `dy` for BOTH the shoulder and hip sides reproduces the recorded arc-centre heights to 4+
+  significant figures using the construction's OWN existing formula, unmodified. Fred's own values, 7x9
+  (hw=3.25in/hh=4.25in): waistReach 0.4165, waistCenterY 0.2136, cornerRadiusTop 1.2094 (x hw -- a huge gentle
+  shoulder), cornerRadiusBottom 0.2728, waistRadius 0.2629, topInset 0.3074 (a narrow top). All fed back through
+  `_hourglassRange`'s OWN existing ceilings at 7x9 -- comfortably inside them, no clamping.
+- **The arch's own ONE under-constrained element, and Fred's own follow-up rule**: the live JSON's own
+  `isFullyConstrained: false` plus a bare, untagged arc with no Tangent/Symmetry recorded confirmed that piece
+  was hand-dragged, not geometrically fixed -- so its exact numbers (a rise/chord-height pair) were read as
+  approximate, not an exact target. Mid-build, Fred supplied the actual rule directly: the arch is driven by the
+  CORNER ANGLE between the vertical horn and the arc's own tangent where they meet (100-130 deg, default 127,
+  "soft, never near tangency" -- 180 deg being the OLD T10's own tangent-join construction, the one that built
+  wrong in Fusion). Derived the closed form from scratch (not reused from anywhere): for a chord half-width `a`
+  and sagitta `s`, the tangent-chord angle `theta` satisfies `cos(theta) = -2 a s / (a^2 + s^2)`, with the
+  removable singularity at exactly 90 deg (flat, s=0) guarded explicitly. Confirmed algebraically against known
+  limits before coding: 90 deg -> s=0 (Template 1's own flat top); 180 deg -> s=a (a semicircle, tangent to the
+  vertical horn -- the OLD T10's own construction, now correctly OUTSIDE the 100-130 deg band). The apex-always-
+  touches-the-safe-zone-top invariant (`_solveHourglass`'s own `topY = -hh + rise`) is completely UNCHANGED --
+  only where `rise` itself comes from changed, so this property (and its own existing test) needed no rework.
+- **Declared, not hand-rolled, for the one genuinely new concept (a scale-INVARIANT param)**: every existing
+  shape-model feature is `b_hw*hw + b_hh*hh` (grows/shrinks with the board) -- wrong for a plain angle in
+  degrees. Added one optional `const` term to the feature formula (`paramsFromShapeModel`), defaulting to 0 for
+  every existing feature (nothing else is affected), rather than overloading an existing hw/hh slot with a
+  non-scaling meaning.
+- **New Python provisional model**: `provisional_reconstructed_arched_hourglass_model` (frame_shape_fit.py)
+  replaces `provisional_arched_top_model` outright (deleted, zero remaining callers after the swap) -- EVERY one
+  of Template 1's own 5 fitted features is overridden here (not kept, the opposite of the old T10's "untouched
+  base" design), read directly off Fred's own reconstructed sketch. `frame_definition.py`'s own dispatch gained
+  one new branch (keyed on `cornerRTopOfHw`, checked before the now-dead `archRiseOfHw` case).
+- **Handle renamed end to end**: `archRise` -> `archCornerAngle` throughout (PARAM_ORDER, DERIVED_PARAM_DEFAULTS,
+  FRAME_ONLY_PARAM_KEYS, `_hourglassRange`, `paramsFromShapeModel`, the Frame tab's own drag handle in
+  editor-shape-lattice-interaction.js -- the anchor still moves with a vertical drag, but the STORED value is now
+  the angle the drag implies, via the same formula's own exact inverse). The range is Fred's own fixed [100,130]
+  band, additionally capped (never widened) if the implied rise would ever reach the shoulder arc on a short
+  board -- the same safety margin the old free-rise version already had.
+- **MEASURED, flagged, not fixed this pass (out of scope: only 7x9 was asked for)**: Fred's own 7x9-fit side
+  values do NOT scale gracefully to a landscape aspect ratio -- 12x6 and 9x7 both get at least one piece shorter
+  than frame_thickness (12x6: 4 pieces, down to 0.055in; 9x7: 2 pieces at 0.336in), and 12x6's own inner profile
+  gets a genuine `selfIntersection` defect (the outer outline itself stays a clean, simple shape at every board
+  size tested, including these). Unlike `archCornerAngle`'s own graceful degrade, the shoulder/waist/hip values
+  have no per-orientation fallback -- would need the same kind of adaptive range/defaults work F29 item 1's own
+  Generate fix did for randomly-drawn extremes, but for the TEMPLATE'S OWN fixed defaults this time. Fred works
+  portrait only (current usage; every portrait size tried -- 6x9, 11x14, 5x7, 8x10, 9x12, 10x13, plus the square
+  8x8 -- came back completely clean).
+- **Tests**: `tests/frame-template-10.test.js` rewritten (27 tests) for the new construction + the renamed
+  handle + 3 new tests on `archRiseFromCornerAngle` itself (the 90/180 deg limits, monotonicity, and a round-trip
+  through the sagitta formula). The landscape finding above is its own explicit test (MEASURES the sub-thickness
+  piece, not asserted away) rather than silently narrowing the board list. Mutation-tested
+  `archRiseFromCornerAngle` (stubbing it to a constant turns 6 assertions red on exactly the geometry it drives;
+  restoring turns them green). Updated the stale literal-array tests in frame-template-5/6/9.test.js and
+  frame-defs.test.js for the key rename. Full suite green: vitest 2899 passed (154 files); pytest frame-builder
+  351 passed, 19 skipped; `gen_frame_defs.py --check` fresh.
+- **Miter diagram + Frame-tab shot, 7x9** (the one board this pass is scoped to), straight from production code
+  (`frameCutProfile`/`frameInnerProfile`/`frameMiters`, the real Frame-tab UI via CDP): `C:/Users/danse/
+  .bspline-status/shots/seatC/0620_F29-item2_miter-diagram.png`, `0612_F29-item2_7x9.png`. Visually confirmed: a
+  narrow top under a soft 127 deg dome, a deep round waist pulled low and off-centre, hips flaring back to the
+  full board width, square base corners -- matching Fred's own description and reconstructed sketch.
+- **Still hidden**: `FRAME_HIDDEN` untouched (still `True`) -- per the dispatch, stays hidden until seat A's own
+  matching Fusion phases build right too.

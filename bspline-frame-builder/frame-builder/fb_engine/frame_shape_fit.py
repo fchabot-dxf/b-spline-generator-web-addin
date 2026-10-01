@@ -149,9 +149,12 @@ def _hourglass_arched_top(curves, hw, hh, tol=2e-3):
     adding height above it -- the advisor's own correction, confirmed against Fred's sketch and the 7x9 preview).
 
     The sides are Template 1's own extraction (so every Template 1 feature means what it does there); the top
-    adds the rise (the safe zone's own top edge, at hh Fusion y up, minus the arc's own chord height). Valid when
-    the sides are (Template 1's test), the arc's two ends are symmetric about the centre line (same y, opposite
-    x) and its own apex (centre.y + radius, Fusion up: the HIGHEST point) sits exactly on the safe zone's top.
+    adds the corner angle (F29 item 2: between the vertical horn and the arc's own tangent where they meet, not
+    a free rise -- the app derives the rise from it and the chord half-width, editor-shape-lattice-generator.js
+    `archRiseFromCornerAngle`, its own exact inverse). Valid when the sides are (Template 1's test), the arc's two
+    ends are symmetric about the centre line (same y, opposite x) and its own apex (centre.y + radius, Fusion up:
+    the HIGHEST point) sits exactly on the safe zone's top -- the tangent-to-the-top-edge relationship a fixed
+    corner angle still preserves exactly (only WHICH angle the chord sits at changes, not that it is tangent).
     """
     ok, feats = _hourglass(curves, hw, hh, tol)
     arch = curves["top_edge"]
@@ -159,7 +162,10 @@ def _hourglass_arched_top(curves, hw, hh, tol=2e-3):
     ok = (ok and abs(arch["start"][1] - arch["end"][1]) < tol  # the two ends symmetric: same y
           and abs(xs[0] + xs[1]) < tol  # ...and opposite x
           and abs((arch["center"][1] + arch["radius"]) - hh) < tol)  # the apex on the safe zone's own top edge
-    feats.update({"archRise": hh - arch["start"][1]})
+    top_x = abs(arch["start"][0])
+    arch_rise = hh - arch["start"][1]
+    cos_t = -2 * top_x * arch_rise / (top_x * top_x + arch_rise * arch_rise) if arch_rise > 0 else 0.0
+    feats.update({"archCornerAngle": math.degrees(math.acos(max(-1.0, min(1.0, cos_t))))})
     return ok, feats
 
 
@@ -370,22 +376,46 @@ def provisional_shape_model(base_model, top_inset_of_depth):
     }
 
 
-def provisional_arched_top_model(base_model, arch_rise_of_hw):
-    """T10 ARCHED HOURGLASS, until its goldens are recorded live: a PROVISIONAL model, never none, from Template
-    1's fitted one. Its features unchanged (the sides/base are Template 1's own pinch, untouched); plus
-    `archRise` = `arch_rise_of_hw` x hw (0.35: a gentle dome, Fred's own sketch, confirmed against the 7x9
-    preview he approved). The app caps it so the pinch always keeps room -- it eats into the existing top horn's
-    own length, never adds height above the board (the advisor's own correction; Fred: going flat on an extreme
-    landscape board is fine, no pinch-shrinking). Marked `provisional` so nothing mistakes it for a fit."""
+def provisional_reconstructed_arched_hourglass_model(base_model, depth_of_hw, corner_r_top_of_hw,
+                                                      corner_r_bottom_of_hw, waist_r_of_hw, waist_cy_of_hh,
+                                                      notch_of_hw, top_inset_of_hw, arch_corner_angle_deg):
+    """T10 ARCHED HOURGLASS v2 (F29 item 2, Fred's own hand rebuild in Fusion, 2026-10-01): the first provisional
+    dome (a free rise on Template 1's own plain pinch) built wrong in Fusion at every board size (H23 item 14's
+    own capacity report, never fixed). Fred rebuilt the sketch from scratch instead: he took T10's OWN existing
+    shoulder/waist/hip/waist-radius construction (confirmed by the live constraints dump's own entity names --
+    NOT Template 2's, which has no "shoulder" arc at all) and dragged every one of its radii/depth/position to his
+    own values, far outside anything Template 1 or the old T10 preview ever exercised: a narrow top (topInset), a
+    huge gentle shoulder, a tight deep waist pulled low and off-centre, a tighter hip flaring back out to the full
+    board width. So EVERY one of Template 1's own 5 fitted features is replaced here (not kept) -- read directly
+    off Fred's own reconstructed sketch (.bspline-status/shots/fred/t10_fred_reconstructed_constraints_2026-10-
+    01.json, the live Fusion constraint/entity dump, 7x9: hw=3.25in/hh=4.25in), each a pure fraction of hw or hh
+    (a single data point, so no real hw+hh split is derivable -- same simplification every other provisional model
+    here already makes). The arch itself is driven by its own corner angle (F29 item 2: the angle between the
+    vertical horn and the arc's own tangent where they meet, Fred's own fixed 100-130 deg band, default 127, a
+    scale-INVARIANT `const` feature -- seat A's matching Fusion construction is a tangent line + an angle
+    dimension there, the exact replacement for the old free-rise handle that never built right).
+    Marked `provisional` so nothing mistakes it for a fit; replaced once Fred's own rebuild is fully constrained
+    and seat A's matching Fusion phases produce real recordable goldens."""
     feats = {k: dict(v) for k, v in base_model["features"].items()}
-    feats["archRise"] = {"hw": arch_rise_of_hw, "hh": 0.0}
+    feats["depth"] = {"hw": depth_of_hw, "hh": 0.0}
+    feats["cornerR"] = {"hw": corner_r_bottom_of_hw, "hh": 0.0}  # the hip's (the full-width side the depth root is for)
+    feats["cornerRTop"] = {"hw": corner_r_top_of_hw, "hh": 0.0}
+    feats["cornerRBottom"] = {"hw": corner_r_bottom_of_hw, "hh": 0.0}
+    feats["waistR"] = {"hw": waist_r_of_hw, "hh": 0.0}
+    feats["waistCy"] = {"hw": 0.0, "hh": waist_cy_of_hh}
+    feats["notch"] = {"hw": notch_of_hw, "hh": 0.0}
+    feats["topInset"] = {"hw": top_inset_of_hw, "hh": 0.0}
+    feats["archCornerAngle"] = {"hw": 0.0, "hh": 0.0, "const": arch_corner_angle_deg}
     return {
         "features": feats,
         "fit": dict(base_model["fit"]),
         "provisional": {
-            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-            "baseModel": "the fitted Template 1 model",
-            "archRiseOfHw": arch_rise_of_hw,
+            "reason": "Fred's own hand rebuild in Fusion replaces the old free-rise dome (H23 item 14: it built "
+                      "wrong in Fusion at every size); no recorded goldens yet either",
+            "baseModel": "the fitted Template 1 model (every feature overridden, not inherited)",
+            "depthOfHw": depth_of_hw, "cornerRTopOfHw": corner_r_top_of_hw, "cornerRBottomOfHw": corner_r_bottom_of_hw,
+            "waistROfHw": waist_r_of_hw, "waistCyOfHh": waist_cy_of_hh, "notchOfHw": notch_of_hw,
+            "topInsetOfHw": top_inset_of_hw, "archCornerAngleDeg": arch_corner_angle_deg,
         },
     }
 
