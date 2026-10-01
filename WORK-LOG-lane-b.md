@@ -11465,3 +11465,32 @@ Advisor's review of the first diagram caught two real defects (own message, not 
 
 Re-rendered both sizes: `shots/seatB/t7_miter_diagram_tangent_arcs_7x9_6x9_2026-10-01_v2.png`. Per the
 advisor's own instruction this round, NOT sent to Fred directly -- passing back for their review first.
+
+## Lane B — Turn 201 — T82 item 1: eave miters pointed outward (advisor review of v2) — DONE
+
+Real bug, advisor's own catch: the eave miter lines pointed OUTWARD, away from the band, instead of
+crossing it. Root cause: `miter_line()` extrapolated each miter from a `bisector()` of "edge directions
+pointing away from the corner" -- that formula points INTO the material at a convex corner like the peak
+(verified correct there: came out exactly (0,-1), vertical) but AWAY from it at the eave's own cusp shape.
+The sign depends on the corner's own local geometry and I never checked it per-corner, only at the peak.
+
+**Fix (the advisor's own suggestion, and the more robust one):** every miter is already solvable without a
+second, independently-guessable direction calculation -- I had ALREADY computed each corner's true inner
+point via real line/arc intersection for the INNER PROFILE itself (`peak_in`, `E_in`, `base_in_right`,
+`base_in_left`, from the earlier peak-symmetry and eave-line-arc-intersection fixes). A miter is simply
+outer-corner -> that SAME point. Deleted the whole bisector/tangent-direction machinery
+(`tangent_dir_at`/`normalize`/`bisector`/`build`) rather than leaving it unused -- it was the actual source
+of the bug, not a harmless alternate path.
+
+**Verification added (advisor's own ask):** a point-in-polygon check (ray casting against densely-sampled
+outer and inner loop points) confirms every miter's midpoint is inside the outer loop AND outside the inner
+loop, i.e. genuinely inside the band -- for all 5 miters, both board sizes. Caught one bug building this
+check itself: the loop sampler walked each half-profile forward then immediately backward over itself
+(copy-adapted from a different function's reverse-for-the-mirrored-half logic without dropping the now-
+inapplicable part), producing a zero-area "polygon" that failed every single point-in-polygon test
+regardless of whether the real geometry was right -- caught because ALL FIVE checks failed identically
+(including the peak, which is obviously fine by inspection), not because any one measurement looked
+plausible-but-wrong. Fixed to one plain forward walk per half; all 10 checks (5 miters x 2 sizes) now pass.
+
+Re-rendered: `shots/seatB/t7_miter_diagram_tangent_arcs_7x9_6x9_2026-10-01_v3.png`. Not sent to Fred --
+passing back for review first, same as last round.
