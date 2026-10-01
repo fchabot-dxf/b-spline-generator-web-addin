@@ -30,6 +30,7 @@ import { frameCutProfile } from './editor-frame-profile.js';
 import { offsetOutlineInward } from './outline-offset.js';
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { distToPrimitive } from './editor-primitives.js';
+import { insetWindowGeometry, rectToPrimitives } from '../core/inset-window.js';
 
 /** Points along a loop (lines: 8 each, arcs: 24 each). */
 function _samples(prims) {
@@ -62,6 +63,34 @@ export function hasFrame(frame) {
   return !!(frame && frame.defs && frame.record && frame.record.templateId);
 }
 
+/** The SAME frame_thickness lookup frameContourSilhouette resolves below (record override, else the
+ *  template param's own default) -- factored out so insetWindowGeometry's callers here never derive it
+ *  differently from the contour offset itself. */
+function _frameThickness(frame, tpl) {
+  const tp = tpl.params.find((q) => q.name === 'frame_thickness');
+  return frame.record.params && Number.isFinite(frame.record.params.frame_thickness) ? frame.record.params.frame_thickness : tp.default;
+}
+
+/**
+ * T82 item 2: the frame's own inset window geometry (`{ outer, inner, hole }`, core/inset-window.js), or
+ * null when there is no frame, no window, or the window is below insetWindowGeometry's own validity floor.
+ * THE source every fromFrame consumer (the Shape Lattice pattern generator, the stamp mask manager) reads,
+ * so neither re-derives the frame-thickness lookup differently from frameContourSilhouette's own.
+ * `frame` = `{ defs, record, board }` (frameContext's own shape).
+ */
+export function frameWindowGeometry(frame) {
+  if (!hasFrame(frame)) return null;
+  const tpl = frame.defs.templates.find((t) => t.id === frame.record.templateId);
+  return insetWindowGeometry(frame.record, _frameThickness(frame, tpl), frame.record.panelLip);
+}
+
+/** The window's hole rectangle as a closed primitive loop (see rectToPrimitives), or null -- for the Shape
+ *  Lattice pattern generator, which feeds it into insideSpans' own even-odd scan as a second closed loop. */
+export function frameWindowHoleLoop(frame) {
+  const win = frameWindowGeometry(frame);
+  return win ? rectToPrimitives(win.hole) : null;
+}
+
 /**
  * The frame-offset contour, silhouette-shaped (`primitives`, `segments` 1:1 with them, `corners`, `region` =
  * its OUTSIDE bounding box, `params` {} = no preset parameters), or `{ error }` when there is no frame, the
@@ -72,8 +101,7 @@ export function frameContourSilhouette(frame, distance, strokeWidth) {
   const prof = frameCutProfile(frame.defs, frame.record, frame.board);
   if (!prof || prof.defects.length || !prof.fit.ok) return { error: 'frameInvalid' };
   const tpl = frame.defs.templates.find((t) => t.id === frame.record.templateId);
-  const tp = tpl.params.find((q) => q.name === 'frame_thickness');
-  const t = frame.record.params && Number.isFinite(frame.record.params.frame_thickness) ? frame.record.params.frame_thickness : tp.default;
+  const t = _frameThickness(frame, tpl);
   // F26: the contour's OUTSIDE edge, offset from the frame's OWN OUTER edge (the cut profile itself) --
   // distance alone, no longer `t + distance` (that offset the reference to the INNER edge instead).
   const out = distance;

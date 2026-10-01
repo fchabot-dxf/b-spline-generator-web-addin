@@ -52,6 +52,12 @@ import {
 // below) both need — a LEAF module (no import of this file, or anything
 // that imports it), so no circular-dependency risk pulling it in here.
 import { joinSegmentPathsIntoClosedD, primitiveToPathD } from './editor-shape-lattice-generator.js';
+// T82 item 2: a Shape Lattice following the frame (contour.fromFrame) must skip the frame's own inset
+// window -- contourFromFrameOf gates on exactly that (not "any frame exists"); frameWindowHoleLoop and
+// frameContext are each a leaf/near-leaf (contour-from-frame.js, editor-frame-profile.js) that don't import
+// this file, so no circular-dependency risk pulling them in here either.
+import { contourFromFrameOf, frameWindowHoleLoop } from './contour-from-frame.js';
+import { frameContext } from './editor-frame-profile.js';
 
 // SE7k: `constrain` (direction-guessing) was removed from editor-lattice.js
 // — this file never called it (only re-exported it), and nothing imports
@@ -374,7 +380,14 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
       localPrimitives = await shapeToPrimitives(boundaryEl);
     }
   }
-  return { boundaryEl, boundaryEls, primitives: _bakeWorldTransform(boundaryEl, localPrimitives) };
+  const primitives = _bakeWorldTransform(boundaryEl, localPrimitives);
+  // T82 item 2: fromFrame's own hole, appended as a second closed loop in this SAME world-space list --
+  // insideSpans' own even-odd scan (editor-lattice-boundary.js) already treats an extra closed loop as a
+  // hole for free, so rails/ties/nodes (and clipHandRailToBoundary's hand-drawn rail clip, the other caller
+  // of this function) all skip it with no change to insideSpans or computePattern themselves. Gated on
+  // fromFrame specifically: a hand-picked or non-frame generated boundary is unaffected, same as today.
+  const hole = contourFromFrameOf(PATTERN).on ? frameWindowHoleLoop(frameContext(editor)) : null;
+  return { boundaryEl, boundaryEls, primitives: hole ? [...primitives, ...hole] : primitives };
 }
 
 export const PATTERN_DEFAULTS = {
