@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "7e816c4258f6efbd4d9fa6032c3da0ef83bdeb34e64e9ec0c66973616b31fb32",
+  "sourceHash": "e9e13f68bd50861bb7df0f4a97fb332bf7987d0d5f319d638180f236e4f38c7d",
   "templates": [
     {
       "features": [
@@ -10659,19 +10659,19 @@ export default {
         {
           "basis": "hw",
           "binding": "seeded",
-          "key": "neckWidthOfHw",
+          "key": "gableNeckWidth",
           "label": "Neck width"
         },
         {
           "basis": "hh",
           "binding": "seeded",
-          "key": "neckHeightOfHh",
+          "key": "neckHeight",
           "label": "Neck height"
         },
         {
           "basis": "hh",
           "binding": "seeded",
-          "key": "bodyFlareOfHh",
+          "key": "bodyFlareHeight",
           "label": "Body flare height"
         }
       ],
@@ -10943,16 +10943,16 @@ export default {
       "shapeModel": {
         "features": {
           "bodyFlareHeight": {
-            "hh": 0.72,
-            "hw": 0.0
+            "hh": 1.44,
+            "hw": -0.44639999999999996
           },
-          "neckHeight": {
-            "hh": 0.18,
-            "hw": 0.0
-          },
-          "neckWidth": {
+          "gableNeckWidth": {
             "hh": 0.0,
             "hw": 0.5
+          },
+          "neckHeight": {
+            "hh": 0.36,
+            "hw": -0.11159999999999999
           }
         },
         "fit": {

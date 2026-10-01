@@ -256,9 +256,15 @@ def _diamond_top_hourglass(curves, hw, hh, tol=2e-3):
     each eave), a concave-neck/convex-body S-curve on each side (2 tangent arcs, mitred to the
     roof at the eave, tangent to the straight base side at the bottom), a plain straight base.
 
-    Features: neckWidth (the neck arc's own narrowest x, from centre), neckHeight / bodyFlareHeight
-    (how far down from the eave the neck / the full-width point sit, as a fraction of the vertical
-    run below the eave). Valid when the roof is symmetric about the centreline, each side's neck
+    Features: gableNeckWidth (the neck arc's own narrowest x, from centre -- "gable" prefix, not the plain
+    "neckWidth" Template 2's own bottle extractor could in principle collide with if ever merged into one
+    namespace; matches editor-shape-lattice-generator.js's own PARAM_ORDER.diamondTopHourglass key),
+    neckHeight / bodyFlareHeight
+    (how far down from the eave the neck / the full-width point sit, in inches -- a plain geometric
+    measurement, like every other extractor's own features, NOT pre-divided into a fraction: the
+    model fits hw/hh coefficients against these real inch values once goldens exist; `paramsFromShapeModel`
+    (editor-shape-lattice-generator.js) divides the fitted value back by the CONSTRUCTION's own
+    `rest` to recover the fraction the app's param actually wants). Valid when the roof is symmetric about the centreline, each side's neck
     and body arcs are tangent to one another (opposite curvature: dist(centers) = r_neck + r_body,
     the genuine S-curve tangency fb_engine/t7_geometry.py's own module docstring describes), the
     body arc is tangent to the vertical straight side, and that side sits at x = +-hw.
@@ -284,9 +290,9 @@ def _diamond_top_hourglass(curves, hw, hh, tol=2e-3):
           and abs(side_r["start"][0] - hw) < tol and abs(side_r["end"][0] - hw) < tol
           and rest > 0)
     return ok, {
-        "neckWidth": n_x,
-        "neckHeight": (eave_y - n_y) / rest if rest else 0.0,
-        "bodyFlareHeight": (eave_y - b_y) / rest if rest else 0.0,
+        "gableNeckWidth": n_x,
+        "neckHeight": eave_y - n_y,       # inches, not a fraction -- see this function's own doc comment
+        "bodyFlareHeight": eave_y - b_y,  # inches, not a fraction
     }
 
 
@@ -392,18 +398,30 @@ def provisional_i_shape_model(stem_half_width_of_hw, flange_height_of_hh):
 def provisional_diamond_top_hourglass_model(neck_width_of_hw, neck_height_of_hh, body_flare_of_hh):
     """T7 DIAMOND-TOP HOURGLASS, until its goldens are recorded live: a PROVISIONAL model (never
     none), like T6/T8/T9: no base template to derive it from (no earlier template has a gable
-    roof or an S-curve side). `neckWidth` = `neck_width_of_hw` x hw, `neckHeight` / `bodyFlareHeight`
-    = their own fraction x hh (both measured as "how far down from the eave", read straight by the
-    app's own diamondTopHourglass paramsFromShapeModel branch, editor-shape-lattice-generator.js -
-    not yet written, see HANDOFF-ranchy.md / LIVE_CHECK.md: this declares the contract that branch
-    must honour). The app clamps every one into its feasible range (fb_engine/t7_geometry.py's own
-    clamp_t7_handles proves the valid combinations are coupled, not independent). Marked
-    `provisional` so nothing mistakes it for a fit."""
+    roof or an S-curve side). `neckWidth` = `neck_width_of_hw` x hw. `neckHeight` / `bodyFlareHeight`
+    are each "fraction x the run below the eave" (fb_engine/t7_geometry.py's own `rest` = 2*hh - a,
+    where `a = min(0.62*hw, 0.84*hh)`, t7_roof_eave.roof_geometry) -- EXACT, not approximate, for a
+    PORTRAIT board (hw < hh, project_portrait_only: Fred currently builds portrait boards only): the
+    min() is binding at `0.62*hw` whenever hw/hh < 0.84/0.62 (~1.355), which every portrait board
+    satisfies, so `rest = 2*hh - 0.62*hw` exactly, a genuine hw/hh-LINEAR expression (not degenerate
+    like T8's own board-dependent "exact tangent-triple" case, which stays nonlinear no matter what).
+    MEASURED, not assumed: an earlier `rest ~= 2*hh` approximation here was off by ~30% at 7x9
+    (`a`=2.015in is not a small correction against hh=4.25in) and silently shrank the default straight
+    side below frame_thickness (0.365in drawn vs 0.75in needed) -- caught by this template's own JS
+    test suite (tests/frame-template-7.test.js), not assumed safe. A LANDSCAPE board (hw > hh) would
+    need the OTHER branch of the min(); not implemented, a declared gap for that case alone (project_
+    portrait_only: a landscape fallback belongs in the construction itself if ever needed, not a second
+    provisional formula here). `paramsFromShapeModel` (editor-shape-lattice-generator.js, the
+    diamondTopHourglass branch) divides the fitted/provisional inch value back by the CONSTRUCTION's
+    own TRUE `rest`, so the round trip is exact here (portrait) and will stay exact once a real fit
+    replaces this provisional model. The app clamps every value into its feasible range
+    (fb_engine/t7_geometry.py's own clamp_t7_handles proves the valid combinations are coupled, not
+    independent). Marked `provisional` so nothing mistakes it for a fit."""
     return {
         "features": {
-            "neckWidth": {"hw": neck_width_of_hw, "hh": 0.0},
-            "neckHeight": {"hw": 0.0, "hh": neck_height_of_hh},
-            "bodyFlareHeight": {"hw": 0.0, "hh": body_flare_of_hh},
+            "gableNeckWidth": {"hw": neck_width_of_hw, "hh": 0.0},
+            "neckHeight": {"hw": -0.62 * neck_height_of_hh, "hh": 2 * neck_height_of_hh},
+            "bodyFlareHeight": {"hw": -0.62 * body_flare_of_hh, "hh": 2 * body_flare_of_hh},
         },
         "fit": {
             "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",

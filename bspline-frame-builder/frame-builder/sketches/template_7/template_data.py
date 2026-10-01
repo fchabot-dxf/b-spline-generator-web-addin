@@ -119,24 +119,32 @@ FRAME_REGIONS = {
 # FB-APP F9: the frame shape HANDLES (see template_1's table for the binding rules). All 3 seeded:
 # no template param sets the neck/body shape (the phases leave it to the seeds, p02_02_loop.py), so
 # moving the seeds IS setting it -- no parameter (same convention as Template 6's tab handles).
-#   neckWidthOfHw:      the neck's own half width (centre line -> neck), a fraction of hw.
-#   neckHeightOfHh:     how far down from the eave the neck sits, a fraction of hh.
-#   bodyFlareOfHh:      how far down from the eave the body reaches full width, a fraction of hh.
+# Keys match editor-shape-lattice-generator.js's own PARAM_ORDER.diamondTopHourglass exactly (the
+# app-side JS param names, not the Python-side provisional-shape argument names, which carry an
+# OfHw/OfHh suffix convention of their own -- test_frame_defs.py's own
+# test_every_handle_binding_is_declared_and_valid enforces this match). "gableNeckWidth", not the
+# plain "neckWidth" Template 2's own bottle preset already owns: FRAME_ONLY_PARAM_KEYS and the
+# manifest's own exclusion filter (editor-sketch-manifest.js) key by bare param NAME across every
+# preset, not per-preset, so a bare "neckWidth" here would have silently excluded bottle's own real
+# "neckWidth" parameter from the Fusion manifest too (caught live by
+# tests/editor-sketch-manifest.test.js's own manifestFromShape(bottle) parameter-count check).
+#   gableNeckWidth: the neck's own half width (centre line -> neck), a fraction of hw.
+#   neckHeight:     how far down from the eave the neck sits, a fraction of the run below the eave.
+#   bodyFlareHeight: how far down from the eave the body reaches full width, same fraction basis.
 FRAME_HANDLES = [
-    {"key": "neckWidthOfHw",  "label": "Neck width",       "basis": "hw", "binding": "seeded"},
-    {"key": "neckHeightOfHh", "label": "Neck height",      "basis": "hh", "binding": "seeded"},
-    {"key": "bodyFlareOfHh",  "label": "Body flare height", "basis": "hh", "binding": "seeded"},
+    {"key": "gableNeckWidth",  "label": "Neck width",        "basis": "hw", "binding": "seeded"},
+    {"key": "neckHeight",      "label": "Neck height",       "basis": "hh", "binding": "seeded"},
+    {"key": "bodyFlareHeight", "label": "Body flare height", "basis": "hh", "binding": "seeded"},
 ]
 # T7 is new: no record was ever saved before a split, so nothing to migrate.
 FRAME_HANDLE_MIGRATIONS = {}
 # FB-APP F11 (option B): the seeds come from the app's own solved outline, primitive `prim` (the
 # app's diamondTopHourglass order: 0 roof_R .. 8 roof_L, this template_data.py's own _OUTLINE
-# order). NOT YET VERIFIED against a real app-side solver - the editor-shape-lattice-generator.js
-# diamondTopHourglass construction doesn't exist yet (LIVE_CHECK.md / HANDOFF-ranchy.md): this
-# declares the contract (ids, kinds, prim order) that construction must produce; its own "reverse"
-# flags are a first guess (each primitive assumed to run the SAME direction as sketch 2's own :S->:E)
-# and must be checked once that JS exists (tests/frame-seed-geometry.test.js, as every other
-# template's orientation is checked there).
+# order, matching _solveDiamondTopHourglass's own doc comment in editor-shape-lattice-generator.js).
+# Its own "reverse" flags are a first guess (each primitive assumed to run the SAME direction as
+# sketch 2's own :S->:E) and must be checked against a real seed-geometry test
+# (tests/frame-seed-geometry.test.js, as every other template's orientation is checked there) -
+# NOT YET WRITTEN for this template, see LIVE_CHECK.md.
 FRAME_SEED_MAP = [
     {"id": "roof_R",     "kind": "line", "prim": 0, "reverse": False},
     {"id": "arc_neck_R", "kind": "arc",  "prim": 1, "reverse": False},

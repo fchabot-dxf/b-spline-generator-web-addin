@@ -112,6 +112,13 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     const hh = region.h / 2;
     R.stemWidth = _narrow(R.stemWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
     R.flangeHeight = _narrow(R.flangeHeight, (2 * t + 0.05) / hh, (2 * hh - 3 * t) / (2 * hh));
+  } else if (tpl.silhouettePreset === 'diamondTopHourglass') {
+    // T7 DIAMOND-TOP HOURGLASS: the opening rule at the neck (the silhouette's own narrowest point, by
+    // construction) -- its inner edge (offset in by t on each side) must clear the minimum opening across the
+    // centreline. FIRST CUT (not yet visually/live verified, see LIVE_CHECK.md): narrows `gableNeckWidth`'s own
+    // floor so `2 * (gableNeckWidth * hw) - 2t >= FRAME_MIN_OPENING_IN`, the same shape the hourglass waist/T6
+    // tab rules already use for "the inner edges cross if the pinch is too tight".
+    R.gableNeckWidth = _narrow(R.gableNeckWidth, (t + half) / hw, Infinity);
   } else if (tpl.silhouettePreset === 'dippedLeftWave') {
     // T8: the wave's own opening rule (Template 1's waistReach rule, same formula: this preset's only pinch).
     R.waveReach = _narrow(R.waveReach, -Infinity, 1 - (t + half) / hw);

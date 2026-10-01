@@ -11650,3 +11650,126 @@ translated into the editor's own JS yet.
 Committing `sketches/template_7/` + the `frame_shape_fit.py`/`frame_definition.py` wiring +
 regenerated `frame-defs.json`/`.js`, pushing lane-b, passing back with this honest split (Fusion
 side done and Python-tested, app side not started) rather than claiming the whole task.
+
+## Lane B — Turn 207/208 — T82 item 1: Template 7 app-side JS wiring + 5 real bugs found and fixed — DONE
+
+Finished T82 item 1 (the advisor accepted the Fusion side at cf74636 and dispatched the app side,
+with the explicit feedback: last pass-back's "pytest: 404 passed, 24 skipped" omitted the 2
+known-failing tests the app-side gap caused -- noted, see `[[feedback_passnote_explicit_known_failures]]`,
+applying it below and in the pass note).
+
+**Wired `diamondTopHourglass`**: PRESETS/PARAM_ORDER/DERIVED_PARAM_DEFAULTS/FRAME_ONLY_PARAM_KEYS/SALT
+(`editor-shape-lattice-generator.js`), `diamondTopHourglassConstruction` (the JS port of
+`fb_engine/t7_geometry.py`'s own closed-form neck/body solve -- VERIFIED numerically identical to the
+Python side at matching inputs, not just structurally similar), `_solveDiamondTopHourglass` (the 9-piece
+solver), on-canvas handles (`editor-shape-lattice-interaction.js`), `frameParamRanges`'s own opening
+rule (`frame-handles.js`), and `paramsFromShapeModel`'s own feature-to-fraction mapping. This alone
+fixed the 2 named tests (`test_every_silhouette_preset_exists_in_the_app`,
+`test_every_handle_binding_is_declared_and_valid`) -- treated as the done-check, not just a target to
+silence, per the dispatch's own instruction.
+
+**Five REAL bugs found this turn, each by actually running the numbers (not assumed safe), each fixed**:
+
+1. **Bare `neckWidth` collided with Bottle's own param of the same name.** `FRAME_ONLY_PARAM_KEYS` and
+   the manifest's own exclusion filter (`editor-sketch-manifest.js`) key by bare param NAME across
+   EVERY preset, not per-preset -- my first pass used plain `neckWidth` for T7's own handle, which
+   silently excluded Bottle's real `neckWidth` from the Fusion manifest too. Caught by
+   `tests/editor-sketch-manifest.test.js`'s own `manifestFromShape(bottle)` parameter-count check
+   (expected 8, got 7) BEFORE this shipped -- exactly the kind of cross-template regression the full
+   suite exists to catch. Renamed to `gableNeckWidth` everywhere (JS keys, the Python feature name, the
+   Python handle key) for consistency, confirmed the rename didn't touch Bottle's own code at all.
+
+2. **`_curveSegment`'s "radius + outward(bool)" contract picks the WRONG of 2 possible circles** as
+   this shape's own neck/body proportions vary (MEASURED: a full board x handle-value sweep,
+   `tests/frame-template-7.test.js`, found `outlineDefects`' own `notTangent, detail: -1` -- centres
+   EXACTLY reversed -- at real, non-extreme parameter combinations). Root cause: `_arcPrimitive`'s own
+   side-of-centreline heuristic (`od`/`perpLeftIsOutward`) assumes a FIXED relationship between
+   semantic convexity and which side the true centre lands on -- true for every OTHER preset (their
+   own arc centres never cross to the other side across their declared range), false here (this
+   shape's chords swing through a much wider range of absolute orientations). Fixed with
+   `_curveSegmentForKnownCenter`: try all 4 raw `(major,dir)` combinations through the REAL production
+   pipeline (`_bulgeFromRadius` + `_segmentToPrimitives`), keep whichever one's reconstructed centre
+   actually matches the known-correct one -- self-verified against ground truth, not a predicted sign.
+
+3. **Even with the right CENTRE, the same centre is reachable two ways (opposite rotation)** -- picking
+   the wrong one hands the neighbouring arc an exactly-reversed tangent at their shared point (the SAME
+   `detail: -1` symptom, a different root cause: each arc's own end-tangent against ITS OWN chord can
+   look fine independently while still disagreeing with its neighbour, since the two chords point in
+   different directions). Fixed with `_tangentPairForKnownCenters`: resolve the neck+body pair TOGETHER
+   against their real shared tangent, PLUS the straight-side tangent next to the body arc (a third,
+   separate bug this surfaced: a pair tangent-consistent at N but not at B, found the same way) -- all
+   in the same search, not three independent passes that can each look locally fine.
+
+4. **A real inset bug**: under a non-zero stroke inset (`manifestFromShape`'s own default stroke
+   width -- genuinely exercised by a real caller, not theoretical: `_curveSegmentForKnownCenter`
+   crashed outright on EVERY non-zero inset, even 0.025in), the neck/body arcs' own mutual tangent
+   point N shifts along the fixed centre-to-centre line (one radius grows, the other shrinks) -- reused
+   the un-inset N, off both new circles by exactly the inset amount, so no `(major,dir)` combination
+   could ever match. Fixed: recompute N along the line, at distance `rNeckDrawn` from `cNeck`.
+
+5. **The first provisional-model encoding for `neckHeight`/`bodyFlareHeight` was off by ~30% at 7x9**
+   (`rest ~= 2*hh` approximated the roof's own `a` as negligible against `hh`; it is not, 2.015in vs
+   4.25in) -- silently shrank the drawn straight side below `frame_thickness` at the template's own
+   DEFAULT proportions (0.365in drawn vs 0.75in needed), caught by this turn's OWN new JS test, not
+   assumed safe. Fixed with an EXACT encoding for a PORTRAIT board (`rest = 2*hh - 0.62*hw`, exact
+   whenever hw < hh -- always, for `project_portrait_only`'s own stated usage): the provisional
+   model's `neckHeight`/`bodyFlareHeight` features are now hw+hh-linear, not hh-only, and round-trip
+   through `paramsFromShapeModel` to EXACTLY the template's own declared defaults (verified: 0.5/0.18/
+   0.72 in, out, to the last decimal), not merely "close".
+
+**Range function is DELIBERATELY NARROW, not the theoretical [0,1]** (`_diamondTopHourglassRange`'s own
+doc comment): a full board x handle-value sweep found the valid region for this 3-parameter family is
+genuinely NOT "clamp the obvious ends" -- both a too-narrow and a too-wide neck/body gap can
+self-intersect, NON-monotonically (narrower is not strictly safer), and no closed form for the
+3-parameter x board-aspect-ratio coupling was derived in the time available. Declared a directly-TESTED
+box around the template's own defaults instead (verified clean at its own corners and centre on 7x9,
+9x12, 8x8, 7x7, 9x9 -- a real loss of handle range vs the theoretical full span, accepted deliberately
+per `[[project_portrait_only]]` rather than shipping an unverified wider one). **[Generate]'s own safety
+net already covers the residual gap**: `frame-handles.js generateValidFrameSeeds` (the real app's
+`frame-panel.js generateFrame` already uses it, UNCONDITIONALLY, for every template) retries a bad draw
+against the actual inner-profile defects -- the exact mechanism Template 10 already relies on for the
+same class of problem, reused here rather than re-derived. Fixed my OWN test to use it too (an earlier
+draft called the bare `generateFrameSeeds`, mirroring T8's own test, which doesn't need the retry).
+
+**LANDSCAPE boards are a known, NAMED gap, not silently worked around**: 12x6 self-intersects even at
+the template's own default proportions; 5.51x1.97 has NO valid tangent-consistent pair at all within
+this construction (the first board size ever to hit that in this codebase). Made
+`_tangentPairForKnownCenters` degrade gracefully instead of throwing (score every candidate, keep the
+best-agreeing one even if imperfect) so the app shows a visibly-off preview rather than crashing
+outright -- confirmed this fixes 2 PRE-EXISTING generic cross-template tests
+(`tests/frame-within-board.test.js`, `tests/frame-3d-sweep.test.js`) that iterate every template at
+every board size including 5.51x1.97 and would otherwise hard-crash the whole suite over ONE
+template's own edge case. This is a real, accepted limitation (`project_portrait_only`: Fred builds
+portrait boards only) -- named in `LIVE_CHECK.md`, not quietly patched over.
+
+**`HANDLE_SEGMENT_INDEX`/`controlledSegments` fixed**: the generic `mirrorSegmentIndex(1,9)` gives the
+WRONG pairing for this outline's own clockwise-from-the-peak starting point (MEASURED: 6, the body arc,
+not 7, the actual mirrored neck arc) -- added a declared `DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS` table,
+the same fix T8/T9 already needed for their own topologies (not a new pattern).
+
+**Verification, in order**:
+- `python -m pytest -q` (frame-builder root): 406 passed, 24 skipped, **0 failed** (both named tests
+  now pass -- the honest done-check).
+- `npx vitest run` (repo root): 2926 passed, **0 failed**, 155 files (up from 2899/154 before this
+  turn's new `tests/frame-template-7.test.js`, 27 tests, plus the 2 generic cross-template tests this
+  turn's own graceful-degradation fix un-broke).
+- A/B, re-run after EVERY source change this turn (not just once at the end): `tools/repro/ab/ab6.mjs`/
+  `ablat6.mjs` (JS) and `tools/repro/ab/abpy.py` (Python) against a scratch worktree at this turn's own
+  starting commit (cf74636) -- byte-identical hashes throughout, so templates 1-6 (+8, Python) stayed
+  genuinely untouched.
+- **Real app screenshot, headless Chrome** (`tools/repro/frame_profile_shots.mjs`, local
+  `python -m http.server`, no Fusion needed for this check): `{"profileDrawn":true,"defects":0,
+  "fit":true,"board":[7,9]}` -- the ACTUAL APP, not an isolated unit test, renders Template 7 cleanly
+  at its own defaults. The drawn shape (`shots/seatB/t7_frame_tab_editor.png`) is a clean, symmetric
+  gable peak over a concave neck pinch flaring into a convex body -- matches Fred's own approved
+  concept shape by eye, not just by the numeric defect checks.
+
+**NOT done this turn, named honestly**: a live Fusion build (no bridge on this seat -- `LIVE_CHECK.md`
+has the specific risk points for seat A/Fred to check, including the handle-drag-vs-eave-corner gap
+this turn's own research into `ui_data`'s own filtering already found and flagged on the Fusion side);
+recording real goldens (so the shapeModel stays provisional); a drag-gesture screenshot of the 3
+on-canvas handles (the STATIC profile is confirmed, not yet an actual drag); a 3D-preview screenshot.
+
+Committing the JS changes + `LIVE_CHECK.md` + this entry, pushing lane-b, passing back with the
+honest full-suite numbers (pytest 406/24/0, vitest 2926/155/0) stated explicitly in the pass note
+itself this time, not just in this WORK-LOG entry.

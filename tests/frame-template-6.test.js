@@ -61,7 +61,7 @@ describe('Template 6: listing and declaration', () => {
     // string-sorted labels: "10." lexicographically precedes "2." (both start with the digit comparison "1"<"2").
     expect(FRAME_DEFS.templates.map(frameLabel)).toEqual(['1. Hourglass', '10. Arched Hourglass', '2. Narrow Neck',
       '3. Tapered Hourglass', '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top',
-      '8. Dipped Top + Left-Only Wave', '9. I Shape']);
+      '7. Diamond-top Hourglass', '8. Dipped Top + Left-Only Wave', '9. I Shape']);
     expect(T6.silhouettePreset).toBe('tabTop');
     expect(PRESETS.tabTop.frameOnly).toBe(true);
     expect(T6.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset', 'frame_thickness']);

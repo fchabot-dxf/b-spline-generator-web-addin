@@ -162,6 +162,25 @@ export const PRESETS = {
     params: { stemWidth: 0.45, flangeHeight: 0.4 }, // = I_SHAPE_DEFAULT_STEM_WIDTH / _FLANGE_HEIGHT (declared below; literal here)
     jitter: { stemWidth: 0, flangeHeight: 0 },
   },
+  // T7 DIAMOND-TOP HOURGLASS: a FRAME-ONLY preset (Template 7): no Shape Lattice button offers it, like tabTop/
+  // iShape. A 90-degree gable roof (2 straight bars, mitred at the peak and each eave) over an hourglass S-curve
+  // side (concave neck arc, convex body arc, tangent to each other and to a straight base side) and a plain
+  // straight base -- ported directly from fb_engine/t7_geometry.py's own tested closed form (read before writing
+  // this, not re-derived from scratch), ONLY place this algebra lives on the JS side:
+  // diamondTopHourglassConstruction. `gableNeckWidth`/`neckHeight`/`bodyFlareHeight` = fb_engine/t7_geometry.py's
+  // own NECK_WIDTH_OF_HW_DEFAULT/NECK_HEIGHT_FRAC_DEFAULT/BODY_FLARE_HEIGHT_FRAC_DEFAULT (0.50/0.18/0.72) -- same
+  // numeric defaults, declared twice (Python + JS) since there is no cross-language import here; keep them in
+  // sync if either changes. "gable" prefix (not the plain `neckWidth` bottle already uses): FRAME_ONLY_PARAM_KEYS
+  // and the manifest's own exclusion filter (editor-sketch-manifest.js) key by bare param NAME across every
+  // preset, not per-preset -- a bare `neckWidth` here would silently exclude BOTTLE's own real `neckWidth`
+  // parameter from the Fusion manifest too (caught by tests/editor-sketch-manifest.test.js's own
+  // manifestFromShape(bottle) count check before this shipped).
+  diamondTopHourglass: {
+    label: 'Diamond-top Hourglass',
+    frameOnly: true,
+    params: { gableNeckWidth: 0.50, neckHeight: 0.18, bodyFlareHeight: 0.72 },
+    jitter: { gableNeckWidth: 0, neckHeight: 0, bodyFlareHeight: 0 },
+  },
 };
 
 /**
@@ -214,6 +233,10 @@ export const PARAM_ORDER = {
   // T9 I SHAPE (frame-only preset): the stem's half width, then the flange height (both frame-only keys,
   // FRAME_ONLY_PARAM_KEYS).
   iShape: ['stemWidth', 'flangeHeight'],
+  // T7 DIAMOND-TOP HOURGLASS (frame-only preset): the neck's half width, then its height (depends on nothing
+  // else), then the body flare height (its own range reads the already-resolved neckHeight, enforcing
+  // bodyFlareHeight strictly below it -- the neck sits closer to the eave than the body's full-width point).
+  diamondTopHourglass: ['gableNeckWidth', 'neckHeight', 'bodyFlareHeight'],
 };
 const BASE_RANGES = {
   // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
@@ -287,6 +310,14 @@ export const DERIVED_PARAM_DEFAULTS = {
   },
   // T9 I SHAPE: every param has a plain default (no seeded jitter: a frame always sets both from its model, as T6).
   iShape: { stemWidth: () => I_SHAPE_DEFAULT_STEM_WIDTH, flangeHeight: () => I_SHAPE_DEFAULT_FLANGE_HEIGHT },
+  // T7 DIAMOND-TOP HOURGLASS: every param has a plain default (no seeded jitter: a frame always sets all 3 from
+  // its model, as T6) -- fb_engine/t7_geometry.py's own NECK_WIDTH_OF_HW_DEFAULT/NECK_HEIGHT_FRAC_DEFAULT/
+  // BODY_FLARE_HEIGHT_FRAC_DEFAULT (see PRESETS.diamondTopHourglass's own doc comment on keeping these in sync).
+  diamondTopHourglass: {
+    gableNeckWidth: () => 0.50,
+    neckHeight: () => 0.18,
+    bodyFlareHeight: () => 0.72,
+  },
 };
 
 /** F12: the params the Shape Lattice panel offers (a slider and a handle each).
@@ -308,7 +339,9 @@ export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLef
   // T9 I SHAPE (frame-only preset):
   'stemWidth', 'flangeHeight',
   // T10 ARCHED HOURGLASS:
-  'archRise']);
+  'archRise',
+  // T7 DIAMOND-TOP HOURGLASS (frame-only preset):
+  'gableNeckWidth', 'neckHeight', 'bodyFlareHeight']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -534,6 +567,42 @@ function _iShapeRange(key, region, stroke) {
   return _range(lo, hi, -Infinity, (hh - stroke - EPS_FRAC * hh) / hh);
 }
 
+/**
+ * T7 DIAMOND-TOP HOURGLASS: the silhouette's own ranges (fractions). FIRST CUT, DELIBERATELY CONSERVATIVE, not
+ * yet visually verified (no browser/Fusion render from this seat) -- see LIVE_CHECK.md.
+ *
+ * MEASURED, not assumed: a full board x handle-value sweep (tests/frame-template-7.test.js) found the genuine
+ * valid region for this 3-parameter family is NOT simply "every value in [0,1] works, clamp the obvious ends" --
+ * both a too-narrow neck/body gap AND a too-large one can push the neck arc's own circle (`cNeck.x - rNeck`)
+ * past the centreline, crossing its own mirror (a real `selfIntersection`, not theoretical), and the failure is
+ * NOT monotonic in either direction, so no single-sided cap closes it. Rather than chase a precise analytic
+ * boundary for a 3-parameter x board-aspect-ratio family (open-ended, and unverifiable without a live render),
+ * these bounds are a NARROW, directly-tested-safe box around the template's own defaults, confirmed clean across
+ * every portrait/square board this app's own test boards cover (7x9, 9x12, 8x8, 7x7, 9x9) at both the box's
+ * corners and its centre -- a real loss of handle range versus the theoretical [0,1], accepted deliberately
+ * (project_portrait_only: Fred builds portrait boards; a landscape board's own handle range is not this seat's
+ * priority to perfect) rather than shipping a wider range this seat cannot verify. Widen it only after a live
+ * visual check (or a real Fusion golden) confirms a wider value still looks right -- [Generate] has its own,
+ * independent safety net regardless (frame-handles.js generateValidFrameSeeds retries a bad draw against the
+ * real inner-profile defects, the same mechanism Template 10 already relies on).
+ *   gableNeckWidth: the neck's own half width, fraction of hw ("gable" prefix, not the plain `neckWidth` bottle
+ *     already uses -- see PRESETS.diamondTopHourglass's own doc comment). Capped relative to the roof's own
+ *     half-width `a` (`0.85 * a/hw`): past `a` the "neck" would be WIDER than the eave, not a pinch at all.
+ *   neckHeight / bodyFlareHeight: how far down from the eave the neck / the full-width point sit, fraction of
+ *     the run below the eave ("rest") -- bodyFlareHeight (resolved after neckHeight) kept a real margin above
+ *     it, not just "the ordering holds".
+ */
+function _diamondTopHourglassRange(key, region, stroke, v) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const a = Math.min(0.62 * hw, 0.84 * hh);
+  if (key === 'gableNeckWidth') return _range(0.15, Math.min(0.92, 0.85 * a / hw));
+  if (key === 'neckHeight') return _range(0.05, 0.25);
+  // bodyFlareHeight, read after neckHeight (PARAM_ORDER): a real minimum gap (0.4) and an absolute ceiling
+  // (0.75) that stayed clean at every tested board down to the smallest square one (7x7) -- see this function's
+  // own doc comment for why neither bound alone (just "above neckHeight", just "below 1") was ever sufficient.
+  return _range(v.neckHeight + 0.4, 0.75);
+}
+
 function _bottleRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   if (key === 'bodyRadius') return _optionalRange('bottle', region, stroke, v);
@@ -622,6 +691,17 @@ export function paramsFromShapeModel(preset, model, region) {
   }
   // T9 I SHAPE (frame_shape_fit.py `i_shape`): the stem's half width and the flange height, in inches.
   if (preset === 'iShape') return { stemWidth: f.stemHalfWidth / hw, flangeHeight: f.flangeHeight / hh };
+  // T7 DIAMOND-TOP HOURGLASS (frame_shape_fit.py `diamond_top_hourglass`): `gableNeckWidth` is plain (hw-linear,
+  // like every simple fraction above); `neckHeight`/`bodyFlareHeight` are each "fraction x rest" (the run below
+  // the eave). `rest = 2*hh - a` IS exactly hw/hh-linear for a PORTRAIT board (see
+  // provisional_diamond_top_hourglass_model's own doc comment: `a`'s min() is binding at 0.62*hw whenever
+  // hw<hh, which every board this app builds satisfies) -- the fitted/provisional inch value divided back by
+  // THIS construction's own TRUE `rest` (computed at the default handle proportions, which don't change `rest`
+  // itself) round-trips exactly, not approximately.
+  if (preset === 'diamondTopHourglass') {
+    const g = diamondTopHourglassConstruction(region, {});
+    return { gableNeckWidth: f.gableNeckWidth / hw, neckHeight: f.neckHeight / g.rest, bodyFlareHeight: f.bodyFlareHeight / g.rest };
+  }
   // Depth from the construction's own tangency: d = S +/- sqrt(S^2 - notch^2); the
   // fitted depth only picks the root (minor when the waist centre is outside the
   // shoulder column, major inside: Fusion's T1 is minor at 7x9, major at 12x6).
@@ -757,9 +837,11 @@ function _dippedLeftWaveRange(key, region, stroke, v) {
 /** `{ param: {min, max} }` for `preset` on `region`, each conditional on the
  *  params resolved before it (PARAM_ORDER). `params` supplies those earlier
  *  values (e.g. a solver's own `params` output). */
-/** The preset's own range function (T6: `tabTop`, T8: `dippedLeftWave`, T9: `iShape`; hourglass is the default). */
+/** The preset's own range function (T6: `tabTop`, T7: `diamondTopHourglass`, T8: `dippedLeftWave`, T9: `iShape`;
+ *  hourglass is the default). */
 const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 'tabTop' ? _tabTopRange
-  : preset === 'dippedLeftWave' ? _dippedLeftWaveRange : preset === 'iShape' ? _iShapeRange : _hourglassRange);
+  : preset === 'dippedLeftWave' ? _dippedLeftWaveRange : preset === 'iShape' ? _iShapeRange
+    : preset === 'diamondTopHourglass' ? _diamondTopHourglassRange : _hourglassRange);
 
 export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
   const fn = _rangeFn(preset);
@@ -903,6 +985,8 @@ const SALT = {
   dippedLeftWave: { waveHeight: 621, waveReach: 622, waveCornerRadius: 623, topDipWidth: 624, topDipPosition: 625, topDipDepth: 626 },
   // T9 I SHAPE: frameOnly (jitter 0 for both), same reason as dippedLeftWave's own comment above.
   iShape: { stemWidth: 631, flangeHeight: 632 },
+  // T7 DIAMOND-TOP HOURGLASS: frameOnly (jitter 0 for all 3), same reason as dippedLeftWave's own comment above.
+  diamondTopHourglass: { gableNeckWidth: 641, neckHeight: 642, bodyFlareHeight: 643 },
 };
 
 /** Explicit param value wins; else default + a gentle seeded jitter,
@@ -1392,6 +1476,273 @@ function _solveIShape(region, params, segmentsOverride, seed, strokeHalfWidth = 
 }
 
 /**
+ * T7 DIAMOND-TOP HOURGLASS: the construction from RESOLVED params (region-local, Y-DOWN, inches), ported directly
+ * from fb_engine/t7_geometry.py's own tested closed form (`t7_outline`) and fb_engine/t7_roof_eave.py's own
+ * `roof_geometry` -- read before writing this, not re-derived. The ONE place this algebra lives (solver and
+ * on-canvas handles, editor-shape-lattice-interaction.js). Coordinates here are Y-DOWN (top = -hh, matching
+ * every other construction in this file); the Python source is Y-UP, board-local -- the underlying vector
+ * algebra (`rBody`/`rNeck` from chord/centre differences) is coordinate-direction-agnostic, so no sign flip is
+ * needed beyond building E/N/B/peak/base in THIS file's own Y-DOWN convention from the start.
+ *
+ *   a: the 90-degree roof's own half-width/height (rise=run), capped so it never outgrows the board.
+ *   peak/E: the apex and the right eave tip (mirror x for the left).
+ *   rest: the vertical run from the eave down to the base.
+ *   N/B: the neck (narrowest) and body (full-width) points, placed by the 3 handle fractions.
+ *   rNeck/cNeck (concave), rBody/cBody (convex): the two tangent arcs, solved exactly as t7_outline does --
+ *     the body arc passes through N and B and is tangent to the vertical side at B; the neck arc passes through
+ *     E and N and is tangent to the body arc at N (the genuine S-curve: opposite curvature, centres colinear
+ *     with N).
+ */
+export function diamondTopHourglassConstruction(region, resolved) {
+  const hw = region.w / 2, hh = region.h / 2, D = DERIVED_PARAM_DEFAULTS.diamondTopHourglass;
+  const neckWidthOfHw = resolved.gableNeckWidth ?? D.gableNeckWidth(resolved);
+  const neckHeightFrac = resolved.neckHeight ?? D.neckHeight(resolved);
+  const bodyFlareFrac = resolved.bodyFlareHeight ?? D.bodyFlareHeight(resolved);
+  const a = Math.min(0.62 * hw, 0.84 * hh);
+  const peak = { x: 0, y: -hh };
+  const E = { x: a, y: -hh + a };
+  const rest = 2 * hh - a;
+  const nx = Math.max(neckWidthOfHw * hw, a * 0.70);
+  const N = { x: nx, y: E.y + neckHeightFrac * rest };
+  const B = { x: hw, y: E.y + bodyFlareFrac * rest };
+  const base = { x: hw, y: hh };
+
+  const dy = N.y - B.y, dxN = N.x - B.x;
+  const rBody = -(dxN * dxN + dy * dy) / (2 * dxN);
+  const cBody = { x: hw - rBody, y: B.y };
+  let ux = N.x - cBody.x, uy = N.y - cBody.y;
+  const ulen = Math.hypot(ux, uy) || 1;
+  ux /= ulen; uy /= ulen;
+  const vx = N.x - E.x, vy = N.y - E.y;
+  const vDotU = vx * ux + vy * uy, v2 = vx * vx + vy * vy;
+  const rNeck = -v2 / (2 * vDotU);
+  const cNeck = { x: N.x + rNeck * ux, y: N.y + rNeck * uy };
+
+  return { hw, hh, a, rest, peak, E, N, B, base, rNeck, cNeck, rBody, cBody };
+}
+
+/** The true line-circle intersection between a line through `p0` (direction `(ux,uy)`, a UNIT vector) and the
+ *  circle `(center, radius)`, choosing whichever root's own `s` (distance along the line from `p0`) is closer to
+ *  `referenceS` -- the other root is the line's far-side crossing, not a real corner. Ported from
+ *  fb_engine/t7_roof_eave.py's own `_line_circle_intersection_nearer` (shared by the miter inset below; pure
+ *  vector algebra, coordinate-direction-agnostic). */
+function _lineCircleIntersectionNearer(p0, ux, uy, center, radius, referenceS) {
+  const px = p0.x - center.x, py = p0.y - center.y;
+  const b = 2 * (px * ux + py * uy), c = px * px + py * py - radius * radius;
+  const disc = Math.max(0, b * b - 4 * c), sq = Math.sqrt(disc);
+  const s1 = (-b + sq) / 2, s2 = (-b - sq) / 2;
+  const s = Math.abs(s1 - referenceS) < Math.abs(s2 - referenceS) ? s1 : s2;
+  return { x: p0.x + s * ux, y: p0.y + s * uy };
+}
+
+/**
+ * T7 DIAMOND-TOP HOURGLASS: a curve segment (`{style,bulge,dir,cornerRadius}`) for a chord (world coords
+ * `a`->`b`) whose tangent circle's CENTRE is already independently known (`center`, `radius` --
+ * `diamondTopHourglassConstruction`'s own closed-form solve, verified exactly against
+ * fb_engine/t7_geometry.py's own tested math). `cx` is the region's own world centre-line x (the 4th arg
+ * `generateSilhouette`'s own loop already threads through every `_segmentToPrimitives` call). `sweepSign`
+ * (+1/-1) is the dTheta sign this arc must sweep (see below) -- for a SINGLE, consistently-oriented closed
+ * outline, a CONVEX piece always sweeps one rotational sense about its own centre and a CONCAVE piece always
+ * sweeps the other, regardless of the specific board/handle numbers (a topological fact about the outline's own
+ * fixed orientation, not something that can flip) -- `+1` for the body arc (convex), `-1` for the neck arc
+ * (concave) MEASURED against the one known-good case (see below) and consistent on both the right and the
+ * mirrored left side.
+ *
+ * MEASURED, not assumed (the TWO bugs this function fixes): (1) `_curveSegment`'s own "radius + outward(bool)"
+ * contract picks one of the (generically 2) circles of that radius through `a`/`b` via a side-of-centreline
+ * heuristic (`_arcPrimitive`'s own `od`/`perpLeftIsOutward`) that silently FLIPS which side the correct
+ * tangent-circle's centre actually lands on as this shape's own handle-driven proportions change; (2) even once
+ * the CENTRE is right, the SAME centre is reachable via two different (`largeArc`,`sweep`) SVG-flag pairs that
+ * sweep in OPPOSITE rotational directions (the minor arc one way, the major arc the other) -- picking the first
+ * centre-match alone (as an earlier version of this function did) can silently pick the reversed one, which
+ * looks fine positionally but hands the next segment a backwards tangent (`outlineDefects`' own `notTangent`,
+ * `detail: -1` -- exactly opposite, not merely misaligned). Every OTHER preset in this codebase only ever calls
+ * `_curveSegment` with a FIXED semantic convexity on arcs whose own centre/sweep relationship never flips
+ * across their declared range, so neither bug was ever exercised before. Rather than re-deriving
+ * `_arcPrimitive`'s exact sign convention by hand (shared, heavily-used code; a wrong by-hand re-derivation here
+ * is exactly as risky as the bug itself), this tries all 4 `(major, dir)` combinations through the SAME
+ * production functions (`_bulgeFromRadius` + `_segmentToPrimitives`) and keeps whichever one's RECONSTRUCTED
+ * centre AND dTheta sign both match the known-correct ones -- self-verifying against ground truth via the real
+ * pipeline, not a predicted sign.
+ */
+/** Every `(major,dir)` combination whose reconstructed primitive's centre matches `center` (there are at most
+ *  2: the same circle, swept the short way or the long way around) -- the raw material
+ *  `_tangentPairForKnownCenters` below picks between, and `_curveSegmentForKnownCenter` falls back to when it
+ *  has no partner arc to check consistency against (the single-arc heuristic, kept only as that fallback). */
+function _knownCentreCandidates(a, b, center, radius, cx) {
+  const halfChord = Math.hypot(b.x - a.x, b.y - a.y) / 2;
+  const sameCentre = (p) => p.type === 'A' && Math.hypot(p.cx - center.x, p.cy - center.y) < 1e-6 * Math.max(1, radius);
+  const out = [];
+  for (const major of [false, true]) {
+    const bulge = _bulgeFromRadius(radius, halfChord, major);
+    for (const dir of ['out', 'in']) {
+      const seg = { style: 'curve', bulge, dir, cornerRadius: 0 };
+      const [prim] = _segmentToPrimitives(a, b, seg, cx);
+      if (sameCentre(prim)) out.push({ seg, prim });
+    }
+  }
+  return out;
+}
+
+/** The direction-of-travel tangent (unit vector) at an arc primitive's own start/end -- same formula
+ *  `outlineDefects`' own `dirAt` uses (the sign `s` flips the raw derivative so it always points the way theta
+ *  actually moves along this arc, not just "theta increasing"). */
+const _arcTangentAt = (p, atEnd) => {
+  const th = atEnd ? p.theta1 + p.dTheta : p.theta1, s = p.dTheta > 0 ? 1 : -1;
+  return { x: -Math.sin(th) * s, y: Math.cos(th) * s };
+};
+const _endTangent = (p) => _arcTangentAt(p, true);
+
+/**
+ * T7 DIAMOND-TOP HOURGLASS: the (segment, segment) PAIR for two arcs that share a tangent point `shared` --
+ * centres/radii already known (`diamondTopHourglassConstruction`'s own closed-form solve) -- picked so their
+ * tangents AT `shared` actually agree (dot product near +1), not just each arc's own centre/radius being right.
+ * `afterDir`, when given, is the direction of the STRAIGHT piece the second arc's own END must also be tangent
+ * to (e.g. the vertical side below the body arc) -- checked together with the shared-point agreement, not as a
+ * separate, later pass, so a candidate that is only tangent at ONE of its two real joints is never picked.
+ *
+ * MEASURED, not assumed (the bugs this fixes, both found by a full board x handle-value sweep,
+ * tests/frame-template-7.test.js, AFTER `_curveSegmentForKnownCenter`'s own single-arc fix): (1) checking each
+ * arc's own end-tangent against ITS OWN chord independently is not enough -- two arcs can each look fine
+ * against their own chord and still hand each other an exactly-reversed tangent at the shared point
+ * (`outlineDefects`' own `notTangent, detail: -1`); (2) even once the SHARED point agrees, the same arc can
+ * still be tangent-inconsistent at its OTHER end (the straight side next to it) -- `beforeDir`/`afterDir` catch
+ * that too, in the SAME search, rather than a plausible-looking pair being accepted and failing one joint over.
+ * `beforeDir`: the straight piece BEFORE `aStart` (checked against the first arc's own START tangent) --
+ * `afterDir`: the straight piece AFTER `bEnd` (checked against the second arc's own END tangent). Pass whichever
+ * applies (the right side's own body arc ends at a straight side: `afterDir`; the left side's own traversal
+ * meets its straight side FIRST: `beforeDir`).
+ */
+function _tangentPairForKnownCenters(aStart, shared, bEnd, cA, rA, cB, rB, cx, { beforeDir, afterDir } = {}) {
+  const candA = _knownCentreCandidates(aStart, shared, cA, rA, cx);
+  const candB = _knownCentreCandidates(shared, bEnd, cB, rB, cx);
+  let best = null, bestScore = -Infinity;
+  for (const a of candA) {
+    const beforeOk = !beforeDir || (() => {
+      const t = _arcTangentAt(a.prim, false);
+      return t.x * beforeDir.x + t.y * beforeDir.y > 1 - 1e-6;
+    })();
+    const ta = _endTangent(a.prim);
+    for (const b of candB) {
+      const tb = _arcTangentAt(b.prim, false);
+      const sharedDot = ta.x * tb.x + ta.y * tb.y;
+      const tEnd = _endTangent(b.prim);
+      const afterOk = !afterDir || tEnd.x * afterDir.x + tEnd.y * afterDir.y > 1 - 1e-6;
+      if (beforeOk && sharedDot > 1 - 1e-6 && afterOk) return [a.seg, b.seg];
+      // No combination satisfied every joint exactly (an extreme board/handle corner outside this template's own
+      // tested-safe range, e.g. 5.51x1.97 -- LIVE_CHECK.md) -- keep the best-agreeing candidate instead of
+      // throwing, so the app degrades to a visibly imperfect preview rather than a hard crash. Scored on the
+      // SHARED-point agreement primarily (the worse failure mode, a visibly reversed arc), the straight-side
+      // agreements as a tiebreaker.
+      const score = sharedDot + (beforeOk ? 0.1 : 0) + (afterOk ? 0.1 : 0);
+      if (score > bestScore) { bestScore = score; best = [a.seg, b.seg]; }
+    }
+  }
+  if (best) return best;
+  // Only reachable if NEITHER centre candidate set even matched its own circle (a/b not actually on the circle
+  // `cA`/`cB`/`rA`/`rB` describe) -- a real construction bug, not an extreme-range quality issue; fails loudly.
+  throw new Error('_tangentPairForKnownCenters: no centre-matching candidate at all (a construction bug, not a range issue)');
+}
+
+/** Single-arc fallback (no partner to check against -- unused by the neck/body pair today, kept for parity with
+ *  `_curveSegment`'s own single-arc contract and any future caller with only one known centre). */
+function _curveSegmentForKnownCenter(a, b, center, radius, cx) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  for (const { seg, prim } of _knownCentreCandidates(a, b, center, radius, cx)) {
+    const t = _endTangent(prim);
+    if (t.x * dx + t.y * dy > 0) return seg;
+  }
+  throw new Error('_curveSegmentForKnownCenter: no (major, dir) combination matched the known centre and sweep');
+}
+
+/**
+ * T7 DIAMOND-TOP HOURGLASS solver: 9 pieces (see this module's own `_OUTLINE` convention in
+ * template_data.py: roof_R, arc_neck_R, arc_body_R, side_R, bottom_edge, side_L, arc_body_L, arc_neck_L, roof_L).
+ * `strokeHalfWidth` insets the drawn outline exactly as every other preset's own inset does (an arc centre never
+ * moves, a convex radius shrinks, a concave one grows; a straight wall translates inward) -- UNEXERCISED with a
+ * non-zero value by any real caller today (this is a frame-only preset: the Frame tab's own profile render,
+ * frame-handles.js and contour-from-frame.js all call `generateSilhouette` with no 3rd argument, i.e. 0 -- same
+ * as every other frame-only preset's own callers), implemented anyway rather than left half-done, reusing the
+ * SAME true-miter (peak) / line-circle-intersection (eave) math fb_engine/t7_roof_eave.py already proves for
+ * Fusion's own `frame_thickness` offset, with `s` in place of `frame_thickness`.
+ *
+ * The neck/body arcs use `_curveSegmentForKnownCenter` (not the plain `_curveSegment`): MEASURED, not assumed,
+ * that a fixed convex/concave label is not enough here (see that function's own doc comment) -- self-verified
+ * against the already-known, independently-solved `cNeck`/`cBody` instead.
+ */
+function _solveDiamondTopHourglass(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  const resolvedAll = _resolveParams('diamondTopHourglass', region, params, seed, strokeHalfWidth);
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  const g = diamondTopHourglassConstruction(region, resolvedAll);
+  const s = strokeHalfWidth;
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
+  const M = (x, y) => ({ x: cx0 - x, y: cy0 + y });
+
+  const rBodyDrawn = g.rBody - s, rNeckDrawn = g.rNeck + s;
+  const hwD = g.hw - s, hhD = g.hh - s;
+  const baseR = P(hwD, hhD), baseL = M(hwD, hhD);
+  // Peak: the true miter offset (t7_roof_eave.peak_inner_corner) -- both roof lines at +/-45deg, so by symmetry
+  // the inset peak lies exactly on the centreline, s*sqrt(2) toward the interior (+y, this Y-DOWN convention).
+  const peakIn = { x: 0, y: -g.hh + s * Math.SQRT2 };
+  // Eave (right; mirror x for the left): the roof line's own inward normal (toward the board centre), offset by
+  // s, intersected with the neck arc's own GROWN (concave) offset circle -- t7_roof_eave.eave_inner_corner.
+  const dxE = g.E.x - g.peak.x, dyE = g.E.y - g.peak.y, lineLen = Math.hypot(dxE, dyE);
+  let nx = -dyE / lineLen, ny = dxE / lineLen;
+  const mid = { x: (g.peak.x + g.E.x) / 2, y: (g.peak.y + g.E.y) / 2 };
+  if (nx * (0 - mid.x) + ny * (0 - mid.y) < 0) { nx = -nx; ny = -ny; }
+  const p0 = { x: g.peak.x + nx * s, y: g.peak.y + ny * s };
+  const eaveInR = _lineCircleIntersectionNearer(p0, dxE / lineLen, dyE / lineLen, g.cNeck, rNeckDrawn, lineLen);
+  const eaveInL = { x: -eaveInR.x, y: eaveInR.y };
+
+  const peakR = P(peakIn.x, peakIn.y), peakL = peakR; // one shared point, both roof lines end there
+  const eaveR = P(eaveInR.x, eaveInR.y), eaveL = P(eaveInL.x, eaveInL.y);
+  const bR = P(hwD, g.B.y), bL = M(hwD, g.B.y); // tangent point x shifts WITH the inset wall (see module docstring)
+  // The arcs' own centres never move under the inset; mirrored for the left (M negates x only).
+  const cNeckR = P(g.cNeck.x, g.cNeck.y), cNeckL = M(g.cNeck.x, g.cNeck.y);
+  const cBodyR = P(g.cBody.x, g.cBody.y), cBodyL = M(g.cBody.x, g.cBody.y);
+  // N (the neck/body arcs' own mutual tangent point) is NOT a wall tangent point -- it shifts along the
+  // cNeck->cBody line under inset (centres fixed, but rNeck GROWS and rBody SHRINKS by the same `s`, so the
+  // point `rNeckDrawn` from cNeck along that line moves toward cBody). MEASURED: reusing the un-inset N here
+  // (an earlier version of this function did) put it off both the grown AND the shrunk circle by exactly `s`,
+  // which `_curveSegmentForKnownCenter` could never match for ANY (major,dir) pair -- caught by a real non-zero
+  // stroke width (manifestFromShape's own PATTERN_DEFAULTS default), not assumed safe at s=0 alone.
+  const ux = (g.cBody.x - g.cNeck.x) / (g.rNeck + g.rBody), uy = (g.cBody.y - g.cNeck.y) / (g.rNeck + g.rBody);
+  const nInset = { x: g.cNeck.x + rNeckDrawn * ux, y: g.cNeck.y + rNeckDrawn * uy };
+  const nR = P(nInset.x, nInset.y), nL = M(nInset.x, nInset.y);
+
+  // Right side and left side: the neck/body arc PAIR resolved together per side (`_tangentPairForKnownCenters`),
+  // not independently -- see that function's own doc comment for why an independent, per-arc choice is not
+  // enough (two arcs can each look fine against their own chord and still disagree with each other at N). The
+  // right side's own traversal is eaveR->nR->bR (neck then body); the left side runs the OPPOSITE way round the
+  // loop (bL->nL->eaveL, p02_02_loop.py's own clockwise convention), so its pair is resolved body-then-neck.
+  // The straight side below each body arc (side_R: bR->baseR; side_L: baseL->bL) is a real tangent joint too,
+  // checked in the SAME search as the shared-point agreement (see _tangentPairForKnownCenters' own doc comment).
+  const sideRDir = { x: baseR.x - bR.x, y: baseR.y - bR.y };
+  const sideLDir = { x: bL.x - baseL.x, y: bL.y - baseL.y };
+  const [neckSegR, bodySegR] = _tangentPairForKnownCenters(eaveR, nR, bR, cNeckR, rNeckDrawn, cBodyR, rBodyDrawn, cx0, { afterDir: sideRDir });
+  const [bodySegL, neckSegL] = _tangentPairForKnownCenters(bL, nL, eaveL, cBodyL, rBodyDrawn, cNeckL, rNeckDrawn, cx0, { beforeDir: sideLDir });
+
+  const keypoints = [peakR, eaveR, nR, bR, baseR, baseL, bL, nL, eaveL];
+  const fresh = [
+    STRAIGHT_SEGMENT, // 0: peak -> eave_R (roof_R)
+    neckSegR, // 1: eave_R -> N_R (neck, concave)
+    bodySegR, // 2: N_R -> B_R (body, convex)
+    STRAIGHT_SEGMENT, // 3: B_R -> base_R (side_R)
+    STRAIGHT_SEGMENT, // 4: base_R -> base_L (bottom_edge)
+    STRAIGHT_SEGMENT, // 5: base_L -> B_L (side_L)
+    bodySegL, // 6: B_L -> N_L (body, convex)
+    neckSegL, // 7: N_L -> eave_L (neck, concave)
+    STRAIGHT_SEGMENT, // 8: eave_L -> peak (roof_L)
+  ];
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
+  // T6 TAB TOP's own convention: a declared mirror table, not the generic default. bottom_edge (4) straddles the
+  // centreline and self-maps; every other piece i pairs with 8-i (which also gives 4 -> 4).
+  const mirror = fresh.map((_, i) => 8 - i);
+
+  return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments, mirror };
+}
+
+/**
  * T8 DIPPED TOP + LEFT-ONLY WAVE solver: 12 pieces. The right side and base are a plain straight edge (Template
  * 1's classic square corners, no pinch at all); the left side reuses `hourglassConstruction`'s own `left`
  * sub-construction (this preset's `waveHeight`/`waveReach` standing in for `waistCenterYLeft`/`waistReachLeft`,
@@ -1511,7 +1862,9 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
           ? _solveDippedLeftWave(region, params, segmentsOverride, seed, strokeHalfWidth)
           : preset === 'iShape' // T9 I SHAPE (a frame-only preset)
             ? _solveIShape(region, params, segmentsOverride, seed, strokeHalfWidth)
-            : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
+            : preset === 'diamondTopHourglass' // T7 DIAMOND-TOP HOURGLASS (a frame-only preset)
+              ? _solveDiamondTopHourglass(region, params, segmentsOverride, seed, strokeHalfWidth)
+              : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;
