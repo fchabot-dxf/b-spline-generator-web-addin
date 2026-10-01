@@ -5446,3 +5446,64 @@ advisor/Fred, not deciding it myself.
 original item 19 task's own live b-spline-send-and-join verification hasn't been attempted yet, and now that
 the REAL shape is understood to be close to Template 1's own (simpler than anything I spent today chasing),
 that should be the next, much more tractable step.
+
+## 2026-10-01: H23 item 19's final piece — live b-spline-send-and-join check: FOUND A REAL DEFECT, NOT ready to un-hide
+
+**FRAME_HIDDEN stays True.** This was exactly the right check to require before un-hiding — it caught something
+the flat-box goldens (and `gen_frame_defs.py --check`) structurally cannot: T10's frame only builds 2 of its 4
+bars (`frame_bottom`, `frame_left` — `frame_top`/`frame_right` both missing) when sent through the REAL app flow
+with the app's own SEEDED geometry, even though the exact same template builds all 4 bars cleanly with Fusion's
+own unseeded literal-fraction defaults (today's earlier re-recorded goldens, `record_frame_parity.py`, no
+`seedGeometry`).
+
+**Method** (same established pattern as the H23 item 5 Send-flow checks, `WORK-LOG-fb-app.md` "Item 5": no OS-
+level UI automation; headless Chrome CDP driving the real app, captured payload replayed into Fusion's own real
+handlers): `tools/repro/capture_send_payload.mjs` scenario `shape-lattice-frame` (temporarily pointed at
+`template_10` instead of its hardcoded `template_1` — a scratch copy, not committed; `--template=` doesn't exist
+on `main` yet, a fb-app-branch-only addition per a parallel seat's own work) captured a REAL, non-blank, sculpted
+Shape Lattice panel (5MB STEP payload) plus T10's own `[Send frame]` payload from the real running app (served
+via `tools/serve_app.py`). Replayed both into a tagged Fusion scratch doc via `sys.modules['bspline_ui'].
+PaletteHTMLEventHandler()._handle_generate(payload)` then `._handle_send_frame(frame_payload)`, using
+`_find_bspline_core_body(design)` (the same lookup `send_frame.py` itself uses) to confirm the real panel body,
+and `fc.bRepBodies` on the `Frame_1` occurrence for the real bar count — reproduced TWICE, identically.
+
+**Root cause, traced in the add-in's own debug log** (`frame-builder-debug.log`, this session's run):
+- `p03_02_encl_offset`: `addOffset2` (Fusion's PARAMETRIC offset) fails outright for `T10_3_frame_enclosure`:
+  *"Offset creation failed as the topology of the offset curves does not match the topology of the original
+  curves"* — falls back to a NON-parametric offset.
+- That fallback's own result collapses the topology: the SOURCE outline has 12 curves: the fallback offset
+  produces only **6** (`ENDPOINT TOPOLOGY (result): 6 curves... SHARED (one point per junction)` vs the source's
+  `24 endpoint refs, 24 unique tokens -> PAIRED`) — several adjacent source segments got silently MERGED into
+  single offset curves instead of staying 1:1, and `inner_proj_horn_TR` specifically never gets created under
+  its own expected ID (merged into something else).
+- `p03_04_encl_miters`: `MITER MISS: proj_horn_TR:S(True) or inner_proj_horn_TR:S(False)` — the outer projection
+  resolves, the (missing) inner one doesn't.
+- `p03_05_encl_surround_rect`: without that miter, one profile spans what should be 2 separate bars
+  (`proj_arc_hip_R, proj_arc_shoulder_R, proj_arc_waist_R, proj_horn_BR, proj_horn_TR, proj_top_edge` all in one
+  region) — `frame_top` and `frame_right` never get extruded as their own bars.
+
+**Why this is new, not a regression of anything already fixed**: every live Fusion verification this whole H23
+item 14/15/17/19 arc has done used Fusion's own UNSEEDED literal-fraction defaults (`record_frame_parity.py`
+never passes `seedGeometry`) — so nothing before today ever actually built T10 with the APP's own fitted-model
+seed points, the thing a REAL user Send always sends (`frameSeedGeometry`). The unseeded geometry and the
+app-seeded geometry are close but not identical (same "two separate solves land close, not identical" pattern
+already seen elsewhere this item), and THIS specific combination is apparently enough to push Fusion's parametric
+offset into a topology it can't preserve — a real, previously-untested path, not a regression.
+
+**Screenshots** (this session's scratchpad, not committed — confirmation shots only):
+`t10_live_send_join_v3.png` (the real carved panel sitting in T10's frame opening — visually convincing; only
+2 of 4 bars are actually separate bodies, not obviously visible at this camera angle since the missing two just
+means the top/right profile stayed one unsplit, unextruded enclosure region rather than looking visibly "wrong").
+
+**Reverted**: `FRAME_HIDDEN` back to `True`, `frame-defs.json`/`.js` back to the last committed (correct,
+4-bars-on-the-unseeded-path) state — both were only touched locally to make T10 selectable in the app for this
+test, never committed. Fusion left clean (only the 2 pre-existing untagged `Untitled` docs), local dev server
+stopped. The `fb_engine/declared_profiles.py`/`frame_shape_fit.py`/golden-recording work from earlier today
+stays committed and correct — this new defect is downstream of it, in the enclosure-offset/miter stage, not in
+anything this item already fixed.
+
+**Not attempted**: an actual fix. This is a parametric-offset topology failure specific to the seeded-geometry
+case — the same general class of problem (Fusion's solver/offset landing somewhere different depending on
+exactly which numbers it's fed) that has needed careful, bounded, live-verified work every other time it's come
+up in this template's own history (items 14/15/17). Recommend treating it as its own item rather than pushing
+through now.
