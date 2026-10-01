@@ -1,28 +1,23 @@
-# NEXT (lane-b) — T82 item 3 follow-up: subframe bottom must be FLAT, not terrain-following
+# NEXT (lane-b) — T81 item 5: yellow highlight stays after moving a tie
 
-**Ball: worker (seat B) · epoch 9 · T82 item 3 follow-up.** T82 item 1 ACCEPTED (45e66bb) — excellent finish: 5 real bugs
-found and fixed before shipping (the silent param-key collision with Bottle is the standout — caught by the suite, not
-luck), self-verified arc directions against the real pipeline rather than predicting signs, honest about the handle-range
-limitation instead of overclaiming a closed form that doesn't exist. Spot-checked independently: pytest 406/24 skipped/0
-failed, and the real headless-Chrome screenshot (t7_frame_tab_editor.png) shows a clean, correctly-formed gable peak over
-a concave neck pinch flaring into a convex body. Accuracy note from last time landed too — good. `LIVE_CHECK.md` is ready
-for seat A whenever it reaches Template 7's live Fusion check.
+**Ball: worker (seat B) · epoch 9 · T81 item 5.** T82 item 3 follow-up ACCEPTED (f5d79d0) — exactly right: code change
+matches intent precisely (plain `spec.frameBottomZ` constant, same as the main frame's own call), comment updated
+accurately, mutation-tested (2 tests red on the old bug, 27 stay green), and the new screenshot confirms it visually —
+flat bottom, terrain-following top. Spot-checked independently (full gate, not just this item): vitest 2932/0 failed,
+pytest 406+91+594/0 failed, gen_frame_defs --check clean. **Merged lane-b into main (43886cb)** — Template 7 and the
+inset window fix are both on main now. Good find and write-up on the http.server zombie process too (saved to project
+memory) — that curl-diff-against-disk instinct is exactly right when a result looks like a regression but might not be.
 
-**T82 item 3 (f509b8a) — one real fix needed before this merges.** Fred looked at the bottom-view screenshot and caught
-it: the subframe bar's BOTTOM shouldn't follow the terrain too. He wants: **top conforms to the panel's sculpted
-underside** (keep this — it's correct, the bar mounts flush against it, no gap), **bottom stays FLAT, at the SAME level
-as the outer frame's own bottom.** Right now both faces track the terrain (`frame-mesh.js` `winBarBottom = (p) => bot(p)
-+ spec.frameBottomZ` — terrain height at that point, plus a fixed offset, so the whole bar's position floats with the
-terrain even though its thickness stays constant). The outer/main frame's own ring call two lines above already does
-exactly what's wanted — `ringArrays(outer, inner, spec.frameBottomZ, bot, cell)` passes `spec.frameBottomZ` straight in
-as a plain constant, not a function of `p`. Make the window bars' zBottom the SAME plain constant `spec.frameBottomZ`
-(not `bot(p) + spec.frameBottomZ`) — this makes the subframe's bottom coplanar with the outer frame's bottom, while its
-top keeps following the terrain (so thickness now genuinely VARIES, thicker where the terrain dips deeper — that's
-correct and intended). Update the code comment too, it currently asserts the old (wrong) behavior. Re-verify with
-before/after bottom-view shots to shots\seatB\, re-run the mutation test on whatever test covers this. Then re-push and
-pass back — I'll redo the merge into main after.
-
-## This task: T82 item 3 (inset window subframe)
+## This task: T81 item 5 (priority bug, from the backlog — T83/Template 11 still waits on a diagram, not scheduled yet)
+- [T81-item-5] PRIORITY BUG: YELLOW HIGHLIGHT STAYS AFTER MOVING A TIE (Fred: "the yellow highlight is persistent even
+  after I released a moved tie"). REPRODUCE with real pointer events (mouse and touch): drag a tie (rect Lattice and
+  Shape Lattice), release; identify which overlay is yellow (drag/snap/target highlight, rail-slide guide, selection
+  halo, hover...) and why it survives pointerup (likely a missing clear on pointerup/pointercancel/lostpointercapture,
+  or an early-return path that skips cleanup). Fix at the cause: every drag-time overlay is cleared by ONE end-of-drag
+  cleanup that runs on every exit path (up, cancel, lost capture, Esc, drag aborted by a no-op move). The selection
+  halo that is MEANT to stay while the tie is selected is fine — say which one it is, don't remove it. Test: after
+  release, no drag overlay nodes remain (each exit path). Before/after shots to shots\seatB\. Commit as 'T81 item 5: ...'.
+- After this: T81 item 6 (can't select a contour segment) is next in the backlog if you finish with room to spare.
 - **INSET WINDOW 3D: SHOW THE SUBFRAME** (Fred, phone shot from the BOTTOM view: shots/fred/inset_window_3d_no_frame_2026-10-01.png:
   "inset window doesn't show a frame in 3D"). The design's "never add the window bars to the 3D scene" was a misreading of
   "hidden": they are hidden FROM THE FRONT by the panel overhang, but they EXIST — render the 4 `frame_window_*` bars in
