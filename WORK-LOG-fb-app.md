@@ -4769,3 +4769,34 @@ geometry this far outside the normal range. Named with a full explanation, mutat
 
 Templates 1-7/9/10 confirmed byte-identical. `npx vitest run`: 2855 passed. `pytest`: repo root 527 passed,
 13 skipped.
+
+## 2026-10-01: H23 item 12 — hidden-error sweep across Fusion-side Python (worker, seat A)
+
+Full results in LIVE-RESULTS-ranchy.md. No code changes -- zero real undefined-name bugs beyond item 10's
+already-fixed one; two real "hides a failure" dispatcher patterns found and flagged, not changed (per the
+dispatch).
+
+pyflakes across all 320 .py files (b-spline-gen/frame-builder/CAM-builder/template-maker) -- my first pass
+only actually reached 80 of 320 via a bash glob that doesn't recurse the way I assumed; redid it with `find`
+for real coverage. Validated the tool first: run against the pre-fix cam-builder.py, it correctly flags the
+item 10 NameError. 27 hits on the live tree, all the exact same documented, intentional pattern
+(`load_phase_blocks` injected at runtime by `template_loader.TemplateLoader._exec_module`, already carrying
+its own `# noqa: F821` comment) across every template's 3 sketch files. Nothing real to fix.
+
+Wrote tools/audit_silent_except.py: an AST tool building a same-file call graph from recognized action entry
+points, flagging every except-Exception/bare-except in a reachable function that only logs. 283 found across
+the 7 files with real event handlers, 208 flagged "silent" by the tool's own pattern matching -- confirmed via
+spot-check this is an over-approximation (one flagged case actually surfaces via `_send_palette_message`, a
+name the tool's fixed list didn't know; added it). Didn't claim to have individually verified all 283 --
+proportionate effort, not exhaustive.
+
+Manually confirmed 2 real, high-impact instances, both at the dispatcher/wrapper level (every downstream
+action inherits the gap): cam-builder.py's ONE dispatcher for all 15 CAM palette actions
+(`_CamHtmlEventHandler.notify`) swallows any exception silently -- structurally the exact same shape as item
+10's bug, one level up (that was one specific exception inside one action; this is the catch-all that would
+hide any OTHER exception in any of the 15). And frame-builder/ui/palette_scaffold.py's
+`_make_hidden_command_pair` -- the shared exec wrapper behind every hidden-command button in BOTH
+sketch_builder_ui.py and solid_builder_ui.py -- does the same. For contrast: b-spline-gen.py's own dispatcher
+DOES surface (a blocking messageBox with the raw traceback, unpolished but visible); template_bridge.py
+returns an explicit `returnData: 'error'`; both builder UIs' palette-launch handlers show a messageBox. Named
+these as the real gaps specifically because other dispatchers in the same codebase already do better.

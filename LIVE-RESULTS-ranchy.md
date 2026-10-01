@@ -546,3 +546,63 @@ session did not need to fix a seed bug here; it only needed to run and record th
   the normal aspect-ratio range); named as its own exception set with a full explanation rather than silently
   skipped, mutation-tested via `git stash`. `npx vitest run`: 2855 passed. `pytest`: frame-builder +1 (527
   total, repo root), b-spline-gen unaffected, 13 skipped throughout.
+
+## Item 12 — hidden-error sweep across Fusion-side Python
+
+**No code changes needed — zero real undefined-name bugs found beyond the one item 10 already fixed; two
+real "hides a failure" instances found and flagged (not changed, per the dispatch).**
+
+**Undefined-name sweep (`pyflakes`, all 320 `.py` files across `b-spline-gen`, `frame-builder`, `CAM-builder`,
+`template-maker` — a first glob-based pass only reached 80 of 320 files, missing every deeply-nested
+`sketches/template_N/phases/*.py`; redone with `find` for genuine full coverage):**
+- Confirmed `pyflakes` actually catches this class of bug: run against the pre-fix `cam-builder.py` (item 10),
+  it correctly flagged `undefined name 'app'` at the exact line — validates the tool before trusting a
+  zero-findings result on the current tree.
+- **27 "undefined name" hits, ALL the same false positive, already self-documented in the source**:
+  `load_phase_blocks` in every template's `sketch_1_bounding_box.py`/`sketch_2_shape_outline.py`/
+  `sketch_3_frame_enclosure.py` (3 files x 9 templates). Each file's own docstring states `load_phase_blocks`
+  is injected into the module namespace by `template_loader.TemplateLoader._exec_module` before execution,
+  and the call site already carries `# noqa: F821 — injected`. Verified this is the real mechanism, not an
+  assumption.
+- **Zero other undefined-name bugs found.** Nothing to fix.
+
+**"Except Exception that only logs inside a user-facing action" sweep** (`tools/audit_silent_except.py`, new
+— a from-scratch AST tool: builds a same-file call graph from recognized entry points (`notify`, `_handle_*`,
+`_do_*`, CommandCreated/Execute handlers), then flags every `except Exception`/bare `except` in a reachable
+function whose body only logs): 283 except-blocks found reachable from a user action across the 7 files with
+real event-handler classes (`CAM-builder/cam-builder.py`, `b-spline-gen/b-spline-gen.py`, `frame-builder/ui/
+{palette_scaffold,sketch_builder_ui,solid_builder_ui}.py`, `template-maker/{template-maker.py,core/
+template_bridge.py}`), 208 flagged as "silent candidates" by the tool's own pattern matching.
+
+**The tool's own "silent" count is a deliberate over-approximation, not a final verdict** — confirmed by
+manual spot-check: `solid_builder_ui.py`'s `_handle_face_selection` was flagged silent, but its actual except
+block calls `_send_palette_message(pal, 'status_update', {'msg': f'Selection Error: {e}'})`, a real
+surfacing path the tool's fixed name list didn't recognize (now added). A full line-by-line manual verdict on
+all 283 would need dedicated time beyond what's proportionate here; what follows is the manually-verified,
+high-confidence subset, not an exhaustive one.
+
+**Two real, confirmed "hides a failure" instances, both at the dispatcher/wrapper level (the highest-impact
+place for this to matter, since every downstream action inherits the gap) — flagged, NOT changed:**
+
+1. **`CAM-builder/cam-builder.py:277-278`, `_CamHtmlEventHandler.notify`** — the ONE dispatcher for every CAM
+   builder palette action (15 actions per its own docstring). `except Exception: _log_error(...)` with
+   nothing else: if ANY exception propagates up from ANY of the 15 action handlers (`_do_generate`,
+   `_do_studio_generate`, etc.), the user's click produces NOTHING — no toast, no dialog, the button just
+   appears to do nothing. Structurally this is the SAME shape as item 10's own confirmed bug, one level up:
+   item 10 was one specific exception (the NameError) inside one specific action; this is the catch-all that
+   would hide ANY OTHER exception in ANY of the 15, the same way.
+2. **`frame-builder/ui/palette_scaffold.py:126-131`, `_make_hidden_command_pair`'s `_ExecHandler.notify`** —
+   the SHARED mechanism behind every "hidden command" button in frame-builder's palette architecture (its own
+   docstring: used by BOTH `sketch_builder_ui.py` and `solid_builder_ui.py`, confirmed by their own imports).
+   `except Exception: log_error(...)` with no user feedback at all: a command's own `execute_fn()` raising
+   silently leaves the user's click looking like nothing happened, same as #1.
+
+**Contrast, for scale:** `b-spline-gen.py`'s own `notify()` outer except (`:1149-1153`) DOES surface (a
+blocking `ui.messageBox` with the raw traceback — unpolished, but visible, not hidden); `template_bridge.py`'s
+own dispatcher returns `html_args.returnData = 'error'` on every failure (a real signal back to the caller,
+even if terse); both `*_builder_ui.py` palette-launch `CommandCreatedHandler`s surface via `messageBox`. These
+are NOT flagged — the point of contrast is that SOME of this codebase's dispatchers already do the right
+thing, which is why #1 and #2 above stand out as gaps rather than "how everything here works."
+
+**Not fixed, per the dispatch's own instruction ("flag, don't change")** — a real fix (what should the user
+see, and how) is a product decision, not a mechanical bug fix like item 10's NameError was.
