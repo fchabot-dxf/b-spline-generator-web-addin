@@ -331,6 +331,94 @@ def test_template_5_enclosure_uses_the_dipped_top():
     assert [list(m) for m in miters] == spec["Frame"]["regions"]["miters"]
 
 
+# ------------------------------------------------------- T8 dipped top + left-only wave
+_T8_OUTLINE = ["side_R", "bottom_edge", "horn_BL", "arc_hip_L", "arc_waist_L", "arc_shoulder_L", "horn_TL",
+               "top_edge_L", "arc_top_shoulder_L", "arc_top_dip", "arc_top_shoulder_R", "top_edge_R"]
+
+
+def test_template_8_is_a_plain_right_side_plus_the_wave_and_an_off_centre_dip(defs):
+    t = {x["id"]: x for x in defs["templates"]}
+    t1, t8 = t["template_1"], t["template_8"]
+    assert t8["name"] == "Template 8 - Dipped Top + Left-Only Wave" and t8["silhouettePreset"] == "dippedLeftWave"
+    assert t8["features"] == t1["features"]  # the same 4-bar + trim layout
+    # no new Fusion parameter beyond the LEFT side's own weld toggles (no skeleton Equal to gate: p02_11)
+    assert [p["name"] for p in t8["params"]] == ["widthIn", "heightIn", "boundingboxoffset",
+                                                 "ck_arc_shoulder_weld", "ck_arc_hip_weld", "frame_thickness"]
+    assert t8["handles"] == [
+        {"key": "waveHeight", "label": "Left wave height", "basis": "hh", "binding": "seeded"},
+        {"key": "waveReach", "label": "Left wave reach", "basis": "hw", "binding": "seeded"},
+        {"key": "topDipWidth", "label": "Top dip width", "basis": "hw", "binding": "seeded"},
+        {"key": "topDipPosition", "label": "Top dip position", "basis": "hw", "binding": "seeded"},
+        {"key": "topDipDepth", "label": "Top dip depth", "basis": "hh", "binding": "seeded"},
+    ]
+    assert t8["handleMigrations"] == {}
+    reg = t8["regions"]
+    assert reg["outline"] == ["proj_" + c for c in _T8_OUTLINE]
+    assert reg["inner"] == ["inner_" + c for c in reg["outline"]]
+    assert reg["miters"] == [[f"{c}:S", f"inner_{c}:S"] for c in
+                             ("proj_top_edge_L", "proj_side_R", "proj_bottom_edge", "proj_horn_BL")]
+    # the seed map: one entry per outline piece, in the app's own _solveDippedLeftWave primitive order (0-11),
+    # plus the LEFT skeleton pins and their three seed radii (no right-side pins or radii at all)
+    prims = {e["id"]: e["prim"] for e in t8["seedMap"] if e["kind"] in ("line", "arc")}
+    assert [prims[c] for c in _T8_OUTLINE] == list(range(12))
+    assert {e["id"] for e in t8["seedMap"] if e["kind"] == "pin"} == {
+        "skel_shoulder_pin_L", "skel_waist_pin_L", "skel_hip_pin_L"}
+    assert {e["id"] for e in t8["seedMap"] if e["kind"] == "radius"} == {
+        "seed_rad_hip_L", "seed_rad_waist_L", "seed_rad_shoulder_L",
+        "seed_rad_top_shoulder_L", "seed_rad_top_dip", "seed_rad_top_shoulder_R"}
+    # a provisional model (no goldens yet), no base template (like Template 6's tab top): the wave's own depth
+    # and height, the dip's half width, depth and (new) position -- none of Template 1's own features at all
+    assert t8["shapeModel"]["provisional"] and t8["shapeModel"]["provisional"]["baseModel"] is None
+    assert set(t8["shapeModel"]["features"]) == {"waveDepth", "waveCy", "topDipHalfWidth", "topDipDepth", "topDipPosition"}
+    assert not set(t8["shapeModel"]["features"]) & set(t1["shapeModel"]["features"])
+
+
+def _t8_steps():
+    from fb_engine.template_resolver import resolve_template
+    spec = resolve_template("template_8")[0]
+    return {sk["Name"]: [st for b in sk["Blocks"] for st in (b.get("BuildSequence", []) + b.get("Steps", []))]
+            for sk in spec["Sketches"]}, spec
+
+
+def test_template_8_sketch_has_no_right_side_pins_or_arcs_and_no_skeleton_equal():
+    """The Fusion side of 'a plain right side, no pinch at all' (sketches/template_8/phases): no R-side skeleton
+    pin, no R-side arc, and no skeleton Equal at all (p02_11 -- there is no right pin to tie the left one to)."""
+    steps, _ = _t8_steps()
+    sk2 = steps["2_shape_outline"]
+    ids = {st["ID"] for st in sk2 if "ID" in st}
+    # the SIDE's own right-side entities only (not the top dip's own "_R" shoulder, a different anatomy entirely)
+    side_r_names = {"skel_shoulder_pin_R", "skel_waist_pin_R", "skel_hip_pin_R",
+                    "arc_shoulder_R", "arc_waist_R", "arc_hip_R", "horn_TR", "horn_BR"}
+    assert not (ids & side_r_names)
+    assert "side_R" in ids  # the plain line instead
+    co = [tuple(st["Targets"]) for st in sk2 if st.get("Type") == "Coincident"]
+    for lvl in ("shoulder", "waist", "hip"):
+        assert (f"skel_{lvl}_pin_L:S", "Y_AXIS") in co  # independent, Template 4's own trick, just the one side
+    eq = [tuple(st["Targets"]) for st in sk2 if st.get("Type") == "Equal"]
+    assert eq == [("arc_top_shoulder_L", "arc_top_shoulder_R")]  # only the dip's tie; no skeleton Equal at all
+    # side_R is fully constrained by its two corner welds alone (no Vertical of its own: see p02_03's own doc
+    # comment -- both corners already share one X)
+    assert ("side_R:S", "top_edge_R:E") in co and ("side_R:E", "bottom_edge:S") in co
+    assert not any(st.get("Type") == "Vertical" and "side_R" in st.get("Targets", []) for st in sk2)
+    # no dip-centre axis pin (unlike Template 5's Coincident(arc_top_dip:C, Y_AXIS)): the dip's position is free
+    assert ("arc_top_dip:C", "Y_AXIS") not in co
+
+
+def test_template_8_enclosure_uses_the_12_piece_outline():
+    """p03_*: the projections, the offset loop, the inner corner resolve and all 4 miters read the new outline."""
+    steps, spec = _t8_steps()
+    sk3 = spec["Sketches"][2]
+    projs = [p["TargetID"] for b in sk3["Blocks"] for p in b.get("Projections", [])]
+    outline = spec["Frame"]["regions"]["outline"]
+    assert projs == outline and len(outline) == 12
+    offs = [st for st in steps["3_frame_enclosure"] if st.get("Type") == "Offset"]
+    assert offs[0]["SourceID"] == outline
+    res = [st for st in steps["3_frame_enclosure"] if st.get("Type") == "ResolveInnerCorners"][0]
+    assert res["Corners"]["TR"]["OuterID"] == "proj_side_R:S" and res["Corners"]["TR"]["InnerID"] == "inner_proj_side_R:S"
+    miters = [(m["Source"], m["Target"]) for b in sk3["Blocks"] for m in b.get("Miters", [])]
+    assert [list(m) for m in miters] == spec["Frame"]["regions"]["miters"]
+
+
 # ------------------------------------------------------------- T6 tab top (N-BAR)
 _T6_PIECES = ["tab_top", "tab_side_R", "shoulder_R", "side_R", "bottom_edge", "side_L", "shoulder_L", "tab_side_L"]
 
@@ -365,8 +453,8 @@ def test_template_6_is_an_8_bar_tab_top(defs):
     assert {e["id"]: e["prim"] for e in t6["seedMap"]} == {c: (i - 1) % 8 for i, c in enumerate(_T6_PIECES)}
     assert all(e["kind"] == "line" and e["reverse"] is False for e in t6["seedMap"])
     assert t6["shapeModel"]["provisional"] and set(t6["shapeModel"]["features"]) == {"tabHalfWidth", "tabHeight"}
-    # Templates 1-5 declare no corners / bars (the 4-bar default)
-    for tid in ("template_1", "template_2", "template_3", "template_4", "template_5"):
+    # Templates 1-5 (and 8, also 4-bar) declare no corners / bars (the 4-bar default)
+    for tid in ("template_1", "template_2", "template_3", "template_4", "template_5", "template_8"):
         assert "corners" not in t[tid]["regions"] and "bars" not in t[tid]["regions"]
 
 

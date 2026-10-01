@@ -33,7 +33,10 @@ def test_all_six_goldens_exist():
     # T6 TAB TOP: the same (sketches/template_6/LIVE_CHECK.md).
     t6 = {n for n in names if n.startswith("template_6_")}
     assert t6 in (set(), {f"template_6_{s}.json" for s in _SIZES}), sorted(t6)
-    assert names - t3 - t4 - t5 - t6 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
+    # T8 DIPPED TOP + LEFT-ONLY WAVE: the same (sketches/template_8/LIVE_CHECK.md) -- no goldens recorded yet.
+    t8 = {n for n in names if n.startswith("template_8_")}
+    assert t8 in (set(), {f"template_8_{s}.json" for s in _SIZES}), sorted(t8)
+    assert names - t3 - t4 - t5 - t6 - t8 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
 
 
 @pytest.mark.parametrize("path", _FILES, ids=os.path.basename)

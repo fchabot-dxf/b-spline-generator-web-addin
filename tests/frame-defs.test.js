@@ -49,13 +49,15 @@ describe('frame-defs (generated) — schema', () => {
     expect(PRESETS[t.silhouettePreset]).toBeTruthy();
     // F8: the shape is a model fitted from the recorded Fusion goldens, with its fit report.
     // T6 TAB TOP: the frame-only tabTop preset's model: the tab's half width and height.
+    // T8 DIPPED TOP + LEFT-ONLY WAVE: the frame-only dippedLeftWave preset's model: the wave's own depth/height,
+    // the dip's half width, depth and (new) position -- no base template, like T6's tab top.
     const FEATURES = { hourglass: ['cornerR', 'depth', 'notch', 'waistCy', 'waistR'], bottle: ['bodyR', 'neckHalfW', 'neckR', 'neckTop'],
-      tabTop: ['tabHalfWidth', 'tabHeight'] };
+      tabTop: ['tabHalfWidth', 'tabHeight'], dippedLeftWave: ['topDipDepth', 'topDipHalfWidth', 'topDipPosition', 'waveCy', 'waveDepth'] };
     // T3 TAPERED HOURGLASS: a narrow-top hourglass model also carries topInset (and, once fitted from its own
     // goldens, the two corners separately) -- the only extras paramsFromShapeModel reads.
     // T4 OFFSET HOURGLASS: an offset-waist model also carries the left pinch (waistCyLeft, notchLeft, depthLeft).
     // T5 HOURGLASS DIPPED TOP: a dipped-top model also carries the top dip (topDipDepth, topDipHalfWidth).
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth'], bottle: [], tabTop: [] };
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth'], bottle: [], tabTop: [], dippedLeftWave: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);

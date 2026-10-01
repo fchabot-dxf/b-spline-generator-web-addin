@@ -4036,3 +4036,126 @@ floats there pointing at nothing")
   - all six sidebar fields are shown;
   - changing thickness in the sidebar updates `P.frame` and the 3D frame bars;
   - the editor Frame tab holds only template, Generate and Undo.
+
+## 2026-09-30: F28 item 1 - Template 8, Dipped Top + Left-Only Wave (seat C, epoch 4)
+
+- Fred's backlog idea (HANDOFF-ranchy.md section 5), clarified mid-task by an amendment with his sketch: the top
+  dip sits off centre (middle-right, not Template 5's centred one), the LEFT side has an S-wave pinch (Template
+  1's own per-side pinch, reused), the RIGHT side and base are a plain straight edge (no pinch, no arcs at all),
+  4 square mitred corners. Handles (Fred approved): dip depth, dip width, dip position, left wave reach, left
+  wave height.
+- **The gate I flagged and the amendment that resolved it:** before writing any code I passed back a gate (the
+  dispatch's "right side straight" was ambiguous between a genuinely straight line and T4's existing near-zero
+  independent-pinch mechanism, which can't reach literal zero curvature). The advisor's amendment, carrying
+  Fred's own sketch reading, confirmed: literally straight, no arcs on the right at all. That resolved it into a
+  concrete, buildable design before any geometry was written.
+- **New preset `dippedLeftWave`** (editor-shape-lattice-generator.js), frame-only like T6's `tabTop`: no Shape
+  Lattice button offers it. `_solveDippedLeftWave` is a NEW, self-contained 12-piece solver (not a branch inside
+  `_solveHourglass`, whose fixed 12/16-piece topology can't represent a plain, arc-free side) that reuses
+  `hourglassConstruction`'s own `left` (Template 1's per-side arc math, fed this preset's `waveReach`/`waveHeight`
+  under the hourglass preset's own key names) and `topDip` (Template 5's dip, extended for `topDipPosition`) --
+  the right side is just two fixed corner points joined by one line, needing no Vertical constraint of its own
+  (both corners already share one x by construction, proven the same way p02_03_loop.py's own doc comment proves
+  it for the Fusion side). `hourglassConstruction` itself gained one small, backward-compatible extension:
+  `topDipPosition` (default 0, so Templates 1-6 are bit for bit unchanged) shifts the whole dip motif (both
+  shoulders + the dip) by a world-space constant, which preserves every internal tangency (a rigid translation
+  can't break tangency) -- VERIFIED by fuzzing 1800 random param/board combinations after two real bugs in my
+  own range math (below), landing at 0 defects.
+  - 12 pieces, clockwise from the top-right corner: 0 side_R (plain line), 1 bottom edge, 2 horn(BL), 3 hip arc,
+    4 wave/waist arc, 5 shoulder arc, 6 horn(TL), 7 top stub(L), 8 top shoulder(L), 9 dip, 10 top shoulder(R),
+    11 top stub(R).
+  - `PARAM_ORDER.dippedLeftWave`, `FRAME_ONLY_PARAM_KEYS` (+7 new keys), `DERIVED_PARAM_DEFAULTS.dippedLeftWave`
+    (only `waveRadius` is a genuine derived-from-other-params formula; every other key is a PLAIN preset param --
+    see the next bullet for why that split matters), `_dippedLeftWaveRange`, `generateSilhouette` dispatch,
+    `paramsFromShapeModel` branch (self-contained, no root-picking: the provisional model's own `waveDepth`
+    feature IS the real depth already, not a noisy fit needing reconciling against the tangency equation the way
+    T1/T4's `depth`/`notch` do -- NAMED as a simplification to revisit once real goldens make `waveNotch`
+    meaningful).
+  - **MEASURED bug 1 (NaN cascade):** `waveHeight`'s own range read `v.waveReach`, which resolves AFTER it in
+    PARAM_ORDER -- `undefined` arithmetic propagated NaN through 4 params. Fixed by making `waveHeight` an
+    unconditional range (Template 1's own `waistCenterY` pattern exactly), `waveReach`'s range reading the
+    now-resolved `waveHeight` instead.
+  - **MEASURED bug 2 (unclamped literal defaults):** `_resolveParams`'s "absent -> derived(v), UNCLAMPED (feasible
+    by construction)" rule only holds when the default genuinely always IS feasible, the way Template 1's own
+    `topDipDepth: () => 0` trivially is. My own literal defaults (waveReach 0.4, waveCornerRadius 0.22, topDipDepth
+    0.14) are NOT always feasible -- MEASURED collapsing the LEFT horn at 12x6 (hornLen 0.34in < frame_thickness
+    0.75in) and going NEGATIVE at an extreme wave. Fixed two ways: (a) moved every one of these off the "derived"
+    path onto the plain/jittered one (`_jitteredParam`, which ALWAYS clamps, explicit or not) -- added a
+    `SALT.dippedLeftWave` entry so that path has one to read; (b) lowered the waveReach default itself to 0.2
+    (hornLen 1.04in at 12x6, a real margin) and floored `frameParamRanges`' own dip-width/depth ceilings at their
+    geometric minimum (`TOP_DIP_MIN_WIDTH`/`HORN_MIN_OF_HALF_HEIGHT`, now exported) rather than letting them go
+    negative when an independently-extreme wave leaves no room -- this is a genuinely NEW compounding (a dip AND
+    an independent pinch on the SAME template) Template 5's own frame-opening rule never had to face.
+  - **MEASURED, not assumed:** a raw seed dict resolved through `frameCutProfile` (the plain SILHOUETTE-level
+    ranges only, never `frameParamRanges`' frame-thickness-aware narrowing) can self-intersect its OWN inner
+    profile for ANY hourglass-family template at a tight board, not just this one -- reproduced the identical
+    failure mode on Template 1 itself and on Template 4's own independent pinch at 12x6 with the same magnitude
+    values. The real safety net (`frameParamRanges`) is exercised by a handle drag or [Generate], both of which
+    I tested directly and both of which hold at the true extremes; the test file's own fuzz loop was narrowed to
+    moderate values to match, with the measurement named in a comment rather than silently removed.
+- **`frame-handles.js`:** new `dippedLeftWave` branch in `frameParamRanges` (the wave's own opening rule,
+  Template 1's `waistReach` formula; the dip's own opening rule against BOTH the plain right side, a fixed
+  vertical line whose room never changes with height, and the wave, via a new `_sideRoomDippedLeftWave` helper
+  that feeds `_sideRoom` the wave's own params under both of its mirrored "sides" since this preset only has one).
+- **`editor-shape-lattice-interaction.js`:** `computeParamHandles`'s own `dippedLeftWave` branch (5 plain position
+  squares, no arc-pull radius grips at all -- none of Fred's approved 5 are a radius handle); `HANDLE_SEGMENT_
+  INDEX.dippedLeftWave`; a new `DIPPED_LEFT_WAVE_SEGMENT_PAIRS` table (`controlledSegments`'s own declared
+  pairing for a shape with NO bilateral symmetry at all, where neither existing mirror formula applies).
+- **Python (`sketches/template_8/`):** a full new template folder, copied from Template 5's own file set and
+  edited: `p02_02_anatomy.py` keeps ONLY the left skeleton pins (Template 4's "anchor to Y_AXIS independently"
+  trick, needed here for a different reason -- there's no right pin to merge with at all, not merely one to stay
+  independent from); `p02_03_loop.py` replaces Template 1's horn_TR + 3 right arcs + horn_BR with one line,
+  `side_R`, welded directly between the two corner-anchored stubs (needs no Vertical: both corners already share
+  one x); the dip's seed literals are Template 5's own, shifted right by a fixed `DIP_SHIFT` (a hand-build
+  starting point only -- a real frame's own seeded handles override it at Send time); `p02_04/05/07/08_*.py` drop
+  every right-side entry; `p02_06_waist_pins.py` drops Template 5's `Coincident(arc_top_dip:C, Y_AXIS)` (the dip's
+  position is free, left to the seeds); `p02_09/10_*.py` drop the right-side radii/welds; `p02_11_symmetry.py`
+  drops BOTH skeleton Equals (nothing to tie) and keeps only the dip's own `top_shoulder_equal` (ties the two
+  shoulder radii even though the dip is off centre -- both arcs still share Template 5's own closed-form radius
+  formula regardless of position, so the top is a genuine asymmetric wave, not two independently free shoulders).
+  `p03_*` enclosure phases: Template 5's own pattern, the TR corner's own piece is now `side_R` (not a horn).
+- **`fb_engine/frame_shape_fit.py`:** `_dipped_left_wave` extractor (Template 1's own left-arc block + Template
+  5's own dip block, except the dip's centre x is read as `topDipPosition`, never asserted to be 0) and
+  `provisional_dipped_left_wave_model` (self-contained, no base template, like T6's tab top: Template 1's own
+  cornerR/waistR/notch/depth features don't apply to a template with no right pinch at all).
+  **`fb_engine/frame_definition.py`:** `template_shape_model`'s own "no base" dispatch branch generalized (was
+  hardcoded to T6's tab top specifically) to also route a `waveReachOfHw`-marked dict to the new provisional
+  model.
+- **Tests:** `tests/frame-template-8.test.js` (21, modelled on T4/T5's own files): listing/declaration, geometry
+  across every board, all 5 handles' own drag behaviour (each holds everything but its own key), range-limit and
+  [Generate] safety, frame-only key guards, Templates 1-6 untouched. Updated 3 existing JS tests that hardcoded a
+  template count/list (`frame-template-6.test.js` x2, `frame-defs.test.js` x1) -- all EXPECTED consequences of
+  adding a new template, the same kind T4/T5/T6 each needed. Python: a full new block in `test_frame_defs.py`
+  (declaration + the "no right side, no skeleton Equal" structural check) and `fb_engine/test_frame_shape_fit.py`
+  (extractor, rejection, provisional model, "provisional until goldens" / "fitted once goldens exist" pair,
+  mirroring T4+T5's own two blocks combined); added `template_8` to the parametrized 4-bar lists in
+  `fb_engine/test_declared_profiles.py` (x3), `test_panel_lip.py`, `fb_engine/test_seed_basis.py` (x2),
+  `test_frame_parity_goldens.py`, and to `test_templates.py`'s `EXPECTED` dict + `test_cross_template_regression`'s
+  sequence list. **Fixed one pre-existing test bug found along the way:** `test_panel_lip.py`'s own "a bar is
+  classified exactly as before" sample used `reg["outline"][0]` as a stand-in for "the first miter's own piece" --
+  true only because every template so far happens to start its outline list at that same corner; Template 8
+  starts its own outline elsewhere (at the TR corner, matching `_solveDippedLeftWave`'s own piece order), which
+  surfaced the coupling. Fixed to read the miter's own piece directly (a no-op for every existing template,
+  verified by the full suite staying green).
+  **Mutation-tested two independent pieces** (temporarily broke them, confirmed red, restored): disabling
+  `topDipPosition`'s shift caught by 3 tests; removing `top_shoulder_equal` from the Python phase caught by 1.
+- vitest 2741 passed (was 2720). pytest: frame-builder 283 / 2 skipped (was 281), b-spline-gen 89 (unchanged),
+  root (--ignore=.claude) 483 / 2 skipped (was 464).
+- **A/B byte-identical check** (tools/repro/ab/, a HEAD worktree at bafb502): `ab6.mjs`, `ablat6.mjs`, `ab3d.mjs`,
+  `abpy.py`, `abcam.py` (the last two need an ABSOLUTE path argument -- a relative `.`/`..` silently breaks
+  abcam.py's own startswith check; not this task's mess, worked around by passing absolute paths) all matched
+  byte-for-byte for Templates 1-6 before any list was touched. `template_8` then appended to the 3 scripts that
+  had hardcoded lists (`ab6.mjs` x2, `ablat6.mjs` x1, `abpy.py` x1 -- `template_6` was never in these lists either,
+  a pre-existing gap, left alone: not this task's scope); each now runs clean with T8 included, producing its own
+  (necessarily different, not compared) hash.
+- `python tools/gen_frame_defs.py --check`: fresh.
+- Headless shots (desktop 1400x900 + phone 390x844, `tools/repro/frame_profile_shots.mjs`) to
+  `C:/Users/danse/.bspline-status/shots/seatC/F28item1_template8_{desktop,mobile}_{sidebar,editor}.png`: the
+  dropdown reads "8. Dipped Top + Left-Only Wave"; the editor profile draws 0 defects, `fit.ok`, a straight right
+  edge, the wave pinch on the left, the dip visibly off centre; no console errors either size.
+- `sketches/template_8/LIVE_CHECK.md` written (no Fusion this task -- for whoever does the live build next):
+  flags that `tools/repro/f20_seed_case.mjs` / `f20_live_parity.py` need their own next argument positions for
+  this template's 5 params first (Template 4/5's own precedent for adding a template's params there), and that
+  `paramsFromShapeModel`'s own no-root-picking simplification (named above) may need revisiting once a REAL
+  (not provisional) fit exists. The exact DIP_SHIFT / provisional numbers are a reasonable hand-build starting
+  point only, same as every other provisional template before its own live build.

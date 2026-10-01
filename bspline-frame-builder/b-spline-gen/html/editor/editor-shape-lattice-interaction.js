@@ -149,6 +149,56 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
     ]));
   }
 
+  if (preset === 'dippedLeftWave') {
+    // T8 DIPPED TOP + LEFT-ONLY WAVE (a frame-only preset): the SAME construction `_solveDippedLeftWave` itself
+    // builds from these params (editor-shape-lattice-generator.js), read here instead of re-derived, so the
+    // handles always sit exactly on the drawn geometry. The wave gets the same two position squares T4's own
+    // left pinch does (`waveReach`'s anchor mirrored via `waistReachFromCentre`, `edge` fixed at the RIGHT edge:
+    // that helper's own convention, since the caller mirrors the pointer INTO right-side terms); the dip
+    // (Template 5's own construction, extended for `topDipPosition`) gets three: width, position and depth, all
+    // offset by the dip's own shifted centre (`dipCx`) rather than the board's.
+    const g = hourglassConstruction(region, {
+      waistReach: resolvedParams.waveReach, waistCenterY: resolvedParams.waveHeight,
+      cornerRadius: resolvedParams.waveCornerRadius, waistRadius: resolvedParams.waveRadius,
+      waistCenterYLeft: resolvedParams.waveHeight, waistReachLeft: resolvedParams.waveReach,
+      topDipWidth: resolvedParams.topDipWidth, topDipDepth: resolvedParams.topDipDepth, topDipPosition: resolvedParams.topDipPosition,
+    });
+    const gl = g.left, dip = g.topDip;
+    const centreL = { x: cx0 - gl.waistCx, y: cy0 + gl.waistCenterY };
+    const dipCx = cx0 + (dip ? dip.position : 0);
+    return withRange(pick([
+      {
+        key: 'waveHeight', label: 'Left wave height', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0 - (hw - gl.depth) / 2, y: centreL.y },
+        valueFromWorld: (pt) => within('waveHeight', (pt.y - cy0) / hh),
+      },
+      {
+        key: 'waveReach', label: 'Left wave reach', axis: 'x', handleKind: 'position',
+        anchor: { x: Math.max(centreL.x, cx0 - hw), y: centreL.y },
+        valueFromWorld: (pt, c = {}) => {
+          const want = waistReachFromCentre({ cx0, hw, edge: cx0 + hw, radiusWaist: gl.radiusWaist }, 2 * cx0 - pt.x,
+            c.grab ? c.grab.value : resolvedParams.waveReach);
+          return within('waveReach', want);
+        },
+      },
+      {
+        key: 'topDipWidth', label: 'Top dip width', axis: 'x', handleKind: 'position',
+        anchor: { x: dipCx + (dip ? dip.halfWidth : hw * (resolvedParams.topDipWidth ?? 0)), y: cy0 - hh },
+        valueFromWorld: (pt) => within('topDipWidth', (pt.x - dipCx) / hw),
+      },
+      {
+        key: 'topDipPosition', label: 'Top dip position', axis: 'x', handleKind: 'position',
+        anchor: { x: dipCx, y: cy0 - hh },
+        valueFromWorld: (pt) => within('topDipPosition', (pt.x - cx0) / hw),
+      },
+      {
+        key: 'topDipDepth', label: 'Top dip depth', axis: 'y', handleKind: 'position',
+        anchor: { x: dipCx, y: cy0 - hh + (dip ? dip.depth : 0) },
+        valueFromWorld: (pt) => within('topDipDepth', (pt.y - (cy0 - hh)) / hh),
+      },
+    ]));
+  }
+
   if (preset === 'bottle') {
     const b = bottleConstruction(region, resolvedParams); // the generator's own construction
     return withRange(pick([
@@ -502,7 +552,20 @@ export const HANDLE_SEGMENT_INDEX = {
   // T6 TAB TOP (8 pieces: 0 tab side R, 1 shoulder R, 2 side R, 3 base, 4 side L, 5 shoulder L, 6 tab side L,
   // 7 tab top): the width moves the tab sides, the height the shoulders (each with its mirror, mirrorSegmentIndex).
   tabTop: { tabWidth: 0, tabHeight: 1 },
+  // T8 DIPPED TOP + LEFT-ONLY WAVE (12 pieces, editor-shape-lattice-generator.js's own `_solveDippedLeftWave` doc
+  // comment: 0 side_R, 1 bottom, 2 horn(BL), 3 hip, 4 wave, 5 shoulder, 6 horn(TL), 7 stub(L), 8 top shoulder(L),
+  // 9 dip, 10 top shoulder(R), 11 stub(R)): the wave's own height/reach map to its one arc (4, DIPPED_LEFT_WAVE_
+  // SEGMENT_PAIRS below: no mirror -- nothing on the plain right side to pair with); the dip's depth/position map
+  // to the dip arc alone (9); the dip's width moves BOTH top shoulders (8 and 10, DIPPED_LEFT_WAVE_SEGMENT_PAIRS).
+  dippedLeftWave: { waveHeight: 4, waveReach: 4, topDipDepth: 9, topDipPosition: 9, topDipWidth: 8 },
 };
+
+/** T8 DIPPED TOP + LEFT-ONLY WAVE: `controlledSegments`' own declared pairing (the shape has no bilateral
+ *  symmetry at all, so neither `mirrorSegmentIndex` nor `topDipMirrorIndex` apply -- every key not listed here
+ *  controls its own HANDLE_SEGMENT_INDEX segment alone, exactly like a LEFT_ONLY_KEYS entry; `topDipWidth` is the
+ *  one exception (it moves both top shoulder arcs, declared explicitly rather than derived from a mirror formula
+ *  that would be wrong for this outline). */
+const DIPPED_LEFT_WAVE_SEGMENT_PAIRS = { topDipWidth: [8, 10] };
 
 // Arc point / segment and arc distance: editor-primitives.js (audit tidy-up -- the one copy of each).
 
@@ -566,6 +629,9 @@ export function controlledSegments(preset, key, n) {
   const i = HANDLE_SEGMENT_INDEX[preset]?.[key];
   if (i == null || !(n > 0)) return [];
   if (LEFT_ONLY_KEYS.has(key)) return [i];
+  // T8 DIPPED TOP + LEFT-ONLY WAVE: no bilateral symmetry, so a declared pairing table stands in for the mirror
+  // formulas below (see DIPPED_LEFT_WAVE_SEGMENT_PAIRS's own doc comment).
+  if (preset === 'dippedLeftWave') return DIPPED_LEFT_WAVE_SEGMENT_PAIRS[key] || [i];
   // T5 HOURGLASS DIPPED TOP: the 16-segment dipped outline mirrors by its own table (topDipMirrorIndex)
   const m = preset === 'hourglass' && n === TOP_DIP_SEGMENT_COUNT ? topDipMirrorIndex(i) : mirrorSegmentIndex(i, n);
   return m === i ? [i] : [i, m];

@@ -59,7 +59,7 @@ describe('Template 6: listing and declaration', () => {
     expect(T6.name).toBe('Template 6 - Tab Top');
     expect(frameLabel(T6)).toBe('6. Tab Top');
     expect(FRAME_DEFS.templates.map(frameLabel)).toEqual(['1. Hourglass', '2. Narrow Neck', '3. Tapered Hourglass',
-      '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top']);
+      '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top', '8. Dipped Top + Left-Only Wave']);
     expect(T6.silhouettePreset).toBe('tabTop');
     expect(PRESETS.tabTop.frameOnly).toBe(true);
     expect(T6.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset', 'frame_thickness']);
@@ -384,7 +384,9 @@ describe('Shape Lattice "from frame" follows the 8-corner contour', () => {
 
 describe('the Shape Lattice and Templates 1-5 never get the tab', () => {
   it('frame-only keys, appended last; the hourglass / bottle orders are untouched', () => {
-    expect(FRAME_ONLY_PARAM_KEYS.slice(-2)).toEqual(TAB);
+    // T8 DIPPED TOP + LEFT-ONLY WAVE appended its own 5 keys after these two (FRAME_ONLY_PARAM_KEYS' own doc
+    // comment), so TAB's own pair is no longer the trailing slice -- fixed indices instead of `.slice(-2)`.
+    expect(FRAME_ONLY_PARAM_KEYS.slice(5, 7)).toEqual(TAB);
     expect(PARAM_ORDER.tabTop).toEqual(TAB);
     expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
       'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth']);

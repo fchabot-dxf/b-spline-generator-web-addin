@@ -177,16 +177,26 @@ def template_shape_model(template_id, frame, goldens_dir):
     T5 HOURGLASS DIPPED TOP: {"from": <template id>, "topDipDepthOfHh": d, "topDipHalfWidthOfHw": w} builds
     frame_shape_fit.provisional_dipped_top_model (the base model plus a top dip d x hh deep, w x hw half wide).
     T6 TAB TOP: {"tabHalfWidthOfHw": w, "tabHeightOfHh": h} (no `from`: nothing to derive it from) builds
-    frame_shape_fit.provisional_tab_top_model."""
+    frame_shape_fit.provisional_tab_top_model.
+    T8 DIPPED TOP + LEFT-ONLY WAVE: {"waveReachOfHw": ..., "waveHeightOfHh": ..., "topDipHalfWidthOfHw": ...,
+    "topDipDepthOfHh": ..., "topDipPositionOfHw": ...} (no `from` either: like T6, no earlier template's fitted
+    features describe a plain straight side or an off-centre dip) builds
+    frame_shape_fit.provisional_dipped_left_wave_model."""
     from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
                                            provisional_dipped_top_model)
     from fb_engine.template_resolver import resolve_template
     model = fit_shape_model(template_id, frame.get("shapeExtractor") or frame.get("silhouettePreset"), goldens_dir)
     prov = frame.get("provisionalShape")
     if model is None and prov and "from" not in prov:
-        # T6 TAB TOP: a shape of its own (no base template): {"tabHalfWidthOfHw": w, "tabHeightOfHh": h}
-        from fb_engine.frame_shape_fit import provisional_tab_top_model
-        return provisional_tab_top_model(prov["tabHalfWidthOfHw"], prov["tabHeightOfHh"])
+        if "tabHalfWidthOfHw" in prov:
+            # T6 TAB TOP: a shape of its own (no base template): {"tabHalfWidthOfHw": w, "tabHeightOfHh": h}
+            from fb_engine.frame_shape_fit import provisional_tab_top_model
+            return provisional_tab_top_model(prov["tabHalfWidthOfHw"], prov["tabHeightOfHh"])
+        # T8 DIPPED TOP + LEFT-ONLY WAVE: also a shape of its own (see this function's own doc comment).
+        from fb_engine.frame_shape_fit import provisional_dipped_left_wave_model
+        return provisional_dipped_left_wave_model(prov["waveReachOfHw"], prov["waveHeightOfHh"],
+                                                  prov["topDipHalfWidthOfHw"], prov["topDipDepthOfHh"],
+                                                  prov["topDipPositionOfHw"])
     if model is None and prov:
         base_frame = resolve_template(prov["from"])[0].get("Frame") or {}
         base = template_shape_model(prov["from"], base_frame, goldens_dir)
