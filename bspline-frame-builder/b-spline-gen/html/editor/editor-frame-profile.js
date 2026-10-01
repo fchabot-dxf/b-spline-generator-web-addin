@@ -14,6 +14,7 @@
 import { generateSilhouette, outlineDefects, primitivesToPathD, primitiveToPathD, paramsFromShapeModel } from './editor-shape-lattice-generator.js';
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { offsetOutlineInward } from './outline-offset.js';
+import { insetWindowGeometry } from '../core/inset-window.js';
 import { shapeParamOverrides, frameHandles, clampToFrameRanges, FRAME_CLAMPED_PRESETS } from './frame-handles.js';
 import { frameColorFor } from '../core/color-utils.js';
 import { handleKindVisual, drawParamHandle, drawSegmentHighlight } from './editor-transform-handles.js';
@@ -149,12 +150,15 @@ export function frameSolidSpec(defs, record, board) {
   if (!prof || prof.defects.length) return null;
   const inner = prof.fit.ok ? frameInnerProfile(defs, record, board) : null;
   const innerOk = inner && !inner.defects.length && inner.primitives.length === prof.primitives.length;
+  const tpl = (defs.templates || []).find((t) => t.id === prof.templateId);
+  const ft = _param(tpl, record, 'frame_thickness') ?? 0;
   return {
     outline: sampleOutline(prof.primitives),
     inner: innerOk ? sampleOutline(inner.primitives) : null,
     outerPrimitives: prof.primitives,
     innerPrimitives: innerOk ? inner.primitives : null,
     panelPrimitives: panelTrimPrimitives(prof, record), // F22: null = trimmed on the outline
+    insetWindow: insetWindowGeometry(record, ft, record.panelLip), // T82 item 2, null when off/invalid
     frameBottomZ: record.frameBottomZ,
     // H8 (Fred: "make frame colour a bit different than board, tiny bit"):
     // the frame's own declared colour, not the board's raw wood colour —
@@ -274,6 +278,21 @@ function _drawFrameProfile(editor) {
       .attr('fill-rule', 'evenodd').addClass('frame-panel-lip');
   }
   g.path(prof.pathD).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.04 }).addClass('frame-cut-profile');
+  // T82 item 2: the inset window, drawn the same way the main frame's own band/cutaway already are -- outer
+  // rect (band colour between outer and inner), inner edge, a dark cutaway for the hole itself. Shown on
+  // both tabs (same as the main frame's own cutaway) since it affects the carved panel either way.
+  const ftTpl = (spec.defs.templates || []).find((t) => t.id === prof.templateId);
+  const ft = _param(ftTpl, spec.record, 'frame_thickness') ?? 0;
+  const win = insetWindowGeometry(spec.record, ft, spec.record.panelLip);
+  if (win) {
+    const rectD = (r) => `M${r.x1} ${r.y1} H${r.x2} V${r.y2} H${r.x1} Z`;
+    const wood = frameColorFor(spec.record.appearance, spec.defs.appearance?.previewColors?.[spec.record.appearance] || '#d9c9a3');
+    g.path(`${rectD(win.outer)} ${rectD(win.inner)}`).fill({ color: wood, opacity: 0.45 })
+      .attr('fill-rule', 'evenodd').addClass('inset-window-band');
+    g.path(rectD(win.inner)).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.025 }).addClass('inset-window-inner-edge');
+    cut.path(rectD(win.hole)).fill({ color: '#1f2933', opacity: 0.6 }).addClass('inset-window-cutaway');
+    g.path(rectD(win.outer)).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.04 }).addClass('inset-window-outer-edge');
+  }
   // F9: the shape handles, in the Frame tab only (dragged through its shield, main/frame-panel.js).
   editor._frameHandles = [];
   if (editor._editorTab === 'frame') {
