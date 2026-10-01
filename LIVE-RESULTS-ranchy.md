@@ -343,3 +343,21 @@ live-exercised here since nothing flagged it as suspect and the dispatch's own f
 construction/shapeModel fix. `npx vitest run` and `pytest` (frame-builder, b-spline-gen, repo root) all green,
 unchanged from item 2/4's last-reported counts (nothing in this item's code touched test-covered logic other
 than the one comment fix, which has no test).
+
+## Item 8 — within-board safeguard for Templates 1-6 (downgraded by the advisor)
+
+Fred's phone screenshot (a frame drawn past the board's dashed edge) traced to seat B's unfinished Template 7
+(Diamond), not any of main's templates — the advisor downgraded this item to a cheap safeguard rather than a
+bug hunt. Added `tests/frame-within-board.test.js`: for all 6 templates at 7x9/12x6/5.51x1.97, computes
+`frameCutProfile`'s outer profile (`samplePairedOutlines`) and asserts every sampled point stays within
+`[0,W]x[0,H]` (editor coords, 1e-6in epsilon). Deliberately checked regardless of `fit.ok` — that flag is
+about whether the frame's thickness physically fits the board's safe zone, a different question from whether
+the drawn OUTER silhouette stays inside the board edge (only Template 6 is clamped to the thickness rule at
+all; every other template is "drawn exactly as before" per `editor-frame-profile.js`'s own comment, so an
+overflowing outline is possible in principle independent of `fit.ok`). Proved the check itself can fail
+before trusting it on the app (a small `worstOutOfBoard` sanity test with a hand-crafted out-of-bounds point).
+**Result: all 18 cases (6 templates x 3 sizes) pass** — no overflow bug exists in Templates 1-6 today,
+consistent with the advisor's own finding that the real bug was elsewhere.
+
+**Tests:** `npx vitest run` 2759 passed (+20, this item's new file). Python suites unchanged (no Python
+touched by this item).

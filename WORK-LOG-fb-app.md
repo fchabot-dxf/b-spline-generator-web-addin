@@ -4191,3 +4191,14 @@ drove palette-UI-only checks with real CDP pointer events against the real page 
   out to the sidebar panel at some point after that comment was written.
 - No test changes needed — a live-behavior audit of existing code, not a shapeModel/construction fix.
   `npx vitest run` / `pytest` unchanged from item 4's last-reported counts.
+
+## 2026-09-30: H23 item 8 — within-board safeguard for Templates 1-6 (worker)
+
+Downgraded by the advisor before I started: Fred's phone screenshot (frame drawn past the board edge) traced
+to seat B's unfinished Template 7, not a main template, so this became a cheap safeguard instead of a bug
+hunt. Added `tests/frame-within-board.test.js`: every template's outer profile (`frameCutProfile` +
+`samplePairedOutlines`) must stay within `[0,W]x[0,H]` at 7x9/12x6/5.51x1.97, checked regardless of `fit.ok`
+(a different question — thickness-fits-the-board vs the drawn outline staying inside the board edge; only
+Template 6 is clamped to the thickness rule at all). Included a tiny sanity test proving the boundary-check
+helper itself can fail, before trusting it against the app. All 18 cases (6 templates x 3 sizes) pass — no
+overflow bug exists on main today. `npx vitest run`: 2759 passed (+20).
