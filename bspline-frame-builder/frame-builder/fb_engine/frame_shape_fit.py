@@ -58,6 +58,25 @@ def _bottle(curves, hw, hh, tol=2e-3):
     }
 
 
+def _bottle_taper(curves, hw, hh, tol=2e-3):
+    """F30 item 3 (Template 13, Narrow Neck + taper): Template 2's own `top["end"][0]` reads the TAPERED top
+    edge's own half width, not the neck circle's own untapered half width (`neckHalfW` = `skelX - radiusNeck`,
+    an app-internal quantity the construction then re-tapers itself) -- the two coincide only at taperAngle 0,
+    which is why plain `_bottle` silently measured the wrong thing here (MEASURED, 7x9: 1.79in from the tapered
+    top edge vs the true 1.989in from the neck circle, a ~0.2in error that showed up as a real S4 parity failure,
+    not a tolerance nuisance). Otherwise identical to `_bottle`: the body-tangent-at-hw and neck/body-tangency
+    checks are both properties of the UNTAPERED circles themselves, unaffected by the top horn's own slant."""
+    nk, bd = curves["arc_waist_R"], curves["arc_hip_R"]
+    ok = (abs(bd["center"][0] - (hw - bd["radius"])) < tol
+          and abs(math.dist(nk["center"], bd["center"]) - (nk["radius"] + bd["radius"])) < tol)
+    return ok, {
+        "neckHalfW": nk["center"][0] - nk["radius"],
+        "neckR": nk["radius"],
+        "neckTop": hh - nk["center"][1],
+        "bodyR": bd["radius"],
+    }
+
+
 def _hourglass_narrow_top(curves, hw, hh, tol=2e-3):
     """T3 TAPERED HOURGLASS: the hourglass with its top horns `topInset` in from the edge.
 
@@ -260,6 +279,7 @@ def _i_shape(curves, hw, hh, tol=2e-3):
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
+                      "bottle_taper": _bottle_taper,
                       "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape}
 
 

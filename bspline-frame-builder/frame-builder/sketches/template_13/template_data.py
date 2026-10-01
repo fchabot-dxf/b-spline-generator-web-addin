@@ -145,11 +145,21 @@ FRAME_FEATURES = COMMON_FRAME_FEATURES
 # goldens (fb_engine/frame_shape_fit.py, run by tools/gen_frame_defs.py);
 # the F6 constant fractions it replaces could not match every board size.
 
-# F30 item 3 (Fred's own taper copies): no recorded Fusion goldens for this template yet -- a PROVISIONAL model
-# (fb_engine/frame_shape_fit.provisional_taper_model) built from Template 2's own fitted one, every feature kept
-# exactly, plus a new scale-invariant `taperAngle` (degrees; the "from" base's own neck/body tangency is
-# otherwise untouched: see editor-shape-lattice-generator.js's own `_taperedCorner` doc comment). Replace with
-# the real fit once goldens are recorded and tools/gen_frame_defs.py is re-run.
+# F30 item 3: plain `bottle`'s own extractor reads the neck's own half-width off the TOP EDGE, not the neck
+# circle itself -- true only at taperAngle 0 (MEASURED on this template's own first recorded goldens, 2026-10-01,
+# 7x9: 1.79in from the tapered top edge vs the true 1.989in from the neck circle's own centre/radius -- a real
+# S4 parity failure, not a tolerance nuisance). `bottle_taper` (fb_engine/frame_shape_fit.py) reads it off the
+# circle instead; its own validity check (body tangent at hw, neck/body tangency) is unaffected by taper, so it
+# stays identical to plain `bottle`'s.
+FRAME_SHAPE_EXTRACTOR = "bottle_taper"
+
+# F30 item 3 (Fred's own taper copies): goldens recorded (tests/fixtures/frame-parity/template_13_*.json,
+# 2026-10-01); with `bottle_taper` above, 2+ of them should now fit cleanly (bottle_taper's own validity check
+# never looks at the tapered side at all). This provisional model (fb_engine/frame_shape_fit.
+# provisional_taper_model) -- built from Template 2's own fitted one, every feature kept exactly, plus the new
+# scale-invariant `taperAngle` -- is the fallback only if `tools/gen_frame_defs.py` is ever run before goldens
+# exist; frame_definition.py's own template_shape_model re-applies `taperAngle` either way (the generic
+# extractors have no notion of it), so nothing breaks whichever source wins.
 FRAME_PROVISIONAL_SHAPE = {"from": "template_2", "taperAngleDeg": 8.0}
 
 # F30 item 3: hidden from the template picker until this build is verified live in Fusion (T10's own "no Fusion
@@ -191,6 +201,7 @@ def get_template_logic(ui_data=None):
         "Sketches": [s1, s2, s3],
         "Frame": {
             "silhouettePreset": FRAME_SILHOUETTE_PRESET,
+            "shapeExtractor": FRAME_SHAPE_EXTRACTOR,
             "regions": FRAME_REGIONS,
             "features": [dict(f) for f in FRAME_FEATURES],
             "handles": [dict(h) for h in FRAME_HANDLES],

@@ -191,7 +191,10 @@ def template_shape_model(template_id, frame, goldens_dir):
     F30 item 3 (the taper copies, Template 12/13): {"from": <template id>, "taperAngleDeg": d} builds
     frame_shape_fit.provisional_taper_model (every one of the base model's own features KEPT, plus a new
     scale-invariant `taperAngle` -- unlike every other provisional model above, nothing about the base shape
-    itself changes)."""
+    itself changes). `taperAngle` is then unconditionally re-applied at the end of this function whenever
+    `provisionalShape.taperAngleDeg` is declared, whether `model` ended up being this provisional one OR a real
+    fit from `fit_shape_model` -- the generic hourglass/bottle extractors have no notion of taper at all, so a
+    real fit (once goldens exist) would otherwise drop the feature silently rather than getting it wrong."""
     from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
                                            provisional_dipped_top_model, provisional_taper_model)
     from fb_engine.template_resolver import resolve_template
@@ -230,6 +233,17 @@ def template_shape_model(template_id, frame, goldens_dir):
                 model = provisional_taper_model(base, prov["taperAngleDeg"])
             else:
                 model = provisional_shape_model(base, prov["topInsetOfDepth"])
+    # F30 item 3: taperAngle is declared (provisionalShape.taperAngleDeg), not measured -- the generic
+    # hourglass/bottle extractors have no idea the shape is tapered at all, so a REAL fit (once goldens exist)
+    # drops the feature entirely rather than getting it wrong. MEASURED on Template 12/13's own first recorded
+    # goldens (2026-10-01, all at the declared 8 deg default): Template 13's generic `_bottle` extractor never
+    # looks at the tapered side at all, so its real fit succeeds -- and silently loses taperAngle; Template 12's
+    # `_hourglass` extractor DOES check the shoulder's own tangent point against the untapered hw, so every
+    # tapered golden fails that check and the provisional model (which already carries it) is kept by accident.
+    # Re-apply it here unconditionally (true for either source model) so the feature survives regardless of
+    # which path produced `model`, rather than relying on which one happens to fail its own validity check.
+    if model is not None and prov and "taperAngleDeg" in prov:
+        model = dict(model, features={**model["features"], "taperAngle": {"hw": 0.0, "hh": 0.0, "const": prov["taperAngleDeg"]}})
     return model
 
 

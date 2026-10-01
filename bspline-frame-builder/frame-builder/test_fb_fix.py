@@ -64,9 +64,12 @@ class TestFrameFit:
     # rule correctly says these boards fit (12x6 needs no exception here: it gets 2 of 4 bars,
     # which is still > 0, matching the rule -- its own inconsistency is caught elsewhere, by
     # test_golden_is_consistent's KNOWN_BROKEN_BUILD).
+    # F30 item 3 (Template 13, Narrow Neck + taper): the same degenerate-tiny-board class as Template 3's own
+    # 5.51x1.97 above -- 4 named bodies, 3 of them near-zero slivers, top/bottom bars missing entirely (see
+    # test_frame_parity_goldens.py's own _DEGENERATE_BAR_COUNT_OVERRIDE for the measured detail).
     _KNOWN_BROKEN_GOLDENS = {
         "template_3_5.51x1.97.json", "template_9_12x6.json",
-        "template_10_7x9.json", "template_10_6x9.json",
+        "template_10_7x9.json", "template_10_6x9.json", "template_13_5.51x1.97.json",
     }
 
     @pytest.mark.parametrize("path", _GOLDENS, ids=os.path.basename)

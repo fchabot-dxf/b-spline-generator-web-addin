@@ -5426,3 +5426,97 @@ of truth; recording one and re-running `tools/gen_frame_defs.py` would let `fit_
 own established pattern. (3) FRAME_HIDDEN stays True until (1) and (2) are addressed and Fred has seen a built
 solid, not just the sketch. (4) The "Taper angle" handle (advisor-confirmed) is not yet added -- a later pass,
 as sequenced.
+
+## 2026-10-01: F30 item 3 -- sketch 3 + solid synthesis verified live, goldens recorded for both templates
+(seat C, epoch 5)
+
+Advisor: keep going in-session (no handoff needed), same order proposed -- finish sketch 3 + record the Fusion
+golden for both templates, THEN the Taper angle handle; stop and report only if sketch 3 doesn't converge cleanly.
+
+**Sketch 3 + solid: converges cleanly for both.** `tools/repro/record_frame_parity.py`'s own `record_case`
+(the SAME code `main()` uses to record a golden -- opens its own scratch document, builds frame + solid via the
+installed add-in's own `frame_engine_core`/`fb_engine.solid_coordinator`, reads back real geometry, closes the
+doc unsaved) is also the most direct way to exercise the FULL pipeline end to end, not just sketch 2. Swapped
+this worktree into `sys.path`/`sys.modules` (same short-call discipline as the sketch-2 checks), reassigning the
+`frame_engine_core` alias itself (it's not a real module on disk, just a name the installed add-in's own startup
+code points at whatever `fb_engine.frame_engine` it loaded) to this worktree's copy. Dry run (template_12, 7x9,
+not yet written to the goldens dir): `timelineHealthy: true`, 4 real bars (frame_bottom/left/right/top, L/R
+volumes 6.55209/6.552 -- symmetric through the SOLID stage too, not just the sketch), a 5x7 inner opening at
+0.75in frame_thickness on a 6.5x8.5 safe zone, exactly as expected. Recorded all 6 goldens for real
+(`tests/fixtures/frame-parity/template_12_{7x9,12x6,5.51x1.97}.json`, `template_13_` the same): template_12 gets
+4 bars at 7x9/12x6, 0 at 5.51x1.97 (board too small, matching every other template's own convention there);
+template_13 gets 4 bars at all 3 sizes. No stray documents created beyond Fusion's own auto-opened empty
+"Untitled" tab after the 6th scratch document closed (confirmed empty, confirmed not the active one, left alone
+rather than closed by count/name per the Fusion scratch-doc hygiene rule).
+
+**Recording the goldens surfaced two real bugs the sketch-2-only live check hadn't exercised, both found by
+re-running `tools/gen_frame_defs.py` and comparing the result against the goldens, not by further Fusion poking:**
+
+1. **`paramsFromShapeModel` never read a `taperAngle` feature at all** (F30 item 3's own "Pending Tasks" item,
+   listed in an earlier summary and then missed) -- a leftover gap from building the shared taper construction
+   session, not something this golden-recording pass introduced. Caught immediately: regenerating frame-defs
+   put `taperAngle: {const: 8, ...}` into both templates' own `shapeModel.features`, but the web app's own
+   `hourglassConstruction`/`bottleConstruction` calls computed `taperAngle: 0` regardless (DERIVED_PARAM_DEFAULTS'
+   own fallback), since the one line that would read the feature back out (the `archCornerAngle` pattern) was
+   never added for `taperAngle` for either preset. Fixed (`editor-shape-lattice-generator.js`'s own
+   `paramsFromShapeModel`, both the hourglass tail and the bottle branch, which returns early and needed its own
+   copy of the same line). Confirmed directly: resolved params now include `taperAngle: 8`, and the app's own
+   default (no-seeds) silhouette at 7x9 matches the recorded golden's own geometry to the few-thousandths-of-an-
+   inch level the S4 parity test (`tests/frame-parity-app.test.js`) already expects of every other template.
+
+2. **The generic `bottle` extractor measures the neck's own half-width off the TOP EDGE, not the neck circle**
+   (`top["end"][0]`) -- true only at taperAngle 0, where the two coincide by construction. Template 13's first
+   real fit (once its goldens existed) silently measured the TAPERED top width as if it were the untapered
+   `neckHalfW`, a measured ~0.2in error at 7x9 that the S4 parity test caught immediately (0.2-0.3in gaps, not a
+   rounding nuisance). Fixed by adding a `bottle_taper` extractor variant (`fb_engine/frame_shape_fit.py`) that
+   reads `neckHalfW` off the neck arc's own centre/radius instead -- its own validity check (body tangent at hw,
+   neck/body tangency) is untouched, since neither looks at the tapered side at all. Wired via
+   `FRAME_SHAPE_EXTRACTOR = "bottle_taper"` in `template_13/template_data.py`. Template 13 now gets a REAL fit
+   (`shapeModel.provisional` is gone entirely), exact at its own 2 valid sizes (7x9/12x6; 5.51x1.97 excluded,
+   the same reason Template 2 itself excludes it: the body arc isn't tangent to the horn there).
+
+   TRIED the same fix for hourglass (a `hourglass_taper` extractor dropping the shoulder's own "tangent to a
+   vertical line at hw" check, since a tapered shoulder's own circle only sometimes still satisfies it depending
+   on which of `_taperedCorner`'s own two branches a given board's fixed, single-board-calibrated literal seeds
+   happen to land on) -- MEASURED worse than not fixing it: letting all 3 of Template 12's own goldens into one
+   linear fit gave `maxResidualIn: 0.24` (worse than Template 1's own already-good 0.021-0.043), because 12x6/
+   5.51x1.97's own recorded shape there reflects this template's single-board (7x9) literal seed fractions
+   solved on a very different board, not a genuine per-board re-derivation of the taper -- not really a "branch
+   B" case at all, the SAME "one fixed fraction set doesn't scale to every board" limitation every template's
+   own literal seeds already have, just amplified by taper's own extra construction. Reverted: no
+   `hourglass_taper` extractor; Template 12 stays on its own PROVISIONAL model (Template 1's own already-good
+   fit + `taperAngle`), which is MORE accurate than the attempted real fit, not less. `frame_definition.py`'s own
+   `template_shape_model` now re-applies `taperAngle` unconditionally at the end (whichever source model -- real
+   fit or provisional -- `fit_shape_model` produces), not only inside the provisional branch, so the feature
+   can never again silently disappear the way it did for Template 13 before the `bottle_taper` fix landed.
+
+**Remaining parity gaps, named and excluded rather than chased or masked**, all stemming from the SAME single-
+board-seed limitation above, at boards Fred doesn't currently use (12x6 is landscape; 5.51x1.97 is a tiny
+reference size neither template's frame fits at anyway): `tests/frame-parity-app.test.js`'s new
+`SINGLE_BOARD_SEED_OUTLINE`/`SINGLE_BOARD_SEED_INNER` sets (`template_12_12x6`, `template_12_5.51x1.97`,
+`template_13_12x6`), matching T9/T10's own already-established `KNOWN_BROKEN_BUILD`/`OUTSIDE_FIT_RANGE_OUTLINE`
+precedent exactly. On the Python side, `template_13_5.51x1.97` produces the SAME class of degenerate-sliver
+bodies Template 3's own 5.51x1.97 already does (4 named bodies, 3 near-zero, top/bottom bars missing) --
+`test_frame_parity_goldens.py`'s own `_DEGENERATE_BAR_COUNT_OVERRIDE` and `test_fb_fix.py`'s own
+`_KNOWN_BROKEN_GOLDENS` both gain a `template_13` entry, same pattern as Template 3's.
+
+**`run_full_synthesis` (the `FrameBuilder` class method) turned out NOT to build an actual solid body at all** --
+read its own source after a screenshot attempt came back with zero bRepBodies: it only builds the sketches and
+(if a target core body is found) assembly joints, never calling `build_solid_logic_v3`. That function is a
+separate, standalone entry point `record_frame_parity.py` calls directly -- the real "Send to Fusion" solid path
+apparently lives elsewhere (not traced further, out of scope for this pass; the golden recorder's own direct
+call already gave definitive, numeric proof the solid stage works). A manual `build_solid_logic_v3(comp_name=
+"Frame_3", ...)` call in this session's own multi-frame scratch document ALSO didn't target the right frame
+(kept resolving the template from something other than `comp_name`, building against the pre-existing Frame_1/
+T10 instead) -- not pursued further since the `record_case` evidence already settles the question; flagging the
+`comp_name` behavior as a minor loose end if anyone needs to drive `build_solid_logic_v3` directly outside the
+recorder script again.
+
+Full suite after every fix: JS 156 files / 2971 tests green (run twice); Python 368 passed, 22 skipped (up from
+353/19 -- the 15 new goldens/extractor tests this session's own additions and fixes touch); `tools/
+gen_frame_defs.py --check` fresh.
+
+**Next:** the Taper angle handle (advisor-confirmed design: a position-square handle on the top-right corner,
+mirrored left, horizontal drag into taperAngle, standard `HANDLE_SEGMENT_INDEX` entry). FRAME_HIDDEN stays True
+for both templates until Fred has seen an actual built solid (not just these numeric/sketch confirmations) and
+the handle lands.

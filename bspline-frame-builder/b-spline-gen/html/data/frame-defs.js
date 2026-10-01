@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "2cb56d4ff5c8f189c6b28c23a7a187a783429deca76ad799a972c060f28a889a",
+  "sourceHash": "992037eb054fdf4afdfc3f40c7f075d531aaf706e6d42516ad345063c508d7b6",
   "templates": [
     {
       "features": [
@@ -5121,20 +5121,20 @@ export default {
       "shapeModel": {
         "features": {
           "bodyR": {
-            "hh": 0.088479,
-            "hw": 0.091091
+            "hh": 0.1071,
+            "hw": 0.06822
           },
           "neckHalfW": {
-            "hh": -0.145899,
-            "hw": 0.808985
+            "hh": -0.193585,
+            "hw": 0.865153
           },
           "neckR": {
-            "hh": 0.215074,
-            "hw": -0.069872
+            "hh": 0.222729,
+            "hw": -0.080218
           },
           "neckTop": {
-            "hh": 0.320963,
-            "hw": -0.000406
+            "hh": 0.32246,
+            "hw": -0.002564
           },
           "taperAngle": {
             "const": 8.0,
@@ -5155,7 +5155,7 @@ export default {
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
           "residualsIn": {
             "bodyR": [
-              0.0,
+              -0.0,
               0.0
             ],
             "neckHalfW": [
@@ -5167,15 +5167,10 @@ export default {
               -0.0
             ],
             "neckTop": [
-              -0.0,
+              0.0,
               0.0
             ]
           }
-        },
-        "provisional": {
-          "baseModel": "the fitted base template's own model, every feature kept",
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-          "taperAngleDeg": 8.0
         }
       },
       "silhouettePreset": "bottle",

@@ -180,11 +180,22 @@ FRAME_FEATURES = COMMON_FRAME_FEATURES
 # goldens (fb_engine/frame_shape_fit.py, run by tools/gen_frame_defs.py);
 # the F6 constant fractions it replaces could not match every board size.
 
-# F30 item 3 (Fred's own taper copies): no recorded Fusion goldens for this template yet -- a PROVISIONAL model
-# (fb_engine/frame_shape_fit.provisional_taper_model) built from Template 1's own fitted one, every feature kept
-# exactly, plus a new scale-invariant `taperAngle` (degrees, the "from" base's own shoulder/waist tangency is
-# otherwise untouched: see editor-shape-lattice-generator.js's own `_taperedCorner` doc comment). Replace with the
-# real fit once goldens are recorded and tools/gen_frame_defs.py is re-run.
+# F30 item 3: no `shapeExtractor` override here -- plain `hourglass`'s own validity check (shoulder tangent to
+# a VERTICAL line at hw) stays. TRIED a relaxed `hourglass_taper` extractor (dropping that check, keeping only
+# the always-true shoulder-waist tangency) to let all 3 of this template's own recorded goldens into one fit;
+# MEASURED result: a materially WORSE fit than the plain provisional one below (maxResidualIn 0.24 vs Template 1's
+# own already-good 0.021-0.043), because 12x6/5.51x1.97's own recorded geometry there reflects THIS template's
+# single-board (7x9) calibrated literal seed fractions solved on a very different board, not a true per-board
+# taper re-derivation -- not a real "branch B" case, just the same "one fixed fraction set doesn't scale to every
+# board" limitation every template's own literal seeds already have, amplified by taper's own extra construction.
+# Reverted: the plain `hourglass` extractor's own strict check correctly keeps ONLY 7x9 valid (where the recorded
+# geometry IS an accurate taper), which isn't enough for a 2-point fit -- so this template stays on its own
+# PROVISIONAL model below, which is MORE accurate than that attempted real fit, not less.
+# F30 item 3 (Fred's own taper copies): no recorded Fusion goldens pass the plain extractor's own validity check
+# at 2+ sizes (see above), so this PROVISIONAL model (fb_engine/frame_shape_fit.provisional_taper_model) -- built
+# from Template 1's own fitted one, every feature kept exactly, plus the new scale-invariant `taperAngle` -- stays
+# the one source of truth. frame_definition.py's own template_shape_model re-applies `taperAngle` unconditionally
+# either way, so nothing breaks if a future multi-board-aware seed recomputation ever lets a real fit take over.
 FRAME_PROVISIONAL_SHAPE = {"from": "template_1", "taperAngleDeg": 8.0}
 
 # F30 item 3: hidden from the template picker until this build is verified live in Fusion (T10's own "no Fusion

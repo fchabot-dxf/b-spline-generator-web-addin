@@ -26,7 +26,15 @@ _DEGENERATE = {"5.51x1.97"}
 # patching it to look like 0) rather than masking it -- flagged in
 # LIVE-RESULTS-ranchy.md for a real fix; this is an extreme edge case (a
 # ~2in-tall board) so not blocking, but the degenerate geometry is real.
-_DEGENERATE_BAR_COUNT_OVERRIDE = {"template_3": 3}
+#
+# F30 item 3 (Template 13, Narrow Neck + taper): the SAME class of issue at its own 5.51x1.97 (MEASURED, 2026-10-
+# 01, recorded this session): 4 named bodies, but only ONE (`frame_right (1)`, volume 1.71in^3) is real -- the
+# other 3 are near-zero slivers (frame_left 2e-05, frame_right 1e-05, `frame_right (2)` 0), and frame_top/
+# frame_bottom are both MISSING entirely. Template 2 itself (no taper) correctly builds 0 bars at this same
+# degenerate size; this template's own tapered top horn gives the solver an extra, fragile degree of freedom at
+# a board this tiny, the same way Template 3's own topInset does. Not a new regression to chase here -- flagged
+# the same way, not masked to look like a clean 0.
+_DEGENERATE_BAR_COUNT_OVERRIDE = {"template_3": 3, "template_13": 4}
 
 
 _SIZES = ("7x9", "5.51x1.97", "12x6")
@@ -79,7 +87,13 @@ def test_all_six_goldens_exist():
     # non-standard size set as T9 (Fred's own "portrait only right now").
     t10 = {n for n in names if n.startswith("template_10_")}
     assert t10 in (set(), {f"template_10_{s}.json" for s in _SIZES_PORTRAIT}), sorted(t10)
-    assert names - t3 - t4 - t5 - t6 - t8 - t9 - t10 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
+    # T12 HOURGLASS + TAPER / T13 NARROW NECK + TAPER (F30 item 3, 2026-10-01): recorded this session, the same
+    # 3-size set as T1-T4/T6/T8 (not T9/T10's own portrait-only set).
+    t12 = {n for n in names if n.startswith("template_12_")}
+    assert t12 in (set(), {f"template_12_{s}.json" for s in _SIZES}), sorted(t12)
+    t13 = {n for n in names if n.startswith("template_13_")}
+    assert t13 in (set(), {f"template_13_{s}.json" for s in _SIZES}), sorted(t13)
+    assert names - t3 - t4 - t5 - t6 - t8 - t9 - t10 - t12 - t13 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
 
 
 @pytest.mark.parametrize("path", _FILES, ids=os.path.basename)

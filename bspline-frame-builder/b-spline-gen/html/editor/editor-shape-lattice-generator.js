@@ -674,8 +674,12 @@ export function paramsFromShapeModel(preset, model, region) {
     return out;
   }
   if (preset === 'bottle') {
-    return { neckWidth: f.neckHalfW / hw, skeletonX: (f.neckHalfW + f.neckR) / hw,
+    const outB = { neckWidth: f.neckHalfW / hw, skeletonX: (f.neckHalfW + f.neckR) / hw,
       neckLength: f.neckTop / (2 * hh), bodyRadius: f.bodyR / hw };
+    // F30 item 3 (Template 13, the taper copies): a scale-invariant `const` feature, the same pattern
+    // archCornerAngle already uses below for hourglass.
+    if (f.taperAngle != null) outB.taperAngle = f.taperAngle;
+    return outB;
   }
   // T9 I SHAPE (frame_shape_fit.py `i_shape`): the stem's half width and the flange height, in inches.
   if (preset === 'iShape') return { stemWidth: f.stemHalfWidth / hw, flangeHeight: f.flangeHeight / hh };
@@ -706,6 +710,8 @@ export function paramsFromShapeModel(preset, model, region) {
   // T10 ARCHED HOURGLASS (F29 item 2): a reconstructed model also carries the arch's own corner angle, degrees,
   // a scale-invariant `const` feature (hourglassConstruction derives the rise from it + topX).
   if (f.archCornerAngle != null) out.archCornerAngle = f.archCornerAngle;
+  // F30 item 3 (Template 12, the taper copies): a scale-invariant `const` feature, same pattern as archCornerAngle.
+  if (f.taperAngle != null) out.taperAngle = f.taperAngle;
   return out;
 }
 

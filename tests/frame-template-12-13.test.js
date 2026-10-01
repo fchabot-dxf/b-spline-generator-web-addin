@@ -43,16 +43,23 @@ describe('Template 12/13: declaration', () => {
     }
   });
 
-  it('Template 13 is "13. Narrow Neck - Tapered sides", the shared bottle preset, hidden, from Template 2', () => {
+  it('Template 13 is "13. Narrow Neck - Tapered sides", the shared bottle preset, hidden, with a REAL fit '
+    + '(bottle_taper, from its own recorded goldens) that still carries taperAngle', () => {
     expect(T13.name).toBe('Template 13 - Narrow Neck - Tapered sides');
     expect(frameLabel(T13)).toBe('13. Narrow Neck - Tapered sides');
     expect(T13.silhouettePreset).toBe('bottle');
     expect(T13.hidden).toBe(true);
-    expect(T13.shapeModel.provisional.taperAngleDeg).toBe(8);
+    // F30 item 3: goldens recorded 2026-10-01 (tests/fixtures/frame-parity/template_13_*.json) pass
+    // `bottle_taper`'s own validity check at 2 of 3 sizes, so this is no longer the provisional model --
+    // frame_definition.py's own template_shape_model still re-applies taperAngle unconditionally.
+    expect(T13.shapeModel.provisional).toBeUndefined();
+    expect(T13.shapeModel.fit.fittedFrom.length).toBeGreaterThanOrEqual(2);
     expect(T13.shapeModel.features.taperAngle).toEqual({ hw: 0, hh: 0, const: 8 });
-    const T2 = tplOf('template_2');
+    // the REAL fit's own features are independently measured from this template's OWN goldens (a different,
+    // smaller set than Template 2's own fit uses), so they're close but not identical to Template 2's.
     for (const k of ['bodyR', 'neckHalfW', 'neckR', 'neckTop']) {
-      expect(T13.shapeModel.features[k]).toEqual(T2.shapeModel.features[k]);
+      expect(T13.shapeModel.features[k]).toHaveProperty('hw');
+      expect(T13.shapeModel.features[k]).toHaveProperty('hh');
     }
   });
 
