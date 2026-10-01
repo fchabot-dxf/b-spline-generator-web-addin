@@ -4171,6 +4171,16 @@ floats there pointing at nothing")
   T5's residual 12x6 / 5.51x1.97 flip risk even with the corrected seed -- not fixed here (out of this item's
   own scope, and seat A's own attempt shows the obvious stronger fix backfires), named for whoever does
   Template 8's own live check (LIVE_CHECK.md step 1's drag check is exactly how to catch it by hand).
+- **`git merge origin/main`** (per the amendment, not `pull --rebase`): brought in seat A's H23 items 1-4 below
+  (live Fusion checks + real fitted goldens for Templates 3/4/5/6, the `parametric_engine.py` Symmetry-allowlist
+  fix, `tools/status_site/*` and the status-page-viewer work) plus `LIVE-RESULTS-ranchy.md` and the new golden
+  fixture files. 4 conflicts, all mechanical (both sides appended independently): `WORK-LOG-fb-app.md` (both
+  entries kept, this merge note added at the join), `test_frame_defs.py` (combined seat A's "T6 now fitted, not
+  provisional" assertion update with my own template_8 addition to the 4-bar list), and the two generated
+  `frame-defs.json`/`.js` (resolved by regenerating from the merged Python sources, not by picking a side --
+  `--check` confirms fresh). Full suite re-run after: vitest 2762 passed; pytest frame-builder 324+10 skipped,
+  b-spline-gen 89, root (--ignore=.claude) 507+10 skipped -- all green, template_8 and the 4 newly-fitted
+  templates present together.
 
 ## 2026-09-30: H23 item 1 — Template 3 (Tapered Hourglass) live Fusion check (worker)
 
