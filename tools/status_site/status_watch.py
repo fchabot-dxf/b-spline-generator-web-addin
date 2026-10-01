@@ -206,7 +206,7 @@ details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
 {cards}{com}
-<dialog id="lb"><figure><img id="lbImg" alt=""><button class="nav p" id="lbPrev" aria-label="Previous">&#8249;</button><button class="nav n" id="lbNext" aria-label="Next">&#8250;</button><button class="x" id="lbClose" aria-label="Close">&#10005;</button><figcaption id="lbCap"></figcaption></figure></dialog>
+<dialog id="lb"><figure><img id="lbImg" alt=""><button class="x" id="lbClose" aria-label="Close">&#10005;</button><figcaption id="lbCap"></figcaption></figure></dialog>
 <script>
 const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
 let set=[], idx=0;
@@ -228,10 +228,8 @@ function step(d,fromX){{ if(!set.length||stepping) return; const f=lb.querySelec
   setTimeout(()=>{{ f.getAnimations().forEach(a=>a.cancel()); swap();     // timer-driven, never waits on animation events
     f.animate([{{transform:'translateX('+(d*w)+'px)'}},{{transform:'translateX(0)'}}],{{duration:170,easing:'cubic-bezier(.2,.8,.2,1)'}});
     setTimeout(()=>{{ stepping=false; }},180); }},150); }}
-document.getElementById('lbPrev').addEventListener('click',ev=>{{ev.stopPropagation();step(-1);}});
-document.getElementById('lbNext').addEventListener('click',ev=>{{ev.stopPropagation();step(1);}});
 document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();slideClose(0);}});
-document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && (ev.target===lb || ev.target.tagName==='FIGURE') && !moved){{ slideClose(0); }} }});
+document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved && zs===1){{ step(ev.clientX<innerWidth/2?-1:1); }} }});
 document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
   const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
 // zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); no double-tap (Fred); swipe changes image only at 1x; swipe changes image only at 1x
