@@ -94,6 +94,24 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     const hh = region.h / 2;
     R.tabWidth = _narrow(R.tabWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
     R.tabHeight = _narrow(R.tabHeight, (2 * t) / hh, (2 * hh - 3 * t) / hh);
+  } else if (tpl.silhouettePreset === 'iShape') {
+    // T9 I SHAPE (Fred: no bar thinner than the frame thickness, no flange side shorter than ~2 x the thickness --
+    // Template 6's own tab rule, applied at all 4 notches). Every piece is a bar t wide, so "thinner than t" = a
+    // bar shorter than t along the outline:
+    //   stem half width a: the stem's inner edge 2a - 2t >= max(t, the minimum opening), and each shoulder bar
+    //     (hw - a long, a parallelogram) >= t -- Template 6's own tabWidth formula, same topology;
+    //   flange height h: each flange side >= 2t PLUS a small margin, and the stem's own opening between the two
+    //     shoulders (2hh - 2h - 2t) >= t (one more thickness than the bare minimum).
+    // MEASURED: unlike Template 6's own tab side (one CONVEX end at the tab top, one REFLEX end at the inside
+    // corner -- the reflex end's own inward offset EXTENDS it, cancelling the convex end's own shortening, so its
+    // inner length stays close to its outer one even clamped exactly to the 2t floor), a flange side here has TWO
+    // convex ends (the true outer corner and the notch's own outer corner), so its inner length is its outer one
+    // MINUS 2t exactly -- clamping to a floor of bare 2t left it EXACTLY zero at 12x6 (a `degenerateLine`, not a
+    // self-intersection, but still a bar whose inner edge pinches to a point). The small 0.05 in margin below
+    // keeps that inner length a real, strictly positive remnant instead of landing exactly on the boundary.
+    const hh = region.h / 2;
+    R.stemWidth = _narrow(R.stemWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
+    R.flangeHeight = _narrow(R.flangeHeight, (2 * t + 0.05) / hh, (2 * hh - 3 * t) / (2 * hh));
   } else if (tpl.silhouettePreset === 'dippedLeftWave') {
     // T8: the wave's own opening rule (Template 1's waistReach rule, same formula: this preset's only pinch).
     R.waveReach = _narrow(R.waveReach, -Infinity, 1 - (t + half) / hw);
@@ -150,13 +168,14 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
 const BASIS = { hw: (r) => r.w / 2, hh: (r) => r.h / 2, h: (r) => r.h };
 
 /**
- * T6 TAB TOP: presets whose DRAWN frame (not only a drag) obeys the frame rule (frameParamRanges): their shape
- * params are clamped into it before the outline is solved (editor-frame-profile.js frameCutProfile), so a model
- * value or a saved seed that breaks the thickness rule (e.g. the 12x6 provisional tab, 1.375 in for a 0.75 in
- * frame) is drawn, seeded and sent at the nearest valid size. Only a frame that fits the board: the rule is
- * undefined when the frame does not (FRAME_FIT). The hourglass / bottle frames are not clamped (as before).
+ * T6 TAB TOP (T9 I SHAPE the same way): presets whose DRAWN frame (not only a drag) obeys the frame rule
+ * (frameParamRanges): their shape params are clamped into it before the outline is solved (editor-frame-
+ * profile.js frameCutProfile), so a model value or a saved seed that breaks the thickness rule (e.g. the 12x6
+ * provisional tab, 1.375 in for a 0.75 in frame) is drawn, seeded and sent at the nearest valid size. Only a
+ * frame that fits the board: the rule is undefined when the frame does not (FRAME_FIT). The hourglass / bottle /
+ * dippedLeftWave frames are not clamped (as before).
  */
-export const FRAME_CLAMPED_PRESETS = Object.freeze(['tabTop']);
+export const FRAME_CLAMPED_PRESETS = Object.freeze(['tabTop', 'iShape']);
 export function clampToFrameRanges(tpl, region, params, t = _templateThickness(tpl)) {
   const preset = tpl.silhouettePreset;
   if (!FRAME_CLAMPED_PRESETS.includes(preset)) return params;

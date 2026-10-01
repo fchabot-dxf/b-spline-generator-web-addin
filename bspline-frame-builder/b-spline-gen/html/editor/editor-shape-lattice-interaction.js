@@ -48,7 +48,7 @@
  */
 import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
-  TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction,
+  TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, iShapeConstruction,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -145,6 +145,28 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         key: 'tabHeight', label: 'Tab height', axis: 'y', handleKind: 'position',
         anchor: { x: cx0 + (g.halfWidth + hw) / 2, y: top + g.height },
         valueFromWorld: (pt) => within('tabHeight', (pt.y - top) / hh),
+      },
+    ]));
+  }
+
+  if (preset === 'iShape') {
+    // T9 I SHAPE (a frame-only preset, Template 6's tab doubled top AND bottom): two POSITION squares, right side
+    // only. Stem width: on the stem's right side, halfway up its upper half (the top-right shoulder's own
+    // height); a horizontal drag moves both stem sides (mirrored left/right). Flange height: on the top-right
+    // shoulder, halfway along it; a vertical drag moves all 4 shoulders together (the top/bottom edges stay on
+    // the board's own top/bottom lines, the 4-fold symmetry p02_05_symmetry builds in).
+    const g = iShapeConstruction(region, resolvedParams);
+    const top = cy0 - hh;
+    return withRange(pick([
+      {
+        key: 'stemWidth', label: 'Stem width', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.halfWidth, y: cy0 + g.topShoulderY / 2 },
+        valueFromWorld: (pt) => within('stemWidth', (pt.x - cx0) / hw),
+      },
+      {
+        key: 'flangeHeight', label: 'Flange height', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0 + (g.halfWidth + hw) / 2, y: cy0 + g.topShoulderY },
+        valueFromWorld: (pt) => within('flangeHeight', (pt.y - top) / hh),
       },
     ]));
   }
@@ -558,6 +580,12 @@ export const HANDLE_SEGMENT_INDEX = {
   // SEGMENT_PAIRS below: no mirror -- nothing on the plain right side to pair with); the dip's depth/position map
   // to the dip arc alone (9); the dip's width moves BOTH top shoulders (8 and 10, DIPPED_LEFT_WAVE_SEGMENT_PAIRS).
   dippedLeftWave: { waveHeight: 4, waveReach: 4, topDipDepth: 9, topDipPosition: 9, topDipWidth: 8 },
+  // T9 I SHAPE (12 pieces, editor-shape-lattice-generator.js's own `_solveIShape` doc comment: 0 top, 1 flange
+  // side TR, 2 shoulder TR, 3 stem side R, 4 shoulder BR, 5 flange side BR, 6 bottom, 7 flange side BL,
+  // 8 shoulder BL, 9 stem side L, 10 shoulder TL, 11 flange side TL): the stem width maps to its own side (3,
+  // I_SHAPE_SEGMENT_PAIRS below: the plain L/R mirror, 9); the flange height maps to one shoulder (2), but moves
+  // all 4 (I_SHAPE_SEGMENT_PAIRS: the 4-fold left/right AND top/bottom symmetry, not a plain mirror).
+  iShape: { stemWidth: 3, flangeHeight: 2 },
 };
 
 /** T8 DIPPED TOP + LEFT-ONLY WAVE: `controlledSegments`' own declared pairing (the shape has no bilateral
@@ -566,6 +594,11 @@ export const HANDLE_SEGMENT_INDEX = {
  *  one exception (it moves both top shoulder arcs, declared explicitly rather than derived from a mirror formula
  *  that would be wrong for this outline). */
 const DIPPED_LEFT_WAVE_SEGMENT_PAIRS = { topDipWidth: [8, 10] };
+
+/** T9 I SHAPE: `controlledSegments`' own declared pairing (4-fold symmetry -- left/right AND top/bottom -- not the
+ *  plain single-axis mirror `mirrorSegmentIndex` assumes): the stem sides are a plain L/R pair; the flange height
+ *  moves all 4 shoulders together (p02_05_symmetry's own 4-fold tie). */
+const I_SHAPE_SEGMENT_PAIRS = { stemWidth: [3, 9], flangeHeight: [2, 4, 8, 10] };
 
 // Arc point / segment and arc distance: editor-primitives.js (audit tidy-up -- the one copy of each).
 
@@ -632,6 +665,8 @@ export function controlledSegments(preset, key, n) {
   // T8 DIPPED TOP + LEFT-ONLY WAVE: no bilateral symmetry, so a declared pairing table stands in for the mirror
   // formulas below (see DIPPED_LEFT_WAVE_SEGMENT_PAIRS's own doc comment).
   if (preset === 'dippedLeftWave') return DIPPED_LEFT_WAVE_SEGMENT_PAIRS[key] || [i];
+  // T9 I SHAPE: a declared pairing too (4-fold symmetry, not the plain mirror formula below).
+  if (preset === 'iShape') return I_SHAPE_SEGMENT_PAIRS[key] || [i];
   // T5 HOURGLASS DIPPED TOP: the 16-segment dipped outline mirrors by its own table (topDipMirrorIndex)
   const m = preset === 'hourglass' && n === TOP_DIP_SEGMENT_COUNT ? topDipMirrorIndex(i) : mirrorSegmentIndex(i, n);
   return m === i ? [i] : [i, m];
