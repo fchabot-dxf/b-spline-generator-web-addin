@@ -251,10 +251,50 @@ def _i_shape(curves, hw, hh, tol=2e-3):
     }
 
 
+def _diamond_top_hourglass(curves, hw, hh, tol=2e-3):
+    """T7 DIAMOND-TOP HOURGLASS: a 90-degree gable roof (2 straight bars, mitred at the peak and at
+    each eave), a concave-neck/convex-body S-curve on each side (2 tangent arcs, mitred to the
+    roof at the eave, tangent to the straight base side at the bottom), a plain straight base.
+
+    Features: neckWidth (the neck arc's own narrowest x, from centre), neckHeight / bodyFlareHeight
+    (how far down from the eave the neck / the full-width point sit, as a fraction of the vertical
+    run below the eave). Valid when the roof is symmetric about the centreline, each side's neck
+    and body arcs are tangent to one another (opposite curvature: dist(centers) = r_neck + r_body,
+    the genuine S-curve tangency fb_engine/t7_geometry.py's own module docstring describes), the
+    body arc is tangent to the vertical straight side, and that side sits at x = +-hw.
+
+    FIRST CUT, unverified against a real golden JSON (no template_7 goldens exist yet) - check the
+    recorded curve dict's actual key shape (does an Arc3Point entry carry 'start'/'end' alongside
+    'center'/'radius'?) the first time tools/repro/record_frame_parity.py runs for this template,
+    per LIVE_CHECK.md.
+    """
+    roof_r, roof_l = curves["roof_R"], curves["roof_L"]
+    neck_r, body_r = curves["arc_neck_R"], curves["arc_body_R"]
+    neck_l, body_l = curves["arc_neck_L"], curves["arc_body_L"]
+    side_r = curves["side_R"]
+    eave_y = roof_r["end"][1]
+    n_x, n_y = neck_r["end"][0], neck_r["end"][1]
+    b_y = body_r["end"][1]
+    rest = eave_y - (-hh)
+    ok = (abs(roof_r["start"][0] - roof_l["end"][0]) < tol  # peak shared by both roof bars
+          and abs(roof_r["start"][0]) < tol                 # peak on the centreline
+          and abs(math.dist(neck_r["center"], body_r["center"]) - (neck_r["radius"] + body_r["radius"])) < tol
+          and abs(math.dist(neck_l["center"], body_l["center"]) - (neck_l["radius"] + body_l["radius"])) < tol
+          and abs(body_r["center"][0] - (hw - body_r["radius"])) < tol  # tangent to the vertical side
+          and abs(side_r["start"][0] - hw) < tol and abs(side_r["end"][0] - hw) < tol
+          and rest > 0)
+    return ok, {
+        "neckWidth": n_x,
+        "neckHeight": (eave_y - n_y) / rest if rest else 0.0,
+        "bodyFlareHeight": (eave_y - b_y) / rest if rest else 0.0,
+    }
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
-                      "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape}
+                      "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape,
+                      "diamond_top_hourglass": _diamond_top_hourglass}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):
@@ -345,6 +385,40 @@ def provisional_i_shape_model(stem_half_width_of_hw, flange_height_of_hh):
             "baseModel": None,
             "stemHalfWidthOfHw": stem_half_width_of_hw,
             "flangeHeightOfHh": flange_height_of_hh,
+        },
+    }
+
+
+def provisional_diamond_top_hourglass_model(neck_width_of_hw, neck_height_of_hh, body_flare_of_hh):
+    """T7 DIAMOND-TOP HOURGLASS, until its goldens are recorded live: a PROVISIONAL model (never
+    none), like T6/T8/T9: no base template to derive it from (no earlier template has a gable
+    roof or an S-curve side). `neckWidth` = `neck_width_of_hw` x hw, `neckHeight` / `bodyFlareHeight`
+    = their own fraction x hh (both measured as "how far down from the eave", read straight by the
+    app's own diamondTopHourglass paramsFromShapeModel branch, editor-shape-lattice-generator.js -
+    not yet written, see HANDOFF-ranchy.md / LIVE_CHECK.md: this declares the contract that branch
+    must honour). The app clamps every one into its feasible range (fb_engine/t7_geometry.py's own
+    clamp_t7_handles proves the valid combinations are coupled, not independent). Marked
+    `provisional` so nothing mistakes it for a fit."""
+    return {
+        "features": {
+            "neckWidth": {"hw": neck_width_of_hw, "hh": 0.0},
+            "neckHeight": {"hw": 0.0, "hh": neck_height_of_hh},
+            "bodyFlareHeight": {"hw": 0.0, "hh": body_flare_of_hh},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "neckWidthOfHw": neck_width_of_hw,
+            "neckHeightOfHh": neck_height_of_hh,
+            "bodyFlareOfHh": body_flare_of_hh,
         },
     }
 

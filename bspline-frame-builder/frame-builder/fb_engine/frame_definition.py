@@ -185,7 +185,10 @@ def template_shape_model(template_id, frame, goldens_dir):
     T9 I SHAPE: {"stemHalfWidthOfHw": w, "flangeHeightOfHh": h} (no `from`: like T6, nothing to derive it from)
     builds frame_shape_fit.provisional_i_shape_model.
     T10 ARCHED HOURGLASS: {"from": <template id>, "archRiseOfHw": r} builds frame_shape_fit.provisional_arched_
-    top_model (the base model's own sides/base unchanged, plus a top arc r x hw tall)."""
+    top_model (the base model's own sides/base unchanged, plus a top arc r x hw tall).
+    T7 DIAMOND-TOP HOURGLASS: {"neckWidthOfHw": w, "neckHeightOfHh": h, "bodyFlareOfHh": f} (no `from`: like T6,
+    a gable roof and an S-curve side, nothing to derive it from) builds
+    frame_shape_fit.provisional_diamond_top_hourglass_model."""
     from fb_engine.frame_shape_fit import (fit_shape_model, provisional_shape_model, provisional_offset_waist_model,
                                            provisional_dipped_top_model)
     from fb_engine.template_resolver import resolve_template
@@ -200,6 +203,12 @@ def template_shape_model(template_id, frame, goldens_dir):
             # T9 I SHAPE: also a shape of its own: {"stemHalfWidthOfHw": w, "flangeHeightOfHh": h}
             from fb_engine.frame_shape_fit import provisional_i_shape_model
             return provisional_i_shape_model(prov["stemHalfWidthOfHw"], prov["flangeHeightOfHh"])
+        if "neckWidthOfHw" in prov:
+            # T7 DIAMOND-TOP HOURGLASS: also a shape of its own: {"neckWidthOfHw": w,
+            # "neckHeightOfHh": h, "bodyFlareOfHh": f}.
+            from fb_engine.frame_shape_fit import provisional_diamond_top_hourglass_model
+            return provisional_diamond_top_hourglass_model(prov["neckWidthOfHw"], prov["neckHeightOfHh"],
+                                                            prov["bodyFlareOfHh"])
         # T8 DIPPED TOP + LEFT-ONLY WAVE: also a shape of its own (see this function's own doc comment).
         from fb_engine.frame_shape_fit import provisional_dipped_left_wave_model
         return provisional_dipped_left_wave_model(prov["waveReachOfHw"], prov["waveHeightOfHh"],

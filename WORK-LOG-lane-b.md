@@ -11561,3 +11561,92 @@ is now solid and in place; nothing here should need to be re-derived.
 
 Committing the 4 new files (`t7_roof_eave.py`, `t7_geometry.py`, their 2 test files) and pushing; passing
 back with an honest status (foundation done and tested, build not yet started) rather than claiming more.
+
+## Lane B — Turn 205 — T82 item 1: Template 7 Fusion sketch build + shape-fit wiring (app side NOT started) — DONE (partial)
+
+Continuing from Turn 203's tested geometry foundation (`t7_roof_eave.py`/`t7_geometry.py`, 59 tests, d061e42).
+This turn built the actual Fusion sketch phases on top of it. Still no Fusion bridge on this seat, so
+everything below is **unverified live** except what the Python test suite + the A/B script can prove.
+
+**Built: `sketches/template_7/`** (mirroring Template 6's N-bar declaration + Template 8's
+seed-then-tangent arc pattern, both read directly before writing anything):
+- `sketch_1/2/3_*.py` + `phases/p01_01/02_*.py`: the standard shims, unchanged pattern.
+- `phases/p02_02_loop.py`: all 9 outline pieces (roof_R/L, arc_neck_R/L, arc_body_R/L, side_R/L,
+  bottom_edge) as live Fusion EXPRESSIONS in widthIn/heightIn/boundingboxoffset (HW/HH, the roof
+  half-width/height `a = min(0.62*HW, 0.84*HH)`, the neck/body points) -- re-derived from
+  `t7_roof_eave.roof_geometry` / `t7_geometry.t7_outline`'s own already-tested closed form, NOT
+  baked decimals (T8's own AMENDMENT bug: a seed that only scales with one dimension is wrong off
+  its one tuned board size). Each arc's 3rd ("via") seed point is a bulge-direction HINT only
+  (concave neck / convex body); the real radius is left to Tangent (p02_04), same division as T8's
+  own dip arcs.
+- `phases/p02_03_welds.py` / `p02_04_tangency.py` / `p02_05_radius_removal.py`: Coincident welds
+  (peak, both eaves, both base corners anchored to the real offset-BB corners), Tangent at the 2
+  smooth joins per side (neck<->body, body<->straight line -- NOT the eave or base corner, both
+  TRUE MITERS per the approved spec), then the seed-radius cleanup + Pulse.
+- `phases/p03_01..05_*.py` (enclosure): projections, the 9-piece inward offset, and
+  `p03_03_inner_corner_resolve.py` -- 3 ResolveInnerCorners steps (peak: Direction (0,-1), Distance
+  the SYMBOLIC `frame_thickness * 1.4142135623730951` i.e. sqrt(2) as a fixed constant, not a
+  Fusion `sqrt()` call; base_R/L: the standard axis-aligned `frame_thickness`; eave_R/L: the true
+  line-circle intersection from `t7_roof_eave.eave_inner_corner`, baked as a numeric `"<n> in"`
+  since it depends on the neck/body handle fractions, which `ui_data` never carries -- see KNOWN
+  GAP below).
+
+**KNOWN GAP, flagged rather than guessed around (real, not swept under the rug)**: `ui_data` (every
+`get_block`'s own live parameter dict, `template_loader.py`) is filtered by `send_frame.frame_ui_data`
+to ONLY the template's DECLARED Fusion params (widthIn/heightIn/frame_thickness/boundingboxoffset) --
+the 3 new "seeded" handles (neckWidthOfHw etc.) never reach a phase file; only
+`fb_engine/seed_geometry.py`'s own Points/Radius patching sees them, and it never touches a
+`ResolveInnerCorners` step. So `p03_03`'s eave Direction/Distance is computed from this template's
+own DEFAULT handle proportions (the same defaults `p02_02_loop.py`'s own seeds use) -- exact at
+default, and only APPROXIMATE once Fred drags the neck/body handles and re-Sends (Tolerance widened
+to 0.2cm there as cheap headroom, not a real fix for a big drag). Documented in both phase files'
+own docstrings and in `LIVE_CHECK.md` (not yet written -- see below) as the first thing to test live:
+drag each handle to an extreme, Send, confirm the eave miter still resolves (no "no SketchPoint
+within tolerance" warning). If it fails, the real fix is a new, additive channel carrying the live
+handle fractions into `ui_data` (every other template already ignores unknown keys) -- not a wider
+Tolerance.
+
+**Also flagged for seat A's first live build**: this is the FIRST phase file in this codebase to put
+`min(...)` inside a Fusion expression string (the roof's own `a` cap) -- Fusion's expression editor
+documents `min`/`max`/`sqrt`/trig as supported, but nothing here has exercised it before. Confirm it
+evaluates (no red/broken expression) on the very first build. Also: T7 has NO skeleton pins (unlike
+T1/T8) -- reasoned through carefully (the neck/body arc centres are fully determined by their own
+3-point seed + the 2 Tangent constraints, with no independent "design height" the way T1/T8's
+shoulder/waist/hip needed a pin for), but this reasoning is unverified against a real Fusion solve;
+if the sketch comes up under- or over-constrained, start there.
+
+**Wired the Python-side shape-fit machinery** (`fb_engine/frame_shape_fit.py`,
+`fb_engine/frame_definition.py`) so `tools/gen_frame_defs.py` and the test suite don't crash on the
+new template -- this dispatch chain is a hard-coded if/elif keyed by which `provisionalShape` keys
+exist (every earlier template -- T6/T8/T9/T10 -- required the same one-branch addition, not a
+pre-existing extension point): added `_diamond_top_hourglass` (a first-cut extractor, unverified
+against a real golden JSON since none exist yet -- flagged in its own docstring) to
+`FEATURE_EXTRACTORS`, `provisional_diamond_top_hourglass_model` (mirrors T6/T8/T9's own "no base
+template" provisional shape), and one new `elif "neckWidthOfHw" in prov` branch in
+`template_shape_model`. **A/B, measured not assumed**: `tools/repro/ab/abpy.py` (templates
+1,2,3,4,5,8) against a scratch HEAD worktree at d061e42 -- identical hash (25 entries) before and
+after these edits, so the new branch/extractor is genuinely additive. `abcam.py` doesn't exercise
+either changed file (hard-coded synthetic bar data, no template import) so wasn't worth chasing its
+unrelated path-assertion mismatch on this machine.
+
+**Python suite**: `python -m pytest -q` at the frame-builder root: 404 passed, 24 skipped (up from
+403/24 before `tools/gen_frame_defs.py` regenerated `frame-defs.json`/`.js` -- template_7 is now
+auto-discovered and in both). Two tests still fail and are EXPECTED to until the app side exists:
+`test_every_silhouette_preset_exists_in_the_app` and `test_every_handle_binding_is_declared_and_valid`
+(both read `editor-shape-lattice-generator.js`'s own `PRESETS`/`PARAM_ORDER`, which have no
+`diamondTopHourglass` entry yet).
+
+**NOT done this turn (reporting honestly rather than rushing it)**: the app side --
+`editor-shape-lattice-generator.js` (PRESETS/PARAM_ORDER/DERIVED_PARAM_DEFAULTS/
+FRAME_ONLY_PARAM_KEYS/a range function/a `diamondTopHourglassConstruction` porting
+`t7_geometry.t7_outline`'s own closed form into JS/the `paramsFromShapeModel` branch) plus
+`frame-handles.js` and `editor-shape-lattice-interaction.js` (both also touch every frame-only
+preset, confirmed by grep before writing this), the JS test suite, the JS-side A/B scripts
+(`ab6.mjs`/`ablat6.mjs`/`ab3d.mjs` -- not run, since no JS was touched yet), `template_7/LIVE_CHECK.md`,
+and Frame-tab phone shots. This is real, well-scoped remaining work (not open-ended) -- the Fusion
+math it needs to port already exists and is tested (`t7_geometry.py`), it just hasn't been
+translated into the editor's own JS yet.
+
+Committing `sketches/template_7/` + the `frame_shape_fit.py`/`frame_definition.py` wiring +
+regenerated `frame-defs.json`/`.js`, pushing lane-b, passing back with this honest split (Fusion
+side done and Python-tested, app side not started) rather than claiming the whole task.
