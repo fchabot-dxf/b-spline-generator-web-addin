@@ -5044,3 +5044,52 @@ Fred started from T10's OWN existing sketch and dragged its existing handles to 
   full board width, square base corners -- matching Fred's own description and reconstructed sketch.
 - **Still hidden**: `FRAME_HIDDEN` untouched (still `True`) -- per the dispatch, stays hidden until seat A's own
   matching Fusion phases build right too.
+
+## 2026-10-01: F30 item 1 -- Template 11 miter diagram, 7x9 + 6x9 (seat C, epoch 5, STEP 1 of 2, no code)
+
+Dispatch: Template 11 = Template 7's own diamond roof + eaves (seat B's closed-form derivation, WORK-LOG-lane-b.md
+"T82 item 1" turns 197/199/201 -- T7 itself is lane-b-only scratch work right now, not yet merged or even coded
+as `template_7/` files: `git ls-tree origin/lane-b` has zero `template_7` hits), but the side below each eave is
+Template 1's own shoulder/waist/hip 3-arc chain (not T7's own neck/body arcs), straight down to a base flaring to
+the full board width. Scratch only (session scratchpad), per the dispatch's own "no code" -- this entry repeats
+the derivation in prose, same reason seat B gives for doing the same with T7's own.
+
+**The roof + eave (reused verbatim from seat B's own v3, WORK-LOG-lane-b.md turns 197-201):** peak at the safe
+zone's own top-centre (0, -hh); eave at (a, -hh+a) where `a = min(0.62 hw, 0.42 H)` -- a 45-45-90 roof (rise =
+run = a). The eave is a genuine CORNER (miter), not a smooth join: the roof's own 45-deg direction and the
+shoulder arc's own vertical tangent there are different directions on purpose.
+
+**Below the eave, Template 1's own `side()` algebra (editor-shape-lattice-generator.js hourglassConstruction),
+called directly, unmodified -- not re-derived:** the eave IS the shoulder arc's own top tangent point (zero horn
+length at the top -- the eave already plays that role), so `topInset = hw - a` is DERIVED, not free. The
+remaining params are this template's own first design pass, not fixed by anything upstream: `cornerRadiusTop =
+cornerRadiusBottom = 0.42 hw` (MEASURED: a convex corner needs to clear frame_thickness, 0.75in, for THIS
+diagram's own simple `r - T` inner-offset math -- the real app's `outline-offset.js` handles a thinner radius via
+a merged-corner special case this preview doesn't reimplement, so 0.42 was picked for a clean diagram, not as a
+final proportion recommendation), `waistRadius = 0.25 hw`, `waistReach = 0.55` (MEASURED: needs real room above
+`topInset/hw`, ~0.38 at both golden sizes, or the pinch depth goes negative). `waistCenterY` is then SOLVED (not
+free) so the shoulder's own tangent point lands exactly on the eave. The hip flaring to the full board width is
+automatic (hourglassConstruction's own hip-horn x is always `hw`, any radius) -- not a separate mechanism to get
+right.
+
+**Two real bugs in the scratch script itself, not the geometry** (worth naming, the same spirit as seat B's own
+T7 diagram turns naming theirs): (1) circle objects here are `{cx,cy,r}` (hourglassConstruction's own
+convention) but the tangent-point/angle helpers were first written expecting `{x,y}` -- silent `undefined -
+number = NaN` propagated through every arc sample with no thrown error, caught by printing intermediate values
+rather than guessing. (2) the EXACT "jumped from the base corner to the mirrored eave, skipping the base bar and
+the whole left side" stitching bug WORK-LOG-lane-b.md's own turn 197 names Seat B hitting first on T7 -- same
+root cause here (dropping the wrong end of the array before reversing-and-mirroring the left half), independently
+hit and independently fixed the same way (keep the shared bridge point explicit, drop it from the reversed tail
+instead).
+
+**Verified, not assumed:** every sampled outer point (48 samples/arc) stays inside `[-hw,hw]x[-hh,hh]` at both
+sizes; every inner (convex-shrunk/concave-grown by T) radius stays positive (0.615/1.563/0.615in at 7x9,
+0.405/1.438/0.405in at 6x9 for shoulder/waist/hip); all 5 miter distances are sane and distinct from each other
+in the expected way (peak and both base corners land on the EXACT `T*sqrt(2) = 1.061in` a true 90-deg corner
+gives; the 2 eave miters come out shorter, 0.845in / 0.858in, confirming they are genuinely NOT 90-deg corners,
+not a copy-pasted assumption).
+
+Diagram: `C:/Users/danse/.bspline-status/shots/seatC/0700_F30-item1-proposed_miter-diagram_7x9_6x9.png`. Sent to
+the ADVISOR (not Fred directly -- this session's own standing correction after F29 item 2), per the dispatch.
+Passing back for Fred's sign-off before any `template_11/` code is written; STEP 2 (the actual build) also
+waits on Template 7 merging to main first (shared roof code, reused not forked).
