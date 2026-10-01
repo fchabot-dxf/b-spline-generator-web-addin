@@ -219,6 +219,7 @@ function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')
 const fig=lb.querySelector('figure');
 function slideClose(dy){{ if(!lb.open||lb.classList.contains('down')) return; fig.style.setProperty('--dy',(dy||0)+'px'); fig.style.transform=''; lb.classList.add('down');
   const done=()=>{{ lb.classList.remove('down'); fig.style.removeProperty('--dy'); lb.close(); }}; fig.addEventListener('animationend',done,{{once:true}}); setTimeout(()=>{{ if(lb.open) done(); }},300); }}
+let lastPtr='mouse'; document.addEventListener('pointerdown',ev=>{{ lastPtr=ev.pointerType||'mouse'; }},true);
 let stepping=false;
 function step(d,fromX){{ if(!set.length||stepping) return; const f=lb.querySelector('figure'); const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
   const swap=()=>{{ idx=(idx+d+set.length)%set.length; show(); }};
@@ -229,7 +230,9 @@ function step(d,fromX){{ if(!set.length||stepping) return; const f=lb.querySelec
     f.animate([{{transform:'translateX('+(d*w)+'px)'}},{{transform:'translateX(0)'}}],{{duration:170,easing:'cubic-bezier(.2,.8,.2,1)'}});
     setTimeout(()=>{{ stepping=false; }},180); }},150); }}
 document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();slideClose(0);}});
-document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved && zs===1){{ step(ev.clientX<innerWidth/2?-1:1); }} }});
+document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved){{
+    if(lastPtr==='mouse' && ev.target!==im){{ slideClose(0); }}           // mouse: click outside the image closes
+    else if(zs===1){{ step(ev.clientX<innerWidth/2?-1:1); }} }} }});
 document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
   const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
 // zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); no double-tap (Fred); swipe changes image only at 1x; swipe changes image only at 1x
