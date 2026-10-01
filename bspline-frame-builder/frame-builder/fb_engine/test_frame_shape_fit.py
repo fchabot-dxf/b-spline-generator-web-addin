@@ -259,6 +259,17 @@ def test_the_dipped_top_extractor_rejects_an_off_centre_or_untangent_dip():
     assert not fsf.FEATURE_EXTRACTORS["hourglass_dipped_top"](bad["sketch2_shape_outline"], hw, hh)[0]
 
 
+def test_the_dipped_top_extractor_rejects_a_collapsed_dip_H23_item_6():
+    """A tangent-but-degenerate solve (observed live at 5.51x1.97, a board too small for the frame to
+    physically fit): the two top shoulder centres collapse to nearly the same x, giving a near-zero
+    topDipHalfWidth that, left in the fit, drags the whole linear model's residual past 1in (measured)."""
+    g = _dipped(_golden("template_1", "7x9"), 0.0005, 0.1)  # half-width far below the tol=2e-3 floor
+    hw, hh = fsf._safe_half(g["meta"])
+    ok, f = fsf.FEATURE_EXTRACTORS["hourglass_dipped_top"](g["sketch2_shape_outline"], hw, hh)
+    assert f["topDipHalfWidth"] == pytest.approx(0.0005 * hw, abs=1e-9)  # the measurement itself is still reported
+    assert ok is False  # but it's flagged invalid, not fed to the fit
+
+
 def test_the_provisional_dipped_top_model_is_template_1_plus_the_dip():
     t1 = fsf.fit_shape_model("template_1", "hourglass", _GOLDENS)
     p = fsf.provisional_dipped_top_model(t1, 0.14, 0.72)

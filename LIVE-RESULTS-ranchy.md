@@ -385,3 +385,66 @@ arguably its own latent problem this fix incidentally also removes, not a new re
 
 **Tests:** `pytest` b-spline-gen 91 passed (+2, this item's new file), frame-builder 302 passed (unchanged),
 repo root 487 passed (+2), 10 skipped throughout. `npx vitest run` unaffected (no JS touched).
+
+## Item 6 — Template 5 seed rework (12x6 flip + 5.51x1.97, from item 3's finding)
+
+**The dispatched bug is FIXED and verified clean across the full inversion sweep.** The dip/shoulder seed
+radius (`sketches/template_5/phases/p02_03_loop.py`) was `heightIn * 0.272158` — a heightIn-only constant
+calibrated at 7x9, where it happens to equal the radius a circle through the dip's own seed points actually
+has. At other aspect ratios the two diverge: at 12x6 the old seed (1.633in) was smaller than the half-chord
+it had to span (2.006in) — geometrically impossible, which is what pushed the solver to the wrong side.
+Replaced with `TOP_SEED_RADIUS_EXPR`, a declared chord/sagitta formula (half-chord `widthIn * 0.167143`,
+sagitta `heightIn * 0.033056`, both already in the existing seed points) reused for all three top arcs,
+preserving the design's own "one radius for all three" relation.
+
+- **12x6, plain default build:** all 4 bars, timeline healthy (0 unhealthy), dip/shoulder centres correctly on
+  the TOP of the board (y~2.6-2.75 on a +/-3in-tall board) — no flip. Radius 10.241in, matching the new
+  formula's own hand-computed prediction exactly.
+- **5.51x1.97:** correctly returns `ok: False, "Board too small for this frame"` via the real
+  `build_sketch_logic_v3` entry point — the same clean, expected rejection Templates 1/2 already give at this
+  size (confirmed: this is NOT a construction bug, it's the pre-existing "frame doesn't fit the board" guard,
+  unrelated to the seed-radius fix, firing correctly before any arc-seed code even runs).
+- **Goldens recorded** (`tools/repro/record_frame_parity.py`, via its own `build_frame_logic` path, which
+  does build the raw outline even at a too-small size): `template_5_12x6.json` (4 bars, healthy) and
+  `template_5_5.51x1.97.json` (0 bars, healthy — same shape as Templates 1/2's own goldens there). Both
+  committed.
+- **Inversion sweep, all 4 combinations (7x9/12x6 x boundingboffset 0.5/1.0):** `outline_violations() == []`,
+  ALL 4 BARS, healthy, every time — including the previously WORST case from item 3 (12x6 @ 1.0, which used to
+  give only 1 bar with an unhealthy timeline). This is a complete fix, not just of the two originally-reported
+  sizes.
+
+**Found and fixed a second, related bug the regeneration surfaced:** fitting `topDipHalfWidth` from all 3
+sizes gave a terrible linear fit (`maxResidualIn` 1.12in). Measured directly: at 5.51x1.97 the two top
+shoulder arcs' centres have collapsed to within 0.01in of each other (vs 2.3-3.5in apart at the other two
+sizes) — the solver still reports a numerically tangent, "healthy" solution (so the existing validity check in
+`fb_engine/frame_shape_fit.py`'s `_hourglass_dipped_top` didn't catch it), but it's a degenerate one: the
+frame doesn't physically fit this board (confirmed above), so whatever shape the solver lands on there isn't
+a real, buildable frame. Added a scale-aware validity check (`half_width > 0.05 * hw`) to the extractor,
+excluding 5.51x1.97 from the fit the same way Template 2/3 already exclude their own genuinely-invalid sizes.
+Proved non-vacuous via `git stash` of the extractor fix (the new pytest case fails against the old code).
+Regenerated frame-defs: `fittedFrom: ['12x6', '7x9']`, `excluded: ['5.51x1.97']`, `maxResidualIn: 0.0` (an
+exact fit through exactly 2 points). `provisional` block gone. **Templates 1-4, 6, 8, 9 confirmed
+byte-identical** (diffed the full JSON against HEAD — only `template_5`'s own entry and `sourceHash` changed).
+
+**Found, NOT fixed — flagging as a follow-up:** the f20 app-seeded parity check (`tools/repro/
+f20_live_parity.py`) still gives `maxErr` ~0.29in at 7x9 and ~0.23in at 12x6 (essentially unchanged by this
+fix). Measured precisely: the dip arc's RADIUS matches almost exactly between the app's prediction and
+Fusion's actual solve (2.4494 vs 2.4494 at 7x9; 10.2405 vs 10.2405 at 12x6) — confirming the seed-radius fix
+itself is correct and driving the right magnitude — but the dip's CENTRE Y POSITION doesn't (6.1045 expected
+vs 6.25 actual at 7x9, a 0.145in gap). Likely cause (not confirmed): `frame-handles.js`'s own
+`topDipDepthForRadius`/`_topDipRange` clamping logic, which already existed before this item and adjusts
+`topDipDepth` to keep the dip's radius above `MIN_ARC_RADIUS_IN` — the newly-fitted `topDipDepth`/
+`topDipHalfWidth` coefficients (fit independently of each other and of the radius relationship) may not
+satisfy that same clamp's own consistency assumption, pushing `frameSeedGeometry`'s computed seed point away
+from what the phase file's own construction actually solves to. This is a pre-existing app-side (JS)
+mechanism, not something this item's Python-side seed fix touches, and untangling it needs its own dedicated
+investigation — recommend a follow-up item rather than a quick patch here.
+
+**Tests:** fixed 2 stale tests that assumed T5's sides were bit-identical to Template 1's own fitted numbers
+(`tests/frame-template-5.test.js`, `test_frame_defs.py::test_template_5_is_template_1_with_a_dipped_top`) —
+true while T5's shapeModel was provisional (literally borrowing T1's coefficients), no longer true now that T5
+is independently fit from its own goldens (same class of numeric-coincidence break as Template 3's own
+"topInset 0 = Template 1" fix earlier this round). Updated both to compare values with a tolerance instead of
+exact equality, mutation-tested via `git stash` of the regenerated frame-defs to confirm both fail against the
+old provisional data. Added one new pytest case for the collapsed-dip extractor fix. `npx vitest run`: 2822
+passed. `pytest`: frame-builder 331 passed, repo root 516 passed, 11 skipped throughout.

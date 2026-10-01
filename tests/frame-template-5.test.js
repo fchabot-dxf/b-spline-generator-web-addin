@@ -37,6 +37,26 @@ const rec5 = (seeds) => normalizeFrameRecord({ templateId: 'template_5', seeds }
 const profile = (id, seeds, W = 7, H = 9) => frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: id, seeds }), board(W, H));
 const inner = (id, seeds, W = 7, H = 9) => frameInnerProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: id, seeds }), board(W, H));
 const J = (x) => JSON.stringify(x);
+/** H23 item 6: T5's sides are the SAME CONSTRUCTION as T1's, but no longer the SAME MEASURED NUMBERS --
+ *  before this item T5's shapeModel was provisional, literally borrowing T1's own fitted cornerR/waistR
+ *  coefficients (so "exactly T1's" was bit-for-bit true by construction); now T5 is fit from its OWN
+ *  recorded goldens (needed to fix the 12x6 dip flip), and two separate Fusion solves of "the same"
+ *  geometry (T1's four-arc side alone vs T5's with the dip also in the constraint system) land on
+ *  genuinely-close-but-not-identical numbers (MEASURED max residual 12x6 gives ~0.031in). Same shape,
+ *  not the same bits -- so this compares values, not JSON strings (same pattern as T3's own fix when
+ *  its "topInset 0 = Template 1" numeric coincidence broke the same way). */
+function expectPrimitiveClose(a, b, precision = 1) {
+  expect(a.type).toBe(b.type);
+  if (a.type === 'L') {
+    expect(a.p0.x).toBeCloseTo(b.p0.x, precision); expect(a.p0.y).toBeCloseTo(b.p0.y, precision);
+    expect(a.p1.x).toBeCloseTo(b.p1.x, precision); expect(a.p1.y).toBeCloseTo(b.p1.y, precision);
+  } else {
+    const wrap = (t) => ((t % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI; // pi and -pi are the same angle
+    expect(a.cx).toBeCloseTo(b.cx, precision); expect(a.cy).toBeCloseTo(b.cy, precision);
+    expect(a.rx).toBeCloseTo(b.rx, precision); expect(wrap(a.theta1)).toBeCloseTo(wrap(b.theta1), precision);
+    expect(a.dTheta).toBeCloseTo(b.dTheta, precision);
+  }
+}
 /** The dipped top: 11 left stub, 12 left shoulder, 13 dip, 14 right shoulder, 15 right stub. */
 const top = (prof) => ({ stubL: prof.primitives[11], shL: prof.primitives[12], dip: prof.primitives[13], shR: prof.primitives[14], stubR: prof.primitives[15] });
 
@@ -91,7 +111,12 @@ describe('Template 5: the dipped top', () => {
     expect(T5.silhouettePreset).toBe('hourglass');
     expect(T5.params).toEqual(T1.params); // no new parameter
     expect(T5.features).toEqual(T1.features); // 4 bars + the trim, the same bodies
-    expect(T5.shapeModel.provisional).toBeTruthy();
+    // H23 item 6: the provisional shim is retired -- T5 now has its own shapeModel,
+    // fitted from its own live goldens (5.51x1.97 excluded: the dip collapses there,
+    // the board too small for this frame to physically fit -- see frame_shape_fit.py).
+    expect(T5.shapeModel.provisional).toBeUndefined();
+    expect(T5.shapeModel.fit.fittedFrom).toEqual(['12x6', '7x9']);
+    expect(T5.shapeModel.fit.excluded).toEqual(['5.51x1.97']);
     expect(T5.regions.outline).toHaveLength(TOP_DIP_SEGMENT_COUNT);
     expect(T5.regions.outline.slice(0, 5)).toEqual(['proj_top_edge_L', 'proj_arc_top_shoulder_L', 'proj_arc_top_dip',
       'proj_arc_top_shoulder_R', 'proj_top_edge_R']);
@@ -106,7 +131,7 @@ describe('Template 5: the dipped top', () => {
     const inn = inner('template_5', {}, W, H);
     expect(inn && inn.defects).toEqual([]);
     expect(inn.primitives.slice(11).every((p) => !p.collapsed)).toBe(true); // the top pieces never collapse
-    for (let i = 0; i <= 10; i++) expect(J(prof.primitives[i])).toBe(J(p1.primitives[i]));
+    for (let i = 0; i <= 10; i++) expectPrimitiveClose(prof.primitives[i], p1.primitives[i]);
     const { region } = prof, cx0 = region.x + region.w / 2, y0 = region.y;
     const { stubL, shL, dip, shR, stubR } = top(prof);
     for (const s of [stubL, stubR]) { expect(s.type).toBe('L'); expect(s.p0.y).toBeCloseTo(y0, 12); expect(s.p1.y).toBeCloseTo(y0, 12); }

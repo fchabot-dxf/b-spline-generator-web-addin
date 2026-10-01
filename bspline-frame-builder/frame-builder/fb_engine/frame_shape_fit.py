@@ -118,17 +118,26 @@ def _hourglass_dipped_top(curves, hw, hh, tol=2e-3):
     The sides are Template 1's own extraction (so every Template 1 feature means what it does there); the top adds
     the dip's half width (centre line -> each stub's end = the top shoulder centres' x) and its depth below the top
     edge (at hh, Fusion y up). Valid when the sides are (Template 1's test), both top shoulders are tangent to the
-    top edge, the dip centre is on the centre line and the dip is tangent to both shoulders.
+    top edge, the dip centre is on the centre line, the dip is tangent to both shoulders, AND the two top shoulder
+    centres haven't collapsed together (H23 item 6: at a board too small for this frame to physically fit -- e.g.
+    5.51x1.97 -- the solver still finds a numerically tangent, "ok" solution, but it's a degenerate one with the
+    two shoulder centres nearly coincident: MEASURED half-width 0.0095in (0.35% of hw) vs ~59-67% of hw at the
+    other sizes -- comfortably below `tol` in absolute terms but still large enough that a fixed-inch tolerance
+    doesn't catch it, hence the scale-aware check below. Fitting a line through that point alongside real ones
+    pulls the whole model wildly off, so it's excluded here the same way Template 2/3 exclude their own
+    genuinely-invalid sizes -- the build is "healthy" but not a real frame).
     """
     ok, feats = _hourglass(curves, hw, hh, tol)
     sl, dip, sr = curves["arc_top_shoulder_L"], curves["arc_top_dip"], curves["arc_top_shoulder_R"]
+    half_width = (sr["center"][0] - sl["center"][0]) / 2
     ok = (ok and abs(sr["center"][1] - (hh - sr["radius"])) < tol
           and abs(sl["center"][1] - (hh - sl["radius"])) < tol
           and abs(dip["center"][0]) < tol
           and abs(math.dist(sr["center"], dip["center"]) - (sr["radius"] + dip["radius"])) < tol
-          and abs(math.dist(sl["center"], dip["center"]) - (sl["radius"] + dip["radius"])) < tol)
+          and abs(math.dist(sl["center"], dip["center"]) - (sl["radius"] + dip["radius"])) < tol
+          and half_width > 0.05 * hw)
     feats.update({
-        "topDipHalfWidth": (sr["center"][0] - sl["center"][0]) / 2,
+        "topDipHalfWidth": half_width,
         "topDipDepth": hh - (dip["center"][1] - dip["radius"]),   # the dip's lowest point, below the top edge
     })
     return ok, feats

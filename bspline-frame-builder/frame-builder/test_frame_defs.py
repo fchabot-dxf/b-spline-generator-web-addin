@@ -264,7 +264,15 @@ def test_template_5_is_template_1_with_a_dipped_top(defs):
         "seed_rad_top_shoulder_L": 12, "seed_rad_top_dip": 13, "seed_rad_top_shoulder_R": 14}
     f5, f1 = t5["shapeModel"]["features"], t1["shapeModel"]["features"]
     assert {"topDipDepth", "topDipHalfWidth"} <= set(f5) and not {"topDipDepth", "topDipHalfWidth"} & set(f1)
-    assert {k: v for k, v in f5.items() if k in f1} == f1  # the sides: Template 1's model
+    # H23 item 6: the sides are the SAME CONSTRUCTION as Template 1's, not the SAME MEASURED NUMBERS any more --
+    # before this item T5's shapeModel was provisional, literally borrowing T1's own fitted coefficients (so this
+    # was bit-for-bit equal by construction); now T5 is fit from its own recorded goldens (needed to fix the 12x6
+    # dip flip), and two separate Fusion solves of "the same" side geometry (T1's alone vs T5's with the dip also
+    # in the constraint system) land on genuinely-close-but-not-identical numbers (MEASURED max diff 0.0186).
+    shared = {k: v for k, v in f5.items() if k in f1}
+    assert shared.keys() == f1.keys()
+    for key, coef in f1.items():
+        assert shared[key] == pytest.approx(coef, abs=0.03), key
 
 
 def _t5_steps():

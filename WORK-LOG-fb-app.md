@@ -4543,3 +4543,34 @@ exe, not add-in management) — flagging rather than assuming. Passed back rathe
   start after" -- update: a new amendment (turn 58) landed during this round assigning Template 10 (Arched
   Hourglass) next, with a changed process this time (miter diagram at 7x9 + 12x6 shown to Fred BEFORE the build,
   not after).
+
+## 2026-10-01: H23 item 6 — Template 5 seed rework (worker, seat A)
+
+Full results in LIVE-RESULTS-ranchy.md. The dispatched bug (12x6 flip, 5.51x1.97 "fails") is fixed and
+verified clean across the full inversion sweep, including the previously worst case (12x6 @ boundingboxoffset
+1.0, which used to give 1 bar / unhealthy and now gives 4 bars / healthy). Root cause confirmed exactly as
+suspected: the dip/shoulder seed radius was a heightIn-only constant, geometrically impossible (smaller than
+the half-chord it had to span) at wide aspect ratios. Replaced with a declared chord/sagitta formula using
+both dimensions, reused for all three top arcs.
+
+Regenerating frame-defs from the new goldens surfaced a second, real bug: fitting the dip's half-width across
+all 3 sizes gave a terrible fit (1.12in residual) because 5.51x1.97's measured geometry is degenerate (the two
+shoulder arc centres have collapsed together) -- the solver reports it as healthy/tangent since nothing in the
+existing validity check catches a collapse that happens to still be numerically consistent, but the frame
+doesn't physically fit that board size at all, so it isn't a real shape. Added a scale-aware validity check to
+the extractor (same pattern Template 2/3 already use for their own excluded sizes), proved non-vacuous via
+git stash. Clean refit afterward: 2 points, 0 residual.
+
+Fixed 2 stale tests that assumed T5's sides were bit-identical to Template 1's fitted numbers -- true only
+while T5 was provisional (literally borrowed T1's coefficients); independently fit now, so two separate Fusion
+solves of "the same" side geometry land close but not identical (same class of break as Template 3's own
+"topInset 0 = Template 1" coincidence earlier this round). Updated both to a tolerant comparison.
+
+Flagged, not fixed: the f20 app-seeded parity check still shows ~0.2-0.3in maxErr, unchanged by this fix --
+traced to the dip's CENTRE position (not its radius, which matches almost exactly), likely a pre-existing
+interaction between the newly-independent topDipDepth/topDipHalfWidth fit and frame-handles.js's own
+topDipDepthForRadius clamp. Recommending a dedicated follow-up rather than extending this already-large item
+further into app-side JS I'd need more time to safely change.
+
+Confirmed Templates 1-4/6/8/9 byte-identical in frame-defs (diffed the full JSON, only template_5 and
+sourceHash moved). `npx vitest run`: 2822 passed. `pytest`: frame-builder 331, repo root 516, 11 skipped.
