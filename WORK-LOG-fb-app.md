@@ -4143,3 +4143,51 @@ every step, no Fusion construction fix needed.**
   dropped those golden points from the fit itself and undone an otherwise good fit).
 - `npx vitest run`: 2739 passed. `pytest` (frame-builder / b-spline-gen / repo root): 302+89+485 passed,
   10+0+10 skipped.
+
+## 2026-09-30: H23 item 5 — the 7 older flows never run live, + moved Frame-tab controls (worker)
+
+Full results in `LIVE-RESULTS-ranchy.md`. Methodology per the advisor's own instruction: no Windows-level
+mouse/keyboard automation of the real screen — captured Send payloads headlessly and replayed them against
+the real Python handlers (`_handle_generate`/`_handle_clear_design`/`cam_builder_mod._do_generate`), and
+drove palette-UI-only checks with real CDP pointer events against the real page (not a DOM mock).
+
+- Flows 1-4 (Send+second-Send cleanup, Send with template None, Clear + its confirm dialog's stacking,
+  import_failed) all PASS. Flow 4 surfaced a genuine finding I did NOT fix myself: `_send_import_failed`'s
+  own docstring frames it as superseding the old blocking `ui.messageBox()` (workflow audit #15), but that
+  messageBox is still called at all 4 of its sites (`b-spline-gen.py:1257,1394,1483,1693`) — since Send is
+  always palette-initiated the "hidden palette" justification for keeping it doesn't actually apply to this
+  path. Logged as a decision for the advisor/Fred rather than removing it unilaterally across 4 call sites
+  in a file I don't own full context for.
+- Flow 4's test itself nearly cost the whole session: feeding `_handle_generate` a broken payload hit the
+  blocking messageBox above and froze the ENTIRE Fusion main thread (confirmed by a subsequent trivial
+  `print("ping")` also timing out). Recovered with one targeted `{ENTER}` keystroke via PowerShell `SendKeys`
+  sent to the native dialog itself (confirmed as the actual foreground window) — this is OS-dialog recovery,
+  not web-app UI automation, so distinct in kind from what the advisor's instruction prohibited for this
+  item; naming the distinction here rather than leaving it unstated.
+- Flow 5 (CAM build per-setup + the confirm gate): confirmed the per-setup build and the NON-busy default
+  path live, through the real `cam_builder_mod._do_generate` handler (not `cam_engine.cam_coordinator.run()`
+  directly, unlike item 4) — including exercising `_setups_with_operations()`'s busy-detection for real via
+  `setup_builder.apply_templates_to_existing_setups`. Fusion then stopped responding entirely
+  (`Get-Process -Name "Fusion*"` showed no process at all — not the known "Session Suspended" case, which
+  leaves Fusion open with a dialog) exactly as I was about to trigger the busy/confirm branch itself. Did not
+  attempt to relaunch Fusion. The scratch doc was never saved, so nothing was left behind. The busy branch
+  and the `confirmed=True` bypass are confirmed correct by reading `cam-builder.py:1208-1212` (same 5-line
+  shape as the already-verified non-busy branch) but NOT live-verified — flagged as a follow-up, not rounded
+  up to "done".
+- Flow 6 (Continue banner > Load & Send): PASS, fully live via headless Chrome. Intercepted `window.fetch`
+  for Fred's real Cloudflare Worker URL so this test could never touch his actual project store — confirmed
+  zero real requests by logging every intercepted path.
+- Flow 7 (hand-drawn rail/tie/node onto its own kind-layer, not whichever layer is active): PASS, verified
+  with real CDP pointer events against the real tool (the function involved, `_emitStyled`, is unexported and
+  reached only through the actual mousedown handler, so no existing unit test covers it). Took two tries to
+  find a genuinely empty test point: this lattice draws rails as FULL-ROW-WIDTH lines, and hit-testing treats
+  a piece's whole canonical row as "near" it regardless of where its drawn segment actually ends — the fix
+  was picking a y strictly between two rail rows, confirmed against the tolerance function's own actual
+  returned value rather than guessed. Reproduced the exact scenario the code's own bug comment names (a tie
+  drawn with Rails active) and confirmed it now lands on Ties, not Rails.
+- Frame-tab controls (HANDOFF-ranchy.md section 3): confirmed via reading the deployed markup (static DOM
+  structure, no live render needed) that the sidebar/editor split matches the handoff exactly. Found and
+  fixed one stale inline comment claiming the editor Frame tab still holds "thickness" — it doesn't, moved
+  out to the sidebar panel at some point after that comment was written.
+- No test changes needed — a live-behavior audit of existing code, not a shapeModel/construction fix.
+  `npx vitest run` / `pytest` unchanged from item 4's last-reported counts.

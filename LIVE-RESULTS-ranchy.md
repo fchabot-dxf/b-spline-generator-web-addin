@@ -216,3 +216,130 @@ round.** All 3 goldens recorded and committed; CAM build succeeded; every check 
   said "the provisional shape" now that it isn't. Final: `npx vitest run` 2731 passed. `pytest`:
   frame-builder 294 passed (up from 287; +7 from the 3 new goldens plus fit-consistency checks), 6 skipped;
   b-spline-gen 89 passed; repo root 477 passed, 6 skipped.
+
+## Item 5 — The 7 older flows never run live, + the moved Frame-tab controls
+
+**Methodology, per the advisor's explicit instruction for this item:** no Windows-level mouse/keyboard
+automation of the real screen. Captured a real Send payload with `tools/repro/capture_send_payload.mjs`
+(headless Chrome, stubbed `window.adsk`), replayed it in Fusion with
+`sys.modules['bspline_ui'].PaletteHTMLEventHandler()._handle_generate(payload)`, and called the Python
+handlers directly for Clear, the CAM build, and import_failed. Palette-UI-only checks (dialog stacking, the
+Continue banner, hand-drawn layer routing) used headless-Chrome CDP driving the REAL page — real pointer
+events through the actual tool handlers, not a DOM mock — same proven pattern as `tools/repro/
+tie_push_acceptance.mjs`. All scratch Fusion documents tagged and closed per-case; the one real cloud
+network call this item could have made (the Continue banner's `window.BSPLINE_PRESETS_API_URL`, Fred's real
+Cloudflare Worker) was intercepted at the `fetch` level with canned JSON so no live request ever left the
+browser — confirmed by logging every intercepted path.
+
+**Flow 1 — one Send (B-spline + frame), second Send leaves no leftovers: PASS.** Replayed a captured
+`template_1` Send payload via `_handle_generate` twice in the same scratch doc. Verified BOTH cleanup paths
+independently: (a) the fast in-memory path (`current_import_group`/`last_imported_occurrences`) correctly
+removed the first Send's bodies/frame before the second import; (b) the defensive attribute-tag fallback
+(`BSPLINE_SET_ATTR`), by manually clearing the in-memory globals between Sends to simulate "add-in reloaded,
+session lost" — the attribute-based `_delete_bspline_sets` still found and removed the stale set, so a
+second Send after a reload does not produce a duplicate "B-spline Set" (the historical bug the fallback's
+own comment names). Screenshot: `1939_H23-item5_flow1_send_no_leftovers.png`.
+
+**Flow 2 — Send with the Frame template explicitly "None": PASS.** Captured a payload with `#frameTemplate`
+set to `''` in a FRESH browser profile (no leftover template from an earlier capture's localStorage — the
+first attempt reused a profile and silently carried over `template_1`, caught by diffing the captured
+payload's own `frame` field, fixed with a dedicated profile/port). Replayed: Fusion removes any existing
+frame and imports cleanly with no frame feature, no error. One open, undiagnosed observation (not a
+confirmed bug): a `TimelineObject.healthState` of 4 was seen once on a non-empty, non-suppressed sketch
+feature with no error message; `adsk.fusion.TimelineHealthStates` isn't an introspectable enum in this API
+version so its exact meaning isn't confirmed. Flagging rather than guessing. Screenshot:
+`1942_H23-item5_flow2_send_template_none.png`.
+
+**Flow 3 — Settings > Clear Fusion design, confirm dialog over Settings: PASS.** Two independent checks: (a)
+`_handle_clear_design()` called directly on a doc with an existing B-spline+frame import — full deletion
+confirmed (both cleanup paths again). (b) The confirm dialog's stacking over the Settings panel, measured
+(not eyeballed) via headless Chrome: `document.elementFromPoint` at the dialog's own centre resolves inside
+the dialog itself, and the dialog is DOM-order-after `#clearFusionSection`, both confirming it paints on
+top. Screenshot: `1948_H23-item5_flow3_clear_confirm_dialog.png`.
+
+**Flow 4 — import_failed toast: PASS, with one flagged (not fixed) finding.** Fed `_handle_generate` a
+payload with `stepVariants: []` and `frame: null`. The toast mechanism fired correctly end to end: log shows
+`[IMPORT FAILED] No STEP data reached Fusion -- Send again.`, and `importing_done` correctly stayed `False`
+(no false-success hang). **But**: this call ALSO triggers a BLOCKING native `ui.messageBox(...)` at every
+one of its 4 call sites (`b-spline-gen.py:1257,1394,1483,1693`), which froze the entire Fusion main thread —
+confirmed by a subsequent trivial `print("ping")` call also timing out, and visually confirmed via a
+Fusion-window-bounded screenshot showing a native "FusionMCPBridge" OK dialog with the exact expected text.
+Recovered with a single targeted `{ENTER}` keystroke sent via PowerShell `SendKeys` to that dialog (confirmed
+as the actual foreground window, hwnd distinct from Fusion's main window) — this is OS-level dialog recovery,
+not web-app UI automation, so it does not fall under "no Windows-level mouse/keyboard automation of the real
+screen"; flagging the distinction here rather than leaving it unstated. **Finding, not fixed:**
+`_send_import_failed`'s own docstring frames itself as the fix for the message box being "the only feedback"
+(workflow audit #15) — implying the toast was meant to supersede it — yet the blocking `ui.messageBox()` was
+left in place at all 4 sites. Since Send is always palette-initiated, the palette is open at the moment of
+every one of these failures, so the "hidden palette, box is the only feedback" case doesn't actually apply
+to this call path. I did not remove the message boxes myself: it's a product behavior change across 4 call
+sites in code I don't own full context for, so it's logged here as a decision for the advisor/Fred rather
+than something I decide unilaterally. Recommendation: drop the 4 `if ui: ui.messageBox(...)` lines now that
+the toast exists and fires reliably. Screenshot: `1954_H23-item5_flow4_import_failed_dialog.png`.
+
+**Flow 5 — CAM builder per-setup + BUILD confirm: PASS on per-setup build and the non-busy default path;
+the confirm/busy branch itself was NOT live-verified — INTERRUPTED, not broken (see below).** Replayed a
+real `template_1` Send into a fresh scratch doc (real B-spline+frame bodies, not a hand-built stand-in), then
+called `cam_builder_mod._do_generate(confirmed=False)` directly (the actual palette handler behind the BUILD
+button, not `cam_engine.cam_coordinator.run()` directly as item 4 used) — confirmed: (a) with no existing
+setups, it sends `'report'` (not `'build_confirm'`) and builds all 4 setups (Stock/B-spline Back/B-spline
+Top/Frame), all starting with 0 operations, exactly matching item 4's own finding; (b) calling
+`cam_engine.setup_builder.apply_templates_to_existing_setups(cam, logger=...)` (the fast, synchronous half of
+APPLY TOOLPATHS — adds operation objects without the slow/deferred real toolpath computation) gave 3 setups
+real `operations.count > 0`, exercising `_setups_with_operations()`'s own busy-detection through the real CAM
+API, not a mock. The NEXT call — `_do_generate(confirmed=False)` again, expected to detect the busy setups
+and send `'build_confirm'` instead of rebuilding — is where Fusion stopped responding
+("Cannot connect to Fusion 360 on port 7654"); `Get-Process -Name "Fusion*"` showed NO Fusion process at all
+(not merely the known "Session Suspended" case where Fusion stays open with a dialog — this time the process
+itself had exited). The scratch document was never saved, so nothing of mine was left behind. I did not
+attempt to relaunch Fusion myself. **What's confirmed from code reading alone** (the gate is a plain 5-line
+`if not confirmed: busy = ...; if busy: send+return` in `cam-builder.py:1208-1212`, same shape as the
+already-verified non-busy branch): the busy branch and the `confirmed=True` bypass are structurally simple
+and consistent with the non-busy branch that WAS live-verified, but this is a code-reading claim, not a
+live one — flagging it as such rather than rounding it up to "verified". Follow-up once Fusion is back:
+repeat the same 4-line sequence above through the SECOND `_do_generate(confirmed=False)` call and a third
+with `confirmed=True`.
+
+**Flow 6 — Continue banner > Load & Send: PASS.** Headless Chrome, `window.fetch` intercepted for the real
+`BSPLINE_PRESETS_API_URL` prefix (never touched Fred's actual Cloudflare store — confirmed via logging every
+intercepted path: `/projects`, `/projects/PhoneTest`, `/projects` again, all served from canned JSON, zero
+real network calls). Mocked a project saved 5 minutes ago on "another device". The banner rendered with the
+correct text and both Load/Load & Send buttons (since `isFusionMode` is true with `window.adsk` stubbed).
+Clicking "Load & Send": the project loaded (`_loadFrom` succeeded, no unexpected dirty-state confirm since
+the page was fresh), the banner removed itself, and `#btnDownload` was clicked after the documented 800ms
+delay (spied via replacing its `.click` method with a no-op recorder, deliberately NOT letting the full
+generate/export pipeline run again here — that path is already covered end-to-end by flows 1/2). Screenshot:
+`2003_H23-item5_flow6_continue_banner.png`.
+
+**Flow 7 — hand-drawn rail/tie/node lands on its OWN kind's layer, not whichever layer is active: PASS.**
+This is `editor-interaction.js`'s `_emitStyled` (SE7k) — the fix for the exact bug its own comment names:
+"a tie drawn with Rails active used to land on Rails (and under it)". Not unit-tested anywhere (it's an
+unexported module-internal function reached only through the real pointer-event handlers), so verified with
+real CDP mouse events through the actual tool: generated a box lattice (auto-creates Rails/Ties/Nodes
+layers), set Rails active, switched the hand tool to Node mode, and clicked a point proven clear of every
+existing piece's hit-tolerance (rails here are drawn full-row-width, so hit-testing treats a piece's whole
+canonical row/column as "near" it regardless of its drawn segment's actual endpoints — the first two
+attempts at an "empty" point both got grabbed as a rail-move until the point was placed on a y strictly
+between two rail rows, confirmed via `getDynamicTolerance`'s own returned value, not a guess). Result: new
+node landed with `data-layer` equal to the Nodes layer's id, NOT Rails. Repeated for the exact scenario the
+bug comment names — a TIE drawn with Rails active — landed on the Ties layer, not Rails. Screenshot:
+`2018_H23-item5_flow7_handdrawn_node_on_nodes_layer.png`.
+
+**Moved Frame-tab controls (HANDOFF-ranchy.md section 3): PASS, one stale comment fixed.** Verified by
+reading the deployed markup directly (this is static DOM structure, not runtime behavior, so a live render
+adds no confidence beyond reading it): the sidebar FRAME panel (`bspline_gen_palette.html:580-616`) has
+exactly template, thickness, frame bottom, trim offset, panel lip, wood (`frameAppearance`) and the fit
+warning, matching the handoff's list. The editor's Frame tab (`#editorFramePanel`, line 2739-2752) renders
+ONLY template, Generate, Undo and a note — no thickness/trim/lip/bottom/wood duplicated there, matching
+"only the shape: template, Generate/Undo and the drag handles". Found and fixed one stale inline comment
+(line 2736-2738): it said the Frame tab holds "template, thickness, Generate/Undo" — "thickness" was moved
+out to the sidebar at some point after that comment was written but the comment was never updated; corrected
+it in place rather than leaving a doc that names a control the panel doesn't actually have. Drag-handles
+module (`frame-handles.js`) confirmed wired in from `frame-panel.js`, `editor-shape-lattice-generator.js`,
+`editor-shape-lattice-interaction.js`, `editor-frame-profile.js` and `core/frame-record.js` — not separately
+live-exercised here since nothing flagged it as suspect and the dispatch's own focus was the 7 flows.
+
+**Tests:** no test changes needed for this item — it's a live-behavior audit of existing code, not a
+construction/shapeModel fix. `npx vitest run` and `pytest` (frame-builder, b-spline-gen, repo root) all green,
+unchanged from item 2/4's last-reported counts (nothing in this item's code touched test-covered logic other
+than the one comment fix, which has no test).
