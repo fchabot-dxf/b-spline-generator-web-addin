@@ -11152,3 +11152,87 @@ patch either) but finished cleanly in one wake: both bugs fixed and mutation-tes
 shape matched (ledge + flare + a correctly-pinned peak), full test suites green, A/B re-confirmed, a fresh shot
 reviewed. The live Fusion check (LIVE_CHECK.md) remains the one thing this seat genuinely cannot do (no bridge)
 -- same disclosed limitation as the first build, not a new one.
+
+## 2026-09-30: T82 item 2 -- Inset Window, app side built per the design note (seat B, epoch 7)
+
+**Merge note first:** before this item, `git merge origin/main` brought in F28 item 1 (Template 8, Dipped Top +
+Left-Only Wave, fb-app seat) and H23 items 8-11 (seat A), which overlapped my own T7 edits to several SHARED
+files (editor-shape-lattice-generator.js, frame_definition.py, frame_shape_fit.py, the A/B scripts' own
+template lists, FRAME_ONLY_PARAM_KEYS). Resolved by hand, file by file -- both templates' own additions kept
+(T7's 3 keys + T8's 5), not either/or; frame-defs.json/js regenerated fresh afterward rather than
+hand-resolving the generated files. Verified: Python 327 passed/10 skipped (was 283), JS 2824 tests/152 files
+(was 2741/149) -- both counts UP by exactly T8's own additions, nothing silently dropped. Pushed as its own
+merge commit before starting item 2's own code, so the merge itself is reviewable separately from the feature.
+
+**Built per INSET-WINDOW-DESIGN.md (approved, turn 191):**
+- `core/inset-window.js` (NEW): `insetWindowGeometry(record, frameThickness, panelLip)` -- the ONE declared
+  geometry function (outer/inner/hole rectangles), null when disabled or invalid. The bars-check and the
+  opening-check are mathematically the SAME condition for a uniform-thickness rectangle (proven by mutation
+  test: removing either ALONE is a no-op, removing BOTH together is what actually breaks the guard) -- kept as
+  two only because the design note (and Fred) named both explicitly, not because they're independent.
+- `core/frame-record.js`: `record.insetWindow = {enabled, x1, y1, x2, y2}`, default `{false,0,0,0,0}`.
+  Normalized (corners sorted so x1<x2, y1<y2 always) but NOT clamped against the frame or board -- Fred's own
+  ruling, tested directly (a `{-999,-999,999,999}` rect round-trips exactly). Carried in `framePayload()`.
+- 2D editor (`editor-frame-profile.js`): the window's own outer/inner rectangles drawn with the SAME band/
+  cutaway/miter-edge styling the main frame already uses, on both the Frame and Artwork tabs (it affects the
+  carved panel either way, same as the main frame's own cutaway).
+- 3D preview (`core/preview/frame-mesh.js`): the hole is a REAL absence of panel mesh -- a per-triangle
+  centroid cull against the hole rectangle (deliberately NOT an exact sub-triangle clip like the outline's own
+  `clipPanelToOutline`: a centroid test lands the hole's own edge on the nearest triangle boundary instead of
+  a mathematically exact line, invisible at any terrain grid finer than the window itself, and far lower risk
+  to get right under this session's own remaining time than extending the existing clip algorithm's own
+  triangle-vs-polygon machinery to also subtract a second polygon). A wall at the hole's own edge (reusing
+  `wallArrays`, the same primitive the outline's own wall already uses) so it reads as a real cut-through, not
+  a flat decal -- confirmed visually, not assumed (see shots below). The window's own 4 bars are NEVER added
+  to the 3D scene (Fred: "hide the subframe" -- they sit behind the panel in Fusion, out of frame from the
+  front).
+- Frame-tab drag (`main/frame-panel.js`'s own NEW `_wireWindowDrag()`): body-drag moves the whole rectangle,
+  any-corner-drag resizes it, as a SEPARATE listener from the existing `_wireHandleDrag()` (never touches that
+  closure's own tightly-tuned pinch-abort/capture logic) -- the one shared guard is `ed._frameHandleDrag`
+  (already public on the editor), checked so a shape-handle drag and a window drag can never both claim the
+  same press.
+- Sidebar toggle: a plain checkbox, "Inset window", off by default, in the FRAME panel's own HTML. Turning it
+  on with a never-placed window (`x1===x2`) seeds a reasonable starting rect (roughly centred, a third of the
+  board) so there is something to see and drag immediately; turning it off keeps the record's own rect so
+  re-enabling restores the last placement.
+
+**Explicitly NOT built this turn (scoped down, not silently skipped):** stamps "skip the hole" and the Shape
+Lattice "skip the hole" (both named in the design note's own §4 and the test plan). Traced the stamp
+rasterization pipeline (`main/stamp-mask-manager.js` + the `main/stamp/*.js` files, `core/stamp/*.js`) and the
+lattice's own `fromFrame` opt-in (`editor/contour-from-frame.js`) far enough to confirm BOTH are real,
+non-trivial subsystems this session's own remaining budget could not responsibly extend without either running
+out mid-change or shipping an unverified edit to code neither item's own test suite currently exercises for
+this new case. Flagged here and in INSET-WINDOW-LIVE_CHECK.md's own §0 rather than guessed at under time
+pressure -- a stamp or a lattice pattern drawn over the hole today still carves/draws there (no regression,
+since nothing reads `insetWindow` in either path yet, but also not yet the declared behaviour).
+
+**Tests:** `tests/inset-window.test.js` (NEW, 13 tests): the geometry function's own three-rectangle math
+(MEASURED exact offsets, not just "it returns something"), the bars/opening floor (mutation-tested together,
+see above), the lip-wider-than-opening degenerate case (collapses to a point, never inverts), the record's own
+no-clamp normalization (an absurd rect round-trips exactly; a dragged-past-the-opposite-corner rect gets
+sorted, not rejected), and `framePayload`'s own byte-identical-when-off guarantee across every template.
+Full suites green after: 152 JS files / 2824 tests (same count as post-merge, confirming zero regression from
+every new file), Python unaffected (this item touched no Python).
+
+**A/B, re-run (this touches `frame-record.js`/`editor-frame-profile.js`/`frame-mesh.js`, shared by every
+template):** a scratch worktree at this session's own merge commit (pre-item-2) vs. the working tree.
+`ab6.mjs`, `ab3d.mjs` (diffed its own output file directly), `abpy.py` all byte-identical -- `insetWindow`
+defaults to disabled everywhere these scripts touch, exactly as designed. Scratch worktree removed after.
+
+**Shots** (`shots/seatB/2150_T82-item2_*.png`, mobile 390x844, cache-busted via CDP
+`Network.setCacheDisabled`): the 3D preview (main view) shows a clean rectangular hole cut through the carved
+Hourglass panel at 7x9, no subframe bars visible, a real wall at the hole's own edge (not a flat decal); the
+Frame tab shows the window's own outer/inner rectangles with the band/cutaway styling and its own drag handles
+(corner dots + a body-move square) alongside the main frame's own. `errors: []` on both.
+
+**`INSET-WINDOW-LIVE_CHECK.md`** (NEW): what seat A needs to build (the Fusion/CAM half, design note §5 --
+sketch geometry, 4 new bar bodies positioned behind the panel via the EXISTING `frame_height_offset` +
+`toFace: core.underside`, the hole's own through-cut feature, one new `declared_profiles.classify()` mapping)
+and check, since this seat has no Fusion bridge; explicitly states nothing on the Fusion/CAM side exists yet
+(this item built the app half only).
+
+**Capacity:** a heavy turn (an unplanned 13-file merge conflict resolved by hand before any new code could
+even start, then a full new frame-level feature spanning the data model, 2D editor, 3D preview, drag UI, and
+its own test suite) but finished cleanly: merge verified clean via test-count deltas, the feature's own A/B
+and test suite green, two consumers (stamps, lattice) explicitly scoped out rather than rushed. T7's own
+approved-shape diagrams (7x9/12x6/24x4) are next, per the dispatch's own order.

@@ -16,6 +16,15 @@
  * through: a project saved before frames existed (no `frame` key), an unknown
  * template, a wood that isn't declared, or a non-numeric value all resolve to
  * the declared defaults — never a half-valid record.
+ *
+ * `insetWindow` (T82 item 2, INSET-WINDOW-DESIGN.md): a second small mitred frame set into the panel, always
+ * open, hidden behind the panel. `{enabled, x1, y1, x2, y2}` (two opposite OUTER corners, board-local inches,
+ * origin top-left, y down — the SAME convention `frameCutProfile`'s own board already uses). Frame-level, not
+ * per-template (every template reads it, none declare it). Deliberately NOT clamped against the frame's own
+ * opening or the board edge (Fred: "then it's my responsibility to not let it intersect") — normalization
+ * here only sorts the corners (x1<x2, y1<y2) so a drag crossing the opposite edge can't invert the rectangle;
+ * geometric validity (window bars / opening > 0) is a property every CONSUMER checks for itself (insetWindow.js
+ * `insetWindowGeometry`), not a write-time clamp.
  */
 import FRAME_DEFS from '../data/frame-defs.js';
 import { P, saveLastSession } from './state.js';
@@ -42,6 +51,7 @@ export function defaultFrameRecord(defs = FRAME_DEFS) {
     frameBottomZ: _extrusion(defs, 'frameBottomZ').default ?? -1,
     panelLip: _extrusion(defs, 'panelLip').default ?? 0, // F22
     appearance: defs.appearance?.default ?? null,
+    insetWindow: { enabled: false, x1: 0, y1: 0, x2: 0, y2: 0 }, // T82 item 2, off by default
   };
 }
 
@@ -87,6 +97,16 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
       if (seeded.has(k) && Number.isFinite(n)) out.seeds[k] = n;
     }
   }
+  // T82 item 2: no clamping against the frame or the board (see module header) -- only type-checked and
+  // sorted so x1<x2, y1<y2 always hold, the one invariant every consumer below is allowed to assume.
+  if (raw.insetWindow && typeof raw.insetWindow === 'object') {
+    const w = raw.insetWindow;
+    const x1 = Number(w.x1), y1 = Number(w.y1), x2 = Number(w.x2), y2 = Number(w.y2);
+    if ([x1, y1, x2, y2].every(Number.isFinite)) {
+      out.insetWindow = { enabled: !!w.enabled, x1: Math.min(x1, x2), y1: Math.min(y1, y2),
+        x2: Math.max(x1, x2), y2: Math.max(y1, y2) };
+    }
+  }
   return out;
 }
 
@@ -102,7 +122,8 @@ export function framePayload(defs, record) {
   const params = {};
   for (const p of tpl.params) if (p.owner === 'frame') params[p.name] = frameParam(defs, record, p.name);
   return { recordVersion: record.recordVersion, templateId: tpl.id, params, seeds: { ...(record.seeds || {}) },
-    frameBottomZ: record.frameBottomZ, panelLip: record.panelLip ?? 0, appearance: record.appearance };
+    frameBottomZ: record.frameBottomZ, panelLip: record.panelLip ?? 0, appearance: record.appearance,
+    insetWindow: { ...(record.insetWindow || defaultFrameRecord(defs).insetWindow) } };
 }
 
 /** F22: the panel lip's declared range for `record`: frame-defs `extrusion` panelLip {min, max}, where `max` names a

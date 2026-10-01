@@ -25,6 +25,7 @@
  * surface normal, so its vertices are not on the x,y grid.
  */
 import { FRAME_COLORS } from '../color-utils.js';
+import { rectContains } from '../inset-window.js';
 
 /** Sample a closed primitive loop (editor coords) at fixed fractions per
  *  primitive, so two loops of the same topology correspond point-for-point. */
@@ -481,7 +482,23 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
   const attrs = {};
   for (const nm of ['color', 'uv', 'normal']) if (geom.attributes[nm]) attrs[nm] = geom.attributes[nm];
   const { kept, rim } = clipPanelToOutline(pos, full, panel, attrs, cell); // F22: the lip, else the outline
-  geom.setIndex(kept);
+  // T82 item 2: the inset window is a literal hole -- no panel triangle may stay inside it. A per-triangle
+  // centroid test (not an exact sub-triangle clip like clipPanelToOutline's own outer trim) is deliberately
+  // simpler: the hole's own edge lands on the nearest triangle boundary rather than a mathematically exact
+  // line, a difference invisible at any terrain grid spacing finer than the window itself. World mapping per
+  // this file's own header comment: editor (x, y-down) -> world (x - W/2, H/2 - y), x unflipped, y flipped
+  // (and therefore sorted the OTHER way: editor y1 < y2 becomes world y2' < y1').
+  const win = spec.insetWindow;
+  const windowed = win ? { x1: win.hole.x1 - W / 2, x2: win.hole.x2 - W / 2, y1: H / 2 - win.hole.y2, y2: H / 2 - win.hole.y1 } : null;
+  const keptFinal = windowed ? [] : kept;
+  if (windowed) {
+    for (let t = 0; t < kept.length; t += 3) {
+      const [ia, ib, ic] = [kept[t], kept[t + 1], kept[t + 2]];
+      const cx = (pos[ia * 3] + pos[ib * 3] + pos[ic * 3]) / 3, cy = (pos[ia * 3 + 1] + pos[ib * 3 + 1] + pos[ic * 3 + 1]) / 3;
+      if (!rectContains(windowed, cx, cy)) keptFinal.push(ia, ib, ic);
+    }
+  }
+  geom.setIndex(keptFinal);
   const extra = [];
   if (rim.index.length) {
     const g = new THREE.BufferGeometry();
@@ -526,6 +543,17 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
       const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
       bars.name = 'frame-bars';
       extra.push(bars);
+    }
+    if (windowed) {
+      // T82 item 2: a real hole needs a wall at its own edge too (same top/bot hug as the outline's own wall
+      // above), or it would look like a flat decal rather than an opening through the panel's own thickness.
+      // The subframe bars themselves are NEVER added here (Fred: "the b-spline should hide the subframe" --
+      // they sit behind the panel, out of the 3D preview entirely; only the hole they frame is visible).
+      const winPoly = [{ x: windowed.x1, y: windowed.y1 }, { x: windowed.x2, y: windowed.y1 },
+        { x: windowed.x2, y: windowed.y2 }, { x: windowed.x1, y: windowed.y2 }];
+      const winWall = _mesh(THREE, wallArrays(winPoly, bot, top), wallMat.clone());
+      winWall.name = 'frame-window-wall';
+      extra.push(winWall);
     }
   }
   return extra;

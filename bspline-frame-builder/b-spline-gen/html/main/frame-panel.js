@@ -28,6 +28,7 @@ import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { syncDrawerForMode } from '../editor/editor-drawer.js';
 import { inputProfileFor } from '../editor/editor-input.js';
 import { FRAME_HANDLE_RADIUS } from '../editor/editor-frame-profile.js';
+import { insetWindowGeometry } from '../core/inset-window.js';
 
 /** F9: how close (screen px) a press must land to grab a frame shape handle -- the FLOOR (a mouse). Audit
  *  (batch 1): the reach is now the pointer's own, the same `handlePx * 1.8` Shape Lattice's identical handles
@@ -190,6 +191,7 @@ export function syncFramePanel() {
     if (document.activeElement !== $('framePanelLip')) $('framePanelLip').value = rec.panelLip;
   }
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
+  if ($('frameInsetWindowToggle')) $('frameInsetWindowToggle').checked = !!rec.insetWindow?.enabled; // T82 item 2
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${frameLabel(tpl)}` : '— none';
 
@@ -360,6 +362,77 @@ function _wireHandleDrag() {
   surface.addEventListener('pointercancel', end, true);
 }
 
+/**
+ * T82 item 2 (INSET-WINDOW-DESIGN.md §6): drag the inset window's own body (move) or a corner (resize), in the
+ * Frame tab, on the SAME shield surface `_wireHandleDrag` uses. A separate listener (not a branch inside
+ * `_wireHandleDrag`'s own closure) so a shape-handle drag's own tightly-tuned pinch-abort/capture logic is
+ * never touched; `ed._frameHandleDrag` (public on the editor) is the one shared flag that keeps the two from
+ * both grabbing the same press. Deliberately NOT clamped (design note §3): a drag can push the window past the
+ * frame's own opening or the board edge, same as typing an out-of-range value would do if there were a field.
+ */
+function _wireWindowDrag() {
+  const shield = $('editorFrameShield');
+  if (!shield || !shield.parentElement) return;
+  const surface = shield.parentElement;
+  const editor = () => (typeof window !== 'undefined' ? window.svgEditor : null);
+  const CORNER_PX = 20;
+  let mode = null; // null | 'body' | 'x1y1' | 'x2y1' | 'x1y2' | 'x2y2'
+  let dragPointerId = null, dragStartPt = null, dragStartRect = null, dragStartRecord = null;
+  const corners = (r) => ({ x1y1: { x: r.x1, y: r.y1 }, x2y1: { x: r.x2, y: r.y1 }, x1y2: { x: r.x1, y: r.y2 }, x2y2: { x: r.x2, y: r.y2 } });
+  const hit = (ed, clientX, clientY) => {
+    const rec = getFrameRecord();
+    if (!rec.insetWindow?.enabled) return null;
+    const pt = ed._getMousePoint({ clientX, clientY });
+    const edge = ed._getMousePoint({ clientX: clientX + CORNER_PX, clientY });
+    const tol = Math.abs(edge.x - pt.x) || 0.1;
+    const r = rec.insetWindow;
+    for (const [k, c] of Object.entries(corners(r))) if (Math.hypot(c.x - pt.x, c.y - pt.y) <= tol) return { mode: k, r };
+    if (pt.x > r.x1 && pt.x < r.x2 && pt.y > r.y1 && pt.y < r.y2) return { mode: 'body', r };
+    return null;
+  };
+  surface.addEventListener('pointerdown', (e) => {
+    if (_editorTab !== 'frame') return;
+    const ed = editor();
+    if (!ed || ed._frameHandleDrag) return; // a shape-handle drag already owns this press
+    const h = hit(ed, e.clientX, e.clientY);
+    if (!h) return;
+    mode = h.mode;
+    dragPointerId = e.pointerId;
+    dragStartPt = ed._getMousePoint(e);
+    dragStartRect = { ...h.r };
+    dragStartRecord = JSON.parse(JSON.stringify(getFrameRecord()));
+    if (surface.setPointerCapture && e.pointerId != null) { try { surface.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  surface.addEventListener('pointermove', (e) => {
+    if (!mode || e.pointerId !== dragPointerId) return;
+    const ed = editor();
+    const pt = ed._getMousePoint(e);
+    const dx = pt.x - dragStartPt.x, dy = pt.y - dragStartPt.y;
+    const r = { ...dragStartRect };
+    if (mode === 'body') { r.x1 += dx; r.x2 += dx; r.y1 += dy; r.y2 += dy; }
+    else { if (mode.startsWith('x1')) r.x1 += dx; else r.x2 += dx;
+           if (mode.includes('y1')) r.y1 += dy; else r.y2 += dy; }
+    setFrameRecord({ insetWindow: { ...r, enabled: true } });
+    if (ed._frameProfile) drawFrameProfile(ed);
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  const end = (e) => {
+    if (!mode || e.pointerId !== dragPointerId) return;
+    if (dragStartRecord && JSON.stringify(dragStartRecord) !== JSON.stringify(getFrameRecord())) {
+      _frameHistory.push(_clone(dragStartRecord));
+      _syncUndo();
+    }
+    mode = null; dragPointerId = null;
+    e.stopPropagation();
+    syncFramePanel();
+  };
+  surface.addEventListener('pointerup', end, true);
+  surface.addEventListener('pointercancel', end, true);
+}
+
 export function initFramePanel() {
   setFrameProfileProvider(() => ({ defs: FRAME_DEFS, record: getFrameRecord() }));
   // H20 item 3: Clear, when the Frame tab is active, resets the frame to
@@ -406,8 +479,20 @@ export function initFramePanel() {
   woodSel.addEventListener('change', () => editFrame({ appearance: woodSel.value }));
   $('frameBottomZ')?.addEventListener('change', (e) => editFrame({ frameBottomZ: parseFloat(e.target.value) }));
   $('framePanelLip')?.addEventListener('change', (e) => editFrame({ panelLip: parseFloat(e.target.value) }));
+  // T82 item 2: off by default; the FIRST time it is turned on with no rect yet (x1===x2, a never-placed
+  // window), seed a reasonable starting rect (roughly centred, roughly a third of the current board) so there
+  // is something to see and drag immediately -- an implementation choice, not a design constraint (design
+  // note §6). Turning it off keeps the record's own rect (so re-enabling restores the last placement).
+  $('frameInsetWindowToggle')?.addEventListener('change', (e) => {
+    const cur = getFrameRecord().insetWindow;
+    const enabled = e.target.checked;
+    const needsSeed = enabled && cur.x1 === cur.x2 && cur.y1 === cur.y2;
+    const seed = needsSeed ? { x1: P.widthIn / 3, y1: P.heightIn / 3, x2: 2 * P.widthIn / 3, y2: 2 * P.heightIn / 3 } : cur;
+    editFrame({ insetWindow: { ...seed, enabled } });
+  });
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
   _wireHandleDrag();
+  _wireWindowDrag();
   // The fit warning (and the editor's profile) depend on the board size.
   for (const id of ['widthIn', 'heightIn']) $(id)?.addEventListener('change', () => syncFramePanel());
   syncFramePanel();
