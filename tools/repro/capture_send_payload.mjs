@@ -7,6 +7,8 @@
 //   shape-lattice-frame (F21): T1 chosen in the Frame tab + its [Generate] (a SEEDED frame; unseeded, Fusion builds
 //          the template's literal shape, up to ~0.02 in off the app's fitted model, F8), Shape Lattice Generate, then its contour "Offset from frame"
 //          ON (distance 0.25); ALSO writes the [Send frame] payload to <out>.frame.json (replay: _handle_send_frame).
+//   --template=<id> (F30 item 3): the Frame tab's own template id for the shape-lattice-frame scenario (default
+//          template_1) -- was a hardcoded literal every earlier per-template live check hand-edited in place.
 //   --drag (F17, Send as drawn): after Generate, HAND-DRAG the middle rail down and one tie sideways with real mouse
 //          events through the lattice tool's own handlers, then write the pieces as drawn to <out>.drawn.json
 //          ({W, H, rails:[{x1,y1,x2,y2}], ties:[...], moved:{rail, tie}}), in canvas order = manifest id order.
@@ -17,9 +19,11 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut' && !a.startsWith('--lip='));
+const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut' && !a.startsWith('--lip=') && !a.startsWith('--template='));
 // F22: --lip=<in> sets the Frame section's "Panel lip" (the real field) before the frame payload is taken
 const LIP = (process.argv.find((a) => a.startsWith('--lip=')) || '').slice(6);
+// F30 item 3: --template=<id> picks the shape-lattice-frame scenario's own Frame tab template (default template_1).
+const TEMPLATE = (process.argv.find((a) => a.startsWith('--template=')) || '').slice(11) || 'template_1';
 const DRAG = process.argv.includes('--drag');
 const CUT = process.argv.includes('--cut');
 const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = ARGS;
@@ -64,7 +68,10 @@ const steps = {
      document.getElementById('shapeLatticeGenerate').click(); await W(3000);`,
   'box-lattice': `document.getElementById('toolLattice').click(); await W(900);
      document.getElementById('latticeGenerate').click(); await W(2500);`,
-  'shape-lattice-frame': `const t = document.getElementById('editorFrameTemplate'); t.value = 'template_1'; t.dispatchEvent(new Event('change')); await W(1500);
+  // F30 item 3: editFrame() (not the <select>'s own .value=) so a FRAME_HIDDEN template (no <option> in the
+  // DOM until synced) still selects correctly -- editFrame -> setFrameRecord + syncFramePanel, the same path
+  // the hidden-template test itself relies on to inject the current-but-hidden id as a temporary option.
+  'shape-lattice-frame': `(await import('./main/frame-panel.js')).editFrame({ templateId: '${TEMPLATE}', params: {} }); await W(1500);
      document.getElementById('editorFrameGenerate').click(); await W(1500); // SEEDED: Fusion follows the app's seeds exactly (F11)
      document.getElementById('toolShapeLattice').click(); await W(900);
      document.getElementById('shapeLatticeGenerate').click(); await W(3000);
