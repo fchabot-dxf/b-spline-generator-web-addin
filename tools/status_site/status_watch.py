@@ -276,8 +276,9 @@ function paint(ctx,scale){{ ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strok
   for(const s of strokes){{ ctx.lineWidth=s.w*scale; ctx.beginPath(); s.p.forEach((q,i)=>i?ctx.lineTo(q[0]*scale,q[1]*scale):ctx.moveTo(q[0]*scale,q[1]*scale)); if(s.p.length===1) ctx.lineTo(s.p[0][0]*scale+0.1,s.p[0][1]*scale); ctx.stroke(); }} }}
 function inkDraw(){{ ictx.clearRect(0,0,ink.width,ink.height); paint(ictx, ink.width/(im.naturalWidth||1)); }}
 function inkReset(){{ strokes=[]; cur=null; if(drawOn) inkDraw(); }}
-function setDraw(on){{ drawOn=on; mk.classList.toggle('on',on); ink.style.display=on?'block':'none'; if(on){{ zr(); requestAnimationFrame(inkFit); }} }}
-ink.addEventListener('pointerdown',ev=>{{ ev.preventDefault(); ev.stopPropagation(); ink.setPointerCapture(ev.pointerId);
+function setDraw(on){{ drawOn=on; mk.classList.toggle('on',on); ink.style.display=on?'block':'none'; if(on){{ zr(); inkFit(); requestAnimationFrame(inkFit); }} }}
+im.addEventListener('load',()=>{{ if(drawOn) inkFit(); }});
+ink.addEventListener('pointerdown',ev=>{{ ev.preventDefault(); ev.stopPropagation(); try{{ ink.setPointerCapture(ev.pointerId); }}catch(e){{}}
   const r=ink.getBoundingClientRect(); cur={{w:5*im.naturalWidth/r.width, p:[nat(ev)]}}; strokes.push(cur); inkDraw(); }});
 ink.addEventListener('pointermove',ev=>{{ if(!cur) return; ev.preventDefault(); cur.p.push(nat(ev)); inkDraw(); }});
 ['pointerup','pointercancel'].forEach(t=>ink.addEventListener(t,()=>{{ cur=null; }}));
