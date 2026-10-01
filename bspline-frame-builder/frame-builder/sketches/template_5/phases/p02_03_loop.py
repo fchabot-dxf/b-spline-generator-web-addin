@@ -1,3 +1,19 @@
+# H23 item 6: the dip/shoulder seed radius used to be `heightIn * 0.272158` -- a single
+# heightIn-only constant calibrated at the 7x9 solve, where it happens to equal the radius a
+# circle through the dip's own seed points (half-chord `widthIn * 0.167143`, sagitta
+# `heightIn * 0.033056`, both already in the Points above) actually has. At other aspect
+# ratios the two diverge: at 12x6 the old seed (1.633in) is smaller than the half-chord it
+# must span (2.006in) -- geometrically impossible, which is what drove the solver to the wrong
+# side. Declared once here (sagitta/half-chord -> radius, the standard circular-segment
+# formula) and reused for all three top arcs, since the design's own "one radius" relation
+# (docstring above) must still hold once it is corrected.
+_TOP_HALF_CHORD = 'widthIn * 0.167143'
+_TOP_SAGITTA = 'heightIn * 0.033056'
+TOP_SEED_RADIUS_EXPR = (
+    f'({_TOP_HALF_CHORD}) * ({_TOP_HALF_CHORD}) / (2 * ({_TOP_SAGITTA})) + ({_TOP_SAGITTA}) / 2'
+)
+
+
 def get_block(ui_data=None):
     """
     Silhouette Loop: 16-segment clockwise frame outline (Template 5 -
@@ -108,15 +124,16 @@ def get_block(ui_data=None):
         # 5. T5: the dipped top's three arcs, left to right ([start, on-arc midpoint, end], Fusion's Arc3Point takes
         # three points ON the arc; Fusion orders every arc counter-clockwise itself: arc_top_shoulder_L:S is its
         # DIP end, arc_top_dip:S its left end, arc_top_shoulder_R:S its STUB end, see p02_04 / p02_05). One seed
-        # radius each (heightIn * 0.272158 = 2.449 in at 9 in, the shared radius of the 7x9 solve), deleted in
-        # p02_09 like Template 1's. The dip's midpoint sits 0.001 off the Y axis (Template 1's anti-auto-
-        # coincidence nudge): its centre is put ON the axis explicitly (p02_06).
+        # radius each (H23 item 6: TOP_SEED_RADIUS_EXPR above -- 2.449in at 7x9, matching the old heightIn-only
+        # constant there, but correctly width-aware at other aspect ratios), deleted in p02_09 like Template 1's.
+        # The dip's midpoint sits 0.001 off the Y axis (Template 1's anti-auto-coincidence nudge): its centre is
+        # put ON the axis explicitly (p02_06).
         {'ID': 'arc_top_shoulder_L', 'Type': 'Arc3Point', 'Points': [['-widthIn * 0.334286', 'heightIn * 0.472222'], ['-widthIn * 0.248055', 'heightIn * 0.463829'], ['-widthIn * 0.167143', 'heightIn * 0.439167']], 'StartID': 'arc_top_shoulder_L:S', 'EndID': 'arc_top_shoulder_L:E'},
-        {'Type': 'Radius', 'Target': 'arc_top_shoulder_L', 'Expression': 'heightIn * 0.272158', 'Name': 'seed_rad_top_shoulder_L'},
+        {'Type': 'Radius', 'Target': 'arc_top_shoulder_L', 'Expression': TOP_SEED_RADIUS_EXPR, 'Name': 'seed_rad_top_shoulder_L'},
         {'ID': 'arc_top_dip', 'Type': 'Arc3Point', 'Points': [['-widthIn * 0.167143', 'heightIn * 0.439167'], ['0.001', 'heightIn * 0.406111'], ['widthIn * 0.167143', 'heightIn * 0.439167']], 'StartID': 'arc_top_dip:S', 'EndID': 'arc_top_dip:E'},
-        {'Type': 'Radius', 'Target': 'arc_top_dip', 'Expression': 'heightIn * 0.272158', 'Name': 'seed_rad_top_dip'},
+        {'Type': 'Radius', 'Target': 'arc_top_dip', 'Expression': TOP_SEED_RADIUS_EXPR, 'Name': 'seed_rad_top_dip'},
         {'ID': 'arc_top_shoulder_R', 'Type': 'Arc3Point', 'Points': [['widthIn * 0.167143', 'heightIn * 0.439167'], ['widthIn * 0.248055', 'heightIn * 0.463829'], ['widthIn * 0.334286', 'heightIn * 0.472222']], 'StartID': 'arc_top_shoulder_R:S', 'EndID': 'arc_top_shoulder_R:E'},
-        {'Type': 'Radius', 'Target': 'arc_top_shoulder_R', 'Expression': 'heightIn * 0.272158', 'Name': 'seed_rad_top_shoulder_R'},
+        {'Type': 'Radius', 'Target': 'arc_top_shoulder_R', 'Expression': TOP_SEED_RADIUS_EXPR, 'Name': 'seed_rad_top_shoulder_R'},
     ]
 
     return {

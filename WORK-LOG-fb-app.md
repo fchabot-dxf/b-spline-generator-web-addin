@@ -4394,3 +4394,52 @@ tests fail for the right reason, confirmed, restored. Noted but didn't treat as 
 live-preview attempt is now fully silent (the toast's own preview gate is pre-existing/untouched) — previously
 it would still have popped a blocking dialog on every failed auto-preview, arguably worse. `pytest`:
 b-spline-gen 91 passed (+2), frame-builder 302 unchanged, repo root 487 passed (+2), 10 skipped throughout.
+
+## 2026-09-30/10-01: H23 items 10, 6, 11 — in progress, blocked on the bridge (worker)
+
+Redeployed the add-in from a clean scratch worktree at origin/main (53e3463), repointed the deploy's handshake
+files (workspace_link.json x2, project_path.json x2, build-info.json) from the temp worktree back to the real
+repo path before removing the worktree.
+
+**Item 10 (CAM busy/confirm crash):** reproduced the exact crash a second time (same scratch-doc sequence as
+item 5: BUILD, `apply_templates_to_existing_setups` to make 3 setups busy, then BUILD again) — Fusion exited
+again, no Python exception, nothing in its own text log at the crash moment beyond background cloud-sync
+noise. Crash report: `C:\Users\danse\AppData\Local\Autodesk\CER\fe927dc2b1a16b2b90695bae6fab4c879f713287\
+1790816039787\` (log `AppLogFile20260930T204902.log`, `minidump.dmp.zip`, crash at 2026-09-30 20:54:01 local).
+Closed the crash-report dialog per the authorized recovery procedure. Flag before calling this a confirmed
+product bug: my repro only runs the FAST half of APPLY TOOLPATHS (`apply_templates_to_existing_setups`,
+objects added, no toolpath geometry computed) — a real user's APPLY TOOLPATHS always pairs that with the
+deferred `_kick_off_toolpath_generation` in the same call, so I haven't yet confirmed the crash also happens
+against FULLY generated toolpaths (the faithful real-user path) — only that it happens on this specific
+half-applied intermediate state. Planned once Fusion is back: redo with the real `_do_apply_toolpaths()` and
+wait for actual toolpath generation to complete before the second BUILD, to settle which case is the real bug.
+
+**Item 6 (Template 5 seed rework):** root cause found and fixed in `sketches/template_5/phases/p02_03_loop.py`
+— `seed_rad_top_dip`/`seed_rad_top_shoulder_L`/`seed_rad_top_shoulder_R` were `heightIn * 0.272158`, a
+heightIn-only constant calibrated at 7x9 where it happens to match the circle through the dip's own 3 seed
+points; at 12x6 that seed (1.633in) is smaller than the half-chord it must span (2.006in) — geometrically
+impossible, which is what pushed the solver to the wrong side. Replaced with `TOP_SEED_RADIUS_EXPR`, a
+declared chord/sagitta formula (half-chord `widthIn * 0.167143`, sagitta `heightIn * 0.033056`, both already
+present in the existing seed points) reused for all three arcs, preserving the design's own "one radius for
+all three" relation. Hand-verified sane, non-degenerate radii at all 3 required sizes (2.449in at 7x9 —
+matches the old constant exactly — 10.24in at 12x6, 6.54in at 5.51x1.97). `pytest` (frame-builder): 322
+passed, 10 skipped; the 2 `frame_defs` freshness tests now correctly fail (expected — the checked-in
+frame-defs won't match until gen_frame_defs.py reruns against new goldens, the next step). NOT yet built live,
+no goldens recorded, frame-defs NOT regenerated, parity NOT rechecked — this item is not done.
+
+**Item 11 (Template 8 live check) prep:** extended `tools/repro/f20_seed_case.mjs` for Template 8's 5 own
+seeds (`waveHeight`, `waveReach`, `topDipWidth`, `topDipPosition`, `topDipDepth` — the latter two share a name
+with Template 5's own but at different argument positions, since each template only reads its own declared
+keys). `f20_live_parity.py` needed no change — it already reads `case['templateId']`/`seedMap` generically.
+Sanity-checked both templates still produce correct seed objects. The actual live build/goldens/f20/sweep
+steps haven't started.
+
+**Blocked:** after the redeploy, Fusion stopped responding entirely during item 10's repro (process gone, not
+the known Session-Suspended dialog) — relaunched via FusionLauncher.exe per the authorized recovery procedure,
+but it hung on "Preparing your experience" for 17 minutes with no progress (not a crash, not a dialog, just
+stuck) — killed and relaunched a SECOND time, which loaded normally this time (Home screen in 17s, then
+Fred's own Untitled doc opened) but the FusionMCPBridge add-in itself has not come up after 20+ more minutes
+of waiting, even though Fusion is otherwise healthy and responsive. I have no channel to start the bridge
+without the bridge itself (fusion_execute needs it), and starting an add-in via Tools > Add-Ins > Run is a UI
+click I wasn't authorized for (the crash-recovery grant covers closing a crash window and relaunching the
+exe, not add-in management) — flagging rather than assuming. Passed back rather than continuing to guess.
