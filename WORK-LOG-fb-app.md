@@ -5231,3 +5231,66 @@ Fusion session back. Leaving this writeup so the next pickup doesn't re-derive i
 
 No files changed this entry; nothing to commit. Passing back to the advisor for direction on resuming
 (continue same task next wake once Fusion is free again, vs. something else meanwhile).
+
+## 2026-10-01: H23 item 19, continued (non-Fusion prep, per advisor's green light) — STOP, new blocking finding
+
+**All code reverted to HEAD after this.** Spent this pass working through the extractor fix planned in the
+previous entry, confirmed it's correct, then discovered a DEEPER, architectural mismatch underneath it that
+item 19 can't responsibly paper over alone. Writing it up in full instead of committing a half-fix.
+
+**Part 1 (worked correctly, numbers below so it's a quick redo): the extractor fix.** Wrote and verified
+`_hourglass_arched_top`'s real topology (hip tangent to `hw`, shoulder tangent to the horn at
+`top_x + shoulder.radius` — the opposite sign from `_hourglass_narrow_top`/T3's own, confirmed to 5 decimals
+at both 7x9 and 6x9) in `frame_shape_fit.py`, ported `b31f5ed`'s `provisional_reconstructed_arched_hourglass_
+model` + `frame_definition.py` dispatch + the FRAME_HANDLES rename in `template_10/template_data.py`, and
+cleanly applied `b31f5ed`'s own JS changes (`editor-shape-lattice-generator.js`/`-interaction.js`, the
+`archCornerAngle`/`archRiseFromCornerAngle` math — parent commit = current main for both files, applied with
+zero conflicts) plus its 4 purely-mechanical sibling-template renames (`frame-defs.test.js`, `frame-template-
+5/6/9.test.js`, all still pass). Regenerated `frame-defs.json`/`.js`: `fit_shape_model` now returns a REAL fit
+(not the stale provisional), 12x6 correctly excludes itself (degenerate, the already-known T1-inherited
+issue), 7x9+6x9 fit exactly (2 points, 0 residual) — `tests/frame-template-10.test.js` is the only file left
+red at that point, purely from the `archRise`→`archCornerAngle` rename (13 failures, all mechanical).
+7x9 snapshot for the provisional fallback (computed from the real golden, not Fred's separate hand sketch):
+`depthOfHw=0.006237 cornerRTopOfHw=0.372003 cornerRBottomOfHw=2.380271 waistROfHw=0.468191
+waistCyOfHh=-0.015546 notchOfHw=0.188394 topInsetOfHw=0.648803 archCornerAngleDeg=103.553224`.
+
+**Part 2 (why I stopped instead of finishing the test rewrite): `hourglassConstruction`'s narrow-top mechanism
+cannot represent T10's real shape at all, not even unclamped.** Before rewriting the test file I checked what
+the app would actually SEND to Fusion for a real 7x9 T10 — and found `_hourglassRange`'s existing topInset
+ceiling (`topInset < waistReach`, `editor-shape-lattice-generator.js:397`) isn't an arbitrary UI nicety, it's
+a load-bearing precondition of `hourglassConstruction`'s own `side()` tangency formula (`d = depth - inset`,
+line 855): T10's real fitted `depth` (the waist pinch) is ~0.02in at 7x9 (the waist is barely pinched at all)
+while the real fitted `topInset` is ~2.11in (a very narrow top) — i.e. `topInset >> depth`, which the shared
+formula has never had to handle. Feeding `hourglassConstruction` the TRUE unclamped values directly (bypassing
+the UI range clamp) confirms it, numerically: `d` goes negative, `dy` collapses to 0 (clamped inside `sqrt(max
+(0,...))`), and `ux` comes out as `1.765` — not a valid cosine, so the reconstructed shoulder is simply wrong,
+not just clamped-conservative. Reconstructed `shoulderCx = -0.0676` vs the REAL measured `2.3504` — the shared
+construction's own top-corner sign convention (`cx = topX - r`, T3's own, shoulder curving INWARD toward
+centre) is the OPPOSITE of what T10 actually measures (`cx = topX + r`, shoulder curving OUTWARD toward the
+board edge — confirmed independently in Part 1's extractor work). The HIP side (no inset, `d = depth` plain)
+reconstructs exactly right (`hipCx = -4.48588`, bit for bit) — this is isolated entirely to the top-corner
+inset mechanism, the one piece of math T3 and T10 were assumed to share.
+
+**What this means, concretely: if T10 were un-hidden right now with only Part 1's fix, the app's preview and
+whatever it sends to Fusion on [Send] would NOT be the shape item 17 actually verified live** — it would clamp
+to a near-flat, nearly-full-width top (today's committed `template_data.py` already shows this: the OLD
+provisional model's `archRiseOfHw: 0.35` was never exercising this clamp because it never set a real
+`topInset` at all). This is a real app/Fusion divergence, not a cosmetic test mismatch, and not something a
+quick formula patch should paper over without checking it doesn't also regress T3/T4/T5 (all three ALSO use
+`hourglassConstruction`'s inset mechanism, just never past this edge case because their own fitted `topInset`
+has always stayed comfortably under their own `depth`).
+
+**Recommendation, not acted on:** this reads as the SAME root cause item 18 ("declare seed derivation") is
+already scoped to investigate — T10's shoulder/hip/waist chain is still whatever literal fractions the
+original template_10 author (`bcf1245`) set, never re-derived for T10's own (very different from T1's)
+proportions, and apparently never checked against the app-side construction it's supposed to round-trip
+through either. Two ways to close it, both real design work, neither mine to pick alone: (a) give
+`hourglassConstruction` a second, T10-specific top-corner formula (the outward-bulging convention, decoupled
+from `depth`) alongside T3's existing one, or (b) treat this as evidence the CURRENT Fusion-side seed chain at
+7x9 is itself the thing that's off (an almost-zero waist pinch wasn't obviously the intent) and re-derive it
+properly as part of item 18, which would change what item 17's own "FIXED" live geometry even measures.
+
+**Reverted all code changes this pass** (`git checkout --` on all 11 touched files) — working tree is back to
+HEAD (`ebe5e42`), all tests green, nothing uncommitted. Nothing lost: Part 1's exact fix (topology + sign +
+snapshot numbers) is captured above for a fast redo once the Part 2 question has an answer. No live Fusion
+calls made.
