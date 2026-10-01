@@ -5597,3 +5597,72 @@ final assertion strict) -- confirmed it fails (seed 8 at 7x9) without the real f
 vitest 2934/2934, kept the earlier (still-true, now correctly-scoped-down) archRise test alongside the new one.
 
 Both fixes are now committed together. Proceeding to the live Fusion re-check (bridge confirmed up).
+
+## 2026-10-01: H23 item 21, Fix 3 + live re-check — 7x9 verified, 6x9 blocked on an unrelated issue
+
+Fix 2's retry check still validated the WRONG geometry for the horn piece: it built its length check from
+the draw's own `archRise` seed, but (per the CORRECTION above) `archRise` is never really seeded to Fusion --
+so the validation profile and the real build diverge exactly where it matters. Numerically proven: worst-case
+REAL horn length (computed against a FIXED arch endpoint, not the draw's own archRise) over 1000 draws could
+still be ~0.0001in despite Fix 2 reporting "valid".
+
+**Fix 3**: when `isValid`'s outer-profile check builds the length-check geometry, pin `archRise` to
+`paramsFromShapeModel`'s own fitted default (what Fusion actually builds) instead of the draw's seed.
+Re-ran the same 1000-draw x 2-size sweep: worst real horn length is now 0.7515in (7x9) / 0.7567in (6x9),
+both >= `frame_thickness` (0.75in), 0 still-bad. `tests/frame-template-10.test.js` rewritten again: first
+test now documents Fix 1 as a partial, app-preview-only improvement; second test reproduces `generateFrame`'s
+exact Fix 2+3 logic, sweeps 500 seeds x 2 sizes, and cross-checks against the TRUE (archRise-independent)
+horn length via a fixed arch-end point. Mutation-tested (weakened only the retry gate's own `isValid`
+reference via a separate `weakIsValid`, kept the final assertion's `isValid` strict) -- confirmed failure at
+7x9 seed 8, restored clean.
+
+**Side effect, welcome and previously undetected**: Template 1 can also hit this same general "no wing"
+check and retry, not just T10 (the check is template-agnostic by construction). `tests/frame-gen.test.js`'s
+own Generate test assumed T1 never retries at a fixed seed -- fixed it to reproduce `generateFrame`'s real
+isValid logic via `generateValidFrameSeeds` rather than comparing against the bare first-draw seeds.
+
+**Full suite + A/B after Fix 3**: `npx vitest run` 2934/2934 (155 files). `pytest -q`: frame-builder 408
+passed/22 skipped, b-spline-gen 91 passed, repo root 97 passed. `gen_frame_defs.py --check`: fresh.
+A/B against a scratch HEAD worktree (`../bsg-ab-head`, eab2406, removed after): `ab3d.mjs` (binary mesh-buffer
+hash, immune to text line-ending differences) byte-identical. `ab6.mjs`/`ablat6.mjs` hashes differed, but
+traced this to a PRE-EXISTING CRLF-vs-LF inconsistency across dozens of unrelated files in the main working
+tree (confirmed directly: e.g. `core/coords.js` is CRLF in the main tree, LF in the fresh worktree, and
+`diff` after stripping `\r` shows them byte-identical) -- an environment artifact of this tree's own history,
+not something Fix 3 introduced (`frame-handles.js`, which Fix 1 touched, has no CRLF in either tree and
+compared clean). Did not chase further; `ab3d.mjs` plus the two full suites already give a clean signal.
+
+**Live re-check at 7x9**: real captured b-spline send payload (headless-Chrome CDP capture,
+`capture_send_payload.mjs`'s `shape-lattice-frame` scenario, temporarily pointed at `template_10` in a
+scratch copy, `FRAME_HIDDEN` locally flipped `False` to make T10 selectable), replayed through the real
+production handlers (`_handle_generate` then `_handle_send_frame`) in a fresh scratch Fusion document.
+Result: all 4 bars (`frame_bottom`, `frame_left`, `frame_right`, `frame_top`), healthy timeline (one
+pre-existing unrelated `Group1` warning, not from this frame), screenshot confirmed
+(`t10_v2_live_7x9.png`). **7x9 is solidly verified end-to-end.**
+
+**6x9 live verification: NOT completed, blocked on an apparently unrelated issue.** Two attempts via the
+real handlers with a freshly captured 6x9 payload returned empty `frame_occurrences: []`; the add-in's own
+debug log showed `SEND FRAME refused: The B-spline body has no downward face (core.underside) to extrude
+the bars to` -- the captured 6x9 Shape Lattice panel (a sparser pattern at this board size, "34 pieces" vs
+7x9's "46") apparently lacks a face `fb_engine/send_frame.py`'s `underside_face()` can identify as a clean
+single downward face. This looks orthogonal to item 21's own `addOffset2`/frame-enclosure fix -- it would
+block ANY frame template's bar extrusion against this specific panel body, not just T10's. A third attempt,
+hand-rolling a direct `fb_engine.send_frame.send_frame()` call against a plain flat-box core (bypassing
+b-spline body search entirely, to sidestep the panel-specific issue) ALSO hit the same refusal message --
+surprising, since a flat box's own bottom face should be geometrically trivial to identify. Did not resolve
+this before the Fusion bridge itself dropped (`fusion360 MCP` connection failure, cached retry) mid-session,
+closing off further live attempts for now. Have NOT yet read `underside_face()`'s own implementation closely
+enough to explain the flat-box failure -- that's the next concrete step if this is picked back up.
+
+Per this task's own stop condition ("if it doesn't yield to a bounded attempt, write up what you tried...
+and stop rather than grinding"): stopping here rather than continuing to grind on the flat-box mystery.
+Reverted `FRAME_HIDDEN` back to `True` and regenerated `frame-defs.json`/`.js` to match (both confirmed
+byte-identical to HEAD after regen) -- T10 stays hidden; did not commit the un-hide. Committed Fix 3 (the
+archRise-pinning correction to `frame-panel.js`) and the two matching test rewrites.
+
+**Gate for the advisor**: the core fix (Fix 1+2+3) has strong, convergent evidence of correctness at BOTH
+target sizes -- numerically proven (0/1000 still-bad, both sizes) AND live-verified in real Fusion at 7x9.
+6x9's live confirmation is blocked by a distinct, not-yet-understood issue in the send-frame path's own
+underside-face detection, not by anything item 21 touched. Options: (A) treat 7x9 live + the numeric proof
+covering 6x9 as sufficient, un-hide T10 now, and track the underside-face issue separately; (B) hold the
+un-hide until 6x9 is live-verified too, and someone picks up the `underside_face()`/flat-box investigation
+first. Leaving `FRAME_HIDDEN = True` and this decision to the advisor rather than picking one unilaterally.
