@@ -6854,3 +6854,37 @@ Full suite green: pytest 491 passed/25 skipped (frame-builder), 97 (b-spline-gen
 (repo root); vitest 3042 passed (160 files, unaffected -- this item is Python-only). Commit
 `22673ed`. Passing to the advisor; H23 item 29 (prune for speed, after 28 merges) is next per
 NEXT-SESSION.md, but that's the advisor's own call to dispatch.
+
+## 2026-10-02: H23 item 20 -- golden freshness check (new tool, no Fusion)
+
+`tools/check_golden_freshness.py` closes the gap item 19 found by hand: `gen_frame_defs.py
+--check` validates generated defs against committed goldens, but nothing anywhere checked the
+goldens themselves against the phases/*.py they're supposed to describe. For every template with
+both a phases/ folder and committed golden fixtures (tests/fixtures/frame-parity/template_N_*),
+compares the committer date of the latest commit touching phases/*.py against the latest commit
+touching that template's goldens -- phases newer = STALE (also true for uncommitted phase edits,
+which git has no ordering for at all). Mirrors gen_frame_defs.py's own CLI shape exactly: plain
+run prints a per-template report, `--check` exits 1 if anything's stale.
+
+Scoped to templates that actually use this fixture format -- T7 (and T11, not yet on main) are
+verified a different way (the all-template shape-outline test + a live build, H23 item 27) and
+correctly fall outside this check rather than being force-fit into it.
+
+**Proved it would have worked**: pulled the real git log for template_10's own phases/goldens
+history (H23 items 13/14/15/17/19) and fed the actual committer-date timestamps straight into the
+pure comparison function -- c008a43 (item 17's phases fix) vs c351d6e (item 13's stale goldens) =
+STALE, same pair vs d7ec983 (item 19's re-record) = FRESH. That's the exact incident the dispatch
+named ("should have caught item 19's own 2-pass detour immediately"), reproduced directly rather
+than asserted.
+
+Tests (test_golden_freshness.py, same importlib idiom test_frame_defs.py's own `_gen()` already
+uses for a tools/*.py script with no package home): the pure comparison logic, the template_10
+incident reproduction, discover_templates()'s own correctness (both mutation-tested -- confirmed
+red against a broken comparison / a broken golden glob, then restored), an uncommitted-paths edge
+case, and a live gate (`main(["--check"]) == 0`) asserting every currently-committed golden is in
+fact fresh right now -- same spirit as test_frame_defs.py's own freshness test. Currently all 11
+in-scope templates (1-6, 8-10, 12, 13) report FRESH.
+
+Full suite green: pytest 498 passed/25 skipped (frame-builder, +7 new), 97 (b-spline-gen), 692/25
+skipped (repo root, +7); vitest 3042 passed (160 files, untouched -- Python-only item). Commit
+`e09fc49`. No Fusion needed or used. Passing back to the advisor.
