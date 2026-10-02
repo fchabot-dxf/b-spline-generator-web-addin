@@ -49,6 +49,7 @@
 import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
   TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, iShapeConstruction, taperAngleForTopCornerX,
+  diamondTopHourglassConstruction,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -167,6 +168,33 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         key: 'flangeHeight', label: 'Flange height', axis: 'y', handleKind: 'position',
         anchor: { x: cx0 + (g.halfWidth + hw) / 2, y: cy0 + g.topShoulderY },
         valueFromWorld: (pt) => within('flangeHeight', (pt.y - top) / hh),
+      },
+    ]));
+  }
+
+  if (preset === 'diamondTopHourglass') {
+    // T7 DIAMOND-TOP HOURGLASS (a frame-only preset): three POSITION squares, right side only (the generator
+    // mirrors for free, this module's own header comment). FIRST CUT anchor placement, not yet visually verified
+    // (see LIVE_CHECK.md): gableNeckWidth sits AT the neck point itself (a horizontal drag moves it, mirrored,
+    // in/out); neckHeight sits halfway between the eave and the neck (off the gableNeckWidth square so the two
+    // don't sit on top of each other) and drags vertically; bodyFlareHeight sits AT the body point (always
+    // x = hw, so a vertical drag is its only real motion).
+    const g = diamondTopHourglassConstruction(region, resolvedParams);
+    return withRange(pick([
+      {
+        key: 'gableNeckWidth', label: 'Neck width', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.N.x, y: cy0 + g.N.y },
+        valueFromWorld: (pt) => within('gableNeckWidth', (pt.x - cx0) / hw),
+      },
+      {
+        key: 'neckHeight', label: 'Neck height', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0 + (g.E.x + g.N.x) / 2, y: cy0 + g.N.y },
+        valueFromWorld: (pt) => within('neckHeight', (pt.y - (cy0 + g.E.y)) / g.rest),
+      },
+      {
+        key: 'bodyFlareHeight', label: 'Body flare height', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0 + g.B.x, y: cy0 + g.B.y },
+        valueFromWorld: (pt) => within('bodyFlareHeight', (pt.y - (cy0 + g.E.y)) / g.rest),
       },
     ]));
   }
@@ -383,19 +411,13 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
       valueFromWorld: (pt) => within('topDipWidth', (pt.x - cx0) / hw),
     },
     {
-      // T10 ARCHED HOURGLASS (F29 item 2): a POSITION square where the right horn meets the arch (the chord end,
+      // T10 ARCHED HOURGLASS: the arch's rise, a POSITION square where the right horn meets it (the chord end,
       // `rise` below the top edge -- the apex itself never moves, it always touches the top edge, so a handle
-      // anchored there couldn't show a drag at all). A vertical drag still deepens or flattens the dome (eating
-      // into, or giving back, the horn's own length), but the STORED value is the corner angle the drag implies
-      // (archRiseFromCornerAngle's own exact inverse), not the rise itself -- Fred's own rule.
-      key: 'archCornerAngle', label: 'Arch corner angle', axis: 'y', handleKind: 'position',
+      // anchored there couldn't show a drag at all). A vertical drag deepens or flattens the dome, eating into
+      // (or giving back) the horn's own length; the chord's own half width is fixed (the horn's own x).
+      key: 'archRise', label: 'Arch rise', axis: 'y', handleKind: 'position',
       anchor: { x: cx0 + g.topX, y: cy0 - hh + (g.arch ? g.arch.rise : 0) },
-      valueFromWorld: (pt) => {
-        const rise = Math.max(0, pt.y - (cy0 - hh)), topX = g.topX;
-        const cosT = topX > 0 && rise > 0 ? (-2 * topX * rise) / (topX * topX + rise * rise) : 0;
-        const deg = (Math.acos(Math.max(-1, Math.min(1, cosT))) * 180) / Math.PI;
-        return within('archCornerAngle', deg);
-      },
+      valueFromWorld: (pt) => within('archRise', (pt.y - (cy0 - hh)) / hh),
     },
     keys.includes('taperAngle') && (() => {
       // F30 item 3 (Template 12/13, advisor-confirmed design): a POSITION square at the top corner -- where the
@@ -614,7 +636,7 @@ export const HANDLE_SEGMENT_INDEX = {
     waistCenterYLeft: 8, waistReachLeft: 8, topDipDepth: 13, topDipWidth: 14,
     // T10 ARCHED HOURGLASS: no splice (unlike T5's own dip), segment 11 is still the top piece, just an arc
     // instead of a line -- its own mirror is itself (mirrorSegmentIndex(11, 12) === 11, T1's own flat top too).
-    archCornerAngle: 11,
+    archRise: 11,
     // F30 item 3 (Template 12): the horn itself (0), same convention as topInset's own entry above -- the piece
     // whose own direction the drag actually changes (the top edge, 11, also narrows/widens but isn't re-shaped).
     taperAngle: 0 },
@@ -636,6 +658,11 @@ export const HANDLE_SEGMENT_INDEX = {
   // I_SHAPE_SEGMENT_PAIRS below: the plain L/R mirror, 9); the flange height maps to one shoulder (2), but moves
   // all 4 (I_SHAPE_SEGMENT_PAIRS: the 4-fold left/right AND top/bottom symmetry, not a plain mirror).
   iShape: { stemWidth: 3, flangeHeight: 2 },
+  // T7 DIAMOND-TOP HOURGLASS (9 pieces, editor-shape-lattice-generator.js's own `_solveDiamondTopHourglass` doc
+  // comment: 0 roof_R, 1 arc_neck_R, 2 arc_body_R, 3 side_R, 4 bottom_edge, 5 side_L, 6 arc_body_L, 7 arc_neck_L,
+  // 8 roof_L): gableNeckWidth/neckHeight both map to the neck arc (1, mirrors via the solver's own declared
+  // `mirror` table to 7); bodyFlareHeight maps to the body arc (2, mirrors to 6).
+  diamondTopHourglass: { gableNeckWidth: 1, neckHeight: 1, bodyFlareHeight: 2 },
 };
 
 /** T8 DIPPED TOP + LEFT-ONLY WAVE: `controlledSegments`' own declared pairing (the shape has no bilateral
@@ -649,6 +676,16 @@ const DIPPED_LEFT_WAVE_SEGMENT_PAIRS = { topDipWidth: [8, 10] };
  *  plain single-axis mirror `mirrorSegmentIndex` assumes): the stem sides are a plain L/R pair; the flange height
  *  moves all 4 shoulders together (p02_05_symmetry's own 4-fold tie). */
 const I_SHAPE_SEGMENT_PAIRS = { stemWidth: [3, 9], flangeHeight: [2, 4, 8, 10] };
+
+/** T7 DIAMOND-TOP HOURGLASS: `controlledSegments`' own declared pairing -- the generic `mirrorSegmentIndex(i,9)`
+ *  assumes a different starting point/direction than this outline's own clockwise-from-the-peak convention
+ *  (editor-shape-lattice-generator.js's own `_solveDiamondTopHourglass` doc comment: 0 roof_R .. 8 roof_L) and
+ *  gives the WRONG pairing (MEASURED: mirrorSegmentIndex(1,9) = 6, the body arc, not 7, the actual mirrored neck
+ *  arc) -- the solver's own declared `mirror` table (`8 - i`) is the real one, restated here since
+ *  `controlledSegments` only sees a bare segment index, not the solved silhouette's own `mirror` array.
+ *  gableNeckWidth/neckHeight both move the neck arc (1) and its mirror (7); bodyFlareHeight moves the body arc
+ *  (2) and its mirror (6). */
+const DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS = { gableNeckWidth: [1, 7], neckHeight: [1, 7], bodyFlareHeight: [2, 6] };
 
 // Arc point / segment and arc distance: editor-primitives.js (audit tidy-up -- the one copy of each).
 
@@ -717,6 +754,9 @@ export function controlledSegments(preset, key, n) {
   if (preset === 'dippedLeftWave') return DIPPED_LEFT_WAVE_SEGMENT_PAIRS[key] || [i];
   // T9 I SHAPE: a declared pairing too (4-fold symmetry, not the plain mirror formula below).
   if (preset === 'iShape') return I_SHAPE_SEGMENT_PAIRS[key] || [i];
+  // T7 DIAMOND-TOP HOURGLASS: a declared pairing too -- the generic mirror formula below gives the wrong index
+  // for this outline's own starting point (see DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS' own doc comment).
+  if (preset === 'diamondTopHourglass') return DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS[key] || [i];
   // T5 HOURGLASS DIPPED TOP: the 16-segment dipped outline mirrors by its own table (topDipMirrorIndex)
   const m = preset === 'hourglass' && n === TOP_DIP_SEGMENT_COUNT ? topDipMirrorIndex(i) : mirrorSegmentIndex(i, n);
   return m === i ? [i] : [i, m];

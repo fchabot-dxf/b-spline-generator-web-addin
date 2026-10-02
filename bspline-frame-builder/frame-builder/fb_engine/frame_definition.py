@@ -184,10 +184,11 @@ def template_shape_model(template_id, frame, goldens_dir):
     frame_shape_fit.provisional_dipped_left_wave_model.
     T9 I SHAPE: {"stemHalfWidthOfHw": w, "flangeHeightOfHh": h} (no `from`: like T6, nothing to derive it from)
     builds frame_shape_fit.provisional_i_shape_model.
-    T10 ARCHED HOURGLASS v2 (F29 item 2): {"from": <template id>, "cornerRTopOfHw": ...} (distinguished by that
-    key, since it also carries an "archCornerAngleDeg") builds frame_shape_fit.
-    provisional_reconstructed_arched_hourglass_model (every one of the base model's own features replaced, not
-    kept -- Fred's own hand-rebuilt sketch).
+    T10 ARCHED HOURGLASS: {"from": <template id>, "archRiseOfHw": r} builds frame_shape_fit.provisional_arched_
+    top_model (the base model's own sides/base unchanged, plus a top arc r x hw tall).
+    T7 DIAMOND-TOP HOURGLASS: {"neckWidthOfHw": w, "neckHeightOfHh": h, "bodyFlareOfHh": f} (no `from`: like T6,
+    a gable roof and an S-curve side, nothing to derive it from) builds
+    frame_shape_fit.provisional_diamond_top_hourglass_model.
     F30 item 3 (the taper copies, Template 12/13): {"from": <template id>, "taperAngleDeg": d} builds
     frame_shape_fit.provisional_taper_model (every one of the base model's own features KEPT, plus a new
     scale-invariant `taperAngle` -- unlike every other provisional model above, nothing about the base shape
@@ -209,6 +210,12 @@ def template_shape_model(template_id, frame, goldens_dir):
             # T9 I SHAPE: also a shape of its own: {"stemHalfWidthOfHw": w, "flangeHeightOfHh": h}
             from fb_engine.frame_shape_fit import provisional_i_shape_model
             return provisional_i_shape_model(prov["stemHalfWidthOfHw"], prov["flangeHeightOfHh"])
+        if "neckWidthOfHw" in prov:
+            # T7 DIAMOND-TOP HOURGLASS: also a shape of its own: {"neckWidthOfHw": w,
+            # "neckHeightOfHh": h, "bodyFlareOfHh": f}.
+            from fb_engine.frame_shape_fit import provisional_diamond_top_hourglass_model
+            return provisional_diamond_top_hourglass_model(prov["neckWidthOfHw"], prov["neckHeightOfHh"],
+                                                            prov["bodyFlareOfHh"])
         # T8 DIPPED TOP + LEFT-ONLY WAVE: also a shape of its own (see this function's own doc comment).
         from fb_engine.frame_shape_fit import provisional_dipped_left_wave_model
         return provisional_dipped_left_wave_model(prov["waveReachOfHw"], prov["waveHeightOfHh"],
@@ -222,12 +229,11 @@ def template_shape_model(template_id, frame, goldens_dir):
                 model = provisional_offset_waist_model(base, prov["waistOffsetOfHh"])
             elif "topDipDepthOfHh" in prov:
                 model = provisional_dipped_top_model(base, prov["topDipDepthOfHh"], prov["topDipHalfWidthOfHw"])
-            elif "cornerRTopOfHw" in prov:
-                # T10 ARCHED HOURGLASS v2 (F29 item 2): Fred's own hand-rebuilt sketch, every feature replaced.
-                from fb_engine.frame_shape_fit import provisional_reconstructed_arched_hourglass_model
-                model = provisional_reconstructed_arched_hourglass_model(
-                    base, prov["depthOfHw"], prov["cornerRTopOfHw"], prov["cornerRBottomOfHw"], prov["waistROfHw"],
-                    prov["waistCyOfHh"], prov["notchOfHw"], prov["topInsetOfHw"], prov["archCornerAngleDeg"])
+            elif "archRiseOfHw" in prov:
+                # T10 ARCHED HOURGLASS: {"from": <template id>, "archRiseOfHw": r} builds
+                # frame_shape_fit.provisional_arched_top_model (the base model plus a top arc r x hw tall).
+                from fb_engine.frame_shape_fit import provisional_arched_top_model
+                model = provisional_arched_top_model(base, prov["archRiseOfHw"])
             elif "taperAngleDeg" in prov:
                 # F30 item 3: Template 12/13, every base feature kept (see provisional_taper_model's own doc).
                 model = provisional_taper_model(base, prov["taperAngleDeg"])

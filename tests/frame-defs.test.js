@@ -53,22 +53,23 @@ describe('frame-defs (generated) — schema', () => {
     // the dip's half width, depth and (new) position -- no base template, like T6's tab top.
     // T9 I SHAPE: the frame-only iShape preset's model: the stem's half width and the flange height -- no base
     // template either, like T6's tab top.
+    // T7 DIAMOND-TOP HOURGLASS: the frame-only diamondTopHourglass preset's model: the neck's half width and
+    // height, the body flare height -- no base template either, like T6's tab top.
     const FEATURES = { hourglass: ['cornerR', 'depth', 'notch', 'waistCy', 'waistR'], bottle: ['bodyR', 'neckHalfW', 'neckR', 'neckTop'],
       tabTop: ['tabHalfWidth', 'tabHeight'], dippedLeftWave: ['topDipDepth', 'topDipHalfWidth', 'topDipPosition', 'waveCy', 'waveDepth'],
-      iShape: ['flangeHeight', 'stemHalfWidth'] };
+      iShape: ['flangeHeight', 'stemHalfWidth'], diamondTopHourglass: ['bodyFlareHeight', 'gableNeckWidth', 'neckHeight'] };
     // T3 TAPERED HOURGLASS: a narrow-top hourglass model also carries topInset (and, once fitted from its own
     // goldens, the two corners separately) -- the only extras paramsFromShapeModel reads.
     // T4 OFFSET HOURGLASS: an offset-waist model also carries the left pinch (waistCyLeft, notchLeft, depthLeft).
     // T5 HOURGLASS DIPPED TOP: a dipped-top model also carries the top dip (topDipDepth, topDipHalfWidth).
-    // T10 ARCHED HOURGLASS: an arched-top model also carries the arch's own corner angle (F29 item 2: renamed
-    // from a free rise, archCornerAngle).
+    // T10 ARCHED HOURGLASS: an arched-top model also carries the arch's own rise (archRise).
     // T8 DIPPED TOP + LEFT-ONLY WAVE: H23 item 11 -- fitted (not provisional) from its own live goldens, the
     // dippedLeftWave model also carries the wave's own corner radius, notch and arc radius (waveCornerR,
     // waveNotch, waveR), measured the same way Template 1's own cornerR/notch/waistR are, not declared by
     // the provisional shim.
     // F30 item 3 (Template 12/13, the taper copies): every base feature kept, plus one new scale-invariant
     // `taperAngle` -- the only extra either preset's own provisional model carries for these two.
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archCornerAngle', 'taperAngle'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [] };
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise', 'taperAngle'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [], diamondTopHourglass: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);

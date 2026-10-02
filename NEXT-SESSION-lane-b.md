@@ -1,13 +1,39 @@
-# NEXT (lane-b) — T78: FILTER REWORK — Moon, Mars, Wind Dunes, Coral Reef (Fred)
+# NEXT (lane-b) — T82 item 3 follow-up: subframe bottom must be FLAT, not terrain-following
 
-**Ball: worker (seat B) · epoch 6 · T78.** You're back on (the regular add-in is home; seat A = the header/stepper pass + frame
-handle reach; seat C is stood down). Your files ONLY: core/noise/{moon,mars,dunes,reef}.js (+ their tweaks, tests, a render
-tool). NO FUSION. PROGRESS automatic ("T78 item N: …"); shots -> shots\seatB\ as each filter lands; push each item.
+**Ball: worker (seat B) · epoch 9 · T82 item 3 follow-up.** T82 item 1 ACCEPTED (45e66bb) — excellent finish: 5 real bugs
+found and fixed before shipping (the silent param-key collision with Bottle is the standout — caught by the suite, not
+luck), self-verified arc directions against the real pipeline rather than predicting signs, honest about the handle-range
+limitation instead of overclaiming a closed form that doesn't exist. Spot-checked independently: pytest 406/24 skipped/0
+failed, and the real headless-Chrome screenshot (t7_frame_tab_editor.png) shows a clean, correctly-formed gable peak over
+a concave neck pinch flaring into a convex body. Accuracy note from last time landed too — good. `LIVE_CHECK.md` is ready
+for seat A whenever it reaches Template 7's live Fusion check.
 
-Fred (seeing them next to Simplex, which he likes): "I don't like Wind Dune, Moon Surface, Mars Surface, Coral Reef; these all
-need adjusting" / "the planet ones aren't planet-like at all, craters don't look like craters either". Advisor's diagnosis
-(same seed, same board): all four have far less relief + detail than Simplex; Moon = near-flat shallow dents; Mars = soft
-blobby lumps; Dunes = a low flat slab with fine ripples, no real crests; Reef = large FLAT-TOPPED plateaus (clipped heights).
+**T82 item 3 (f509b8a) — one real fix needed before this merges.** Fred looked at the bottom-view screenshot and caught
+it: the subframe bar's BOTTOM shouldn't follow the terrain too. He wants: **top conforms to the panel's sculpted
+underside** (keep this — it's correct, the bar mounts flush against it, no gap), **bottom stays FLAT, at the SAME level
+as the outer frame's own bottom.** Right now both faces track the terrain (`frame-mesh.js` `winBarBottom = (p) => bot(p)
++ spec.frameBottomZ` — terrain height at that point, plus a fixed offset, so the whole bar's position floats with the
+terrain even though its thickness stays constant). The outer/main frame's own ring call two lines above already does
+exactly what's wanted — `ringArrays(outer, inner, spec.frameBottomZ, bot, cell)` passes `spec.frameBottomZ` straight in
+as a plain constant, not a function of `p`. Make the window bars' zBottom the SAME plain constant `spec.frameBottomZ`
+(not `bot(p) + spec.frameBottomZ`) — this makes the subframe's bottom coplanar with the outer frame's bottom, while its
+top keeps following the terrain (so thickness now genuinely VARIES, thicker where the terrain dips deeper — that's
+correct and intended). Update the code comment too, it currently asserts the old (wrong) behavior. Re-verify with
+before/after bottom-view shots to shots\seatB\, re-run the mutation test on whatever test covers this. Then re-push and
+pass back — I'll redo the merge into main after.
+
+## This task: T82 item 3 (inset window subframe)
+- **INSET WINDOW 3D: SHOW THE SUBFRAME** (Fred, phone shot from the BOTTOM view: shots/fred/inset_window_3d_no_frame_2026-10-01.png:
+  "inset window doesn't show a frame in 3D"). The design's "never add the window bars to the 3D scene" was a misreading of
+  "hidden": they are hidden FROM THE FRONT by the panel overhang, but they EXIST — render the 4 `frame_window_*` bars in
+  the 3D preview with the frame's own material, placed behind/under the panel exactly like Fusion will build them (start
+  at the panel underside, `frame_height_offset` depth, outer rect -> inner rect), so they show from the back/side/bottom
+  and through the hole edge.
+- Also fix the hole's JAGGED/aliased black edge (clean straight cut edge, same quality as the main frame's trim).
+- Off = byte-identical.
+- Phone shots front + bottom view to the advisor. Per the standing rule: also drop a progress shot mid-work, even before
+  it's done.
+- Commit as 'T82 item 3: ...', push, pass back.
 
 ## Checklist
 - [ ] [T78-item-1] A render tool first: tools/repro/filter_shots.mjs (headless, the #noiseType select, same seed, 3D iso) so every
@@ -44,4 +70,6 @@ blobby lumps; Dunes = a low flat slab with fine ripples, no real crests; Reef = 
 - [ ] [T81-item-6] PRIORITY BUG: CAN'T SELECT A CONTOUR SEGMENT (Fred: 'I can't seem to select contour segment'). Per-segment colour (Selected piece panel, scissors recolour) depends on it. REPRODUCE with real pointer events (mouse + touch) in Shape Lattice AND rect Lattice, with the lattice [Select] icon tool AND the main Select tool: click on a contour segment (line and arc, on the stroke centre and near its edge, with rails/ties crossing nearby). Find the cause: hit-test order (rails/ties/nodes or the boundary guide / shape handles grabbing the pointer first), the contour not being in the selectable set, a hit-area thinner than the drawn stroke, or pointer-events on the contour group. Fix: a click anywhere on the drawn contour stroke selects THAT segment (Selected piece panel shows it; colour works), without breaking rail/tie/node/handle picking where they overlap (declare the pick priority once). Test: clicking each segment kind selects it. Commit as 'T81 item 6: ...'.
 - [x] [T81-item-7] GRAB A RAIL END TO CHANGE ITS LENGTH (Fred: 'I'd like to be able to adjust length of rails in lattice tool, by grabbing the ends'). In rect Lattice and Shape Lattice, with the lattice [Select] tool: hovering a rail END shows an end handle (use the shared handle-kind/hover style from item 1); dragging it lengthens/shortens that rail along its own axis (the other end stays put, per the SE16 'plain lines move one end' ruling). Reuse the existing SE7k end-stretch mechanic (editor-interaction.js, 'end-stretch') rather than a second one: find where it works today (draw mode?) and make it reachable from Select. Snaps: GRID/GEOM (incl. snapping to the contour/boundary); cannot go past the lattice boundary (Shape Lattice: clipped to the silhouette like drawn rails). Ties/nodes on the rail keep their joints if still on it; a tie left past the new end is removed (say so). The changed length is a manual override of a generated rail, so it follows the existing Regenerate rule for overrides (name it in the WORK-LOG). One undo step per drag. Tests + shots to C:/Users/danse/.bspline-status/shots/seatB/. Commit as 'T81 item 7: ...'.
 - [x] [T81-item-8] ONE COLOUR HELPER, RIGHT POOL (advisor, at the T81 merge b-main): editor-color.js now has TWO helpers from two seats (seat C's pickColorDiffering for recolour-on-cut, your randomSegmentColorSet for the randomize button) and BOTH draw from the app's 32-colour VECTOR_COLORS, but Fred ruled the pool is ONLY the lattice's current Rails/Ties/Nodes colours ('only use the colors set for rail node and tie'). Merge them into ONE declared helper that takes the pool explicitly (pool = the pattern's live rails/ties/nodes colours, deduped) + the neighbour constraints (cyclic for the contour), used by BOTH the randomize button and the scissors recolour-on-cut (editor-cut-tool.js); delete the other. With 3 colours the no-equal-neighbours rule always holds on a loop (odd loop lengths too: use a 3-colouring); relax only if <3 distinct. Update both tests. Commit as 'T81 item 8: ...'.
+- [ ] [T83-item-1] TEMPLATE 11 (later, not started): Template 7's diamond roof + eaves, but with a 3-ARC hourglass side below the eave (small convex shoulder, concave waist, convex hip to full width; reuse T1's chain), Fred liked both. Diagram first when it's scheduled. Commit as 'T83 item 1: ...'.
+- [ ] [T82-item-3] INSET WINDOW 3D: SHOW THE SUBFRAME (Fred, phone shot from the BOTTOM view: shots/fred/inset_window_3d_no_frame_2026-10-01.png: 'inset window doesn't show a frame in 3D'). The design's 'never add the window bars to the 3D scene' was a misreading of 'hidden': they are hidden FROM THE FRONT by the panel overhang, but they EXIST: render the 4 frame_window_* bars in the 3D preview with the frame's own material, placed behind/under the panel exactly like Fusion will build them (start at the panel underside, frame_height_offset depth, outer rect -> inner rect), so they show from the back/side/bottom and through the hole edge. Also fix the hole's JAGGED/aliased black edge (clean straight cut edge, same quality as the main frame's trim). Off = byte-identical. Phone shots front + bottom view. Do it right after T7. Commit as 'T82 item 3: ...'.
 Pass back from the lane-b root: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — T78 — <shas>"`.

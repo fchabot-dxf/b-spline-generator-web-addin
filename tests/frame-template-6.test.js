@@ -62,7 +62,7 @@ describe('Template 6: listing and declaration', () => {
     expect(FRAME_DEFS.templates.map(frameLabel)).toEqual(['1. Hourglass', '10. Arched Hourglass',
       '12. Hourglass - Tapered sides', '13. Narrow Neck - Tapered sides', '2. Narrow Neck',
       '3. Tapered Hourglass', '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top',
-      '8. Dipped Top + Left-Only Wave', '9. I Shape']);
+      '7. Diamond-top Hourglass', '8. Dipped Top + Left-Only Wave', '9. I Shape']);
     expect(T6.silhouettePreset).toBe('tabTop');
     expect(PRESETS.tabTop.frameOnly).toBe(true);
     expect(T6.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset', 'frame_thickness']);
@@ -396,9 +396,9 @@ describe('the Shape Lattice and Templates 1-5 never get the tab', () => {
     // comment), so TAB's own pair is no longer the trailing slice -- fixed indices instead of `.slice(-2)`.
     expect(FRAME_ONLY_PARAM_KEYS.slice(5, 7)).toEqual(TAB);
     expect(PARAM_ORDER.tabTop).toEqual(TAB);
-    // F30 item 3 appended its own 'taperAngle' after archCornerAngle (hourglass) and at the end (bottle).
+    // F30 item 3 appended its own 'taperAngle' after archRise (hourglass) and at the end (bottle).
     expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
-      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archCornerAngle', 'taperAngle']);
+      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archRise', 'taperAngle']);
     expect(PARAM_ORDER.bottle).toEqual(['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius', 'taperAngle']);
     for (const k of TAB) {
       expect(SHAPE_PARAM_KEYS.hourglass).not.toContain(k);

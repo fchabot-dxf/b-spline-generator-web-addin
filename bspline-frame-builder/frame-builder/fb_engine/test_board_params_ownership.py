@@ -484,6 +484,37 @@ class TestFrameFitInTheBuild:
 # the solid build can read that template's declared frame features
 # (solid_coordinator.TEMPLATE_ID_ATTR).
 # ---------------------------------------------------------------------
+class TestFrameBuilderDefaultLogger:
+    """H23 item 26 (seat B's own finding): FrameBuilder() constructed with NO external_logger used to crash --
+    frame_engine.py's own `self.logger = logger.DebugLogger(addin_root)` read the MODULE-LEVEL `logger`
+    variable (an already-constructed DebugLogger INSTANCE, module scope line ~33), not the `fb_logger` MODULE
+    (imported two lines earlier) -- an AttributeError every time, since a DebugLogger instance has no
+    `.DebugLogger` attribute of its own. Only the explicit-external_logger path (passed by every REAL caller
+    today) ever avoided it, which is why this went unnoticed."""
+
+    def _fake_design(self):
+        return types.SimpleNamespace(
+            rootComponent=types.SimpleNamespace(),
+            userParameters=FakeUserParams(),
+            unitsManager=types.SimpleNamespace(),
+        )
+
+    def test_constructing_with_no_logger_does_not_crash(self, monkeypatch):
+        design = self._fake_design()
+        monkeypatch.setattr(frame_engine.adsk.core, "Application",
+                             types.SimpleNamespace(get=lambda: types.SimpleNamespace(activeProduct=design)), raising=False)
+        monkeypatch.setattr(frame_engine.adsk.fusion, "Design",
+                             types.SimpleNamespace(cast=lambda x: x), raising=False)
+        recorded = []
+        monkeypatch.setattr(frame_engine.fb_logger, "DebugLogger",
+                             lambda root: recorded.append(root) or FakeLogger(), raising=False)
+
+        fb = frame_engine.FrameBuilder()  # no external_logger -- the exact crashing call
+
+        assert recorded, "fb_logger.DebugLogger (the MODULE) must be the one constructed, not the instance"
+        assert fb.logger is not None
+
+
 class TestTemplateIdStamp:
     def _builder(self, monkeypatch):
         # the adsk frame_engine bound at import (another test file may swap the stub)

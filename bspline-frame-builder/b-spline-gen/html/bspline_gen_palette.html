@@ -614,10 +614,41 @@
               <select id="frameAppearance" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
             </div>
             <!-- T82 item 2: a second small mitred frame set into the panel, always open, hidden behind it
-                 (INSET-WINDOW-DESIGN.md). Off by default; position/size are dragged in the Frame tab, not typed. -->
+                 (INSET-WINDOW-DESIGN.md). Off by default; position/size are dragged in the Frame tab AND
+                 typed here (both stay in sync, main/frame-panel.js). -->
             <label class="cad-label cad-label-inline" style="display:flex; align-items:center; gap:8px;">
               <input type="checkbox" id="frameInsetWindowToggle"> Inset window
             </label>
+            <div id="frameInsetWindowFields" style="display:none;">
+              <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:8px;">
+                <div style="flex:1;">
+                  <label class="cad-label cad-label-inline">Position X</label>
+                  <div class="cad-stepper">
+                    <input type="number" id="frameWindowPosX" step="any">
+                  </div>
+                </div>
+                <div style="flex:1;">
+                  <label class="cad-label cad-label-inline">Position Y</label>
+                  <div class="cad-stepper">
+                    <input type="number" id="frameWindowPosY" step="any">
+                  </div>
+                </div>
+              </div>
+              <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
+                <div style="flex:1;">
+                  <label class="cad-label cad-label-inline">Size W</label>
+                  <div class="cad-stepper">
+                    <input type="number" id="frameWindowSizeW" step="any">
+                  </div>
+                </div>
+                <div style="flex:1;">
+                  <label class="cad-label cad-label-inline">Size H</label>
+                  <div class="cad-stepper">
+                    <input type="number" id="frameWindowSizeH" step="any">
+                  </div>
+                </div>
+              </div>
+            </div>
             <div id="frameFitWarning" style="display:none; color:#ff3b30; font-size:11px; margin-bottom:10px;"></div>
           </div>
           <!-- Fred ("no send frame"): the frame goes with the one Send (export-flow payload.frame) -- no button here. -->

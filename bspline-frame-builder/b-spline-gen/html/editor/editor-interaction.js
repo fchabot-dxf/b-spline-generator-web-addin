@@ -833,7 +833,13 @@ function _pickSelectable(editor, pt) {
     const tol = getDynamicTolerance(editor, 10, 'slopPx');
     const hit = editor._getNearbyElement(pt, tol, { anyVisibleLayer: true });
     if (hit && !hit.node.getAttribute(LATTICE_ATTR)) return hit;
-    return _nearbyLatticePiece(editor, pt, tol).el || hit || null;
+    const near = _nearbyLatticePiece(editor, pt, tol);
+    // T81 item 6 (Fred: "I can't seem to select contour segment"): `hit` above is now either a lattice
+    // piece or nothing -- the generic bbox-center search already handed back anything else. A lattice
+    // piece this precise re-check also found must still lose to a contour/boundary genuinely closer by
+    // visible edge (rails are drawn reaching the contour's own edge, so one is ALWAYS "found" near it).
+    const seg = near.el ? _boundaryNear(editor, pt) : null;
+    return _contourWinsPick(seg, near) ? seg.el : (near.el || hit || null);
 }
 
 // ─── aim-select (touch) ────────────────────────────────────────────────────
@@ -1957,7 +1963,22 @@ function _commitLatticeMove(editor, move) {
     if (!moved) return;
     // T81 item 7: ties/nodes left past a stretched rail's new end go in
     // THIS same undo step (before the one pushState below).
-    if (move.railEnd) move.railEndPruned = pruneAfterRailStretch(editor, move);
+    if (move.railEnd) {
+        move.railEndPruned = pruneAfterRailStretch(editor, move);
+        // T81 item 5 (re-reported): pruneAfterRailStretch removes elements from the DOM directly and knows
+        // nothing about selection -- a tie/node that rode along SELECTED (possible when the grabbed rail
+        // end was already part of a multi-selection, so the grab above never replaced it) is now a detached
+        // element still sitting in editor._selectedElements, and the halo refresh above already ran before
+        // this prune, so its clone is never torn down either. Drop anything no longer in the document and
+        // resync the halo to match -- the same "is this element still live" check editor-grid.js's own
+        // _connected() uses for a stale snap-cursor wrapper.
+        const sel = editor._selectedElements || [];
+        const live = sel.filter((el) => el && el.node && el.node.isConnected);
+        if (live.length !== sel.length) {
+            editor._selectedElements = live;
+            if (typeof editor._updateSelectionHighlight === 'function') editor._updateSelectionHighlight();
+        }
+    }
     applyLayerState(editor);
     if (typeof editor.pushState === 'function') editor.pushState();
     // audit batch 2: through the commit hooks like every other edit (a pending refill is settled in THIS step)
@@ -2126,7 +2147,14 @@ const latticeHandler = {
         // the grid -- right for drawing a new rail/tie, but on a tie a rail's length away from the finger it hit
         // the rail above. Shape Lattice already hit-tests the raw point (shapeLatticeHandler.start).
         const rawPt = _latticePickPt(editor, pt, e);
-        const hit = _getNearbyLatticePiece(editor, rawPt, tol);
+        const near = _nearbyLatticePiece(editor, rawPt, tol);
+        // T81 item 6 (Fred: "I can't seem to select contour segment"): this tool had NO such check at
+        // all -- any rail/tie/node in range committed unconditionally below, and a hand-picked boundary's
+        // own contour is always reachable with rails clipped right to its edge, so it never got a turn.
+        // The SAME pick-priority `_boundaryNear`/`_contourWinsPick` shapeLatticeHandler.start uses: a
+        // piece wins only when it's genuinely closer by visible edge, not merely in range.
+        const seg = near.el ? _boundaryNear(editor, rawPt) : null;
+        const hit = _contourWinsPick(seg, near) ? null : near.el;
         const hitKind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
         if (hitKind === 'rail' || hitKind === 'tie' || hitKind === 'node') {
             // T76 (SE17): grabbing a piece on a DIFFERENT kind-layer than
@@ -2563,8 +2591,11 @@ const shapeLatticeHandler = {
         // contour's own stroke picks the contour even with a rail end touching it); on a
         // tie, the nearer centreline. The UI4 item 0 rule still holds where it matters: a
         // tap on a rail/tie/node itself is closer to it than to any contour edge.
-        const seg = near.el ? _contourSegmentNear(editor, latticePick) : null;
-        const contourWins = seg && (seg.edge < near.edge || (seg.edge === near.edge && seg.dist < near.dist));
+        // T81 item 6 re-reported: `_boundaryNear`, not `_contourSegmentNear` directly -- this tool
+        // ALSO supports a HAND-PICKED boundary ("Pick shape…"), which has no `shape.segments` for the
+        // analytic path and left `seg` permanently null (rail always won) for that case.
+        const seg = near.el ? _boundaryNear(editor, latticePick) : null;
+        const contourWins = _contourWinsPick(seg, near);
         const latticeHit = contourWins ? null : near.el;
         if (latticeHit) {
             // UI5 AMEND 2 (advisor, live: the earlier fix moved the piece
@@ -2814,6 +2845,45 @@ function _contourSegmentAt(editor, pt) {
     if (!(shape.source === 'generated' && Array.isArray(shape.segments))) return null;
     const { primitives } = generateSilhouette(_shapeContourRegion(editor, p), shape);
     return hitTestSegment(primitives, shape.segments, pt, getDynamicTolerance(editor, 10, 'slopPx'));
+}
+
+/** T81 item 6 (Fred: "I can't seem to select contour segment"): `_contourSegmentNear`'s own general form
+ *  -- for a GENERATED Shape Lattice silhouette it IS `_contourSegmentNear` (unchanged, analytic); for a
+ *  HAND-PICKED boundary (Box Lattice, or Shape Lattice's own "Pick shape…" -- no `shape.segments` to
+ *  re-derive geometry from) it reads the ACTUAL drawn element(s) via `_findBoundaryElements` +
+ *  `primitiveFromContourD`/`nearestOnContourPrimitive`, the SAME machinery `_contourPieceAt` already uses
+ *  to resolve a tap into an element (not a new geometry mechanism — reused here only for the DISTANCE a
+ *  pick-priority decision needs). `getLayerPattern`, not `currentPattern` (Shape Lattice's own accessor,
+ *  with side effects this tool-agnostic check must not trigger for a plain Box Lattice layer that never
+ *  touches `.shape` at all). `{ el, dist, edge }`, or null with no boundary pattern at all. */
+function _boundaryNear(editor, pt) {
+    const p = getLayerPattern(editor);
+    if (!p) return null;
+    if (p.shape && p.shape.source === 'generated' && Array.isArray(p.shape.segments)) {
+        const seg = _contourSegmentNear(editor, pt);
+        return seg ? { ...seg, el: _contourSegmentEl(editor, seg.index) } : null;
+    }
+    if (!p.boundary || !p.boundary.shapeId) return null;
+    let best = null;
+    for (const el of _findBoundaryElements(editor, p.boundary.shapeId)) {
+        const prim = primitiveFromContourD(el.attr('d'));
+        if (!prim) continue;
+        const q = nearestOnContourPrimitive(prim, pt);
+        const dist = Math.hypot(q.x - pt.x, q.y - pt.y);
+        if (!best || dist < best.dist) {
+            const sw = parseFloat(el.attr('stroke-width')) || 0;
+            best = { el, dist, edge: Math.max(0, dist - sw / 2) };
+        }
+    }
+    return best;
+}
+
+/** T81 item 6: does the contour/boundary win the pointer over a nearby lattice piece, by visible EDGE
+ *  distance (a tie's own centreline distance as the tiebreak -- the SAME pair `_nearbyLatticePiece` and
+ *  `_boundaryNear` both return). Declared once, used by latticeHandler.start, shapeLatticeHandler.start
+ *  and _pickSelectable (the main Select tool) rather than copied three times. */
+function _contourWinsPick(seg, near) {
+    return !!(seg && (seg.edge < near.edge || (seg.edge === near.edge && seg.dist < near.dist)));
 }
 
 /** F27 item 2 arc pull: the radius param's arc under `pt` -- `{ handle, side,

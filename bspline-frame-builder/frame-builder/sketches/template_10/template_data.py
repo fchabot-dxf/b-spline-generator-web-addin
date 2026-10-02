@@ -39,8 +39,8 @@ SKETCH_1_PARAMETERS = [
 SKETCH_2_LABEL = "Shape Outline"
 SKETCH_2_PARAMETERS = [
     # Same constraint toggles as Template 1 (p02_10_welds / p02_11_symmetry still gate on them); the top arch's
-    # own constraints (p02_03: Tangent, Symmetry) are never gated -- a gate would be a new template parameter
-    # (Fred's rule, Template 6's own finding), and they are needed unconditionally for the 1-DOF top solve.
+    # own constraints (p02_03: Fix on S/E) are never gated -- a gate would be a new template parameter
+    # (Fred's rule, Template 6's own finding), and they are needed unconditionally for the top solve.
     {"Name": "ck_arc_shoulder_weld",   "Label": "Shoulder Arc Weld",       "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
     {"Name": "ck_arc_hip_weld",        "Label": "Hip Arc Weld",            "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
     {"Name": "ck_skel_shoulder_equal", "Label": "Shoulder Skeleton Equal", "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
@@ -91,12 +91,10 @@ FRAME_REGIONS = {
 # (Fred's own dispatch: "Handles: arch rise, waist reach, waist height") -- the
 # shoulder/hip/waist-radius handles stay at their own resolved defaults, unexposed,
 # exactly as any other hourglass param a template doesn't list already works.
-# F29 item 2: "archRise" is now "archCornerAngle" (degrees, the corner angle between the vertical horn and the
-# arch's own tangent -- Fred's own rule, replacing the free rise the old T10 used).
 FRAME_HANDLES = [
-    {"key": "archCornerAngle", "label": "Arch corner angle", "basis": "hh", "binding": "seeded"},
-    {"key": "waistReach",      "label": "Waist reach",       "basis": "hw", "binding": "seeded"},
-    {"key": "waistCenterY",    "label": "Waist position",    "basis": "hh", "binding": "seeded"},
+    {"key": "archRise",     "label": "Arch rise",      "basis": "hh", "binding": "seeded"},
+    {"key": "waistReach",   "label": "Waist reach",    "basis": "hw", "binding": "seeded"},
+    {"key": "waistCenterY", "label": "Waist position", "basis": "hh", "binding": "seeded"},
 ]
 FRAME_HANDLE_MIGRATIONS = {}  # T10 is new: no record was ever saved before a split, so nothing to migrate.
 
@@ -134,22 +132,14 @@ FRAME_SEED_MAP = [
     {"id": "seed_rad_shoulder_L", "kind": "radius", "prim": 9},
 ]
 FRAME_FEATURES = COMMON_FRAME_FEATURES
-# F8 / F29 item 2: this template's app shape is a MODEL. No live Fusion goldens exist yet -- Fred's own hand
-# rebuild in Fusion replaces the FIRST provisional dome (a free rise on Template 1's own plain pinch, which built
-# wrong in Fusion at every board size: H23 item 14's own capacity report). Every one of Template 1's own 5 fitted
-# features is overridden (not kept): a narrow top, a huge gentle shoulder, a tight deep off-centre waist, a
-# tighter hip flaring back to the full board width, plus the arch's own corner angle -- read directly off Fred's
-# reconstructed sketch (.bspline-status/shots/fred/t10_fred_reconstructed_constraints_2026-10-01.json, 7x9,
-# hw=3.25in/hh=4.25in), each a pure fraction of hw or hh (frame_definition.py's own `template_shape_model`
-# dispatch, frame_shape_fit.provisional_reconstructed_arched_hourglass_model). The corner angle itself is Fred's
-# own fixed value (127 deg, the 100-130 deg band's default), not fitted off the sketch (that one arc was its own
-# own least-constrained element, `isFullyConstrained: false`).
+# F8: this template's app shape is a MODEL. No live Fusion goldens exist yet (this template is brand new, "no
+# Fusion" dispatch): a PROVISIONAL model derived from Template 1's own FITTED one (the sides/base are literally
+# Template 1's), plus the one new `archRise` feature -- the SAME "a shape of its own, but with a `from` base"
+# pattern Template 3's topInset and Template 5's own dip already use (frame_definition.py's own
+# `template_shape_model` dispatch, frame_shape_fit.provisional_arched_top_model). 0.35 x hw: a gentle dome,
+# Fred's own sketch, confirmed against the 7x9 preview he approved ("looks perfect").
 FRAME_SHAPE_EXTRACTOR = "hourglass_arched_top"
-FRAME_PROVISIONAL_SHAPE = {
-    "from": "template_1",
-    "depthOfHw": 0.416509, "cornerRTopOfHw": 1.209444, "cornerRBottomOfHw": 0.272753, "waistROfHw": 0.262875,
-    "waistCyOfHh": 0.213614, "notchOfHw": 0.522215, "topInsetOfHw": 0.307382, "archCornerAngleDeg": 127.0,
-}
+FRAME_PROVISIONAL_SHAPE = {"from": "template_1", "archRiseOfHw": 0.35}
 
 # F29 item 1 (seat A's live Fusion check, H23 item 14: the arch sweeps the wrong branch in Fusion at every
 # board size -- the app's own preview/tests are unaffected, this is a Fusion-build-only defect): hidden from
@@ -157,7 +147,7 @@ FRAME_PROVISIONAL_SHAPE = {
 # drawing exactly as before -- every lookup is still by id over the full template list (frame-record.js
 # findFrameTemplate); only the picker's own dropdown (frame-panel.js) reads this flag. Flip back to False once
 # the Fusion fix is in.
-FRAME_HIDDEN = True
+FRAME_HIDDEN = False
 
 
 def get_template_logic(ui_data=None):

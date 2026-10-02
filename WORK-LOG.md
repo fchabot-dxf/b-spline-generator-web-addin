@@ -13027,3 +13027,29 @@ it as an assumption.
 
 `npx vitest run` -> **2320 passed** (up from 2238 before this item — the gap includes an unrelated lane-b
 merge pulled in between items, not just this item's own 6 new tests), zero regressions.
+
+## H23 item 15 — Template 10 arch FIXED live (pointer entry; full writeup lives elsewhere)
+
+This is Fusion-side Frame Builder work, not this file's usual app/editor track — the full writeup, every
+mechanism tried (including the 4 that didn't land), and the verification trail are in
+`LIVE-RESULTS-ranchy.md`'s "Item 15 (3rd attempt)" section and `WORK-LOG-fb-app.md`'s own matching dated
+entry, not duplicated here. Short version: `top_edge` (the arch) now builds correctly in Fusion at 7x9/6x9/12x6
+— root cause was that `Coincident(point, curve)` only pins a curve's supporting circle, not its trimmed sweep,
+so no existing constraint controlled branch selection; fixed by seeding the exact closed-form circle and
+`Fix`-ing the arc's own endpoints directly (two new shared `fb_engine` primitives, `Point`/`Fix`, A/B
+byte-identical on Templates 1-9). Shoulder/waist/hip "ears" confirmed as a separate, still-open bug (H23 item
+17). Committed `3f7a893`, pushed to `main` + `claude/lucid-ride-jycpox`.
+
+## H23 item 17 — T10 shoulder/waist/hip "ears" FIXED live (pointer entry; full writeup lives elsewhere)
+
+Same track as item 15 above, same pointer rule: full writeup in `LIVE-RESULTS-ranchy.md`'s "Item 17" section
+and `WORK-LOG-fb-app.md`'s own matching dated entry. Short version: the "ears" bug was never separate from
+the arch's own — item 15's arch anchor used a decimal (`widthIn * 0.464286`) that only matched the TRUE
+board-corner formula at ONE board size; making it exact for any size (an algebraic trick against
+`seed_basis.py`'s own seed-board rewrite) fixed the whole shoulder/waist/hip chain with zero new logic for
+it specifically. 7x9 and 6x9 now build completely (sketch 2 AND 3, all 4 bars) — a new shared `Rebuild`
+primitive plus two independently-found `start`/`end`-swap bugs (one in entity rebuilds, one in
+`sketch.project()`) were needed along the way; both are now generic `fb_engine` fixes, not T10-specific
+hacks. 12x6 still fails -- confirmed a PRE-EXISTING Template 1 bug (same failure class, T1 itself reflexes
+there), not this item's own regression. A/B byte-identical on Templates 1-9. `FRAME_HIDDEN` left `True`,
+advisor's own call on whether 12x6's T1-inherited limitation blocks un-hiding.

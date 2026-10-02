@@ -168,12 +168,9 @@ def _hourglass_arched_top(curves, hw, hh, tol=2e-3):
     adding height above it -- the advisor's own correction, confirmed against Fred's sketch and the 7x9 preview).
 
     The sides are Template 1's own extraction (so every Template 1 feature means what it does there); the top
-    adds the corner angle (F29 item 2: between the vertical horn and the arc's own tangent where they meet, not
-    a free rise -- the app derives the rise from it and the chord half-width, editor-shape-lattice-generator.js
-    `archRiseFromCornerAngle`, its own exact inverse). Valid when the sides are (Template 1's test), the arc's two
-    ends are symmetric about the centre line (same y, opposite x) and its own apex (centre.y + radius, Fusion up:
-    the HIGHEST point) sits exactly on the safe zone's top -- the tangent-to-the-top-edge relationship a fixed
-    corner angle still preserves exactly (only WHICH angle the chord sits at changes, not that it is tangent).
+    adds the rise (the safe zone's own top edge, at hh Fusion y up, minus the arc's own chord height). Valid when
+    the sides are (Template 1's test), the arc's two ends are symmetric about the centre line (same y, opposite
+    x) and its own apex (centre.y + radius, Fusion up: the HIGHEST point) sits exactly on the safe zone's top.
     """
     ok, feats = _hourglass(curves, hw, hh, tol)
     arch = curves["top_edge"]
@@ -181,10 +178,7 @@ def _hourglass_arched_top(curves, hw, hh, tol=2e-3):
     ok = (ok and abs(arch["start"][1] - arch["end"][1]) < tol  # the two ends symmetric: same y
           and abs(xs[0] + xs[1]) < tol  # ...and opposite x
           and abs((arch["center"][1] + arch["radius"]) - hh) < tol)  # the apex on the safe zone's own top edge
-    top_x = abs(arch["start"][0])
-    arch_rise = hh - arch["start"][1]
-    cos_t = -2 * top_x * arch_rise / (top_x * top_x + arch_rise * arch_rise) if arch_rise > 0 else 0.0
-    feats.update({"archCornerAngle": math.degrees(math.acos(max(-1.0, min(1.0, cos_t))))})
+    feats.update({"archRise": hh - arch["start"][1]})
     return ok, feats
 
 
@@ -276,11 +270,57 @@ def _i_shape(curves, hw, hh, tol=2e-3):
     }
 
 
+def _diamond_top_hourglass(curves, hw, hh, tol=2e-3):
+    """T7 DIAMOND-TOP HOURGLASS: a 90-degree gable roof (2 straight bars, mitred at the peak and at
+    each eave), a concave-neck/convex-body S-curve on each side (2 tangent arcs, mitred to the
+    roof at the eave, tangent to the straight base side at the bottom), a plain straight base.
+
+    Features: gableNeckWidth (the neck arc's own narrowest x, from centre -- "gable" prefix, not the plain
+    "neckWidth" Template 2's own bottle extractor could in principle collide with if ever merged into one
+    namespace; matches editor-shape-lattice-generator.js's own PARAM_ORDER.diamondTopHourglass key),
+    neckHeight / bodyFlareHeight
+    (how far down from the eave the neck / the full-width point sit, in inches -- a plain geometric
+    measurement, like every other extractor's own features, NOT pre-divided into a fraction: the
+    model fits hw/hh coefficients against these real inch values once goldens exist; `paramsFromShapeModel`
+    (editor-shape-lattice-generator.js) divides the fitted value back by the CONSTRUCTION's own
+    `rest` to recover the fraction the app's param actually wants). Valid when the roof is symmetric about the centreline, each side's neck
+    and body arcs are tangent to one another (opposite curvature: dist(centers) = r_neck + r_body,
+    the genuine S-curve tangency fb_engine/t7_geometry.py's own module docstring describes), the
+    body arc is tangent to the vertical straight side, and that side sits at x = +-hw.
+
+    FIRST CUT, unverified against a real golden JSON (no template_7 goldens exist yet) - check the
+    recorded curve dict's actual key shape (does an Arc3Point entry carry 'start'/'end' alongside
+    'center'/'radius'?) the first time tools/repro/record_frame_parity.py runs for this template,
+    per LIVE_CHECK.md.
+    """
+    roof_r, roof_l = curves["roof_R"], curves["roof_L"]
+    neck_r, body_r = curves["arc_neck_R"], curves["arc_body_R"]
+    neck_l, body_l = curves["arc_neck_L"], curves["arc_body_L"]
+    side_r = curves["side_R"]
+    eave_y = roof_r["end"][1]
+    n_x, n_y = neck_r["end"][0], neck_r["end"][1]
+    b_y = body_r["end"][1]
+    rest = eave_y - (-hh)
+    ok = (abs(roof_r["start"][0] - roof_l["end"][0]) < tol  # peak shared by both roof bars
+          and abs(roof_r["start"][0]) < tol                 # peak on the centreline
+          and abs(math.dist(neck_r["center"], body_r["center"]) - (neck_r["radius"] + body_r["radius"])) < tol
+          and abs(math.dist(neck_l["center"], body_l["center"]) - (neck_l["radius"] + body_l["radius"])) < tol
+          and abs(body_r["center"][0] - (hw - body_r["radius"])) < tol  # tangent to the vertical side
+          and abs(side_r["start"][0] - hw) < tol and abs(side_r["end"][0] - hw) < tol
+          and rest > 0)
+    return ok, {
+        "gableNeckWidth": n_x,
+        "neckHeight": eave_y - n_y,       # inches, not a fraction -- see this function's own doc comment
+        "bodyFlareHeight": eave_y - b_y,  # inches, not a fraction
+    }
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
                       "bottle_taper": _bottle_taper,
-                      "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape}
+                      "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape,
+                      "diamond_top_hourglass": _diamond_top_hourglass}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):
@@ -375,6 +415,52 @@ def provisional_i_shape_model(stem_half_width_of_hw, flange_height_of_hh):
     }
 
 
+def provisional_diamond_top_hourglass_model(neck_width_of_hw, neck_height_of_hh, body_flare_of_hh):
+    """T7 DIAMOND-TOP HOURGLASS, until its goldens are recorded live: a PROVISIONAL model (never
+    none), like T6/T8/T9: no base template to derive it from (no earlier template has a gable
+    roof or an S-curve side). `neckWidth` = `neck_width_of_hw` x hw. `neckHeight` / `bodyFlareHeight`
+    are each "fraction x the run below the eave" (fb_engine/t7_geometry.py's own `rest` = 2*hh - a,
+    where `a = min(0.62*hw, 0.84*hh)`, t7_roof_eave.roof_geometry) -- EXACT, not approximate, for a
+    PORTRAIT board (hw < hh, project_portrait_only: Fred currently builds portrait boards only): the
+    min() is binding at `0.62*hw` whenever hw/hh < 0.84/0.62 (~1.355), which every portrait board
+    satisfies, so `rest = 2*hh - 0.62*hw` exactly, a genuine hw/hh-LINEAR expression (not degenerate
+    like T8's own board-dependent "exact tangent-triple" case, which stays nonlinear no matter what).
+    MEASURED, not assumed: an earlier `rest ~= 2*hh` approximation here was off by ~30% at 7x9
+    (`a`=2.015in is not a small correction against hh=4.25in) and silently shrank the default straight
+    side below frame_thickness (0.365in drawn vs 0.75in needed) -- caught by this template's own JS
+    test suite (tests/frame-template-7.test.js), not assumed safe. A LANDSCAPE board (hw > hh) would
+    need the OTHER branch of the min(); not implemented, a declared gap for that case alone (project_
+    portrait_only: a landscape fallback belongs in the construction itself if ever needed, not a second
+    provisional formula here). `paramsFromShapeModel` (editor-shape-lattice-generator.js, the
+    diamondTopHourglass branch) divides the fitted/provisional inch value back by the CONSTRUCTION's
+    own TRUE `rest`, so the round trip is exact here (portrait) and will stay exact once a real fit
+    replaces this provisional model. The app clamps every value into its feasible range
+    (fb_engine/t7_geometry.py's own clamp_t7_handles proves the valid combinations are coupled, not
+    independent). Marked `provisional` so nothing mistakes it for a fit."""
+    return {
+        "features": {
+            "gableNeckWidth": {"hw": neck_width_of_hw, "hh": 0.0},
+            "neckHeight": {"hw": -0.62 * neck_height_of_hh, "hh": 2 * neck_height_of_hh},
+            "bodyFlareHeight": {"hw": -0.62 * body_flare_of_hh, "hh": 2 * body_flare_of_hh},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "neckWidthOfHw": neck_width_of_hw,
+            "neckHeightOfHh": neck_height_of_hh,
+            "bodyFlareOfHh": body_flare_of_hh,
+        },
+    }
+
+
 def provisional_shape_model(base_model, top_inset_of_depth):
     """T3 TAPERED HOURGLASS, until its goldens are recorded live: a PROVISIONAL model, never none (the app reads
     `shapeModel.features`). `base_model` = Template 1's fitted model (the same pieces, the same solve below the
@@ -403,8 +489,8 @@ def provisional_taper_model(base_model, taper_angle_deg):
     template already fits is exactly what Template 12/13 build on (editor-shape-lattice-generator.js's own
     `_taperedCorner` only ever repositions the TOP horn and, past its own feasible floor, the shoulder/neck
     circle -- it never touches the rest of the silhouette). So `base_model`'s features are kept verbatim, plus
-    one new scale-invariant `taperAngle` feature (degrees, the `const` pattern `archCornerAngle` already uses:
-    0 = the base template exactly, Fred's own default 8). Marked `provisional` so nothing mistakes it for a fit."""
+    one new scale-invariant `const` feature, `taperAngle` (degrees: 0 = the base template exactly, Fred's own
+    default 8). Marked `provisional` so nothing mistakes it for a fit."""
     feats = {k: dict(v) for k, v in base_model["features"].items()}
     feats["taperAngle"] = {"hw": 0.0, "hh": 0.0, "const": taper_angle_deg}
     return {
@@ -418,46 +504,22 @@ def provisional_taper_model(base_model, taper_angle_deg):
     }
 
 
-def provisional_reconstructed_arched_hourglass_model(base_model, depth_of_hw, corner_r_top_of_hw,
-                                                      corner_r_bottom_of_hw, waist_r_of_hw, waist_cy_of_hh,
-                                                      notch_of_hw, top_inset_of_hw, arch_corner_angle_deg):
-    """T10 ARCHED HOURGLASS v2 (F29 item 2, Fred's own hand rebuild in Fusion, 2026-10-01): the first provisional
-    dome (a free rise on Template 1's own plain pinch) built wrong in Fusion at every board size (H23 item 14's
-    own capacity report, never fixed). Fred rebuilt the sketch from scratch instead: he took T10's OWN existing
-    shoulder/waist/hip/waist-radius construction (confirmed by the live constraints dump's own entity names --
-    NOT Template 2's, which has no "shoulder" arc at all) and dragged every one of its radii/depth/position to his
-    own values, far outside anything Template 1 or the old T10 preview ever exercised: a narrow top (topInset), a
-    huge gentle shoulder, a tight deep waist pulled low and off-centre, a tighter hip flaring back out to the full
-    board width. So EVERY one of Template 1's own 5 fitted features is replaced here (not kept) -- read directly
-    off Fred's own reconstructed sketch (.bspline-status/shots/fred/t10_fred_reconstructed_constraints_2026-10-
-    01.json, the live Fusion constraint/entity dump, 7x9: hw=3.25in/hh=4.25in), each a pure fraction of hw or hh
-    (a single data point, so no real hw+hh split is derivable -- same simplification every other provisional model
-    here already makes). The arch itself is driven by its own corner angle (F29 item 2: the angle between the
-    vertical horn and the arc's own tangent where they meet, Fred's own fixed 100-130 deg band, default 127, a
-    scale-INVARIANT `const` feature -- seat A's matching Fusion construction is a tangent line + an angle
-    dimension there, the exact replacement for the old free-rise handle that never built right).
-    Marked `provisional` so nothing mistakes it for a fit; replaced once Fred's own rebuild is fully constrained
-    and seat A's matching Fusion phases produce real recordable goldens."""
+def provisional_arched_top_model(base_model, arch_rise_of_hw):
+    """T10 ARCHED HOURGLASS, until its goldens are recorded live: a PROVISIONAL model, never none, from Template
+    1's fitted one. Its features unchanged (the sides/base are Template 1's own pinch, untouched); plus
+    `archRise` = `arch_rise_of_hw` x hw (0.35: a gentle dome, Fred's own sketch, confirmed against the 7x9
+    preview he approved). The app caps it so the pinch always keeps room -- it eats into the existing top horn's
+    own length, never adds height above the board (the advisor's own correction; Fred: going flat on an extreme
+    landscape board is fine, no pinch-shrinking). Marked `provisional` so nothing mistakes it for a fit."""
     feats = {k: dict(v) for k, v in base_model["features"].items()}
-    feats["depth"] = {"hw": depth_of_hw, "hh": 0.0}
-    feats["cornerR"] = {"hw": corner_r_bottom_of_hw, "hh": 0.0}  # the hip's (the full-width side the depth root is for)
-    feats["cornerRTop"] = {"hw": corner_r_top_of_hw, "hh": 0.0}
-    feats["cornerRBottom"] = {"hw": corner_r_bottom_of_hw, "hh": 0.0}
-    feats["waistR"] = {"hw": waist_r_of_hw, "hh": 0.0}
-    feats["waistCy"] = {"hw": 0.0, "hh": waist_cy_of_hh}
-    feats["notch"] = {"hw": notch_of_hw, "hh": 0.0}
-    feats["topInset"] = {"hw": top_inset_of_hw, "hh": 0.0}
-    feats["archCornerAngle"] = {"hw": 0.0, "hh": 0.0, "const": arch_corner_angle_deg}
+    feats["archRise"] = {"hw": arch_rise_of_hw, "hh": 0.0}
     return {
         "features": feats,
         "fit": dict(base_model["fit"]),
         "provisional": {
-            "reason": "Fred's own hand rebuild in Fusion replaces the old free-rise dome (H23 item 14: it built "
-                      "wrong in Fusion at every size); no recorded goldens yet either",
-            "baseModel": "the fitted Template 1 model (every feature overridden, not inherited)",
-            "depthOfHw": depth_of_hw, "cornerRTopOfHw": corner_r_top_of_hw, "cornerRBottomOfHw": corner_r_bottom_of_hw,
-            "waistROfHw": waist_r_of_hw, "waistCyOfHh": waist_cy_of_hh, "notchOfHw": notch_of_hw,
-            "topInsetOfHw": top_inset_of_hw, "archCornerAngleDeg": arch_corner_angle_deg,
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": "the fitted Template 1 model",
+            "archRiseOfHw": arch_rise_of_hw,
         },
     }
 

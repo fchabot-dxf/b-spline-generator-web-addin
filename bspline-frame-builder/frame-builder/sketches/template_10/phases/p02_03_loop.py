@@ -13,28 +13,57 @@ def get_block(ui_data=None):
     angle (not 45 deg, Fred's own explicit ask).
 
     The arch's own two ends are NOT anchored to the projected board corners (unlike every other hourglass-family
-    template's top_edge): a circle through two FIXED, symmetric chord ends that is ALSO tangent to a line above
-    them has, for any one chord height, exactly ONE radius that satisfies both (the sagitta formula) -- so laying
-    out the arc as [Symmetric about the Y axis] + [Tangent to the safe zone's own top line] leaves EXACTLY ONE
-    free value: how far down the chord sits (the "rise"), the one seeded handle (archRise, editor-shape-lattice-
-    generator.js hourglassConstruction's own `arch`). No Radius expression is needed (unlike the side arcs'
-    own temporary seed-then-remove dance): this pair of constraints already pins the radius uniquely for any
-    chord height, by construction, so the ARC seed itself only needs to be in the right NEIGHBOURHOOD, not exact.
+    template's top_edge). H23 item 15: a `Tangent(top_edge, proj_off_BB_top)` + `Symmetry` pair only pins the
+    arc's RADIUS magnitude for a given chord height -- it does NOT pin which BRANCH (short way up vs. the
+    180+ deg long way around) the solver lands on; neither does a literal apex point made Coincident to
+    `top_edge` itself (Fusion's point-on-curve Coincident only constrains a point to the arc's SUPPORTING
+    CIRCLE, not its trimmed sweep).
+
+    Replaced with a CLOSED-FORM, fully pre-computed circle instead of an iterative solve: given the chord
+    half-width `hw` (the EXACT safe-zone half-width, the SAME value the real board corner
+    `proj_off_corner_BR/BL` resolve to -- H23 item 17's own finding, see HW's own comment below) and chord
+    height `cy` and the safe zone's own top line height `Ly`, the unique circle through `(+-hw, cy)` tangent
+    to `y = Ly` from below has `centre_y = (hw^2 + cy^2 - Ly^2) / (2*(cy - Ly))` (derived from
+    `hw^2 + (cy-centre_y)^2 = radius^2 = (Ly-centre_y)^2`, i.e. "distance to the chord end" = "distance to the
+    tangent point", both equal radius). `top_edge` is SEEDED at exactly this circle's own S/apex/E, so
+    `addByThreePoints` creates the correct short arc on the first try.
+
+    Keeping it that way through the REST of the build turned out to need two separate pieces, confirmed live,
+    each load-bearing on its own:
+      1. `top_edge:S`/`:E` are pinned to two Fixed construction `Point` anchors (this phase, below) -- NOT a
+         direct `Fix` on `top_edge`'s own points. MEASURED: the anchor-plus-Coincident layer is what the
+         shoulder/waist/hip chain needs present THROUGHOUT the rest of the build to resolve correctly itself
+         (p02_04 through p02_11) -- removing it (a bare direct `Fix` instead) reliably fixes `top_edge` alone
+         but sends `arc_shoulder_R/L` back to 357.9 deg, the "ears" bug item 15 first found and left open; it
+         was never a separate bug from the arch's own, just a harder instance of the same one (3 mutually-
+         tangent arcs instead of 1).
+      2. That same anchor-plus-Coincident layer leaves `top_edge` ITSELF on the reflex branch (a bare
+         `Coincident`, even to an exactly-Fixed anchor, does not stop an Arc3Point from reinterpreting its
+         own trim between two now-correctly-placed endpoints -- same ambiguity as the point-on-curve finding
+         above, just at the endpoint level). So `top_edge` is deliberately left reflex here and corrected
+         LATER, once everything that needs this section's own Coincident link has already resolved against
+         it -- see `p02_12_arch_rebuild.py`'s own docstring for that half and why it has to run last.
+
+    `HW`/`CY`/`LY` are written so that `seed_basis.seed_sketch`'s own automatic widthIn/heightIn -> seed-board
+    rewrite (`widthIn -> (widthIn - 2*(boundingboxoffset - 0.25in))`, Line/Arc3Point/Radius Points/Expression
+    fields only) turns them into the EXACT safe-zone formula for ANY board/offset, not just the one (width
+    7in, boundingboxoffset 0.25in) the old literal fractions (`widthIn * 0.464286` etc.) happened to match --
+    see each constant's own inline comment for the algebra. `archRise`'s own 0.35 (`archRiseOfHw`,
+    `FRAME_PROVISIONAL_SHAPE`) is baked into `CY` this way rather than wired as a template parameter -- still
+    not independently adjustable.
 
     The two top horns (horn_TR/horn_TL) keep Template 1's own BOTTOM end (welded to their own shoulder arc,
     p02_05/p02_08, untouched) but their TOP end is now coincident with the arch's own chord end instead of a
-    projected board corner -- its own x comes for free from the UNCHANGED shoulder-tangent chain (horn_TR stays
-    Vertical, and its own bottom end's x is already fixed by that chain), so no new anchor is needed for it either.
+    projected board corner -- their own x comes FROM the arch's now-exact anchor (horn_TR stays Vertical, so
+    pinning its top end also pins its bottom end's own x, the same value the whole shoulder-tangent chain
+    below now resolves against).
 
     Base and the sides are Template 1's own, seeds included; see Template 1's copy of this phase for that
-    rationale (the DOF reasoning here only concerns the TOP's own net un-reduced count: before this phase's own
-    extra constraints the loop/arc seeding adds 2 DOF -- the chord height and the arc's own radius -- and
-    Symmetry + Tangent remove exactly 1 of them (Symmetry ties the two ends together AND fixes the centre's own
-    x at 0; Tangent then fixes the radius for whatever chord height remains), leaving exactly `archRise`.
+    rationale.
 
     Seeds (T10 top): the 7x9 solve of the app's provisional Template 10 shape (archRise = 0.35 hw = 1.1375 in,
     giving a chord at 3.1125 in and a radius of ~5.21 in -- frame-defs shapeModel), as widthIn / heightIn
-    expressions, so the seeded top is already close to tangent and closed at the seed board.
+    expressions, so the seeded top is already close to the apex and closed at the seed board.
 
     Loop direction: clockwise.
       Right side flows top -> bottom (shoulder -> waist -> hip).
@@ -44,37 +73,50 @@ def get_block(ui_data=None):
       :S = start of segment in loop direction
       :E = end of segment in loop direction
     """
+    # Closed-form arch circle (see docstring). HW/CY/LY are written so that `seed_basis.seed_sketch`'s own
+    # automatic widthIn/heightIn -> seed-board rewrite (Line/Arc3Point/Radius Points/Expression fields only)
+    # turns them into the EXACT safe-zone formula -- see the docstring's own algebra. Do not "simplify" these
+    # by substituting `boundingboxoffset` back in directly: that would make `seed_basis`'s rewrite apply TWICE.
+    HW = 'widthIn/2 - 0.25 in'                           # -> widthIn/2 - boundingboxoffset, after rewrite
+    CY = 'heightIn/2 - 0.175 * widthIn - 0.1625 in'       # -> the arch's own cy (archRiseOfHw = 0.35), after rewrite
+    LY = 'heightIn/2 - 0.25 in'                           # -> heightIn/2 - boundingboxoffset (the top line), after rewrite
+
     seq = [
-        # 1. Rails. Top (T10): ONE arc, its own two ends ALREADY at the seeded chord height (not the board
-        # corner), its own on-arc midpoint seeded near the safe zone's own top line (the apex). Bottom:
-        # Template 1's own flat base, unchanged.
+        # 1. Rails. Top (T10): ONE arc, seeded at the EXACT closed-form circle (not just a nearby guess) so
+        # addByThreePoints creates the correct short arc on the first try. Bottom: Template 1's own flat base,
+        # unchanged.
         {'ID': 'top_edge', 'Type': 'Arc3Point', 'Points': [
-            ['-widthIn * 0.464286', 'heightIn * 0.345833'],
-            ['0.001', 'heightIn * 0.472222 - 0.001'],
-            ['widthIn * 0.464286', 'heightIn * 0.345833'],
+            [f'-({HW})', CY],
+            ['0.001', LY],
+            [HW, CY],
         ], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
+        {'ID': 'top_S_anchor', 'Type': 'Point', 'Points': [[f'-({HW})', CY]], 'IsConstruction': True},
+        {'ID': 'top_E_anchor', 'Type': 'Point', 'Points': [[HW, CY]], 'IsConstruction': True},
+        {'Type': 'Fix', 'Targets': ['top_S_anchor', 'top_E_anchor']},
+        {'Type': 'Coincident', 'Targets': ['top_edge:S', 'top_S_anchor'], 'Name': 'top_edge_pin_S'},
+        {'Type': 'Coincident', 'Targets': ['top_edge:E', 'top_E_anchor'], 'Name': 'top_edge_pin_E'},
+
         {'ID': 'bottom_edge', 'Type': 'Line', 'Points': [['widthIn/2 - 0.001', '-heightIn/2 + 0.001'], ['-widthIn/2 + 0.001', '-heightIn/2 + 0.001']], 'StartID': 'bottom_edge:S', 'EndID': 'bottom_edge:E'},
 
         # 2. Vertical horns. TR/TL seeded at the chord height (not the board corner) at their own TOP end; BR/BL
         # unchanged (loose-seeded 0.001 off-target at the BB-corner end, Template 1's own convention).
-        {'ID': 'horn_TR', 'Type': 'Line', 'Points': [['widthIn/2 - 0.001', 'heightIn * 0.345833'], ['widthIn/2', 'heightIn * 0.183']], 'StartID': 'horn_TR:S', 'EndID': 'horn_TR:E'},
+        {'ID': 'horn_TR', 'Type': 'Line', 'Points': [['widthIn/2 - 0.001', CY], ['widthIn/2', 'heightIn * 0.183']], 'StartID': 'horn_TR:S', 'EndID': 'horn_TR:E'},
         {'ID': 'horn_BR', 'Type': 'Line', 'Points': [['widthIn/2 - 0.001', '-heightIn/2 + 0.001'], ['widthIn/2', '-heightIn * 0.183']], 'StartID': 'horn_BR:S', 'EndID': 'horn_BR:E'},
-        {'ID': 'horn_TL', 'Type': 'Line', 'Points': [['-widthIn/2 + 0.001', 'heightIn * 0.345833'], ['-widthIn/2', 'heightIn * 0.183']], 'StartID': 'horn_TL:S', 'EndID': 'horn_TL:E'},
+        {'ID': 'horn_TL', 'Type': 'Line', 'Points': [['-widthIn/2 + 0.001', CY], ['-widthIn/2', 'heightIn * 0.183']], 'StartID': 'horn_TL:S', 'EndID': 'horn_TL:E'},
         {'ID': 'horn_BL', 'Type': 'Line', 'Points': [['-widthIn/2 + 0.001', '-heightIn/2 + 0.001'], ['-widthIn/2', '-heightIn * 0.183']], 'StartID': 'horn_BL:S', 'EndID': 'horn_BL:E'},
 
         {'Type': 'Vertical', 'Targets': ['horn_TR', 'horn_BR', 'horn_TL', 'horn_BL']},
 
         # 3. Corner topology. BR/BL unchanged (anchored to the real board corners). TR/TL: NOT anchored to the
-        # board corner -- tied to the arch's own chord end instead, whose height is free (the Tangent below pins
-        # its radius, Symmetry its own x = 0 at the centre and ties the two ends together).
+        # board corner directly -- tied to the arch's own chord end instead, already pinned exactly in section
+        # 1b above (before this phase's own Vertical/corner-topology constraints existed to cross-couple with
+        # it; see that section's own comment for why the ordering matters).
         {'Type': 'Coincident', 'Targets': ['bottom_edge:S', 'proj_off_corner_BR']},
         {'Type': 'Coincident', 'Targets': ['bottom_edge:E', 'proj_off_corner_BL']},
         {'Type': 'Coincident', 'Targets': ['horn_BR:S', 'bottom_edge:S']},
         {'Type': 'Coincident', 'Targets': ['horn_BL:S', 'bottom_edge:E']},
         {'Type': 'Coincident', 'Targets': ['horn_TR:S', 'top_edge:E']},
         {'Type': 'Coincident', 'Targets': ['horn_TL:S', 'top_edge:S']},
-        {'Type': 'Tangent', 'Targets': ['top_edge', 'proj_off_BB_top']},
-        {'Type': 'Symmetry', 'Targets': ['top_edge:S', 'top_edge:E', 'Y_AXIS']},
 
         # 4. Arc seeds. Points are [Start, Bulge, End] in arc-traversal
         # order - Bulge is the real arc midpoint (a point ON the arc),
