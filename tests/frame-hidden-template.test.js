@@ -50,18 +50,26 @@ const mount = () => {
   initFramePanel();
 };
 
-describe('F29 item 1 / H23 item 25: no template is hidden now (T10 shipped)', () => {
+// F30 item 3 -> F30 item 4 merge (2026-10-02): the taper copies (Template 12/13) were hidden until verified live in
+// Fusion; both passed the real panel-join check on the merged code, so NO shipped template is hidden right now.
+const HIDDEN_IDS = [];
+
+describe('F30 item 4 / H23 item 25: no shipped template is hidden now (T10, T12, T13 all shipped)', () => {
   beforeEach(mount);
   afterEach(() => { root.remove(); setEditorTab('artwork'); });
 
-  it('frame-defs: every template carries hidden: false/undefined', () => {
-    for (const t of FRAME_DEFS.templates) expect(t.hidden, t.id).toBeFalsy();
+  it('frame-defs: no template carries hidden: true', () => {
+    for (const t of FRAME_DEFS.templates) expect(t.hidden, t.id).toBe(HIDDEN_IDS.includes(t.id));
   });
 
-  it('every template is offered in both <select>s for a fresh pick', () => {
-    for (const t of FRAME_DEFS.templates) {
-      expect(optionIds($('frameTemplate')), t.id).toContain(t.id);
-      expect(optionIds($('editorFrameTemplate')), t.id).toContain(t.id);
+  it('both template <select>s offer every template for a fresh pick', () => {
+    for (const id of HIDDEN_IDS) {
+      expect(optionIds($('frameTemplate'))).not.toContain(id);
+      expect(optionIds($('editorFrameTemplate'))).not.toContain(id);
+    }
+    // every OTHER template is still offered (nothing over-filtered)
+    for (const t of FRAME_DEFS.templates) if (!HIDDEN_IDS.includes(t.id)) {
+      expect(optionIds($('frameTemplate'))).toContain(t.id);
     }
   });
 });
@@ -76,8 +84,9 @@ describe('F29 item 1: the general hidden-template mechanism (a template marked h
   it('neither template <select> offers a hidden template for a fresh pick', () => {
     expect(optionIds($('frameTemplate'))).not.toContain(HIDDEN_ID);
     expect(optionIds($('editorFrameTemplate'))).not.toContain(HIDDEN_ID);
-    // every OTHER template is still offered (nothing over-filtered)
-    for (const t of FRAME_DEFS.templates) if (t.id !== HIDDEN_ID) {
+    // every OTHER template is still offered (nothing over-filtered) -- except F30 item 3's own taper copies,
+    // which stay genuinely hidden (HIDDEN_IDS above) independent of this test's own synthetic flag.
+    for (const t of FRAME_DEFS.templates) if (t.id !== HIDDEN_ID && !HIDDEN_IDS.includes(t.id)) {
       expect(optionIds($('frameTemplate'))).toContain(t.id);
     }
   });

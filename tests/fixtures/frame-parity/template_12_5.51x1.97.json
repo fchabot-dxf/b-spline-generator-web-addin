@@ -1,0 +1,987 @@
+{
+  "bars": {},
+  "meta": {
+    "core": "flat box 5.51x1.97x0.75 in, underside z=0",
+    "frame_height_offset": "-1 in",
+    "frame_thickness": "template default (0.75 in)",
+    "heightIn": 1.97,
+    "recorded": "2026-10-01",
+    "recorder": "tools/repro/record_frame_parity.py",
+    "template": "template_12",
+    "timelineHealthy": true,
+    "units": "in / in^2 / in^3",
+    "widthIn": 5.51
+  },
+  "panelAfterTrim": {
+    "bbox": {
+      "max": [
+        2.755,
+        0.735,
+        0.75
+      ],
+      "min": [
+        -2.755,
+        -0.985,
+        0.0
+      ]
+    },
+    "volume": 5.95942
+  },
+  "sketch2_shape_outline": {
+    "arc_hip_L": {
+      "center": [
+        -2.2794,
+        -0.26017
+      ],
+      "construction": false,
+      "end": [
+        -2.505,
+        -0.26017
+      ],
+      "mid": [
+        -2.35917,
+        -0.04915
+      ],
+      "radius": 0.2256,
+      "start": [
+        -2.11021,
+        -0.11095
+      ],
+      "type": "arc"
+    },
+    "arc_hip_R": {
+      "center": [
+        2.2745,
+        -0.26017
+      ],
+      "construction": false,
+      "end": [
+        2.10293,
+        -0.10625
+      ],
+      "mid": [
+        2.35691,
+        -0.04491
+      ],
+      "radius": 0.2305,
+      "start": [
+        2.505,
+        -0.26017
+      ],
+      "type": "arc"
+    },
+    "arc_shoulder_L": {
+      "center": [
+        -2.06898,
+        0.27982
+      ],
+      "construction": false,
+      "end": [
+        -2.03283,
+        0.15131
+      ],
+      "mid": [
+        -2.16407,
+        0.18611
+      ],
+      "radius": 0.1335,
+      "start": [
+        -2.19696,
+        0.31783
+      ],
+      "type": "arc"
+    },
+    "arc_shoulder_R": {
+      "center": [
+        2.06898,
+        0.27982
+      ],
+      "construction": false,
+      "end": [
+        2.20493,
+        0.32105
+      ],
+      "mid": [
+        2.17045,
+        0.18039
+      ],
+      "radius": 0.14206,
+      "start": [
+        2.03051,
+        0.14307
+      ],
+      "type": "arc"
+    },
+    "arc_waist_L": {
+      "center": [
+        -1.9891,
+        -0.00414
+      ],
+      "construction": false,
+      "end": [
+        -2.03283,
+        0.15131
+      ],
+      "mid": [
+        -1.83422,
+        -0.04984
+      ],
+      "radius": 0.16148,
+      "start": [
+        -2.11021,
+        -0.11095
+      ],
+      "type": "arc"
+    },
+    "arc_waist_R": {
+      "center": [
+        1.9891,
+        -0.00414
+      ],
+      "construction": false,
+      "end": [
+        2.10293,
+        -0.10625
+      ],
+      "mid": [
+        1.84225,
+        -0.04679
+      ],
+      "radius": 0.15292,
+      "start": [
+        2.03051,
+        0.14307
+      ],
+      "type": "arc"
+    },
+    "bottom_edge": {
+      "construction": false,
+      "end": [
+        -2.505,
+        -0.735
+      ],
+      "start": [
+        2.505,
+        -0.735
+      ],
+      "type": "line"
+    },
+    "horn_BL": {
+      "construction": false,
+      "end": [
+        -2.505,
+        -0.26017
+      ],
+      "start": [
+        -2.505,
+        -0.735
+      ],
+      "type": "line"
+    },
+    "horn_BR": {
+      "construction": false,
+      "end": [
+        2.505,
+        -0.26017
+      ],
+      "start": [
+        2.505,
+        -0.735
+      ],
+      "type": "line"
+    },
+    "horn_TL": {
+      "construction": false,
+      "end": [
+        -2.19696,
+        0.31783
+      ],
+      "start": [
+        -2.07305,
+        0.735
+      ],
+      "type": "line"
+    },
+    "horn_TR": {
+      "construction": false,
+      "end": [
+        2.20493,
+        0.32105
+      ],
+      "start": [
+        2.07939,
+        0.735
+      ],
+      "type": "line"
+    },
+    "proj_off_BB_top": {
+      "construction": false,
+      "end": [
+        2.505,
+        0.735
+      ],
+      "start": [
+        -2.505,
+        0.735
+      ],
+      "type": "line"
+    },
+    "skel_hip_pin_L": {
+      "construction": true,
+      "end": [
+        -2.2794,
+        -0.26017
+      ],
+      "start": [
+        0.0,
+        -0.26017
+      ],
+      "type": "line"
+    },
+    "skel_hip_pin_R": {
+      "construction": true,
+      "end": [
+        2.2745,
+        -0.26017
+      ],
+      "start": [
+        0.0,
+        -0.26017
+      ],
+      "type": "line"
+    },
+    "skel_shoulder_pin_L": {
+      "construction": true,
+      "end": [
+        -2.06898,
+        0.27982
+      ],
+      "start": [
+        0.0,
+        0.27982
+      ],
+      "type": "line"
+    },
+    "skel_shoulder_pin_R": {
+      "construction": true,
+      "end": [
+        2.06898,
+        0.27982
+      ],
+      "start": [
+        0.0,
+        0.27982
+      ],
+      "type": "line"
+    },
+    "skel_waist_pin_L": {
+      "construction": true,
+      "end": [
+        -1.9891,
+        -0.00414
+      ],
+      "start": [
+        0.0,
+        -0.00414
+      ],
+      "type": "line"
+    },
+    "skel_waist_pin_R": {
+      "construction": true,
+      "end": [
+        1.9891,
+        -0.00414
+      ],
+      "start": [
+        0.0,
+        -0.00414
+      ],
+      "type": "line"
+    },
+    "top_edge": {
+      "construction": false,
+      "end": [
+        2.07939,
+        0.735
+      ],
+      "start": [
+        -2.07305,
+        0.735
+      ],
+      "type": "line"
+    }
+  },
+  "sketch3_frame_enclosure": {
+    "inner_proj_arc_hip_L": {
+      "center": [
+        -2.2794,
+        -0.26017
+      ],
+      "construction": false,
+      "end": [
+        -3.255,
+        -0.26017
+      ],
+      "mid": [
+        -3.17089,
+        0.13611
+      ],
+      "radius": 0.9756,
+      "start": [
+        -2.93306,
+        0.46407
+      ],
+      "type": "arc"
+    },
+    "inner_proj_arc_hip_R": {
+      "center": [
+        2.2745,
+        -0.26017
+      ],
+      "construction": false,
+      "end": [
+        2.94331,
+        0.45681
+      ],
+      "mid": [
+        3.17371,
+        0.13073
+      ],
+      "radius": 0.9805,
+      "start": [
+        3.255,
+        -0.26017
+      ],
+      "type": "arc"
+    },
+    "inner_proj_arc_shoulder_L": {
+      "construction": false,
+      "end": [
+        -2.91591,
+        0.53138
+      ],
+      "start": [
+        -2.63266,
+        1.485
+      ],
+      "type": "line"
+    },
+    "inner_proj_arc_shoulder_R": {
+      "center": [
+        2.06898,
+        0.27982
+      ],
+      "construction": false,
+      "end": [
+        2.92265,
+        0.53872
+      ],
+      "mid": [
+        2.93395,
+        0.49801
+      ],
+      "radius": 0.89206,
+      "start": [
+        2.94331,
+        0.45681
+      ],
+      "type": "arc"
+    },
+    "inner_proj_bottom_edge": {
+      "construction": false,
+      "end": [
+        -3.255,
+        -1.485
+      ],
+      "start": [
+        3.255,
+        -1.485
+      ],
+      "type": "line"
+    },
+    "inner_proj_horn_BL": {
+      "construction": false,
+      "end": [
+        -3.255,
+        -0.26017
+      ],
+      "start": [
+        -3.255,
+        -1.485
+      ],
+      "type": "line"
+    },
+    "inner_proj_horn_BR": {
+      "construction": false,
+      "end": [
+        3.255,
+        -0.26017
+      ],
+      "start": [
+        3.255,
+        -1.485
+      ],
+      "type": "line"
+    },
+    "inner_proj_horn_TL": {
+      "center": [
+        -2.06898,
+        0.27982
+      ],
+      "construction": false,
+      "end": [
+        -2.93306,
+        0.46407
+      ],
+      "mid": [
+        -2.92515,
+        0.49789
+      ],
+      "radius": 0.8835,
+      "start": [
+        -2.91591,
+        0.53138
+      ],
+      "type": "arc"
+    },
+    "inner_proj_horn_TR": {
+      "construction": false,
+      "end": [
+        2.92265,
+        0.53872
+      ],
+      "start": [
+        2.63567,
+        1.485
+      ],
+      "type": "line"
+    },
+    "inner_proj_top_edge": {
+      "construction": false,
+      "end": [
+        2.63567,
+        1.485
+      ],
+      "start": [
+        -2.63266,
+        1.485
+      ],
+      "type": "line"
+    },
+    "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S": {
+      "construction": false,
+      "end": [
+        3.255,
+        -1.485
+      ],
+      "start": [
+        2.505,
+        -0.735
+      ],
+      "type": "line"
+    },
+    "miter-proj_horn_BL:S_inner_proj_horn_BL:S": {
+      "construction": false,
+      "end": [
+        -3.255,
+        -1.485
+      ],
+      "start": [
+        -2.505,
+        -0.735
+      ],
+      "type": "line"
+    },
+    "miter-proj_horn_TR:S_inner_proj_horn_TR:S": {
+      "construction": false,
+      "end": [
+        2.63567,
+        1.485
+      ],
+      "start": [
+        2.07939,
+        0.735
+      ],
+      "type": "line"
+    },
+    "miter-proj_top_edge:S_inner_proj_top_edge:S": {
+      "construction": false,
+      "end": [
+        -2.63266,
+        1.485
+      ],
+      "start": [
+        -2.07305,
+        0.735
+      ],
+      "type": "line"
+    },
+    "proj_arc_hip_L": {
+      "center": [
+        -2.2794,
+        -0.26017
+      ],
+      "construction": false,
+      "end": [
+        -2.505,
+        -0.26017
+      ],
+      "mid": [
+        -2.35917,
+        -0.04915
+      ],
+      "radius": 0.2256,
+      "start": [
+        -2.11021,
+        -0.11095
+      ],
+      "type": "arc"
+    },
+    "proj_arc_hip_R": {
+      "center": [
+        2.2745,
+        -0.26017
+      ],
+      "construction": false,
+      "end": [
+        2.10293,
+        -0.10625
+      ],
+      "mid": [
+        2.35691,
+        -0.04491
+      ],
+      "radius": 0.2305,
+      "start": [
+        2.505,
+        -0.26017
+      ],
+      "type": "arc"
+    },
+    "proj_arc_shoulder_L": {
+      "center": [
+        -2.06898,
+        0.27982
+      ],
+      "construction": false,
+      "end": [
+        -2.03283,
+        0.15131
+      ],
+      "mid": [
+        -2.16407,
+        0.18611
+      ],
+      "radius": 0.1335,
+      "start": [
+        -2.19696,
+        0.31783
+      ],
+      "type": "arc"
+    },
+    "proj_arc_shoulder_R": {
+      "center": [
+        2.06898,
+        0.27982
+      ],
+      "construction": false,
+      "end": [
+        2.20493,
+        0.32105
+      ],
+      "mid": [
+        2.17045,
+        0.18039
+      ],
+      "radius": 0.14206,
+      "start": [
+        2.03051,
+        0.14307
+      ],
+      "type": "arc"
+    },
+    "proj_arc_waist_L": {
+      "center": [
+        -1.9891,
+        -0.00414
+      ],
+      "construction": false,
+      "end": [
+        -2.03283,
+        0.15131
+      ],
+      "mid": [
+        -1.83422,
+        -0.04984
+      ],
+      "radius": 0.16148,
+      "start": [
+        -2.11021,
+        -0.11095
+      ],
+      "type": "arc"
+    },
+    "proj_arc_waist_R": {
+      "center": [
+        1.9891,
+        -0.00414
+      ],
+      "construction": false,
+      "end": [
+        2.10293,
+        -0.10625
+      ],
+      "mid": [
+        1.84225,
+        -0.04679
+      ],
+      "radius": 0.15292,
+      "start": [
+        2.03051,
+        0.14307
+      ],
+      "type": "arc"
+    },
+    "proj_bottom_edge": {
+      "construction": false,
+      "end": [
+        -2.505,
+        -0.735
+      ],
+      "start": [
+        2.505,
+        -0.735
+      ],
+      "type": "line"
+    },
+    "proj_horn_BL": {
+      "construction": false,
+      "end": [
+        -2.505,
+        -0.26017
+      ],
+      "start": [
+        -2.505,
+        -0.735
+      ],
+      "type": "line"
+    },
+    "proj_horn_BR": {
+      "construction": false,
+      "end": [
+        2.505,
+        -0.26017
+      ],
+      "start": [
+        2.505,
+        -0.735
+      ],
+      "type": "line"
+    },
+    "proj_horn_TL": {
+      "construction": false,
+      "end": [
+        -2.19696,
+        0.31783
+      ],
+      "start": [
+        -2.07305,
+        0.735
+      ],
+      "type": "line"
+    },
+    "proj_horn_TR": {
+      "construction": false,
+      "end": [
+        2.20493,
+        0.32105
+      ],
+      "start": [
+        2.07939,
+        0.735
+      ],
+      "type": "line"
+    },
+    "proj_top_edge": {
+      "construction": false,
+      "end": [
+        2.07939,
+        0.735
+      ],
+      "start": [
+        -2.07305,
+        0.735
+      ],
+      "type": "line"
+    },
+    "surround_bottom": {
+      "construction": false,
+      "end": [
+        -3.44375,
+        -1.23125
+      ],
+      "start": [
+        3.44375,
+        -1.23125
+      ],
+      "type": "line"
+    },
+    "surround_left": {
+      "construction": false,
+      "end": [
+        -3.44375,
+        1.23125
+      ],
+      "start": [
+        -3.44375,
+        -1.23125
+      ],
+      "type": "line"
+    },
+    "surround_rect": {
+      "construction": false,
+      "end": [
+        3.44375,
+        1.23125
+      ],
+      "start": [
+        -3.44375,
+        1.23125
+      ],
+      "type": "line"
+    },
+    "surround_rect_diag1": {
+      "construction": true,
+      "end": [
+        3.44375,
+        -1.23125
+      ],
+      "start": [
+        -3.44375,
+        1.23125
+      ],
+      "type": "line"
+    },
+    "surround_rect_diag2": {
+      "construction": true,
+      "end": [
+        -3.44375,
+        -1.23125
+      ],
+      "start": [
+        3.44375,
+        1.23125
+      ],
+      "type": "line"
+    },
+    "surround_right": {
+      "construction": false,
+      "end": [
+        3.44375,
+        -1.23125
+      ],
+      "start": [
+        3.44375,
+        1.23125
+      ],
+      "type": "line"
+    }
+  },
+  "sketch3_profiles": [
+    {
+      "area": 0.86881,
+      "bbox": {
+        "max": [
+          -2.70803,
+          1.23125,
+          0.0
+        ],
+        "min": [
+          -3.44375,
+          -1.23125,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.03219,
+      "bbox": {
+        "max": [
+          -3.00125,
+          -1.23125,
+          0.0
+        ],
+        "min": [
+          -3.255,
+          -1.485,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.58752,
+      "bbox": {
+        "max": [
+          3.255,
+          -1.23125,
+          0.0
+        ],
+        "min": [
+          -3.255,
+          -1.485,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.8158,
+      "bbox": {
+        "max": [
+          -1.78476,
+          1.23125,
+          0.0
+        ],
+        "min": [
+          -3.255,
+          -1.23125,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 2.73248,
+      "bbox": {
+        "max": [
+          3.00125,
+          -0.735,
+          0.0
+        ],
+        "min": [
+          -3.00125,
+          -1.23125,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.03358,
+      "bbox": {
+        "max": [
+          -2.44333,
+          1.485,
+          0.0
+        ],
+        "min": [
+          -2.70803,
+          1.23125,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.28894,
+      "bbox": {
+        "max": [
+          2.63567,
+          1.485,
+          0.0
+        ],
+        "min": [
+          -2.63266,
+          1.23125,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 6.6309,
+      "bbox": {
+        "max": [
+          2.505,
+          0.735,
+          0.0
+        ],
+        "min": [
+          -2.505,
+          -0.735,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 2.24385,
+      "bbox": {
+        "max": [
+          2.44746,
+          1.23125,
+          0.0
+        ],
+        "min": [
+          -2.44333,
+          0.735,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.80562,
+      "bbox": {
+        "max": [
+          3.255,
+          1.23125,
+          0.0
+        ],
+        "min": [
+          1.79559,
+          -1.23125,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.03364,
+      "bbox": {
+        "max": [
+          2.71262,
+          1.485,
+          0.0
+        ],
+        "min": [
+          2.44746,
+          1.23125,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.863,
+      "bbox": {
+        "max": [
+          3.44375,
+          1.23125,
+          0.0
+        ],
+        "min": [
+          2.71262,
+          -1.23125,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.03219,
+      "bbox": {
+        "max": [
+          3.255,
+          -1.23125,
+          0.0
+        ],
+        "min": [
+          3.00125,
+          -1.485,
+          0.0
+        ]
+      }
+    }
+  ]
+}

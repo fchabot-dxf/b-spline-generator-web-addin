@@ -4969,6 +4969,602 @@ project.
 - **Undo**: flipping this back is exactly the one flag, `FRAME_HIDDEN = False` in `template_10/template_data.py`,
   then regenerate frame-defs -- no other code to revert.
 
+## 2026-10-01: F29 item 2 — Template 10 app shape = Fred's own reconstruction (seat C, epoch 5)
+
+Fred rebuilt T10 by hand in Fusion rather than wait on a fix: the dispatch's own first read was "Narrow Neck
+(Template 2) plus an arched top." Before building anything, read BOTH files in `.bspline-status/shots/fred/`
+(the text coordinate dump AND a newer, more complete live constraints/entity JSON sitting right next to it,
+generated 11 min later) and found the entity names -- `arc_shoulder_R`/`arc_waist_R`/`arc_hip_R`,
+`skel_shoulder_pin_R` etc. -- are IDENTICAL to the OLD T10's own (Template 2 only ever has `arc_waist`/`arc_hip`,
+no "shoulder" arc or pin at all), and the three arcs' own radii are pairwise EXTERNALLY tangent (centre-distance
+= radius sum, confirmed to 4-5 significant figures from the live data) -- the signature of T1's own 3-arc
+shoulder/waist/hip chain, not T2's 2-arc neck/body one. Flagged this contradiction to the advisor before writing
+any code (it would have meant building the wrong thing in parallel with seat A's own Fusion work); confirmed:
+Fred started from T10's OWN existing sketch and dragged its existing handles to his own values, not T2.
+
+- **The sides, precisely fitted off the live data** (not eyeballed): solved `hourglassConstruction`'s own
+  tangency algebra backward from the recorded arc centres/radii (`waistCenterY`, `waistCx` directly off the
+  waist arc's own centre; `depth` from `hw - (waistCx - waistR)`; `cornerRTop`/`cornerRBottom` straight off the
+  shoulder/hip radii; `topInset` off the horn's own recorded x). Verified the fit is exact, not approximate: the
+  tangency-derived `dy` for BOTH the shoulder and hip sides reproduces the recorded arc-centre heights to 4+
+  significant figures using the construction's OWN existing formula, unmodified. Fred's own values, 7x9
+  (hw=3.25in/hh=4.25in): waistReach 0.4165, waistCenterY 0.2136, cornerRadiusTop 1.2094 (x hw -- a huge gentle
+  shoulder), cornerRadiusBottom 0.2728, waistRadius 0.2629, topInset 0.3074 (a narrow top). All fed back through
+  `_hourglassRange`'s OWN existing ceilings at 7x9 -- comfortably inside them, no clamping.
+- **The arch's own ONE under-constrained element, and Fred's own follow-up rule**: the live JSON's own
+  `isFullyConstrained: false` plus a bare, untagged arc with no Tangent/Symmetry recorded confirmed that piece
+  was hand-dragged, not geometrically fixed -- so its exact numbers (a rise/chord-height pair) were read as
+  approximate, not an exact target. Mid-build, Fred supplied the actual rule directly: the arch is driven by the
+  CORNER ANGLE between the vertical horn and the arc's own tangent where they meet (100-130 deg, default 127,
+  "soft, never near tangency" -- 180 deg being the OLD T10's own tangent-join construction, the one that built
+  wrong in Fusion). Derived the closed form from scratch (not reused from anywhere): for a chord half-width `a`
+  and sagitta `s`, the tangent-chord angle `theta` satisfies `cos(theta) = -2 a s / (a^2 + s^2)`, with the
+  removable singularity at exactly 90 deg (flat, s=0) guarded explicitly. Confirmed algebraically against known
+  limits before coding: 90 deg -> s=0 (Template 1's own flat top); 180 deg -> s=a (a semicircle, tangent to the
+  vertical horn -- the OLD T10's own construction, now correctly OUTSIDE the 100-130 deg band). The apex-always-
+  touches-the-safe-zone-top invariant (`_solveHourglass`'s own `topY = -hh + rise`) is completely UNCHANGED --
+  only where `rise` itself comes from changed, so this property (and its own existing test) needed no rework.
+- **Declared, not hand-rolled, for the one genuinely new concept (a scale-INVARIANT param)**: every existing
+  shape-model feature is `b_hw*hw + b_hh*hh` (grows/shrinks with the board) -- wrong for a plain angle in
+  degrees. Added one optional `const` term to the feature formula (`paramsFromShapeModel`), defaulting to 0 for
+  every existing feature (nothing else is affected), rather than overloading an existing hw/hh slot with a
+  non-scaling meaning.
+- **New Python provisional model**: `provisional_reconstructed_arched_hourglass_model` (frame_shape_fit.py)
+  replaces `provisional_arched_top_model` outright (deleted, zero remaining callers after the swap) -- EVERY one
+  of Template 1's own 5 fitted features is overridden here (not kept, the opposite of the old T10's "untouched
+  base" design), read directly off Fred's own reconstructed sketch. `frame_definition.py`'s own dispatch gained
+  one new branch (keyed on `cornerRTopOfHw`, checked before the now-dead `archRiseOfHw` case).
+- **Handle renamed end to end**: `archRise` -> `archCornerAngle` throughout (PARAM_ORDER, DERIVED_PARAM_DEFAULTS,
+  FRAME_ONLY_PARAM_KEYS, `_hourglassRange`, `paramsFromShapeModel`, the Frame tab's own drag handle in
+  editor-shape-lattice-interaction.js -- the anchor still moves with a vertical drag, but the STORED value is now
+  the angle the drag implies, via the same formula's own exact inverse). The range is Fred's own fixed [100,130]
+  band, additionally capped (never widened) if the implied rise would ever reach the shoulder arc on a short
+  board -- the same safety margin the old free-rise version already had.
+- **MEASURED, flagged, not fixed this pass (out of scope: only 7x9 was asked for)**: Fred's own 7x9-fit side
+  values do NOT scale gracefully to a landscape aspect ratio -- 12x6 and 9x7 both get at least one piece shorter
+  than frame_thickness (12x6: 4 pieces, down to 0.055in; 9x7: 2 pieces at 0.336in), and 12x6's own inner profile
+  gets a genuine `selfIntersection` defect (the outer outline itself stays a clean, simple shape at every board
+  size tested, including these). Unlike `archCornerAngle`'s own graceful degrade, the shoulder/waist/hip values
+  have no per-orientation fallback -- would need the same kind of adaptive range/defaults work F29 item 1's own
+  Generate fix did for randomly-drawn extremes, but for the TEMPLATE'S OWN fixed defaults this time. Fred works
+  portrait only (current usage; every portrait size tried -- 6x9, 11x14, 5x7, 8x10, 9x12, 10x13, plus the square
+  8x8 -- came back completely clean).
+- **Tests**: `tests/frame-template-10.test.js` rewritten (27 tests) for the new construction + the renamed
+  handle + 3 new tests on `archRiseFromCornerAngle` itself (the 90/180 deg limits, monotonicity, and a round-trip
+  through the sagitta formula). The landscape finding above is its own explicit test (MEASURES the sub-thickness
+  piece, not asserted away) rather than silently narrowing the board list. Mutation-tested
+  `archRiseFromCornerAngle` (stubbing it to a constant turns 6 assertions red on exactly the geometry it drives;
+  restoring turns them green). Updated the stale literal-array tests in frame-template-5/6/9.test.js and
+  frame-defs.test.js for the key rename. Full suite green: vitest 2899 passed (154 files); pytest frame-builder
+  351 passed, 19 skipped; `gen_frame_defs.py --check` fresh.
+- **Miter diagram + Frame-tab shot, 7x9** (the one board this pass is scoped to), straight from production code
+  (`frameCutProfile`/`frameInnerProfile`/`frameMiters`, the real Frame-tab UI via CDP): `C:/Users/danse/
+  .bspline-status/shots/seatC/0620_F29-item2_miter-diagram.png`, `0612_F29-item2_7x9.png`. Visually confirmed: a
+  narrow top under a soft 127 deg dome, a deep round waist pulled low and off-centre, hips flaring back to the
+  full board width, square base corners -- matching Fred's own description and reconstructed sketch.
+- **Still hidden**: `FRAME_HIDDEN` untouched (still `True`) -- per the dispatch, stays hidden until seat A's own
+  matching Fusion phases build right too.
+
+## 2026-10-01: F30 item 1 -- Template 11 miter diagram, 7x9 + 6x9 (seat C, epoch 5, STEP 1 of 2, no code)
+
+Dispatch: Template 11 = Template 7's own diamond roof + eaves (seat B's closed-form derivation, WORK-LOG-lane-b.md
+"T82 item 1" turns 197/199/201 -- T7 itself is lane-b-only scratch work right now, not yet merged or even coded
+as `template_7/` files: `git ls-tree origin/lane-b` has zero `template_7` hits), but the side below each eave is
+Template 1's own shoulder/waist/hip 3-arc chain (not T7's own neck/body arcs), straight down to a base flaring to
+the full board width. Scratch only (session scratchpad), per the dispatch's own "no code" -- this entry repeats
+the derivation in prose, same reason seat B gives for doing the same with T7's own.
+
+**The roof + eave (reused verbatim from seat B's own v3, WORK-LOG-lane-b.md turns 197-201):** peak at the safe
+zone's own top-centre (0, -hh); eave at (a, -hh+a) where `a = min(0.62 hw, 0.42 H)` -- a 45-45-90 roof (rise =
+run = a). The eave is a genuine CORNER (miter), not a smooth join: the roof's own 45-deg direction and the
+shoulder arc's own vertical tangent there are different directions on purpose.
+
+**Below the eave, Template 1's own `side()` algebra (editor-shape-lattice-generator.js hourglassConstruction),
+called directly, unmodified -- not re-derived:** the eave IS the shoulder arc's own top tangent point (zero horn
+length at the top -- the eave already plays that role), so `topInset = hw - a` is DERIVED, not free. The
+remaining params are this template's own first design pass, not fixed by anything upstream: `cornerRadiusTop =
+cornerRadiusBottom = 0.42 hw` (MEASURED: a convex corner needs to clear frame_thickness, 0.75in, for THIS
+diagram's own simple `r - T` inner-offset math -- the real app's `outline-offset.js` handles a thinner radius via
+a merged-corner special case this preview doesn't reimplement, so 0.42 was picked for a clean diagram, not as a
+final proportion recommendation), `waistRadius = 0.25 hw`, `waistReach = 0.55` (MEASURED: needs real room above
+`topInset/hw`, ~0.38 at both golden sizes, or the pinch depth goes negative). `waistCenterY` is then SOLVED (not
+free) so the shoulder's own tangent point lands exactly on the eave. The hip flaring to the full board width is
+automatic (hourglassConstruction's own hip-horn x is always `hw`, any radius) -- not a separate mechanism to get
+right.
+
+**Two real bugs in the scratch script itself, not the geometry** (worth naming, the same spirit as seat B's own
+T7 diagram turns naming theirs): (1) circle objects here are `{cx,cy,r}` (hourglassConstruction's own
+convention) but the tangent-point/angle helpers were first written expecting `{x,y}` -- silent `undefined -
+number = NaN` propagated through every arc sample with no thrown error, caught by printing intermediate values
+rather than guessing. (2) the EXACT "jumped from the base corner to the mirrored eave, skipping the base bar and
+the whole left side" stitching bug WORK-LOG-lane-b.md's own turn 197 names Seat B hitting first on T7 -- same
+root cause here (dropping the wrong end of the array before reversing-and-mirroring the left half), independently
+hit and independently fixed the same way (keep the shared bridge point explicit, drop it from the reversed tail
+instead).
+
+**Verified, not assumed:** every sampled outer point (48 samples/arc) stays inside `[-hw,hw]x[-hh,hh]` at both
+sizes; every inner (convex-shrunk/concave-grown by T) radius stays positive (0.615/1.563/0.615in at 7x9,
+0.405/1.438/0.405in at 6x9 for shoulder/waist/hip); all 5 miter distances are sane and distinct from each other
+in the expected way (peak and both base corners land on the EXACT `T*sqrt(2) = 1.061in` a true 90-deg corner
+gives; the 2 eave miters come out shorter, 0.845in / 0.858in, confirming they are genuinely NOT 90-deg corners,
+not a copy-pasted assumption).
+
+Diagram: `C:/Users/danse/.bspline-status/shots/seatC/0700_F30-item1-proposed_miter-diagram_7x9_6x9.png`. Sent to
+the ADVISOR (not Fred directly -- this session's own standing correction after F29 item 2), per the dispatch.
+Passing back for Fred's sign-off before any `template_11/` code is written; STEP 2 (the actual build) also
+waits on Template 7 merging to main first (shared roof code, reused not forked).
+
+**Routing mistake, caught and flagged immediately:** reached for `SendUserFile` on this diagram out of habit right
+after committing to route through the advisor -- that tool has no concept of "the advisor," it always delivers
+to Fred directly regardless of intent. Flagged to the advisor the moment it was noticed (no cross-session tool
+sends a FILE to a peer; a peer only ever gets a path string in a message). Re-sent correctly as a path in a
+SendMessage body. Saved to this session's own memory so it doesn't repeat.
+
+## 2026-10-01: F30 item 3 -- taper-variant miter diagram, (a) Hourglass + (b) Narrow Neck, 7x9 / 8 deg (seat C,
+epoch 5, STEP 1 of 2, no code)
+
+Dispatch (replaces the earlier, now-withdrawn F30 item 2 single "Template 12"): Fred wants the upper-side taper
+(the side above the pinch leans inward going up, by `taperAngle` from vertical, instead of running straight up
+to the board's own full top) DECLARED ONCE as a shared construction element, then applied as NEW template copies
+-- (a) Hourglass + taper (from Template 1), (b) Narrow Neck + taper (from Template 2), (c) Arched + taper (from
+Template 10, only once T10's own Fusion fix lands) -- rather than a new param on the originals (which stay byte-
+identical). `taperAngle`: 0-15 deg, default 8. STEP 1: one diagram, (a)+(b) at 7x9/8 deg (c "as a sketch if
+possible"), to the advisor, no code.
+
+**The shared construction, derived from scratch (no existing code handles a non-vertical horn at all):** the
+existing shoulder/neck arc's own circle (centre, radius) is REUSED EXACTLY AS THE BASE TEMPLATE ALREADY HAS IT
+-- the dispatch's own "the shoulder arc stays tangent to it" reads as "the SAME arc, not a redefined one." A
+circle has exactly two tangent lines at any given direction (the two sides, offset +/-r along the direction's own
+normal); picking the correct side (verified empirically: at `taperAngle=0` the formula's own line must reduce to
+the ORIGINAL vertical horn, a hard algebraic check, not an assumption) gives the new tangent line in closed form:
+for a circle (cx,cy,r) and a "lean" direction `dir=(sin(taperAngle), cos(taperAngle))` (travelling down from the
+narrower top), the tangent point is `centre + sign*r*normal` where `normal=(dir.y,-dir.x)` and `sign=+1` for a
+CONVEX arc (Template 1's own shoulder), `sign=-1` for a CONCAVE one (Template 2's own neck -- the sign flip is
+the same convex/concave distinction the inner-offset rule everywhere else in this codebase already makes, just
+applied to which side of a tangent LINE a circle sits on instead of to an offset radius). The new, narrower top
+edge's own half-width (`topX`, no longer `hw`/`neckHalfW`) is wherever this tangent line crosses the safe zone's
+own top (`y=-hh`) -- DERIVED from `taperAngle` alone, not a second free parameter, so the dispatch's own "ONE
+param" holds. The top corner (top edge meets the slanted side) is a genuine miter -- a true line-line
+intersection of the two pieces' own T-offset inner lines (the same "true bisector" rigor as T10's own eave,
+not a fixed angle), confirmed by the hourglass case alone needing a visibly different d than the narrow-neck
+case at the identical 8 deg (0.994in vs 1.143in) since the two base shapes' own shoulder/neck geometry differ.
+
+**A real bug in the scratch script, named rather than silently fixed:** both outlines initially closed straight
+from the mirrored side's own last arc point back to the FIRST (right) top corner, skipping the actual top edge
+and the LEFT top corner entirely -- the exact "wrong end dropped before mirroring" stitching mistake this
+session's own T11 diagram already named once (WORK-LOG-lane-b.md's own T7 turn 197 first), now caught a second
+time in a different shape. Fixed the same way: keep the shared bridge point (here, the mirrored LEFT top corner)
+explicit at the end of the sequence, closing the path through it (drawing the top edge itself as the closing
+segment) instead of past it.
+
+**One MEASURED limitation, not silently worked around:** Template 1's own real shoulder radius (0.6233in, its
+actual fitted value, not a choice made for this diagram) is already narrower than frame_thickness (0.75in) --
+same "merged corner" case `outline-offset.js` already handles live for Template 1 today, that this standalone
+script does not reimplement. Floored the shoulder's own inner radius to a small positive value purely so the
+diagram stays drawable; when the true inner circle can't be reached at all (confirmed: the offset line misses
+it, not just a thin arc), fell back to connecting the inner lines directly rather than inventing a bogus
+tangency. This is a pre-existing Template 1 trait surfaced by drawing its own true inner offset, not something
+`taperAngle` introduces -- Template 2's own concave neck has no such floor (a concave inner radius only grows).
+
+**Verified, not assumed:** both outlines, 0 out-of-bounds samples at 7x9; the top edge visibly narrows (Hourglass:
+2.837in from centre vs the untapered 3.25in; Narrow Neck: 1.811in vs the untapered 2.009in) at the SAME 8 deg,
+by a different amount each, because each base shape's own shoulder/neck geometry differs -- not a shared magic
+constant. All 4 base-corner miters per shape still land on the exact `T*sqrt(2)=1.061in` (unaffected by taper,
+as expected: the base is untouched), while the 2 new top corners come out shorter and shape-specific, confirming
+they are genuinely not assumed/copied.
+
+(c) Arched + taper (Template 10) deferred, not forgotten -- it was explicitly "if possible," and combining
+T10's own archCornerAngle derivation with this one is a real third derivation in its own right, best done
+carefully rather than rushed alongside (a)/(b); T10 is Fusion-gated anyway, so there is no schedule pressure to
+rush it now.
+
+Diagram: `C:/Users/danse/.bspline-status/shots/seatC/0745_F30-item3-proposed_taper-diagram_a-hourglass_
+b-narrowneck_7x9_8deg.png`. Sent to the advisor as a path (not SendUserFile). No code; no template files touched.
+
+## 2026-10-01: F30 item 3 re-render -- the PRODUCTION offset/miter engine, not the scratch one (seat C, epoch 5)
+
+Advisor's review of the 0745 diagram caught it for real: (a)'s inner outline had kinks/spikes at the shoulder/
+waist and waist/hip joints; (b) was worse -- the inner outline poked ABOVE and OUTSIDE the outer at the top, the
+top miters crossed outside the band, and the band width visibly varied down the sides. All from the hand-rolled
+hourglassConstruction. My own `r - T` / `r + T` inner-offset math -- it does not reproduce `outline-offset.js`'s
+own re-join rule at a tangent joint (the offset pieces meet at the JOINT's own offset point, not wherever each
+piece's own independent circle/line offset happens to land) or its own merged-corner handling, and apparently
+diverges badly enough to go outside the outer loop entirely for (b). Told to re-render with the real engine, as
+already done for the T10 preview this session, and report (b)'s own true max taper if 8 deg doesn't hold.
+
+**Fix: stop hand-rolling the inner offset and the miters entirely.** `outline-offset.js`'s own `offsetOutlineInward`
+and `editor-frame-profile.js`'s own `frameMiters` are PURE functions of a primitives array (`{type:'L',p0,p1}` /
+`{type:'A',cx,cy,rx,ry,phi,theta1,dTheta}`) -- they don't need a template or a frame-defs entry to exist, only a
+valid closed loop of primitives. So the only thing still hand-built is the OUTER loop itself (the one piece of
+geometry that is genuinely new -- a slanted horn tangent to the base template's own unchanged shoulder/neck
+circle, same derivation as the first pass); everything downstream (the true inward offset, including its own
+tangent-joint rejoin and merged-corner collapse, and the true per-corner miter) is the SAME production code every
+real template already relies on, not a second, independently-fallible implementation of either.
+
+**Verified, not assumed, with `outlineDefects` + `offsetOutlineInward` + `frameMiters` directly (not a visual
+read):** swept BOTH shapes across the full 0-15 deg range at 7x9 -- zero outer defects, zero inner defects, every
+piece >= frame_thickness (0.75in), 4 real miters, every sample point inside the safe zone, at EVERY angle tested
+for BOTH shapes. The advisor's own worry that (b) might need a smaller max than (a) turned out NOT to be a real
+geometric limit -- it was an artifact of the broken scratch offset math; the real engine handles the full 15 deg
+for Narrow Neck too. (Template 1's own real shoulder/hip radius being under frame_thickness is still true and
+still shows up here -- but correctly, as `offsetOutlineInward`'s own documented merged-corner case: those 2
+pieces per side come back `collapsed` (zero-length placeholders, its own stated contract) and the inner loop
+re-joins straight from the horn line to the waist arc, which `outlineDefects` confirms is a clean, non-
+self-intersecting result -- not a bug, and not something this diagram introduces: Template 1 itself already
+looks exactly like this today.)
+
+Re-rendered both at 8 deg from the SAME production primitives: `C:/Users/danse/.bspline-status/shots/seatC/
+0815_F30-item3-proposed_taper-diagram_PRODUCTION_7x9_8deg.png`. Visually confirmed: no inner/outer crossing, even
+band width throughout, clean miters inside the band at all 4 corners of each. Sent to the advisor as a path.
+
+## 2026-10-01: F30 item 3 -- Fred extends the range to -15..+15 deg; a real defect caught, a false alarm cleared
+(seat C, epoch 5)
+
+Fred approved 8 deg ("Beauty") and extended the param: taperAngle now runs -15..+15, not 0..15. Positive (already
+built) leans inward, narrower top. Negative leans OUTWARD, wider top -- but the frame must stay inside the board,
+so for negative angles the top corners sit ON the board's own side edge instead, and the shoulder/neck circle's
+own position insets to keep the same external tangency with the pinch. Derived this as a SECOND branch of the
+same `_taperedCorner` construction (see its own doc comment, written this pass): Branch A (the free tangent line,
+used whenever its own top corner stays inside the board) vs Branch B (the corner pinned at the board edge, the
+circle's own centre solved via a line-circle intersection instead). ONE rule picks the branch -- does Branch A's
+own corner exceed hw? -- not a per-template or per-sign special case. MEASURED, not assumed: Template 1 (already
+full board width at the top) needs Branch B for literally every negative angle; Template 2 (narrower top) stays on
+Branch A across the whole declared band.
+
+First negative preview (`0900_F30-item3-proposed_taper-diagram_negative_7x9_-8_-15deg.png`) was not clean. The
+advisor caught two things: (1) Hourglass at -15 deg is a REAL self-crossing defect, not "a small kink" as I first
+(wrongly) called it -- `outlineDefects` confirmed 4 `notTangent` defects, the shoulder arc gone, the slanted line
+running straight into the waist. Root cause: past a certain angle Branch B's own line-circle intersection has no
+real solution (the pinch is too shallow for that steep a line at that distance), and my fallback (closest point on
+the line) draws a non-tangent, self-crossing result instead of refusing. (2) The advisor also flagged Narrow
+Neck's sign as backwards. Re-verified this one by hand (a direct numeric re-derivation of `topCorner.x` at 0/-8/-15
+deg, monotonically widening as advertised) and found the advisor's own read was the false alarm -- there was no
+0-deg baseline in the 0900 image to compare against, so a genuinely zero-length horn at 0 deg (topCorner.x ==
+hornPt.x exactly for Narrow Neck) made -8/-15's new slanted segment look like it was narrowing instead of
+widening. Measure, don't re-reason: presented the exact numbers + a 0/-8/-15 side-by-side instead of re-guessing.
+
+**Fix for (1), per the advisor's own instruction:** stop drawing the fallback at all -- clamp the negative range to
+each template's own TRUE feasible floor instead. Added `minFeasibleTaper`-style bisection (30 iterations at the
+time, later tightened, see the next entry) on a `clean` criterion (zero outer/inner defects, zero out-of-board,
+thin pieces tolerated per Fred's own "don't worry about extremes") to find Template 1's real floor at 7x9: exactly
+-13.75 deg (bisection-confirmed). Template 2 needs no floor at all (full -15 already clean).
+
+Re-rendered (`0930_F30-item3-proposed_taper-diagram_negative-fixed_7x9.png`) with Hourglass clamped to -13.75 and
+Narrow Neck shown at 0/-8/-15 side by side. Advisor: "0930 looks good... I misread the 0900 render, sorry for the
+false alarm... Carry on with the build, and put the range clamp into the real range function as you said." Fred:
+"don't worry too much about extremes. Make the normal range clean (about -10 to +10 with default proportions). At
+the far ends (+/-15 with a very deep pinch), it's enough that Generate never produces a broken frame (it already
+redraws) and that tests confirm nothing crashes. Don't build special handling or extra machinery for extreme
+manual combos."
+
+## 2026-10-01: F30 item 3 -- taperAngle wired into the PRODUCTION engine (shared construction, both presets,
+range-function floor, tests); the two new template copies are next (seat C, epoch 5)
+
+Ported the verified `_taperedCorner` construction (identical math to the scratch preview's own `taperedCorner`,
+see the entry above) into `editor-shape-lattice-generator.js` itself, as the one shared place both new templates
+will read from:
+- `PARAM_ORDER.hourglass`/`.bottle` and `FRAME_ONLY_PARAM_KEYS` both gain `taperAngle` (resolved last of all, like
+  `archCornerAngle`); `DERIVED_PARAM_DEFAULTS` defaults it to 0 for both presets (0 = Template 1/2 exactly).
+- `_taperedCorner(circle, pinchCircle, convexSign, taperDeg, hw, hh)`: the shared two-branch construction, now
+  returning an `exact` flag (true for the early return and Branch A, `disc >= 0` for Branch B) so a range function
+  can find the real floor WITHOUT ever rendering the fallback it flags.
+- `hourglassConstruction`: the shoulder corner (`convexSign +1`) runs through `_taperedCorner` against the waist as
+  the pinch; new `taperAngle`, `shoulderHornX/Y` fields returned (the horn's own actual end on the shoulder arc --
+  equals `(topX, shoulderY)` only when untapered; a genuinely different point once the horn is slanted).
+- `bottleConstruction`: the neck corner (`convexSign -1`, concave) runs through the SAME function against the body
+  as the pinch (the body's own position computed from the UNTAPERED neck column first, exactly like the
+  hourglass's waist stays fixed under a shoulder taper); new `taperAngle`, `neckTopX`, `neckHornX/Y` fields.
+- `_solveHourglass`/`_solveBottle`: `rTop`/`lTop` (the flat-top corner) now read the tapered `topX`/`neckTopX`;
+  `rShoulderHorn`/`rNeckHorn` (and their mirrors) now read the NEW horn fields instead of assuming the same x as
+  the flat-top corner -- the one real behavioral bug this pass would have shipped silently (both points
+  coincide only at taperAngle 0, so nothing in the existing test suite could have caught a mix-up).
+  Drawn-stroke adjustment for the horn point: same unit direction from the (untouched) arc centre, scaled by the
+  DRAWN radius instead of the full one (the same pattern the existing shoulder/waist junction already used).
+- `_hourglassRange`/`_bottleRange`: new `taperAngle` branch, declared band `[-15, 15]`, floor from a shared
+  `_taperRange` bisection (18 iterations -- ~6e-5 deg resolution, far past "clean") on the SAME `exact` flag. The
+  shoulder/waist (or neck/body) circles are computed INLINE from the resolved params here, not via a full
+  `hourglassConstruction`/`bottleConstruction` call -- see the perf note below for why.
+- `_solveBottle` gained the same "a frame-only param is reported only when the caller set it" delete loop
+  `_solveHourglass` already had for `archCornerAngle` (T3) -- bottle never needed it before (none of its old
+  params were frame-only); `taperAngle` is its first one.
+
+**Perf regression, caught by the existing suite, fixed before commit:** the dense `silhouette-resolve.test.js`
+sweep (`F12 dense sweep of the NEW params`, `checked > 10000` combinations) started timing out at 5000ms under
+full-suite parallel load -- passed every time standalone, failed every time under contention, reproduced
+identically on a clean re-run, and confirmed via `git stash` that the baseline (no taper code) passes under the
+exact same load. Root cause: the first version of the `taperAngle` range branch called the FULL
+`hourglassConstruction`/`bottleConstruction` (cheap in isolation, ~0.3us/call benchmarked) but ran the 30-iteration
+floor bisection on every single resolve for every preset, taper or not -- adversarial corner-radius sweeps hit the
+Branch-B-infeasible case often, each needing the full bisection. Fixed two ways: (1) inlined the shoulder/waist
+(and neck/body) circle algebra directly from the already-resolved params instead of calling the full construction
+function (skips the T4/T5/T10 branches entirely, irrelevant here); (2) cut the bisection from 30 to 18 iterations
+(still ~6e-5 deg resolution). Re-measured: the standalone hourglass dense-sweep test's own "tests" time dropped
+from +0.89s over baseline to +0.31s; the full suite (155 files after adding the new test file below) now passes
+twice in a row under the same full-parallel load that reproduced the timeout.
+
+**Verified against the real engine, not the scratch preview, across all 4 of Fred's current portrait board sizes
+(7x9, 6x9, 11x14, 5x7):** taperAngle 0 reproduces Template 1/Template 2 primitives bit for bit; the full declared
+[-15, 15] band (pre-clamp) gives zero `outlineDefects` on both the outer outline AND the real inward offset
+(`offsetOutlineInward` + the `.collapsed` filter `frameInnerProfile` itself uses), with 4 real miters throughout,
+at every board and every angle tested (2.5 deg steps) -- the resolved (post-clamp) value is what actually gets
+used, so the fallback this file's own doc comment calls "a backstop for a pathological combination" is never
+reached by any value `_resolveParams` can produce. Added `tests/frame-taper-construction.test.js` (27 tests) to
+make this permanent at the shared-construction level, ahead of the template-specific tests Templates 12/13 will
+need once they exist; existing `PARAM_ORDER`/`FRAME_ONLY_PARAM_KEYS` exact-array assertions in
+frame-template-5/6/9/10's own test files updated for the new trailing key (expected: appending a declared param
+always ages the templates that pin the full array literally, same as every previous one of these additions).
+
+Also fixed two existing frame-template-10.test.js nits while here: the `archCornerAngle`-last assertion now checks
+`length - 2` (taperAngle is last now) and explicitly checks Templates 1/3/4/5 never gain a taperAngle handle
+either.
+
+Full suite: 155 files, 2926 tests, green (run twice to confirm the perf fix holds under load).
+
+Not yet done (next): the two new template folders (`sketches/template_12`, `sketches/template_13`), their
+`template_data.py` (provisional shape model, `"from": "template_1"`/`"template_2"`), `frame_shape_fit.py` +
+`frame_definition.py` wiring, `tools/gen_frame_defs.py` regeneration, template-level tests (declaration, within-
+board, miters, a Generate sweep per template), A/B regression against every existing template, and a decision --
+flagged to the advisor, not yet answered -- on whether taperAngle gets its own draggable handle (T10's own
+`archCornerAngle` does; the F30 item 3 dispatch itself never listed one, unlike T7/T10/T11's own dispatches).
+
+## 2026-10-01: F30 item 3 -- Template 12 and Template 13 built, LIVE in Fusion (seat C, epoch 5)
+
+Advisor answer on the handle question: yes, taperAngle gets one (every shape-defining frame param in this app
+has one by declared convention), a "Taper angle" position-square handle on the top-right corner mirrored left,
+standard `HANDLE_SEGMENT_INDEX` entry -- non-blocking, lands in a later pass after the template folders and
+Python wiring. Also: this machine's Fusion bridge is live and connected (`mcp__fusion360__fusion_execute`), with
+an existing unsaved scratch document already at 7x9 (`B-Spline Set` + `Frame_1`/`Frame_2` occurrences, not mine,
+left untouched throughout) -- so this pass could verify the actual Fusion build live, not just the web editor.
+
+**Python scaffolding:** cloned `sketches/template_1` -> `template_12` and `template_2` -> `template_13` (the stale
+per-template semantic-description .md files deleted, not reproduced -- unmaintained even in the originals).
+`template_data.py` for each: `TEMPLATE_NAME` ("Template 12 - Hourglass - Tapered sides" / "Template 13 - Narrow
+Neck - Tapered sides"), `FRAME_PROVISIONAL_SHAPE = {"from": "template_1"/"template_2", "taperAngleDeg": 8.0}`,
+`FRAME_HIDDEN = True` (T10's own "not Fusion-verified yet" precedent -- flipped once the full pipeline, not just
+sketch 2, is confirmed), the "Taper angle" handle left out per the advisor's own sequencing. New
+`frame_shape_fit.provisional_taper_model(base_model, taper_angle_deg)`: unlike every other provisional model
+here (T3's topInset, T4's offset waist, T5's dip, T10's full rebuild), this one changes NOTHING about the base
+model's own features -- taper only ever touches the shoulder/neck's own tangent-line construction, which the
+base template's own fit already describes exactly -- it just adds one new scale-invariant `taperAngle` feature
+(the `const` pattern `archCornerAngle` already uses). New `elif "taperAngleDeg" in prov` branch in
+`frame_definition.py`'s own dispatch chain, inserted before the final `else` (T3's own catch-all) so a stray
+dict shape never silently calls the wrong provisional function.
+
+**First `tools/gen_frame_defs.py` regen produced `shapeModel: null` and `hidden: false` for both** -- caught
+immediately by the JS side (`node -e` probing the JSON directly before touching tests). Root cause: unlike
+Template 10's own `get_template_logic()`, my cloned `get_template_logic()` never added `"provisionalShape"` /
+`"hidden"` to its own returned `"Frame"` dict -- declaring the module-level constants isn't enough, they have to
+be wired into the return value by hand, the same way T10's own file does it. Fixed in both files; regen then
+produced the correct `shapeModel.features.taperAngle = {hw:0, hh:0, const:8}`, `hidden: true`.
+
+**The Fusion phase files were the hard part, in three rounds, each caught by actually running `run_sketch_only`
+live rather than static-reading the phase files.** The production add-in loads from the MAIN checkout
+(`project_path.json`), not this worktree, so every live call pushed this worktree's own `frame-builder` to the
+FRONT of `sys.path`, cleared `fb_engine`/`sketches`/`template_loader` from `sys.modules` first (so nothing stale
+survives from the main checkout's own cached import), built, read results, and restored `sys.path`/`sys.modules`
+back -- all inside single short `fusion_execute` calls, never leaving a swap stranded across calls (the
+established "Fusion one-session suspend" risk). Every test component this created (`Frame_3`/`Frame_4`, Fusion's
+own auto-incrementing name) was deleted immediately after reading its result; the document (`Untitled`, unsaved)
+ended the session with the exact 3 occurrences (`B-Spline Set`, `Frame_1`, `Frame_2`) it started with.
+
+Round 1 (`RESOLVE MISS: proj_off_BB_top not found`): Template 12's own `p02_01_projs.py`, cloned from Template 1
+(which never needed a narrow top), was missing the one projection line Template 2/3 both already declare for
+their own narrow top (`{'SourceSketch': '1_bounding_box', 'SourceID': 'offset_BB_top', 'TargetID':
+'proj_off_BB_top'}`). Without it the new `Coincident(top_edge:S, proj_off_BB_top)` constraint silently no-opped
+(`CONSTRAINT SKIP: needs different target count`), leaving `top_edge` free to drift whole-sketch. Added.
+
+Round 2 (no errors logged, but the solved shoulder/waist/hip centres were wildly wrong, ~3.9/3.2/0.2 in instead
+of the intended ~2.6/2.9/1.3): `fb_engine/seed_basis.py`'s own documented "seed board" substitution --
+`widthIn`/`heightIn` inside ANY sketch-2 seed expression get rewritten to `(widthIn - 2*(boundingboxoffset -
+0.25in))`, which AT THE DEFAULT 0.25in offset reduces to exactly the RAW board size, not the safe zone. My own
+seed-computation script had instead called `hourglassConstruction`/`bottleConstruction` with `region = {w:
+widthIn, h: heightIn}` (the raw board) and written the result as `widthIn * (value/widthIn)` -- silently placing
+the WEB APP's own silhouette (built on the SAFE ZONE, `widthIn - 2*bbo`) a half-border too wide/tall, every
+seed consistently off by the same scale factor. Fixed: compute every absolute position using the actual safe
+zone (6.5x8.5 at 7x9/0.25in), THEN divide by the RAW board size for the literal fraction -- confirmed correct by
+an exact match (not just "close"): the recomputed waist/hip anatomy-pin fractions for Template 12 (untouched by
+its own taper, so directly comparable) landed EXACTLY on Template 3's own already-shipped `0.41562`/`0.375249`/
+`-0.000304`/`-0.141685` -- cross-validation against a template I didn't touch, not just self-consistency.
+
+Round 3 (hip/waist tangency wildly broken even after the region fix: the waist-hip junction point landed nearly
+2 in from either circle, not on the circle at all): my own verification script's `hipWaistY` used `hipY +
+cornerRadiusBottom*uyBottom` (plus), copying the shoulder side's own `+` pattern -- but `_solveHourglass` itself
+(the already-shipped, trusted production code) uses `hipY - bottomDrawn*uyBottom` (MINUS) for this exact
+junction. `uxBottom`/`uyBottom` are NOT simply "hip centre toward waist centre" the way `ux`/`uy` are for the
+shoulder; the asymmetric sign is baked into `side()`'s own `sign` parameter and only correctly unwound by
+matching `_solveHourglass`'s own formula exactly, not by analogy. Caught by a disciplined check (not assumed):
+before writing a single number to the phase file, verified `dist(hipCentre, hipWaistPoint) == cornerRadiusBottom`
+and `dist(waistCentre, hipWaistPoint) == radiusWaist` in a throwaway script; the first attempt failed outright
+(1.89 vs the expected 0.68), confirming the bug BEFORE it ever reached Fusion, not after a confusing live drift.
+Fixed the sign, re-verified both distances match to 1e-10, then rewrote the phase file.
+
+**Verified, live, after the fix (not assumed from the corrected numbers alone):** `run_sketch_only` for both
+templates at 7x9 produced, read directly off the solved `SketchArc`/`SketchLine` geometry (not the logged solve
+audit, which is pre-settle): shoulder/waist/hip (or neck/body) radii and centres symmetric L/R to within
+~0.1-0.3% (ordinary solver settling, same as every existing template tolerates), closely matching the intended
+values, and the top horn's own measured angle from vertical exactly 8.0 deg for BOTH templates -- the taper is
+really there, not just a narrower top. A top-down screenshot of each sketch (saved:
+`.bspline-status/shots/seatC/1130_..._template12_..._7x9_8deg.png`,
+`.bspline-status/shots/seatC/1135_..._template13_..._7x9_8deg.png`) shows the intended shape directly: Template
+12 a classic hourglass with a visibly slanted, narrower top; Template 13 a narrow neck leaning inward into a
+smooth S-curve down to the full-width body.
+
+**Branch-selection check (the advisor pointed at a newly-shared `fusion360-quirks` skill after I'd already found
+it myself and used it):** that skill's own field note warns that `Coincident(point, curve)` only pins an arc to
+its FULL supporting circle, not which of the two possible sweeps (short way / long way around) the solver
+picks, and that ordinary constraints (Tangent included) can't fix a wrong branch once chosen -- the fix is
+seeding `addByThreePoints` already on the intended branch and, for real robustness, `Fix`-ing the arc's own
+endpoints afterward. This codebase's own existing templates (T1/T2) do the FIRST (closed-form 3-point seeds
+confirmed by inspection) but not the second (no `isFixed` anywhere in the phase files read this session) --
+re-ran both new templates' `run_sketch_only` at a SECOND board (6x9, portrait) specifically to probe for a
+branch flip the 7x9 run alone couldn't rule out: every arc's measured sweep (computed from raw start/end/centre
+angles, not trusted from the log) came back a sane 67-140 deg minor arc, nowhere near a 270 deg+ reflex, at
+both boards, for both templates. Not adding `Fix` here either -- it would be a NEW mechanism this codebase has
+never used, a bigger call than this pass's own scope, and the measured evidence (two boards, no reflex, matches
+Template 3's own cross-validated numbers) doesn't show the problem the skill warns about actually occurring.
+Flagging it rather than silently deciding: if `Fix` is wanted as a general hardening across every template
+(not just these two), that is its own task for the advisor/Fred to scope.
+
+**Full suite, both languages, after every fix:** `tools/gen_frame_defs.py --check` fresh; JS 156 files / 2959
+tests green (added `tests/frame-template-12-13.test.js`, 25 tests: declaration, provisional shapeModel content
+cross-checked against each base template's own fitted features, no handle yet, within-board at the 4 current
+portrait boards, inner-profile cleanliness, real miters, a 50-seed Generate sweep per board, and the declared
++/-15 deg extremes never throwing through the full `frameCutProfile`/`frameInnerProfile`/`frameMiters` pipeline);
+updated `tests/frame-defs.test.js` (`EXTRA.hourglass`/`EXTRA.bottle` now list `taperAngle`; the two new ids join
+template_3/4/5/8/10 in the "extra feature" exclusion list) and `tests/frame-hidden-template.test.js` (both new
+ids join template_10 in `HIDDEN_IDS`, the dropdown-exclusion checks generalized) and
+`tests/frame-template-6.test.js` (the hardcoded, string-sorted full template-label list gets the two new
+labels in their correct lexicographic slot). Python `pytest` (frame-builder, full suite): 353 passed, 19 skipped
+(pre-existing, Fusion-only), unchanged.
+
+**Still open, flagged to the advisor:** (1) sketch 3 (frame enclosure: offset, inner-corner-resolve, miters,
+solid extrusion) was only glanced at this pass (confirmed it builds without error and the arc radii/centres it
+carries forward match sketch 2's own, including the SAME frame_thickness-vs-small-radius "merged corner" case
+Template 1 already has at 7x9 -- not a new issue) -- not yet walked through piece by piece the way sketch 2 was.
+(2) No Fusion golden has been recorded for either template, so the provisional shapeModel stays the one source
+of truth; recording one and re-running `tools/gen_frame_defs.py` would let `fit_shape_model` take over, per F8's
+own established pattern. (3) FRAME_HIDDEN stays True until (1) and (2) are addressed and Fred has seen a built
+solid, not just the sketch. (4) The "Taper angle" handle (advisor-confirmed) is not yet added -- a later pass,
+as sequenced.
+
+## 2026-10-01: F30 item 3 -- sketch 3 + solid synthesis verified live, goldens recorded for both templates
+(seat C, epoch 5)
+
+Advisor: keep going in-session (no handoff needed), same order proposed -- finish sketch 3 + record the Fusion
+golden for both templates, THEN the Taper angle handle; stop and report only if sketch 3 doesn't converge cleanly.
+
+**Sketch 3 + solid: converges cleanly for both.** `tools/repro/record_frame_parity.py`'s own `record_case`
+(the SAME code `main()` uses to record a golden -- opens its own scratch document, builds frame + solid via the
+installed add-in's own `frame_engine_core`/`fb_engine.solid_coordinator`, reads back real geometry, closes the
+doc unsaved) is also the most direct way to exercise the FULL pipeline end to end, not just sketch 2. Swapped
+this worktree into `sys.path`/`sys.modules` (same short-call discipline as the sketch-2 checks), reassigning the
+`frame_engine_core` alias itself (it's not a real module on disk, just a name the installed add-in's own startup
+code points at whatever `fb_engine.frame_engine` it loaded) to this worktree's copy. Dry run (template_12, 7x9,
+not yet written to the goldens dir): `timelineHealthy: true`, 4 real bars (frame_bottom/left/right/top, L/R
+volumes 6.55209/6.552 -- symmetric through the SOLID stage too, not just the sketch), a 5x7 inner opening at
+0.75in frame_thickness on a 6.5x8.5 safe zone, exactly as expected. Recorded all 6 goldens for real
+(`tests/fixtures/frame-parity/template_12_{7x9,12x6,5.51x1.97}.json`, `template_13_` the same): template_12 gets
+4 bars at 7x9/12x6, 0 at 5.51x1.97 (board too small, matching every other template's own convention there);
+template_13 gets 4 bars at all 3 sizes. No stray documents created beyond Fusion's own auto-opened empty
+"Untitled" tab after the 6th scratch document closed (confirmed empty, confirmed not the active one, left alone
+rather than closed by count/name per the Fusion scratch-doc hygiene rule).
+
+**Recording the goldens surfaced two real bugs the sketch-2-only live check hadn't exercised, both found by
+re-running `tools/gen_frame_defs.py` and comparing the result against the goldens, not by further Fusion poking:**
+
+1. **`paramsFromShapeModel` never read a `taperAngle` feature at all** (F30 item 3's own "Pending Tasks" item,
+   listed in an earlier summary and then missed) -- a leftover gap from building the shared taper construction
+   session, not something this golden-recording pass introduced. Caught immediately: regenerating frame-defs
+   put `taperAngle: {const: 8, ...}` into both templates' own `shapeModel.features`, but the web app's own
+   `hourglassConstruction`/`bottleConstruction` calls computed `taperAngle: 0` regardless (DERIVED_PARAM_DEFAULTS'
+   own fallback), since the one line that would read the feature back out (the `archCornerAngle` pattern) was
+   never added for `taperAngle` for either preset. Fixed (`editor-shape-lattice-generator.js`'s own
+   `paramsFromShapeModel`, both the hourglass tail and the bottle branch, which returns early and needed its own
+   copy of the same line). Confirmed directly: resolved params now include `taperAngle: 8`, and the app's own
+   default (no-seeds) silhouette at 7x9 matches the recorded golden's own geometry to the few-thousandths-of-an-
+   inch level the S4 parity test (`tests/frame-parity-app.test.js`) already expects of every other template.
+
+2. **The generic `bottle` extractor measures the neck's own half-width off the TOP EDGE, not the neck circle**
+   (`top["end"][0]`) -- true only at taperAngle 0, where the two coincide by construction. Template 13's first
+   real fit (once its goldens existed) silently measured the TAPERED top width as if it were the untapered
+   `neckHalfW`, a measured ~0.2in error at 7x9 that the S4 parity test caught immediately (0.2-0.3in gaps, not a
+   rounding nuisance). Fixed by adding a `bottle_taper` extractor variant (`fb_engine/frame_shape_fit.py`) that
+   reads `neckHalfW` off the neck arc's own centre/radius instead -- its own validity check (body tangent at hw,
+   neck/body tangency) is untouched, since neither looks at the tapered side at all. Wired via
+   `FRAME_SHAPE_EXTRACTOR = "bottle_taper"` in `template_13/template_data.py`. Template 13 now gets a REAL fit
+   (`shapeModel.provisional` is gone entirely), exact at its own 2 valid sizes (7x9/12x6; 5.51x1.97 excluded,
+   the same reason Template 2 itself excludes it: the body arc isn't tangent to the horn there).
+
+   TRIED the same fix for hourglass (a `hourglass_taper` extractor dropping the shoulder's own "tangent to a
+   vertical line at hw" check, since a tapered shoulder's own circle only sometimes still satisfies it depending
+   on which of `_taperedCorner`'s own two branches a given board's fixed, single-board-calibrated literal seeds
+   happen to land on) -- MEASURED worse than not fixing it: letting all 3 of Template 12's own goldens into one
+   linear fit gave `maxResidualIn: 0.24` (worse than Template 1's own already-good 0.021-0.043), because 12x6/
+   5.51x1.97's own recorded shape there reflects this template's single-board (7x9) literal seed fractions
+   solved on a very different board, not a genuine per-board re-derivation of the taper -- not really a "branch
+   B" case at all, the SAME "one fixed fraction set doesn't scale to every board" limitation every template's
+   own literal seeds already have, just amplified by taper's own extra construction. Reverted: no
+   `hourglass_taper` extractor; Template 12 stays on its own PROVISIONAL model (Template 1's own already-good
+   fit + `taperAngle`), which is MORE accurate than the attempted real fit, not less. `frame_definition.py`'s own
+   `template_shape_model` now re-applies `taperAngle` unconditionally at the end (whichever source model -- real
+   fit or provisional -- `fit_shape_model` produces), not only inside the provisional branch, so the feature
+   can never again silently disappear the way it did for Template 13 before the `bottle_taper` fix landed.
+
+**Remaining parity gaps, named and excluded rather than chased or masked**, all stemming from the SAME single-
+board-seed limitation above, at boards Fred doesn't currently use (12x6 is landscape; 5.51x1.97 is a tiny
+reference size neither template's frame fits at anyway): `tests/frame-parity-app.test.js`'s new
+`SINGLE_BOARD_SEED_OUTLINE`/`SINGLE_BOARD_SEED_INNER` sets (`template_12_12x6`, `template_12_5.51x1.97`,
+`template_13_12x6`), matching T9/T10's own already-established `KNOWN_BROKEN_BUILD`/`OUTSIDE_FIT_RANGE_OUTLINE`
+precedent exactly. On the Python side, `template_13_5.51x1.97` produces the SAME class of degenerate-sliver
+bodies Template 3's own 5.51x1.97 already does (4 named bodies, 3 near-zero, top/bottom bars missing) --
+`test_frame_parity_goldens.py`'s own `_DEGENERATE_BAR_COUNT_OVERRIDE` and `test_fb_fix.py`'s own
+`_KNOWN_BROKEN_GOLDENS` both gain a `template_13` entry, same pattern as Template 3's.
+
+**`run_full_synthesis` (the `FrameBuilder` class method) turned out NOT to build an actual solid body at all** --
+read its own source after a screenshot attempt came back with zero bRepBodies: it only builds the sketches and
+(if a target core body is found) assembly joints, never calling `build_solid_logic_v3`. That function is a
+separate, standalone entry point `record_frame_parity.py` calls directly -- the real "Send to Fusion" solid path
+apparently lives elsewhere (not traced further, out of scope for this pass; the golden recorder's own direct
+call already gave definitive, numeric proof the solid stage works). A manual `build_solid_logic_v3(comp_name=
+"Frame_3", ...)` call in this session's own multi-frame scratch document ALSO didn't target the right frame
+(kept resolving the template from something other than `comp_name`, building against the pre-existing Frame_1/
+T10 instead) -- not pursued further since the `record_case` evidence already settles the question; flagging the
+`comp_name` behavior as a minor loose end if anyone needs to drive `build_solid_logic_v3` directly outside the
+recorder script again.
+
+Full suite after every fix: JS 156 files / 2971 tests green (run twice); Python 368 passed, 22 skipped (up from
+353/19 -- the 15 new goldens/extractor tests this session's own additions and fixes touch); `tools/
+gen_frame_defs.py --check` fresh.
+
+**Next:** the Taper angle handle (advisor-confirmed design: a position-square handle on the top-right corner,
+mirrored left, horizontal drag into taperAngle, standard `HANDLE_SEGMENT_INDEX` entry). FRAME_HIDDEN stays True
+for both templates until Fred has seen an actual built solid (not just these numeric/sketch confirmations) and
+the handle lands.
+
+## 2026-10-01: F30 item 3 -- the "Taper angle" handle landed (seat C, epoch 5)
+
+Advisor's own design, built as specified: a POSITION square at the top corner -- where the (possibly slanted)
+horn meets the flat top edge -- mirrored left, a horizontal drag narrows (in, more positive taperAngle) or
+widens (out, more negative) it.
+
+**The one real design problem: inverting the drag.** Every other frame-only angle handle this codebase has
+(`archCornerAngle`, T10) inverts its own forward construction with a closed-form formula (a plain sagitta/cosine
+relationship) duplicated directly in the handle's own `valueFromWorld` -- the established pattern for THIS
+file's own geometric inverses. `_taperedCorner`'s own forward map (taperDeg -> topCornerX) has no such closed
+form (two branches, Branch B's own line-circle intersection), but IS monotonic (already measured, both presets,
+in `frame-taper-construction.test.js`), so a bisection inverts it exactly the way `_taperRange` itself already
+bisects the SAME function for a different purpose (the negative floor). New exported
+`taperAngleForTopCornerX(circle, pinchCircle, convexSign, desiredX, hw, hh)` in editor-shape-lattice-
+generator.js, next to `_taperedCorner`/`_taperRange`: narrows to this circle's own true floor first (reusing
+`_taperRange`), then 24 halvings of the remaining span. One function, shared by both presets' own handle entries
+(hourglass's shoulder, convexSign +1; bottle's neck, convexSign -1) -- the SAME "declare once" pattern the whole
+taper construction has followed throughout.
+
+The handle itself needs the UNTAPERED shoulder/neck circle (an extra `hourglassConstruction`/`bottleConstruction`
+call with `taperAngle: 0`), not the current one -- the current circle may already be inset (Branch B) once a
+negative drag has happened, and the inverse's own bisection needs the TRUE base circle `_taperedCorner` itself
+always starts from. Wired into `computeParamHandles`'s own candidate catalogue (both the hourglass and bottle
+branches, gated the same way every other conditional handle here already is: `keys.includes('taperAngle') &&
+...`, filtered out for every template but 12/13 by the existing `pick()` mechanism) and
+`HANDLE_SEGMENT_INDEX` (both presets map it to segment 0, the horn itself -- the same convention `topInset`'s
+own entry already set: the piece the drag actually reshapes, not the top edge it also narrows/widens).
+`FRAME_HANDLES` in both `template_12`/`template_13`'s own `template_data.py` gained the declared entry (seeded,
+no new Fusion parameter, basis `hw`); regenerated frame-defs.
+
+**Verified, not just wired:** the handle's own axis (`x`), kind (`position`), and `HANDLE_SEGMENT_INDEX` entry;
+a horizontal drag genuinely narrows (toward centre) or widens (toward the edge) the resolved `taperAngle` in the
+expected direction for BOTH templates (measured, not assumed -- the sign wasn't obvious up front: a drag TOWARD
+the board edge turned out to WIDEN, i.e. more NEGATIVE taperAngle, since `_taperedCorner`'s own topCornerX
+decreases as the angle increases); a drag far past the declared band clamps to the template's own true feasible
+range (Template 12's own -13.666 floor at 7x9, same one `_taperRange` already established) and the frame stays
+a clean, real, miter-able shape throughout. New tests in `tests/frame-template-12-13.test.js` (6 more, 31 total
+in that file).
+
+Full suite: JS 156 files / 2977 tests, Python 368 tests, green.
+
+**Still open, unchanged from the last entry:** FRAME_HIDDEN stays True for both templates -- this was explicitly
+about Fred seeing an actual built solid, not a remaining code task, so it's a decision for the advisor/Fred to
+make now that sketch 3, the goldens, and the handle are all done, not something to flip unilaterally here.
 
 ## 2026-10-01: H23 item 15 -- T10 arch, two more mechanisms tried live: NOT fixed, reporting capacity (worker, seat A, epoch 5)
 

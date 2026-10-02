@@ -58,6 +58,25 @@ def _bottle(curves, hw, hh, tol=2e-3):
     }
 
 
+def _bottle_taper(curves, hw, hh, tol=2e-3):
+    """F30 item 3 (Template 13, Narrow Neck + taper): Template 2's own `top["end"][0]` reads the TAPERED top
+    edge's own half width, not the neck circle's own untapered half width (`neckHalfW` = `skelX - radiusNeck`,
+    an app-internal quantity the construction then re-tapers itself) -- the two coincide only at taperAngle 0,
+    which is why plain `_bottle` silently measured the wrong thing here (MEASURED, 7x9: 1.79in from the tapered
+    top edge vs the true 1.989in from the neck circle, a ~0.2in error that showed up as a real S4 parity failure,
+    not a tolerance nuisance). Otherwise identical to `_bottle`: the body-tangent-at-hw and neck/body-tangency
+    checks are both properties of the UNTAPERED circles themselves, unaffected by the top horn's own slant."""
+    nk, bd = curves["arc_waist_R"], curves["arc_hip_R"]
+    ok = (abs(bd["center"][0] - (hw - bd["radius"])) < tol
+          and abs(math.dist(nk["center"], bd["center"]) - (nk["radius"] + bd["radius"])) < tol)
+    return ok, {
+        "neckHalfW": nk["center"][0] - nk["radius"],
+        "neckR": nk["radius"],
+        "neckTop": hh - nk["center"][1],
+        "bodyR": bd["radius"],
+    }
+
+
 def _hourglass_narrow_top(curves, hw, hh, tol=2e-3):
     """T3 TAPERED HOURGLASS: the hourglass with its top horns `topInset` in from the edge.
 
@@ -299,6 +318,7 @@ def _diamond_top_hourglass(curves, hw, hh, tol=2e-3):
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
+                      "bottle_taper": _bottle_taper,
                       "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape,
                       "diamond_top_hourglass": _diamond_top_hourglass}
 
@@ -458,6 +478,28 @@ def provisional_shape_model(base_model, top_inset_of_depth):
             "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
             "baseModel": "the fitted Template 1 model",
             "topInsetOfDepth": top_inset_of_depth,
+        },
+    }
+
+
+def provisional_taper_model(base_model, taper_angle_deg):
+    """F30 item 3 (Fred's own taper copies, Template 12 from Template 1 / Template 13 from Template 2), until
+    their goldens are recorded live: a PROVISIONAL model, never none. Unlike T3/T4/T5/T10's own provisional
+    models, nothing about the base shape changes here -- the shoulder/waist (or neck/body) tangency the base
+    template already fits is exactly what Template 12/13 build on (editor-shape-lattice-generator.js's own
+    `_taperedCorner` only ever repositions the TOP horn and, past its own feasible floor, the shoulder/neck
+    circle -- it never touches the rest of the silhouette). So `base_model`'s features are kept verbatim, plus
+    one new scale-invariant `const` feature, `taperAngle` (degrees: 0 = the base template exactly, Fred's own
+    default 8). Marked `provisional` so nothing mistakes it for a fit."""
+    feats = {k: dict(v) for k, v in base_model["features"].items()}
+    feats["taperAngle"] = {"hw": 0.0, "hh": 0.0, "const": taper_angle_deg}
+    return {
+        "features": feats,
+        "fit": dict(base_model["fit"]),
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": "the fitted base template's own model, every feature kept",
+            "taperAngleDeg": taper_angle_deg,
         },
     }
 

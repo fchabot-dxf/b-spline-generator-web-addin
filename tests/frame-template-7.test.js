@@ -231,7 +231,8 @@ describe('the Shape Lattice and every other template never get the neck/body par
     for (const k of KEYS) expect(FRAME_ONLY_PARAM_KEYS).toContain(k);
     expect(FRAME_ONLY_PARAM_KEYS).not.toContain('neckWidth'); // Bottle's own plain key must stay untouched
     expect(SHAPE_PARAM_KEYS).not.toHaveProperty('diamondTopHourglass');
-    expect(PARAM_ORDER.bottle).toEqual(['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius']); // unchanged
+    // F30 item 3 appended its own 'taperAngle' at the end -- Template 7 (diamondTopHourglass) is unaffected either way.
+    expect(PARAM_ORDER.bottle).toEqual(['neckWidth', 'skeletonX', 'neckLength', 'bodyRadius', 'taperAngle']);
   });
 
   it('the Fusion manifest never emits a diamondTopHourglass user parameter, and Bottle\'s own neckWidth is unaffected', () => {

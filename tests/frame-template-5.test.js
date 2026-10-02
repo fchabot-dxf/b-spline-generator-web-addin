@@ -99,10 +99,11 @@ describe('no dip set: Template 1, bit for bit', () => {
   });
 
   it('PARAM_ORDER keeps every earlier key at its old index (the [Generate] salt); the dip keys come last', () => {
-    // T10 ARCHED HOURGLASS appended its own 'archRise' after the dip keys, so Template 1-9's own indices stay
-    // exactly where this test already pins them.
+    // T10 ARCHED HOURGLASS appended its own 'archRise' after the dip keys, and F30 item 3 appended 'taperAngle'
+    // after that, so Template 1-9's own indices stay exactly where this test already pins them.
     expect(PARAM_ORDER.hourglass).toEqual(['waistCenterY', 'waistReach', 'cornerRadius', 'waistRadius', 'cornerRadiusTop',
-      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archRise']);
+      'cornerRadiusBottom', 'topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth', 'archRise',
+      'taperAngle']);
   });
 });
 
