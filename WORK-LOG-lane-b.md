@@ -12679,3 +12679,33 @@ wait for "Fusion free").
 
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn N+2 — T83 item 2 (part 3): Template 11 phone shots, LIVE in a real headless-Chrome mobile session
+
+Reused the ALREADY-ESTABLISHED `tools/repro/frame_tab_zoom.mjs` (mobile touch emulation, 390x844, the same
+script earlier Frame-tab-zoom work built) rather than writing a new script -- it already takes an arbitrary
+template id, so `node tools/repro/frame_tab_zoom.mjs <prefix> <paletteUrl> template_11 <port>` against the
+lane-b server (port 8899) needed no changes.
+
+**Result: `handles:5, handleOk:true, pinchOk:true`** -- 5 handles render (matching the declared table), a
+one-finger drag that starts ON a handle correctly writes its seed value (waistReach moved to 0.706) without
+moving the view, and pinch-zoom works. `panOk:false` (an UNRELATED one-finger pan-the-canvas gesture) also
+failed -- but MEASURED against the identical script run on `template_1` (the established, working baseline)
+too: SAME `panOk:false`, same `dcx:0,dcy:0`. Confirms this is a pre-existing, template-independent script/
+environment characteristic, not something T11-specific or something this turn introduced -- not investigated
+further (out of this task's own scope).
+
+**Screenshots** (`C:\Users\danse\.bspline-status\shots\seatB\`): `t83item2_01_frame_tab_t11_phone.png` (the
+full shape at 1x zoom, phone width -- the gable roof, both eave bars, the shoulder/waist/hip pinch on both
+sides, the straight base, all 5 handles visible and correctly styled: white squares for the two position
+handles, blue circles for the three arc-pull/CAD-circle radius grips) and `t83item2_02_frame_tab_t11_phone_
+zoomed.png` (post-pinch, 3x zoom on the waist pinch, confirming the handle styling up close). Visually: the
+shape renders exactly as designed, a closed, symmetric outline with no visible defects or misplaced handles.
+
+**T83 item 2 is now fully done except the live Fusion check**, held per the advisor's own mid-turn message
+(Fusion reserved for Claude Cowork driving the UI for Fred, then the advisor's own probes) -- will message the
+advisor and wait for "Fusion free" before attempting `tools/repro/fusion_t11/live_build_readback.py`.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake. No code changed this part (screenshots only); nothing to
+commit for it beyond this WORK-LOG entry.
