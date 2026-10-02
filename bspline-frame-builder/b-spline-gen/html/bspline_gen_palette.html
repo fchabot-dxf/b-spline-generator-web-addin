@@ -2794,6 +2794,38 @@
               </div>
             </label>
             <div id="editorFrameThicknessWarning" style="display:none; color:#ff3b30;"></div>
+            <!-- T82 item 5: the SAME insetWindow record the sidebar's own #frameInsetWindowToggle/fields edit
+                 (main/frame-panel.js keeps both in sync) -- a second view, not a second setting, same pattern
+                 as the Thickness stepper above (T82 item 4). -->
+            <label class="cad-label-inline" style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="editorFrameInsetWindowToggle"> Inset window
+            </label>
+            <div id="editorFrameInsetWindowFields" style="display:none;">
+              <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <label style="flex:1;">Position X
+                  <div class="cad-stepper" style="margin-top:4px;">
+                    <input type="number" id="editorWindowPosX" step="any">
+                  </div>
+                </label>
+                <label style="flex:1;">Position Y
+                  <div class="cad-stepper" style="margin-top:4px;">
+                    <input type="number" id="editorWindowPosY" step="any">
+                  </div>
+                </label>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1;">Size W
+                  <div class="cad-stepper" style="margin-top:4px;">
+                    <input type="number" id="editorWindowSizeW" step="any">
+                  </div>
+                </label>
+                <label style="flex:1;">Size H
+                  <div class="cad-stepper" style="margin-top:4px;">
+                    <input type="number" id="editorWindowSizeH" step="any">
+                  </div>
+                </label>
+              </div>
+            </div>
             <div id="editorFrameNote" style="color:#666;">Generate a random frame shape, then tweak it: drag a curve (or its blue dot) to change its roundness, or a square to move it. Changing the template resets them.</div>
           </div>
         </aside>

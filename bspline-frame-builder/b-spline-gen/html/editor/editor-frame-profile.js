@@ -182,7 +182,7 @@ export function frameSolidSpec(defs, record, board) {
     outerPrimitives: prof.primitives,
     innerPrimitives: innerOk ? inner.primitives : null,
     panelPrimitives: panelTrimPrimitives(prof, record), // F22: null = trimmed on the outline
-    insetWindow: insetWindowGeometry(record, ft, record.panelLip), // T82 item 2, null when off/invalid
+    insetWindow: insetWindowGeometry(record, ft, record.panelLip, board.widthIn, board.heightIn), // T82 item 2/5, null when off/invalid
     frameBottomZ: record.frameBottomZ,
     // H8 (Fred: "make frame colour a bit different than board, tiny bit"):
     // the frame's own declared colour, not the board's raw wood colour —
@@ -307,7 +307,7 @@ function _drawFrameProfile(editor) {
   // both tabs (same as the main frame's own cutaway) since it affects the carved panel either way.
   const ftTpl = (spec.defs.templates || []).find((t) => t.id === prof.templateId);
   const ft = _param(ftTpl, spec.record, 'frame_thickness') ?? 0;
-  const win = insetWindowGeometry(spec.record, ft, spec.record.panelLip);
+  const win = insetWindowGeometry(spec.record, ft, spec.record.panelLip, W, H);
   if (win) {
     const rectD = (r) => `M${r.x1} ${r.y1} H${r.x2} V${r.y2} H${r.x1} Z`;
     const wood = frameColorFor(spec.record.appearance, spec.defs.appearance?.previewColors?.[spec.record.appearance] || '#d9c9a3');

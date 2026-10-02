@@ -17,14 +17,18 @@
  * template, a wood that isn't declared, or a non-numeric value all resolve to
  * the declared defaults — never a half-valid record.
  *
- * `insetWindow` (T82 item 2, INSET-WINDOW-DESIGN.md): a second small mitred frame set into the panel, always
- * open, hidden behind the panel. `{enabled, x1, y1, x2, y2}` (two opposite OUTER corners, board-local inches,
- * origin top-left, y down — the SAME convention `frameCutProfile`'s own board already uses). Frame-level, not
- * per-template (every template reads it, none declare it). Deliberately NOT clamped against the frame's own
- * opening or the board edge (Fred: "then it's my responsibility to not let it intersect") — normalization
- * here only sorts the corners (x1<x2, y1<y2) so a drag crossing the opposite edge can't invert the rectangle;
- * geometric validity (window bars / opening > 0) is a property every CONSUMER checks for itself (insetWindow.js
- * `insetWindowGeometry`), not a write-time clamp.
+ * `insetWindow` (T82 item 2/5, INSET-WINDOW-DESIGN.md): a second small mitred frame set into the panel, always
+ * open, hidden behind the panel. `{enabled, cx, cy, w, h}` (T82 item 5, Fred: "use the centre of frame... and
+ * make the window a centre point rect too"): `cx`/`cy` the window's own centre, inches, measured from the
+ * BOARD CENTRE, +y UP (Fusion's own sketch convention — `RectangleCenter` maps 1:1 onto it); `w`/`h` the OUTER
+ * size, bars included (core/inset-window.js `insetWindowOuterRect` is the ONE place this converts to a
+ * board-local rect). Frame-level, not per-template (every template reads it, none declare it). Deliberately NOT
+ * clamped against the frame's own opening or the board edge (Fred: "then it's my responsibility to not let it
+ * intersect") — normalization here only type-checks the four numbers; geometric validity (window bars /
+ * opening > 0) is a property every CONSUMER checks for itself (insetWindow.js `insetWindowGeometry`), not a
+ * write-time clamp. A record saved under the OLD shape (`{x1, y1, x2, y2}`, board-local, origin top-left, y
+ * down) migrates on read, using the board's CURRENT width/height (`P.widthIn`/`P.heightIn` — the same lazy,
+ * read-time pattern this function's own `handleMigrations` block already uses, not a one-time rewrite).
  */
 import FRAME_DEFS from '../data/frame-defs.js';
 import { P, saveLastSession } from './state.js';
@@ -51,7 +55,7 @@ export function defaultFrameRecord(defs = FRAME_DEFS) {
     frameBottomZ: _extrusion(defs, 'frameBottomZ').default ?? -1,
     panelLip: _extrusion(defs, 'panelLip').default ?? 0, // F22
     appearance: defs.appearance?.default ?? null,
-    insetWindow: { enabled: false, x1: 0, y1: 0, x2: 0, y2: 0 }, // T82 item 2, off by default
+    insetWindow: { enabled: false, cx: 0, cy: 0, w: 0, h: 0 }, // T82 item 2/5, off by default
   };
 }
 
@@ -97,14 +101,26 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
       if (seeded.has(k) && Number.isFinite(n)) out.seeds[k] = n;
     }
   }
-  // T82 item 2: no clamping against the frame or the board (see module header) -- only type-checked and
-  // sorted so x1<x2, y1<y2 always hold, the one invariant every consumer below is allowed to assume.
+  // T82 item 2/5: no clamping against the frame or the board (see module header) -- only type-checked.
   if (raw.insetWindow && typeof raw.insetWindow === 'object') {
     const w = raw.insetWindow;
-    const x1 = Number(w.x1), y1 = Number(w.y1), x2 = Number(w.x2), y2 = Number(w.y2);
-    if ([x1, y1, x2, y2].every(Number.isFinite)) {
-      out.insetWindow = { enabled: !!w.enabled, x1: Math.min(x1, x2), y1: Math.min(y1, y2),
-        x2: Math.max(x1, x2), y2: Math.max(y1, y2) };
+    if ('cx' in w || 'cy' in w || 'w' in w || 'h' in w) {
+      // The current shape already: {enabled, cx, cy, w, h}.
+      const cx = Number(w.cx), cy = Number(w.cy), ww = Number(w.w), hh = Number(w.h);
+      if ([cx, cy, ww, hh].every(Number.isFinite)) out.insetWindow = { enabled: !!w.enabled, cx, cy, w: ww, h: hh };
+    } else {
+      // T82 item 5 MIGRATION: the OLD shape ({x1, y1, x2, y2}, board-local, origin top-left, y down) -> the
+      // current one, using the board's CURRENT width/height (P, already imported above).
+      const x1 = Number(w.x1), y1 = Number(w.y1), x2 = Number(w.x2), y2 = Number(w.y2);
+      if ([x1, y1, x2, y2].every(Number.isFinite)) {
+        const widthIn = Number(P.widthIn) || 0, heightIn = Number(P.heightIn) || 0;
+        const loX = Math.min(x1, x2), hiX = Math.max(x1, x2), loY = Math.min(y1, y2), hiY = Math.max(y1, y2);
+        out.insetWindow = {
+          enabled: !!w.enabled,
+          cx: (loX + hiX) / 2 - widthIn / 2, cy: heightIn / 2 - (loY + hiY) / 2,
+          w: hiX - loX, h: hiY - loY,
+        };
+      }
     }
   }
   return out;
