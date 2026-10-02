@@ -12429,3 +12429,42 @@ That is T11's own app-side wiring item, queued after this one.
 
 Committing and pushing from lane-b now. Next up per the advisor: T82 item 4 (frame thickness stepper in
 the Frame editor, synced with the sidebar, + convex-radius warning), then T83 item 2.
+
+## Lane B — T82 item 4 (prep) — inset window Position/Size steppers: reject garbage, clamp to board/thickness — DONE
+
+Advisor review on 24e2d07 (after merging it to main): the 4 Position/Size `change` handlers wrote
+`parseFloat(value)` straight into the record -- a blank/garbage entry would store NaN, and nothing
+stopped a tiny/negative size or a rect pushed off the board. Fixed, typed-entry only (the drag itself
+stays deliberately unclamped, INSET-WINDOW-DESIGN.md's own "that's my responsibility" rule -- this is a
+different failure mode: a keystroke isn't bounded by a cursor's own continuous motion the way a drag is).
+
+`_applyInsetWindowStepper(input, build)`: parses the field, and if the result isn't finite, writes
+NOTHING and snaps the field back to the record's own current value (`_insetWindowFieldValue`) -- explicit
+rather than relying on `syncFramePanel`'s own `activeElement` guard, since a 'change' event can still fire
+while the field is the activeElement (Enter without a blur). A valid number builds a candidate rect
+(`build`, one per field: Position shifts both corners keeping size, Size resizes from x1/y1) and
+`_clampInsetWindowRect` clamps it: size first (floor `2*frame_thickness + 0.1in` -- the 0.1in margin
+matters because `insetWindowGeometry`'s own floor is a strict `>`, so landing exactly on `2*ft` would
+still read back as "no window"; ceiling the board's own width/height), then position (so the whole rect
+lands on-board).
+
+Mutation-tested (not vacuous): reverting to the old bare `editFrame({ insetWindow: { ...r, ...build(r,
+value) } })` (no guard, no clamp) failed exactly the 3 new tests below, nothing else; restored
+byte-identical via diff, confirmed green again. 3 new tests in `tests/inset-window-handles.test.js`
+(now 13): non-finite input rejected + field restored (all 4 fields), size clamped both directions
+(too-small clears `2*ft`, too-large stays on-board), position clamped on-board. One existing test's own
+Size W value (10, on a 7in board) now correctly gets clamped by the NEW behaviour -- updated to a
+board-fitting value (4) since that test's own point was the resize-from-anchor shape, not the clamp
+itself (the clamp has its own dedicated tests now). Fast-tier (6 files): 188 passed, 0 failed.
+
+**Process note, flagged plainly**: made the SAME main-vs-lane-b path mistake a second time THIS turn --
+one Edit call used a stale absolute path to main's checkout out of habit (not the shell-cwd issue from
+last time; this one was just a careless copy-paste of a path), landing on top of the advisor's own
+just-completed merge of 24e2d07 into main. Caught it myself via `git status` immediately after, saved a
+diff before touching anything, flagged it to the advisor live, and applied the SAME diff to lane-b once
+confirmed clean here. Advisor discarded the stray edit in main directly this time. New standing rule from
+the advisor, now followed for the rest of this session: verify the "-lane-b" segment is actually present
+in the absolute path before every Edit/Write call, and flag (never self-fix) if main is touched again.
+
+Committing and pushing from lane-b. Next: T82 item 4 itself (frame thickness stepper in the Frame editor,
+synced with the sidebar, + convex-radius warning), then T83 item 2.
