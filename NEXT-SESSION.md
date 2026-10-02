@@ -143,7 +143,7 @@ results *_2026-10-02.jsonl next to them; captured payloads via capture_send_payl
 --board=6x9. A bar-overlap check (pairwise intersection volume == 0) belongs in the readback tools afterwards.
 Kill only PIDs you started; no guards without Fred. Commit 'H23 item 33: ...'.
 
-## Item 34 -- make Fred's workflow correct: he DOES edit frame_thickness / border in Fusion's Parameters dialog
+## Item 34 -- CANCELLED (Fred: a native Fusion edit that breaks the model is acceptable -- "I can see it's broken", he undoes). Kept for the record -- was: make Fred's workflow correct: he DOES edit frame_thickness / border in Fusion's Parameters dialog
 Fred (2026-10-02): "i do change it in fusion". Item 33 proved a native edit can merge 3 bars into one overlapping U
 (timeline healthy) whenever the thickness passes a convex radius, on any board; a fresh Send is always correct. Not a
 guard -- the goal is that his edit gives the same 4 bars a Send would. STEP 1 = FEASIBILITY, report before building:
@@ -214,4 +214,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-30] CANCELLED -- Fred: warn only (T82 item 4's editor warning). Was: PREVENT FALLBACKS (Fred: 'the add-in produces no errors'): app keeps every convex radius > frame_thickness + margin (Generate gate, handle clamp, small-board defaults); known list empty + T1 7x9 live Send with zero fallback lines. Commit as 'H23 item 30: ...'.
 - [ ] [H23-item-32] NO-ERRORS: find + fix why timeline 'Group1' is unhealthy on every Send; explain the empty-doc T1 solve failure. Commit as 'H23 item 32: ...'.
 - [x] [H23-item-33] (root-caused, fix -> item 34) PARAM EDIT AFTER BUILD DUPLICATES BARS: find + fix why the bar split doesn't survive a frame_thickness/boundingboxoffset edit (3 bars become one overlapping U body, timeline healthy). Commit as 'H23 item 33: ...'.
-- [ ] [H23-item-34] FRED EDITS PARAMS IN FUSION: feasibility of auto-rebuild on the Parameters dialog (C1) vs a merge-proof bar model (C2), measured, before any production change. Commit as 'H23 item 34: ...'.
+- [x] [H23-item-34] CANCELLED (Fred: he sees the break and undoes; no auto-rebuild, no lock, no CAM check). Was: FRED EDITS PARAMS IN FUSION: feasibility of auto-rebuild on the Parameters dialog (C1) vs a merge-proof bar model (C2), measured, before any production change. Commit as 'H23 item 34: ...'.
