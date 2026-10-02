@@ -78,8 +78,11 @@ try:
         out.append('  sketch2 WORST deviation %.4f in over %d arcs' % (worst, len(arcs)))
     if sk3 is not None:
         out.append('sketch3 arcs=%d lines=%d profiles=%d' % (sk3.sketchCurves.sketchArcs.count, sk3.sketchCurves.sketchLines.count, sk3.profiles.count))
-    errs = [l for l in log.lines if '[ERROR]' in l or 'MITER' in l.upper() and ('FAIL' in l.upper() or 'MISS' in l.upper())]
-    out.append('engine errors/miter misses: %d' % len(errs)); out.extend('  ' + e[:200] for e in errs[:12])
+    # A parametric-offset FALLBACK logs as a WARNING but is a topology change (fusion360-quirks: addOffset2 fails the
+    # whole loop when an arc would vanish) -- count it as a failure, it hid a 7x9 defect on the first run.
+    errs = [l for l in log.lines if '[ERROR]' in l or 'PARAMETRIC FAIL' in l or 'FALLING BACK' in l
+            or ('MITER' in l.upper() and ('FAIL' in l.upper() or 'MISS' in l.upper()))]
+    out.append('engine errors/fallbacks/miter misses: %d' % len(errs)); out.extend('  ' + e[:200] for e in errs[:12])
 except Exception:
     out.append(traceback.format_exc())
 finally:
