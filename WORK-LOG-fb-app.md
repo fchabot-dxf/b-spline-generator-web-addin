@@ -7194,3 +7194,59 @@ Full suite green: pytest 814 passed/25 skipped (repo root). No production code c
 fixes live entirely in `tools/repro/` diagnostic tooling; nothing in `b-spline-gen.py`/`fb_engine`
 needed to change, because nothing there was actually broken. No guards added (none asked for).
 Commit `996c3d8`.
+
+## 2026-10-02: H23 item 33 -- real silent defect found, root-caused, fix needs Fred's own call
+
+Fusion mine (advisor done; UI-cowork / API-claude code left open and untouched throughout). The
+advisor's own `bar_merge_confirm.py` + results (`bar_merge_results_2026-10-02.jsonl`) found: editing
+`frame_thickness` on an already-built T1 6x9 frame (0.75in -> 1.0in) turns 3 of 4 bars
+(left/bottom/right) into the SAME overlapping body while the timeline stays fully Healthy; a FRESH
+Send at the same 1.0in is correct.
+
+**Reproduced, with a genuine fresh 6x9 capture** (`tools/repro/capture_send_payload.mjs --template=
+template_1 --board=6x9` -- confirmed `--board` now exists, landed since my own earlier check this
+session; served via `tools/serve_app.py`): the advisor's own seed set and mine differ (randomized
+per capture), so the EXACT edit value that triggers it is seed-sensitive -- my own first attempt at
+1.0in alone did not break it, but editing the SAME doc further (1.0 -> 1.25 -> 1.5in, Fusion's
+`computeAll()` after each) broke it at **1.5in -- the template's own declared Max** (not an
+out-of-range edge case), and a direct test at 2.0in broke it every time. Confirmed the exact
+signature matches the advisor's own: `frame_right`/`frame_left`/`frame_bottom` become bit-identical,
+fully pairwise-overlapping bodies; `frame_top` stays distinct and correctly sized.
+
+**Root cause, traced via `frame-builder-debug.log` comparison (as-built vs after-edit)**: T1's own
+convex shoulder/hip radius (0.643in) is already below `frame_thickness` (0.75in) at this board size
+-- `addOffset2` (the parametric offset) ALREADY fails on the very first build, confirmed in the log
+(`OFFSET PARAMETRIC FAIL` + `OFFSET FALLBACK`, item 28's own loud logging), falling back to
+`sketch.offset()` (non-parametric). This is a KNOWN, Fred-accepted tradeoff (item 28/30 -- warn only,
+the editor's own red warning is the answer). What's NEW: the fallback's own curves are still DRIVEN
+by a dimension tied to `frame_thickness` (confirmed in `offsets.py`'s own `_force_rename_offset_dim`),
+so FUSION'S OWN NATIVE RECOMPUTE engine (a bare parameter edit, no Python re-run) DOES re-evaluate
+them -- and at a big enough thickness, the re-solved topology collapses the 3 continuous
+left-bottom-right regions into one, while the 4 EXTRUDE FEATURES (which track their own profile by
+Fusion's internal identity, not a stable name) silently converge onto whichever merged profile Fusion
+hands them. **The editing itself produces ZERO new log lines** -- confirmed directly: `frame-
+builder-debug.log` is completely unchanged after the parameter edit + `computeAll()`, because a bare
+Fusion parameter edit never calls back into our own Python code at all. This is WHY a fresh Send (a
+full Python rebuild) is correct: `template_data.py`'s own comment on `frame_thickness` (lines 63-69)
+already documents that `p03_03_inner_corner_resolve` was specifically built to handle "the side arcs
+collapse" by finding inner corners by COMPUTED POSITION rather than named IDs -- but that handling
+only runs when the Python pipeline runs, which a native recompute never triggers.
+
+**Reachability**: `frame_thickness` is a normal, `Expose: True` Fusion user parameter (not hidden or
+locked), AND the app's own Frame tab has a real `frameThickness`/`editorFrameThickness` UI field --
+but changing it THROUGH THE APP's own UI and clicking [Send frame] again triggers a full Python
+rebuild (safe, confirmed correct). The unsafe path specifically needs a bare Fusion-native parameter
+edit (e.g. directly in Fusion's own Parameters table) bypassing the app's Send button -- a real,
+not-uncommon path for a Fusion-fluent user (this project's own worker/advisor flow does exactly this
+kind of direct parameter edit routinely), but narrower than "any normal app use."
+
+**Fix: NOT applied, needs Fred's own direction** (dispatch said no guards). The two real options are
+the same shape as item 30's own already-cancelled decision: (a) prevent the fallback entirely by
+raising T1's own convex radius above `frame_thickness` (item 30's own cancelled scope -- Fred chose
+warn-only instead), or (b) detect/force a full rebuild when these parameters change outside the
+app's own Send flow (effectively locking or intercepting direct Fusion-native edits to them) --
+genuinely a new guard-class decision, not a bug fix in the "obviously correct, no judgment call"
+sense. Logged the full mechanism in `fusion360-quirks` (fred-skills, `7ab8453`) so this doesn't need
+re-discovering. No repo code changed this pass -- the diagnosis itself, plus the existing
+`bar_merge_confirm.py` + a genuine `--board=6x9` capture, fully reproduces and explains it; passing
+the decision to the advisor/Fred rather than picking one unilaterally.
