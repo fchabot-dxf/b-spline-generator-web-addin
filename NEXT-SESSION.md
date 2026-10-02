@@ -101,7 +101,7 @@ build). Then prune where the timing says it pays: Pulse (A/B: identical on T1/T8
 T10 frame dependency (stripping them moves T10's inner horn 2.18 in) is explained. Each removal re-checked with
 `tools/repro/fusion_t11/step_removal_ab.py` on two templates at 7x9 + 9x12.
 
-## Item 30 -- ON HOLD: needs Fred's approval first (Fred: "ask before installing guards"). DO NOT START. -- PREVENT, don't detect: the add-in must never hand Fusion geometry that errors or falls back (after 28)
+## Item 30 -- CANCELLED (Fred chose WARN ONLY: no convex-radius guard; the Frame editor's red warning, T82 item 4, is the whole answer). Kept for the record -- was: PREVENT, don't detect: the add-in must never hand Fusion geometry that errors or falls back (after 28)
 Fred: "the goal is that the add-in produces no errors". Today's biggest known violation: the hourglass family
 (T1/T3/T4/T5/T8/T10, and T11/T12/T13 as they land) at 6x9/7x9 has a convex shoulder/hip radius (0.643) below
 frame_thickness (0.75), so every such Send makes Fusion's addOffset2 refuse and the engine fall back (non-parametric,
@@ -110,7 +110,7 @@ fewer curves). Prevent it in the APP, before Send, keeping the user's thickness 
 as cf3805f's reflex-arc gate; re-measure GENERATE_MAX_ATTEMPTS); (2) the radius handles clamp at that floor;
 (3) the template DEFAULT/fitted shape at small boards clamps the corner radius up to the floor (declare the floor
 once, e.g. CONVEX_RADIUS_MARGIN_IN, next to frame_thickness; the app's smallestConvexArcRadius from T82 item 4 is the
-measure). Done = item 28's KNOWN_CONVEX_RADIUS_BELOW_BAR list is EMPTY for every shipped template at 6x9/7x9/9x12,
+measure). (cancelled) Done = item 28's KNOWN_CONVEX_RADIUS_BELOW_BAR list is EMPTY for every shipped template at 6x9/7x9/9x12,
 AND a live Send of T1 at 7x9 (real captured payload) builds with ZERO fallback/warning lines in the engine log
 (tools/repro/fusion_t11/live_build_readback.py counts them). Shapes change slightly at small boards (rounder
 shoulder/hip) -- shots before/after at 7x9 for Fred. Commit 'H23 item 30: ...'.
@@ -173,4 +173,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11; PLUS one all-template test: weld orientation (CCW rule) + seed-midpoint report + convex radius > bar report. Commit as 'H23 item 27: ...'.
 - [ ] [H23-item-28] STABILISE (no pruning): make the offset fallback loud (result field + ERROR log + test); convert convex-radius check 3 to a declared known list. Commit as 'H23 item 28: ...'.
 - [ ] [H23-item-29] PRUNE FOR SPEED (after 28 merges): time a real Send stage by stage, then remove Pulse / explain nudges where timing says it pays, each re-checked with step_removal_ab.py. Commit as 'H23 item 29: ...'. Commit as 'H23 item 28: ...'.
-- [ ] [H23-item-30] (ON HOLD, awaiting Fred's approval) PREVENT FALLBACKS (Fred: 'the add-in produces no errors'): app keeps every convex radius > frame_thickness + margin (Generate gate, handle clamp, small-board defaults); known list empty + T1 7x9 live Send with zero fallback lines. Commit as 'H23 item 30: ...'.
+- [x] [H23-item-30] CANCELLED -- Fred: warn only (T82 item 4's editor warning). Was: PREVENT FALLBACKS (Fred: 'the add-in produces no errors'): app keeps every convex radius > frame_thickness + margin (Generate gate, handle clamp, small-board defaults); known list empty + T1 7x9 live Send with zero fallback lines. Commit as 'H23 item 30: ...'.
