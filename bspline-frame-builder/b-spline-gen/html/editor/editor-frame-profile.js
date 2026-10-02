@@ -134,6 +134,30 @@ export function frameInnerProfile(defs, record, board) {
   return { primitives, defects: outlineDefects(real, { requireTangency: false }) };
 }
 
+/**
+ * T82 item 4 (advisor probes 2026-10-02): the smallest CONVEX arc radius in the outline, in inches, or
+ * `Infinity` if the outline has no convex arc at all (e.g. Template 6's all-line Tab Top). "Convex" is
+ * read off the app's own already-solved offset (outline-offset.js's own `r - t` for a convex arc, `r + t`
+ * for concave -- see that module's own header comment), not re-derived here: a NON-collapsed inner arc
+ * whose radius shrank from the outer one was offset by `r - t`, i.e. convex; a COLLAPSED inner piece is,
+ * by that same module's own documented rule, always a convex arc whose radius was <= the offset distance
+ * -- so it counts too, at its own TRUE (un-offset) outer radius, not the collapsed placeholder's.
+ * `outerPrimitives`/`innerPrimitives` pair by index (frameCutProfile's `.primitives` / frameInnerProfile's
+ * `.primitives`, offset at whatever `frame_thickness` `innerPrimitives` was itself computed with).
+ */
+export function smallestConvexArcRadius(outerPrimitives, innerPrimitives) {
+  let min = Infinity;
+  if (!outerPrimitives || !innerPrimitives || innerPrimitives.length !== outerPrimitives.length) return min;
+  for (let i = 0; i < outerPrimitives.length; i++) {
+    const outer = outerPrimitives[i];
+    if (outer.type !== 'A') continue;
+    const inner = innerPrimitives[i];
+    const convex = inner.collapsed || (inner.type === 'A' && inner.rx < outer.rx);
+    if (convex) min = Math.min(min, outer.rx);
+  }
+  return min;
+}
+
 /** Everything the 3D preview needs (core/preview/frame-mesh.js), or null
  *  when there is no frame or the outline fails the guard. */
 /** F22: the panel's trim outline = the frame outline offset OUTWARD by the record's panel lip (the F8 true offset,
