@@ -5952,3 +5952,39 @@ committing the un-hide** -- I cannot currently clear that gate myself, so `FRAME
 regenerated `frame-defs.json`/`.js` are left UNCOMMITTED (safe, reversible, nothing lost) rather than committing
 without having actually verified them. This needs either a retry once whatever triggered the classifier clears,
 or Fred's own attention to the permission settings -- flagging to the advisor now rather than guessing further.
+
+## 2026-10-02: H23 item 25 -- un-hide Template 10, resumed and completed
+
+Fred allowed the test commands himself in `~/.claude/settings.json` (confirmed by the advisor's own pass note).
+Resumed exactly where blocked: re-ran the full gate this time with no denial. `npx vitest run` turned up a real,
+expected failure -- `tests/frame-hidden-template.test.js` (F29 item 1) specifically pinned `template_10` as THE
+hidden template (its own reason for existing, from H23 item 14). Now that T10 ships, that premise is gone.
+
+**Rewrote the suite rather than deleting it**: the underlying mechanism (one `hidden` flag, one `if (!t.hidden)`
+filter in `frame-panel.js`) is still real, reusable code -- a future template could need it again -- so the test
+now marks a DIFFERENT real template (`template_9`, picked arbitrarily) `hidden` for each test's own duration and
+restores it after, instead of depending on which template happens to be hidden at any given moment. Caught one
+real ordering bug while rewriting (not a production bug, a test-fixture one): the hidden flag has to be set
+BEFORE `initFramePanel()`'s own populate pass runs, or the later "removed again once you switch away" check
+never fires -- the option was present from the start as an ordinary entry, never tracked as the dynamically-
+injected one `syncFramePanel()`'s own cleanup logic looks for. Fixed by restructuring the two `describe` blocks'
+own setup order (each gets its own complete `beforeEach`, no longer sharing one across both), not by touching
+`frame-panel.js`.
+
+Full suite, now genuinely green: `npx vitest run` 2946/2946 (156 files). `python -m pytest`: `frame-builder` 410
+passed/22 skipped, `b-spline-gen` 97 passed, repo root 97 passed. `gen_frame_defs.py --check`: fresh. Diffed
+`frame-defs.json` directly to confirm T1-9 are untouched: the only content change besides `sourceHash` is
+`template_10`'s own `hidden: true -> false`.
+
+Shot (served app, headless, 7x9, the default board size): the sidebar Template picker showing "10. Arched
+Hourglass" selected, `[Generate]` run 3 times with 0 defects on every draw (seeds logged in the capture's own
+JSON output) -- `shots/seatA/h23_item25_t10_picker_and_generate_7x9.png`. Tried for an actual editor-canvas shot
+of the generated shape too (a second scratch CDP script probing for the SVG element), but the editor's own
+canvas didn't show up in a simple full-page capture at this viewport/scroll position and I didn't chase it
+further -- the picker shot plus the JSON proof of 3 clean generates, combined with T10's extensive REAL-Fusion
+visual verification already on record from items 21-24, felt like sufficient evidence without over-investing in
+a cosmetic capture.
+
+Committed BY PATH (`frame-defs.js`, `frame-defs.json`, `template_10/template_data.py`,
+`tests/frame-hidden-template.test.js` only -- seat B's 4 inset-window files still untouched in this tree, as
+flagged), pushed (`8d45f1e`). Template 10 is now live in the real template picker.
