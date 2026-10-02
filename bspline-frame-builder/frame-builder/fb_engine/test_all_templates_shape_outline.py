@@ -37,17 +37,24 @@ boundingboxoffset). Three checks:
    need to be close; this just reports how close every template's actually
    is, it does not fail on an imprecise one).
 
-3. CONVEX RADIUS VS BAR (report, don't fail): every CONVEX arc's radius
-   (its own explicit seed Radius dimension if declared, else its 3-point
-   circumcircle) must exceed `frame_thickness` for Fusion's own `addOffset2`
-   to keep the whole enclosure loop parametric (fusion360-quirks, advisor
-   probe C1/C2) -- a radius at or below it silently falls back to a non-
-   parametric, differently-shaped offset. Convexity is approximated as
-   "does the arc's own via point sit farther from the outline's own
-   centroid than its chord's midpoint" (bulges outward = convex) -- a
-   reasonable, not exhaustively-verified heuristic for a report-only check;
-   shape changes are explicitly NOT made here, per the dispatch ("the
-   advisor decides per template").
+3. CONVEX RADIUS VS BAR (H23 item 28: DECLARED known list, enforced): every
+   CONVEX arc's radius (its own explicit seed Radius dimension if declared,
+   else its 3-point circumcircle) must exceed `frame_thickness` for Fusion's
+   own `addOffset2` to keep the whole enclosure loop parametric
+   (fusion360-quirks, advisor probe C1/C2) -- a radius at or below it
+   silently falls back to a non-parametric, differently-shaped offset.
+   Convexity is approximated as "does the arc's own via point sit farther
+   from the outline's own centroid than its chord's midpoint" (bulges
+   outward = convex) -- a reasonable, not exhaustively-verified heuristic.
+   Per Fred: the templates currently below the bar are ACCEPTED cases (warn
+   only at Send, offsets.py's own loud fallback -- see item 28's other
+   half), not a to-do -- KNOWN_CONVEX_RADIUS_BELOW_BAR documents exactly
+   which templates, and the test enforces that it stays in sync: a NEW
+   template joining this class fails loudly instead of disappearing into a
+   report nobody reads, and a template that's quietly LEFT the class (a
+   seed rework, say) prompts pruning the now-stale entry. Shape changes to
+   fix an existing entry are still the advisor's own per-template call, not
+   this test's.
 """
 import math
 import os
@@ -245,10 +252,20 @@ def test_seed_midpoint_report(tid, capsys):
 
 
 # ---------------------------------------------------------------------------
-# Check 3: convex radius vs bar thickness (report, never fails)
+# Check 3: convex radius vs bar thickness -- declared known list, enforced
 # ---------------------------------------------------------------------------
+# H23 item 28: MEASURED (this check, every board size) which templates have at least one convex
+# arc at or below frame_thickness -- Fred: accepted, warn-only cases, not a to-do. A template not
+# in this set that starts failing is a NEW finding to report; an entry here whose template stops
+# failing is a stale entry to prune (the test below enforces both directions).
+KNOWN_CONVEX_RADIUS_BELOW_BAR = {
+    'template_1', 'template_2', 'template_3', 'template_4', 'template_5',
+    'template_8', 'template_10', 'template_12', 'template_13',
+}
+
+
 @pytest.mark.parametrize("tid", TEMPLATE_IDS)
-def test_convex_radius_vs_frame_thickness_report(tid, capsys):
+def test_convex_radius_vs_frame_thickness_known_list(tid, capsys):
     t, sk = _shape_outline_sketch(tid)
     items = _all_items(sk)
     arcs = [it for it in items if it.get('Type') == 'Arc3Point']
@@ -287,4 +304,10 @@ def test_convex_radius_vs_frame_thickness_report(tid, capsys):
             if convex and r <= ft_default:
                 findings.append((W, H, pid, round(r, 4)))
     print(f"{tid}: frame_thickness={ft_default}, convex-arc-below-bar: {findings}")
-    # report only -- per the dispatch, shape changes here are the advisor's own call per template.
+    has_findings = bool(findings)
+    known = tid in KNOWN_CONVEX_RADIUS_BELOW_BAR
+    assert has_findings == known, (
+        f"{tid}: convex-radius-below-bar status changed (findings={findings}) -- "
+        f"{'add to' if has_findings else 'remove'} KNOWN_CONVEX_RADIUS_BELOW_BAR "
+        f"{'' if has_findings else 'this stale entry '}(shape fixes are still the advisor's own "
+        f"per-template call, not this test's)")

@@ -61,7 +61,14 @@ def offset_step(ctx, sketch, s_name, off):
             offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Fallback: sketch.offset() (non-parametric) ---
+        # H23 item 28: LOUD by design (Fred: these are warn-only, not a to-do) -- a result field
+        # (ctx.offset_fallbacks) a caller/test can check without grepping log text, on top of the
+        # ERROR log below. The fallback mechanism itself is unchanged.
         if not offset_result and side != "outward":
+            ctx.offset_fallbacks.append({"sketch": s_name, "distance": d_expr, "side": side})
+            ctx.logger.log(
+                f"OFFSET FALLBACK: {s_name} parametric addOffset2 unavailable, using "
+                f"non-parametric sketch.offset() (distance={d_expr!r})", "ERROR")
             offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Tag results ---
@@ -228,11 +235,13 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             return result
 
     except Exception as e:
-        # FB-FIX (F4): no longer DEBUG. Falling back to a non-parametric
-        # offset is a reported last resort (frame_thickness won't drive it).
+        # FB-FIX (F4): no longer DEBUG. H23 item 28: no longer WARNING either --
+        # falling back to a non-parametric offset is a reported last resort
+        # (frame_thickness won't drive it), loud enough to find without reading
+        # every log line (see offset_step's own ctx.offset_fallbacks + ERROR log).
         ctx.logger.log(
             f"OFFSET PARAMETRIC FAIL: addOffset2 failed for {s_name}: {e} -- "
-            f"FALLING BACK to a NON-parametric offset", "WARNING")
+            f"FALLING BACK to a NON-parametric offset", "ERROR")
     return None
 
 
