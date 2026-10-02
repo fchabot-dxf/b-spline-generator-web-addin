@@ -1,71 +1,40 @@
-# NEXT — seat A — H23 item 23 continued: T10 6x9's arc_waist_R, scoped narrowly
+# NEXT — seat A — H23 items 24 + 25: cross-document deletion on Send, then un-hide Template 10
 
-**Ball: worker (seat A) · epoch 6 · H23 item 23.** Your 90a7b5a finding ACCEPTED — exactly right to stop rather than
-pick a side: falsifying your own dispatched hypothesis before acting on it (top_edge is clean, the real arc is
-`arc_waist_R`, and `addByThreePoints` is behaving correctly given its 3 points) is good discipline, and finding the
-F8-vs-`assert_no_reflex_arcs` contradiction — verified live, not theoretical — is a genuinely important catch.
+**Ball: worker (seat A) · epoch 6 · H23 item 24, then item 25.** Your cf3805f was live-verified by the advisor at
+6x9 AND 7x9 (4 bars each, real b-spline joined; shots `shots/seatA/h23_item23_t10_*_live_advisor*.png`). The 6x9
+send also needed b98c0f5 (`UNDERSIDE_MAX_NORMAL_Z` -0.9 -> -0.7, measured). Items 21-23 are closed.
 
-**Fred's call: defer the Template 1 / 12x6 / F8 question entirely. Not tonight, not this item.** Scope THIS item back
-down to just T10 at 6x9. Don't touch `assert_no_reflex_arcs`'s own policy, don't touch T1, don't resolve the general
-"is a major arc ever legitimate" design question — that's parked for a future session with a clear head.
+⚠ **The main checkout holds seat B's UNCOMMITTED inset-window WIP** (`bspline_gen_palette.html`,
+`editor/editor-frame-profile.js`, `main/frame-panel.js`, `tests/inset-window-handles.test.js`). It is NOT yours:
+never `git add -A`/`commit -a`, never checkout/stash/discard those paths. Commit BY PATH only. If item 25 needs to
+edit `frame-panel.js`, stop and tell the advisor first instead.
 
-**This task, re-scoped:** you found `arc_waist_R`'s own 3 seeded points genuinely only admit the long-way arc — so the
-fix isn't "seed through a known-good point then Fix it" (that only works when a SHORT branch genuinely exists to seed
-toward). Work UPSTREAM instead: find where the app computes that arc's own seed midpoint for T10's chain at this
-board size, and check whether a different (still parametrically valid, still matching T1's own formula family) choice
-of midpoint would admit a genuinely short arc instead — i.e. is 6x9 pushing T10's inherited-from-T1 chain into a
-degenerate configuration the same way 12x6 does for T1's own waist, and if so, can T10's OWN seed derivation (not
-T1's, not the reflex-arc policy) be adjusted to stay clear of it. This is the same class of question H23 item 18
-already exists to dig into — if you find the seed math genuinely can't avoid it without changing T1's own formula
-too, that's the signal to stop and hand this to item 18 rather than item 23. Same stop condition as always.
+## Item 24 — Send deletes the previous B-Spline Set in ANOTHER document (data loss, top priority)
+MEASURED twice by the advisor (2026-10-01): with doc A active, a real Send built a B-Spline Set in A; then a NEW doc B
+was created/activated and a second Send ran there -> doc A's B-Spline Set was DELETED. Cause:
+`b-spline-gen.py` `_remove_last_import()` deletes `last_imported_occurrences`, an in-memory module list that
+remembers occurrences from whatever document the LAST import happened in. Fred's own open doc survived only because
+its set predates the current add-in process.
+- Fix at the cause, the declare way: the previous import is found by its TAG (`_bspline_set_occurrences(des)`
+  already exists and is document-scoped) in the ACTIVE design only. The in-memory list must never be the source of
+  a deletion; if it is still needed for anything else, it must be keyed by / checked against the active document.
+  Check every caller of `_remove_last_import` (append/preview paths included) and `current_import_group`.
+- Test first (fake-Fusion, pure python, like `fb_engine/test_send_frame.py`'s World): two documents, import in A,
+  switch to B, Send in B -> A untouched. Mutation-test it.
+- Live check through the real handlers (`PaletteHTMLEventHandler()._handle_generate(payload)` with a payload
+  captured by `tools/repro/capture_send_payload.mjs`; a scratch copy with a longer 15s load wait is what worked last
+  night): fingerprint two scratch docs (user parameter), Send in A, new doc B, Send in B, confirm A keeps its set.
+  Close ONLY your fingerprinted docs, by handle. Deploy from a clean scratch worktree at origin/main, NOT this
+  checkout (it holds seat B's WIP).
+- Commit as 'H23 item 24: ...', PUSH immediately.
 
-OLD framing, superseded by the above (kept for context only): at this 6x9 seed, `p02_12_arch_rebuild.py`'s own Shape
-Outline rebuild hits `REFLEX ARC: [unknown_arc] sweeps 200.3 deg (>= 180)` — the SAME failure class as the original
-arch branch-selection bug from items 14/15/17 (now documented in `fusion360-quirks`), just resurfacing in the NEW
-`Rebuild` primitive item 17 introduced (delete + recreate `top_edge` fresh via `addByThreePoints`) under a seed
-condition nobody had tried yet. The established playbook already worked three times today — apply it here: seed the
-rebuild through a point you KNOW is on the correct (short) branch rather than trusting `addByThreePoints`'s own guess
-to land there every time, then `Fix` the resulting entity's endpoints directly so nothing downstream can walk it back
-onto the reflex branch. Check the `fusion360-quirks` skill's own `Fix`-related entries before guessing at the
-mechanism — they document exactly this class of gotcha (direct `Fix` vs anchor-plus-`Coincident`, ordering).
+## Item 25 — un-hide Template 10
+- `FRAME_HIDDEN = False` in `template_10/template_data.py`, `python tools/gen_frame_defs.py`, full suite
+  (vitest + the three pytest roots) + `gen_frame_defs --check`. T1-9 picker entries must be unchanged.
+- Shot of the picker showing T10, and a fresh Generate at 7x9 (served app, headless), to `shots/seatA/`.
+- Commit as 'H23 item 25: ...', PUSH immediately. Then pass back with explicit test counts (state any known
+  failure counts in the pass note itself).
 
-## This task: H23 item 22 — why does `underside_face()` reject this body at 6x9
-Read `send_frame.py`'s `underside_face()` yourself (it's short: scans `body.faces`, picks the most-downward-normal one,
-rejects if nothing clears `UNDERSIDE_MAX_NORMAL_Z`). **Priority order, cheapest/most-informative first:**
-1. **Does Template 1 (or any already-SHIPPED template) ALSO fail Send at 6x9 with a similarly sparse Shape Lattice
-   pattern?** This is the single fastest way to learn the real scope — if yes, this is a pre-existing, already-live
-   bug affecting shipped templates today, not something to gate T10 on alone (dispatch it as its own urgent item,
-   unblock T10 separately). If no, it's specific to T10's own 6x9 geometry/pattern somehow, and stays this item's job.
-2. Your flat-box repro (bypassing b-spline search) hit the SAME refusal — that's surprising (a flat box's bottom
-   normal should trivially pass), which makes me suspect the repro itself, not `underside_face()`'s logic: check
-   whether it used a FRESH body/face reference at the moment of evaluation, or a stale one — `send_frame()`'s OWN
-   docstring already documents a near-identical "face resolved before a delete+rebuild went invalid" gotcha
-   (`send_frame` itself re-resolves the core body twice for exactly this reason). Rule this out explicitly before
-   concluding the real bug is as deep as the flat-box result suggests.
-3. Once you understand the real cause: debug-print each face's actual `normal.z` on the REAL captured 6x9 body (not
-   guess) to see how close the true underside face comes to `UNDERSIDE_MAX_NORMAL_Z` — is it missing the threshold
-   narrowly (a tolerance issue) or is there genuinely no face Fusion considers "the bottom" (a topology issue from the
-   sparser 34-piece pattern)?
-4. Fix at the real cause. Re-verify the SAME live send-and-join check at 6x9 (and re-confirm 7x9 still clean). Then
-   `FRAME_HIDDEN = False`, regenerate, full suite + A/B, un-hide.
-
-Same stop condition as always: bounded attempt, write up and stop rather than grinding if it doesn't yield.
-Find why THIS seeded geometry (not Fusion's own unseeded defaults) trips the topology mismatch — likely something about
-how the real seed values shape the enclosure curves differently enough that `addOffset2` can't match them — and fix at
-that cause rather than patching the fallback path to merge curves more carefully (a corner that can't offset cleanly is
-the actual bug; a smarter merge just hides it better). Verify with the SAME real seeded b-spline send-and-join check
-(all 4 bars, clean miters), at 7x9 and 6x9, plus the usual full suite + A/B. Same stop condition as always: if it
-doesn't yield to a bounded attempt, write up what you tried same-quality as today's entries and stop rather than
-grinding — this one's genuinely been hard for T10 every time before.
-
-**H23 item 20 (golden freshness check) stays queued, lower priority than this** — pick it up after, or hand to whoever's
-next; it doesn't need T10-specific context the way this does.
-
-Once item 21 lands: `FRAME_HIDDEN = False`, regenerate, full suite + A/B, document 12x6's T1-inherited limitation
-(H23 item 18 covers fixing it, not this). Per the standing rule: drop a quick Fusion viewport shot now and then while
-you work, even mid-debug.
-
-## Checklist
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -108,9 +77,11 @@ you work, even mid-debug.
 - [ ] [H23-item-16] INSET WINDOW, FUSION + CAM SIDE (app side merged 244c096; design INSET-WINDOW-DESIGN.md sections 5 + 8; steps in INSET-WINDOW-LIVE_CHECK.md): build the 4 hidden frame_window_* bars behind the panel (start at the panel underside, same frame_height_offset) + the window_cut pocket through the panel (hole = subframe inner rect shrunk by panel_lip), declared_profiles mapping, CAM picks the bars up via the N-bar path. Off = byte-identical. Verify live (scratch doc), tests. After item 15. Commit as 'H23 item 16: ...'.
 - [ ] [H23-item-17] TEMPLATE 10, SECOND HALF: shoulder/waist/hip "ears" (item 15's own confirmed-separate finding; see this file's top section for the full writeup/recommendation). Board-size-dependent reflex arcs in the 3-arc mutually-tangent side chain. Adapt the arch's closed-form-seed + direct-`Fix` technique to the 3-arc system (solve simultaneously, or decide which 1-2 points can be `Fix`-ed without over-determining the rest); treat the hip tip-weld `VCS_SKETCH_SOLVING_FAILED` as the same root cause. Verify at 7x9, 6x9 AND 12x6. STOP and report (don't keep burning rounds alone) if a clean fix doesn't land after a solid attempt. Only then: `FRAME_HIDDEN = False`, regenerate, full verification, merge with seat C's parked app-side (b31f5ed). Commit as 'H23 item 17: ...'.
 - [ ] [H23-item-18] DECLARE SEED DERIVATION (cross-cutting, after item 17; Fred: "seeds are still using width height multiplicator formulas?" — yes, confirmed, and it's a recurring bug class, not cosmetic). Every template seeds its shape-outline with literal `widthIn * k` / `heightIn * k` magic constants, hand-picked per template, often copied from a sibling template without re-deriving for the new chain. Three confirmed incidents from this one root cause: Template 5's seed radius scaling with heightIn while the span it bridges scales with widthIn (H23 item 6); Template 10's `hw = widthIn * 0.464286` reused from Template 1, never derived for T10's own hip/shoulder chain (items 14/15/17); Template 12/13's seed computed off the raw board dimension instead of routing through `seed_basis.py` (seat C, F30 item 3). Pull the CLOSED-FORM DERIVATION TECHNIQUE item 17 used (solve the seed's radius/position from the actual geometric relationship it must satisfy, not a fitted fraction of one board dimension) into a declared, documented helper/convention in `fb_engine` — the one worked example plus a clear pattern to follow, not a framework. Then audit the EXISTING literal-constant seeds for which are actually suspect (reused across templates without re-derivation, or scaled by the wrong dimension for what they bridge) and fix those. This is NOT "rewrite every template's seeds" — leave seeds alone that are provably fine (fit directly for their own template, correct single-dimension span). Document the convention (a short addition to HANDOFF-ranchy.md's template-design rules) so a new template derives its seeds instead of copying a sibling's constants. Commit as 'H23 item 18: ...'.
-- [ ] [H23-item-19] FINISH + UN-HIDE TEMPLATE 10 (item 17's own open question; see this file's top section for the full reasoning). Merge seat C's parked app-side T10 work (fb-app b31f5ed, F29 item 2) with the now-measured Fusion geometry, reconciling any drift from Fred's hand-reconstructed model. Live-verify a REAL b-spline design sends, builds, AND joins/trims correctly into T10's frame (same bar just required of seat C's new taper templates) — not just the bare frame. Then `FRAME_HIDDEN = False`, regenerate, full suite + A/B (T1-9 unchanged). Document (don't fix) 12x6's T1-inherited limitation. Commit as 'H23 item 19: ...'.
+- [x] [H23-item-19] FINISH + UN-HIDE TEMPLATE 10 (item 17's own open question; see this file's top section for the full reasoning). Merge seat C's parked app-side T10 work (fb-app b31f5ed, F29 item 2) with the now-measured Fusion geometry, reconciling any drift from Fred's hand-reconstructed model. Live-verify a REAL b-spline design sends, builds, AND joins/trims correctly into T10's frame (same bar just required of seat C's new taper templates) — not just the bare frame. Then `FRAME_HIDDEN = False`, regenerate, full suite + A/B (T1-9 unchanged). Document (don't fix) 12x6's T1-inherited limitation. Commit as 'H23 item 19: ...'.
 - [ ] [H23-item-20] GOLDEN FRESHNESS CHECK (from item 19's own finding, d7ec983: template_10's goldens sat stale through 3 real fix iterations, 14/15/17, with nothing in the pipeline ever flagging it — gen_frame_defs.py --check only validates generated defs against committed goldens, never goldens against a fresh Fusion build). Declare a freshness check: for each template's committed golden fixture (tests/fixtures/frame-parity/template_N_*.json), compare its own recorded source commit (or the golden file's own last-modified commit) against the last commit that touched that template's phases/*.py — if the phase files moved more recently than the golden, flag it (a test failure or a `--check`-style report, whichever fits the existing gen_frame_defs convention). Should have caught item 19's own 2-pass detour immediately. Commit as 'H23 item 20: ...'.
-- [ ] [H23-item-21] TEMPLATE 10'S REAL FRAME ENCLOSURE DEFECT (item 19's own finding, 38fff7a: live-verified with a real seeded b-spline send, only 2 of 4 bars build — frame_top/frame_right missing). Root cause already traced: `addOffset2` fails this seeded geometry's topology in `T10_3_frame_enclosure`, falls back to a non-parametric offset that merges 12 source curves into 6, losing `inner_proj_horn_TR` and the miter that depends on it. Find why the REAL seeded geometry (not Fusion's own unseeded defaults) trips this, and fix at that cause — not by patching the fallback to merge more carefully. Verify with the same real-seeded send-and-join check, 7x9 + 6x9, full suite + A/B. Parametric-offset topology issues have been hard for this template every time before — bounded attempt, stop and write up if it doesn't yield. Then `FRAME_HIDDEN = False`, regenerate, document 12x6. Commit as 'H23 item 21: ...'.
-- [ ] [H23-item-22] send_frame's `underside_face()` fails at 6x9 (item 21's own finding, 41455a0: real captured 6x9 payload gets empty `frame_occurrences: []` via the real production handlers, "no downward face" refusal). See this file's top section for the investigation priority order (check T1 at 6x9 first — tells you if this is a pre-existing general bug or T10-specific). Fix at the real cause, re-verify 6x9 AND 7x9 live, then un-hide T10. Commit as 'H23 item 22: ...'.
-- [ ] [H23-item-23] T10 6x9's reflex arc in `p02_12_arch_rebuild.py`'s Shape Outline (item 22's own finding, d00ef55: `REFLEX ARC: [unknown_arc] sweeps 200.3 deg`, same failure class as items 14/15/17's own arch branch-selection bug, now in the Rebuild primitive under a new seed condition). Apply the established playbook: seed through a known-correct point, `Fix` the endpoints directly, check `fusion360-quirks`'s own `Fix` entries first. Verify 6x9 AND 7x9 live, full suite + A/B, then `FRAME_HIDDEN = False`, un-hide. **PUSH immediately after committing — don't leave work unpushed in the shared main checkout** (today's own near-miss). Commit as 'H23 item 23: ...'.
+- [x] [H23-item-21] TEMPLATE 10'S REAL FRAME ENCLOSURE DEFECT (item 19's own finding, 38fff7a: live-verified with a real seeded b-spline send, only 2 of 4 bars build — frame_top/frame_right missing). Root cause already traced: `addOffset2` fails this seeded geometry's topology in `T10_3_frame_enclosure`, falls back to a non-parametric offset that merges 12 source curves into 6, losing `inner_proj_horn_TR` and the miter that depends on it. Find why the REAL seeded geometry (not Fusion's own unseeded defaults) trips this, and fix at that cause — not by patching the fallback to merge more carefully. Verify with the same real-seeded send-and-join check, 7x9 + 6x9, full suite + A/B. Parametric-offset topology issues have been hard for this template every time before — bounded attempt, stop and write up if it doesn't yield. Then `FRAME_HIDDEN = False`, regenerate, document 12x6. Commit as 'H23 item 21: ...'.
+- [x] [H23-item-22] send_frame's `underside_face()` fails at 6x9 (item 21's own finding, 41455a0: real captured 6x9 payload gets empty `frame_occurrences: []` via the real production handlers, "no downward face" refusal). See this file's top section for the investigation priority order (check T1 at 6x9 first — tells you if this is a pre-existing general bug or T10-specific). Fix at the real cause, re-verify 6x9 AND 7x9 live, then un-hide T10. Commit as 'H23 item 22: ...'.
+- [x] [H23-item-23] T10 6x9's reflex arc in `p02_12_arch_rebuild.py`'s Shape Outline (item 22's own finding, d00ef55: `REFLEX ARC: [unknown_arc] sweeps 200.3 deg`, same failure class as items 14/15/17's own arch branch-selection bug, now in the Rebuild primitive under a new seed condition). Apply the established playbook: seed through a known-correct point, `Fix` the endpoints directly, check `fusion360-quirks`'s own `Fix` entries first. Verify 6x9 AND 7x9 live, full suite + A/B, then `FRAME_HIDDEN = False`, un-hide. **PUSH immediately after committing — don't leave work unpushed in the shared main checkout** (today's own near-miss). Commit as 'H23 item 23: ...'.
 Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 23 — <shas>"`.
+- [ ] [H23-item-24] SEND DELETES ANOTHER DOCUMENT'S B-SPLINE SET: `_remove_last_import` deletes the in-memory `last_imported_occurrences` from whatever doc last imported; find the previous import by tag in the ACTIVE design only. Fake-Fusion two-document test (mutation-tested) + live two-doc check. Commit as 'H23 item 24: ...'.
+- [ ] [H23-item-25] UN-HIDE TEMPLATE 10: FRAME_HIDDEN = False, regen, full suite + --check, picker + 7x9 Generate shots. Commit as 'H23 item 25: ...'.
