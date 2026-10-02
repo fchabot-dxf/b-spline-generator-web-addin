@@ -128,10 +128,18 @@ def build():
         s.geometricConstraints.addCoincident(a.startSketchPoint, b.startSketchPoint)
         A(s).addFillet(a, P(1, 0), b, P(0, 1), 0.3 * CM)
     attempt('fillet', fillet)
-    # slots / polygons: only if this API version exposes them (see probe_api)
-    for meth, args in (('addCenterToCenterSlot', None), ('addOverallSlot', None), ('addCenterPointSlot', None)):
-        if hasattr(L(root.sketches.item(0)), meth):
-            failed.append('%s EXISTS on sketchLines but builder not written yet' % meth)
+    # Slots live on the Sketch itself (probe_api, 2026-10-02); width 0.5 in, NO auto width dimension (the UI tool
+    # only adds one when a value is typed), so both sides are compared constraint-for-constraint.
+    W = lambda: adsk.core.ValueInput.createByReal(0.5 * CM)
+    attempt('slot_center_to_center', lambda s: s.addCenterToCenterSlot(P(-1.25, 0), P(1.25, 0), W(), False))
+    attempt('slot_overall', lambda s: s.addOverallSlot(P(-1.5, 0), P(1.5, 0), W(), False))
+    attempt('slot_center_point', lambda s: s.addCenterPointSlot(P(0, 0), P(1.5, 0), W(), False))
+    attempt('slot_3point_arc', lambda s: s.addThreePointArcSlot(P(-1.5, -1), P(1.5, -1), P(0, -0.5), W(), False))
+    attempt('slot_center_point_arc', lambda s: s.addCenterPointArcSlot(P(0, 0), P(0, -1), P(1, 0), W()))
+    # Polygons: 6 sides, ~2 in across, like the UI ones
+    attempt('polygon_circumscribed', lambda s: L(s).addScribedPolygon(P(0, 0), 6, 0, 1 * CM, False))
+    attempt('polygon_inscribed', lambda s: L(s).addScribedPolygon(P(0, 0), 6, 0, 1 * CM, True))
+    attempt('polygon_edge', lambda s: L(s).addEdgePolygon(P(-0.5, 0), P(0.5, 0), False, 6))
     print('built:', made); print('failed:', failed)
     return doc
 
