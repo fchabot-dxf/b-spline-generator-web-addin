@@ -6970,3 +6970,54 @@ no bare literals at all, fully closed-form.
 **Conclusion: H23 item 18 is DONE.** The declared convention (part 1, commit `5b922e8`) plus this
 audit (part 2, no code change -- nothing found that needed fixing) together close the item. No
 Fusion needed for either half; no golden re-record required (no shape changed).
+
+## 2026-10-02: H23 item 29 part 1 -- send-stage timing harness built, PREP ONLY (no Fusion this pass)
+
+Fusion is held by Cowork + the advisor this turn, so this half is pure prep per the dispatch's own
+scope: build the harness, prove its non-Fusion parts work, stop.
+
+**`tools/repro/fusion_t11/send_stage_timing.py`**: replays a captured Send payload through the
+REAL `_handle_generate` inside one `fusion_execute` call, timing every stage by wrapping existing
+functions at runtime -- no production code touched. `_send_progress` (module-level, intercepts
+every stage boundary `_handle_generate` already emits: Preparing Geometry / Importing / Projecting
+SVG Artwork / Building the frame / Finalizing), `ParametricSketchBuilder.build_sketch` (per-sketch
+timing), `timeline_order.ensure_frame_before_inlay` (its own precise timing). Extrusion/trim
+timing comes from reading back `SolidCoordinator.run()`'s own ALREADY-LOGGED "Phase: X.XXs" lines
+(Discovery/Extrusion/Finishing/Total) rather than wrapping it -- that method is one long function,
+not separable per-phase calls, so reading its own numbers needed no patch at all. Also builds the
+SAME frame in a fresh EMPTY doc (no STEP import, no stamping) via `FrameBuilder.run_sketch_only`
+directly, to isolate the frame-build's own cost from the rest of the pipeline.
+
+**Prepared (not run) the 'deferred_whole_build' variant** the dispatch asked for: instead of
+`offsets.py`'s own per-offset-call `isComputeDeferred` pulse, hold the WHOLE sketch build deferred
+and pulse once at the end, via a `ParametricSketchBuilder.build_sketch` wrapper. Marked EXPLICITLY
+EXPERIMENTAL/UNVERIFIED in its own docstring -- `frame_engine.py`'s own existing comment on the
+per-step pulse warns that un-finalized deferred-mode proxies can silently no-op entity ID writes,
+so this variant may trade speed for broken tagging; a live run must check ID-tagging correctness
+FIRST, not just the clock, before any of its timing numbers mean anything.
+
+**Caught and fixed a real bug by reading the actual source, not assuming**: `last_send.json`'s own
+`'frame'` key is POST-PROCESSING shape (`{'payload':...,'result':...}`, written by
+`_merge_last_send_key` AFTER `_handle_send_frame` already ran) -- replaying a captured file
+straight through `_handle_generate` without unwrapping it first would have fed `_handle_send_frame`
+the wrapper dict instead of the real frame payload (no `templateId` at its own top level), silently
+breaking every single replay's own frame-build stage before it ever got a real Fusion call. New
+`unwrap_captured_frame_payload` (tested, mutation-tested) fixes it.
+
+**`tools/repro/fusion_t11/stage_timing_lib.py`**: the harness's own non-Fusion logic, split out so
+it's independently testable without a bridge -- `stage_durations`, `load_captured_payload` (warns
+when the captured file has no `stepVariants`/`stepText`, since `_dump_last_send` deliberately
+excludes them -- a full STEP-import timing needs a capture that includes them),
+`parse_solid_coordinator_phases`, `unwrap_captured_frame_payload`. 14 tests
+(`test_stage_timing_lib.py`), including one that drives the REAL `_handle_generate` (not a
+reimplementation) through its "no active design" early-exit path using the same fake-adsk idiom
+`b-spline-gen/test_import_failed_no_modal.py` already established, proving the `_send_progress`
+wrapping mechanism the live harness depends on actually intercepts real calls and still calls
+through to the original (the toast the user sees is unchanged). Mutation-tested `stage_durations`
+and `unwrap_captured_frame_payload`, both confirmed red when broken.
+
+Full suite green: pytest 714 passed/25 skipped (repo root, +4 new since item 18's own count);
+vitest untouched (no JS this pass). Commit `80fa4d8`. **Not run against real Fusion** -- stopping
+here per the dispatch; the live timing run (both variants, both docs) happens once the advisor
+hands over Fusion time. Left `tools/repro/fusion_t11/COWORK-UI-OPERATION-LOG.md` (another seat's
+own file, appeared mid-pass) untouched and uncommitted, not mine.
