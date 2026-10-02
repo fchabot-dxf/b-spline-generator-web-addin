@@ -290,6 +290,40 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     }
   });
 
+  it('H23 item 23: [Generate] never draws a waist arc Fusion would refuse to build (>= 180 deg, a reflex ' +
+    'sweep) -- MEASURED live, T10 6x9: a real captured seed produced arc_waist_R at 200.3 deg, crashing ' +
+    'Fusion\'s own build-time gate (fb_engine/diagnostics.py assert_no_reflex_arcs, H23 item 15) before the ' +
+    'frame-enclosure sketch could even be built. Root cause: unlike Template 1 (whose waistRadius/cornerRadius ' +
+    'always re-fit to whatever waistReach it just generated, so Rs+Rw stays close to the pinch depth d by ' +
+    'construction), T10 seeds only archRise/waistReach/waistCenterY -- the radii stay pinned at the shape ' +
+    'model\'s own fixed default, so a deep enough generated waistReach alone can push Rs+Rw below d, which ' +
+    'hourglassConstruction\'s own declared F8 rule (editor-shape-lattice-generator.js) says makes the waist ' +
+    'arc major (>= 180 deg) -- legitimate by that rule, but fatal to Fusion\'s own unconditional gate. This ' +
+    'reproduces frame-panel.js\'s own generateFrame() isValid exactly (same reflex check added there) at the ' +
+    'captured bad seed directly, then across a real sweep.', () => {
+    const CAPTURED_BAD_SEEDS = { waistCenterY: -0.07328968798585467, waistReach: 0.5678267693028763, archRise: 0.11816840560200628 };
+    const bad = profile(CAPTURED_BAD_SEEDS, 6, 9);
+    const waistR = bad.primitives[2]; // arc_waist_R, per _solveHourglass's own documented keypoint order
+    expect(Math.abs(waistR.dTheta), 'captured bad seed (explicit, not clamped): arc_waist_R sweep').toBeGreaterThanOrEqual(Math.PI);
+    const isValid = (seeds, W, H) => {
+      const inn = inner(seeds, W, H);
+      if (inn && inn.defects.length > 0) return false;
+      const realArchRise = paramsFromShapeModel('hourglass', T10.shapeModel, profile({}, W, H).region).archRise;
+      const outer = profile({ ...seeds, archRise: realArchRise }, W, H);
+      if (!outer.primitives.every((p) => primLength(p) >= T)) return false;
+      return outer.primitives.every((p) => p.type !== 'A' || Math.abs(p.dTheta) < Math.PI);
+    };
+    for (const [W, H] of [[7, 9], [6, 9], [9, 12]]) {
+      const region = profile({}, W, H).region;
+      for (let seed = 1; seed <= 500; seed++) {
+        const seeds = generateValidFrameSeeds(T10, region, seed, T, (s) => isValid(s, W, H));
+        expect(isValid(seeds, W, H), `${W}x${H} seed ${seed}`).toBe(true);
+        const prof = profile(seeds, W, H);
+        for (const p of prof.primitives) if (p.type === 'A') expect(Math.abs(p.dTheta), `${W}x${H} seed ${seed}`).toBeLessThan(Math.PI);
+      }
+    }
+  });
+
   it('the Fusion seeds: the arch seeded as an arc (S, apex, E), the sides as Template 1\'s own', () => {
     const prof = profile({ archRise: 0.2 });
     const geo = frameSeedGeometry(T10, prof, 7, 9);

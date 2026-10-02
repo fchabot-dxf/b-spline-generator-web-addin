@@ -313,7 +313,11 @@ export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl
 // defects, computed from production code) passes, or give up after a bounded number of attempts and return the
 // last draw rather than loop forever (this should be rare enough it is never reached in practice).
 const GENERATE_RETRY_SALT = 104729; // a prime, decorrelated from FRAME_GEN_SALT's own small offsets
-const GENERATE_MAX_ATTEMPTS = 20;
+// H23 item 23: T10's own NEW reflex-arc check (frame-panel.js's generateFrame) needs more attempts than the
+// inner-defects check alone did -- MEASURED (5000-seed sweeps, portrait sizes): worst case needed 51 attempts
+// (7x9), 35 (6x9), 28 (9x12); 20 left 7-17/1000 still bad, 40 still left 1/1000 bad at 7x9. 80 gives 0/5000 at
+// every portrait size with real margin above the observed worst case, confirmed stable from 1000 to 5000 seeds.
+const GENERATE_MAX_ATTEMPTS = 80;
 export function generateValidFrameSeeds(tpl, region, seed, t, isValid) {
   let seeds = generateFrameSeeds(tpl, region, seed, t);
   for (let attempt = 1; attempt < GENERATE_MAX_ATTEMPTS && !isValid(seeds); attempt++) {
