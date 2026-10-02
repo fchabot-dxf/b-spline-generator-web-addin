@@ -5988,3 +5988,23 @@ a cosmetic capture.
 Committed BY PATH (`frame-defs.js`, `frame-defs.json`, `template_10/template_data.py`,
 `tests/frame-hidden-template.test.js` only -- seat B's 4 inset-window files still untouched in this tree, as
 flagged), pushed (`8d45f1e`). Template 10 is now live in the real template picker.
+
+## 2026-10-02: H23 item 26 -- FrameBuilder() without external_logger no longer crashes
+
+Seat B's own finding, queued after 24/25. `frame_engine.py:133` -- `self.logger = logger.DebugLogger(addin_root)`
+-- read the module-level `logger` NAME, which by that point in the file is already a constructed `DebugLogger`
+INSTANCE (set at line 33, `logger = fb_logger.DebugLogger(...)`), not the `fb_logger` MODULE imported two lines
+above it. An instance has no `.DebugLogger` attribute of its own, so this was an `AttributeError` waiting for the
+first caller that didn't pass an `external_logger` -- every REAL production caller today happens to pass one, which
+is exactly why nobody had hit it live.
+
+One-line fix: `fb_logger.DebugLogger(addin_root)`. New test
+(`TestFrameBuilderDefaultLogger`, in `fb_engine/test_board_params_ownership.py` -- already carries the fake-adsk
+infrastructure this needed) constructs a REAL `FrameBuilder()` with no `external_logger` under a minimal fake
+app/design, with `fb_logger.DebugLogger` itself monkeypatched to a recording fake -- proving the MODULE is what
+actually gets called, not just that some logger-shaped object eventually appears. Mutation-tested: reverted to
+the bug, reproduced the EXACT real crash (`AttributeError: 'DebugLogger' object has no attribute 'DebugLogger'`);
+restored, purged the stale `.pyc`, confirmed 33/33 green in the file.
+
+Full suite: frame-builder 411 passed/22 skipped, b-spline-gen 97 passed, repo root 97 passed. Committed by path
+(`frame_engine.py` + the test file only), pushed (`5cf8ed8`).
