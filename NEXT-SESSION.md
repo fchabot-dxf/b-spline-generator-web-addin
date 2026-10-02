@@ -1,17 +1,25 @@
-# NEXT — seat A — H23 item 22: send_frame's underside_face() failure at 6x9
+# NEXT — seat A — H23 item 23: T10 6x9's reflex arc in p02_12_arch_rebuild.py's Shape Outline
 
-**Ball: worker (seat A) · epoch 6 · H23 item 22.** H23 item 21 ACCEPTED (41455a0) — the real fix (Fix 3: pin `archRise`
-to the fitted default when validating, since it's never actually seeded to Fusion) is solid, with the strongest evidence
-chain of anything today: 0/1000 bad draws numerically at BOTH sizes, AND live-verified end-to-end at 7x9 (real capture,
-real Send, 4/4 bars, healthy timeline). Good catch too on Fix 1→2→3 each correcting the last rather than stacking
-patches, and on the Template 1 "no wing" retry side-effect (template-agnostic by construction, not a T10 special case).
+**Ball: worker (seat A) · epoch 6 · H23 item 23.** H23 item 22 ACCEPTED (d00ef55) — exceptional work, genuinely some of
+the best debugging of the day: correctly ran the dispatch's own priority order (T1 scope-check first), found the REAL
+cause by debug-printing actual face normals rather than theorizing (a single-sample tolerance miss on a sculpted,
+non-planar face — T1 passed by LUCK, not because the bug wasn't real), fixed it generally (averaging over the face's
+own vertices) with a proper safety margin verified against the next-closest face, and caught a genuinely dangerous
+latent issue along the way (lane-b's `fb_engine` silently shadowing the real deployed one via leftover `sys.path`
+contamination — exactly the "stale scratch fb_engine" class of incident the project's own memory already warns about).
+7x9 regression-checked clean. Good, honest correction on the screenshot-path mistake too, without being asked twice.
 
-**My call on your gate: HOLD the un-hide (option B), not option A.** This isn't the same judgment call as 12x6/T1-parity
-(a degraded-but-functional shape at a landscape size nobody uses) — 6x9 is a mainstream PORTRAIT size, and the failure
-mode isn't degraded geometry, it's a COMPLETE empty Send (0 bars, `frame_occurrences: []`) via the REAL production
-handlers with a REAL captured payload, twice. Shipping a brand-new template that can totally fail to Send at a size
-Fred actually uses is worse than leaving it hidden a little longer, especially after how much careful work already
-went into getting it right.
+Fred's in the loop on this one and offered to sit with it in Fusion if you get stuck — don't hesitate to say so.
+
+**This task (H23 item 23):** the NEW bug item 22 uncovered: at this 6x9 seed, `p02_12_arch_rebuild.py`'s own Shape
+Outline rebuild hits `REFLEX ARC: [unknown_arc] sweeps 200.3 deg (>= 180)` — the SAME failure class as the original
+arch branch-selection bug from items 14/15/17 (now documented in `fusion360-quirks`), just resurfacing in the NEW
+`Rebuild` primitive item 17 introduced (delete + recreate `top_edge` fresh via `addByThreePoints`) under a seed
+condition nobody had tried yet. The established playbook already worked three times today — apply it here: seed the
+rebuild through a point you KNOW is on the correct (short) branch rather than trusting `addByThreePoints`'s own guess
+to land there every time, then `Fix` the resulting entity's endpoints directly so nothing downstream can walk it back
+onto the reflex branch. Check the `fusion360-quirks` skill's own `Fix`-related entries before guessing at the
+mechanism — they document exactly this class of gotcha (direct `Fix` vs anchor-plus-`Coincident`, ordering).
 
 ## This task: H23 item 22 — why does `underside_face()` reject this body at 6x9
 Read `send_frame.py`'s `underside_face()` yourself (it's short: scans `body.faces`, picks the most-downward-normal one,
@@ -96,4 +104,5 @@ you work, even mid-debug.
 - [ ] [H23-item-20] GOLDEN FRESHNESS CHECK (from item 19's own finding, d7ec983: template_10's goldens sat stale through 3 real fix iterations, 14/15/17, with nothing in the pipeline ever flagging it — gen_frame_defs.py --check only validates generated defs against committed goldens, never goldens against a fresh Fusion build). Declare a freshness check: for each template's committed golden fixture (tests/fixtures/frame-parity/template_N_*.json), compare its own recorded source commit (or the golden file's own last-modified commit) against the last commit that touched that template's phases/*.py — if the phase files moved more recently than the golden, flag it (a test failure or a `--check`-style report, whichever fits the existing gen_frame_defs convention). Should have caught item 19's own 2-pass detour immediately. Commit as 'H23 item 20: ...'.
 - [ ] [H23-item-21] TEMPLATE 10'S REAL FRAME ENCLOSURE DEFECT (item 19's own finding, 38fff7a: live-verified with a real seeded b-spline send, only 2 of 4 bars build — frame_top/frame_right missing). Root cause already traced: `addOffset2` fails this seeded geometry's topology in `T10_3_frame_enclosure`, falls back to a non-parametric offset that merges 12 source curves into 6, losing `inner_proj_horn_TR` and the miter that depends on it. Find why the REAL seeded geometry (not Fusion's own unseeded defaults) trips this, and fix at that cause — not by patching the fallback to merge more carefully. Verify with the same real-seeded send-and-join check, 7x9 + 6x9, full suite + A/B. Parametric-offset topology issues have been hard for this template every time before — bounded attempt, stop and write up if it doesn't yield. Then `FRAME_HIDDEN = False`, regenerate, document 12x6. Commit as 'H23 item 21: ...'.
 - [ ] [H23-item-22] send_frame's `underside_face()` fails at 6x9 (item 21's own finding, 41455a0: real captured 6x9 payload gets empty `frame_occurrences: []` via the real production handlers, "no downward face" refusal). See this file's top section for the investigation priority order (check T1 at 6x9 first — tells you if this is a pre-existing general bug or T10-specific). Fix at the real cause, re-verify 6x9 AND 7x9 live, then un-hide T10. Commit as 'H23 item 22: ...'.
-Commit by path, `git pull --rebase`, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 22 — <shas>"`.
+- [ ] [H23-item-23] T10 6x9's reflex arc in `p02_12_arch_rebuild.py`'s Shape Outline (item 22's own finding, d00ef55: `REFLEX ARC: [unknown_arc] sweeps 200.3 deg`, same failure class as items 14/15/17's own arch branch-selection bug, now in the Rebuild primitive under a new seed condition). Apply the established playbook: seed through a known-correct point, `Fix` the endpoints directly, check `fusion360-quirks`'s own `Fix` entries first. Verify 6x9 AND 7x9 live, full suite + A/B, then `FRAME_HIDDEN = False`, un-hide. **PUSH immediately after committing — don't leave work unpushed in the shared main checkout** (today's own near-miss). Commit as 'H23 item 23: ...'.
+Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 23 — <shas>"`.
