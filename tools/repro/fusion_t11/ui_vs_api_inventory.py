@@ -2,7 +2,8 @@
 # human UI and API, for drawing tools and constraints -- midpoint for example -- then the different arcs, slots,
 # rect tools").
 # Run inside Fusion via fusion_execute:  MODE = 'build' | 'read' | 'probe_api'; exec(open(<this file>).read())
-#   build      : new fingerprinted doc (user param adv_uiapi_fp), one sketch API_<tool> per tool, built with the API
+#   build      : one sketch API_<tool> per tool, built with the API (2026-10-02 run saved as the Fusion file
+#                "API-claude code", next to Cowork's "UI-cowork" in the same Design folder)
 #   probe_api  : print which slot/rectangle/arc/polygon creation methods this Fusion version's API exposes
 #   (the UI_ side is drawn by hand or by Claude Cowork following COWORK-UI-SKETCHES.md next to this file)
 #   read       : inventory EVERY sketch in the active doc whose name starts API_ or UI_ (Fred draws the UI_ ones), and
@@ -156,8 +157,15 @@ def probe_api():
 
 
 def read():
-    des = adsk.fusion.Design.cast(app.activeProduct)
-    comps = [des.rootComponent] + [des.rootComponent.occurrences.item(i).component for i in range(des.rootComponent.occurrences.count)]
+    # Reads API_* and UI_* sketches from EVERY open design: the UI side lives in "UI-cowork", the API side in
+    # "API-claude code" (one Fusion file per author, both in the same Design folder).
+    comps = []
+    for di in range(app.documents.count):
+        try:
+            r = app.documents.item(di).products.itemByProductType('DesignProductType').rootComponent
+        except Exception:
+            continue
+        comps += [r] + [r.occurrences.item(i).component for i in range(r.occurrences.count)]
     inv = {}
     for c in comps:
         for i in range(c.sketches.count):

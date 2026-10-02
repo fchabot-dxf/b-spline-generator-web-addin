@@ -1,7 +1,8 @@
 # UI vs API sketch tools -- results (2026-10-02)
 
 Same shapes drawn with Fusion's toolbar (UI_*, by Claude Cowork following COWORK-UI-SKETCHES.md) and with the API
-(API_*, `ui_vs_api_inventory.py MODE='build'`), in one design ("UI-cowork"), read back the same way (`MODE='read'`).
+(API_*, `ui_vs_api_inventory.py MODE='build'`), saved as two Fusion files in the same "Design" folder -- **"UI-cowork"** (the UI side) and **"API-claude code"**
+(the API side) -- and read back the same way (`MODE='read'`, with both files open).
 Raw readback: `ui_vs_api_readback_2026-10-02.json`. How Cowork drew the UI side: `UI-cowork-log.md`, with every step's screenshot in `cowork_screenshots/` (198, `<sketch no>_<name>_stepNN.jpg`).
 
 ## What it means (each confirmed on extra variants before recording -- fusion360-quirks aa48914)
