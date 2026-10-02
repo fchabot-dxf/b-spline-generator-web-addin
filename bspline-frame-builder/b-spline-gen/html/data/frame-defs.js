@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "39e6d5abee19506d12c7ae65d0683e4256f91d89bd07e0ff81d67af78c29ef11",
+  "sourceHash": "f0d286815852c458620a7561a06ea335b030293df81d326a827b5d48d2b17949",
   "templates": [
     {
       "features": [
@@ -1720,7 +1720,7 @@ export default {
           "label": "Waist position"
         }
       ],
-      "hidden": true,
+      "hidden": false,
       "id": "template_10",
       "name": "Template 10 - Arched Hourglass",
       "params": [

@@ -147,7 +147,7 @@ FRAME_PROVISIONAL_SHAPE = {"from": "template_1", "archRiseOfHw": 0.35}
 # drawing exactly as before -- every lookup is still by id over the full template list (frame-record.js
 # findFrameTemplate); only the picker's own dropdown (frame-panel.js) reads this flag. Flip back to False once
 # the Fusion fix is in.
-FRAME_HIDDEN = True
+FRAME_HIDDEN = False
 
 
 def get_template_logic(ui_data=None):
