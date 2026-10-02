@@ -6008,3 +6008,40 @@ restored, purged the stale `.pyc`, confirmed 33/33 green in the file.
 
 Full suite: frame-builder 411 passed/22 skipped, b-spline-gen 97 passed, repo root 97 passed. Committed by path
 (`frame_engine.py` + the test file only), pushed (`5cf8ed8`).
+
+## 2026-10-02: H23 item 27 part 2 -- one all-template weld-orientation + seed-midpoint + convex-radius test
+
+Fred approved generalising T11's own two pure-python checks (lane-b's `fb_engine/test_t11_fusion_expressions.py`)
+into ONE parametrised suite over every template, no Fusion needed, done while Fusion itself was reserved by the
+advisor for a probe session. Read T11's own reference file first (`git show origin/lane-b:...`) to understand
+the established pattern before generalising it.
+
+**Check 1 (weld orientation) needed real iteration to get right, and the first naive version would have been
+actively misleading.** My first attempt: derive each arc's physical :S/:E from its own 3-point turn sign (the
+CCW rule), then assert the weld's two resolved points are near-coincident. Applied to Template 1 (DEFINITELY
+correct, live-verified for ages) this reported gaps up to 0.34in -- a false alarm, not a real bug. Root cause of
+MY OWN mistake: most templates (everything except T11) use APPROXIMATE, solver-refined seeds, not exact
+closed-form ones -- the raw declared points are NOT meant to already be coincident; Fusion's own Tangent/
+Coincident solver is what closes the gap at build time. "Is the raw gap near zero" is simply the wrong test for
+any template that doesn't declare T11's own exact-seed contract.
+
+**The real signal, found by comparing EACH weld's declared orientation against its own alternative (swapped)
+candidate**: Template 1's `horn_tip_weld_TR` (0.34in raw gap) is still the NEARER of the two possible
+candidates -- correctly oriented, just imprecise. Template 7's own 4 suspicious welds show the OPPOSITE: the
+alternative candidate would close 99.7%+ of the gap -- a qualitatively different, unambiguous signature of a
+genuinely crossed weld, not an imprecise seed. Re-ran with this refined check: clean across T1-T6, T8, T9, T10
+(all 3 board sizes), only T7 fails (xfailed, expected, the whole point of this item). One more real fix needed
+along the way: Template 10's own `top_edge` (a `Rebuild: True` item) initially flagged too, until I accounted
+for `fb_engine/geometry.py`'s own `_fix_rebuild_start_end` (item 17/23's own finding) re-tagging a Rebuild
+result to the REQUESTED point order UNCONDITIONALLY, not CCW-dependent like a fresh creation -- a real,
+previously-established exception, not a new guess.
+
+**Check 2 (seed midpoint)** and **Check 3 (convex radius vs frame_thickness)** are report-only per the dispatch
+("don't fail... the advisor decides"). Check 3's own real finding: every hourglass-family template
+(T1, T3, T4, T5, T8, T10) shows its shoulder/hip radius (0.6429in) below `frame_thickness` (0.75in) at 7x9 AND
+6x9 -- confirms the dispatch's own suspicion ("very likely T10 item 21's same root") as a widespread,
+PRE-EXISTING latent risk for `addOffset2`'s own topology refusal, not limited to T10 or T11. Not acted on here
+(advisor's own call per template), just surfaced clearly.
+
+Full suite: frame-builder 458 passed/22 skipped/3 xfailed (T7 x 3 boards), b-spline-gen 97 passed, repo root 97
+passed. Committed by path (one new test file only), pushed (`beb1597`).
