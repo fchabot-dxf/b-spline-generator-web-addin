@@ -12316,3 +12316,50 @@ enclosure offset's own topology), not a separate bug, though not yet re-tested a
 
 Committing the phase-file scaffold + both docstring updates + the new cross-check test. Standing by per
 the advisor's own hold instruction (seat f3 live in Fusion) before any further live Fusion work.
+
+## Lane B — Turn 220 (continued, handed off) — T83 item 1: Fix-joint-points attempt, PARTIAL -- advisor taking over T11 in a separate worktree
+
+Attempted the `Fix`-the-joint-points approach flagged in the previous entry. Two real fixes landed, one
+real problem remains unresolved -- handing off to the advisor per their own instruction, not pushing
+further here.
+
+**Added a new declarative BuildSequence step type, `Fix`** (`fb_engine/constraints.py`'s own `fix_step`,
+dispatched in `parametric_engine.py` alongside `Coincident`/`Tangent`/etc.) -- a small, generically
+reusable primitive (`isFixed = True` on a resolved SketchPoint), not special-cased to Template 11. Live
+confirmed: all 8 target points (`FIX OK` for each) actually got `isFixed=True` on the right live
+SketchPoints.
+
+**Root-caused and fixed the ACTUAL reason every arc was stuck at its seed radius** (the symptom reported
+last entry): the seed Radius dimension was still PINNING each arc's size when Tangent (p02_04, as it was
+numbered then) got applied, so Tangent could only reposition/reorient the wrong-sized arc, never resize
+it. Reordered the phase files so Radius deletion runs BEFORE Tangent (new `p02_04_radius_removal.py` ->
+`p02_05_tangency.py` -> `p02_06_fix_joints.py`, renumbered from the original
+p02_04_tangency/p02_05_radius_removal/p02_05_fix_joints). Separately, ALSO seeded the Radius dimension
+with the real computed `R`/`RW` formulas (already present in this same file as `R`/`RW` variables)
+instead of the arbitrary `1.5*HW` placeholder copied from Template 7's own pattern -- the reorder alone
+still left the solver too far from the true (much smaller) radius to converge reliably.
+
+**Result, live-verified at 9x12/bbo=0.25/frame_thickness=0.75: PARTIAL, NOT CORRECT.** All 5 miters now
+report OK (concrete improvement -- 3-4 of 5 missed before). But the 6 arc radii came back MIXED: 2
+landed EXACTLY on the expected value (shoulder_R and hip_L both matched `R`=0.935in exactly), the other
+4 did not (hip_R=0.9211in close-but-not-exact; waist_R=0.5345in, waist_L=2.9082in, shoulder_L=0.3169in
+all genuinely wrong, expected R=0.935in/RW=1.4025in). A sketch-2-only screenshot confirmed this visually:
+the right side reads as a recognizable, if imperfect, pinch shape; the left side does not (two near-
+straight segments with small nubs, no smooth arcs) -- a real, visible asymmetry, not just a rounding
+difference. Full finding, including what was NOT yet tried (constraint application order across the 8
+Tangent calls, whether every via-point seed hint actually establishes its intended bulge direction, an
+actual T1-style skeleton-pin layer with a computed centre position), is in `p02_02_loop.py`'s own
+docstring in full for whoever continues this.
+
+**Handoff, mid-task**: the advisor is taking T11 over directly in a separate worktree ("Change of plan
+from Fred: I'm taking T11 myself... Don't touch sketches/template_11/* or fb_engine/t11_* from here on").
+Stopped at this commit per that instruction. Closed all 5 scratch Fusion documents this turn's live
+testing created, each by its own returned `Document` handle after verifying its own distinguishing
+parameter fingerprint first (never by name or count, per the fusion360-quirks skill's own "Scratch
+document hygiene" note) -- confirmed only the 2 pre-existing (not-mine) documents remain open afterward.
+Full `fb_engine` suite green throughout (323 passed/10 skipped/0 failed); `test_templates.py` smoke test
+passes.
+
+Committing and pushing this checkpoint now; no further Fusion calls or edits to template_11/t11_*
+after this, per the advisor's own instruction. Moving to the queued inset-window item (visible corner
+handles + Position/Size steppers) next -- pure JS, no Fusion needed.

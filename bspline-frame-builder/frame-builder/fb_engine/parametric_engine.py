@@ -36,7 +36,7 @@ importlib.reload(inner_corners)
 
 from fb_engine.build_context import BuildContext
 from fb_engine.geometry import geom_step
-from fb_engine.constraints import constraint_step
+from fb_engine.constraints import constraint_step, fix_step
 from fb_engine.dimensions import dimension_step
 from fb_engine.projections import project_step
 from fb_engine.offsets import offset_step, step_step
@@ -381,6 +381,8 @@ class ParametricSketchBuilder:
                 dimension_step(self.ctx, sketch, sketch_name, step)
             elif t == "DeleteDimension":
                 dimensions.delete_dimension_by_name(self.ctx, sketch, step.get("Name"))
+            elif t == "Fix":
+                fix_step(self.ctx, sketch, sketch_name, step)
             elif t == "Offset":
                 offset_step(self.ctx, sketch, sketch_name, step)
             elif t == "Pulse":

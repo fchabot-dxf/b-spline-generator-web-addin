@@ -12,33 +12,39 @@ def get_block(ui_data=None):
     (eave-straight -> shoulder -> waist -> hip -> base-straight) is TANGENT (smooth), not a miter
     (fb_engine/t11_geometry.py's own module docstring).
 
-    WIP, UNRESOLVED (live Fusion finding, this turn): the shoulder/waist/hip tangent chain built from this
-    phase is UNDER-CONSTRAINED as written. Live-verified: after a full build (seed Arc3Points + Tangent
-    constraints in p02_04_tangency.py + seed Radius deletion in p02_05_radius_removal.py), ALL 6 arcs
-    (both sides) came back at the literal SEED radius (`1.5 * HW`, the arbitrary generous starting guess
-    below) instead of their own tangent-solved values -- queried directly from the live sketch
-    (`sketchArcs[*].radius`), not inferred. Template 7's own 2-arc (neck/body) chain gets away with
-    Tangent + Coincident alone because each arc still has ONE end pinned to an independently-fixed point
-    (the eave, or the full-width vertical line) with only the OTHER end free; T11's chain has 3 arcs
-    where the 2 INTERNAL joins (shoulder<->waist, waist<->hip) are free at BOTH ends, which is
-    apparently not enough to fully determine 3 radii from tangency + the 2 truly-fixed outer endpoints
-    alone. T1's own shoulder/waist/hip construction (editor-shape-lattice-generator.js's own
-    hourglassConstruction, and sketches/template_1/phases/p02_XX_anatomy.py on the Fusion side) uses
-    explicit SKELETON PINS for exactly this reason -- an approach considered and deliberately rejected
-    for this file in favour of mirroring Template 7's simpler pattern (fb_engine/t11_geometry.py's own
-    module docstring: "mirroring T7's own division of labour"). This live result says that call needs
-    revisiting. LIKELIER, SIMPLER fix than a full skeleton-pin layer (per the fusion360-quirks skill's
-    own already-documented finding, not yet tried here): directly `Fix` (`isFixed = True`) the actual
-    SketchPoint at each of the 2 internal joins (shoulder<->waist, waist<->hip) AFTER the seed geometry
-    is built and tangent -- that skill's own notes are explicit that a `Fix`'d point only holds ITSELF
-    (not anything merely `Coincident` to it), so the welds in p02_03 alone cannot be relying on a prior
-    `Fix` anywhere upstream to hold the chain's own shape; adding `Fix` on the right points removes each
-    arc's one remaining shape DOF directly, without a separate skeleton-anchor construction layer. Try
-    this FIRST before building full T1-style skeleton pins. NOT YET ATTEMPTED -- every point POSITION
-    in this file (the seed geometry
-    itself) is independently verified correct (fb_engine/test_t11_fusion_expressions.py, cross-checked
-    live against Fusion's own evaluateExpression); it is specifically the ARC RADIUS/SHAPE that the
-    current constraint set fails to pin down once the seed Radius is removed.
+    LIVE FUSION FINDING HISTORY (this turn, WORK-LOG-lane-b.md Turn 220 -- STILL UNRESOLVED, handed off
+    to the advisor to continue in a separate worktree; kept here in full for whoever picks this up next).
+    The shoulder/waist/hip tangent chain was UNDER-CONSTRAINED as first written.
+
+    Attempt 1 (seed Arc3Points with an arbitrary generous `1.5*HW` seed Radius -> weld -> Tangent ->
+    delete seed Radius): every arc on both sides came back at the literal seed radius unchanged -- the
+    Radius dimension was still PINNING each arc's size when Tangent was applied, so Tangent could only
+    reposition/reorient the (wrong-sized) arc, never resize it.
+
+    Attempt 2 (this file's current state): (a) reordered so Radius deletion
+    (p02_04_radius_removal.py) runs BEFORE Tangent (p02_05_tangency.py), so each arc's curvature is
+    genuinely free when solved; (b) seeded the Radius dimension with the REAL computed `R`/`RW`
+    formulas below instead of the arbitrary `1.5*HW` placeholder, since the reorder alone still left the
+    solver too far from the true (much smaller) radius to converge from a poor starting guess; (c) added
+    `p02_06_fix_joints.py` (fusion360-quirks skill's own "Fix is not transitive" finding), directly
+    `Fix`-ing (`isFixed = True`) the 2 internal joint points per side as a belt-and-suspenders lock.
+    RESULT, live-verified at 9x12/bbo=0.25/T=0.75: PARTIAL, NOT CORRECT. All 5 miters now report OK
+    (vs. 3-4 misses before), but the 6 arc radii came back MIXED -- 2 landed EXACTLY on the expected
+    value (shoulder_R=0.935in matching `R` exactly, hip_L=0.935in matching `R` exactly), the other 4
+    did not (hip_R=0.9211in, close but not exact; waist_R=0.5345in, waist_L=2.9082in, shoulder_L=0.3169in
+    -- all wrong, expected R=0.935in / RW=1.4025in for all of them). A sketch-2-only screenshot
+    (`t11_fusion_shot5.png` in that turn's own scratchpad, not committed) shows a visibly ASYMMETRIC
+    shape: the right side reads as a recognizable (if imperfect) pinch, the left side does not -- two
+    near-straight segments with small nubs, no smooth arcs. The solver is reaching a locally-stable but
+    WRONG configuration for several arcs even from a seed much closer to the true answer; not yet
+    root-caused further (possibilities not yet tested: constraint APPLICATION ORDER within p02_05's own
+    8 Tangent calls interacting badly across the chain; the via-point seed hints not actually
+    establishing the intended convex/concave bulge direction for every arc; an actual T1-style
+    skeleton-pin layer with a COMPUTED centre position, which pins shape directly rather than hoping
+    Tangent+Fix converges to it). Every point POSITION in this file (the seed geometry) remains
+    independently verified correct regardless (fb_engine/test_t11_fusion_expressions.py, cross-checked
+    live against Fusion's own evaluateExpression) -- it is specifically the ARC RADIUS/SHAPE that is
+    still unresolved.
 
     Clockwise, starting at the peak (matches template_data.py's FRAME_SEED_MAP `prim` order):
       0 roof_R, 1 eave_straight_R, 2 arc_shoulder_R, 3 arc_waist_R, 4 arc_hip_R, 5 side_straight_R,
@@ -139,15 +145,15 @@ def get_block(ui_data=None):
         # correct direction (shoulder/hip AWAY from centreline, waist TOWARD it).
         {'ID': 'arc_shoulder_R', 'Type': 'Arc3Point', 'Points': [
             [SH_X, SH_Y], [shoulder_via_x, shoulder_via_y], [SW_X, SW_Y]], 'StartID': 'arc_shoulder_R:S', 'EndID': 'arc_shoulder_R:E'},
-        {'Type': 'Radius', 'Target': 'arc_shoulder_R', 'Expression': f'1.5 * ({HW})', 'Name': 'seed_rad_shoulder_R'},
+        {'Type': 'Radius', 'Target': 'arc_shoulder_R', 'Expression': R, 'Name': 'seed_rad_shoulder_R'},
 
         {'ID': 'arc_waist_R', 'Type': 'Arc3Point', 'Points': [
             [SW_X, f'{SW_Y} - 0.001'], [waist_via_x, waist_via_y], [WH_X, WH_Y]], 'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E'},
-        {'Type': 'Radius', 'Target': 'arc_waist_R', 'Expression': f'1.5 * ({HW})', 'Name': 'seed_rad_waist_R'},
+        {'Type': 'Radius', 'Target': 'arc_waist_R', 'Expression': RW, 'Name': 'seed_rad_waist_R'},
 
         {'ID': 'arc_hip_R', 'Type': 'Arc3Point', 'Points': [
             [WH_X, f'{WH_Y} - 0.001'], [hip_via_x, hip_via_y], [HH_X, HH_Y]], 'StartID': 'arc_hip_R:S', 'EndID': 'arc_hip_R:E'},
-        {'Type': 'Radius', 'Target': 'arc_hip_R', 'Expression': f'1.5 * ({HW})', 'Name': 'seed_rad_hip_R'},
+        {'Type': 'Radius', 'Target': 'arc_hip_R', 'Expression': R, 'Name': 'seed_rad_hip_R'},
 
         # Straight run from the hip (already at the board's own full width) down to the base corner.
         {'ID': 'side_straight_R', 'Type': 'Line', 'Points': [[HH_X, f'{HH_Y} - 0.001'], [HW, f'-({HH})']], 'StartID': 'side_straight_R:S', 'EndID': 'side_straight_R:E'},
@@ -160,15 +166,15 @@ def get_block(ui_data=None):
 
         {'ID': 'arc_hip_L', 'Type': 'Arc3Point', 'Points': [
             [f'-({HH_X})', HH_Y], [f'-({hip_via_x})', hip_via_y], [f'-({WH_X})', f'{WH_Y} - 0.002']], 'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E'},
-        {'Type': 'Radius', 'Target': 'arc_hip_L', 'Expression': f'1.5 * ({HW})', 'Name': 'seed_rad_hip_L'},
+        {'Type': 'Radius', 'Target': 'arc_hip_L', 'Expression': R, 'Name': 'seed_rad_hip_L'},
 
         {'ID': 'arc_waist_L', 'Type': 'Arc3Point', 'Points': [
             [f'-({WH_X})', WH_Y], [f'-({waist_via_x})', waist_via_y], [f'-({SW_X})', f'{SW_Y} - 0.002']], 'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E'},
-        {'Type': 'Radius', 'Target': 'arc_waist_L', 'Expression': f'1.5 * ({HW})', 'Name': 'seed_rad_waist_L'},
+        {'Type': 'Radius', 'Target': 'arc_waist_L', 'Expression': RW, 'Name': 'seed_rad_waist_L'},
 
         {'ID': 'arc_shoulder_L', 'Type': 'Arc3Point', 'Points': [
             [f'-({SW_X})', SW_Y], [f'-({shoulder_via_x})', shoulder_via_y], [f'-({SH_X})', SH_Y]], 'StartID': 'arc_shoulder_L:S', 'EndID': 'arc_shoulder_L:E'},
-        {'Type': 'Radius', 'Target': 'arc_shoulder_L', 'Expression': f'1.5 * ({HW})', 'Name': 'seed_rad_shoulder_L'},
+        {'Type': 'Radius', 'Target': 'arc_shoulder_L', 'Expression': R, 'Name': 'seed_rad_shoulder_L'},
 
         # Straight run from the shoulder back up to the eave (the miter joint, unnudged).
         {'ID': 'eave_straight_L', 'Type': 'Line', 'Points': [[f'-({SH_X})', SH_Y], [f'-({E_X})', E_Y]], 'StartID': 'eave_straight_L:S', 'EndID': 'eave_straight_L:E'},
