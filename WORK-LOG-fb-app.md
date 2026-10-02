@@ -6888,3 +6888,43 @@ in-scope templates (1-6, 8-10, 12, 13) report FRESH.
 Full suite green: pytest 498 passed/25 skipped (frame-builder, +7 new), 97 (b-spline-gen), 692/25
 skipped (repo root, +7); vitest 3042 passed (160 files, untouched -- Python-only item). Commit
 `e09fc49`. No Fusion needed or used. Passing back to the advisor.
+
+## 2026-10-02: H23 item 18 (1/2) -- declared the closed-form seed-derivation convention
+
+Pure code, no Fusion (per the advisor's own narrowed dispatch; Cowork + advisor hold Fusion).
+Launched a background audit (Explore agent) of every template's literal widthIn*k/heightIn*k seed
+constants for suspect cases beyond the three already-fixed incidents (T5 item 6, T10 items
+14/15/17, T12/13 seat-C F30 item 3) while building this half.
+
+**New `fb_engine/closed_form_arc.py`**: three named, independently-tested pure functions (not a
+framework), extracted from `t7_geometry.py`'s own already-proven H23 item 27 derivation --
+`tangent_circle_through_point`, `colinear_circle_through_point`, `true_via_point`. Each tested
+against KNOWN circles constructed and recovered independently of any template (not just checked
+against t7_geometry.py's own numbers, which would only prove the extraction matched, not that the
+formulas are right in the first place) -- caught a real sign-convention bug in my own first draft
+of `colinear_circle_through_point`'s own test (not the function itself: a self-referential test
+case asked it to recover the SAME circle a ray was drawn from, which isn't how the function is
+actually used -- two DIFFERENT circles continuing a ray past a shared vertex -- rewrote the test
+to match the real usage, function unchanged).
+
+**t7_geometry.py now CALLS these** instead of its own inline algebra -- the worked example is a
+real usage site, not just documentation. Confirmed byte-for-bit behavior-preserving: the full
+existing test_t7_geometry.py suite (35/5 skipped) and the all-template shape-outline cross-check
+both stayed green, UNCHANGED, after the swap -- no golden re-record, no Fusion needed for this
+half. Mutation-tested the wiring: breaking `tangent_circle_through_point`'s own formula by +1.0
+cascades into 10 real t7_geometry.py test failures, confirming it's actually exercised end to end.
+Also swapped test_all_templates_shape_outline.py's own seed-midpoint check (item 27 part 2) onto
+`true_via_point` instead of its own second copy of the same bisector math -- confirmed identical
+per-template results (worst-offset-degrees) before/after.
+
+**HANDOFF-ranchy.md**: added the convention itself under Frame design rules -- names the three
+confirmed incidents, what closed_form_arc.py declares, and t7_geometry.py as the worked example a
+new template's own derivation should start from. Also states the escape hatch explicitly: a plain
+widthIn*k fraction with NO geometric relationship to solve (just a fixed board proportion) is not
+this bug class.
+
+Full suite green: pytest 506 passed/25 skipped (frame-builder, +8 new); vitest 3042 passed (160
+files -- 2 files timed out under concurrent agent load on the first run, both confirmed clean
+passes in isolation on re-run, a load flake not a regression). Commit `5b922e8`.
+
+Part 2 (audit findings + any fixes) to follow once the background audit reports back.
