@@ -5834,3 +5834,59 @@ narrowing instead) rather than a one-file bugfix, **I'm stopping here and report
 or grinding further.** No code changes made this item beyond the live scratch investigation (all scratch docs
 closed, server killed, nothing committed). Flagging to the advisor as urgent given the T1-in-production angle,
 separate from T10's own un-hide status.
+
+## 2026-10-01: H23 item 23 -- re-scoped to T10 only (Fred's call), fixed and tested; handing off, NOT live-verified
+
+**Fred's call, relayed by the advisor: defer the T1/12x6/F8 question entirely (not tonight), scope item 23 back
+down to just T10 at 6x9** -- don't touch `assert_no_reflex_arcs`, don't touch T1, don't resolve the general
+"is a major arc ever legitimate" question. Re-scoped task: find where T10's own `arc_waist_R` seed midpoint
+gets computed, and check whether T10's OWN seed derivation (not T1's formula, not the Fusion-side policy) can
+stay clear of the reflex case.
+
+**Traced it to the actual source, precisely (not guessed):** `editor-shape-lattice-generator.js`'s
+`hourglassConstruction` computes `waistMajor` via a DECLARED, named F8 rule --
+`Math.atan2(top.dy, top.S-top.d) + Math.atan2(bot.dy, bot.S-bot.d) > Math.PI`, true exactly when `Rs+Rw < d`
+(shoulder radius + waist radius less than the pinch depth). This is NOT a bug or an arbitrary branch choice --
+it's the shared hourglass tangency algebra's own correct, disclosed consequence (same formula T1's own 12x6
+case hits too, per the earlier entry). **The actual root cause is how T10 reaches it**: Template 1's own
+default `waistRadius` formula (`Math.max(waistReach - cornerRadius, WAIST_MIN_RADIUS_OF_DEPTH * waistReach)`)
+ALWAYS re-derives `Rw` from whatever `waistReach` Generate just drew, which keeps `Rs+Rw` tracking `d` by
+construction -- T1 can never hit `waistMajor` via Generate, only from its own fitted/default shape at certain
+aspect ratios (the parked question). **T10 seeds only `archRise`/`waistReach`/`waistCenterY`** (its own handle
+table, by design) -- `waistRadius`/`cornerRadius` stay PINNED at the shape model's own fixed default,
+regardless of what `waistReach` Generate draws. MEASURED directly (a script computing `hourglassConstruction`
+for the real captured 6x9 seed vs the working 7x9 one): 6x9's generated `waistReach` (0.568) is far from its
+own fitted default (0.308) while `Rw` stays at the value fitted FOR 0.308 -- `Rs+Rw = 1.328 < d = 1.562`,
+`waistMajor = true`. 7x9's generated `waistReach` (0.323) stays close to ITS OWN fitted default (0.320) --
+`Rs+Rw = 1.311 > d = 1.051`, `waistMajor = false`. The gap is entirely in T10's own "only 3 of 5 hourglass
+params seeded" design, exactly as the re-scoped dispatch suspected.
+
+**Fix, in `frame-panel.js`'s own `generateFrame()` (same declared "retry against the real check" pattern Fix
+2/3 and the inner-defects check already use, not a hand-derived inequality)**: `isValid` now also rejects any
+outer-profile arc whose `|dTheta| >= PI`, matching Fusion's own `assert_no_reflex_arcs` threshold exactly.
+Needed `GENERATE_MAX_ATTEMPTS` raised 20 -> 80 to actually close the gap -- MEASURED (5000-seed sweeps via the
+real `generateFrame()`, not an approximation): 20 left 7-17/1000 seeds still bad at 6x9/7x9, 40 left 1/1000 at
+7x9, 80 gives 0/5000 at every portrait size tried (6x9, 7x9, 9x12) with real margin above the observed worst
+case (51 attempts needed). Checked 5.51x1.97 too: 100% of seeds fail even with a much higher attempt bound --
+traced to a genuinely infeasible configuration (the ENTIRE non-reflex `waistReach` sub-range sits in the bottom
+~4% of the declared range, entirely outside `FRAME_GEN_BAND`'s own `[0.1, 0.9]` sampling window) -- but
+5.51x1.97 is a LANDSCAPE size (width > height), and this project's own standing policy is portrait-only (Fred
+does not currently use landscape boards; landscape edge cases get a simple fallback, never excluded) -- treated
+as a known, already-accepted category, not a new blocker, and left alone.
+
+New test in `tests/frame-template-10.test.js` reproduces the captured bad seed directly (confirms it really
+was reflex, pre-fix) and `generateFrame()`'s exact logic across a 500-seed x 3-size sweep. Mutation-tested two
+ways (removing the reflex check alone; reverting `GENERATE_MAX_ATTEMPTS` alone) -- both failed as expected,
+restored clean. Full suite: `npx vitest run` 2935/2935 (155 files, the new test the only addition). Committed
+and pushed (`cf3805f`).
+
+**NOT live-Fusion-verified.** Per the advisor's own mid-task redirect (Fred is taking item 23 over directly),
+stopping here at this clean point rather than continuing into a live Fusion re-check: tree is clean (nothing
+uncommitted), pushed, and none of the 7 Fusion documents open right now carry my own scratch tag (my own 5 from
+earlier this item were already closed by their own handles; 3 new untagged ones appeared since, almost
+certainly Fred/the advisor already starting their own live work) -- confirmed via one last read-only check, no
+edits, nothing touched. **For whoever picks this up next**: the fix is ready for exactly the same live
+send-and-join check items 21/22 used (a real captured 6x9 b-spline payload, through the real
+`_handle_generate`/`_handle_send_frame` handlers) -- it should now produce a non-reflex `arc_waist_R` and let
+the Shape Outline build reach the frame-enclosure sketch; 7x9 should be reconfirmed clean alongside it per the
+usual regression check. `FRAME_HIDDEN` was never touched this item (stays `True`).
