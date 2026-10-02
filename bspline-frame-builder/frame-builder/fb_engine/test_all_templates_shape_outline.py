@@ -37,25 +37,34 @@ boundingboxoffset). Three checks:
    need to be close; this just reports how close every template's actually
    is, it does not fail on an imprecise one).
 
-3. CONVEX RADIUS VS BAR (H23 item 28: DECLARED known list, enforced): every
-   CONVEX arc's radius (its own explicit seed Radius dimension if declared,
-   else its 3-point circumcircle) must exceed `frame_thickness` for Fusion's
-   own `addOffset2` to keep the whole enclosure loop's topology unchanged
-   (fusion360-quirks, advisor probe C1/C2) -- a radius at or below it makes
-   `addOffset2` refuse, falling back to a differently-shaped (but still
-   parametric -- H23 item 35 correction) `sketch.offset()` result.
+3. CONVEX RADIUS VS BAR (H23 item 28: DECLARED known list, enforced; H23
+   item 35: the real fix changed what crossing the bar MEANS, not whether
+   the list matters): every CONVEX arc's radius (its own explicit seed
+   Radius dimension if declared, else its 3-point circumcircle) vs
+   `frame_thickness` decides whether that corner's inner arc survives the
+   enclosure offset at all. Before item 35, a radius at or below the bar
+   made Fusion's own `addOffset2` refuse the WHOLE loop (fusion360-quirks,
+   advisor probe C1/C2), falling back to a differently-shaped `sketch.offset()`
+   result. H23 item 35 (MEASURED, isTopologyMatched=False on the
+   OffsetConstraintInput) fixed the refusal itself: `addOffset2` now makes
+   that sharp-corner result directly and stays parametric, so this class of
+   template no longer hits the fallback (`offset_fallbacks` stays empty --
+   confirmed live on every KNOWN_CONVEX_RADIUS_BELOW_BAR template). The bar
+   still matters: it is now simply the line between "this corner's inner
+   arc survives the offset" (radius > frame_thickness) and "this corner's
+   inner arc is sharp, by design" (radius <= frame_thickness) -- a real,
+   accepted shape difference, not a degraded fallback.
    Convexity is approximated as "does the arc's own via point sit farther
    from the outline's own centroid than its chord's midpoint" (bulges
    outward = convex) -- a reasonable, not exhaustively-verified heuristic.
-   Per Fred: the templates currently below the bar are ACCEPTED cases (warn
-   only at Send, offsets.py's own loud fallback -- see item 28's other
-   half), not a to-do -- KNOWN_CONVEX_RADIUS_BELOW_BAR documents exactly
-   which templates, and the test enforces that it stays in sync: a NEW
-   template joining this class fails loudly instead of disappearing into a
-   report nobody reads, and a template that's quietly LEFT the class (a
-   seed rework, say) prompts pruning the now-stale entry. Shape changes to
-   fix an existing entry are still the advisor's own per-template call, not
-   this test's.
+   Per Fred: the templates currently below the bar are ACCEPTED cases (a
+   sharp inner corner by design, not a to-do) -- KNOWN_CONVEX_RADIUS_BELOW_BAR
+   documents exactly which templates, and the test enforces that it stays in
+   sync: a NEW template joining this class fails loudly instead of
+   disappearing into a report nobody reads, and a template that's quietly
+   LEFT the class (a seed rework, say) prompts pruning the now-stale entry.
+   Shape changes to fix an existing entry are still the advisor's own
+   per-template call, not this test's.
 """
 import math
 import os

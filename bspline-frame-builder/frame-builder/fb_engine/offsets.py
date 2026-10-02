@@ -60,19 +60,22 @@ def offset_step(ctx, sketch, s_name, off):
         else:
             offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side)
 
-        # --- Fallback: sketch.offset() (ALSO parametric -- H23 item 35 correction) ---
-        # H23 item 28: a result field (ctx.offset_fallbacks) a caller/test can check without
-        # grepping log text, on top of the log below -- these ARE worth tracking (addOffset2
-        # refusing means a different-shaped result, item 28's own known convex-radius cases), just
-        # not worth alarming over: MEASURED (fusion360-quirks, 2026-10-02 CORRECTION) sketch.offset()
-        # creates the SAME Offset constraint + OffsetCurves dimension addOffset2 does and later
-        # edits re-solve it exactly -- addOffset2 only refuses to CREATE an offset whose topology
-        # would change; sketch.offset() creates it anyway, parametrically.
+        # --- Last resort: sketch.offset() (ALSO parametric -- H23 item 35, both corrections) ---
+        # H23 item 35 (the real fix): _try_parametric_offset now sets isTopologyMatched = False on
+        # the OffsetConstraintInput, which was the ENTIRE reason addOffset2 used to refuse a convex
+        # radius at or below the offset distance (item 28's own known-list cases) -- addOffset2
+        # itself now creates that sharp-corner result and stays parametric, so this fallback should
+        # be RARE from here on (a genuine addOffset2 failure, not the expected topology-change
+        # case). Still tracked via ctx.offset_fallbacks (a caller/test can check without grepping
+        # log text) in case it ever fires. MEASURED (fusion360-quirks, 2026-10-02 CORRECTION):
+        # sketch.offset() is itself ALSO fully parametric (the same Offset constraint + dimension
+        # addOffset2 makes), never a "lesser" result -- this was never a correctness problem, only
+        # a needlessly alarming one.
         if not offset_result and side != "outward":
             ctx.offset_fallbacks.append({"sketch": s_name, "distance": d_expr, "side": side})
             ctx.logger.log(
-                f"OFFSET FALLBACK: {s_name} addOffset2 refuses a topology change; using "
-                f"sketch.offset() instead (still parametric, distance={d_expr!r})", "INFO")
+                f"OFFSET FALLBACK: {s_name} addOffset2 failed even with isTopologyMatched=False; "
+                f"using sketch.offset() instead (still parametric, distance={d_expr!r})", "WARNING")
             offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Tag results ---
@@ -204,6 +207,16 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
         # type bug here, not a real topology refusal).
         curves = _as_curve_list(coll)
         offset_input = sketch.geometricConstraints.createOffsetInput(curves, val_input)
+        # H23 item 35 (the real fix, advisor MEASURED 2026-10-02, 3 cases): OffsetConstraintInput's
+        # own `isTopologyMatched` defaults True, and THAT -- not some inherent limit of addOffset2
+        # -- is the entire reason it refuses a convex arc radius at or below the offset distance
+        # (Fusion's own documented behaviour for exactly this line-arc-line case). Set False:
+        # addOffset2 then creates the sharp-corner result itself (arcs collapsing/appearing as the
+        # geometry demands) and stays fully parametric -- driving the offset dimension (or
+        # frame_thickness) across the radius both ways adds/removes the inner arcs exactly, same as
+        # it already did for a topology-preserving offset. sketch.offset() (below) is now a
+        # last-resort fallback for a genuine addOffset2 failure, not the normal path for this case.
+        offset_input.isTopologyMatched = False
         offset_constraint = sketch.geometricConstraints.addOffset2(offset_input)
 
         if offset_constraint and offset_constraint.isValid:
@@ -242,15 +255,18 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
     except Exception as e:
         # FB-FIX (F4): no longer DEBUG. H23 item 28: tracked via offset_step's own
         # ctx.offset_fallbacks result field, so it's findable without reading every log line.
-        # H23 item 35 CORRECTION: sketch.offset() (the fallback) is NOT a lesser, "loose" offset --
-        # MEASURED (fusion360-quirks, 2026-10-02) it creates the SAME Offset constraint +
-        # OffsetCurves dimension addOffset2 does, and frame_thickness DOES still drive it exactly
-        # on later edits. addOffset2 only refuses to CREATE an offset whose topology would change
-        # (a convex radius at or below the offset distance); the fallback is the expected,
-        # still-parametric way that case gets built. INFO, not an error.
+        # H23 item 35 (the real fix): isTopologyMatched = False (set above) was the actual reason
+        # addOffset2 used to refuse a convex radius at or below the offset distance -- with it set,
+        # addOffset2 should succeed in that case, so reaching THIS except block now means a
+        # genuine, unexpected failure, not the normal known-convex-radius case. sketch.offset()
+        # (the fallback) is still fully parametric either way -- MEASURED (fusion360-quirks,
+        # 2026-10-02 CORRECTION): it creates the SAME Offset constraint + OffsetCurves dimension
+        # addOffset2 does, and frame_thickness DOES still drive it exactly on later edits. WARNING,
+        # not an error, but no longer INFO either -- this case is now a real surprise.
         ctx.logger.log(
-            f"OFFSET PARAMETRIC FAIL: addOffset2 refuses a topology change for {s_name}: {e} -- "
-            f"using sketch.offset() instead (still parametric)", "INFO")
+            f"OFFSET PARAMETRIC FAIL: addOffset2 failed for {s_name} even with "
+            f"isTopologyMatched=False: {e} -- using sketch.offset() instead (still parametric)",
+            "WARNING")
     return None
 
 

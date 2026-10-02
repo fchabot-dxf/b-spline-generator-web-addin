@@ -410,7 +410,7 @@ def _boom(*a):
 
 
 class TestParametricOffsetCall:
-    def _sketch(self, seen):
+    def _sketch(self, seen, inputs=None):
         def create(curves, value):
             # Mirrors the SWIG signature: std::vector<Ptr<SketchCurve>> means a
             # Python list; an ObjectCollection raised "argument 2 of type ..." live.
@@ -418,7 +418,13 @@ class TestParametricOffsetCall:
                 raise TypeError("in method GeometricConstraints_createOffsetInput, argument 2 "
                                 "of type std::vector< adsk::core::Ptr< adsk::fusion::SketchCurve > >")
             seen.append(curves)
-            return "input"
+            # H23 item 35: a real OffsetConstraintInput supports `.isTopologyMatched = False`
+            # (_try_parametric_offset's own new line) -- a bare string stood in here before and
+            # can't take an attribute, matching the real object's own shape now that we set one.
+            inp = types.SimpleNamespace(isTopologyMatched=True)
+            if inputs is not None:
+                inputs.append(inp)
+            return inp
 
         param = types.SimpleNamespace(expression="")
         constraint = types.SimpleNamespace(isValid=True, offsetCurves=None,
@@ -434,27 +440,40 @@ class TestParametricOffsetCall:
 
     def test_add_offset2_gets_a_curve_list_and_links_the_param(self, monkeypatch):
         self._patch(monkeypatch)
-        seen = []
-        sketch, constraint = self._sketch(seen)
+        seen, inputs = [], []
+        sketch, constraint = self._sketch(seen, inputs)
         ctx = _ctx()
         offsets._try_parametric_offset(ctx, sketch, _Coll(["c1", "c2"]), "frame_thickness", "T1_3")
         assert seen == [["c1", "c2"]]
         assert constraint.dimension.parameter.expression == "frame_thickness"
         assert any("OFFSET PARAMETRIC OK" in m for _, m in ctx.logger.entries)
 
-    def test_a_refused_parametric_offset_logs_info_not_an_alarm(self, monkeypatch):
-        # H23 item 28: the fallback is accepted (Fred: warn only) and findable without reading
-        # every log line (ctx.offset_fallbacks, tested below). H23 item 35 CORRECTION: it is also
-        # NOT an error -- MEASURED (fusion360-quirks, 2026-10-02) sketch.offset() creates the same
-        # Offset constraint + dimension addOffset2 does and later edits re-solve it exactly;
-        # addOffset2 only refuses to CREATE an offset whose topology would change. INFO level.
+    def test_isTopologyMatched_is_set_false_so_addOffset2_accepts_a_shape_change(self, monkeypatch):
+        # H23 item 35 (the real fix): this one flag was the entire reason addOffset2 used to
+        # refuse a convex radius at or below the offset distance (MEASURED, advisor, 3 cases) --
+        # without it, every known-convex-radius template fell back to sketch.offset() needlessly.
+        self._patch(monkeypatch)
+        seen, inputs = [], []
+        sketch, _constraint = self._sketch(seen, inputs)
+        ctx = _ctx()
+        offsets._try_parametric_offset(ctx, sketch, _Coll(["c1"]), "frame_thickness", "T1_3")
+        assert len(inputs) == 1
+        assert inputs[0].isTopologyMatched is False
+
+    def test_a_failed_parametric_offset_logs_warning_not_an_error(self, monkeypatch):
+        # H23 item 35 (the real fix): isTopologyMatched = False means addOffset2 should now
+        # succeed for the known-convex-radius case, so reaching this path is a genuine, unexpected
+        # failure -- WARNING, not an alarming ERROR, but no longer the quiet INFO of the old
+        # "expected" framing either. MEASURED (fusion360-quirks, 2026-10-02 CORRECTION): the
+        # sketch.offset() fallback it leads to is itself ALSO fully parametric (the same Offset
+        # constraint + dimension addOffset2 makes), never a "lesser" result.
         self._patch(monkeypatch)
         gc = types.SimpleNamespace(createOffsetInput=_boom, addOffset2=None)
         ctx = _ctx()
         result = offsets._try_parametric_offset(ctx, types.SimpleNamespace(geometricConstraints=gc),
                                                 _Coll(["c"]), "frame_thickness", "T1_3")
         assert result is None
-        assert any(level == "INFO" and "still parametric" in m for level, m in ctx.logger.entries)
+        assert any(level == "WARNING" and "still parametric" in m for level, m in ctx.logger.entries)
 
 
 class _FakeObjColl:
@@ -477,10 +496,12 @@ class TestOffsetStepFallbackIsLoud:
     """H23 item 28: offset_step()'s own fallback-detection logic (not _try_parametric_offset's
     or _try_sketch_offset's internals, each already covered above / in offsets.py's own tests) --
     a fake-Fusion run through the real offset_step() entry point, proving the NEW result field
-    (ctx.offset_fallbacks) and an INFO log fire together, exactly when addOffset2 refuses a
-    topology change and sketch.offset() is about to run instead (ALSO parametric -- H23 item 35
-    correction; the fallback itself is mocked out here, its own behaviour unchanged by either item
-    and already tested elsewhere) so this test isolates the one thing item 28 actually changed."""
+    (ctx.offset_fallbacks) and a WARNING log fire together, exactly when sketch.offset() runs as a
+    last resort (H23 item 35: now a genuine, unexpected addOffset2 failure, not the normal
+    known-convex-radius case -- isTopologyMatched=False, tested in TestParametricOffsetCall above,
+    is what fixed that case; the fallback itself is mocked out here, its own behaviour unchanged by
+    either item and already tested elsewhere) so this test isolates the one thing item 28 actually
+    changed. sketch.offset() is ALSO fully parametric either way (H23 item 35 correction)."""
 
     def _patch(self, monkeypatch, parametric_result=None, sketch_offset_result=None):
         monkeypatch.setattr(offsets.adsk.core, "ObjectCollection",
@@ -497,7 +518,7 @@ class TestOffsetStepFallbackIsLoud:
         ctx.entity_map = {s_name: {sid: types.SimpleNamespace()}}
         return ctx
 
-    def test_fallback_records_a_result_field_entry_and_logs_info(self, monkeypatch):
+    def test_fallback_records_a_result_field_entry_and_logs_warning(self, monkeypatch):
         self._patch(monkeypatch)
         s_name = "T1_3"
         ctx = self._ctx_with_curve(s_name, "c1")
@@ -508,7 +529,7 @@ class TestOffsetStepFallbackIsLoud:
 
         assert ctx.offset_fallbacks == [
             {"sketch": s_name, "distance": "frame_thickness", "side": "inward"}]
-        assert any(level == "INFO" and "OFFSET FALLBACK" in m for level, m in ctx.logger.entries)
+        assert any(level == "WARNING" and "OFFSET FALLBACK" in m for level, m in ctx.logger.entries)
 
     def test_no_fallback_entry_when_the_parametric_offset_succeeds(self, monkeypatch):
         ok_result = _FakeObjColl()
