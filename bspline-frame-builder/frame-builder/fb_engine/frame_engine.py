@@ -130,7 +130,7 @@ class FrameBuilder:
             self.logger = external_logger
         else:
             addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-            self.logger = logger.DebugLogger(addin_root)
+            self.logger = fb_logger.DebugLogger(addin_root)
 
         # Dedicated Value Resolver for Unit-Safe Geometry
         try:
