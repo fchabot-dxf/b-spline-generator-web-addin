@@ -189,6 +189,9 @@ def template_shape_model(template_id, frame, goldens_dir):
     T7 DIAMOND-TOP HOURGLASS: {"neckWidthOfHw": w, "neckHeightOfHh": h, "bodyFlareOfHh": f} (no `from`: like T6,
     a gable roof and an S-curve side, nothing to derive it from) builds
     frame_shape_fit.provisional_diamond_top_hourglass_model.
+    T11 HOURGLASS ROOF: {"waistReachOfHw": w, "cornerRadiusTopOfHw": ct, "cornerRadiusBottomOfHw": cb,
+    "waistCenterYOfHh": cy, "waistRadiusOfHw": wr} (no `from`: a gable roof over Template 1's own pinch side,
+    nothing earlier fits both parts at once) builds frame_shape_fit.provisional_diamond_top_hourglass_pinch_model.
     F30 item 3 (the taper copies, Template 12/13): {"from": <template id>, "taperAngleDeg": d} builds
     frame_shape_fit.provisional_taper_model (every one of the base model's own features KEPT, plus a new
     scale-invariant `taperAngle` -- unlike every other provisional model above, nothing about the base shape
@@ -216,6 +219,15 @@ def template_shape_model(template_id, frame, goldens_dir):
             from fb_engine.frame_shape_fit import provisional_diamond_top_hourglass_model
             return provisional_diamond_top_hourglass_model(prov["neckWidthOfHw"], prov["neckHeightOfHh"],
                                                             prov["bodyFlareOfHh"])
+        if "waistReachOfHw" in prov:
+            # T11 HOURGLASS ROOF: also a shape of its own (no base template -- a gable roof over
+            # Template 1's own shoulder/waist/hip pinch, nothing earlier fits both parts at once):
+            # {"waistReachOfHw": w, "cornerRadiusTopOfHw": ct, "cornerRadiusBottomOfHw": cb,
+            # "waistCenterYOfHh": cy, "waistRadiusOfHw": wr}.
+            from fb_engine.frame_shape_fit import provisional_diamond_top_hourglass_pinch_model
+            return provisional_diamond_top_hourglass_pinch_model(
+                prov["waistReachOfHw"], prov["cornerRadiusTopOfHw"], prov["cornerRadiusBottomOfHw"],
+                prov["waistCenterYOfHh"], prov["waistRadiusOfHw"])
         # T8 DIPPED TOP + LEFT-ONLY WAVE: also a shape of its own (see this function's own doc comment).
         from fb_engine.frame_shape_fit import provisional_dipped_left_wave_model
         return provisional_dipped_left_wave_model(prov["waveReachOfHw"], prov["waveHeightOfHh"],

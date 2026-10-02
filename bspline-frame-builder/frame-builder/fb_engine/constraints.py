@@ -2,7 +2,11 @@
 Constraint Step — Applies geometric constraints to sketch entities.
 
 Supported types: Coincident, Collinear, Horizontal, Vertical,
-Tangent, Parallel, Equal, Symmetry.
+Tangent, Parallel, Equal, Symmetry. Also `fix_step` (below):
+`isFixed = True` is a SketchPoint property, not a `geometricConstraints`
+entry, so it is dispatched separately (see parametric_engine.py's own
+"Fix" branch) but lives here since it shares this file's target-
+resolution helper.
 """
 
 
@@ -135,6 +139,31 @@ def constraint_step(ctx, sketch, s_name, rel):
     except Exception as e:
         ctx.logger.log(f"CONSTRAINT FAIL: {ctype} on {rel['Targets']}: {e}", "ERROR")
         _log_related_constraints(ctx, sketch, s_name, targets, rel["Targets"])
+
+
+def fix_step(ctx, sketch, s_name, rel):
+    """
+    Directly `Fix` (`isFixed = True`) each target SketchPoint -- removes its remaining degree(s) of
+    freedom on its own, without relying on a `Coincident` chain to propagate fixedness.
+
+    fusion360-quirks skill, "Fix is not transitive": a `Coincident`-only "anchor" point has exactly as
+    much freedom as whatever it's tied to, so the solver is just as free to drag it as to hold it
+    still -- `isFixed` must be applied to the entity's own point actually needed immobile. First use:
+    Template 11's 3-arc shoulder/waist/hip chain (sketches/template_11/phases/p02_02_loop.py's own
+    docstring) was under-constrained with Tangent + Coincident alone (every arc settled at its seed
+    radius instead of its tangent-solved shape); `Fix`-ing the 2 internal joint points removes each
+    arc's one remaining shape DOF directly.
+    """
+    targets = _resolve_targets(ctx, s_name, rel["Targets"])
+    for t_id, t in zip(rel["Targets"], targets):
+        if not hasattr(t, "isFixed"):
+            ctx.logger.log(f"FIX SKIP: {t_id} has no isFixed property ({type(t).__name__})", "WARNING")
+            continue
+        try:
+            t.isFixed = True
+            ctx.logger.log(f"FIX OK: {t_id}")
+        except Exception as e:
+            ctx.logger.log(f"FIX FAIL: {t_id}: {e}", "ERROR")
 
 
 # ------------------------------------------------------------------

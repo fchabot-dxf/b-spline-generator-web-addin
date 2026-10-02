@@ -261,7 +261,7 @@ def test_seed_midpoint_report(tid, capsys):
 # failing is a stale entry to prune (the test below enforces both directions).
 KNOWN_CONVEX_RADIUS_BELOW_BAR = {
     'template_1', 'template_2', 'template_3', 'template_4', 'template_5',
-    'template_8', 'template_10', 'template_12', 'template_13',
+    'template_8', 'template_10', 'template_11', 'template_12', 'template_13',
 }
 
 

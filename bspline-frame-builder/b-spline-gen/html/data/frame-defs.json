@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "715f2b569a418d97a7567c2359f075b146e6dde5784917469aec1bc0f922430c",
+  "sourceHash": "d261a83199212c9925407c546da2a54dcea15da4b819175d414834a2923076f5",
   "templates": [
     {
       "features": [
@@ -3269,6 +3269,1227 @@
                   "IsConstruction": false,
                   "Source": "proj_horn_BL:S",
                   "Target": "inner_proj_horn_BL:S"
+                }
+              ],
+              "Name": "Enclosure Miters",
+              "PhaseFile": "p03_04_encl_miters.py",
+              "PhaseID": "p03_04_encl_miters"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Center": [
+                    "0.001",
+                    "0.001"
+                  ],
+                  "ID": "surround_rect",
+                  "LineIDs": [
+                    "surround_top",
+                    "surround_right",
+                    "surround_bottom",
+                    "surround_left"
+                  ],
+                  "Size": [
+                    "widthIn * 1.25",
+                    "heightIn * 1.25"
+                  ],
+                  "Type": "RectangleCenter"
+                },
+                {
+                  "AllowNudge": true,
+                  "Targets": [
+                    "surround_rect:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Enclosure Surround Rectangle",
+              "PhaseFile": "p03_05_encl_surround_rect.py",
+              "PhaseID": "p03_05_encl_surround_rect"
+            }
+          ],
+          "Label": "Frame Enclosure",
+          "Name": "3_frame_enclosure",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "Frame thickness",
+              "Max": 1.5,
+              "Min": 0.25,
+              "Name": "frame_thickness",
+              "Unit": "in",
+              "Val": 0.75
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "features": [
+        {
+          "bodyNames": [
+            "frame_roof_right",
+            "frame_side_right",
+            "frame_base",
+            "frame_side_left",
+            "frame_roof_left"
+          ],
+          "extent": {
+            "offset": "0 in",
+            "toFace": "core.underside"
+          },
+          "id": "bars",
+          "op": "newBody",
+          "region": "outline-minus-inner",
+          "splitBy": "miters",
+          "start": "frame_height_offset",
+          "taper": "0 deg"
+        },
+        {
+          "extent": "throughAll",
+          "id": "trim",
+          "op": "cut",
+          "region": "surround-minus-outline",
+          "start": "0 in",
+          "taper": "0 deg"
+        }
+      ],
+      "handleMigrations": {},
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "waistReach",
+          "label": "Waist reach"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "cornerRadiusTop",
+          "label": "Shoulder"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "cornerRadiusBottom",
+          "label": "Hip"
+        },
+        {
+          "basis": "hh",
+          "binding": "seeded",
+          "key": "waistCenterY",
+          "label": "Waist position"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "waistRadius",
+          "label": "Waist radius"
+        }
+      ],
+      "hidden": false,
+      "id": "template_11",
+      "name": "Template 11 - Hourglass Roof",
+      "params": [
+        {
+          "category": "Frame Spec",
+          "default": 7.0,
+          "label": "Width (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "widthIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 9.0,
+          "label": "Height (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "heightIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.25,
+          "expose": true,
+          "label": "BBox Border",
+          "min": 0.0,
+          "name": "boundingboxoffset",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.75,
+          "expose": true,
+          "label": "Frame thickness",
+          "max": 1.5,
+          "min": 0.25,
+          "name": "frame_thickness",
+          "owner": "frame",
+          "unit": "in"
+        }
+      ],
+      "prefix": "T11",
+      "regions": {
+        "bars": [
+          {
+            "curves": [
+              "proj_roof_R"
+            ],
+            "name": "frame_roof_right"
+          },
+          {
+            "curves": [
+              "proj_eave_straight_R",
+              "proj_arc_shoulder_R",
+              "proj_arc_waist_R",
+              "proj_arc_hip_R",
+              "proj_side_straight_R"
+            ],
+            "name": "frame_side_right"
+          },
+          {
+            "curves": [
+              "proj_bottom_edge"
+            ],
+            "name": "frame_base"
+          },
+          {
+            "curves": [
+              "proj_side_straight_L",
+              "proj_arc_hip_L",
+              "proj_arc_waist_L",
+              "proj_arc_shoulder_L",
+              "proj_eave_straight_L"
+            ],
+            "name": "frame_side_left"
+          },
+          {
+            "curves": [
+              "proj_roof_L"
+            ],
+            "name": "frame_roof_left"
+          }
+        ],
+        "corners": [
+          {
+            "curve": "proj_roof_R",
+            "direction": [
+              0.0,
+              -1.0
+            ],
+            "id": "peak",
+            "inner": "inner_proj_roof_R:S",
+            "outer": "proj_roof_R:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_eave_straight_R",
+            "direction": [
+              -0.9238795325112868,
+              -0.38268343236508945
+            ],
+            "id": "eave_R",
+            "inner": "inner_proj_eave_straight_R:S",
+            "outer": "proj_eave_straight_R:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_bottom_edge",
+            "direction": [
+              -1.0,
+              1.0
+            ],
+            "id": "base_R",
+            "inner": "inner_proj_bottom_edge:S",
+            "outer": "proj_bottom_edge:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_side_straight_L",
+            "direction": [
+              1.0,
+              1.0
+            ],
+            "id": "base_L",
+            "inner": "inner_proj_side_straight_L:S",
+            "outer": "proj_side_straight_L:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_roof_L",
+            "direction": [
+              0.9238795325112868,
+              -0.38268343236508945
+            ],
+            "id": "eave_L",
+            "inner": "inner_proj_roof_L:S",
+            "outer": "proj_roof_L:S",
+            "reflex": false
+          }
+        ],
+        "inner": [
+          "inner_proj_roof_R",
+          "inner_proj_eave_straight_R",
+          "inner_proj_arc_shoulder_R",
+          "inner_proj_arc_waist_R",
+          "inner_proj_arc_hip_R",
+          "inner_proj_side_straight_R",
+          "inner_proj_bottom_edge",
+          "inner_proj_side_straight_L",
+          "inner_proj_arc_hip_L",
+          "inner_proj_arc_waist_L",
+          "inner_proj_arc_shoulder_L",
+          "inner_proj_eave_straight_L",
+          "inner_proj_roof_L"
+        ],
+        "miters": [
+          [
+            "proj_roof_R:S",
+            "inner_proj_roof_R:S"
+          ],
+          [
+            "proj_eave_straight_R:S",
+            "inner_proj_eave_straight_R:S"
+          ],
+          [
+            "proj_bottom_edge:S",
+            "inner_proj_bottom_edge:S"
+          ],
+          [
+            "proj_side_straight_L:S",
+            "inner_proj_side_straight_L:S"
+          ],
+          [
+            "proj_roof_L:S",
+            "inner_proj_roof_L:S"
+          ]
+        ],
+        "outline": [
+          "proj_roof_R",
+          "proj_eave_straight_R",
+          "proj_arc_shoulder_R",
+          "proj_arc_waist_R",
+          "proj_arc_hip_R",
+          "proj_side_straight_R",
+          "proj_bottom_edge",
+          "proj_side_straight_L",
+          "proj_arc_hip_L",
+          "proj_arc_waist_L",
+          "proj_arc_shoulder_L",
+          "proj_eave_straight_L",
+          "proj_roof_L"
+        ],
+        "surround": "surround_rect"
+      },
+      "seedMap": [
+        {
+          "id": "roof_R",
+          "kind": "line",
+          "prim": 0,
+          "reverse": false
+        },
+        {
+          "id": "eave_straight_R",
+          "kind": "line",
+          "prim": 1,
+          "reverse": false
+        },
+        {
+          "id": "arc_shoulder_R",
+          "kind": "arc",
+          "prim": 2,
+          "reverse": false
+        },
+        {
+          "id": "arc_waist_R",
+          "kind": "arc",
+          "prim": 3,
+          "reverse": false
+        },
+        {
+          "id": "arc_hip_R",
+          "kind": "arc",
+          "prim": 4,
+          "reverse": false
+        },
+        {
+          "id": "side_straight_R",
+          "kind": "line",
+          "prim": 5,
+          "reverse": false
+        },
+        {
+          "id": "bottom_edge",
+          "kind": "line",
+          "prim": 6,
+          "reverse": false
+        },
+        {
+          "id": "side_straight_L",
+          "kind": "line",
+          "prim": 7,
+          "reverse": false
+        },
+        {
+          "id": "arc_hip_L",
+          "kind": "arc",
+          "prim": 8,
+          "reverse": false
+        },
+        {
+          "id": "arc_waist_L",
+          "kind": "arc",
+          "prim": 9,
+          "reverse": false
+        },
+        {
+          "id": "arc_shoulder_L",
+          "kind": "arc",
+          "prim": 10,
+          "reverse": false
+        },
+        {
+          "id": "eave_straight_L",
+          "kind": "line",
+          "prim": 11,
+          "reverse": false
+        },
+        {
+          "id": "roof_L",
+          "kind": "line",
+          "prim": 12,
+          "reverse": false
+        }
+      ],
+      "shapeModel": {
+        "features": {
+          "cornerR": {
+            "hh": 0.0,
+            "hw": 0.22
+          },
+          "cornerRBottom": {
+            "hh": 0.0,
+            "hw": 0.22
+          },
+          "cornerRTop": {
+            "hh": 0.0,
+            "hw": 0.22
+          },
+          "depth": {
+            "hh": 0.0,
+            "hw": 0.55
+          },
+          "notch": {
+            "hh": 0.0,
+            "hw": 0.55
+          },
+          "waistCy": {
+            "hh": 0.0,
+            "hw": 0.0
+          },
+          "waistR": {
+            "hh": 0.0,
+            "hw": 0.33
+          }
+        },
+        "fit": {
+          "exactAtFittedSizes": false,
+          "excluded": [],
+          "fittedFrom": [],
+          "maxResidualIn": null,
+          "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+          "residualsIn": {}
+        },
+        "provisional": {
+          "baseModel": null,
+          "cornerRadiusBottomOfHw": 0.22,
+          "cornerRadiusTopOfHw": 0.22,
+          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+          "waistCenterYOfHh": 0.0,
+          "waistRadiusOfHw": 0.33,
+          "waistReachOfHw": 0.55
+        }
+      },
+      "silhouettePreset": "diamondTopHourglassPinch",
+      "sketches": [
+        {
+          "Blocks": [
+            {
+              "Constraints": [
+                {
+                  "Targets": [
+                    "BB_RECT:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Dimensions": [
+                {
+                  "Expression": "widthIn",
+                  "Name": "dim_width",
+                  "Target": "BB_top"
+                },
+                {
+                  "Expression": "heightIn",
+                  "Name": "dim_height",
+                  "Target": "BB_right"
+                }
+              ],
+              "Geometry": [
+                {
+                  "Center": [
+                    0.0,
+                    0.0
+                  ],
+                  "ID": "BB_RECT",
+                  "LineIDs": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "Size": [
+                    "widthIn",
+                    "heightIn"
+                  ],
+                  "Type": "Rectangle"
+                }
+              ],
+              "Name": "BB Layout",
+              "PhaseFile": "p01_01_bb_layout.py",
+              "PhaseID": "p01_01_bb_layout"
+            },
+            {
+              "Name": "Safe Zone Offset",
+              "PhaseFile": "p01_02_bb_offset.py",
+              "PhaseID": "p01_02_bb_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "boundingboxoffset",
+                  "SourceID": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "TargetIDs": [
+                    "offset_BB_top",
+                    "offset_BB_right",
+                    "offset_BB_bottom",
+                    "offset_BB_left"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            }
+          ],
+          "Label": "Bounding Box",
+          "Name": "1_bounding_box",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Label": "Width (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "widthIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 7.0
+            },
+            {
+              "Category": "Frame Spec",
+              "Label": "Height (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "heightIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 9.0
+            },
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "BBox Border",
+              "Min": 0.0,
+              "Name": "boundingboxoffset",
+              "Unit": "in",
+              "Val": 0.25
+            }
+          ]
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Projections",
+              "PhaseFile": "p02_01_projs.py",
+              "PhaseID": "p02_01_projs",
+              "Projections": [
+                {
+                  "SourceID": "offset_BB_bottom:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BR"
+                },
+                {
+                  "SourceID": "offset_BB_left:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BL"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "EndID": "roof_R:E",
+                  "ID": "roof_R",
+                  "Points": [
+                    [
+                      "0",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)"
+                    ],
+                    [
+                      "(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)",
+                      "(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2))"
+                    ]
+                  ],
+                  "StartID": "roof_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "eave_straight_R:E",
+                  "ID": "eave_straight_R",
+                  "Points": [
+                    [
+                      "(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)",
+                      "(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2))"
+                    ],
+                    [
+                      "(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)",
+                      "(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2)"
+                    ]
+                  ],
+                  "StartID": "eave_straight_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "arc_shoulder_R:E",
+                  "ID": "arc_shoulder_R",
+                  "Points": [
+                    [
+                      "(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)",
+                      "(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2)"
+                    ],
+                    [
+                      "(((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))/sqrt((1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))*(1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + (sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))",
+                      "((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/sqrt((1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))*(1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + (sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))"
+                    ],
+                    [
+                      "((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(1 - (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))",
+                      "((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))"
+                    ]
+                  ],
+                  "StartID": "arc_shoulder_R:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "arc_waist_R:E",
+                  "ID": "arc_waist_R",
+                  "Points": [
+                    [
+                      "((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(1 - (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))",
+                      "((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))"
+                    ],
+                    [
+                      "((((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) + (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/sqrt((((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*(((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + ((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1)*((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1)))",
+                      "((-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2) + (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1)/sqrt((((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*(((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + ((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1)*((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1)))"
+                    ],
+                    [
+                      "(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))",
+                      "(-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
+                    ]
+                  ],
+                  "StartID": "arc_waist_R:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "arc_hip_R:E",
+                  "ID": "arc_hip_R",
+                  "Points": [
+                    [
+                      "(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))",
+                      "(-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
+                    ],
+                    [
+                      "((((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))/sqrt(2))",
+                      "((-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))/sqrt(2))"
+                    ],
+                    [
+                      "((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
+                      "(-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
+                    ]
+                  ],
+                  "StartID": "arc_hip_R:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "side_straight_R:E",
+                  "ID": "side_straight_R",
+                  "Points": [
+                    [
+                      "((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
+                      "(-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
+                    ],
+                    [
+                      "((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
+                      "-(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
+                    ]
+                  ],
+                  "StartID": "side_straight_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "bottom_edge:E",
+                  "ID": "bottom_edge",
+                  "Points": [
+                    [
+                      "((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
+                      "-(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
+                    ],
+                    [
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
+                      "-(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
+                    ]
+                  ],
+                  "StartID": "bottom_edge:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "side_straight_L:E",
+                  "ID": "side_straight_L",
+                  "Points": [
+                    [
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
+                      "-(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
+                    ],
+                    [
+                      "-(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))",
+                      "(-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
+                    ]
+                  ],
+                  "StartID": "side_straight_L:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "arc_hip_L:E",
+                  "ID": "arc_hip_L",
+                  "Points": [
+                    [
+                      "-(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))",
+                      "(-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
+                    ],
+                    [
+                      "-(((((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))/sqrt(2)))",
+                      "((-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))/sqrt(2))"
+                    ],
+                    [
+                      "-((((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))",
+                      "(-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
+                    ]
+                  ],
+                  "StartID": "arc_hip_L:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "arc_waist_L:E",
+                  "ID": "arc_waist_L",
+                  "Points": [
+                    [
+                      "-((((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))",
+                      "(-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2 - (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
+                    ],
+                    [
+                      "-(((((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) + (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/sqrt((((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*(((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + ((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1)*((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1))))",
+                      "((-(((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2) + (0.33*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1)/sqrt((((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*(((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + ((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1)*((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) - 1)))"
+                    ],
+                    [
+                      "-(((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(1 - (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))))",
+                      "((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))"
+                    ]
+                  ],
+                  "StartID": "arc_waist_L:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "arc_shoulder_L:E",
+                  "ID": "arc_shoulder_L",
+                  "Points": [
+                    [
+                      "-(((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(1 - (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))))",
+                      "((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))"
+                    ],
+                    [
+                      "-((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))/sqrt((1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))*(1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + (sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))))",
+                      "((sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2) - (0.22*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/sqrt((1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))*(1 + (((0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + (sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2))/(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))"
+                    ],
+                    [
+                      "-((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2))",
+                      "(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2)"
+                    ]
+                  ],
+                  "StartID": "arc_shoulder_L:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "eave_straight_L:E",
+                  "ID": "eave_straight_L",
+                  "Points": [
+                    [
+                      "-((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2))",
+                      "(sqrt((((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))) + abs((((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*(2*(0.55*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - ((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2) - 0.45*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))))) / 2)) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2)/2)"
+                    ],
+                    [
+                      "-((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2))",
+                      "(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2))"
+                    ]
+                  ],
+                  "StartID": "eave_straight_L:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "roof_L:E",
+                  "ID": "roof_L",
+                  "Points": [
+                    [
+                      "-((((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2))",
+                      "(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (((0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - abs(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) / 2))"
+                    ],
+                    [
+                      "0",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)"
+                    ]
+                  ],
+                  "StartID": "roof_L:S",
+                  "Type": "Line"
+                }
+              ],
+              "Name": "Silhouette",
+              "PhaseFile": "p02_02_loop.py",
+              "PhaseID": "p02_02_loop"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Name": "peak_weld",
+                  "Targets": [
+                    "roof_R:S",
+                    "roof_L:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "eave_weld_R",
+                  "Targets": [
+                    "roof_R:E",
+                    "eave_straight_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "eave_shoulder_weld_R",
+                  "Targets": [
+                    "eave_straight_R:E",
+                    "arc_shoulder_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "shoulder_waist_weld_R",
+                  "Targets": [
+                    "arc_shoulder_R:S",
+                    "arc_waist_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "waist_hip_weld_R",
+                  "Targets": [
+                    "arc_waist_R:E",
+                    "arc_hip_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "hip_side_weld_R",
+                  "Targets": [
+                    "arc_hip_R:S",
+                    "side_straight_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "bottom_edge:S",
+                    "proj_off_corner_BR"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "base_R_weld",
+                  "Targets": [
+                    "side_straight_R:E",
+                    "bottom_edge:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "side_straight_L:S",
+                    "proj_off_corner_BL"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "base_L_weld",
+                  "Targets": [
+                    "bottom_edge:E",
+                    "side_straight_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "hip_side_weld_L",
+                  "Targets": [
+                    "side_straight_L:E",
+                    "arc_hip_L:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "waist_hip_weld_L",
+                  "Targets": [
+                    "arc_hip_L:S",
+                    "arc_waist_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "shoulder_waist_weld_L",
+                  "Targets": [
+                    "arc_waist_L:E",
+                    "arc_shoulder_L:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "eave_shoulder_weld_L",
+                  "Targets": [
+                    "arc_shoulder_L:S",
+                    "eave_straight_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "eave_weld_L",
+                  "Targets": [
+                    "eave_straight_L:E",
+                    "roof_L:S"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Welds",
+              "PhaseFile": "p02_03_welds.py",
+              "PhaseID": "p02_03_welds"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Targets": [
+                    "eave_straight_R",
+                    "arc_shoulder_R"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_shoulder_R",
+                    "arc_waist_R"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_waist_R",
+                    "arc_hip_R"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_hip_R",
+                    "side_straight_R"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "side_straight_L",
+                    "arc_hip_L"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_hip_L",
+                    "arc_waist_L"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_waist_L",
+                    "arc_shoulder_L"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Targets": [
+                    "arc_shoulder_L",
+                    "eave_straight_L"
+                  ],
+                  "Type": "Tangent"
+                },
+                {
+                  "Type": "Pulse"
+                }
+              ],
+              "Name": "ArcTangency",
+              "PhaseFile": "p02_04_tangency.py",
+              "PhaseID": "p02_04_tangency"
+            }
+          ],
+          "Label": "Shape Outline",
+          "Name": "2_shape_outline",
+          "Parameters": []
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Enclosure Projections",
+              "PhaseFile": "p03_01_encl_projs.py",
+              "PhaseID": "p03_01_encl_projs",
+              "Projections": [
+                {
+                  "SourceID": "roof_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_roof_R"
+                },
+                {
+                  "SourceID": "eave_straight_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_eave_straight_R"
+                },
+                {
+                  "SourceID": "arc_shoulder_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_shoulder_R"
+                },
+                {
+                  "SourceID": "arc_waist_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_waist_R"
+                },
+                {
+                  "SourceID": "arc_hip_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_hip_R"
+                },
+                {
+                  "SourceID": "side_straight_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_side_straight_R"
+                },
+                {
+                  "SourceID": "bottom_edge",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_bottom_edge"
+                },
+                {
+                  "SourceID": "side_straight_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_side_straight_L"
+                },
+                {
+                  "SourceID": "arc_hip_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_hip_L"
+                },
+                {
+                  "SourceID": "arc_waist_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_waist_L"
+                },
+                {
+                  "SourceID": "arc_shoulder_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_arc_shoulder_L"
+                },
+                {
+                  "SourceID": "eave_straight_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_eave_straight_L"
+                },
+                {
+                  "SourceID": "roof_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_roof_L"
+                }
+              ]
+            },
+            {
+              "Name": "Enclosure Offset",
+              "PhaseFile": "p03_02_encl_offset.py",
+              "PhaseID": "p03_02_encl_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "frame_thickness",
+                  "SourceID": [
+                    "proj_roof_R",
+                    "proj_eave_straight_R",
+                    "proj_arc_shoulder_R",
+                    "proj_arc_waist_R",
+                    "proj_arc_hip_R",
+                    "proj_side_straight_R",
+                    "proj_bottom_edge",
+                    "proj_side_straight_L",
+                    "proj_arc_hip_L",
+                    "proj_arc_waist_L",
+                    "proj_arc_shoulder_L",
+                    "proj_eave_straight_L",
+                    "proj_roof_L"
+                  ],
+                  "TargetIDs": [
+                    "inner_proj_roof_R",
+                    "inner_proj_eave_straight_R",
+                    "inner_proj_arc_shoulder_R",
+                    "inner_proj_arc_waist_R",
+                    "inner_proj_arc_hip_R",
+                    "inner_proj_side_straight_R",
+                    "inner_proj_bottom_edge",
+                    "inner_proj_side_straight_L",
+                    "inner_proj_arc_hip_L",
+                    "inner_proj_arc_waist_L",
+                    "inner_proj_arc_shoulder_L",
+                    "inner_proj_eave_straight_L",
+                    "inner_proj_roof_L"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Corners": {
+                    "peak": {
+                      "Direction": [
+                        0.0,
+                        -1.0
+                      ],
+                      "InnerID": "inner_proj_roof_R:S",
+                      "OuterID": "proj_roof_R:S"
+                    }
+                  },
+                  "Distance": "frame_thickness * 1.4142135623730951",
+                  "Tolerance": 0.05,
+                  "Type": "ResolveInnerCorners"
+                },
+                {
+                  "Corners": {
+                    "base_L": {
+                      "Direction": [
+                        1.0,
+                        1.0
+                      ],
+                      "InnerID": "inner_proj_side_straight_L:S",
+                      "OuterID": "proj_side_straight_L:S"
+                    },
+                    "base_R": {
+                      "Direction": [
+                        -1.0,
+                        1.0
+                      ],
+                      "InnerID": "inner_proj_bottom_edge:S",
+                      "OuterID": "proj_bottom_edge:S"
+                    }
+                  },
+                  "Distance": "frame_thickness",
+                  "Tolerance": 0.05,
+                  "Type": "ResolveInnerCorners"
+                },
+                {
+                  "Corners": {
+                    "eave_L": {
+                      "Direction": [
+                        0.9238795325112868,
+                        -0.38268343236508945
+                      ],
+                      "InnerID": "inner_proj_roof_L:S",
+                      "OuterID": "proj_roof_L:S"
+                    },
+                    "eave_R": {
+                      "Direction": [
+                        -0.9238795325112868,
+                        -0.38268343236508945
+                      ],
+                      "InnerID": "inner_proj_eave_straight_R:S",
+                      "OuterID": "proj_eave_straight_R:S"
+                    }
+                  },
+                  "Distance": "0.8117941502192954 in",
+                  "Tolerance": 0.2,
+                  "Type": "ResolveInnerCorners"
+                }
+              ],
+              "Name": "Inner Corner Resolve",
+              "PhaseFile": "p03_03_inner_corner_resolve.py",
+              "PhaseID": "p03_03_inner_corner_resolve"
+            },
+            {
+              "Miters": [
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_roof_R:S",
+                  "Target": "inner_proj_roof_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_eave_straight_R:S",
+                  "Target": "inner_proj_eave_straight_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_bottom_edge:S",
+                  "Target": "inner_proj_bottom_edge:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_side_straight_L:S",
+                  "Target": "inner_proj_side_straight_L:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_roof_L:S",
+                  "Target": "inner_proj_roof_L:S"
                 }
               ],
               "Name": "Enclosure Miters",

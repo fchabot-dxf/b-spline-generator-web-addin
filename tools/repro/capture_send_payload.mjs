@@ -9,6 +9,8 @@
 //          ON (distance 0.25); ALSO writes the [Send frame] payload to <out>.frame.json (replay: _handle_send_frame).
 //   --template=<id> (F30 item 3): the Frame tab's own template id for the shape-lattice-frame scenario (default
 //          template_1) -- was a hardcoded literal every earlier per-template live check hand-edited in place.
+//   --board=WxH (T83 item 2, T11 live check): sets widthIn/heightIn before capture (default: whatever the
+//          page's own fresh-profile default is).
 //   --drag (F17, Send as drawn): after Generate, HAND-DRAG the middle rail down and one tie sideways with real mouse
 //          events through the lattice tool's own handlers, then write the pieces as drawn to <out>.drawn.json
 //          ({W, H, rails:[{x1,y1,x2,y2}], ties:[...], moved:{rail, tie}}), in canvas order = manifest id order.
@@ -19,11 +21,14 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut' && !a.startsWith('--lip=') && !a.startsWith('--template='));
+const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut' && !a.startsWith('--lip=') && !a.startsWith('--template=') && !a.startsWith('--board='));
 // F22: --lip=<in> sets the Frame section's "Panel lip" (the real field) before the frame payload is taken
 const LIP = (process.argv.find((a) => a.startsWith('--lip=')) || '').slice(6);
 // F30 item 3: --template=<id> picks the shape-lattice-frame scenario's own Frame tab template (default template_1).
 const TEMPLATE = (process.argv.find((a) => a.startsWith('--template=')) || '').slice(11) || 'template_1';
+// T83 item 2 (T11 live check): --board=WxH sets widthIn/heightIn before capture (default: whatever the page's
+// own fresh-profile default is, unchanged for every existing caller).
+const BOARD = (process.argv.find((a) => a.startsWith('--board=')) || '').slice(8); // "WxH" or ''
 const DRAG = process.argv.includes('--drag');
 const CUT = process.argv.includes('--cut');
 const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = ARGS;
@@ -78,8 +83,14 @@ const steps = {
      const f = document.getElementById('shapeLatticeContourFromFrame'); f.checked = true; f.dispatchEvent(new Event('change')); await W(3000);`,
 }[SCENARIO];
 if (!steps) { console.log('unknown scenario', SCENARIO); chrome.kill(); process.exit(1); }
+const [BOARD_W, BOARD_H] = BOARD ? BOARD.split('x') : [];
+const boardStep = BOARD ? `
+  { const w = document.getElementById('widthIn'), h = document.getElementById('heightIn');
+    w.value = '${BOARD_W}'; w.dispatchEvent(new Event('change'));
+    h.value = '${BOARD_H}'; h.dispatchEvent(new Event('change')); await W(500); }` : '';
 const built = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
   document.getElementById('btnStampEdit').click(); await W(2500);
+  ${boardStep}
   ${steps}
   return document.querySelectorAll('[data-lattice]').length;
 })()`);

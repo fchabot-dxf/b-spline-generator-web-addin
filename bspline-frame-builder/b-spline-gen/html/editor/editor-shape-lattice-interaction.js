@@ -49,7 +49,7 @@
 import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
   TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, iShapeConstruction, taperAngleForTopCornerX,
-  diamondTopHourglassConstruction,
+  diamondTopHourglassConstruction, diamondTopHourglassPinchConstruction,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -284,6 +284,59 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
           key: 'taperAngle', label: 'Taper angle', axis: 'x', handleKind: 'position',
           anchor: { x: cx0 + b.neckTopX, y: cy0 + (-hh + b.neckCenterY) / 2 },
           valueFromWorld: (pt) => within('taperAngle', taperAngleForTopCornerX(circle, pinch, -1, pt.x - cx0, hw, hh)),
+        };
+      })(),
+    ]));
+  }
+
+  if (preset === 'diamondTopHourglassPinch') {
+    // T11 HOURGLASS ROOF (a frame-only preset): Template 1's own 5 hourglass-side handles -- the SAME arc-pull /
+    // waist-as-CAD-circle mechanics the hourglass (default) branch below gives Template 1 -- computed from
+    // `diamondTopHourglassPinchConstruction` instead of `hourglassConstruction` directly: this preset's side sits
+    // in a VIRTUAL sub-region (the room below the roof's own eave, shorter than the full half-height), not the
+    // full region `hourglassConstruction` assumes (see that wrapper's own doc comment). No topInset/left-pinch/
+    // dip/arch handles here: T11 has none of those keys (`pick()` would drop them anyway, but building their
+    // handle objects would reference fields this construction's own return never sets).
+    const g = diamondTopHourglassPinchConstruction(region, resolvedParams);
+    const edge = cx0 + hw;
+    const centre = { x: cx0 + g.waistCx, y: cy0 + g.waistCenterY };
+    const shift = g.a / 2, hhR = hh - shift; // the side's own virtual half-height (below the roof's eave)
+    const waistOk = (reach, rw) => reach >= R.waistReach.min && reach <= R.waistReach.max
+      && (() => { const r = rangesFor({ ...resolvedParams, waistReach: reach }).waistRadius; return rw >= r.min && rw <= r.max; })();
+    const reachFor = (rwFrac, centreX) => 1 + rwFrac - (centreX - cx0) / hw;
+    return withRange(pick([
+      {
+        key: 'waistReach', label: 'Waist reach', axis: 'x', handleKind: 'position',
+        anchor: { x: Math.min(centre.x, edge), y: centre.y },
+        ..._patchHandle('waistReach', (pt, c = {}) => {
+          const rw = resolvedParams.waistRadius;
+          const want = waistReachFromCentre({ cx0, hw, edge, radiusWaist: g.radiusWaist }, pt.x,
+            c.grab ? c.grab.value : resolvedParams.waistReach);
+          const reach = _furthest(resolvedParams.waistReach, want, (v) => waistOk(v, rw));
+          return { waistReach: reach, waistRadius: rw };
+        }),
+      },
+      arc('cornerRadiusTop', 'Shoulder'),
+      arc('cornerRadiusBottom', 'Hip'),
+      {
+        key: 'waistCenterY', label: 'Waist position', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0, y: centre.y },
+        // The side's own VIRTUAL half-height (hhR), not the full region's hh: `diamondTopHourglassPinchConstruction`'s
+        // own `waistCenterY` field is `hhR * frac + shift` (the roof's own eave eats into the side's own room).
+        valueFromWorld: (pt) => within('waistCenterY', (pt.y - cy0 - shift) / hhR),
+      },
+      keys.includes('waistRadius') && (() => {
+        const grip = _segmentArcs('waistRadius', ctx);
+        if (!grip) return null;
+        const r0 = grip.arcs[0].rx;
+        return {
+          key: 'waistRadius', label: 'Waist radius', axis: 'arc', handleKind: 'radius', ...grip,
+          anchor: { x: centre.x - r0, y: centre.y },
+          ..._patchHandle('waistRadius', (pt, c = {}) => {
+            const want = (Math.hypot(pt.x - centre.x, pt.y - centre.y) - sh) / hw;
+            const rw = _furthest(resolvedParams.waistRadius, want, (v) => waistOk(reachFor(v, centre.x), v));
+            return { waistRadius: rw, waistReach: reachFor(rw, centre.x) };
+          }),
         };
       })(),
     ]));
@@ -663,6 +716,13 @@ export const HANDLE_SEGMENT_INDEX = {
   // 8 roof_L): gableNeckWidth/neckHeight both map to the neck arc (1, mirrors via the solver's own declared
   // `mirror` table to 7); bodyFlareHeight maps to the body arc (2, mirrors to 6).
   diamondTopHourglass: { gableNeckWidth: 1, neckHeight: 1, bodyFlareHeight: 2 },
+  // T11 HOURGLASS ROOF (13 pieces, editor-shape-lattice-generator.js's own `_solveDiamondTopHourglassPinch` doc
+  // comment: 0 roof_R, 1 eave_straight_R, 2 arc_shoulder_R, 3 arc_waist_R, 4 arc_hip_R, 5 side_straight_R,
+  // 6 bottom_edge, 7 side_straight_L, 8 arc_hip_L, 9 arc_waist_L, 10 arc_shoulder_L, 11 eave_straight_L,
+  // 12 roof_L): the same Template 1 convention (cornerRadiusTop/waistReach/cornerRadiusBottom/waistCenterY/
+  // waistRadius map to the shoulder/waist/hip arcs), each index shifted by the roof's own 2 extra pieces (roof_R,
+  // eave_straight_R) ahead of them.
+  diamondTopHourglassPinch: { cornerRadiusTop: 2, waistReach: 3, cornerRadiusBottom: 4, waistCenterY: 3, waistRadius: 3 },
 };
 
 /** T8 DIPPED TOP + LEFT-ONLY WAVE: `controlledSegments`' own declared pairing (the shape has no bilateral
@@ -686,6 +746,18 @@ const I_SHAPE_SEGMENT_PAIRS = { stemWidth: [3, 9], flangeHeight: [2, 4, 8, 10] }
  *  gableNeckWidth/neckHeight both move the neck arc (1) and its mirror (7); bodyFlareHeight moves the body arc
  *  (2) and its mirror (6). */
 const DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS = { gableNeckWidth: [1, 7], neckHeight: [1, 7], bodyFlareHeight: [2, 6] };
+
+/** T11 HOURGLASS ROOF: `controlledSegments`' own declared pairing -- the generic `mirrorSegmentIndex(i,13)`
+ *  assumes an EVEN segment count with two self-paired points (`i===n/2-1` and `i===n-1`); T11's outline has an
+ *  ODD count (13) with only ONE self-paired piece (bottom_edge, 6) and its own first/last pieces (roof_R 0,
+ *  roof_L 12) mirroring EACH OTHER, not self-pairing -- the generic formula gets both wrong (MEASURED:
+ *  mirrorSegmentIndex(6,13) = 5, not 6; mirrorSegmentIndex(12,13) = 12, not 0). The solver's own declared
+ *  `mirror` table (`12 - i`, `_solveDiamondTopHourglassPinch`) is the real one, restated here since
+ *  `controlledSegments` only sees a bare segment index, not the solved silhouette's own `mirror` array -- same
+ *  reason Template 7's own pairing table exists, just a different (odd-count) topology. */
+const DIAMOND_TOP_HOURGLASS_PINCH_SEGMENT_PAIRS = {
+  cornerRadiusTop: [2, 10], waistReach: [3, 9], cornerRadiusBottom: [4, 8], waistCenterY: [3, 9], waistRadius: [3, 9],
+};
 
 // Arc point / segment and arc distance: editor-primitives.js (audit tidy-up -- the one copy of each).
 
@@ -757,6 +829,9 @@ export function controlledSegments(preset, key, n) {
   // T7 DIAMOND-TOP HOURGLASS: a declared pairing too -- the generic mirror formula below gives the wrong index
   // for this outline's own starting point (see DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS' own doc comment).
   if (preset === 'diamondTopHourglass') return DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS[key] || [i];
+  // T11 HOURGLASS ROOF: a declared pairing too -- the generic mirror formula below assumes an even segment count
+  // (see DIAMOND_TOP_HOURGLASS_PINCH_SEGMENT_PAIRS' own doc comment for why T11's odd-count outline needs it).
+  if (preset === 'diamondTopHourglassPinch') return DIAMOND_TOP_HOURGLASS_PINCH_SEGMENT_PAIRS[key] || [i];
   // T5 HOURGLASS DIPPED TOP: the 16-segment dipped outline mirrors by its own table (topDipMirrorIndex)
   const m = preset === 'hourglass' && n === TOP_DIP_SEGMENT_COUNT ? topDipMirrorIndex(i) : mirrorSegmentIndex(i, n);
   return m === i ? [i] : [i, m];

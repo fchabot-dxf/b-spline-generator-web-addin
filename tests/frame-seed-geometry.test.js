@@ -26,14 +26,19 @@ function literalSteps(tpl) {
 /** A literal seed expression in inches: widthIn/heightIn/boundingboxoffset and "N in" are inches; a bare
  * number is cm (BuildContext). F14: the seeds sit on the seed board (fb_engine/seed_basis.py). */
 const BBOX = 0.25; // the template default the records use
+// T11 HOURGLASS ROOF: its own seed expressions use `abs`/`sqrt` directly (p02_02_loop.py's own min/max-
+// unsupported substitution, `min(a,b) = (a+b-|a-b|)/2`, verified live against Fusion's own evaluateExpression --
+// see that phase file's own doc comment) -- no earlier template's seed expressions needed either function, so
+// this sandbox never had to supply them until now.
 const evalIn = (e) => {
   const s = String(e).replace(/(\d*\.?\d+)\s*in\b/g, '($1)');
   if (/^[-+]?\d*\.?\d+$/.test(s.trim())) return Number(s) / CM;
-  return Function('widthIn', 'heightIn', 'boundingboxoffset', `return (${s});`)(W, H, BBOX);
+  return Function('widthIn', 'heightIn', 'boundingboxoffset', 'abs', 'sqrt',
+    `return (${s});`)(W, H, BBOX, Math.abs, Math.sqrt);
 };
 const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-describe.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6'])('%s seed map', (id) => {
+describe.each(['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6', 'template_11'])('%s seed map', (id) => {
   const tpl = tplOf(id);
   const prof = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: id }), { widthIn: W, heightIn: H });
   const geo = frameSeedGeometry(tpl, prof, W, H);
@@ -57,6 +62,16 @@ describe.each(['template_1', 'template_2', 'template_3', 'template_4', 'template
       for (let i = 0; i < mine.length; i++) expect(d(mine[i], theirs[i]), `${e.id}[${i}]`).toBeLessThan(0.75);
     }
   });
+
+  // T11 HOURGLASS ROOF: no seed Radius dimension at all (p02_02_loop.py, item 2) -- each of its 6 arcs is seeded
+  // by its three points alone, the middle one its TRUE midpoint (frameSeedGeometry's own `at(p, 0.5)`, generic
+  // for any arc). No earlier template in this list has an EMPTY radius-kind subset, so nothing above exercises
+  // that branch of the seed-map convention -- asserted explicitly here instead.
+  if (id === 'template_11') {
+    it('has no radius-kind seed entries (every arc seeded by 3 points alone)', () => {
+      expect(tpl.seedMap.filter((e) => e.kind === 'radius')).toHaveLength(0);
+    });
+  }
 });
 
 describe('the geometry follows the seeds', () => {
