@@ -292,6 +292,19 @@ function _drawFrameProfile(editor) {
     g.path(rectD(win.inner)).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.025 }).addClass('inset-window-inner-edge');
     cut.path(rectD(win.hole)).fill({ color: '#1f2933', opacity: 0.6 }).addClass('inset-window-cutaway');
     g.path(rectD(win.outer)).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.04 }).addClass('inset-window-outer-edge');
+    // Fred: no visible marker at the window's own 4 drag corners (main/frame-panel.js's own
+    // _wireWindowDrag already hit-tests them, it just never drew anything). Frame tab only, same gate
+    // the shape handles use below -- the SAME declared HANDLE_KINDS look ('position': the app's white/
+    // blue square) every other draggable handle in this app already uses, not a new convention.
+    if (editor._editorTab === 'frame') {
+      const o = win.outer;
+      const winCorners = { x1y1: { x: o.x1, y: o.y1 }, x2y1: { x: o.x2, y: o.y1 }, x1y2: { x: o.x1, y: o.y2 }, x2y2: { x: o.x2, y: o.y2 } };
+      for (const [key, anchor] of Object.entries(winCorners)) {
+        const active = editor._windowHandleHover === key || editor._windowHandleDrag === key;
+        const vis = handleKindVisual('position', FRAME_HANDLE_RADIUS, FRAME_OUTLINE_COLOR, active);
+        drawParamHandle(g, vis, anchor.x, anchor.y, 0.03).addClass('inset-window-handle').attr('data-key', key);
+      }
+    }
   }
   // F9: the shape handles, in the Frame tab only (dragged through its shield, main/frame-panel.js).
   editor._frameHandles = [];

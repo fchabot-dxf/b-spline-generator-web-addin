@@ -249,6 +249,18 @@ export function syncFramePanel() {
   }
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
   if ($('frameInsetWindowToggle')) $('frameInsetWindowToggle').checked = !!rec.insetWindow?.enabled; // T82 item 2
+  // Position/Size steppers: the same insetWindow rect the Frame tab's own corner handles drag, read back
+  // as Position (the x1/y1 corner) + Size (width/height) rather than raw x1/y1/x2/y2 -- typing Position
+  // moves the window (both corners shift together), typing Size resizes it from that same corner, matching
+  // how a drag on the body vs. a corner behaves (_wireWindowDrag, below).
+  if ($('frameInsetWindowFields')) $('frameInsetWindowFields').style.display = rec.insetWindow?.enabled ? '' : 'none';
+  if (rec.insetWindow) {
+    const w = rec.insetWindow;
+    if ($('frameWindowPosX') && document.activeElement !== $('frameWindowPosX')) $('frameWindowPosX').value = w.x1;
+    if ($('frameWindowPosY') && document.activeElement !== $('frameWindowPosY')) $('frameWindowPosY').value = w.y1;
+    if ($('frameWindowSizeW') && document.activeElement !== $('frameWindowSizeW')) $('frameWindowSizeW').value = w.x2 - w.x1;
+    if ($('frameWindowSizeH') && document.activeElement !== $('frameWindowSizeH')) $('frameWindowSizeH').value = w.y2 - w.y1;
+  }
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${frameLabel(tpl)}` : '— none';
 
@@ -435,6 +447,7 @@ function _wireWindowDrag() {
   const CORNER_PX = 20;
   let mode = null; // null | 'body' | 'x1y1' | 'x2y1' | 'x1y2' | 'x2y2'
   let dragPointerId = null, dragStartPt = null, dragStartRect = null, dragStartRecord = null;
+  let hoverKey = null; // the SAME hover/press bookkeeping _wireHandleDrag uses for its own handles
   const corners = (r) => ({ x1y1: { x: r.x1, y: r.y1 }, x2y1: { x: r.x2, y: r.y1 }, x1y2: { x: r.x1, y: r.y2 }, x2y2: { x: r.x2, y: r.y2 } });
   const hit = (ed, clientX, clientY) => {
     const rec = getFrameRecord();
@@ -447,6 +460,14 @@ function _wireWindowDrag() {
     if (pt.x > r.x1 && pt.x < r.x2 && pt.y > r.y1 && pt.y < r.y2) return { mode: 'body', r };
     return null;
   };
+  // Idle hover: only a CORNER grab lights a visible handle (editor-frame-profile.js's own corner markers,
+  // one per `corners()` key above) -- the body has no handle mark to light, same as a plain move-drag
+  // elsewhere in this app never highlights anything.
+  const setHover = (ed, key) => {
+    if (hoverKey === key) return;
+    hoverKey = key;
+    if (ed) { ed._windowHandleHover = key; if (ed._frameProfile) drawFrameProfile(ed); }
+  };
   surface.addEventListener('pointerdown', (e) => {
     if (_editorTab !== 'frame') return;
     const ed = editor();
@@ -458,13 +479,19 @@ function _wireWindowDrag() {
     dragStartPt = ed._getMousePoint(e);
     dragStartRect = { ...h.r };
     dragStartRecord = JSON.parse(JSON.stringify(getFrameRecord()));
+    if (mode !== 'body') { ed._windowHandleDrag = mode; if (ed._frameProfile) drawFrameProfile(ed); }
     if (surface.setPointerCapture && e.pointerId != null) { try { surface.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
     e.preventDefault();
     e.stopPropagation();
   }, true);
   surface.addEventListener('pointermove', (e) => {
-    if (!mode || e.pointerId !== dragPointerId) return;
     const ed = editor();
+    if (!mode) {
+      const h = _editorTab === 'frame' && ed && ed._frameProfile ? hit(ed, e.clientX, e.clientY) : null;
+      setHover(ed, h && h.mode !== 'body' ? h.mode : null);
+      return;
+    }
+    if (e.pointerId !== dragPointerId) return;
     const pt = ed._getMousePoint(e);
     const dx = pt.x - dragStartPt.x, dy = pt.y - dragStartPt.y;
     const r = { ...dragStartRect };
@@ -482,7 +509,10 @@ function _wireWindowDrag() {
       _frameHistory.push(_clone(dragStartRecord));
       _syncUndo();
     }
+    const wasCorner = mode !== 'body';
     mode = null; dragPointerId = null;
+    const ed = editor();
+    if (wasCorner && ed) { ed._windowHandleDrag = null; if (ed._frameProfile) drawFrameProfile(ed); }
     e.stopPropagation();
     syncFramePanel();
   };
@@ -549,6 +579,26 @@ export function initFramePanel() {
     const needsSeed = enabled && cur.x1 === cur.x2 && cur.y1 === cur.y2;
     const seed = needsSeed ? { x1: P.widthIn / 3, y1: P.heightIn / 3, x2: 2 * P.widthIn / 3, y2: 2 * P.heightIn / 3 } : cur;
     editFrame({ insetWindow: { ...seed, enabled } });
+  });
+  // Position/Size steppers (same rect _wireWindowDrag's own corner/body drag writes) -- Position moves the
+  // window (both x1/x2, or y1/y2, shift together, keeping size fixed); Size resizes it from the x1/y1
+  // corner (matching a corner drag's own "the opposite corner stays put" feel). Not clamped, same as a
+  // drag isn't (INSET-WINDOW-DESIGN.md §3/§6): typing a size past the board is the user's own call.
+  $('frameWindowPosX')?.addEventListener('change', (e) => {
+    const r = getFrameRecord().insetWindow, width = r.x2 - r.x1, x1 = parseFloat(e.target.value);
+    editFrame({ insetWindow: { ...r, x1, x2: x1 + width } });
+  });
+  $('frameWindowPosY')?.addEventListener('change', (e) => {
+    const r = getFrameRecord().insetWindow, height = r.y2 - r.y1, y1 = parseFloat(e.target.value);
+    editFrame({ insetWindow: { ...r, y1, y2: y1 + height } });
+  });
+  $('frameWindowSizeW')?.addEventListener('change', (e) => {
+    const r = getFrameRecord().insetWindow;
+    editFrame({ insetWindow: { ...r, x2: r.x1 + parseFloat(e.target.value) } });
+  });
+  $('frameWindowSizeH')?.addEventListener('change', (e) => {
+    const r = getFrameRecord().insetWindow;
+    editFrame({ insetWindow: { ...r, y2: r.y1 + parseFloat(e.target.value) } });
   });
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
   _wireHandleDrag();
