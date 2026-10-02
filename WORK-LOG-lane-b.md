@@ -12516,3 +12516,96 @@ This time the "-lane-b" path check held for every Edit/Write call -- no main-che
 
 Committing as 'T82 item 4: ...'. Next: T83 item 2 (Template 11 app-side wiring -- registers the
 `diamondTopHourglassPinch` preset/extractor that's currently making lane-b's own gate red).
+
+## Lane B — Turn N — T83 item 2: Template 11 app-side wiring (registration + silhouette, gate GREEN) — IN PROGRESS
+
+Dispatched by the advisor with an explicit standing instruction: "lane-b's gate is red until this lands --
+say so in the pass note regardless of how far you get." Used a research Explore agent first to map Template
+7's own analogous app-side wiring (its full report captured template_data.py's exact field shapes, the
+`FRAME_ONLY_PARAM_KEYS` collision trap, and the KeyError's exact root cause) rather than re-reading all 7+
+files myself. This entry covers the REGISTRATION + SILHOUETTE half; the on-canvas drag-handle wiring
+(editor-shape-lattice-interaction.js) and the live Fusion check are still open (see "Remaining" below).
+
+**Part 1 -- the KeyError fix (fb_engine side).** `frame_shape_fit.py`: new `_diamond_top_hourglass_pinch`
+extractor (mirrors T3's own `_hourglass_narrow_top` split-corner shape: validates the roof/eave/side tangent
+chain, reports `depth/cornerR/cornerRTop/cornerRBottom/waistR/waistCy/notch` -- the roof itself is validated,
+never fitted, since no FRAME_HANDLES entry controls it) + `provisional_diamond_top_hourglass_pinch_model`
+(every feature hw/hh-linear and EXACT, not an approximation like T7's own portrait-only `rest` -- derived
+by hand, cross-checked against `paramsFromShapeModel`'s own round-trip). Registered both in
+`FEATURE_EXTRACTORS` and `frame_definition.py`'s `template_shape_model` dispatch (sniffs `"waistReachOfHw"
+in prov`, T11's own provisionalShape key, same if/elif chain T6-T10 already use). Ran `gen_frame_defs.py`
+to regenerate `frame-defs.json`/`.js`, then `test_frame_defs.py`: all 36 pass (was 33 passed / 3 failed with
+the bare KeyError before this).
+
+**Part 2 -- the JS silhouette (editor-shape-lattice-generator.js).** Registered `PRESETS.diamondTopHourglassPinch`
+(frameOnly, reusing TEMPLATE 1's OWN 4 plain param keys -- waistReach/cornerRadiusTop/cornerRadiusBottom/
+waistCenterY -- deliberately, since this preset IS Template 1's own hourglass side with the top horns
+replaced by a roof; `waistRadius` omitted from PRESETS.params as T1's own is, since it's DERIVED).
+**Critical, explicitly checked**: did NOT add these 4 reused names to `FRAME_ONLY_PARAM_KEYS` -- the research
+agent flagged that doing so would silently exclude Template 1's own identically-named params from the Fusion
+manifest too; `tests/editor-sketch-manifest.test.js` stayed green throughout, confirming no collision.
+
+New `diamondTopHourglassPinchConstruction(region, resolved)`: reuses `hourglassConstruction` itself (the "ONE
+place that algebra lives") by calling it against a VIRTUAL sub-region (same width, height `2*hh - a`, so its
+own internal half-height is the true room below the roof's eave) with `topInset = (hw-a)/hw` -- rather than
+re-deriving T1's tangency algebra a second time. Hand-derived and numerically verified against
+`fb_engine/t11_geometry.py`'s own `_hourglass_side`/`t11_outline` at 7x9/thickness 0.75 (every one of
+shoulderHorn/shoulderWaistJct/waistHipJct/hipHorn/CWaist's own board-coordinate value converts to this
+function's own frame and matches to the last published digit, BEFORE writing a line of the actual function --
+same discipline as the earlier T11 Fusion phase-file work). New `_solveDiamondTopHourglassPinch`: 13 pieces
+(roof/eave/shoulder/waist/hip/side/base x2 + the shared peak), the shoulder/waist/hip arcs drawn exactly as
+`_solveHourglass` draws Template 1's own (simple fixed-centre radius math, no intersection search needed);
+the peak miter is Template 7's own symmetric formula verbatim; the eave corner is a NEW, simpler
+two-straight-line miter (45-degree roof meeting the vertical eave bar) -- mirrors `t11_geometry.py`'s own
+`_line_line_inner_corner` conceptually, specialized to this one fixed pair (the eave's own x is constant
+along its length, so the general line-line solve collapses to one division). Wired into `generateSilhouette`'s
+dispatch ternary.
+
+**Three real bugs found and fixed via the test suite, not assumed safe:**
+1. My first `PARAM_ORDER.diamondTopHourglassPinch` used template_data.py's own FRAME_HANDLES order (waistReach
+   first) -- but `_hourglassRange` (the generic range-fallback this preset initially used) reads
+   `v.waistCenterY` unconditionally when resolving waistReach's own range. With waistCenterY not yet resolved,
+   `Math.abs(undefined)` silently produced NaN, caught by a direct `generateSilhouette` probe (NaN keypoints),
+   not by a thrown error. Fixed by reordering to Template 1's own convention (waistCenterY, waistReach,
+   corners, waistRadius last).
+2. Even after the order fix, `cornerRadiusTop`/`cornerRadiusBottom`/`waistRadius` STILL resolved to NaN:
+   `_hourglassRange`'s own cornerRadiusTop/Bottom branch and `_optionalRange`'s hourglass branch both hardcode
+   `DERIVED_PARAM_DEFAULTS.hourglass.waistRadius(v)`, which reads `v.cornerRadius` -- a key T11 never has (its
+   corners are split from the start, no shared-then-overridden stage the way Template 3 sequences cornerRadius
+   -> waistRadius -> cornerRadiusTop/Bottom). Fixed by writing a dedicated `_diamondTopHourglassPinchRange`
+   (same formulas, reading `v.cornerRadiusTop` directly, and using the SIDE's own virtual half-height `hhR =
+   hh - a/2` instead of the full region's `hh` for vertical-room math -- the roof eats into the side's own
+   room, same fact the construction function's own doc comment establishes) and wiring it into `_rangeFn`.
+3. Added `tests/frame-seed-geometry.test.js`'s own `describe.each` entry for `template_11` (per the dispatch:
+   "an explicit assertion that the radius-kind seed subset is empty") -- this caught a THIRD, more interesting
+   bug: my own `provisional_diamond_top_hourglass_pinch_model`'s `notch` feature used `d = cornerRadiusBottomOfHw`
+   where it should have used `d = waistReachOfHw` (the HIP's own true tangency depth) -- a straight algebra
+   slip. At this template's own default proportions the wrong `d` happened to make `S` (=cornerR+waistR) exactly
+   equal the TRUE depth, which made `paramsFromShapeModel`'s own root-picking formula (`S +/- sqrt(S^2-notch^2)`)
+   land in a genuine TIE (both roots equidistant from the reference `depth` feature), and the `<=` tie-break
+   silently picked the wrong root (0.715 instead of 1.7875 at 7x9) -- `waistReach` round-tripped back as 0.22,
+   not 0.55, visibly collapsing the shoulder arc. Found by comparing my own JS-computed seed points against the
+   REAL Fusion seed phase file's own literal expressions (p02_02_loop.py, evaluated in Node with `abs`/`sqrt`
+   added to the test's own eval sandbox -- no earlier template's seed expressions needed either function) --
+   this is the exact kind of cross-check the earlier T11 Fusion phase-file work used, now applied to the JS
+   side. Fixed the formula in `frame_shape_fit.py`, regenerated frame-defs, reran -- all three bugs gone,
+   `paramsFromShapeModel` now round-trips every one of T11's 5 params EXACTLY.
+
+**Gate status: GREEN.** `test_frame_defs.py`: 36/36. Full JS suite (`npx vitest run`, repo root): 158 files,
+2967 passed, 0 failed -- including the new template_11 seed-geometry coverage (verified against the real
+Fusion seed expressions, not just internal self-consistency) and two small updates to pre-existing
+data-driven tests (`tests/frame-defs.test.js`'s FEATURES/EXTRA tables, `tests/frame-template-6.test.js`'s
+hardcoded label list) that simply needed a `diamondTopHourglassPinch`/"11. Hourglass Roof" entry now that
+template_11 is a real, listed template.
+
+**Remaining for T83 item 2 (not done this entry):** on-canvas drag-handle anchors in
+editor-shape-lattice-interaction.js (T7's own `DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS`/`controlledSegments`
+pattern, for editing T11's shape live in the Frame tab); Frame-tab phone shots; the live Fusion check
+(`tools/repro/fusion_t11/live_build_readback.py` + `capture_send_payload.mjs`) -- HELD per the advisor's
+own cross-session message mid-turn: Fusion is reserved for Claude Cowork driving the UI for Fred, then the
+advisor's own probes; will message the advisor and wait for "Fusion free" before attempting it. A/B of
+every other template: covered implicitly by the full-suite green run above (every other template's own
+test file still passes unchanged).
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.

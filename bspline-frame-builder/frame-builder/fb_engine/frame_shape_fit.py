@@ -296,11 +296,53 @@ def _diamond_top_hourglass(curves, hw, hh, tol=2e-3):
     }
 
 
+def _diamond_top_hourglass_pinch(curves, hw, hh, tol=2e-3):
+    """T11 HOURGLASS ROOF: Template 7's own gable roof (2 straight bars, mitred at the peak) + a
+    straight vertical "eave" bar from each eave point down to the shoulder arc's own top horn, over
+    Template 1's own 3-arc shoulder/waist/hip pinch side (tangent chain -- SAME construction Template 3's
+    own narrow-top hourglass extractor (`_hourglass_narrow_top`) already validates, except the shoulder
+    is tangent to the EAVE's own x, not a `top_edge` curve's end), a plain straight base.
+
+    Features mirror Template 3's own split-corner set (depth/cornerR/cornerRTop/cornerRBottom/waistR/
+    waistCy/notch): the roof/eave shape itself (`a = min(0.62*hw, 0.84*hh)`, Template 7's own
+    roof_geometry) is NOT a fitted feature here -- no FRAME_HANDLES entry controls it (purely hw/hh-
+    derived), so this extractor only VALIDATES it (the `ok` checks below), never fits it -- a Template 7
+    roof is checked the same way and never reported as a feature either.
+
+    FIRST CUT, unverified against a real golden JSON (no template_11 goldens exist yet) -- check the
+    recorded curve dict's actual key shape the first time tools/repro/record_frame_parity.py runs for
+    this template, per LIVE_CHECK.md."""
+    roof_r, roof_l = curves["roof_R"], curves["roof_L"]
+    eave_r = curves["eave_straight_R"]
+    sh, wa, hp = curves["arc_shoulder_R"], curves["arc_waist_R"], curves["arc_hip_R"]
+    side_r = curves["side_straight_R"]
+    top_x = eave_r["end"][0]
+    ok = (abs(roof_r["start"][0] - roof_l["end"][0]) < tol    # peak shared by both roof bars
+          and abs(roof_r["start"][0]) < tol                    # peak on the centreline
+          and abs(eave_r["start"][0] - eave_r["end"][0]) < tol  # eave straight is vertical
+          and abs(side_r["start"][0] - hw) < tol and abs(side_r["end"][0] - hw) < tol
+          and abs(hp["center"][0] - (hw - hp["radius"])) < tol           # hip tangent to the side at hw
+          and abs(sh["center"][0] - (top_x - sh["radius"])) < tol        # shoulder tangent to the eave's own x
+          and abs(math.dist(sh["center"], wa["center"]) - (sh["radius"] + wa["radius"])) < tol
+          and abs(math.dist(hp["center"], wa["center"]) - (hp["radius"] + wa["radius"])) < tol)
+    wy = wa["center"][1]
+    return ok, {
+        "depth": hw - (wa["center"][0] - wa["radius"]),
+        "cornerR": hp["radius"],          # the hip's (the full-width side the app's depth root is picked for)
+        "cornerRTop": sh["radius"],
+        "cornerRBottom": hp["radius"],
+        "waistR": wa["radius"],
+        "waistCy": -wy,                   # app is y-down; Fusion is y-up
+        "notch": wy - hp["center"][1],    # the hip side only (the top notch sits behind the roof, not fitted)
+    }
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
                       "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape,
-                      "diamond_top_hourglass": _diamond_top_hourglass}
+                      "diamond_top_hourglass": _diamond_top_hourglass,
+                      "diamond_top_hourglass_pinch": _diamond_top_hourglass_pinch}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):
@@ -437,6 +479,65 @@ def provisional_diamond_top_hourglass_model(neck_width_of_hw, neck_height_of_hh,
             "neckWidthOfHw": neck_width_of_hw,
             "neckHeightOfHh": neck_height_of_hh,
             "bodyFlareOfHh": body_flare_of_hh,
+        },
+    }
+
+
+def provisional_diamond_top_hourglass_pinch_model(waist_reach_of_hw, corner_radius_top_of_hw,
+                                                  corner_radius_bottom_of_hw, waist_center_y_of_hh,
+                                                  waist_radius_of_hw):
+    """T11 HOURGLASS ROOF, until its goldens are recorded live: a PROVISIONAL model (never none), like
+    T6/T7/T8/T9: no base template to derive it from (no earlier template combines a gable roof with a
+    split-corner hourglass pinch side). Every feature here is EXACTLY hw- or hh-linear, not an
+    approximation (contrast T7's own `rest` linearization, exact only for a portrait board): the roof/
+    eave shape itself (`a`, Template 7's own roof_geometry) isn't one of this template's own FRAME_HANDLES
+    (no param controls it), so it never enters these features -- only the shoulder/waist/hip side does,
+    and that side is Template 1's own tangency algebra, unaffected by the roof above it.
+
+    `cornerR` carries the HIP's own radius (paramsFromShapeModel's shared depth-root pick, same
+    convention as T3's own `hourglass_narrow_top`); `cornerRTop`/`cornerRBottom` are read back separately.
+    `notch` (the hip centre's own offset below the waist centre, Template 1's own `_hourglass_side`
+    tangency: dy = sqrt(d(2S-d)) with the bottom inset 0, d=waistReachOfHw (the HIP's own depth, inset 0),
+    S=cornerRadiusBottomOfHw + waistRadiusOfHw, all FRACTIONS of hw) is a pure hw-scalar: it depends only
+    on the three hw-fraction inputs, never on waistCenterY or hh. MEASURED, not assumed: an earlier version
+    of this formula used `d=cornerRadiusBottomOfHw` (not `waistReachOfHw`) -- at this template's own
+    default proportions that put `S` EXACTLY equal to the true depth (the "shared-column" identity,
+    `cornerRadiusBottomOfHw + waistRadiusOfHw == waistReachOfHw` whenever waistRadius sits above its own
+    floor), so the wrong notch produced a root-picking TIE in paramsFromShapeModel's own `S +/- sqrt(S^2-
+    notch^2)` -- both candidate roots equidistant from the reference `depth` feature -- and the `<=`
+    tie-break silently picked the WRONG one (0.715 instead of the true 1.7875 at 7x9), caught by a real
+    `generateSilhouette` call producing a visibly collapsed shoulder arc, not assumed safe. Every feature
+    here round-trips EXACTLY back through paramsFromShapeModel to the fraction it started from. Marked
+    `provisional` so nothing mistakes it for a fit."""
+    cb, ct, wr = corner_radius_bottom_of_hw, corner_radius_top_of_hw, waist_radius_of_hw
+    S = cb + wr
+    notch_of_hw = math.sqrt(max(0.0, waist_reach_of_hw * (2 * S - waist_reach_of_hw)))
+    return {
+        "features": {
+            "depth": {"hw": waist_reach_of_hw, "hh": 0.0},
+            "cornerR": {"hw": cb, "hh": 0.0},
+            "cornerRTop": {"hw": ct, "hh": 0.0},
+            "cornerRBottom": {"hw": cb, "hh": 0.0},
+            "waistR": {"hw": wr, "hh": 0.0},
+            "waistCy": {"hw": 0.0, "hh": waist_center_y_of_hh},
+            "notch": {"hw": notch_of_hw, "hh": 0.0},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "waistReachOfHw": waist_reach_of_hw,
+            "cornerRadiusTopOfHw": corner_radius_top_of_hw,
+            "cornerRadiusBottomOfHw": corner_radius_bottom_of_hw,
+            "waistCenterYOfHh": waist_center_y_of_hh,
+            "waistRadiusOfHw": waist_radius_of_hw,
         },
     }
 
