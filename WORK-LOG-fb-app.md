@@ -6045,3 +6045,63 @@ PRE-EXISTING latent risk for `addOffset2`'s own topology refusal, not limited to
 
 Full suite: frame-builder 458 passed/22 skipped/3 xfailed (T7 x 3 boards), b-spline-gen 97 passed, repo root 97
 passed. Committed by path (one new test file only), pushed (`beb1597`).
+
+## 2026-10-02: H23 item 27 -- STOPPING mid-task: the hard derivation is done and verified, the mechanical rewrite isn't
+
+Fusion freed up (advisor's probe session done) partway through item 27 part 2; read the 2 new fusion360-quirks
+entries first (offset-arc-vanish, offset sign vs build direction, projected :S/:E flips on an opposite-facing
+plane, Tangent-only-solves-pinned-arcs) before starting T7's own fix, per the dispatch.
+
+**Confirmed exactly which welds are crossed, precisely, before touching anything**: T7's own Shape Outline
+welds (`p02_03_welds.py`) -- `neck_body_weld_R`, `body_line_weld_R`, `body_line_weld_L`, `neck_body_weld_L` --
+are the SAME 4 flagged by item 27 part 2's own new test (`test_all_templates_shape_outline.py`, xfailed there
+for exactly this reason). The arcs' own 3-point declaration order in `p02_02_loop.py` turns CLOCKWISE (matching
+the loop's own overall clockwise winding, per that file's own docstring), so per the CCW rule `addByThreePoints`
+silently swaps `:S`/`:E` relative to what the weld declarations naively assume (point[0]=:S, point[2]=:E) --
+exactly T11's own documented bug class.
+
+**Applying the full T11 recipe (exact closed-form seed + no seed Radius + welds against the CCW rule) needs each
+arc's TRUE circle center/radius/angular-midpoint as a live Fusion expression, not a baked decimal** -- the
+existing `fb_engine/t7_geometry.py::t7_outline()` already computes these NUMERICALLY (tested, proven), but
+re-expressing that same algebra as EXPRESSION STRINGS (so it scales with widthIn/heightIn, not just the one
+board size it's evaluated at) is real, careful work I did NOT want to hand-wave.
+
+**Did it properly, and it checks out exactly**: wrote a small script
+(`t7_fix_derivation_VALIDATED.py`, this session's own scratchpad) that builds the body-arc and neck-arc circle
+centers/radii and BOTH arcs' own true angular-midpoint ("via") points as Fusion expression strings, purely by
+mechanically transliterating `t7_outline()`'s own Python arithmetic line-by-line (dy, dxN, r_body, C_body,
+ux/uy, vx/vy, r_neck, C_neck, then each arc's own u_end-vectors -> bisector -> via = centre + radius*unit(bisector)
+-- the SAME "bisector of the two end directions" construction T11's own reference uses). **Verified against
+`t7_outline()` itself at 5 board sizes (7x9, 9x12, 6x9, 8x10, 12x14)**: every derived C_body/r_body/C_neck/r_neck
+matches to 1e-6, and both via points land EXACTLY on their own circle (confirms the bisector math, not just the
+centre/radius). This is the same validate-against-an-independent-already-tested-source discipline T11's own
+reference test uses -- high confidence this derivation is actually correct, not just plausible.
+
+**Real, unplanned problem found while finishing this**: naively nesting each sub-expression inline (the same
+style `p02_02_loop.py` already uses for its own short A/NX/NECK_Y/BODY_Y chain) blows up EXPONENTIALLY for a
+chain this deep -- the final via-point expression strings came out at 24KB and 170KB respectively, obviously
+unworkable in a real Fusion expression field. T11's own reference file avoided this by hand-simplifying its own
+algebra down to constant coefficients BEFORE writing the Fusion expressions (its own docstring says so
+explicitly: "both constants below are these ALREADY-COLLAPSED values, not re-derived max()/min() calls") --
+T7's own neck/body circle math doesn't collapse the same way (it's a genuine two-unknowns-from-tangency solve,
+not T11's own simpler proportion algebra), so the same hand-collapse trick isn't available here. **The real fix
+is declared, reusable Fusion parameters, not deeper nesting**: `parametric_engine.py`'s own `build_template`
+already collects every sketch's `'Parameters'` list and creates them ALL before any geometry builds (confirmed
+by reading it, not yet confirmed LIVE) -- declaring ~12 new short, named, sequentially-dependent parameters
+(`t7_dy`, `t7_dxN`, `t7_r_body`, `t7_cbx`, `t7_cby`, `t7_ux`, `t7_uy`, `t7_vx`, `t7_vy`, `t7_r_neck`, `t7_cnx`,
+`t7_cny`, plus the 4 via-point coordinates) the SAME way `frame_thickness`/`boundingboxoffset` are already
+declared, each with a SHORT expression referencing only the PRIOR names, would let every `Points` entry
+reference them by bare name instead of re-expanding -- exactly how a normal parametric CAD model is built, and
+the standard fix for this exact class of expression-string blowup.
+
+**Stopping here, deliberately, rather than attempt the remaining mechanical rewrite under a shrinking budget**:
+declaring the new parameters, rewriting `p02_02_loop.py` (exact via points, no 0.001 nudges), `p02_03_welds.py`
+(targets corrected for the CCW rule -- the table is: `arc_neck_R`/`arc_body_R`/`arc_body_L`/`arc_neck_L` are all
+CW-declared so their OWN `:S`/`:E` swap; everything else in this template's loop stays as declared), updating
+`p02_04_tangency.py` to add `Fix` on the now-pinned endpoints (matching T11's "Tangent only solves an arc whose
+endpoints are already pinned" discipline), and dropping `p02_05_radius_removal.py`'s now-pointless seed-Radius
+cleanup (there's no seed Radius left to remove) is real, multi-file surgery that still needs the LIVE
+7x9/9x12 build + readback afterward to actually prove it -- not something to rush through on fumes. No files
+touched this pass beyond the already-committed part-2 test (which itself required none of this). The validated
+derivation script is the one thing worth preserving exactly -- whoever picks this up next (myself included) can
+go straight from it to the parameter declarations without re-deriving anything.
