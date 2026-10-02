@@ -143,6 +143,20 @@ results *_2026-10-02.jsonl next to them; captured payloads via capture_send_payl
 --board=6x9. A bar-overlap check (pairwise intersection volume == 0) belongs in the readback tools afterwards.
 Kill only PIDs you started; no guards without Fred. Commit 'H23 item 33: ...'.
 
+## Item 34 -- make Fred's workflow correct: he DOES edit frame_thickness / border in Fusion's Parameters dialog
+Fred (2026-10-02): "i do change it in fusion". Item 33 proved a native edit can merge 3 bars into one overlapping U
+(timeline healthy) whenever the thickness passes a convex radius, on any board; a fresh Send is always correct. Not a
+guard -- the goal is that his edit gives the same 4 bars a Send would. STEP 1 = FEASIBILITY, report before building:
+(C1) auto-rebuild: can the add-in detect the Parameters dialog finishing (ui.commandTerminated for the parameters
+command id, or a cheaper hook), read the changed frame parameters, and re-run ONLY the frame build (the Send's frame
+path: delete the previous frame by attribute + build_sketch_logic_v3 + solid) with the new values? Measure the time,
+confirm bars come out identical to a fresh Send (tools/repro/fusion_t11/bar_merge_confirm.py pattern), and that an
+unrelated parameter edit does NOT trigger it. (C2) robust model: is there a way to split/extrude the bars so the
+native recompute cannot merge them (e.g. each bar's profile bounded by its own miter lines rather than a shared
+region)? Prototype in a scratch doc only. Report both with numbers; no production change until the advisor (and Fred
+if it changes behaviour he sees) picks one. Kill only PIDs you started; leave UI-cowork / API-claude code open.
+Commit 'H23 item 34: ...'.
+
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -199,4 +213,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-29] PRUNE FOR SPEED (after 28 merges): time a real Send stage by stage, then remove Pulse / explain nudges where timing says it pays, each re-checked with step_removal_ab.py. Commit as 'H23 item 29: ...'. Commit as 'H23 item 28: ...'.
 - [x] [H23-item-30] CANCELLED -- Fred: warn only (T82 item 4's editor warning). Was: PREVENT FALLBACKS (Fred: 'the add-in produces no errors'): app keeps every convex radius > frame_thickness + margin (Generate gate, handle clamp, small-board defaults); known list empty + T1 7x9 live Send with zero fallback lines. Commit as 'H23 item 30: ...'.
 - [ ] [H23-item-32] NO-ERRORS: find + fix why timeline 'Group1' is unhealthy on every Send; explain the empty-doc T1 solve failure. Commit as 'H23 item 32: ...'.
-- [ ] [H23-item-33] PARAM EDIT AFTER BUILD DUPLICATES BARS: find + fix why the bar split doesn't survive a frame_thickness/boundingboxoffset edit (3 bars become one overlapping U body, timeline healthy). Commit as 'H23 item 33: ...'.
+- [x] [H23-item-33] (root-caused, fix -> item 34) PARAM EDIT AFTER BUILD DUPLICATES BARS: find + fix why the bar split doesn't survive a frame_thickness/boundingboxoffset edit (3 bars become one overlapping U body, timeline healthy). Commit as 'H23 item 33: ...'.
+- [ ] [H23-item-34] FRED EDITS PARAMS IN FUSION: feasibility of auto-rebuild on the Parameters dialog (C1) vs a merge-proof bar model (C2), measured, before any production change. Commit as 'H23 item 34: ...'.
