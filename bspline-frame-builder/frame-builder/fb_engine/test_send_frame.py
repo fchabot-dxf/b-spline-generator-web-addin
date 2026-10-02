@@ -327,6 +327,23 @@ class TestSendFrame:
         assert r["ok"] and r["error"] is None
         assert b.solid_calls[0]["to_face"] is tilted_underside
 
+    def test_a_doubly_curved_underside_tilted_at_its_corners_is_still_found(self):
+        # H23 item 23, MEASURED live (a second real 6x9 Template 10 send, after
+        # item 22's averaging fix): the panel's true underside sampled -0.9837 at
+        # pointOnFace but -0.9609..-0.7043 at its 4 corners (average -0.8628, the
+        # two middle corners below reconstructed from that measured average), so
+        # the -0.9 bound refused it. The same body's edge faces averaged only
+        # -0.29..-0.42. UNDERSIDE_MAX_NORMAL_Z is -0.7 for exactly this body.
+        w = World()
+        send_bspline(w)
+        top = Face(0.8909, vertex_nz=[0.7073, 0.9854, 0.8463, 0.8463])
+        curved_underside = Face(-0.9837, vertex_nz=[-0.9609, -0.8326, -0.8326, -0.7043])
+        edge_a = Face(-0.5563, vertex_nz=[-0.3101, -0.2326, -0.2326, -0.1035])
+        edge_b = Face(-0.4665, vertex_nz=[-0.4397, -0.4100, -0.4100, -0.3712])
+        r, b = run(w, payload(), body=Body(faces=[top, edge_a, curved_underside, edge_b]))
+        assert r["ok"] and r["error"] is None
+        assert b.solid_calls[0]["to_face"] is curved_underside
+
     def test_seeds_are_reported_not_applied_never_dropped_silently(self):
         w = World()
         send_bspline(w)

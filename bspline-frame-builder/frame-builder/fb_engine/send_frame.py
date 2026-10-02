@@ -43,7 +43,13 @@ FRAME_TYPE_VALUE = "Frame"
 FRAME_MEMBER_ATTR = ("FrameBuilder", "FrameComponent")  # value = the frame component's name (extrusion_engine)
 # core.underside (frame_definition EXTRUSION_SETTINGS toFace): n.z ~ -1, measured
 # on NURBS faces, so "~" is a declared bound, not an exact -1.
-UNDERSIDE_MAX_NORMAL_Z = -0.9
+# -0.9 until H23 item 23's live 6x9 re-check (2026-10-01): a second real sculpted
+# panel's TRUE underside scored -0.8628 by _face_downward_z (pointOnFace -0.9837,
+# but its 4 corners -0.9609..-0.7043 -- a doubly-curved sheet tilts at its corners)
+# and was refused, while that body's edge faces scored only -0.29..-0.42 (and
+# -0.52..-0.57 on item 22's body). -0.7 sits between the two populations with a
+# margin on each side; the pick itself (most-downward face) was never wrong.
+UNDERSIDE_MAX_NORMAL_Z = -0.7
 
 SEEDS_NOT_APPLIED = "the payload has seeds but no seedGeometry (an app older than F11 sent it)"
 
