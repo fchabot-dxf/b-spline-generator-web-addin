@@ -36,6 +36,21 @@ FRAME_BOTTOM = "-1 in"
 CM = 2.54
 
 
+def _item_healthy(item):
+    """H23 item 32: a TimelineGroup's own healthState is ALWAYS Unknown (5) regardless of its
+    children (MEASURED, tools/repro/timeline_health.py's own docstring) -- recurse into a group's
+    own children instead of trusting its top-level state. This build path creates no group today
+    (no STEP import here, a declared flat-box core instead), so this is a no-op for existing
+    goldens -- correctness for if that ever changes."""
+    if item.isGroup:
+        return all(_item_healthy(item.item(i)) for i in range(item.count))
+    return item.healthState == 0
+
+
+def _timeline_healthy(tl):
+    return all(_item_healthy(tl.item(i)) for i in range(tl.count))
+
+
 def _r(v, n=5):
     return round(v, n)
 
@@ -163,7 +178,7 @@ def record_case(template_id, w_in, h_in, shot_path=None, params=None, scratch_ta
                 "core": f"flat box {w_in}x{h_in}x{CORE_THICKNESS_IN} in, underside z=0",
                 "units": "in / in^2 / in^3", "recorded": time.strftime("%Y-%m-%d"),
                 "recorder": "tools/repro/record_frame_parity.py",
-                "timelineHealthy": all(tl.item(i).healthState == 0 for i in range(tl.count)),
+                "timelineHealthy": _timeline_healthy(tl),
                 **({"params": dict(params)} if params else {}),
             },
             "sketch2_shape_outline": _curves(sk["2_shape_outline"]),

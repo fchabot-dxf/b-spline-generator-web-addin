@@ -25,7 +25,6 @@ if _BSG_DIR not in sys.path:
 
 from stage_timing_lib import (  # noqa: E402
     stage_durations, load_captured_payload, parse_solid_coordinator_phases, unwrap_captured_frame_payload,
-    frame_build_ui_data,
 )
 
 
@@ -88,29 +87,6 @@ class TestUnwrapCapturedFramePayload:
         captured = {"frame": {"payload": {"templateId": "t1"}, "result": {}}}
         unwrap_captured_frame_payload(captured)
         assert captured["frame"] == {"payload": {"templateId": "t1"}, "result": {}}
-
-
-# --------------------------------------------------------------- frame_build_ui_data
-class TestFrameBuildUiData:
-    def test_merges_board_dims_with_frame_params_filtered_to_declared_names(self):
-        payload = {
-            "params": {"widthIn": 7, "heightIn": 9, "stampDepth": 0.25},  # top-level: board + stamp
-            "frame": {"params": {"boundingboxoffset": 0.25, "ck_arc_shoulder_weld": 1}},
-        }
-        declared = {"widthIn", "heightIn", "boundingboxoffset", "ck_arc_shoulder_weld"}
-        out = frame_build_ui_data(payload, declared)
-        assert out == {"widthIn": "7", "heightIn": "9", "boundingboxoffset": "0.25",
-                        "ck_arc_shoulder_weld": "1"}
-        assert "stampDepth" not in out  # not a declared frame param
-
-    def test_frame_params_win_on_a_genuine_name_collision(self):
-        payload = {"params": {"frame_thickness": "stale"}, "frame": {"params": {"frame_thickness": 0.75}}}
-        out = frame_build_ui_data(payload, {"frame_thickness"})
-        assert out == {"frame_thickness": "0.75"}
-
-    def test_missing_frame_key_still_returns_top_level_declared_params(self):
-        out = frame_build_ui_data({"params": {"widthIn": 7}}, {"widthIn"})
-        assert out == {"widthIn": "7"}
 
 
 # --------------------------------------------------------------- parse_solid_coordinator_phases

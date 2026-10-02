@@ -75,8 +75,16 @@ try:
             per_bar.append({'bar': b.name, 'min_dist_mm': round(d * 10, 4), 'overlap_cm3': round(ov, 5)})
         res['bars_vs_panel'] = per_bar
     tl = des.timeline
-    res['unhealthy'] = [tl.item(i).name for i in range(tl.count)
-                        if tl.item(i).healthState != adsk.fusion.FeatureHealthStates.HealthyFeatureHealthState]
+    # H23 item 32: a TimelineGroup's own healthState is ALWAYS UnknownFeatureHealthState,
+    # regardless of its children (MEASURED: tools/repro/timeline_health.py's own docstring) --
+    # every real Send creates one (the STEP import's own "Group1"), so checking a group's own
+    # healthState flagged a permanent false positive on every real Send. Recurse into a group's
+    # own children instead; only a genuinely unhealthy child counts.
+    def _is_healthy(item):
+        if item.isGroup:
+            return all(_is_healthy(item.item(i)) for i in range(item.count))
+        return item.healthState == adsk.fusion.FeatureHealthStates.HealthyFeatureHealthState
+    res['unhealthy'] = [tl.item(i).name for i in range(tl.count) if not _is_healthy(tl.item(i))]
 except Exception:
     res['crash'] = traceback.format_exc()[-500:]
 finally:

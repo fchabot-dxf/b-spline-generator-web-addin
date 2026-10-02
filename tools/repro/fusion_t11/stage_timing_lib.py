@@ -64,23 +64,6 @@ def unwrap_captured_frame_payload(payload):
     return payload
 
 
-def frame_build_ui_data(payload, declared_names):
-    """The same ui_data construction fb_engine/send_frame.py's own frame_ui_data() makes (only the
-    template's own declared params become user params, parametric_engine._sync_user_parameters's
-    own rule), but built from a captured TOP-LEVEL Send payload rather than the frame sub-payload
-    alone -- MEASURED live (H23 item 29 part 2): the frame's own params
-    (payload['frame']['params']) carry NO board size at all (widthIn/heightIn live one level up,
-    in the top-level payload['params']) -- passing frame['params'] alone (as this harness's first
-    draft did) starts the empty-doc comparison missing every frame-declared gate
-    (ck_arc_shoulder_weld etc.), which a real captured T1 seed turned into a live REFLEX ARC crash
-    that has nothing to do with the seed itself. Both levels are merged before filtering to the
-    template's own declared names, matching what send_frame.py's real call receives when `payload`
-    there IS the frame sub-payload (board dims already present at that level in the real flow)."""
-    frame = payload.get('frame') or {}
-    merged = {**(payload.get('params') or {}), **(frame.get('params') or {})}
-    return {k: str(v) for k, v in merged.items() if k in declared_names}
-
-
 _PHASE_RE = re.compile(r"(Discovery|Extrusion|Finishing) Phase: ([\d.]+)s")
 _TOTAL_RE = re.compile(r"SOLID SYNTHESIS FINISHED OK \(Total: ([\d.]+)s\)")
 
