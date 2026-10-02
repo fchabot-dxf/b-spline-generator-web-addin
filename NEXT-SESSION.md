@@ -35,6 +35,25 @@ its set predates the current add-in process.
 - Commit as 'H23 item 25: ...', PUSH immediately. Then pass back with explicit test counts (state any known
   failure counts in the pass note itself).
 
+## Item 26 — `FrameBuilder()` without `external_logger` crashes (after 25)
+`fb_engine/frame_engine.py:133` calls `logger.DebugLogger(addin_root)` — `logger` there is the module-level logger
+INSTANCE, not the `fb_logger` module (line 45 uses `fb_logger.DebugLogger` correctly). One-line fix + a test that
+constructs `FrameBuilder()` with no logger under the fake adsk. Seat B's finding. Commit 'H23 item 26: ...', push.
+
+## Item 27 — Template 7's arc chain has the same crossed welds T11 had (after 26)
+Fusion's `SketchArc` start/end ALWAYS run counter-clockwise (fusion360-quirks skill, section 1 — read both new
+entries first). T7's body arcs run clockwise in loop direction, so `p02_03_welds.py`'s `arc_body_R:E -> side_R:S`
+(and the mirror) join the wrong physical ends; T7 has never been live-built. Apply the T11 recipe that built exactly
+(lane-b 5cd8e76; read its p02_02/p02_03/p02_04 + `fb_engine/test_t11_fusion_expressions.py`):
+- each arc's middle seed point is its TRUE arc midpoint in closed form (fb_engine/t7_geometry.py has the circles),
+  not a sideways-pushed chord hint; no seed Radius dimension; no 0.001-in nudges;
+- welds declared against the CCW rule (table in the docstring); a pure-python test that derives each arc's
+  physical :S/:E from the sign of its 3-point turn and checks every weld joins coincident points;
+- live build through the real engine at 7x9 and 9x12 with `tools/repro/fusion_t11/live_build_readback.py`
+  (`git show origin/lane-b:tools/repro/fusion_t11/live_build_readback.py` — copy it, point FB at a clean worktree);
+  every arc within 1e-4 in, 5 miters OK. Sketch shots to `shots/seatA/`. Then T7's LIVE_CHECK.md items.
+Commit 'H23 item 27: ...', push.
+
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -85,3 +104,5 @@ its set predates the current add-in process.
 Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 6 — H23 item 23 — <shas>"`.
 - [ ] [H23-item-24] SEND DELETES ANOTHER DOCUMENT'S B-SPLINE SET: `_remove_last_import` deletes the in-memory `last_imported_occurrences` from whatever doc last imported; find the previous import by tag in the ACTIVE design only. Fake-Fusion two-document test (mutation-tested) + live two-doc check. Commit as 'H23 item 24: ...'.
 - [ ] [H23-item-25] UN-HIDE TEMPLATE 10: FRAME_HIDDEN = False, regen, full suite + --check, picker + 7x9 Generate shots. Commit as 'H23 item 25: ...'.
+- [ ] [H23-item-26] FrameBuilder() WITHOUT external_logger CRASHES: frame_engine.py:133 uses the logger instance instead of fb_logger. One line + test. Commit as 'H23 item 26: ...'.
+- [ ] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11. Commit as 'H23 item 27: ...'.
