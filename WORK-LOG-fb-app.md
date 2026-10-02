@@ -6928,3 +6928,45 @@ files -- 2 files timed out under concurrent agent load on the first run, both co
 passes in isolation on re-run, a load flake not a regression). Commit `5b922e8`.
 
 Part 2 (audit findings + any fixes) to follow once the background audit reports back.
+
+## 2026-10-02: H23 item 18 (2/2) -- audit: no new suspect seed beyond the 3 already-fixed
+
+Background audit (Explore agent, read-only) over every template's phases/*.py for literal
+`widthIn*k`/`heightIn*k` seed constants, specifically looking for the bug class part 1's
+convention exists to stop: a seed copied across templates or scaled by the WRONG dimension for
+the geometric relationship it's actually standing in for.
+
+**Result: no new suspect case.** A global check for the blatant form (`heightIn` driving an X
+coordinate, or `widthIn` driving a Y coordinate) across all 12 templates' phases/*.py returned
+zero hits -- that specific mistake doesn't exist anywhere in the current code. The three
+previously-confirmed incidents (T5's dip radius H23 item 6, T10's arch H23 items 14/15/17,
+T12/13's taper seat-C F30 item 3) are the only real ones, and all three are already fixed with
+their own closed-form derivations and explanatory comments in place.
+
+**What the audit DID confirm, already known and already accepted**: T1/T3/T4/T5/T8/T10/T12 share
+near-identical shoulder/waist/hip literal constants (the `heightIn/14` radius family, the
+`0.476432/0.452856/0.395939` and `0.464286/0.444698/0.394553` position-triple families) as N
+independent copies across N phase files -- no shared Python helper exists for this construction
+(`fb_engine/seed_basis.py` is orthogonal: it only renormalizes onto the seed board for
+boundingboxoffset, F14, not a dimension-correctness check). But every copy is dimensionally
+CORRECT (X paired with widthIn, Y with heightIn throughout) and explicitly commented as
+intentional reuse ("Template 1's own literal seeds, unchanged", citing the sibling it was copied
+from) -- and the resulting below-bar convex radii are EXACTLY H23 item 27 part 2's / item 28's own
+`KNOWN_CONVEX_RADIUS_BELOW_BAR` finding (Fred: accepted, warn-only, not a to-do). So this is a
+real maintainability smell (copy-paste-shaped duplication with no shared source) but not a
+correctness bug, and it's already tracked where Fred already ruled on it -- re-litigating it here
+would be outside this item's own narrowed scope (no new guards, ask first).
+
+T2's own phases/*.py has the thinnest documentation (just "Auto-generated phase block", no
+derivation rationale at all) but its own arc seeds are dimensionally correct and independently
+fit (not copied from the 0.464286/heightIn-14 families) -- a minor documentation gap, not a bug,
+left alone per the item's own "this is NOT rewrite every template's seeds" instruction; noting it
+here rather than silently passing over it, in case the advisor wants a follow-up doc pass.
+
+T6/T9 are pure straight-line shapes (no arcs, no radius expressions at all) -- not applicable to
+this bug class. T7 (this session's own earlier work, H23 item 27) is the gold-standard reference:
+no bare literals at all, fully closed-form.
+
+**Conclusion: H23 item 18 is DONE.** The declared convention (part 1, commit `5b922e8`) plus this
+audit (part 2, no code change -- nothing found that needed fixing) together close the item. No
+Fusion needed for either half; no golden re-record required (no shape changed).
