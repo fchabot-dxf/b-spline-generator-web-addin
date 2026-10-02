@@ -7430,3 +7430,55 @@ finding above.
 Full suite: 815 passed/25 skipped, unchanged by the point-8/matrix work (test-only + new
 `tools/repro` scripts). Commits: `83855e9` (the real fix + confirmation matrix +
 `test_all_templates_shape_outline.py` wording), `a6f5362` (the all-templates sweep runner).
+
+## 2026-10-02: H23 item 36 -- T7's stale FRAME_SEED_MAP, a regression from item 27 (no Fusion -- reserved for Cowork)
+
+The item-35 point-8 sweep's own template_7 failures (fallbacks="NO_INSTANCE_CAPTURED", 0 bars, 9
+real capture attempts, all failed) turned out to be a REGRESSION from my own item 27 earlier this
+session, not a separate pre-existing bug as I'd reported it at the time.
+
+**Root cause, traced via `bspline-frame-builder/b-spline-gen/b_spline_gen_log.txt`'s own `SEND
+FRAME result` line (not guessed):** item 27 applied the T11 recipe to T7's Shape Outline
+(`p02_02_loop.py`) -- each arc now seeds its own TRUE angular midpoint, no seed Radius dimension,
+matching commit `487c2bb`'s own diff (the 4 `{'Type': 'Radius', ..., 'Name': 'seed_rad_*'}` blocks
+were removed). But `template_7/template_data.py`'s own `FRAME_SEED_MAP` still declared 4 "radius"
+entries (`seed_rad_neck_R/body_R/body_L/neck_L`) -- the app's own `editor/frame-handles.js`
+builds `seed_geometry` FROM that map and sends those keys at Send time;
+`fb_engine/seed_geometry.py::apply_seed_geometry` matches each seedMap id against a real
+BuildSequence step's `ID` (Line/Arc3Point) or `Name` (Radius) and raises `SeedGeometryError`
+("seed(s) not in the template") for anything left unmatched -- which was all 4, every time, before
+the frame engine's own code ever ran.
+
+**Fix:** removed the 4 stale entries from `FRAME_SEED_MAP`, matching template_11's own pattern (no
+"radius" entries -- its own comment: "each arc is seeded by its three points alone").
+
+**New test** (`test_all_templates_shape_outline.py`, Check 4,
+`test_seed_map_ids_exist_in_the_templates_own_phases`): for every one of the 13 templates, walks
+the SAME two keys `apply_seed_geometry` itself matches (BuildSequence step `ID` for Line/Arc3Point,
+`Name` for Radius) and asserts every `FRAME_SEED_MAP` entry's own id exists among them -- catches
+this whole declaration/implementation-drift class across all templates, not just the one that
+happened to regress. Mutation-tested: `git stash` on just the `template_data.py` fix makes
+`test_seed_map_ids_exist_in_the_templates_own_phases[template_7]` fail red with exactly the 4 stale
+entries named (`AssertionError: ... [{'id': 'seed_rad_neck_R', ...}, ...]`); restoring the fix
+makes it pass clean again.
+
+`gen_frame_defs.py` regenerated -- diff is exactly the 4 removed `seed_rad_*` entries in
+`frame-defs.json`/`.js`, nothing else (confirmed via `git diff`, not assumed).
+
+Full suite: 828 passed/25 skipped (+13 for the new test's own parametrize over every template).
+Fast-tier vitest only (files the regen touches): `frame-defs.test.js`,
+`frame-seed-geometry.test.js`, `frame-template-7.test.js` -- 62/62 (gate-tiering: the advisor's own
+full-suite merge gate, not a per-pass requirement for a declarations-only change).
+
+**"Is 'no downward face' a second issue?"** No -- traced directly in `fb_engine/send_frame.py`:
+`underside_face(core_body)` is checked BEFORE `apply_seed_geometry` even runs, independent of
+`FRAME_SEED_MAP` entirely. It's the SAME random-panel-shape near-miss tolerance case item 22
+already found and tested for Template 10
+(`test_a_sculpted_underside_with_one_tilted_sample_point_is_still_found` -- a sample point at
+-0.8963 narrowly missing `UNDERSIDE_MAX_NORMAL_Z` = -0.9 while the panel's own corners were
+solidly downward). It showed up on one of my 9 template_7 retry captures purely because each
+capture generates a fresh random B-spline panel -- unrelated to FRAME_SEED_MAP, item 27, or this
+regression.
+
+**No Fusion used** (reserved for Cowork this pass, per the dispatch) -- code + tests only. The live
+T7 Send re-check is the advisor's own next step once Fusion is free again. Commit `289568c`.
