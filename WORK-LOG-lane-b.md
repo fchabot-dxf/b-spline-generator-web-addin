@@ -12363,3 +12363,69 @@ passes.
 Committing and pushing this checkpoint now; no further Fusion calls or edits to template_11/t11_*
 after this, per the advisor's own instruction. Moving to the queued inset-window item (visible corner
 handles + Position/Size steppers) next -- pure JS, no Fusion needed.
+
+## Lane B — ad-hoc (Fred via advisor) — inset window: visible corner handles + Position/Size steppers — DONE
+
+Fred's report: the inset window's drag interaction already worked (_wireWindowDrag, main/frame-panel.js,
+blind corner hit-testing) but nothing marked where to grab -- unlike every other handle in this app (the
+declared HANDLE_KINDS convention, editor-transform-handles.js). Expanded scope: also add Position (X,Y)
+and Size (Width, Height) steppers near the Inset window checkbox, same pattern as Stock Dimensions'
+Width/Height steppers, two-way synced with the drag.
+
+**Visible corner markers** (editor-frame-profile.js, inside the existing `if (win) {...}` draw block,
+Frame tab only): 4 handle markers at `win.outer`'s own corners, keyed `x1y1/x2y1/x1y2/x2y2` (the SAME
+mode strings `_wireWindowDrag` already uses for its own hit-test), drawn via the app's own declared
+`handleKindVisual('position', ...)` + `drawParamHandle` -- the identical white/blue square look every
+other move-style handle in the app already uses, not a new convention.
+
+**Hover/drag-active state**: `_wireWindowDrag` gained its own `editor._windowHandleHover`/
+`_windowHandleDrag` (parallel to `_wireHandleDrag`'s own `_frameHandleHover`/`_frameHandleDrag`, same
+redraw-on-change pattern). Idle hover only lights a CORNER (the body has no mark to light); drag sets the
+active look for the whole gesture, cleared at release -- existing body-drag/corner-resize logic itself is
+UNCHANGED, this only adds the visual feedback layer on top.
+
+**Position/Size steppers** (`frameWindowPosX/PosY/SizeW/SizeH`, new markup in `#frameInsetWindowFields`,
+shown only while the window is enabled, same toggle pattern `#frameSettings` already uses): write via
+`editFrame({ insetWindow: {...} })` following the record-field pattern every other Frame-tab stepper uses
+(not the generic top-level-`P` pattern Stock Dimensions itself uses, since `insetWindow` lives nested in
+the frame record) -- Position moves the window (both corners shift, size preserved), Size resizes it from
+the x1/y1 corner (the anchor stays put), matching a corner-drag's own "opposite corner stays put" feel.
+Read-back added to `syncFramePanel()`, same `document.activeElement` guard every other field uses so a
+live drag or a live keystroke is never clobbered.
+
+**Mutation-tested all three pieces independently** (not vacuous): removing the corner-handle draw block
+failed exactly the 3 tests that read drawn handles; removing the stepper write handlers failed exactly
+the 1 write test; removing the read-back sync lines failed exactly the 1 read-back test; each restored
+byte-identical via diff, confirmed green again. New `tests/inset-window-handles.test.js` (10 tests, the
+same mock-SVG-layer-tree harness `tests/frame-handles.test.js` already uses for this exact kind of
+DOM-coupled handle test). One real test-authoring bug found and fixed along the way: an early choice of
+window-body click coordinates for 2 tests happened to land on template_1's own `waistCenterY` shape
+handle, which grabs the press FIRST (same precedence the real app gives a shape handle over the window
+drag) -- not a production bug, just a bad choice of test coordinates; moved those 2 tests' own window rect
+into a corner away from any shape handle.
+
+**Verified live** in a real headless-Chrome browser session (not just the test suite): enabled the inset
+window on template_1 at 7x9, confirmed all 4 corner handles render with the exact same visual language as
+the existing shape handles (screenshot), and confirmed the Position/Size fields read back the correct
+values (`posX:"1", sizeW:"2"` for a window placed at x1=1,x2=3) with zero console errors.
+
+**Full fb_engine Python suite unaffected (JS-only change)**; full JS suite (`npx vitest run`, repo root):
+157 files, 2952 passed, 0 failed.
+
+**Process note, flagged plainly rather than smoothed over**: built this entire feature in the WRONG
+checkout (`C:\Users\danse\APPS\b-spline-generator-web-addin`, seat A's own main tree) by mistake -- lost
+track of which worktree this session's cwd had drifted to mid-session. Advisor caught it live. Saved a
+diff patch + a copy of the new test file before touching anything; Fred's own call was to leave main's
+uncommitted state as-is (he will clear it himself) rather than have me run a destructive `git checkout --`
+there. Applied the SAME patch cleanly to this lane-b worktree (pulled to 2bdfbe2 first, per the advisor's
+own T11 updates), re-ran the full fast-tier AND full suite here from scratch (not reused from the main-tree
+run) before trusting any of it. No other uncommitted state existed in main beyond these exact 4 files
+(confirmed via `git status` before touching anything there) -- nothing else was at risk.
+
+Known, pre-existing, NOT mine, NOT fixed here (per the advisor's own instruction to state this plainly):
+`test_frame_defs` (3 tests) and `gen_frame_defs --check` fail on lane-b with `KeyError:
+'diamond_top_hourglass_pinch'` -- Template 11's own forward-declared shape extractor isn't registered yet.
+That is T11's own app-side wiring item, queued after this one.
+
+Committing and pushing from lane-b now. Next up per the advisor: T82 item 4 (frame thickness stepper in
+the Frame editor, synced with the sidebar, + convex-radius warning), then T83 item 2.
