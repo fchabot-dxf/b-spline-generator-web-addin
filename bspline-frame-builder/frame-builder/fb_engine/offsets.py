@@ -60,15 +60,19 @@ def offset_step(ctx, sketch, s_name, off):
         else:
             offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side)
 
-        # --- Fallback: sketch.offset() (non-parametric) ---
-        # H23 item 28: LOUD by design (Fred: these are warn-only, not a to-do) -- a result field
-        # (ctx.offset_fallbacks) a caller/test can check without grepping log text, on top of the
-        # ERROR log below. The fallback mechanism itself is unchanged.
+        # --- Fallback: sketch.offset() (ALSO parametric -- H23 item 35 correction) ---
+        # H23 item 28: a result field (ctx.offset_fallbacks) a caller/test can check without
+        # grepping log text, on top of the log below -- these ARE worth tracking (addOffset2
+        # refusing means a different-shaped result, item 28's own known convex-radius cases), just
+        # not worth alarming over: MEASURED (fusion360-quirks, 2026-10-02 CORRECTION) sketch.offset()
+        # creates the SAME Offset constraint + OffsetCurves dimension addOffset2 does and later
+        # edits re-solve it exactly -- addOffset2 only refuses to CREATE an offset whose topology
+        # would change; sketch.offset() creates it anyway, parametrically.
         if not offset_result and side != "outward":
             ctx.offset_fallbacks.append({"sketch": s_name, "distance": d_expr, "side": side})
             ctx.logger.log(
-                f"OFFSET FALLBACK: {s_name} parametric addOffset2 unavailable, using "
-                f"non-parametric sketch.offset() (distance={d_expr!r})", "ERROR")
+                f"OFFSET FALLBACK: {s_name} addOffset2 refuses a topology change; using "
+                f"sketch.offset() instead (still parametric, distance={d_expr!r})", "INFO")
             offset_result = _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side)
 
         # --- Tag results ---
@@ -196,8 +200,8 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
         # (SWIG std::vector<Ptr<SketchCurve>>), not an ObjectCollection.
         # Passing `coll` failed on every build ("argument 2 of type
         # std::vector<...SketchCurve...>", measured F3), so every offset fell
-        # back to the non-parametric sketch.offset and frame_thickness /
-        # boundingboxoffset never drove it live.
+        # back to the sketch.offset() fallback for the WRONG reason (a Python
+        # type bug here, not a real topology refusal).
         curves = _as_curve_list(coll)
         offset_input = sketch.geometricConstraints.createOffsetInput(curves, val_input)
         offset_constraint = sketch.geometricConstraints.addOffset2(offset_input)
@@ -216,8 +220,9 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
                 ctx.logger.log(f"OFFSET LINK FAIL: Could not set expression: {name_e}", "WARNING")
 
             # F22 MEASURED live: Fusion's OffsetConstraint exposes the new curves as `childCurves` (there is no
-            # `offsetCurves`), so this used to return None and EVERY parametric offset also fell back to a second,
-            # non-parametric sketch.offset (the inner edge's untagged duplicate loop). Wrapped as an
+            # `offsetCurves`), so this used to return None and EVERY addOffset2 call also fell through to the
+            # sketch.offset() fallback for the WRONG reason (a Python attribute-name bug here, not a real
+            # topology refusal), creating a second, untagged duplicate loop. Wrapped as an
             # ObjectCollection: the side check and the tagging read .count / .item().
             result = _as_collection(getattr(offset_constraint, 'childCurves', None))
             # F22 MEASURED live: inside the deferred-compute window the new curves are not solved yet (their bbox is
@@ -235,13 +240,17 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
             return result
 
     except Exception as e:
-        # FB-FIX (F4): no longer DEBUG. H23 item 28: no longer WARNING either --
-        # falling back to a non-parametric offset is a reported last resort
-        # (frame_thickness won't drive it), loud enough to find without reading
-        # every log line (see offset_step's own ctx.offset_fallbacks + ERROR log).
+        # FB-FIX (F4): no longer DEBUG. H23 item 28: tracked via offset_step's own
+        # ctx.offset_fallbacks result field, so it's findable without reading every log line.
+        # H23 item 35 CORRECTION: sketch.offset() (the fallback) is NOT a lesser, "loose" offset --
+        # MEASURED (fusion360-quirks, 2026-10-02) it creates the SAME Offset constraint +
+        # OffsetCurves dimension addOffset2 does, and frame_thickness DOES still drive it exactly
+        # on later edits. addOffset2 only refuses to CREATE an offset whose topology would change
+        # (a convex radius at or below the offset distance); the fallback is the expected,
+        # still-parametric way that case gets built. INFO, not an error.
         ctx.logger.log(
-            f"OFFSET PARAMETRIC FAIL: addOffset2 failed for {s_name}: {e} -- "
-            f"FALLING BACK to a NON-parametric offset", "ERROR")
+            f"OFFSET PARAMETRIC FAIL: addOffset2 refuses a topology change for {s_name}: {e} -- "
+            f"using sketch.offset() instead (still parametric)", "INFO")
     return None
 
 
@@ -266,7 +275,7 @@ def _as_curve_list(coll):
 
 
 # Declared: every template offset goes INWARD (the BB safe zone in sketch 1,
-# the frame's inner edge in sketch 3), which the non-parametric fallback has
+# the frame's inner edge in sketch 3), which the sketch.offset() fallback has
 # always enforced (centroid direction + abs distance).
 OFFSET_SIDE = "inward"
 
@@ -306,7 +315,7 @@ def _ensure_side(ctx, offset_constraint, source, result, d_expr, s_name, side="i
 
 
 # ------------------------------------------------------------------
-# Fallback: Non-parametric offset (sketch.offset)
+# Fallback: sketch.offset() (ALSO parametric -- see offset_step's own comment, H23 item 35)
 # ------------------------------------------------------------------
 def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
     """
@@ -381,7 +390,7 @@ def _link_offset_dimension(ctx, sketch, offset_curves, d_expr, s_name):
 
 
 def _outside_direction(coll, centroid):
-    """F22: a point beyond the loop's bbox (to its right), for an OUTWARD non-parametric offset."""
+    """F22: a point beyond the loop's bbox (to its right), for an OUTWARD sketch.offset() call."""
     xs = []
     for i in range(coll.count):
         b = coll.item(i).boundingBox

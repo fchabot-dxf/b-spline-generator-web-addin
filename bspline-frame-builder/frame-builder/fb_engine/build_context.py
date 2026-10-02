@@ -25,9 +25,10 @@ class BuildContext:
     sketches     : dict[str, adsk.fusion.Sketch]
     entity_map   : dict[str, dict[str, Any]]
     feature_count: int                      — monotonic counter for unique IDs
-    offset_fallbacks: list[dict]            — H23 item 28: one entry per offset_step() call that
-                                               fell back from the parametric addOffset2 to the
-                                               non-parametric sketch.offset() (see offsets.py);
+    offset_fallbacks: list[dict]            — H23 item 28: one entry per offset_step() call where
+                                               addOffset2 refused a topology change and sketch.
+                                               offset() was used instead (ALSO parametric -- H23
+                                               item 35 correction, see offsets.py's own comment);
                                                the result field a caller/test checks instead of
                                                grepping log text.
     """

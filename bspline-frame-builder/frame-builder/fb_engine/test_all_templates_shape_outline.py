@@ -40,9 +40,10 @@ boundingboxoffset). Three checks:
 3. CONVEX RADIUS VS BAR (H23 item 28: DECLARED known list, enforced): every
    CONVEX arc's radius (its own explicit seed Radius dimension if declared,
    else its 3-point circumcircle) must exceed `frame_thickness` for Fusion's
-   own `addOffset2` to keep the whole enclosure loop parametric
-   (fusion360-quirks, advisor probe C1/C2) -- a radius at or below it
-   silently falls back to a non-parametric, differently-shaped offset.
+   own `addOffset2` to keep the whole enclosure loop's topology unchanged
+   (fusion360-quirks, advisor probe C1/C2) -- a radius at or below it makes
+   `addOffset2` refuse, falling back to a differently-shaped (but still
+   parametric -- H23 item 35 correction) `sketch.offset()` result.
    Convexity is approximated as "does the arc's own via point sit farther
    from the outline's own centroid than its chord's midpoint" (bulges
    outward = convex) -- a reasonable, not exhaustively-verified heuristic.

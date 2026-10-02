@@ -83,9 +83,10 @@ try:
         out.append('  sketch2 WORST deviation %.4f in over %d arcs (vs the 3-point-seed circumcircle)' % (worst, len(arcs)))
     if sk3 is not None:
         out.append('sketch3 arcs=%d lines=%d profiles=%d' % (sk3.sketchCurves.sketchArcs.count, sk3.sketchCurves.sketchLines.count, sk3.profiles.count))
-    # fusion360-quirks: addOffset2 fails the WHOLE loop (logs a WARNING, not an ERROR) when a convex arc's
-    # radius <= the offset distance, falling back to a non-parametric sketch.offset -- count it explicitly.
-    fallback_lines = [l for l in log.lines if 'FALLING BACK' in l.upper() or 'PARAMETRIC FAIL' in l.upper() or 'NON-PARAMETRIC' in l.upper()]
+    # fusion360-quirks: addOffset2 refuses the WHOLE loop (logs INFO, not an error -- H23 item 35
+    # correction: sketch.offset() is ALSO parametric, not a lesser fallback) when a convex arc's
+    # radius <= the offset distance -- count it explicitly.
+    fallback_lines = [l for l in log.lines if 'PARAMETRIC FAIL' in l.upper() or 'OFFSET FALLBACK' in l.upper()]
     errs = [l for l in log.lines if '[ERROR]' in l or ('MITER' in l.upper() and ('FAIL' in l.upper() or 'MISS' in l.upper()))]
     out.append('engine ERRORS: %d' % len(errs)); out.extend('  ' + e[:200] for e in errs[:12])
     out.append('parametric-offset FALLBACKS: %d' % len(fallback_lines)); out.extend('  ' + e[:300] for e in fallback_lines[:5])

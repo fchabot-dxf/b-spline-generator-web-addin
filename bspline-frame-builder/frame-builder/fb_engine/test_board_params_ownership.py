@@ -442,17 +442,19 @@ class TestParametricOffsetCall:
         assert constraint.dimension.parameter.expression == "frame_thickness"
         assert any("OFFSET PARAMETRIC OK" in m for _, m in ctx.logger.entries)
 
-    def test_a_failed_parametric_offset_is_an_error_not_a_warning(self, monkeypatch):
-        # H23 item 28: STABILISE -- the fallback is accepted (Fred: warn only), but it must be
-        # LOUD (ERROR, not a WARNING easy to scroll past) so it's findable without reading every
-        # log line.
+    def test_a_refused_parametric_offset_logs_info_not_an_alarm(self, monkeypatch):
+        # H23 item 28: the fallback is accepted (Fred: warn only) and findable without reading
+        # every log line (ctx.offset_fallbacks, tested below). H23 item 35 CORRECTION: it is also
+        # NOT an error -- MEASURED (fusion360-quirks, 2026-10-02) sketch.offset() creates the same
+        # Offset constraint + dimension addOffset2 does and later edits re-solve it exactly;
+        # addOffset2 only refuses to CREATE an offset whose topology would change. INFO level.
         self._patch(monkeypatch)
         gc = types.SimpleNamespace(createOffsetInput=_boom, addOffset2=None)
         ctx = _ctx()
         result = offsets._try_parametric_offset(ctx, types.SimpleNamespace(geometricConstraints=gc),
                                                 _Coll(["c"]), "frame_thickness", "T1_3")
         assert result is None
-        assert any(level == "ERROR" and "NON-parametric" in m for level, m in ctx.logger.entries)
+        assert any(level == "INFO" and "still parametric" in m for level, m in ctx.logger.entries)
 
 
 class _FakeObjColl:
@@ -475,10 +477,10 @@ class TestOffsetStepFallbackIsLoud:
     """H23 item 28: offset_step()'s own fallback-detection logic (not _try_parametric_offset's
     or _try_sketch_offset's internals, each already covered above / in offsets.py's own tests) --
     a fake-Fusion run through the real offset_step() entry point, proving the NEW result field
-    (ctx.offset_fallbacks) and ERROR log fire together, exactly when the parametric path fails
-    and the non-parametric fallback is about to run. The fallback itself is mocked out (its own
-    behaviour is unchanged by this item and already tested elsewhere) so this test isolates the
-    one thing item 28 actually changed."""
+    (ctx.offset_fallbacks) and an INFO log fire together, exactly when addOffset2 refuses a
+    topology change and sketch.offset() is about to run instead (ALSO parametric -- H23 item 35
+    correction; the fallback itself is mocked out here, its own behaviour unchanged by either item
+    and already tested elsewhere) so this test isolates the one thing item 28 actually changed."""
 
     def _patch(self, monkeypatch, parametric_result=None, sketch_offset_result=None):
         monkeypatch.setattr(offsets.adsk.core, "ObjectCollection",
@@ -495,7 +497,7 @@ class TestOffsetStepFallbackIsLoud:
         ctx.entity_map = {s_name: {sid: types.SimpleNamespace()}}
         return ctx
 
-    def test_fallback_records_a_result_field_entry_and_logs_error(self, monkeypatch):
+    def test_fallback_records_a_result_field_entry_and_logs_info(self, monkeypatch):
         self._patch(monkeypatch)
         s_name = "T1_3"
         ctx = self._ctx_with_curve(s_name, "c1")
@@ -506,7 +508,7 @@ class TestOffsetStepFallbackIsLoud:
 
         assert ctx.offset_fallbacks == [
             {"sketch": s_name, "distance": "frame_thickness", "side": "inward"}]
-        assert any(level == "ERROR" and "OFFSET FALLBACK" in m for level, m in ctx.logger.entries)
+        assert any(level == "INFO" and "OFFSET FALLBACK" in m for level, m in ctx.logger.entries)
 
     def test_no_fallback_entry_when_the_parametric_offset_succeeds(self, monkeypatch):
         ok_result = _FakeObjColl()
