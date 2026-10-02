@@ -47,11 +47,21 @@ const primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y -
 const J = (x) => JSON.stringify(x);
 
 describe('Template 7: listing and declaration', () => {
-  it('is listed as "7. Diamond-top Hourglass", the frame-only diamondTopHourglass preset, 5 bars, no new Fusion parameter', () => {
+  it('is listed as "7. Diamond-top Hourglass", the frame-only diamondTopHourglass preset, 5 bars, no new USER-FACING Fusion parameter', () => {
     expect(T7.name).toBe('Template 7 - Diamond-top Hourglass');
     expect(frameLabel(T7)).toBe('7. Diamond-top Hourglass');
     expect(T7.silhouettePreset).toBe('diamondTopHourglass');
-    expect(T7.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset', 'frame_thickness']);
+    // H23 item 27: the T11 recipe's own exact closed-form seed needs each arc's circle centre/
+    // radius/angular-midpoint as a live Fusion expression; declared as named internal parameters
+    // (template_data.py's own SKETCH_2_PARAMETERS, t7_*) rather than inlined (inlining exploded to
+    // a 170KB expression string) -- NOT user-facing (no Expose, no app-side handle reads them),
+    // so this test's own "no new Fusion parameter" claim is really "no new EXPOSED one": still true.
+    const T7_GEOMETRY_PARAMS = ['t7_dy', 't7_dxn', 't7_r_body', 't7_cbx', 't7_cby', 't7_ux', 't7_uy',
+      't7_vx', 't7_vy', 't7_v_dot_u', 't7_v2', 't7_r_neck', 't7_cnx', 't7_cny', 't7_bbx', 't7_bby',
+      't7_bblen', 't7_via_body_x', 't7_via_body_y', 't7_uex', 't7_uey', 't7_nbx', 't7_nby',
+      't7_nblen', 't7_via_neck_x', 't7_via_neck_y'];
+    expect(T7.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset',
+      ...T7_GEOMETRY_PARAMS, 'frame_thickness']);
     expect(T7.regions.outline).toHaveLength(9);
     expect(T7.regions.outline).toEqual(['proj_roof_R', 'proj_arc_neck_R', 'proj_arc_body_R', 'proj_side_R',
       'proj_bottom_edge', 'proj_side_L', 'proj_arc_body_L', 'proj_arc_neck_L', 'proj_roof_L']);

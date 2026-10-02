@@ -67,7 +67,7 @@ BBO = 0.25
 AXES = {'Y_AXIS', 'X_AXIS'}
 TEMPLATE_IDS = [t['value'] for t in get_available_templates()]
 # H23 item 27: T7's own crossed welds, known and expected until its weld fix lands.
-XFAIL_WELD_ORIENTATION = {'template_7'}
+XFAIL_WELD_ORIENTATION = set()  # H23 item 27: template_7's own fix landed
 
 
 def _all_items(sketch):
@@ -85,10 +85,19 @@ def _projections(sketch):
     return out
 
 
-def _ev_factory(W, H, bbo):
+def _ev_factory(W, H, bbo, sketch=None):
+    """A `Points`-expression evaluator for `sketch` at board (W,H). H23 item 27: also pre-resolves
+    the sketch's own declared `Parameters` (e.g. T7's t7_* circle/via-point chain, template_data.py's
+    own SKETCH_2_PARAMETERS) into the environment IN DECLARATION ORDER first, so a later expression
+    can reference an earlier one by its bare name -- the same two-phase resolution
+    frame_engine._create_skeletal_parameters itself does in the real Fusion build."""
     env = {'widthIn': W, 'heightIn': H, 'boundingboxoffset': bbo,
            'sqrt': math.sqrt, 'abs': abs, 'min': min, 'max': max}
-    return lambda e: eval(re.sub(r'\bin\b', '', e), {"__builtins__": {}}, env)  # noqa: S307 -- controlled strings, test-only
+    ev = lambda e: eval(re.sub(r'\bin\b', '', e), {"__builtins__": {}}, env)  # noqa: S307 -- controlled strings, test-only
+    for p in (sketch or {}).get('Parameters', []) or []:
+        if not p.get('ReadOnly') and isinstance(p.get('Val'), str):
+            env[p['Name']] = ev(p['Val'])
+    return ev
 
 
 def _circumcircle(p0, p1, p2):
@@ -105,7 +114,7 @@ def _circumcircle(p0, p1, p2):
 def _entity_candidates(t, sketch, W, H, bbo):
     """{id -> {'S','E','altS','altE','C'}} for every Line/Arc3Point in `sketch`, plus every id a
     Projections block pulls in from another sketch (a point has no S/E ambiguity: S==E==alt)."""
-    ev = _ev_factory(W, H, bbo)
+    ev = _ev_factory(W, H, bbo, sketch)
     items = _all_items(sketch)
     cand = {}
     for it in items:
@@ -199,14 +208,14 @@ def test_weld_orientation_every_coincident_picks_the_nearer_candidate(tid, W, H)
 # ---------------------------------------------------------------------------
 # Templates whose own docstrings declare an EXACT closed-form seed contract (no seed Radius, no
 # nudges) -- these alone are held to a tight tolerance; every other template is report-only.
-EXACT_SEED_TEMPLATES = set()  # H23 item 27: template_7 joins this set once its own fix lands
+EXACT_SEED_TEMPLATES = {'template_7'}  # H23 item 27: its own fix landed -- exact closed-form seed
 
 
 @pytest.mark.parametrize("tid", TEMPLATE_IDS)
 def test_seed_midpoint_report(tid, capsys):
     t, sk = _shape_outline_sketch(tid)
     arcs = [it for it in _all_items(sk) if it.get('Type') == 'Arc3Point']
-    ev = _ev_factory(7, 9, BBO)
+    ev = _ev_factory(7, 9, BBO, sk)
     worst_deg = 0.0
     for it in arcs:
         p = [(ev(x), ev(y)) for x, y in it['Points']]
@@ -249,7 +258,7 @@ def test_convex_radius_vs_frame_thickness_report(tid, capsys):
     ft_default = ft_param['Val'] if ft_param else 0.75
     findings = []
     for (W, H) in BOARDS:
-        ev = _ev_factory(W, H, BBO)
+        ev = _ev_factory(W, H, BBO, sk)
         pts_by_id = {it['ID']: [(ev(x), ev(y)) for x, y in it['Points']] for it in items
                      if it.get('Type') in ('Line', 'Arc3Point') and 'Points' in it}
         all_pts = [pt for pts in pts_by_id.values() for pt in pts]

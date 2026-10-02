@@ -41,10 +41,46 @@ SKETCH_1_PARAMETERS = [
 ]
 
 SKETCH_2_LABEL = "Shape Outline"
+# H23 item 27: the T11 recipe needs each arc's TRUE circle centre/radius/angular-midpoint as a live
+# Fusion expression (not a baked decimal -- the same bug T8's own amendment already guards against).
+# Declared here as NAMED parameters (not inlined) because inlining this chain directly exploded to a
+# 170KB expression string for the deepest one -- each param below references only PRIOR bare names,
+# the normal way a parametric CAD model avoids re-expanding a long dependency chain. Mechanically
+# transliterated from fb_engine/t7_geometry.py's own t7_outline() (dy, dxN, r_body, C_body, the two
+# arcs' own unit end-vectors, r_neck, C_neck, each arc's own bisector-of-end-directions via point),
+# verified against that already-tested function at 5 board sizes (every centre/radius exact to 1e-6,
+# both via points exactly on their own circle) before being trusted here -- see this session's own
+# scratchpad t7_fix_derivation_VALIDATED.py / derive_t7_params.py for the derivation + the check.
+# No ck_* gates: T7 has no skeleton pins and no independently-toggleable weld (unlike T1/T8's
+# pinch arcs) - every constraint here is load-bearing for the one S-curve solve, and a gate
+# would be a new template parameter (Fred's rule).
 SKETCH_2_PARAMETERS = [
-    # No ck_* gates: T7 has no skeleton pins and no independently-toggleable weld (unlike T1/T8's
-    # pinch arcs) - every constraint here is load-bearing for the one S-curve solve, and a gate
-    # would be a new template parameter (Fred's rule).
+    {"Name": "t7_dy", "Label": "t7_dy", "Category": "T7 Geometry (H23 item 27)", "Val": "(((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) - (((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.28 - (heightIn/2 - boundingboxoffset)))", "Unit": "in"},
+    {"Name": "t7_dxn", "Label": "t7_dxn", "Category": "T7 Geometry (H23 item 27)", "Val": "(max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) - (widthIn/2 - boundingboxoffset)", "Unit": "in"},
+    {"Name": "t7_r_body", "Label": "t7_r_body", "Category": "T7 Geometry (H23 item 27)", "Val": "-(t7_dxn*t7_dxn + t7_dy*t7_dy) / (2*t7_dxn)", "Unit": "in"},
+    {"Name": "t7_cbx", "Label": "t7_cbx", "Category": "T7 Geometry (H23 item 27)", "Val": "(widthIn/2 - boundingboxoffset) - t7_r_body", "Unit": "in"},
+    {"Name": "t7_cby", "Label": "t7_cby", "Category": "T7 Geometry (H23 item 27)", "Val": "((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.28 - (heightIn/2 - boundingboxoffset))", "Unit": "in"},
+    {"Name": "t7_ux", "Label": "t7_ux", "Category": "T7 Geometry (H23 item 27)", "Val": "((max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) - t7_cbx) / t7_r_body", "Unit": "in"},
+    {"Name": "t7_uy", "Label": "t7_uy", "Category": "T7 Geometry (H23 item 27)", "Val": "((((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) - t7_cby) / t7_r_body", "Unit": "in"},
+    {"Name": "t7_vx", "Label": "t7_vx", "Category": "T7 Geometry (H23 item 27)", "Val": "(max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) - (min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))", "Unit": "in"},
+    {"Name": "t7_vy", "Label": "t7_vy", "Category": "T7 Geometry (H23 item 27)", "Val": "(((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) - ((heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))", "Unit": "in"},
+    {"Name": "t7_v_dot_u", "Label": "t7_v_dot_u", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_vx*t7_ux + t7_vy*t7_uy", "Unit": "in"},
+    {"Name": "t7_v2", "Label": "t7_v2", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_vx*t7_vx + t7_vy*t7_vy", "Unit": "in"},
+    {"Name": "t7_r_neck", "Label": "t7_r_neck", "Category": "T7 Geometry (H23 item 27)", "Val": "-t7_v2 / (2*t7_v_dot_u)", "Unit": "in"},
+    {"Name": "t7_cnx", "Label": "t7_cnx", "Category": "T7 Geometry (H23 item 27)", "Val": "(max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) + t7_r_neck*t7_ux", "Unit": "in"},
+    {"Name": "t7_cny", "Label": "t7_cny", "Category": "T7 Geometry (H23 item 27)", "Val": "(((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) + t7_r_neck*t7_uy", "Unit": "in"},
+    {"Name": "t7_bbx", "Label": "t7_bbx", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_ux + 1", "Unit": "in"},
+    {"Name": "t7_bby", "Label": "t7_bby", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_uy", "Unit": "in"},
+    {"Name": "t7_bblen", "Label": "t7_bblen", "Category": "T7 Geometry (H23 item 27)", "Val": "sqrt(t7_bbx*t7_bbx + t7_bby*t7_bby)", "Unit": "in"},
+    {"Name": "t7_via_body_x", "Label": "t7_via_body_x", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_cbx + t7_r_body*(t7_bbx/t7_bblen)", "Unit": "in"},
+    {"Name": "t7_via_body_y", "Label": "t7_via_body_y", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_cby + t7_r_body*(t7_bby/t7_bblen)", "Unit": "in"},
+    {"Name": "t7_uex", "Label": "t7_uex", "Category": "T7 Geometry (H23 item 27)", "Val": "((min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))) - t7_cnx) / t7_r_neck", "Unit": "in"},
+    {"Name": "t7_uey", "Label": "t7_uey", "Category": "T7 Geometry (H23 item 27)", "Val": "(((heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))) - t7_cny) / t7_r_neck", "Unit": "in"},
+    {"Name": "t7_nbx", "Label": "t7_nbx", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_uex - t7_ux", "Unit": "in"},
+    {"Name": "t7_nby", "Label": "t7_nby", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_uey - t7_uy", "Unit": "in"},
+    {"Name": "t7_nblen", "Label": "t7_nblen", "Category": "T7 Geometry (H23 item 27)", "Val": "sqrt(t7_nbx*t7_nbx + t7_nby*t7_nby)", "Unit": "in"},
+    {"Name": "t7_via_neck_x", "Label": "t7_via_neck_x", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_cnx + t7_r_neck*(t7_nbx/t7_nblen)", "Unit": "in"},
+    {"Name": "t7_via_neck_y", "Label": "t7_via_neck_y", "Category": "T7 Geometry (H23 item 27)", "Val": "t7_cny + t7_r_neck*(t7_nby/t7_nblen)", "Unit": "in"},
 ]
 
 SKETCH_3_LABEL = "Frame Enclosure"

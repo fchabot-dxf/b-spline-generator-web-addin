@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "f0d286815852c458620a7561a06ea335b030293df81d326a827b5d48d2b17949",
+  "sourceHash": "9221c4ca25f59af734df3ba06421a6d5cbd0e8401ad751be398e8817dc4650b0",
   "templates": [
     {
       "features": [
@@ -10786,6 +10786,214 @@ export default {
           "unit": "in"
         },
         {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "(((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) - (((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.28 - (heightIn/2 - boundingboxoffset)))",
+          "label": "t7_dy",
+          "name": "t7_dy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "(max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) - (widthIn/2 - boundingboxoffset)",
+          "label": "t7_dxn",
+          "name": "t7_dxn",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "-(t7_dxn*t7_dxn + t7_dy*t7_dy) / (2*t7_dxn)",
+          "label": "t7_r_body",
+          "name": "t7_r_body",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "(widthIn/2 - boundingboxoffset) - t7_r_body",
+          "label": "t7_cbx",
+          "name": "t7_cbx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.28 - (heightIn/2 - boundingboxoffset))",
+          "label": "t7_cby",
+          "name": "t7_cby",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "((max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) - t7_cbx) / t7_r_body",
+          "label": "t7_ux",
+          "name": "t7_ux",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "((((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) - t7_cby) / t7_r_body",
+          "label": "t7_uy",
+          "name": "t7_uy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "(max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) - (min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))",
+          "label": "t7_vx",
+          "name": "t7_vx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "(((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) - ((heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))",
+          "label": "t7_vy",
+          "name": "t7_vy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_vx*t7_ux + t7_vy*t7_uy",
+          "label": "t7_v_dot_u",
+          "name": "t7_v_dot_u",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_vx*t7_vx + t7_vy*t7_vy",
+          "label": "t7_v2",
+          "name": "t7_v2",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "-t7_v2 / (2*t7_v_dot_u)",
+          "label": "t7_r_neck",
+          "name": "t7_r_neck",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "(max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) + t7_r_neck*t7_ux",
+          "label": "t7_cnx",
+          "name": "t7_cnx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "(((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) + t7_r_neck*t7_uy",
+          "label": "t7_cny",
+          "name": "t7_cny",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_ux + 1",
+          "label": "t7_bbx",
+          "name": "t7_bbx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_uy",
+          "label": "t7_bby",
+          "name": "t7_bby",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "sqrt(t7_bbx*t7_bbx + t7_bby*t7_bby)",
+          "label": "t7_bblen",
+          "name": "t7_bblen",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_cbx + t7_r_body*(t7_bbx/t7_bblen)",
+          "label": "t7_via_body_x",
+          "name": "t7_via_body_x",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_cby + t7_r_body*(t7_bby/t7_bblen)",
+          "label": "t7_via_body_y",
+          "name": "t7_via_body_y",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "((min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))) - t7_cnx) / t7_r_neck",
+          "label": "t7_uex",
+          "name": "t7_uex",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "(((heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))) - t7_cny) / t7_r_neck",
+          "label": "t7_uey",
+          "name": "t7_uey",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_uex - t7_ux",
+          "label": "t7_nbx",
+          "name": "t7_nbx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_uey - t7_uy",
+          "label": "t7_nby",
+          "name": "t7_nby",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "sqrt(t7_nbx*t7_nbx + t7_nby*t7_nby)",
+          "label": "t7_nblen",
+          "name": "t7_nblen",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_cnx + t7_r_neck*(t7_nbx/t7_nblen)",
+          "label": "t7_via_neck_x",
+          "name": "t7_via_neck_x",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T7 Geometry (H23 item 27)",
+          "default": "t7_cny + t7_r_neck*(t7_nby/t7_nblen)",
+          "label": "t7_via_neck_y",
+          "name": "t7_via_neck_y",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
           "category": "Frame Spec",
           "default": 0.75,
           "expose": true,
@@ -11199,8 +11407,8 @@ export default {
                       "(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
                     ],
                     [
-                      "((min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) + max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70))/2 - 0.15*(min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - (max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70))))",
-                      "(((((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.82 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))/2)"
+                      "t7_via_neck_x",
+                      "t7_via_neck_y"
                     ],
                     [
                       "max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70)",
@@ -11211,22 +11419,16 @@ export default {
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "1.5 * (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))",
-                  "Name": "seed_rad_neck_R",
-                  "Target": "arc_neck_R",
-                  "Type": "Radius"
-                },
-                {
                   "EndID": "arc_body_R:E",
                   "ID": "arc_body_R",
                   "Points": [
                     [
                       "max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70)",
-                      "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.82 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - 0.001"
+                      "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.82 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
                     ],
                     [
-                      "(((max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70)) + ((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))/2 + 0.15*(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70))))",
-                      "(((((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.82 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.28 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))/2)"
+                      "t7_via_body_x",
+                      "t7_via_body_y"
                     ],
                     [
                       "((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
@@ -11237,18 +11439,12 @@ export default {
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "1.5 * (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))",
-                  "Name": "seed_rad_body_R",
-                  "Target": "arc_body_R",
-                  "Type": "Radius"
-                },
-                {
                   "EndID": "side_R:E",
                   "ID": "side_R",
                   "Points": [
                     [
                       "((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
-                      "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.28 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - 0.001"
+                      "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.28 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
                     ],
                     [
                       "((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
@@ -11263,11 +11459,11 @@ export default {
                   "ID": "bottom_edge",
                   "Points": [
                     [
-                      "((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.001",
+                      "((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
                       "-(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
                     ],
                     [
-                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.001",
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
                       "-(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
                     ]
                   ],
@@ -11279,12 +11475,12 @@ export default {
                   "ID": "side_L",
                   "Points": [
                     [
-                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) + 0.001",
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)",
                       "-(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
                     ],
                     [
                       "-(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))",
-                      "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.28 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - 0.002"
+                      "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.28 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
                     ]
                   ],
                   "StartID": "side_L:S",
@@ -11299,22 +11495,16 @@ export default {
                       "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.28 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
                     ],
                     [
-                      "-((((max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70)) + ((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))/2 + 0.15*(((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - (max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70)))))",
-                      "(((((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.82 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.28 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))/2)"
+                      "-(t7_via_body_x)",
+                      "t7_via_body_y"
                     ],
                     [
                       "-(max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70))",
-                      "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.82 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - 0.002"
+                      "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.82 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
                     ]
                   ],
                   "StartID": "arc_body_L:S",
                   "Type": "Arc3Point"
-                },
-                {
-                  "Expression": "1.5 * (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))",
-                  "Name": "seed_rad_body_L",
-                  "Target": "arc_body_L",
-                  "Type": "Radius"
                 },
                 {
                   "EndID": "arc_neck_L:E",
@@ -11325,8 +11515,8 @@ export default {
                       "((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.82 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))"
                     ],
                     [
-                      "-(((min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) + max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70))/2 - 0.15*(min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)) - (max(0.50*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))*0.70)))))",
-                      "(((((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + (((2*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))*0.82 - ((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))))/2)"
+                      "-(t7_via_neck_x)",
+                      "t7_via_neck_y"
                     ],
                     [
                       "-(min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))",
@@ -11337,22 +11527,16 @@ export default {
                   "Type": "Arc3Point"
                 },
                 {
-                  "Expression": "1.5 * (((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))",
-                  "Name": "seed_rad_neck_L",
-                  "Target": "arc_neck_L",
-                  "Type": "Radius"
-                },
-                {
                   "EndID": "roof_L:E",
                   "ID": "roof_L",
                   "Points": [
                     [
                       "-(min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))",
-                      "(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset))) + 0.001"
+                      "(((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - min(0.62*((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset), 0.84*((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)))"
                     ],
                     [
-                      "0.001",
-                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset) - 0.001"
+                      "0",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - boundingboxoffset)"
                     ]
                   ],
                   "StartID": "roof_L:S",
@@ -11385,14 +11569,14 @@ export default {
                   "Name": "neck_body_weld_R",
                   "Targets": [
                     "arc_neck_R:E",
-                    "arc_body_R:S"
+                    "arc_body_R:E"
                   ],
                   "Type": "Coincident"
                 },
                 {
                   "Name": "body_line_weld_R",
                   "Targets": [
-                    "arc_body_R:E",
+                    "arc_body_R:S",
                     "side_R:S"
                   ],
                   "Type": "Coincident"
@@ -11431,14 +11615,14 @@ export default {
                   "Name": "body_line_weld_L",
                   "Targets": [
                     "side_L:E",
-                    "arc_body_L:S"
+                    "arc_body_L:E"
                   ],
                   "Type": "Coincident"
                 },
                 {
                   "Name": "neck_body_weld_L",
                   "Targets": [
-                    "arc_body_L:E",
+                    "arc_body_L:S",
                     "arc_neck_L:S"
                   ],
                   "Type": "Coincident"
@@ -11494,22 +11678,6 @@ export default {
             {
               "BuildSequence": [
                 {
-                  "Name": "seed_rad_neck_R",
-                  "Type": "DeleteDimension"
-                },
-                {
-                  "Name": "seed_rad_body_R",
-                  "Type": "DeleteDimension"
-                },
-                {
-                  "Name": "seed_rad_body_L",
-                  "Type": "DeleteDimension"
-                },
-                {
-                  "Name": "seed_rad_neck_L",
-                  "Type": "DeleteDimension"
-                },
-                {
                   "Type": "Pulse"
                 }
               ],
@@ -11520,7 +11688,190 @@ export default {
           ],
           "Label": "Shape Outline",
           "Name": "2_shape_outline",
-          "Parameters": []
+          "Parameters": [
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_dy",
+              "Name": "t7_dy",
+              "Unit": "in",
+              "Val": "(((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) - (((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.28 - (heightIn/2 - boundingboxoffset)))"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_dxn",
+              "Name": "t7_dxn",
+              "Unit": "in",
+              "Val": "(max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) - (widthIn/2 - boundingboxoffset)"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_r_body",
+              "Name": "t7_r_body",
+              "Unit": "in",
+              "Val": "-(t7_dxn*t7_dxn + t7_dy*t7_dy) / (2*t7_dxn)"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_cbx",
+              "Name": "t7_cbx",
+              "Unit": "in",
+              "Val": "(widthIn/2 - boundingboxoffset) - t7_r_body"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_cby",
+              "Name": "t7_cby",
+              "Unit": "in",
+              "Val": "((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.28 - (heightIn/2 - boundingboxoffset))"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_ux",
+              "Name": "t7_ux",
+              "Unit": "in",
+              "Val": "((max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) - t7_cbx) / t7_r_body"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_uy",
+              "Name": "t7_uy",
+              "Unit": "in",
+              "Val": "((((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) - t7_cby) / t7_r_body"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_vx",
+              "Name": "t7_vx",
+              "Unit": "in",
+              "Val": "(max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) - (min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_vy",
+              "Name": "t7_vy",
+              "Unit": "in",
+              "Val": "(((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) - ((heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_v_dot_u",
+              "Name": "t7_v_dot_u",
+              "Unit": "in",
+              "Val": "t7_vx*t7_ux + t7_vy*t7_uy"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_v2",
+              "Name": "t7_v2",
+              "Unit": "in",
+              "Val": "t7_vx*t7_vx + t7_vy*t7_vy"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_r_neck",
+              "Name": "t7_r_neck",
+              "Unit": "in",
+              "Val": "-t7_v2 / (2*t7_v_dot_u)"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_cnx",
+              "Name": "t7_cnx",
+              "Unit": "in",
+              "Val": "(max(0.50*(widthIn/2 - boundingboxoffset), min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))*0.70)) + t7_r_neck*t7_ux"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_cny",
+              "Name": "t7_cny",
+              "Unit": "in",
+              "Val": "(((2*(heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset)))*0.82 - (heightIn/2 - boundingboxoffset))) + t7_r_neck*t7_uy"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_bbx",
+              "Name": "t7_bbx",
+              "Unit": "in",
+              "Val": "t7_ux + 1"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_bby",
+              "Name": "t7_bby",
+              "Unit": "in",
+              "Val": "t7_uy"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_bblen",
+              "Name": "t7_bblen",
+              "Unit": "in",
+              "Val": "sqrt(t7_bbx*t7_bbx + t7_bby*t7_bby)"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_via_body_x",
+              "Name": "t7_via_body_x",
+              "Unit": "in",
+              "Val": "t7_cbx + t7_r_body*(t7_bbx/t7_bblen)"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_via_body_y",
+              "Name": "t7_via_body_y",
+              "Unit": "in",
+              "Val": "t7_cby + t7_r_body*(t7_bby/t7_bblen)"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_uex",
+              "Name": "t7_uex",
+              "Unit": "in",
+              "Val": "((min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))) - t7_cnx) / t7_r_neck"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_uey",
+              "Name": "t7_uey",
+              "Unit": "in",
+              "Val": "(((heightIn/2 - boundingboxoffset) - min(0.62*(widthIn/2 - boundingboxoffset), 0.84*(heightIn/2 - boundingboxoffset))) - t7_cny) / t7_r_neck"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_nbx",
+              "Name": "t7_nbx",
+              "Unit": "in",
+              "Val": "t7_uex - t7_ux"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_nby",
+              "Name": "t7_nby",
+              "Unit": "in",
+              "Val": "t7_uey - t7_uy"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_nblen",
+              "Name": "t7_nblen",
+              "Unit": "in",
+              "Val": "sqrt(t7_nbx*t7_nbx + t7_nby*t7_nby)"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_via_neck_x",
+              "Name": "t7_via_neck_x",
+              "Unit": "in",
+              "Val": "t7_cnx + t7_r_neck*(t7_nbx/t7_nblen)"
+            },
+            {
+              "Category": "T7 Geometry (H23 item 27)",
+              "Label": "t7_via_neck_y",
+              "Name": "t7_via_neck_y",
+              "Unit": "in",
+              "Val": "t7_cny + t7_r_neck*(t7_nby/t7_nblen)"
+            }
+          ]
         },
         {
           "Blocks": [
