@@ -64,6 +64,7 @@ parametrised test over all templates (discover them the way gen_frame_defs does)
 2. **Seed midpoint:** each Arc3Point's middle point lies on the circle through its ends at the angular midpoint
    of the intended (minor unless declared major) branch -- REPORT (xfail with the measured offset), don't fail,
    for templates whose hint-seeds still build correctly live today; T7/T11 must pass.
+3. **Convex radius vs bar (advisor probe C1/C2, 2026-10-02, fusion360-quirks):** every CONVEX arc radius of each template's DEFAULT outline must exceed frame_thickness at 6x9/7x9/9x12. At or below it, Fusion's addOffset2 refuses the whole enclosure loop and the engine silently falls back to a non-parametric offset with fewer curves (T11 7x9: shoulder/hip 0.715 < 0.75 -> 9 curves instead of 13; very likely T10 item 21's same root). Report every template/size that fails; don't change shapes here -- the advisor decides per template.
 Expected: T7 fails check 1 until its weld fix lands (that's the point). List every other failure in the pass note
 with the exact template/weld -- fix the ones that are clearly crossed welds, ask before touching anything that's
 live-verified today (T1-T6, T8, T10).
@@ -119,4 +120,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-24] SEND DELETES ANOTHER DOCUMENT'S B-SPLINE SET: `_remove_last_import` deletes the in-memory `last_imported_occurrences` from whatever doc last imported; find the previous import by tag in the ACTIVE design only. Fake-Fusion two-document test (mutation-tested) + live two-doc check. Commit as 'H23 item 24: ...'.
 - [ ] [H23-item-25] UN-HIDE TEMPLATE 10: FRAME_HIDDEN = False, regen, full suite + --check, picker + 7x9 Generate shots. Commit as 'H23 item 25: ...'.
 - [ ] [H23-item-26] FrameBuilder() WITHOUT external_logger CRASHES: frame_engine.py:133 uses the logger instance instead of fb_logger. One line + test. Commit as 'H23 item 26: ...'.
-- [ ] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11; PLUS one all-template test: weld orientation (CCW rule) + seed-midpoint report. Commit as 'H23 item 27: ...'.
+- [ ] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11; PLUS one all-template test: weld orientation (CCW rule) + seed-midpoint report + convex radius > bar report. Commit as 'H23 item 27: ...'.
