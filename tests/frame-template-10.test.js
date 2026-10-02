@@ -322,7 +322,8 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
         for (const p of prof.primitives) if (p.type === 'A') expect(Math.abs(p.dTheta), `${W}x${H} seed ${seed}`).toBeLessThan(Math.PI);
       }
     }
-  });
+  }, 30000); // H23 item 31: measured ~3.2s unloaded (3 boards x 500 seeds); timed out at the 5s default
+  // under concurrent full-suite load (H23 items 18/29) -- explicit headroom, not fewer seeds checked.
 
   it('the Fusion seeds: the arch seeded as an arc (S, apex, E), the sides as Template 1\'s own', () => {
     const prof = profile({ archRise: 0.2 });
