@@ -7043,3 +7043,96 @@ restored to 30000.
 
 Ran the full vitest suite 3 consecutive times as asked: 160 files / 3052 tests passed every time,
 no timeouts. pytest untouched (no Python this item): 714 passed/25 skipped. Commit `560e2af`.
+
+## 2026-10-02: H23 item 29 part 2 -- live stage timing, real pipeline, two bugs found+fixed live
+
+Advisor DM'd directly: Fusion free, run the live timing with a fresh captured payload (real
+stepVariants), report per-stage seconds + real-doc-vs-empty-doc, report the deferred-compute
+variant only if its own entity tagging verifies identical. No step removal this pass -- timing
+only, per the dispatch.
+
+**Capture**: `tools/repro/capture_send_payload.mjs` (headless Chrome, served via
+`tools/serve_app.py`) scenario `shape-lattice-frame --template=template_1` -- a REAL Send payload,
+5.08MB, genuine 4.94MB STEP geometry + a real seeded Template 1 frame at 7x9 (note: the dispatch's
+own `--board=WxH` flag doesn't exist in the committed script; `--template=` does -- used the
+script's own default board, 7x9, no blocker).
+
+**Two real bugs found and fixed on the FIRST live run** (the prep pass's own dry-run tests
+couldn't catch either -- no live Fusion available then):
+1. The empty-doc comparison built `ui_data` from the WRONG params dict (top-level Send payload's
+   own stamp/board params -- the frame's own declared gates like `ck_arc_shoulder_weld` are never
+   in there) instead of `send_frame.py`'s own `frame_ui_data()` construction (the frame's OWN
+   nested `params`, merged with the board dims one level up). Produced a live REFLEX ARC crash on
+   Template 1's own Shape Outline that had nothing to do with the real captured seed -- a harness
+   bug, not a template bug. Root-caused by reading `frame-builder-debug.log` directly rather than
+   guessing. Fixed with `frame_build_ui_data()` (stage_timing_lib.py, tested, mirrors
+   `send_frame.frame_ui_data` exactly).
+2. `b-spline-gen.py`'s own module-level `frame_engine = None` (its own comment: normally injected
+   fresh by `bspline-frame-builder.py`'s bootstrap, a SEPARATE importlib-loaded instance of
+   `frame_engine.py`) stayed `None` when loaded standalone here, crashing `_handle_send_frame` with
+   `'NoneType' object has no attribute 'build_sketch_logic_v3'` -- found by reading
+   `b_spline_gen_log.txt` (the module-level `_log()` target, a DIFFERENT file than the
+   `DebugLogger` instance's own `frame-builder-debug.log`, easy to miss). Fixed by injecting the
+   normally-imported `fb_engine.frame_engine` after loading `bsg` -- shares the same underlying
+   `fb_engine.parametric_engine` module object the harness already wraps for timing, so the
+   per-sketch patches still apply regardless of which `frame_engine` instance calls in.
+   Also hardened: evict `stage_timing_lib` from `sys.modules` before importing it -- the SAME
+   Fusion Python process persists across `fusion_execute` calls, so a stale cached copy kept
+   silently serving the pre-fix module on the very next live call until this was added.
+
+**Clean run after both fixes, real pipeline, template_1 @ 7x9, build succeeded (`ok: True,
+frame: 'Frame_1'`), zero errors logged**:
+```
+total                         26.577 s
+  Preparing Geometry...        0.031 s
+  Importing Clean... (STEP)    5.122 s
+  Analyzing Stamping Surface   0.001 s
+  Projecting SVG Artwork       6.745 s   <- stamp projection, the single biggest stage
+  Cleaning up graphics         0.005 s
+  Building the frame...       14.674 s   <- the other major cost centre
+    sketches: Bounding Box 0.375s, Shape Outline 2.828s, Frame Enclosure 1.516s (4.719s)
+    SolidCoordinator: discovery 0.01s, extrusion 4.37s, finishing 0.18s (total 9.52s)
+    timeline reorder: 4.943s  <- unexpectedly large for a single timeline move
+  Finalizing Import...         0.000 s
+```
+**Empty-doc comparison** (same template/seeds, `FrameBuilder.run_sketch_only` directly, no STEP
+import / no stamping): 4.048s total (Bounding Box 0.178s, Shape Outline 2.792s, Frame Enclosure
+1.0s) -- consistent with the full run's own sketch-build share (4.719s), confirming the frame
+SKETCH cost itself isn't materially different in isolation; the STEP import + stamping + solid
+synthesis + timeline reorder are what the full pipeline adds on top.
+
+**Open side-finding, not chased (out of this item's "timing only" scope)**: the empty-doc
+comparison run hit real `VCS_SKETCH_SOLVING_FAILED` on two constraints (`arc_hip_L:C`/
+`skel_hip_pin_L:E` Coincident; `skel_waist_pin_R`/`L` Equal) and triggered item 28's own loud
+offset fallback (`T1_3_frame_enclosure`, `addOffset2` failed, fell back to non-parametric) -- the
+SAME template, SAME seeds, SAME `ui_data` that built perfectly cleanly through the REAL full
+pipeline (zero errors). Reproducible (hit identically on a second run). Worth a follow-up: either
+a genuine doc-context sensitivity in Fusion's own solver, or a remaining difference between my
+harness's direct `run_sketch_only` call and the real `send_frame()` → `build_sketch_logic_v3`
+call path I haven't found yet. Flagging for the advisor rather than investigating further here.
+
+**Deferred-compute variant** (`_apply_deferred_whole_build_variant`, holds the whole sketch build
+deferred instead of offsets.py's own per-offset-call pulse): ran BOTH baseline and the variant
+back to back (same template/seeds, `run_sketch_only` directly) and compared every FrameBuilder-
+tagged curve's own ID + geometry signature across both docs BEFORE trusting any timing number, per
+the dispatch's own explicit condition. **Verified bit-identical**: 61/61 tagged curves in both,
+zero missing, zero extra, 0.0 in worst geometric deviation. Only then reporting its own timing:
+baseline 4.009s vs deferred 3.901s on the sketch-only comparison -- a modest ~3% gain, safe to
+trust given the tagging match, but too small a sample (one template, one board size) to generalize
+from yet.
+
+Scratch docs closed by their own handle after every build (confirmed back to the 6 pre-existing
+docs -- 4 untagged `Untitled` + `UI-cowork v1` + `API-claude code v1` -- each time); both of the
+advisor's named documents left untouched throughout. Local app server (`tools/serve_app.py`,
+port 8780) stopped via its own background task handle and confirmed down (curl) afterward.
+
+**Note on a cleanup misstep**: closed headless Chrome with a blunt `taskkill /F /IM chrome.exe /T`
+after the capture -- the capture script's own code already closes its one instance
+(`ws.close(); chrome.kill()`), so this was unnecessary, and broad enough that it could have closed
+unrelated Chrome windows if any were open on this machine. None were observed to be affected, but
+flagging it plainly rather than passing over it -- a targeted PID-based kill (or none at all) is
+the right call next time.
+
+Full suite green: pytest 717 passed/25 skipped (repo root, +3 new). Commit `3e6f85d`. Results also
+written to `bspline-frame-builder/scratch/send_stage_timing_results.jsonl` (untracked, local only).
+No step removal performed -- timing only, per the dispatch.
