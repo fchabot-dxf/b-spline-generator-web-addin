@@ -209,10 +209,13 @@ FRAME_SEED_MAP = [
     {"id": "arc_body_L", "kind": "arc",  "prim": 6, "reverse": False},
     {"id": "arc_neck_L", "kind": "arc",  "prim": 7, "reverse": False},
     {"id": "roof_L",     "kind": "line", "prim": 8, "reverse": False},
-    {"id": "seed_rad_neck_R", "kind": "radius", "prim": 1},
-    {"id": "seed_rad_body_R", "kind": "radius", "prim": 2},
-    {"id": "seed_rad_body_L", "kind": "radius", "prim": 6},
-    {"id": "seed_rad_neck_L", "kind": "radius", "prim": 7},
+    # H23 item 36 (a regression from item 27): item 27 applied the T11 recipe to p02_02_loop.py --
+    # each arc's via point is now its own TRUE angular midpoint, so the 4 "radius" entries that
+    # used to sit here (seed_rad_neck_R/body_R/body_L/neck_L) no longer name anything: item 27
+    # removed their own Radius blocks from the phases, but left these declarations behind, so every
+    # Send raised SeedGeometryError ("seed(s) not in the template") before the frame engine ever
+    # ran. No "radius" seeds, matching template_11's own seedMap (its own comment): each arc is
+    # seeded by its three points alone.
 ]
 # N-BAR: the common features (bars + trim) with this template's 5 bar names.
 FRAME_FEATURES = frame_features([b["name"] for b in FRAME_BARS])

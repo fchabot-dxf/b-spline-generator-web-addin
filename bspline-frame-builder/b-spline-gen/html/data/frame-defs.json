@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "d261a83199212c9925407c546da2a54dcea15da4b819175d414834a2923076f5",
+  "sourceHash": "575c8aacb0833485303c53e64a724e83600a96d76040ef182cb8bca9c1f80577",
   "templates": [
     {
       "features": [
@@ -15232,26 +15232,6 @@
           "kind": "line",
           "prim": 8,
           "reverse": false
-        },
-        {
-          "id": "seed_rad_neck_R",
-          "kind": "radius",
-          "prim": 1
-        },
-        {
-          "id": "seed_rad_body_R",
-          "kind": "radius",
-          "prim": 2
-        },
-        {
-          "id": "seed_rad_body_L",
-          "kind": "radius",
-          "prim": 6
-        },
-        {
-          "id": "seed_rad_neck_L",
-          "kind": "radius",
-          "prim": 7
         }
       ],
       "shapeModel": {

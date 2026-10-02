@@ -4,7 +4,7 @@ H23 item 27, part 2 (Fred approved): T11's own two pure-python cross-checks
 parametrised suite over EVERY template -- no Fusion needed, operates purely
 on each template's own resolved Sketch 2 (Shape Outline) BuildSequence
 (expression strings -> numbers, substituting widthIn/heightIn/
-boundingboxoffset). Three checks:
+boundingboxoffset). Four checks:
 
 1. WELD ORIENTATION (the real gate -- T7's own bug class). Fusion's SketchArc
    always runs counter-clockwise start->end (fusion360-quirks skill, section
@@ -65,6 +65,15 @@ boundingboxoffset). Three checks:
    LEFT the class (a seed rework, say) prompts pruning the now-stale entry.
    Shape changes to fix an existing entry are still the advisor's own
    per-template call, not this test's.
+
+4. SEED MAP DECLARATIONS (H23 item 36, a regression from item 27): every id a template's own
+   FRAME_SEED_MAP (template_data.py) names must exist as a real BuildSequence step somewhere in
+   that template's own resolved Sketches -- the same `ID` (Line/Arc3Point) or `Name` (Radius) key
+   `fb_engine/seed_geometry.py::apply_seed_geometry` itself matches against at Send time. Item 27
+   removed template_7's own seed Radius dims (the T11 recipe) but left 4 stale "radius" entries in
+   its FRAME_SEED_MAP naming parameters that no longer exist anywhere in its phases -- every Send
+   raised `SeedGeometryError` before the frame engine's own code ever ran. This check catches that
+   whole class across all 13 templates, not just the one that happened to regress.
 """
 import math
 import os
@@ -322,3 +331,38 @@ def test_convex_radius_vs_frame_thickness_known_list(tid, capsys):
         f"{'add to' if has_findings else 'remove'} KNOWN_CONVEX_RADIUS_BELOW_BAR "
         f"{'' if has_findings else 'this stale entry '}(shape fixes are still the advisor's own "
         f"per-template call, not this test's)")
+
+
+# ---------------------------------------------------------------------------
+# Check 4: FRAME_SEED_MAP ids must exist in the template's own phases
+# ---------------------------------------------------------------------------
+# H23 item 36 (a REGRESSION from item 27): item 27 applied the T11 recipe to template_7's Shape
+# Outline (no more seed Radius dims) but left 4 stale "radius" entries in its own FRAME_SEED_MAP
+# (template_data.py) naming parameters that no longer exist anywhere in its phases -- every Send
+# then raised fb_engine.seed_geometry.SeedGeometryError ("seed(s) not in the template") before the
+# frame engine's own code ever ran. apply_seed_geometry() matches a seedMap entry's own `id`
+# against a BuildSequence step's `ID` (Line/Arc3Point) or `Name` (Radius) -- this test walks the
+# SAME two keys the real function does, for every template, so a declaration/implementation drift
+# like item 27's is caught across all 13, not just the one that happened to regress.
+@pytest.mark.parametrize("tid", TEMPLATE_IDS)
+def test_seed_map_ids_exist_in_the_templates_own_phases(tid):
+    t, _ = resolve_template(tid)
+    seed_map = t.get('Frame', {}).get('seedMap', [])
+    line_arc_ids, radius_names = set(), set()
+    for sketch in t.get('Sketches', []):
+        for it in _all_items(sketch):
+            ty = it.get('Type')
+            if ty in ('Line', 'Arc3Point') and 'ID' in it:
+                line_arc_ids.add(it['ID'])
+            elif ty == 'Radius' and 'Name' in it:
+                radius_names.add(it['Name'])
+    missing = []
+    for entry in seed_map:
+        sid = entry.get('id')
+        valid_names = radius_names if entry.get('kind') == 'radius' else line_arc_ids
+        if sid not in valid_names:
+            missing.append(entry)
+    assert missing == [], (
+        f"{tid}: FRAME_SEED_MAP names id(s) with no matching BuildSequence step (ID for "
+        f"Line/Arc3Point, Name for Radius) -- a stale seedMap entry after a phase rework "
+        f"(template_data.py): {missing}")
