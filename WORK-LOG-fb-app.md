@@ -7328,3 +7328,34 @@ as the first build.
 No production change made (per the dispatch). Full suite confirmed untouched: pytest 814
 passed/25 skipped. Passing the pick to the advisor (and Fred, since it changes app behaviour he'll
 see -- an auto-rebuild firing after his own dialog edit).
+
+## 2026-10-02: H23 item 35 -- correction: sketch.offset() is parametric too, wording/log-level only
+
+The advisor measured (fusion360-quirks `a50fbf4`, 2 cases + a constraint inventory):
+`sketch.offset()` creates the SAME `Offset` geometric constraint + `OffsetCurves` dimension
+`addOffset2` does, and driving that dimension re-solves it exactly -- even arcs that vanished at
+the ORIGINAL offset distance come back correctly at a new one. The only real difference: `addOffset2`
+refuses to CREATE an offset whose topology would change; `sketch.offset()` creates it anyway
+(sharp corner where an arc collapsed) and stays linked. My own item 28 wording ("NON-parametric
+fallback", logged at ERROR) was therefore wrong and alarming for entirely normal, Fred-accepted
+behaviour (items 28/30: these cases are warn-only, not a to-do).
+
+No behaviour change (as scoped) -- `offset_step()`'s own fallback mechanism and the
+`offset_fallbacks` result field (tests still use it, unchanged shape) are untouched. Fixed: the
+log level at both sites that report a refusal (`offset_step`'s own fallback-detection log,
+`_try_parametric_offset`'s own except-block log) from ERROR to INFO, and every "non-parametric"/
+"FALLING BACK" wording in `offsets.py`, `build_context.py`'s own `offset_fallbacks` docstring, and
+two `tools/repro/fusion_t11` scripts whose own log-text filters needed the matching substring
+updated (their detection logic still works either way, since "PARAMETRIC FAIL" survives in both
+messages -- fixed for clarity, not because they were broken). Checked `frame_engine.py` as the
+dispatch named it too -- confirmed it has no "non-parametric" wording at all, nothing to fix there.
+
+Renamed the two tests whose own names/assertions described the old (wrong) framing
+(`test_a_failed_parametric_offset_is_an_error_not_a_warning` ->
+`test_a_refused_parametric_offset_logs_info_not_an_alarm`; `..._logs_error` ->
+`..._logs_info`), both independently mutation-tested (reverting just the new wording at each of
+the two log sites makes its own renamed test fail red -- confirmed still exercised, not vacuous
+after the rename).
+
+Full suite unchanged: pytest 814 passed/25 skipped (repo root) -- same count as before this item,
+no tests added or removed, only renamed/reworded. No Fusion needed or used. Commit `b3ba443`.
