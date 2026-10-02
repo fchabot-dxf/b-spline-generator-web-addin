@@ -82,18 +82,24 @@ every tagged curve of sketches 2-3 compared, baseline reproduces itself exactly)
 | Horizontal / Vertical | 2.97 in | - | 4.06 in | 4.04 in | **load-bearing -- keep** |
 *T1 7x9's frame always goes through the silent non-parametric offset fallback, even in the baseline (see below).
 
-Do: (1) remove every `{'Type': 'Pulse'}` step (all templates) -- full suite + gen_frame_defs --check + the A/B
-harness at 7x9/9x12 on two templates showing 'identical'; (2) find WHY removing the nudges moves T10's inner horn by
-2.18 in when its outline is identical (ResolveInnerCorners / miter targeting by position is the suspect) -- report,
-don't remove. Commit 'H23 item 28: ...'.
+**ORDER (Fred): STABILISE FIRST. Pruning for speed is a separate, later item (29) -- do NOT remove any step in item 28.**
 
-**Also in item 28 -- STABILISE the findings (Fred: "stabilise what you found now"), so none can silently regress:**
-(3) make the parametric-offset fallback LOUD: when `offsets.py` falls back from addOffset2 to sketch.offset, record it
+**Item 28 = STABILISE the findings (Fred: "stabilise what you found now"), so none can silently regress:**
+(1) make the parametric-offset fallback LOUD: when `offsets.py` falls back from addOffset2 to sketch.offset, record it
 in the build result (`fit`/send result gets e.g. `offsetFallback: [sketch names]`) and log it at ERROR, not WARNING;
-fake-Fusion test. Don't change the fallback itself. (4) turn item 27 part 2's report-only check 3 into a DECLARED
+fake-Fusion test. Don't change the fallback itself. (2) turn item 27 part 2's report-only check 3 into a DECLARED
 known list: the test asserts the exact set of (template, size) whose convex radius <= frame_thickness equals a
 `KNOWN_CONVEX_RADIUS_BELOW_BAR` declaration (today: T1/T3/T4/T5/T8/T10 at 6x9 + 7x9, plus whatever T7/T11 give) --
 a new template or a shape change that adds one trips the test; fixing one shrinks the list.
+
+## Item 29 -- prune for SPEED (LATER: only after item 28 is merged, and only with timing evidence)
+Fred: "stabilise before focusing on actually pruning with speed intention". First TIME a real Send stage by stage
+(panel import, stamps, each frame sketch, extrusions, trim; replay a captured payload through `_handle_generate`) --
+measured 2026-10-01: the frame part takes ~16 s of a 25 s Send in a real document vs ~1-2 s in an empty one, so the
+cost is per-step recompute next to the heavy panel, not step count alone (try deferring compute across the whole
+build). Then prune where the timing says it pays: Pulse (A/B: identical on T1/T8/T10), and the nudges only once the
+T10 frame dependency (stripping them moves T10's inner horn 2.18 in) is explained. Each removal re-checked with
+`tools/repro/fusion_t11/step_removal_ab.py` on two templates at 7x9 + 9x12.
 
 **Separately, for the advisor + Fred (not this item):** your item 27 part 2 check 3 plus this A/B prove that the
 SHIPPED hourglass templates (T1, T3, T4, T5, T8, T10) at 6x9 and 7x9 have a shoulder/hip radius (0.643) below the bar
@@ -151,4 +157,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-25] UN-HIDE TEMPLATE 10: FRAME_HIDDEN = False, regen, full suite + --check, picker + 7x9 Generate shots. Commit as 'H23 item 25: ...'.
 - [ ] [H23-item-26] FrameBuilder() WITHOUT external_logger CRASHES: frame_engine.py:133 uses the logger instance instead of fb_logger. One line + test. Commit as 'H23 item 26: ...'.
 - [ ] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11; PLUS one all-template test: weld orientation (CCW rule) + seed-midpoint report + convex radius > bar report. Commit as 'H23 item 27: ...'.
-- [ ] [H23-item-28] BUILDING-STEP CLEANUP + STABILISE: remove Pulse everywhere (A/B identical on T1/T8/T10); explain the nudge/T10 frame dependency; make the offset fallback loud (result field + ERROR log + test); convert convex-radius check 3 to a declared known list. Commit as 'H23 item 28: ...'.
+- [ ] [H23-item-28] STABILISE (no pruning): make the offset fallback loud (result field + ERROR log + test); convert convex-radius check 3 to a declared known list. Commit as 'H23 item 28: ...'.
+- [ ] [H23-item-29] PRUNE FOR SPEED (after 28 merges): time a real Send stage by stage, then remove Pulse / explain nudges where timing says it pays, each re-checked with step_removal_ab.py. Commit as 'H23 item 29: ...'. Commit as 'H23 item 28: ...'.
