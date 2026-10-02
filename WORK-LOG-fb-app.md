@@ -6752,3 +6752,67 @@ by its own handle immediately after the crash was captured. Flagging to the advi
 check entirely until the min/max rework lands, and (since T7's roof/eave is explicitly "reused VERBATIM" by
 T11's own docstring) is worth checking against T11's own already-claimed live success too -- either T11 never
 actually exercises this exact code path, or there's something still unexplained there.
+
+## 2026-10-02: H23 item 27 -- T7 LIVE-VERIFIED at 7x9 and 9x12, both exact, 0 errors/fallbacks
+
+Resumed with the advisor's own known-good fix for the min/max blocker (T11's abs-form substitution,
+`min(a,b)=((a+b)-abs(a-b))/2`, `max(a,b)=((a+b)+abs(a-b))/2`): declared `t7_a`/`t7_nx` once each and
+pointed every other `t7_*` expression at them instead of re-inlining `min`/`max` (committed `0c15daf`
+alongside the already-pending `p02_02_loop.py` edit from the prior pass). Full suite green before
+attempting Fusion.
+
+**First live attempt still crashed -- a DIFFERENT, deeper bug, not min/max.** Fusion's own
+`userParameters` `.expression` assignment enforces dimensional consistency against the parameter's
+DECLARED unit, not just syntax: `t7_ux`/`t7_uy` are genuinely dimensionless ratios
+(`(nx-cbx)/r_body`, length/length) but were declared `Unit="in"`; multiplying them against real
+lengths downstream (`t7_v_dot_u`, `t7_cnx`, `t7_cny`) made the expression's own implied dimension
+AREA, mismatching "in", and Fusion rejected the assignment outright -- silently leaving those 4
+params stuck at their birth value 0.0 (the two-step "birth with 0.0, then set .expression" pattern
+swallows the failure), which cascaded into a wildly wrong `neck_R` radius and a reflex-swept arc.
+Root-caused by querying the live document's own `userParameters` directly and noticing Fusion's
+auto-appended `* 1 "` coercion suffix on `t7_ux`'s own (successful) expression -- the tell that a
+dimensionless value was being silently relabelled as a length. Fixed: `t7_ux`/`t7_uy`/`t7_uex`/`t7_uey`
+-> `Unit=""`; `t7_v2` (`vx^2+vy^2`, genuinely AREA, also mis-declared "in") replaced entirely with
+`t7_vlen` (the already-proven `sqrt()`-wrapped pattern `t7_bblen`/`t7_nblen` use) so `t7_r_neck`
+multiplies the length back into an area/length division inline, never needing a named AREA-unit
+parameter. Committed `0c15daf`, full suite green (461 pytest/22 skipped, 2964 vitest).
+
+**Fusion bridge then disconnected on this session** (MCP connection failure, auto-retry backoff) --
+told the advisor "Fusion gap" so seat C's T12/T13 check and the advisor's own probe could go ahead of
+me; reconnected cleanly once the advisor signalled "Fusion free" again.
+
+**Second live attempt found a second instance of the SAME rule, same session**: `t7_bby="t7_uy"` (a
+bare reference to the now-dimensionless `t7_uy`) still failed against its own `Unit="in"` declaration
+-- a bare pass-through of an explicitly-dimensionless parameter is rejected the same way a
+multiplication is, even though `t7_bbx="t7_ux + 1"` (arithmetic on the same dimensionless value) had
+been silently coerced. Fixed the same way: `t7_bbx`/`t7_bby`/`t7_bblen`/`t7_nbx`/`t7_nby`/`t7_nblen`
+(the bisector-vector-component chain, all genuinely unitless until multiplied by `r_body`/`r_neck` in
+`via_body_x/y`/`via_neck_x/y`) -> `Unit=""`. Committed `8431559`. Both dimensional-consistency findings
+logged to `fusion360-quirks` (fred-skills `4109c07`) so nobody re-discovers this class of bug the hard
+way again.
+
+**Live build, both required sizes, through the real engine (`FrameBuilder.run_sketch_only`), zero
+code bypassed:**
+```
+7x9:   body_R r=4.5858 (exp 4.5858, d=+0.0000)   neck_R r=0.6625 (exp 0.6625, d=+0.0000)
+       body_L r=4.5858 (exp 4.5858, d=+0.0000)   neck_L r=0.6625 (exp 0.6625, d=+0.0000)
+       centre deviation 0.0000 in on all 4 arcs; 0 engine errors/fallbacks/miter misses.
+       sketch2: 7 lines, 4 arcs, 1 profile (closed loop). sketch3: 23 lines, 8 arcs, 7 profiles.
+9x12:  body_R r=6.4546 (exp 6.4546, d=-0.0000)   neck_R r=0.9198 (exp 0.9198, d=-0.0000)
+       body_L r=6.4546 (exp 6.4546, d=-0.0000)   neck_L r=0.9198 (exp 0.9198, d=+0.0000)
+       centre deviation 0.0000 in on all 4 arcs; 0 engine errors/fallbacks/miter misses.
+       sketch3: 7 profiles (same topology as 7x9).
+```
+Sketch screenshots at both sizes confirm visually: a clean symmetric gable peak, concave neck pinch,
+convex body flare, no crossed or broken geometry -- `C:/Users/danse/.bspline-status/shots/seatA/
+h23_item27_t7_{7x9,9x12}_live.png`. Both scratch docs closed by their own handle (`HOLD.docs.pop`)
+immediately after their build+readback, confirmed back to the 3 pre-existing untagged docs each time.
+
+**Where this leaves things**: H23 item 27 is DONE -- the T11 weld-orientation recipe applied to T7,
+live-verified exact at both board sizes the item requires, two real Fusion dimensional-consistency
+bugs found and fixed along the way (neither was the item's own original target, both now documented
+for every future template that declares named parameters this way). Full suite: pytest 488
+passed/25 skipped (frame-builder), vitest 3042 passed (160 files, repo-wide) -- includes the T12/T13
+merge that landed mid-pass (`147c6fb`), confirmed no interaction with this template's own files.
+Passing to the advisor with item 28 (stabilise: loud offset fallback + declared convex-radius known
+list) next per its own prior scope note.
