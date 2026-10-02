@@ -270,13 +270,29 @@ def _clear_custom_graphics():
         _log(f'  _clear_custom_graphics failed: {e}')
 
 
+def _in_active_design(des, entity):
+    """True iff `entity` genuinely belongs to `des` -- H23 item 24 (data loss, MEASURED twice live): an
+    Occurrence stays `.isValid` even after a DIFFERENT document becomes active, and `deleteMe()` on it still
+    succeeds, silently deleting the WRONG document's own geometry. `entityToken` is the Fusion API's own
+    document-scoped identity: `des.findEntityByToken(tok)` returns nothing for a token minted in a different
+    design, confirmed live (occurrence from doc A: found in desA, not found in desB)."""
+    try:
+        return bool(des and entity and entity.isValid and des.findEntityByToken(entity.entityToken))
+    except Exception:
+        return False
+
+
 def _remove_last_import():
-    """Delete every occurrence added by the last Apply/generate action."""
+    """Delete every occurrence added by the last Apply/generate action, but ONLY the ones that still belong to
+    the CURRENTLY ACTIVE document -- the in-memory `last_imported_occurrences` / `current_import_group` are
+    document-blind (set by whichever document was active at Send time), so they must never be trusted as the
+    deletion source on their own; each one is checked against the active design first (_in_active_design)."""
     global last_imported_occurrences, current_import_group
-    
+    des = adsk.fusion.Design.cast(app.activeProduct)
+
     if 'current_import_group' in globals() and current_import_group:
         try:
-            if current_import_group.isValid:
+            if _in_active_design(des, current_import_group):
                 current_import_group.deleteMe()
         except Exception: pass
         current_import_group = None
@@ -285,7 +301,7 @@ def _remove_last_import():
         _log(f'Removing {len(last_imported_occurrences)} previous occurrence(s)...')
     for occ in last_imported_occurrences:
         try:
-            if occ.isValid:
+            if _in_active_design(des, occ):
                 occ.deleteMe()
         except Exception as e:
             _log(f'  deleteMe failed: {e}')
@@ -1297,7 +1313,9 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if has_variants:
                 all_newly_added = []
 
-                import_target_comp = current_import_group.component if ('current_import_group' in globals() and current_import_group and current_import_group.isValid) else root_comp
+                # H23 item 24: never target a stale current_import_group from a DIFFERENT document (append/
+                # preview can skip the fresh-group creation above) -- _in_active_design, same guard as deletion.
+                import_target_comp = current_import_group.component if _in_active_design(des, current_import_group) else root_comp
 
                 for vi, variant in enumerate(step_variants):
                     v_name     = variant.get('name', f'Variant_{vi}')
@@ -1407,7 +1425,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 step_options.isViewFit = False
                 comp_name              = filename.replace('.step', '').replace('terrain_preview_', 'Terrain_').replace('_', ' ')
                 
-                import_target_comp = current_import_group.component if (not is_preview and 'current_import_group' in globals() and current_import_group and current_import_group.isValid) else root_comp
+                import_target_comp = current_import_group.component if (not is_preview and _in_active_design(des, current_import_group)) else root_comp
                 initial_count          = import_target_comp.occurrences.count
                 _send_progress("Importing to Fusion...")
                 try:
@@ -1498,7 +1516,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             # the merged components and bucketing produces zero work.
             if not is_preview:
                 try:
-                    if 'current_import_group' in globals() and current_import_group and current_import_group.isValid:
+                    if _in_active_design(des, current_import_group):
                         # Iterate the import target's children. childOccurrences
                         # returns proxies in this occurrence's context (vs.
                         # comp.occurrences which returns natives); the
@@ -1633,7 +1651,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     elif last_imported_occurrences:
                         body_target = last_imported_occurrences[0].component
                         
-                    sketch_target = current_import_group.component if ('current_import_group' in globals() and current_import_group and current_import_group.isValid) else root_comp
+                    sketch_target = current_import_group.component if _in_active_design(des, current_import_group) else root_comp
                     _send_progress('Projecting SVG Artwork...')
                     self._import_all_svg_layers(sketch_target, body_target, stamp_data, orientation, params, des)
                 except Exception as e:
