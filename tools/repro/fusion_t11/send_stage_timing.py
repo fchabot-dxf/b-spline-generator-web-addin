@@ -29,8 +29,10 @@ import adsk.core, adsk.fusion
 _HERE = os.path.join(REPO, 'tools', 'repro', 'fusion_t11')  # no __file__ inside fusion_execute's exec'd string
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
+sys.modules.pop('stage_timing_lib', None)  # same Fusion process across calls: never trust a stale cache of this
 from stage_timing_lib import (
     stage_durations, load_captured_payload, parse_solid_coordinator_phases, unwrap_captured_frame_payload,
+    frame_build_ui_data,
 )
 
 FB = os.path.join(REPO, "bspline-frame-builder", "frame-builder")
@@ -108,6 +110,16 @@ try:
 
     from fb_engine import parametric_engine as pe
     from fb_engine import timeline_order
+    from fb_engine import frame_engine as fe
+    # b-spline-gen.py's own module-level `frame_engine = None` (its own comment: "the add-in root
+    # loads fresh and injects here") is normally wired by bspline-frame-builder.py's bootstrap
+    # (_bs.frame_engine = _engine, a SEPARATE importlib.util-loaded instance of frame_engine.py --
+    # NOT fb_engine.frame_engine). Loading b-spline-gen.py standalone here leaves it None, which
+    # crashed _handle_send_frame's own "'NoneType' object has no attribute 'build_sketch_logic_v3'"
+    # the first time this ran live -- inject the normally-imported fb_engine.frame_engine instead;
+    # it shares the same underlying fb_engine.parametric_engine module object this script already
+    # wraps, so the timing patches still apply regardless of which frame_engine instance calls in.
+    bsg.frame_engine = fe
 
     progress_events = []
     orig_send_progress = bsg._send_progress
@@ -168,13 +180,17 @@ try:
             open(LOG_PATH, encoding='utf-8', errors='replace').read())
 
     # ---- comparison: same frame, fresh EMPTY doc, no STEP import / no stamping ----
-    params = payload.get('params', {}) or {}
     # `payload['frame']` is already unwrapped to its raw pre-send shape above.
     # 'templateId' is send_frame.py's own payload key (fb_engine/send_frame.py:200).
     frame_payload = payload.get('frame') or {}
     style_id = frame_payload.get('templateId')
     if style_id:
-        from fb_engine import frame_engine as fe
+        from fb_engine import send_frame as fb_send_mod
+        from fb_engine.template_resolver import resolve_template
+        template, _prefix = resolve_template(style_id)
+        ui_data = frame_build_ui_data(payload, fb_send_mod.declared_param_names(template))
+        seed_geometry = frame_payload.get('seedGeometry') or None
+
         doc2 = app.documents.add(adsk.core.DocumentTypes.FusionDesignDocumentType)
         des2 = adsk.fusion.Design.cast(app.activeProduct)
         des2.userParameters.add('adv_stage_timing_fp', adsk.core.ValueInput.createByReal(1.0), '', 'adv-stage-timing')
@@ -188,11 +204,17 @@ try:
             return result
 
         pe.ParametricSketchBuilder.build_sketch = timed_build_sketch_empty
+        if os.path.exists(LOG_PATH):
+            open(LOG_PATH, 'w', encoding='utf-8').close()
         t0 = time.time()
         fb = fe.FrameBuilder(external_logger=None)
-        fb.run_sketch_only(style_id=style_id, ui_data=params)
+        fb.run_sketch_only(style_id=style_id, ui_data=ui_data, seed_geometry=seed_geometry)
         out['empty_doc_seconds'] = round(time.time() - t0, 3)
         out['empty_doc_frame_sketches'] = [(lbl, round(d, 3)) for lbl, d in empty_sketch_timings]
+        if os.path.exists(LOG_PATH):
+            empty_log = open(LOG_PATH, encoding='utf-8', errors='replace').read()
+            out['empty_doc_errors'] = [l for l in empty_log.splitlines()
+                                       if '[ERROR]' in l or 'REFLEX' in l.upper()][:5]
         pe.ParametricSketchBuilder.build_sketch = orig_build_sketch
     else:
         out['empty_doc_skipped'] = 'no styleId/templateId in the captured payload\'s frame block'
