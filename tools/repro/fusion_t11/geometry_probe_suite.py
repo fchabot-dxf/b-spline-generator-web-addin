@@ -2,7 +2,8 @@
 # geometry, other arc commands, constraints, and compare expected result").
 # Run inside Fusion via fusion_execute:  REPO = r'<checkout>'; TESTS = ['A1', ...];
 #   PTS9 / PTS7 = json.load of tools/repro/fusion_t11/t11_probe_points.py output (9 12 0.25 / 7 9 0.25)
-#   exec(open(REPO + r'	oolseprousion_t11\geometry_probe_suite.py').read())
+#   exec(open(REPO + r'	ools
+eprousion_t11\geometry_probe_suite.py').read())
 # Results of the first run (2026-10-02) are recorded in the fusion360-quirks skill.
 # Every test builds in its OWN new sketch of ONE fingerprinted scratch doc (user param adv_geo_fp), compares what
 # Fusion produced to a closed-form expectation, and appends rows {test, check, expected, actual, ok} to RESULTS_FILE.
@@ -58,6 +59,8 @@ def arc_info(a):
 
 
 def near(a, b, tol=TOL):
+    if isinstance(a, str) or isinstance(b, str) or a is None or b is None:
+        return a == b
     if isinstance(a, (tuple, list)):
         return all(abs(p - q) <= tol for p, q in zip(a, b))
     return abs(a - b) <= tol
@@ -69,7 +72,8 @@ ROWS = []
 def row(test, check, expected, actual, ok=None, tol=TOL):
     if ok is None:
         ok = near(expected, actual, tol)
-    r = lambda v: [round(x, 5) for x in v] if isinstance(v, (tuple, list)) else (round(v, 5) if isinstance(v, float) else v)
+    rn = lambda x: round(x, 5) if isinstance(x, float) else x
+    r = lambda v: [rn(x) for x in v] if isinstance(v, (tuple, list)) else rn(v)
     ROWS.append({'test': test, 'check': check, 'expected': r(expected), 'actual': r(actual), 'ok': bool(ok)})
 
 

@@ -1,7 +1,7 @@
 # Confirmation suite (advisor, 2026-10-02, Fred: "any finding we make we need to confirm by making different tests to
 # make sure it is not a situational effect"). Each finding from geometry_probe_suite.py is re-tested on DIFFERENT
 # geometry: other sketch planes, other shapes, both bulge directions, values straddling the threshold.
-# Needs geometry_probe_suite.py's helpers already exec'd in the same call (get_doc, new_sketch, P, xy, arc_info, near,
+# Inputs: CONFIRM = ['V1', ...] (+ V5_PTS / V5_PLANS for V5). Needs geometry_probe_suite.py's helpers already exec'd in the same call (get_doc, new_sketch, P, xy, arc_info, near,
 # row, ROWS). Run: TESTS = [...]; exec(probe suite with TESTS=[]); exec(this file).
 import math, json, traceback
 import adsk.core, adsk.fusion
