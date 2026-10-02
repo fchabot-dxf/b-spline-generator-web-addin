@@ -129,6 +129,20 @@ VCS_SKETCH_SOLVING_FAILED + an offset fallback that the full-pipeline run doesn'
 can reach a real Send). Tools: tools/repro/capture_send_payload.mjs (--template/--board), underside_extrude_probe.py /
 send_stage_timing.py patterns. Kill only PIDs you started. No guards without Fred. Commit 'H23 item 32: ...'.
 
+## Item 33 -- editing frame_thickness / boundingboxoffset AFTER a build silently duplicates bars (advisor probe, 2026-10-02)
+MEASURED, 3 cases, timeline HEALTHY in all: replay a real Send (T1), then change a user parameter in Fusion --
+6x9 thickness 0.75 -> 1.0: frame_left, frame_bottom and frame_right become the SAME U-shaped body (each 437.28 cm3,
+bbox = the whole board, pairwise overlap 437.28 cm3; union 561.36 = correct total), frame_top stays right; same
+signature at 6x9 with boundingboxoffset 0.25 -> 0.5, and 9x12 thickness -> 1.4 (3 bars x 882.79). Smaller edits
+(6x9 -> 0.6, 9x12 -> 0.6/1.0) stay correct. A FRESH Send at 1.0 builds 4 correct separate bars (159/119/159/124,
+no overlap). So the bar split (the miter cuts / body split in the solid build) does not survive a parametric
+recompute past some size change. Find WHY (which feature stops splitting -- SolidCoordinator / extrusion_engine; check
+each split feature's health and its tool/target references after the edit) and fix the cause so an edit gives the
+same 4 bars a fresh Send would. Repro: tools/repro/fusion_t11/bar_merge_confirm.py (+ param_edit_after_build_probe.py),
+results *_2026-10-02.jsonl next to them; captured payloads via capture_send_payload.mjs --template=template_1
+--board=6x9. A bar-overlap check (pairwise intersection volume == 0) belongs in the readback tools afterwards.
+Kill only PIDs you started; no guards without Fred. Commit 'H23 item 33: ...'.
+
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -185,3 +199,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-29] PRUNE FOR SPEED (after 28 merges): time a real Send stage by stage, then remove Pulse / explain nudges where timing says it pays, each re-checked with step_removal_ab.py. Commit as 'H23 item 29: ...'. Commit as 'H23 item 28: ...'.
 - [x] [H23-item-30] CANCELLED -- Fred: warn only (T82 item 4's editor warning). Was: PREVENT FALLBACKS (Fred: 'the add-in produces no errors'): app keeps every convex radius > frame_thickness + margin (Generate gate, handle clamp, small-board defaults); known list empty + T1 7x9 live Send with zero fallback lines. Commit as 'H23 item 30: ...'.
 - [ ] [H23-item-32] NO-ERRORS: find + fix why timeline 'Group1' is unhealthy on every Send; explain the empty-doc T1 solve failure. Commit as 'H23 item 32: ...'.
+- [ ] [H23-item-33] PARAM EDIT AFTER BUILD DUPLICATES BARS: find + fix why the bar split doesn't survive a frame_thickness/boundingboxoffset edit (3 bars become one overlapping U body, timeline healthy). Commit as 'H23 item 33: ...'.
