@@ -7250,3 +7250,81 @@ sense. Logged the full mechanism in `fusion360-quirks` (fred-skills, `7ab8453`) 
 re-discovering. No repo code changed this pass -- the diagnosis itself, plus the existing
 `bar_merge_confirm.py` + a genuine `--board=6x9` capture, fully reproduces and explains it; passing
 the decision to the advisor/Fred rather than picking one unilaterally.
+
+## 2026-10-02: H23 item 34 -- STEP 1 feasibility: C1 (auto-rebuild) vs C2 (merge-proof model)
+
+Fred: "i do change it in fusion" -- item 33's own finding is a real path he hits. Not a guard: the
+goal is his own direct Parameters-dialog edit should give the same 4 bars a fresh Send would.
+STEP 1 ONLY per the dispatch: feasibility + numbers, no production change. Fusion mine (advisor
+done; UI-cowork / API-claude code left open and untouched throughout).
+
+### C1 -- auto-rebuild the frame when the Parameters dialog closes
+
+**Event hook: CONFIRMED viable.** `ui.commandDefinitions.itemById('ChangeParameterCommand')`
+exists and its own `.name`/`.tooltip` ("Change Parameters" / "Displays the Parameters dialog...")
+confirm it IS the Modify > Change Parameters dialog Fred uses -- verified statically, deliberately
+did NOT `.execute()` it live (that opens a REAL modal dialog with no human to close it, which would
+leave Fusion stuck -- same class of risk as the blocking-messageBox bug H23 item 9 already fixed
+elsewhere). Confirmed `ui.commandTerminated.add(handler)` DOES fire and `eventArgs.commandId` IS
+readable -- tested with a trivial, synchronously-completable command (`FitCommand`): the handler
+fired, but only became OBSERVABLE in a SEPARATE, later `fusion_execute` call, not within the same
+call that triggered it (the bridge's own event dispatch happens on a later idle cycle, not inside
+a still-running script) -- a real implementation detail for whoever builds this, not a blocker.
+
+**Rebuild correctness + timing: CONFIRMED, measured.** Reproduced item 33's own corruption live
+(T1 6x9, real captured payload, `frame_thickness` 0.75 -> 1.5in via a bare native edit +
+`computeAll()`: 4 bars, 2 of them bit-identical overlapping bodies -- same signature as item 33).
+Then called the REAL `fb_engine.send_frame.send_frame(...)` path directly (exactly what re-running
+"just the frame" means: delete the previous frame by attribute, `build_sketch_logic_v3`,
+`solid_coordinator.build_solid_logic_v3` -- the same three steps `_handle_send_frame` always
+calls) with the new thickness value. Result: **`ok: true`, old frame deleted and rebuilt, 18.165s
+total, 4 DISTINCT bars, ZERO pairwise overlaps** (frame_right/frame_left both 251.66 -- genuine
+left-right symmetry, not a merge; frame_bottom 161.37, frame_top 154.99, all different). The
+SAME offset fallback fires again (item 28's own known tradeoff, unrelated to this bug), but the
+fresh Python rebuild's own `inner_corner_resolve` handles it correctly every time, exactly as
+`template_data.py`'s own comment on `frame_thickness` already documented.
+
+**"Doesn't trigger on an unrelated edit": a design question, not a live-test question.** The
+handler already has everything needed: on `ChangeParameterCommand` terminating, snapshot
+`frame_thickness`/`boundingboxoffset` (and any other template-declared frame param) via
+`des.userParameters.itemByName(name).expression`, compare against a snapshot taken when the dialog
+OPENED (`commandStarting`, same event family); only rebuild if one of THOSE specific values
+changed. No new live verification needed -- reading 2 parameter values and comparing them is
+already demonstrated working throughout this item's own test.
+
+**C1 summary: cheap to detect (one more event hook, matching patterns already used for other
+dialogs in this codebase), CONFIRMED correct, 18.2s cost for one rebuild (comparable to item 29's
+own measured "Building the frame" stage, ~14.7s, in the full pipeline) -- the clear leading
+candidate.**
+
+### C2 -- a merge-proof bar model
+
+Confirmed `adsk.fusion.SplitBodyFeature`/`SplitBodyFeatures` exist in the API (not prototyped
+live, given C1's own strong result and to bound today's Fusion time -- see below). The idea: stop
+relying on Fusion's own fragile per-profile extrude tracking (the actual root cause, item 33's own
+finding) by extruding the WHOLE outer+inner ring as ONE unambiguous solid (always exactly one
+profile, so there is nothing for a recompute to lose track of), then SPLIT it into 4 bars with
+`SplitBodyFeature` using EXPLICIT cutting planes positioned at each miter line (derived from the
+template's own declared corner points, not from profile identity at all). This would be inherently
+immune to the class of bug item 33 found, by construction.
+
+**Cost/risk, reasoned (not measured)**: real engineering, not a drop-in swap -- every template's
+own `declared_profiles`/miter geometry would need a cutting-plane equivalent derived per template
+(T1's own corners first, then the rest); the SPLIT step itself needs verifying against every
+existing template's own A/B byte-identical goldens (a correctness regression risk C1 doesn't carry
+at all, since C1 reuses the EXACT same build path a fresh Send already uses, unchanged); and it
+only protects the SPLIT step -- a native recompute could still do something unexpected to the
+CUTTING PLANES themselves if their own driving geometry also goes through a fallback-prone offset.
+Meaningfully larger scope than C1 for a benefit C1 already delivers.
+
+### Recommendation
+
+**C1.** Confirmed correct and measured (18.2s); reuses the EXISTING, already-tested `send_frame`
+path verbatim (zero new geometry risk); the only new code is an event hook + a before/after
+parameter diff, both small and well-understood. C2 is a real, API-feasible idea worth keeping on
+file, but is strictly more work for no better outcome than C1 already measured -- not recommended
+as the first build.
+
+No production change made (per the dispatch). Full suite confirmed untouched: pytest 814
+passed/25 skipped. Passing the pick to the advisor (and Fred, since it changes app behaviour he'll
+see -- an auto-rebuild firing after his own dialog edit).
