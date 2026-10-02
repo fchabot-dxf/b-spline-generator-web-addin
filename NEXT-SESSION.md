@@ -54,6 +54,20 @@ entries first). T7's body arcs run clockwise in loop direction, so `p02_03_welds
   every arc within 1e-4 in, 5 miters OK. Sketch shots to `shots/seatA/`. Then T7's LIVE_CHECK.md items.
 Commit 'H23 item 27: ...', push.
 
+**Item 27, part 2 — declare it for EVERY template (Fred: yes).** Generalise T11's two pure-python checks into ONE
+parametrised test over all templates (discover them the way gen_frame_defs does), at 7x9 + 9x12 + 6x9:
+1. **Weld orientation:** evaluate every sketch-2 Line/Arc3Point's Points (expressions -> numbers, with
+   widthIn/heightIn/boundingboxoffset), derive each arc's PHYSICAL :S/:E from the sign of its 3-point turn (CCW ->
+   as declared, CW -> swapped; fusion360-quirks), resolve projected anchors, and assert every Coincident weld joins
+   two coincident points (tolerance = the template's own nudge, so T1's existing 0.001 convention isn't a false
+   failure; say which templates still carry nudges).
+2. **Seed midpoint:** each Arc3Point's middle point lies on the circle through its ends at the angular midpoint
+   of the intended (minor unless declared major) branch -- REPORT (xfail with the measured offset), don't fail,
+   for templates whose hint-seeds still build correctly live today; T7/T11 must pass.
+Expected: T7 fails check 1 until its weld fix lands (that's the point). List every other failure in the pass note
+with the exact template/weld -- fix the ones that are clearly crossed welds, ask before touching anything that's
+live-verified today (T1-T6, T8, T10).
+
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -105,4 +119,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-24] SEND DELETES ANOTHER DOCUMENT'S B-SPLINE SET: `_remove_last_import` deletes the in-memory `last_imported_occurrences` from whatever doc last imported; find the previous import by tag in the ACTIVE design only. Fake-Fusion two-document test (mutation-tested) + live two-doc check. Commit as 'H23 item 24: ...'.
 - [ ] [H23-item-25] UN-HIDE TEMPLATE 10: FRAME_HIDDEN = False, regen, full suite + --check, picker + 7x9 Generate shots. Commit as 'H23 item 25: ...'.
 - [ ] [H23-item-26] FrameBuilder() WITHOUT external_logger CRASHES: frame_engine.py:133 uses the logger instance instead of fb_logger. One line + test. Commit as 'H23 item 26: ...'.
-- [ ] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11. Commit as 'H23 item 27: ...'.
+- [ ] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11; PLUS one all-template test: weld orientation (CCW rule) + seed-midpoint report. Commit as 'H23 item 27: ...'.
