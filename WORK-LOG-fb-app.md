@@ -7136,3 +7136,61 @@ the right call next time.
 Full suite green: pytest 717 passed/25 skipped (repo root, +3 new). Commit `3e6f85d`. Results also
 written to `bspline-frame-builder/scratch/send_stage_timing_results.jsonl` (untracked, local only).
 No step removal performed -- timing only, per the dispatch.
+
+## 2026-10-02: H23 item 32 -- "Group1 unhealthy" is a diagnostic false positive, not a real defect
+
+Fred's goal: no errors. Advisor probe (replaying today's own captures across T1/T10/T11/T12/T13)
+found timeline item "Group1" reporting `healthState != Healthy` with an EMPTY message on EVERY
+real Send. Fusion was mine for this pass (advisor done; UI-cowork / API-claude code left open and
+untouched throughout).
+
+**Root cause, part 1 (the primary ask)**: there was never an unhealthy feature. MEASURED live: a
+Fusion `TimelineGroup`'s own `healthState` is ALWAYS `UnknownFeatureHealthState` (the enum value
+5), completely independent of its children's own health -- confirmed on a throwaway, totally
+unrelated group (two freshly-created sketches in an empty scratch doc, each one individually
+Healthy, grouped together) reporting the IDENTICAL health=5/empty-message signature as the real
+STEP-import's own "Group1". Drilled into Group1's own two real children (" Clean:1", "Base
+Feature1") directly -- both report Healthy. A `TimelineGroup` is a visual collapse container; it
+has no geometric health rollup of its own in Fusion's API at all.
+
+The actual bug was in three of this repo's OWN diagnostic scripts (`tools/repro/fusion_t11/
+underside_extrude_probe.py`, `tools/repro/f20_live_parity.py`, `tools/repro/record_frame_parity.py`),
+each independently checking `item.healthState == Healthy` across every TOP-LEVEL timeline item --
+which is false the instant ANY group exists, i.e. every real Send (the STEP import always creates
+one). Not a reporting-only fix (the dispatch's own "fix the cause, not the reporting" bar): the
+CAUSE was the check itself being wrong, not the geometry -- there was no geometry defect to fix.
+
+New `tools/repro/timeline_health.py`: a declared, tested predicate (`is_item_healthy` /
+`is_timeline_healthy` / `unhealthy_names`) that recurses into a group's own children instead of
+trusting its own `healthState` -- a real failure INSIDE a group still gets caught, reported by the
+group's own visible name (what a user actually sees collapsed). 10 pure-Python tests
+(`test_timeline_health.py`, no Fusion needed, fakes mirror the exact live-measured shape),
+mutation-tested (reverting the recursion makes 3 tests fail red, confirming it's exercised). All
+three repro scripts now use the corrected logic (inline, matching each script's own existing
+"nothing added to sys.path" self-contained convention -- `record_frame_parity.py`'s own build path
+creates no group today at all, so this is a no-op there: confirmed every existing committed golden
+fixture already has `"timelineHealthy": true`). Live-verified against the real captured-payload
+timeline: the FIXED predicate reports `is_timeline_healthy=True` / `unhealthy_names=[]` on the
+exact same timeline the OLD predicate flagged as unhealthy.
+
+**Root cause, part 2 (the item-29 side finding)**: also a harness bug, not a template bug, and
+confirmed it cannot reach a real Send. `send_stage_timing.py`'s own empty-doc comparison built
+`ui_data` by merging board dims (widthIn/heightIn) into the UI-shadow dict instead of (a) creating
+them as REAL Fusion `userParameters` -- what `_handle_generate`'s own early `_sync_user_parameters`
+always does on a real Send -- and (b) calling the real `build_sketch_logic_v3` entry point (what
+`send_frame.py`'s own call always does) instead of `FrameBuilder.run_sketch_only` directly.
+`parametric_engine._sync_user_parameters` explicitly SKIPS board-owned names
+(`ParameterSchema.is_board_owned`) regardless of what's in `ui_data`, so the two differences
+together produced the spurious `VCS_SKETCH_SOLVING_FAILED` + offset-fallback behaviour previously
+reported. CONFIRMED the real pipeline is unaffected by reproducing a clean, zero-error build using
+the EXACT real entry point (`build_sketch_logic_v3`) with the real `send_frame.frame_ui_data()`
+shape and real `widthIn`/`heightIn` parameters -- same template, same captured seeds, 0 errors.
+Fixed the harness to match: removed the wrong `frame_build_ui_data()` helper (and its 3 tests,
+since it encoded the wrong mental model), `send_stage_timing.py`'s own empty-doc comparison now
+creates real board params and calls the real `build_sketch_logic_v3` -- re-verified live, 0 errors,
+1.97s (Bounding Box 0.099s, Shape Outline 1.241s, Frame Enclosure 0.603s).
+
+Full suite green: pytest 814 passed/25 skipped (repo root). No production code changed -- both
+fixes live entirely in `tools/repro/` diagnostic tooling; nothing in `b-spline-gen.py`/`fb_engine`
+needed to change, because nothing there was actually broken. No guards added (none asked for).
+Commit `996c3d8`.
