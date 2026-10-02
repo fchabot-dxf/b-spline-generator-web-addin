@@ -67,6 +67,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from fb_engine.closed_form_arc import true_via_point  # noqa: E402
 from fb_engine.template_resolver import resolve_template, get_available_templates  # noqa: E402
 
 BOARDS = [(7, 9), (9, 12), (6, 9)]
@@ -234,15 +235,15 @@ def test_seed_midpoint_report(tid, capsys):
             continue
         angs = [math.atan2(y - cy, x - cx) for x, y in p]
         a0, av, a1 = angs
-        # the minor-branch angular midpoint, independent of declared order: the bisector of the unit
-        # vectors to the two ENDS (p0, p1), on whichever side also has the smaller sweep.
+        # the minor-branch angular midpoint, independent of declared order: closed_form_arc's own
+        # true_via_point (H23 item 18) -- the same bisector-of-end-unit-vectors math this test
+        # always used, now the one declared place that math lives.
         u0 = ((p[0][0] - cx) / r, (p[0][1] - cy) / r)
         u1 = ((p[2][0] - cx) / r, (p[2][1] - cy) / r)
-        bis = (u0[0] + u1[0], u0[1] + u1[1])
-        n = math.hypot(*bis)
-        if n < 1e-9:
+        if math.hypot(u0[0] + u1[0], u0[1] + u1[1]) < 1e-9:
             continue  # a half-turn arc has no minor-branch midpoint
-        mid_ang = math.atan2(bis[1] / n, bis[0] / n)
+        vx, vy = true_via_point((cx, cy), r, p[0], p[2])
+        mid_ang = math.atan2(vy - cy, vx - cx)
         off = abs(math.degrees((av - mid_ang + math.pi) % (2 * math.pi) - math.pi))
         off = min(off, abs(180 - off))  # the major-branch midpoint is just as valid a "declared major" seed
         worst_deg = max(worst_deg, off)
