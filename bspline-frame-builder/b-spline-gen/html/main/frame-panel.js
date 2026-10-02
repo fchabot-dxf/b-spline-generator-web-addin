@@ -94,6 +94,12 @@ export function generateFrame(seed = nextSeed()) {
 
 const $ = (id) => document.getElementById(id);
 
+/** Advisor review on T82 item 5 (a 7/3 board-third default showed as "2.3333333333333"): round a numeric
+ *  field's DISPLAYED value to 3 decimals -- the record itself keeps full precision, only `el.value` is ever
+ *  touched here. Non-finite input passes through unchanged (the field's own "nothing to show" cases, e.g.
+ *  no template selected, already write '' or similar, not a number). */
+const _round3 = (v) => (Number.isFinite(v) ? Math.round(v * 1000) / 1000 : v);
+
 /** The frame's numeric param fields: field id -> the template param it edits
  *  (limits from the generated definition), plus the row hidden with no frame. */
 export const FRAME_PARAM_FIELDS = Object.freeze([
@@ -214,7 +220,7 @@ export function syncFramePanel() {
     if (!el) continue;
     const p = tpl?.params.find((q) => q.name === f.param);
     for (const k of ['min', 'max']) { if (p && p[k] != null) el[k] = p[k]; else el.removeAttribute(k); }
-    if (document.activeElement !== el) el.value = tpl ? frameParam(FRAME_DEFS, rec, f.param) : '';
+    if (document.activeElement !== el) el.value = tpl ? _round3(frameParam(FRAME_DEFS, rec, f.param)) : '';
     if (f.row && $(f.row)) $(f.row).style.display = tpl ? '' : 'none';
   }
   // T82 item 4 (advisor probes 2026-10-02): a convex arc radius <= frame_thickness makes Fusion's
@@ -250,10 +256,10 @@ export function syncFramePanel() {
     if ($(g.fields)) $(g.fields).style.display = rec.insetWindow?.enabled ? '' : 'none';
     if (rec.insetWindow) {
       const w = rec.insetWindow;
-      if ($(g.posX) && document.activeElement !== $(g.posX)) $(g.posX).value = w.cx;
-      if ($(g.posY) && document.activeElement !== $(g.posY)) $(g.posY).value = w.cy;
-      if ($(g.sizeW) && document.activeElement !== $(g.sizeW)) $(g.sizeW).value = w.w;
-      if ($(g.sizeH) && document.activeElement !== $(g.sizeH)) $(g.sizeH).value = w.h;
+      if ($(g.posX) && document.activeElement !== $(g.posX)) $(g.posX).value = _round3(w.cx);
+      if ($(g.posY) && document.activeElement !== $(g.posY)) $(g.posY).value = _round3(w.cy);
+      if ($(g.sizeW) && document.activeElement !== $(g.sizeW)) $(g.sizeW).value = _round3(w.w);
+      if ($(g.sizeH) && document.activeElement !== $(g.sizeH)) $(g.sizeH).value = _round3(w.h);
     }
   }
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
@@ -435,13 +441,13 @@ const INSET_WINDOW_MIN_MARGIN = 0.1;
  *  restore" every other numeric field in this app effectively gets from syncFramePanel's own activeElement
  *  guard, but explicit here since a 'change' event can still fire while the field itself is the activeElement
  *  (Enter without a blur). T82 item 5: the record is already centre-based (cx/cy/w/h), so this is a direct
- *  read, no corner math. */
+ *  read, no corner math -- rounded for display (advisor review), same as syncFramePanel's own read-back. */
 function _insetWindowFieldValue(id, r) {
   for (const g of INSET_WINDOW_FIELD_GROUPS) {
-    if (id === g.posX) return r.cx;
-    if (id === g.posY) return r.cy;
-    if (id === g.sizeW) return r.w;
-    if (id === g.sizeH) return r.h;
+    if (id === g.posX) return _round3(r.cx);
+    if (id === g.posY) return _round3(r.cy);
+    if (id === g.sizeW) return _round3(r.w);
+    if (id === g.sizeH) return _round3(r.h);
   }
   return undefined;
 }

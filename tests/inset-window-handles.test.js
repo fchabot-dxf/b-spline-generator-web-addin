@@ -206,6 +206,15 @@ describe('inset window: visible corner handles + Position/Size steppers', () => 
   });
   function $(id) { return document.getElementById(id); }
 
+  it('T82 item 5 (advisor review): a repeating-decimal value displays rounded to 3 decimals -- the record keeps full precision', () => {
+    // A never-placed window (w===0 && h===0, the default sentinel) triggers the board-third seed on enable.
+    setFrameRecord({ insetWindow: { enabled: false, cx: 0, cy: 0, w: 0, h: 0 } });
+    document.getElementById('frameInsetWindowToggle').checked = true;
+    document.getElementById('frameInsetWindowToggle').dispatchEvent(new Event('change')); // seeds w = P.widthIn/3 = 7/3
+    expect($('frameWindowSizeW').value).toBe('2.333'); // displayed, rounded
+    expect(getFrameRecord().insetWindow.w).toBeCloseTo(7 / 3, 12); // the record itself, full precision
+  });
+
   it('a drag elsewhere (e.g. the corner drag above) syncs the steppers\' own displayed values back', () => {
     setEditorTab('frame');
     fire('pointerdown', 5, 6); fire('pointermove', 9, 10); fire('pointerup', 9, 10); // dx=4, dy=4

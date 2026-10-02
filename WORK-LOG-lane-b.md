@@ -12788,3 +12788,18 @@ for the Fusion row).
 
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn N+4 — T82 item 5 review fix: round the displayed field values to 3 decimals
+
+Advisor review on commit 72f8730/deda6e5 (merging to main): the Size W field showed the raw repeating
+decimal (`2.3333333333333`, from the 7/3 board-third default) in my own phone shot. New `_round3(v)` helper
+(main/frame-panel.js) -- display only, the record keeps full precision -- applied to `FRAME_PARAM_FIELDS`'
+own generic read-back (so it covers the editor Thickness field too, per the advisor's own "if it can do the
+same" ask, plus the sidebar Thickness and Trim offset fields for free, same loop) and to the 4 inset-window
+Position/Size fields (both the regular sync read-back and the reject-and-restore path for invalid typed
+input, for consistency). New test: a 7/3 width renders as "2.333" while the record itself stays at full
+`7/3` precision (`toBeCloseTo(7/3, 12)`). Full JS suite: 159 files, 2996 passed, 0 failed. Verified live
+(headless mobile Chrome): Size W now reads "2.333".
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
