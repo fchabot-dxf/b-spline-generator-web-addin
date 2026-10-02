@@ -2,7 +2,7 @@
 
 Same shapes drawn with Fusion's toolbar (UI_*, by Claude Cowork following COWORK-UI-SKETCHES.md) and with the API
 (API_*, `ui_vs_api_inventory.py MODE='build'`), in one design ("UI-cowork"), read back the same way (`MODE='read'`).
-Raw readback: `ui_vs_api_readback_2026-10-02.json`. How Cowork drew the UI side: `UI-cowork-log.md`.
+Raw readback: `ui_vs_api_readback_2026-10-02.json`. How Cowork drew the UI side: `UI-cowork-log.md`, with every step's screenshot in `cowork_screenshots/` (198, `<sketch no>_<name>_stepNN.jpg`).
 
 ## What it means (each confirmed on extra variants before recording -- fusion360-quirks aa48914)
 - **Rectangles: the API adds NO constraints** (4 corner-welded lines; the centre rectangle has no construction

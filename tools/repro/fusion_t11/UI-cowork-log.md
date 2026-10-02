@@ -65,4 +65,4 @@ Document: saved by Ctrl+S as "UI-cowork" (Fusion shows "UI-cowork v1"). Sketch r
 Screenshots stayed in the cloud session; not copied to this folder.
 
 ## Screenshots
-Moved out of the repo (20 MB) to `C:/Users/danse/.bspline-status/cowork_ui_sketches/screenshots/`: 198 jpgs named `<sketch no>_<sketch name>_stepNN.jpg` (00_setup = file dialogs/accidental save before sketch 1; 21_document_saved = final save). Steps are in chronological order within each sketch. Sketches 1-13 were assigned to sketches by matching the browser list in the shots, so a few boundary frames may sit one sketch off. `shots_bundle.zip` is a leftover copy of the same images and can be deleted.
+Folder `cowork_screenshots/` (next to this log): 198 jpgs named `<sketch no>_<sketch name>_stepNN.jpg` (00_setup = file dialogs/accidental save before sketch 1; 21_document_saved = final save). Steps are in chronological order within each sketch. Sketches 1-13 were assigned to sketches by matching the browser list in the shots, so a few boundary frames may sit one sketch off. (Cowork's `shots_bundle.zip`, a duplicate of the same images, was not committed.)
