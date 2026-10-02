@@ -5765,3 +5765,72 @@ Cleaned up: all 5 of my own scratch Fusion documents closed by their own tagged 
 ambiguous "Untitled" docs from before this session untouched, still 4, same as the advisor last confirmed); the
 scratch http.server on port 8793 killed by its real Windows PID (not the Git-Bash subshell PID, which did not
 match -- worth remembering for next time).
+
+## 2026-10-01: H23 item 23 -- STOPPING to report: the dispatch's own hypothesis is wrong, and the real finding is bigger than T10
+
+**The dispatched hypothesis (p02_12_arch_rebuild.py's `top_edge` Rebuild, "same bug as items 14/15/17") is
+FALSIFIED by direct measurement.** Re-ran the exact captured T10 6x9 payload fresh (full log captured and
+copied to a scratch file IMMEDIATELY after the run, before anything else could truncate the shared debug log
+-- the truncate-on-every-`DebugLogger()`-instantiation gotcha noted earlier this session makes this necessary
+for any precise log reading from now on). The full "ArchRebuild COMPLETE" arc audit shows `top_edge` itself
+sweeping a clean, correct ~77 deg (S at 51.4 deg, M at 80.1 deg, E at 128.6 deg around its own center --
+properly monotonic, the short way) -- `top_edge` is fine, exactly as item 17 designed it.
+
+**The actual reflex arc (confirmed by precise circle-center math, not eyeballing) is `arc_waist_R`**, sweeping
+200.3 deg -- matching the logged figure to 0.1 deg. Its own 3 SEEDED points (from `apply_seed_geometry`, fed by
+`frameSeedGeometry`'s generic `kind: 'arc'` branch in `frame-handles.js`, which samples the app's own primitive
+at parametric t=0, 0.5, 1) all sit on a single circle at a consistent radius (confirmed: 1.8011/1.8011/1.8013
+cm to the start/end/mid points respectively) -- `addByThreePoints` is NOT misbehaving; it deterministically
+drew the ONLY arc that actually passes through all 3 given points, and that arc happens to be the long way
+around (the seed's own midpoint sits at 180 deg, which only lies on the increasing/long path from S at 79.9
+deg to E at 280.1 deg, not the short one). **The bug, if it is one, is upstream of Fusion entirely: in how the
+app's own primitive for `arc_waist_R` computes its `theta1`/`dTheta` for this specific `waistCenterY`/
+`waistReach` combination.**
+
+**Except it may not be a bug at all -- `outlineDefects` (editor-shape-lattice-generator.js) has a DECLARED,
+NAMED exception for exactly this:**
+```js
+// F8: a MAJOR arc (> 180 deg) is legitimate (Fusion's own T1 waist at 12x6
+// wraps 244 deg); only a full turn or more is a loop.
+if (Math.abs(p.dTheta) >= 2 * Math.PI - 1e-6) defects.push({ kind: 'reversedArc', ... });
+```
+This directly contradicts `fb_engine/diagnostics.py`'s own `assert_no_reflex_arcs` (H23 item 15, "Fred's own
+rule"): "a sketch arc that sweeps 180 degrees or more is always a wrong-solver-branch defect, never an intended
+shape, ACROSS EVERY TEMPLATE" -- a hard, unconditional, build-crashing gate with no exception for F8's own
+named case. Two declared invariants in this same codebase flatly disagree.
+
+**Checked whether F8's claim is still true today (cheap, local, no Fusion call)**: Template 1's OWN DEFAULT
+shape (zero seeds, exactly what ships) at 12x6 sweeps -241.95 deg on `arc_waist_R`/`arc_waist_L` RIGHT NOW,
+confirmed via a quick script against the real production `frameCutProfile`. `outlineDefects` reports zero
+defects for it (F8's exception working as declared). This is not a rare or extreme seed -- it is T1's own
+default fitted shape at a board size the app happily offers. Template 1 uses the exact same `seedMap`
+Arc3Point-seeding mechanism as T10 (`"id": "arc_waist_R", "kind": "arc"` in `template_1/template_data.py`'s own
+`FRAME_SEED_MAP`), so the same construction-level risk applies.
+
+**Live-verified this is not theoretical.** Captured a real Template 1 send payload at 12x6 (real app flow,
+headless-Chrome CDP, default/first-draw seeds) and replayed it through the real production handlers in a fresh
+scratch doc: **0 bars, no `Frame_N` occurrence created at all** -- the same outward symptom as T10's own 6x9
+failure. The immediate cause this time was different, though, and surfaced a SEPARATE gap in my own item 22
+fix: T1's 12x6 panel hit the underside-face check FIRST (before the sketch build could even reach the point
+where a reflex arc_waist_R would matter) -- its own true underside face (area 489, by far the largest, pointOnFace
+n.z = -0.9988) has 2 of its 4 corners at only n.z = -0.4343 (a real asymmetry in this wider/shorter board's own
+panel geometry, not a bug in the measurement), pulling my item-22 fix's 5-point average down to -0.7547 --
+short of the -0.9 bound, so a genuinely correct face is wrongly rejected. Averaging over just 5 points (4
+corners + pointOnFace) is not robust enough when 2 of the 4 corners are themselves real outliers; this needs a
+sturdier measure (e.g. a proper area-weighted sample grid, or dropping the worst 1-2 outliers before
+averaging) -- flagging as its own follow-up, separate from today's main finding.
+
+**Where this leaves things.** Item 23's own dispatched task (fix `top_edge`'s rebuild) is not the right target
+-- there is nothing wrong with `top_edge`. The real, general issue is a genuine architectural contradiction:
+the app's own shape validator (`outlineDefects`, F8) declares major/reflex arcs legitimate and cites Template
+1's own shipped 12x6 shape as the reason, while Fusion's own build-time gate (`assert_no_reflex_arcs`, H23 item
+15) unconditionally crashes on any such arc with no exception. Both can't be right at once, and **this is not
+limited to T10 or to this one 6x9 seed** -- Template 1, the shipped flagship template, appears to fail to Send
+a frame at 12x6 with its own default shape, live-confirmed just now. Per this item's own stop condition, and
+because resolving the contradiction is a real design decision (does Fusion's sketch solver actually have a way
+to build a major arc correctly that this codebase isn't using yet, in which case item 15's gate needs a
+principled exception; or was F8's own exception wrong/outdated and T1's own feasible ranges at 12x6 need
+narrowing instead) rather than a one-file bugfix, **I'm stopping here and reporting rather than picking a side
+or grinding further.** No code changes made this item beyond the live scratch investigation (all scratch docs
+closed, server killed, nothing committed). Flagging to the advisor as urgent given the T1-in-production angle,
+separate from T10's own un-hide status.
