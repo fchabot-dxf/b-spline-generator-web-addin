@@ -10,7 +10,8 @@ import { P, persistableP, setIsFusionMode } from '../bspline-frame-builder/b-spl
 import { normalizeFrameRecord, getFrameRecord, setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile, frameInnerProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import {
-  generateFrameSeeds, frameHandleTable, frameSeedGeometry, frameHandles, frameParamRanges, FRAME_GEN_BAND, FRAME_MIN_OPENING_IN,
+  generateFrameSeeds, generateValidFrameSeeds, frameHandleTable, frameSeedGeometry, frameHandles, frameParamRanges,
+  FRAME_GEN_BAND, FRAME_MIN_OPENING_IN,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { feasibleParamRanges } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import {
@@ -171,7 +172,17 @@ describe('Frame tab: Generate, tweak, save/reload, Undo', () => {
     document.getElementById('editorFrameGenerate').click();
     const rec = getFrameRecord();
     expect(Number.isInteger(rec.genSeed)).toBe(true);
-    expect(rec.seeds).toEqual(generateFrameSeeds(tplOf('template_1'), regionOf('template_1'), rec.genSeed));
+    // H23 item 21: [Generate] (frame-panel.js's own generateFrame) retries a bad draw against the real inner
+    // profile AND every outer piece staying >= frame_thickness (the "no wing" rule, generalized from T10's own
+    // finding) -- the bare generateFrameSeeds() (no retry) is no longer guaranteed to match its first attempt.
+    const region = regionOf('template_1'), tpl = tplOf('template_1'), t = 0.75;
+    const isValid = (s) => {
+      const inner = frameInnerProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: 'template_1', seeds: s }), BOARD);
+      if (inner && inner.defects.length > 0) return false;
+      const outer = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: 'template_1', seeds: s }), BOARD);
+      return outer.primitives.every((p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : Math.abs(p.rx * p.dTheta)) >= t);
+    };
+    expect(rec.seeds).toEqual(generateValidFrameSeeds(tpl, region, rec.genSeed, t, isValid));
     expect(ed._frameProfile.params.waistReach).toBeCloseTo(rec.seeds.waistReach, 9); // what is drawn IS the record
     expect(document.getElementById('editorFrameUndo').disabled).toBe(false);
   });

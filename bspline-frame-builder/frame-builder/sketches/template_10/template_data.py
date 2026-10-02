@@ -39,8 +39,8 @@ SKETCH_1_PARAMETERS = [
 SKETCH_2_LABEL = "Shape Outline"
 SKETCH_2_PARAMETERS = [
     # Same constraint toggles as Template 1 (p02_10_welds / p02_11_symmetry still gate on them); the top arch's
-    # own constraints (p02_03: Tangent, Symmetry) are never gated -- a gate would be a new template parameter
-    # (Fred's rule, Template 6's own finding), and they are needed unconditionally for the 1-DOF top solve.
+    # own constraints (p02_03: Fix on S/E) are never gated -- a gate would be a new template parameter
+    # (Fred's rule, Template 6's own finding), and they are needed unconditionally for the top solve.
     {"Name": "ck_arc_shoulder_weld",   "Label": "Shoulder Arc Weld",       "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
     {"Name": "ck_arc_hip_weld",        "Label": "Hip Arc Weld",            "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
     {"Name": "ck_skel_shoulder_equal", "Label": "Shoulder Skeleton Equal", "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
@@ -147,7 +147,7 @@ FRAME_PROVISIONAL_SHAPE = {"from": "template_1", "archRiseOfHw": 0.35}
 # drawing exactly as before -- every lookup is still by id over the full template list (frame-record.js
 # findFrameTemplate); only the picker's own dropdown (frame-panel.js) reads this flag. Flip back to False once
 # the Fusion fix is in.
-FRAME_HIDDEN = True
+FRAME_HIDDEN = False
 
 
 def get_template_logic(ui_data=None):

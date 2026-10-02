@@ -100,6 +100,21 @@ def constraint_step(ctx, sketch, s_name, rel):
             # POSITION).
             c = gc.addSymmetry(targets[0], targets[1], targets[2])
             created.append((c, None))
+        elif ctype == "Fix" and len(targets) >= 1:
+            # H23 item 15: a bare Coincident to a "free" anchor point is
+            # NOT one-directional -- the anchor has no more authority than
+            # whatever it's tied to, so the solver is just as free to drag
+            # the anchor along as to hold it still (measured: an anchor
+            # point with only a Coincident on it got dragged across the
+            # sketch when the arc it was supposed to pin got pulled by
+            # something else). Fixing the point (SketchPoint.isFixed, not a
+            # GeometricConstraints entry -- Fusion's constraint collection
+            # has no addFix) gives it genuinely zero remaining DOF, so a
+            # later Coincident to it can only move the OTHER side.
+            for t in targets:
+                t.isFixed = True
+            ctx.logger.log(f"CONSTRAINT OK: Fix on {rel['Targets']}")
+            return
         else:
             ctx.logger.log(
                 f"CONSTRAINT SKIP: {ctype} needs different target count "

@@ -358,6 +358,7 @@ def _ctx(ui_data=None, evaluate=None):
     ctx = BuildContext.__new__(BuildContext)
     ctx.active_vars = ui_data or {}
     ctx.logger = _RecLogger()
+    ctx.offset_fallbacks = []
 
     def _eval(expr, unit):
         if evaluate and expr in evaluate:
@@ -441,14 +442,100 @@ class TestParametricOffsetCall:
         assert constraint.dimension.parameter.expression == "frame_thickness"
         assert any("OFFSET PARAMETRIC OK" in m for _, m in ctx.logger.entries)
 
-    def test_a_failed_parametric_offset_is_a_warning_not_debug(self, monkeypatch):
+    def test_a_failed_parametric_offset_is_an_error_not_a_warning(self, monkeypatch):
+        # H23 item 28: STABILISE -- the fallback is accepted (Fred: warn only), but it must be
+        # LOUD (ERROR, not a WARNING easy to scroll past) so it's findable without reading every
+        # log line.
         self._patch(monkeypatch)
         gc = types.SimpleNamespace(createOffsetInput=_boom, addOffset2=None)
         ctx = _ctx()
         result = offsets._try_parametric_offset(ctx, types.SimpleNamespace(geometricConstraints=gc),
                                                 _Coll(["c"]), "frame_thickness", "T1_3")
         assert result is None
-        assert any(level == "WARNING" and "NON-parametric" in m for level, m in ctx.logger.entries)
+        assert any(level == "ERROR" and "NON-parametric" in m for level, m in ctx.logger.entries)
+
+
+class _FakeObjColl:
+    """Minimal fake of adsk.core.ObjectCollection: .add() then .count / .item()."""
+    def __init__(self):
+        self._items = []
+
+    def add(self, x):
+        self._items.append(x)
+
+    @property
+    def count(self):
+        return len(self._items)
+
+    def item(self, i):
+        return self._items[i]
+
+
+class TestOffsetStepFallbackIsLoud:
+    """H23 item 28: offset_step()'s own fallback-detection logic (not _try_parametric_offset's
+    or _try_sketch_offset's internals, each already covered above / in offsets.py's own tests) --
+    a fake-Fusion run through the real offset_step() entry point, proving the NEW result field
+    (ctx.offset_fallbacks) and ERROR log fire together, exactly when the parametric path fails
+    and the non-parametric fallback is about to run. The fallback itself is mocked out (its own
+    behaviour is unchanged by this item and already tested elsewhere) so this test isolates the
+    one thing item 28 actually changed."""
+
+    def _patch(self, monkeypatch, parametric_result=None, sketch_offset_result=None):
+        monkeypatch.setattr(offsets.adsk.core, "ObjectCollection",
+                            types.SimpleNamespace(create=lambda: _FakeObjColl()), raising=False)
+        monkeypatch.setattr(offsets.adsk.fusion, "SketchCurve",
+                            types.SimpleNamespace(cast=lambda e: e), raising=False)
+        monkeypatch.setattr(offsets, "_try_parametric_offset",
+                            lambda *a, **k: parametric_result)
+        monkeypatch.setattr(offsets, "_try_sketch_offset",
+                            lambda *a, **k: sketch_offset_result)
+
+    def _ctx_with_curve(self, s_name, sid):
+        ctx = _ctx()
+        ctx.entity_map = {s_name: {sid: types.SimpleNamespace()}}
+        return ctx
+
+    def test_fallback_records_a_result_field_entry_and_logs_error(self, monkeypatch):
+        self._patch(monkeypatch)
+        s_name = "T1_3"
+        ctx = self._ctx_with_curve(s_name, "c1")
+        off = {"SourceID": ["c1"], "DistanceExpr": "frame_thickness", "Direction": None,
+               "Side": "inward", "TargetIDs": [], "TargetID": None, "CornerIDs": {}}
+
+        offsets.offset_step(ctx, types.SimpleNamespace(), s_name, off)
+
+        assert ctx.offset_fallbacks == [
+            {"sketch": s_name, "distance": "frame_thickness", "side": "inward"}]
+        assert any(level == "ERROR" and "OFFSET FALLBACK" in m for level, m in ctx.logger.entries)
+
+    def test_no_fallback_entry_when_the_parametric_offset_succeeds(self, monkeypatch):
+        ok_result = _FakeObjColl()
+        ok_result.add(types.SimpleNamespace())
+        self._patch(monkeypatch, parametric_result=ok_result)
+        s_name = "T1_3"
+        ctx = self._ctx_with_curve(s_name, "c1")
+        off = {"SourceID": ["c1"], "DistanceExpr": "frame_thickness", "Direction": None,
+               "Side": "inward", "TargetIDs": [], "TargetID": None, "CornerIDs": {}}
+
+        offsets.offset_step(ctx, types.SimpleNamespace(isComputeDeferred=True), s_name, off)
+
+        assert ctx.offset_fallbacks == []
+        assert not any("OFFSET FALLBACK" in m for _, m in ctx.logger.entries)
+
+    def test_outward_side_never_counts_as_a_fallback(self, monkeypatch):
+        # F22: an outward offset uses the direction-point path by design, not as a last resort --
+        # it must never be recorded as a parametric-offset fallback.
+        ok_result = _FakeObjColl()
+        ok_result.add(types.SimpleNamespace())
+        self._patch(monkeypatch, sketch_offset_result=ok_result)
+        s_name = "T3_3"
+        ctx = self._ctx_with_curve(s_name, "c1")
+        off = {"SourceID": ["c1"], "DistanceExpr": "panel_lip", "Direction": None,
+               "Side": "outward", "TargetIDs": [], "TargetID": None, "CornerIDs": {}}
+
+        offsets.offset_step(ctx, types.SimpleNamespace(isComputeDeferred=True), s_name, off)
+
+        assert ctx.offset_fallbacks == []
 
 
 class _ValParam(FakeUserParam):
@@ -484,6 +571,37 @@ class TestFrameFitInTheBuild:
 # the solid build can read that template's declared frame features
 # (solid_coordinator.TEMPLATE_ID_ATTR).
 # ---------------------------------------------------------------------
+class TestFrameBuilderDefaultLogger:
+    """H23 item 26 (seat B's own finding): FrameBuilder() constructed with NO external_logger used to crash --
+    frame_engine.py's own `self.logger = logger.DebugLogger(addin_root)` read the MODULE-LEVEL `logger`
+    variable (an already-constructed DebugLogger INSTANCE, module scope line ~33), not the `fb_logger` MODULE
+    (imported two lines earlier) -- an AttributeError every time, since a DebugLogger instance has no
+    `.DebugLogger` attribute of its own. Only the explicit-external_logger path (passed by every REAL caller
+    today) ever avoided it, which is why this went unnoticed."""
+
+    def _fake_design(self):
+        return types.SimpleNamespace(
+            rootComponent=types.SimpleNamespace(),
+            userParameters=FakeUserParams(),
+            unitsManager=types.SimpleNamespace(),
+        )
+
+    def test_constructing_with_no_logger_does_not_crash(self, monkeypatch):
+        design = self._fake_design()
+        monkeypatch.setattr(frame_engine.adsk.core, "Application",
+                             types.SimpleNamespace(get=lambda: types.SimpleNamespace(activeProduct=design)), raising=False)
+        monkeypatch.setattr(frame_engine.adsk.fusion, "Design",
+                             types.SimpleNamespace(cast=lambda x: x), raising=False)
+        recorded = []
+        monkeypatch.setattr(frame_engine.fb_logger, "DebugLogger",
+                             lambda root: recorded.append(root) or FakeLogger(), raising=False)
+
+        fb = frame_engine.FrameBuilder()  # no external_logger -- the exact crashing call
+
+        assert recorded, "fb_logger.DebugLogger (the MODULE) must be the one constructed, not the instance"
+        assert fb.logger is not None
+
+
 class TestTemplateIdStamp:
     def _builder(self, monkeypatch):
         # the adsk frame_engine bound at import (another test file may swap the stub)

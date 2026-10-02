@@ -25,6 +25,11 @@ class BuildContext:
     sketches     : dict[str, adsk.fusion.Sketch]
     entity_map   : dict[str, dict[str, Any]]
     feature_count: int                      — monotonic counter for unique IDs
+    offset_fallbacks: list[dict]            — H23 item 28: one entry per offset_step() call that
+                                               fell back from the parametric addOffset2 to the
+                                               non-parametric sketch.offset() (see offsets.py);
+                                               the result field a caller/test checks instead of
+                                               grepping log text.
     """
 
     def __init__(self, target, design, logger, prefix="T1", ui_data=None, resolver=None):
@@ -40,6 +45,7 @@ class BuildContext:
         self.feature_count = 1
         self.active_vars = ui_data if ui_data else {}
         self.resolver = resolver
+        self.offset_fallbacks = []
 
     # ------------------------------------------------------------------
     # Expression resolver

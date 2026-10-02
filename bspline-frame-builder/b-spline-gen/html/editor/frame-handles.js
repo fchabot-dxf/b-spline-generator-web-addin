@@ -16,7 +16,7 @@
 import { computeParamHandles } from './editor-shape-lattice-interaction.js';
 import {
   PARAM_ORDER, feasibleParamRanges, generateSilhouette, paramsFromShapeModel, seededUnit,
-  MIN_ARC_RADIUS_IN, topDipDepthForRadius, HORN_MIN_OF_HALF_HEIGHT, TOP_DIP_MIN_WIDTH,
+  MIN_ARC_RADIUS_IN, topDipDepthForRadius, HORN_MIN_OF_HALF_HEIGHT, TOP_DIP_MIN_WIDTH, hourglassConstruction,
 } from './editor-shape-lattice-generator.js';
 
 /** F13 (FRAME-GEN): a generated value is drawn from this band of its feasible
@@ -151,6 +151,20 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     R.waistReach = _narrow(R.waistReach, -Infinity, 1 - (t + half) / hw); // the pinch: hw - depth - t >= half
     // T4 OFFSET HOURGLASS: the left pinch obeys the same rule on its own side.
     if (R.waistReachLeft) R.waistReachLeft = _narrow(R.waistReachLeft, -Infinity, 1 - (t + half) / hw);
+    // T10 ARCHED HOURGLASS (H23 item 21): archRise eats into the horn's own length (hourglassConstruction's
+    // "eating into the horn, never adding height above it" rule) -- its shape-only range (_hourglassRange)
+    // only keeps the horn above HORN_MIN_OF_HALF_HEIGHT * hh, a tiny geometric-validity margin, not aware of
+    // the frame's own wall thickness t. MEASURED (a real [Generate] draw, live Fusion send): a horn can stay
+    // comfortably "valid" by that margin (0.41 in) while still shorter than t (0.75 in) -- Fusion's own
+    // inward offset at that corner has nowhere to go, `addOffset2` fails on topology, and the frame_top/
+    // frame_right bars never get built. Narrow the ceiling so the horn keeps at least t remaining, same
+    // "opening rule" shape every other pinch/corner check above already uses.
+    if (R.archRise) {
+      const hh = region.h / 2;
+      const g = hourglassConstruction(region, { ...resolved, archRise: undefined });
+      const hornLen = Math.min(hh + g.shoulderY, g.left ? hh + g.left.shoulderY : Infinity);
+      R.archRise = _narrow(R.archRise, -Infinity, Math.max(hornLen - t, HORN_MIN_OF_HALF_HEIGHT * hh) / hh);
+    }
     // T5 HOURGLASS DIPPED TOP (only a frame whose outline has the dip: its resolved params carry it). The dip's
     // inner edge (the dip offset down by t) lies within |x| <= a, from t to D + t below the top; the sides' inner
     // edge is t in from the sides. So the opening rule on the dip: at every height the dip's inner edge can
@@ -299,7 +313,11 @@ export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl
 // defects, computed from production code) passes, or give up after a bounded number of attempts and return the
 // last draw rather than loop forever (this should be rare enough it is never reached in practice).
 const GENERATE_RETRY_SALT = 104729; // a prime, decorrelated from FRAME_GEN_SALT's own small offsets
-const GENERATE_MAX_ATTEMPTS = 20;
+// H23 item 23: T10's own NEW reflex-arc check (frame-panel.js's generateFrame) needs more attempts than the
+// inner-defects check alone did -- MEASURED (5000-seed sweeps, portrait sizes): worst case needed 51 attempts
+// (7x9), 35 (6x9), 28 (9x12); 20 left 7-17/1000 still bad, 40 still left 1/1000 bad at 7x9. 80 gives 0/5000 at
+// every portrait size with real margin above the observed worst case, confirmed stable from 1000 to 5000 seeds.
+const GENERATE_MAX_ATTEMPTS = 80;
 export function generateValidFrameSeeds(tpl, region, seed, t, isValid) {
   let seeds = generateFrameSeeds(tpl, region, seed, t);
   for (let attempt = 1; attempt < GENERATE_MAX_ATTEMPTS && !isValid(seeds); attempt++) {

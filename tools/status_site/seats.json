@@ -12,7 +12,7 @@
       "branch": "main",
       "task": "NEXT-SESSION.md",
       "checkout": "",
-      "session": "b-spline-generator-web-addin-d6"
+      "session": "b-spline-generator-web-addin-f3"
     },
     {
       "key": "seatB",
@@ -21,7 +21,7 @@
       "branch": "lane-b",
       "task": "NEXT-SESSION-lane-b.md",
       "checkout": "-lane-b",
-      "session": "b-spline-generator-web-addin-55"
+      "session": "b-spline-generator-web-addin-b5"
     },
     {
       "key": "seatC",

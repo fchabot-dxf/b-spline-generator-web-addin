@@ -160,6 +160,16 @@ def _create_dimension(ctx, sketch, s_name, dim, tgt, text_pt):
     if dim_type == "Diameter":
         return sketch.sketchDimensions.addDiameterDimension(tgt, text_pt)
 
+    # Angle between two lines
+    if dim_type == "AngularDistance":
+        if "Targets" in dim and len(dim["Targets"]) >= 2:
+            src_id, tgt_id = dim["Targets"][0], dim["Targets"][1]
+            src = ctx.entity_map[s_name].get(src_id)
+            tgt2 = ctx.entity_map[s_name].get(tgt_id)
+            if src and tgt2:
+                return sketch.sketchDimensions.addAngularDimension(src, tgt2, text_pt)
+        return None
+
     # Explicit source-to-target distance
     if "Source" in dim or ("Targets" in dim and len(dim["Targets"]) >= 2):
         src_id = dim.get("Source") or dim["Targets"][0]

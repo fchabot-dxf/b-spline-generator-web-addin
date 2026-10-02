@@ -15,14 +15,20 @@ board width, then straight down to the base corner. Mirrored. 5 bars (2 roof, 2 
 Construction, solved closed-form (not fit/guessed -- WORK-LOG-lane-b.md Turn 197):
   - Body arc: tangent to the vertical straight side at B=(W, body_y) -> its center sits on the horizontal
     through B; its radius is pinned by requiring the circle also pass through N (one equation, one
-    unknown).
+    unknown). `closed_form_arc.tangent_circle_through_point`.
   - Neck arc: a genuine S-curve needs the two arcs' centers and the join point N to be exactly COLINEAR
     (opposite-curvature tangency) -> that fixes the neck arc's center DIRECTION; its radius is pinned by
     requiring the circle also pass through E (again one equation, one unknown).
+    `closed_form_arc.colinear_circle_through_point`.
   - Inner (bar-width) offset: body arc radius SHRINKS by frame_thickness (its center is on the INTERIOR
     side); neck arc radius GROWS by frame_thickness (its center is on the EXTERIOR side) -- "arcs
     concentric at r -/+ t", the same rule editor-frame-profile.js states for every template's true inward
     offset.
+
+H23 item 18 (DECLARE SEED DERIVATION): this is the worked example the item's own declared convention
+(fb_engine/closed_form_arc.py, HANDOFF-ranchy.md's own "Frame design rules") is built from -- a NEW
+template deriving an arc seed should start from closed_form_arc.py's own named primitives (as the two
+bullets above do) instead of re-deriving the algebra inline or fitting a widthIn/heightIn fraction by eye.
 
 This module does NOT decide how Fusion actually builds the arcs (Arc3Point seed + Tangent constraints,
 mirroring template_8's own dip construction -- see sketches/template_7/phases/p02_03_loop.py) -- it is the
@@ -31,6 +37,7 @@ phase (for the eave's own Direction/Distance), and the app-parity tests.
 """
 import math
 
+from fb_engine.closed_form_arc import colinear_circle_through_point, tangent_circle_through_point
 from fb_engine.t7_roof_eave import roof_geometry, peak_inner_corner, eave_inner_corner
 
 NECK_WIDTH_OF_HW_DEFAULT = 0.50          # advisor review, Turn 199: 0.44 read as "pinched shut" even though
@@ -59,19 +66,9 @@ def t7_outline(width_in, height_in, frame_thickness,
     B = (width_in, body_y)
     base = (width_in, 0.0)
 
-    dy = neck_y - body_y
-    dxN = xN - width_in
-    r_body = -(dxN * dxN + dy * dy) / (2 * dxN)
-    C_body = (width_in - r_body, body_y)
-
-    ux, uy = N[0] - C_body[0], N[1] - C_body[1]
-    ulen = math.hypot(ux, uy)
-    ux, uy = ux / ulen, uy / ulen
-    vx, vy = N[0] - E[0], N[1] - E[1]
-    v_dot_u = vx * ux + vy * uy
-    v2 = vx * vx + vy * vy
-    r_neck = -v2 / (2 * v_dot_u)
-    C_neck = (N[0] + r_neck * ux, N[1] + r_neck * uy)
+    C_body, r_body = tangent_circle_through_point(B, (0.0, 1.0), N)
+    ray = (N[0] - C_body[0], N[1] - C_body[1])  # C_body -> N, continued past N for C_neck
+    C_neck, r_neck = colinear_circle_through_point(N, ray, E)
 
     return dict(hw=hw, cx=cx, a=a, T=frame_thickness, peak=peak, E=E, N=N, B=B, base=base,
                 C_neck=C_neck, r_neck=r_neck, C_body=C_body, r_body=r_body)

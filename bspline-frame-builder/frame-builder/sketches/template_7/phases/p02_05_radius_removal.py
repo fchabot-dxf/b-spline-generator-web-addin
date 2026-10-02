@@ -1,16 +1,13 @@
 def get_block(ui_data=None):
     """
-    Radius Removal (Template 7 - Diamond-top Hourglass).
-    Deletes the 4 temporary seed radius dimensions once tangency (p02_04) has taken over - same
-    pattern as every other template with chained/tangent arcs (e.g. Template 8's own
-    p02_09_radius_removal.py).
+    Final pulse (Template 7 - Diamond-top Hourglass).
+    H23 item 27 (the T11 recipe): no seed Radius dimension is declared any more (p02_02_loop.py's
+    own docstring) -- each arc is seeded with its TRUE closed-form via point instead, so there is
+    nothing left to delete here (T11's own equivalent phase, lane-b's p02_04_tangency.py, says the
+    same: "no seed Radius to delete first and no joint to Fix afterwards"). Kept as its own phase
+    file (not merged into p02_04) to avoid shifting every other phase's own step-count/ordering.
     """
     seq = [
-        {'Type': 'DeleteDimension', 'Name': 'seed_rad_neck_R'},
-        {'Type': 'DeleteDimension', 'Name': 'seed_rad_body_R'},
-        {'Type': 'DeleteDimension', 'Name': 'seed_rad_body_L'},
-        {'Type': 'DeleteDimension', 'Name': 'seed_rad_neck_L'},
-
         # Pulse to snap the solved loop into the viewport (as every other template's final p02 phase).
         {'Type': 'Pulse'}
     ]

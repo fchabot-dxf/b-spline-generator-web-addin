@@ -42,7 +42,7 @@ from fb_engine.projections import project_step
 from fb_engine.offsets import offset_step, step_step
 from fb_engine.miters import miter_step
 from fb_engine.parameter_schema import ParameterSchema
-from fb_engine.diagnostics import log_arc_audit
+from fb_engine.diagnostics import log_arc_audit, assert_no_reflex_arcs
 
 
 @contextmanager
@@ -252,6 +252,13 @@ class ParametricSketchBuilder:
         )
 
         ctx.logger.log(f"--- BUILD COMPLETE [{sketch_label}] (Final count: {built_count}) ---")
+
+        # H23 item 15 (Fred's own rule): fail loudly, right here, if the
+        # solver landed on a reflex (>= 180 deg) arc branch -- cheaper to
+        # catch at the sketch than several steps downstream in offset/
+        # miter/extrude failures.
+        assert_no_reflex_arcs(ctx, sketch, sketch_name, display_name=sketch_label)
+
         return built_count
 
     def _sync_user_parameters(self, ctx, ui_data):
@@ -367,8 +374,8 @@ class ParametricSketchBuilder:
 
     def _process_sequence(self, sketch, sketch_name, sequence):
         """Order-aware dispatcher for Procedural Sketching."""
-        geom_types = ["Line", "Arc3Point", "ArcCenterPoint", "Circle", "Rectangle", "RectangleCenter", "Slot"]
-        constr_types = ["Coincident", "Tangent", "Horizontal", "Vertical", "Parallel", "Perpendicular", "Equal", "Concentric", "Midpoint", "PointOnCurve", "Symmetry"]
+        geom_types = ["Line", "Arc3Point", "ArcCenterPoint", "Circle", "Rectangle", "RectangleCenter", "Slot", "Point"]
+        constr_types = ["Coincident", "Tangent", "Horizontal", "Vertical", "Parallel", "Perpendicular", "Equal", "Concentric", "Midpoint", "PointOnCurve", "Symmetry", "Fix"]
         dim_types = ["HorizontalDistance", "VerticalDistance", "Radius", "Diameter", "ParallelDistance", "AngularDistance"]
 
         for step in sequence:

@@ -43,7 +43,13 @@ FRAME_TYPE_VALUE = "Frame"
 FRAME_MEMBER_ATTR = ("FrameBuilder", "FrameComponent")  # value = the frame component's name (extrusion_engine)
 # core.underside (frame_definition EXTRUSION_SETTINGS toFace): n.z ~ -1, measured
 # on NURBS faces, so "~" is a declared bound, not an exact -1.
-UNDERSIDE_MAX_NORMAL_Z = -0.9
+# -0.9 until H23 item 23's live 6x9 re-check (2026-10-01): a second real sculpted
+# panel's TRUE underside scored -0.8628 by _face_downward_z (pointOnFace -0.9837,
+# but its 4 corners -0.9609..-0.7043 -- a doubly-curved sheet tilts at its corners)
+# and was refused, while that body's edge faces scored only -0.29..-0.42 (and
+# -0.52..-0.57 on item 22's body). -0.7 sits between the two populations with a
+# margin on each side; the pick itself (most-downward face) was never wrong.
+UNDERSIDE_MAX_NORMAL_Z = -0.7
 
 SEEDS_NOT_APPLIED = "the payload has seeds but no seedGeometry (an app older than F11 sent it)"
 
@@ -139,14 +145,38 @@ def delete_previous_frames(design, log):
     return names
 
 
+def _face_downward_z(face):
+    """A face's own "how downward is it" score: the average n.z over pointOnFace
+    and the face's own vertices, not a single arbitrary sample. MEASURED live
+    (H23 item 22): a sculpted b-spline panel's underside is a NurbsSurface, not a
+    plane, and Fusion's own pointOnFace can land in a locally-tilted spot
+    (n.z = -0.8963 measured) even though the SAME face's own corners -- and the
+    face as a whole, by far the body's largest downward face -- are solidly
+    underside (-0.995 at every corner). A single noisy sample silently refused a
+    perfectly good body. Averaging a few real, always-available points (the face
+    already has its vertices; no extra Fusion call) is robust to that one bad
+    sample without risking a genuinely non-downward face passing -- the body's
+    other (edge) faces average -0.5 to -0.6 here, nowhere near the bound."""
+    zs = []
+    ok, n = face.evaluator.getNormalAtPoint(face.pointOnFace)
+    if ok:
+        zs.append(n.z)
+    for v in face.vertices:
+        ok, n = face.evaluator.getNormalAtPoint(v.geometry)
+        if ok:
+            zs.append(n.z)
+    return sum(zs) / len(zs) if zs else None
+
+
 def underside_face(body):
-    """The core body's face pointing down the most (n.z at pointOnFace), when it
-    is within the declared bound; else None."""
+    """The core body's face pointing down the most (its own averaged downward
+    score, see _face_downward_z), when it is within the declared bound; else
+    None."""
     best, best_z = None, 0.0
     for face in body.faces:
-        ok, n = face.evaluator.getNormalAtPoint(face.pointOnFace)
-        if ok and n.z < best_z:
-            best, best_z = face, n.z
+        z = _face_downward_z(face)
+        if z is not None and z < best_z:
+            best, best_z = face, z
     return best if best is not None and best_z <= UNDERSIDE_MAX_NORMAL_Z else None
 
 
