@@ -12856,3 +12856,76 @@ passed, 0 failed.
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake. Fusion scratch docs closed by handle, fingerprint-checked;
 every other open document (including "UI-cowork v1") untouched.
+
+## Lane B — Turn N+6 — merge origin/main into lane-b (T11 onto main) — DONE, full gate green
+
+Advisor dispatch: merge current origin/main INTO lane-b to get T11 onto main, resolve the 8 files their own
+trial merge found, keep BOTH sides' work where main gained seat C's Templates 12/13 (taper) in the same
+files T11 touched, then the full gate + T1-T13 confirmation, push, pass back with counts (no Fusion needed).
+
+**The 8 conflicts, each resolved to keep both sides:**
+- `WORK-LOG-lane-b.md`: pure append-only conflict (main's own side of the 3-way diff was empty here --
+  this file is lane-b's own, main's copy simply predates every turn in this session) -- kept all of HEAD.
+- `tools/repro/capture_send_payload.mjs`: BOTH sides added `--template=` independently. Kept main's own
+  implementation (`editFrame()` via dynamic import, not the `<select>`'s own `.value=` -- F30 item 3's own
+  fix for a FRAME_HIDDEN template with no `<option>` in the DOM yet, strictly more robust than my own
+  select-based version) and added my own `--board=WxH` flag back in alongside it (main never had it).
+- `editor-shape-lattice-interaction.js`: a one-line import-list conflict (my own
+  `diamondTopHourglassPinchConstruction` + main's own `taperAngleForTopCornerX`) -- combined, both exports
+  already existed independently in the merged `editor-shape-lattice-generator.js` (that file merged with NO
+  conflict at all).
+- `fb_engine/frame_definition.py`: a docstring-only conflict (my own T11 paragraph + main's own T12/13 taper
+  paragraph) -- the actual dispatch code (my `if "waistReachOfHw" in prov`, main's own `elif "taperAngleDeg"
+  in prov` + its own unconditional taper-feature injection after the chain) had ALREADY merged clean on its
+  own, zero code-level conflict.
+- `tests/frame-defs.test.js`: both sides edited the same `EXTRA` object literal (my own
+  `diamondTopHourglassPinch: []` entry, main's own `taperAngle` additions to `hourglass`/`bottle`) --
+  combined into one object with all three.
+- `tests/frame-template-6.test.js`: both sides edited the same hardcoded, string-sorted label array (my own
+  "11. Hourglass Roof", main's own "12."/"13." taper labels) -- combined in the correct lexicographic
+  position ("10." < "11." < "12." < "13." < "2.").
+- `frame-defs.js`/`.json` (generated): took either side as a placeholder (`git checkout --theirs`), then
+  regenerated properly with `tools/gen_frame_defs.py` against the MERGED Python source -- the only correct
+  way to resolve a generated-file conflict, never hand-merged.
+
+**One genuine NEW finding this merge surfaced (not a merge-resolution bug, a real, expected one)**:
+`fb_engine/test_all_templates_shape_outline.py::test_convex_radius_vs_frame_thickness_known_list[template_11]`
+failed -- its own `KNOWN_CONVEX_RADIUS_BELOW_BAR` declared set (a self-updating list the test enforces both
+directions of: a template that starts/stops showing a convex-radius-below-frame_thickness finding must be
+added/removed) didn't yet have `template_11` in it, even though I'd already found and reported this exact
+condition earlier this session (the shoulder/hip radius 0.715in < 0.75in bar at 7x9, now ALSO found at 6x9:
+0.605in). The test's own failure message names the fix directly ("add to KNOWN_CONVEX_RADIUS_BELOW_BAR...
+shape fixes are still the advisor's own per-template call, not this test's") -- a pure DECLARATION of an
+already-known, already-accepted fact (Fred: warn only, no clamp), not a guard/validation rule, so it needed
+no separate sign-off (feedback_ask_before_guards's own carve-out: "tests and detection-only signals don't").
+Added `'template_11'` to the set.
+
+**Also transient, not a bug**: `test_golden_freshness.py::test_every_committed_golden_is_currently_fresh`
+failed mid-merge (before the merge commit existed) reporting `template_10`/`12`/`13` as "UNCOMMITTED" --
+traced to `check_golden_freshness.py`'s own `_has_uncommitted_changes` (a plain `git status --porcelain`
+check), which necessarily sees staged-but-not-yet-committed files as "uncommitted" during an in-progress
+merge. Resolved itself the moment the merge was actually committed; re-ran immediately after to confirm (see
+below) rather than assuming.
+
+**Full gate, all green:**
+- `npx vitest run` (repo root): 161 files, 3078 passed, 0 failed (up from my own 2996 + main's own net
+  additions, confirming T11 and the taper templates genuinely coexist).
+- `pytest` at `bspline-frame-builder/frame-builder`: 596 passed, 25 skipped, 0 failed.
+- `pytest` at `bspline-frame-builder/b-spline-gen`: 97 passed, 0 failed.
+- `pytest` at the repo root: 804 passed, 25 skipped, 0 failed.
+- `python tools/gen_frame_defs.py --check`: fresh.
+- `python tools/check_golden_freshness.py --check`: every template fresh (re-run AFTER the merge commit;
+  the mid-merge "UNCOMMITTED" reading above was the transient one, gone here).
+- **A/B** (`tools/repro/ab/abpy.py`, covers Templates 1-5 and 8 -- the ones with no part in either side's
+  own merge conflicts): ran against the merged lane-b AND a temporary detached worktree of `origin/main`
+  (removed immediately after) -- **identical hash**,
+  `88aa3aea7ef452be2e1dc27587d5733c5edb0c70f44ad1205c83d4162b5e38a4` (25 entries), both sides. Templates
+  6/7/9/10/11/12/13 aren't in that script's own coverage, but are each exercised directly by the full gate
+  above (`test_all_templates_shape_outline.py` parametrizes over every template id; `tests/frame-template-
+  *.test.js` exists per template) -- all green there too, not separately re-verified by a second hash tool.
+
+Committed the merge as `6dd696a` (316 files, matching ~106 commits of main's own history -- a real merge,
+not a resolution mistake) and pushed. No Fusion needed, none used.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
