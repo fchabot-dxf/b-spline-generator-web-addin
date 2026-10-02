@@ -119,6 +119,16 @@ shoulder/hip) -- shots before/after at 7x9 for Fred. Commit 'H23 item 30: ...'.
 SHIPPED hourglass templates (T1, T3, T4, T5, T8, T10) at 6x9 and 7x9 have a shoulder/hip radius (0.643) below the bar
 (0.75), so EVERY such Send builds the frame through the non-parametric fallback (logged as a WARNING only).
 
+## Item 32 -- "no errors": every Send leaves timeline group "Group1" UNHEALTHY (advisor probe, 2026-10-02)
+Fred's goal: the add-in produces no errors. In EVERY live Send replayed today (T1/T10/T11/T12/T13, 6x9..12x16, real
+captured payloads through _handle_generate) the timeline item "Group1" reports healthState != Healthy with an EMPTY
+errorOrWarningMessage. Find what Group1 is (which feature inside it carries the warning -- open the group, check each
+item's healthState/message; likely the stamp import group, b-spline-gen.py timeline grouping), why it is unhealthy,
+and fix the cause (not the reporting). Also the item-29 side finding: the empty-doc T1 frame build hits
+VCS_SKETCH_SOLVING_FAILED + an offset fallback that the full-pipeline run doesn't -- explain it (report; fix only if it
+can reach a real Send). Tools: tools/repro/capture_send_payload.mjs (--template/--board), underside_extrude_probe.py /
+send_stage_timing.py patterns. Kill only PIDs you started. No guards without Fred. Commit 'H23 item 32: ...'.
+
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -174,3 +184,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-28] STABILISE (no pruning): make the offset fallback loud (result field + ERROR log + test); convert convex-radius check 3 to a declared known list. Commit as 'H23 item 28: ...'.
 - [ ] [H23-item-29] PRUNE FOR SPEED (after 28 merges): time a real Send stage by stage, then remove Pulse / explain nudges where timing says it pays, each re-checked with step_removal_ab.py. Commit as 'H23 item 29: ...'. Commit as 'H23 item 28: ...'.
 - [x] [H23-item-30] CANCELLED -- Fred: warn only (T82 item 4's editor warning). Was: PREVENT FALLBACKS (Fred: 'the add-in produces no errors'): app keeps every convex radius > frame_thickness + margin (Generate gate, handle clamp, small-board defaults); known list empty + T1 7x9 live Send with zero fallback lines. Commit as 'H23 item 30: ...'.
+- [ ] [H23-item-32] NO-ERRORS: find + fix why timeline 'Group1' is unhealthy on every Send; explain the empty-doc T1 solve failure. Commit as 'H23 item 32: ...'.
