@@ -39,6 +39,42 @@ Fleet mechanics:
 
 ## 3. Per-seat queue (checklist lines live in each seat's NEXT-SESSION file)
 
+**State at 2026-10-01 ~22:30 (advisor 45, Fred: "do just T10 and T11 then idle").** The lists below this block
+are the morning's; this block supersedes them where they disagree.
+- **T10 (H23 items 15-23): DONE and live-verified at 6x9 AND 7x9** by the advisor (fresh headless captures replayed
+  through `_handle_generate`; 4 bars each; shots `shots/seatA/h23_item23_t10_{6x9,7x9}_live_advisor*.png`).
+  f3's cf3805f (Generate retries past a >=180 deg waist arc) plus b98c0f5 (`UNDERSIDE_MAX_NORMAL_Z` -0.9 -> -0.7:
+  a doubly-curved panel's corners tilt; measured). Still owed: `FRAME_HIDDEN = False` + regen + the fb-app merge
+  (T12/13) -- NOT done, T10 is still hidden in the picker.
+- **T11 (T83 item 1) Fusion side: DONE on lane-b** (5cd8e76 + 97d523c, advisor, branch `t11` worktree
+  `../bsg-t11`). All 6 arcs exact through the real engine at 9x12/7x9; shots `shots/seatB/t83_t11_live_*`.
+  Root causes + recipe are in the fusion360-quirks skill (section 1, two new entries) -- READ THEM before any arc
+  work. Still owed on lane-b: the APP side (silhouette preset `diamondTopHourglassPinch`, extractor
+  `diamond_top_hourglass_pinch`, seed-geometry test, un-hide). **lane-b's gate is RED until then**: 3
+  `test_frame_defs` tests + `gen_frame_defs --check` fail with `KeyError: 'diamond_top_hourglass_pinch'`
+  (pre-existing from b5's scaffold, not from the fix). The app must send each arc's TRUE midpoint as its seed.
+- **Seat B (b5) is on the inset window** (visible corner handles + Position/Size steppers). Its edits were found
+  UNCOMMITTED IN THE MAIN CHECKOUT (seat A's tree) at 21:49-21:58; b5 was told to move them to lane-b and has
+  not answered yet. Check `git status` in the main checkout before anything else.
+- **New bugs found, queued, NOT fixed:**
+  1. **Cross-document deletion on Send** (`b-spline-gen.py` `_remove_last_import`, `last_imported_occurrences`
+     is in-memory and document-blind): a Send into a NEW document deleted the previous B-Spline Set in the
+     PREVIOUSLY active document. Measured twice. Fred's open doc was spared only because its set predates the
+     add-in process. Fix: resolve the previous import by tag within `app.activeProduct` only (the tag search
+     already exists), never from memory.
+  2. **Template 7's body-arc welds are crossed** the same way T11's were (`p02_03_welds.py`,
+     `arc_body_R:E -> side_R:S` etc. -- the body arcs are clockwise, so their :S/:E are swapped). T7 has never
+     been live-built. Apply T11's recipe (exact via, no seed Radius, no nudges, CCW-correct welds) and the
+     weld test pattern from `fb_engine/test_t11_fusion_expressions.py`.
+  3. `FrameBuilder()` without `external_logger` raises (`logger.DebugLogger` shadowing) -- b5's finding, one line.
+- **Harnesses for Fred's "geometry injection tests":** `tools/repro/fusion_t11/` on lane-b (points generator,
+  arc-chain solver probe, live build readback). Use them as the pattern for T7.
+- **Deployed add-in:** b98c0f5 from `../wt-adv` (clean, origin/main). Its `project_path.json` handshake points at
+  `wt-adv`, so KEEP that worktree until the next deploy from elsewhere (removing it orphans the debug log path).
+- Open Fusion docs: Fred's two, plus ONE advisor scratch doc (`adv_t11_live_fp` = `adv-t11-live-7x9`, the T11
+  7x9 sketch build) left open for Fred to inspect; close it by that fingerprint when done.
+- Advisor is IDLE per Fred; waiters: main (none armed -- f3 stood down), lane-b turn 224 (b5 owes it), fb-app parked.
+
 **Seat A** (`NEXT-SESSION.md`, H23):
 - **item 15, Template 10's Fusion build.** Two independent wrong-branch ("reflex") arcs: the top arch (about 330°) and
   arc_shoulder_R/L (the "ears"). Fred's hand-rebuilt target is in
