@@ -431,13 +431,55 @@ function _wireHandleDrag() {
   surface.addEventListener('pointercancel', end, true);
 }
 
+// T82 item 4 (advisor review on 24e2d07): typed Position/Size margin over insetWindowGeometry's own
+// strict '>' floor -- landing EXACTLY on 2*frame_thickness would still read back as "no window" (bars <= 0).
+const INSET_WINDOW_MIN_MARGIN = 0.1;
+
+/** The current displayed value for one Position/Size field, read from the record -- used to snap a field
+ *  back when its typed value didn't parse, the same "reject and restore" every other numeric field in this
+ *  app effectively gets from syncFramePanel's own activeElement guard, but explicit here since a 'change'
+ *  event can still fire while the field itself is the activeElement (Enter without a blur). */
+function _insetWindowFieldValue(id, r) {
+  if (id === 'frameWindowPosX') return r.x1;
+  if (id === 'frameWindowPosY') return r.y1;
+  if (id === 'frameWindowSizeW') return r.x2 - r.x1;
+  if (id === 'frameWindowSizeH') return r.y2 - r.y1;
+  return undefined;
+}
+
+/** Clamp a CANDIDATE insetWindow rect to one that still fits the board and still clears its own
+ *  frame_thickness by INSET_WINDOW_MIN_MARGIN -- size first (so an undersized request grows from its own
+ *  x1/y1 anchor, matching how Size itself is applied), then position (so the whole rect lands on-board). */
+function _clampInsetWindowRect(r) {
+  const widthIn = P.widthIn, heightIn = P.heightIn;
+  const ft = frameParam(FRAME_DEFS, getFrameRecord(), 'frame_thickness') || 0;
+  const minSize = 2 * ft + INSET_WINDOW_MIN_MARGIN;
+  const w = Math.min(Math.max(r.x2 - r.x1, minSize), widthIn);
+  const h = Math.min(Math.max(r.y2 - r.y1, minSize), heightIn);
+  const x1 = Math.min(Math.max(r.x1, 0), widthIn - w);
+  const y1 = Math.min(Math.max(r.y1, 0), heightIn - h);
+  return { x1, y1, x2: x1 + w, y2: y1 + h };
+}
+
+/** One Position/Size stepper's own 'change' handler: parse, reject non-finite input outright (restore the
+ *  field, write nothing), else apply `build` (the field's own patch shape) to the current rect and clamp
+ *  the result before writing. `build(r, value)` returns a CANDIDATE rect (same 4 keys), not yet clamped. */
+function _applyInsetWindowStepper(input, build) {
+  const r = getFrameRecord().insetWindow;
+  const value = parseFloat(input.value);
+  if (!Number.isFinite(value)) { input.value = _insetWindowFieldValue(input.id, r); return; }
+  editFrame({ insetWindow: { ...r, ..._clampInsetWindowRect(build(r, value)) } });
+}
+
 /**
  * T82 item 2 (INSET-WINDOW-DESIGN.md §6): drag the inset window's own body (move) or a corner (resize), in the
  * Frame tab, on the SAME shield surface `_wireHandleDrag` uses. A separate listener (not a branch inside
  * `_wireHandleDrag`'s own closure) so a shape-handle drag's own tightly-tuned pinch-abort/capture logic is
  * never touched; `ed._frameHandleDrag` (public on the editor) is the one shared flag that keeps the two from
  * both grabbing the same press. Deliberately NOT clamped (design note §3): a drag can push the window past the
- * frame's own opening or the board edge, same as typing an out-of-range value would do if there were a field.
+ * frame's own opening or the board edge (Fred: "then it's my responsibility to not let it intersect") --
+ * TYPED entry is clamped instead (see _clampInsetWindowRect above), a different failure mode: a single
+ * keystroke isn't bounded by the cursor's own continuous motion the way a drag is.
  */
 function _wireWindowDrag() {
   const shield = $('editorFrameShield');
@@ -582,24 +624,19 @@ export function initFramePanel() {
   });
   // Position/Size steppers (same rect _wireWindowDrag's own corner/body drag writes) -- Position moves the
   // window (both x1/x2, or y1/y2, shift together, keeping size fixed); Size resizes it from the x1/y1
-  // corner (matching a corner drag's own "the opposite corner stays put" feel). Not clamped, same as a
-  // drag isn't (INSET-WINDOW-DESIGN.md §3/§6): typing a size past the board is the user's own call.
-  $('frameWindowPosX')?.addEventListener('change', (e) => {
-    const r = getFrameRecord().insetWindow, width = r.x2 - r.x1, x1 = parseFloat(e.target.value);
-    editFrame({ insetWindow: { ...r, x1, x2: x1 + width } });
-  });
-  $('frameWindowPosY')?.addEventListener('change', (e) => {
-    const r = getFrameRecord().insetWindow, height = r.y2 - r.y1, y1 = parseFloat(e.target.value);
-    editFrame({ insetWindow: { ...r, y1, y2: y1 + height } });
-  });
-  $('frameWindowSizeW')?.addEventListener('change', (e) => {
-    const r = getFrameRecord().insetWindow;
-    editFrame({ insetWindow: { ...r, x2: r.x1 + parseFloat(e.target.value) } });
-  });
-  $('frameWindowSizeH')?.addEventListener('change', (e) => {
-    const r = getFrameRecord().insetWindow;
-    editFrame({ insetWindow: { ...r, y2: r.y1 + parseFloat(e.target.value) } });
-  });
+  // corner (matching a corner drag's own "the opposite corner stays put" feel). A DRAG stays deliberately
+  // unclamped (INSET-WINDOW-DESIGN.md §3/§6, Fred: "then it's my responsibility to not let it intersect")
+  // -- but typed entry is a different failure mode: a blank/garbage field would write NaN straight into
+  // the record (nothing downstream expects that), and unlike a drag, which is bounded by the cursor's own
+  // continuous motion, a single keystroke can jump the rect anywhere. So typed Position/Size IS clamped
+  // (advisor review on 24e2d07): non-finite input is ignored outright (the field snaps back to the
+  // record's own current value), a valid number is clamped to stay on the board and to clear its own
+  // frame_thickness with a small margin (insetWindowGeometry's own floor is a strict '>', so landing
+  // exactly on 2*frame_thickness would still read back as "no window").
+  $('frameWindowPosX')?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, x1: v, x2: v + (r.x2 - r.x1) })));
+  $('frameWindowPosY')?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, y1: v, y2: v + (r.y2 - r.y1) })));
+  $('frameWindowSizeW')?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, x2: r.x1 + v })));
+  $('frameWindowSizeH')?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, y2: r.y1 + v })));
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
   _wireHandleDrag();
   _wireWindowDrag();

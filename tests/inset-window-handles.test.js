@@ -141,10 +141,40 @@ describe('inset window: visible corner handles + Position/Size steppers', () => 
     expect(getFrameRecord().insetWindow).toMatchObject({ x1: 1, y1: 3, x2: 4, y2: 6 }); // width (3) preserved
     $('frameWindowPosY').value = '0'; $('frameWindowPosY').dispatchEvent(new Event('change'));
     expect(getFrameRecord().insetWindow).toMatchObject({ x1: 1, y1: 0, x2: 4, y2: 3 }); // height (3) preserved
-    $('frameWindowSizeW').value = '10'; $('frameWindowSizeW').dispatchEvent(new Event('change'));
-    expect(getFrameRecord().insetWindow).toMatchObject({ x1: 1, y1: 0, x2: 11, y2: 3 }); // x1 (anchor) unchanged
+    $('frameWindowSizeW').value = '4'; $('frameWindowSizeW').dispatchEvent(new Event('change'));
+    expect(getFrameRecord().insetWindow).toMatchObject({ x1: 1, y1: 0, x2: 5, y2: 3 }); // x1 (anchor) unchanged
     $('frameWindowSizeH').value = '2'; $('frameWindowSizeH').dispatchEvent(new Event('change'));
-    expect(getFrameRecord().insetWindow).toMatchObject({ x1: 1, y1: 0, x2: 11, y2: 2 });
+    expect(getFrameRecord().insetWindow).toMatchObject({ x1: 1, y1: 0, x2: 5, y2: 2 });
+  });
+
+  it('T82 item 4: non-finite typed input is rejected outright -- the field snaps back, nothing is written', () => {
+    for (const id of ['frameWindowPosX', 'frameWindowPosY', 'frameWindowSizeW', 'frameWindowSizeH']) {
+      const before = JSON.parse(JSON.stringify(getFrameRecord().insetWindow));
+      $(id).value = '';
+      $(id).dispatchEvent(new Event('change'));
+      expect(getFrameRecord().insetWindow).toEqual(before); // nothing written
+      expect($(id).value).not.toBe(''); // snapped back to the record's own current value
+      expect(Number.isFinite(parseFloat($(id).value))).toBe(true);
+    }
+  });
+
+  it('T82 item 4: size is clamped to clear 2*frame_thickness (plus a small margin) and never exceeds the board', () => {
+    $('frameWindowSizeW').value = '0.01'; $('frameWindowSizeW').dispatchEvent(new Event('change'));
+    const r1 = getFrameRecord().insetWindow;
+    const ft = 0.75; // template_1's own default frame_thickness
+    expect(r1.x2 - r1.x1).toBeGreaterThan(2 * ft); // strictly over insetWindowGeometry's own floor
+    $('frameWindowSizeW').value = '999'; $('frameWindowSizeW').dispatchEvent(new Event('change'));
+    const r2 = getFrameRecord().insetWindow;
+    expect(r2.x2 - r2.x1).toBeLessThanOrEqual(P.widthIn);
+    expect(r2.x1).toBeGreaterThanOrEqual(0);
+    expect(r2.x2).toBeLessThanOrEqual(P.widthIn);
+  });
+
+  it('T82 item 4: position is clamped so the whole rect stays on the board', () => {
+    $('frameWindowPosX').value = '-5'; $('frameWindowPosX').dispatchEvent(new Event('change'));
+    const r = getFrameRecord().insetWindow;
+    expect(r.x1).toBeGreaterThanOrEqual(0);
+    expect(r.x2).toBeLessThanOrEqual(P.widthIn);
   });
   function $(id) { return document.getElementById(id); }
 
