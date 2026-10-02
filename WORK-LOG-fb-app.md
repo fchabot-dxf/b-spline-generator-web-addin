@@ -6816,3 +6816,41 @@ passed/25 skipped (frame-builder), vitest 3042 passed (160 files, repo-wide) -- 
 merge that landed mid-pass (`147c6fb`), confirmed no interaction with this template's own files.
 Passing to the advisor with item 28 (stabilise: loud offset fallback + declared convex-radius known
 list) next per its own prior scope note.
+
+## 2026-10-02: H23 item 28 -- STABILISE (loud offset fallback + declared convex-radius known list)
+
+Scope held to exactly the advisor's own narrowed dispatch: no pruning (item 29), no new guards
+(Fred: ask first), no Fusion needed.
+
+**Loud offset fallback**: `BuildContext` gains `offset_fallbacks` (a list, one dict per real
+addOffset2 -> sketch.offset() fallback: sketch name, distance expression, side), propagated onto
+`FrameBuilder.offset_fallbacks` after a build the same way `self.fit` already is -- a result field
+a caller/test can check without grepping log text. Both the pre-existing "FALLING BACK" log line
+(inside `_try_parametric_offset`'s except block) and a new one at `offset_step`'s own fallback
+site are ERROR now, not WARNING. Deliberately did NOT touch the fallback mechanism itself, and
+confirmed the outward-side direction-point path (F22's own declared primary route for outward
+offsets, e.g. the panel lip) is never miscounted as a fallback -- it doesn't even attempt the
+parametric path first, by design.
+
+**Convex-radius known list**: item 27 part 2's check 3 (every convex arc's radius vs
+`frame_thickness`) was report-only; now a declared `KNOWN_CONVEX_RADIUS_BELOW_BAR` set the test
+enforces both directions -- a template not in the set that starts failing is a genuinely new
+finding, and a listed template that stops failing is a stale entry. Measured (every board size
+the suite already checks, 7x9/9x12/6x9): templates 1, 2, 3, 4, 5, 8, 10, 12, 13 have at least one
+convex arc at or below the 0.75in bar; 6, 7, 9 clear it everywhere. Matches Fred's own prior
+ruling exactly (these are accepted, warn-only cases) -- the list just makes "which ones" a
+checked fact instead of a report nobody reads.
+
+**Tests, both mutation-tested (not vacuous)**: `TestOffsetStepFallbackIsLoud` (3 cases) drives the
+real `offset_step()` entry point through a fake Fusion (`adsk.core.ObjectCollection`/
+`adsk.fusion.SketchCurve` faked, `_try_parametric_offset`/`_try_sketch_offset` mocked to isolate
+offset_step's OWN new logic from their own already-tested internals) -- confirmed it fails against
+the pre-fix code (reverted the two-line fix, re-ran, red; restored, green; cleared the resulting
+stale `.pyc` before trusting the restored run). `test_convex_radius_vs_frame_thickness_known_list`
+replaces the old `_report` test -- confirmed it fails both when dropping a real entry
+(template_1) and when adding a stale one (template_6), then restored the correct set.
+
+Full suite green: pytest 491 passed/25 skipped (frame-builder), 97 (b-spline-gen), 685/25 skipped
+(repo root); vitest 3042 passed (160 files, unaffected -- this item is Python-only). Commit
+`22673ed`. Passing to the advisor; H23 item 29 (prune for speed, after 28 merges) is next per
+NEXT-SESSION.md, but that's the advisor's own call to dispatch.
