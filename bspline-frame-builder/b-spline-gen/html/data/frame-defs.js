@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "6421872009f2ef899136947e4e826cda8cc44a742a4f99ed85fb2379c4b12312",
+  "sourceHash": "715f2b569a418d97a7567c2359f075b146e6dde5784917469aec1bc0f922430c",
   "templates": [
     {
       "features": [
@@ -13715,7 +13715,7 @@ export default {
           "label": "t7_bbx",
           "name": "t7_bbx",
           "owner": "frame",
-          "unit": "in"
+          "unit": ""
         },
         {
           "category": "T7 Geometry (H23 item 27)",
@@ -13723,7 +13723,7 @@ export default {
           "label": "t7_bby",
           "name": "t7_bby",
           "owner": "frame",
-          "unit": "in"
+          "unit": ""
         },
         {
           "category": "T7 Geometry (H23 item 27)",
@@ -13731,7 +13731,7 @@ export default {
           "label": "t7_bblen",
           "name": "t7_bblen",
           "owner": "frame",
-          "unit": "in"
+          "unit": ""
         },
         {
           "category": "T7 Geometry (H23 item 27)",
@@ -13771,7 +13771,7 @@ export default {
           "label": "t7_nbx",
           "name": "t7_nbx",
           "owner": "frame",
-          "unit": "in"
+          "unit": ""
         },
         {
           "category": "T7 Geometry (H23 item 27)",
@@ -13779,7 +13779,7 @@ export default {
           "label": "t7_nby",
           "name": "t7_nby",
           "owner": "frame",
-          "unit": "in"
+          "unit": ""
         },
         {
           "category": "T7 Geometry (H23 item 27)",
@@ -13787,7 +13787,7 @@ export default {
           "label": "t7_nblen",
           "name": "t7_nblen",
           "owner": "frame",
-          "unit": "in"
+          "unit": ""
         },
         {
           "category": "T7 Geometry (H23 item 27)",
@@ -14617,21 +14617,21 @@ export default {
               "Category": "T7 Geometry (H23 item 27)",
               "Label": "t7_bbx",
               "Name": "t7_bbx",
-              "Unit": "in",
+              "Unit": "",
               "Val": "t7_ux + 1"
             },
             {
               "Category": "T7 Geometry (H23 item 27)",
               "Label": "t7_bby",
               "Name": "t7_bby",
-              "Unit": "in",
+              "Unit": "",
               "Val": "t7_uy"
             },
             {
               "Category": "T7 Geometry (H23 item 27)",
               "Label": "t7_bblen",
               "Name": "t7_bblen",
-              "Unit": "in",
+              "Unit": "",
               "Val": "sqrt(t7_bbx*t7_bbx + t7_bby*t7_bby)"
             },
             {
@@ -14666,21 +14666,21 @@ export default {
               "Category": "T7 Geometry (H23 item 27)",
               "Label": "t7_nbx",
               "Name": "t7_nbx",
-              "Unit": "in",
+              "Unit": "",
               "Val": "t7_uex - t7_ux"
             },
             {
               "Category": "T7 Geometry (H23 item 27)",
               "Label": "t7_nby",
               "Name": "t7_nby",
-              "Unit": "in",
+              "Unit": "",
               "Val": "t7_uey - t7_uy"
             },
             {
               "Category": "T7 Geometry (H23 item 27)",
               "Label": "t7_nblen",
               "Name": "t7_nblen",
-              "Unit": "in",
+              "Unit": "",
               "Val": "sqrt(t7_nbx*t7_nbx + t7_nby*t7_nby)"
             },
             {
