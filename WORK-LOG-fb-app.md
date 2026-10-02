@@ -7021,3 +7021,25 @@ vitest untouched (no JS this pass). Commit `80fa4d8`. **Not run against real Fus
 here per the dispatch; the live timing run (both variants, both docs) happens once the advisor
 hands over Fusion time. Left `tools/repro/fusion_t11/COWORK-UI-OPERATION-LOG.md` (another seat's
 own file, appeared mid-pass) untouched and uncommitted, not mine.
+
+## 2026-10-02: H23 item 31 -- fixed 2 flaky vitest timeouts under concurrent-suite load
+
+Small no-Fusion job between item 29's parts: the advisor noticed the same 2 timeouts I'd seen
+twice this session (items 18 and 29's own full-suite runs) -- tests/frame-template-10.test.js's
+H23 item 23 reflex-sweep and tests/silhouette-resolve.test.js's F12 dense hourglass sweep, both
+pass cleanly alone but occasionally exceed vitest's 5s default under concurrent load.
+
+Measured both in isolation first rather than guessing: the reflex-sweep (3 boards x 500 seeds) is
+~3.2s, the hourglass sweep ~2.6s -- both legitimately CPU-heavy, correctly-passing work, not a
+bug to fix in the test logic itself. Gave each an explicit per-test timeout (vitest's own 3rd
+`it()` argument) with real headroom -- 30s and 20s respectively -- matching the exact convention
+tests/frame-3d-sweep.test.js already set for this same problem (90s on a test measured ~2.5s
+unloaded, commented with its own worst-case-on-a-slow-container story). No seeds or combinations
+removed, no assertion weakened -- same 42/42 pass count before and after in isolation.
+
+Mutation-tested the fix: temporarily shrank one test's own new timeout to 10ms, confirmed it then
+FAILED with a real timeout error (proving the 3rd-arg actually governs it, not silently ignored),
+restored to 30000.
+
+Ran the full vitest suite 3 consecutive times as asked: 160 files / 3052 tests passed every time,
+no timeouts. pytest untouched (no Python this item): 714 passed/25 skipped. Commit `560e2af`.
