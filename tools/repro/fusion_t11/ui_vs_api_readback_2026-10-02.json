@@ -1,0 +1,654 @@
+{
+ "UI_rect_2point": {
+  "curves": {
+   "Line": 4
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=pt)",
+   "Horizontal(line=Line#1)",
+   "Horizontal(line=Line#3)",
+   "Vertical(line=Line#2)",
+   "Vertical(line=Line#4)"
+  ],
+  "constraint_types": [
+   "Coincident",
+   "Horizontal",
+   "Horizontal",
+   "Vertical",
+   "Vertical"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_rect_3point": {
+  "curves": {
+   "Line": 4
+  },
+  "constraints": [
+   "Parallel(lineOne=Line#3,lineTwo=Line#1)",
+   "Parallel(lineOne=Line#4,lineTwo=Line#2)",
+   "Perpendicular(lineOne=Line#2,lineTwo=Line#1,line=Line#2,curve=Line#1)"
+  ],
+  "constraint_types": [
+   "Parallel",
+   "Parallel",
+   "Perpendicular"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_rect_center": {
+  "curves": {
+   "Line": 4,
+   "Line(c)": 2
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=Line(c)#1)",
+   "Coincident(point=pt,entity=Line(c)#2)",
+   "Coincident(point=pt,entity=pt)",
+   "Horizontal(line=Line#1)",
+   "Parallel(lineOne=Line#3,lineTwo=Line#1)",
+   "Parallel(lineOne=Line#4,lineTwo=Line#2)",
+   "Perpendicular(lineOne=Line#2,lineTwo=Line#1,line=Line#2,curve=Line#1)"
+  ],
+  "constraint_types": [
+   "Coincident",
+   "Coincident",
+   "Coincident",
+   "Horizontal",
+   "Parallel",
+   "Parallel",
+   "Perpendicular"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_arc_3point": {
+  "curves": {
+   "Arc": 1
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=pt)"
+  ],
+  "constraint_types": [
+   "Coincident"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_arc_center": {
+  "curves": {
+   "Arc": 1
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=pt)"
+  ],
+  "constraint_types": [
+   "Coincident"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_arc_tangent_emulated": {
+  "curves": {
+   "Line": 1,
+   "Arc": 1
+  },
+  "constraints": [
+   "Horizontal(line=Line#1)",
+   "Tangent(curveOne=Arc#1,curveTwo=Line#1)"
+  ],
+  "constraint_types": [
+   "Horizontal",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_constraint_midpoint": {
+  "curves": {
+   "Line": 1
+  },
+  "constraints": [
+   "MidPoint(point=pt,midPointCurve=Line#1)"
+  ],
+  "constraint_types": [
+   "MidPoint"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_constraint_midpoint_line_end": {
+  "curves": {
+   "Line": 2
+  },
+  "constraints": [
+   "MidPoint(point=pt,midPointCurve=Line#1)",
+   "Vertical(line=Line#2)"
+  ],
+  "constraint_types": [
+   "MidPoint",
+   "Vertical"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_circle_center": {
+  "curves": {
+   "Circle": 1
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=pt)"
+  ],
+  "constraint_types": [
+   "Coincident"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_circle_2point": {
+  "curves": {
+   "Circle": 1
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_circle_3point": {
+  "curves": {
+   "Circle": 1
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_fillet": {
+  "curves": {
+   "Line": 2,
+   "Arc": 1
+  },
+  "constraints": [
+   "Horizontal(line=Line#1)",
+   "Perpendicular(lineOne=Line#2,lineTwo=Line#1,line=Line#2,curve=Line#1)",
+   "Tangent(curveOne=Line#1,curveTwo=Arc#1)",
+   "Tangent(curveOne=Line#2,curveTwo=Arc#1)"
+  ],
+  "constraint_types": [
+   "Horizontal",
+   "Perpendicular",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [
+   "Radial"
+  ],
+  "fully_constrained": false
+ },
+ "UI_slot_center_to_center": {
+  "curves": {
+   "Line": 2,
+   "Arc": 2,
+   "Line(c)": 1
+  },
+  "constraints": [
+   "Horizontal(line=Line(c)#1)",
+   "Parallel(lineOne=Line#1,lineTwo=Line#2)",
+   "Tangent(curveOne=Arc#1,curveTwo=Line#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Line#1)",
+   "Tangent(curveOne=Line#1,curveTwo=Arc#1)",
+   "Tangent(curveOne=Line#2,curveTwo=Arc#2)"
+  ],
+  "constraint_types": [
+   "Horizontal",
+   "Parallel",
+   "Tangent",
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_slot_overall": {
+  "curves": {
+   "Line": 2,
+   "Arc": 2,
+   "Line(c)": 1
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=Arc#1)",
+   "Coincident(point=pt,entity=Arc#2)",
+   "Coincident(point=pt,entity=Line(c)#1)",
+   "Coincident(point=pt,entity=Line(c)#1)",
+   "Horizontal(line=Line(c)#1)",
+   "Parallel(lineOne=Line#1,lineTwo=Line#2)",
+   "Tangent(curveOne=Arc#1,curveTwo=Line#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Line#1)",
+   "Tangent(curveOne=Line#1,curveTwo=Arc#1)",
+   "Tangent(curveOne=Line#2,curveTwo=Arc#2)"
+  ],
+  "constraint_types": [
+   "Coincident",
+   "Coincident",
+   "Coincident",
+   "Coincident",
+   "Horizontal",
+   "Parallel",
+   "Tangent",
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_slot_center_point": {
+  "curves": {
+   "Line": 2,
+   "Arc": 2,
+   "Line(c)": 1
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=pt)",
+   "Horizontal(line=Line(c)#1)",
+   "MidPoint(point=pt,midPointCurve=Line(c)#1)",
+   "Parallel(lineOne=Line#1,lineTwo=Line#2)",
+   "Tangent(curveOne=Arc#1,curveTwo=Line#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Line#1)",
+   "Tangent(curveOne=Line#1,curveTwo=Arc#1)",
+   "Tangent(curveOne=Line#2,curveTwo=Arc#2)"
+  ],
+  "constraint_types": [
+   "Coincident",
+   "Horizontal",
+   "MidPoint",
+   "Parallel",
+   "Tangent",
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_slot_3point_arc": {
+  "curves": {
+   "Arc": 4,
+   "Arc(c)": 1
+  },
+  "constraints": [
+   "Tangent(curveOne=Arc#1,curveTwo=Arc#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Arc#3)",
+   "Tangent(curveOne=Arc#3,curveTwo=Arc#4)",
+   "Tangent(curveOne=Arc#4,curveTwo=Arc#1)"
+  ],
+  "constraint_types": [
+   "Tangent",
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_slot_center_point_arc": {
+  "curves": {
+   "Arc": 4,
+   "Arc(c)": 1
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=pt)",
+   "Tangent(curveOne=Arc#1,curveTwo=Arc#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Arc#3)",
+   "Tangent(curveOne=Arc#3,curveTwo=Arc#4)",
+   "Tangent(curveOne=Arc#4,curveTwo=Arc#1)"
+  ],
+  "constraint_types": [
+   "Coincident",
+   "Tangent",
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_polygon_circumscribed": {
+  "curves": {
+   "Line": 6
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=pt)",
+   "Polygon()"
+  ],
+  "constraint_types": [
+   "Coincident",
+   "Polygon"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_polygon_inscribed": {
+  "curves": {
+   "Line": 6
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=pt)",
+   "Polygon()"
+  ],
+  "constraint_types": [
+   "Coincident",
+   "Polygon"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "UI_polygon_edge": {
+  "curves": {
+   "Line": 6
+  },
+  "constraints": [
+   "Polygon()"
+  ],
+  "constraint_types": [
+   "Polygon"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_rect_2point": {
+  "curves": {
+   "Line": 4
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_rect_3point": {
+  "curves": {
+   "Line": 4
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_rect_center": {
+  "curves": {
+   "Line": 4
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_arc_3point": {
+  "curves": {
+   "Arc": 1
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_arc_center": {
+  "curves": {
+   "Arc": 1
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_arc_center_start_end": {
+  "curves": {
+   "Arc": 1
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_arc_tangent_emulated": {
+  "curves": {
+   "Line": 1,
+   "Arc": 1
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=pt)",
+   "Tangent(curveOne=Line#1,curveTwo=Arc#1)"
+  ],
+  "constraint_types": [
+   "Coincident",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_constraint_midpoint": {
+  "curves": {
+   "Line": 1
+  },
+  "constraints": [
+   "MidPoint(point=pt,midPointCurve=Line#1)"
+  ],
+  "constraint_types": [
+   "MidPoint"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_constraint_midpoint_line_end": {
+  "curves": {
+   "Line": 2
+  },
+  "constraints": [
+   "MidPoint(point=pt,midPointCurve=Line#1)"
+  ],
+  "constraint_types": [
+   "MidPoint"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_circle_center": {
+  "curves": {
+   "Circle": 1
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_circle_2point": {
+  "curves": {
+   "Circle": 1
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_circle_3point": {
+  "curves": {
+   "Circle": 1
+  },
+  "constraints": [],
+  "constraint_types": [],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_fillet": {
+  "curves": {
+   "Line": 2,
+   "Arc": 1
+  },
+  "constraints": [
+   "Tangent(curveOne=Line#1,curveTwo=Arc#1)",
+   "Tangent(curveOne=Line#2,curveTwo=Arc#1)"
+  ],
+  "constraint_types": [
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_slot_center_to_center": {
+  "curves": {
+   "Line": 2,
+   "Arc": 2,
+   "Line(c)": 1
+  },
+  "constraints": [
+   "Parallel(lineOne=Line#1,lineTwo=Line#2)",
+   "Tangent(curveOne=Arc#1,curveTwo=Line#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Line#1)",
+   "Tangent(curveOne=Line#1,curveTwo=Arc#1)",
+   "Tangent(curveOne=Line#2,curveTwo=Arc#2)"
+  ],
+  "constraint_types": [
+   "Parallel",
+   "Tangent",
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_slot_overall": {
+  "curves": {
+   "Line": 2,
+   "Arc": 2,
+   "Line(c)": 1
+  },
+  "constraints": [
+   "Coincident(point=pt,entity=Arc#1)",
+   "Coincident(point=pt,entity=Arc#2)",
+   "Coincident(point=pt,entity=Line(c)#1)",
+   "Coincident(point=pt,entity=Line(c)#1)",
+   "Parallel(lineOne=Line#1,lineTwo=Line#2)",
+   "Tangent(curveOne=Arc#1,curveTwo=Line#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Line#1)",
+   "Tangent(curveOne=Line#1,curveTwo=Arc#1)",
+   "Tangent(curveOne=Line#2,curveTwo=Arc#2)"
+  ],
+  "constraint_types": [
+   "Coincident",
+   "Coincident",
+   "Coincident",
+   "Coincident",
+   "Parallel",
+   "Tangent",
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_slot_center_point": {
+  "curves": {
+   "Line": 2,
+   "Arc": 2,
+   "Line(c)": 1
+  },
+  "constraints": [
+   "MidPoint(point=pt,midPointCurve=Line(c)#1)",
+   "Parallel(lineOne=Line#1,lineTwo=Line#2)",
+   "Tangent(curveOne=Arc#1,curveTwo=Line#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Line#1)",
+   "Tangent(curveOne=Line#1,curveTwo=Arc#1)",
+   "Tangent(curveOne=Line#2,curveTwo=Arc#2)"
+  ],
+  "constraint_types": [
+   "MidPoint",
+   "Parallel",
+   "Tangent",
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_slot_3point_arc": {
+  "curves": {
+   "Arc": 4,
+   "Arc(c)": 1
+  },
+  "constraints": [
+   "Tangent(curveOne=Arc#1,curveTwo=Arc#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Arc#3)",
+   "Tangent(curveOne=Arc#3,curveTwo=Arc#4)"
+  ],
+  "constraint_types": [
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_slot_center_point_arc": {
+  "curves": {
+   "Arc": 4,
+   "Arc(c)": 1
+  },
+  "constraints": [
+   "Tangent(curveOne=Arc#1,curveTwo=Arc#2)",
+   "Tangent(curveOne=Arc#2,curveTwo=Arc#3)",
+   "Tangent(curveOne=Arc#3,curveTwo=Arc#4)"
+  ],
+  "constraint_types": [
+   "Tangent",
+   "Tangent",
+   "Tangent"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_polygon_circumscribed": {
+  "curves": {
+   "Line": 6
+  },
+  "constraints": [
+   "Polygon()"
+  ],
+  "constraint_types": [
+   "Polygon"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_polygon_inscribed": {
+  "curves": {
+   "Line": 6
+  },
+  "constraints": [
+   "Polygon()"
+  ],
+  "constraint_types": [
+   "Polygon"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ },
+ "API_polygon_edge": {
+  "curves": {
+   "Line": 6
+  },
+  "constraints": [
+   "Polygon()"
+  ],
+  "constraint_types": [
+   "Polygon"
+  ],
+  "dims": [],
+  "fully_constrained": false
+ }
+}
