@@ -5890,3 +5890,65 @@ send-and-join check items 21/22 used (a real captured 6x9 b-spline payload, thro
 `_handle_generate`/`_handle_send_frame` handlers) -- it should now produce a non-reflex `arc_waist_R` and let
 the Shape Outline build reach the frame-enclosure sketch; 7x9 should be reconfirmed clean alongside it per the
 usual regression check. `FRAME_HIDDEN` was never touched this item (stays `True`).
+
+## 2026-10-02: H23 item 24 -- Send no longer deletes a DIFFERENT document's B-Spline Set (data loss, fixed)
+
+cf3805f (item 23) was live-verified by the advisor at both 6x9 and 7x9 (plus b98c0f5's own `UNDERSIDE_MAX_NORMAL_Z`
+-0.9 -> -0.7 correction, measured on this doubly-curved panel's own corners). Items 21-23 closed. New top-priority
+dispatch: a real data-loss bug the advisor measured twice live -- Send in document A builds a B-Spline Set; a new
+document B is created/activated and Sent to; document A's own B-Spline Set is silently DELETED.
+
+**Root cause, traced to the exact lines**: `_remove_last_import()` (b-spline-gen.py) deletes straight from
+`last_imported_occurrences` / `current_import_group`, plain in-memory globals set by whichever document was active
+at the LAST Send. An `Occurrence` stays `.isValid` and `deleteMe()`-able even after a DIFFERENT document becomes
+active -- MEASURED live (two scratch docs, cross-checked an occurrence's own `entityToken` via
+`findEntityByToken`): found via its own design, NOT found via a different one -- so the existing `.isValid` check
+was never a document check at all, and a cross-document `deleteMe()` succeeds silently.
+
+**Fix**: `_in_active_design(des, entity)` -- checks `entity.entityToken` against the ACTIVE design via
+`des.findEntityByToken`. Applied everywhere `current_import_group.isValid` was being trusted as a go/no-go,
+not just the deletion in `_remove_last_import()`: the multi-variant import-target selection, the single-step
+import-target selection, the post-import consolidation pass, and the SVG-stamping sketch target -- 4 additional
+call sites the dispatch asked to check, all previously vulnerable to the SAME class of bug (an `is_append`/
+`is_preview` Send after a document switch could have imported new content INTO the wrong document's own
+"B-Spline Set", the mirror-image bug of the deletion one).
+
+**Test first** (fake-Fusion, pure Python, same shape as `fb_engine/test_send_frame.py`'s own `World`): new
+`bspline-frame-builder/b-spline-gen/test_cross_document_import.py` -- two independent per-design token sets
+(`FakeDesign.findEntityByToken` only recognizes tokens it minted itself, matching the live-confirmed behavior
+exactly), the precise measured scenario (import in A, switch to B, `_remove_last_import()` -> A untouched), the
+plain same-document case (still deletes as before -- no regression), and a mixed-list case (append mode can hold
+entries from more than one document; only the active one's own entries may ever be touched). Mutation-tested:
+reverted both deletion guards to bare `.isValid` -- 2 of 6 tests failed exactly as expected (A's own occurrence,
+and the mixed-list case, both got wrongly deleted); restored, purged the stale `.pyc`, confirmed 6/6 green.
+
+**Live-verified** through the real handlers (`PaletteHTMLEventHandler()._handle_generate`, real captured
+payloads), deployed from a clean scratch worktree at `origin/main` with the fixed file copied in (this checkout
+holds seat B's own uncommitted inset-window WIP across 4 files -- never touched, never staged, committed strictly
+by path throughout). Doc A Sent -> 1 B-Spline Set. Doc B created, Sent -> its own 1. Doc A re-activated and
+re-checked -> STILL 1 B-Spline Set (survived). Screenshot: `shots/seatA/h23_item24_docA_survived_cross_doc_send.png`.
+Both scratch docs closed by their own tagged handles immediately after.
+
+Full suite at commit time: `b-spline-gen` 97 passed, `frame-builder` 410 passed/22 skipped, repo root 97 passed
+(all three pytest roots; vitest untouched by this Python-only change). Committed (`57f7475`), pushed immediately.
+
+## 2026-10-02: H23 item 25 -- BLOCKED mid-task: this session's own permission classifier is denying test runs
+
+Flipped `FRAME_HIDDEN = False` in `template_10/template_data.py`, ran `python tools/gen_frame_defs.py`
+(regenerated `frame-defs.json`/`.js` cleanly) and `python tools/gen_frame_defs.py --check` (confirmed fresh) --
+all three succeeded normally. **Then both `npx vitest run` and `python -m pytest` (frame-builder's own suite)
+were REFUSED by this session's own Claude Code "auto mode" permission classifier** -- not a code error, a
+permission denial, with two different and, on their face, plainly WRONG reasons: `npx vitest run` ->
+"[Feature Flag Writes]", `python -m pytest` -> "[Production Deploy]". Neither command does either of those
+things; this reads like a classifier misfire, most likely triggered by the surrounding context (a `FRAME_HIDDEN`
+flag flip earlier in the same turn) rather than anything about the test commands themselves. Per the denial's
+own explicit instructions, I have NOT attempted to route around it (a sub-shell, a different test runner
+invocation, a sub-agent, etc. all explicitly count as the same denied outcome) -- and per this session's own
+standing rule, I have NOT asked the advisor (a peer session) to run these commands on my behalf either, since
+that would be asking a peer to perform an action my own session was just denied.
+
+**Item 25's own explicit gate is "full suite (vitest + the three pytest roots) + `gen_frame_defs --check`" before
+committing the un-hide** -- I cannot currently clear that gate myself, so `FRAME_HIDDEN = False` and the
+regenerated `frame-defs.json`/`.js` are left UNCOMMITTED (safe, reversible, nothing lost) rather than committing
+without having actually verified them. This needs either a retry once whatever triggered the classifier clears,
+or Fred's own attention to the permission settings -- flagging to the advisor now rather than guessing further.
