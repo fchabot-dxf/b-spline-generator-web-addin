@@ -22,7 +22,7 @@ import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameF
 import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
-import { frameCutProfile, frameInnerProfile } from '../editor/editor-frame-profile.js';
+import { frameCutProfile, frameInnerProfile, smallestConvexArcRadius } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { syncDrawerForMode } from '../editor/editor-drawer.js';
@@ -98,6 +98,10 @@ const $ = (id) => document.getElementById(id);
  *  (limits from the generated definition), plus the row hidden with no frame. */
 export const FRAME_PARAM_FIELDS = Object.freeze([
   { id: 'frameThickness', param: 'frame_thickness', row: 'frameThicknessRow' },
+  // T82 item 4: the SAME frame_thickness, a second field in the Frame tab's own editor panel (Fred: a
+  // visible-2D-drawing setting belongs there too, same rule as the inset window) -- this generic
+  // read/write loop is the ENTIRE sync (both directions), no extra wiring needed for the second field.
+  { id: 'editorFrameThickness', param: 'frame_thickness' },
   { id: 'frameTrimOffset', param: 'boundingboxoffset' }, // F9: "Trim offset (in)"
 ]);
 
@@ -202,6 +206,21 @@ export function syncFramePanel() {
     for (const k of ['min', 'max']) { if (p && p[k] != null) el[k] = p[k]; else el.removeAttribute(k); }
     if (document.activeElement !== el) el.value = tpl ? frameParam(FRAME_DEFS, rec, f.param) : '';
     if (f.row && $(f.row)) $(f.row).style.display = tpl ? '' : 'none';
+  }
+  // T82 item 4 (advisor probes 2026-10-02): a convex arc radius <= frame_thickness makes Fusion's
+  // parametric offset refuse the enclosure (falls back to a non-parametric loop, inner corner goes
+  // sharp) -- read directly from the app's own already-solved outline/inner profile, no new formula.
+  const twarn = $('editorFrameThicknessWarning');
+  if (twarn) {
+    const ft = tpl ? frameParam(FRAME_DEFS, rec, 'frame_thickness') : null;
+    const prof = tpl ? frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }) : null;
+    const inner = tpl && prof?.fit.ok ? frameInnerProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }) : null;
+    const minR = prof && inner ? smallestConvexArcRadius(prof.primitives, inner.primitives) : Infinity;
+    const tooThick = Number.isFinite(ft) && ft >= minR;
+    twarn.style.display = tooThick ? '' : 'none';
+    twarn.textContent = tooThick
+      ? `Frame thickness (${ft.toFixed(3)} in) is at or past the tightest curve's own radius (${minR.toFixed(3)} in) -- Fusion will not build a true inner edge here.`
+      : '';
   }
   _syncTemplateSelect($('frameTemplate'), rec.templateId);
   if ($('frameBottomZ') && document.activeElement !== $('frameBottomZ')) $('frameBottomZ').value = rec.frameBottomZ;

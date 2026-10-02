@@ -12468,3 +12468,51 @@ in the absolute path before every Edit/Write call, and flag (never self-fix) if 
 
 Committing and pushing from lane-b. Next: T82 item 4 itself (frame thickness stepper in the Frame editor,
 synced with the sidebar, + convex-radius warning), then T83 item 2.
+
+## Lane B — T82 item 4 — Frame thickness in the Frame editor + convex-radius warning — DONE
+
+Fred: "a frame thickness (offset) setting can be in frame editor since it's a visible 2D feature" -- same
+rule as the inset window (settings that change the 2D drawing live in the Frame tab, not only the
+sidebar). Right after the inset-window item, same panel (`#editorFramePanel`).
+
+**The stepper itself cost almost nothing to wire**: `FRAME_PARAM_FIELDS` (main/frame-panel.js) is already
+a GENERIC read/write table -- both the write listeners (`for (const f of FRAME_PARAM_FIELDS)
+$(f.id)?.addEventListener('change', ...)`) and the read-back sync (`syncFramePanel`'s own identical loop)
+iterate it. Adding ONE declared entry, `{ id: 'editorFrameThickness', param: 'frame_thickness' }`, is the
+ENTIRE two-way sync between the sidebar's existing `#frameThickness` and the new editor-panel field --
+no new wiring code at all, both directions already existed for free. Added the matching stepper markup in
+`#editorFramePanel` (same `.cad-stepper` look every other numeric field uses) and updated the stale F8
+comment above it (it said thickness was removed from this panel per an H23 item 5 live check -- noted that
+this item supersedes that, not still in effect).
+
+**The convex-radius warning** ("a convex arc radius <= frame_thickness makes Fusion's parametric offset
+refuse and fall back to a non-parametric loop, inner corner goes sharp" -- advisor's own probes
+2026-10-02): new `smallestConvexArcRadius(outerPrimitives, innerPrimitives)` in editor-frame-profile.js,
+reading convexity OFF the app's own already-solved offset rather than re-deriving it (outline-offset.js's
+own documented rule: a convex arc's inner radius is `r - t`, concave is `r + t` -- so a NON-collapsed
+inner arc with a SMALLER radius than its outer counterpart is convex by construction; a COLLAPSED inner
+piece is, by that same module's own rule, ALWAYS a convex arc whose radius was already <= the offset
+distance, so it counts too, at its own true outer radius). No new geometry formula -- just reading the
+sign of a difference that `offsetOutlineInward` already computed. Wired into `syncFramePanel()`: computes
+`frameCutProfile` + `frameInnerProfile` at the CURRENT thickness, compares, shows/hides
+`#editorFrameThicknessWarning` (same `display:none`/red-text pattern `#frameFitWarning` already uses).
+
+**Mutation-tested both pieces independently**: forcing `smallestConvexArcRadius`'s own convexity check to
+always say "not convex" failed exactly the oracle test and the warning-threshold test, nothing else;
+removing the `editorFrameThickness` field declaration failed exactly the two sync tests, nothing else;
+both restored byte-identical via diff, confirmed green again. New `tests/frame-thickness-editor-sync.test.js`
+(5 tests): sidebar->editor-panel sync, editor-panel->sidebar sync, an oracle test proving T1 genuinely has
+a measurable convex arc (not a tautology), the warning crossing the threshold in both directions, and no
+warning with no frame selected. Full JS suite (`npx vitest run`, repo root): 158 files, 2960 passed, 0
+failed.
+
+**Verified live** in a real headless-Chrome session (not just the test suite): Template 1 at 7x9, set
+thickness to 1.5in via the SIDEBAR field -- editor-panel field followed to "1.5", warning appeared reading
+"Frame thickness (1.500 in) is at or past the tightest curve's own radius (0.623 in)..."; set back to
+0.4in -- warning cleared, editor-panel field followed to "0.4". Zero console errors. Screenshot of the
+Frame-editor panel confirms the new stepper matches the existing panel's own visual style exactly.
+
+This time the "-lane-b" path check held for every Edit/Write call -- no main-checkout mistake this turn.
+
+Committing as 'T82 item 4: ...'. Next: T83 item 2 (Template 11 app-side wiring -- registers the
+`diamondTopHourglassPinch` preset/extractor that's currently making lane-b's own gate red).
