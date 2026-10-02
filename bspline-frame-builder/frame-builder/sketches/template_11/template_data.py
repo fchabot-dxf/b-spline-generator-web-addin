@@ -139,7 +139,8 @@ FRAME_HANDLE_MIGRATIONS = {}
 # sketch 2's own :S->:E) and must be checked against a real seed-geometry test
 # (tests/frame-seed-geometry.test.js, as every other template's orientation is checked there) -
 # NOT YET WRITTEN for this template, same as Template 7's own first pass (see that template's
-# LIVE_CHECK.md entry).
+# LIVE_CHECK.md entry). For the six arcs the "reverse" flag only orders the three sent points; the
+# live :S/:E tags follow Fusion's own counter-clockwise rule either way (p02_03_welds.py).
 FRAME_SEED_MAP = [
     {"id": "roof_R",          "kind": "line", "prim": 0,  "reverse": False},
     {"id": "eave_straight_R", "kind": "line", "prim": 1,  "reverse": False},
@@ -154,12 +155,8 @@ FRAME_SEED_MAP = [
     {"id": "arc_shoulder_L",  "kind": "arc",  "prim": 10, "reverse": False},
     {"id": "eave_straight_L", "kind": "line", "prim": 11, "reverse": False},
     {"id": "roof_L",          "kind": "line", "prim": 12, "reverse": False},
-    {"id": "seed_rad_shoulder_R", "kind": "radius", "prim": 2},
-    {"id": "seed_rad_waist_R",    "kind": "radius", "prim": 3},
-    {"id": "seed_rad_hip_R",      "kind": "radius", "prim": 4},
-    {"id": "seed_rad_hip_L",      "kind": "radius", "prim": 8},
-    {"id": "seed_rad_waist_L",    "kind": "radius", "prim": 9},
-    {"id": "seed_rad_shoulder_L", "kind": "radius", "prim": 10},
+    # No "radius" seeds: the six arcs carry no seed Radius dimension (p02_02_loop.py, item 2) -- each
+    # arc is seeded by its three points alone, the middle one being its TRUE midpoint.
 ]
 # N-BAR: the common features (bars + trim) with this template's 5 bar names.
 FRAME_FEATURES = frame_features([b["name"] for b in FRAME_BARS])

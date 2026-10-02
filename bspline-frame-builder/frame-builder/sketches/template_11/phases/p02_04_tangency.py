@@ -1,6 +1,6 @@
 def get_block(ui_data=None):
     """
-    Arc Tangency (Template 11 - Diamond-top, 3-arc Hourglass).
+    Arc Tangency (Template 11 - Diamond-top, 3-arc Hourglass) - the LAST sketch-2 phase.
 
     G1 continuity at the 4 SMOOTH joins per side (fb_engine/t11_geometry.py's own module docstring:
     "every join WITHIN a side... is TANGENT, not a miter"): eave-straight <-> shoulder arc, shoulder
@@ -10,9 +10,10 @@ def get_block(ui_data=None):
     machinery in sketch 3 (p03_04_encl_miters.py), same division Template 7 already uses between a
     smooth join (Tangent here) and a cut corner (miter in the enclosure sketch).
 
-    Runs AFTER the seed Radius dimensions are deleted (p02_04_radius_removal.py, moved earlier this
-    turn -- see that file's own docstring) so each arc's curvature is genuinely free to solve, not
-    fighting an already-pinned size.
+    These constraints LOCK a chain that p02_02 already seeded exactly; they do not find it (measured,
+    see p02_02_loop.py's own docstring, item 1). There is no seed Radius to delete first and no joint
+    to Fix afterwards: with the exact seed and the physically-correct welds of p02_03, Tangent is
+    satisfied at zero residual and every radius/centre stays where the closed form put it.
     """
     seq = [
         # Right side
@@ -26,10 +27,13 @@ def get_block(ui_data=None):
         {'Type': 'Tangent', 'Targets': ['arc_hip_L', 'arc_waist_L']},
         {'Type': 'Tangent', 'Targets': ['arc_waist_L', 'arc_shoulder_L']},
         {'Type': 'Tangent', 'Targets': ['arc_shoulder_L', 'eave_straight_L']},
+
+        # Pulse to snap the solved loop into the viewport (as every other template's final p02 phase).
+        {'Type': 'Pulse'},
     ]
 
     return {
         "Name": "ArcTangency",
-        "PhaseID": "p02_05_tangency",
+        "PhaseID": "p02_04_tangency",
         "BuildSequence": seq
     }
