@@ -12803,3 +12803,56 @@ input, for consistency). New test: a 7/3 width renders as "2.333" while the reco
 
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn N+5 — T83 item 2: Template 11 live Fusion check (the last open piece) — DONE
+
+Advisor sent "Fusion free" mid-turn: run the live check (live_build_readback.py + a real captured send at
+7x9 and 9x12), the readback counts fallbacks, 7x9's convex-radius fallback is ACCEPTED (Fred: warn only,
+report it). Left "UI-cowork v1" and Fred's own documents alone throughout; closed only my own two
+fingerprinted scratch docs, by handle, each verified against its own `adv_t11_live_fp` comment before
+closing (fusion360-quirks skill's own scratch-document hygiene).
+
+**"A real captured send"**: `tools/repro/capture_send_payload.mjs`'s own `shape-lattice-frame` scenario
+hardcoded `template_1` and had no way to set the board size -- added `--template=<id>` (default
+`template_1`, every existing caller unaffected) and `--board=WxH` (default: whatever the page's own
+fresh-profile default already is, same backward-compat) rather than writing a parallel one-off script.
+Captured a REAL `[Send frame]` payload for `template_11` at 7x9 and 9x12 straight from the running app (via
+its own editor Generate button -- a genuinely random seeded shape each time, not t11_geometry.py's own
+default proportions): `recordVersion`, `params`, a full 13-piece `seedGeometry` (the exact shape
+`frame-handles.js`'s own `frameSeedGeometry` produces, Fusion-centred inches, y up), etc.
+
+**New `tools/repro/fusion_t11/live_captured_send_readback.py`** (same `exec()`-inside-`fusion_execute`
+pattern as the existing `live_build_readback.py`, read before writing this): loads the captured payload from
+disk, calls `fb.run_sketch_only(style_id='template_11', ui_data={widthIn,heightIn,**payload.params},
+seed_geometry=payload.seedGeometry, panel_lip=...)` -- `run_sketch_only`'s own `seed_geometry` parameter
+already existed for exactly this (`apply_seed_geometry`, written by the advisor this session), so no engine
+change was needed. Verification is a PURE 3-point circumcircle check per arc (from that arc's OWN 3 seed
+points) against the live Fusion sketch's own arc -- independent of t11_geometry.py's own formula entirely,
+since a randomly-Generated `waistRadius` doesn't match that formula's own derived default and comparing
+against it would have been the wrong check.
+
+**Results, both exact:**
+- **7x9** (seeds: waistReach .552, cornerRadiusTop .741, cornerRadiusBottom .600, waistRadius .218,
+  waistCenterY -.381): build OK (1.3s, fit ok), sketch 2 = 9 lines + 6 arcs (13 pieces), all 6 arcs match
+  their own seed circumcircle to 0.0000 in (centre AND radius), 0 engine errors, **1 parametric-offset
+  fallback** -- `addOffset2 failed ... Offset creation failed as the topology of the offset curves does
+  not match the topology of the original curves ... FALLING BACK to a NON-parametric offset` -- the EXACT,
+  known class (fusion360-quirks: a convex arc's radius must exceed frame_thickness before an inward offset,
+  or the whole loop's topology changes), ACCEPTED per Fred's own ruling (warn only, no clamp), reported here
+  per the advisor's own instruction, not treated as a failure.
+- **9x12** (seeds: waistReach .531, cornerRadiusTop .553, cornerRadiusBottom .694, waistRadius .293,
+  waistCenterY -.312): build OK (1.1s, fit ok), sketch 2 = 9 lines + 6 arcs, all 6 arcs exact (0.0000 in),
+  0 engine errors, **0 fallbacks** -- fully parametric, matching the skill's own earlier 9x12 finding.
+
+Screenshot (iso view, 9x12, the frame-enclosure sketch's own S-curve sides + a visible 0.75 thickness
+dimension): `C:\Users\danse\.bspline-status\shots\seatB\t83item2_03_fusion_live_t11_9x12.png`.
+
+**T83 item 2 is now FULLY done** (registration, silhouette, drag handles, dedicated test file, phone shots,
+and now the live Fusion check, all green/accepted).
+
+Full JS suite (unrelated to this check, but re-run for cleanliness before committing): 159 files, 2996
+passed, 0 failed.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake. Fusion scratch docs closed by handle, fingerprint-checked;
+every other open document (including "UI-cowork v1") untouched.
