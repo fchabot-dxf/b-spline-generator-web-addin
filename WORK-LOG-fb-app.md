@@ -7359,3 +7359,74 @@ after the rename).
 
 Full suite unchanged: pytest 814 passed/25 skipped (repo root) -- same count as before this item,
 no tests added or removed, only renamed/reworded. No Fusion needed or used. Commit `b3ba443`.
+
+## 2026-10-02: H23 item 35 -- SUPERSEDED by two amendments: the real fix, then Fred's confirmation matrix
+
+Two amendments landed on top of the wording-only pass above before I could pass it back.
+
+**Amendment 1 (the real fix):** the advisor MEASURED (fusion360-quirks, 3 cases) that
+`OffsetConstraintInput.isTopologyMatched` defaults `True`, and THAT -- not any inherent limit of
+`addOffset2` -- is the entire reason it refused a convex arc radius at or below the offset
+distance (item 28's own known-list cases). Setting `isTopologyMatched = False` before `addOffset2`
+makes it create the sharp-corner result itself and stay fully parametric; re-adds/removes the
+inner arcs exactly as the offset distance is driven across the radius. `sketch.offset()` becomes a
+true last-resort fallback (a genuine `addOffset2` failure), not the expected path for this case --
+moved its log level back to WARNING (from the previous pass's INFO). Implemented in
+`_try_parametric_offset` (`fb_engine/offsets.py`); every related comment/docstring/test updated;
+new test `test_isTopologyMatched_is_set_false_so_addOffset2_accepts_a_shape_change`
+(mutation-tested: removing the line makes it fail red). Full suite: 815 passed/25 skipped.
+
+**Amendment 2 (Fred: "we need to absolutely be sure"):** a 9-point confirmation matrix, with
+numbers, before this ships. Both amendments' work:
+
+**LIVE, 3 real captured Sends (T1 @ 6x9/7x9, T11 @ 7x9), loaded fresh from THIS repo checkout (not
+the deployed add-in copy -- confirmed via `importlib.util.spec_from_file_location`, the pattern
+from items 29/32/33/34):** `offset_fallbacks` empty on all 3, bars correct (4-5), zero pairwise
+overlap (own `bars_report()`, `TemporaryBRepManager` boolean intersection).
+
+**The item-33 param-edit probe, re-run with my own fix + `tools/repro/timeline_health.py` (not the
+advisor's own `param_edit_after_build_probe.py::_health()`, which has a dead/broken group-walk):**
+T1 @ 6x9 thickness 0.75->1.0in (the EXACT edit that produced item 33's original 3-bar merge) and T1
+@ 9x12 thickness 0.75->1.4in -- both: 0 overlap after the edit AND after restoring, timeline
+healthy throughout, restored bar volumes exact to 2 decimals. **The original item-33 merge bug no
+longer reproduces** -- better than "report only" (what the amendment asked for); it's fixed as a
+side effect of the real fix.
+
+**Enclosure arc round-trip, T1 @ 9x12 (point 6, "across the radius both ways and back"):** baseline
+6 inner arcs (thickness 0.75) -> drive to 1.4in (one convex pair's source radius, ~1.01in,
+genuinely crossed) -> 4 arcs -> drive back to 0.75in -> 6 arcs, radii byte-identical to baseline.
+Exact round-trip on the real production template.
+
+**`tools/repro/fusion_t11/item35_confirmation_matrix.py` (new, committed) -- sketch-level, points
+1/2/3/4/5/6(first half)/7/9, independently reproduced on FRESH synthetic geometry (not reusing the
+advisor's own earlier numbers): rounded rect (uniform + 4 different per-corner radii) inward/outward
+across radius regimes below/at/above the bar, a concave bite, an L-shape with a concave tangent
+fillet, projected curves, driving the offset dimension directly across the threshold and back, a
+downstream miter-weld surviving a live vanish, A/B vs yesterday's `addOffset2`(default) when
+nothing vanishes (identical), A/B vs today's actual `sketch.offset()` fallback when something does
+(identical). 44/44 checks pass. One sub-finding doesn't generalise and is called out in its own
+docstring + a new fusion360-quirks entry: a PLAIN ROUNDED RECT (even pinned) does NOT recover its
+vanished arc when driven back below the threshold -- `OffsetConstraint.childCurves` is a fixed set
+made once -- but the REAL T1 @ 9x12 template (above) DOES recover it exactly. Don't extrapolate a
+synthetic result to a real template without checking the real one.
+
+**`tools/repro/fusion_t11/item35_all_templates_sweep.py` (new, committed) -- point 8, all 13
+templates x {6x9, 7x9, 9x12}, loaded fresh from this repo checkout:** **36/39 clean**
+(`offset_fallbacks` empty, 0 pairwise bar overlap, timeline healthy). The other 3 (template_7, all
+three board sizes, 9 total capture attempts across different random seeds and both board-size
+retries) are blocked by a SEPARATE, PRE-EXISTING bug, unrelated to this item: `_handle_send_frame`
+itself fails before the offset engine ever runs ("SEND FRAME result: ok=False" -- seen as both a
+seed-id mismatch, `seed(s) not in the template: ['seed_rad_body_L', ...]`, and "no downward face
+(core.underside) to extrude the bars to" on different attempts, same template, same failure point
+every time). Reported, not fixed -- out of this item's own scope; flagging for the advisor as a
+separate, newly-discovered item.
+
+**`gen_frame_defs.py --check`:** fresh, no regeneration needed (`offsets.py` isn't one of its
+declared source files).
+
+**fusion360-quirks (fred-skills, commit `6002977`):** logged the real-vs-synthetic round-trip
+finding above.
+
+Full suite: 815 passed/25 skipped, unchanged by the point-8/matrix work (test-only + new
+`tools/repro` scripts). Commits: `83855e9` (the real fix + confirmation matrix +
+`test_all_templates_shape_outline.py` wording), `a6f5362` (the all-templates sweep runner).
