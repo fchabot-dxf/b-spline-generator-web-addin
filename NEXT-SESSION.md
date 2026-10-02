@@ -1,17 +1,25 @@
-# NEXT — seat A — H23 item 23: T10 6x9's reflex arc in p02_12_arch_rebuild.py's Shape Outline
+# NEXT — seat A — H23 item 23 continued: T10 6x9's arc_waist_R, scoped narrowly
 
-**Ball: worker (seat A) · epoch 6 · H23 item 23.** H23 item 22 ACCEPTED (d00ef55) — exceptional work, genuinely some of
-the best debugging of the day: correctly ran the dispatch's own priority order (T1 scope-check first), found the REAL
-cause by debug-printing actual face normals rather than theorizing (a single-sample tolerance miss on a sculpted,
-non-planar face — T1 passed by LUCK, not because the bug wasn't real), fixed it generally (averaging over the face's
-own vertices) with a proper safety margin verified against the next-closest face, and caught a genuinely dangerous
-latent issue along the way (lane-b's `fb_engine` silently shadowing the real deployed one via leftover `sys.path`
-contamination — exactly the "stale scratch fb_engine" class of incident the project's own memory already warns about).
-7x9 regression-checked clean. Good, honest correction on the screenshot-path mistake too, without being asked twice.
+**Ball: worker (seat A) · epoch 6 · H23 item 23.** Your 90a7b5a finding ACCEPTED — exactly right to stop rather than
+pick a side: falsifying your own dispatched hypothesis before acting on it (top_edge is clean, the real arc is
+`arc_waist_R`, and `addByThreePoints` is behaving correctly given its 3 points) is good discipline, and finding the
+F8-vs-`assert_no_reflex_arcs` contradiction — verified live, not theoretical — is a genuinely important catch.
 
-Fred's in the loop on this one and offered to sit with it in Fusion if you get stuck — don't hesitate to say so.
+**Fred's call: defer the Template 1 / 12x6 / F8 question entirely. Not tonight, not this item.** Scope THIS item back
+down to just T10 at 6x9. Don't touch `assert_no_reflex_arcs`'s own policy, don't touch T1, don't resolve the general
+"is a major arc ever legitimate" design question — that's parked for a future session with a clear head.
 
-**This task (H23 item 23):** the NEW bug item 22 uncovered: at this 6x9 seed, `p02_12_arch_rebuild.py`'s own Shape
+**This task, re-scoped:** you found `arc_waist_R`'s own 3 seeded points genuinely only admit the long-way arc — so the
+fix isn't "seed through a known-good point then Fix it" (that only works when a SHORT branch genuinely exists to seed
+toward). Work UPSTREAM instead: find where the app computes that arc's own seed midpoint for T10's chain at this
+board size, and check whether a different (still parametrically valid, still matching T1's own formula family) choice
+of midpoint would admit a genuinely short arc instead — i.e. is 6x9 pushing T10's inherited-from-T1 chain into a
+degenerate configuration the same way 12x6 does for T1's own waist, and if so, can T10's OWN seed derivation (not
+T1's, not the reflex-arc policy) be adjusted to stay clear of it. This is the same class of question H23 item 18
+already exists to dig into — if you find the seed math genuinely can't avoid it without changing T1's own formula
+too, that's the signal to stop and hand this to item 18 rather than item 23. Same stop condition as always.
+
+OLD framing, superseded by the above (kept for context only): at this 6x9 seed, `p02_12_arch_rebuild.py`'s own Shape
 Outline rebuild hits `REFLEX ARC: [unknown_arc] sweeps 200.3 deg (>= 180)` — the SAME failure class as the original
 arch branch-selection bug from items 14/15/17 (now documented in `fusion360-quirks`), just resurfacing in the NEW
 `Rebuild` primitive item 17 introduced (delete + recreate `top_edge` fresh via `addByThreePoints`) under a seed
