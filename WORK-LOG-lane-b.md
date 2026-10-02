@@ -12709,3 +12709,82 @@ advisor and wait for "Fusion free" before attempting `tools/repro/fusion_t11/liv
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake. No code changed this part (screenshots only); nothing to
 commit for it beyond this WORK-LOG entry.
+
+## Lane B — Turn N+3 — T82 item 5: inset window becomes a centre-point rect, + in the Frame editor
+
+Advisor redirected mid-turn (cross-session message): Fusion is busy (Claude Cowork driving the UI for Fred),
+start T82 item 5 now; will interrupt with "Fusion free" for T11's own live check when it's my turn. Also
+confirmed the T83 item 2 clamp item I'd flagged (keeping every convex radius > frame_thickness) is DROPPED --
+Fred decided "warn only" (T82 item 4's own red warning is the whole answer) and "ask before installing
+guards" in general; striking it from NEXT-SESSION-lane-b.md is the advisor's own action, not mine.
+
+**The record shape** (Fred: "use the centre of frame... and make the window a centre point rect too"):
+`insetWindow` changes from `{enabled, x1, y1, x2, y2}` (two opposite OUTER corners, board-local, origin
+top-left, y down) to `{enabled, cx, cy, w, h}` (cx/cy the window's own centre, measured from the BOARD
+CENTRE, inches, +y UP -- Fusion's own sketch convention, so `RectangleCenter` will map 1:1 onto it once a
+Fusion build reads it; w/h the OUTER size, bars included). New `core/inset-window.js` export
+`insetWindowOuterRect(rec, widthIn, heightIn)` is the ONE place this converts to the board-local rect every
+other rectangle in `insetWindowGeometry` is still built from -- `insetWindowGeometry` itself gained two new
+params (`widthIn, heightIn`) to call it, and its 3 callers (contour-from-frame.js, editor-frame-profile.js
+x2) now pass the board through (`frame.board`/`board`/`editor._mW,_mH`, all already in scope -- no new
+plumbing needed anywhere).
+
+**Migration**: an OLD-shape record (`{x1,y1,x2,y2}`) converts on READ (`normalizeFrameRecord`, same lazy,
+read-time pattern the file's own `handleMigrations` block already uses for seed-key splits, not a one-time
+rewrite) -- sniffed by key presence (`'cx' in w` etc vs `'x1' in w`), using the board's CURRENT
+`P.widthIn`/`P.heightIn`. Tested both ways (new-shape round-trip, old-shape migration, corners given in
+either order, garbage in either shape) in a new `describe` block in `tests/inset-window.test.js`.
+
+**Drag (SYMMETRIC resize, Fred's own explicit call)**: a corner drag used to move only that corner (the
+opposite one fixed); now the centre (`cx, cy`) NEVER moves during a resize -- only `w`/`h` change, each to
+twice the dragged corner's own new distance from the (unchanged) board-local centre. A body drag still just
+translates `cx`/`cy` (board-local x maps straight onto `cx`; board-local y is Y-DOWN while `cy` is Y-UP, so
+it flips sign). Position X/Y steppers now write `cx`/`cy` directly and Size W/H write `w`/`h` directly --
+SIMPLER than the old shape's own anchor-relative stepper math (no corner-anchor bookkeeping needed at all,
+since the record itself IS centre-based). The typed-value clamp (board-fit + 2*frame_thickness+margin,
+advisor review on 24e2d07) carries over in meaning, rewritten in cx/cy/w/h terms.
+
+**In the Frame editor too** (T82 item 4's own "a second view, not a second setting" pattern): added a new
+checkbox + Position/Size steppers block in `#editorFramePanel` (`editorFrameInsetWindowToggle`,
+`editorFrameInsetWindowFields`, `editorWindowPosX/Y`, `editorWindowSizeW/H`) -- the sidebar's own fields had
+NEVER been duplicated there before this turn (confirmed: `#editorFramePanel`'s markup had no inset-window
+elements at all prior to this). New `INSET_WINDOW_FIELD_GROUPS` declared table (mirroring
+`FRAME_PARAM_FIELDS`'s own convention, but for a compound field with no single param to loop a generic
+read/write over) drives BOTH the read-back in `syncFramePanel` and the write-side listener wiring in
+`initFramePanel` with one shared loop -- adding the second field group cost four lines, not a duplicated
+block.
+
+**Rewrote both existing inset-window test files** for the new shape/behaviour (`tests/inset-window.test.js`:
+17 tests, `tests/inset-window-handles.test.js`: 19 tests, both previously ~half-failing against the new
+code, now fully green) -- every test asserting raw `x1/y1/x2/y2` structure or the old anchor-relative resize
+behaviour needed rewriting, not just a field rename; new tests added for the symmetric-resize behaviour
+itself and the migration path. **Found and fixed a genuine test-correctness bug while doing this**:
+`tests/contour-from-frame.test.js` builds frames at SEVERAL different board sizes in the SAME file (7x9,
+9x12, 12x16) with no `beforeEach` setting `P.widthIn`/`P.heightIn` to match any of them -- a literal
+old-shape `insetWindow` fixture there would have silently migrated against the WRONG board (P's own default,
+7x9, confirmed via `core/state.js`) whenever a test used a different one. Fixed by adding a local `fromOuter`
+helper (the same board-local-outer-rect-to-centre-based conversion used in the other two test files) so
+every fixture states its CORRECT board explicitly, rather than relying on migration at all.
+
+**Updated `INSET-WINDOW-DESIGN.md`** (§2 Data shape, §6 Editor interaction) to describe the new record shape
+and symmetric-resize behaviour, with the original two-corner shape/anchor-resize text marked superseded
+(not deleted) and a note on WHY centre+size is the natural fit for a centre-anchored resize. §§3-5/7-8
+(validity rule, the Fusion build plan, byte-identical-when-off, the test plan) are unaffected: they describe
+the main FRAME's own-thickness/opening validity at the CONCEPT level, never the literal field names, and the
+Fusion build itself isn't wired yet (still a "once built" note).
+
+**Verified live** in a real headless-Chrome mobile session (not just the test suite): opened Template 1 in
+the Frame tab (phone width), enabled the inset window via the NEW `#editorFramePanel` toggle -- the SIDEBAR's
+own toggle reflected `checked: true` too (confirms the two-way sync), Position X/Y read 0/0, Size W/H read
+the seeded default (board/3 on each axis), zero console errors. Screenshot:
+`C:\Users\danse\.bspline-status\shots\seatB\t82item5_01_frame_tab_insetwindow_phone.png`.
+
+**Gate status: GREEN.** Full JS suite (`npx vitest run`, repo root): 159 files, 2995 passed, 0 failed.
+
+**Not done this entry** (not named in the T82 item 5 spec, so not attempted): the Fusion build itself
+(§5 of the design note is still "once built, nothing to run yet" -- this item is the app/record side only,
+same scope boundary the design note's own §4 table already drew between "today" and "with insetWindow.enabled"
+for the Fusion row).
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.

@@ -10,14 +10,31 @@
  */
 
 /**
+ * T82 item 5 (Fred: "use the centre of frame... and make the window a centre point rect too"): the window's
+ * own OUTER rect in board-local inches (origin top-left, y down -- the SAME convention `frameCutProfile`'s
+ * own board uses, and every rectangle below is built from), converted from the record's own storage
+ * (`{cx, cy, w, h}`: `cx`/`cy` the window's own centre measured from the BOARD CENTRE, inches, +y UP --
+ * Fusion's own sketch convention, so `RectangleCenter` maps 1:1 onto it once the Fusion build reads it;
+ * `w`/`h` the OUTER size, bars included). The ONE place this conversion happens.
+ */
+export function insetWindowOuterRect(rec, widthIn, heightIn) {
+  const halfW = rec.w / 2, halfH = rec.h / 2;
+  return {
+    x1: widthIn / 2 + rec.cx - halfW, x2: widthIn / 2 + rec.cx + halfW,
+    y1: heightIn / 2 - rec.cy - halfH, y2: heightIn / 2 - rec.cy + halfH,
+  };
+}
+
+/**
  * The window's own three nested rectangles, or null when disabled or geometrically invalid (bars/opening <= 0
  * -- see the design note's own §3). `frameThickness`/`panelLip` are real inches, the SAME values the main
- * frame already reads (`frame_thickness`, `record.panelLip`) -- no second setting.
+ * frame already reads (`frame_thickness`, `record.panelLip`) -- no second setting. `widthIn`/`heightIn`: the
+ * board, needed to place the centre-based record onto it (`insetWindowOuterRect`).
  */
-export function insetWindowGeometry(record, frameThickness, panelLip) {
+export function insetWindowGeometry(record, frameThickness, panelLip, widthIn, heightIn) {
   const w = record?.insetWindow;
   if (!w || !w.enabled) return null;
-  const { x1, y1, x2, y2 } = w;
+  const { x1, y1, x2, y2 } = insetWindowOuterRect(w, widthIn, heightIn);
   if (!(x2 - x1 > 2 * frameThickness) || !(y2 - y1 > 2 * frameThickness)) return null; // window bars > 0
   const inner = { x1: x1 + frameThickness, y1: y1 + frameThickness, x2: x2 - frameThickness, y2: y2 - frameThickness };
   if (!(inner.x2 - inner.x1 > 0) || !(inner.y2 - inner.y1 > 0)) return null; // opening > 0

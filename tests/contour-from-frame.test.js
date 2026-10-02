@@ -22,6 +22,16 @@ const SW = 0.07;
 const frameOf = (templateId, W, H, extra = {}) => ({
   defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId, ...extra }), board: { widthIn: W, heightIn: H },
 });
+/** T82 item 5: the centre-based {cx, cy, w, h} for a given board-local outer rect (x1,y1)-(x2,y2) on a
+ *  widthIn x heightIn board -- the exact inverse of insetWindowOuterRect. This file's own fixtures use it
+ *  (not the OLD-shape {x1,y1,x2,y2} record field directly) because normalizeFrameRecord's own migration
+ *  path reads the board's CURRENT global P.widthIn/P.heightIn, not the `W`/`H` a given test passes to
+ *  `frameOf` -- and this file exercises SEVERAL different board sizes (7x9, 9x12, 12x16), so a literal
+ *  old-shape fixture would silently migrate against the WRONG board whenever it differs from whatever P
+ *  happens to hold (MEASURED: this file never sets P.widthIn/heightIn at all).  */
+function fromOuter(x1, y1, x2, y2, widthIn, heightIn) {
+  return { cx: (x1 + x2) / 2 - widthIn / 2, cy: heightIn / 2 - (y1 + y2) / 2, w: x2 - x1, h: y2 - y1 };
+}
 /** Points along a primitive loop (lines: 20 each, arcs: 40 each). */
 function samples(prims) {
   const out = [];
@@ -274,28 +284,28 @@ describe('T82 item 2: frameWindowGeometry / frameWindowHoleLoop', () => {
   });
 
   it('resolves the SAME frame_thickness frameContourSilhouette itself uses (record override, else the template default)', () => {
-    const win = { enabled: true, x1: 2, y1: 2, x2: 6, y2: 6 };
+    const win = { enabled: true, ...fromOuter(2, 2, 6, 6, 9, 12) };
     const frame = frameOf('template_1', 9, 12, { insetWindow: win });
     const tpl = FRAME_DEFS.templates.find((t) => t.id === 'template_1');
     const ft = tpl.params.find((p) => p.name === 'frame_thickness').default;
-    expect(frameWindowGeometry(frame)).toEqual(insetWindowGeometry(frame.record, ft, frame.record.panelLip));
+    expect(frameWindowGeometry(frame)).toEqual(insetWindowGeometry(frame.record, ft, frame.record.panelLip, 9, 12));
 
     const overridden = frameOf('template_1', 9, 12, { insetWindow: win, params: { frame_thickness: ft + 0.2 } });
     const g = frameWindowGeometry(overridden);
-    expect(g).toEqual(insetWindowGeometry(overridden.record, ft + 0.2, overridden.record.panelLip));
+    expect(g).toEqual(insetWindowGeometry(overridden.record, ft + 0.2, overridden.record.panelLip, 9, 12));
     // non-vacuous: the override actually moves the inner/hole rectangles vs the default thickness
     expect(g.inner).not.toEqual(frameWindowGeometry(frame).inner);
   });
 
   it('frameWindowHoleLoop is the hole rectangle as a closed 4-line loop, matching rectToPrimitives directly', () => {
-    const win = { enabled: true, x1: 2, y1: 2, x2: 6, y2: 6 };
+    const win = { enabled: true, ...fromOuter(2, 2, 6, 6, 9, 12) };
     const frame = frameOf('template_1', 9, 12, { insetWindow: win });
     const geom = frameWindowGeometry(frame);
     expect(frameWindowHoleLoop(frame)).toEqual(rectToPrimitives(geom.hole));
   });
 
   it('below insetWindowGeometry\'s own validity floor (window bars <= 2*frame_thickness): null, not a degenerate loop', () => {
-    const frame = frameOf('template_1', 9, 12, { insetWindow: { enabled: true, x1: 0, y1: 0, x2: 1, y2: 1 } });
+    const frame = frameOf('template_1', 9, 12, { insetWindow: { enabled: true, ...fromOuter(0, 0, 1, 1, 9, 12) } });
     expect(frameWindowGeometry(frame)).toBeNull();
     expect(frameWindowHoleLoop(frame)).toBeNull();
   });
@@ -303,7 +313,7 @@ describe('T82 item 2: frameWindowGeometry / frameWindowHoleLoop', () => {
 
 describe('T82 item 2: the Fusion fill extent (resolveShapeBoundaryExtent via latticeExtentFor) skips the inset window, gated on fromFrame', () => {
   const W = 9, H = 12;
-  const win = { enabled: true, x1: 3, y1: 4, x2: 6, y2: 8 };
+  const win = { enabled: true, ...fromOuter(3, 4, 6, 8, W, H) };
   const frame = frameOf('template_1', W, H, { insetWindow: win });
   const region = boardRegion({ _mW: W, _mH: H });
   const spacing = PATTERN_DEFAULTS.spacing;
@@ -346,7 +356,7 @@ describe('T82 item 2: end to end -- a rail row crossing the window is split into
   it('MEASURED: the row at board y=6 (inside the window) emits two rail segments, clipped exactly to the hole', () => {
     const W = 12, H = 16;
     const win = { x1: 5, y1: 5, x2: 7, y2: 7 }; // a small window near board center, away from template_1's own waist pinch
-    const frame = frameOf('template_1', W, H, { insetWindow: { enabled: true, ...win } });
+    const frame = frameOf('template_1', W, H, { insetWindow: { enabled: true, ...fromOuter(win.x1, win.y1, win.x2, win.y2, W, H) } });
     const region = boardRegion({ _mW: W, _mH: H });
     const spacing = PATTERN_DEFAULTS.spacing;
     const pattern = {
