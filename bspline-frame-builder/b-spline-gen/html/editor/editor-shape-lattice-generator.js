@@ -657,30 +657,67 @@ function _diamondTopHourglassPinchRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   const a = Math.min(0.62 * hw, 0.84 * hh);
   const hhR = hh - a / 2;
-  if (key === 'waistCenterY') return _range(-0.6, 0.6);
+  // The TOP corner's own depth is measured from ITS OWN horn (d - topInset, same convention
+  // `hourglassConstruction`'s own T3 topInset uses) -- the roof's eave sits `a` out, so the shoulder's horn sits
+  // `hw - topInset = a` out too (diamondTopHourglassPinchConstruction's own `topX`).
+  const topInset = hw - a;
+  // Template 1's own base band is [-0.6, 0.6] (BASE_RANGES, a UI-slider-limit, not a geometric derivation) and
+  // its own corners tolerate the full band at its defaults (MEASURED directly). T11's TOP corner has LESS margin
+  // (its own depth is shrunk by `topInset`, see the cornerRadiusTop/Bottom branch below) and genuinely does NOT
+  // tolerate the full band at ITS OWN default corner sizes: a drag to +-0.6 left 4-8 non-tangent defects, not
+  // assumed safe. waistCenterY resolves FIRST (PARAM_ORDER, mirroring Template 1's own order), before
+  // waistReach/cornerRadiusTop/Bottom are known, so there is no later-resolved value to validate THIS range
+  // against yet (the same "deliberately narrow, directly-tested-safe box" compromise
+  // `_diamondTopHourglassRange`'s own doc comment already names for Template 7's neck/body heights, rather than
+  // a fully general cross-param feasibility solve nothing else in this file attempts either): narrowed to
+  // [-0.5, 0.5], MEASURED clean (0 defects) at every default-proportion drag tested, vs 4-8 at the full +-0.6.
+  if (key === 'waistCenterY') return _range(-0.5, 0.5);
   if (key === 'waistReach') {
+    // MEASURED, not assumed: the TOP corner's own depth is `hw*waistReach - topInset` (the branch below, and
+    // waistRadius's own) -- with NO floor here, a generated `waistReach` below `topInset/hw` (~0.38 at 7x9) makes
+    // that depth NEGATIVE, a physically invalid tangency (the shoulder horn would sit on the wrong side of the
+    // pinch). Caught by a real `generateValidFrameSeeds` draw producing a negative resolved `cornerRadiusTop`/
+    // `waistRadius` and six non-tangent defects, not assumed safe from Template 1's own floor (0.05, which never
+    // needed this: topInset is always 0 there, no roof eating into the top corner's own depth).
     const H = hhR - stroke - Math.abs(v.waistCenterY) * hhR - HORN_MIN_OF_HALF_HEIGHT * hhR;
-    return _range(0.05, 0.92, -Infinity, H / hw);
+    return _range(Math.max(0.05, topInset / hw + EPS_FRAC), 0.92, -Infinity, H / hw);
   }
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // Resolved before waistRadius (PARAM_ORDER): the same geometry-only treatment Template 1's own shared
     // `cornerRadius` gets (`_hourglassRange`'s own generic fallback, k = WAIST_MIN_RADIUS_OF_DEPTH standing in
-    // for a not-yet-resolved waistRadius), per corner (its own vertical room, wcy signed by which corner).
+    // for a not-yet-resolved waistRadius), per corner (its own vertical room, wcy signed by which corner, and its
+    // own depth -- the TOP corner's `d` shrunk by `topInset`, MEASURED: using the full `hw*waistReach` for the top
+    // corner too (an earlier version of this branch did) let `cornerRadiusTop` range past what the ACTUAL
+    // inset-shortened tangency allows, feeding a stale upper bound into waistRadius's own range below).
+    const isTop = key === 'cornerRadiusTop';
     const wcy = hhR * v.waistCenterY, horn = HORN_MIN_OF_HALF_HEIGHT * hhR;
-    const H = hhR - stroke - horn + (key === 'cornerRadiusTop' ? wcy : -wcy);
-    const d = hw * v.waistReach, k = WAIST_MIN_RADIUS_OF_DEPTH;
+    const H = hhR - stroke - horn + (isTop ? wcy : -wcy);
+    const d = hw * v.waistReach - (isTop ? topInset : 0), k = WAIST_MIN_RADIUS_OF_DEPTH;
     const sMax = (H * H / d + d) / 2;
     const rsMax = Math.max(sMax - k * d, (1 - k) * d);
     return _range(0.04, 0.95, (stroke + EPS_FRAC * hw) / hw, rsMax / hw);
   }
-  // waistRadius, resolved last: `_optionalRange`'s own hourglass formula, reading the already-resolved
-  // `cornerRadiusTop` (the SAME corner `_waist_radius_frac`'s own default reads, fb_engine/t11_geometry.py)
-  // in place of Template 1's shared `cornerRadius`.
-  const d = hw * v.waistReach, rs = hw * v.cornerRadiusTop, eps = EPS_FRAC * hw;
-  const H = hhR - stroke - Math.abs(v.waistCenterY) * hhR - HORN_MIN_OF_HALF_HEIGHT * hhR;
-  const sMax = (H * H / d + d) / 2;
-  const keyhole = rs < d ? (d - rs) * (d - rs) / (2 * d) : 0;
-  return _range(0, Infinity, Math.max(d / 2 - rs + eps, keyhole, eps) / hw, (sMax - rs) / hw);
+  // waistRadius, resolved last: BOTH corners already resolved -- `_optionalRange`'s own hourglass formula,
+  // computed per corner (the top's own `d` shrunk by `topInset`, as above) and INTERSECTED. MEASURED, not
+  // assumed: an earlier version of this branch checked only `cornerRadiusTop` (mirroring `_optionalRange`'s own
+  // hourglass formula verbatim, which only ever has ONE corner to check) -- Template 1 never needs the other
+  // corner's own constraint because both corners share one `cornerRadius`; T11's independent corners do NOT, so
+  // a generated `cornerRadiusBottom` could leave NO waistRadius that also keeps the BOTTOM corner's own tangency
+  // real, and the un-intersected range let `waistRadius` land there anyway -- caught by a real `generateSilhouette`
+  // call producing non-tangent defects on BOTH sides' shoulder/waist/hip chains, not assumed safe.
+  const wcy = hhR * v.waistCenterY, horn = HORN_MIN_OF_HALF_HEIGHT * hhR, eps = EPS_FRAC * hw;
+  const corners = [
+    { r: hw * v.cornerRadiusTop, d: hw * v.waistReach - topInset, H: hhR - stroke - horn + wcy },
+    { r: hw * v.cornerRadiusBottom, d: hw * v.waistReach, H: hhR - stroke - horn - wcy },
+  ];
+  let lo = 0, hi = Infinity;
+  for (const c of corners) {
+    const sMax = (c.H * c.H / c.d + c.d) / 2;
+    const keyhole = c.r < c.d ? (c.d - c.r) * (c.d - c.r) / (2 * c.d) : 0;
+    lo = Math.max(lo, Math.max(c.d / 2 - c.r + eps, keyhole, eps) / hw);
+    hi = Math.min(hi, (sMax - c.r) / hw);
+  }
+  return _range(0, Infinity, lo, hi);
 }
 
 function _bottleRange(key, region, stroke, v) {

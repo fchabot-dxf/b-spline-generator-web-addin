@@ -12609,3 +12609,73 @@ test file still passes unchanged).
 
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn N+1 — T83 item 2 (part 2): Template 11 on-canvas drag handles + a new dedicated test file
+
+Continuing the same dispatch, same turn's thread: the on-canvas drag-handle anchors in
+editor-shape-lattice-interaction.js (the piece left open at the end of part 1), plus a new
+`tests/frame-template-11.test.js` mirroring Template 7's own comprehensive coverage. Advisor sent a
+cross-session message mid-turn: Fusion is reserved for Claude Cowork driving the UI for Fred, then the
+advisor's own probes -- acknowledged, the live Fusion check stays held until "Fusion free".
+
+**`computeParamHandles`'s new `diamondTopHourglassPinch` branch**: Template 1's own 5 hourglass-side
+handles (waistReach as the waist-centre position square, cornerRadiusTop/Bottom as arc-pull grips, waistCenterY
+as a position square, waistRadius as the waist's own CAD-circle grip) -- the SAME mechanics T1's own default
+branch gives it, computed from `diamondTopHourglassPinchConstruction` instead of `hourglassConstruction`
+directly (the side sits in a virtual sub-region, see that construction's own doc comment) and with
+`waistCenterY`'s own `valueFromWorld` reading the side's own virtual half-height (`hhR`) and vertical shift
+(`a/2`), not the full region's `hh`. New `HANDLE_SEGMENT_INDEX.diamondTopHourglassPinch` and
+`DIAMOND_TOP_HOURGLASS_PINCH_SEGMENT_PAIRS` (a declared pairing table, like Template 7's own, since the generic
+`mirrorSegmentIndex` assumes an EVEN segment count and T11's outline has 13, an odd one -- MEASURED wrong: it
+mapped segment 6 (bottom_edge, actually self-paired) to 5, and segment 12 (roof_L, actually paired with 0) to
+itself).
+
+**Found and fixed THREE more real bugs, all via a new `tests/frame-template-11.test.js`** (mirroring
+`frame-template-7.test.js`'s own structure: listing/declaration, the handle table, drag-stays-valid,
+Generate-always-valid, frame-only-key isolation, paramsFromShapeModel round-trip):
+1. `_diamondTopHourglassPinchRange`'s own `cornerRadiusTop`/`cornerRadiusBottom` branch used the SAME `d =
+   hw*waistReach` for both corners -- but the TOP corner's true depth is measured from its OWN horn (`d -
+   topInset`, the same convention `hourglassConstruction`'s T3 topInset already uses), since the roof's eave sits
+   `topInset = hw - a` in from the edge. Fixed to subtract `topInset` for the top corner only.
+2. `waistRadius`'s own range (resolved last) only checked feasibility against `cornerRadiusTop` (mirroring
+   `_optionalRange`'s hourglass formula verbatim, which only ever has ONE corner since Template 1 shares a single
+   `cornerRadius`) -- never against `cornerRadiusBottom`. A `generateValidFrameSeeds` draw landed a
+   `cornerRadiusBottom` whose own tangency `waistRadius` never satisfied, and the un-intersected range let
+   `waistRadius` through anyway: six non-tangent defects on both sides' shoulder/waist/hip chains. Fixed by
+   computing BOTH corners' own `{sMax, keyhole}` and intersecting (`lo = max of both floors, hi = min of both
+   ceilings`).
+3. `waistReach` had no FLOOR at all accounting for the fixed `topInset`: at a small enough `waistReach`, `hw*
+   waistReach - topInset` goes NEGATIVE -- a physically invalid tangency (the shoulder horn would sit on the
+   wrong side of the pinch). A generated `waistReach` of 0.30 (topInset/hw ~= 0.38 at 7x9) produced a NEGATIVE
+   resolved `cornerRadiusTop` (-0.04) and `waistRadius` (-1.85). Template 1 never needed this floor (its own
+   topInset is always 0). Fixed: `waistReach`'s own range floor is now `max(0.05, topInset/hw + eps)`.
+4. (a 4th, narrower finding, not a bug but a declared gap, same discipline as Template 7's own LIVE_CHECK.md
+   entries): `waistCenterY`'s own base band was copied from Template 1's `[-0.6, 0.6]` (a UI-slider limit, not a
+   geometric one) -- but T11's TOP corner has less margin (shrunk by `topInset`) and does NOT tolerate the full
+   band at its own default corner sizes: dragging to +-0.6 left 4-8 non-tangent defects (MEASURED: Template 1
+   itself stays clean at the full +-0.6 with its own defaults; T11 does not). `waistCenterY` resolves FIRST
+   (before waistReach/cornerRadiusTop/Bottom are known), so there's no later value to validate this ceiling
+   against yet -- narrowed to the empirically-clean `[-0.5, 0.5]` (0 defects at every tested drag, vs 4-8 at the
+   full range), the same "deliberately narrow, directly-tested-safe box" compromise Template 7's own neck/body
+   ranges already accept rather than a full cross-param feasibility solve nothing else in this file attempts
+   either.
+
+**A 5th finding, flagged not fixed (out of this task's own scope)**: at this template's own DEFAULT corner
+proportions (`CORNER_RADIUS_DEFAULT = 0.22`), the shoulder arc is shorter than `frame_thickness` at every
+portrait board tested except 9x12 -- INCLUDING 7x9, the project's own primary reference board (MEASURED:
+0.578in bar vs 0.75in thickness). Independently verified against fb_engine/t11_geometry.py's own formulas (not
+a bug in this registration); a property of the declared default proportions themselves, which this task's own
+scope (app-side wiring) should not silently change. `tests/frame-template-11.test.js`'s own "every bar long
+enough" check is asserted at 9x12 only, with the gap named in its own comment, pending the advisor's/Fred's own
+call on whether T11's default corner radius needs retuning.
+
+**Gate status: still GREEN.** `test_frame_defs.py`: 36/36. Full JS suite: 159 files, 2985 passed, 0 failed
+(18 new tests in `frame-template-11.test.js`, all passing; every fix above was directly observed failing
+before and passing after via live probes during this turn, not assumed fixed).
+
+**T83 item 2 now complete except**: phone shots, and the live Fusion check (still held -- Fusion reserved for
+Claude Cowork / the advisor's own probes, per the mid-turn cross-session message; will message the advisor and
+wait for "Fusion free").
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
