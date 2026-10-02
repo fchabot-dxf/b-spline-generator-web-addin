@@ -69,6 +69,28 @@ Expected: T7 fails check 1 until its weld fix lands (that's the point). List eve
 with the exact template/weld -- fix the ones that are clearly crossed welds, ask before touching anything that's
 live-verified today (T1-T6, T8, T10).
 
+## Item 28 -- building-step cleanup, from the advisor's step-removal A/B (2026-10-02, after item 27)
+Measured with `tools/repro/fusion_t11/step_removal_ab.py` (lane-b; real engine, baseline vs one step type removed,
+every tagged curve of sketches 2-3 compared, baseline reproduces itself exactly):
+
+| step | T1 7x9 | T1 9x12 | T8 9x12 | T10 9x12 | verdict |
+|---|---|---|---|---|---|
+| Pulse | identical | identical | identical | identical | **REDUNDANT -- remove** |
+| 0.001 nudges | outline identical, frame differs* | identical | identical | outline identical, FRAME DIFFERS 2.18 in | KEEP until T10's frame dependency is explained |
+| seed Radius + DeleteDimension | outline moves 2.6 in | - | 0.09 in | 0.14 in | **load-bearing (seeds are rough) -- keep** |
+| Equal | 0.014 in | 0.024 in | identical | 0.061 in | keeps left = right -- keep |
+| Horizontal / Vertical | 2.97 in | - | 4.06 in | 4.04 in | **load-bearing -- keep** |
+*T1 7x9's frame always goes through the silent non-parametric offset fallback, even in the baseline (see below).
+
+Do: (1) remove every `{'Type': 'Pulse'}` step (all templates) -- full suite + gen_frame_defs --check + the A/B
+harness at 7x9/9x12 on two templates showing 'identical'; (2) find WHY removing the nudges moves T10's inner horn by
+2.18 in when its outline is identical (ResolveInnerCorners / miter targeting by position is the suspect) -- report,
+don't remove. Commit 'H23 item 28: ...'.
+
+**Separately, for the advisor + Fred (not this item):** your item 27 part 2 check 3 plus this A/B prove that the
+SHIPPED hourglass templates (T1, T3, T4, T5, T8, T10) at 6x9 and 7x9 have a shoulder/hip radius (0.643) below the bar
+(0.75), so EVERY such Send builds the frame through the non-parametric fallback (logged as a WARNING only).
+
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -121,3 +143,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-25] UN-HIDE TEMPLATE 10: FRAME_HIDDEN = False, regen, full suite + --check, picker + 7x9 Generate shots. Commit as 'H23 item 25: ...'.
 - [ ] [H23-item-26] FrameBuilder() WITHOUT external_logger CRASHES: frame_engine.py:133 uses the logger instance instead of fb_logger. One line + test. Commit as 'H23 item 26: ...'.
 - [ ] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11; PLUS one all-template test: weld orientation (CCW rule) + seed-midpoint report + convex radius > bar report. Commit as 'H23 item 27: ...'.
+- [ ] [H23-item-28] BUILDING-STEP CLEANUP: remove Pulse everywhere (A/B: identical on T1/T8/T10), explain why removing nudges moves T10's frame 2.18 in. Commit as 'H23 item 28: ...'.
