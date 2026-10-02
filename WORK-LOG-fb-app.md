@@ -6105,3 +6105,54 @@ cleanup (there's no seed Radius left to remove) is real, multi-file surgery that
 touched this pass beyond the already-committed part-2 test (which itself required none of this). The validated
 derivation script is the one thing worth preserving exactly -- whoever picks this up next (myself included) can
 go straight from it to the parameter declarations without re-deriving anything.
+
+## 2026-10-02: H23 item 27 -- the weld fix landed (validated pure-Python); live build hit a DIFFERENT, deeper blocker
+
+Fusion freed up; resumed straight from the preserved derivation. Declared the 26 circle/via-point quantities as
+NAMED Fusion parameters (template_data.py's own SKETCH_2_PARAMETERS, `t7_*`) rather than inlining them -- found
+the right mechanism by reading `frame_engine._create_skeletal_parameters`: a sketch's own `Parameters` list gets
+created in TWO phases (ReadOnly masters first, then dependents in list order), with `Val` resolved as a live
+expression (`p.expression = str(val_expr)`), so a later parameter can reference an earlier one by its bare name
+-- exactly the fix for the 170KB-expression blowup, the normal way a parametric CAD model avoids re-expanding a
+long dependency chain.
+
+**Found a real bug of my own while validating against the local pure-python weld-orientation test (item 27 part
+2's own all-template check), not by eye:** the neck arc's own via-point formula reused the BODY circle's own
+u-vector (direction C_body -> N) without negating it for the NECK circle's own opposite-side centre
+(`C_neck = N + r_neck*u`, so the direction C_neck -> N is `-u`, not `+u`). This put the neck via ~90 deg off its
+true position AND flipped its own apparent 3-point turn direction -- which meant the "which arcs need the CCW
+weld-swap" table I'd worked out BEFORE the via fix (arc_body_R/L only) briefly looked wrong again AFTER fixing
+the sign (all 4 arcs appeared swapped), until I realised changing a via point can itself flip the turn sign and
+re-derived the table fresh rather than trust either prior answer. Final state: only arc_body_R/L need the S/E
+swap (arc_neck_R/L turn CCW with their own true via point) -- confirmed by the all-template test actually
+passing, not asserted by eye a third time.
+
+**Full pure-Python/JS verification, all green**: item 27 part 2's own test 50/50 (T7 no longer xfailed, moved
+into `EXACT_SEED_TEMPLATES` with a tight seed-midpoint tolerance -- the via points are now provably exact, not
+just plausible). `tests/frame-template-7.test.js` needed one update: its own "no new Fusion parameter" check
+now lists the 26 new internal ones (not user-facing -- no Expose, no app-side handle reads them -- so the test's
+real intent, "no new EXPOSED parameter," still holds). Full suite: `npx vitest run` 2946/2946 (156 files),
+`pytest` frame-builder 461 passed/22 skipped, b-spline-gen 97, repo root 97.
+
+**Attempted the live build this item's own dispatch requires (7x9/9x12, through the real engine, adapted from
+lane-b's own `tools/repro/fusion_t11/live_build_readback.py`) and hit a DIFFERENT, pre-existing blocker that has
+nothing to do with this fix**: Fusion's own `unitsManager.evaluateExpression` does not support `min()` / `max()`
+AT ALL. Confirmed directly with a bare probe (`min(1,2)`, `min(1.0,2.0)`, `max(1,2)`, `2*min(1,2)` -- every one
+fails with a generic "not a valid expression" error; `sqrt(4)` succeeds through the exact same call). T7's own
+roof/eave geometry (`A = min(0.62*HW, 0.84*HH)`, in `p02_02_loop.py` since before this item) crashes on the VERY
+FIRST reference to `A` -- before any arc or weld this item touched is even reached. That phase file's own
+docstring had already flagged this exact risk ("first phase file... to put min() inside a Fusion expression
+string... confirm it evaluates on the very first live build") and the answer, now measured, is that it does not.
+Logged as a new `fusion360-quirks` entry (fred-skills, not this repo, per that skill's own rule) so nobody
+re-discovers this the hard way.
+
+**Where this leaves things**: the weld-orientation fix itself is done, correct (validated every way available
+without Fusion), and committed (`487c2bb`) -- but it CANNOT be live-verified yet because a separate, earlier bug
+in the SAME template crashes the build before reaching it. `A` (and anywhere else `min`/`max` appears in this
+template's own expressions) needs to be reworked to compute the comparison in Python ahead of time rather than
+inside the Fusion expression string -- a bounded, mechanical fix, but a DIFFERENT one than what this item was
+dispatched for, and I'm stopping here rather than open a new front on an already-long pass. Scratch doc closed
+by its own handle immediately after the crash was captured. Flagging to the advisor: this blocks T7's own live
+check entirely until the min/max rework lands, and (since T7's roof/eave is explicitly "reused VERBATIM" by
+T11's own docstring) is worth checking against T11's own already-claimed live success too -- either T11 never
+actually exercises this exact code path, or there's something still unexplained there.
