@@ -8062,3 +8062,105 @@ stash/pop round-trip. No Fusion, no template files touched.
 Committed: `bspline_gen_palette.html`, `editor-stripe-tool.js`, `properties-stripe.js`,
 `editor-stripe-tool.test.js`, `properties-stripe.test.js`. Passing back to the advisor -- flagging the
 Dash-dot colour-sequence question above for Fred.
+
+## 2026-10-03: F31 item 2b -- Flask (Template 15) template code (seat C)
+
+Dispatch: the queued item after F32 items 1-2 ("Ask the advisor for 'Fusion free'" once code was ready).
+Fred's own sketch, approved diagram tools/repro/f31_item2_flask_diagram.mjs: a straight neck meeting an
+outward-bulging dome down to a flat base, a flat top closing the neck -- every joint a miter. Same pipeline
+seat B used for T14/T16/T17.
+
+Research first, build second: dispatched an Explore agent to map T14/T16/T17's full file structure, the
+ResolveLineCircleCorner/ResolveCircleCircleCorner/ResolveInnerCorners corner-resolver pattern
+(fb_engine/inner_corners.py / t7_roof_eave.py), the JS preset/solver/handle pattern, gen_frame_defs's actual
+mechanics (a GENERATOR, not hand-written JSON), and the item-61 matrix sweep's own registration point -- then
+verified every claim myself (ran the resolver live, read every precedent file directly) before writing a line
+of Flask's own code.
+
+Geometry module (fb_engine/t15_flask_geometry.py, Y-UP, modeled on t14_sandtimer_geometry.py since Flask --
+like T14, unlike T16/T17 -- gets its own standalone module): ported the diagram's own buildFlask()/bulgeArc()
+via the shared sagitta_circle/true_via_point primitives. One named Fusion parameter chain (t15_dr_*, the
+dome's own); the mirror side is the exact x-negation, confirmed numerically (not assumed) before trusting it.
+DOME_FULLNESS_FRAC_DEFAULT is the FULL-PRECISION vertical-tangent-at-base sagitta (0.1421885365451818, not
+the console log's rounded 0.1422) -- the rounding gap showed up immediately as a ~0.0005in mismatch when
+cross-checking against the JS diagram at 6x9/9x12, which is how it was caught rather than assumed close enough.
+
+A genuinely new corner combination. Flask's topR/topL are plain straight-line-meets-straight-line corners (no
+circle touches them) -- Template 7's own ResolveInnerCorners pattern, not ResolveLineCircleCorner the way
+every one of T14/T16/T17's own 6 corners works. The 4 dome corners (neckBottomR/BR/BL/neckBottomL) ARE
+ResolveLineCircleCorner, T14/T16's own pattern. No ResolveCircleCircleCorner at all -- no two arcs ever meet
+directly here, unlike T14's pinches or T17's upper-arc junctions. Each half individually precedented, the
+COMBINATION not seen verbatim anywhere -- confirmed the Direction vectors for the two square corners by
+reasoning through which side of each line the material actually sits on ((-1,-1) for topR, (1,-1) for topL),
+not by copying T7's own numbers (its corners sit at different board positions, so its signs don't transfer).
+
+Measured the CCW-arc swap table, not assumed it. Every prior all-miter template's arcs happened to turn
+clockwise in declared order (hence the :S/:E swap). For Flask's own two chords I computed the actual 3-point
+turn sign at 7x9 defaults before writing a single weld/miter declaration: dome_R (declared [neckBottomR, via,
+BR]) measures clockwise. For dome_L I first reasoned "mirroring negates x, which flips the cross-product
+sign" and predicted CCW (no swap) -- then checked it numerically and found that reasoning WRONG: dome_L ALSO
+measures clockwise. Logged this explicitly (in the module's own docstring and in
+test_t15_fusion_expressions.py's own non-vacuous swap-direction test) specifically so a future reader doesn't
+repeat the same plausible-but-wrong derivation.
+
+Re-measured a range floor against the actual constraint, not just "clean." The diagram script's own
+bisection sweep targets clean (no outline/offset defects) for its reported ranges; T14's own pinchReachFrac
+item-61 defect taught that clean alone can still let a piece drop under frame_thickness before any outline
+defect appears. Re-ran the bisection against minLen >= frame_thickness directly for all three handles before
+trusting the diagram's own raw numbers: topWidth and domeFullnessFrac's floors/ceilings matched the raw
+"clean" bounds almost exactly, but neckHeightFrac's own true floor was 0.088 (6x9/7x9) / 0.065 (9x12) against
+the raw bisection's 0.071/0.068/0.051 -- a real gap, caught proactively here rather than by a live sweep later.
+Declared _flaskRange's neckHeightFrac floor at 0.09 (the tightest-across-sizes OK-respecting value, margined).
+
+generateRange (the "moderate, halfway from default to each measured extreme" convention every new template
+uses): topWidth {0.365, 0.48}, neckHeightFrac {0.27, 0.62}, domeFullnessFrac {0.082, 0.151} -- computed from
+the OK-respecting drag range above, not the raw clean-only one.
+
+A real crash found and fixed along the way: frame-handles.js's frameParamRanges/computeParamHandles and
+editor-shape-lattice-generator.js's paramsFromShapeModel all dispatch by silhouettePreset, with an explicit
+branch per frame-only preset (sandTimer, archedFunnel/tulip, ...) specifically so a new preset's own param
+keys never fall into the GENERIC branch, which assumes Template-1-named keys exist (waistReach, archRise,
+...). Flask had no such branch yet -- tests/frame-template-15.test.js's own handle tests crashed immediately
+(Cannot read properties of undefined, reading 'min') the moment they exercised the real code path, not a
+hypothetical one. Added the three missing branches, each the same shape as the existing sandTimer ones.
+
+Registered Flask everywhere a new template needs it, each one a real test failure that named exactly what
+was missing (not inferred ahead of time): fb_engine/test_no_miter_miss_possible.py's own TEMPLATES list (its
+own docstring already anticipated this: "Seat C's own new templates... will inherit this test automatically
+the moment they're added"); frame_shape_fit.py's _flask extractor + provisional_flask_model +
+FEATURE_EXTRACTORS entry; frame_definition.py's template_shape_model dispatch (checked BEFORE the shared
+topWidthFracOfHw branch, same reason Sand Timer's own entry is -- Flask's own provisional dict also carries
+that shared key); tests/frame-defs.test.js's own hand-maintained FEATURES/EXTRA dicts; HANDLE_SEGMENT_INDEX.flask
+(editor-shape-lattice-interaction.js); two purely mechanical index fixes in frame-template-6.test.js (a
+hardcoded label-sort list) and frame-template-9.test.js (a hardcoded negative-slice index that shifts every
+time FRAME_ONLY_PARAM_KEYS grows at the tail); tools/repro/fusion_t11/item61_full_matrix_sweep.py's
+TEMPLATE_META.
+
+Generated the item-61 payload matrix (node tools/repro/h23_item61_make_full_matrix_payloads.mjs): 7 Flask
+cases (default + 3 handles x min/max), zero JS-side defects, zero pull-backs needed for Flask specifically
+(several OTHER templates' own payloads needed a pull-back from their declared range end this run, unrelated
+to this work -- Flask's own declared ranges were already safely inside the reachable zone).
+
+LIVE FUSION SWEEP NOT YET RUN: Fusion crashed on this machine and a stuck process is blocking relaunch
+(advisor's own live report). The 7 payloads are generated and waiting in
+bspline-frame-builder/scratch/item61_full_matrix_payloads/ (untracked, regeneratable, same convention every
+other scratch artifact this session follows). Will run the live sweep + screenshots once the advisor signals
+Fusion is back ("Fusion free").
+
+Non-vacuous by mutation: dropped the *2 in neck_bottom_y's own formula (Python) -- caught by 11 of 32 tests
+in test_t15_flask_geometry.py / test_t15_fusion_expressions.py. Dropped the /2 in the JS dome-radius formula
+(flaskConstruction) -- caught by the one test that pins the exact Fusion-seed values against
+fb_engine.t15_flask_geometry.outline()'s own closed form (tests/frame-template-15.test.js); most of the
+other 19 tests in that file stayed green even under this mutation, since they check structural validity
+generically rather than exact values -- a useful reminder that the EXACT-VALUE cross-check is the one test
+in that file actually pinning the formula itself, not just "a plausible shape." Both mutations reverted
+before committing.
+
+Full suite green: Python 958/958 (25 pre-existing skips, unrelated), JS vitest 168 files / 3299 tests.
+Committed: t15_flask_geometry.py, test_t15_flask_geometry.py, test_t15_fusion_expressions.py, the full
+sketches/template_15/ tree, frame_shape_fit.py, frame_definition.py, editor-shape-lattice-generator.js,
+editor-shape-lattice-interaction.js, frame-handles.js, frame-defs.json/.js (regenerated),
+test_no_miter_miss_possible.py, frame-defs.test.js, frame-template-6.test.js, frame-template-9.test.js,
+frame-template-15.test.js (new), item61_full_matrix_sweep.py. Passing back; will resume for the live sweep
+once Fusion is confirmed up, and starting F31 item 2c (joinable waists, code/test side) in the meantime per
+the advisor's own instruction.

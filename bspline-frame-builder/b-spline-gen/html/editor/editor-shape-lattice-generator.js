@@ -244,6 +244,22 @@ export const PRESETS = {
     params: { topWidth: 1.0, pinchReachFrac: 0.6, bulgeFrac: 0.14, pinchHeightFrac: 0.5 },
     jitter: { topWidth: 0, pinchReachFrac: 0, bulgeFrac: 0, pinchHeightFrac: 0 },
   },
+  // F31 item 2b (dispatch 2026-10-03, diagram approved as drawn, tools/repro/f31_item2_flask_diagram.mjs):
+  // a FRAME-ONLY preset, like archedFunnel/tulip/sandTimer above: no Shape Lattice button offers it. A
+  // straight neck (two vertical sides) meeting a dome that bulges OUTWARD and down to the flat base, a
+  // flat top closing the neck -- EVERY joint a miter (no tangent chain at all, same structural class as
+  // archedFunnel/tulip/sandTimer) -- ported directly from fb_engine/t15_flask_geometry.py's own tested
+  // closed form (read before writing this), ONLY place this algebra lives on the JS side:
+  // flaskConstruction.
+  // Defaults = fb_engine/t15_flask_geometry.py's own TOP_WIDTH_FRAC_DEFAULT/NECK_HEIGHT_FRAC_DEFAULT/
+  // DOME_FULLNESS_FRAC_DEFAULT -- same numeric defaults, declared twice (Python + JS), keep them in
+  // sync if either changes.
+  flask: {
+    label: 'Flask',
+    frameOnly: true,
+    params: { topWidth: 0.45, neckHeightFrac: 0.45, domeFullnessFrac: 0.1421885365451818 },
+    jitter: { topWidth: 0, neckHeightFrac: 0, domeFullnessFrac: 0 },
+  },
 };
 
 /**
@@ -329,6 +345,11 @@ export const PARAM_ORDER = {
   // as archedFunnel/tulip above; declared in the same order template_data.py's own FRAME_HANDLES
   // table lists them.
   sandTimer: ['topWidth', 'pinchReachFrac', 'bulgeFrac', 'pinchHeightFrac'],
+  // F31 item 2b (frame-only preset): the dome is independently solved (no tangent chain, no
+  // coupling between handles -- fb_engine/t15_flask_geometry.py's own module docstring), same as
+  // archedFunnel/tulip/sandTimer above; declared in the same order template_data.py's own
+  // FRAME_HANDLES table lists them.
+  flask: ['topWidth', 'neckHeightFrac', 'domeFullnessFrac'],
 };
 const BASE_RANGES = {
   // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
@@ -456,6 +477,15 @@ export const DERIVED_PARAM_DEFAULTS = {
     bulgeFrac: () => 0.14,
     pinchHeightFrac: () => 0.5,
   },
+  // F31 item 2b: every param has a plain default (no seeded jitter: a frame always sets all 3 from
+  // its model/seeds, as T6/T7/T9/T14/T16/T17) -- fb_engine/t15_flask_geometry.py's own
+  // TOP_WIDTH_FRAC_DEFAULT/NECK_HEIGHT_FRAC_DEFAULT/DOME_FULLNESS_FRAC_DEFAULT (see PRESETS.flask's
+  // own doc comment on keeping these in sync).
+  flask: {
+    topWidth: () => 0.45,
+    neckHeightFrac: () => 0.45,
+    domeFullnessFrac: () => 0.1421885365451818,
+  },
 };
 
 /** F12: the params the Shape Lattice panel offers (a slider and a handle each).
@@ -488,7 +518,10 @@ export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLef
   'topWidth', 'archRiseFrac', 'waistWidthFrac', 'waistHeightFrac', 'bulgeFrac', 'upperCurveFrac',
   // T84 item 5 (frame-only preset sandTimer): topWidth/bulgeFrac are already listed above
   // (shared keys), so only its OWN new keys are added here.
-  'pinchReachFrac', 'pinchHeightFrac']);
+  'pinchReachFrac', 'pinchHeightFrac',
+  // F31 item 2b (frame-only preset flask): topWidth is already listed above (the shared key), so
+  // only its OWN new keys are added here.
+  'neckHeightFrac', 'domeFullnessFrac']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -999,6 +1032,16 @@ export function paramsFromShapeModel(preset, model, region) {
       bulgeFrac: f.bulgeFrac / hw, pinchHeightFrac: f.pinchHeightFrac / (2 * hh),
     };
   }
+  // F31 item 2b (frame_shape_fit.py `flask`): same plain-fraction convention. neckHeightFrac's own
+  // feature is `hh - neck_bottom_r.y` (coefficient `2 * neck_height_of_h` on the Python side,
+  // provisional_flask_model's own doc comment) -- dividing back by `2*hh`, matching its basis="h"
+  // FRAME_HANDLES declaration exactly, same as archedFunnel/tulip/sandTimer's own height fraction.
+  if (preset === 'flask') {
+    return {
+      topWidth: f.topWidth / hw, neckHeightFrac: f.neckHeightFrac / (2 * hh),
+      domeFullnessFrac: f.domeFullnessFrac / hw,
+    };
+  }
   // Depth from the construction's own tangency: d = S +/- sqrt(S^2 - notch^2); the
   // fitted depth only picks the root (minor when the waist centre is outside the
   // shoulder column, major inside: Fusion's T1 is minor at 7x9, major at 12x6).
@@ -1144,7 +1187,8 @@ const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 't
     : preset === 'diamondTopHourglass' ? _diamondTopHourglassRange
       : preset === 'diamondTopHourglassPinch' ? _diamondTopHourglassPinchRange
         : preset === 'archedFunnel' || preset === 'tulip' ? _archedTimerRange
-          : preset === 'sandTimer' ? _sandTimerRange : _hourglassRange);
+          : preset === 'sandTimer' ? _sandTimerRange
+            : preset === 'flask' ? _flaskRange : _hourglassRange);
 
 /**
  * T84 item 3 (Templates 16/17, both share this range function -- every handle is independently
@@ -1220,6 +1264,29 @@ function _sandTimerRange(key, region, stroke, v) {
   if (key === 'bulgeFrac') return _range(0.01, 0.148);
   // pinchHeightFrac
   return _range(0.36, 0.64);
+}
+
+/**
+ * F31 item 2b (Template 15, frame-only preset): the dome is independently solved (no tangent chain,
+ * no coupling -- fb_engine/t15_flask_geometry.py's own module docstring), same reasoning as
+ * _archedTimerRange/_sandTimerRange above. Bounds are the structural-validity extremes (positive
+ * radius, no sagitta past half-chord, no 180-deg undercut, no piece shorter than frame_thickness=
+ * 0.75in) MEASURED by a closed-form bisection sweep against fb_engine.t15_flask_geometry.is_valid_outline
+ * PLUS the frame_thickness floor directly (the raw "clean" bisection alone misses a case where a
+ * piece drops under frame_thickness before any outline defect appears -- re-checked proactively
+ * here, the same lesson T14's own pinchReachFrac item-61 defect taught, re-applied before a live
+ * sweep had to catch it rather than after), across all 3 portrait sizes (6x9/7x9/9x12 --
+ * project_portrait_only), taking the TIGHTEST bound at each key, with a small safety margin inside
+ * the raw computed edge. "MODERATE" (Generate-only, about halfway from default to each of these)
+ * ranges are declared separately, per handle, as `generateRange` in template_data.py's own
+ * FRAME_HANDLES -- this function returns the FULL drag-feasible range, same contract as every other
+ * preset's own range function.
+ */
+function _flaskRange(key, region, stroke, v) {
+  if (key === 'topWidth') return _range(0.28, 0.51);
+  if (key === 'neckHeightFrac') return _range(0.09, 0.79);
+  // domeFullnessFrac
+  return _range(0.021, 0.16);
 }
 
 export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
@@ -1507,6 +1574,8 @@ const SALT = {
   tulip: { topWidth: 671, archRiseFrac: 672, waistWidthFrac: 673, waistHeightFrac: 674, bulgeFrac: 675, upperCurveFrac: 676 },
   // T84 item 5: frameOnly (jitter 0 for all 4), same reason as dippedLeftWave's own comment above.
   sandTimer: { topWidth: 681, pinchReachFrac: 682, bulgeFrac: 683, pinchHeightFrac: 684 },
+  // F31 item 2b: frameOnly (jitter 0 for all 3), same reason as dippedLeftWave's own comment above.
+  flask: { topWidth: 685, neckHeightFrac: 686, domeFullnessFrac: 687 },
 };
 
 /** Explicit param value wins; else default + a gentle seeded jitter,
@@ -2755,6 +2824,106 @@ function _solveSandTimer(region, params, segmentsOverride, seed, strokeHalfWidth
 }
 
 /**
+ * F31 item 2b: Template 15 (Flask) -- a straight neck (two vertical sides) meeting a dome that
+ * bulges OUTWARD and down to the flat base, a flat top closing the neck. EVERY joint a MITER, same
+ * structural class as archedFunnel/tulip/sandTimer above: the dome stands alone, solved from its
+ * own chord + sagitta -- ported directly from fb_engine/t15_flask_geometry.py's own tested closed
+ * form (read before writing this), ONLY place this algebra lives on the JS side: flaskConstruction.
+ * `topWidthFrac`/`neckHeightFrac`/`domeFullnessFrac` = fb_engine/t15_flask_geometry.py's own
+ * TOP_WIDTH_FRAC_DEFAULT/NECK_HEIGHT_FRAC_DEFAULT/DOME_FULLNESS_FRAC_DEFAULT -- same numeric
+ * defaults, declared twice (Python + JS), keep them in sync if either changes.
+ *
+ * `region`-local, Y-DOWN (top edge at -hh, matching every other construction above -- UNLIKE
+ * fb_engine/t15_flask_geometry.py's own Y-UP convention; re-derived from first principles for
+ * Y-DOWN here, NOT a sign-flipped copy of the Python side's Y-UP formula, same caution
+ * sandTimerConstruction's own doc comment gives for the opposite direction):
+ *   topR = (nw, -hh), topL = (-nw, -hh)              nw = topWidthFrac*hw
+ *   neckBottomR = (nw, neckBottomY), neckBottomL = mirror
+ *   neckBottomY = -hh + neckHeightFrac*2*hh          (0 = top edge, 1 = base edge, in THIS y-DOWN frame)
+ *   BR = (hw, hh), BL = (-hw, hh)
+ *
+ * The dome's own radius is the exact sagitta/half-chord relation
+ * `fb_engine.closed_form_arc.sagitta_circle` already proves (R = (halfChord^2 + sag^2) / (2*sag)) --
+ * same `_curveSegment(a, b, radius, outward, major, up)` chord-only derivation sandTimerConstruction's
+ * own arcs use; no via-point/centre bookkeeping needed for the drawn arc itself (`sagittaGeom` below
+ * is for interaction handle anchors only, same convention as sandTimerConstruction's own).
+ */
+export function flaskConstruction(region, resolved) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const D = DERIVED_PARAM_DEFAULTS.flask;
+  const topWidthFrac = resolved.topWidth ?? D.topWidth(resolved);
+  const neckHeightFrac = resolved.neckHeightFrac ?? D.neckHeightFrac(resolved);
+  const domeFullnessFrac = resolved.domeFullnessFrac ?? D.domeFullnessFrac(resolved);
+
+  const nw = topWidthFrac * hw;
+  const neckBottomY = -hh + neckHeightFrac * 2 * hh;
+  const domeSag = domeFullnessFrac * hw;
+
+  const topR = { x: nw, y: -hh }, topL = { x: -nw, y: -hh };
+  const neckBottomR = { x: nw, y: neckBottomY }, neckBottomL = { x: -nw, y: neckBottomY };
+  const BR = { x: hw, y: hh }, BL = { x: -hw, y: hh };
+
+  const halfChordDome = Math.hypot(BR.x - neckBottomR.x, BR.y - neckBottomR.y) / 2;
+  const domeRadius = (halfChordDome * halfChordDome + domeSag * domeSag) / (2 * domeSag);
+
+  // The dome's own CENTRE/VIA point (interaction handle anchors only, see archedFunnelConstruction's
+  // own doc comment on `sagittaGeom` for the full rationale -- identical here, convention-agnostic).
+  const sagittaGeom = (p0, p1, sag, awayPoint) => {
+    const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+    const dx = p1.x - p0.x, dy = p1.y - p0.y, L = Math.hypot(dx, dy) || 1;
+    let nx = -dy / L, ny = dx / L;
+    const dAway = (mx + nx - awayPoint.x) ** 2 + (my + ny - awayPoint.y) ** 2;
+    const dMid = (mx - awayPoint.x) ** 2 + (my - awayPoint.y) ** 2;
+    if (dAway < dMid) { nx = -nx; ny = -ny; }
+    const R = (L * L / 4 + sag * sag) / (2 * sag);
+    return { centre: { x: mx + nx * (sag - R), y: my + ny * (sag - R) }, radius: R,
+      via: { x: mx + nx * sag, y: my + ny * sag }, nx, ny, mx, my };
+  };
+  const domeGeom = sagittaGeom(neckBottomR, BR, domeSag, { x: 0, y: (neckBottomR.y + BR.y) / 2 });
+
+  return { hw, hh, topR, topL, neckBottomR, neckBottomL, BR, BL, domeRadius, domeGeom,
+    topWidthFrac, neckHeightFrac, domeFullnessFrac };
+}
+
+/** F31 item 2b: Template 15 (Flask) -- 6 pieces, clockwise from the top-right corner (matches
+ * template_data.py's own FRAME_SEED_MAP `prim` order and _OUTLINE: 0 neck_R, 1 dome_R, 2 base,
+ * 3 dome_L, 4 neck_L, 5 top). EVERY joint a miter, the dome convex (outward).
+ */
+function _solveFlask(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  const resolvedAll = _resolveParams('flask', region, params, seed, strokeHalfWidth);
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  const g = flaskConstruction(region, resolvedAll);
+  const s = strokeHalfWidth;
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
+  const M = (x, y) => ({ x: cx0 - x, y: cy0 + y });
+
+  // The dome is convex (bulges outward): radius SHRINKS by the stroke, like archedFunnel/sandTimer's
+  // own outward bulges.
+  const domeRadiusDrawn = g.domeRadius - s;
+  const hwD = g.hw - s, hhD = g.hh - s;
+
+  const topR = P(g.topR.x, -hhD), topL = M(g.topR.x, -hhD); // topL is the mirror of topR
+  const neckBottomR = P(g.neckBottomR.x, g.neckBottomR.y), neckBottomL = M(g.neckBottomR.x, g.neckBottomR.y);
+  const BR = P(hwD, hhD), BL = M(hwD, hhD);
+
+  const keypoints = [topR, neckBottomR, BR, BL, neckBottomL, topL];
+  const fresh = [
+    STRAIGHT_SEGMENT, // 0: neck_R (topR -> neckBottomR)
+    _curveSegment(neckBottomR, BR, domeRadiusDrawn, true), // 1: dome_R, convex (outward)
+    STRAIGHT_SEGMENT, // 2: base (BR -> BL)
+    _curveSegment(BL, neckBottomL, domeRadiusDrawn, true), // 3: dome_L, convex (outward)
+    STRAIGHT_SEGMENT, // 4: neck_L (neckBottomL -> topL)
+    STRAIGHT_SEGMENT, // 5: top (topL -> topR)
+  ];
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
+  // Same EVEN 6-piece loop shape as archedFunnel/tulip/sandTimer above (TWO self-mapping pieces,
+  // base (2) and top (5), each spanning the full width) -- the SAME declared table applies directly.
+  const mirror = [4, 3, 2, 1, 0, 5];
+
+  return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments, mirror };
+}
+
+/**
  * `region: {x,y,w,h}` (SE14 §3, Q5 ruling) + `shape` ->
  * `{ keypoints, segments, primitives, cx, params }`. `shape.preset`
  * selects `'hourglass'` (default) or `'bottle'`; `shape.params` overrides
@@ -2802,7 +2971,9 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
                     ? _solveTulip(region, params, segmentsOverride, seed, strokeHalfWidth)
                     : preset === 'sandTimer' // T84 item 5, T14 SAND TIMER (a frame-only preset)
                       ? _solveSandTimer(region, params, segmentsOverride, seed, strokeHalfWidth)
-                      : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
+                      : preset === 'flask' // F31 item 2b, T15 FLASK (a frame-only preset)
+                        ? _solveFlask(region, params, segmentsOverride, seed, strokeHalfWidth)
+                        : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;

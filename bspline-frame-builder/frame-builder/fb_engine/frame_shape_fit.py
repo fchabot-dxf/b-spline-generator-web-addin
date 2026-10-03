@@ -462,6 +462,37 @@ def _sand_timer(curves, hw, hh, tol=2e-3):
     }
 
 
+def _flask(curves, hw, hh, tol=2e-3):
+    """T15 FLASK: a straight neck (two vertical sides) meeting a dome that bulges OUTWARD and down
+    to the flat base, a flat top closing the neck -- every joint a MITER
+    (fb_engine/t15_flask_geometry.py's own module docstring), structurally the same all-miter class
+    as T14/T16/T17.
+
+    Features: topWidth (the neck's own half-span, inches -- shared key with T14/T16/T17),
+    neckHeightFrac (hh minus the neck-bottom's own y, inches = neckHeightFrac * 2 * hh, matching
+    Template 14's own pinchHeightFrac / Template 16's own waistHeightFrac sign convention in y-UP:
+    0=top edge, 1=base edge), domeFullnessFrac (the dome's own outward sagitta, inches) -- every one
+    a plain inch value, NOT pre-divided into a fraction, same convention _sand_timer above already
+    uses. Valid when the top's own two ends are symmetric about the centreline and at the same
+    height, the dome starts exactly where the neck ends, and the base sits at y = -hh.
+
+    FIRST CUT, unverified against a real golden JSON (no template_15 goldens exist yet) -- same
+    caveat _arched_funnel's own docstring carries."""
+    top = curves["top"]
+    neck_r, dome_r, base = curves["neck_R"], curves["dome_R"], curves["base"]
+    top_l, top_r = top["start"], top["end"]  # top:S=topL, top:E=topR (the CCW-swap table, p02_02_loop.py)
+    neck_bottom_r = neck_r["end"]  # neck_R:S=topR, neck_R:E=neckBottomR (a Line, unswapped)
+    BR = base["start"]  # base:S=BR
+    ok = (abs(top_l[0] + top_r[0]) < tol and abs(top_l[1] - top_r[1]) < tol  # top ends symmetric, same height
+          and abs(neck_r["start"][0] - top_r[0]) < tol and abs(neck_r["start"][1] - top_r[1]) < tol
+          and abs(base["start"][1] + hh) < tol and abs(base["end"][1] + hh) < tol)  # base at y=-hh
+    return ok, {
+        "topWidth": top_r[0],
+        "neckHeightFrac": hh - neck_bottom_r[1],
+        "domeFullnessFrac": _sagitta_from_center_radius(neck_bottom_r, BR, dome_r["center"], dome_r["radius"]),
+    }
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
@@ -470,7 +501,7 @@ FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_nar
                       "diamond_top_hourglass": _diamond_top_hourglass,
                       "diamond_top_hourglass_pinch": _diamond_top_hourglass_pinch,
                       "arched_funnel": _arched_funnel, "tulip": _tulip,
-                      "sand_timer": _sand_timer}
+                      "sand_timer": _sand_timer, "flask": _flask}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):
@@ -860,6 +891,42 @@ def provisional_sand_timer_model(top_width_of_hw, pinch_reach_of_hw, bulge_of_hw
             "pinchReachFracOfHw": pinch_reach_of_hw,
             "bulgeFracOfHw": bulge_of_hw,
             "pinchHeightFracOfH": pinch_height_of_h,
+        },
+    }
+
+
+def provisional_flask_model(top_width_of_hw, neck_height_of_h, dome_fullness_of_hw):
+    """T15 FLASK, until its goldens are recorded live: a PROVISIONAL model (never none), same shape
+    as provisional_sand_timer_model's own docstring (no base template to derive it from -- no
+    earlier template has this straight-neck/outward-dome, all-miter outline). Every feature is a
+    PLAIN hw- or hh-linear fraction straight from the construction (fb_engine/t15_flask_geometry.py's
+    own outline()).
+
+    `neckHeightFrac` is the one basis="h" handle, same convention as T14's own `pinchHeightFrac` /
+    T16's own `waistHeightFrac`: its own feature is `hh - neck_bottom_r.y` = `neck_height_of_h * 2 *
+    hh`, so the hh coefficient is `2 * neck_height_of_h` with NO hw cross-term -- paramsFromShapeModel
+    recovers the fraction as `feature / (2*hh)`, matching FRAME_HANDLES' own declared basis exactly.
+    Marked `provisional` so nothing mistakes it for a fit."""
+    return {
+        "features": {
+            "topWidth": {"hw": top_width_of_hw, "hh": 0.0},
+            "neckHeightFrac": {"hw": 0.0, "hh": 2 * neck_height_of_h},
+            "domeFullnessFrac": {"hw": dome_fullness_of_hw, "hh": 0.0},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "topWidthFracOfHw": top_width_of_hw,
+            "neckHeightFracOfH": neck_height_of_h,
+            "domeFullnessFracOfHw": dome_fullness_of_hw,
         },
     }
 

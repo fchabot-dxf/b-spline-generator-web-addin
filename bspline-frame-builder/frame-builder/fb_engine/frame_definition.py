@@ -274,6 +274,16 @@ def template_shape_model(template_id, frame, goldens_dir):
             return provisional_sand_timer_model(
                 prov["topWidthFracOfHw"], prov["pinchReachFracOfHw"], prov["bulgeFracOfHw"],
                 prov["pinchHeightFracOfH"])
+        if "domeFullnessFracOfHw" in prov:
+            # F31 item 2b, T15 FLASK: also a shape of its own (no base template -- a straight neck
+            # meeting an outward-bulging dome over an all-miter outline). CHECKED BEFORE
+            # "topWidthFracOfHw" below: Flask's own dict ALSO carries "topWidthFracOfHw" (the shared
+            # T84 item 4 key), so the more specific "domeFullnessFracOfHw" must win first or every
+            # Flask record would silently build an archedFunnel model instead (and crash on the
+            # missing archRiseFracOfHw/waistWidthFracOfHw/waistHeightFracOfH keys).
+            from fb_engine.frame_shape_fit import provisional_flask_model
+            return provisional_flask_model(
+                prov["topWidthFracOfHw"], prov["neckHeightFracOfH"], prov["domeFullnessFracOfHw"])
         if "topWidthFracOfHw" in prov:
             # T16 ARCHED FUNNEL: also a shape of its own: {"topWidthFracOfHw": w, "archRiseFracOfHw": r,
             # "waistWidthFracOfHw": ww, "waistHeightFracOfH": wh, "bulgeFracOfHw": b}.
