@@ -186,6 +186,23 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 40 -- item 39 REVIEW follow-ups (advisor, 2026-10-02). Item 39 accepted (775b88d; full vitest 3110/3110).
+Three things owed; (1) is required, it was in item 39's brief:
+(1) LIVE PROOF. The guard decides which shapes reach Fusion, so whether those shapes BUILD can only be shown in Fusion.
+    Capture fresh T7 payloads (tools/repro/capture_send_payload.mjs, --template=template_7) for 4 Generate seeds each at
+    7x9 and 9x12 (the guard now applies), Send them live: every one builds all 5 declared bars, no '(1)' bodies,
+    nothing < 0.5 cm3, 0 NOT-BUILT log lines. Then item 38's owed all-template sweep: built bars == declared bars for
+    every template's default at 7x9 (item35_all_templates_sweep.py + readback must COUNT '(1)' bodies, slivers and
+    NOT-BUILT lines). Keep the payloads in scratch/ this time.
+(2) T7 GENERATE RANGES: a 4% raw pass rate means T7's Generate mostly draws hooked shapes and survives by rejection
+    sampling. Fred prefers simple, not-too-concave shapes. Measure which handle values pass, then DECLARE T7's
+    Generate ranges narrowed to that region (data in template defs, not code). Target: >= 50% raw pass at every
+    portrait size. Keep the retry as the backstop.
+(3) THE FLOOR IS FRED'S CALL: 0.04t is about 0.03 in of clearance, i.e. still a thin tip. Render (real app geometry)
+    a T7 eave close-up at the default, at the thinnest passing shape, and at 0.10t / 0.15t, with the clearance
+    in inches labelled. Send it to the advisor; Fred picks the floor. Do NOT change the floor until he does.
+Log in WORK-LOG.md (seat A's log), not WORK-LOG-fb-app.md. Commit 'H23 item 40: ...'.
+
 ## Item 39 -- FRED-APPROVED GUARD: no hooked corner tips (finishes item 38). Fred: "a guard isn't that bad, it prevents
 awkward geometry where wood grain is important" -- a hooked tip is SHORT GRAIN (fibres run across a thin tip, it snaps); he chose option D (shots/fred/t7_eave_options_2026-10-02.png).
 Declare ONE rule for every template (not a T7 patch -- Flask/Arched Funnel/Tulip, queued on fb-app, have the same kind of
@@ -258,4 +275,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-34] CANCELLED (Fred: he sees the break and undoes; no auto-rebuild, no lock, no CAM check). Was: FRED EDITS PARAMS IN FUSION: feasibility of auto-rebuild on the Parameters dialog (C1) vs a merge-proof bar model (C2), measured, before any production change. Commit as 'H23 item 34: ...'.
 - [ ] [H23-item-37] ROBUST UNDERSIDE: area-weighted face normal instead of a 5-point average vs a -0.7 bound (T7 7x9 panel scored -0.6975 and was refused); + the unhealthy 'Source - L4 - ballnose' stamp feature. Commit as 'H23 item 37: ...'.
 - [x] [H23-item-38] (part 1 done c190ac6; part 2 -> item 39, Fred chose a guard) T7 INCOMPLETE FRAME: roof bars never built + sliver '(1)' bodies (eave miter doesn't split); fix + all-template 'built bars == declared bars' check. Commit as 'H23 item 38: ...'.
-- [ ] [H23-item-39] NO HOOKED TIPS (Fred-approved guard): the straight corner miter must stay inside the wood, for every template -- Generate rejects, handles stop, all-template test; T7 then builds all 5 bars live. Commit as 'H23 item 39: ...'.
+- [x] [H23-item-39] NO HOOKED TIPS (Fred-approved guard): the straight corner miter must stay inside the wood, for every template -- Generate rejects, handles stop, all-template test; T7 then builds all 5 bars live. Commit as 'H23 item 39: ...'.
+- [ ] [H23-item-40] item 39 follow-ups: (1) live T7 Generate-seed Sends at 7x9 + 9x12 + the all-template built==declared sweep, (2) declare narrower T7 Generate ranges (>= 50% raw pass), (3) margin-floor render for Fred. Commit as 'H23 item 40: ...'.
