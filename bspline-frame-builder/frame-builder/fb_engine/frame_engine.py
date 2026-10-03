@@ -94,11 +94,14 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
     seed_geometry = data_dict.get('seed_geometry') if isinstance(data_dict, dict) else None
     # F22: the panel lip (inches; 0/absent = none) — the lip loop in the frame sketch, driven by panel_lip
     panel_lip = data_dict.get('panel_lip') if isinstance(data_dict, dict) else None
+    # T82 item 6: the inset window record ({enabled, cx, cy, w, h}), never in ui_data (same reason as
+    # seed_geometry/panel_lip: it is not a single scalar, so it can't become a user parameter).
+    inset_window = data_dict.get('inset_window') if isinstance(data_dict, dict) else None
 
     if external_logger:
         external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars, max_phase={max_phase}, seeds={len(seed_geometry or {})}")
     builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase, seed_geometry=seed_geometry,
-                            panel_lip=panel_lip)
+                            panel_lip=panel_lip, inset_window=inset_window)
     return builder.fit
 
 def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
@@ -181,7 +184,7 @@ class FrameBuilder:
             self.logger.log(f"Warning: could not restore root active component: {e}", "WARNING")
 
     def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None, max_phase=None, seed_geometry=None,
-                        panel_lip=None):
+                        panel_lip=None, inset_window=None):
         start_time = time.time()
         try:
             self.logger.session_start(f"SKETCH ONLY: {style_id}")
@@ -204,6 +207,12 @@ class FrameBuilder:
                 from fb_engine.panel_lip import apply_panel_lip
                 template = apply_panel_lip(template, panel_lip)
                 self.logger.log(f"PANEL LIP: {panel_lip} in, the lip loop added to the frame sketch")
+            if inset_window and inset_window.get("enabled"):
+                from fb_engine.inset_window import apply_inset_window
+                frame_thickness_in = (ui_data or {}).get("frame_thickness")
+                template = apply_inset_window(template, inset_window, frame_thickness_in, panel_lip)
+                self.logger.log(f"INSET WINDOW: cx={inset_window.get('cx')} cy={inset_window.get('cy')} "
+                                 f"w={inset_window.get('w')} h={inset_window.get('h')}")
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver, max_phase=max_phase)
             builder.build_template(template)

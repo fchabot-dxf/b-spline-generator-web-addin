@@ -187,6 +187,12 @@ class SolidCoordinator:
         if not (frame.get("regions") and frame.get("features")):
             self.log.log(f"DECLARED FEATURES: template '{a.value}' declares none")
             return None
+        # T82 item 6: the inset window's own features, appended unconditionally (a no-op on a window-less
+        # build -- classify() never produces their ids unless inset_window actually built window curves
+        # into THIS build's sketch). A shallow copy: the resolved spec is template_resolver's own cache.
+        from fb_engine.frame_definition import WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE
+        frame = dict(frame)
+        frame["features"] = list(frame["features"]) + [WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE]
         self.log.log(f"DECLARED FEATURES: template '{a.value}': {[f['id'] for f in frame['features']]}")
         return frame
 

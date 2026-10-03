@@ -24,6 +24,10 @@ Pure: no adsk. extrusion_engine gathers the ids and builds from the plan.
 
 SURROUND_REGION = "surround-minus-outline"
 BAR_REGION = "outline-minus-inner"
+# T82 item 6: the inset window (fb_engine/inset_window.py), a second mitred subframe entirely inside the
+# main frame's own opening -- same dispatch pattern, its own region names.
+WINDOW_BAR_REGION = "window-outline-minus-inner"
+WINDOW_CUT_REGION = "window-hole"
 
 
 def miter_curve_id(src_id, tgt_id):
@@ -102,9 +106,45 @@ def classify(curve_ids, frame):
             raise DeclaredProfileError(
                 f"one profile spans {len(bars)} bars ({sorted(outline)}): a miter did not split it")
         return feat, feat["bodyNames"][bars.pop()]
-    stray = ids - set(regions["inner"])
+
+    # T82 item 6: the inset window (fb_engine/inset_window.py). MEASURED live: the window's own curve ids
+    # are FIXED names, never dependent on cx/cy/w/h, and never stored in `regions` -- the solid build's own
+    # `_declared_frame()` re-resolves the STATIC template from disk, so anything the sketch build computed
+    # from the payload is gone by then. These hypothetical ids are therefore recomputed fresh every call,
+    # exactly like `lip_ids(regions["outline"])` above: a window-less build's curve ids never intersect
+    # them, so every check below is a harmless no-op when there is no window.
+    from fb_engine.inset_window import OUTER_ID, INNER_ID, HOLE_ID, line_ids, window_miters, window_bars
+    window_outer_ids = set(line_ids(OUTER_ID))
+    window_inner_ids = set(line_ids(INNER_ID))
+    window_hole_ids = set(line_ids(HOLE_ID))
+
+    # A profile that ALSO touches the main frame's own inner ids is the opening with the window's outer
+    # loop as an island (below), never a window-bar profile -- a genuine window bar never touches `inner`.
+    if (ids & window_outer_ids) and not (ids & set(regions["inner"])):
+        feat = _feature_for(features, WINDOW_BAR_REGION)
+        touched = ids & window_outer_ids
+        bars = {bar_index(c, {"bars": window_bars()}) for c in touched}
+        if len(bars) != 1:
+            raise DeclaredProfileError(
+                f"one window profile spans {len(bars)} bars ({sorted(touched)}): a miter did not split it")
+        return feat, feat["bodyNames"][bars.pop()]
+
+    if ids & window_hole_ids:
+        if not (ids - window_hole_ids):
+            return _feature_for(features, WINDOW_CUT_REGION), None  # the pocket cut, lip > 0
+        window_miter_ids = {miter_curve_id(a, b) for a, b in window_miters()}
+        stray = ids - window_inner_ids - window_hole_ids - window_miter_ids
+        if stray:
+            raise DeclaredProfileError(
+                f"window lip profile curves {sorted(stray)} are not the window's inner boundary, "
+                "its hole or a miter")
+        return None, None  # the window's own lip ring: the panel keeps it
+    if ids and not (ids - window_inner_ids):
+        return _feature_for(features, WINDOW_CUT_REGION), None  # the pocket cut, no lip (or a clamped one)
+
+    stray = ids - set(regions["inner"]) - window_outer_ids
     if not stray:
-        return None, None  # the opening
+        return None, None  # the opening (punched by the window's own outer loop, if a window exists)
     raise DeclaredProfileError(f"profile curves {sorted(stray)} are not in the declared regions")
 
 

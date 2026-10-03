@@ -205,6 +205,46 @@ def test_a_partial_four_bar_frame_is_still_skipped():
     assert frame.features.moveFeatures.log == []
 
 
+# T82 item 6: the inset window's own 4 bars, alongside a classic Template 1 frame (same component).
+WINDOW_BARS = {
+    "frame_window_top": ((-2.0, 2.0, -1.5), (2.0, 2.75, 0.0)),
+    "frame_window_right": ((1.25, -2.0, -1.5), (2.0, 2.0, 0.0)),
+    "frame_window_bottom": ((-2.0, -2.75, -1.5), (2.0, -2.0, 0.0)),
+    "frame_window_left": ((-2.0, -2.0, -1.5), (-1.25, 2.0, 0.0)),
+}
+
+
+def test_a_classic_four_bar_frame_with_a_window_also_lays_out_the_window_bars():
+    """T82 item 6: frame_window_* bodies sit alongside the classic 4 in the SAME component -- before the
+    fix, _populate_n_bar_frame_geometry's own 'only when the classic 4 are absent' guard meant these were
+    collected into other_bars and then never laid out at all."""
+    mm, frame = _mm({**T1_BARS, **WINDOW_BARS})
+    assert mm_builder._populate_frame_geometry(mm, None, None) is True
+    log = frame.features.moveFeatures.log
+    # the classic 4-bar row is unchanged (same 5 ops, same order) ...
+    assert [(names, op[0]) for names, op in log[:5]] == [
+        (("frame_bottom",), "rotate"), (("frame_top",), "rotate"),
+        (("frame_left",), "translate"), (("frame_bottom",), "translate"), (("frame_top",), "translate")]
+    # ... and the window's own 4 bars are ALSO laid out, continuing the same row.
+    window_ops = log[5:]
+    rotated = sorted(names[0] for names, op in window_ops if op[0] == "rotate")
+    assert rotated == ["frame_window_bottom", "frame_window_top"]
+    moved_names = {names[0] for names, _ in window_ops}
+    assert moved_names == set(WINDOW_BARS)  # all 4 window bars got at least one move (rotate and/or translate)
+
+    b = {x.name: x for x in frame.bRepBodies}
+    full_row = ["frame_right", "frame_left", "frame_bottom", "frame_top"] + sorted(WINDOW_BARS)
+    for a, c in zip(full_row, full_row[1:]):
+        assert b[c].mn[0] >= b[a].mx[0]  # strictly continuing rightward: no overlap with the previous piece
+    for n in sorted(WINDOW_BARS):  # the window row is also centred on Y = 0
+        assert (b[n].mn[1] + b[n].mx[1]) / 2 == pytest.approx(0.0)
+
+    # idempotent: a second run (one shared gate for the whole row) adds nothing
+    n_moves = len(log)
+    assert mm_builder._populate_frame_geometry(mm, None, None) is False
+    assert len(frame.features.moveFeatures.log) == n_moves
+
+
 def test_n_bar_layout_plan_is_pure_and_deterministic():
     rotate, order, widths = mm_builder.n_bar_layout_plan({"frame_b": (4.0, 1.0), "frame_a": (1.0, 5.0)}, 1.397)
     assert rotate == ["frame_b"] and order == ["frame_a", "frame_b"] and widths == {"frame_a": 1.0, "frame_b": 1.0}

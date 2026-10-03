@@ -523,6 +523,52 @@ class TestPanelLip:
         assert sf.panel_lip_of({}) == 0.0 and sf.panel_lip_of({"panelLip": 0.25}) == 0.25
 
 
+# ------------------------------------------------------------------ T82 item 6: the inset window
+class TestInsetWindow:
+    """T82 item 6: [Send frame] threads the inset window record through to the sketch build, the same way
+    panel_lip/seed_geometry already do (data_dict, never ui_data -- it is not a single scalar param)."""
+
+    WINDOW = {"enabled": True, "cx": 0.5, "cy": -0.25, "w": 3.0, "h": 2.0}
+
+    def test_an_enabled_window_reaches_the_sketch_build_as_inset_window(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(insetWindow=self.WINDOW))
+        assert r["ok"]
+        assert b.sketch_calls[0]["data"]["inset_window"] == self.WINDOW
+        assert "insetWindow" not in b.sketch_calls[0]["data"]["ui_data"]  # never through the template-param path
+
+    def test_disabled_or_absent_never_reaches_the_build(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload())
+        assert r["ok"] and "inset_window" not in b.sketch_calls[0]["data"]
+        r, b = run(w, payload(insetWindow={**self.WINDOW, "enabled": False}))
+        assert r["ok"] and "inset_window" not in b.sketch_calls[0]["data"]
+
+    def test_a_malformed_window_is_dropped_not_sent_to_the_build(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(insetWindow={"enabled": True, "cx": "nope", "cy": 0, "w": 3, "h": 2}))
+        assert r["ok"] and "inset_window" not in b.sketch_calls[0]["data"]
+        r, b = run(w, payload(insetWindow={"enabled": True}))
+        assert r["ok"] and "inset_window" not in b.sketch_calls[0]["data"]
+
+    def test_the_window_and_the_lip_can_be_sent_together(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(insetWindow=self.WINDOW, panelLip=0.0625))
+        assert r["ok"]
+        data = b.sketch_calls[0]["data"]
+        assert data["inset_window"] == self.WINDOW and data["panel_lip"] == 0.0625
+
+    def test_inset_window_of_is_strict(self):
+        assert sf.inset_window_of({}) is None
+        assert sf.inset_window_of({"insetWindow": {**self.WINDOW, "enabled": False}}) is None
+        assert sf.inset_window_of({"insetWindow": {"enabled": True, "cx": 0, "cy": 0, "w": "nope", "h": 1}}) is None
+        assert sf.inset_window_of({"insetWindow": self.WINDOW}) == self.WINDOW
+
+
 class SplitEvaluator:
     """H23 item 37: a UV square split in half by v (v<0.5 vs v>=0.5), each half with its OWN
     constant normal.z and its OWN constant local-area scale (|dU x dV| = the derivative's own y
