@@ -173,6 +173,19 @@ overlap 0) with tools/repro/fusion_t11/underside_extrude_probe.py. ALSO: on that
 STAMP timeline feature "Source - L4 - ballnose (0.12")" is genuinely unhealthy (a real feature, not a group) -- find
 its warning text and cause (Fred's "no errors" goal); report, fix only if clearly ours. No guards. Commit 'H23 item 37: ...'.
 
+## Item 38 -- Template 7's frame is incomplete: no roof bars + a sliver on each side (worker finding, 2026-10-02)
+Fresh post-fix T7 Sends, 7x9 AND 9x12: bodies = frame_base, frame_side_left (+ 'frame_side_left (1)' 0.082 / 0.005
+cm3), frame_side_right (+ '(1)' sliver); NO frame_roof_left / frame_roof_right at all. In T7_3_frame_enclosure the eave
+(roof -> neck arc) miter does not separate the regions: the roof regions span 2 bars ('one profile spans 2 bars
+(proj_arc_neck_L, proj_roof_L): a miter did not split it' -> NOT BUILT, silently), and a 0.02 cm2 sliver region next
+to proj_arc_neck_R/L is classified as a bar. Find the cause (the eave inner corner is a line-CIRCLE corner,
+t7_roof_eave.eave_inner_corner; item 27 changed T7's arcs/seeds -- check the ResolveInnerCorners direction/distance and
+the miter endpoints against the live geometry) and fix it so T7 builds exactly its 5 declared bars, 0 slivers, 0 overlap,
+at 6x9/7x9/9x12. THEN, for all 13 templates, extend tools/repro/fusion_t11/item35_all_templates_sweep.py (and the
+readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- none missing, no extra '(1)' bodies, no
+body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
+Commit 'H23 item 38: ...'.
+
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -232,3 +245,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-33] (root-caused, fix -> item 34) PARAM EDIT AFTER BUILD DUPLICATES BARS: find + fix why the bar split doesn't survive a frame_thickness/boundingboxoffset edit (3 bars become one overlapping U body, timeline healthy). Commit as 'H23 item 33: ...'.
 - [x] [H23-item-34] CANCELLED (Fred: he sees the break and undoes; no auto-rebuild, no lock, no CAM check). Was: FRED EDITS PARAMS IN FUSION: feasibility of auto-rebuild on the Parameters dialog (C1) vs a merge-proof bar model (C2), measured, before any production change. Commit as 'H23 item 34: ...'.
 - [ ] [H23-item-37] ROBUST UNDERSIDE: area-weighted face normal instead of a 5-point average vs a -0.7 bound (T7 7x9 panel scored -0.6975 and was refused); + the unhealthy 'Source - L4 - ballnose' stamp feature. Commit as 'H23 item 37: ...'.
+- [ ] [H23-item-38] T7 INCOMPLETE FRAME: roof bars never built + sliver '(1)' bodies (eave miter doesn't split); fix + all-template 'built bars == declared bars' check. Commit as 'H23 item 38: ...'.
