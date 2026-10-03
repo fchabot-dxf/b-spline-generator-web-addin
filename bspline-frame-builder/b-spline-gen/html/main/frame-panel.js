@@ -438,6 +438,9 @@ const _lerpPatch = (prevRec, patch, f) => {
 function _clampDragPatchToNoHookRule(prevRec, patch) {
   const breaks = _frameRecordBreaksNoHookRule;
   if (!breaks(_mergeFrameRecord(prevRec, patch))) return patch;
+  // A shape that already breaks a rule (an old saved record, a rule added later) must not freeze the
+  // handle: the binary search below would return 0 every tick. Let the drag move it.
+  if (breaks(prevRec)) return patch;
   let lo = 0, hi = 1;
   for (let i = 0; i < 24; i++) {
     const mid = (lo + hi) / 2;

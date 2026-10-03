@@ -12,7 +12,7 @@ import { P, persistableP } from '../bspline-frame-builder/b-spline-gen/html/core
 import {
   normalizeFrameRecord, getFrameRecord, setFrameRecord, framePayload,
 } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { frameCutProfile, outlineHasUndercut } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { frameCutProfile, outlineHasUndercut, mitersCollide } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry, frameParamRanges } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { generateSilhouette, paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { initFramePanel, setEditorTab, HANDLE_HIT_PX, frameHistoryDepth, undoFrame, _frameRecordBreaksNoHookRule } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
@@ -541,5 +541,18 @@ describe('H23 item 63: T10 arch rise never goes flat (a flat arch has no arc for
     const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
     const ranges = frameParamRanges(tpl, region, paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region), 0.75);
     expect(ranges.archRise.min * (region.h / 2)).toBeCloseTo(0.125, 6);
+  });
+});
+
+describe('H23 item 63: mitersCollide only flags miters of the SAME bar (Fred: T16 waist handle froze)', () => {
+  const m = (ox, oy, ix, iy) => ({ outer: { x: ox, y: oy }, inner: { x: ix, y: iy } });
+  it('two waist miters facing each other across a narrow opening do not collide', () => {
+    // loop order: top-R, waist-R, base-R, base-L, waist-L, top-L -- waist-R and waist-L are NOT consecutive
+    const ms = [m(5, 0, 4.5, 0.7), m(3.6, 4, 3.05, 4.3), m(6, 9, 5.3, 8.3), m(0, 9, 0.7, 8.3), m(2.4, 4, 2.95, 4.3), m(1, 0, 1.5, 0.7)];
+    expect(mitersCollide(ms, 0.75)).toBe(false);
+  });
+  it('two miters at the ends of one bar ending closer than t/4 do collide', () => {
+    const ms = [m(5, 0, 3.01, 1), m(1, 0, 2.99, 1), m(0, 9, 0.7, 8.3), m(6, 9, 5.3, 8.3)];
+    expect(mitersCollide(ms, 0.75)).toBe(true);
   });
 });

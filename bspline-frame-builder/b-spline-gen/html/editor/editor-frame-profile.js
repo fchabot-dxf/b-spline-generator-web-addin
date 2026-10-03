@@ -491,7 +491,11 @@ export function mitersCollide(miters, t) {
   for (let i = 0; i < miters.length; i++) {
     for (let j = i + 1; j < miters.length; j++) {
       const p = miters[i].outer, q = miters[i].inner, r = miters[j].outer, s = miters[j].inner;
-      if (Math.hypot(q.x - s.x, q.y - s.y) < MIN_MITER_GAP_T_FRAC * t) return true;
+      // The gap rule is for the two miters at the ENDS OF ONE BAR (consecutive around the loop). Two
+      // miters facing each other across the opening (a narrow waist) may sit close -- that's the
+      // opening, not a collision (Fred's screenshot, T16: the waist handle froze).
+      const sameBar = j === i + 1 || (i === 0 && j === miters.length - 1);
+      if (sameBar && Math.hypot(q.x - s.x, q.y - s.y) < MIN_MITER_GAP_T_FRAC * t) return true;
       const d1 = cross(p, q, r), d2 = cross(p, q, s), d3 = cross(r, s, p), d4 = cross(r, s, q);
       if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
     }
