@@ -14143,3 +14143,104 @@ Committed as THREE separate commits per the dispatch's own "one commit each": "H
 fix step_removal_ab.py's OUT path", "H23 item 51 (2/3): timeline_order.py's redundant timeline
 scan removed", "H23 item 51 (3/3): send_stage_timing.py's own orphan-doc leak fixed" (this
 WORK-LOG entry lands with the third).
+
+## H23 item 52 -- speed round 2: marker-based frame placement eliminates the reorder cost entirely; the projection hypothesis for cost #2 was wrong, measured and corrected
+
+Dispatch (advisor, 455): (A) avoid the 6 x 0.87s reorders by building the frame with `timeline.
+markerPosition` set before the inlay (create in place, restore marker); otherwise explain/remove
+the second reorder pass. (B) inside `build_constrained_sketch`: measure `project()` count x cost
+vs. the rest, then project each source once / skip unused projections. A/B identical, preview==
+build 13/13, seconds before/after on the real payload, one commit each.
+
+**(A) Confirmed the API behavior live, in isolation, before touching production code.** Two
+probes: a plain root-level sketch+extrude (`timeline.markerPosition = 0` before creating it --
+landed exactly there, marker auto-advanced by 1 per new item); then the REAL pattern --
+`addNewComponent` + sketch + extrude, with an existing "Plane for L1"-named item standing in for
+the inlay. Result: `[' B-Spline Set:1', ' Frame_1:1', 'Frame_1_sketch_outline', 'Extrude1',
+'Plane for L1']` -- the WHOLE Frame_1 block landed contiguously, in creation order, before the
+inlay, with ZERO `.reorder()` calls. Confirmed the marker only needs to be set ONCE: it advances
+by itself with each new item, so both `build_sketch` and `build_solid` (item 51's own two
+`ensure_frame_before_inlay` call sites) insert at the SAME marker without re-setting it between
+them.
+
+**Implemented centrally, not per build-phase.** New `fb_engine/timeline_order.py::mark_before_
+inlay(design, logger)` (finds the inlay's own earliest index by NAME alone -- no `.entity`/
+attribute access needed, so it stays cheap even on a large timeline -- sets `markerPosition`
+there, returns the prior position; a graceful no-op, returning `None`, when there's no inlay at
+all) and its own companion `restore_marker_position`. Wired into `fb_engine/send_frame.py::send_
+frame()`, wrapping BOTH `build_sketch` and `build_solid` in one `try/finally` -- one set, one
+restore, covering both phases, restored even if either build raises. `ensure_frame_before_inlay`
+(item 4 in this file's own docstring) stays exactly where it was, as the safety net: its own
+"already in order" early return is a cheap, zero-`.reorder()` no-op once the marker has already
+done the real placement, so keeping it costs nothing and covers whatever the marker-based
+approach might not (e.g. a future code path that creates something the marker doesn't reach).
+
+New tests (`fb_engine/test_timeline_order.py::TestMarkBeforeInlay`, 6 cases: earliest-of-several
+inlay wins, no-inlay no-op, no-timeline no-op, restore puts it back, restore-with-None no-op) --
+the shared `FakeTimeline` fixture (also used by `test_send_frame.py`) gained a plain `markerPosition`
+attribute (defaulting to `count`, matching a fresh real timeline) so these tests could run without
+crashing the 24 EXISTING `test_send_frame.py` tests that construct one; it cannot simulate "a new
+item lands at the marker" (no API to add one), so that side effect is confirmed LIVE, not here.
+Mutation-tested (removed the `break` that keeps the EARLIEST match): both the single- and
+multiple-inlay tests go red at the wrong index, restored, green. Full suite unaffected otherwise
+(all 24 existing `test_send_frame.py` tests + 22 existing `test_timeline_order.py` tests stayed
+green after the fakes update).
+
+**LIVE, re-measured against the exact same real T7 payload used for item 51's own baseline:**
+`timeline_reorder_calls` dropped from **5.1976s to 0.0011s** -- essentially eliminated (4700x).
+`solid_coordinator_phases.total` dropped from 8.62s to 3.42s (the `ensure_frame_before_inlay`
+call it includes is now a true no-op). "Building the frame..." dropped from 12.413s to 7.111s.
+**Total Send time: 21.57s -> 16.145s, a ~25% reduction from this ONE change.** Confirmed 0 MITER
+MISS / 0 [ERROR] / 0 fallback lines in the debug log afterward -- same correctness, not just
+speed. 13-template live sweep (`item40_all_template_sweep.py`, all 13 via the SAME unseeded,
+no-inlay synthetic-panel path this whole session's own testing has always used): `done=13
+crashed=[] bad=[]` -- confirms the "no inlay present" no-op path (the common case, and the ONLY
+path every prior item's own live testing this session ever exercised) is completely unaffected.
+Between the real-payload run (confirms the WITH-inlay path) and the 13-template sweep (confirms
+the WITHOUT-inlay path), both branches of `mark_before_inlay` are now live-verified.
+
+**(B) Measured first, exactly as asked -- and the dispatch's own hypothesis about `project()`
+turned out to be wrong, by direct measurement, not argument.** Checked the two SPECIFIC
+mechanisms named first: the real T7 payload's own 5 layers declare 41 total projections across
+3 non-empty layers (8 + 7 + 26) -- EVERY `sourceId` is unique within its own layer (0 duplicates
+to de-dupe) and EVERY `targetId` is referenced by a `constraints` entry afterward (0 unused to
+skip). Neither "project each source once" nor "skip unused projections" has anything to act on in
+this real data -- confirmed by actually counting, not assumed from the dispatch's own framing.
+
+Instrumented `sketch.project()` itself directly (same-module monkeypatch on `sketch_manifest_
+builder`, confirmed necessary: `b-spline-gen.py` imports `build_constrained_sketch` by name, so
+patching it from outside silently no-ops -- the SAME cross-module-import gotcha item 51 already
+found for `ensure_frame_before_inlay`; `_apply_projections`, called from WITHIN the same module,
+patches correctly): **all 41 `.project()` calls combined cost 0.261s** -- against the ~5.8s this
+layer-building work takes overall, that is NOT the dominant cost (about 4.5% of it). Instrumented
+every other internal step the same way to find what actually is: `_apply_constraints` (2.158s
+total across 5 calls, one single call costing 1.305s), `_create_geometry` (1.761s), `_apply_
+declared_dimensions` (1.027s, one call costing 0.933s), `_sync_manifest_parameters` (0.373s),
+`_stamp_bspline_owner` (0.0s, negligible). **`_apply_constraints` and `_create_geometry` are the
+real dominant costs, not `project()`** -- genuine constraint-solving and sketch-entity-creation
+work that scales with each layer's own lattice complexity (ties/nodes/rails count), confirmed by
+the SAME layer (index 1, no raw SVG content, 0 projections, but apparently the most lattice
+entities) being the single most expensive call for BOTH `_apply_constraints` (1.305s) and
+contributing heavily elsewhere.
+
+**Did not attempt a fix for (B).** The dispatch's own two named candidates (de-dup, skip-unused)
+measured to zero opportunity; the ACTUAL dominant costs (`_apply_constraints`, `_create_geometry`)
+are not a simple redundant-call pattern the way item 51's `timeline_order.py` fix or this item's
+own part (A) were -- they are real geometric work whose own INTERNAL structure (which constraints
+are genuinely load-bearing vs. possibly simplifiable, which entity types are more expensive to
+create than others) I have not read in enough depth to change safely within this item's own
+budget. Flagging `_apply_constraints`/`_create_geometry` (not `project()`) as where a dedicated
+follow-up should actually look, with the exact per-call numbers above so it does not need to
+re-measure from zero.
+
+No stray scratch documents left open at any point (checked `app.documents` directly after each
+live call; the advisor's own `adv_taper_fp` document was never touched).
+
+Full Python suite: 773 passed (+6, the new `TestMarkBeforeInlay` cases), 25 skipped, 0 failures.
+
+Committed as ONE commit for part (A) (the only candidate with an actual fix) -- "H23 item 52:
+marker-based frame placement eliminates the reorder cost (~5.2s -> ~0s); the SVG-projection
+hypothesis for cost #2 measured and found wrong (project() is ~4.5% of that cost, not the
+dominant share) -- no fix attempted there, flagged for a dedicated follow-up". Part (B) has no
+code change to commit -- same "measured, explained, nothing safe to prune" shape as item 51's own
+SVG-projection and item 50's own Pulse findings.

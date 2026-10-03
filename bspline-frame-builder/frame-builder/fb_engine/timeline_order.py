@@ -214,6 +214,66 @@ def reorder_frame_before_inlay_in_design(design, frame_component_name, logger=No
     return reorder_frame_before_inlay(design.timeline, is_frame_item, is_inlay_item, logger=logger)
 
 
+def mark_before_inlay(design, logger=None):
+    """H23 item 52: set `design.timeline.markerPosition` to the inlay's own EARLIEST index, so
+    whatever the CALLER builds next is inserted THERE directly -- contiguous, already in the
+    right place -- instead of landing at the end and needing the expensive post-hoc reorder
+    above to pull it back (MEASURED, item 51: 6 x ~0.85-0.90s live `.reorder()` calls on a real
+    Send's own solid-build phase). Call this ONCE, right before the frame build starts (both its
+    sketch AND solid phases insert at the SAME marker, which Fusion itself advances with each new
+    item -- confirmed live, no need to re-set it between the two phases).
+
+    Returns the marker's OWN PRIOR position (pass it to `restore_marker_position` when the build
+    finishes), or `None` if there is no inlay at all -- nothing is changed in that case; the
+    caller's new items land at the end exactly as they always have, and `ensure_frame_before_
+    inlay`'s own post-hoc reorder above is the one thing that still needs to run afterward (its
+    own "no inlay present" early return is already a cheap no-op either way, so calling it
+    unconditionally as a safety net costs nothing when it has nothing to do)."""
+    def _log(msg, level="INFO"):
+        if logger:
+            try:
+                logger.log(msg, level)
+            except Exception:
+                pass
+    if not design or not getattr(design, "timeline", None):
+        return None
+    timeline = design.timeline
+    inlay_idx = None
+    for i in range(timeline.count):
+        try:
+            if is_inlay_item_name(getattr(timeline.item(i), "name", None)):
+                inlay_idx = i
+                break
+        except Exception:
+            continue
+    if inlay_idx is None:
+        return None
+    prior = timeline.markerPosition
+    timeline.markerPosition = inlay_idx
+    _log(f"FB-ORDER: marker set to {inlay_idx} (before the inlay) -- new items will land there directly")
+    return prior
+
+
+def restore_marker_position(design, prior_position, logger=None):
+    """Companion to `mark_before_inlay` -- restores the marker to its own prior position
+    (typically the end, wherever it was before the frame build started). Best-effort: `prior_
+    position` of `None` (mark_before_inlay's own "no inlay" case) is a no-op, and a failure to
+    restore is logged, never raised -- a marker left mid-timeline is a cosmetic/future-insert
+    concern, not a reason to fail an already-completed frame build."""
+    if prior_position is None or not design or not getattr(design, "timeline", None):
+        return
+    try:
+        design.timeline.markerPosition = prior_position
+        if logger:
+            logger.log(f"FB-ORDER: marker restored to {prior_position}")
+    except Exception as e:
+        if logger:
+            try:
+                logger.log(f"FB-ORDER: marker restore failed: {e}", "WARNING")
+            except Exception:
+                pass
+
+
 # Declared once: reorder outcomes that are NORMAL (nothing to warn about).
 # Every other not-moved reason (a refusal, no frame items, no timeline)
 # is logged as a warning by ensure_frame_before_inlay below.

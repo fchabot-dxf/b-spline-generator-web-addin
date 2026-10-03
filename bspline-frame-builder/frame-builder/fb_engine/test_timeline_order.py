@@ -24,6 +24,8 @@ from fb_engine.timeline_order import (
     reorder_frame_before_inlay,
     is_inlay_item_name,
     INLAY_NAME_PREFIXES,
+    mark_before_inlay,
+    restore_marker_position,
 )
 
 
@@ -66,10 +68,18 @@ class FakeItem:
 
 class FakeTimeline:
     """`.count` + `.item(i)`, same shape reorder_frame_before_inlay reads —
-    a plain ordered list of FakeItem underneath."""
+    a plain ordered list of FakeItem underneath.
+
+    H23 item 52: also models `markerPosition` as a plain settable/gettable int (the real API's
+    own shape, MEASURED live: a new item is inserted AT that position and the marker then
+    advances by one -- but this fake has no "add a new item" method at all, so that LIVE-only
+    side effect is confirmed live, not here; this fake only needs to let mark_before_inlay /
+    restore_marker_position be CALLED without crashing and prove they read/write the right
+    index). Defaults to `count` (the end), matching a fresh real timeline's own default."""
 
     def __init__(self, names, refuses=()):
         self.items = [FakeItem(n, self, can_reorder=(n not in refuses)) for n in names]
+        self.markerPosition = len(self.items)
 
     @property
     def count(self):
@@ -297,6 +307,56 @@ class TestReorderFrameBeforeInlay:
         assert "Frame_1_extrude" in result["reason"]
         assert tl.names() == original_order  # Clean itself never touched either
         assert any(level == "WARNING" and "Frame_1_extrude" in msg for level, msg in logger.records)
+
+
+# ---------------------------------------------------------------------
+# H23 item 52: mark_before_inlay / restore_marker_position — set the timeline's own marker
+# before the inlay so new items land there directly, instead of needing reorder_frame_before_
+# inlay (above) to pull them back after the fact (MEASURED, item 51: ~5.2s of real .reorder()
+# calls on a real Send). This fake has no "create a new item" mechanism at all, so it cannot
+# simulate the "does a NEW item actually land at the marker" side effect -- that is confirmed
+# LIVE (WORK-LOG H23 item 52); these tests cover the part that IS fake-testable: does this find
+# the right inlay index, and does it set/restore markerPosition correctly.
+# ---------------------------------------------------------------------
+class TestMarkBeforeInlay:
+    def test_sets_the_marker_to_the_earliest_inlay_index_and_returns_the_prior_position(self):
+        tl = FakeTimeline(["B-Spline Set", "Plane for L1", "Source - L1"])
+        design = types_ns(timeline=tl)
+        prior = mark_before_inlay(design)
+        assert prior == 3  # the fake's own default: markerPosition starts at `count`
+        assert tl.markerPosition == 1  # "Plane for L1" is the earliest inlay item
+
+    def test_the_earliest_of_several_inlay_items_wins(self):
+        tl = FakeTimeline(["B-Spline Set", "Frame_1", "Plane for L2", "Source - L2", "Plane for L1"])
+        design = types_ns(timeline=tl)
+        mark_before_inlay(design)
+        assert tl.markerPosition == 2  # "Plane for L2", not the later "Plane for L1"
+
+    def test_no_inlay_is_a_no_op_and_returns_none(self):
+        tl = FakeTimeline(["B-Spline Set", "Frame_1", "Frame_1_extrude"])
+        tl.markerPosition = 3
+        design = types_ns(timeline=tl)
+        assert mark_before_inlay(design) is None
+        assert tl.markerPosition == 3  # untouched
+
+    def test_no_timeline_is_a_no_op(self):
+        assert mark_before_inlay(types_ns(timeline=None)) is None
+        assert mark_before_inlay(None) is None
+
+    def test_restore_puts_the_marker_back(self):
+        tl = FakeTimeline(["B-Spline Set", "Plane for L1"])
+        design = types_ns(timeline=tl)
+        prior = mark_before_inlay(design)
+        assert tl.markerPosition == 1
+        restore_marker_position(design, prior)
+        assert tl.markerPosition == prior == 2
+
+    def test_restore_with_none_is_a_no_op(self):
+        tl = FakeTimeline(["B-Spline Set", "Plane for L1"])
+        tl.markerPosition = 1
+        design = types_ns(timeline=tl)
+        restore_marker_position(design, None)
+        assert tl.markerPosition == 1  # untouched, not reset to anything
 
 
 # ---------------------------------------------------------------------

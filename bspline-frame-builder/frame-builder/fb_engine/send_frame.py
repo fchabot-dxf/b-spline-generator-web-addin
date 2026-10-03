@@ -25,6 +25,14 @@ points the Frame Builder palettes use:
   4  FB-ORDER: both builds already end with ensure_frame_before_inlay (verified
      live in F3), so the whole block lands before the inlay whichever button
      came first; nothing extra here
+  5  H23 item 52: the marker is set before the inlay FIRST (timeline_order.
+     mark_before_inlay), so build_sketch/build_solid insert their own new
+     items THERE directly instead of appending at the end and relying on
+     ensure_frame_before_inlay's own reorder to pull the whole block back --
+     MEASURED (item 51), that reorder costs ~5.2s of real .reorder() calls on
+     a real Send. ensure_frame_before_inlay (item 4 above) stays as the
+     safety net regardless (its own "already in order" case is a cheap,
+     no-.reorder() no-op once the marker has already done the real work)
 
 Seeds (the Frame tab's SEEDED shape handles), F11 option B: the app sends
 `seedGeometry`, its seeded outline as the template's OWN seed geometry
@@ -38,6 +46,7 @@ fake-Fusion tests drive this exact code.
 from fb_engine.frame_definition import DEFAULT_FRAME_BOTTOM_EXPR, APPEARANCE_OPTIONS
 from fb_engine.seed_geometry import apply_seed_geometry, SeedGeometryError
 from fb_engine.parameter_schema import PANEL_LIP_PARAM, ParameterSchema
+from fb_engine.timeline_order import mark_before_inlay, restore_marker_position
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
 FRAME_TYPE_VALUE = "Frame"
@@ -302,20 +311,29 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
         window = inset_window_of(payload)
         if window:
             data["inset_window"] = window
-        result["fit"] = build_sketch(style_id=template_id, external_logger=logger, data=data)
-        frames = find_frames(design)
-        if not frames:
-            raise SendFrameError("The frame sketch build created no frame (see the Frame Builder log).")
-        result["frame"] = frames[-1].name
-        early_face_valid = getattr(face, "isValid", True)
-        core_body = find_core_body()
-        face = underside_face(core_body) if core_body is not None else None
-        if face is None:
-            raise SendFrameError("The B-spline body is gone after the frame sketch build (see the log).")
-        log(f"SEND FRAME: underside face resolved fresh for the solid build (the early one valid: {early_face_valid})")
-        z = payload.get("frameBottomZ")
-        build_solid(to_face=face, start_offset_expr=f"{float(z)} in" if z is not None else DEFAULT_FRAME_BOTTOM_EXPR,
-                    appearance_name=payload.get("appearance"), external_logger=logger)
+        # H23 item 52: set the marker before the inlay ONCE, covering BOTH build_sketch and
+        # build_solid below (Fusion advances the marker itself as each new item lands, confirmed
+        # live -- no need to re-set it between the two calls) -- restored in the finally
+        # regardless of how this block exits, so a build failure never leaves the marker
+        # sitting mid-timeline for whatever comes after.
+        prior_marker = mark_before_inlay(design, logger)
+        try:
+            result["fit"] = build_sketch(style_id=template_id, external_logger=logger, data=data)
+            frames = find_frames(design)
+            if not frames:
+                raise SendFrameError("The frame sketch build created no frame (see the Frame Builder log).")
+            result["frame"] = frames[-1].name
+            early_face_valid = getattr(face, "isValid", True)
+            core_body = find_core_body()
+            face = underside_face(core_body) if core_body is not None else None
+            if face is None:
+                raise SendFrameError("The B-spline body is gone after the frame sketch build (see the log).")
+            log(f"SEND FRAME: underside face resolved fresh for the solid build (the early one valid: {early_face_valid})")
+            z = payload.get("frameBottomZ")
+            build_solid(to_face=face, start_offset_expr=f"{float(z)} in" if z is not None else DEFAULT_FRAME_BOTTOM_EXPR,
+                        appearance_name=payload.get("appearance"), external_logger=logger)
+        finally:
+            restore_marker_position(design, prior_marker, logger)
         if seeds and not applied:
             log(f"SEND FRAME: {len(seeds)} seed(s) sent but not applied: {SEEDS_NOT_APPLIED}", "WARNING")
         result["ok"] = True
