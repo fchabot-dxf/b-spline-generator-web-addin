@@ -15280,3 +15280,74 @@ item60_shipped_taper_sweep.py`) and this WORK-LOG entry. No production code touc
 payloads/results left uncommitted under `bspline-frame-builder/scratch/` per the project's own
 existing convention (item 59's own probe scripts were committed the same way, their OUTPUT was
 not).
+
+*(Ordering note, not a content correction: the paragraph immediately above belongs to item 60(C)'s
+own entry -- it landed after item 61's below it by an append-order slip, not a rewrite. Content
+unchanged, append-only honored; flagging it here rather than silently.)*
+
+## H23 item 63 (d) only: the JS NaN in the taper/archRise seed math, fixed + a pure finite-points
+test. Part (a) (the T1 reflex-arc pilot) NOT started -- reassigned live, see below.
+
+**Scope correction mid-task (direct message from the advisor session, not a handoff.py turn):**
+Fred wants to do the range-end fixes (item 63's own part (a), and by extension the rest of item
+61's own root-fix work) himself, live in Fusion. The advisor asked this item be narrowed to ONLY
+part (d) -- no touching `seed_geometry.py`, `inner_corners.py`, or any T1-family phase file, and
+no Fusion use at all this pass. Confirmed back to the advisor (cross-session message) that nothing
+in those 3 areas was ever edited this item (only read, earlier, for item 61's own diagnosis) and no
+Fusion call was made for this part. Stopped there -- the pilot is explicitly not this item's own
+work anymore.
+
+**(d) Root cause, file:line.** Both of item 61's own 2 "SILENT" cases (`template_10_archRise_
+min_7x9`, `template_12_taperAngle_min_7x9`) trace to the SAME mechanism: `frame-handles.js:255`'s
+own `at(a,t)` helper (`a.cx + a.rx*Math.cos(a.theta1 + a.dTheta*t)`), called from
+`frameSeedGeometry`'s own `kind==='arc'` branch (`frame-handles.js:262` at the time), assumes
+`prof.primitives[e.prim]` is always a true arc object. It is not always one: `editor-shape-
+lattice-generator.js`'s own `hourglassConstruction`/`_solveHourglass` can legitimately collapse
+that SAME primitive slot into a plain 2-point LINE (`type:'L'`, only `p0`/`p1`) at an extreme
+handle value -- confirmed by direct inspection of the resolved primitives array for both cases:
+`archRise=0` makes `hourglassConstruction`'s own `arch` stay `null` (the `if (archRise > 0)` guard
+at line 1235 never fires), so `_solveHourglass`'s own `fresh[11]` (line 1555) keeps its default
+`STRAIGHT_SEGMENT` instead of becoming an arc (line 1580's `else if (arch)` never runs either) --
+`top_edge` is a genuine, correctly-flat LINE; and `template_12`'s own shoulder arc at taperAngle
+-13.753 (its own computed floor) resolves to a primitive 0.00088 in long (`p0`/`p1` barely apart)
+-- a REAL arc whose sweep has shrunk to near-zero, not a bug in the taper math itself, just a
+shape `at()` was never written to expect. `a.cx`/`a.rx` are `undefined` on a line primitive, so
+`at()` returns `NaN`, `JSON.stringify(NaN)` prints `null`, and that literal `null` reaches the
+Send payload's own `seedGeometry` -- never caught by `generateSilhouette`/`outlineDefects` (which
+reported `defects: []` on both, since a flat top and a 0.00088in arc are both topologically VALID
+shapes, just not ones `at()` can read as an arc).
+
+**Fix, 2 small branches in the SAME function, no other file touched:**
+`frame-handles.js`'s own `kind==='arc'` branch now checks `p.type === 'A'` first; when it's not
+(the collapsed-to-a-line case), it seeds a well-formed 3-point arc through the line's own two
+endpoints with their arithmetic midpoint standing in for the bulge point, instead of calling
+`at()` on fields a line primitive doesn't have -- the declared Fusion BuildSequence step is still
+`'Arc3Point'` either way, so the seed sent must still be a valid 3-point one. The `kind==='pin'`
+branch had the identical gap one level up (`p.cx`/`p.cy`, the arc's own centre) -- found by the
+test's OWN second failure, after the first fix turned up `template_12`'s `skel_shoulder_pin_R`
+still null -- fixed the same way (the line's own two-endpoint midpoint standing in for the centre;
+a degenerate pin's exact position barely matters once its own anchoring arc has shrunk this far).
+
+**The pure test, proven non-vacuous first.** `tests/frame-handles.test.js`, new describe block:
+re-derives the SAME 133-case matrix (every declared handle of all 13 templates, min/max/default
+at 7x9) purely in JS via `frameParamRanges`+`paramsFromShapeModel` (no Fusion) and asserts every
+`frameSeedGeometry` point/radius is `Number.isFinite`. Run BEFORE the fix: failed exactly 2 of 13
+templates (`template_10`: `top_edge x`; `template_12`: `arc_shoulder_R x`) -- not more, not fewer,
+not vacuously green -- matching item 61's own live matrix exactly. Run after the arc-branch fix
+alone: 1 remaining failure (`template_12`'s `skel_shoulder_pin_R`, the pin gap above). Run after
+both fixes: 13/13 clean.
+
+**Verification:** full JS suite 3130/3130 (3117 + 13 new, 0 regressions); `gen_frame_defs.py
+--check`: fresh (this fix never touches Python/template_data.py, only `frame-handles.js`, so no
+impact expected and none found). Regenerated all 133 matrix payloads post-fix
+(`h23_item61_make_full_matrix_payloads.mjs`, fresh scratch dir) and scanned every one for a
+literal `null`: 0 found, confirming the dispatch's own "run the generator over all 133" ask
+directly, not just via the new test's own narrower min/max-only sweep.
+
+**Not done this item (by the live scope correction, not an oversight):** the (a) pilot (does Send
+already overwrite the baked arc seeds? derive via-points arc by arc if not) -- Fred is doing the
+range-end fixes himself in Fusion; this worker is standing clear of `seed_geometry.py`,
+`inner_corners.py`, every T1-family phase file, and Fusion itself until told otherwise.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js` (the
+2-branch fix) and `tests/frame-handles.test.js` (the new describe block). No other file touched.

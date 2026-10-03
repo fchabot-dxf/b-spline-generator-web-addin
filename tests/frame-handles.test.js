@@ -13,7 +13,7 @@ import {
   normalizeFrameRecord, getFrameRecord, setFrameRecord, framePayload,
 } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
-import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
+import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry, frameParamRanges } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { generateSilhouette, paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { initFramePanel, setEditorTab, HANDLE_HIT_PX, frameHistoryDepth, undoFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { FRAME_HANDLE_RADIUS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
@@ -428,5 +428,42 @@ describe('F20 SHOULDER-HIP: the T1 frame has a Shoulder and a Hip handle, seeded
     // an explicit new key wins over the migrated one
     expect(normalizeFrameRecord({ templateId: 'template_1', seeds: { cornerRadius: 0.2, cornerRadiusBottom: 0.3 } }).seeds)
       .toEqual({ cornerRadiusTop: 0.2, cornerRadiusBottom: 0.3 });
+  });
+});
+
+describe('H23 item 63 (d): frameSeedGeometry stays finite at every handle\'s own range end', () => {
+  // item 61's own live matrix found 2 of its 133 cases sending a literal null point to Fusion
+  // (template_10 archRise:min, template_12 taperAngle:min) -- traced to this file's own `at()`
+  // helper (line ~255) assuming `prof.primitives[e.prim]` is always a true arc (cx/rx/theta1/
+  // dTheta) for a `kind:'arc'` seedMap entry, when the silhouette generator can legitimately
+  // collapse that SAME primitive slot into a near-zero-length LINE at an extreme handle value
+  // (archRise=0 flattens T10's own arch; an extreme taper can shrink a shoulder arc's own sweep
+  // to ~0). This test re-derives the SAME 133-case matrix item 61's own live sweep used (every
+  // declared handle, every template, min/max/default at 7x9) purely in JS -- no Fusion needed --
+  // and asserts every seeded point/radius is a real, finite number.
+  it.each(FRAME_DEFS.templates.map((t) => t.id))('%s', (id) => {
+    const tpl = tplOf(FRAME_DEFS, id);
+    const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
+    const t = (tpl.params.find((p) => p.name === 'frame_thickness') || {}).default ?? 0.75;
+    const resolved = paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region);
+    const ranges = frameParamRanges(tpl, region, resolved, t);
+    const cases = [{ key: null, val: null }];
+    for (const h of tpl.handles) {
+      const range = ranges[h.key];
+      if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max)) continue;
+      cases.push({ key: h.key, val: range.min }, { key: h.key, val: range.max });
+    }
+    for (const { key, val } of cases) {
+      const seeds = key ? { [key]: val } : {};
+      const geo = frameSeedGeometry(tpl, profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id, seeds })), 7, 9);
+      for (const [eid, g] of Object.entries(geo)) {
+        const label = `${id} ${key ?? 'default'}=${val}: ${eid}`;
+        (g.points || []).forEach((pt) => {
+          expect(Number.isFinite(pt[0]), `${label} x`).toBe(true);
+          expect(Number.isFinite(pt[1]), `${label} y`).toBe(true);
+        });
+        if (g.radius != null) expect(Number.isFinite(g.radius), `${label} radius`).toBe(true);
+      }
+    }
   });
 });

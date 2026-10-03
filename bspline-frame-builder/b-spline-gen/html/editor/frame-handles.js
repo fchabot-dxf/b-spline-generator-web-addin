@@ -260,7 +260,17 @@ export function frameSeedGeometry(tpl, prof, W, H) {
       const pts = [F(p.p0), F(p.p1)];
       out[e.id] = { points: e.reverse ? pts.reverse() : pts };
     } else if (e.kind === 'arc') {
-      let [s, m, t] = [F(at(p, 0)), F(at(p, 0.5)), F(at(p, 1))];
+      // H23 item 63 (d): at an extreme handle value the silhouette generator can legitimately
+      // collapse this SAME primitive slot into a near-zero-length LINE instead of a true arc
+      // (MEASURED: template_10 archRise=0 flattens its own arch; an extreme taper can shrink
+      // template_12's own shoulder arc's sweep to ~0) -- `at()` then reads `cx`/`rx`/`theta1` off
+      // a line primitive (`p0`/`p1` only), producing NaN, sent to Fusion as a literal null point.
+      // Seed a well-formed (if degenerate) 3-point arc through the line's own two endpoints
+      // instead, its arithmetic midpoint standing in for the bulge point -- the declared
+      // BuildSequence step is still 'Arc3Point' either way, so the shape sent must still be one.
+      let [s, m, t] = p.type === 'A'
+        ? [F(at(p, 0)), F(at(p, 0.5)), F(at(p, 1))]
+        : [F(p.p0), [(F(p.p0)[0] + F(p.p1)[0]) / 2, (F(p.p0)[1] + F(p.p1)[1]) / 2], F(p.p1)];
       // T5 HOURGLASS DIPPED TOP: an arc whose centre is on the Y axis (the top dip) is seeded `nudgeX` in off it
       // (the pins' own anti-auto-coincidence nudge); its phase puts the centre on the axis explicitly.
       // H23 item 48 (MEASURED live): the nudge must move ONLY the mid (bulge) point, matching the Python
@@ -273,7 +283,11 @@ export function frameSeedGeometry(tpl, prof, W, H) {
       if (e.nudgeX) m = [m[0] + e.nudgeX, m[1]];
       out[e.id] = { points: e.reverse ? [t, m, s] : [s, m, t] };
     } else if (e.kind === 'pin') {
-      const c = F({ x: p.cx, y: p.cy });
+      // H23 item 63 (d): same degenerate-primitive case as the 'arc' branch above -- a pin
+      // anchors to an arc's own centre (`p.cx`/`p.cy`), which a collapsed-to-a-line primitive
+      // doesn't have; its own two endpoints' midpoint is where that centre would sit anyway once
+      // the arc's sweep has shrunk this close to zero.
+      const c = p.type === 'A' ? F({ x: p.cx, y: p.cy }) : [(F(p.p0)[0] + F(p.p1)[0]) / 2, (F(p.p0)[1] + F(p.p1)[1]) / 2];
       const inner = [Math.sign(c[0]) * PIN_AXIS_NUDGE_IN, c[1]];
       out[e.id] = { points: e.outer === 'S' ? [c, inner] : [inner, c] };
     } else if (e.kind === 'radius') {
