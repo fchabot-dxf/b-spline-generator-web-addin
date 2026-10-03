@@ -186,6 +186,15 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 56 -- speed round 4, MEASURE + PROPOSE only (advisor, 2026-10-03). Item 55 accepted + deployed (405c34e).
+Now: Send-1 ~16.2 s, Send-2 ~19.9 s. Items 51-55 found the pattern: each Fusion call costs more as the timeline
+grows (~0.85 s per reorder/delete on the real doc). Make the full stage table for send-1 and send-2 on the real
+payload (fresh today-valid seed): every stage > 0.3 s, its call count and per-call cost. For the stamp sketch
+(_apply_constraints 2.2 s, _create_geometry 1.8 s): count constraints/curves per layer and the per-call cost; is it
+per-call overhead (fixable by batching/fewer calls) or one big solve (not fixable cheaply)? Then propose the top 3
+remaining wins with an estimated saving each, ranked. No production code this pass; WORK-LOG + pass back. The
+advisor decides with Fred whether more speed work is worth it. Commit 'H23 item 56: ...'.
+
 ## Item 55 -- speed round 3: the re-Send delete (4.3 s) (advisor, 2026-10-03). Item 54 accepted (ea0f22d).
 Fred re-Sends a lot, so a second Send at 24.5 s matters as much as the first at 16.2 s. The delete step goes from
 0.02 s to 4.34 s. Measure how it deletes: feature by feature, body by body, or occurrence by occurrence? Does each
@@ -461,4 +470,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-52] speed round 2: timeline marker instead of reorders (or why twice); stamp sketch projections measured + reduced; A/B identical, seconds before/after. Commit as 'H23 item 52: ...'.
 - [x] [H23-item-53] BLOCKER: marker restore must end at the timeline END (moveToEnd), live check with inlay + second Send. Commit as 'H23 item 53: ...'.
 - [x] [H23-item-54] T7 NOT BUILT on the pre-guard real payload: today's isValid verdict, fresh payload live 5/5 with inlay, or a root fix; + where send-2's extra 8 s goes. Commit as 'H23 item 54: ...'.
-- [ ] [H23-item-55] speed round 3: re-Send delete 4.3 s -> measure how it deletes, smallest identical change, send-2/send-3 clean. Commit as 'H23 item 55: ...'.
+- [x] [H23-item-55] speed round 3: re-Send delete 4.3 s -> measure how it deletes, smallest identical change, send-2/send-3 clean. Commit as 'H23 item 55: ...'.
+- [ ] [H23-item-56] speed round 4 MEASURE ONLY: full stage table send-1/send-2, stamp sketch per-call vs solve, top 3 remaining wins with estimates. Commit as 'H23 item 56: ...'.
