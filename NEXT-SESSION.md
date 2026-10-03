@@ -186,6 +186,21 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 46 -- T10's Arch-rise handle does nothing in Fusion; + a PREVIEW == BUILD check for all templates (advisor, 2026-10-03)
+Item 45 accepted (26c126e): keep the literal path (Sketch Builder + goldens use it), resume item 18 after this.
+(1) T10: p02_12's rebuild re-declares top_edge from the fixed 0.175*widthIn literal, and apply_seed_geometry pops the
+    seed on the FIRST matching ID, so the rebuild never sees it. DECLARE the link instead of duplicating the formula:
+    the rebuild step names its seed source (e.g. 'SeedFrom': 'top_edge'), apply_seed_geometry fills every step that
+    references a seed, and the rebuild still uses a fresh addByThreePoints (keeps item 15/17's short-branch safety).
+    Unseeded path unchanged (goldens stay valid -- confirm with --check).
+(2) The general lesson: nothing checks that Fusion builds what the preview shows. Add it to the live sweep: for
+    each template, Send a non-default Generate seed and compare the built Shape Outline against the payload's
+    seedGeometry points (tolerance 0.01 in). T10 must fail before (1) and pass after. Plus a pure test that every
+    step ID in FRAME_SEED_MAP either appears once or every duplicate declares its seed source.
+(3) LIVE: T10 at 7x9 with archRise at both range ends builds 4/4 with the dragged rise; 13/13 sweep still clean.
+Then item 18 (seed derivation audit) is next, using item 45's file:line map.
+Log in WORK-LOG.md. Commit 'H23 item 46: ...'.
+
 ## Item 45 -- PLAN ONLY: does item 18 (declare seed derivation) still matter after item 42? (advisor, 2026-10-03)
 Item 44 accepted (c0386c9; full gate green, 13/13, 0 MITER MISS). Checklist ticks updated: H16-H22 and most of H23
 were done but never ticked; item 7 deferred (landscape-only sizes).
@@ -340,4 +355,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-42] one build path: a Send without seeds sends the default params' seed geometry; T7 + T10 defaults build live; 13/13 default sweep. Commit as 'H23 item 42: ...'.
 - [x] [H23-item-43] T10 default 1/4 bars: probe which miter fails and why, root fix + failing-first test, live 4/4 at 6x9/7x9/9x12 and 13/13 sweep. Commit as 'H23 item 43: ...'.
 - [x] [H23-item-44] main RED: re-record T10 goldens (full pytest green); all-template no-MITER-MISS pure test + sweep count; T7 goldens question. Commit as 'H23 item 44: ...'.
-- [ ] [H23-item-45] PLAN ONLY: after item 42, who still reads the literal seed constants? Propose retire-the-legacy-path vs derive (item 18), with the full caller/test/golden list. No code.
+- [x] [H23-item-45] PLAN ONLY: after item 42, who still reads the literal seed constants? Propose retire-the-legacy-path vs derive (item 18), with the full caller/test/golden list. No code.
+- [ ] [H23-item-46] T10 arch rise ignored by Fusion: declare the rebuild's seed source; live preview==build check for all templates; T10 archRise ends live. Commit as 'H23 item 46: ...'.
