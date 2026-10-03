@@ -14455,7 +14455,7 @@ only (`largest`/`offCentre` on T1/T10/T16), an oversized or off-centre window ca
 frame's own outline-splitting too (`one profile spans 2 bars (['proj_arc_hip_L', ...])`) -- a more
 severe topology collapse, but confined to extreme configurations unlikely in realistic daily use.
 
-**Commit `[pending]`, pushed to origin/lane-b** (3 files: the classify() fix, its test, this
+**Commit `d2b759e`, pushed to origin/lane-b** (3 files: the classify() fix, its test, this
 WORK-LOG entry). T85 item 2 is DONE on the terms the live evidence actually supports: Class A
 reported back as a non-bug needing a scoping call (not fixed, since fixing it would mean reversing
 Fred's own prior "not clamped, my responsibility" ruling without asking first); Class B fixed at
