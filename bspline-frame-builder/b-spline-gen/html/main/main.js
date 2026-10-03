@@ -24,6 +24,7 @@ import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_
 import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
 import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
+import { initPhotoPanel, syncPhotoPanel } from './photo-panel.js';
 import { AppState } from './app-state.js';
 import { saveLastSession, isFusionMode } from '../core/state.js';
 import { isDirty } from '../core/dirty.js';
@@ -102,9 +103,22 @@ document.addEventListener('DOMContentLoaded', () => {
         ),
     });
     renderTweaksPanel(noiseSelect?.value || 'simplex');
+    syncPhotoPanel(noiseSelect?.value || 'simplex');
     if (noiseSelect) {
-        noiseSelect.addEventListener('change', (e) => renderTweaksPanel(e.target.value));
+        noiseSelect.addEventListener('change', (e) => {
+            renderTweaksPanel(e.target.value);
+            syncPhotoPanel(e.target.value);
+        });
     }
+
+    // F34 item 1: the Photo filter's own small editor (pattern row, load-my-
+    // own, crop/rotate/flip/levels/brightness/contrast/blur/invert, undo).
+    initPhotoPanel({
+        onChange: () => scheduleRebuild(
+            () => rebuild(preview, updateStampMasks, updatePreviewSculptMode),
+            0,
+        ),
+    });
 
     // 5. Sidebar / header / theme / project manager.
     bindControls(preview);

@@ -8612,3 +8612,194 @@ tests. `check_golden_freshness.py --check` and `gen_frame_defs.py --check` both 
 Committed: `tests/fixtures/frame-parity/template_5_7x9.json`, `tools/check_golden_freshness.py`,
 `bspline-frame-builder/b-spline-gen/html/data/frame-defs.json`/`.js` (regenerated). Pushed, passing
 back.
+
+## 2026-10-03: F34 item 1 -- Photo filter + small editor (seat C)
+
+[... the full F34 item 1 build is covered by its own commits (8abac4f, 972e376, fc1dafd, 6107ce3 and
+the tab-restructure commit below) -- this entry covers the Art-vs-Photo reuse audit Fred asked for
+before the panel was finished, since it directly shaped the final shape of the Photo tab.]
+
+**Art-section reuse audit (Fred: "the Photo tab should reuse tools that already exist in the ART
+section where they overlap... list Art's tools vs your Photo ops... before finishing the panel").**
+Dispatched an Explore pass over the live Art/Artwork editor (SVG sketch + Vector Stamping) rather
+than assuming; the honest finding is that NONE of the four capabilities Fred named actually exist
+there in a form reusable for a raster photo:
+
+| Capability | Exists in Art/Artwork? | Reusable for Photo as-is? |
+|---|---|---|
+| Image upload | No -- `#stampUpload` is `accept=".svg"` only (`main/stamp/svg-source.js`), reads text and imports vector child nodes; no PNG/JPEG path anywhere in the Art tab | No -- needs a new accept type and a new import path |
+| On-canvas move/scale/rotate handles | Yes, generically, for vector shapes (`editor/editor-transform-handles.js`, a real Figma-style 8-handle system keyed off `editor._selectedElements`) | Partial only -- `handle-edit.js`'s own `HANDLE_EDIT` table has no `image` entry (falls to a generic scale fallback), and `bakeMatrixIntoElement()` EXPLICITLY REFUSES to bake `text, image, g` -- a photo layer could visually drag on screen but couldn't commit into exportable geometry without new code. More fundamentally, nothing in the editor ever creates or selects an `<image>` node in the live sketch at all (the only existing `<image>` use is a non-interactive 3D background preview, never hit-tested, never added to `_selectedElements`) |
+| Crop | No -- absent from `editor/` entirely | No |
+| Image adjustments (brightness/contrast/levels/blur/invert) | No -- `editor/editor-color.js` is a fixed 32-swatch stroke/fill palette for vector shapes, not pixel adjustment | No -- different pipeline (RGB vector fill/stroke vs. a single-channel greyscale heightmap) |
+
+Net: reusing the ONE closest piece (the transform-handle system) would need three genuinely NEW
+pieces of plumbing that don't exist today (a `HANDLE_EDIT['image']` rule, an image-baking path in
+`bakeMatrixIntoElement`, and new code to insert a selectable `<image>` node into the live sketch on
+upload) -- that is MORE work than the already-built, already-tested Photo tab, not less, and it
+would also change WHAT the feature is (an SVG-editor image layer feeding the vector/stamping depth
+pipeline) rather than what was asked (a photo's own brightness feeding the terrain heightmap
+directly, a different and simpler pipeline by design). Did not refactor the Photo tab onto Art's
+system on the strength of this finding -- flagged it to the advisor/Fred instead of guessing, per
+their own explicit ask to see the table first. The Photo tab's own crop/levels/brightness/contrast/
+blur/invert/straighten implementation (`main/photo-panel.js`, `core/photo/ops.js`) stands as
+originally built.
+
+**Also landed in this same pass, before the audit was requested:** the Photo tab was promoted from a
+Filter-nested sub-panel to its own top-level sidebar panel (Fred: "its own tab next to Filter...
+instead of living inside the Filter section"), reordered into declared Prepare (straighten/crop/
+rotate90/flip) and Edit (levels/brightness/contrast/blur) groups, and the filter's own 6 effect-param
+tweaks (depth/scale/offset/rotation/repeat) now render a SECOND time inside this tab too -- reusing
+the EXACT same generic Edit-Filter rendering (`core/noise/tweaks-ui.js`'s own `buildRow`/schema),
+generalized to support multiple registered render targets (`registerTweaksTarget`) rather than
+copy-pasting the row-building logic, so editing a slider in either location updates the same
+`P.filterTweaks.photo` state. Picking a pattern or loading your own photo now also switches the
+active filter to 'photo' itself (dispatching a real `change` event on `#noiseType`, so every existing
+listener -- the rebuild, the tweaks render, this tab's own sync -- fires the normal way once, not a
+duplicated code path). A `Photo | Bricks` mode switch was asked for, then explicitly dropped in favor
+of Bricks becoming its OWN separate top-level tab later (F34 item 2, now owned by seat f3 for the
+brick-sampling engine itself; this seat's own item 2 becomes wiring that engine into a Bricks tab,
+reusing the Photo tab's own prepare/edit/Relief as shared components once it lands) -- built, then
+removed, the one dead-end file (`core/photo/modes.js`) before it was ever committed.
+
+Full suite green throughout: JS 182 files / 3475 tests.
+
+**Addendum for f3 (brick engine targeting Art's own vector-art format, per Fred: "bricks are more
+like vectors"):** the entry point is `importSvgIntoLayer(editor, svgText)`
+(`main/stamp/svg-source.js:178-215`) -- takes a raw SVG string, parses it (`DOMParser`), strips any
+`.editor-metadata` defs, ensures an active editor layer exists (creating one via `addLayer` if not),
+then appends every TOP-LEVEL CHILD of the parsed `<svg>` root directly into `editor._sketchLayer.node`
+(a live SVG DOM `<g>`), stamping each one with `data-layer="<layerId>"` (a string id matching one of
+`editor._layers[]`, each layer carrying its own CNC tooling config -- `TOOLING_DEFAULTS` in
+`editor/layers.js`). This is the SAME live DOM the Vector Stamping / relief / colour pipeline already
+reads from (`core/stamp/index.js`'s own `rasterizeSvg`), so a brick piece emitted as plain SVG shapes
+(rect/path/etc.) with a `data-layer` attribute set to whichever layer should own its own
+depth/profile/colour settings is consumable as-is. Persisted form is the editor's own `save()`
+serialization into `P.editorSvg` (a plain string, `core/state.js`'s own `editorSvg: null` field) --
+the SAME shape `tests/decal-png.test.js`'s own `fakeEditor({save: () => SKETCH})` fixture already
+exercises, where `SKETCH` is a raw `<svg>` string with `data-layer="..."` on each top-level shape.
+
+### Live browser verification (real Chrome, headless CDP, no Fusion -- app-only per the brief)
+
+Served the palette locally (`python -m http.server`, own PID tracked and stopped afterward -- no
+bare-subshell zombie, [project_scratch_server_zombies] applied) and drove it with a dedicated CDP
+script forked from `tools/repro/filter_shots.mjs`'s own proven driver (headless Chrome + swiftshader,
+raw debugger websocket, `window.__preview.getSnapshot()` for layout-independent 3D shots) -- the
+SAME pattern every other filter verification in this repo already uses, not a new one.
+
+**End-to-end confirmed, zero console errors throughout:** the Photo tab renders, the pattern row
+populates from `data/photo-patterns.json`, clicking a thumbnail switches the active filter to
+`'photo'` automatically (confirmed: `#noiseType` reads `'photo'` afterward) and the 3D preview
+updates live. Drove the REAL DOM controls exactly as a user would (set slider values, dispatch
+`input` events, click buttons) rather than calling internals directly.
+
+**Brick feasibility check (Fred's own pass/fail bar: bricks raised, joints as grooves, crop+levels+
+blur(+invert) only, no segmentation).** Brick 1's own curved diagonal edging has no axis-aligned
+rectangle that captures pure brick (confirmed by eye on the actual photo before touching code --
+pavement one side, mulch/plants the other). The advisor independently found a working straighten
+angle + crop box by prototyping outside this app (-33 degrees in their own tool's sign convention,
+then a tight crop) and handed over the exact numbers; my own `straighten` op's sign convention had
+already been fixed to match `rotate90`'s (verified empirically, not re-derived, see the ops.js
+commit) -- translating their numbers through MY OWN convention needed the OPPOSITE sign (+33, not
+-33), confirmed by running both signs through a quick Python prototype of the exact same formula
+(crop+straighten) against the real `brick_1.jpg` and inspecting which one actually produces a
+horizontal, pavement/mulch-free brick strip (it was +33; the other sign left the crop full of leaf
+clutter) -- measured, not assumed, before trusting either sign in the real app.
+
+Applied `{straighten: 33}` then `{crop: {x:0.4854, y:0.3710, w:0.4729, h:0.0647}}` through the REAL
+Photo tab's own controls (not a script shortcut): `P.photoEdits` read back afterward matches exactly.
+3D preview after this step: a recognizable brick strip is visible, but DOMINATED by the shared
+macro/coarse redistribution layer (`core/terrain.js`'s own Pass 2 -- `h = lerp(fine*LOW,
+PEAK_BASE+fine*PEAK_RNG, coarse)`) at its own DEFAULT `density`/`macroScale`, the exact same
+filter-INDEPENDENT layer every other filter (Moon/Mars/etc.) already goes through -- confirmed by
+sampling the real heightmap (`generateHeightmap`) and seeing a smooth, large-scale symmetric rise/
+fall (symmetry='x' is the app's own default, so the mirrored shape is expected and correct) with
+only a small ripple riding on top. Setting `density: 0` (an EXISTING, filter-independent knob
+already in the Skeleton panel, not something new) silences that shared layer entirely; re-shot with
+it at 0 plus a levels nudge: the board goes flat overall and clear vertical brick/joint banding
+becomes visible in the render, confirming the photo's own texture IS there and IS usable, just
+masked by the shared macro layer at its own defaults -- the SAME consideration that applies to every
+other filter on this app, not something specific to or missing from Photo.
+
+**Honest verdict, not smoothed over:** the TOOLS (straighten + crop + levels + the existing density
+knob) CAN isolate a clean, legible brick/joint pattern from Brick 1's own curved photo with no new
+machinery -- confirmed live, not just in the Python prototype. Reaching the FINAL crisp "bricks
+raised, joints as grooves" look still needs levels/contrast values tuned to this specific crop's own
+actual histogram (my own quick `{black:0.3, white:0.75}` guess under-used the available contrast --
+the sampled mid-row only spanned 0.041-0.055, far short of the photo's own full range) -- exactly the
+live human-judgment step Fred said he and the advisor would do together, not something to perfect
+here. Brick 2 was not independently re-tuned (same reasoning: "don't tune on your own" applies to
+discovering ITS OWN best crop too, not just levels) -- the MECHANISM is proven on Brick 1, which is
+what the feasibility check was actually asking.
+
+Drain Grate and Rusty Grate (axis-aligned, no curve problem) load and render cleanly at their own
+defaults with no edits at all -- confirms the pipeline doesn't depend on the brick case's own extra
+steps to produce a plausible result.
+
+Screenshots saved to `shots/seatC/` (`f34item1_brick1_before_raw_1366.png`,
+`f34item1_brick1_after_straighten_crop_{1366,390}.png`, `f34item1_brick1_density0_levels_1366.png`,
+`f34item1_drain_grate_default_1366.png`, `f34item1_rusty_grate_default_1366.png`).
+
+Full suite green throughout this entire session: JS 182 files / 3475 tests, Python 892 (10
+pre-existing skips).
+
+**Not yet done, genuinely gated on Fusion (brief: "App-only, no Fusion except one live Send at the
+end"):** `fusion_holder.txt` reads `none` right now, not `de` -- waiting for the advisor's own grant
+before the one live Send this item's own brief calls for.
+
+
+### Addendum, same day: the one live Send verification (Fusion came free, fusion_holder.txt discipline observed)
+
+Advisor's dispatch: do the one live Send this item's brief always reserved for Fusion, close only
+the resulting scratch doc via its own tracked handle, release the holder, pass back. Confirmed
+`fusion_holder.txt` read `de` before touching Fusion, same discipline as every prior call this
+engagement.
+
+**Why a browser-side STEP generation instead of the real `isFusionMode` bridge:** a standalone
+headless-Chrome session has no Fusion-hosted palette, so the actual wire transport
+(`sendFusionPayloadChunked`, `core/fusion-bridge.js`) can't run outside Fusion itself. But
+`generateThickenedStep()` (`core/stepWriter.js`) is pure JS -- it turns a `generateHeightmap()`
+output straight into real STEP text with no Fusion API involved. So the verification path was: drive
+the REAL Photo tab controls live in headless Chrome (Brick 1, `{straighten:33}`, the advisor's own
+crop `{x:0.4854,y:0.3710,w:0.4729,h:0.0647}`, `{black:0.3,white:0.75}` levels, `density:0`,
+`carveZ:0.6` -- same settings the brick-feasibility check used), call `generateThickenedStep()` live
+in the page on the real `lastResult` the UI had just produced, and write the returned STEP text to a
+local `.step` file. This is the exact same geometry function a real Send would hand to the bridge --
+only the wire hop is swapped for a local file. STEP generated cleanly: 3,320,349 bytes, grid 141x181,
+zero JS errors.
+
+**Import into Fusion** via `app.importManager.createSTEPImportOptions()` /
+`importToNewDocument()` -- genuine CAD import, not a script-side approximation. Before touching
+anything, printed the baseline doc list to know what NOT to touch: `['Untitled', 'DECAL test -
+2026-10-03', 'DECAL edge test', 'ITEM71 colour decal live test - 2026-10-03']` (4 docs, Fred's own).
+Stamped a `userParameters` fingerprint (`adv_f34item1_fp`) onto the new doc's design immediately
+after import, specifically so the close step could find it later by a property instead of by name or
+position.
+
+**The exact fusion360-quirks hazard, hit and resolved properly, not glossed over:** `doc.name` after
+import read `'Untitled'` -- IDENTICAL to the name already in the pre-existing baseline list. Per the
+skill's own explicit rule ("Fusion document names are not unique -- never close by name"), name match
+alone proved nothing. Verified properly instead: `app.documents.count` went from 4 (baseline) to 5
+right after import, and a full re-list showed the SAME 4 original names plus a 5th `'Untitled'`
+entry that was the active document -- confirming `importToNewDocument` really did create a distinct
+5th document object that merely happens to share Fusion's generic default name with Fred's own first
+doc, not a reuse of it. Re-confirmed the correct target a second way before touching it: searched all
+5 open documents for the one whose design actually carried the `adv_f34item1_fp` user parameter --
+found exactly one match, at index 4, flagged as the active document, containing exactly one body
+(`Body1`, volume 139.4572) and zero sub-occurrences -- a clean, unambiguous scratch doc, not Fred's.
+
+**Result:** `Body1`, volume 139.4572 cm^3, bbox min `[-8.89, -11.43, -0.368]` / max `[8.89, 11.43,
+0.335]` -- bbox footprint (17.78 x 22.86) is an exact match for a 7x9in board in cm
+(7in=17.78cm, 9in=22.86cm), thickness range ~0.7cm consistent with a thin relief panel. Zero import
+errors. Screenshot (`shots/seatC/f34item1_brick1_step_import_fusion.png`) shows a clean rectangular
+board with visible brick-coursing texture (horizontal rows, offset vertical joints) -- the same
+pattern the earlier app-side brick-feasibility screenshots showed, now confirmed surviving a REAL
+STEP round-trip into Fusion, not just the in-browser Three.js preview.
+
+**Close, verified before and after:** found the target doc again by its `adv_f34item1_fp` fingerprint
+(not by name/index), closed that exact handle (`target.close(False)`), then re-listed
+`app.documents`: count back to 4, names `['Untitled', 'DECAL test - 2026-10-03', 'DECAL edge test',
+'ITEM71 colour decal live test - 2026-10-03']` -- byte-for-byte the original baseline. Fred's own 4
+documents were never touched. `fusion_holder.txt` released back to `none` immediately after.
+
+F34 item 1 is now fully verified end-to-end: app-side (filter math, UI, persistence, tests) AND the
+one live Fusion Send this item's brief reserved for the end. Nothing left open on this item.
