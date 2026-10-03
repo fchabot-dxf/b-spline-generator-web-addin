@@ -234,6 +234,34 @@ def test_a_profile_touching_neither_main_inner_nor_any_window_id_still_raises():
 
 
 # ------------------------------------------------------------------ T85 item 2: a bare main-miter sliver
+def test_a_phantom_profile_spanning_all_four_window_outer_sides_is_no_feature():
+    """MEASURED live (T85 item 3, template_10_defaultWindow_7x9, window comfortably inside the
+    opening): Fusion's profile finder can return a PHANTOM extra profile bounded by nothing but the
+    window's own 4 outer sides, duplicating a ring the 4 corner miters already split correctly --
+    confirmed live by dumping the sketch's own profiles: the 4 real bar profiles and the hole profile
+    were separately present and correctly classified in the SAME sketch alongside this phantom. It
+    touches no main `inner` id (ruling out the T82 item 7 overlap tolerance above, which needs one),
+    so without this item it reached the window_bars branch and raised instead."""
+    t, _ = resolve_template("template_10")
+    frame = dict(t["Frame"])
+    frame["features"] = list(frame["features"]) + [WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE]
+    phantom = set(line_ids(OUTER_ID))
+    assert classify(phantom, frame) == (None, None)
+
+
+def test_a_genuine_partial_merge_of_window_bars_still_raises():
+    """The phantom tolerance above is targeted at the EXACT full-outer-loop duplicate, not a blanket
+    pass for any window_bars mismatch: a profile spanning only SOME of the 4 declared bars (e.g. a
+    real miter genuinely failing to split 2 of them) is a different, real defect and must still
+    raise -- the one thing this item must NOT silently swallow."""
+    t, _ = resolve_template("template_10")
+    frame = dict(t["Frame"])
+    frame["features"] = list(frame["features"]) + [WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE]
+    partial = set(list(line_ids(OUTER_ID))[:3])
+    with pytest.raises(DeclaredProfileError):
+        classify(partial, frame)
+
+
 def test_a_sliver_bounded_solely_by_a_main_miter_curve_is_also_no_feature():
     """MEASURED live (T85 item 2, the window stress test): adding the window's own geometry to the SAME
     sketch can make Fusion's profile finder discover a tiny extra profile bounded by nothing but one of

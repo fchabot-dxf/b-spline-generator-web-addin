@@ -14461,3 +14461,59 @@ reported back as a non-bug needing a scoping call (not fixed, since fixing it wo
 Fred's own prior "not clamped, my responsibility" ruling without asking first); Class B fixed at
 the cause, mutation-tested, and live-verified; two new, narrower findings flagged for later.
 Messaging the advisor now with the full picture. Fusion released.
+
+## Lane B — Turn (epoch 9) — T85 item 3: T10's window ring, fixed at the cause and live-verified — DONE, passing back
+
+Class A is closed per the advisor's own ruling (Fred's prior "my responsibility" call applies; no
+clamp, no new default). This item is the one open product bug from item 10/2: `template_10`'s
+window ring sometimes fails to split into its 4 declared bars even at entirely normal sizes.
+
+**Found which step drops the split, live.** Dumped `template_10_defaultWindow_7x9`'s own frame-
+enclosure sketch directly (every curve's `FrameBuilder.ID` + every profile's bounding id set, not
+just `classify()`'s own log output): the window's own 4 corner miters DO exist and ARE geometrically
+correct (confirmed their endpoints match the outer/inner rectangle corners exactly), and the 4 real
+bar profiles plus the hole profile ARE all separately present and correctly classified. Alongside
+them, Fusion's own profile finder ALSO returns one EXTRA phantom profile bounded by nothing but the
+window's own 4 outer-side ids (`window_outer`/`_right`/`_bottom`/`_left`) -- a duplicate of the whole
+undivided outer loop, touching no main `inner` id at all. `declared_profiles.classify()`'s own
+window-bars branch has no tolerance for this: it unconditionally raises when a profile's bar-index
+set has more than one member, so this phantom raised "one window profile spans 4 bars... a miter
+did not split it" even though the real split already succeeded elsewhere in the same sketch.
+
+**Confirmed this is a general Fusion quirk, not T10-specific, via a `template_1` control dump at the
+same configuration**: T1 ALSO produces an analogous extra profile, but T1's happens to ALSO touch
+the main frame's own `inner` ids (it overlaps T1's own opening boundary there), so it is already
+swept into the existing T82 item 7 opening-tolerance and returns `(None, None)` cleanly -- it never
+reaches the window-bars branch at all. T10's window sits comfortably clear of its own opening at
+these sizes, so its phantom has no main-inner id to be caught by that route, and falls straight into
+the window-bars branch's own unconditional raise instead. Same underlying Fusion artifact in both
+templates; only the DOWNSTREAM branch differs, which is why it surfaced as "a T10 bug."
+
+**Fix** (`fb_engine/declared_profiles.py`, `classify()`, the window-bars branch): when a profile's
+touched ids span more than one declared window bar, check whether they are EXACTLY the full
+`window_outer_ids` set (all 4 sides, nothing else) before raising -- if so, tolerate it as the known
+full-outer-loop duplicate (`return None, None`); a genuine PARTIAL merge (2 or 3 bars, not all 4)
+still raises, since that signature cannot be this phantom and is a real, different defect. Same
+declarative-tolerance shape as item 2's own fix, in the same shared dispatcher.
+
+**Verification.** Reproduced the exact failure as a pure unit case first (`classify({all 4
+window_outer ids}, template_10's frame)` raised "spans 4 bars" before the fix); added two permanent
+tests (`test_a_phantom_profile_spanning_all_four_window_outer_sides_is_no_feature`,
+`test_a_genuine_partial_merge_of_window_bars_still_raises`) -- both confirmed NON-VACUOUS (the first
+fails against the pre-fix code via `git stash`, exactly reproducing the live error text). Full
+`pytest`: 1004 passed/25 skipped, the one remaining failure still the same already-flagged
+`template_13` golden-staleness item, unrelated. **Live, all 5 cases targeted by the dispatch**:
+`template_10_defaultWindow_6x9/7x9/9x12` and `template_10_window_smallest_7x9` all now BUILT (all 4
+were previously failing on this exact phantom, now fixed); `template_10_defaultWindow_9x12` was
+already BUILT before this fix (unaffected, reconfirmed); `template_1_defaultWindow_7x9` (the
+control) also already BUILT, unaffected. Re-running these 5 against the full 60-case set: window-set
+rate improved from 22/60 (37%) to **25/60 (42%)** -- exactly the 3 genuinely-newly-fixed cases
+(`defaultWindow_6x9`, `defaultWindow_7x9`, `window_smallest_7x9`). `template_10_window_largest_7x9`
+and `_offCentre_7x9` remain unfixed, left as the dispatch's own explicit note (the extreme-range-end
+main-bar disruption, a different and more severe topology issue, not chased this item). No doc
+leakage: `app.documents` held exactly the 4 protected docs before and after.
+
+**Commit `e662c84`, pushed to origin/lane-b** (3 files: the classify() fix, its 2 tests, this
+WORK-LOG entry). T85 item 3 is DONE: the real product bug is fixed at the cause (not papered over),
+mutation-tested, and live-verified on every case the dispatch named. Passing back and messaging the
+advisor now. Fusion released.

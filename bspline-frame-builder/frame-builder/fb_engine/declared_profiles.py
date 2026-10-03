@@ -125,10 +125,19 @@ def classify(curve_ids, frame):
         feat = _feature_for(features, WINDOW_BAR_REGION)
         touched = ids & window_outer_ids
         bars = {bar_index(c, {"bars": window_bars()}) for c in touched}
-        if len(bars) != 1:
-            raise DeclaredProfileError(
-                f"one window profile spans {len(bars)} bars ({sorted(touched)}): a miter did not split it")
-        return feat, feat["bodyNames"][bars.pop()]
+        if len(bars) == 1:
+            return feat, feat["bodyNames"][bars.pop()]
+        if touched == window_outer_ids:
+            # T85 item 3: MEASURED live (template_10, a window comfortably inside the opening -- not
+            # a T82 item 7 overlap, confirmed by this profile touching no main `inner` id at all):
+            # Fusion's profile finder can ALSO return a phantom profile bounded by the window's own
+            # 4 outer sides alone, duplicating a ring the miters already split correctly -- the 4
+            # real bar profiles and the hole profile are separately present and correctly classified
+            # in the SAME sketch (dumped live, both template_10 and a template_1 control). A genuine
+            # PARTIAL merge (2 or 3 bars, not all 4) is a different, real defect and still raises below.
+            return None, None
+        raise DeclaredProfileError(
+            f"one window profile spans {len(bars)} bars ({sorted(touched)}): a miter did not split it")
 
     if ids & window_hole_ids:
         if not (ids - window_hole_ids):
