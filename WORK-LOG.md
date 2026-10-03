@@ -14486,3 +14486,136 @@ file changed) -- not re-run.
 Committed as ONE commit: "H23 item 55: re-Send delete's 4.23s traced to 5 redundant feature
 deletes the occurrence delete already does for free -- skip them, ~4.4s saved, byte-identical
 state across 3 Sends".
+
+## H23 item 56 -- speed round 4, MEASURE + PROPOSE only: full stage table, the stamp sketch's per-call breakdown, top 3 remaining wins ranked
+
+Dispatch (advisor, 463): item 55 deployed, send-2 24.3->19.9s. Build the full stage table for
+send-1 and send-2 on the real payload (fresh seed), with every stage > 0.3s and its call count +
+per-call cost. For the stamp sketch's own `_apply_constraints`/`_create_geometry`: count
+constraints/curves per layer, per-call cost, and whether it's per-call overhead (batchable) or
+one big solve (not cheaply fixable). Propose the top 3 remaining wins, ranked, with an estimated
+saving each. No production code this pass -- the advisor decides with Fred whether to continue.
+
+**Method.** Replayed the item-54 fresh, today-valid T7 7x9 payload (the same seed/inlay used to
+gate items 53-55, so this table reflects the code as it actually ships today, not a stale
+capture) through the real `_handle_generate` -> `_handle_send_frame` -> `send_frame.send_frame`
+path, twice on one doc (Send 1 fresh, Send 2 re-Send). Wrapped `_send_progress` (stage
+boundaries), `sketch_manifest_builder.constraint_step`/`dimension_step` (both imported with
+`from fb_engine.X import Y` at *their own* call sites inside `_apply_constraints`/`_apply_
+declared_dimensions` -- same-module patches on `smb.constraint_step` etc. work, per items 51/52's
+own already-confirmed cross-module-binding rule) and all 6 `_create_*_entity` helpers, each
+recording (sketch name, type, duration). `timeline_order.ensure_frame_before_inlay` wrapped too,
+confirming items 52/53/55's own fixes are all still holding (reorder calls ~0.001s, not re-
+measured as a "cost" here).
+
+**Full stage table** (stage = time since the PRIOR stage's own progress message; "Building the
+frame" and "Projecting SVG Artwork" are the two stages this table drills into further below):
+
+```
+stage                              send-1 (16.497s)   send-2 (19.772s)   delta
+Preparing -> Importing Clean            0.023s             0.203s        +0.180s  (delete, item 55: now negligible)
+Importing Clean -> Analyzing            1.394s             1.328s        -0.066s  (STEP import -- noise)
+Analyzing -> Projecting                 0.000s             0.000s         0.000s
+Projecting -> Cleaning up (STAMP)       7.580s             9.554s        +1.974s  (the stamp sketch build, broken down below)
+Cleaning up -> Building                 0.004s             0.004s         0.000s
+Building -> Finalizing (FRAME)          7.496s             8.683s        +1.187s  (frame sketch+solid build)
+TOTAL                                  16.497s            19.772s        +3.275s
+```
+Item 55's own fix is confirmed still working (delete dropped from 4.34s to 0.2s, now the
+CHEAPEST stage, not the dominant one) -- the growth between Send 1 and Send 2 has moved entirely
+into the two stages that were always the biggest (stamp build, frame build), both growing by
+~1-2s each, consistent with items 51/52/54/55's own already-documented finding: Fusion's per-
+operation cost scales with the timeline's cumulative history, not the live item count, so EVERY
+remaining Fusion-side operation gets a little more expensive on each re-Send, not just deletes.
+
+**The stamp sketch, broken down per call (not just per function) -- send-1 numbers, send-2 in
+WORK-LOG's own detail if needed, same shape both times:**
+
+*`_apply_constraints` (125 calls, 2.1456s total, matches item 52's own 2.158s aggregate):*
+```
+constraint type   n    total     avg      max      per-layer n (Source - Lx [constrained])
+Coincident        81   0.8556s   0.0106s  0.0572s   spread across all 5 layers
+Tangent            8   0.8087s   0.1011s  0.4227s   ONE call (L2's own) is 0.4227s -- the rest cheap
+Equal              6   0.3606s   0.0601s  0.1345s   same shape: one dominant call, rest cheap
+Vertical          19   0.0844s   0.0044s  0.0060s   uniform, cheap
+Horizontal        11   0.0363s   0.0033s  0.0044s   uniform, cheap
+```
+By layer: L2 (lattice piece, "Source - L2 - vbit (0.25in) [constrained]") alone is 32 calls /
+1.2862s -- MORE than half the total -- because L2's own Tangent/Equal constraints are the ones
+with the single expensive call each. **Two different shapes, both real:** Coincident/Horizontal/
+Vertical are genuine PER-CALL OVERHEAD (81+19+11=111 near-uniform cheap calls summing to ~1s from
+count alone -- a batching mechanism could in principle help, IF one existed). Tangent/Equal are
+closer to ONE BIG SOLVE each (one costly call per sketch, the rest near-free) -- consistent with
+Fusion settling the sketch's remaining DOF on whichever constraint happens to fully pin it down,
+usually one of the last applied -- NOT obviously fixable by batching, and reordering which
+constraint goes last is a correctness risk (can change which valid solution the solver lands on),
+not just a performance change.
+
+*`_create_geometry` (62 calls, 1.7502s total, matches item 52's own 1.761s):*
+```
+entity type              n    total     avg      max
+_create_slot_entity      26   1.3815s   0.0531s  0.0785s   compound geometry (addCenterToCenterSlot)
+_create_arc3_slot_entity  6   0.2454s   0.0409s  0.0513s   compound geometry, same family
+_create_circle_entity    26   0.1109s   0.0043s  0.0053s   simple, cheap
+_create_line_entity       4   0.0124s   0.0031s  0.0033s   simple, cheap
+```
+Slots (32 of 62 entities) are 1.627s of the 1.75s total -- genuinely compound geometry (each call
+creates multiple underlying curves), not a redundant-call pattern; this is REAL work scaling with
+entity count, same conclusion item 52 already reached for `_create_geometry` as a whole.
+
+*`_apply_declared_dimensions` (28 calls, 1.0388s total, matches item 52's own 1.027s):*
+```
+dim type    n    total     avg      max      sketch
+Diameter    26   0.9452s   0.0364s  0.0404s   ALL 26 on "Source - L4 - ballnose (0.12in) [constrained]"
+Distance     2   0.0936s   0.0468s  0.0470s   split across sketches
+```
+L4 is 26 near-identical node circles, each: create (`_create_circle_entity`, ~0.004s) + dimension
+(`dimension_step` Diameter, ~0.036s) -- a UNIFORM, no-outlier per-call pattern (max 0.0404s vs.
+avg 0.0364s), the clearest "pure count x per-call-cost" shape in this whole table.
+
+**Top 3 remaining wins, ranked by estimated saving (most speculative/riskiest first is NOT the
+ranking -- ranked by size, with confidence stated honestly, since the dispatch asked for both):**
+
+1. **Deferred sketch compute during the stamp build (`sketch.isComputeDeferred`), est. 1.5-3.0s/
+   Send, LOW confidence.** The Coincident/Horizontal/Vertical/Diameter calls above (121 near-
+   uniform calls, ~1.8-2.3s combined) are the textbook shape for Fusion recomputing on every
+   single API call rather than batching -- the SAME per-call-overhead shape items 51/55 already
+   found and fixed for `.reorder()`/`.deleteMe()`. `tools/repro/fusion_t11/send_stage_timing.py`
+   already has an UNVALIDATED, EXPLICITLY-FLAGGED-RISKY prototype of this exact idea
+   (`_apply_deferred_whole_build_variant`, item 29's own prep) -- its own docstring warns a
+   deferred-mode offset's proxies aren't finalized, so downstream ID lookups (ctx.entity_map,
+   which `_apply_projections`/dimension targets/parity-checking all read by id) can silently
+   no-op. This is the LARGEST candidate by raw magnitude but needs its own dedicated validation
+   pass (does every entity-id lookup still resolve correctly under deferred compute?) before it's
+   safe to try live -- not a "just flip it" change.
+2. **Stop separately dimensioning L4's 26 node circles (bake the radius into the circle's own
+   creation call instead), est. 0.95-1.3s/Send, MEDIUM confidence, GATED ON A DESIGN DECISION.**
+   Mechanically simple (create each circle with `addByCenterRadius(center, resolved_radius)`
+   instead of a default radius + a separate `dimension_step` Diameter call) -- but this changes
+   those 26 circles from PARAMETRICALLY resizable (if `nodeRadius` is a live expression Fred could
+   edit in the Parameters dialog after the fact) to fixed-at-generation, same category of decision
+   this project already gates behind Fred's own yes ([[feedback_ask_before_guards]] -- not a
+   guard, but the SAME "don't change user-facing parametric behavior without asking" shape).
+   NOT attempted here -- needs Fred's answer on whether these node circles are ever meant to be
+   edited parametrically after a Send, same as any other dimension removal would.
+3. **Investigate the stamp stage's own ~2.4-2.8s not yet accounted for by constraints+geometry+
+   dimensions+projections combined (7.58s stage total - ~5.19s measured this item), est. UNKNOWN,
+   LOWEST confidence -- this is "where to measure next," not a fix.** Likely sketch-level
+   overhead per layer (sketch creation/naming/placement, `_sync_manifest_parameters`, `_stamp_
+   bspline_owner` -- items 52 already found these individually negligible, so it's probably many
+   small uninstrumented calls rather than one big one, but that's an inference, not a measurement
+   -- flagging it honestly rather than guessing further).
+
+**Deliberately NOT proposed as a win:** the frame's own solid-build extrusion (`solid_coordinator_
+phases`: discovery 0.01s + extrusion 3.45s + finishing 0.2s = 3.67s of send-2's 8.683s "Building
+the frame" stage) is real boolean/extrude CAD work for 5 bars + 1 trim cut with no redundant-call
+pattern found (items 51/52/55 already checked reorder/projection/delete calls here) -- genuine
+work, not a prunable cost. Same for "Analyzing Stamping Surface" (~1.3-1.5s, the area-weighted
+UV-grid underside detection item 37 deliberately tuned for correctness, `UNDERSIDE_GRID = 9` --
+shrinking the grid to save time risks reintroducing the exact false-negative item 37 fixed, not
+evaluated further here).
+
+No production code changed this item, per the dispatch's own "measure + propose only."
+
+Committed as ONE commit, WORK-LOG only: "H23 item 56: full send-1/send-2 stage table + stamp-
+sketch per-call breakdown; top 3 remaining wins ranked with estimates, none attempted".
