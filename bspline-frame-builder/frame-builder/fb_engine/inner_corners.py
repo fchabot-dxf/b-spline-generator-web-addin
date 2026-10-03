@@ -427,13 +427,43 @@ def circle_circle_corner_step(ctx, sketch, s_name, step):
             ctx.logger.log(f"CIRCLE-CIRCLE CORNER {label}: failed to read live geometry: {e}", "WARNING")
             continue
 
+        concave1 = cfg.get('Concave1', True)
+        concave2 = cfg.get('Concave2', True)
         try:
-            e_in = circle_circle_corner(c1, r1, cfg.get('Concave1', True), c2, r2, cfg.get('Concave2', True),
-                                         ft_cm, outer_pt)
+            e_in = circle_circle_corner(c1, r1, concave1, c2, r2, concave2, ft_cm, outer_pt)
         except ValueError:
             e_in = outer_pt  # no intersection left: search around the outer corner instead
 
         nearest_pt, nearest_dist = _find_nearest_point(all_points, e_in[0], e_in[1])
+
+        if nearest_pt is None or nearest_dist > tolerance:
+            # Mirrors line_circle_corner_step's own "further round the offset circle" fallback
+            # (H23 item 63): when one of the two pieces collapses in the offset, the real inner
+            # corner can still be exactly ON one of the two offset circles, just further round it
+            # than the computed intersection. Try both circles.
+            r1_in = r1 + ft_cm if concave1 else r1 - ft_cm
+            r2_in = r2 + ft_cm if concave2 else r2 - ft_cm
+            on_either_circle = [(px, py, pt) for px, py, pt in all_points
+                                 if abs(math.hypot(px - c1[0], py - c1[1]) - r1_in) <= 1e-3
+                                 or abs(math.hypot(px - c2[0], py - c2[1]) - r2_in) <= 1e-3]
+            slid_pt, slid_dist = _find_nearest_point(on_either_circle, e_in[0], e_in[1])
+            if slid_pt is not None and slid_dist <= 2 * ft_cm:
+                ctx.logger.log(
+                    f"CIRCLE-CIRCLE CORNER {label}: a piece collapsed in the offset; using the "
+                    f"point {slid_dist:.4f} cm round one of the two offset circles")
+                nearest_pt, nearest_dist = slid_pt, 0.0
+
+        if nearest_pt is None or nearest_dist > tolerance:
+            # Mirrors inner_corner_step's own last resort (H23 item 63): when the whole corner run
+            # collapses, the inner corner is wherever two inner curves actually meet -- the
+            # nearest vertex of the inner loop itself, within 1.5 x frame_thickness.
+            v_pt, v_dist = _find_nearest_point(_inner_loop_vertices(sketch), e_in[0], e_in[1])
+            if v_pt is not None and v_dist <= 1.5 * ft_cm:
+                ctx.logger.log(
+                    f"CIRCLE-CIRCLE CORNER {label}: corner run collapsed in the offset; using the "
+                    f"inner loop's own vertex {v_dist:.4f} cm away")
+                nearest_pt, nearest_dist = v_pt, 0.0
+
         if nearest_pt is None or nearest_dist > tolerance:
             ctx.logger.log(
                 f"CIRCLE-CIRCLE CORNER {label}: no SketchPoint within {tolerance:.3f} "

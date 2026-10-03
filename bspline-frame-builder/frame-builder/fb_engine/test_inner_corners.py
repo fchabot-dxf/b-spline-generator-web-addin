@@ -12,6 +12,7 @@ fb_engine.inner_corners for exactly this). Explicit module list, not a prefix ma
 registers THIS file itself as fb_engine.test_inner_corners, and a prefix match would evict the
 in-progress import.
 """
+import math
 import os
 import sys
 import types
@@ -411,3 +412,70 @@ class TestCircleCircleCornerStep:
         inner_corners.circle_circle_corner_step(ctx, sketch, S, step)  # must not raise
         assert ctx.entity_map[S].get('inner_proj_arch:S') is None
         assert any(level == 'WARNING' and 'no SketchPoint within' in msg for level, msg in ctx.logger.entries)
+
+
+class TestCircleCircleCornerOffsetCircleCollapsed:
+    """H23 item 63-style fallback, ported from TestLineCircleCornerLineCollapsed to the
+    circle-circle resolver (advisor-directed 2026-10-03: give ResolveCircleCircleCorner the same
+    live fallback tiers its siblings have, ahead of the live matrix sweep). Known construction: P
+    sits exactly on both offset circles; the candidate SketchPoint instead sits further ROUND
+    circle 1's own offset circle (past the base Tolerance but within 2 x frame_thickness)."""
+
+    def _expected(self):
+        c1, c2 = (1.0, 1.0), (10.0, 2.0)
+        P = (5.0, 4.0)
+        r1_in = math.hypot(P[0] - c1[0], P[1] - c1[1])
+        r2_in = math.hypot(P[0] - c2[0], P[1] - c2[1])
+        t = 1.905
+        r1, r2 = r1_in + t, r2_in - t  # concave1=False (+t), concave2=True (-t)
+        return c1, r1, c2, r2, t, circle_circle_corner(c1, r1, False, c2, r2, True, t, outer_corner=P)
+
+    def test_point_further_round_one_offset_circle_is_resolved(self):
+        c1, r1, c2, r2, t, (ex, ey) = self._expected()
+        r1_in = r1 - t  # concave1=False
+        a = math.atan2(ey - c1[1], ex - c1[0]) + 0.15  # ~0.75 cm further round circle 1's own offset
+        cand = (c1[0] + r1_in * math.cos(a), c1[1] + r1_in * math.sin(a))
+        ctx, sketch, step = _setup_cc(c1, r1, c2, r2, (ex, ey), candidate_points=[cand, (0.0, 0.0)],
+                                       frame_thickness=t, concave1=False, concave2=True)
+        inner_corners.circle_circle_corner_step(ctx, sketch, S, step)
+        got = ctx.entity_map[S].get('inner_proj_arch:S')
+        assert got is not None and abs(got.geometry.x - cand[0]) < 1e-9
+
+    def test_point_off_both_offset_circles_is_still_rejected(self):
+        c1, r1, c2, r2, t, (ex, ey) = self._expected()
+        ctx, sketch, step = _setup_cc(c1, r1, c2, r2, (ex, ey), candidate_points=[(ex - 0.5, ey - 0.5)],
+                                       frame_thickness=t, concave1=False, concave2=True)
+        inner_corners.circle_circle_corner_step(ctx, sketch, S, step)
+        assert 'inner_proj_arch:S' not in ctx.entity_map[S]
+
+
+class TestCircleCircleCornerWholeRunCollapsed:
+    """H23 item 63-style fallback, ported from TestSquareCornerWholeRunCollapsed: when the whole
+    corner run collapses in the offset, fall back to the nearest vertex of the inner loop itself
+    (an 'inner_*'-tagged curve endpoint), within 1.5 x frame_thickness. Outer points never
+    qualify."""
+
+    def _run(self, curves, points, frame_thickness=1.905):
+        ctx, _sketch, step = _setup_cc((0.0, 0.0), 6.0, (8.0, 0.0), 6.0, (4.0, 10.0),
+                                        candidate_points=points, frame_thickness=frame_thickness,
+                                        concave1=False, concave2=False)
+        sk = FakeSketch(points)
+        sk.sketchCurves = curves
+        inner_corners.circle_circle_corner_step(ctx, sk, S, step)
+        return ctx
+
+    def test_inner_loop_vertex_is_resolved(self):
+        # expected intersection (r1=r2=6, concave=False both, t=1.905): e_in = (4.0, 0.877) --
+        # computed directly, not guessed. Place an inner-loop vertex 1.5 cm away (past the base
+        # Tolerance=0.2 and off both offset circles, within 1.5 x frame_thickness = 2.8575 cm).
+        v = (5.5, 0.8769407049510242)
+        curves = [_FakeCurve('inner_proj_arch', v, (3.5, 3.8)),
+                  _FakeCurve('inner_proj_upper_R', v, (6.0, 4.0))]
+        ctx = self._run(curves, [v, (3.5, 3.8)])
+        got = ctx.entity_map[S].get('inner_proj_arch:S')
+        assert got is not None and (round(got.geometry.x, 3), round(got.geometry.y, 3)) == (round(v[0], 3), round(v[1], 3))
+
+    def test_outer_points_never_qualify(self):
+        curves = [_FakeCurve('proj_upper_R', (5.5, 0.8769407049510242), (6.0, 4.0))]
+        ctx = self._run(curves, [(5.5, 0.8769407049510242)])
+        assert 'inner_proj_arch:S' not in ctx.entity_map[S]
