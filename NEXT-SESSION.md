@@ -186,6 +186,18 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 67 -- 3D preview: colour the board's side walls 'teint dans la masse' (Fred, 2026-10-03, screenshot)
+Fred colours the real board's edges to match the artwork, so the preview should show it: wherever the top artwork
+(lattice rails/ties/nodes/contour, stripes, stamp colours) reaches the board's outer edge, that colour continues
+straight down the side wall for the wall's full height; elsewhere the wall keeps today's wood look. Implementation
+idea (measure first): the side-wall mesh in core/preview (frame-mesh.js / the panel mesh) gets per-vertex or
+per-strip colours sampled from the SAME colour source the top surface uses, at each boundary point -- one shared
+sampler, not a second colour pipeline. Applies to the panel's outer walls and, if present, the frame's outer walls.
+A toggle in the 3D view ('Colour edges', default ON, persisted) in case he wants the plain look. Tests: a rail
+crossing the boundary yields a wall band of that colour at the right position and full height; no artwork at the
+edge leaves the wall unchanged. Before/after screenshots (the same angle as Fred's shot) into shots/seatA. No
+Fusion. Commit 'H23 item 67: ...'.
+
 ## Item 66 -- Shape Lattice: ties must never be generated ON or touching the boundary/contour (Fred, screenshot, 2026-10-03)
 Fred's shot: a T13 frame with Offset from frame on; the generator placed a tie right on the right-hand contour, half
 inside the green border. Rule: a generated tie (its whole stroke, i.e. centreline +/- half the tie width, and its
@@ -606,3 +618,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-64] matrix tests reachable ends (guard-clamped, shared predicate), regenerate, live full matrix when the advisor frees Fusion. Commit as 'H23 item 64: ...'.
 - [ ] [H23-item-65] re-run the full matrix on e11e15d (regenerated payloads) + triage the 2 SILENT cases. Commit as 'H23 item 65: ...'.
 - [ ] [H23-item-66] Shape Lattice: no tie generated on/touching the contour -- declared clearance, fix in the generator, pure test over templates x seeds, before/after shots. Commit as 'H23 item 66: ...'.
+- [ ] [H23-item-67] 3D preview: side walls take the edge colours of the artwork (teint dans la masse), shared colour sampler, 'Colour edges' toggle, tests, before/after shots. Commit as 'H23 item 67: ...'.
