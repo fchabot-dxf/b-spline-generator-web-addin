@@ -1,14 +1,18 @@
 /**
- * main/photo-panel.js — F34 item 1: the Photo filter's own small editor
- * sub-panel (pattern row + "Load my own" + crop/rotate/flip/levels/
- * brightness/contrast/blur/invert + undo), shown only when noiseType ===
- * 'photo' (same show/hide convention core/noise/tweaks-ui.js's own
- * Edit-Filter sub-panel uses for #filterTweaksPanel).
+ * main/photo-panel.js — F34 item 1: the Photo filter's own top-level tab
+ * (pattern row + "Load my own" + crop/rotate/flip/levels/brightness/
+ * contrast/blur/invert + undo) -- Fred: its own tab next to Filter etc.,
+ * not nested inside Filter, and ALWAYS visible/clickable (unlike the old
+ * Filter-nested sub-panel it replaced). Picking a built-in pattern or
+ * loading your own photo here switches noiseType to 'photo' itself
+ * (switchToPhotoFilter() below), the same as picking "Photo" from the
+ * Filter panel's own dropdown would.
  *
  * The filter's own EFFECT params (depth/scale/offsetX/offsetY/rotation/
  * repeat) need NO custom UI here -- they're declared via the generic
  * `tweaks` schema (core/noise/photo.js), so the EXISTING Edit-Filter panel
- * already renders sliders for them.
+ * (inside the Filter tab, shared by every filter) already renders sliders
+ * for them; this tab is only the image + its own prepare/edit steps.
  *
  * Edit-step bookkeeping rule (undo-able, ordered list, per the dispatch):
  * crop/rotate90/flip/invert are DISCRETE actions -- each click always
@@ -27,6 +31,7 @@ import { loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks } from '../co
 import { fileToDataUrl } from '../core/photo/codec.js';
 import { ensurePhotoDecoded, getRawPhotoImage } from '../core/photo/state.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
+import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 
 let _onChange = null;
 let _patterns = [];
@@ -134,7 +139,23 @@ function syncControlsFromState() {
   syncReliefToggle();
 }
 
+// Picking a pattern or loading your own photo IS choosing the Photo filter
+// -- the Photo tab is its own top-level tab now (not nested inside Filter),
+// so there is no other moment where the user "selects Photo" first. Mirrors
+// exactly what the Filter panel's own #noiseType <select> change already
+// does (dispatching a real 'change' event, not calling internals directly,
+// so every existing listener -- applyParam's rebuild, renderTweaksPanel,
+// this module's own) fires the normal way, once.
+function switchToPhotoFilter() {
+  const select = document.getElementById('noiseType');
+  if (select && select.value !== 'photo') {
+    select.value = 'photo';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+
 function loadImage(urlOrDataUrl, edits, tweaks) {
+  switchToPhotoFilter();
   P.photoImageDataUrl = urlOrDataUrl;
   P.photoEdits = edits;
   if (!P.filterTweaks) P.filterTweaks = {};
@@ -222,6 +243,16 @@ function bindSlider(sliderId, numberId, opName, paramKey, fallback) {
 export function initPhotoPanel({ onChange }) {
   _onChange = onChange;
 
+  // F34 item 1 (Fred: "show the photo's effect params inside the Photo tab
+  // too ... reuse the same generic Edit Filter control rendering, not a
+  // copy"): a second render target for the SAME tweaks schema/state the
+  // Filter panel's own "Edit Filter" panel uses.
+  const photoTweaksBody = document.getElementById('photoTweaksBody');
+  if (photoTweaksBody) {
+    registerTweaksTarget(null, photoTweaksBody);
+    renderTweaksPanel(document.getElementById('noiseType')?.value || 'simplex');
+  }
+
   loadPhotoPatterns().then((patterns) => {
     _patterns = patterns;
     renderPatternRow(document.getElementById('photoPatternRow'));
@@ -281,12 +312,13 @@ export function initPhotoPanel({ onChange }) {
   }
 }
 
-/** Show/hide the whole sub-panel based on the active filter (main.js calls
- * this once on init and on every noiseType change, same call sites
- * core/noise/tweaks-ui.js's own renderTweaksPanel uses). */
+/** The Photo tab is ALWAYS visible now (its own top-level tab, not a
+ * Filter-nested sub-panel that hides for other filters) -- this just
+ * re-syncs the controls/preview when switching TO photo, so stale values
+ * from whatever filter was active before don't linger. Called once on init
+ * and on every noiseType change (main.js), same call sites core/noise/
+ * tweaks-ui.js's own renderTweaksPanel uses. */
 export function syncPhotoPanel(noiseType) {
-  const panel = document.getElementById('photoEditorPanel');
-  if (panel) panel.style.display = noiseType === 'photo' ? '' : 'none';
   if (noiseType === 'photo') {
     syncControlsFromState();
     drawPreview();
