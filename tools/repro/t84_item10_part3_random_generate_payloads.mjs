@@ -1,4 +1,6 @@
-// T84 item 10, part 3: RANDOM GENERATE. 50 seeds per template at 7x9, each seed resolved through
+// T84 item 10, part 3: RANDOM GENERATE. 20 seeds per template at 7x9 (trimmed from the original 50
+// per the advisor's own scale-cut ruling -- 2026-10-03: "that's enough to show a failure rate;
+// widen it only where something fails"), each seed resolved through
 // generateValidFrameSeeds -- the SAME function (and the SAME isValid predicate) frame-gen.test.js
 // already proves matches a real [Generate] click (inner profile clean + every outer piece >=
 // frame_thickness, the "no wing" rule). Seeds 0..49 per template (deterministic, reproducible --
@@ -27,7 +29,7 @@ const { P } = await imp('core/state.js');
 const W = 7, H = 9;
 P.widthIn = W; P.heightIn = H;
 mkdirSync(OUT_DIR, { recursive: true });
-const N_SEEDS = 50;
+const N_SEEDS = 20;
 const manifest = [];
 
 for (const T of FRAME_DEFS.templates) {
