@@ -8267,3 +8267,46 @@ Committed: `fb_engine/joined_miters.py` (new), `fb_engine/test_joined_miters.py`
 `core/frame-record.js`, `editor-frame-profile.js`, `frame-panel.js`, `bspline_gen_palette.html`, `frame-defs.
 json`/`.js` (regenerated), and 3 new test files (`frame-join-markers.test.js`, `frame-join-ui.test.js`,
 `joined-miters-record.test.js`). Passing back.
+
+### Addendum, same day: the live Fusion sweep (Fusion came free, "b5 -> you -> f3")
+
+Pulled main first (`8bf2099 T84 item 8: harden item61_full_matrix_sweep.py against overlapping runs` -- a
+re-entry lock, `HOLD.busy`, plus a read-merge-write on every `_write()`, after a timed-out `fusion_execute`
+call let two copies of the sweep loop run concurrently against the same results file). Confirmed my own
+`TEMPLATE_META['template_15']` entry survived the merge; full suite re-checked green after (Python 999/999, JS
+173 files/3378 tests) before touching Fusion.
+
+8/8 BUILT (100%): all 4 templates (T14/T15/T16/T17), both SPLIT (default) and fully-JOINED, at 7x9 -- zero
+crashes, zero NOT BUILT/MITER MISS/REFLEX ARC log lines, no dup-named/sliver/overlap bodies. The item-61 sweep
+script itself isn't joined-aware (its own `TEMPLATE_META` is a flat per-templateId table, not a function of
+the record), so this used a dedicated script built on its exact proven pattern (same document fingerprinting,
+`HOLD.busy` re-entry lock, `bars_report`), but with the expected bar list computed DYNAMICALLY per case --
+`fb_engine.joined_miters.apply_joined_miters()` on the real resolved template, then
+`declared_profiles.frame_bars()` on the result -- exactly the research's own recommendation, not a second
+hand-maintained table that could drift from the first. Run in 3 batches of <=3 cases each, per the advisor's
+own instruction (the new re-entry lock's own caller discipline).
+
+**One real snag, caught before it cost a wasted build cycle, not papered over:** the first payload-generator
+attempt built payloads via `framePayload()` directly and omitted `seedGeometry` entirely. Without it,
+`send_frame.py`'s own `applied` flag is `False` and the template falls back to its own LITERAL/default sketch
+construction -- which, for T14 and T15's own un-seeded defaults, hit a live REFLEX ARC (255-267 deg sweep) in
+Shape Outline, unrelated to the joined-miters work itself. The real app's own `frameSendPayload()`
+(frame-panel.js) always attaches `seedGeometry`, even for a fresh/unseeded record -- my own simplified
+generator just didn't match that. Fixed by computing it the same way (`frameCutProfile` + `frameSeedGeometry`),
+re-ran clean. Recorded here specifically so a future reader building their own payload generator for this
+app reaches for `frameSendPayload()`'s own pattern first, not `framePayload()` alone.
+
+Confirmed the merged bar count directly on the built Flask (T15) doc before trusting the screenshot: 4 bodies
+(`frame_top`, `frame_neck_left`, `frame_neck_right`, `frame_base`) where the split default has 6 -- the two
+neck/dome pairs merged exactly as declared, nothing else touched. Shot saved (top view, panel body hidden):
+`C:/Users/danse/.bspline-status/shots/seatC/f31item2c_fusion_template15_joined_top.png` -- visually confirms
+continuous wood grain across both neck-to-dome joints (no miter line there), top/base still separately
+mitered.
+
+Scratch-doc hygiene: the live-check script's own fingerprinting (`adv_f31item2c_fp` user parameter, the same
+startup-cleanup-sweep-for-stray-empty-docs pattern `item61_full_matrix_sweep.py` already uses), every doc
+closed by its own tracked handle except the one held open for the screenshot, closed explicitly right after.
+Confirmed via `app.documents` at the end: exactly one document remained open, Fred's own "Untitled" -- never
+touched. No redeploy (main 2026.10.03-15 was already deployed).
+
+Reported "Fusion released" to the advisor with full results so Fusion could hand to seat f3.
