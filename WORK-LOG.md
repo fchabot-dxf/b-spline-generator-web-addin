@@ -16099,3 +16099,73 @@ would want the SAME seed the REST of that Send already committed to, not a fresh
 production code changed at all for Part 1. Scratch output directories (`decal-spike`,
 `decal-spike-150dpi`), the dev-server process, and the chrome profile dir deleted/stopped before
 commit; the two representative PNGs kept only in `shots/seatA` for review.
+
+## H23 item 67d: edge colour only on the BOARD's own edge (the panel's wall) -- the FRAME's own
+wood moulding (the bars, main and window) NEVER takes the artwork colour (Fred, direct dispatch
+while I waited on Fusion: "the frame shouldn't change colour, only the board edge, which is only
+about .25 in"). A deliberate REVERSAL of item 67b's own choice to also colour frame-bars' outer
+wall; item 67c's own alignment/crispness fix to the PANEL wall is untouched and still applies.
+
+**(1) Interpretation.** Two readings of "~0.25in thickness band" were possible: (a) a literal
+z-range carve-out WITHIN frame-panel-wall's own geometry (a coloured top slice over a wood-coloured
+deeper slice), or (b) a full revert of item 67b's own extension of artwork-colouring onto
+frame-bars, leaving frame-panel-wall/frame-window-wall exactly as 67c left them. Went with (b):
+the dispatch's own test requirement is phrased as a binary MESH-level distinction ("frame-wall
+vertices keep the frame colour; panel-wall vertices take the edge colour"), not a sub-mesh z-split,
+and "~0.25in" reads as Fred's own loose estimate of the panel wall's visual thickness (matching his
+real dyed-edge practice), not a new geometric constraint. frame-bars and frame-window-bars are a
+SEPARATE piece of wood in his own real craft practice -- never dyed to match the panel.
+
+**(2) Fix (`frame-mesh.js`, `applyFrameToPanel`).** Reverted the bars-construction block
+(`if (inner || windowed) {...}`) back to its pre-item-67b form: a single flat-colour
+`MeshPhongMaterial` (no `vertexColors`), built from the coarse `outer`/`inner` loops via plain
+`ringArrays(outer, inner, spec.frameBottomZ, bot, cell)` (default `includeOuterWall:true`).
+Removed: the `woodColor`/`wood3` variables, the `barEdgeColor` closure, the fine-sampled
+`fineOuter`/`fineInner`/`finePaired`, and the `restGeom`+`outerWallGeom` merge via
+`wallArraysFlat` -- item 67b/67c's own per-vertex colour machinery for the bars, now dead weight
+since there's no colour boundary left on a uniformly wood-coloured surface to resolve.
+`frame-panel-wall` and `frame-window-wall` (the `wallArraysFlat`+`edgeColor`+
+`WALL_COLOR_OVERSAMPLE` construction, above and below this block respectively) were left
+COMPLETELY UNTOUCHED -- still exactly item 67c's alignment/crispness fix. `WALL_COLOR_OVERSAMPLE`
+and `wallArraysFlat` stay exported (still used by the wall pieces); `ringArrays`' own
+`includeOuterWall` 6th parameter stays in the signature (harmless, unused with its default now that
+the bars don't need a separate flat outer-wall piece to merge).
+
+**(3) Tests** (`tests/frame-3d.test.js`, `tests/frame-wall-edge-colour.test.js`), all mutation-
+tested against the pre-67d code (temporarily reverted via `git show HEAD:... >`, restored after
+from a scratch backup, confirmed byte-identical via `git diff --stat` both times):
+- `frame-3d.test.js`'s own "bars" test reverted to checking `bars.material.color` directly against
+  the declared wood hex, `vertexColors` falsy (was checking a per-vertex colour array).
+- `frame-wall-edge-colour.test.js`'s whole item-67b describe block (5 tests asserting frame-bars'
+  outer wall takes the edge colour) replaced with a new describe proving the OPPOSITE: frame-bars
+  and frame-window-bars stay the plain wood colour -- non-vacuously, even with an edgeSampler that
+  returns artwork EVERYWHERE (the strongest counter-case: genuinely present artwork, correctly
+  ignored) -- while frame-panel-wall, in the SAME call, still correctly takes it (proving the bars'
+  wood-only result is a real distinction, not "edgeSampler was silently ignored entirely").
+- The item-67c alignment test for frame-bars' own outer wall (same real banded-canvas edgeSampler
+  that test file's frame-panel-wall alignment test already uses) replaced with the same wood-only
+  assertion, using that SAME sampler -- not just the synthetic flat-sampler case above.
+- All 4 new/changed assertions correctly FAILED against the pre-67d (HEAD) code when mutation-
+  tested; the 2 assertions left alone (frame-panel-wall still artwork-coloured; bars' own colour is
+  identical with/without a sampler) correctly still passed against both versions, as expected (they
+  assert things true in both). Full relevant suite: 148/148 (`frame-wall-edge-colour.test.js`,
+  `frame-3d.test.js`, `frame-bartop-drawn.test.js`, `panel-lip.test.js`, `frame-mesh-normals.test.js`).
+
+**(4) Before/after shots, same camera, same scenario** (template_1, Shape Lattice + Offset from
+frame, the real Stripe tool on every contour segment black/white, rails/ties/nodes coloured --
+items 66/67/67b/67c's own established setup), via a scratch CDP script (deleted before commit,
+same convention as repro67b.mjs/repro67c.mjs): clicked the real `editorApply` button to close the
+stamp editor and run the app's own real `refreshDrape()` (same function Apply/commit already
+calls), then the same oblique close-up camera item 67c used (`_orbit` Euler/radius/target). BEFORE
+(pre-67d/HEAD): the frame's bars wall shows the black/white/red/yellow stripe pattern bleeding onto
+it, same bug item 67b/67c left in place. AFTER (67d): the SAME wall is a flat, uniform wood/cream
+colour, no stripes. Numeric state readback (not just the image) from the live app itself, both
+runs: before -- `frame-bars: {vertexColors: true}`; after -- `frame-bars: {vertexColors: false,
+flatColor: '#efe9d9'}`; `frame-panel-wall` stayed `{vertexColors: true}` in both runs (unaffected,
+as expected). Saved: `shots/seatA/1328_item67d_before_closeup.png`,
+`shots/seatA/1328_item67d_after_closeup.png`.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js`,
+`tests/frame-3d.test.js`, `tests/frame-wall-edge-colour.test.js`. No other file touched. The scratch
+repro script, its two screenshots (copied to `shots/seatA` first), the dev-server process, and the
+chrome profile dir deleted/stopped before commit.
