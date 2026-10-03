@@ -61,7 +61,7 @@ export default {
     },
     {
       "key": "toFace",
-      "meaning": "the Clean panel's face whose normal at pointOnFace has n.z ~ -1 (MEASURED F2; every face of a Send panel is NURBS)",
+      "meaning": "the Clean panel's dominant downward-facing face (area-weighted mean normal n.z ~ -1, H23 item 37; MEASURED F2; every face of a Send panel is NURBS)",
       "ui": false,
       "value": "core.underside"
     }
@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "575c8aacb0833485303c53e64a724e83600a96d76040ef182cb8bca9c1f80577",
+  "sourceHash": "d85c5752f713ffca6698d3366d3a3e7bdff9ac1700b887b12a3061c55ebb597f",
   "templates": [
     {
       "features": [

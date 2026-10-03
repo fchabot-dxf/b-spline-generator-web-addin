@@ -90,8 +90,8 @@ EXTRUSION_SETTINGS = (
      "meaning": "offset of the bar top from the target face; a fixed literal today "
                 "(SolidCoordinator.offset_expr = '0 in', flush fit)"},
     {"key": "toFace", "value": "core.underside", "ui": False,
-     "meaning": "the Clean panel's face whose normal at pointOnFace has n.z ~ -1 "
-                "(MEASURED F2; every face of a Send panel is NURBS)"},
+     "meaning": "the Clean panel's dominant downward-facing face (area-weighted "
+                "mean normal n.z ~ -1, H23 item 37; MEASURED F2; every face of a Send panel is NURBS)"},
 )
 
 # The features every current template builds from sketch 3. The extruder

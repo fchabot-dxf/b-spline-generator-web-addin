@@ -236,12 +236,14 @@ def M3():
     """Drive an EXISTING offset's own dimension past the threshold, then back. Source points are PINNED
     (isFixed) to remove solver source-drift as a confound (an unpinned source was measured to drift its
     OWN radius under this edit -- a separate, pre-existing sketch-solver fact unrelated to isTopologyMatched).
-    REPORT rather than hard-assert the round-trip: measured on this plain 4-corner rounded rect, the vanished
-    arc's entities do NOT come back when driven below the threshold again (Fusion's OffsetConstraint.childCurves
-    is a fixed set created once; a value edit can only move/invalidate existing entities, never re-create new
-    ones). The REAL production template (T1 @ 9x12, item35_radius_roundtrip.json) was measured to round-trip
-    EXACTLY (6 arcs -> 4 -> 6, identical radii) on the SAME kind of edit -- this rounded rect's own behaviour
-    does not generalise; it is reported here as a genuine, separate Fusion-API finding, not a fix defect."""
+    H23 item 35 FOLLOW-UP (advisor + worker, re-checked together): the earlier version of this test
+    reported "the vanished arc does not come back" -- WRONG, caused by this test's own bug, not a
+    Fusion fact. It counted arcs from a Python list of childCurve objects captured ONCE at creation
+    time, filtered by `.isValid` on each later check -- it never re-queried `oc.childCurves` itself.
+    Driving PAST the threshold (arc vanishes) is observable that way (existing entities just flip
+    isValid=False); driving BACK is not -- Fusion adds NEW curve entities to the live childCurves
+    collection rather than resurrecting the dead ones, and a stale list can never see an object it
+    never held a reference to. Fixed below: re-fetch `oc.childCurves` fresh after every edit."""
     sk = new_sketch('M3_drive_dimension')
     seq = _rounded_rect(sk, 5, 4, 0.90)
     for c in seq:
@@ -255,18 +257,16 @@ def M3():
     prm = oc.dimension.parameter
     sign = -1 if prm.value < 0 else 1
     row('M3', 'initial (t=0.75 < r=0.90, pinned source): inner arc count', 4, sum(1 for k in kids if isinstance(k, adsk.fusion.SketchArc)))
-    for label, d, exp in (('forward past threshold', 0.95, 0), ('back below threshold (report: see docstring)', 0.75, 'report')):
+    for label, d, exp in (('forward past threshold', 0.95, 0), ('back below threshold', 0.75, 4)):
         err2 = None
         try:
             prm.value = sign * d * CM
         except Exception as e:
             err2 = str(e).splitlines()[0]
-        narcs = sum(1 for k in kids if k.isValid and isinstance(k, adsk.fusion.SketchArc))
+        live_kids = [oc.childCurves[i] for i in range(len(oc.childCurves))]
+        narcs = sum(1 for k in live_kids if isinstance(k, adsk.fusion.SketchArc))
         row('M3', '%s: drive dimension to %.2f, no error' % (label, d), 'ok', err2 or 'ok', ok=err2 is None)
-        if exp == 'report':
-            row('M3', '%s: inner arc count at d=%.2f' % (label, d), 'report', narcs, ok=True)
-        else:
-            row('M3', '%s: inner arc count at d=%.2f' % (label, d), exp, narcs, ok=(narcs == exp))
+        row('M3', '%s: inner arc count at d=%.2f (re-queried live)' % (label, d), exp, narcs, ok=(narcs == exp))
 
 
 # ---------------------------------------------------------------------------
