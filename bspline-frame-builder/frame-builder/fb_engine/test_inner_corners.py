@@ -479,3 +479,91 @@ class TestCircleCircleCornerWholeRunCollapsed:
         curves = [_FakeCurve('proj_upper_R', (5.5, 0.8769407049510242), (6.0, 4.0))]
         ctx = self._run(curves, [(5.5, 0.8769407049510242)])
         assert 'inner_proj_arch:S' not in ctx.entity_map[S]
+
+
+class TestInnerCornerStepTrueLineIntersection:
+    """T84 item 9: ResolveInnerCorners' Direction*Distance move is only exact at 90 degrees.
+    When a corner's own config ALSO declares Line1FarID/Line2FarID, inner_corner_step must use the
+    TRUE offset-line intersection (line_line_inner_corner) instead -- read LIVE from entity_map,
+    the same pattern line_circle_corner_step already uses for its own Far/Near ids."""
+
+    S2 = 'T13_3_frame_enclosure'
+
+    def _setup(self, outer, line1_far, line2_far, direction, candidate_points, frame_thickness=0.75,
+               with_line_ids=True):
+        ctx = _ctx({'frame_thickness': frame_thickness})
+        emap = {
+            'proj_outer:S': FakePoint(*outer),
+            'proj_line1:E': FakePoint(*line1_far),
+            'proj_line2:E': FakePoint(*line2_far),
+        }
+        ctx.entity_map[self.S2] = emap
+        sketch = FakeSketch(candidate_points)
+        cfg = {'OuterID': 'proj_outer:S', 'InnerID': 'inner_proj_outer:S', 'Direction': direction}
+        if with_line_ids:
+            cfg['Line1FarID'] = 'proj_line1:E'
+            cfg['Line2FarID'] = 'proj_line2:E'
+        step = {'Distance': 'frame_thickness', 'Tolerance': 0.01, 'Corners': {'corner': cfg}}
+        return ctx, sketch, step
+
+    def test_at_exactly_90_degrees_the_true_intersection_matches_direction_times_distance(self):
+        # A synthetic square corner: outer at (5, 5), one edge running straight down (-y), the other
+        # straight left (-x) -- a plain 90-degree corner, same shape every T1-style template's own
+        # declared Direction already assumes. Direction (-1, -1) is the SAME inward move the old
+        # approximation used; the two methods must agree to 1e-9 here.
+        outer = (5.0, 5.0)
+        line1_far = (5.0, 0.0)   # straight down from outer -- this edge runs along -y
+        line2_far = (0.0, 5.0)   # straight left from outer -- this edge runs along -x
+        t = 0.75
+        old_expected = (outer[0] - t, outer[1] - t)  # Direction=(-1,-1) * Distance=t
+        decoys = [(old_expected[0] + 2.0, old_expected[1]), (old_expected[0], old_expected[1] - 2.0)]
+        ctx, sketch, step = self._setup(outer, line1_far, line2_far, (-1, -1),
+                                         candidate_points=[old_expected] + decoys, frame_thickness=t)
+        inner_corners.inner_corner_step(ctx, sketch, self.S2, step)
+        resolved = ctx.entity_map[self.S2].get('inner_proj_outer:S')
+        assert resolved is not None
+        assert resolved.geometry.x == pytest.approx(old_expected[0], abs=1e-9)
+        assert resolved.geometry.y == pytest.approx(old_expected[1], abs=1e-9)
+
+    def test_at_t13s_own_82_degree_corner_the_true_intersection_differs_from_the_old_approximation(self):
+        # T13's own TR corner at 7x9 (template_13/phases/p02_03_lines.py's own literal fractions,
+        # inches, matching the Python phase file's own board-centred convention): top_edge's E end
+        # = horn_TR's S end (the shared TR corner). horn_TR runs at ~82 degrees from top_edge, not
+        # 90. Independently hand-computed (inward normals via the board-centre interior-point test,
+        # then a standard 2-line intersection -- NOT by calling line_line_inner_corner itself, to
+        # keep this an independent check of the new code path, not a restatement of it):
+        #   outer = (1.810851, 4.25); true inner ~= (1.158883, 3.500000); old approx = (1.060851, 3.5)
+        outer = (1.810851, 4.25)
+        line1_far = (2.015818, 2.79162)    # horn_TR's own far end (away from the TR corner)
+        line2_far = (-1.810851, 4.25)      # top_edge's own far end (its S end, away from TR)
+        t = 0.75
+        true_expected = (1.158883, 3.5)
+        old_expected = (outer[0] - t, outer[1] - t)
+        assert abs(true_expected[0] - old_expected[0]) > 0.05, "the two methods must meaningfully differ here"
+        decoys = [(true_expected[0] + 2.0, true_expected[1]), (old_expected[0], old_expected[1] + 2.0)]
+        ctx, sketch, step = self._setup(outer, line1_far, line2_far, (-1, -1),
+                                         candidate_points=[true_expected, old_expected] + decoys, frame_thickness=t)
+        inner_corners.inner_corner_step(ctx, sketch, self.S2, step)
+        resolved = ctx.entity_map[self.S2].get('inner_proj_outer:S')
+        assert resolved is not None
+        assert resolved.geometry.x == pytest.approx(true_expected[0], abs=1e-3)
+        assert resolved.geometry.y == pytest.approx(true_expected[1], abs=1e-3)
+
+    def test_without_line_far_ids_the_old_approximation_is_still_used(self):
+        # A template that hasn't declared Line1FarID/Line2FarID (or a corner with a non-line
+        # neighbour) must keep today's exact behaviour -- the fallback path is unconditional, not
+        # opt-in per template.
+        outer = (1.810851, 4.25)
+        line1_far = (2.015818, 2.79162)
+        line2_far = (-1.810851, 4.25)
+        t = 0.75
+        old_expected = (outer[0] - t, outer[1] - t)
+        decoys = [(old_expected[0] + 2.0, old_expected[1])]
+        ctx, sketch, step = self._setup(outer, line1_far, line2_far, (-1, -1),
+                                         candidate_points=[old_expected] + decoys, frame_thickness=t,
+                                         with_line_ids=False)
+        inner_corners.inner_corner_step(ctx, sketch, self.S2, step)
+        resolved = ctx.entity_map[self.S2].get('inner_proj_outer:S')
+        assert resolved is not None
+        assert resolved.geometry.x == pytest.approx(old_expected[0], abs=1e-9)
+        assert resolved.geometry.y == pytest.approx(old_expected[1], abs=1e-9)
