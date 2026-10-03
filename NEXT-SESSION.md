@@ -372,5 +372,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-44] main RED: re-record T10 goldens (full pytest green); all-template no-MITER-MISS pure test + sweep count; T7 goldens question. Commit as 'H23 item 44: ...'.
 - [x] [H23-item-45] PLAN ONLY: after item 42, who still reads the literal seed constants? Propose retire-the-legacy-path vs derive (item 18), with the full caller/test/golden list. No code.
 - [x] [H23-item-46] (partial: SeedFrom + live preview==build check done; the handle still has no effect -> item 47) T10 arch rise ignored by Fusion: declare the rebuild's seed source; live preview==build check for all templates; T10 archRise ends live. Commit as 'H23 item 46: ...'.
-- [ ] [H23-item-47] T10 arch-rise handle really changes the build: anchors take their position from the seeded arch's endpoints (by position); live different volumes at both ends; preview==build passes T10. Commit as 'H23 item 47: ...'.
+- [x] [H23-item-47] T10 arch-rise handle really changes the build: anchors take their position from the seeded arch's endpoints (by position); live different volumes at both ends; preview==build passes T10. Commit as 'H23 item 47: ...'.
 - [ ] [H23-item-48] T5 dip/shoulder preview vs build 0.1-0.3 in: probe, root fix, preview==build 13/13. Commit as 'H23 item 48: ...'.
