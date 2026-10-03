@@ -13470,3 +13470,122 @@ Committed as "H23 item 44: ...". File list: `tests/fixtures/frame-parity/templat
 (regenerated), `fb_engine/test_no_miter_miss_possible.py` (new),
 `tools/repro/fusion_t11/item40_all_template_sweep.py` (MITER MISS counting added),
 `tools/repro/fusion_t11/item44_record_t10_goldens.py` (new).
+
+## H23 item 45 — PLAN ONLY, no code: who still reads the literal `widthIn*k` seed constants (item 18's bug class), and should the unseeded path be retired or derived properly
+
+Dispatch (advisor, 441): since item 42 every real Send carries the app's own seed geometry, who
+still reads the Fusion-side literal `widthIn*k`/`heightIn*k` seed constants (item 18's own bug
+class)? List readers with file:line + whether a real Send reaches them, then propose: retire the
+legacy unseeded path (full chain sweep) or derive it properly per item 18. This entry is the
+proposal; **no code was changed** -- the advisor reviews before anything is cut.
+
+**Method:** traced the real code (not guessed), then independently re-verified the single most
+consequential claim myself (below) before writing it up, since a wrong claim here would misinform
+the advisor's own review.
+
+**(0) The premise needed one correction first.** The literal constants are NOT `template_data.py`
+declared *parameter defaults* for 12 of the 13 templates -- `template_data.py` says so itself
+(T1's own comment, `sketches/template_1/template_data.py:41-46`: "Seeds are now hardcoded as
+literal widthIn/heightIn fractions inside the phase files"). They are literal `Points`/`Expression`
+values baked directly into each template's own `sketches/template_N/phases/p02_*.py` build steps
+(the shape-outline arcs/lines/radii). `ui_data`/`active_vars` never holds them; they go straight to
+`design.unitsManager.evaluateExpression` (`fb_engine/build_context.py:84-92`) unless a step's own
+`ID` (or a Radius step's `Name`) is a key in `seed_geometry` -- in which case `fb_engine/
+seed_geometry.py:28-50`'s `apply_seed_geometry` overwrites that step's `Points`/`Expression` with
+the app's own sent numbers BEFORE the build ever reaches `resolve_val`. T7 is the one real
+exception: its seeds are declared, frame-owned Fusion-parameter formulas (`t7_*`,
+`sketches/template_7/template_data.py:74-101`), not Points.
+
+**(1) For a real web-app Send today, the literal is reached almost nowhere -- with one confirmed,
+live, user-visible exception on T10.** `frameSeedGeometry` (`html/editor/frame-handles.js:253-277`)
+always emits one entry per the template's OWN declared `FRAME_SEED_MAP` (never a partial set), and
+`frame-panel.js:248-249` attaches it to EVERY Send unconditionally (not just a dragged one) --
+confirming item 42's own fix holds. A coverage check (every sketch-2 step whose `Points`/
+`Expression` contains `widthIn`/`heightIn`, compared against that template's `FRAME_SEED_MAP` IDs)
+found 100% coverage for T1-T9, T11, T12, T13 -- every literal-bearing seed step there DOES get
+overwritten on a real Send, full stop.
+
+**T10 is the one exception, and it's a genuine bug, not inert legacy code -- independently
+confirmed, not just traced:** `sketches/template_10/phases/p02_03_loop.py:88` declares `top_edge`
+(`Type: 'Arc3Point'`) from the closed-form `HW`/`CY`/`LY` literal (`:80-82`; `CY` bakes in a FIXED
+`archRiseOfHw = 0.35`, per its own comment) -- `top_edge` IS in `FRAME_SEED_MAP`
+(`template_data.py:109`), so a real Send's seed DOES overwrite this step's `Points`. But
+`sketches/template_10/phases/p02_12_arch_rebuild.py:41-48` declares a SECOND, LATER step with the
+SAME `ID: 'top_edge'` (`Rebuild: True`), using the IDENTICAL literal `HW`/`CY`/`LY` formula again,
+never the seeded one. `apply_seed_geometry`'s own matching (`seed_geometry.py:30-39`) does
+`pending.pop(key)` on the FIRST step whose ID matches -- confirmed directly (re-read both phase
+files myself): p02_03's step consumes the one `top_edge` seed entry; by the time the loop reaches
+p02_12's own later step, `'top_edge' not in pending`, so its `Points` are left exactly as declared
+-- the pure, fixed-ratio literal. p02_12's own extensive docstring confirms this is DELIBERATE (the
+seeded arc is kept only long enough to let the shoulder/waist/hip/horn chain solve correctly, per
+item 17/23's own reflex-arc findings, then DELETED and rebuilt fresh from the literal `HW`/`CY`/
+`LY` because only a from-scratch `addByThreePoints` reliably lands on the short arc branch) --
+**but its side effect is that T10's own "Arch rise" drag handle, which IS real and user-facing
+(`html/editor/editor-shape-lattice-interaction.js:471-473`, `key: 'archRise'`), has ZERO effect on
+the actual Fusion-built geometry.** Whatever the user drags, whatever `frameSeedGeometry` computes
+and sends for `top_edge`, the FINAL arch in the real build is always `heightIn/2 - 0.175*widthIn -
+0.1625in` -- the fixed 0.35 ratio, no exception. The browser preview would show one arch; Fusion
+builds a different one. Nothing in the current suite catches this (`test_t10_inner_corners.py`/
+`test_no_miter_miss_possible.py` don't touch it; `tests/frame-seed-geometry.test.js` only checks
+the JS-side seed computation, never whether Fusion's build actually uses it). This is a genuinely
+live, reachable divergence on the CURRENT real Send path -- not the "unseeded path" the dispatch's
+own premise was about, but found by asking the same question. Flagging prominently; not fixed here
+(plan only).
+
+T7's own `t7_*` formula params are still created as real Fusion user parameters with their literal
+formula text on every Send (`frame_engine.py`'s `_create_skeletal_parameters`), but no sketch
+`Point` references them any more once seeded -- benign, and already the exact case item 41's
+`resolve_val` fallback fix covers. Not a live bug.
+
+**(2) But the "unseeded/literal" construction itself is NOT dead legacy code — it has three real,
+non-test consumers that a blanket retirement would break:**
+  - **Fusion's own native "Sketch Builder" toolbar command** (`fb_engine` via `ui/
+    sketch_builder_ui.py:311`, `build_sketch_logic_v3(style_id, data=data)` with no `seed_geometry`
+    key anywhere in that command's own data -- confirmed, no `seed_geometry`/`seedGeometry` string
+    exists anywhere under the add-in's own UI code). This is a real, deployed, user-reachable
+    Fusion-side command (registered + deployed, `bspline-frame-builder.py:5,218,516`), separate from
+    the web app's Send, and it has no "current record" to pull seed values from even if it wanted
+    to -- it always builds every template from the pure literal.
+  - **The golden-recording pipeline** (`tools/repro/record_frame_parity.py:155`, `fe.
+    build_frame_logic(...)`, no seeds) -- this is how EVERY committed golden for T1-T6, T8, T9,
+    T12, T13 (and T10's own 12x6) was recorded, and `fb_engine/frame_shape_fit.py:680-711` fits each
+    template's own default, un-dragged `shapeModel` (what the app shows before any handle is
+    touched) from exactly those goldens. **This item's own re-recorded T10 goldens
+    (6x9/7x9, item 44, `item44_record_t10_goldens.py:81-83`) also used the unseeded/literal path**
+    (`{'seeds': {}, 'params': {}, ...}`, no `seedGeometry` key -- confirmed) -- not a gap in item
+    44's own work, but exactly the SAME established convention every sibling template's goldens
+    already use. (T7/T11 have no recorded goldens at all and fall back to a hand-declared
+    `provisionalShape` instead, per item 44 part 3's own finding.) Retiring the unseeded path would
+    mean redesigning how every template's own default shape gets its real, Fusion-solved geometry in
+    the first place -- a different, much larger problem than this item's own scope.
+  - **Several tests intentionally pin the literal declared values directly as data**
+    (`test_all_templates_shape_outline.py`, `test_seed_basis.py`, `test_t11_fusion_expressions.py`,
+    `fb_engine/test_frame_defs.py`) -- these test the DECLARATION itself (the template's own
+    baseline shape before any seeding), which is the point, not stale coverage.
+
+**(3) Recommendation: do not retire the unseeded/literal path -- it is load-bearing in the three
+ways above, and item 42 never made it legacy in the first place (it was never only a web-Send
+fallback).** The dispatch's own "retire vs. derive" framing already names the right alternative:
+**resume item 18** (`NEXT-SESSION.md`'s own `[H23-item-18]`, declared, still unchecked) -- pull the
+closed-form derivation technique item 17 proved on T10's own shoulder/waist/hip chain into a
+declared, documented convention, then audit the literal constants this investigation just mapped
+precisely (by file:line, above) for which were copied from a sibling template without re-deriving
+for the new one. This investigation hands that audit two concrete, confirmed starting points
+instead of a cold start: (a) T10's own arch-rise divergence above -- the clearest, most convincing
+candidate for item 18's own bug class, found live rather than theorized, and arguably worth its own
+small item ahead of the broader audit (fix: either make `p02_12`'s own rebuild use the SEEDED
+`top_edge`'s own measured rise instead of the fixed `0.175*widthIn`, or -- if archRise turns out to
+be intentionally non-interactive for Fusion's own geometry today -- remove the live drag handle so
+the preview stops promising something the build doesn't deliver); (b) the now-complete per-template
+map above of exactly which `phases/p02_*.py` lines hold a template's own literal seeds, so item 18
+doesn't need to re-discover them.
+
+**Open/uncertain, not resolved here:** several `tools/repro/fusion_t11/*.py` scripts
+(`item35_all_templates_sweep.py`, `bar_merge_confirm.py`, `param_edit_after_build_probe.py`,
+`underside_extrude_probe.py`, `send_stage_timing.py`) replay CAPTURED payloads whose own seed
+content could not be determined statically (the captures, and in one case the generator script for
+item 40's own payloads, are not committed to the repo) -- not chased further, out of this item's
+own scope.
+
+No code, no tests, no commits of build/engine files -- only this entry. Committed as "H23 item 45:
+..." (WORK-LOG.md only).
