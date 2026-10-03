@@ -186,6 +186,20 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 63 -- range-end crashes, option A: one class at a time, smallest first (advisor, 2026-10-03)
+Item 61(1) accepted (8f8c566): 133-case matrix, 76/57, 4 classes. Order (yours): d, a, b, c. This pass: (d) then
+the PILOT of (a).
+(d) The JS NaN in the taper/archRise math (payload with null points). Find the formula, fix it, add a pure test
+    asserting every matrix payload has finite points (run the generator over all 133). Commit separately.
+(a) PILOT on template_1 ONLY: the shoulder/waist/hip 3-point seeds are baked decimals ('from the inspector output').
+    First answer with file:line: does the Send's seedGeometry (item 42, every Send) overwrite those Points? If it
+    does, the baked decimals aren't the cause -- re-check what actually reflexes. If they're the cause, replace them
+    one arc at a time with derived via-points (T7's live-expression pattern / closed_form_arc.py), checking
+    goldens --check after EACH arc so nothing like the 242-test break happens; stop and report if a change moves
+    a golden. Re-run T1's 11 matrix cases live: the REFLEX ones should turn BUILT; report the rest.
+Don't touch T3/T4/T5/T10/T11/T12 yet; the pilot shows whether the recipe holds first. Fusion is yours.
+Commit 'H23 item 63: ...'.
+
 ## Item 61 -- range-end crash family on SHIPPED T1/T2 (and likely T12/T13): measure all, then fix at the root (advisor, 2026-10-03)
 Item 60(C) accepted (ad5869d) -- excellent, and thanks for correcting (B)'s premise. Decision: (A) + your permanent-
 sweep idea first; T10's taper (B') waits.
@@ -548,5 +562,6 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-58] fusion360-quirks: timeline per-call cost vs history, marker insertion + restore rule, occurrence delete covers child features, CCW arc start/end -- each confirmed on varied cases. Commit as 'H23 item 58: ...'.
 - [x] [H23-item-59] (gate: handle withheld -> item 60) Arched + taper template code (moved from seat C): port the fixed construction, taper handle on T10 vs new slot (data), full -15..+15, live 5 angles + sizes, sweep clean. Commit as 'H23 item 59: ...'.
 - [x] [H23-item-60] (C done; B re-scoped -> after item 61) skeleton-pin gap: live-check T1/T2/T12/T13 range ends first, sweep covers every handle's range ends, consume kind:'pin' seed entries generically, re-add T10 taper handle + 9 live cases. Commit as 'H23 item 60: ...'.
-- [ ] [H23-item-61] range-end crash family: permanent every-handle x {min,default,max} BUILT sweep + matrix, root fix per failure class (reflex arc, unsplit profile), 100% BUILT or a list for the advisor; no range narrowing. Commit as 'H23 item 61: ...'.
+- [x] [H23-item-61] (matrix + classes done; fixes -> 63+) range-end crash family: permanent every-handle x {min,default,max} BUILT sweep + matrix, root fix per failure class (reflex arc, unsplit profile), 100% BUILT or a list for the advisor; no range narrowing. Commit as 'H23 item 61: ...'.
 - [ ] [H23-item-62] (after 61) T10 taper, re-scoped (B'): read p02_06/p02_07's Coincident/Tangent chain, fix the override, re-add taperAngle, item 59's 9 live cases.
+- [ ] [H23-item-63] (d) JS NaN in taper/archRise payload math + finite-points test; (a) pilot on T1: do sends overwrite the baked arc seeds? derived via-points arc by arc, goldens checked each step, T1 matrix re-run. Commit as 'H23 item 63: ...'.
