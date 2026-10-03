@@ -13856,3 +13856,85 @@ above is JS/Python-side verified only, same honest gap every new template's own 
 itself. Per the dispatch's own explicit instruction, asking the advisor for 'Fusion free' before that
 step. Payloads are ready at `bspline-frame-builder/scratch/item61_t14_payloads/` (9 cases, not
 committed, same scratch convention as every other probe output this session). Passing back now.
+
+## Lane B -- Turn 266 (epoch 9) -- T84 item 5: live matrix sweep, 9/9 BUILT -- a real Fusion bug found
+## and fixed, item 5 fully DONE
+
+Advisor granted 'Fusion free': run the 9-case sweep against lane-b, no add-in redeploy, fingerprint
+scratch docs, leave the 4 protected docs alone, shots of default + worst-case end, target 100% BUILT.
+
+Confirmed the Fusion bridge's own open-doc state first (`UI-cowork v1`, `API-claude code v1`,
+`OFFSET-cowork v1`, `Untitled` -- exactly the 4 protected docs, nothing else). Ran the 9 cases in 3
+batches (5+2+2, serial `fusion_execute` calls, memory `feedback_fusion_serial_calls.md`) against
+`item61_full_matrix_sweep.py` with REPO pointed at this lane-b checkout and PAYLOAD_DIR at this
+template's own `scratch/item61_t14_payloads/` -- the script's own fingerprinting
+(`adv_item61fullsw_fp`) and close-only-own-docs discipline, unchanged, same as T16/T17's own 24-case
+sweep used. First batch (5 cases) exceeded the MCP tool's own call timeout but Fusion kept running to
+completion underneath it -- confirmed by reading the OUT results file directly afterward (all 5 cases
+WERE written) rather than assuming the call's own timeout meant the build failed.
+
+**First pass: 8/9 BUILT.** `template_14_pinchReachFrac_min_7x9` failed: only 2 of 6 bars (base, top),
+all 4 arc bars (`frame_upper_right/left`, `frame_lower_right/left`) missing, `missing_declared_names`
+listing exactly those 4, no crash, no NOT BUILT/MITER MISS/REFLEX ARC log line (the failure happened
+silently before that logging stage). Diagnosed by rebuilding JUST that one case directly (not through
+the sweep script) with the Fusion debug log truncated first so only this build's own lines remained:
+every one of the 4 missing bars failed the SAME way -- `EXTRUDE_CREATION_FAIL_ERROR /
+EXTRUDE_BOOLEAN_FAIL: "Cannot complete extrusion... The extrusion profile falls outside the boundary
+of the selected body."` -- the bar's own cross-section sits OUTSIDE the panel body entirely.
+
+**Root cause, confirmed numerically before touching any code** (not guessed from the error text
+alone): at `pinchReachFrac`'s own OLD drag-range floor (0.02, `_sandTimerRange`,
+editor-shape-lattice-generator.js), the side arc's own chord (topR -> pinchR) goes nearly VERTICAL
+(topR sits at the full board edge; pinchR, at reach=0.02, sits at `pinch_half = 0.98*hw`, almost the
+SAME x as topR) while `bulgeFrac` stays FIXED at its own default (0.14*hw) -- the bulge direction
+(perpendicular to a now-near-vertical chord) is nearly pure HORIZONTAL, so the arc's own via point
+swings outward by almost the FULL bulge amount in x. Computed directly
+(`fb_engine.t14_sandtimer_geometry.outline()`, each arc's own `via.x` against the TRUE board
+half-width -- `widthIn/2`, not the safe-zone `hw` the structural bisection sweep used): at 7x9 the via
+point lands at x=3.6725 against a true board edge of 3.5 -- 0.17in PAST the board's own physical
+boundary, not just the safe-zone margin. This is exactly why the panel-based diagnostic caught it and
+the earlier Python-only bisection sweep (is_valid_outline + a neck-margin proxy, T84 item 5 (2/4))
+never did -- that sweep had no board-edge check at all, only structural (positive radii, sag<half-
+chord, no 180-deg undercut). Re-measured the TRUE floor at all 3 portrait sizes: ~0.15 (6x9) / ~0.10
+(7x9) / ~0.20 (9x12, the tightest) -- 0.20 clears all three with 0.04-0.09in margin.
+`generateRange`'s own floor (0.30, template_data.py) was ALREADY safely above this the whole time, so
+[Generate] itself was never at risk -- only a hand-drag past the old 0.02 floor could ever have
+reached the broken zone.
+
+**Fixed**: `_sandTimerRange`'s own `pinchReachFrac` floor, 0.02 -> 0.20. Regenerated the item61
+payloads with the new floor (`pinchReachFrac` min now resolves to 0.20, confirmed the payload's own
+seed value directly) and re-ran JUST that one case fresh: **BUILT clean, 6/6 bars.** Re-ran the full
+9-case sweep's own results.json: **9/9 BUILT (100%)**, confirmed via the script's own summary line
+(`done=9 built=9 not_built=0`).
+
+**Added a permanent JS-side regression** (frame-template-14.test.js) so this class of bug can be
+caught WITHOUT a live Fusion sweep next time: every handle's own FULL drag-range extreme
+(`frameParamRanges`, the real feasible bound -- not just `generateRange`, which was never exposed to
+this) checked against the TRUE board edges (`sampleOutline`), at every portrait board. Proved
+non-vacuous by reverting ONLY the range-floor fix (keeping the new test) and re-running: fails with
+the exact overshoot (`6x9 pinchReachFrac=0.02 x=6.0004636947680385` against a board edge of
+`6.000001` -- the safety-margined assertion bound) -- restored, clean, 20/20.
+
+**Doc hygiene**: the diagnostic rebuild (the one that found the root cause) deliberately left its own
+scratch doc open mid-investigation (`adv_diag_t14_fp` fingerprint) so the broken geometry could be
+inspected -- caught before the sweep continued (checked open-doc count: 5, not the expected 4) and
+closed by its own unique fingerprint, never by name/count. The two screenshot-capture docs
+(`adv_shot_t14_default_fp`, `adv_shot_t14_worst_fp`) were closed the same way immediately after their
+own screenshots were captured. Confirmed clean at the end: exactly the 4 protected docs remain.
+
+**Screenshots** (real Fusion builds, bars-only view -- sketches and the construction panel hidden so
+the actual 6-piece frame geometry is unambiguous): the default (7x9, the Fred-approved "as drawn"
+proportions, a tight centred pinch) and the `pinchReachFrac_min` worst-case end (0.20, the fixed
+floor -- a much wider, gentler waist close to the corners) -- both confirmed BUILT clean in Fusion
+before capture. `shots/seatB/t84item5_sandtimer_default_7x9_bars.png`,
+`shots/seatB/t84item5_sandtimer_pinchReachFrac_min_7x9.png`, copied to the status page
+(`C:/Users/danse/.bspline-status/shots/seatB/1025_item5_sandtimer_*.png`) per the standing screenshot
+rule.
+
+**Final gate, re-confirmed after the range fix**: full vitest suite 3234 passed/0 failed across 165
+files; full fb_engine pytest suite 726 passed/10 skipped. Zero regressions.
+
+**T84 item 5 is now FULLY DONE**: geometry (1/4), Fusion build code (2/4), JS/app-side wiring (3/4),
+and the live matrix sweep (4/4, this turn) all complete and verified, including one real Fusion build
+bug found live and fixed with a permanent regression test added. Commits aeef8b5, 6e890bb, 4eb20f2,
+d3dce2e, 0a0231c, f692ef1 all pushed to origin/lane-b. Passing back and messaging the advisor now.
