@@ -42,6 +42,88 @@ WAIST_WIDTH_FRAC_DEFAULT = 0.38
 WAIST_HEIGHT_FRAC_DEFAULT = 0.55
 BULGE_FRAC_DEFAULT = 0.169
 UPPER_CURVE_FRAC_DEFAULT = 0.0  # Template 16's own default (straight sides); Template 17 overrides this
+# T17's own default (concave upper sides). The diagram script (tools/repro/t84_items1_2_
+# archedfunnel_tulip_diagram.mjs) computed a DIFFERENT "55% of max-clean" value per board size
+# (0.145/0.175/0.208 at 6x9/7x9/9x12 -- the max-clean value itself grows with board size, 0.264 ->
+# 0.378, so a single fraction of hw can't match all three at once) -- a template needs ONE value,
+# so this uses 7x9's own (this codebase's established canonical default-parameter board size,
+# SKETCH_1_PARAMETERS' own Val), confirmed comfortably inside 6x9's own tighter max (0.175 vs
+# 0.264, ~34% margin) rather than re-deriving a bespoke cross-size compromise.
+T17_UPPER_CURVE_FRAC_DEFAULT = 0.175
+
+# ---------------------------------------------------------------------------
+# Shared Fusion SKETCH_2_PARAMETERS (named-parameter expression chains), used by BOTH templates'
+# own template_data.py -- declared ONCE here rather than copy-pasted into each (T16/T17 share the
+# lower half -- arch/lower_R/lower_L/base -- verbatim; T17 alone adds the upper-arc chain below).
+# Inlined, a via point's own formula (which references its own circle's centre, which references
+# its own radius, which references the chord -- each substituted in by hand) blows up to ~9,200
+# characters per coordinate (measured) -- the same blowup class T7's own SKETCH_2_PARAMETERS
+# comment already warns about -- so every arc's own centre/radius/via chain is a NAMED Fusion
+# parameter chain instead. Units: the *nx/*ny/*u0x/*u0y/*u1x/*u1y/*bx/*by/*blen entries are genuine
+# dimensionless ratios (Unit="") -- the SAME "a userParameter's .expression assignment enforces
+# dimensional consistency" quirk T7's own comment already found (fusion360-quirks skill): declaring
+# these "in" instead would make Fusion silently reject the assignment and leave the parameter stuck
+# at its birth value 0.0.
+#
+# The two lower bulges (waistR->BR, BL->waistL) bulge OUTWARD; lower_L is the exact x-mirror of
+# lower_R (verified numerically against outline() at 3 board sizes) -- no separate named chain for
+# it, its own p02_02_loop.py Points just negate t16_lr_vx.
+SHARED_LOWER_SKETCH_2_PARAMETERS = [
+    {"Name": "t16_hw",            "Label": "t16_hw",            "Category": "T16 Geometry", "Val": "(widthIn/2 - boundingboxoffset)", "Unit": "in"},
+    {"Name": "t16_hh",            "Label": "t16_hh",            "Category": "T16 Geometry", "Val": "(heightIn/2 - boundingboxoffset)", "Unit": "in"},
+    {"Name": "t16_ww",            "Label": "t16_ww",            "Category": "T16 Geometry", "Val": f"{WAIST_WIDTH_FRAC_DEFAULT}*t16_hw", "Unit": "in"},
+    {"Name": "t16_wy",            "Label": "t16_wy",            "Category": "T16 Geometry", "Val": f"t16_hh*(1 - 2*{WAIST_HEIGHT_FRAC_DEFAULT})", "Unit": "in"},
+    {"Name": "t16_bulge",         "Label": "t16_bulge",         "Category": "T16 Geometry", "Val": f"{BULGE_FRAC_DEFAULT}*t16_hw", "Unit": "in"},
+    {"Name": "t16_lr_dx",         "Label": "t16_lr_dx",         "Category": "T16 Geometry", "Val": "t16_hw - t16_ww", "Unit": "in"},
+    {"Name": "t16_lr_dy",         "Label": "t16_lr_dy",         "Category": "T16 Geometry", "Val": "(-t16_hh) - t16_wy", "Unit": "in"},
+    {"Name": "t16_lr_chordlen",   "Label": "t16_lr_chordlen",   "Category": "T16 Geometry", "Val": "sqrt(t16_lr_dx*t16_lr_dx + t16_lr_dy*t16_lr_dy)", "Unit": "in"},
+    {"Name": "t16_lr_nx",         "Label": "t16_lr_nx",         "Category": "T16 Geometry", "Val": "-t16_lr_dy / t16_lr_chordlen", "Unit": ""},
+    {"Name": "t16_lr_ny",         "Label": "t16_lr_ny",         "Category": "T16 Geometry", "Val": "t16_lr_dx / t16_lr_chordlen", "Unit": ""},
+    {"Name": "t16_lr_halfchord",  "Label": "t16_lr_halfchord",  "Category": "T16 Geometry", "Val": "t16_lr_chordlen/2", "Unit": "in"},
+    {"Name": "t16_lr_r",          "Label": "t16_lr_r",          "Category": "T16 Geometry", "Val": "(t16_lr_halfchord*t16_lr_halfchord + t16_bulge*t16_bulge)/(2*t16_bulge)", "Unit": "in"},
+    {"Name": "t16_lr_cx",         "Label": "t16_lr_cx",         "Category": "T16 Geometry", "Val": "(t16_ww + t16_hw)/2 + t16_lr_nx*(t16_bulge - t16_lr_r)", "Unit": "in"},
+    {"Name": "t16_lr_cy",         "Label": "t16_lr_cy",         "Category": "T16 Geometry", "Val": "(t16_wy + (-t16_hh))/2 + t16_lr_ny*(t16_bulge - t16_lr_r)", "Unit": "in"},
+    {"Name": "t16_lr_u0x",        "Label": "t16_lr_u0x",        "Category": "T16 Geometry", "Val": "(t16_ww - t16_lr_cx)/t16_lr_r", "Unit": ""},
+    {"Name": "t16_lr_u0y",        "Label": "t16_lr_u0y",        "Category": "T16 Geometry", "Val": "(t16_wy - t16_lr_cy)/t16_lr_r", "Unit": ""},
+    {"Name": "t16_lr_u1x",        "Label": "t16_lr_u1x",        "Category": "T16 Geometry", "Val": "(t16_hw - t16_lr_cx)/t16_lr_r", "Unit": ""},
+    {"Name": "t16_lr_u1y",        "Label": "t16_lr_u1y",        "Category": "T16 Geometry", "Val": "((-t16_hh) - t16_lr_cy)/t16_lr_r", "Unit": ""},
+    {"Name": "t16_lr_bx",         "Label": "t16_lr_bx",         "Category": "T16 Geometry", "Val": "t16_lr_u0x + t16_lr_u1x", "Unit": ""},
+    {"Name": "t16_lr_by",         "Label": "t16_lr_by",         "Category": "T16 Geometry", "Val": "t16_lr_u0y + t16_lr_u1y", "Unit": ""},
+    {"Name": "t16_lr_blen",       "Label": "t16_lr_blen",       "Category": "T16 Geometry", "Val": "sqrt(t16_lr_bx*t16_lr_bx + t16_lr_by*t16_lr_by)", "Unit": ""},
+    {"Name": "t16_lr_vx",         "Label": "t16_lr_vx",         "Category": "T16 Geometry", "Val": "t16_lr_cx + t16_lr_r*(t16_lr_bx/t16_lr_blen)", "Unit": "in"},
+    {"Name": "t16_lr_vy",         "Label": "t16_lr_vy",         "Category": "T16 Geometry", "Val": "t16_lr_cy + t16_lr_r*(t16_lr_by/t16_lr_blen)", "Unit": "in"},
+]
+
+# T17-only: the concave upper-right arc (topR->waistR), named analogously to t16_lr_* above but
+# with the FLIPPED normal sign sagitta_circle's own `away_point` disambiguation resolves to for
+# THIS chord (verified numerically against outline()'s own upper_r_centre/via at 3 board sizes,
+# upper_curve_frac=T17_UPPER_CURVE_FRAC_DEFAULT, before being trusted here) -- the concave bulge
+# pulls INWARD toward the centreline, the opposite side from the lower bulges' own outward pull,
+# so the SAME "-dy/chordlen, dx/chordlen" formula would place the centre on the wrong side. upper_L
+# is the exact x-mirror (verified the same way) -- no separate named chain for it either.
+_TOP_X = f"{ARCH_HALF_SPAN_FRAC}*t16_hw"
+_TOP_Y = f"t16_hh - {ARCH_RISE_FRAC_DEFAULT}*t16_hw"
+UPPER_ARC_SKETCH_2_PARAMETERS = [
+    {"Name": "t17_upper",      "Label": "t17_upper",      "Category": "T17 Geometry", "Val": f"{T17_UPPER_CURVE_FRAC_DEFAULT}*t16_hw", "Unit": "in"},
+    {"Name": "t17_ur_dx",      "Label": "t17_ur_dx",      "Category": "T17 Geometry", "Val": f"t16_ww - ({_TOP_X})", "Unit": "in"},
+    {"Name": "t17_ur_dy",     "Label": "t17_ur_dy",      "Category": "T17 Geometry", "Val": f"t16_wy - ({_TOP_Y})", "Unit": "in"},
+    {"Name": "t17_ur_chordlen", "Label": "t17_ur_chordlen", "Category": "T17 Geometry", "Val": "sqrt(t17_ur_dx*t17_ur_dx + t17_ur_dy*t17_ur_dy)", "Unit": "in"},
+    {"Name": "t17_ur_nx",      "Label": "t17_ur_nx",      "Category": "T17 Geometry", "Val": "t17_ur_dy / t17_ur_chordlen", "Unit": ""},
+    {"Name": "t17_ur_ny",      "Label": "t17_ur_ny",      "Category": "T17 Geometry", "Val": "-t17_ur_dx / t17_ur_chordlen", "Unit": ""},
+    {"Name": "t17_ur_halfchord", "Label": "t17_ur_halfchord", "Category": "T17 Geometry", "Val": "t17_ur_chordlen/2", "Unit": "in"},
+    {"Name": "t17_ur_r",       "Label": "t17_ur_r",       "Category": "T17 Geometry", "Val": "(t17_ur_halfchord*t17_ur_halfchord + t17_upper*t17_upper)/(2*t17_upper)", "Unit": "in"},
+    {"Name": "t17_ur_cx",      "Label": "t17_ur_cx",      "Category": "T17 Geometry", "Val": f"(({_TOP_X}) + t16_ww)/2 + t17_ur_nx*(t17_upper - t17_ur_r)", "Unit": "in"},
+    {"Name": "t17_ur_cy",      "Label": "t17_ur_cy",      "Category": "T17 Geometry", "Val": f"(({_TOP_Y}) + t16_wy)/2 + t17_ur_ny*(t17_upper - t17_ur_r)", "Unit": "in"},
+    {"Name": "t17_ur_u0x",     "Label": "t17_ur_u0x",     "Category": "T17 Geometry", "Val": f"(({_TOP_X}) - t17_ur_cx)/t17_ur_r", "Unit": ""},
+    {"Name": "t17_ur_u0y",     "Label": "t17_ur_u0y",     "Category": "T17 Geometry", "Val": f"(({_TOP_Y}) - t17_ur_cy)/t17_ur_r", "Unit": ""},
+    {"Name": "t17_ur_u1x",     "Label": "t17_ur_u1x",     "Category": "T17 Geometry", "Val": "(t16_ww - t17_ur_cx)/t17_ur_r", "Unit": ""},
+    {"Name": "t17_ur_u1y",     "Label": "t17_ur_u1y",     "Category": "T17 Geometry", "Val": "(t16_wy - t17_ur_cy)/t17_ur_r", "Unit": ""},
+    {"Name": "t17_ur_bx",      "Label": "t17_ur_bx",      "Category": "T17 Geometry", "Val": "t17_ur_u0x + t17_ur_u1x", "Unit": ""},
+    {"Name": "t17_ur_by",      "Label": "t17_ur_by",      "Category": "T17 Geometry", "Val": "t17_ur_u0y + t17_ur_u1y", "Unit": ""},
+    {"Name": "t17_ur_blen",    "Label": "t17_ur_blen",    "Category": "T17 Geometry", "Val": "sqrt(t17_ur_bx*t17_ur_bx + t17_ur_by*t17_ur_by)", "Unit": ""},
+    {"Name": "t17_ur_vx",      "Label": "t17_ur_vx",      "Category": "T17 Geometry", "Val": "t17_ur_cx + t17_ur_r*(t17_ur_bx/t17_ur_blen)", "Unit": "in"},
+    {"Name": "t17_ur_vy",      "Label": "t17_ur_vy",      "Category": "T17 Geometry", "Val": "t17_ur_cy + t17_ur_r*(t17_ur_by/t17_ur_blen)", "Unit": "in"},
+]
 
 
 def outline(width_in, height_in, frame_thickness,

@@ -4,7 +4,8 @@ from template_loader import TemplateLoader
 from fb_engine.frame_definition import frame_features
 from fb_engine.seed_basis import seed_sketch
 from fb_engine.t16_geometry import (ARCH_RISE_FRAC_DEFAULT, WAIST_WIDTH_FRAC_DEFAULT,
-                                     WAIST_HEIGHT_FRAC_DEFAULT, BULGE_FRAC_DEFAULT)
+                                     WAIST_HEIGHT_FRAC_DEFAULT, BULGE_FRAC_DEFAULT,
+                                     SHARED_LOWER_SKETCH_2_PARAMETERS)
 
 # Per-template loader instance. State (caches, folder path) lives on the
 # instance so two templates can never share caches or step on each
@@ -40,44 +41,11 @@ SKETCH_2_LABEL = "Shape Outline"
 # fb_engine.closed_form_arc.sagitta_circle), so there is no coupled multi-arc solve to seed. The
 # arch needs no named parameter at all (its own via point is exactly the apex (0, hh) by
 # construction -- see p02_02_loop.py's own docstring); the two lower bulges need the full
-# sagitta_circle + true_via_point chain, declared as NAMED parameters (not inlined) because
-# inlining the via point's own formula blew up to ~9,200 characters per coordinate (measured) --
-# the SAME blowup T7's own SKETCH_2_PARAMETERS comment already warns about. lower_L is the exact
-# x-mirror of lower_R (verified numerically against fb_engine.t16_geometry.outline(), which
-# computes it independently, at every board size checked) -- no separate named chain for it.
-# Default proportions (fb_engine/t16_geometry.py: ARCH_RISE_FRAC_DEFAULT=0.39,
-# WAIST_WIDTH_FRAC_DEFAULT=0.38, WAIST_HEIGHT_FRAC_DEFAULT=0.55, BULGE_FRAC_DEFAULT=0.169) are
-# baked as LITERAL fractions below, same as T7/T11's own seeded-handle defaults -- the app's own
-# handles move the SEED POINTS directly at Send time (FRAME_SEED_MAP), never these parameters.
-# Units: t16_lr_nx/ny/u0x/u0y/u1x/u1y/bx/by/blen are genuine dimensionless ratios (Unit="") -- the
-# SAME "a userParameter's .expression assignment enforces dimensional consistency" quirk T7's own
-# comment already found (fusion360-quirks skill): declaring these "in" instead would make Fusion
-# silently reject the assignment and leave the parameter stuck at its birth value 0.0.
-SKETCH_2_PARAMETERS = [
-    {"Name": "t16_hw",            "Label": "t16_hw",            "Category": "T16 Geometry", "Val": "(widthIn/2 - boundingboxoffset)", "Unit": "in"},
-    {"Name": "t16_hh",            "Label": "t16_hh",            "Category": "T16 Geometry", "Val": "(heightIn/2 - boundingboxoffset)", "Unit": "in"},
-    {"Name": "t16_ww",            "Label": "t16_ww",            "Category": "T16 Geometry", "Val": "0.38*t16_hw", "Unit": "in"},
-    {"Name": "t16_wy",            "Label": "t16_wy",            "Category": "T16 Geometry", "Val": "t16_hh*(1 - 2*0.55)", "Unit": "in"},
-    {"Name": "t16_bulge",         "Label": "t16_bulge",         "Category": "T16 Geometry", "Val": "0.169*t16_hw", "Unit": "in"},
-    {"Name": "t16_lr_dx",         "Label": "t16_lr_dx",         "Category": "T16 Geometry", "Val": "t16_hw - t16_ww", "Unit": "in"},
-    {"Name": "t16_lr_dy",         "Label": "t16_lr_dy",         "Category": "T16 Geometry", "Val": "(-t16_hh) - t16_wy", "Unit": "in"},
-    {"Name": "t16_lr_chordlen",   "Label": "t16_lr_chordlen",   "Category": "T16 Geometry", "Val": "sqrt(t16_lr_dx*t16_lr_dx + t16_lr_dy*t16_lr_dy)", "Unit": "in"},
-    {"Name": "t16_lr_nx",         "Label": "t16_lr_nx",         "Category": "T16 Geometry", "Val": "-t16_lr_dy / t16_lr_chordlen", "Unit": ""},
-    {"Name": "t16_lr_ny",         "Label": "t16_lr_ny",         "Category": "T16 Geometry", "Val": "t16_lr_dx / t16_lr_chordlen", "Unit": ""},
-    {"Name": "t16_lr_halfchord",  "Label": "t16_lr_halfchord",  "Category": "T16 Geometry", "Val": "t16_lr_chordlen/2", "Unit": "in"},
-    {"Name": "t16_lr_r",          "Label": "t16_lr_r",          "Category": "T16 Geometry", "Val": "(t16_lr_halfchord*t16_lr_halfchord + t16_bulge*t16_bulge)/(2*t16_bulge)", "Unit": "in"},
-    {"Name": "t16_lr_cx",         "Label": "t16_lr_cx",         "Category": "T16 Geometry", "Val": "(t16_ww + t16_hw)/2 + t16_lr_nx*(t16_bulge - t16_lr_r)", "Unit": "in"},
-    {"Name": "t16_lr_cy",         "Label": "t16_lr_cy",         "Category": "T16 Geometry", "Val": "(t16_wy + (-t16_hh))/2 + t16_lr_ny*(t16_bulge - t16_lr_r)", "Unit": "in"},
-    {"Name": "t16_lr_u0x",        "Label": "t16_lr_u0x",        "Category": "T16 Geometry", "Val": "(t16_ww - t16_lr_cx)/t16_lr_r", "Unit": ""},
-    {"Name": "t16_lr_u0y",        "Label": "t16_lr_u0y",        "Category": "T16 Geometry", "Val": "(t16_wy - t16_lr_cy)/t16_lr_r", "Unit": ""},
-    {"Name": "t16_lr_u1x",        "Label": "t16_lr_u1x",        "Category": "T16 Geometry", "Val": "(t16_hw - t16_lr_cx)/t16_lr_r", "Unit": ""},
-    {"Name": "t16_lr_u1y",        "Label": "t16_lr_u1y",        "Category": "T16 Geometry", "Val": "((-t16_hh) - t16_lr_cy)/t16_lr_r", "Unit": ""},
-    {"Name": "t16_lr_bx",         "Label": "t16_lr_bx",         "Category": "T16 Geometry", "Val": "t16_lr_u0x + t16_lr_u1x", "Unit": ""},
-    {"Name": "t16_lr_by",         "Label": "t16_lr_by",         "Category": "T16 Geometry", "Val": "t16_lr_u0y + t16_lr_u1y", "Unit": ""},
-    {"Name": "t16_lr_blen",       "Label": "t16_lr_blen",       "Category": "T16 Geometry", "Val": "sqrt(t16_lr_bx*t16_lr_bx + t16_lr_by*t16_lr_by)", "Unit": ""},
-    {"Name": "t16_lr_vx",         "Label": "t16_lr_vx",         "Category": "T16 Geometry", "Val": "t16_lr_cx + t16_lr_r*(t16_lr_bx/t16_lr_blen)", "Unit": "in"},
-    {"Name": "t16_lr_vy",         "Label": "t16_lr_vy",         "Category": "T16 Geometry", "Val": "t16_lr_cy + t16_lr_r*(t16_lr_by/t16_lr_blen)", "Unit": "in"},
-]
+# sagitta_circle + true_via_point chain -- declared ONCE in fb_engine/t16_geometry.py's own
+# SHARED_LOWER_SKETCH_2_PARAMETERS (Template 17 shares this exact lower half verbatim; see that
+# module's own comment for the Unit="" rationale and the inlining-blows-up-to-9,200-characters
+# measurement that motivated named parameters at all).
+SKETCH_2_PARAMETERS = list(SHARED_LOWER_SKETCH_2_PARAMETERS)
 
 SKETCH_3_LABEL = "Frame Enclosure"
 SKETCH_3_PARAMETERS = [
