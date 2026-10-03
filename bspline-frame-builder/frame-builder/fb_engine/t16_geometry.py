@@ -30,7 +30,10 @@ import math
 
 from fb_engine.closed_form_arc import sagitta_circle, true_via_point
 
-ARCH_HALF_SPAN_FRAC = 0.75  # FIXED proportion of hw (the advisor's own approved render), not a handle
+ARCH_HALF_SPAN_FRAC = 0.75  # FIXED proportion of hw (the advisor's own approved render); not a
+# handle YET -- T84 item 4 (Fred-approved, NEXT-SESSION-lane-b.md) adds a shared "topWidth" handle
+# to both T16 and T17 built from this same value, so every consumer (this module, both templates'
+# own p02_02_loop.py phase files) imports this ONE constant rather than re-typing 0.75.
 
 # Fred-approved defaults (diagram commit 19f7bbb), all fractions of hw except waist_height_frac (fraction
 # of the full safe height, 0=top edge 1=bottom edge, matching F31 item 1's own pinchHeightFrac convention).

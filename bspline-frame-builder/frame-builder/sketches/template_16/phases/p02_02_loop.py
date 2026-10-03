@@ -1,3 +1,6 @@
+from fb_engine.t16_geometry import ARCH_HALF_SPAN_FRAC
+
+
 def get_block(ui_data=None):
     """
     Silhouette Loop: the 6-piece clockwise Arched Funnel outline (Template 16; Template 17 "Tulip"
@@ -79,8 +82,10 @@ def get_block(ui_data=None):
     WY = 't16_wy'
     LR_VX, LR_VY = 't16_lr_vx', 't16_lr_vy'
 
-    # topR / topL: A = 0.75*hw (FIXED proportion, not a handle), rise = 0.39*hw (ARCH_RISE_FRAC_DEFAULT).
-    TOP_X, TOP_Y = f'(0.75*{HW})', f'({HH} - 0.39*{HW})'
+    # topR / topL: A = ARCH_HALF_SPAN_FRAC*hw (FIXED proportion, not a handle -- imported, not
+    # re-typed, so T84 item 4's own "topWidth handle" can promote this ONE value without hunting
+    # for a second copy of it here; advisor note 2026-10-03), rise = 0.39*hw (ARCH_RISE_FRAC_DEFAULT).
+    TOP_X, TOP_Y = f'({ARCH_HALF_SPAN_FRAC}*{HW})', f'({HH} - 0.39*{HW})'
 
     seq = [
         # Upper right: topR -> waistR (straight; Template 17's own copy of this phase replaces this
