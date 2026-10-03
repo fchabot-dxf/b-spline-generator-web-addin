@@ -157,6 +157,22 @@ region)? Prototype in a scratch doc only. Report both with numbers; no productio
 if it changes behaviour he sees) picks one. Kill only PIDs you started; leave UI-cowork / API-claude code open.
 Commit 'H23 item 34: ...'.
 
+## Item 37 -- underside detection is a hair-trigger bound on a 5-point average; make it robust (+ a stamp feature warning)
+MEASURED (advisor, 2026-10-02, at the moment send_frame picks the face): real carved panels' true undersides score
+-0.98, -0.98, -0.97, -0.95, -0.90, -0.90, -0.86 (item 23) and NOW -0.6975 (T7 7x9, payload
+bspline-frame-builder/scratch/no_underside_t7.json, 402 in2, by far the largest downward face; next-best -0.548) -> the
+-0.7 bound REFUSED the frame. The score (`_face_downward_z`) averages n.z over pointOnFace + the face's few corner
+vertices, and a doubly-curved sheet's corners tilt -- moving the bound per new panel is whack-a-mole. Fix the METHOD:
+score each face by its AREA-WEIGHTED mean normal over a UV grid (face.evaluator: parametric range, e.g. 9x9 samples,
+weight by local area / or use the face's mesh normals), pick the LARGEST face whose weighted n.z is clearly downward
+(e.g. the most-downward by weighted score, with an area-dominance sanity check against the top face), and keep a
+refusal only for bodies with no downward face at all. Tests with fakes reproducing the measured numbers (all 8 panels'
+corner-vs-mean pattern), then LIVE: replay all 7 captured payloads (tools/repro/fusion_t11/underside_results_2026-10-02.jsonl
++ underside_t7_7x9_refused_2026-10-02.jsonl list them; the T7 one above must now build its bars, min distance 0,
+overlap 0) with tools/repro/fusion_t11/underside_extrude_probe.py. ALSO: on that T7 Send (and an earlier 6x9 one) the
+STAMP timeline feature "Source - L4 - ballnose (0.12")" is genuinely unhealthy (a real feature, not a group) -- find
+its warning text and cause (Fred's "no errors" goal); report, fix only if clearly ours. No guards. Commit 'H23 item 37: ...'.
+
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -215,3 +231,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-32] NO-ERRORS: find + fix why timeline 'Group1' is unhealthy on every Send; explain the empty-doc T1 solve failure. Commit as 'H23 item 32: ...'.
 - [x] [H23-item-33] (root-caused, fix -> item 34) PARAM EDIT AFTER BUILD DUPLICATES BARS: find + fix why the bar split doesn't survive a frame_thickness/boundingboxoffset edit (3 bars become one overlapping U body, timeline healthy). Commit as 'H23 item 33: ...'.
 - [x] [H23-item-34] CANCELLED (Fred: he sees the break and undoes; no auto-rebuild, no lock, no CAM check). Was: FRED EDITS PARAMS IN FUSION: feasibility of auto-rebuild on the Parameters dialog (C1) vs a merge-proof bar model (C2), measured, before any production change. Commit as 'H23 item 34: ...'.
+- [ ] [H23-item-37] ROBUST UNDERSIDE: area-weighted face normal instead of a 5-point average vs a -0.7 bound (T7 7x9 panel scored -0.6975 and was refused); + the unhealthy 'Source - L4 - ballnose' stamp feature. Commit as 'H23 item 37: ...'.
