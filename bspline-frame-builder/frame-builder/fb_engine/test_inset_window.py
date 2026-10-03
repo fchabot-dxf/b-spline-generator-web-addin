@@ -233,6 +233,23 @@ def test_a_profile_touching_neither_main_inner_nor_any_window_id_still_raises():
         classify({"somewhere_else_entirely"}, frame)
 
 
+# ------------------------------------------------------------------ T85 item 2: a bare main-miter sliver
+def test_a_sliver_bounded_solely_by_a_main_miter_curve_is_also_no_feature():
+    """MEASURED live (T85 item 2, the window stress test): adding the window's own geometry to the SAME
+    sketch can make Fusion's profile finder discover a tiny extra profile bounded by nothing but one of
+    the MAIN frame's own pre-existing miter curves (template_6, 'shoulder_R': the window-less build never
+    produces this profile at all -- it is an artifact of the window's own extra geometry, not a corner-
+    resolution error: confirmed on an exact-90-degree line-line corner here and a line-circle corner on
+    template_15, neither of which item 9's true-intersection fix touches). Same tolerance shape as the
+    main-inner/window tangle above, just a main miter alone."""
+    t, _ = resolve_template("template_6")
+    frame = dict(t["Frame"])
+    frame["features"] = list(frame["features"]) + [WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE]
+    shoulder_r_miter = [m for m in frame["regions"]["miters"] if "shoulder_R" in m[0]][0]
+    sliver = {miter_curve_id(*shoulder_r_miter)}
+    assert classify(sliver, frame) == (None, None)
+
+
 @pytest.mark.parametrize("tid", TEMPLATES)
 def test_a_window_less_build_is_unaffected(tid):
     """No window curves in this profile's own ids at all (every template's own frame-defs.json, unchanged):

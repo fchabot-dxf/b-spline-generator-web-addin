@@ -150,7 +150,17 @@ def classify(curve_ids, frame):
     # feature, the panel/material keeps it) whenever EVERY id is accounted for by the main inner boundary
     # or ANY window-related id, so only a profile touching something from NEITHER set still raises (a real,
     # unexpected id this declaration genuinely doesn't describe).
-    stray = ids - set(regions["inner"]) - window_outer_ids - window_inner_ids - window_hole_ids - window_miter_ids
+    #
+    # T85 item 2: MEASURED live (T6/T10/T14-T17, the window stress test): adding the window's own
+    # geometry to this same sketch can also make Fusion's profile finder discover a tiny extra sliver
+    # bounded SOLELY by one of the MAIN frame's own pre-existing miter curves (e.g. one profile, one id,
+    # `miter-proj_shoulder_R:S_inner_proj_shoulder_R:S`) -- a curve that was always there and already
+    # correctly resolved (confirmed on both an exact-90-degree line-line corner, T6, and a line-circle
+    # corner, T15 -- not a corner-resolution error either way). Same shape of artifact as the tangle
+    # above, just a main miter alone instead of mixed with inner/window ids; tolerated the same way.
+    main_miter_ids = {miter_curve_id(a, b) for a, b in regions["miters"]}
+    stray = (ids - set(regions["inner"]) - window_outer_ids - window_inner_ids - window_hole_ids
+             - window_miter_ids - main_miter_ids)
     if not stray:
         return None, None
     raise DeclaredProfileError(f"profile curves {sorted(stray)} are not in the declared regions")

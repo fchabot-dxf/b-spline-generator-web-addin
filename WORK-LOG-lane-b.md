@@ -14379,3 +14379,85 @@ throughout, confirmed before and after each part.
 defaults and end-to-end are clean (100%), the inset-window set is characterized into two failure
 classes with a 3-line diagnosis each for Fred's scoping call, per his own explicit "don't chase it"
 ruling. Passing back and messaging the advisor now with both diagnoses; Fusion released.
+
+## Lane B — Turn (epoch 9) — T85 item 2: inset window Class A/B — Class A is not a bug, Class B fixed and verified
+
+The no-Fusion read (both classes) materially revised item 10's own characterization, so this entry
+leads with the correction before the fix.
+
+**Class A -- confirmed NOT a product bug.** Live profile-count dump, `template_7_defaultWindow_7x9`
+(a failing case): `declared_profiles.classify()` never raised and never skipped anything -- the
+window's own 4 bar profiles were correctly discovered, but 3 of the 4 got bucketed as "the frame
+opening (inner curves only)" (9 of 17 total sketch profiles logged that way), exactly the
+already-existing, Fred-approved T82 item 7 tolerance ("a window crossing the main opening's real
+boundary degrades ugly-but-not-broken, never a refused build... then it's my responsibility").
+Checked why it crosses: every true Class A case's own default window (centred, board/3 x board/3)
+has at least one EDGE crossing the template's own inner-opening boundary -- confirmed geometrically
+(no Fusion) with `frameInnerProfile` + `insideSpans` for 2 failure shapes: T7/T9/T11 (pointed/
+tapered openings, fails at every board size since the window is board-relative but the opening's
+own narrowing is template-geometry-relative) and T1/T3/T4/T5/T12 at 6x9 specifically (T1's own
+concave waist pinch: all 4 window corners sit inside the opening, but the window's SIDE EDGES cross
+the waist bulge between the corners -- a corner-only check would have missed this, confirmed by
+dumping T1's actual offset-inward primitives and finding the waist arc's own radius). **This is a
+test-design artifact** (the stress test's own generic "board/3, centred" default collides with
+several templates' own non-rectangular openings), not a bug in the window-building code -- the
+code is doing exactly what Fred already approved. No fix applied; flagged for a scoping call (leave
+as-is, since Fred already ruled "my responsibility" on this exact question, vs. making the
+DEFAULT window size/position smarter per-template so enabling the feature doesn't start in a
+degraded state -- a UX choice, not a guard, so not mine to decide unilaterally).
+
+**Class B -- FIXED at the cause, verified live, does NOT generalize from item 9.** The dispatch's own
+hypothesis (item 9's T13 true-intersection fix generalizing to T6/T10/T14-17) does not hold: checked
+T6's own corner declaration (`tab_side_L`/`shoulder_R`, p03_03_inner_corner_resolve.py) -- both lines,
+meeting at an exact 90 degrees (vertical x horizontal), where item 9's fix is a no-op by construction
+-- and T15's own `dome_L`/`dome_R` corners, which use `ArcID`/`Concave` (a line-circle resolver, a
+different mechanism item 9 never touches). Neither matches item 9's "wrong intersection point" root
+cause. The REAL mechanism, read off the actual logged ids (`miter-proj_shoulder_R:S_
+inner_proj_shoulder_R:S`, one id, nothing else): adding the window's own geometry to the SAME sketch
+makes Fusion's profile finder discover a tiny extra sliver bounded SOLELY by one of the MAIN frame's
+own pre-existing, already-correctly-resolved miter curves -- a profile a window-less build never
+produces. `classify()`'s own existing stray-id check (the T82 item 7 tolerance) didn't yet exclude a
+main miter id on its own, so it raised `DeclaredProfileError` instead of tolerating it the same way
+it already tolerates a main-inner/window-id tangle.
+
+**Fix** (`fb_engine/declared_profiles.py`, `classify()`): extended the existing stray-exclusion set
+with `main_miter_ids = {miter_curve_id(a, b) for a, b in regions["miters"]}` -- one line, the same
+tolerance shape already established for T82 item 7, in the ONE shared dispatcher every template's
+build already runs through (no per-template declaration needed). Reproduced the exact T6 failure
+first (`classify({'miter-proj_shoulder_R:S_inner_proj_shoulder_R:S'}, frame)` raised before the fix,
+returns `(None, None)` after); added a permanent test
+(`test_a_sliver_bounded_solely_by_a_main_miter_curve_is_also_no_feature`,
+`fb_engine/test_inset_window.py`) -- confirmed NON-VACUOUS (fails against the pre-fix code via
+`git stash`, 1 failed as predicted) before trusting it. Full `pytest` (frame-builder root): 1002
+passed/25 skipped, the one remaining failure is `test_golden_freshness.py` on `template_13` -- the
+SAME already-flagged item 9 follow-up (phases touched by `0c480ee`, nothing this commit touches),
+confirmed unrelated.
+
+**Live re-verification, all 60 window-set cases re-run against the fix (deployed main unaffected;
+this ran against the lane-b checkout directly)**: every spurious `NOT BUILT ... not in the declared
+regions` line bounded by a bare main-miter id is gone everywhere it previously appeared (T6 default
+6x9/7x9, T12 default 6x9, T14 default x3, T15 default x3, T16 default 6x9/7x9, T17 default x3 -- all
+now `nb=0`, confirming the fix works exactly as intended). **Overall BUILT count is unchanged, 22/60
+-- correctly so**: every one of those same cases was ALSO a genuine Class-A-style opening-crossing
+overlap, independently capping the window-bar count regardless of the now-fixed spurious raise. The
+fix closed a real, verified bug (the error log is honest again) but can't move the stress test's own
+pass-rate metric, because that metric conflates "a window-code bug" with "the test's own default
+window configuration is itself out of bounds for many templates" -- the same root issue as Class A,
+not a second one.
+
+**Two new findings, flagged not chased (per the stress test's own standing "don't chase it"
+ruling)**: (1) `template_10`'s own window ring sometimes fails to split into its 4 bars AT ALL
+(`one window profile spans 4 bars ... a miter did not split it`) at ENTIRELY NORMAL sizes -- default
+6x9/7x9 and even `window_smallest_7x9` (the smallest legal window, which should trivially clear the
+opening) -- NOT an opening-crossing symptom, so it's a different, so-far-uninvestigated mechanism
+worth a dedicated look later. (2) At the window's own intentionally-extreme stress-test range ends
+only (`largest`/`offCentre` on T1/T10/T16), an oversized or off-centre window can disrupt the MAIN
+frame's own outline-splitting too (`one profile spans 2 bars (['proj_arc_hip_L', ...])`) -- a more
+severe topology collapse, but confined to extreme configurations unlikely in realistic daily use.
+
+**Commit `[pending]`, pushed to origin/lane-b** (3 files: the classify() fix, its test, this
+WORK-LOG entry). T85 item 2 is DONE on the terms the live evidence actually supports: Class A
+reported back as a non-bug needing a scoping call (not fixed, since fixing it would mean reversing
+Fred's own prior "not clamped, my responsibility" ruling without asking first); Class B fixed at
+the cause, mutation-tested, and live-verified; two new, narrower findings flagged for later.
+Messaging the advisor now with the full picture. Fusion released.
