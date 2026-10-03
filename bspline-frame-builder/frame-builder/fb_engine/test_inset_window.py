@@ -189,6 +189,50 @@ def test_the_main_opening_tolerates_the_windows_own_outer_loop_as_an_island(tid)
     assert classify(list(main_inner) + line_ids(OUTER_ID), frame) == (None, None)
 
 
+# ------------------------------------------------------------------ T82 item 7: overlap degrades, never raises
+def test_an_overlap_sliver_touching_only_main_inner_and_window_ids_is_no_feature_not_a_raise():
+    """MEASURED live (T82 item 7, template_1 7x9, an intentionally-overlapping w=3,h=2 window at the
+    board's own centre): when the window's own outer edge physically crosses the main frame's own inner
+    contour (template_1's hourglass waist pinch), Fusion's profile finder produced slivers bounded by a MIX
+    of a main `inner` curve id and window ids that fit none of the clean branches -- e.g. this EXACT
+    combination: one main waist-arc id + the window's own inner-left edge + both of its own left-side
+    miters, all from ONE profile. Before this item, that raised DeclaredProfileError and refused the whole
+    build; Fred's own ruling is "ugly but not broken, then it's my responsibility" -- no feature, the
+    material simply keeps that sliver, same as the plain opening default."""
+    t, _ = resolve_template("template_1")
+    frame = dict(t["Frame"])
+    frame["features"] = list(frame["features"]) + [WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE]
+    main_inner = frame["regions"]["inner"]
+    main_waist_l = [c for c in main_inner if "waist_L" in c][0]
+    outer, inner = line_ids(OUTER_ID), line_ids(INNER_ID)
+    tl_miter = miter_curve_id(*window_miters()[0])  # TL: (window_outer_V_TL, window_inner_V_TL)
+    bl_miter = miter_curve_id(*window_miters()[2])  # BL
+    sliver = {main_waist_l, outer[3], inner[3], tl_miter, bl_miter}  # index 3 = "_left" (line_ids' own order)
+    assert classify(sliver, frame) == (None, None)
+
+
+def test_a_pure_main_frame_sliver_with_only_one_window_outer_id_is_also_no_feature():
+    """The smaller sliver MEASURED live alongside the one above: a profile touching just ONE main inner id
+    and ONE window outer id (no inner/miter at all) -- the opening-side crescent the waist pinch carves
+    between itself and the window's own outer edge."""
+    t, _ = resolve_template("template_1")
+    frame = dict(t["Frame"])
+    frame["features"] = list(frame["features"]) + [WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE]
+    main_inner = frame["regions"]["inner"]
+    main_waist_l = [c for c in main_inner if "waist_L" in c][0]
+    sliver = {main_waist_l, line_ids(OUTER_ID)[3]}
+    assert classify(sliver, frame) == (None, None)
+
+
+def test_a_profile_touching_neither_main_inner_nor_any_window_id_still_raises():
+    """The broadened tolerance is targeted at the window/opening overlap, not a blanket catch-all: a
+    profile with a genuinely unrecognized, unrelated id (a real template bug, not an overlap artifact)
+    must still raise -- the one thing this item must NOT silently swallow."""
+    frame = _frame_with_window_features("template_1")
+    with pytest.raises(DeclaredProfileError):
+        classify({"somewhere_else_entirely"}, frame)
+
+
 @pytest.mark.parametrize("tid", TEMPLATES)
 def test_a_window_less_build_is_unaffected(tid):
     """No window curves in this profile's own ids at all (every template's own frame-defs.json, unchanged):

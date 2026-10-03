@@ -66,19 +66,13 @@ see §3's own overlap-case note). 7x9: `w=h=1.8`. 9x12: `w=h=2.5`.
   a clean square cut through the window's own subframe, both board sizes.
 - [x] The 4 corner miters are axis-aligned 45 deg bisectors (no T7-style derivation needed, confirmed by the
   exact vertex-id pairing in `window_miters()`).
-- [ ] CAM (Manufacture workspace): NOT exercised live this turn (the `_populate_frame_geometry` fix is
-  confirmed by fake-Fusion + A/B tests only -- see "Not yet done").
-- [ ] Degenerate case (lip clamps the hole shut): not exercised live -- the code path is understood and
-  documented (inset_window.py's own docstring: SIMPLIFIED to cut the full inner rectangle rather than
-  nothing, since the "did a hole actually get drawn" fact isn't recoverable at solid-build time -- see
-  design note §5 step 1's own "SECOND correction").
-- [ ] Overlap case (window crosses the main frame's own actual opening boundary, not just its bounding box):
+- [x] CAM (Manufacture workspace): exercised live, T82 item 7 -- see §5.
+- [x] Degenerate case (lip clamps the hole shut): live-tested, T82 item 7 -- see §5.
+- [x] Overlap case (window crosses the main frame's own actual opening boundary, not just its bounding box):
   HIT UNINTENTIONALLY on the first attempt (a naive w=3,h=2 window at 7x9 crossed template_1's own hourglass
-  waist pinch) and it did NOT degrade gracefully -- `classify()` raised `DeclaredProfileError` for every
-  affected profile, refusing the whole build. This CONTRADICTS Fred's own ruling ("ugly but not broken, then
-  it's my responsibility") for this specific case. Flagged as a known gap, not fixed this turn (not in T82
-  item 6's own required scope, and fixing it well needs its own confirm-on-varied-geometry pass, not a rushed
-  patch under live Fusion time).
+  waist pinch) and did NOT degrade gracefully at the time -- `classify()` raised `DeclaredProfileError` for
+  every affected profile, refusing the whole build. CONTRADICTED Fred's own ruling ("ugly but not broken,
+  then it's my responsibility") for this specific case. Fixed, T82 item 7 -- see §5.
 
 ## 2. What's genuinely confirmed vs not
 
@@ -133,3 +127,50 @@ live check that needs one (without the real terrain generator) will hit the same
   panel, less useful -- the iso/bottom pair is the one that actually shows the window).
 - The overlap-case crash (§1) and the degenerate-lip simplification (§1) are flagged, not fixed -- out of
   this turn's own required scope, named rather than silently left.
+
+## 5. T82 item 7 (hardening): results (2026-10-03)
+
+All 3 flags from §1 above, closed:
+
+1. **Overlap degrades, never raises** -- fixed in `declared_profiles.classify()`: the final catch-all now
+   returns `(None, None)` (no feature, material keeps it) for a profile touching any mix of the main frame's
+   own `inner` ids and ANY window-related ids (outer/inner/hole/miter), not just the window's outer loop as
+   before. Narrowly targeted: a profile touching something from NEITHER set still raises. Pure tests (no
+   Fusion) use the EXACT curve-id combinations measured live during item 6's own overlap crash.
+2. **Degenerate lip, live-tested**: 7x9, window w=h=1.8, frame_thickness=0.75, panel_lip=0.2 (needs >= 0.15 to
+   clamp `1.8 - 1.5 - 2*lip` to <= 0). Result: panel_lip param created (0.2 in), all 4 window bars built with
+   the SAME volumes as the no-lip case (confirming the bars are genuinely unaffected by the clamp), zero
+   `window_hole_*` curves in the sketch (confirming no hole rectangle was drawn), zero errors -- matches
+   `inset_window.py`'s own documented SIMPLIFIED behaviour exactly (cuts the full inner rectangle, same as no
+   lip, rather than nothing).
+3. **CAM Manufacture, live, once, on a window build**: `cam_engine.cam_coordinator.run(classifier=...,
+   mode='bspline', skip_templates=True, skip_machine=True)` on a 7x9 window build (template_1, w=h=1.8) built
+   all 3 MMs (stock/bspline_set/frame) and all 4 Setups (Stock/B-spline Back/B-spline Top/Frame), `ok: true`,
+   zero errors. The Frame MM's own snapshot held all 8 bar bodies (4 main + 4 window) with 11 move features,
+   laid out in ONE continuous row (verified by sorted X-ranges: 1.31-3.0, 3.55-5.24, 5.79-6.54, 7.09-7.84,
+   8.39-9.14, 9.69-10.44, 10.99-11.74, 12.29-13.04 in, each strictly past the previous, zero pairwise
+   overlap via `TemporaryBRepManager`) -- the window's own 4 bars genuinely continue the main row, confirming
+   the `_populate_frame_geometry`/`_lay_out_other_bars` CAM fix live, not just via fake-Fusion tests.
+   Screenshot: `t82i7_cam_layout.png` (top view of MM-Frame, the 4 main bars then the 4 small window bars in
+   one row).
+
+**New test-harness lessons** (beyond §3's own 3), for whoever drives CAM live from a script next:
+- A body obtained via `occurrence.component.bRepBodies` is in its NATIVE definition context; a cross-
+  component extrude (the bars, built inside `Frame_1`, targeting a face on a body that lives in a SIBLING
+  component like "B-Spline Set") needs the ROOT-CONTEXT PROXY instead: `occurrence.bRepBodies.item(i)`, not
+  `occurrence.component.bRepBodies.item(i)`. Using the native reference fails late and obscurely
+  (`EXTRUDE_CREATION_FAIL_ERROR - ... invalid argument toEntityOne`), not at the point the wrong body
+  reference was taken.
+- `cam_coordinator.run()` leaves the frame MM active; `app.activeProduct` then returns the CAM product, not
+  the Design, so a next `FrameBuilder()`/`send_frame()` call's own `_require_board_params` fails to find the
+  board params that plainly exist (it reads `Design.cast(app.activeProduct)`, which is now the wrong
+  product). Reactivate the Design workspace first:
+  `app.userInterface.workspaces.itemById('FusionSolidEnvironment').activate()`.
+  Both of these cost one failed live round before being found -- keep this list growing for the next person.
+- MEASURED, not fully explained: re-running `cam_coordinator.run()` a second time in the SAME document after
+  an EARLIER run captured an empty Frame_1 (bodies added after that first run) kept producing an empty Frame
+  MM snapshot on every subsequent rebuild in that document, even after `adsk.doEvents()` and confirming the
+  Design itself had all 8 bodies. A FRESH document (build the frame correctly, THEN run CAM exactly once)
+  avoided it entirely and worked on the first try. Flagged as an open question, not chased further under live
+  Fusion time -- if it recurs, suspect the CAM product retaining some reference to the document's OWN state
+  as of its first acquisition in that document, not a live link.

@@ -117,6 +117,7 @@ def classify(curve_ids, frame):
     window_outer_ids = set(line_ids(OUTER_ID))
     window_inner_ids = set(line_ids(INNER_ID))
     window_hole_ids = set(line_ids(HOLE_ID))
+    window_miter_ids = {miter_curve_id(a, b) for a, b in window_miters()}
 
     # A profile that ALSO touches the main frame's own inner ids is the opening with the window's outer
     # loop as an island (below), never a window-bar profile -- a genuine window bar never touches `inner`.
@@ -132,19 +133,26 @@ def classify(curve_ids, frame):
     if ids & window_hole_ids:
         if not (ids - window_hole_ids):
             return _feature_for(features, WINDOW_CUT_REGION), None  # the pocket cut, lip > 0
-        window_miter_ids = {miter_curve_id(a, b) for a, b in window_miters()}
         stray = ids - window_inner_ids - window_hole_ids - window_miter_ids
-        if stray:
-            raise DeclaredProfileError(
-                f"window lip profile curves {sorted(stray)} are not the window's inner boundary, "
-                "its hole or a miter")
-        return None, None  # the window's own lip ring: the panel keeps it
-    if ids and not (ids - window_inner_ids):
+        if not stray:
+            return None, None  # the window's own lip ring: the panel keeps it
+        # else: falls through to the opening/overlap tolerance below, not a raise -- T82 item 7.
+    elif ids and not (ids - window_inner_ids):
         return _feature_for(features, WINDOW_CUT_REGION), None  # the pocket cut, no lip (or a clamped one)
 
-    stray = ids - set(regions["inner"]) - window_outer_ids
+    # T82 item 7 (Fred's own ruling: a window crossing the main opening's real boundary -- not just its
+    # bounding box, e.g. a hourglass template's own waist pinch -- degrades "ugly but not broken," never a
+    # refused build; "then it's my responsibility"). MEASURED live: when the window's own outer edge
+    # physically crosses the main frame's own inner contour, Fusion's profile finder produces slivers
+    # bounded by a MIX of main-`inner` ids and window ids (outer/inner/miter) that fit none of the clean
+    # branches above (e.g. one main waist-arc id + a window inner edge + 2 window miters, all from the
+    # SAME profile) -- a genuine topology tangle, not a template bug. Treated as part of the opening (no
+    # feature, the panel/material keeps it) whenever EVERY id is accounted for by the main inner boundary
+    # or ANY window-related id, so only a profile touching something from NEITHER set still raises (a real,
+    # unexpected id this declaration genuinely doesn't describe).
+    stray = ids - set(regions["inner"]) - window_outer_ids - window_inner_ids - window_hole_ids - window_miter_ids
     if not stray:
-        return None, None  # the opening (punched by the window's own outer loop, if a window exists)
+        return None, None
     raise DeclaredProfileError(f"profile curves {sorted(stray)} are not in the declared regions")
 
 
