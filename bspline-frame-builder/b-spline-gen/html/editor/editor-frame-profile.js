@@ -102,9 +102,17 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
   // their own corners are always line-line, already exempt inside outlineDefects itself.
   const n = sil.primitives.length;
   const primOf = (bareId) => tpl.seedMap?.find((e) => e.id === bareId)?.prim;
+  // T84 item 3 (Arched Funnel / Tulip): a CCW-swapped arc (fusion360-quirks skill, "A SketchArc ALWAYS
+  // runs counter-clockwise") can make a corner's OWN outer id end in `:E` rather than `:S` -- the only
+  // honest name for the corner is whichever end is actually there. `outlineDefects`' own `notTangent`
+  // index `i` is the joint between primitive i and primitive i+1 (its own definition, just above): a
+  // `:S` corner is primitive p's own START, i.e. the joint BEFORE p (index p-1); a `:E` corner is p's own
+  // END, i.e. the joint AFTER p (index p itself) -- no prior template ever declared a `:E` miter (every
+  // corner happened to be reachable via `:S` on one of its two pieces), so this branch was dead until now.
   const cornerIndices = new Set((tpl.regions.miters || []).map(([src]) => {
-    const p = primOf(src.replace(/^proj_/, '').replace(/:S$/, ''));
-    return p == null ? null : (p - 1 + n) % n;
+    const isEnd = /:E$/.test(src);
+    const p = primOf(src.replace(/^proj_/, '').replace(/:[SE]$/, ''));
+    return p == null ? null : (isEnd ? p : p - 1 + n) % n;
   }).filter((i) => i != null));
   const defects = outlineDefects(sil.primitives).filter((d) => !(d.kind === 'notTangent' && cornerIndices.has(d.index)));
   return {
