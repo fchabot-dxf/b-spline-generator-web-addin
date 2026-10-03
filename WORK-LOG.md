@@ -14701,3 +14701,120 @@ Committed as ONE commit, WORK-LOG only (no production code survives this item): 
 win #1 (deferred compute across the stamp build) validated and REVERTED -- saves under 1s on all
 3 Sends, the per-call costs are genuine solver work the existing deferred windows already don't
 suppress".
+
+## H23 item 58 -- record this week's Fusion findings in fusion360-quirks, each confirmed on varied cases first
+
+Dispatch (advisor, 467): put items 46-57's own confirmed Fusion findings into the fusion360-
+quirks skill -- (a) per-call timeline cost scales with history, (b) markerPosition insertion +
+the moveToEnd restore rule, (c) occurrence delete already removes child features, (d) check the
+existing CCW entry. Mid-item, a cross-session message from the advisor added 2 more, flagged by
+seat B's own inset-window work (INSET-WINDOW-LIVE_CHECK.md Sec5): (e) cross-component extrude
+needs the occurrence's own root-context body proxy, (f) `cam_coordinator.run()` leaves the CAM
+product active, breaking the next Design-side call. Edit `fred-skills/fusion360-quirks/SKILL.md`,
+commit BY PATH there; probe scripts go in `tools/repro/fusion_t11/` on main.
+
+**Paused for seat B's own Fusion access mid-item** (cross-session message: seat B needed it for
+the inset-window live check + a lane-b redeploy). Replied "paused" immediately (not mid-call --
+the last probe had already returned), used the wait productively: wrote and dry-reviewed all 3
+of this item's own original probe scripts, catching and fixing 2 real bugs before ever running
+them live (see below). Resumed on "Fusion back".
+
+**(a) Per-call timeline cost scales with document history -- confirmed it is NOT a fixed
+constant, with a controlled trend, not just the 2 real-doc data points already on record.**
+New probe (`item58_timeline_cost_scaling_probe.py`): a growing timeline of plain construction
+PLANES (tried construction POINTS first -- `setByPoint` with a raw `Point3D` threw "Environment
+is not supported" live; planes via `setByOffset` worked) in a fresh scratch doc, one full-span
+`.reorder()` timed at 5 checkpoints. **MEASURED: 0.0s / 0.023s / 0.037s / 0.056s / 0.077s at
+counts 2/10/20/30/40** -- a clear, clean upward trend, confirming the mechanism (cost grows with
+history) independent of the real T7 doc's own single data point. The ABSOLUTE size matters too:
+at a SIMILAR count (~20-21), this synthetic doc costs 0.037-0.077s vs. the REAL T7 doc's own
+~0.82-0.90s (items 51/55) -- ~20x higher. Recorded both: the mechanism generalizes, but the
+MAGNITUDE depends heavily on what the timeline items actually are (plain construction geometry
+vs. real sketched/extruded/constrained bodies), not on count alone.
+
+**(b) markerPosition insertion -- confirmed on 2 feature types x 2 insertion points, plus
+moveToEnd() called directly for the first time (previously only exercised indirectly through
+production code's own restore_marker_position).** New probe (`item58_marker_insertion_probe.py`).
+**Bug caught before running live:** the FIRST draft set the marker to "the current count minus
+2" for the extrude case WITHOUT first resetting it to the end after case 1's own insert left it
+mid-timeline -- the extrude's own profile sketch (created next) would have landed mid-timeline
+too, and the computed "late" index would have put the extrude BEFORE its own just-created
+profile sketch, breaking the replay-log dependency (the SAME class of bug the original box-
+sketch-pair attempt in probe (a) already hit and had to work around with construction planes
+instead). Fixed by calling `tl.moveToEnd()` before building each case's own setup geometry, and
+by giving the extrude case 2 TRAILING filler items to insert before (after its own prerequisite),
+mirroring the real production pattern exactly (frame items landing before the inlay's own
+trailing items) instead of an artificial "before a specific index" that ignored dependencies.
+**MEASURED (post-fix, live):** sketch @ position 1 -> landed at index 1 exactly, marker 1->2.
+Extrude @ the index right after its own profile sketch (8, in this doc) -> landed at index 8
+exactly, the 2 trailing fillers confirmed pushed back, marker 8->9. `timeline.moveToEnd()`
+called directly: marker 9 -> 11 (== count, the true end). Confirms the mechanism generalizes
+past item 52's own one combination (sketch+extrude inside `addNewComponent`), and confirms
+`moveToEnd()` itself live, not just through production code's own call site.
+
+**(c) Occurrence delete already removes child features -- confirmed with 1/5/10 features,
+showing the waste SCALES, not just "it costs something".** New probe
+(`item58_occurrence_delete_probe.py`): twin components at each size, one explicitly `deleteMe()`s
+every feature before its own occurrence, the other deletes ONLY the occurrence. **MEASURED:**
+explicit-feature-deletes cost 0.0032s / 0.0515s / 0.1828s at n=1/5/10 (clearly growing, ~16x from
+n=1 to n=10 despite only a 10x feature-count increase); occurrence-only cost 0.0054s / 0.0148s /
+0.0284s and left ZERO orphans at every size (`occurrence_only_component_gone: true`,
+`occurrence_only_stray_occurrences: []`, all 3 sizes). Matches item 55's own real-production
+finding (5 real bar extrudes, ~0.82-0.85s each wasted, ~4.1s total) with the SAME shape at a
+much smaller scale, confirming the mechanism isn't specific to that one real case.
+
+**(d) Checked the existing CCW `addByThreePoints` entry against this week's candidate -- already
+fully covers it, no update made.** Re-read the entry: confirmed 16/16 across 4 sketch planes
+(XY/XZ/YZ/a 30-deg tilt), cause identified (CCW relative to the sketch's own normal), fix
+documented (resolve by position, never by creation order), AND the separate projection-
+interaction case (6/6 + 2/2) already recorded. This week's own candidate adds nothing beyond
+what's already there -- no new probe run for this one, per the dispatch's own "extend only if
+your 4 cases add something new".
+
+**(e) Cross-component extrude body reference -- confirmed independently, on different geometry,
+with the IDENTICAL error signature seat B reported.** New probe
+(`item58_cross_component_proxy_probe.py`): two plain SIBLING components (not the real frame/
+window), a box each, one extruded "to object" against the other's own top face. **Bug caught and
+fixed mid-probe:** the first `_top_face` helper picked the face with the largest `maxPoint.z`,
+which a SIDE wall also reaches at its own top edge (not just the true flat top cap) -- it picked
+a side face, and the proxy-reference attempt failed with a DIFFERENT (geometry-overlap) error
+that had nothing to do with the actual claim being tested. Fixed by requiring the face be FLAT in
+Z (`minPoint.z == maxPoint.z`) before comparing heights. **MEASURED (post-fix):** the native
+reference (`occ.component.bRepBodies...`) failed with `invalid argument toEntityOne` -- the
+EXACT error text seat B's own live inset-window test hit on completely different (real frame-
+window) geometry; the root-context proxy (`occ.bRepBodies...`) succeeded outright on the
+identical setup. Also confirmed this project's own ORIGINAL frame-bars code
+(`b-spline-gen.py::_find_bspline_core_body`) already uses the correct proxy (`child.bRepBodies`,
+its own docstring: "its occurrence's proxy") and has worked across every live Send this entire
+session -- a THIRD, pre-existing confirmation point.
+
+**(f) Workspace activation changing `app.activeProduct` -- confirmed via an independent trigger
+(direct workspace activation) instead of re-running the real CAM pipeline.** New probe
+(`item58_workspace_activeproduct_probe.py`). **Safety fix made before running it:** the first
+draft read/wrote `app.activeProduct` against WHATEVER document happened to be active already --
+since activating a workspace is a visible, GLOBAL UI action, running this against Fred's own
+currently-focused document (if any of his 3 real docs happened to be on screen) would have
+visibly switched HIS OWN UI tab mid-script. Fixed by creating and activating a dedicated scratch
+doc first, so the workspace switch applies to that doc's own tab, and reactivating
+`FusionSolidEnvironment` in a `finally` block before closing it. **MEASURED:**
+`app.activeProduct` was a real `Design` before; `ui.workspaces.itemById('CAMEnvironment').
+activate()` changed it to a `CAM` product (`Design.cast()` -> `None`); reactivating
+`FusionSolidEnvironment` restored Design access exactly. Confirms seat B's own `cam_coordinator.
+run()`-triggered finding via a completely different, independent trigger -- same underlying
+mechanism (a workspace switch, not something specific to this project's own CAM code).
+
+Fusion document count confirmed clean (4: Fred's 3 real docs + the advisor's own untouched
+`adv_taper_fp`) before and after every probe.
+
+**Written into `fred-skills/fusion360-quirks/SKILL.md`** as a new "## 4. Timeline, body-reference
+& workspace quirks" section (5 entries: a/b/c/e/f, each in the file's own established "expected
+vs actual vs fix, MEASURED numbers" style; (d) needed no edit). Committed BY PATH in that repo
+(`git commit fusion360-quirks/ -F -`, never touching any other skill) and pushed --
+`f5c7edb` in `fred-skills`.
+
+No production code changed in THIS repo. Probe scripts (5 new files, `tools/repro/fusion_t11/
+item58_*.py`) committed here on main, alongside this WORK-LOG entry.
+
+Committed as ONE commit in this repo: "H23 item 58: 5 probe scripts for the fusion360-quirks
+confirmations (timeline cost scaling, marker insertion, occurrence delete, cross-component body
+proxy, workspace activeProduct) -- skill text itself committed separately in fred-skills".
