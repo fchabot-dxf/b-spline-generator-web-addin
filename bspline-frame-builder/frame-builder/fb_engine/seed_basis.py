@@ -43,7 +43,11 @@ def seed_sketch(sketch):
     for block in sketch.get("Blocks", []):
         for step in block.get("BuildSequence", []):
             if step.get("Type") in ("Line", "Arc3Point") and "Points" in step:
-                step["Points"] = [[on_seed_board(v) for v in p] for p in step["Points"]]
+                # H23 item 47: a point may be a {'SeedFrom': {...}} marker (fb_engine/geometry.py's
+                # own `_resolve_point_spec`, resolved at BUILD time against live geometry) instead
+                # of a literal [x_expr, y_expr] pair -- left untouched here, not iterated into.
+                step["Points"] = [p if isinstance(p, dict) else [on_seed_board(v) for v in p]
+                                  for p in step["Points"]]
             elif step.get("Type") == "Radius" and "Expression" in step:
                 step["Expression"] = on_seed_board(step["Expression"])
     return sketch

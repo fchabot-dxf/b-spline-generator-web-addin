@@ -25,6 +25,14 @@ points the Frame Builder palettes use:
   4  FB-ORDER: both builds already end with ensure_frame_before_inlay (verified
      live in F3), so the whole block lands before the inlay whichever button
      came first; nothing extra here
+  5  H23 item 52: the marker is set before the inlay FIRST (timeline_order.
+     mark_before_inlay), so build_sketch/build_solid insert their own new
+     items THERE directly instead of appending at the end and relying on
+     ensure_frame_before_inlay's own reorder to pull the whole block back --
+     MEASURED (item 51), that reorder costs ~5.2s of real .reorder() calls on
+     a real Send. ensure_frame_before_inlay (item 4 above) stays as the
+     safety net regardless (its own "already in order" case is a cheap,
+     no-.reorder() no-op once the marker has already done the real work)
 
 Seeds (the Frame tab's SEEDED shape handles), F11 option B: the app sends
 `seedGeometry`, its seeded outline as the template's OWN seed geometry
@@ -38,6 +46,7 @@ fake-Fusion tests drive this exact code.
 from fb_engine.frame_definition import DEFAULT_FRAME_BOTTOM_EXPR, APPEARANCE_OPTIONS
 from fb_engine.seed_geometry import apply_seed_geometry, SeedGeometryError
 from fb_engine.parameter_schema import PANEL_LIP_PARAM, ParameterSchema
+from fb_engine.timeline_order import mark_before_inlay, restore_marker_position
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
 FRAME_TYPE_VALUE = "Frame"
@@ -75,6 +84,19 @@ def panel_lip_of(payload):
     except (TypeError, ValueError):
         return 0.0
     return v if v > 0 else 0.0
+
+
+def inset_window_of(payload):
+    """The payload's inset window record ({enabled, cx, cy, w, h}), or None when absent/disabled/malformed
+    (T82 item 6; `core/frame-record.js`'s own normalized shape, carried in framePayload() as `insetWindow`)."""
+    w = payload.get("insetWindow")
+    if not isinstance(w, dict) or not w.get("enabled"):
+        return None
+    try:
+        float(w["cx"]), float(w["cy"]), float(w["w"]), float(w["h"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return w
 
 
 def sync_panel_lip_param(design, lip, log, value_input=None):
@@ -142,13 +164,29 @@ def find_frames(design):
 
 def delete_previous_frames(design, log):
     """Delete every tagged frame: first the features it owns elsewhere (by
-    FrameComponent tag), then its occurrences. Returns the deleted names."""
+    FrameComponent tag), then its occurrences. Returns the deleted names.
+
+    H23 item 55 (MEASURED live, real T7 payload: a re-Send's own delete step cost 4.23s, of
+    which 5 of 6 FRAME_MEMBER_ATTR-tagged deletes below cost ~0.82-0.85s EACH -- 4.1s total --
+    the SAME per-call cost item 51 already found for `.reorder()`): extrusion_engine._finalize_
+    feature tags EVERY frame feature with FRAME_MEMBER_ATTR, "BAR and SURROUND alike" (its own
+    comment), but a BAR extrude lives INSIDE the frame's own component -- the occurrence delete
+    just below removes it for free (deleting an occurrence deletes its whole component's
+    contents), so explicitly deleting it here first is pure waste. Only a feature living
+    ELSEWHERE (the SURROUND/TRIM cut, tagged but built in 'Clean' -- the body it cuts) genuinely
+    needs its own explicit delete, since the occurrence delete never reaches outside the frame's
+    own component. Skip exactly the bars; keep deleting anything the occurrence delete can't
+    reach, unchanged."""
     names = []
     for comp in find_frames(design):
         name = comp.name
         for a in list(design.findAttributes(*FRAME_MEMBER_ATTR) or []):
-            if getattr(a, "value", None) == name and a.parent is not None:
-                a.parent.deleteMe()
+            if getattr(a, "value", None) != name or a.parent is None:
+                continue
+            owner = getattr(a.parent, "parentComponent", None)
+            if owner is not None and getattr(owner, "name", None) == name:
+                continue  # lives inside the frame's own component -- the occurrence delete below gets it for free
+            a.parent.deleteMe()
         for occ in list(design.rootComponent.allOccurrencesByComponent(comp) or []):
             occ.deleteMe()
         names.append(name)
@@ -240,7 +278,16 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
     log = lambda msg, level="INFO": logger.log(msg, level)
     seeds = dict(payload.get("seeds") or {})
     seed_geometry = payload.get("seedGeometry") or None
-    applied = bool(seeds) and bool(seed_geometry)
+    # H23 item 42 (ONE build path, declared): `seeds` is the UI's own normalized handle values
+    # (for the "N seed(s) sent but not applied" version-skew warning below, SEEDS_NOT_APPLIED's
+    # own reason -- an app older than F11 sending seeds with no seedGeometry at all); whether
+    # seed_geometry gets APPLIED must depend on seed_geometry alone. A fresh/unseeded record
+    # (seeds == {}, e.g. right after picking a template, before Generate or a handle) still sends
+    # the current params' own seed geometry (frame-panel.js's frameSendPayload, now unconditional)
+    # -- this used to read `applied = False` here and silently fall through to the template's own
+    # LEGACY literal/formula construction, which is where T7's reflex arc and T10's unsplit miter
+    # (H23 item 41) were actually coming from, not from anything seed-related.
+    applied = bool(seed_geometry)
     result = {"ok": False, "error": None, "deleted": [], "frame": None, "fit": None,
               "seeds": {"count": len(seeds), "applied": applied,
                         "reason": SEEDS_NOT_APPLIED if seeds and not applied else None}}
@@ -277,20 +324,32 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
             data["panel_lip"] = lip
         if applied:
             data["seed_geometry"] = seed_geometry
-        result["fit"] = build_sketch(style_id=template_id, external_logger=logger, data=data)
-        frames = find_frames(design)
-        if not frames:
-            raise SendFrameError("The frame sketch build created no frame (see the Frame Builder log).")
-        result["frame"] = frames[-1].name
-        early_face_valid = getattr(face, "isValid", True)
-        core_body = find_core_body()
-        face = underside_face(core_body) if core_body is not None else None
-        if face is None:
-            raise SendFrameError("The B-spline body is gone after the frame sketch build (see the log).")
-        log(f"SEND FRAME: underside face resolved fresh for the solid build (the early one valid: {early_face_valid})")
-        z = payload.get("frameBottomZ")
-        build_solid(to_face=face, start_offset_expr=f"{float(z)} in" if z is not None else DEFAULT_FRAME_BOTTOM_EXPR,
-                    appearance_name=payload.get("appearance"), external_logger=logger)
+        window = inset_window_of(payload)
+        if window:
+            data["inset_window"] = window
+        # H23 item 52: set the marker before the inlay ONCE, covering BOTH build_sketch and
+        # build_solid below (Fusion advances the marker itself as each new item lands, confirmed
+        # live -- no need to re-set it between the two calls) -- restored in the finally
+        # regardless of how this block exits, so a build failure never leaves the marker
+        # sitting mid-timeline for whatever comes after.
+        prior_marker = mark_before_inlay(design, logger)
+        try:
+            result["fit"] = build_sketch(style_id=template_id, external_logger=logger, data=data)
+            frames = find_frames(design)
+            if not frames:
+                raise SendFrameError("The frame sketch build created no frame (see the Frame Builder log).")
+            result["frame"] = frames[-1].name
+            early_face_valid = getattr(face, "isValid", True)
+            core_body = find_core_body()
+            face = underside_face(core_body) if core_body is not None else None
+            if face is None:
+                raise SendFrameError("The B-spline body is gone after the frame sketch build (see the log).")
+            log(f"SEND FRAME: underside face resolved fresh for the solid build (the early one valid: {early_face_valid})")
+            z = payload.get("frameBottomZ")
+            build_solid(to_face=face, start_offset_expr=f"{float(z)} in" if z is not None else DEFAULT_FRAME_BOTTOM_EXPR,
+                        appearance_name=payload.get("appearance"), external_logger=logger)
+        finally:
+            restore_marker_position(design, prior_marker, logger)
         if seeds and not applied:
             log(f"SEND FRAME: {len(seeds)} seed(s) sent but not applied: {SEEDS_NOT_APPLIED}", "WARNING")
         result["ok"] = True

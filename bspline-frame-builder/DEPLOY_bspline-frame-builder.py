@@ -602,11 +602,24 @@ def deploy_local(force=False):
     return all_ok
 
 
+def next_version(prev_info, now):
+    """Fred (2026-10-03): a date-based version, YYYY.MM.DD-N, N = this day's deploy count. Reads the
+    previous deploy's version (the last line of ~/.bspline-status/deploys.log): same day -> N + 1."""
+    today = now.strftime("%Y.%m.%d")
+    prev = str((prev_info or {}).get("version", ""))
+    if prev.startswith(today + "-"):
+        try:
+            return f"{today}-{int(prev.split('-')[-1]) + 1}"
+        except ValueError:
+            pass
+    return f"{today}-1"
+
+
 def _write_build_info():
     """
     Write build-info.json into the deployed add-in ROOT (DEST-only artifact,
     fork F1=A) so every palette's Python can read WHAT was deployed:
-        {sha, branch, built_at, source_root, dirty}
+        {version, sha, branch, built_at, source_root, dirty}
     Computed from git in SRC_DIR at deploy time. On ANY git failure (git absent,
     not a repo, timeout) we fall back to sha='unknown' and STILL write the file —
     a version stamp must never crash the deploy. Mirrors the _write_*_handshake
@@ -644,10 +657,24 @@ def _write_build_info():
     # 'dirty' therefore means "deployed modified tracked code not in any commit".
     dirty = bool(_git("status", "--porcelain", "--untracked-files=no", default=""))
 
+    now = datetime.now().astimezone()
+    # The previous version comes from the deploy log (outside DEST): clean_dir wipes DEST,
+    # build-info.json included, before this runs (MEASURED: two deploys both stamped "-1").
+    log_path = Path.home() / ".bspline-status" / "deploys.log"
+    prev_info = None
+    try:
+        lines = [l for l in log_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        if lines:
+            prev_info = {"version": lines[-1].split()[0]}
+    except Exception:
+        pass
+    version = next_version(prev_info, now)
+
     info = {
+        "version":     version,
         "sha":         sha,
         "branch":      branch,
-        "built_at":    datetime.now().astimezone().isoformat(timespec="seconds"),
+        "built_at":    now.isoformat(timespec="seconds"),
         "source_root": source_root,
         "dirty":       dirty,
     }
@@ -655,7 +682,12 @@ def _write_build_info():
         out_path = DEST_DIR / "build-info.json"
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(info, f, indent=4)
-        print(f"  Build info: {sha} ({branch}){' DIRTY' if dirty else ''} @ {info['built_at']}")
+        print(f"  Build info: {version} {sha} ({branch}){' DIRTY' if dirty else ''} @ {info['built_at']}")
+        # One changelog line per deploy, outside the repo (so a deploy never dirties it).
+        subject = _git("log", "-1", "--format=%s", default="")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"{version}  {sha}{'+edits' if dirty else ''}  {info['built_at']}  {subject}\n")
     except Exception as e:
         print(f"  WARNING: could not write build-info.json: {e}")
 

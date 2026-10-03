@@ -9,7 +9,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from fb_engine.t7_roof_eave import roof_geometry, peak_inner_corner, eave_inner_corner  # noqa: E402
+from fb_engine.t7_roof_eave import (  # noqa: E402
+    roof_geometry, peak_inner_corner, eave_inner_corner, circle_circle_corner,
+)
 from fb_engine.t7_geometry import t7_outline  # noqa: E402
 
 BOARDS = [(7, 9), (6, 9), (9, 12), (12, 6), (5.51, 1.97), (24, 4)]
@@ -89,3 +91,48 @@ def test_eave_inner_corner_is_exactly_on_both_offset_curves(w, h):
     # And `direction`/`dist` must reconstruct e_in exactly from the outer vertex E.
     reconstructed = (E[0] + direction[0] * dist, E[1] + direction[1] * dist)
     assert reconstructed == pytest.approx(e_in, abs=1e-9), f"{w}x{h}"
+
+
+class TestCircleCircleCorner:
+    """T84 item 3: circle_circle_corner, the arc-meets-arc sibling of line_circle_corner (needed by
+    T17 Tulip's own concave-upper-side corners -- neither piece there is a straight line). Tested
+    from known truth, not just checked against an already-passing caller: a TRUE point P is placed
+    exactly on both OFFSET circles by construction (r*_in = |P - centre|), the offset radii are then
+    converted back to the circles' own TRUE radii via each one's own Concave flag, and the function
+    must recover P from those true radii + the frame thickness alone."""
+
+    def test_recovers_the_known_intersection_both_circles_shrinking(self):
+        # offset circles centre (0,0) r=5 and centre (8,0) r=5 intersect at (4, 3) and (4, -3)
+        # (d=8, a=4, h=3) -- concave=False both sides means the TRUE radius is offset + t.
+        t = 1.0
+        c1, c2 = (0.0, 0.0), (8.0, 0.0)
+        r1, r2 = 5.0 + t, 5.0 + t
+        got = circle_circle_corner(c1, r1, False, c2, r2, False, t, outer_corner=(4.0, 10.0))
+        assert got == pytest.approx((4.0, 3.0), abs=1e-9)
+        got2 = circle_circle_corner(c1, r1, False, c2, r2, False, t, outer_corner=(4.0, -10.0))
+        assert got2 == pytest.approx((4.0, -3.0), abs=1e-9), "outer_corner must pick the OTHER root"
+
+    def test_recovers_the_same_intersection_both_circles_growing(self):
+        # same offset circles (radius 5 both), reached via concave=True instead (TRUE radius =
+        # offset - t) -- the two sign conventions must agree on the SAME offset geometry.
+        t = 1.0
+        c1, c2 = (0.0, 0.0), (8.0, 0.0)
+        r1, r2 = 5.0 - t, 5.0 - t
+        got = circle_circle_corner(c1, r1, True, c2, r2, True, t, outer_corner=(4.0, 10.0))
+        assert got == pytest.approx((4.0, 3.0), abs=1e-9)
+
+    def test_recovers_an_off_axis_known_point_mixed_concavity(self):
+        # P sits exactly on both offset circles by construction; mixed concave flags (T17's own
+        # actual mix: a convex lower bulge meeting a concave upper side).
+        P = (5.0, 4.0)
+        c1, c2 = (1.0, 1.0), (10.0, 2.0)
+        r1_in = math.hypot(P[0] - c1[0], P[1] - c1[1])
+        r2_in = math.hypot(P[0] - c2[0], P[1] - c2[1])
+        t = 0.75
+        r1, r2 = r1_in + t, r2_in - t  # concave1=False (+t), concave2=True (-t)
+        got = circle_circle_corner(c1, r1, False, c2, r2, True, t, outer_corner=P)
+        assert got == pytest.approx(P, abs=1e-9)
+
+    def test_raises_when_the_offset_circles_do_not_intersect(self):
+        with pytest.raises(ValueError):
+            circle_circle_corner((0.0, 0.0), 1.0, False, (100.0, 0.0), 1.0, False, 0.1, outer_corner=(0.0, 0.0))

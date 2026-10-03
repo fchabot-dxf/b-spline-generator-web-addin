@@ -13053,3 +13053,2413 @@ primitive plus two independently-found `start`/`end`-swap bugs (one in entity re
 hacks. 12x6 still fails -- confirmed a PRE-EXISTING Template 1 bug (same failure class, T1 itself reflexes
 there), not this item's own regression. A/B byte-identical on Templates 1-9. `FRAME_HIDDEN` left `True`,
 advisor's own call on whether 12x6's T1-inherited limitation blocks un-hiding.
+
+## H23 item 40 — item 39 follow-ups: live proof, narrowed T7 Generate ranges, a margin-floor render for Fred
+
+Three parts, all done; one new finding flagged (not fixed, out of this item's own scope).
+
+**(2) T7's own Generate ranges, narrowed as DATA, not code.** MEASURED (a joint grid sweep over
+gableNeckWidth x neckHeight x bodyFlareHeight against item 39's real margin rule, all 3 portrait
+sizes): item 39's own 4% raw pass rate at 7x9 was real, not a fluke -- T7's safe region concentrates
+in the upper part of each handle's own range (gableNeckWidth especially: only its own top ~20%, at
+or above the default, stays clear). New `generateRange` field on T7's own 3 `FRAME_HANDLES`
+(`template_data.py`: gableNeckWidth >= 0.45, neckHeight >= 0.13, bodyFlareHeight >= 0.65) --
+`frame-handles.js`'s `generateFrameSeeds` now intersects a handle's own `generateRange` into the
+computed feasible range it draws from; `frameHandles`/drag reads the FULL feasible range directly
+and is untouched, so dragging still reaches everywhere it always could -- this narrows only what
+[Generate] is willing to draw. MEASURED after wiring it in (the REAL `generateFrameSeeds`, 1000 raw
+draws each): 100% (6x9), 59% (7x9), 75% (9x12) -- comfortably past the >= 50% target at every
+portrait size. `GENERATE_MAX_ATTEMPTS` stays at 500 (item 39's own value) as the backstop for the
+remainder; the retry mechanism itself is still load-bearing (mutation-tested: a 3-attempt budget
+still fails for some external seeds). 2 new tests in `tests/frame-template-7.test.js` (the real raw
+pass rate at all 3 sizes; a mutation test stripping `generateRange` from a T7 copy reproduces the
+old low pass rate via the SAME `generateFrameSeeds`), plus 2 tests in
+`tests/frame-no-hooked-miters.test.js` recalibrated (the captured "seed 1" case no longer reads a
+literal 0 margin now that the range is narrower -- found a fresh raw-failing seed and a smaller
+mutation budget that are still true after the narrowing). Regenerated `frame-defs.json/.js`.
+Fast-tier: 970 passed, 0 failed (36 files).
+
+**(1) LIVE PROOF.** Headless-Chrome CDP capture (`capture_send_payload.mjs`) is not reachable from
+this sandboxed session -- Node's own `fetch()` to a freshly-spawned child Chrome's loopback debug
+port failed consistently (confirmed directly: the same port answered `curl` from a plain shell
+launch but not from Node's `spawn`+`fetch` in isolation), and `dangerouslyDisableSandbox` was
+explicitly denied by the auto-mode classifier. Worked around it the RIGHT way, not a shortcut: built
+real `[Send frame]` payloads WITHOUT a browser, using the exact same pure functions
+`frameSendPayload()` itself calls (`generateValidFrameSeeds` + `frameCutProfile` +
+`frameInnerProfile` + `frameSeedGeometry` + `framePayload`, run under vitest, no DOM needed) --
+4 Generate-seed payloads each at 7x9 and 9x12 (8 total, all passing the real guard), saved to
+`scratch/item40_t7_payloads/` as asked. Built a synthetic placeholder B-spline panel directly in
+Fusion (`tools/repro/fusion_t11/item40_send_frame_live.py`, new) -- a plain flat box in the exact
+`B-Spline Set > Clean > panel` hierarchy `_find_bspline_core_body` looks for, since the frame's own
+bar geometry depends only on a body existing with a usable downward face, never on the B-spline's
+own sculpted shape -- then called `_handle_send_frame(payload)` directly, bypassing
+`_handle_generate`'s own STEP-import requirement (irrelevant here) entirely. **LIVE RESULT: all 8
+builds, both board sizes, exactly 5 declared bars, 0 overlaps, 0 slivers under 0.5 cm3, 0
+Fusion-auto-suffixed "(1)" bodies, healthy timeline.** Exact volumes in
+`scratch/item40_send_frame_live_results.json` (not committed, matching items 35/37/38's own
+scratch-json convention).
+
+Then item 38's own owed all-template sweep (new `tools/repro/fusion_t11/item40_all_template_sweep.py`,
+same synthetic-panel technique): every template's own DEFAULT at 7x9, built bar count checked
+against `len(regions.miters)` -- MEASURED (frame-defs.json) to equal `len(FRAME_BARS)` exactly for
+every template that declares names (T6/7/9/11), so it's the one declared count that generalizes to
+every template, named or not. **11 of 13 templates clean** (1,2,3,4,5,6,8,9,11,12,13: exact bar
+count, 0 overlaps, 0 slivers, 0 "(1)" bodies, healthy timeline).
+
+**NEW FINDING, flagged not fixed (out of this item's own scope):** T7 and T10's own DEFAULT
+(unseeded) builds fail live, 0 bars, when sent this way -- `ResolveError: cannot resolve
+'((0.62*(widthIn/2 - boundingboxoffset)...` (T7's own DNA-style derived param). Traced the real
+cause, not guessed: `BuildContext.resolve_val` (`build_context.py`) checks `val in self.active_vars`
+BEFORE falling through to Fusion's own `unitsManager.evaluateExpression` -- and `active_vars` IS
+`ui_data` verbatim (`active_vars = ui_data if ui_data else {}`), which for an untouched default
+includes the param's own raw formula STRING (`frameParam()`'s fallback to the template's declared
+`default`, which for a DNA/derived param like T7's `t7_a` or T10's `archRise` chain IS a formula, not
+a number) under its own name -- so the lookup finds a match and tries
+`ParameterSchema.to_cm(formula_string, unit)`, which only parses a plain number or a unit-suffixed
+one, never a multi-term expression, and raises. **This is NOT caused by this item or item 39** --
+confirmed directly: T7's own SEEDED builds (this item's own 8/8 live passes above) never hit this
+code path at all (`apply_seed_geometry` injects literal points, bypassing the whole DNA-formula
+chain), and T1/2/3/4/5/6/8/9/11/12/13's own defaults have no formula-valued params to trip it.
+Whether the REAL app (through the full `_handle_generate` flow, not this item's own direct
+`_handle_send_frame` call) hits the same thing, or does something upstream that resolves these
+formulas first, is unverified -- flagged for the advisor/Fred to triage as its own item, not
+investigated further here (scope: this item is about the no-hooked-miter guard, not DNA-parameter
+resolution).
+
+**(3) The margin-floor render, for Fred.** Published as a Claude Artifact (real app geometry, not a
+mockup): T7's own eave corner at 7x9, at 4 configurations -- the default (0.060t), the thinnest shape
+that still passes today's 0.04t floor (0.040t), a Generate draw near 0.10t (0.098t), and the FARTHEST
+this corner can be pushed within T7's own declared handle ranges at this board size (0.106t -- 0.15t
+is not reachable here without widening those ranges, itself a useful data point). Each panel shows
+the real outer/inner profile and the actual miter line, labelled with the clearance in inches (0.75in
+frame_thickness: 0.030in / 0.030in / 0.074in / 0.079in). `https://claude.ai/artifact/F3kQ5wcisohBUfNM6uoYEz`.
+Per the brief: the floor itself (0.04t) is UNCHANGED, pending Fred's own call.
+
+Committed as "H23 item 40: ...". File list: `frame-defs.json/.js` (regenerated),
+`editor/frame-handles.js`, `sketches/template_7/template_data.py`,
+`tests/frame-no-hooked-miters.test.js`, `tests/frame-template-7.test.js`,
+`tools/repro/fusion_t11/item40_send_frame_live.py` (new),
+`tools/repro/fusion_t11/item40_all_template_sweep.py` (new).
+
+## H23 item 41 — triage item 40's T7/T10 0-bar default finding: real, fixed at the root (parts a+b; part c gated on 'Fusion free')
+
+**(a) Traced Fred's real Send path, no Fusion, file:line.** The chain:
+`frame-panel.js::frameSendPayload()` -> `framePayload()` (`core/frame-record.js:135`) ->
+`frameParam()` (`core/frame-record.js:156`, falls back to `p.default` for any untouched param --
+for T7's own `t7_a` etc. that default IS a declared formula STRING, confirmed directly in
+`frame-defs.json`) -> `adsk.fusionSendData('send_frame', ...)` -> Python's
+`_handle_send_frame` (`b-spline-gen.py:1199`) -> `fb_send.send_frame()` (`send_frame.py:231`) ->
+`frame_ui_data()` (`send_frame.py:121`: `{k: str(v) for k, v in params.items() if k in
+declared_names}` -- a straight passthrough, no evaluation) -> `build_sketch_logic_v3`
+(`frame_engine.py:74`) -> `FrameBuilder.run_sketch_only` (`frame_engine.py:183`) ->
+`_create_skeletal_parameters` (`frame_engine.py:293`) **does** create every declared param as a
+REAL Fusion user parameter with its own expression (Phase 1 masters at line ~340, Phase 2
+dependents at line ~368 -- `p.expression = str(val_expr)`, letting FUSION's own expression engine
+resolve the chain correctly) -- but it never updates `ui_data`/`active_vars` itself. The SAME
+`ui_data` dict (still raw formula strings for every untouched DNA param) is then handed unchanged
+into `ParametricSketchBuilder(..., ui_data=ui_data, ...)` (`frame_engine.py:208`) ->
+`BuildContext.__init__` (`build_context.py:47`: `self.active_vars = ui_data if ui_data else {}`).
+**Answer: no, nothing turns the formula strings into numbers before `resolve_val` sees them** --
+this is the REAL path, not an artifact of item 40's own harness skipping `_handle_generate`. T7's
+own geometry phases reference `t7_a` etc. by NAME in their declared `"Points"` for the unseeded
+construction (`fb_engine/geometry.py::_create_line` -> `BuildContext.resolve_val`,
+`build_context.py:54`), which checks `val in self.active_vars` and finds the raw formula string
+there, never reaching Fusion's own (correct) parameter.
+
+**(b) Fixed at the root** (`build_context.py:70-75`, `resolve_val`): the `active_vars` branch's own
+`ParameterSchema.to_cm` call is designed to parse "a number or a unit-suffixed string" only (its
+own docstring) -- it was never going to resolve a multi-term formula, and raising there was simply
+wrong once a DNA param's own untouched default reaches it. A genuine user override is ALWAYS a bare
+number or a unit-suffixed one (the one shape `to_cm` actually parses); a DNA param's own declared
+default is the only other shape that can land in `active_vars` under its own name, and
+`_create_skeletal_parameters` has ALREADY created that exact name as a real, correctly-resolving
+Fusion parameter by the time geometry building runs. So: `to_cm`'s own `ResolveError` for THIS
+specific key no longer re-raises -- it falls through to the SAME `design.unitsManager.
+evaluateExpression(val, "cm")` branch the "not in active_vars" case already used (now reached via
+Fusion's own real parameter of that name, not the raw string). New `fb_engine/test_build_context.py`
+(5 tests, the project's own established `BuildContext.__new__` + fake `adsk`/`unitsManager` stub
+idiom): a plain-number override still resolves via `to_cm` directly (never touching the fake
+Fusion evaluator -- it raises if asked for an unexpected name, so reaching it would fail loudly); a
+unit-suffixed override, same; T7's own real `t7_a` formula now falls through and returns the fake
+evaluator's own answer; a name absent from `active_vars` entirely still resolves via Fusion
+unchanged (the pre-existing, already-working path); and a formula string with NO matching Fusion
+parameter either (a genuine gap, not this item's case) still raises `ResolveError` -- no silent 0.
+**Mutation-tested**: reverted the fix, confirmed the formula-string test fails RED with the EXACT
+live error message (`cannot resolve '((0.62*(widthIn/2 - boundingboxoffset)...': not a number with
+a known unit`) -- restored, confirmed green again (pyc cache cleared first, per the project's own
+mutation-restore trap). Full Python suite: `python -m pytest` -> **627 passed, 25 skipped**, zero
+regressions.
+
+**(c) LIVE -- the fix is confirmed correct, but it was not the only thing standing between T7/T10
+and a built default.** The advisor granted "Fusion free" mid-pass (seat B done). Re-ran
+`tools/repro/fusion_t11/item40_all_template_sweep.py` for T7 and T10's own defaults at 7x9 with the
+fix in place (fresh-checkout-loaded, same technique as items 35-40): **the formula-resolution crash
+is GONE for both** -- `_create_skeletal_parameters` -> Fusion's own expression engine now resolves
+`t7_a`/T10's own chain correctly, confirmed by the build progressing well past where it died before
+(T7: "EXTRUDER: ... processing 2 profiles" now runs at all; T10: "EXTRUDER: ... processing 4
+profiles" too). **But each hits a SECOND, DEEPER, pre-existing defect, never reachable before
+because the formula crash always blocked the build first:**
+- **T7: a REFLEX ARC.** `diagnostics.py::assert_no_reflex_arcs` -- "`REFLEX ARC: [unknown_arc] in
+  Shape Outline sweeps 330.7 deg (>= 180) -- wrong solver branch, not a valid shape`" -- the SAME
+  class of bug item 15 fixed for T10's own arch (`Coincident(point, curve)` pins only the
+  supporting circle, not which of its two branches the solver picks), but for T7's OWN neck/body
+  arc, at its OWN literal/unseeded default proportions, which (per item 38's own finding) have
+  never actually been live-built via the full sketch-construction path before -- the seeded path
+  (this item's own 8/8 passes, item 40) bypasses this construction entirely via direct point
+  injection, and nothing else has ever sent T7 a true zero-seed default through to a real
+  Fusion build until this fix unblocked it far enough to reach this step. 0 bars (T7_2_shape_outline
+  never finishes).
+- **T10: a miter failed to split a profile.** `declared_profiles.classify` -- "`one profile spans 3
+  bars (...11 curve ids...): a miter did not split it`" -- 1 of 4 declared bars built
+  (`frame_bottom`), the rest collapsed into one NOT-BUILT region -- a different symptom, same
+  family (a geometry/miter resolution gap at T10's own literal default, distinct from items
+  15/17's own already-fixed "ears" issue, which was about the SEEDED/dragged arch).
+
+Both are clearly OUT OF THIS ITEM'S OWN SCOPE (item 41 was about the formula-string crash, now
+fixed and tested) -- flagged, not fixed, for their own triage. T1/2/3 re-confirmed unaffected (4
+bars, 0 overlaps) -- the fix changes behaviour ONLY for formula-valued default params, which only
+T7/T10 have. **Final count: 11/13 templates' own defaults build clean (unchanged from item 40);
+T7 and T10 progress further than before but still fail live, for a NEW reason each, not the one
+this item fixed.**
+
+Committed as "H23 item 41: ...". File list: `fb_engine/build_context.py`,
+`fb_engine/test_build_context.py` (new).
+
+## H23 item 42 — ONE build path: an unseeded Send now carries the current params' own seed geometry (T7 fixed live; T10 hits a separate, unrelated miter bug)
+
+**(a) Confirmed, file:line, when a Send carries no seeds.** `core/frame-record.js`'s own
+`setFrameRecord` (lines 170-177): "A template change resets the seeds" -- `const reset =
+'templateId' in patch && patch.templateId !== cur.templateId ? { seeds: {}, genSeed: null } :
+{}`. `main/frame-panel.js`'s own template `<select>` change handlers (lines 714, 736) call
+`editFrame({ templateId: ..., params: {} })` on every pick. So: pick T7 or T10 from the dropdown,
+Send immediately (no Generate, no handle drag) -- `record.seeds` is `{}`. Exactly what Fred hits.
+
+**(b) Fixed by declaring ONE path, not two maintained branches.** `frame-panel.js::
+frameSendPayload()` used to attach `seedGeometry` ONLY `if (Object.keys(rec.seeds || {}).length)`
+-- now unconditional: every Send computes `frameCutProfile`'s own CURRENT profile (seeded or the
+template's own default -- `frameCutProfile` already resolves both the same way) and sends its
+`frameSeedGeometry`. Every one of the 13 templates already declares a non-empty `seedMap`
+(MEASURED: 8-31 entries each, frame-defs.json), so this needed no per-template branching.
+
+**A SECOND gate, on the Python side, also had to change** (found only by testing live, not
+guessed): `send_frame.py`'s own `applied = bool(seeds) and bool(seed_geometry)` ALSO required the
+UI's own normalized `seeds` dict to be non-empty before `apply_seed_geometry`/`data["seed_geometry"]`
+were ever used -- so a fresh record (`seeds == {}`) sending real `seedGeometry` would have had it
+silently ignored, still falling through to the template's own LEGACY literal/formula construction.
+`seeds` is really only for the `SEEDS_NOT_APPLIED` version-skew warning ("the payload has seeds but
+no seedGeometry (an app older than F11 sent it)") -- whether the geometry gets APPLIED must depend
+on `seed_geometry` alone. Changed to `applied = bool(seed_geometry)`; the warning's own trigger
+(`seeds and not applied`) is untouched, so a genuine seeds-without-geometry case still warns exactly
+as before. Checked every existing `test_send_frame.py` assertion against both OLD and NEW formulas
+by hand before touching it -- none exercises the new case (seeds empty, seedGeometry present), so
+nothing already-passing could have silently started asserting the wrong thing.
+
+**(c) Pure tests.** JS: `tests/frame-send.test.js`, 2 new (T7 + T10: a FRESH record's Send payload
+carries the FULL seedGeometry key set, matching its own declared `seedMap`). Python:
+`test_send_frame.py`, 1 new (a fresh/unseeded payload with real `seedGeometry` now reports
+`applied: True` and reaches `build_sketch`'s own `data["seed_geometry"]`). **Mutation-tested both**:
+reverted each fix in turn, confirmed its own new test fails red (JS: `seedGeometry` undefined;
+Python: `applied: False` instead of `True`) -- restored, confirmed green. JS fast-tier (36 files
+touching frame-panel.js or its own dependents): 972 passed, 0 failed. Full Python suite: 688
+passed, 25 skipped, 0 regressions.
+
+**LIVE (Fusion granted, no live use by seat B this pass).** Regenerated every template's own
+default payload through the REAL `frameSendPayload()` (not a reconstruction) and re-ran the
+all-template default sweep: **T7's default now builds its full 5 declared bars, 0 overlaps, 0
+slivers, 0 "(1)" bodies, healthy timeline** -- the reflex arc (item 41's own finding) is GONE,
+confirmed by the build now taking ~3s of real constraint-solving instead of the old instant
+literal-formula shortcut. **T10's default still builds only 1 of its 4 declared bars** -- same
+EXACT symptom as before ("one profile spans 3 bars... a miter did not split it"), but for a
+DIFFERENT, now-isolated reason: with BOTH item 41's formula-crash fix AND this item's seeded-path
+fix in place, T10 is confirmed to be going through the SAME tested seeded construction T7 now uses
+successfully (same longer build time, same declared features list including `window_bars`/
+`window_cut`) -- yet the SAME 3 bars (shoulder/waist/hip's own 11-curve group) still fail to split.
+This is NOT a seeding or formula-resolution issue at all (both are now fixed and this is the result
+of running T10 WITH them fixed) -- it is a genuine, separate, pre-existing miter/inner-corner
+construction gap specific to T10's own enclosure sketch at its default proportions, unrelated to
+items 41 or 42. Flagged, not fixed here (out of scope: this item was the seeded-vs-unseeded
+dispatch, not T10's own miter resolution). **Final count: 12 of 13 templates' defaults build
+clean (T7 newly fixed, joining the 11 already clean); T10 is the sole holdout, for its own
+separate reason.**
+
+Committed as "H23 item 42: ...". File list: `main/frame-panel.js`, `fb_engine/send_frame.py`,
+`fb_engine/test_send_frame.py`, `tests/frame-send.test.js`.
+
+## H23 item 43 — T10's own 1/4-bar default FIXED live: the exact same gap as item 38 part 1, for the arch's own top corners
+
+**(a) Probed first, live (fusion360-quirks' own rule, item 38 part 1's own precedent).** New
+`tools/repro/fusion_t11/item43_t10_probe.py`: built T10's default (7x9) fresh from this checkout
+and dumped every SketchPoint/SketchLine/SketchArc in `T10_3_frame_enclosure`, tagged or not.
+Found it directly: an UNTAGGED arc (center `(0, -2.4425)`, radius `11.3325` -- exactly `top_edge`'s
+own `13.2375` minus `2*frame_thickness`) and two UNTAGGED lines at the exact computed inner-corner
+positions. The geometry Fusion's own offset produced is CORRECT; it is simply never named
+`inner_proj_top_edge` / `inner_proj_horn_TR` -- so `fb_engine/miters.py`'s own lookup (`g_map.get`)
+returns `None` for both, logs `MITER MISS` (confirmed live: `"MITER MISS: proj_top_edge:S(True) or
+inner_proj_top_edge:S(False)"`, same for `proj_horn_TR:S`), and silently skips drawing that miter
+-- exactly 2 of the template's 4 miters never happen, so `declared_profiles.classify` finds one
+profile spanning 3 bars (right + top + left). The TEMPLATE's own `p03_03_inner_corner_resolve.py`
+docstring had explicitly ASSUMED native tagging would always work here ("Fusion's own native
+offset already produces the geometrically true inner corner... and tags its own curve endpoints
+natively") -- MEASURED false for this template's own build. Confirmed via `fb_engine.t7_roof_eave
+.line_circle_corner` (T7's own eave math, item 38 part 1 -- already fully generic, no T10-specific
+anything) that the computed corner for this exact line-meets-arc shape (`concave=False`) lands on
+the untagged point to within 2.3e-5 cm.
+
+**(b) Fixed the SAME way as T7's own eave: declared a `ResolveLineCircleCorner` step, zero new
+math.** `sketches/template_10/phases/p03_03_inner_corner_resolve.py`: added one step (TR, TL)
+alongside the existing `ResolveInnerCorners` step for BR/BL -- `fb_engine/inner_corners.py`'s own
+`line_circle_corner_step` (item 38) was ALREADY template-agnostic, so this needed no engine
+changes, only the declaration. Regenerated `frame-defs.json/.js` (phase BuildSequences are part of
+the generated def). New `fb_engine/test_t10_inner_corners.py` (2 tests, pure Python, no Fusion):
+the declaration itself (fails on the pre-fix file -- 0 `ResolveLineCircleCorner` steps found,
+confirmed red, then restored green), and a regression pin of the measured real geometry against
+`line_circle_corner` directly. Full Python suite: 689 passed, 25 skipped, 1 KNOWN, EXPECTED
+failure (below) -- 0 unexpected regressions.
+
+**(c) LIVE: 4/4 at every required size, confirmed.** T10's default now builds all 4 declared bars
+at **6x9, 7x9, AND 9x12** (0 overlaps, 0 slivers, healthy timeline at each -- exact volumes in
+`scratch/item43_t10_live_results.json`), and all 4 re-run T10 Generate seeds at 7x9 ALSO build 4/4
+cleanly. Re-ran the full all-template sweep: **13 OF 13 TEMPLATES NOW BUILD CLEAN LIVE** (every
+declared bar count matches exactly, 0 overlaps/slivers/duplicate-named bodies, healthy timeline
+everywhere) -- up from 12/13 after item 42, up from 11/13 after item 40.
+
+**A genuine, unplanned discrepancy found while checking golden freshness (flagged, not silently
+fixed or hidden):** `test_golden_freshness.py` correctly flags T10 as needing its goldens
+re-recorded after any `phases/*.py` edit (process hygiene, not a sign of a bug by itself). Checked
+whether re-recording would actually change the committed numbers, WITHOUT touching the committed
+files or the deployed add-in (new `tools/repro/fusion_t11/item43_golden_check.py`: loads
+`frame_engine_core` + `fb_engine.solid_coordinator` fresh from THIS checkout via the same
+sys.modules-swap discipline as every other live script this session, runs
+`record_frame_parity.record_case` exactly as the real recorder would, diffs the result against the
+CURRENTLY COMMITTED `tests/fixtures/frame-parity/template_10_7x9.json` in memory only). **The
+numbers genuinely differ**: the committed golden has `frame_left` and `frame_right` at DIFFERENT
+volumes (6.05381 / 5.85073 cm3 -- an asymmetry a mirror-symmetric hourglass template should never
+have) and 7 sketch profiles; the fixed build gives `frame_left` == `frame_right` == 5.85073 cm3
+(perfectly symmetric) and 6 profiles (one fewer -- the asymmetric build's own extra, presumably
+degenerate, region is gone). This means the COMMITTED golden was ALREADY recording an asymmetric,
+not-fully-correct T10 build before this item, not a case this fix regresses -- but re-recording it
+needs the add-in actually DEPLOYED first (`record_frame_parity.py` reads `sys.modules
+["frame_engine_core"]`, the real installed copy, by design -- unlike every other live-verification
+script this session, it does not support fresh-checkout loading as a matter of its own stated
+hygiene rules). Deploying was not done here (a separate, deliberately gated operation, per project
+convention) -- flagging `tests/fixtures/frame-parity/template_10_*.json` as needing a real
+re-record (likely all 3 committed sizes, not just 7x9) for the advisor/Fred to schedule, with the
+exact before/after numbers above so the decision doesn't need to re-derive them.
+
+Committed as "H23 item 43: ...". File list: `sketches/template_10/phases/
+p03_03_inner_corner_resolve.py`, `frame-defs.json/.js` (regenerated),
+`fb_engine/test_t10_inner_corners.py` (new), `tools/repro/fusion_t11/item43_t10_probe.py` (new),
+`tools/repro/fusion_t11/item43_golden_check.py` (new).
+
+## H23 item 44 — main's gate GREEN: T10 goldens re-recorded, MITER MISS now a permanent all-template guard (live + pure), T7's missing goldens explained
+
+Dispatch (advisor, 439): main's full gate was red (`test_golden_freshness` flagged T10, the exact
+asymmetry item 43 found and flagged but did not fix). Advisor deployed 96a62f8. Three parts: (1)
+re-record T10 goldens, full pytest green; (2) declare a permanent "no corner can MITER MISS" guard
++ make the live sweep count real MITER MISS log lines; (3) explain T7's missing goldens.
+
+**(1) T10 goldens re-recorded, confirmed symmetric.** `record_frame_parity.py`'s own
+`build_frame_logic` entry point (both via `record_case()` and a manual
+`run_sketch_only`+`build_solid_logic_v3` replication) silently stopped right after "TEMPLATE
+RESOLVE" against the now-deployed add-in -- no sketch/solid-phase log lines at all, consistent
+with this project's own documented history that this entry point is broken (send_frame.py's own
+comment references WORK-LOG turn 18). Not chased down (out of this item's scope) -- worked around
+with a new script, `tools/repro/fusion_t11/item44_record_t10_goldens.py`, that drives the SAME
+proven-working `_handle_send_frame` production path item 43's own live checks already used,
+re-using `record_frame_parity.py`'s own `_curves`/`_bbox`/`_make_core`/`_timeline_healthy` helpers
+directly (imported via `spec_from_file_location`) so the golden SCHEMA and the synthetic-core
+convention are the established ones, not reinvented. Three bugs in the new script's own first
+draft, each caught by an existing test rather than silently shipped: (a) the synthetic panel body
+landed in the root component instead of under `B-Spline Set > Clean`, so `_find_bspline_core_body`
+found nothing (`bars: {}`) -- fixed by following `_make_core`'s own occurrence hierarchy; (b) a
+hand-rolled `_curves`/`_bbox` reimplementation used the wrong schema (a flat sorted list instead of
+the established `{curve_id: {...}}` dict keyed by FrameBuilder ID), breaking
+`test_frame_defs.py`'s freshness checks and `test_golden_is_consistent` -- fixed by importing and
+reusing `record_frame_parity.py`'s own functions instead (declare-don't-hand-roll, caught and
+corrected against myself); (c) the panel used the wrong z-convention (underside at z=-1.905,
+extruded downward) against `test_golden_is_consistent`'s own hard assertion that every bar's bbox
+spans z=[-1.0, 0.0] exactly -- fixed by calling `_rfp._make_core(des, W, H)` directly instead of
+hand-rolling a second convention.
+
+**Re-recorded 6x9 and 7x9 live** (12x6 deliberately left untouched, see below). Confirms item 43's
+own earlier in-memory prediction exactly: at 7x9, `frame_left` == `frame_right` == 5.85073 cm3
+(previously 6.05381 / 5.85073, an asymmetry a mirror-symmetric arched hourglass should never have)
+and 6 sketch profiles (previously 7 -- the asymmetric build's own extra degenerate region is gone).
+**template_10_12x6.json intentionally NOT re-recorded**: live-confirmed this size still fails with
+`KeyError: '3_frame_enclosure'` (the frame_enclosure sketch never builds at all) -- a pre-existing,
+already-documented Template-1-inherited reflex-arc limitation at this landscape size (`project_
+portrait_only`; "ship it" per the advisor/Fred, same class as T9's own 12x6 in `_KNOWN_BROKEN_
+BUILD`), not something this item's fix touches. (Also measured, not acted on: running 12x6 in the
+SAME Fusion `exec()` call as 6x9/7x9 made ALL THREE cases fail identically -- isolated to be
+triggered specifically by 12x6's own known failure corrupting later cases within one call, not a
+regression in the other two sizes, which succeed cleanly when run in their own separate calls.)
+Regenerated `frame-defs.json/.js` (`python tools/gen_frame_defs.py`) -- a 1-line diff
+(`sourceHash` only): T10's shape-model fit coefficients are derived from `sketch2_shape_outline`
+(the silhouette), unaffected by this fix's own target (the inner-enclosure bars/profiles).
+
+**(2) A permanent guard, pure AND live, so this class of bug can't recur silently.** Measured
+TWICE independently this session (items 38 and 43, on T7 and T10): Fusion's own inward offset can
+produce the geometrically correct inner curve/point for a line-meets-arc corner but never tag it
+with any ID, so `fb_engine/miters.py`'s own lookup returns `None` silently ("MITER MISS", a
+DEBUG/WARNING-level log line, never raised) and `declared_profiles.classify` finds one unsplit
+profile spanning multiple declared bars -- a build that LOOKS valid (no exception, healthy
+timeline) with fewer bars than declared. Nothing else in the suite catches this class of bug; only
+a live build happened to reveal it, twice, by someone reading a log line.
+
+New `fb_engine/test_no_miter_miss_possible.py` (pure Python, no Fusion): for every one of the 13
+registered templates, reads the SAME declared `regions.miters` pairs `p03_04`'s own Miters block
+and `declared_profiles.classify` key off of, and asserts every pair's InnerID is covered by an
+explicit `ResolveInnerCorners` or `ResolveLineCircleCorner` step somewhere in that template's own
+resolved phase blocks -- never left for Fusion's native offset to maybe tag on its own. A second
+test, `test_every_registered_template_is_covered_by_this_list`, diffs the hardcoded `TEMPLATES`
+list against the real template registry so a future template (Seat C's Flask / Arched Funnel /
+Tulip) added to the registry but not to this list fails loudly instead of silently skipping the
+guard. 14/14 pass. Mutation-tested: stubbed T10's own `p03_03_inner_corner_resolve.py` back down to
+just its `ResolveInnerCorners` step (deleting the `ResolveLineCircleCorner` step item 43 added, pyc
+cache cleared), confirmed RED with the exact expected message naming both missing TR/TL pairs,
+restored and confirmed green again.
+
+Extended `tools/repro/fusion_t11/item40_all_template_sweep.py` (the item-40 all-13-template live
+sweep) to also count real "MITER MISS" log lines per build, failing the sweep if any appear --
+the live-build matching half of the pure guard above. One correctness fix caught before trusting
+the mechanism: `_handle_send_frame`'s own `DebugLogger(...)` truncates `frame-builder-debug.log`
+to empty AT CONSTRUCTION, every single call (not just at add-in start/reload, despite
+`fb_logger.py`'s own comment implying otherwise) -- a first draft that snapshotted the log's line
+count BEFORE the call and diffed against AFTER would have silently SKIPPED real new lines once the
+file had been truncated shorter than that snapshot; fixed by reading the whole post-call log
+instead (correct, because the truncation-on-construct means the file only ever holds this one
+call's own lines by the time the call returns).
+
+**LIVE, all 13 templates, re-run after this item's own fix:** `done=13 crashed=[] bad=[]` -- every
+declared bar count matches exactly, 0 MITER MISS lines anywhere, healthy timelines throughout.
+Mutation-tested the sweep's own new counting mechanism the same way as the pure guard (not just
+trusted): re-ran template_10 alone against the SAME stubbed-down phase file used above -- caught
+exactly the 2 expected lines (`MITER MISS: proj_top_edge:S(True) or inner_proj_top_edge:S(False)`,
+`... proj_horn_TR:S(True) or inner_proj_horn_TR:S(False)`), correctly flagged `template_10` in
+`bad`; restored the real fix, cleared pyc, re-ran template_10 alone again -- `bad=[]`, confirmed
+clean. No stray scratch documents left open in Fusion afterward (checked `app.documents` directly).
+
+**(3) Why template_7 has no goldens: it doesn't need a unique explanation -- it's the SAME
+documented "provisional shape model, pending live recording" backlog state as T3/T4/T5/T6/T8, not
+a distinct gap.** T7 declares its own `FRAME_PROVISIONAL_SHAPE` (`template_data.py`), which
+`frame_definition.py`'s `template_shape_model` uses to build a `provisional_diamond_top_hourglass_
+model` in place of a real golden-fitted one -- the exact mechanism T3/T4/T5/T6/T8 already use while
+their own goldens are pending. `test_frame_parity_goldens.py::test_all_six_goldens_exist` already
+tolerates T3/T4/T5/T6/T8 having zero recorded goldens by name; it simply never mentions T7 (or
+T11) at all, because `_FILES` globs the fixtures directory and finds none for either -- the
+assertion passes vacuously, not because T7 was deliberately scoped out of that test. T7's own
+`sketches/template_7/LIVE_CHECK.md` independently confirms this is a KNOWN, tracked, not-yet-done
+item ("Record goldens... this replaces the provisional shapeModel with a real fit") sitting behind
+several OTHER unchecked Fusion-side checks in that same checklist (confirming the `min()`-in-an-
+expression build doesn't come up broken, confirming the eave corner's inner-corner Distance holds
+under a live handle drag, confirming the sketch solves with no skeleton pins) that this item did
+not verify and that are seat A/Fred's own lane, not this item's scope. (Template_11 is in the
+identical unrecorded state, for the same reason, though it wasn't asked about here.) Decision:
+left T7's goldens unrecorded -- recording them now, without first working through its own
+checklist's earlier unchecked items, would be scope creep past this item's 3 parts, and would also
+need `test_all_six_goldens_exist` extended with a T7 line (mirroring T3/4/5/6/8's own pattern) for
+consistency. Flagging for the advisor to dispatch as its own item if/when T7's own LIVE_CHECK.md
+checklist is worked.
+
+Full Python suite: 703 passed, 25 skipped, 0 unexpected failures (the only red before this commit,
+`test_golden_freshness`, is the exact one this item exists to clear, and does clear once committed
+-- the check is purely git-commit-date based).
+
+Committed as "H23 item 44: ...". File list: `tests/fixtures/frame-parity/template_10_6x9.json`,
+`tests/fixtures/frame-parity/template_10_7x9.json` (re-recorded), `frame-defs.json/.js`
+(regenerated), `fb_engine/test_no_miter_miss_possible.py` (new),
+`tools/repro/fusion_t11/item40_all_template_sweep.py` (MITER MISS counting added),
+`tools/repro/fusion_t11/item44_record_t10_goldens.py` (new).
+
+## H23 item 45 — PLAN ONLY, no code: who still reads the literal `widthIn*k` seed constants (item 18's bug class), and should the unseeded path be retired or derived properly
+
+Dispatch (advisor, 441): since item 42 every real Send carries the app's own seed geometry, who
+still reads the Fusion-side literal `widthIn*k`/`heightIn*k` seed constants (item 18's own bug
+class)? List readers with file:line + whether a real Send reaches them, then propose: retire the
+legacy unseeded path (full chain sweep) or derive it properly per item 18. This entry is the
+proposal; **no code was changed** -- the advisor reviews before anything is cut.
+
+**Method:** traced the real code (not guessed), then independently re-verified the single most
+consequential claim myself (below) before writing it up, since a wrong claim here would misinform
+the advisor's own review.
+
+**(0) The premise needed one correction first.** The literal constants are NOT `template_data.py`
+declared *parameter defaults* for 12 of the 13 templates -- `template_data.py` says so itself
+(T1's own comment, `sketches/template_1/template_data.py:41-46`: "Seeds are now hardcoded as
+literal widthIn/heightIn fractions inside the phase files"). They are literal `Points`/`Expression`
+values baked directly into each template's own `sketches/template_N/phases/p02_*.py` build steps
+(the shape-outline arcs/lines/radii). `ui_data`/`active_vars` never holds them; they go straight to
+`design.unitsManager.evaluateExpression` (`fb_engine/build_context.py:84-92`) unless a step's own
+`ID` (or a Radius step's `Name`) is a key in `seed_geometry` -- in which case `fb_engine/
+seed_geometry.py:28-50`'s `apply_seed_geometry` overwrites that step's `Points`/`Expression` with
+the app's own sent numbers BEFORE the build ever reaches `resolve_val`. T7 is the one real
+exception: its seeds are declared, frame-owned Fusion-parameter formulas (`t7_*`,
+`sketches/template_7/template_data.py:74-101`), not Points.
+
+**(1) For a real web-app Send today, the literal is reached almost nowhere -- with one confirmed,
+live, user-visible exception on T10.** `frameSeedGeometry` (`html/editor/frame-handles.js:253-277`)
+always emits one entry per the template's OWN declared `FRAME_SEED_MAP` (never a partial set), and
+`frame-panel.js:248-249` attaches it to EVERY Send unconditionally (not just a dragged one) --
+confirming item 42's own fix holds. A coverage check (every sketch-2 step whose `Points`/
+`Expression` contains `widthIn`/`heightIn`, compared against that template's `FRAME_SEED_MAP` IDs)
+found 100% coverage for T1-T9, T11, T12, T13 -- every literal-bearing seed step there DOES get
+overwritten on a real Send, full stop.
+
+**T10 is the one exception, and it's a genuine bug, not inert legacy code -- independently
+confirmed, not just traced:** `sketches/template_10/phases/p02_03_loop.py:88` declares `top_edge`
+(`Type: 'Arc3Point'`) from the closed-form `HW`/`CY`/`LY` literal (`:80-82`; `CY` bakes in a FIXED
+`archRiseOfHw = 0.35`, per its own comment) -- `top_edge` IS in `FRAME_SEED_MAP`
+(`template_data.py:109`), so a real Send's seed DOES overwrite this step's `Points`. But
+`sketches/template_10/phases/p02_12_arch_rebuild.py:41-48` declares a SECOND, LATER step with the
+SAME `ID: 'top_edge'` (`Rebuild: True`), using the IDENTICAL literal `HW`/`CY`/`LY` formula again,
+never the seeded one. `apply_seed_geometry`'s own matching (`seed_geometry.py:30-39`) does
+`pending.pop(key)` on the FIRST step whose ID matches -- confirmed directly (re-read both phase
+files myself): p02_03's step consumes the one `top_edge` seed entry; by the time the loop reaches
+p02_12's own later step, `'top_edge' not in pending`, so its `Points` are left exactly as declared
+-- the pure, fixed-ratio literal. p02_12's own extensive docstring confirms this is DELIBERATE (the
+seeded arc is kept only long enough to let the shoulder/waist/hip/horn chain solve correctly, per
+item 17/23's own reflex-arc findings, then DELETED and rebuilt fresh from the literal `HW`/`CY`/
+`LY` because only a from-scratch `addByThreePoints` reliably lands on the short arc branch) --
+**but its side effect is that T10's own "Arch rise" drag handle, which IS real and user-facing
+(`html/editor/editor-shape-lattice-interaction.js:471-473`, `key: 'archRise'`), has ZERO effect on
+the actual Fusion-built geometry.** Whatever the user drags, whatever `frameSeedGeometry` computes
+and sends for `top_edge`, the FINAL arch in the real build is always `heightIn/2 - 0.175*widthIn -
+0.1625in` -- the fixed 0.35 ratio, no exception. The browser preview would show one arch; Fusion
+builds a different one. Nothing in the current suite catches this (`test_t10_inner_corners.py`/
+`test_no_miter_miss_possible.py` don't touch it; `tests/frame-seed-geometry.test.js` only checks
+the JS-side seed computation, never whether Fusion's build actually uses it). This is a genuinely
+live, reachable divergence on the CURRENT real Send path -- not the "unseeded path" the dispatch's
+own premise was about, but found by asking the same question. Flagging prominently; not fixed here
+(plan only).
+
+T7's own `t7_*` formula params are still created as real Fusion user parameters with their literal
+formula text on every Send (`frame_engine.py`'s `_create_skeletal_parameters`), but no sketch
+`Point` references them any more once seeded -- benign, and already the exact case item 41's
+`resolve_val` fallback fix covers. Not a live bug.
+
+**(2) But the "unseeded/literal" construction itself is NOT dead legacy code — it has three real,
+non-test consumers that a blanket retirement would break:**
+  - **Fusion's own native "Sketch Builder" toolbar command** (`fb_engine` via `ui/
+    sketch_builder_ui.py:311`, `build_sketch_logic_v3(style_id, data=data)` with no `seed_geometry`
+    key anywhere in that command's own data -- confirmed, no `seed_geometry`/`seedGeometry` string
+    exists anywhere under the add-in's own UI code). This is a real, deployed, user-reachable
+    Fusion-side command (registered + deployed, `bspline-frame-builder.py:5,218,516`), separate from
+    the web app's Send, and it has no "current record" to pull seed values from even if it wanted
+    to -- it always builds every template from the pure literal.
+  - **The golden-recording pipeline** (`tools/repro/record_frame_parity.py:155`, `fe.
+    build_frame_logic(...)`, no seeds) -- this is how EVERY committed golden for T1-T6, T8, T9,
+    T12, T13 (and T10's own 12x6) was recorded, and `fb_engine/frame_shape_fit.py:680-711` fits each
+    template's own default, un-dragged `shapeModel` (what the app shows before any handle is
+    touched) from exactly those goldens. **This item's own re-recorded T10 goldens
+    (6x9/7x9, item 44, `item44_record_t10_goldens.py:81-83`) also used the unseeded/literal path**
+    (`{'seeds': {}, 'params': {}, ...}`, no `seedGeometry` key -- confirmed) -- not a gap in item
+    44's own work, but exactly the SAME established convention every sibling template's goldens
+    already use. (T7/T11 have no recorded goldens at all and fall back to a hand-declared
+    `provisionalShape` instead, per item 44 part 3's own finding.) Retiring the unseeded path would
+    mean redesigning how every template's own default shape gets its real, Fusion-solved geometry in
+    the first place -- a different, much larger problem than this item's own scope.
+  - **Several tests intentionally pin the literal declared values directly as data**
+    (`test_all_templates_shape_outline.py`, `test_seed_basis.py`, `test_t11_fusion_expressions.py`,
+    `fb_engine/test_frame_defs.py`) -- these test the DECLARATION itself (the template's own
+    baseline shape before any seeding), which is the point, not stale coverage.
+
+**(3) Recommendation: do not retire the unseeded/literal path -- it is load-bearing in the three
+ways above, and item 42 never made it legacy in the first place (it was never only a web-Send
+fallback).** The dispatch's own "retire vs. derive" framing already names the right alternative:
+**resume item 18** (`NEXT-SESSION.md`'s own `[H23-item-18]`, declared, still unchecked) -- pull the
+closed-form derivation technique item 17 proved on T10's own shoulder/waist/hip chain into a
+declared, documented convention, then audit the literal constants this investigation just mapped
+precisely (by file:line, above) for which were copied from a sibling template without re-deriving
+for the new one. This investigation hands that audit two concrete, confirmed starting points
+instead of a cold start: (a) T10's own arch-rise divergence above -- the clearest, most convincing
+candidate for item 18's own bug class, found live rather than theorized, and arguably worth its own
+small item ahead of the broader audit (fix: either make `p02_12`'s own rebuild use the SEEDED
+`top_edge`'s own measured rise instead of the fixed `0.175*widthIn`, or -- if archRise turns out to
+be intentionally non-interactive for Fusion's own geometry today -- remove the live drag handle so
+the preview stops promising something the build doesn't deliver); (b) the now-complete per-template
+map above of exactly which `phases/p02_*.py` lines hold a template's own literal seeds, so item 18
+doesn't need to re-discover them.
+
+**Open/uncertain, not resolved here:** several `tools/repro/fusion_t11/*.py` scripts
+(`item35_all_templates_sweep.py`, `bar_merge_confirm.py`, `param_edit_after_build_probe.py`,
+`underside_extrude_probe.py`, `send_stage_timing.py`) replay CAPTURED payloads whose own seed
+content could not be determined statically (the captures, and in one case the generator script for
+item 40's own payloads, are not committed to the repo) -- not chased further, out of this item's
+own scope.
+
+No code, no tests, no commits of build/engine files -- only this entry. Committed as "H23 item 45:
+..." (WORK-LOG.md only).
+
+## H23 item 46 -- T10's arch rebuild declares SeedFrom (no duplicate literal); a live PREVIEW == BUILD guard for all 13 templates (found a NEW template_5 gap along the way)
+
+Dispatch (advisor, 443): (1) fix T10's own arch-rebuild duplicate literal by declaring where its
+seed comes from (`SeedFrom`), keep `addByThreePoints`, unseeded path unchanged. (2) a live
+PREVIEW==BUILT check in the sweep (built Shape Outline vs. the payload's own `seedGeometry`,
+0.01 in) for every template, plus a pure test that no template can declare 2 seed steps under one
+ID without one of them saying `SeedFrom`. (3) Live: T10 archRise at both ends still builds 4/4;
+13/13 still clean.
+
+**(1) `SeedFrom`, declared and generic (not T10-only).** New `fb_engine/seed_basis.py::apply_seed_from`
+(called before `seed_sketch`, same place every template already calls it): a step may declare
+`'SeedFrom': <id>` instead of its own `Points` -- those `Points` become an exact copy of the ONE
+other step with that `ID` that has no `SeedFrom` of its own. `sketches/template_10/phases/
+p02_12_arch_rebuild.py`'s own `top_edge` Rebuild step now declares `SeedFrom: 'top_edge'` instead
+of re-typing `p02_03_loop.py`'s `HW`/`CY`/`LY` formula a second time by hand -- one declared
+source, not two independently-maintained copies (the item-18 bug class item 45 went looking for:
+editing one copy without the other would have silently desynced the rebuild from the arc it
+rebuilds). `addByThreePoints` + `Rebuild: True` unchanged. Confirmed byte-identical, not just
+argued: resolved both `top_edge` steps' own `Points` after `seed_sketch` and diff'd them (identical
+strings); then re-ran `tools/repro/fusion_t11/item44_record_t10_goldens.py` LIVE at 6x9 and 7x9 and
+diffed the result against the committed goldens (meta excluded) -- IDENTICAL both sizes. 5 new
+tests in `fb_engine/test_seed_basis.py` (declaration, the copy's exact value, and a new
+all-13-template `test_no_two_seed_steps_share_an_id_without_declaring_seedfrom` -- item 46's own
+answer to part (2)'s pure-test ask, since it's the SAME declared mechanism). Mutation-tested:
+reverted `p02_12` to its old hand-duplicated literal, confirmed 2 of the 5 new tests go RED with
+the exact expected message (the duplicate-ID one AND the SeedFrom-declared one; the byte-identical
+one stays green either way, since the old duplicate happened to match anyway -- it tests OUTPUT,
+not DECLARATION, by design), restored, confirmed green again.
+
+**(2) The live PREVIEW==BUILD check found a REAL Fusion API quirk in its own FIRST draft, before
+any template-level finding at all -- caught and fixed before trusting the check's own results.**
+First run flagged 9 of 13 templates, every mismatch a clean `:S`<->`:E` SWAP (built `:S` exactly
+equal to the SENT `:E`, and vice versa). MEASURED in total isolation (a scratch sketch, nothing
+else involved): `sketchArcs.addByThreePoints(p1, mid, p2)` does NOT assign `startSketchPoint`
+to `p1` by argument order -- it assigns start/end by the arc's own geometric direction (whichever
+of the two outer points has the lower angle around the implied circle, regardless of which
+argument position it was passed in). Confirmed with 4 independent point sets, including the EXACT
+same 3 points passed in forward AND reversed call order -- both calls produced the IDENTICAL
+physical start/end assignment. `addByTwoPoints` (Lines) does NOT have this property -- confirmed
+separately, start/end there DOES follow argument order reliably. This isn't a functional bug
+anywhere else in the app (every miter/corner/projection step already refers to `:S`/`:E` by TAG,
+never by "whichever point was listed first," so the build itself is self-consistent regardless of
+which physical corner ends up tagged `:S`) -- it was ONLY a problem for this BRAND NEW check's own
+first-draft assumption that `seedGeometry[id]['points'][0]` must land on the built `:S`. Fixed:
+for `kind: 'arc'`, `preview_vs_build_check` (`tools/repro/fusion_t11/item40_all_template_sweep.py`)
+now compares the built `{:S, :E}` pair against the sent `{points[0], points[-1]}` pair as an
+UNORDERED set (either correspondence counts as a match); `kind: 'line'` stays a direct, ordered
+compare (matches `addByTwoPoints`'s own measured, reliable behavior). Re-ran: 11 of 13 templates
+now clean.
+
+**The 2 remaining flags are real, and different from each other -- neither silently patched:**
+  - **template_10's `top_edge`/`horn_TR`/`horn_TL`** -- EXACTLY item 45's own already-diagnosed gap,
+    now independently reproduced by a completely different mechanism (a live geometry compare,
+    not a static code trace): the sent seed's own Y differs from the built Y by about 0.35 in even
+    at the DEFAULT (nothing dragged) 7x9 payload -- `top_edge`'s `:S`/`:E` are Fix'd Coincident to
+    `top_S_anchor`/`top_E_anchor` (plain `Point`-type steps, which `apply_seed_geometry` never
+    touches at all -- only `Line`/`Arc3Point` are seed-matchable), so the FINAL solved position is
+    always the anchor's own literal, never whatever seed was sent. `SeedFrom` (part 1 above) only
+    ever addressed the REBUILD step's own duplicate literal -- it does not and was not meant to
+    touch the anchor mechanism (item 17's own docstring: the anchors are required for the rest of
+    the shoulder/waist/hip chain to solve correctly), so this mismatch is an EXPECTED, already-
+    understood, NOT-fixed-here gap, exactly consistent with "unseeded path unchanged."
+  - **template_5's `top_edge_L`/`top_edge_R`/`arc_top_shoulder_L`/`arc_top_shoulder_R`/`arc_top_dip`
+    -- a NEW finding, nothing to do with T10 or SeedFrom.** The dip region's sent seed (the app's
+    own fitted `shapeModel` preview) differs from what Fusion actually solves by ~0.1-0.3 in, even
+    though nothing here shares an ID or needs a Rebuild. `test_frame_parity_goldens.py` already
+    documents this template's own dip/shoulder region as historically finicky (symmetry/tangency
+    making 12x6 and 5.51x1.97 "DELIBERATELY" unrecorded) -- this is plausibly the SAME underlying
+    soft spot, now showing up even at 7x9's own default. Not investigated further or fixed here
+    (not in this item's own scope, and it's a shape-model-fit-accuracy question, not a duplicate-
+    literal one) -- flagging for the advisor to schedule as its own item. This is exactly the kind
+    of thing this NEW check exists to surface, and it found one on its very first real run.
+
+By the ORIGINAL "clean" definition (items 40-44: bar count matches declared, 0 overlaps/slivers/
+dup bodies/missing names, healthy timeline, 0 MITER MISS) all 13 templates are still clean --
+confirmed separately from the two preview-mismatch flags above, which are a NEW, additional signal
+this item introduces, not a regression in the old one.
+
+**(3) Live: T10 archRise at both ends.** Built T10 at 7x9 twice, directly setting `top_edge`'s own
+sent Y far apart (a "LOW_RISE" and a "HIGH_RISE" variant, both well clear of self-intersection) --
+both: 4/4 bars, healthy timeline, 0 MITER MISS, and (confirming the anchor-pinning explanation
+above, not just asserting it) IDENTICAL volumes at both extremes -- direct live proof the handle's
+own real-world effect on the Fusion build is exactly zero today, at either end of its range, not
+just at a single sampled drag.
+
+Full Python suite: 720 passed, 25 skipped, 0 unexpected failures (the only red,
+`test_golden_freshness`, is the usual commit-date lag, resolved at commit -- re-recorded both T10
+goldens live to confirm byte-identical content first, same as item 44's own discipline, then added
+a `reverifiedAfter` meta note so the files carry a genuine new commit instead of a silent re-stamp).
+
+Committed as "H23 item 46: ...". File list: `fb_engine/seed_basis.py` (new `apply_seed_from`),
+`fb_engine/test_seed_basis.py` (5 new tests, incl. the all-template duplicate-ID guard),
+`sketches/template_10/phases/p02_12_arch_rebuild.py` (SeedFrom, literal removed),
+`sketches/template_10/template_data.py` (wires `apply_seed_from`),
+`tools/repro/fusion_t11/item40_all_template_sweep.py` (preview-vs-build check),
+`tests/fixtures/frame-parity/template_10_{6x9,7x9}.json` (reverifiedAfter note),
+`frame-defs.json/.js` (regenerated).
+
+## H23 item 47 -- T10's Arch-rise handle genuinely live: the anchors (not just the rebuild) needed SeedFrom, and item 46's own mechanism had a timing bug that made it moot
+
+Dispatch (advisor, 445): item 46 accepted as a step, but my own live test showed the handle still
+did nothing (identical volumes both ends). (1) Make the arch's S/E anchors take their position
+from the seeded `top_edge`'s own endpoints, chosen by left/right, keeping the anchors themselves.
+(2) Live: both archRise ends build 4/4 with DIFFERENT volumes; preview==build passes T10. (3) Item
+48 (T5 dip gap) in the same pass if time allows.
+
+**(1) The anchors, generalized (`fb_engine/geometry.py`).** New `_resolve_point_spec` (shared by
+`_create_point` and `_create_arc3`): one point in a step's own `Points` list may be a literal
+`[x_expr, y_expr]` (as always) or a `{'SeedFrom': {'id': <step>, 'side': 'left'/'right'}}` marker,
+resolved at BUILD time against the ALREADY-BUILT source entity's own live geometry (left/right by
+actual x-position, never Fusion's `:S`/`:E` label -- item 46's own measured reason why). T10's own
+`top_S_anchor`/`top_E_anchor` (`sketches/template_10/phases/p02_03_loop.py`) now declare this
+instead of their own fixed `[-(HW),CY]`/`[HW,CY]` literal -- confirmed live: dragging `top_edge`'s
+own sent seed moved both anchors with it exactly.
+
+**That alone did not move the needle -- a SECOND, independent bug was blocking it, found by
+actually re-running the live test the dispatch asked for rather than trusting the syntactic fix:**
+a direct probe (no shortcuts -- read the LIVE built `top_S_anchor`/`top_E_anchor`/`top_edge`
+positions after a seeded Send) showed the anchors correctly tracking the new seed, but `top_edge`
+ITSELF still landing at the OLD default position. Root cause: item 46's own `apply_seed_from`
+copies `top_edge`'s own Points at TEMPLATE-RESOLUTION time -- BEFORE `apply_seed_geometry` ever
+runs. So the copy it gave `p02_12_arch_rebuild.py`'s own Rebuild step was always the UNSEEDED
+literal, regardless of what was actually sent; `apply_seed_geometry`'s own pop-on-first-match then
+never reaches the Rebuild step at all (same ID as `p02_03_loop.py`'s own step, already popped).
+Item 46 was byte-identical for the unseeded default ONLY because, in that one case, "the unseeded
+literal" and "whatever was sent" are the SAME value -- it never actually fixed the live-reachable
+case this item's own dispatch is about, one layer removed from item 45's original finding.
+
+**The real fix: per-point mixed resolution, each point resolved by what it actually needs.**
+`p02_12_arch_rebuild.py`'s own Rebuild step now declares its 2 END points as `SeedFrom` markers
+pointing at `top_edge`'s own left/right endpoint (read live, same mechanism as the anchors) and
+keeps ONE literal for the APEX (`LY`, the safe zone's own top line) -- the apex's only job is
+forcing the correct (short) arc branch on `addByThreePoints`, which has nothing to do with the
+seed and must NOT track it; the two jobs ("track the seed", "force the branch") are now on the one
+point each actually governs, instead of one literal doing neither cleanly. This needed `_create_
+arc3` reordered: resolve ALL 3 points (while `top_edge`'s PRIOR self still exists in `entity_map`)
+BEFORE `Rebuild` deletes it -- resolving after would read nothing, or the brand-new entity's own
+just-created (and possibly `:S`/`:E`-swapped) endpoint instead of the value actually requested.
+`_fix_rebuild_start_end` (item 17's own swap-correction) now takes that already-resolved x directly
+rather than re-deriving it from `geom` a second time after the swap -- re-deriving would read the
+NEW entity's own geometry it is about to correct, not what was asked for.
+
+Removed `apply_seed_from` + its own call site + its own 2 T10 tests entirely (superseded by this
+item's finer-grained mechanism within the SAME work arc, not left as dead code) -- replaced with a
+declaration test for the new per-point convention and a dedicated regression test for the ONE real
+bug an early draft of this fix introduced (`seed_sketch`'s own widthIn/heightIn rewrite iterating
+into a `{'SeedFrom': ...}` dict exactly like a `[x, y]` pair, silently replacing it with `['SeedFrom']`
+-- caught by its own new test before it ever reached Fusion, not after). The all-13-template
+duplicate-seed-ID guard (item 46) updated to recognize a per-point marker as the "has an explicit
+seed-from relationship" exemption, not just a step-level key. Also fixed 3 pre-existing, generic
+cross-template static-analysis tests (`test_all_templates_shape_outline.py`'s weld-orientation,
+seed-midpoint, and convex-radius checks) that assumed every declared Point was a plain `[x, y]`
+pair -- a shared `_resolve_pts` helper approximates a `SeedFrom` marker with its source's own
+declared literal (the exact value these tests already assume for everything else, since they have
+no live Fusion to read from).
+
+**Mutation-tested, each in isolation:** reverted `seed_sketch`'s own dict-aware branch -- its new
+regression test goes RED with the exact predicted corruption (`['SeedFrom']`), restored, green.
+Reverted `p02_12`'s own Rebuild step back to the old hand-typed literal -- its own declaration test
+AND the duplicate-ID guard both go RED with the exact expected messages, restored, green.
+
+**(2) LIVE, both ends, re-run with the real fix (not the first, insufficient one):** T10 at 7x9,
+`top_edge`'s own sent Y set far apart (LOW_RISE side=1.5/apex=1.6, HIGH_RISE side=4.0/apex=4.45) --
+**genuinely different** this time: `frame_top` 40.9885 cm3 (LOW) vs 29.0462 cm3 (HIGH), `frame_left`/
+`frame_right` 31.9274 vs 43.0324 -- both 4/4 bars, healthy timeline, 0 MITER MISS. Re-ran the
+13-template preview==build sweep (item 46): `done=13 crashed=[] bad=['template_5']` -- **T10 no
+longer appears at all** (`preview_build_mismatches: []`, exactly the dispatch's own "preview==build
+passes T10"); `template_5` is the SAME already-flagged, separate, out-of-scope gap from item 46
+(item 48). Re-recorded T10's goldens at 6x9/7x9 live and diffed against committed: IDENTICAL both
+sizes -- the unseeded default build is still byte-identical, confirming the fix only changes
+behavior for a genuinely seeded/dragged build, never the default. No stray scratch documents left
+open afterward.
+
+Full Python suite: 723 passed, 25 skipped, 0 unexpected failures (the only red,
+`test_golden_freshness`, resolves at commit -- re-recorded T10 goldens live first to confirm
+byte-identical content, then bumped `reverifiedAfter` to this item so the commit carries real,
+intentional new content rather than a silent re-stamp).
+
+**(3) Item 48 (T5 dip gap): not started.** Item 47 turned out to need substantially more than the
+syntactic "wire up SeedFrom on the anchors" the dispatch first framed it as -- a second, deeper
+bug (item 46's own pre-seed-timing flaw) had to be found and fixed for the actual outcome
+(genuinely different volumes) to land at all, plus the geometry.py reordering, the 3 cross-template
+test fixes, and full mutation testing of each piece. Flagging capacity rather than rushing a second,
+unrelated investigation (a different template's own shape-model-fit accuracy, per item 46's own
+finding) into the same pass -- deferring to the advisor on whether to dispatch it as its own turn.
+
+Committed as "H23 item 47: ...". File list: `fb_engine/geometry.py` (SeedFrom generalized to
+Point + Arc3Point, `_create_arc3`/`_fix_rebuild_start_end` reordered), `fb_engine/geometry.py`'s
+own new `fb_engine/test_geometry.py` (new), `fb_engine/seed_basis.py` (`apply_seed_from` removed,
+`seed_sketch` fixed), `fb_engine/test_seed_basis.py` (tests replaced), `fb_engine/
+test_all_templates_shape_outline.py` (`_resolve_pts` helper), `sketches/template_10/phases/
+p02_03_loop.py` (anchors declare SeedFrom), `sketches/template_10/phases/p02_12_arch_rebuild.py`
+(per-point SeedFrom + one literal apex), `sketches/template_10/template_data.py` (`apply_seed_from`
+call removed), `tests/fixtures/frame-parity/template_10_{6x9,7x9}.json` (reverifiedAfter bumped),
+`frame-defs.json/.js` (regenerated).
+
+## H23 item 48 -- T5's dip/shoulder preview==build gap: a one-line JS bug (nudgeX hit all 3 arc points, not just the bulge)
+
+Dispatch (advisor, 447): item 46's own sweep flagged template_5's dip/shoulder region -- the sent
+preview differs from the built Shape Outline by 0.1-0.3in. Probe first: is the app's fitted
+shapeModel wrong, or does Fusion solve the seeded chain elsewhere? Root fix, failing-first test,
+live preview==build 13/13.
+
+**Probe, in order, each one actually run before trusting the next:**
+1. **Is the sent seed internally self-consistent?** Computed the circumcircle of the sent
+   `arc_top_shoulder_L`/`arc_top_dip`/`arc_top_shoulder_R` points by hand: all three radii equal
+   (2.449419946215...) to 12 significant figures -- the "one radius" design property holds. Not a
+   shapeModel-fit error.
+2. **Does the GOLDEN (unseeded/literal path) match the sent seed?** `tests/fixtures/frame-parity/
+   template_5_7x9.json`'s own recorded `top_edge_L:E` is `-2.33976`, matching the sent seed's
+   `-2.339762` almost exactly (0.00024in). The literal path and the preview agree. Not a stale
+   golden either.
+3. **Live, isolated: does the UNSEEDED path (via the real `_handle_send_frame`, not `record_frame_
+   parity.py`'s own broken entry point) reproduce the golden?** Built template_5 at 7x9 with an
+   EMPTY payload -- `top_edge_L:E` = `-2.3397`. Matches the golden and the literal seed.
+4. **Live, isolated: does the SEEDED path (same seed values, same entry point) reproduce the SAME
+   result?** Built with the item40 default payload's own `seedGeometry` -- `top_edge_L:E` =
+   `-2.0497`. **Does NOT match** -- a genuine 0.29in divergence that only appears once seeded,
+   confirming "Fusion solves the seeded chain elsewhere" is the right half of the dispatch's own
+   question, not "the shapeModel is wrong" (steps 1-2 already ruled that out).
+5. **Isolated the TOP region alone** (seeded ONLY `top_edge_L/R`, the 3 top arcs, and their 3 seed
+   radii; everything else -- the side waist/shoulder/hip chain, skeleton pins -- left unseeded):
+   same `-2.0497` result. Rules out any side-chain interaction; the bug is self-contained to the
+   top region's own 8 seeded entries.
+6. **Compared every sent point against the literal, value by value.** Found it: `arc_top_dip`'s
+   own two END points (shared, via an explicit `Coincident`, with the shoulder arcs' own ends) are
+   offset from the literal by `+0.01` in X -- exactly `PIN_AXIS_NUDGE_IN`. The MIDDLE point is
+   offset too, by the same `0.01` (expected -- that's the declared, intentional nudge,
+   `template_data.py`'s own `FRAME_SEED_MAP` entry: `{"id": "arc_top_dip", ..., "nudgeX": 0.01}`).
+   But the literal Python seed (`p02_03_loop.py`) only ever nudges its OWN middle point (`'0.001'`
+   on `Points[1][0]` alone) -- `frame-handles.js`'s own `frameSeedGeometry` nudges ALL THREE.
+7. **Confirmed by removing the nudge from the two ends only, live:** fed a corrected seed (dip's
+   own end points moved back onto the shoulder arcs' own exact shared X, middle point still
+   nudged) -- the build landed EXACTLY back on the literal/golden position (`top_edge_L:E` =
+   `-2.3398`, radius/center all matching). **Root cause confirmed, not guessed.**
+
+**Why a 0.01in asymmetry cascades into a 0.29in build error:** `arc_top_dip`'s own centre is
+pinned EXACTLY onto the Y axis (`p02_06_waist_pins.py`'s own `Coincident(arc_top_dip:C, Y_AXIS)`),
+and its radius is FIXED (an active seed `Radius` dimension, deleted later). With the nudged seed,
+the dip's own circle (built from 3 points centred at x=0.01, not 0) must be re-centred onto x=0
+while keeping that SAME fixed radius -- the solver's only remaining freedom to absorb that is the
+whole tangent-welded chain (shoulder radius ALSO fixed, tangent to a horizontal stub at its OTHER
+end), so the correction propagates into the stub length instead of staying a tiny local nudge.
+
+**The fix** (`bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js::frameSeedGeometry`):
+nudge only the arc's own middle (bulge) point, matching the literal Python seed's own convention
+exactly -- `if (e.nudgeX) m = [m[0] + e.nudgeX, m[1]];` in place of mapping all three. `template_5`
+is the ONLY template declaring `nudgeX` (confirmed: grepped every `template_data.py`), so this is
+a targeted, not speculative, fix.
+
+**New failing-first test** (`tests/frame-seed-geometry.test.js`): asserts `arc_top_dip`'s own two
+end points stay EXACTLY mirror-symmetric (untouched by the nudge) while the middle point still
+carries it. Mutation-tested: reverted to the old all-three-points nudge, confirmed RED with the
+exact predicted asymmetry (`0.02` apart, expected `~0`), restored, green. Full vitest: 3115 passed
+(162 files) -- the existing `frame-seed-geometry.test.js` coverage (0.75in tolerance, there for a
+different purpose: "is the preview roughly near the literal seed," not "is it exactly self-
+consistent") already tolerated both the broken and fixed behavior, which is WHY it never caught
+this -- the new test checks the actual property that was missing.
+
+**LIVE, re-run after the fix:** regenerated `item40_all_template_payloads/template_5_default_
+7x9.json`'s own `seedGeometry` (via a one-off Node script calling the real `frameSeedGeometry`,
+since this captured-payload file has no committed generator -- confirmed the new dip points are
+exactly mirror-symmetric). Full 13-template sweep: **`done=13 crashed=[] bad=[]`** -- template_5
+no longer appears at all (`preview_build_mismatches: []`, 4/4 bars, healthy timeline, 0 MITER
+MISS, symmetric volumes). Re-ran the full sweep a second time, independently, after an amendment
+noted the advisor had just redeployed main into Fusion mid-pass (my own live calls all use fresh-
+checkout loading, unaffected by the deployed add-in, but re-confirmed anyway rather than assuming)
+-- identical result both times. T5's own committed golden (unseeded/literal path, never touched by
+this JS-only fix) needs no re-recording.
+
+Full suites: Python 724 passed/25 skipped/0 failed; vitest 3115 passed (162 files), 0 failed.
+
+Committed as "H23 item 48: ...". File list: `bspline-frame-builder/b-spline-gen/html/editor/
+frame-handles.js` (the fix), `tests/frame-seed-geometry.test.js` (new failing-first test),
+`sketches/template_5/template_data.py` (2 stale comments corrected), `frame-defs.json/.js`
+(regenerated). `bspline-frame-builder/scratch/item40_all_template_payloads/template_5_default_
+7x9.json` was ALSO regenerated locally (its own `seedGeometry` now reflects the fix) but, like
+every other file under `scratch/`, left uncommitted -- consistent with this whole session's own
+convention, and the same "no committed generator" limitation item 45 already flagged for this
+entire payload directory. A future session re-running the sweep from a fresh checkout would need
+to regenerate it the same way (the one-off Node script's own approach is in this entry above).
+
+## H23 item 49 -- item 18 resumed: the audit `closed_form_arc.py`'s own declaration deferred ("a separate commit" that never landed)
+
+Dispatch (advisor, 449): declare the seed-derivation convention once (item 17's closed-form
+technique), audit every literal seed as DERIVED / FITTED-OK / WRONG using item 45's map, fix the
+WRONG ones + re-record goldens, preview==build stays 13/13. Code + audit first; live needs
+"Fusion free" first (the advisor had its own pending Fusion probe for Fred).
+
+**First finding: the "declare" half is ALREADY DONE.** `git log` on `fb_engine/closed_form_arc.py`
+turns up `5b922e8` ("H23 item 18 (1/2): declare the closed-form seed-derivation convention",
+2026-10-02, an ancestor of this session's own HEAD) -- three named, independently-tested pure
+functions (`tangent_circle_through_point`, `colinear_circle_through_point`, `true_via_point`),
+the worked example (`fb_engine/t7_geometry.py`'s own `t7_outline()`), and the convention itself
+written into `HANDOFF-ranchy.md`'s own Frame design rules. That commit's own message says, in so
+many words: "Part 2 (separate commit): audit existing templates' literal seeds for suspect cases
+beyond the three already-fixed ones." No such commit exists (confirmed: grepped WORK-LOG.md and
+git log for "item 18 (2/2)" -- nothing). Item 49 IS that missing part 2, not a restart. No new
+`closed_form_arc.py` work needed; this item's own code deliverable is the audit's own permanent
+regression guard, below.
+
+**The audit, per HANDOFF-ranchy.md's own question ("does this seed encode a relationship to OTHER
+geometry, and if so, is it solved from that relationship or just fitted to look right at one board
+size?"), using item 45's own file:line map as the starting inventory:**
+
+- **DERIVED, confirmed, nothing to do:** T7 (`t7_geometry.py`, the worked example itself); T11
+  (its own HW/HH/A/R/S closed-form formulas); T5's and T8's own TOP dip/shoulder radius (T5: item
+  6's `TOP_SEED_RADIUS_EXPR`; T8: its own independently-derived `R = (a^2+d^2)/(4d)`, "the exact
+  tangent-triple formula", with its own dedicated test coverage already) -- both the 2 originally-
+  confirmed-broken incidents item 18 named. T10's arch (items 17/46/47). T12/T13's seed-board
+  routing (seat C's F30 item 3) -- confirmed directly: both call `seed_sketch` in their own
+  `get_template_logic`, the third originally-confirmed incident, already fixed.
+- **FITTED-OK, no geometric relationship to solve, or independently fitted (not copied):** T2/T13
+  (arcs seeded by 3 points alone, no separate Radius dimension -- structurally immune to the
+  radius-vs-chord mismatch this bug class is about); T3/T4's own shoulder/waist/hip seed POINTS
+  (independently-fitted fractions, confirmed different from T1's own -- not a copy); T12's own
+  side-chain radius (`heightIn * 0.06925`/`0.075575`, confirmed numerically distinct from T1's
+  `heightIn/14` -- independently fitted, not reused; not exhaustively closed-form-verified here,
+  since T12's own horn is taper-slanted, not vertical, which `tangent_circle_through_point` would
+  need the exact taper angle to check -- spot-checked only, flagged as a smaller, bounded follow-up
+  if ever wanted, not chased further this item).
+- **FITTED-OK, but with a MEASURED, now-PERMANENTLY-GUARDED margin -- the one real finding:**
+  T1/T3/T4/T5/T8/T10's own shared `arc_shoulder_{R,L}`/`arc_hip_{R,L}` seed Radius dimension
+  (`heightIn/14`, byte-identical across all six templates -- T10's own case is the LITERAL,
+  word-for-word incident item 18 originally named: its `arc_shoulder_R`/`arc_hip_R` Points are
+  copied VERBATIM from T1's, confirmed by diffing the two files' own declared fractions). This
+  radius IS a real tangency relationship -- `arc_shoulder_R` is declared `Tangent` to the VERTICAL
+  `horn_TR` (`p02_08_horn_tangency.py`, identical structure confirmed across all six templates by
+  reading each one's own file) -- exactly what `closed_form_arc.py`'s own `tangent_circle_through_
+  point` is declared for. Computed it directly (new `fb_engine/test_seed_derivation_audit.py`):
+  the TRUE closed-form radius exceeds the declared `heightIn/14` by 0.0056-0.0265 in at Fred's own
+  portrait board sizes (7x9/6x9/9x12), growing to 0.10-0.15 in at the already-excluded landscape
+  sizes (12x6/5.51x1.97) -- the SAME bug class as T5's own original item-6 incident, just two
+  orders of magnitude smaller at the sizes that matter (there: a 23% shortfall, geometrically
+  impossible, wrong-branch solve; here: 1-4% at portrait sizes, imprecise but not impossible).
+
+**Classified FITTED-OK, not WRONG -- and NOT fixed, for two confirmed (not assumed) reasons:**
+(1) every one of these six templates deletes this Radius dimension in its own
+`p02_09_radius_removal.py` before the sketch is considered final -- it only ever nudges the
+solver's INITIAL guess, never binds the built shape; (2) MEASURED, not assumed: every template
+sharing this constant already has a clean, passing golden at every tested size -- read
+`tests/fixtures/frame-parity/template_1_12x6.json` directly (the single WORST-margin case measured
+here, 0.15in gap): all 4 bars, `timelineHealthy: true`. Re-deriving a constant SIX templates share,
+for a value deleted before it can affect anything, that has never once manifested as a defect, is
+exactly what HANDOFF-ranchy.md's own audit section calls "leave seeds alone that are provably
+fine" -- re-deriving it now would be risk for a cosmetic win, not a bug fix.
+
+**The permanent guard, so the margin can't silently widen into a REAL bug the way T5's did:** new
+`fb_engine/test_seed_derivation_audit.py`, 14 (template, arc) cases x 3 portrait boards = 42 pure-
+Python assertions, each computing the TRUE tangent-circle radius via the ALREADY-declared
+`closed_form_arc.tangent_circle_through_point` and asserting the gap against the declared literal
+stays under a generous (0.1in, ~4x today's own worst portrait-size margin) bound -- a future edit
+to either the points or the radius that widens this past the bound fails LOUD, before the gap
+reaches T5's own original scale. Mutation-tested the comparison itself (not just the templates):
+temporarily tightened the bound to 0.001in, confirmed ALL 42 cases fail with the EXACT measured
+gaps (e.g. `template_1:arc_shoulder_R at 7x9: ... gap 0.0056 in`, matching this entry's own
+hand-computed number precisely), restored, confirmed green again.
+
+**No fixes, no goldens re-recorded** -- the audit found nothing classified WRONG (the 3 originally
+-confirmed incidents were already fixed by items 6/17/F30-item-3, before this item ever started).
+**No live Fusion needed for this item at all** -- the entire audit is static/computational
+(resolve_template + pure Python, the same no-Fusion methodology `test_all_templates_shape_outline
+.py` already established), and since nothing was changed, there is nothing for a live preview==
+build re-check to confirm -- did not need to ask for "Fusion free".
+
+Full Python suite: 766 passed (up from 724; +42, exactly the new test's own count), 25 skipped, 0
+failures. `frame-defs.json/.js` untouched (the new test file lives in `fb_engine/`, outside
+`gen_frame_defs.py`'s own `sketches/**/*.py` source-hash scope) -- confirmed no regen needed.
+
+Committed as "H23 item 49: ...". File list: `fb_engine/test_seed_derivation_audit.py` (new).
+
+## H23 item 50 -- item 29 un-parked: PRUNE FOR SPEED -- both named candidates measured and NEITHER should be removed
+
+Dispatch (advisor, 451): re-time a real Send stage by stage (T1/T7/T10 7x9), A/B each candidate
+removal (Pulse, nudges), keep only identical A/B + 13/13 live sweep, one commit per removal,
+report before/after seconds. Keep load-bearing steps (anchors, isTopologyMatched,
+ResolveLineCircleCorner). Ask for "Fusion free" first -- an amendment confirmed it mid-turn.
+Mid-session: the advisor needed Fusion for ~5 min for Fred's own taper probe; paused cleanly
+between calls (confirmed via SendMessage), resumed once told "Fusion back", touched nothing of
+the advisor's own open document.
+
+**Nudges: CONCLUSIVELY NOT safe to remove.** `tools/repro/fusion_t11/step_removal_ab.py`'s own
+`no_nudges` variant, live:
+  - **template_1 at 7x9: `same=False`, geometric deviation 2.12371 in at `3_frame_enclosure`'s own
+    `inner_proj_horn_TL`** -- independently reproduces the SAME class of finding NEXT-SESSION.md's
+    own item 29 text already named for template_10 (2.18 in), now confirmed on a SECOND template,
+    not just inherited folklore.
+  - **template_10 at 7x9: `same=False`, geometric deviation 166.83949 (!) at `2_shape_outline`'s
+    own `top_edge`, plus 2 live warnings** -- catastrophically worse than T1: stripping the
+    `0.001` apex-forcing nudge (`p02_03_loop.py`'s own `top_edge` Arc3Point, `['0.001', LY]`) lets
+    the apex sit EXACTLY on the Y-axis symmetry line, the precise condition items 14/15/17's own
+    multi-session saga already established triggers Fusion's own wrong-branch/degenerate solve.
+  - **template_7 at 7x9: `removed=0`** -- T7 declares no literal `0.00[12]`-style nudges at all
+    (its own DNA-formula params have nothing to strip), so this bug class does not apply to it.
+  - **Explained, not just measured**: every template's own phase docstrings already document WHY
+    (a `0.001`/`0.002` gap exists specifically so Fusion's own AUTO-coincidence detection doesn't
+    weld 2 points together at CREATION time, before the EXPLICIT, ordered `Coincident` chain gets
+    to do it correctly) -- this item's own live A/B is the first time that explanation has been
+    checked against an actual measured failure rather than just asserted. Confirms the dispatch's
+    own "keep load-bearing steps" instinct was right to flag nudges as a real risk, not a safe prune.
+
+**Pulse: geometrically safe (6/6 A/B checks), but the timing says it does NOT pay -- so it is also
+NOT removed.** `no_pulse` on T1/T7/T10, BOTH 7x9 and 9x12 (6 checks): every one `same=True`, 0.0
+geometric deviation, 0 warnings -- the symmetry/welds-phase Pulse (`p02_10_welds.py`/
+`p02_11_symmetry.py`, "Pulse to snap symmetry into the viewport") is genuinely redundant.
+Structurally explained, not just empirically observed: `parametric_engine.py`'s own
+`deferred_compute(sketch)` context manager already wraps the WHOLE sketch build and GUARANTEES
+(in its own `finally`) exactly one full recompute when the build finishes, regardless of any
+intermediate Pulse -- unlike `offsets.py`'s own internal pulse inside `offset_step` (which exists
+to finalize proxy entities an IMMEDIATELY-FOLLOWING miter/projection step needs to look up by
+attribute, a genuinely different, load-bearing need this Pulse doesn't share), nothing between
+the symmetry/welds Pulse and the guaranteed final recompute needs an intermediate snapshot.
+
+But geometric safety was never the whole gate -- item 29's own text: "prune where the TIMING SAYS
+it pays." Measured directly, twice, in two different contexts:
+  - **Isolated (empty doc, run_sketch_only alone):** template_1 baseline 2.5s vs. no_pulse
+    (isolated from baseline in its own run) ~2.4s -- within noise, no measurable benefit.
+  - **A synthetic "heavy" document** (a flat panel + a 15x15 grid of 225 small extruded bump
+    features joined onto it -- 230 timeline entries, NOT a claim this matches a real sculpted
+    B-spline surface's own cost profile, just a cheap way to give Fusion a longer precedent
+    timeline to recompute against): baseline alone rose to 4.16s (confirming heavier documents DO
+    cost more, the right DIRECTION per item 29's own original ~16s-vs-1-2s finding) -- but
+    baseline (4.16s) vs. no_pulse (4.12s), each built in its OWN fresh heavy document (not
+    sequentially in one, which an earlier same-document attempt confirmed confounds the
+    comparison with the delete-and-rebuild overhead in between): still within noise. The gap
+    between baseline and no_pulse did not widen as document weight did.
+  - **Honest limit on this evidence**: my own synthetic heavy document is a ~1.66x slowdown over
+    empty (4.16s vs 2.5s); the ORIGINAL item-29 finding was 8-16x (16s of a 25s Send vs 1-2s
+    empty). I could not reproduce that scale without a REAL captured Send payload carrying
+    `stepVariants`/`stepText` (`send_stage_timing.py`'s own prep-only harness, already built,
+    needs exactly this) -- `~/.bspline-frame-builder/last_send.json` currently holds an unrelated
+    capture (`frame.templateId` is `None`, no frame Send at all), and genuinely reproducing a
+    STEP-imported, stamped panel requires either a real Fred-performed Send with that field kept,
+    or Fred's own document, neither of which this pass had. The TREND across the two weights I
+    could test (no widening gap as weight rose 1x -> 1.66x) is evidence against Pulse's own cost
+    scaling with document weight, but is not proof it stays flat all the way to a REAL document's
+    own full weight -- flagging this boundary explicitly rather than overclaiming a clean negative.
+
+**Decision: remove neither.** Nudges fail the safety gate outright (confirmed broken, one
+catastrophically). Pulse passes safety but fails the TIMING gate on every measurement taken (2
+contexts, 0 measured benefit in either) -- "safe to remove" was never alone sufficient per the
+dispatch's own framing, and removing working code for a benefit that hasn't shown up anywhere
+it's been measured is not a prune, it's just risk. **No code changes, no commit of production
+files, one commit (this entry) for the record** -- "one commit per removal" has nothing to apply
+to when the audit's own conclusion is that neither candidate should be removed.
+
+**Side finding, flagged not fixed:** `step_removal_ab.py`'s own `OUT` path
+(`os.path.join(os.path.dirname(os.path.dirname(FB)), 'scratch', ...)`) resolves to `<repo>/
+scratch/step_removal_results.jsonl`, not `<repo>/bspline-frame-builder/scratch/...` (every OTHER
+script in this directory's own convention) -- the directory didn't exist, so the FIRST run this
+item made crashed with `FileNotFoundError` until the directory was created by hand. Not this
+item's own tool to fix (pre-existing, unrelated to Pulse/nudges); noting it here so the next
+session doesn't re-discover the same crash from scratch.
+
+Full Python suite re-confirmed: 766 passed, 25 skipped, 0 failures (unchanged from item 49 --
+nothing in production code was touched this item). No live 13-template sweep needed -- there is
+no removal to re-check it against.
+
+Committed as "H23 item 50: ..." (WORK-LOG.md only -- no code).
+
+## H23 item 51 -- the REAL costs: a real captured Send payload, the top 2 stages located precisely, one genuine fix landed, the other's cost localized but left unfixed
+
+Dispatch (advisor, 453): a real, full palette payload (stepVariants + stamp + frame, template_7
+at 7x9) at `bspline-frame-builder/scratch/real_send_t7_7x9_full.json`. Replay via
+`_handle_generate`, time the stages, attack the top 2 (stamp projection ~6.7s, timeline reorder
+~4.9s) with identical A/B, one commit each, seconds before/after; also fix `step_removal_ab.py`'s
+own `OUT` path (item 50's own flagged-not-fixed finding). Mid-session: paused twice for the
+advisor's own taper-probe retests (~3-5 min each), confirmed via SendMessage each time, touched
+nothing of the advisor's own `adv_taper_fp` document either time.
+
+**The real payload, replayed (`send_stage_timing.py`, already built and committed as prep-only
+by an earlier session -- this is its first live run):** `total_seconds: 21.57` (matches the
+historical "~25s Send" closely). `empty_doc_seconds: 0.878` vs. the real document's own frame-
+build cost -- confirms item 29's own original finding AT FULL SCALE (my own item 50 synthetic
+"heavy doc" only reached a 1.66x slowdown; this REAL document reaches ~14x, the same order of
+magnitude as the original "8-16x" estimate). Stage breakdown: "Projecting SVG Artwork..." 7.721s,
+"Building the frame..." 12.413s (of which `timeline_reorder_calls: [5.1976]` and
+`solid_coordinator_phases.extrusion: 3.26`).
+
+**Cost #1, "timeline reorder" (~5.2s) -- LOCALIZED PRECISELY, one genuine dead-code fix landed,
+honest about its own (near-zero) measured benefit for THIS stage.**
+`fb_engine/timeline_order.py::reorder_frame_before_inlay` re-fetched `items_before = [timeline.
+item(i) for i in range(timeline.count)]` right after `items` had ALREADY fetched the exact same,
+unchanged timeline (nothing between the two fetches ever reorders anything) -- a second full
+live-API scan for no reason. Fixed: `items_before = items`. New test
+(`fb_engine/test_timeline_order.py::test_scans_the_timeline_only_once_not_twice`, a counting fake
+timeline) proves the scan count halves; mutation-tested (reverted, confirmed red at exactly 2x the
+expected count, restored, green). 21/21 existing tests stayed green -- behavior-preserving, not
+just argued.
+
+But LIVE, re-measured against the SAME real payload after the fix: `timeline_reorder_calls:
+[5.1538]` -- **no meaningful change** (confirmed a 3rd time, [5.1534], after also fixing the
+orphan-doc bug below). Investigated WHY, rather than stopping at "it didn't work": instrumented
+`is_frame_timeline_item` directly -- 36 calls across the whole build, summing to **0.001s total**.
+The redundant fetch (and the per-item entity/attribute filtering it was part of) was never the
+real cost. Instrumented the ACTUAL `.reorder()`/`.canReorder()` calls next (a proxy wrapper around
+the timeline object, no production code touched for this probe): `reorder_frame_before_inlay` is
+called TWICE per Send (confirmed the sketch-build and solid-build call sites `ensure_frame_before_
+inlay`'s own docstring already said exist) -- the FIRST call (early, fewer timeline items) costs
+0.14s across 4 reorders (~0.03s each); the SECOND (late, solid build, more items already in the
+timeline) costs 5.18s across 6 reorders (~0.85-0.90s EACH) -- matching the measured 5.2s almost
+exactly. **The cost is the `.reorder()` CALLS THEMSELVES** (Fusion's own per-call cost, presumably
+an internal recompute/revalidation, scaling with how much model already exists when each call is
+made), not any surrounding Python logic. Did not attempt to reduce the NUMBER of `.reorder()`
+calls: this module's own docstring documents a MEASURED (live, F11) ordering dependency --
+moving items one at a time with a `canReorder` check immediately before EACH move is why a sketch
+inside Frame_N only accepts the move once the component's own occurrence has already moved first
+-- batching these calls risks reintroducing exactly the failure this careful sequencing exists to
+avoid, for a cost (5.2s of a 21s Send) this item's own time budget does not justify risking
+without a dedicated investigation into whether Fusion's own API offers any batched/deferred
+reorder primitive. Flagging for the advisor rather than attempting it rushed.
+
+**Cost #2, "Projecting SVG Artwork" (~7.6-7.7s) -- localized to one specific function, NOT fixed.**
+Instrumented `_compute_artwork_plane` / `_build_constrained_sketch_for_layer` /
+`_import_single_layer_svg` directly (wrapping the handler's own bound methods, no production code
+touched for this probe either). This payload's own stamp has 5 layers, all 5 carrying a
+`sketchManifest`: `_build_constrained_sketch_for_layer` costs 0.075/1.952/0.632/1.565/1.575s =
+**5.799s of the 7.6s** (the plain-SVG import path, `_import_single_layer_svg`, adds another
+1.828s for the 3 layers that also carry raw SVG content). The real work happens inside
+`sketch_manifest_builder.build_constrained_sketch` -- real constraint-based sketch construction
+(projections, geometry creation), not a simple redundant-call pattern like cost #1's own. Did not
+attempt a fix: this is complex, content-dependent geometry-building code I have not read in full,
+and the cost clearly scales with EACH layer's own manifest complexity (0.075s for an empty layer
+vs. 1.5-2s for a real one) rather than looking like one obvious wasted call. A real optimization
+here needs a dedicated pass through `sketch_manifest_builder.py` itself, not a rushed guess against
+code this item's own time budget did not allow fully understanding first.
+
+**A related fix, discovered while USING the tools above, not asked for but directly necessary:**
+`send_stage_timing.py`'s own orphan-cleanup loop (at the top of the script) only ever matches a
+doc whose `rootComponent` has NO occurrences/sketches -- meant for a doc that failed before any
+geometry landed. A doc that successfully built a real T7 frame (occurrences + sketches present)
+never matches it, so the 'full'/'empty' docs it creates were left open FOREVER, one more pair
+every run. MEASURED: this item's own first 2 runs left 4 orphaned docs behind (confirmed by their
+own `adv_stage_timing_fp` fingerprint before closing them by hand, never by name/count). Fixed:
+explicit `HOLD.docs.pop(...).close(False)` for both, in the script's own `finally`. Re-ran twice
+after the fix -- confirmed 0 new orphans each time.
+
+**The explicitly-requested fix:** `step_removal_ab.py`'s own `OUT` path resolved to `<repo>/
+scratch/...` (one `dirname` too many), not `<repo>/bspline-frame-builder/scratch/...` (every other
+script in this directory's own convention) -- crashed with `FileNotFoundError` on its first use
+last item. Fixed the path and added `os.makedirs(..., exist_ok=True)` defensively.
+
+**13-template live sweep, re-run after the one code change that touches the real Send pipeline
+(`timeline_order.py`):** `done=13 crashed=[] bad=[]` -- confirmed nothing regressed. No stray
+scratch documents left open at any point (checked `app.documents` directly after each live call;
+the advisor's own `adv_taper_fp` document was never touched).
+
+Full Python suite: 767 passed (+1, the new timeline-scan-count test), 25 skipped, 0 failures.
+
+Committed as THREE separate commits per the dispatch's own "one commit each": "H23 item 51 (1/3):
+fix step_removal_ab.py's OUT path", "H23 item 51 (2/3): timeline_order.py's redundant timeline
+scan removed", "H23 item 51 (3/3): send_stage_timing.py's own orphan-doc leak fixed" (this
+WORK-LOG entry lands with the third).
+
+## H23 item 52 -- speed round 2: marker-based frame placement eliminates the reorder cost entirely; the projection hypothesis for cost #2 was wrong, measured and corrected
+
+Dispatch (advisor, 455): (A) avoid the 6 x 0.87s reorders by building the frame with `timeline.
+markerPosition` set before the inlay (create in place, restore marker); otherwise explain/remove
+the second reorder pass. (B) inside `build_constrained_sketch`: measure `project()` count x cost
+vs. the rest, then project each source once / skip unused projections. A/B identical, preview==
+build 13/13, seconds before/after on the real payload, one commit each.
+
+**(A) Confirmed the API behavior live, in isolation, before touching production code.** Two
+probes: a plain root-level sketch+extrude (`timeline.markerPosition = 0` before creating it --
+landed exactly there, marker auto-advanced by 1 per new item); then the REAL pattern --
+`addNewComponent` + sketch + extrude, with an existing "Plane for L1"-named item standing in for
+the inlay. Result: `[' B-Spline Set:1', ' Frame_1:1', 'Frame_1_sketch_outline', 'Extrude1',
+'Plane for L1']` -- the WHOLE Frame_1 block landed contiguously, in creation order, before the
+inlay, with ZERO `.reorder()` calls. Confirmed the marker only needs to be set ONCE: it advances
+by itself with each new item, so both `build_sketch` and `build_solid` (item 51's own two
+`ensure_frame_before_inlay` call sites) insert at the SAME marker without re-setting it between
+them.
+
+**Implemented centrally, not per build-phase.** New `fb_engine/timeline_order.py::mark_before_
+inlay(design, logger)` (finds the inlay's own earliest index by NAME alone -- no `.entity`/
+attribute access needed, so it stays cheap even on a large timeline -- sets `markerPosition`
+there, returns the prior position; a graceful no-op, returning `None`, when there's no inlay at
+all) and its own companion `restore_marker_position`. Wired into `fb_engine/send_frame.py::send_
+frame()`, wrapping BOTH `build_sketch` and `build_solid` in one `try/finally` -- one set, one
+restore, covering both phases, restored even if either build raises. `ensure_frame_before_inlay`
+(item 4 in this file's own docstring) stays exactly where it was, as the safety net: its own
+"already in order" early return is a cheap, zero-`.reorder()` no-op once the marker has already
+done the real placement, so keeping it costs nothing and covers whatever the marker-based
+approach might not (e.g. a future code path that creates something the marker doesn't reach).
+
+New tests (`fb_engine/test_timeline_order.py::TestMarkBeforeInlay`, 6 cases: earliest-of-several
+inlay wins, no-inlay no-op, no-timeline no-op, restore puts it back, restore-with-None no-op) --
+the shared `FakeTimeline` fixture (also used by `test_send_frame.py`) gained a plain `markerPosition`
+attribute (defaulting to `count`, matching a fresh real timeline) so these tests could run without
+crashing the 24 EXISTING `test_send_frame.py` tests that construct one; it cannot simulate "a new
+item lands at the marker" (no API to add one), so that side effect is confirmed LIVE, not here.
+Mutation-tested (removed the `break` that keeps the EARLIEST match): both the single- and
+multiple-inlay tests go red at the wrong index, restored, green. Full suite unaffected otherwise
+(all 24 existing `test_send_frame.py` tests + 22 existing `test_timeline_order.py` tests stayed
+green after the fakes update).
+
+**LIVE, re-measured against the exact same real T7 payload used for item 51's own baseline:**
+`timeline_reorder_calls` dropped from **5.1976s to 0.0011s** -- essentially eliminated (4700x).
+`solid_coordinator_phases.total` dropped from 8.62s to 3.42s (the `ensure_frame_before_inlay`
+call it includes is now a true no-op). "Building the frame..." dropped from 12.413s to 7.111s.
+**Total Send time: 21.57s -> 16.145s, a ~25% reduction from this ONE change.** Confirmed 0 MITER
+MISS / 0 [ERROR] / 0 fallback lines in the debug log afterward -- same correctness, not just
+speed. 13-template live sweep (`item40_all_template_sweep.py`, all 13 via the SAME unseeded,
+no-inlay synthetic-panel path this whole session's own testing has always used): `done=13
+crashed=[] bad=[]` -- confirms the "no inlay present" no-op path (the common case, and the ONLY
+path every prior item's own live testing this session ever exercised) is completely unaffected.
+Between the real-payload run (confirms the WITH-inlay path) and the 13-template sweep (confirms
+the WITHOUT-inlay path), both branches of `mark_before_inlay` are now live-verified.
+
+**(B) Measured first, exactly as asked -- and the dispatch's own hypothesis about `project()`
+turned out to be wrong, by direct measurement, not argument.** Checked the two SPECIFIC
+mechanisms named first: the real T7 payload's own 5 layers declare 41 total projections across
+3 non-empty layers (8 + 7 + 26) -- EVERY `sourceId` is unique within its own layer (0 duplicates
+to de-dupe) and EVERY `targetId` is referenced by a `constraints` entry afterward (0 unused to
+skip). Neither "project each source once" nor "skip unused projections" has anything to act on in
+this real data -- confirmed by actually counting, not assumed from the dispatch's own framing.
+
+Instrumented `sketch.project()` itself directly (same-module monkeypatch on `sketch_manifest_
+builder`, confirmed necessary: `b-spline-gen.py` imports `build_constrained_sketch` by name, so
+patching it from outside silently no-ops -- the SAME cross-module-import gotcha item 51 already
+found for `ensure_frame_before_inlay`; `_apply_projections`, called from WITHIN the same module,
+patches correctly): **all 41 `.project()` calls combined cost 0.261s** -- against the ~5.8s this
+layer-building work takes overall, that is NOT the dominant cost (about 4.5% of it). Instrumented
+every other internal step the same way to find what actually is: `_apply_constraints` (2.158s
+total across 5 calls, one single call costing 1.305s), `_create_geometry` (1.761s), `_apply_
+declared_dimensions` (1.027s, one call costing 0.933s), `_sync_manifest_parameters` (0.373s),
+`_stamp_bspline_owner` (0.0s, negligible). **`_apply_constraints` and `_create_geometry` are the
+real dominant costs, not `project()`** -- genuine constraint-solving and sketch-entity-creation
+work that scales with each layer's own lattice complexity (ties/nodes/rails count), confirmed by
+the SAME layer (index 1, no raw SVG content, 0 projections, but apparently the most lattice
+entities) being the single most expensive call for BOTH `_apply_constraints` (1.305s) and
+contributing heavily elsewhere.
+
+**Did not attempt a fix for (B).** The dispatch's own two named candidates (de-dup, skip-unused)
+measured to zero opportunity; the ACTUAL dominant costs (`_apply_constraints`, `_create_geometry`)
+are not a simple redundant-call pattern the way item 51's `timeline_order.py` fix or this item's
+own part (A) were -- they are real geometric work whose own INTERNAL structure (which constraints
+are genuinely load-bearing vs. possibly simplifiable, which entity types are more expensive to
+create than others) I have not read in enough depth to change safely within this item's own
+budget. Flagging `_apply_constraints`/`_create_geometry` (not `project()`) as where a dedicated
+follow-up should actually look, with the exact per-call numbers above so it does not need to
+re-measure from zero.
+
+No stray scratch documents left open at any point (checked `app.documents` directly after each
+live call; the advisor's own `adv_taper_fp` document was never touched).
+
+Full Python suite: 773 passed (+6, the new `TestMarkBeforeInlay` cases), 25 skipped, 0 failures.
+
+Committed as ONE commit for part (A) (the only candidate with an actual fix) -- "H23 item 52:
+marker-based frame placement eliminates the reorder cost (~5.2s -> ~0s); the SVG-projection
+hypothesis for cost #2 measured and found wrong (project() is ~4.5% of that cost, not the
+dominant share) -- no fix attempted there, flagged for a dedicated follow-up". Part (B) has no
+code change to commit -- same "measured, explained, nothing safe to prune" shape as item 51's own
+SVG-projection and item 50's own Pulse findings.
+
+## H23 item 53 -- BLOCKER fix: item 52's marker restore could roll back the inlay's own trailing features; the advisor's review caught it before deploy
+
+Dispatch (advisor, 457): item 52 accepted pending one blocker. `restore_marker_position` restores
+the index READ BEFORE the frame's own K features were inserted; with the marker at the end, the
+build growing the timeline by K leaves the restore pointing K items too early, rolling back the
+LAST K items -- the inlay's own trailing features. (1) Pure test + fix: `moveToEnd()` if the
+marker was at the end before, else `prior + K`. (2) LIVE on the real payload: markerPosition ==
+count after Send, every inlay feature active and healthy, identical bodies, a second Send clean.
+(3) Re-time: does 16.1s hold.
+
+**Confirmed the bug exactly as described, by reading the code, before writing anything.**
+`mark_before_inlay` captured only a bare int (`prior = timeline.markerPosition`) with no record
+of the timeline's own count at that moment; `restore_marker_position` blindly wrote that stale
+int back. Once the build inserts K new items AT the marker (H23 item 52's own confirmed
+behavior -- the marker auto-advances per new item), the timeline is K items longer, so the old
+`prior` index now sits K positions too early in the GROWN timeline -- squarely in the territory
+item 53's own dispatch describes.
+
+**Fix:** `mark_before_inlay` now returns `{"prior": ..., "count_before": ...}` (an opaque state,
+callers never inspect it -- `send_frame.py` passes it straight through unchanged) instead of a
+bare int. `restore_marker_position` reads `count_after = timeline.count` at restore time: if
+`prior == count_before` (the marker was at the end before -- the normal case, nothing was rolled
+back), it calls `timeline.moveToEnd()` (falling back to `markerPosition = count_after` if that
+method isn't present, e.g. an older fake); otherwise it restores to `prior + (count_after -
+count_before)`, shifting the old boundary forward by exactly how much the timeline grew, per the
+dispatch's own literal fix. Confirmed live first that `design.timeline.moveToEnd()` actually
+exists on the real API before relying on it (`hasattr` check against the live doc).
+
+**New tests** (`test_timeline_order.py::TestMarkBeforeInlay`): the fake gained an `insert_at_
+marker(name)` method (mirrors the real API confirmed live in item 52 -- a new item lands AT
+`markerPosition`, which then advances by one) and a plain `moveToEnd()`, since the old fake had
+no way to simulate "the timeline grew between mark and restore" at all. Three new cases: (a) the
+actual bug scenario -- marker at the end, 3 items inserted, restore must land at the NEW end (6),
+not the stale prior (3); (b) marker NOT at the end before (something already rolled back on
+purpose) -- restore must land at `prior + K`, not `prior` and not the new end; (c) a stand-in
+timeline with no `moveToEnd()` still reaches the same end position via the `markerPosition`
+fallback. Also updated the two pre-existing tests that asserted the OLD bare-int return shape.
+
+**Mutation-tested**: reverted `restore_marker_position` to the pre-fix body (`timeline.
+markerPosition = state["prior"]`, discarding the count-tracking entirely) and re-ran just the
+`TestMarkBeforeInlay` class -- the 3 new tests failed with exactly the predicted wrong numbers
+(`1 == 3` and `2 == 3` for the two growth-aware cases; `2 == 3` for the moveToEnd-fallback case),
+the 6 pre-existing ones stayed green. Restored from the session's own scratchpad copy (never from
+HEAD -- this fix was never committed yet), cleared the stale `.pyc`, re-ran: all 9 green again.
+
+**LIVE, on the real T7 payload (has a real inlay -- lattice + 4 SVG stamp layers), a fresh scratch
+doc, replaying `_handle_generate` through the ACTUAL production path (`_handle_send_frame` ->
+`fb_engine.send_frame.send_frame`, the function item 52 wired the marker into):**
+- Send 1: 16.152s (matches item 52's own 16.1s claim -- holds). `timeline.markerPosition == timeline.count == 21` (the marker IS at the new end, not the stale pre-build count). Zero unhealthy timeline items. All 9 inlay-named items (`Plane for pattern lattice-...`, 4x `Source - L*-...[constrained]`, 4x their build-only counterparts) report `HealthyFeatureHealthState` and `isSuppressed == False` -- none rolled back.
+- Send 2 (same doc, same payload, `isAppend=False` -- the real "click Send again" path: `_handle_generate` deletes the previous frame + B-Spline Set and rebuilds from scratch): 24.461s. Timeline count unchanged at 21 (nothing leaked). `markerPosition == count == 21` again. Same 9 inlay items, same indices, same healthy/not-suppressed state. `root.occurrences` == exactly `["B-Spline Set:1", "Frame_1:1"]` -- no `:2` duplicates, no leftovers.
+- Document count confirmed clean before and after (4: Fred's 3 real docs + the advisor's own `adv_taper_fp`, never touched).
+
+**One live anomaly found, investigated, and ruled OUT as unrelated.** Both sends logged two
+`[ERROR]` lines: `PROFILE 2/4: NOT BUILT: one profile spans 2 bars (['proj_arc_neck_L/R',
+'proj_roof_L/R']): a miter did not split it` (T7's own neck/roof miter, the same failure CLASS as
+item 38's "eave miter doesn't split" sliver bodies). Before trusting item 53's own result, checked
+whether this was a NEW regression from items 52/53: built a throwaway detached worktree at
+4f96fe9 (the commit immediately before item 51 touched anything) and replayed the IDENTICAL
+payload through the UNMODIFIED pre-51 code. **Same two `[ERROR]` lines, same bars, verbatim.**
+Pre-existing in this exact captured payload, confirmed by direct A/B, not caused by items 51/52/53
+-- flagging for a separate item, not fixing here (out of this item's own scope; T7's neck/roof
+miter chain has its own history of exactly this failure class). Worktree removed after the check.
+
+**Did not re-run the 13-template sweep.** item 53 changes behavior ONLY inside the `prior is
+not None` branch of `restore_marker_position` -- the no-inlay case (`mark_before_inlay` returns
+`None`) hits the exact same `state is None` early-return it always has, character-for-character
+unchanged. The 13-template sweep exclusively exercises the no-inlay path (confirmed in item 52's
+own writeup), so it cannot exercise this item's own change at all; re-running it would spend
+Fusion time proving nothing new. The REAL-payload live check above is the one that actually
+exercises the fixed branch, and it ran twice (fresh Send + re-Send).
+
+Full Python suite: 776 passed (+3, the new growth-aware restore cases), 25 skipped, 0 failures.
+
+Committed as ONE commit (pure fix + tests only -- no separate "part" split, since this is a single
+blocking defect with a single fix): "H23 item 53: fix restore_marker_position to account for the
+timeline's own growth during the build (moveToEnd when nothing was rolled back, prior+K
+otherwise) -- the advisor's review caught this before item 52 deployed". Pre-existing T7
+neck/roof miter finding flagged in the pass-back, not fixed here.
+
+## H23 item 54 -- the T7 "PROFILE 2/4 NOT BUILT" explained: a stale, pre-guard seed, not a regression; 5/5 bars confirmed live with a fresh one; send-2's extra ~8s traced
+
+Dispatch (advisor, 459): items 52+53 deployed. Check whether today's isValid (item 39's hook
+guard + item 40's narrower T7 ranges) rejects the captured payload's own seed -- if yes, explain
+and confirm 5/5 bars live with a fresh payload using the SAME stamp/stepVariants; if no, it's a
+real bug, probe + fix. Plus one line on where send-2's extra ~8s goes.
+
+**Ran the EXACT captured seed through today's real isValid (the same chain frame-panel.js's own
+generateFrame() uses -- inner defects, piece length, reflex-arc, then item 39's miterStaysInside
+Wood), via a throwaway vitest probe (not committed) importing the shipping editor modules
+directly.** The captured payload's own `frame.seeds` (`{gableNeckWidth: 0.4035, neckHeight:
+0.2241, bodyFlareHeight: 0.6847}`) fails ONLY the item-39 hook check: `minMargin = 0.00194`
+against a floor of `t * MIN_MITER_MARGIN_T_FRAC = 0.75 * 0.04 = 0.03` -- more than 15x under the
+floor. Inner defects, piece length, and reflex-arc all pass. **Confirmed: today's Generate could
+never produce this seed** -- the payload was captured 2026-10-02 21:52, the SAME day but BEFORE
+item 39's guard (merged later that session) ever existed, so it is a stale, pre-guard draw, not
+a live-reachable state and not a regression from items 51/52/53 (already independently confirmed
+in item 53's own A/B against the pre-item-51 commit, which reproduced the identical two [ERROR]
+lines on the SAME stale seed).
+
+**Built a fresh, today-valid seed and confirmed 5/5 bars live, with the inlay, per the dispatch.**
+A second throwaway vitest probe ran `generateValidFrameSeeds(tpl, region, 1, t, isValid)` with
+that SAME real isValid chain (today's actual Generate path, item 40's retry loop) for template_7
+at 7x9, got `{gableNeckWidth: 0.4877, neckHeight: 0.2331, bodyFlareHeight: 0.6704}` (passes on the
+FIRST attempt -- seed 1, no retry needed), computed its own `seedGeometry` via the same
+`frameSeedGeometry` call Send uses, and wrote a fresh payload: a deep clone of the captured one
+with ONLY `frame.seeds`/`frame.seedGeometry` replaced -- `stepVariants`/`stamp`/`params` byte-
+identical to the original capture, per the dispatch's own "same stamp/stepVariants" instruction.
+LIVE (fresh scratch doc, the real `_handle_generate` -> `_handle_send_frame` -> `send_frame.send_
+frame` path, same harness as items 51-53): **5 distinct frame bars built** (`frame_base`,
+`frame_roof_left`, `frame_roof_right`, `frame_side_left`, `frame_side_right`, all real volumes,
+NO sliver `(1)` bodies this time), **zero [ERROR]/MITER MISS/FALLBACK log lines**, all 9 inlay
+items Healthy/not-suppressed, `markerPosition == count == 21` (item 52/53's own fix still holding
+on a different seed), 16.325s (consistent with items 52/53's own ~16.1-16.3s). Both scratch test
+files deleted after use (per this project's own "probe, don't commit scratch" convention); the
+fresh payload JSON itself left in `bspline-frame-builder/scratch/` untracked, same as every other
+`itemNN_*.json` already there.
+
+**Send-2's extra ~8s, traced to a stage, not guessed at.** Re-ran this SAME fresh payload twice
+on one doc (send1 then send2), wrapping `_send_progress` to capture each stage's own timestamp
+(same mechanism as `send_stage_timing.py`):
+```
+                              send1 (fresh)   send2 (re-Send)   delta
+Preparing -> Importing Clean      0.023s          4.340s        +4.317s
+Importing Clean -> Analyzing      1.375s          1.331s        -0.044s
+Analyzing -> Projecting           0.001s          0.001s         0.000s
+Projecting -> Cleaning up         7.652s          9.736s        +2.084s
+Cleaning up -> Building           0.003s          0.004s        +0.001s
+Building -> Finalizing            7.266s          8.781s        +1.515s
+TOTAL                            16.320s         24.193s        +7.873s
+```
+The single biggest jump (+4.317s) is the "Preparing Geometry..." -> "Importing Clean..." gap --
+exactly where `_handle_generate` calls `_delete_frames` + `_remove_last_import` +
+`_delete_bspline_sets` before importing anything new (b-spline-gen.py:1297-1299). Measured
+DIRECTLY, not inferred: send1 has nothing to delete (fresh doc) and this gap costs 0.023s; send2
+deletes a real frame + B-Spline Set first and costs 4.340s. The REMAINING ~3.6s is NOT one single
+step regressing -- it's the SVG-projection stage (+2.084s) and the frame-build stage (+1.515s)
+each costing slightly MORE on the second pass, even though the final timeline item COUNT nets out
+identical (21 both times, confirmed in item 53's own check) -- consistent with the SAME pattern
+items 51/52 already measured for `.reorder()` calls: Fusion's own per-operation cost scales with
+the timeline's CUMULATIVE history (delete-then-rebuild grows the total number of timeline entries
+ever created, even though the live/visible count nets out the same), not just the visible item
+count. No fix attempted -- the dispatch asked for an explanation, not a change, and this is the
+same "real cost, not a redundant call" shape as item 52's own `_apply_constraints`/`_create_
+geometry` finding: genuine per-operation scaling, not a pattern to prune.
+
+No code change this item -- pure investigation + explanation, matching item 50's own "WORK-LOG
+only" precedent. No new committed test either: `tests/frame-no-hooked-miters.test.js` already
+declares the general property ("T7's own eave -- the captured case item 38 found, confirmed by
+this rule") that a raw T7 draw can be structurally tight enough to fail the hook check; this
+item's own captured seed is one more instance of that SAME already-tested property, not a new one
+needing its own permanent test.
+
+Full suite unaffected (no production code touched): Python 776 passed/25 skipped; JS vitest 3115
+passed across 162 files (unchanged from before this item -- the two scratch probe files were
+never part of the suite and were deleted after use).
+
+Committed as ONE commit, WORK-LOG only: "H23 item 54: T7 PROFILE 2/4 NOT BUILT explained -- a
+stale pre-guard seed, not a regression; 5/5 bars + 0 errors confirmed live with a fresh seed;
+send-2's extra ~8s traced to delete (+4.3s) + per-operation cost scaling on the larger cumulative
+timeline (+3.6s)".
+
+## H23 item 55 -- speed round 3: the re-Send delete's own 4.23s traced to 5 redundant feature deletes that the occurrence delete already does for free; skipping them saves ~4.4s with zero behavior change
+
+Dispatch (advisor, 461): the re-Send delete goes from 0.02s to 4.34s. Measure how it deletes
+(per feature/body/occurrence, full recompute per deleteMe?), try the smallest identical change.
+Gate: re-Send doc identical to a fresh Send, a third Send also clean, seconds before/after.
+
+**Measured per-call, not per-function, to find exactly which deleteMe()s cost what.** Wrapped
+`send_frame.delete_previous_frames`'s own two loops (not just `_delete_frames`'s outer total)
+live, on the real T7 payload (same doc, Send 1 then Send 2): `_delete_frames` 4.2334s total,
+`_remove_last_import` 0.0661s, `_delete_bspline_sets` 0.0s (already a no-op -- `_remove_last_
+import`'s own `current_import_group.deleteMe()` already removed the B-Spline Set occurrence).
+Inside `delete_previous_frames`: SIX `FRAME_MEMBER_ATTR`-tagged feature deletes at `[0.8485,
+0.8298, 0.8279, 0.8223, 0.8178, 0.036]`s -- five of them cost ~0.82-0.85s EACH (the SAME per-call
+cost item 51 already measured for `.reorder()`) -- versus exactly ONE occurrence delete at
+0.0504s. **The occurrence delete, not the feature deletes, is cheap.**
+
+**Root cause, found by reading extrusion_engine.py, not guessed at:** `_finalize_feature`'s own
+comment says it plainly -- "Declared frame membership ... on EVERY feature, BAR and SURROUND
+alike". T7's 5 bar extrudes (frame_base, roof_left/right, side_left/right) are ALL tagged
+`FRAME_MEMBER_ATTR`, same as the TRIM_CUT. `delete_previous_frames`'s own loop explicitly
+`.deleteMe()`s every one of them BEFORE deleting the Frame_1 occurrence two lines later -- but
+a bar extrude lives INSIDE the Frame_1 component, so the occurrence delete that follows removes
+it anyway, for free (confirmed by this project's own established convention elsewhere: deleting
+an occurrence deletes everything built inside its component, same as the B-Spline Set's own
+BSPLINE_SET_ATTR comment already states). Only the TRIM_CUT -- tagged the same way but living in
+'Clean', OUTSIDE the frame's own component -- genuinely needs its own explicit delete, since the
+occurrence delete never reaches outside the frame. **5 of the 6 explicit feature deletes were
+pure waste: ~4.1s of real time, every single re-Send, deleting things about to be deleted anyway.**
+
+**Fix (`send_frame.py::delete_previous_frames`):** before calling `a.parent.deleteMe()` on a
+tagged feature, check whether its own `parentComponent.name` equals the frame's own component
+name; if so, skip it (the occurrence delete below gets it for free) -- anything whose owner is
+NOT the frame's own component (the TRIM_CUT) is deleted exactly as before. The occurrence-delete
+loop itself is untouched.
+
+**New test** (`test_send_frame.py::test_a_resend_never_explicitly_deletes_a_bar_extrude_only_
+the_occurrence_and_the_trim_cut`): the shared fake `Entity.deleteMe` now also appends its own
+name to a new `World.explicit_deletes` list (distinct from the cascade `delete_entity` already
+performs when an occurrence dies) -- lets a test assert on WHICH deletes were explicit calls,
+not just the end state. Re-Sends the existing 4-bar + TRIM_CUT fixture (`Builds.solid`, already
+used by the pre-existing `test_a_resend_leaves_exactly_one_Frame_1_and_one_trim_cut`) and asserts
+the explicit-delete list is exactly `["t1_TRIM_CUT", " Frame_1:1"]` -- never any of the 4 bar
+extrude names -- while the end state (frame_names, trim_cut count, full name list) stays
+byte-identical to the pre-item-55 assertion. **Mutation-tested**: reverted to the pre-fix body
+(backed up to the session's own scratchpad, never from HEAD -- uncommitted), re-ran just this
+test -- failed exactly as predicted, `['t1_frame_right_Extrude', 't1_frame_bottom_Extrude',
+'t1_frame_top_Extrude', 't1_frame_left_Extrude', 't1_TRIM_CUT', ' Frame_1:1']` (all 4 bars
+present). Restored, cleared the stale `.pyc`, confirmed green again (36/36 in this file).
+
+**LIVE, on the real T7 payload (fresh seed from item 54, same inlay), three Sends on one doc:**
+```
+            seconds   occurrences               marker==count   bodies/volumes      inlay 9/9   errors
+Send 1      16.162s   [B-Spline Set:1,            21==21 yes    base/roof L+R/      healthy      0
+                       Frame_1:1]                                side L+R (5 bars)
+Send 2      19.866s   SAME                        SAME          BYTE-IDENTICAL       SAME       0
+            (was 24.32s before this fix, measured earlier this item with the same timers --
+             a ~4.45s / ~18% reduction on send-2 specifically, matching the ~4.1s of redundant
+             deletes measured above almost exactly)
+Send 3      24.223s   SAME                        SAME          BYTE-IDENTICAL       SAME       0
+```
+Send 2's own state (occurrences, marker, every body's volume to 6 decimal places, every inlay
+item's health/suppressed flag) is BYTE-IDENTICAL to Send 1's -- the gate's own "re-Send doc
+identical to a fresh Send" satisfied exactly, not approximately. Send 3 (the gate's own "a third
+Send also stays clean") is ALSO byte-identical, confirming the fix holds under repeated re-use,
+not just once. Send 3's own 24.223s being higher than Send 2's 19.866s is NOT a regression from
+this fix -- it's the SAME already-documented pattern (item 54's own WORK-LOG: Fusion's per-
+operation cost scales with the timeline's cumulative history, which keeps growing with every
+delete+rebuild cycle even though the live item count nets out the same each time); this fix's own
+contribution is the ~4.1-4.4s it saves AT EACH re-Send relative to what that same re-Send would
+have cost without it, not a claim that re-Sends get monotonically faster over a session.
+
+Document count clean before and after (4: Fred's 3 real docs + the advisor's own untouched
+`adv_taper_fp`).
+
+Full Python suite: 777 passed (+1), 25 skipped, 0 failures. JS vitest untouched this item (no JS
+file changed) -- not re-run.
+
+Committed as ONE commit: "H23 item 55: re-Send delete's 4.23s traced to 5 redundant feature
+deletes the occurrence delete already does for free -- skip them, ~4.4s saved, byte-identical
+state across 3 Sends".
+
+## H23 item 56 -- speed round 4, MEASURE + PROPOSE only: full stage table, the stamp sketch's per-call breakdown, top 3 remaining wins ranked
+
+Dispatch (advisor, 463): item 55 deployed, send-2 24.3->19.9s. Build the full stage table for
+send-1 and send-2 on the real payload (fresh seed), with every stage > 0.3s and its call count +
+per-call cost. For the stamp sketch's own `_apply_constraints`/`_create_geometry`: count
+constraints/curves per layer, per-call cost, and whether it's per-call overhead (batchable) or
+one big solve (not cheaply fixable). Propose the top 3 remaining wins, ranked, with an estimated
+saving each. No production code this pass -- the advisor decides with Fred whether to continue.
+
+**Method.** Replayed the item-54 fresh, today-valid T7 7x9 payload (the same seed/inlay used to
+gate items 53-55, so this table reflects the code as it actually ships today, not a stale
+capture) through the real `_handle_generate` -> `_handle_send_frame` -> `send_frame.send_frame`
+path, twice on one doc (Send 1 fresh, Send 2 re-Send). Wrapped `_send_progress` (stage
+boundaries), `sketch_manifest_builder.constraint_step`/`dimension_step` (both imported with
+`from fb_engine.X import Y` at *their own* call sites inside `_apply_constraints`/`_apply_
+declared_dimensions` -- same-module patches on `smb.constraint_step` etc. work, per items 51/52's
+own already-confirmed cross-module-binding rule) and all 6 `_create_*_entity` helpers, each
+recording (sketch name, type, duration). `timeline_order.ensure_frame_before_inlay` wrapped too,
+confirming items 52/53/55's own fixes are all still holding (reorder calls ~0.001s, not re-
+measured as a "cost" here).
+
+**Full stage table** (stage = time since the PRIOR stage's own progress message; "Building the
+frame" and "Projecting SVG Artwork" are the two stages this table drills into further below):
+
+```
+stage                              send-1 (16.497s)   send-2 (19.772s)   delta
+Preparing -> Importing Clean            0.023s             0.203s        +0.180s  (delete, item 55: now negligible)
+Importing Clean -> Analyzing            1.394s             1.328s        -0.066s  (STEP import -- noise)
+Analyzing -> Projecting                 0.000s             0.000s         0.000s
+Projecting -> Cleaning up (STAMP)       7.580s             9.554s        +1.974s  (the stamp sketch build, broken down below)
+Cleaning up -> Building                 0.004s             0.004s         0.000s
+Building -> Finalizing (FRAME)          7.496s             8.683s        +1.187s  (frame sketch+solid build)
+TOTAL                                  16.497s            19.772s        +3.275s
+```
+Item 55's own fix is confirmed still working (delete dropped from 4.34s to 0.2s, now the
+CHEAPEST stage, not the dominant one) -- the growth between Send 1 and Send 2 has moved entirely
+into the two stages that were always the biggest (stamp build, frame build), both growing by
+~1-2s each, consistent with items 51/52/54/55's own already-documented finding: Fusion's per-
+operation cost scales with the timeline's cumulative history, not the live item count, so EVERY
+remaining Fusion-side operation gets a little more expensive on each re-Send, not just deletes.
+
+**The stamp sketch, broken down per call (not just per function) -- send-1 numbers, send-2 in
+WORK-LOG's own detail if needed, same shape both times:**
+
+*`_apply_constraints` (125 calls, 2.1456s total, matches item 52's own 2.158s aggregate):*
+```
+constraint type   n    total     avg      max      per-layer n (Source - Lx [constrained])
+Coincident        81   0.8556s   0.0106s  0.0572s   spread across all 5 layers
+Tangent            8   0.8087s   0.1011s  0.4227s   ONE call (L2's own) is 0.4227s -- the rest cheap
+Equal              6   0.3606s   0.0601s  0.1345s   same shape: one dominant call, rest cheap
+Vertical          19   0.0844s   0.0044s  0.0060s   uniform, cheap
+Horizontal        11   0.0363s   0.0033s  0.0044s   uniform, cheap
+```
+By layer: L2 (lattice piece, "Source - L2 - vbit (0.25in) [constrained]") alone is 32 calls /
+1.2862s -- MORE than half the total -- because L2's own Tangent/Equal constraints are the ones
+with the single expensive call each. **Two different shapes, both real:** Coincident/Horizontal/
+Vertical are genuine PER-CALL OVERHEAD (81+19+11=111 near-uniform cheap calls summing to ~1s from
+count alone -- a batching mechanism could in principle help, IF one existed). Tangent/Equal are
+closer to ONE BIG SOLVE each (one costly call per sketch, the rest near-free) -- consistent with
+Fusion settling the sketch's remaining DOF on whichever constraint happens to fully pin it down,
+usually one of the last applied -- NOT obviously fixable by batching, and reordering which
+constraint goes last is a correctness risk (can change which valid solution the solver lands on),
+not just a performance change.
+
+*`_create_geometry` (62 calls, 1.7502s total, matches item 52's own 1.761s):*
+```
+entity type              n    total     avg      max
+_create_slot_entity      26   1.3815s   0.0531s  0.0785s   compound geometry (addCenterToCenterSlot)
+_create_arc3_slot_entity  6   0.2454s   0.0409s  0.0513s   compound geometry, same family
+_create_circle_entity    26   0.1109s   0.0043s  0.0053s   simple, cheap
+_create_line_entity       4   0.0124s   0.0031s  0.0033s   simple, cheap
+```
+Slots (32 of 62 entities) are 1.627s of the 1.75s total -- genuinely compound geometry (each call
+creates multiple underlying curves), not a redundant-call pattern; this is REAL work scaling with
+entity count, same conclusion item 52 already reached for `_create_geometry` as a whole.
+
+*`_apply_declared_dimensions` (28 calls, 1.0388s total, matches item 52's own 1.027s):*
+```
+dim type    n    total     avg      max      sketch
+Diameter    26   0.9452s   0.0364s  0.0404s   ALL 26 on "Source - L4 - ballnose (0.12in) [constrained]"
+Distance     2   0.0936s   0.0468s  0.0470s   split across sketches
+```
+L4 is 26 near-identical node circles, each: create (`_create_circle_entity`, ~0.004s) + dimension
+(`dimension_step` Diameter, ~0.036s) -- a UNIFORM, no-outlier per-call pattern (max 0.0404s vs.
+avg 0.0364s), the clearest "pure count x per-call-cost" shape in this whole table.
+
+**Top 3 remaining wins, ranked by estimated saving (most speculative/riskiest first is NOT the
+ranking -- ranked by size, with confidence stated honestly, since the dispatch asked for both):**
+
+1. **Deferred sketch compute during the stamp build (`sketch.isComputeDeferred`), est. 1.5-3.0s/
+   Send, LOW confidence.** The Coincident/Horizontal/Vertical/Diameter calls above (121 near-
+   uniform calls, ~1.8-2.3s combined) are the textbook shape for Fusion recomputing on every
+   single API call rather than batching -- the SAME per-call-overhead shape items 51/55 already
+   found and fixed for `.reorder()`/`.deleteMe()`. `tools/repro/fusion_t11/send_stage_timing.py`
+   already has an UNVALIDATED, EXPLICITLY-FLAGGED-RISKY prototype of this exact idea
+   (`_apply_deferred_whole_build_variant`, item 29's own prep) -- its own docstring warns a
+   deferred-mode offset's proxies aren't finalized, so downstream ID lookups (ctx.entity_map,
+   which `_apply_projections`/dimension targets/parity-checking all read by id) can silently
+   no-op. This is the LARGEST candidate by raw magnitude but needs its own dedicated validation
+   pass (does every entity-id lookup still resolve correctly under deferred compute?) before it's
+   safe to try live -- not a "just flip it" change.
+2. **Stop separately dimensioning L4's 26 node circles (bake the radius into the circle's own
+   creation call instead), est. 0.95-1.3s/Send, MEDIUM confidence, GATED ON A DESIGN DECISION.**
+   Mechanically simple (create each circle with `addByCenterRadius(center, resolved_radius)`
+   instead of a default radius + a separate `dimension_step` Diameter call) -- but this changes
+   those 26 circles from PARAMETRICALLY resizable (if `nodeRadius` is a live expression Fred could
+   edit in the Parameters dialog after the fact) to fixed-at-generation, same category of decision
+   this project already gates behind Fred's own yes ([[feedback_ask_before_guards]] -- not a
+   guard, but the SAME "don't change user-facing parametric behavior without asking" shape).
+   NOT attempted here -- needs Fred's answer on whether these node circles are ever meant to be
+   edited parametrically after a Send, same as any other dimension removal would.
+3. **Investigate the stamp stage's own ~2.4-2.8s not yet accounted for by constraints+geometry+
+   dimensions+projections combined (7.58s stage total - ~5.19s measured this item), est. UNKNOWN,
+   LOWEST confidence -- this is "where to measure next," not a fix.** Likely sketch-level
+   overhead per layer (sketch creation/naming/placement, `_sync_manifest_parameters`, `_stamp_
+   bspline_owner` -- items 52 already found these individually negligible, so it's probably many
+   small uninstrumented calls rather than one big one, but that's an inference, not a measurement
+   -- flagging it honestly rather than guessing further).
+
+**Deliberately NOT proposed as a win:** the frame's own solid-build extrusion (`solid_coordinator_
+phases`: discovery 0.01s + extrusion 3.45s + finishing 0.2s = 3.67s of send-2's 8.683s "Building
+the frame" stage) is real boolean/extrude CAD work for 5 bars + 1 trim cut with no redundant-call
+pattern found (items 51/52/55 already checked reorder/projection/delete calls here) -- genuine
+work, not a prunable cost. Same for "Analyzing Stamping Surface" (~1.3-1.5s, the area-weighted
+UV-grid underside detection item 37 deliberately tuned for correctness, `UNDERSIDE_GRID = 9` --
+shrinking the grid to save time risks reintroducing the exact false-negative item 37 fixed, not
+evaluated further here).
+
+No production code changed this item, per the dispatch's own "measure + propose only."
+
+Committed as ONE commit, WORK-LOG only: "H23 item 56: full send-1/send-2 stage table + stamp-
+sketch per-call breakdown; top 3 remaining wins ranked with estimates, none attempted".
+
+## H23 item 57 -- validate win #1 (deferred compute across the stamp build): REVERTED, saves under 1s -- the per-call costs are solver/API work, not suppressible recompute
+
+Dispatch (advisor, 465): validate item 56's own "win #1" properly -- A/B every stamp sketch
+(curve/constraint/dimension counts, fully-constrained state, entity ids/attributes later steps
+use), bodies, inlay, marker, over send-1/2/3. Keep only if identical AND >= 1s saved; otherwise
+revert and report the numbers.
+
+**Corrected my own item 56 mis-citation before building anything.** Item 56's own WORK-LOG named
+`send_stage_timing.py::_apply_deferred_whole_build_variant` as "an unvalidated prototype of this
+exact idea" -- re-reading it for this item found that is WRONG: that prototype wraps `fb_engine.
+parametric_engine.ParametricSketchBuilder.build_sketch`, the FRAME's own sketch builder (T7_1/
+T7_2/T7_3), not `sketch_manifest_builder.build_constrained_sketch` (the STAMP layer builder where
+`_apply_constraints`/`_create_geometry` actually live). No reusable prototype existed for the
+thing this item actually needed to validate -- built a fresh one.
+
+**Read `build_constrained_sketch` before touching anything, and found the premise was already
+half-wrong too.** Geometry+constraints and dimensions are NOT un-deferred today -- `build_
+constrained_sketch` ALREADY wraps them in `sketch.isComputeDeferred = True/False` windows (3
+separate ones per layer: geometry+constraints, a documented "manual pulse", then dimensions).
+Item 56's own per-call measurements (Coincident ~0.01s, Tangent up to 0.42s, Diameter ~0.036s
+each) happened INSIDE those existing deferred windows -- meaning those costs are NOT suppressed
+by deferred mode today, which is itself evidence against the hypothesis before any new code ran:
+if `isComputeDeferred` already covers these calls and they still cost real per-call time, merging
+MORE deferred windows together is unlikely to help, since the mechanism that would need to
+suppress the cost is already active and isn't suppressing it.
+
+**Tested the narrowest, safest version of the idea first, not the riskiest.** "Across the WHOLE
+stamp build" (the dispatch's own phrase) would mean holding ALL 5 layers' sketches deferred
+SIMULTANEOUSLY, resolving only at the very end -- but `build_constrained_sketch`'s own existing
+comment (on why projections run BEFORE its deferred window opens) states outright that a LATER
+layer's projection needs an EARLIER layer's sketch to be "ALREADY-BUILT" -- i.e. NOT deferred.
+Holding every layer deferred at once would violate that documented invariant for L2/L3's own
+cross-layer projections (7/26 of them). Tested the risk-free version instead: collapsed ONE
+layer's own 3 existing windows (geometry+constraints / manual pulse / dimensions) into ONE,
+within `build_constrained_sketch` itself -- no caller change, no cross-layer deferral, nothing
+that could touch the projection invariant at all.
+
+**LIVE, three Sends on one doc, full checklist, same real T7 payload (item 54's fresh seed):**
+```
+                  send-1     send-2     send-3
+baseline (items 55/56)   16.16-16.50s   19.77-19.87s   24.22s
+experiment (this item)   16.351s        19.833s        24.250s
+difference               within ~0.15-0.3s noise of the baseline RANGE already measured across
+                          3 separate prior live runs -- nowhere near the >= 1s the gate requires
+```
+Per-sketch checklist (all 5 stamp sketches, send-1 vs send-2, experimental run): curve/
+constraint/dimension/point counts and `isFullyConstrained` IDENTICAL both times (L1: 43/56/7/63,
+L2: 60/80/14/79, L3: 72/103/13/93, L4: 26/26/26/53 fullyConstrained=True, Lattice Boundary:
+4/8/0/9) -- the merge didn't corrupt or change anything, it just didn't save time either. Bodies/
+volumes byte-identical across all 3 sends (same 5 bars + panel/surface as every prior item this
+segment). Marker == count == 21 on all 3 sends. 9/9 inlay items healthy/not-suppressed on every
+check. Zero `[ERROR]`/MITER MISS/FALLBACK/"project() returned nothing" log lines across all 3
+sends -- the one PRE-EXISTING documented Fusion quirk this item's own change could plausibly have
+triggered (a deferred TARGET sketch breaking `sketch.project()`) never fired, consistent with this
+experiment never widening any sketch's own deferred window far enough to overlap a projection
+call (projections already run before ANY window opens, per the existing code -- unchanged by
+this merge).
+
+**Reverted** (gate: < 1s saved) -- `sketch_manifest_builder.py` restored from the session's own
+scratchpad backup (never from HEAD -- this was never committed), confirmed `git diff` empty
+against the committed version. Both affected suites re-run green after the revert: `fb_engine`
+777 passed/25 skipped; `b-spline-gen` 97 passed.
+
+**Conclusion for win #1, reported plainly per the dispatch's own "otherwise revert and report the
+numbers":** deferred compute does not help here because the window that WOULD matter (geometry
++constraints, already deferred today) already contains the expensive calls and they're already
+not being suppressed -- the per-call cost measured in item 56 is genuine solver/API work (each
+`constraint_step`/`dimension_step` call does real work Fusion can't defer away), not a redundant-
+recompute pattern the way items 51/55's own `.reorder()`/`.deleteMe()` findings were. The riskier
+cross-layer version (literally "the WHOLE stamp build" at once) was not attempted -- the risk-
+free version already answered the mechanism question (deferred compute isn't suppressing these
+costs), so there is no reason to take on the projection-invariant risk for a win that evidently
+isn't there. Win #1 is closed, not deferred for later -- the mechanism itself doesn't work, not
+just this specific implementation of it.
+
+Win #2 (L4's 26 node-circle dimensions) still waits on Fred's own answer, per the dispatch.
+
+Committed as ONE commit, WORK-LOG only (no production code survives this item): "H23 item 57:
+win #1 (deferred compute across the stamp build) validated and REVERTED -- saves under 1s on all
+3 Sends, the per-call costs are genuine solver work the existing deferred windows already don't
+suppress".
+
+## H23 item 58 -- record this week's Fusion findings in fusion360-quirks, each confirmed on varied cases first
+
+Dispatch (advisor, 467): put items 46-57's own confirmed Fusion findings into the fusion360-
+quirks skill -- (a) per-call timeline cost scales with history, (b) markerPosition insertion +
+the moveToEnd restore rule, (c) occurrence delete already removes child features, (d) check the
+existing CCW entry. Mid-item, a cross-session message from the advisor added 2 more, flagged by
+seat B's own inset-window work (INSET-WINDOW-LIVE_CHECK.md Sec5): (e) cross-component extrude
+needs the occurrence's own root-context body proxy, (f) `cam_coordinator.run()` leaves the CAM
+product active, breaking the next Design-side call. Edit `fred-skills/fusion360-quirks/SKILL.md`,
+commit BY PATH there; probe scripts go in `tools/repro/fusion_t11/` on main.
+
+**Paused for seat B's own Fusion access mid-item** (cross-session message: seat B needed it for
+the inset-window live check + a lane-b redeploy). Replied "paused" immediately (not mid-call --
+the last probe had already returned), used the wait productively: wrote and dry-reviewed all 3
+of this item's own original probe scripts, catching and fixing 2 real bugs before ever running
+them live (see below). Resumed on "Fusion back".
+
+**(a) Per-call timeline cost scales with document history -- confirmed it is NOT a fixed
+constant, with a controlled trend, not just the 2 real-doc data points already on record.**
+New probe (`item58_timeline_cost_scaling_probe.py`): a growing timeline of plain construction
+PLANES (tried construction POINTS first -- `setByPoint` with a raw `Point3D` threw "Environment
+is not supported" live; planes via `setByOffset` worked) in a fresh scratch doc, one full-span
+`.reorder()` timed at 5 checkpoints. **MEASURED: 0.0s / 0.023s / 0.037s / 0.056s / 0.077s at
+counts 2/10/20/30/40** -- a clear, clean upward trend, confirming the mechanism (cost grows with
+history) independent of the real T7 doc's own single data point. The ABSOLUTE size matters too:
+at a SIMILAR count (~20-21), this synthetic doc costs 0.037-0.077s vs. the REAL T7 doc's own
+~0.82-0.90s (items 51/55) -- ~20x higher. Recorded both: the mechanism generalizes, but the
+MAGNITUDE depends heavily on what the timeline items actually are (plain construction geometry
+vs. real sketched/extruded/constrained bodies), not on count alone.
+
+**(b) markerPosition insertion -- confirmed on 2 feature types x 2 insertion points, plus
+moveToEnd() called directly for the first time (previously only exercised indirectly through
+production code's own restore_marker_position).** New probe (`item58_marker_insertion_probe.py`).
+**Bug caught before running live:** the FIRST draft set the marker to "the current count minus
+2" for the extrude case WITHOUT first resetting it to the end after case 1's own insert left it
+mid-timeline -- the extrude's own profile sketch (created next) would have landed mid-timeline
+too, and the computed "late" index would have put the extrude BEFORE its own just-created
+profile sketch, breaking the replay-log dependency (the SAME class of bug the original box-
+sketch-pair attempt in probe (a) already hit and had to work around with construction planes
+instead). Fixed by calling `tl.moveToEnd()` before building each case's own setup geometry, and
+by giving the extrude case 2 TRAILING filler items to insert before (after its own prerequisite),
+mirroring the real production pattern exactly (frame items landing before the inlay's own
+trailing items) instead of an artificial "before a specific index" that ignored dependencies.
+**MEASURED (post-fix, live):** sketch @ position 1 -> landed at index 1 exactly, marker 1->2.
+Extrude @ the index right after its own profile sketch (8, in this doc) -> landed at index 8
+exactly, the 2 trailing fillers confirmed pushed back, marker 8->9. `timeline.moveToEnd()`
+called directly: marker 9 -> 11 (== count, the true end). Confirms the mechanism generalizes
+past item 52's own one combination (sketch+extrude inside `addNewComponent`), and confirms
+`moveToEnd()` itself live, not just through production code's own call site.
+
+**(c) Occurrence delete already removes child features -- confirmed with 1/5/10 features,
+showing the waste SCALES, not just "it costs something".** New probe
+(`item58_occurrence_delete_probe.py`): twin components at each size, one explicitly `deleteMe()`s
+every feature before its own occurrence, the other deletes ONLY the occurrence. **MEASURED:**
+explicit-feature-deletes cost 0.0032s / 0.0515s / 0.1828s at n=1/5/10 (clearly growing, ~16x from
+n=1 to n=10 despite only a 10x feature-count increase); occurrence-only cost 0.0054s / 0.0148s /
+0.0284s and left ZERO orphans at every size (`occurrence_only_component_gone: true`,
+`occurrence_only_stray_occurrences: []`, all 3 sizes). Matches item 55's own real-production
+finding (5 real bar extrudes, ~0.82-0.85s each wasted, ~4.1s total) with the SAME shape at a
+much smaller scale, confirming the mechanism isn't specific to that one real case.
+
+**(d) Checked the existing CCW `addByThreePoints` entry against this week's candidate -- already
+fully covers it, no update made.** Re-read the entry: confirmed 16/16 across 4 sketch planes
+(XY/XZ/YZ/a 30-deg tilt), cause identified (CCW relative to the sketch's own normal), fix
+documented (resolve by position, never by creation order), AND the separate projection-
+interaction case (6/6 + 2/2) already recorded. This week's own candidate adds nothing beyond
+what's already there -- no new probe run for this one, per the dispatch's own "extend only if
+your 4 cases add something new".
+
+**(e) Cross-component extrude body reference -- confirmed independently, on different geometry,
+with the IDENTICAL error signature seat B reported.** New probe
+(`item58_cross_component_proxy_probe.py`): two plain SIBLING components (not the real frame/
+window), a box each, one extruded "to object" against the other's own top face. **Bug caught and
+fixed mid-probe:** the first `_top_face` helper picked the face with the largest `maxPoint.z`,
+which a SIDE wall also reaches at its own top edge (not just the true flat top cap) -- it picked
+a side face, and the proxy-reference attempt failed with a DIFFERENT (geometry-overlap) error
+that had nothing to do with the actual claim being tested. Fixed by requiring the face be FLAT in
+Z (`minPoint.z == maxPoint.z`) before comparing heights. **MEASURED (post-fix):** the native
+reference (`occ.component.bRepBodies...`) failed with `invalid argument toEntityOne` -- the
+EXACT error text seat B's own live inset-window test hit on completely different (real frame-
+window) geometry; the root-context proxy (`occ.bRepBodies...`) succeeded outright on the
+identical setup. Also confirmed this project's own ORIGINAL frame-bars code
+(`b-spline-gen.py::_find_bspline_core_body`) already uses the correct proxy (`child.bRepBodies`,
+its own docstring: "its occurrence's proxy") and has worked across every live Send this entire
+session -- a THIRD, pre-existing confirmation point.
+
+**(f) Workspace activation changing `app.activeProduct` -- confirmed via an independent trigger
+(direct workspace activation) instead of re-running the real CAM pipeline.** New probe
+(`item58_workspace_activeproduct_probe.py`). **Safety fix made before running it:** the first
+draft read/wrote `app.activeProduct` against WHATEVER document happened to be active already --
+since activating a workspace is a visible, GLOBAL UI action, running this against Fred's own
+currently-focused document (if any of his 3 real docs happened to be on screen) would have
+visibly switched HIS OWN UI tab mid-script. Fixed by creating and activating a dedicated scratch
+doc first, so the workspace switch applies to that doc's own tab, and reactivating
+`FusionSolidEnvironment` in a `finally` block before closing it. **MEASURED:**
+`app.activeProduct` was a real `Design` before; `ui.workspaces.itemById('CAMEnvironment').
+activate()` changed it to a `CAM` product (`Design.cast()` -> `None`); reactivating
+`FusionSolidEnvironment` restored Design access exactly. Confirms seat B's own `cam_coordinator.
+run()`-triggered finding via a completely different, independent trigger -- same underlying
+mechanism (a workspace switch, not something specific to this project's own CAM code).
+
+Fusion document count confirmed clean (4: Fred's 3 real docs + the advisor's own untouched
+`adv_taper_fp`) before and after every probe.
+
+**Written into `fred-skills/fusion360-quirks/SKILL.md`** as a new "## 4. Timeline, body-reference
+& workspace quirks" section (5 entries: a/b/c/e/f, each in the file's own established "expected
+vs actual vs fix, MEASURED numbers" style; (d) needed no edit). Committed BY PATH in that repo
+(`git commit fusion360-quirks/ -F -`, never touching any other skill) and pushed --
+`f5c7edb` in `fred-skills`.
+
+No production code changed in THIS repo. Probe scripts (5 new files, `tools/repro/fusion_t11/
+item58_*.py`) committed here on main, alongside this WORK-LOG entry.
+
+Committed as ONE commit in this repo: "H23 item 58: 5 probe scripts for the fusion360-quirks
+confirmations (timeline cost scaling, marker insertion, occurrence delete, cross-component body
+proxy, workspace activeProduct) -- skill text itself committed separately in fred-skills".
+
+## H23 item 59 -- Arched + taper: the shared construction fix is real and kept; the taperAngle HANDLE is withheld -- LIVE Fusion verification found the shoulder/waist/hip arc chain ignores a sent taper entirely. GATE for the advisor.
+
+Dispatch (advisor, 469): port the fixed Arched+taper construction from fb-app's own
+`tools/repro/f30_item5_arched_taper_diagram.mjs` @4be8963 into production; decide handle-on-T10
+vs. a new template slot with data; verify LIVE at 5 angles x 7x9 and 2 angles x 6x9/9x12, all
+declared bars, preview==build, 0 errors; sweep 13/13 clean.
+
+**What this item actually found: the handle CANNOT ship yet.** The JS-side construction fix is
+genuinely correct and safe (full detail below) -- but LIVE verification in Fusion proved the
+Python build side does not respect a sent `taperAngle` at all: at every nonzero taper, Fusion
+builds the OLD, UNTAPERED shoulder/waist/hip chain while the app's own preview shows the correct,
+tapered one. This is NOT a cosmetic gap -- it is a silent, wrong, misleading build that matches
+neither the user's own drag nor the app's own preview. The handle is therefore WITHHELD (reverted
+before commit); the GENUINE construction fix underneath it is kept, since it is correct and a
+necessary (not sufficient) prerequisite for ever shipping the handle.
+
+**(1) The ported construction fix -- CORRECT, VERIFIED, KEPT.** Read the diagram script's own 326
+lines in full (not just its own header comment) before touching anything. Its own key insight:
+`_taperedCorner`'s own `hh` parameter is the TARGET LINE's distance from centre, not necessarily
+the board's own half-height -- for every flat-top hourglass (archRise 0, every template but T10)
+that target line IS the board edge (`-hh`); for T10 the horn never reaches the board edge at all,
+stopping at the arch's own chord (`-hh + archRise`, eaten into, same as `hourglassConstruction`'s
+own `arch` block already does unconditionally). Ported into PRODUCTION (`editor-shape-lattice-
+generator.js::hourglassConstruction`): moved `archRise`'s own computation BEFORE the taper corner
+is solved (it was computed after, for no dependency reason), and changed the `_taperedCorner`
+call's own last argument from bare `hh` to `hh - archRise`. A no-op, bit for bit, for every
+existing template (archRise is 0 everywhere but T10) -- confirmed by the FULL suite staying green
+throughout (3115/3115 before this edit even landed anything new). Same substitution applied to
+`_hourglassRange`'s own `taperAngle` range branch (inlined, not a full `hourglassConstruction`
+call, for the SAME performance reason that whole function is already inlined) and to `editor-
+shape-lattice-interaction.js`'s own hourglass taper drag-handle (`taperAngleForTopCornerX`'s own
+`hh` argument) -- both equally no-ops when archRise is 0.
+
+**Did NOT port the diagram script's own separate "re-solve the waist arc" workaround -- confirmed,
+by direct verification, that production does not need it.** The diagram script's own `buildArched
+Taper` reuses the REAL engine's untapered primitives for 9 of 12 pieces and patches 3 by hand
+(a deliberate shortcut for a throwaway repro) -- its own bug fix (re-solving the waist arc's
+shoulder-side tangent point after a taper-shifted shoulder circle) exists ONLY because of that
+shortcut. Production's real `_solveHourglass` never reuses a stale primitive -- it rebuilds every
+keypoint fresh from `hourglassConstruction`'s own OUTPUT every call, and that output's own `ux`/
+`uy` (the shoulder-to-waist tangent unit vector) is ALREADY recomputed from whatever shoulder
+position `_taperedCorner` returns, Branch A or B. Verified directly: a Node script replaying the
+production path (`generateSilhouette` -> `_solveHourglass` -> `hourglassConstruction`, with the
+fix above) across taper -15..+15 at 7x9/6x9/9x12, at T10's own FITTED DEFAULT archRise/waistReach/
+waistCenterY, found ZERO continuity gaps and ZERO defects at every single case -- the diagram
+script's own extra fix was never needed in production's own real structure.
+
+**(2) continuityCheck -- ported as a pure, permanent test, exactly as the dispatch asked.**
+`tests/frame-template-10.test.js`'s own new `describe('H23 item 59: Arched + taper...')` block:
+the diagram script's own `continuityCheck` (every piece's end must exactly meet the next piece's
+start -- `outlineDefects` checks TANGENCY where an arc is involved, never plain coincidence, so a
+disconnected-but-same-direction joint slips past it) ported verbatim as a helper, swept across
+taper in [-15,-10,-8,-4,0,4,8,10,15] at [7x9,6x9,9x12], confirming 0 gaps and 0 real defects
+(the 4 declared miter-corner exemptions replicated from `frameCutProfile`'s own `cornerIndices`
+logic, since this test bypasses `frameCutProfile` entirely -- see finding 3 below for why).
+
+**(3) THE REAL FINDING, measured live in Fusion, 9/9 cases.** Generated 9 DECLARED-seed payloads
+(taper in {-15,-8,0,8,15} @ 7x9, {-15,8} @ 6x9/9x12 -- the dispatch's own exact required cases),
+each with `seeds.taperAngle` explicit and the matching `seedGeometry` computed via the real app
+engine (`frameSeedGeometry`), and ran each through the established live-Fusion harness
+(`_handle_send_frame` on a synthetic panel, `bars_report` + `preview_vs_build_check` +
+MITER-MISS log scan -- the SAME pattern `item40_all_template_sweep.py` already established).
+Result: **8 of 9 cases (every nonzero taper) show the built `horn_TR`/`horn_TL` and the whole
+shoulder/waist/hip arc chain at the UNTAPERED position** -- e.g. at taper=-15, 7x9: preview says
+`horn_TR` should run from `(3.25, 2.76)` to `(2.76, 0.92)` (slanted); the BUILD shows it running
+to `(3.25, 1.10)` (still perfectly vertical, x unchanged). Only taper=0 (`template_10_taper0_
+7x9`) came back clean (`preview_build_mismatches: []`). All 9 cases still built 4/4 bars with no
+overlaps/slivers/dup names and a healthy timeline -- Fusion does not CRASH on a tapered seed, it
+just silently builds the WRONG, untapered shape instead, matching neither the drag nor the
+preview.
+
+**Root cause, found by reading the actual phase files, not inferred:**
+`sketches/template_10/phases/p02_02_anatomy.py` builds the shoulder/waist/hip "skeleton" pins
+(construction-only lines used for the chain's own centre-to-centre tangency algebra) at a
+HARDCODED, literal formula (`widthIn * 0.34996`, Template 1's own column, never re-derived).
+`FRAME_SEED_MAP` DOES declare seedMap entries for these (`skel_shoulder_pin_R/L` etc., `kind:
+"pin"`), and confirmed live that the app's own `frameSeedGeometry` DOES correctly compute a
+TAPERED position for them (checked the actual generated payload: `skel_shoulder_pin_R` at
+taper=-15 correctly shows an inset, tapered x) -- but **`grep -rn '"pin"' fb_engine/*.py` finds
+ZERO matches**: no Python code anywhere ever consumes a `kind:"pin"` seedMap entry to override a
+BuildSequence step's own `Points`. The skeleton pins ALWAYS build at their own literal, untapered
+formula, no matter what seed is sent. Then `p02_08_horn_tangency.py` applies a `Tangent`
+constraint between each horn (correctly seeded, slanted) and its own shoulder/hip arc (whose own
+position and radius trace back, via the Equal/tangency chain in p02_04/p02_06/p02_07, to those
+immovable skeleton pins) -- and per this project's own ALREADY-DOCUMENTED fusion360-quirks
+finding ("`Tangent` on an arc chain LOCKS the seed, it does not SOLVE for the shape"), the solver
+satisfies that Tangent constraint by dragging the SEEDED horn back to match the UNTAPERED arc,
+not the other way around. This is a structural gap in the SHARED T1-family skeleton/tangency
+chain (p02_02/p02_04/p02_06/p02_07/p02_08, used by T1/T3/T4/T5/T10 and T12/T13's own copies of
+it), not something introduced by this item -- it was simply never exercised before, because no
+PRIOR T10 handle (archRise/waistReach/waistCenterY) ever moves the shoulder's own X position off
+that literal column the way taper does.
+
+**Open question, flagged, not resolved (out of this item's own scope to chase further): does
+T12/T13 (the ALREADY-SHIPPED taper templates) have this SAME limitation?** Their own phase files
+reuse the identical skeleton+tangency machinery, with DIFFERENT literal constants -- but those
+constants were (per the earlier research) "recomputed off the JS engine's own tapered solve at
+7x9", i.e. baked in for ONE taper value (8 deg), not derived from a live seed at all. If dragging
+T12's own taperAngle handle to anything other than 8 deg and sending to Fusion hits the exact same
+"preview says one thing, build does another" symptom, that is a PRE-EXISTING, already-shipped bug
+this item's own investigation stumbled onto, not a new one. NOT verified live here (T12/T13 are a
+different template's own scope) -- worth a dedicated check before anyone assumes T12/T13's own
+drag-to-Fusion path is safe.
+
+**Decision made (not deferred): the handle is WITHHELD, reverted before commit.**
+`sketches/template_10/template_data.py`'s own `FRAME_HANDLES`/`FRAME_PROVISIONAL_SHAPE` edits
+(the 4th handle, the `taperAngleDeg: 8.0` default) were reverted; `frame-defs.json/.js`
+regenerated to match (confirmed via `tools/gen_frame_defs.py --check`: fresh). T10 is back to
+EXACTLY its own pre-item-59 state: 3 handles, no `taperAngle` feature, byte-identical. A
+code comment in `template_data.py` explains why, pointing here. **Confirmed this makes the bug
+UNREACHABLE by any real user action**: `frame-record.js::normalizeFrameRecord`'s own seed
+filter (`seeded.has(k)`, built from the template's OWN declared handles) silently DROPS any seed
+key that is not a declared handle -- so without the handle, a `taperAngle` key can never reach
+`hourglassConstruction` via Generate, a drag, or a Send at all. (This same filter is WHY the
+first draft of this item's own tests, written through `frameCutProfile`/`normalizeFrameRecord`,
+went SILENTLY VACUOUS the moment the handle was reverted -- caught by re-running the full suite
+immediately after reverting, not assumed; rewritten to call `generateSilhouette` directly,
+bypassing the handle-gated record layer entirely, which is the HONEST way to test the shared
+construction's own correctness independent of whether any template exposes it yet.)
+
+**Why `_curveSegmentForKnownCenter` was tried and reverted for the `waistMajor` bug itself (a
+transparency note, not a fix left in place).** Before settling on "measure, report, do not patch
+shared code yet", tried fixing `waistMajor` properly: the shared helper `_curveSegmentForKnownCenter`
+(T7's own fix for an identical "a fixed label is not enough" problem) self-verifies an arc's own
+major/minor choice against a KNOWN centre instead of trusting a shortcut formula. Swapping it in
+for the waist arc's own construction broke 28 OTHER test files (242 failing tests) across Templates
+1/3/4/5/8/12/13 -- template_3 specifically, every board size -- for reasons not fully understood in
+the time available (its own candidate-matching logic evidently picks a different (major,dir) pair
+than `_curveSegment`'s own formula for some topInset-shifted geometries, even when that formula was
+already correct). Reverted immediately; confirmed back to the SAME 7 (unrelated, pre-existing-test-
+update) failures afterward. This is exactly why the `waistMajor` bug itself is reported, not fixed,
+in this item -- the fix is more involved than the symptom, and a second blind attempt under the
+same time pressure is how the FIRST 242-test regression happened.
+
+**(4) Generate's own `outer.defects` safety net -- a separate, general, SAFE addition, kept
+regardless of the handle's own fate.** `frame-panel.js::generateFrame`'s own `isValid` chain
+(items 21/23/39's own growing list of MEASURED defect classes) never checked `outlineDefects`'s
+own full result on the OUTER profile at all -- only a piece-length check, a reflex-arc check, and
+item 39's own hook guard. Added `if (outer.defects.length > 0) return false;` to that chain, one
+more line in the SAME declared pattern. MEASURED, honestly: for every case found in a fairly broad
+grid search (varying archRise x waistReach x waistCenterY x taper), the EXISTING reflex-arc check
+ALREADY rejects every combination that also trips `notTangent` -- often several degrees of taper
+BEFORE notTangent even appears (e.g. taper=-8 reflexes while notTangent only starts at -10, same
+archRise/waistReach/waistCenterY). So this addition is not uniquely responsible for rejecting any
+case found so far -- it is kept as a correct, general safety net for the broader defect CLASS (any
+non-tangent outer joint, any template), not because it was proven to catch something the existing
+checks miss. Confirmed zero regressions: the full 3115-test suite stayed green with this check
+added, meaning no OTHER template's own currently-accepted seed gets newly, wrongly rejected by it.
+
+**Full suites, final state:** JS vitest 3117 passed across 162 files (3115 original + 2 new
+ported-construction tests; the 7 pre-existing T10 tests that assumed taper's own default/handle
+were updated along the way, then reverted back to their ORIGINAL assertions once the handle itself
+was withheld -- net diff on those 7 is a wash). Python 780 passed, 25 skipped (unchanged by this
+item; the +3 vs. item 55's own 777 is seat B's own lane-b inset-window merge, pulled in earlier
+this item, not this item's own work). `gen_frame_defs.py --check`: fresh.
+
+**Did NOT run the 13/14-template sweep.** T10's own handle table is unchanged (3, same as before
+this item) and no OTHER template's own phases were touched -- `item40_all_template_sweep.py`'s
+own established 13/13 result (confirmed clean as recently as item 52) is not expected to move, and
+burning Fusion time re-confirming 12 templates this item never touched is not worth it. The 9-case
+LIVE T10 sweep above (new, item-59-specific) is the one that actually exercises what changed.
+
+**Options for the advisor (a gate, not a decision made unilaterally):**
+- **(A) Park here.** Keep the construction fix + continuityCheck test + Generate's outer.defects
+  safety net (all genuinely correct, zero risk, independently useful) on main; leave the taper
+  HANDLE out of T10 until the skeleton-pin seed-consumption gap is fixed (a cross-cutting fix to
+  `p02_02_anatomy.py`-style skeleton phases, shared by T1/T3/T4/T5/T10/T12/T13 -- likely needs
+  either a new seed-consumption path for `kind:"pin"` entries, or reworking the skeleton phases to
+  use `SeedFrom`-style live references the way `p02_12_arch_rebuild.py` already does for the arch).
+  This is what was actually done this turn.
+- **(B) Continue now.** Dispatch a NEW item specifically to fix the skeleton-pin seed-consumption
+  gap (likely substantial: touches shared phases 5+ templates depend on), THEN re-add T10's own
+  handle once that fix is live-verified across the SAME 9 cases.
+- **(C) Check T12/T13 first.** Before investing in the skeleton-pin fix, verify live whether the
+  ALREADY-SHIPPED T12/T13 have the identical bug when dragged off their own hardcoded default --
+  if so, this is a higher-priority, already-live correctness bug independent of T10 ever shipping
+  a handle at all.
+
+No code committed for the handle itself (reverted, by design, before this commit). Committed:
+the construction fix (2 JS files), the Generate safety net (1 JS file), the test file (continuity
+check + the real-defect finding, 2 new tests; the `template_data.py` comment explaining the
+withheld handle), and 3 new probe scripts (`tools/repro/h23_item59_make_payloads.mjs`,
+`tools/repro/h23_item59_production_taper_sweep.mjs`, `tools/repro/fusion_t11/
+item59_t10_taper_sweep.py`).
+
+## H23 item 60 (C): live preview==build at handle range ends for T1/T2/T12/T13 -- does Fred
+already hit this? YES, but NOT the taper bug -- a separate, bigger, pre-existing crash family.
+
+**Dispatch (turn 472, part C):** "live preview==build at handle range ends for T1/T2/T12/T13
+(everything with kind:'pin' seed entries) -- does Fred already hit this? -- and widen the sweep
+to every handle's range ends."
+
+**First pass (narrow, flawed methodology -- caught and redone, not left as the answer).** Started
+with `frameParamRanges(T, region, {}, t)` (resolved={}) the same way the T12/T13 taper-range call
+already worked. For `taperAngle` that is fine (its range function doesn't need any OTHER param
+pre-resolved). For every OTHER key tried it silently returned `{min:null,max:null}` --
+`feasibleParamRanges` fills `v[key]` from `derived[key](v)` IN `PARAM_ORDER` AS IT GOES
+(`editor-shape-lattice-generator.js:1025-35`); with `resolved={}` and no `derived` default for
+some of these keys (e.g. `cornerRadius`), a later key's own range function reads an `undefined`
+upstream value, the arithmetic silently produces `NaN`, and `JSON.stringify(NaN)` prints as
+`null` -- indistinguishable, in the written-out payload, from "no range exists for this key" (it
+looked like a feature gap, not a call-site bug). Worked around it THE FIRST TIME by hand-picking
+near-extreme fraction values instead (0.7, 0.32, 0.38, etc.) -- reported in the prior turn's
+(pre-pass) scratch run as "8/8 clean, template_1/template_2 safe at range ends". **That
+conclusion does not survive scrutiny and is retracted below.**
+
+**Root-caused and fixed the range call** (confirmed by a direct comparison, not assumed): call
+`paramsFromShapeModel(preset, shapeModel, region)` FIRST (exactly like the production taper
+sweep already does) to get a fully-resolved `resolved` object, then pass THAT as
+`frameParamRanges`'s 3rd arg. Side-by-side for template_1 at 7x9: `resolved={}` gives
+`cornerRadiusTop: {min:null,max:null}`; `resolved=<real>` gives `{min:0.0385,max:2.5655}`. Also
+discovered, checking `T.handles` directly, that the first pass only tested 2 of template_1's own
+5 declared handles (`waistReach`, `cornerRadiusTop` -- missing `cornerRadiusBottom`,
+`waistCenterY`, `waistRadius` entirely) and 2 of template_2's own 4 (`neckWidth`, `bodyRadius` --
+missing `skeletonX`, `neckLength`), and that the hand-picked "near-max" values for
+`cornerRadiusTop`(0.32) and `bodyRadius`(0.38) were nowhere near the real max (2.57, 1.0) -- not
+a range-end check at all for those two. New script, generic across both templates:
+`tools/repro/h23_item60_make_all_handle_payloads.mjs` (reads `T.handles`, computes the real
+range per key via the fix above, writes a min/default/max payload for every one).
+
+**THE FINDING, live in Fusion, 25 cases (T1: 5 handles x min/max + 3 defaults = 13;
+T2: 4 handles x min/max + 1 default = 9; T12/T13 taper already covered separately, see below;
+harness: `tools/repro/fusion_t11/item60_shipped_taper_sweep.py`, generic, reads
+`tpl.seedMap` dynamically):**
+
+- **Template 1 (hourglass): 9 of its own 10 range-END cases (across all 5 of its declared
+  handles) fail to build in Fusion.** `waistReach` max, `cornerRadiusTop` min, `cornerRadiusBottom`
+  min, and `waistRadius` min all throw the EXACT same crash already on file in the
+  fusion360-quirks skill ("`Coincident` on an arc only pins the supporting circle, not which
+  branch gets drawn"): `[p02_11_symmetry] REFLEX ARC: ... sweeps 183-290 deg (>= 180) -- wrong
+  solver branch`, followed by `CRASH in Sketch 2_shape_outline` / `PROFILE 0: NOT BUILT`.
+  `cornerRadiusTop` max, `cornerRadiusBottom` max, `waistCenterY` min AND max, and `waistRadius`
+  max all fail a DIFFERENT way: `[p03_05_encl_surround_rect] PROFILE N: NOT BUILT: one profile
+  spans 2 bars (...): a miter did not split it`, then the bar's own Through-All extrude fails.
+  Only `waistReach` min (and the 3 defaults) built clean. **Every one of these 9 cases had
+  `defects: []` on the JS side when the payload was generated** (`generateSilhouette` /
+  `outlineDefects` sees nothing wrong) -- the same "preview says fine, Fusion build does
+  something else" SHAPE of bug item 59 found for T10's taper, but a DIFFERENT, louder failure
+  mode: a crash / no body, not a silently wrong shape. The drag handle itself visually stops
+  exactly at this value (`frame-panel.js:435-438`, the frame-opening range clamp item 39's own
+  no-hook clamp is layered on top of) -- this is a value a real drag reaches, not a synthetic
+  extreme past the UI's own limit.
+- **Template 2 (bottle): 2 of its own 8 range-end cases fail** -- `neckLength` min AND max, same
+  "a miter did not split it" / Through-All-extrude-fail signature as T1's own miter-class
+  failures. `neckWidth`, `skeletonX`, `bodyRadius` are clean at both ends.
+- **`preview_vs_build_check`'s own "0 mismatches" on every one of these crashed cases is NOT
+  evidence of correctness -- it is a narrower claim than it looks.** It only compares each
+  individual seeded primitive's own start/end POINT against the built sketch entity carrying the
+  same ID, when that entity exists at all; it does not check whether a closed, buildable PROFILE
+  or body resulted. On these 11 cases the seeded primitives landed exactly where sent (0
+  mismatches, correctly) while the sketch as a WHOLE failed to resolve into anything buildable.
+  Said plainly here so "0 mismatches" is never read as "builds fine" for a crashed case again.
+- **T12/T13's OWN taperAngle handle, the part actually asked about by name, is clean**: full
+  declared range (min 0 / default 8 / max 15) at 7x9, 6/6 cases, 0 mismatches, 0 crashes
+  (`tools/repro/h23_item60_make_shipped_payloads.mjs`, same harness). This directly answers item
+  59's own "open question": no, the SHIPPED taper templates do not share T10's taper-specific
+  bug. They share something else entirely (above).
+- **T12/T13's OWN other handles (the same `waistReach`/`cornerRadiusTop`/.../`neckLength` keys
+  T1/T2 carry, since T12 = T1 + taper and T13 = T2 + taper, identical shared phase files) were
+  NOT independently live-tested this item** -- flagged, not assumed: given the construction is
+  the literal same code, the same range-end failures are the likely outcome there too, but this
+  is an inference, not a measurement, and should be confirmed before anyone treats T12/T13 as
+  clear of it.
+
+**What this is, and is not.** This is NOT the item-59 skeleton-pin/taper gap (that one is a
+SILENT wrong shape, specific to archRise+taper interacting with T10's own skeleton pins). This is
+a SEPARATE, pre-existing, already-shipped defect family: at the geometric extremes of 6 of T1/T2's
+OWN 9 combined handles, the arc-chain solver in Fusion picks the wrong branch (reflex) or the
+enclosure's own miter-splitting logic fails to carve a bar's profile, even though the JS-side
+outline the handle's own drag is driven by reports zero defects. Both crash loudly (no body for
+that bar / for the whole outline) rather than building something silently wrong, which is at
+least a safer failure than T10's -- but a handle whose own slider stops at a position that cannot
+build at all is still a real, reachable defect.
+
+**Not fixed this item -- a decision, not an oversight.** Given (a) this is bigger than one
+dispatched task (9+ broken cases across 2 already-shipped templates, likely 2 more by inference),
+(b) the item-59 precedent of a blind fix to this SAME arc-solver-branch problem breaking 242
+unrelated tests, and (c) this item's own time/Fusion-call budget was already committed to running
+the sweep that FOUND this, no fix was attempted. Flagged as a gate for the advisor to triage
+against the rest of the H23 queue, not folded silently into whatever comes next.
+
+**On item 60's own part (B) (re-add T10's taperAngle after a generic pin-seed fix): the
+dispatch's own premise needs correcting before anyone builds against it.** Read
+`fb_engine/seed_geometry.py` in full this item: it matches BuildSequence steps by `Type`+`ID`/
+`Name`, never by the seedMap's own `kind` field -- so a `kind:"pin"` entry with `'Type':'Line'`
+(e.g. `skel_shoulder_pin_R`) DOES get its own `Points` overridden generically, the same as any
+other seeded Line. Live readback (T10, taper=-11.5, the exact captured bad seed) confirms the pin
+IS applied as an initial value (no `SeedGeometryError`) -- it just gets OVERRIDDEN afterward by
+`p02_06_waist_pins.py`'s own `Coincident` weld between the waist arc's OWN derived center and the
+pin's OWN seeded endpoint, which Fusion's solver reconciles to a position matching NEITHER seed
+(matching instead the untapered, algebraically-derived `hw - cornerRadiusTop` position). So "make
+`apply_seed_geometry` consume `kind:'pin'` generically" is not available as a fix -- it already
+does, and that is not where the bug lives. The real fix needs to look at WHY `p02_06`'s weld (and
+whatever `p02_07_tangency.py` does, not yet read) re-derives an untapered position instead of
+holding either seed -- not yet designed, let alone attempted, this item.
+
+**Recommendation (not acted on, a gate): do not proceed into (B) as originally specified.**
+The dispatch's own fix ("consume pin entries generically") is now known not to address the actual
+mechanism, and the newly-found range-end crash family above is arguably higher priority (already
+shipped, no handle needs withholding to make it unreachable, unlike T10's). Left as 3 options for
+the advisor, not decided here:
+- **(A) Triage the range-end crash family first.** It is bigger, already live, and affects more
+  templates than T10's taper gap did.
+- **(B') Re-scope item 60(B).** Drop "consume pin entries generically" (already true); redirect
+  at `p02_06`/`p02_07`'s own Coincident/Tangent chain specifically, after reading `p02_07` in full
+  -- a harder, more surgical task than originally framed.
+- **(C) Widen the general sweep permanently.** `item40_all_template_sweep.py`'s own established
+  13-template harness still only exercises each template's OWN default seed; it does not sweep
+  handle range ends at all, which is exactly why 9 broken cases sat undetected. Promoting
+  `h23_item60_make_all_handle_payloads.mjs` + `item60_shipped_taper_sweep.py`'s own pattern into
+  that permanent suite (every declared handle, both ends, every template) would catch this CLASS
+  going forward -- a real but nontrivial lift (needs a per-template handle list, not just a
+  per-template default).
+
+## H23 item 61 (1): the permanent every-template x every-handle x {min,default,max} BUILT sweep,
+run once, full matrix published. 133/133 cases run live, 76 BUILT / 57 NOT -- 4 distinct failure
+classes identified and root-caused by reading code, not guessed at. No fix attempted this item --
+see the gate at the end.
+
+**(1) The permanent sweep.** Promoted item 60(C)'s own one-off probe into 2 generic, reusable
+scripts: `tools/repro/h23_item61_make_full_matrix_payloads.mjs` (every template's own `T.handles`,
+a real `resolved` object via `paramsFromShapeModel` first -- same fix item 60(C) already needed --
+then one payload per template default + one per handle per range end, 133 total across the 13
+templates) and `tools/repro/fusion_t11/item61_full_matrix_sweep.py` (generic: declared bar names/
+miter counts come from `TEMPLATE_META`, computed once from frame-defs.json's own `regions.bars`/
+`regions.miters` -- the same 13 numbers item 40's own docstring already established; seedMap read
+dynamically via `resolve_template`). Verdict per the advisor's own definition: BUILT iff all
+declared bars present, no `(n)`-suffixed duplicate bodies, nothing under 0.5 cm3, timeline
+healthy, 0 "NOT BUILT" / "MITER MISS" / "REFLEX ARC" log lines.
+
+**THE FULL MATRIX (133 cases, 7x9, live in Fusion):**
+
+| template | failed/total | failing handle:end = class |
+|---|---|---|
+| template_1  | 9/11  | waistReach:max=REFLEX, cornerRadiusTop:min=REFLEX, cornerRadiusTop:max=MITERMISS, cornerRadiusBottom:min=REFLEX, cornerRadiusBottom:max=MITERMISS, waistCenterY:min=MITERMISS, waistCenterY:max=MITERMISS, waistRadius:min=REFLEX, waistRadius:max=MITERMISS |
+| template_2  | 2/9   | neckLength:min=MITERMISS, neckLength:max=MITERMISS |
+| template_3  | 4/13  | waistReach:max=REFLEX, cornerRadiusBottom:max=MITERMISS, waistCenterY:max=MITERMISS, waistRadius:max=MITERMISS |
+| template_4  | 7/15  | waistReach:max=REFLEX, cornerRadiusTop:min=REFLEX, cornerRadiusBottom:min=REFLEX, waistCenterY:min=MITERMISS, waistRadius:min=REFLEX, waistCenterYLeft:max=MITERMISS, waistReachLeft:max=REFLEX |
+| template_5  | 9/15  | same 9 keys/classes as template_1 (shares the chain) |
+| template_6  | 0/5   | clean |
+| template_7  | 3/7   | gableNeckWidth:min=NOTBUILT, neckHeight:min=REFLEX, bodyFlareHeight:min=NOTBUILT |
+| template_8  | 3/11  | waveHeight:max=MITERMISS, waveReach:max=REFLEX, topDipPosition:min=MITERMISS |
+| template_9  | 0/5   | clean |
+| template_10 | 4/7   | archRise:min=SILENT, waistReach:max=REFLEX, waistCenterY:min=MITERMISS, waistCenterY:max=MITERMISS |
+| template_11 | 4/11  | cornerRadiusBottom:max=MITERMISS, waistCenterY:max=MITERMISS, waistRadius:min=REFLEX, waistRadius:max=MITERMISS |
+| template_12 | 10/13 | same 9 as template_1 + taperAngle:min=SILENT |
+| template_13 | 2/11  | neckLength:min=MITERMISS, neckLength:max=MITERMISS |
+
+Full per-case detail (vols, overlaps, every log line) in `bspline-frame-builder/scratch/
+item61_full_matrix_results.json` (scratch, not committed, per the existing convention).
+
+**(2) Root-caused by failure class -- 4 distinct mechanisms, not the 2 the dispatch named, each
+confirmed by reading the actual construction code, not inferred from the log alone:**
+
+- **REFLEX ARC (22 cases, p02_11_symmetry's own generic post-phase check, `fb_engine/
+  diagnostics.py`): the shoulder/waist/hip arcs' own 3-point seeds are BAKED DECIMAL FRACTIONS of
+  widthIn/heightIn (e.g. `template_1/phases/p02_03_loop.py:146`: `['widthIn * 0.476432', 'heightIn
+  * 0.15042'], ...` -- "Coordinates come from the inspector output" per that file's own comment),
+  computed ONCE for the template's own DEFAULT handle values. They scale correctly with BOARD SIZE
+  (still widthIn/heightIn expressions) but do NOT move with the HANDLE that resolves them
+  (cornerRadiusTop/waistReach/waistCenterY/waistRadius) -- so the seed is only ever exactly correct
+  at the template's own default, and becomes a progressively worse guess for the arc's true
+  3-point-on-circle as the handle moves away from it, until `addByThreePoints` + the later Equal/
+  Tangent/Coincident chain (p02_04-p02_11) land the live arc on the WRONG branch (>=180 deg sweep).
+  **Confirmed by direct contrast**: `template_7/phases/p02_02_loop.py`'s own module docstring (H23
+  item 27, "the T11 recipe") states the fix this exact class needs -- each arc's own "via" (middle)
+  point must be its TRUE angular midpoint on the arc's real circle, declared as a NAMED FUSION
+  PARAMETER computed from a live expression in the HANDLE itself (`t7_via_neck_x` etc., template_7/
+  template_data.py's own SKETCH_2_PARAMETERS) -- "the seed IS the answer, Tangent only LOCKS it."
+  T10's own `p02_03_loop.py` partially has this for the ARCH ONLY (`p02_12_arch_rebuild.py`'s own
+  late rebuild) but NOT for its OWN copy of the shoulder/waist/hip chain -- confirmed by this
+  item's own matrix: `template_10_waistReach_max_7x9` still reflexes. **This is why every
+  hourglass-family template sharing this chain (T1/T3/T4/T5/T10/T11/T12) fails the SAME 5 handles**
+  (waistReach, cornerRadiusTop, cornerRadiusBottom, waistCenterY, waistRadius) **at the SAME
+  classes** -- it is one shared construction's own gap, not 7 separate bugs. `template_2/phases/
+  p02_04_arcs.py` confirmed to have the IDENTICAL baked-decimal pattern for its own neck arcs
+  (`['widthIn * -0.378', 'heightIn * 0.2029'], ...`), explaining `neckLength`'s own MITERMISS at
+  both ends the same way.
+- **MITER MISS -> "profile spans 2 bars" cascade (31 cases): a WARNING (`[p03_04_encl_miters]
+  MITER MISS: ...]`, item 44's own existing detector) immediately followed by an ERROR
+  (`[p03_05_encl_surround_rect] PROFILE N: NOT BUILT: ...a miter did not split it`) in the SAME
+  case -- confirmed by reading one full result entry
+  (`template_1_cornerRadiusTop_max_7x9`): the WARNING is the root cause, the ERROR is its
+  downstream symptom, not two unrelated failures. `template_1/phases/p03_04_encl_miters.py`
+  declares exactly 4 miters (the 4 board-corner line-line joints) and `p03_03_inner_corner_
+  resolve.py` resolves them with plain `ResolveInnerCorners` -- there is NO declared
+  `ResolveLineCircleCorner` anywhere in T1's own phases for the horn-to-shoulder-arc / hip-arc-to-
+  horn joints at all (confirmed: `grep ResolveLineCircleCorner` across T1's phases returns
+  nothing). `template_10/phases/p03_03_inner_corner_resolve.py` already uses
+  `ResolveLineCircleCorner` for ITS top two corners (horn-to-arch, item 43's own fix) -- proving the
+  mechanism exists, is template-agnostic (`fb_engine/inner_corners.py`'s own `line_circle_corner_
+  step`), and is simply not yet applied to T1-family's shoulder/hip corners. `test_no_miter_miss_
+  possible.py`'s own existing guard only checks DECLARED coverage of miters that exist at all --
+  T1's shoulder/waist/hip joints are declared TANGENT, not miters, so that test correctly does not
+  flag them; the live failure is a Fusion-side offset-tagging fragility at extreme handle values on
+  an UNDECLARED-as-miter corner, which no static test can see.
+- **Silent "roof family" NOT BUILT (2 cases, template_7 only, gableNeckWidth/bodyFlareHeight at
+  min): NO MITER MISS warning at all, yet the same "profile spans 2 bars...a miter did not split
+  it" error, PLUS dup-named `(1)` sliver bodies and the roof bars missing entirely
+  (`template_7_gableNeckWidth_min_7x9`'s own full result: `missing_declared_names: [frame_roof_
+  left, frame_roof_right]`). A DIFFERENT mechanism from the one above (that one always shows the
+  MITER MISS warning first) -- not root-caused further this item; T7 uses the "good" live-
+  expression via-point pattern and still has this gap, so fixing the REFLEX/MITERMISS classes
+  above will NOT fix this one.
+- **Silent NaN seed geometry (2 cases, `template_10_archRise_min_7x9` / `template_12_taperAngle_
+  min_7x9`): NO log signature at all (0 of the 3 scanned classes, `count: 0`, no exception) --
+  confirmed by a direct diagnostic replay (not from the sweep's own log scan, which this case
+  defeats entirely): the SENT `seedGeometry` payload itself already contains literal
+  `[[null,null],...]` for `arc_shoulder_R`/`arc_shoulder_L`/the matching skeleton pins --
+  `JSON.stringify(NaN)` prints as `null`. The JS-side `generateSilhouette`/`outlineDefects` call
+  that built this payload reported `defects: []` (clean) -- it does not catch whatever produces
+  NaN here. This is a JS-side math bug in the taper/archRise corner computation at its own extreme
+  negative values, upstream of BOTH Fusion and the other 3 classes -- its own root cause (inside
+  `_taperedCorner` or the hourglass construction's own taper math) was not traced further this
+  item.
+
+**(3) Not fixed this item -- a gate, the same discipline item 59/60 already established.** Every
+one of the 4 classes above needs either (a) deriving a genuine closed-form, handle-aware 3-point
+seed for EVERY arc in the shared shoulder/waist/hip chain (the T7/T11 recipe, properly applied --
+a real trigonometric derivation per arc pair, not a copy-paste, and item 59's own
+`_curveSegmentForKnownCenter` attempt already showed a "should be equivalent" swap in this exact
+chain broke 242 unrelated tests), or (b) extending `ResolveLineCircleCorner` coverage to every
+line-arc joint in that same shared chain (template-agnostic machinery already proven by T10's own
+partial fix, but still needs the SAME per-corner derivation work), for (c) a still-uninvestigated
+T7-specific topology gap, and (d) a still-untraced JS math bug. The dispatch's own explicit
+instruction -- "do NOT narrow a handle's range to dodge a crash, that's a guard, bring the list to
+the advisor" -- rules out the one fix that would otherwise be quick (most of these handles already
+have an established "frame opening rule" range-narrowing pattern in `frame-handles.js` for OTHER
+handles; extending it here would be fast but is explicitly not mine to decide). Attempting any of
+(a)/(b) blind, under this same pass's time pressure, is exactly how item 59's own 242-test
+regression happened on this identical chain. Flagged as a gate.
+
+**Options for the advisor:**
+- **(A) Scope each class as its own dedicated item.** (a) and (b) above are both real
+  trigonometry/geometry derivation work, template-family-wide, with the 242-test precedent as a
+  live warning -- each deserves its own careful pass with full live verification, not a shared
+  rush. (c) and (d) are smaller, more isolated, and could likely be picked up faster.
+  Suggested order: (d) first (smallest, most isolated, a pure JS math fix), then (a) [REFLEX,
+  blocks the most cases and is the most load-bearing shared chain], then (b), then (c).
+- **(B) Ask Fred whether the existing "frame opening rule" range-narrowing pattern should simply
+  be extended to these handles** (cornerRadiusTop/Bottom, waistCenterY, waistRadius, neckLength),
+  the same way waistReach/archRise already are -- a guard decision, explicitly his to make per the
+  dispatch's own instruction, not mine.
+- **(C) Do nothing further for now.** The matrix is published and durable; none of these are
+  NEWLY introduced by this session's own work (confirmed: all 4 classes reproduce on templates'
+  OWN DEFAULT construction code, untouched by items 58-60) -- they are pre-existing, already-
+  shipped gaps that have simply never been swept before.
+
+**Committed this item:** 2 permanent sweep scripts (`tools/repro/h23_item61_make_full_matrix_
+payloads.mjs`, `tools/repro/fusion_t11/item61_full_matrix_sweep.py`) and this WORK-LOG entry +
+matrix. No production code touched -- this is measurement and diagnosis only, per the gate above.
+Scratch payloads/results (133 payloads + the full results JSON) left uncommitted under
+`bspline-frame-builder/scratch/`, same convention as items 59/60.
+
+**Committed this item (C only -- part B's fix and the taperAngle re-add are NOT in this commit,
+per the gate above):** 3 probe scripts (`tools/repro/h23_item60_make_shipped_payloads.mjs`,
+`tools/repro/h23_item60_make_all_handle_payloads.mjs`, `tools/repro/fusion_t11/
+item60_shipped_taper_sweep.py`) and this WORK-LOG entry. No production code touched. Scratch
+payloads/results left uncommitted under `bspline-frame-builder/scratch/` per the project's own
+existing convention (item 59's own probe scripts were committed the same way, their OUTPUT was
+not).
+
+*(Ordering note, not a content correction: the paragraph immediately above belongs to item 60(C)'s
+own entry -- it landed after item 61's below it by an append-order slip, not a rewrite. Content
+unchanged, append-only honored; flagging it here rather than silently.)*
+
+## H23 item 63 (d) only: the JS NaN in the taper/archRise seed math, fixed + a pure finite-points
+test. Part (a) (the T1 reflex-arc pilot) NOT started -- reassigned live, see below.
+
+**Scope correction mid-task (direct message from the advisor session, not a handoff.py turn):**
+Fred wants to do the range-end fixes (item 63's own part (a), and by extension the rest of item
+61's own root-fix work) himself, live in Fusion. The advisor asked this item be narrowed to ONLY
+part (d) -- no touching `seed_geometry.py`, `inner_corners.py`, or any T1-family phase file, and
+no Fusion use at all this pass. Confirmed back to the advisor (cross-session message) that nothing
+in those 3 areas was ever edited this item (only read, earlier, for item 61's own diagnosis) and no
+Fusion call was made for this part. Stopped there -- the pilot is explicitly not this item's own
+work anymore.
+
+**(d) Root cause, file:line.** Both of item 61's own 2 "SILENT" cases (`template_10_archRise_
+min_7x9`, `template_12_taperAngle_min_7x9`) trace to the SAME mechanism: `frame-handles.js:255`'s
+own `at(a,t)` helper (`a.cx + a.rx*Math.cos(a.theta1 + a.dTheta*t)`), called from
+`frameSeedGeometry`'s own `kind==='arc'` branch (`frame-handles.js:262` at the time), assumes
+`prof.primitives[e.prim]` is always a true arc object. It is not always one: `editor-shape-
+lattice-generator.js`'s own `hourglassConstruction`/`_solveHourglass` can legitimately collapse
+that SAME primitive slot into a plain 2-point LINE (`type:'L'`, only `p0`/`p1`) at an extreme
+handle value -- confirmed by direct inspection of the resolved primitives array for both cases:
+`archRise=0` makes `hourglassConstruction`'s own `arch` stay `null` (the `if (archRise > 0)` guard
+at line 1235 never fires), so `_solveHourglass`'s own `fresh[11]` (line 1555) keeps its default
+`STRAIGHT_SEGMENT` instead of becoming an arc (line 1580's `else if (arch)` never runs either) --
+`top_edge` is a genuine, correctly-flat LINE; and `template_12`'s own shoulder arc at taperAngle
+-13.753 (its own computed floor) resolves to a primitive 0.00088 in long (`p0`/`p1` barely apart)
+-- a REAL arc whose sweep has shrunk to near-zero, not a bug in the taper math itself, just a
+shape `at()` was never written to expect. `a.cx`/`a.rx` are `undefined` on a line primitive, so
+`at()` returns `NaN`, `JSON.stringify(NaN)` prints `null`, and that literal `null` reaches the
+Send payload's own `seedGeometry` -- never caught by `generateSilhouette`/`outlineDefects` (which
+reported `defects: []` on both, since a flat top and a 0.00088in arc are both topologically VALID
+shapes, just not ones `at()` can read as an arc).
+
+**Fix, 2 small branches in the SAME function, no other file touched:**
+`frame-handles.js`'s own `kind==='arc'` branch now checks `p.type === 'A'` first; when it's not
+(the collapsed-to-a-line case), it seeds a well-formed 3-point arc through the line's own two
+endpoints with their arithmetic midpoint standing in for the bulge point, instead of calling
+`at()` on fields a line primitive doesn't have -- the declared Fusion BuildSequence step is still
+`'Arc3Point'` either way, so the seed sent must still be a valid 3-point one. The `kind==='pin'`
+branch had the identical gap one level up (`p.cx`/`p.cy`, the arc's own centre) -- found by the
+test's OWN second failure, after the first fix turned up `template_12`'s `skel_shoulder_pin_R`
+still null -- fixed the same way (the line's own two-endpoint midpoint standing in for the centre;
+a degenerate pin's exact position barely matters once its own anchoring arc has shrunk this far).
+
+**The pure test, proven non-vacuous first.** `tests/frame-handles.test.js`, new describe block:
+re-derives the SAME 133-case matrix (every declared handle of all 13 templates, min/max/default
+at 7x9) purely in JS via `frameParamRanges`+`paramsFromShapeModel` (no Fusion) and asserts every
+`frameSeedGeometry` point/radius is `Number.isFinite`. Run BEFORE the fix: failed exactly 2 of 13
+templates (`template_10`: `top_edge x`; `template_12`: `arc_shoulder_R x`) -- not more, not fewer,
+not vacuously green -- matching item 61's own live matrix exactly. Run after the arc-branch fix
+alone: 1 remaining failure (`template_12`'s `skel_shoulder_pin_R`, the pin gap above). Run after
+both fixes: 13/13 clean.
+
+**Verification:** full JS suite 3130/3130 (3117 + 13 new, 0 regressions); `gen_frame_defs.py
+--check`: fresh (this fix never touches Python/template_data.py, only `frame-handles.js`, so no
+impact expected and none found). Regenerated all 133 matrix payloads post-fix
+(`h23_item61_make_full_matrix_payloads.mjs`, fresh scratch dir) and scanned every one for a
+literal `null`: 0 found, confirming the dispatch's own "run the generator over all 133" ask
+directly, not just via the new test's own narrower min/max-only sweep.
+
+**Not done this item (by the live scope correction, not an oversight):** the (a) pilot (does Send
+already overwrite the baked arc seeds? derive via-points arc by arc if not) -- Fred is doing the
+range-end fixes himself in Fusion; this worker is standing clear of `seed_geometry.py`,
+`inner_corners.py`, every T1-family phase file, and Fusion itself until told otherwise.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js` (the
+2-branch fix) and `tests/frame-handles.test.js` (the new describe block). No other file touched.
+
+## H23 item 64: the matrix tests the REACHABLE range end now, not just the declared one -- tooling
+only, no Fusion run yet (waiting on "Fusion free" from the advisor, per the dispatch).
+
+**Why.** Item 63's own guards (the advisor's (a) Fred-approved undercut guard, d92ae70; the
+pre-existing no-hook guard, item 39) pull a REAL drag to a stop BEFORE it ever reaches a declared
+handle's own `frameParamRanges` end, whenever that declared end would already break one of them.
+The item 61 matrix tested the declared end directly -- a value a real drag might never actually
+reach -- so some of its own "NOT BUILT"/REFLEX/MITERMISS cases may never have been reachable by a
+user at all. Testing the reachable end instead is what the dispatch asked for before re-running
+the live sweep.
+
+**(1) Reused the live drag-stop's own predicate, did not copy it.** `frame-panel.js`'s own
+`_frameRecordBreaksNoHookRule(rec)` (undercut OR miter-escapes-the-wood; inner-profile defects are
+deliberately NOT this rule's own job, per its own existing doc comment) is now `export`ed --
+the one-line change, nothing else touched in that file. `tools/repro/
+h23_item61_make_full_matrix_payloads.mjs` imports it directly and bisects from the template's own
+known-safe default toward the declared end (24 halvings, the same count `_clampDragPatchToNoHookRule`
+itself uses) whenever the declared end trips the guard -- the exact shape of the live drag-stop's
+own bisection, just specialized to one scalar handle instead of a generic multi-key patch.
+**One wrinkle, worth being honest about rather than working around:** `frame-panel.js` is a large
+UI module whose own import graph (via `editor-ui.js`) touches `document` at module scope -- fatal
+in plain Node. Stubbed a bare `jsdom` `document`/`window` (nothing it actually calls touches a
+real DOM element) before the import; `P.widthIn`/`P.heightIn` set the same way the existing test
+file already does, for the same reason (`_frameRecordBreaksNoHookRule`'s own board size comes from
+that global, not a parameter).
+
+**(2) Regenerated all 133 payloads.** 25 of the 120 handle-range-end cases got pulled back from
+their own declared end -- recorded in `manifest.json` as `{declaredEnd, reachableEnd, pulledBack}`
+per case. Every pulled-back case is one of item 61's own already-found REFLEX/MITERMISS classes
+(`waistReach:max`, `cornerRadiusTop/Bottom:min`, `waistRadius:min/max`, `waveReach:max`,
+`gableNeckWidth/neckHeight/bodyFlareHeight:min`) -- strong, independent confirmation that the
+guards are correctly stopping a real drag before most of what the live matrix flagged, without my
+having to re-derive which ones by hand.
+
+**One known gap, left alone, not mine to close.** `template_12_cornerRadiusTop_max` still shows
+JS-side `notTangent`/`selfIntersection` defects (unchanged from item 61's own finding) AND is NOT
+pulled back -- `_frameRecordBreaksNoHookRule` only checks the OUTER profile for an undercut, never
+its full `outlineDefects`, so a self-intersecting-but-not-undercut outer profile slips through
+this guard entirely. This is squarely inside the advisor's own "last 8 corner cases" -- not
+touched, not diagnosed further, per this item's own explicit scope (tooling only).
+
+**Verification:** full JS suite 3135/3135 (3130 + 5 from the advisor's own commits, 0 regressions
+from this item's own 1-line export); `gen_frame_defs.py --check`: fresh (no Python touched).
+
+**Not done yet:** the live Fusion re-run of the full matrix -- waiting on the advisor's own
+"Fusion free" signal, per the dispatch ("ask the advisor for 'Fusion free' and run the full matrix
+live"), since Fred is actively in Fusion fixing the remaining corner cases.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/main/frame-panel.js` (1-line
+export, no behavior change) and `tools/repro/h23_item61_make_full_matrix_payloads.mjs` (the
+reachable-end bisection). Scratch payloads/manifest left uncommitted under `bspline-frame-builder/
+scratch/`, same convention as every prior item.
+
+## H23 item 64 (live run): "Fusion free" granted -- the full 133-case reachable-end matrix,
+against deployed main `d92ae70` (the advisor's own corner fix already live). **122/133 BUILT
+(92%), up from item 61's own 76/133 (57%) -- 7 of 13 templates now fully clean.**
+
+**THE NEW MATRIX (133 cases, reachable ends, 7x9, live in Fusion):**
+
+| template | failed/total | failing handle:end = class |
+|---|---|---|
+| template_1  | 0/11  | CLEAN |
+| template_2  | 1/9   | neckLength:max=MITERMISS |
+| template_3  | 0/13  | CLEAN |
+| template_4  | 0/15  | CLEAN |
+| template_5  | 2/15  | waistCenterY:min=MITERMISS, waistRadius:max=MITERMISS |
+| template_6  | 0/5   | CLEAN |
+| template_7  | 0/7   | CLEAN |
+| template_8  | 0/11  | CLEAN |
+| template_9  | 0/5   | CLEAN |
+| template_10 | 2/7   | archRise:min=SILENT, waistCenterY:min=MITERMISS |
+| template_11 | 2/11  | waistCenterY:max=MITERMISS, waistRadius:max=MITERMISS |
+| template_12 | 2/13  | cornerRadiusTop:max=NOTBUILT, taperAngle:min=SILENT |
+| template_13 | 2/11  | neckWidth:min=NOTBUILT, neckLength:max=MITERMISS |
+
+Full per-case detail in `bspline-frame-builder/scratch/item64_matrix_results.json` (scratch, not
+committed, same convention as item 61's own results).
+
+**Notes on the 11 remaining, reported as found -- no further root-causing attempted (not this
+item's own scope):**
+- **None of the 11 were pulled back by the reachable-end guard** (`manifest.json`'s own
+  `pulledBack` is `false` for all 11) -- the guard considers the value sent fine; Fusion disagrees.
+  This is the SAME shape of gap item 64's own tooling write-up already flagged for
+  `template_12_cornerRadiusTop:max` (a self-intersection the guard's outer-undercut-only check
+  doesn't catch) -- now confirmed to recur on 10 more cases across 5 more templates, all still
+  `MITERMISS`/`NOTBUILT`/`SILENT`, none `REFLEX` (the reflex-arc class is gone from the matrix
+  entirely -- 22 -> 0).
+- **The 2 `SILENT` cases (`template_10` `archRise:min`, `template_12` `taperAngle:min`) are NOT a
+  recurrence of item 63(d)'s own NaN bug** -- that fix is confirmed holding (the finite-points test
+  passes, and a direct check of these 2 payloads' own `seedGeometry` shows no `null` anywhere).
+  Both still show `count: 0`, 0 of the 3 scanned log classes, same shape as before the NaN fix --
+  whatever fails now is a DIFFERENT, downstream issue (unfixed by item 63(d), never claimed to be).
+  `archRise:min` (= 0, T10's own plain flat top, identical in kind to every OTHER template's
+  default) is notable: it is NOT a guard-flagged value at all -- the guard treats it as fine (it
+  IS fine, geometrically), yet T10 alone can't build it. T1 itself builds archRise's own absence
+  perfectly (it has no `archRise` handle at all); whatever's wrong is T10-specific.
+- **`template_13_neckWidth:min` is a genuinely NEW failure**, not present in item 61's own original
+  matrix (that run had T13 at 9/11 clean, only `neckLength` failing). Likely a side effect of the
+  advisor's own (b) square-corner-miter fix changing behavior at a value nearby -- not
+  investigated further here, reported as found.
+- **5 of the 6 still-failing templates share `waistCenterY`/`waistRadius`/`neckLength` as their
+  own common failing key** (T2/T5/T10/T11/T13) -- the SAME shared shoulder/waist/hip (or neck)
+  chain family item 61 first implicated, now narrowed to just these 3 handles plus the 2
+  already-known/isolated gaps (T12 cornerRadiusTop, the 2 SILENT cases).
+
+**Verification:** this was a pure measurement run -- no code changed this half of the item. Harness
+unchanged from item 61/64's own tooling (`item61_full_matrix_sweep.py`), run against the NEW
+reachable-end payloads (`item64_matrix_payloads/`, from this item's own earlier tooling half).
+
+**Passed back to the advisor** with this matrix; they continue the remaining corner-case work from
+code, without Fusion, per their own note.

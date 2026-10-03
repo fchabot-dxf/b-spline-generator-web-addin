@@ -20,6 +20,11 @@ const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const T1 = tplOf('template_1'), T10 = tplOf('template_10');
 const BOARDS = [[7, 9], [12, 6], [9, 7], [5.51, 1.97]];
 const KEYS = ['archRise', 'waistReach', 'waistCenterY'];
+// H23 item 59 (Arched + taper): NOT added as a 4th handle -- LIVE Fusion verification found the
+// shoulder/waist/hip arc chain ignores a sent taperAngle (p02_02_anatomy.py's own hardcoded skeleton
+// pins), so the handle is withheld pending that fix; see WORK-LOG and template_data.py's own comment.
+// The shared construction fix below (hourglassConstruction, _hourglassRange, taperAngleForTopCornerX)
+// is real and kept -- these tests exercise it directly via explicit seeds, with no handle needed.
 const T = 0.75; // the default frame thickness
 const board = (W, H) => ({ widthIn: W, heightIn: H });
 const rec10 = (seeds, extra = {}) => normalizeFrameRecord({ templateId: 'template_10', seeds, ...extra });
@@ -177,21 +182,27 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     for (const i of [1, 2, 3, 7, 8, 9]) expect(JSON.stringify(after.primitives[i])).toBe(JSON.stringify(prof.primitives[i]));
   });
 
-  it('Waist reach / Waist position: the SAME Template 1 handles, unaffected by the arch', () => {
-    const { prof: prof1, next: next1 } = drag('waistReach', {}, 0.3, 0);
+  it('Waist reach / Waist position: the SAME Template 1 handles, unaffected by the arch (at taperAngle 0 -- ' +
+    'H23 item 59: once a taper is applied, the shoulder\'s own Y position -- which DOES move with waistReach/' +
+    'waistCenterY, same as Template 1 -- now also feeds the taper\'s own tangent-line formula, so the arch\'s ' +
+    'own chord width (topX) is no longer independent of them; pinned to 0 here to isolate the SAME claim this ' +
+    'test always made, not a new one)', () => {
+    const { prof: prof1, next: next1 } = drag('waistReach', { taperAngle: 0 }, 0.3, 0);
     const after1 = frameCutProfile(FRAME_DEFS, next1, board(7, 9));
     expect(after1.defects).toEqual([]);
     expect(JSON.stringify(after1.primitives[11])).toBe(JSON.stringify(prof1.primitives[11])); // the arch untouched
 
-    const { prof: prof2, next: next2 } = drag('waistCenterY', {}, 0, 0.3);
+    const { prof: prof2, next: next2 } = drag('waistCenterY', { taperAngle: 0 }, 0, 0.3);
     const after2 = frameCutProfile(FRAME_DEFS, next2, board(7, 9));
     expect(after2.defects).toEqual([]);
     expect(JSON.stringify(after2.primitives[11])).toBe(JSON.stringify(prof2.primitives[11])); // the arch untouched
   });
 
-  it('dragged far, each handle stops at its range and the frame stays valid (4 miters)', () => {
+  it('dragged far, each handle stops at its range and the frame stays valid (4 miters) (taperAngle pinned to ' +
+    '0 -- H23 item 59: isolates each of THESE 3 handles\' own extreme from taper\'s own, same as the test ' +
+    'above; taper\'s own extremes are covered by the Arched+taper live/sweep checks instead)', () => {
     for (const [key, dx, dy] of [['archRise', 0, -20], ['archRise', 0, 20], ['waistReach', 20, 0], ['waistCenterY', 0, -20]]) {
-      const { next } = drag(key, {}, dx, dy);
+      const { next } = drag(key, { taperAngle: 0 }, dx, dy);
       const after = frameCutProfile(FRAME_DEFS, next, board(7, 9));
       expect(after.primitives.length, key).toBe(12);
       expect(after.defects, key).toEqual([]);
@@ -225,14 +236,19 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     // defects check, not an approximation) gates each draw; a bad draw is redrawn with a salted seed until clean.
     // The SAME external seed still always lands on the same final shape (reproducible), and the 47-50 already-
     // clean seeds are untouched (the retry's first attempt is the bare generateFrameSeeds call, byte for byte).
+    // H23 item 59: taperAngle pinned to 0 on every draw below -- this test's own concern (predates taper) is
+    // specifically the INNER profile's own sensitivity to archRise/waistReach/waistCenterY; taper's own
+    // interactions are covered by the Arched+taper live/sweep checks instead, same isolation this file's
+    // other archRise-focused tests already use. generateFrameSeeds/generateValidFrameSeeds have no per-key
+    // pin (every seeded handle is drawn every call), so the override is applied to the RESULT, not the draw.
     const isValid = (seeds, W, H) => {
-      const inn = inner(seeds, W, H);
+      const inn = inner({ ...seeds, taperAngle: 0 }, W, H);
       return !inn || inn.defects.length === 0;
     };
     for (const [W, H] of [[7, 9], [6, 9], [11, 14], [5, 7]]) { // portrait only (Fred's own current usage)
       const region = profile({}, W, H).region;
       for (let seed = 1; seed <= 500; seed++) {
-        const seeds = generateValidFrameSeeds(T10, region, seed, T, (s) => isValid(s, W, H));
+        const seeds = { ...generateValidFrameSeeds(T10, region, seed, T, (s) => isValid(s, W, H)), taperAngle: 0 };
         const prof = profile(seeds, W, H), innr = inner(seeds, W, H);
         expect(prof.defects, `${W}x${H} seed ${seed}`).toEqual([]);
         if (prof.fit.ok) expect(innr.defects, `${W}x${H} seed ${seed}`).toEqual([]); // no inner edge when the frame doesn't fit
@@ -249,10 +265,12 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     const CAPTURED_BAD_SEEDS = { waistCenterY: -0.3818701319168019, waistReach: 0.24322918082707384, archRise: 0.23766942425966095 };
     const bad = profile(CAPTURED_BAD_SEEDS);
     expect(primLength(bad.primitives[0]), 'horn_TR (explicit seed, not clamped)').toBeLessThan(T);
+    // H23 item 59: taperAngle pinned to 0 -- this test's own concern is archRise's own range specifically
+    // (predates taper); same isolation as the inner-profile test above.
     for (const [W, H] of [[7, 9], [6, 9]]) {
       const region = profile({}, W, H).region;
       for (let seed = 1; seed <= 500; seed++) {
-        const seeds = generateFrameSeeds(T10, region, seed);
+        const seeds = { ...generateFrameSeeds(T10, region, seed), taperAngle: 0 };
         const prof = profile(seeds, W, H);
         expect(primLength(prof.primitives[0]), `${W}x${H} seed ${seed} horn_TR`).toBeGreaterThanOrEqual(T);
         expect(primLength(prof.primitives[10]), `${W}x${H} seed ${seed} horn_TL`).toBeGreaterThanOrEqual(T);
@@ -267,11 +285,13 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     'not whatever this draw\'s own archRise happens to be -- frame-panel.js\'s own generateFrame() does ' +
     'exactly that now; this test reproduces its exact logic and cross-checks against the TRUE ' +
     '(archRise-independent) horn length, not just a differently-wrong app model', () => {
+    // H23 item 59: taperAngle pinned to 0 throughout -- this test's own concern (predates taper) is archRise's
+    // real, Fusion-build interaction specifically; same isolation as the two tests above.
     const isValid = (seeds, W, H) => {
-      const inn = inner(seeds, W, H);
+      const inn = inner({ ...seeds, taperAngle: 0 }, W, H);
       if (inn && inn.defects.length > 0) return false;
       const realArchRise = paramsFromShapeModel('hourglass', T10.shapeModel, profile({}, W, H).region).archRise;
-      const outer = profile({ ...seeds, archRise: realArchRise }, W, H);
+      const outer = profile({ ...seeds, archRise: realArchRise, taperAngle: 0 }, W, H);
       return outer.primitives.every((p) => primLength(p) >= T);
     };
     for (const [W, H] of [[7, 9], [6, 9]]) {
@@ -279,9 +299,9 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
       // The TRUE reference: the arch's own real (archRise-independent) end point, cross-referenced against
       // each draw's own (accurate, archRise-independent) shoulder point -- not the app's own archRise-biased
       // horn primitive, which this test's whole point is NOT to trust for the arch's own end.
-      const fixedArchEndPt = profile({}, W, H).primitives[0].p0;
+      const fixedArchEndPt = profile({ taperAngle: 0 }, W, H).primitives[0].p0;
       for (let seed = 1; seed <= 500; seed++) {
-        const seeds = generateValidFrameSeeds(T10, region, seed, T, (s) => isValid(s, W, H));
+        const seeds = { ...generateValidFrameSeeds(T10, region, seed, T, (s) => isValid(s, W, H)), taperAngle: 0 };
         expect(isValid(seeds, W, H), `${W}x${H} seed ${seed}`).toBe(true);
         const shoulderPt = profile(seeds, W, H).primitives[0].p1;
         const realHornLen = Math.hypot(shoulderPt.x - fixedArchEndPt.x, shoulderPt.y - fixedArchEndPt.y);
@@ -372,5 +392,86 @@ describe('the Shape Lattice and Templates 1-9 never get the arch', () => {
     expect(out.archRise).toBeCloseTo(0.35, 9);
     const t1out = paramsFromShapeModel('hourglass', T1.shapeModel, region);
     expect(t1out).not.toHaveProperty('archRise');
+  });
+});
+
+/**
+ * H23 item 59 (Arched + taper). Ported from tools/repro/f30_item5_arched_taper_diagram.mjs @4be8963 (fb-app):
+ * (1) the fix itself -- hourglassConstruction's own hh -> hh-archRise substitution before computing the
+ * taper's own tangent corner, so the taper and the arch combine correctly (see editor-shape-lattice-
+ * generator.js's own H23 item 59 comments for the exact mechanism); (2) continuityCheck, the diagram script's
+ * own Fred-added check that caught the real live-Fusion gap (outlineDefects' own notTangent check doesn't fire
+ * on this shape -- EVERY joint here is tangent by construction when it is NOT a declared miter corner, so a
+ * disconnected-but-same-direction joint would slip past it) -- now a pure, permanent test instead of a one-off
+ * diagram script's own throwaway check.
+ *
+ * T10 has NO taperAngle HANDLE (LIVE Fusion verification found the shoulder/waist/hip arc chain ignores a
+ * sent value -- see template_data.py's own comment and WORK-LOG for the full finding) -- these tests exercise
+ * the SHARED CONSTRUCTION directly (generateSilhouette, bypassing frameCutProfile/normalizeFrameRecord,
+ * which would silently DROP a taperAngle seed for a template with no declared handle for it, per frame-
+ * record.js's own `seeded.has(k)` filter). The fix is real and correct at this level regardless of whether
+ * any template exposes it yet.
+ */
+describe('H23 item 59: Arched + taper (shared construction only -- T10 has no handle for this yet)', () => {
+  const primEnd = (p, atEnd) => (p.type === 'L' ? (atEnd ? p.p1 : p.p0) : {
+    x: p.cx + p.rx * Math.cos(atEnd ? p.theta1 + p.dTheta : p.theta1),
+    y: p.cy + p.ry * Math.sin(atEnd ? p.theta1 + p.dTheta : p.theta1),
+  });
+  // Every piece's own END must exactly meet the NEXT piece's own START -- plain coincidence, not tangency
+  // (outlineDefects' own job). Returns the worst gap found, in inches.
+  const continuityCheck = (prims) => {
+    let worst = 0;
+    for (let i = 0; i < prims.length; i++) {
+      const a = prims[i], b = prims[(i + 1) % prims.length];
+      const gap = Math.hypot(primEnd(a, true).x - primEnd(b, false).x, primEnd(a, true).y - primEnd(b, false).y);
+      if (gap > worst) worst = gap;
+    }
+    return worst;
+  };
+  const TAPER_SWEEP = [-15, -10, -8, -4, 0, 4, 8, 10, 15];
+  const BOARDS_59 = [[7, 9], [6, 9], [9, 12]];
+  // T10's own fitted default archRise/waistReach/waistCenterY, resolved once per board via the SAME
+  // shapeModel the (handle-less) template still carries -- then taper injected directly into params,
+  // bypassing the handle layer entirely.
+  const resolvedAt = (W, H) => {
+    const hw = W / 2 - 0.25, hh = H / 2 - 0.25;
+    return paramsFromShapeModel('hourglass', T10.shapeModel, { x: -hw, y: -hh, w: 2 * hw, h: 2 * hh });
+  };
+  const buildTapered = (taperAngle, W, H) =>
+    generateSilhouette({ x: -(W / 2 - 0.25), y: -(H / 2 - 0.25), w: W - 0.5, h: H - 0.5 },
+      { preset: 'hourglass', params: { ...resolvedAt(W, H), taperAngle } });
+  // T10's own declared miter corners (line meets arc at horn_TR/TL and bottom_edge/horn_BL) are EXPECTED
+  // non-tangent -- frameCutProfile normally filters these (its own cornerIndices, from tpl.regions.miters
+  // + seedMap); replicated here directly since this suite bypasses frameCutProfile entirely (no handle to
+  // route taperAngle through it -- see this describe block's own header comment).
+  const primOf = (bareId) => T10.seedMap.find((e) => e.id === bareId)?.prim;
+  const cornerIndices = new Set((T10.regions.miters || []).map(([src]) => {
+    const p = primOf(src.replace(/^proj_/, '').replace(/:S$/, ''));
+    return p == null ? null : (p - 1 + 12) % 12;
+  }).filter((i) => i != null));
+  const realDefects = (prims) => outlineDefects(prims).filter((d) => !(d.kind === 'notTangent' && cornerIndices.has(d.index)));
+
+  it('every piece stays exactly connected (continuityCheck, ported) across the full declared taper range, ' +
+    'at the template\'s own fitted default archRise/waistReach/waistCenterY', () => {
+    for (const [W, H] of BOARDS_59) {
+      for (const taper of TAPER_SWEEP) {
+        const sil = buildTapered(taper, W, H);
+        expect(continuityCheck(sil.primitives), `${W}x${H} taper=${taper}`).toBeLessThan(1e-9);
+        expect(realDefects(sil.primitives), `${W}x${H} taper=${taper}`).toEqual([]);
+      }
+    }
+  });
+
+  it('a high archRise + large negative taper combination genuinely breaks the shoulder/waist tangent chain ' +
+    '(hourglassConstruction\'s own waistMajor shortcut is correct only for the untapered angular relationship ' +
+    '-- a real finding, not fixed in the shared construction, since fixing it broke 28 OTHER test files when ' +
+    'tried: see WORK-LOG). The outline stays CONNECTED (continuityCheck) but genuinely non-tangent at the ' +
+    'waist joints.', () => {
+    const params = { ...resolvedAt(7, 9), waistCenterY: 0.39114991640466024, waistReach: 0.4505971593374452,
+      archRise: 0.6606365335708827, taperAngle: -11.51126071426814 };
+    const sil = generateSilhouette({ x: -3.25, y: -4.25, w: 6.5, h: 8.5 }, { preset: 'hourglass', params });
+    expect(continuityCheck(sil.primitives), 'captured bad case (explicit, not clamped): still connected').toBeLessThan(1e-9);
+    expect(realDefects(sil.primitives).some((d) => d.kind === 'notTangent'),
+      'captured bad case: the real defect this item found').toBe(true);
   });
 });

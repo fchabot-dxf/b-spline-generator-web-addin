@@ -119,6 +119,20 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     // floor so `2 * (gableNeckWidth * hw) - 2t >= FRAME_MIN_OPENING_IN`, the same shape the hourglass waist/T6
     // tab rules already use for "the inner edges cross if the pinch is too tight".
     R.gableNeckWidth = _narrow(R.gableNeckWidth, (t + half) / hw, Infinity);
+  } else if (tpl.silhouettePreset === 'archedFunnel' || tpl.silhouettePreset === 'tulip') {
+    // T84 item 3: unlike every branch above, `_archedTimerRange`'s own bounds (editor-shape-
+    // lattice-generator.js) are ALREADY thickness-aware -- they were MEASURED directly against
+    // the real production validity pipeline (outlineDefects/offsetOutlineInward/frameMiters/
+    // miterStaysInsideWood) at frame_thickness=0.75in (SKETCH_3_PARAMETERS' own default), the
+    // same `t` every other branch here narrows TOWARD, not a thickness-UNAWARE geometric-only
+    // margin the way T10's own archRise range is (hourglassConstruction's own shape-only check,
+    // narrowed here separately using the real `t`). No further narrowing is applied here; this
+    // branch exists only so `_narrow(R.waistReach, ...)` below (the generic `else` fallback,
+    // keyed by Template 1's own param names, which this template's own keys never match) does
+    // not crash on `R.waistReach` being undefined. FIRST CUT: a frame_thickness far from the
+    // default (SKETCH_3_PARAMETERS allows 0.25-1.5) is not re-validated against these bounds --
+    // flagged, not fixed here, same honest scope every brand-new preset's own range function
+    // above declares for itself.
   } else if (tpl.silhouettePreset === 'dippedLeftWave') {
     // T8: the wave's own opening rule (Template 1's waistReach rule, same formula: this preset's only pinch).
     R.waveReach = _narrow(R.waveReach, -Infinity, 1 - (t + half) / hw);
@@ -260,13 +274,34 @@ export function frameSeedGeometry(tpl, prof, W, H) {
       const pts = [F(p.p0), F(p.p1)];
       out[e.id] = { points: e.reverse ? pts.reverse() : pts };
     } else if (e.kind === 'arc') {
-      let [s, m, t] = [F(at(p, 0)), F(at(p, 0.5)), F(at(p, 1))];
+      // H23 item 63 (d): at an extreme handle value the silhouette generator can legitimately
+      // collapse this SAME primitive slot into a near-zero-length LINE instead of a true arc
+      // (MEASURED: template_10 archRise=0 flattens its own arch; an extreme taper can shrink
+      // template_12's own shoulder arc's sweep to ~0) -- `at()` then reads `cx`/`rx`/`theta1` off
+      // a line primitive (`p0`/`p1` only), producing NaN, sent to Fusion as a literal null point.
+      // Seed a well-formed (if degenerate) 3-point arc through the line's own two endpoints
+      // instead, its arithmetic midpoint standing in for the bulge point -- the declared
+      // BuildSequence step is still 'Arc3Point' either way, so the shape sent must still be one.
+      let [s, m, t] = p.type === 'A'
+        ? [F(at(p, 0)), F(at(p, 0.5)), F(at(p, 1))]
+        : [F(p.p0), [(F(p.p0)[0] + F(p.p1)[0]) / 2, (F(p.p0)[1] + F(p.p1)[1]) / 2], F(p.p1)];
       // T5 HOURGLASS DIPPED TOP: an arc whose centre is on the Y axis (the top dip) is seeded `nudgeX` in off it
       // (the pins' own anti-auto-coincidence nudge); its phase puts the centre on the axis explicitly.
-      if (e.nudgeX) [s, m, t] = [s, m, t].map(([x, y]) => [x + e.nudgeX, y]);
+      // H23 item 48 (MEASURED live): the nudge must move ONLY the mid (bulge) point, matching the Python
+      // literal seed's own convention (p02_03_loop.py nudges just its arc's middle Points entry) -- nudging
+      // the two END points too (the previous code here) breaks the exact mirror-symmetry the dip's shared
+      // endpoints need against the shoulder arcs' own sent ends, which the Y-axis-centering constraint then
+      // resolves by moving the WHOLE tangent chain by ~0.1-0.3 in instead of the intended ~0.01 in -- the
+      // "preview != build" gap item 46's own sweep first found. Confirmed: un-nudging the ends made the live
+      // build land back on the literal/golden position to the ten-thousandth of an inch.
+      if (e.nudgeX) m = [m[0] + e.nudgeX, m[1]];
       out[e.id] = { points: e.reverse ? [t, m, s] : [s, m, t] };
     } else if (e.kind === 'pin') {
-      const c = F({ x: p.cx, y: p.cy });
+      // H23 item 63 (d): same degenerate-primitive case as the 'arc' branch above -- a pin
+      // anchors to an arc's own centre (`p.cx`/`p.cy`), which a collapsed-to-a-line primitive
+      // doesn't have; its own two endpoints' midpoint is where that centre would sit anyway once
+      // the arc's sweep has shrunk this close to zero.
+      const c = p.type === 'A' ? F({ x: p.cx, y: p.cy }) : [(F(p.p0)[0] + F(p.p1)[0]) / 2, (F(p.p0)[1] + F(p.p1)[1]) / 2];
       const inner = [Math.sign(c[0]) * PIN_AXIS_NUDGE_IN, c[1]];
       out[e.id] = { points: e.outer === 'S' ? [c, inner] : [inner, c] };
     } else if (e.kind === 'radius') {
@@ -285,16 +320,27 @@ export function frameSeedGeometry(tpl, prof, W, H) {
  * PARAM_ORDER, each range conditional on the values drawn before it, so a
  * generated frame (outline AND inner edge) can never loop or invert. The same
  * `seed` gives the same shape. `region` = the frame's cut-profile region.
+ *
+ * H23 item 40 (Fred: simple shapes, no short grain): a handle's own declared
+ * `generateRange` (template_data.py's FRAME_HANDLES, e.g. T7's own
+ * gableNeckWidth/neckHeight/bodyFlareHeight) narrows the floor/ceiling of
+ * [Generate]'s OWN draw -- intersected with the computed feasible range, so
+ * it can only ever narrow, never widen past what's actually feasible. Drag
+ * handles (frameHandles below) read the full feasible range directly and are
+ * NOT affected -- this only changes what Generate is willing to draw.
  */
 export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl)) {
   const preset = tpl.silhouettePreset;
-  const seeded = new Set(frameHandleTable(tpl).filter((h) => h.binding === 'seeded').map((h) => h.key));
+  const table = frameHandleTable(tpl);
+  const seeded = new Set(table.filter((h) => h.binding === 'seeded').map((h) => h.key));
   const params = { ...paramsFromShapeModel(preset, tpl.shapeModel, region) };
   const seeds = {};
   PARAM_ORDER[preset].forEach((key, i) => {
     if (!seeded.has(key)) return;
     const resolved = generateSilhouette(region, { preset, params }).params;
-    const r = frameParamRanges(tpl, region, resolved, t)[key];
+    let r = frameParamRanges(tpl, region, resolved, t)[key];
+    const gen = table.find((h) => h.key === key)?.generateRange;
+    if (gen) r = { min: Math.max(r.min, gen.min ?? r.min), max: Math.min(r.max, gen.max ?? r.max) };
     const u = FRAME_GEN_BAND[0] + (FRAME_GEN_BAND[1] - FRAME_GEN_BAND[0]) * seededUnit(seed, FRAME_GEN_SALT + i);
     params[key] = seeds[key] = r.min + (r.max - r.min) * u;
   });
@@ -317,7 +363,14 @@ const GENERATE_RETRY_SALT = 104729; // a prime, decorrelated from FRAME_GEN_SALT
 // inner-defects check alone did -- MEASURED (5000-seed sweeps, portrait sizes): worst case needed 51 attempts
 // (7x9), 35 (6x9), 28 (9x12); 20 left 7-17/1000 still bad, 40 still left 1/1000 bad at 7x9. 80 gives 0/5000 at
 // every portrait size with real margin above the observed worst case, confirmed stable from 1000 to 5000 seeds.
-const GENERATE_MAX_ATTEMPTS = 80;
+// H23 item 39: the new no-hooked-tip margin check (frame-panel.js's generateFrame) is far tighter for ONE
+// template -- T7's own eave corner is structurally close to this floor for almost any seed (MEASURED:
+// raw per-draw pass rate 38.6% at 6x9, only ~4.1%/4.3% at 7x9/9x12 -- every other template passes
+// ~98-100% raw, so 80 was never the binding case before). MEASURED worst-case attempts-to-first-pass
+// over 2000 external seeds, T7 (the binding template): 17 (6x9), 273 (7x9), 250 (9x12); 0/2000 ever
+// exceeded that. 500 gives real margin above the observed worst case (273) and costs nothing -- even a
+// fully-exhausted 500-attempt budget (every attempt rejected, the pathological case) measures under 7ms.
+const GENERATE_MAX_ATTEMPTS = 500;
 export function generateValidFrameSeeds(tpl, region, seed, t, isValid) {
   let seeds = generateFrameSeeds(tpl, region, seed, t);
   for (let attempt = 1; attempt < GENERATE_MAX_ATTEMPTS && !isValid(seeds); attempt++) {

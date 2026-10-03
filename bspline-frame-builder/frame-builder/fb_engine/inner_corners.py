@@ -29,11 +29,18 @@ instead of baking a Distance/Direction ahead of time from a
 template's own default proportions -- those vary per Send (the app's
 own randomized seed), so a value baked from defaults almost never
 matches the real corner (MEASURED, H23 item 38).
+
+T84 item 3 adds a third corner shape: two CIRCLES meeting (T17 Tulip's
+own concave-upper-side-meets-arch / concave-upper-side-meets-lower-bulge
+corners -- 4 of its 6, since neither piece there is a straight line).
+``circle_circle_corner_step`` below is the same "compute expected
+position, find nearest existing SketchPoint" approach again, reading
+BOTH circles' centre/radius LIVE off the already-built arcs.
 """
 
 import math
 
-from fb_engine.t7_roof_eave import line_circle_corner
+from fb_engine.t7_roof_eave import circle_circle_corner, line_circle_corner
 
 
 def inner_corner_step(ctx, sketch, s_name, step):
@@ -131,6 +138,37 @@ def inner_corner_step(ctx, sketch, s_name, step):
         nearest_pt, nearest_dist = _find_nearest_point(
             all_points, expected_x, expected_y)
 
+        axis_aligned = all(abs(abs(float(d)) - 1.0) < 1e-9 for d in direction)
+        if (nearest_pt is None or nearest_dist > tolerance) and axis_aligned:
+            # H23 item 63 (live, T1 cornerRadiusTop max): when a square corner's SHORT side (a horn)
+            # is shorter than frame_thickness, the inward offset drops its copy, so the inner corner
+            # is where the surviving straight edge's offset meets the next curve -- still ON that
+            # edge's axis line, just slid along it (0.074 cm there, past the 0.05 tolerance). Accept
+            # the nearest point lying exactly on either axis line through the expected corner,
+            # slid along it. Square (+-1, +-1) corners only.
+            # 3 x frame_thickness: a big neighbouring arc (T2 neckLength max: the hip) can end the
+            # inner edge 2.85 cm along it (1.5 t), MEASURED live.
+            slid_pt, slid_dist = _find_point_slid_along_axis(
+                all_points, expected_x, expected_y, max_slide=3 * dist_cm)
+            if slid_pt is not None:
+                ctx.logger.log(
+                    f"INNER CORNER {label}: short side collapsed in the offset; using the point "
+                    f"slid {slid_dist:.4f} cm along the surviving edge")
+                nearest_pt, nearest_dist = slid_pt, 0.0
+
+        if nearest_pt is None or nearest_dist > tolerance:
+            # H23 item 63 (live, T5 waistCenterY min): the WHOLE corner run (top edge, horn, small
+            # shoulder arc) can collapse in the offset, leaving the inner corner where two inner
+            # ARCS meet -- on neither axis line, 1.83 cm from (outer - t, outer - t). Last resort:
+            # the nearest vertex of the inner loop itself (an endpoint of an offset curve, tagged
+            # 'inner_*'), within 1.5 x frame_thickness. Outer points never qualify.
+            v_pt, v_dist = _find_nearest_point(_inner_loop_vertices(sketch), expected_x, expected_y)
+            if v_pt is not None and v_dist <= 1.5 * dist_cm:
+                ctx.logger.log(
+                    f"INNER CORNER {label}: corner run collapsed in the offset; using the inner "
+                    f"loop's own vertex {v_dist:.4f} cm away")
+                nearest_pt, nearest_dist = v_pt, 0.0
+
         if nearest_pt is None or nearest_dist > tolerance:
             ctx.logger.log(
                 f"INNER CORNER {label}: no SketchPoint within {tolerance:.3f} "
@@ -175,6 +213,37 @@ def _find_nearest_point(all_points, ex, ey):
             best_d = d
             best_pt = pt
     return best_pt, best_d
+
+
+def _inner_loop_vertices(sketch):
+    """[(x, y, sketch_point)] for the endpoints of every curve whose FrameBuilder ID starts with
+    'inner_' (the offset's own children)."""
+    out = []
+    curves = getattr(sketch, 'sketchCurves', None)
+    if curves is None:
+        return out
+    for c in curves:
+        try:
+            a = c.attributes.itemByName('FrameBuilder', 'ID')
+            if not a or not str(a.value).startswith('inner_'):
+                continue
+            for sp in (c.startSketchPoint, c.endSketchPoint):
+                out.append((float(sp.geometry.x), float(sp.geometry.y), sp))
+        except Exception:
+            continue
+    return out
+
+
+def _find_point_slid_along_axis(all_points, ex, ey, max_slide, on_line_eps=1e-3):
+    """Nearest point lying on the horizontal or vertical line through (ex, ey) (within
+    `on_line_eps` cm), at most `max_slide` cm from (ex, ey) along that line. Returns
+    (point, slide_cm) or (None, inf)."""
+    best_pt, best_s = None, math.inf
+    for px, py, pt in all_points:
+        for off_axis, along in ((abs(py - ey), abs(px - ex)), (abs(px - ex), abs(py - ey))):
+            if off_axis <= on_line_eps and along <= max_slide and along < best_s:
+                best_pt, best_s = pt, along
+    return best_pt, best_s
 
 
 def line_circle_corner_step(ctx, sketch, s_name, step):
@@ -248,10 +317,29 @@ def line_circle_corner_step(ctx, sketch, s_name, step):
             ctx.logger.log(f"LINE-CIRCLE CORNER {label}: failed to read live geometry: {e}", "WARNING")
             continue
 
-        e_in = line_circle_corner(far_pt, near_pt, (0.0, 0.0), ft_cm, circle_center, circle_radius,
-                                   concave=cfg.get('Concave', True))
-
+        concave = cfg.get('Concave', True)
+        try:
+            e_in = line_circle_corner(far_pt, near_pt, (0.0, 0.0), ft_cm, circle_center, circle_radius,
+                                       concave=concave)
+        except Exception:
+            e_in = near_pt  # no intersection left: search around the outer corner instead
         nearest_pt, nearest_dist = _find_nearest_point(all_points, e_in[0], e_in[1])
+
+        if nearest_pt is None or nearest_dist > tolerance:
+            # H23 item 63 (live, T10 waistCenterY min): when the LINE is shorter than frame_thickness,
+            # the offset drops its copy, so the inner corner is where the circle's offset meets the
+            # NEXT curve instead -- still exactly ON the offset circle, just further round it. Accept
+            # the nearest point lying on that circle within 2 x frame_thickness of the expected corner.
+            r_in = circle_radius + ft_cm if concave else circle_radius - ft_cm
+            on_circle = [(px, py, pt) for px, py, pt in all_points
+                         if abs(math.hypot(px - circle_center[0], py - circle_center[1]) - r_in) <= 1e-3]
+            slid_pt, slid_dist = _find_nearest_point(on_circle, e_in[0], e_in[1])
+            if slid_pt is not None and slid_dist <= 2 * ft_cm:
+                ctx.logger.log(
+                    f"LINE-CIRCLE CORNER {label}: line collapsed in the offset; using the point "
+                    f"{slid_dist:.4f} cm round the offset circle")
+                nearest_pt, nearest_dist = slid_pt, 0.0
+
         if nearest_pt is None or nearest_dist > tolerance:
             ctx.logger.log(
                 f"LINE-CIRCLE CORNER {label}: no SketchPoint within {tolerance:.3f} "
@@ -262,4 +350,128 @@ def line_circle_corner_step(ctx, sketch, s_name, step):
         ctx.set_id(nearest_pt, s_name, "corner", override_id=inner_id)
         ctx.logger.log(
             f"LINE-CIRCLE CORNER {label}: resolved {inner_id} at "
+            f"({e_in[0]:.3f}, {e_in[1]:.3f}) [match dist={nearest_dist:.4f} cm]")
+
+
+def circle_circle_corner_step(ctx, sketch, s_name, step):
+    """
+    Resolve an inner corner where TWO CIRCLES meet (T84 item 3: T17 Tulip's own concave-upper-side
+    corners -- 4 of its 6, since neither piece there is a straight line, so `line_circle_corner_step`
+    above cannot resolve them). Sibling of that function, same "compute expected position, find
+    nearest existing SketchPoint" approach, fed LIVE centre/radius off BOTH already-built arcs via
+    fb_engine.t7_roof_eave.circle_circle_corner.
+
+    Parameters
+    ----------
+    ctx, sketch, s_name : as line_circle_corner_step
+    step : dict with keys
+             'Tolerance'      -- max distance (cm) between expected position and nearest
+                                  SketchPoint to accept as a match. Defaults to 0.05.
+             'FrameThickness' -- expression string evaluated to a cm distance (defaults to
+                                  'frame_thickness').
+             'Corners'        -- mapping of label to corner config:
+                                    {
+                                      'topR': {
+                                        'Arc1ID':   'proj_arch',      # either order -- symmetric
+                                        'Arc2ID':   'proj_upper_R',
+                                        'OuterID':  'proj_arch:S',    # the un-offset shared corner,
+                                                                      # only used to pick the right
+                                                                      # one of the 2 intersection roots
+                                        'InnerID':  'inner_proj_arch:S',
+                                        'Concave1': False,            # fb_engine.t7_roof_eave
+                                        'Concave2': True,             # .circle_circle_corner's own
+                                                                      # per-circle convention
+                                      },
+                                      ...
+                                    }
+    Unlike `line_circle_corner_step`, there is no single shared "interior reference point" here --
+    each circle's own offset direction is already fully determined by its own `Concave*` flag.
+    """
+    corners = step.get('Corners') or {}
+    if not corners:
+        ctx.logger.log("CIRCLE-CIRCLE CORNER: no Corners declared, skipping", "WARNING")
+        return
+
+    tolerance = float(step.get('Tolerance', 0.05))
+    try:
+        ft_cm = ctx.design.unitsManager.evaluateExpression(step.get('FrameThickness', 'frame_thickness'), 'cm')
+    except Exception as e:
+        ctx.logger.log(f"CIRCLE-CIRCLE CORNER: failed to evaluate frame thickness: {e}", "ERROR")
+        return
+
+    all_points = _collect_sketch_points(sketch)
+    if not all_points:
+        ctx.logger.log(f"CIRCLE-CIRCLE CORNER: no SketchPoints found in {s_name}, cannot resolve", "WARNING")
+        return
+
+    for label, cfg in corners.items():
+        arc1_id, arc2_id, outer_id, inner_id = (cfg.get('Arc1ID'), cfg.get('Arc2ID'),
+                                                  cfg.get('OuterID'), cfg.get('InnerID'))
+        if not (arc1_id and arc2_id and outer_id and inner_id):
+            ctx.logger.log(f"CIRCLE-CIRCLE CORNER {label}: missing Arc1ID/Arc2ID/OuterID/InnerID, skipping", "WARNING")
+            continue
+
+        emap = ctx.entity_map.get(s_name, {})
+        arc1_ent, arc2_ent, outer_ent = emap.get(arc1_id), emap.get(arc2_id), emap.get(outer_id)
+        missing = [n for n, e in (('Arc1ID', arc1_ent), ('Arc2ID', arc2_ent), ('OuterID', outer_ent)) if e is None]
+        if missing:
+            ctx.logger.log(f"CIRCLE-CIRCLE CORNER {label}: {', '.join(missing)} not in entity_map for {s_name}", "WARNING")
+            continue
+
+        try:
+            g1, g2 = arc1_ent.geometry, arc2_ent.geometry
+            c1, r1 = (float(g1.center.x), float(g1.center.y)), float(g1.radius)
+            c2, r2 = (float(g2.center.x), float(g2.center.y)), float(g2.radius)
+            outer_pt = (float(outer_ent.geometry.x), float(outer_ent.geometry.y))
+        except Exception as e:
+            ctx.logger.log(f"CIRCLE-CIRCLE CORNER {label}: failed to read live geometry: {e}", "WARNING")
+            continue
+
+        concave1 = cfg.get('Concave1', True)
+        concave2 = cfg.get('Concave2', True)
+        try:
+            e_in = circle_circle_corner(c1, r1, concave1, c2, r2, concave2, ft_cm, outer_pt)
+        except ValueError:
+            e_in = outer_pt  # no intersection left: search around the outer corner instead
+
+        nearest_pt, nearest_dist = _find_nearest_point(all_points, e_in[0], e_in[1])
+
+        if nearest_pt is None or nearest_dist > tolerance:
+            # Mirrors line_circle_corner_step's own "further round the offset circle" fallback
+            # (H23 item 63): when one of the two pieces collapses in the offset, the real inner
+            # corner can still be exactly ON one of the two offset circles, just further round it
+            # than the computed intersection. Try both circles.
+            r1_in = r1 + ft_cm if concave1 else r1 - ft_cm
+            r2_in = r2 + ft_cm if concave2 else r2 - ft_cm
+            on_either_circle = [(px, py, pt) for px, py, pt in all_points
+                                 if abs(math.hypot(px - c1[0], py - c1[1]) - r1_in) <= 1e-3
+                                 or abs(math.hypot(px - c2[0], py - c2[1]) - r2_in) <= 1e-3]
+            slid_pt, slid_dist = _find_nearest_point(on_either_circle, e_in[0], e_in[1])
+            if slid_pt is not None and slid_dist <= 2 * ft_cm:
+                ctx.logger.log(
+                    f"CIRCLE-CIRCLE CORNER {label}: a piece collapsed in the offset; using the "
+                    f"point {slid_dist:.4f} cm round one of the two offset circles")
+                nearest_pt, nearest_dist = slid_pt, 0.0
+
+        if nearest_pt is None or nearest_dist > tolerance:
+            # Mirrors inner_corner_step's own last resort (H23 item 63): when the whole corner run
+            # collapses, the inner corner is wherever two inner curves actually meet -- the
+            # nearest vertex of the inner loop itself, within 1.5 x frame_thickness.
+            v_pt, v_dist = _find_nearest_point(_inner_loop_vertices(sketch), e_in[0], e_in[1])
+            if v_pt is not None and v_dist <= 1.5 * ft_cm:
+                ctx.logger.log(
+                    f"CIRCLE-CIRCLE CORNER {label}: corner run collapsed in the offset; using the "
+                    f"inner loop's own vertex {v_dist:.4f} cm away")
+                nearest_pt, nearest_dist = v_pt, 0.0
+
+        if nearest_pt is None or nearest_dist > tolerance:
+            ctx.logger.log(
+                f"CIRCLE-CIRCLE CORNER {label}: no SketchPoint within {tolerance:.3f} "
+                f"cm of expected ({e_in[0]:.3f}, {e_in[1]:.3f}); nearest was {nearest_dist:.4f} cm",
+                "WARNING")
+            continue
+
+        ctx.set_id(nearest_pt, s_name, "corner", override_id=inner_id)
+        ctx.logger.log(
+            f"CIRCLE-CIRCLE CORNER {label}: resolved {inner_id} at "
             f"({e_in[0]:.3f}, {e_in[1]:.3f}) [match dist={nearest_dist:.4f} cm]")

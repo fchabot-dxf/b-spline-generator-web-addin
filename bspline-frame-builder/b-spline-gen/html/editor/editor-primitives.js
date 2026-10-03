@@ -44,3 +44,28 @@ export function distToArc(pt, prim) {
 export function distToPrimitive(pt, prim) {
   return prim.type === 'L' ? distToSegment(pt, prim.p0, prim.p1) : distToArc(pt, prim);
 }
+
+/** The nearest point to `pt` on segment `p0`-`p1` (clamped to its ends). */
+export function footOnSegment(pt, p0, p1) {
+  const dx = p1.x - p0.x, dy = p1.y - p0.y;
+  const lenSq = dx * dx + dy * dy;
+  let t = lenSq > 0 ? ((pt.x - p0.x) * dx + (pt.y - p0.y) * dy) / lenSq : 0;
+  t = Math.max(0, Math.min(1, t));
+  return { x: p0.x + t * dx, y: p0.y + t * dy };
+}
+
+/** The nearest point to `pt` on a CIRCULAR arc primitive (rx === ry, phi 0), clamped to its own
+ *  angular span (same convention as `distToArc`). */
+export function footOnArc(pt, prim) {
+  let rel = Math.atan2(pt.y - prim.cy, pt.x - prim.cx) - prim.theta1;
+  const TAU = Math.PI * 2;
+  rel -= TAU * Math.floor((rel + Math.PI) / TAU); // normalize to (-PI, PI]
+  const clamped = prim.dTheta >= 0 ? Math.max(0, Math.min(prim.dTheta, rel)) : Math.max(prim.dTheta, Math.min(0, rel));
+  const theta = prim.theta1 + clamped;
+  return { x: prim.cx + prim.rx * Math.cos(theta), y: prim.cy + prim.rx * Math.sin(theta) };
+}
+
+/** The nearest point to `pt` on a line or arc primitive. */
+export function footOnPrimitive(pt, prim) {
+  return prim.type === 'L' ? footOnSegment(pt, prim.p0, prim.p1) : footOnArc(pt, prim);
+}

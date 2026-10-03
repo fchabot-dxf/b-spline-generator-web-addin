@@ -19,6 +19,7 @@ import { shapeParamOverrides, frameHandles, clampToFrameRanges, FRAME_CLAMPED_PR
 import { frameColorFor } from '../core/color-utils.js';
 import { handleKindVisual, drawParamHandle, drawSegmentHighlight } from './editor-transform-handles.js';
 import { controlledSegments } from './editor-shape-lattice-interaction.js';
+import { distToPrimitive, footOnPrimitive } from './editor-primitives.js';
 
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
 /** The darkened "outside the frame" (board minus the cut profile): its own group, NOT inside the frame
@@ -101,9 +102,17 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
   // their own corners are always line-line, already exempt inside outlineDefects itself.
   const n = sil.primitives.length;
   const primOf = (bareId) => tpl.seedMap?.find((e) => e.id === bareId)?.prim;
+  // T84 item 3 (Arched Funnel / Tulip): a CCW-swapped arc (fusion360-quirks skill, "A SketchArc ALWAYS
+  // runs counter-clockwise") can make a corner's OWN outer id end in `:E` rather than `:S` -- the only
+  // honest name for the corner is whichever end is actually there. `outlineDefects`' own `notTangent`
+  // index `i` is the joint between primitive i and primitive i+1 (its own definition, just above): a
+  // `:S` corner is primitive p's own START, i.e. the joint BEFORE p (index p-1); a `:E` corner is p's own
+  // END, i.e. the joint AFTER p (index p itself) -- no prior template ever declared a `:E` miter (every
+  // corner happened to be reachable via `:S` on one of its two pieces), so this branch was dead until now.
   const cornerIndices = new Set((tpl.regions.miters || []).map(([src]) => {
-    const p = primOf(src.replace(/^proj_/, '').replace(/:S$/, ''));
-    return p == null ? null : (p - 1 + n) % n;
+    const isEnd = /:E$/.test(src);
+    const p = primOf(src.replace(/^proj_/, '').replace(/:[SE]$/, ''));
+    return p == null ? null : (isEnd ? p : p - 1 + n) % n;
   }).filter((i) => i != null));
   const defects = outlineDefects(sil.primitives).filter((d) => !(d.kind === 'notTangent' && cornerIndices.has(d.index)));
   return {
@@ -218,12 +227,97 @@ export function frameMiters(outerPrims, innerPrims) {
   if (!innerPrims || innerPrims.length !== outerPrims.length) return [];
   const n = outerPrims.length, out = [];
   for (let i = 0; i < n; i++) {
-    const a = outerPrims[(i - 1 + n) % n], b = outerPrims[i];
+    const aIdx = (i - 1 + n) % n, a = outerPrims[aIdx], b = outerPrims[i];
     const ta = _travelDir(a, true), tb = _travelDir(b, false);
     if (ta.x * tb.x + ta.y * tb.y > 0.999) continue; // tangent: not a corner
-    out.push({ outer: _primStart(b), inner: _primStart(innerPrims[i]) });
+    out.push({ outer: _primStart(b), inner: _primStart(innerPrims[i]), aIdx, bIdx: i });
   }
   return out;
+}
+
+// H23 item 39 (Fred's own correction mid-task: "a hooked tip is SHORT GRAIN -- fibres across a
+// thin tip, it snaps. Size the margin so a tip is never thin, not just 'miter inside the wood'"):
+// a miter's own corner legitimately touches its 2 bordering primitives EXACTLY at the vertex (the
+// shared endpoint) -- MEASURED (H23 item 39 sweep, all 13 templates): excluding by the MITER's own
+// t-fraction near the vertex is the WRONG exclusion, because distance-to-the-adjacent-primitive
+// grows roughly linearly with t purely from the corner's own angle (every ordinary corner reads as
+// "thin" a hair off its own vertex) -- every template false-failed at every tested margin. The
+// right exclusion is keyed to the PRIMITIVE's own arc-length from ITS endpoint: a sample's nearest
+// point (footOnPrimitive) on one of the corner's own 2 bordering primitives is EXPECTED to sit near
+// that primitive's own end only when it's actually near it; item 38's own finding (T7's eave) is a
+// miter re-approaching a FARTHER-OUT part of its own bordering arc, which this does not exclude.
+// Both the exclusion radius and the margin floor are declared as a FRACTION of frame_thickness
+// `t` (not a fixed inch value) -- the inner-corner offset, and so the miter's own length, scales
+// with `t`, and so must the "near the vertex, that's expected" zone and the "that's too thin" zone
+// scale with it too, or either one misfires at a frame_thickness far from whatever it was tuned
+// against. MEASURED (item 39 sweep, all 13 templates, t=0.75): 0.2 clears every healthy corner's
+// own expected near-vertex region with room to spare; see WORK-LOG for the per-template numbers.
+export const MITER_CORNER_EXCLUDE_T_FRAC = 0.2;
+const MITER_MARGIN_SAMPLES = 40;
+
+// The margin floor itself, also a fraction of `t`. MEASURED (H23 item 39 sweep, all 13 templates,
+// 1000 raw Generate draws each x 3 board sizes): every template's own DEFAULT passes with real
+// room to spare (T7's own tightest default -- its eave, the corner item 38 already found fragile
+// -- sits at 0.054-0.071 of t depending on frame_thickness; every other template's default clears
+// 0.14+). 0.04 sits safely under even T7's own tightest default while still rejecting a literal
+// re-crossing (0) and near-zero grazes. At this floor, raw (ungated) Generate draws pass ~98-100%
+// of the time for every template except T7 (T7: 38.6% at 6x9, ~4% at 7x9/9x12 -- its eave stays
+// close to this edge for almost any seed, not just a rare unlucky one; see WORK-LOG for the full
+// numbers and GENERATE_MAX_ATTEMPTS' own retry-budget measurement in frame-handles.js).
+export const MIN_MITER_MARGIN_T_FRAC = 0.04;
+
+/**
+ * The clearance from miter `m` (frameMiters' own `{outer, inner, aIdx, bIdx}`) to the REST of the
+ * outer boundary `outerPrims`, sampled along the miter's own length -- the minimum distance from
+ * any sampled point to any outer primitive, excluding (for the corner's own 2 bordering
+ * primitives only) any sample whose nearest point on that primitive is itself within
+ * `cornerExcludeIn` of the shared vertex (see MITER_CORNER_EXCLUDE_T_FRAC above). A literal
+ * re-crossing reads as 0 (included for free, not a separate test); a near-graze reads as a small
+ * positive number -- the short-grain sliver Fred's correction is about, which a pure crossing
+ * test would miss. `cornerExcludeIn` is an absolute distance (the caller derives it from the
+ * record's own frame_thickness: `t * MITER_CORNER_EXCLUDE_T_FRAC`) so this stays unit-agnostic,
+ * same convention as every other piece of this file that takes `t` pre-resolved (frameFit etc).
+ */
+export function miterTipMargin(outerPrims, m, cornerExcludeIn, samples = MITER_MARGIN_SAMPLES) {
+  const { outer: s0, inner: s1 } = m;
+  let best = Infinity;
+  for (let i = 0; i <= samples; i++) {
+    const f = i / samples;
+    const pt = { x: s0.x + (s1.x - s0.x) * f, y: s0.y + (s1.y - s0.y) * f };
+    outerPrims.forEach((p, idx) => {
+      if (idx === m.aIdx || idx === m.bIdx) {
+        const foot = footOnPrimitive(pt, p);
+        if (Math.hypot(foot.x - m.outer.x, foot.y - m.outer.y) < cornerExcludeIn) return;
+      }
+      best = Math.min(best, distToPrimitive(pt, p));
+    });
+  }
+  return best;
+}
+
+/**
+ * H23 item 39 (Fred-approved guard, "hooked tips are bad for wood grain" -- one declared rule for
+ * every template, not a T7 patch): every miter's own straight line (outer corner -> inner corner)
+ * must keep at least `minMargin` of clearance from the rest of the outer boundary along its whole
+ * length (miterTipMargin), not merely never cross it outright. `miters` is
+ * `frameMiters(outerPrims, innerPrims)`'s own output -- reuses the app's existing corner geometry
+ * rather than re-deriving it. `t` = the record's own resolved frame_thickness (both the margin
+ * floor and the corner's own exclusion radius are fractions of it -- see above).
+ */
+export function miterStaysInsideWood(outerPrims, miters, t, minMarginTFrac = MIN_MITER_MARGIN_T_FRAC) {
+  const cornerExcludeIn = t * MITER_CORNER_EXCLUDE_T_FRAC;
+  return miters.every((m) => miterTipMargin(outerPrims, m, cornerExcludeIn) >= t * minMarginTFrac);
+}
+
+/**
+ * H23 item 63 (Fred-approved guard, 2026-10-03: "stop before undercut"): an outline arc sweeping a
+ * half-circle or more is an undercut (a keyhole notch). Fusion's own build refuses it (p02_11's
+ * REFLEX ARC check) -- MEASURED: the 22 REFLEX cases of item 61's matrix were the app's OWN outline
+ * sweeping 183-291 deg at a handle's range end, not a solver branch flip. One declared rule, read by
+ * both Generate and the drag-stop.
+ */
+export function outlineHasUndercut(outerPrims) {
+  return outerPrims.some((p) => p.type === 'A' && Math.abs(p.dTheta) >= Math.PI);
 }
 
 let _provider = null;
@@ -389,4 +483,27 @@ export function frameSnapGate(editor, snapped, raw) {
 /** F7 (AMEND 1): fit-to-view frames the outline, not the stock rectangle. */
 export function frameFitRegion(editor) {
   return (editor && editor._frameProfile && editor._frameProfile.region) || null;
+}
+
+/** Two miters' inner corners closer than this fraction of frame_thickness leave an inner edge
+ *  Fusion's offset drops (T13 neckWidth:min: 0.028 in), so the miters collide in the build. */
+export const MIN_MITER_GAP_T_FRAC = 0.25;
+
+/**
+ * H23 item 63 (Fred-approved guard, 2026-10-03: "guard the handles"): do any two miters (each outer
+ * corner -> its inner corner, frameMiters' own output) cross, or end closer than
+ * MIN_MITER_GAP_T_FRAC x t on the inner edge? A bar shorter than its own two miters (T13
+ * neckWidth:min) does this, and Fusion then builds a stray sliver between them.
+ */
+export function mitersCollide(miters, t) {
+  const cross = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  for (let i = 0; i < miters.length; i++) {
+    for (let j = i + 1; j < miters.length; j++) {
+      const p = miters[i].outer, q = miters[i].inner, r = miters[j].outer, s = miters[j].inner;
+      if (Math.hypot(q.x - s.x, q.y - s.y) < MIN_MITER_GAP_T_FRAC * t) return true;
+      const d1 = cross(p, q, r), d2 = cross(p, q, s), d3 = cross(r, s, p), d4 = cross(r, s, q);
+      if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+    }
+  }
+  return false;
 }

@@ -52,6 +52,22 @@ describe('the press and the reply', () => {
     expect(rest).toEqual(framePayload(FRAME_DEFS, getFrameRecord()));
   });
 
+  // H23 item 42 (ONE build path, declared): a FRESH template pick resets seeds to {} (setFrameRecord's
+  // own "a template change resets the seeds" rule) -- exactly what Fred hits picking a template then
+  // Sending without ever touching Generate or a handle. MEASURED (H23 item 41): T7's and T10's own
+  // LEGACY unseeded construction has its own pre-existing defects (a reflex arc; an unsplit miter),
+  // neither reachable through the already-tested SEEDED path -- so every Send, seeded or not, must
+  // carry seed geometry, not just a dragged/Generated one.
+  it.each(['template_7', 'template_10'])('%s: a FRESH (unseeded) record’s Send payload still ' +
+    'carries full seed geometry -- the legacy construction is never reached', (templateId) => {
+    expect(getFrameRecord().seeds).toEqual({}); // nothing touched yet -- the exact state this item is about
+    setFrameRecord({ templateId });
+    expect(getFrameRecord().seeds).toEqual({}); // confirms the record THIS test sends really is unseeded
+    const payload = frameSendPayload();
+    const tpl = FRAME_DEFS.templates.find((t) => t.id === templateId);
+    expect(Object.keys(payload.seedGeometry).sort()).toEqual(tpl.seedMap.map((e) => e.id).sort());
+  });
+
   it('no frame chosen: nothing is sent', () => {
     expect(sendFrame()).toBe(false);
     expect(window.adsk.fusionSendData.mock.calls.filter(([a]) => a === 'send_frame')).toEqual([]);

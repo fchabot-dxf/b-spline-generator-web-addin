@@ -105,6 +105,46 @@ def line_circle_corner(line_far, line_near, interior_pt, frame_thickness, circle
     return e_in
 
 
+def circle_circle_corner(c1, r1, concave1, c2, r2, concave2, frame_thickness, outer_corner):
+    """TRUE inner corner where TWO CIRCLES meet (T17 Tulip, T84 item 3: a concave upper side meets
+    the arch, or meets a convex lower bulge -- the corners `line_circle_corner` above cannot
+    resolve, because neither piece there is a straight line), by the EXACT intersection of each
+    circle's own inward offset -- the circle-circle sibling of `line_circle_corner`'s own
+    "intersect two already-solved pieces of real geometry directly" approach.
+
+    `concave1`/`concave2`: the SAME convention as `line_circle_corner`'s own `concave` (True GROWS
+    that circle's radius when offsetting inward -- its centre sits on the material's EXTERIOR side;
+    False shrinks it -- centre on the material's INTERIOR side). Each circle carries its own flag
+    independently; there is no single shared `interior_pt` the way a line's offset needs one, since
+    a circle's own offset direction is already fully determined by its own centre/radius alone.
+
+    Two circles intersect at 0, 1 or 2 points; `outer_corner` (the un-offset shared corner, same
+    coordinate frame) disambiguates which of the 2 roots is the real inner corner -- the one closer
+    to it, mirroring `_line_circle_intersection_nearer`'s own `reference_s` disambiguation just
+    above. Raises ValueError when the two offset circles do not intersect at all (the "collapsed"
+    case `circle_circle_corner_step`, fb_engine/inner_corners.py, falls back from -- the same shape
+    of fallback `line_circle_corner_step` already has for this function's own sibling raising on a
+    degenerate configuration).
+
+    Returns the absolute inner-corner point (x, y)."""
+    r1_in = r1 + frame_thickness if concave1 else r1 - frame_thickness
+    r2_in = r2 + frame_thickness if concave2 else r2 - frame_thickness
+    dx, dy = c2[0] - c1[0], c2[1] - c1[1]
+    d = math.hypot(dx, dy)
+    if d < 1e-9 or d > r1_in + r2_in or d < abs(r1_in - r2_in):
+        raise ValueError("circle_circle_corner: the two offset circles do not intersect")
+    a = (d * d + r1_in * r1_in - r2_in * r2_in) / (2 * d)
+    h = math.sqrt(max(0.0, r1_in * r1_in - a * a))
+    ux, uy = dx / d, dy / d
+    px, py = c1[0] + a * ux, c1[1] + a * uy
+    nx, ny = -uy, ux
+    cand1 = (px + h * nx, py + h * ny)
+    cand2 = (px - h * nx, py - h * ny)
+    d1 = (cand1[0] - outer_corner[0]) ** 2 + (cand1[1] - outer_corner[1]) ** 2
+    d2 = (cand2[0] - outer_corner[0]) ** 2 + (cand2[1] - outer_corner[1]) ** 2
+    return cand1 if d1 <= d2 else cand2
+
+
 def eave_inner_corner(width_in, height_in, frame_thickness, neck_center, neck_radius):
     """The TRUE inner eave corner (right side; mirror x for the left), as a (Direction, Distance) pair for
     ResolveInnerCorners, computed from this template's OWN DEFAULT handle proportions (via roof_geometry

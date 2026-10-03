@@ -86,6 +86,35 @@ def colinear_circle_through_point(vertex, ray_direction, through_point):
     return centre, r
 
 
+def sagitta_circle(p0, p1, sag, away_point):
+    """The circle through `p0` and `p1` whose arc bulges by sagitta `sag` AWAY from `away_point` (i.e. the
+    chord's own midpoint, pushed out by `sag` along whichever of the two possible normals lands farther
+    from `away_point`, is ON the circle). Returns (centre, radius).
+
+    Unlike the two functions above (a neighbour's own tangency/colinearity pins the circle down), a
+    sagitta construction needs no neighbour at all -- the chord + bulge depth alone fully determine it.
+    T16/T17 (Arched Funnel / Tulip, T84 item 3) are built entirely from this: every joint between their
+    own 6 pieces is a MITER, never a tangent continuation, so each arc stands alone. Ported from
+    tools/repro/t84_items1_2_archedfunnel_tulip_diagram.mjs's own `bulgeArc` (the Fred-approved diagram,
+    commit 19f7bbb) -- same formula, closed-form, no iteration.
+    """
+    x0, y0 = p0
+    x1, y1 = p1
+    mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    dx, dy = x1 - x0, y1 - y0
+    chord_len = math.hypot(dx, dy)
+    half_chord = chord_len / 2.0
+    nx, ny = -dy / chord_len, dx / chord_len  # one of the two unit normals to the chord
+    ax, ay = away_point
+    d_this_side = (mx + nx - ax) ** 2 + (my + ny - ay) ** 2
+    d_mid = (mx - ax) ** 2 + (my - ay) ** 2
+    if d_this_side < d_mid:  # this normal points TOWARD away_point -- flip to the far side
+        nx, ny = -nx, -ny
+    r = (half_chord * half_chord + sag * sag) / (2.0 * sag)
+    centre = (mx + nx * (sag - r), my + ny * (sag - r))
+    return centre, r
+
+
 def true_via_point(center, radius, end0, end1):
     """The TRUE angular midpoint of the MINOR arc between `end0` and `end1` on the circle
     (`center`, `radius`) -- centre + radius * the unit bisector of the two end-direction vectors.

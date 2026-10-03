@@ -66,6 +66,7 @@ def _send_build_info(pal):
         info = _bi.read_build_info(addin_root)
         status, message = _bi.compare_to_source(info)
         pal.sendInfoToHTML('build_info', json.dumps({
+            'version':  info.get('version'),
             'sha':      info.get('sha'),
             'built_at': info.get('built_at'),
             'dirty':    info.get('dirty'),

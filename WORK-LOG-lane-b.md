@@ -12929,3 +12929,736 @@ not a resolution mistake) and pushed. No Fusion needed, none used.
 
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn 241 (epoch 9) — T82 item 6: inset window, Fusion + CAM side (code + fake-Fusion tests) — IN PROGRESS, Fusion free not yet requested
+
+Advisor dispatch: "T82 item 6, the inset window's Fusion + CAM side... Do code + fake-Fusion tests first,
+and ask me for 'Fusion free' before the live check (seat A is in Fusion right now)." Before touching any
+engine code, spawned an Explore agent (opus) over `panel_lip.py`/`declared_profiles.py`/
+`extrusion_engine.py`/`solid_coordinator.py`/CAM naming/the test harness, because the prior
+INSET-WINDOW-DESIGN.md (written before this seat had engine access) turned out to have 3 real factual
+errors, each caught by that research, not by me re-deriving them live:
+
+1. **Bar Z-placement was backwards.** The design said the window's bars "start AT the underside." MEASURED
+   fact (via the agent's read of `extrusion_engine.py:169-177` + `solid_coordinator.py:77-104`): a bar's
+   `start` is `frame_height_offset`, an `OffsetStartDefinition` FROM THE SKETCH PLANE; its `extent` is a
+   `ToEntityExtentDefinition` TO the underside face. Start=offset, end=underside -- the opposite direction.
+   Also corrected in INSET-WINDOW-LIVE_CHECK.md (two places) since its own checklist repeated the same
+   backwards claim ("top face at the underside" -> corrected to "bottom face at the underside").
+2. **"Zero CAM code changes" was false.** `_populate_frame_geometry`'s own generic N-bar path
+   (`_populate_n_bar_frame_geometry`) only runs when the classic 4 bar names are ABSENT. On every template
+   that still has them (1-5, 8, 10, 12, 13), `frame_window_*` bodies would be collected into `other_bars`
+   and never laid out at all -- confirmed by reading the actual body-walk code, not assumed.
+3. **"New component" would have broken 3 unrelated things.** A second tagged component breaks
+   `find_frame_component`'s "first tag hit," `send_frame.find_frames(design)[-1]`, delete-on-resend, and
+   CAM's one-`parentComponent`-per-move assumption. The window belongs in the SAME `Frame_N` component and
+   the SAME frame-enclosure sketch as the main bars, as new Blocks (`panel_lip.py`'s own append pattern).
+
+Fixed all 3 in INSET-WINDOW-DESIGN.md (sections 4 and 5) and INSET-WINDOW-LIVE_CHECK.md before writing any
+engine code -- this project's own "probe/design before template" discipline applied to a design DOC, not
+just to Fusion geometry: get the written record right before building from it. Also tightened §5 step 5
+(classify() needs several new branches, not "one more case") and §8's Z-placement test description.
+
+**`fb_engine/inset_window.py` (new, mirrors `panel_lip.py`'s exact shape).** `apply_inset_window(template,
+window, frame_thickness_in, panel_lip_in=0.0)`: pure, no adsk, identity-returns the template when disabled,
+malformed, or below the bars floor (`w`/`h` <= 2*frame_thickness -- the SAME floor
+`core/inset-window.js`'s own `insetWindowGeometry` already enforces, so the app preview and the Fusion
+build agree on when nothing is built). Appends up to 4 new Blocks to the EXISTING frame-enclosure sketch
+(found via `panel_lip._frame_sketch`, imported directly rather than duplicated): outer RectangleCenter,
+inner RectangleCenter (sized `w/h - 2*frame_thickness`, bare `frame_thickness` embedded in the Fusion
+expression so it stays parametric), a Miters block (4 corners, outer-vertex to inner-vertex, using
+RectangleCenter's own `_V_TL/_V_TR/_V_BL/_V_BR` tags -- no `:S`/`:E` convention needed since those vertices
+are already individually tagged), and -- only when `panel_lip > 0` AND it wouldn't clamp the hole shut -- a
+third hole RectangleCenter (`w/h - 2*frame_thickness - 2*panel_lip`). Declares
+`template["Frame"]["regions"]["window"]` = `{outer, inner, hole, cut, miters, bars}` for
+`declared_profiles.classify()` to read (`cut` is `"inner"` / `"hole"` / `None` -- 3 states: no lip, a real
+hole, or a lip wide enough to clamp the hole shut, in which case the bars still exist but NOTHING is cut,
+matching the app's own "clamp it shut (zero-area)" floor rather than falling back to a full, uncut hole).
+Didn't use `Offset` (the mechanism `panel_lip.py`/the main outline's own inner offset use) for the inner/
+hole rectangles, even though it would be fewer steps: a plain centred rectangle never self-intersects
+regardless of size (so it needs no `ResolveInnerCorners`), but offsetting a PURE-RECTANGLE loop (no arcs at
+all) is not a case this engine's own `addOffset2` quirks have been MEASURED on -- the fusion360-quirks
+skill's arc-vanishing-topology findings are all arc-specific, and I have no Fusion access this turn to
+measure a rectangle case fresh (`probe before template` cuts the other way with no probe available: stay on
+the ALREADY-PROVEN primitive, literal nested RectangleCenters, rather than a plausible-but-unmeasured one).
+
+**`declared_profiles.classify()`**: new branches, inserted after the main bars check, before the final
+opening/stray check -- unconditionally safe for a window-less build (`regions.get("window")` is `None` for
+every existing template; every new branch short-circuits False and falls through to the UNCHANGED original
+final check). A window-outer profile maps to a window bar via `bar_index(c, {"bars": window["bars"]})` --
+reusing `bar_index` with a shaped sub-dict rather than fighting its `.split(":")[0]` outline-id convention,
+which RectangleCenter's own `_V_*` vertex tags don't follow. **Found one real bug writing the test for
+this**: a profile touching a window-outer id AND the MAIN frame's own `inner` ids (the main opening, now
+shaped like a picture frame around the window, with the window's outer loop as an island) was being
+misrouted into the window-BAR branch, which then correctly complained "spans 4 bars" since the whole island
+boundary was present at once. Fixed by requiring the window-bar branch to ALSO check the profile does NOT
+touch `regions["inner"]` (a genuine window bar never does) -- caught because
+`test_the_main_opening_tolerates_the_windows_own_outer_loop_as_an_island` passed the FULL island boundary,
+not a same-bug-shaped partial one; a lazier test (one curve only) would have missed this.
+
+**`frame_definition.py`**: `WINDOW_BARS_FEATURE`/`WINDOW_CUT_FEATURE`, declared the same way
+`COMMON_FRAME_FEATURES`'s own `bars`/`trim` are (same Z rule, literal region-name strings, not
+cross-imported from declared_profiles.py -- matches the existing COMMON_FRAME_FEATURES precedent of not
+importing those constants either).
+
+**`solid_coordinator._declared_frame()`**: appends both new features to `frame["features"]`
+UNCONDITIONALLY (a shallow copy, never mutating template_resolver's own cached spec) -- safe because
+classify() only ever produces `window_bars`/`window_cut` ids when `inset_window` actually built window
+curves into THIS build's own sketch; a window-less build's candidate list is byte-identical (confirmed by
+the A/B hash below, not just reasoned).
+
+**`extrusion_engine._finalize_feature()`**: the SURROUND-kind cut name used to be unconditionally
+`f"{prefix}_TRIM_CUT"` for every cut feature -- would have collided (same literal name) for `window_cut`.
+Now keyed off `plan.get("order")` (`{"window_cut": "WINDOW_CUT"}`, default `"TRIM_CUT"` for `"trim"` AND for
+the bounding-box path's plans, which carry no `"order"` key at all) -- preserves the EXACT existing literal
+`test_send_frame.py` already asserts for the main trim.
+
+**CAM fix, `mm_builder.py` `_populate_frame_geometry()`** (the 2nd design-doc error, made real): added
+`_lay_out_other_bars()`, called at the end of the classic 4-bar layout when `other_bars` (any non-classic
+`frame_*`-named body, e.g. the window's own bars) is non-empty -- continues the SAME row from the classic
+layout's own `prev_right_edge`, using the SAME `move_features`/idempotent gate already passed (deliberately
+NOT calling the existing `_populate_n_bar_frame_geometry` here: it owns its OWN idempotent check keyed on
+the SAME `owner_comp.features.moveFeatures.count`, which would immediately see the classic layout's own
+just-added moves and skip -- two independently-gated functions can't layer on the same component's move
+history). New test `test_a_classic_four_bar_frame_with_a_window_also_lays_out_the_window_bars` in
+`test_mm_builder_frame_layout.py`; confirmed non-vacuous by monkeypatching `_lay_out_other_bars` to a no-op
+and watching the test's own overlap/rotation assertions fail.
+
+**Fake-Fusion tests**: new `fb_engine/test_inset_window.py` (55 tests, mirrors `test_panel_lip.py`'s own
+pattern: identity-at-disabled/malformed/below-floor, exact block/region assertions, classify() branch
+coverage across 4 templates including T6/T11's own non-4-bar naming) + a `TestInsetWindow` class in
+`test_send_frame.py` (5 tests: the record reaches the build as `data["inset_window"]`, never through
+`ui_data`; disabled/malformed never reaches the build; lip + window can be sent together;
+`inset_window_of()`'s own strictness). Updated `test_solid_coordinator_reorder.py`'s
+`test_the_extruder_gets_the_stamped_templates_declared_features` -- its old assertion
+(`["bars", "trim"]`) was the EXACT pre-this-turn behavior, correctly expected to change now that the
+coordinator appends the window features unconditionally; not a regression, so updated rather than
+investigated as one.
+
+**Wiring**: `send_frame.py` (`inset_window_of(payload)`, same strictness pattern as `panel_lip_of`; threads
+`data["inset_window"]` through exactly like `panel_lip`/`seed_geometry` already do) ->
+`frame_engine.build_sketch_logic_v3` (`data_dict.get('inset_window')`) -> `run_sketch_only` (new
+`inset_window=` kwarg; calls `apply_inset_window` AFTER `apply_panel_lip`, per the dispatch's own explicit
+order, though the two touch disjoint curve-id sets so the order has no actual effect; `frame_thickness_in`
+read straight off `ui_data.get("frame_thickness")` -- already the plain inches value the app sent, declared
+param, no live-Fusion-parameter round trip needed).
+
+**Gate (no Fusion needed for any of this, none used):**
+- `python -m pytest` at `bspline-frame-builder/`: 873 passed, 25 skipped, 0 failed (covers frame-builder,
+  CAM-builder, template-maker, b-spline-gen in one run).
+- `npx vitest run` at the repo root: 3078 passed (161 files), 0 failed -- untouched by this turn's
+  Python-only engine changes; run anyway since "no JS changed" is a claim worth checking, not assuming.
+- `python tools/gen_frame_defs.py --check`: STALE at first (frame_definition.py's own file hash moved
+  because of the new WINDOW_BARS_FEATURE/WINDOW_CUT_FEATURE constants) -- regenerated; the diff was
+  EXACTLY the `sourceHash` line in frame-defs.json/.js, zero template-content changes, confirming the new
+  constants don't reach any existing template's own declared data. Fresh after regenerating.
+- `python tools/check_golden_freshness.py`: every template FRESH.
+- **A/B, engine (`tools/repro/ab/abpy.py`)**: `88aa3aea7ef452be2e1dc27587d5733c5edb0c70f44ad1205c83d4162b5e38a4`
+  (25 entries) -- IDENTICAL to the hash already recorded earlier this session for the post-merge lane-b
+  tree, confirming the window-less path is genuinely unaffected by every change this turn (declared_profiles,
+  extrusion_engine, solid_coordinator), not just reasoned to be.
+- **A/B, CAM (`tools/repro/ab/abcam.py`)**: ran against a temporary detached worktree at this turn's own
+  starting HEAD (removed after) AND against lane-b now, per-case (not just the combined hash, to see WHICH
+  case moved): `t1`/`t1_missing_left`/`none`/`t1_swapped_aspect` byte-identical on both sides; only
+  `t1_plus_extra` (a `frame_extra` body alongside the classic 4 -- exactly the window's own shape) gained
+  ONE new translate move, continuing the row -- the intended fix, not a surprise.
+
+**Not yet done (pending, this is a mid-task log, not a close-out):** the live Fusion check per
+INSET-WINDOW-LIVE_CHECK.md's own criteria (4 `frame_window_*` bodies + main bars at 7x9/9x12, built==
+declared, no duplicate-suffix bodies, nothing < 0.5 cm3, 0 overlap, healthy timeline, hole visible from
+top, front+bottom screenshots) -- blocked on "Fusion free" (seat A holds Fusion for T7 right now, per the
+advisor's own dispatch; the fusion360 MCP bridge is also currently showing a cached connection failure,
+separately from the seat-A hold). Will message the advisor for "Fusion free" next, then run the live check,
+then commit as "T82 item 6: ..." and pass back with counts on both channels, per the dispatch's own "Pass
+back with counts" instruction -- not done yet, so no commit this turn.
+
+## Lane B — Turn 242 (epoch 9) — T82 item 6: inset window live check — DONE, passing back
+
+Advisor granted "Fusion free" directly (cross-session message, not a formal `handoff.py pass`): "it's yours
+now for the T82 item 6 live check... serial fusion_execute calls only; fingerprint your scratch docs...
+Deploy lane-b from a clean worktree and restore main afterwards... Pass back with counts, plus the front and
+bottom screenshot paths."
+
+**Deploy.** Created a clean detached worktree (`git worktree add --detach <tmp> lane-b`, removed after),
+deployed from there (`DEPLOY_bspline-frame-builder.py bbf`) -- the add-in was live (pid check), stopped it
+via `app.scripts.itemsByName("bspline-frame-builder")[0].stop()` (confirmed `isRunning` False) before
+redeploying, `.run()` after. Mid-task, found 2 more real bugs (below) that needed code fixes; rather than
+repeat the clean-worktree dance for every iteration, redeployed straight from this own dev worktree for the
+fast cycles (my own uncommitted WIP only, nothing another seat left behind -- the rule's actual concern),
+then did one FINAL clean-worktree redeploy once everything passed, matching the commit that's actually
+pushed. `build-info.json` confirmed the deployed sha/dirty state at every step.
+
+**Bug #1 (real, caught by the live build, NOT by this turn's own fake-Fusion tests): `regions["window"]`
+never reaches classify().** First live Send: every window profile failed `DeclaredProfileError: ... not in
+the declared regions`. Root cause: `apply_inset_window()`'s own `out["Frame"]["regions"]["window"] = {...}`
+mutated the SKETCH-BUILD's own in-memory template; `solid_coordinator._declared_frame()` re-resolves the
+STATIC template FRESH FROM DISK at SOLID-build time (the same call every window-less build also makes) --
+that dict was never there to read. My own fake-Fusion test's `_frame()` helper had PAPERED OVER this: it
+manually built the `window` dict and handed it to `classify()` directly, which exercises classify()'s OWN
+logic correctly but never exercises the REAL path data takes between the two build stages -- a gap in test
+DESIGN, not in test execution (every test passed; the thing they tested wasn't the thing that runs live).
+Fixed the way `panel_lip`'s own `lip_ids(regions["outline"])` already avoids exactly this: the window's
+curve ids are FIXED names (never depend on cx/cy/w/h), so `declared_profiles.classify()` now calls
+zero-argument helpers (`inset_window.window_bars()`, `window_miters()`, `line_ids(...)`) to recompute them
+fresh every call, never reading anything stored on `regions`. Rewrote `inset_window.py` to drop the
+`regions["window"]` dict entirely (dead weight once classify() stopped reading it) and rewrote
+`test_inset_window.py`'s own `_frame_with_window_features()` helper to inject ONLY the two features
+(mirroring what `_declared_frame()` ACTUALLY does), never a `window` region key -- so the test suite's own
+assertions now run through the SAME path the live build does. Found and fixed a second bug IN THIS REWRITE
+before it ever reached Fusion: a profile touching a window-outer id AND the main frame's own `inner` ids
+(the main opening, now shaped like a picture frame around the window, its outer loop an island) was
+misrouted into the window-bar branch; fixed by requiring that branch to also check the profile does NOT
+touch `regions["inner"]` -- caught because the test passed the FULL island boundary, not a partial one.
+
+**Bug #2 (test-harness only, not a code bug): the stand-in "B-spline panel" needed 3 fixes before a real
+Send would even extrude.** Recorded in full in INSET-WINDOW-LIVE_CHECK.md §3 (so the next live check that
+needs a stand-in panel doesn't re-discover these): (1) `Point3D.create()` takes centimeters, not the
+display unit -- an inch value passed bare builds a body at 1/2.54 scale; (2) a bar's own start
+(`frame_height_offset`) must land OUTSIDE/BELOW the stand-in panel's own solid volume, not within it --
+`ToEntityExtentDefinition(matchShape=True)` (what `extrusion_engine.py` always passes) reliably fails when
+the start plane sits strictly inside the target body, MEASURED across 7 different start-offset values, all
+failing the same way, all succeeding once the panel was made thin (0.25in) instead of thick (3in); (3) a
+through-all cut's own one-sided direction depends on the PROFILE'S OWN WINDING, which can differ between two
+profiles in the SAME sketch (MEASURED via a shoelace-sign check: template_1's own TRIM profile winds
+opposite its own BAR profiles) -- `PositiveExtentDirection` (hardcoded in production) only reliably finds a
+stand-in panel built STRADDLING the sketch plane (Z=0), not one built entirely to one side of it. None of
+this touches `extrusion_engine.py`/`solid_coordinator.py`, both unchanged this turn and already proven
+against real terrain in prior sessions' own T7/T11/panel_lip live checks -- a flat test stand-in exposes
+degeneracies real, organic terrain doesn't have.
+
+**Live results, both required board sizes (template_1, frame_thickness=0.75, no panel_lip), via
+`send_frame.send_frame()` directly with the real collaborators:** 7x9 (window w=h=1.8) and 9x12 (window
+w=h=2.5) both built with ZERO errors: exactly 4 `frame_window_*` bodies + the 4 main bars (8 total, all
+positive volume, smallest ~11-19 cm3, none under the 0.5 cm3 floor), no `(1)`-suffixed bodies, 0 pairwise
+overlap (`TemporaryBRepManager` boolean intersection, every real body pair), a healthy 17-item timeline
+grouped main-bars -> TRIM_CUT -> window-bars -> WINDOW_CUT (confirming the cut-naming fix: the window's own
+cut is NOT named `t1_TRIM_CUT`, it's `t1_WINDOW_CUT`, no collision), the hole visible from both the top
+(iso-top-right) and the bottom. Window sizes were picked empirically to clear BOTH the window's own bars
+floor AND template_1's own hourglass waist pinch at that board size (the frame's own INNER opening isn't a
+rectangle) -- a naive w=3,h=2 window at 7x9 crossed the waist and HARD-CRASHED (`DeclaredProfileError`,
+refusing the whole build) instead of degrading gracefully, contradicting Fred's own "ugly but not broken"
+ruling for frame/window overlap. Flagged as a known gap in INSET-WINDOW-LIVE_CHECK.md §1 -- NOT fixed this
+turn (outside T82 item 6's own required scope; a real fix needs its own confirm-on-varied-geometry pass, not
+a rushed patch under live Fusion time). Also NOT exercised live: the degenerate-lip case (code path
+understood, not live-tested) and the CAM Manufacture workspace itself (confirmed via fake-Fusion +
+`abcam.py` A/B only, no live Manufacture setup created this turn).
+
+Screenshots (this session's scratchpad): `t82i6_7x9_iso.png`, `t82i6_7x9_bottom.png`, `t82i6_9x12_iso.png`,
+`t82i6_9x12_bottom.png`.
+
+**Gate, re-run after the live-check fixes:** `pytest` at `bspline-frame-builder/`: 873 passed, 25 skipped, 0
+failed (same count as the pre-live-check commit -- the fix changed HOW classify() gets the window's ids, not
+how many tests exist). A/B (`abpy.py`): identical hash
+`88aa3aea7ef452be2e1dc27587d5733c5edb0c70f44ad1205c83d4162b5e38a4`, confirming the rewrite didn't touch the
+window-less path. `gen_frame_defs.py --check`: fresh.
+
+Cleaned up: closed both scratch Fusion documents by verified fingerprint (never by name/count -- also found
+and closed 2 more fingerprinted leftovers from earlier failed attempts in this same turn), confirmed only
+the 3 protected docs (`UI-cowork v1`, `API-claude code v1`, `OFFSET-cowork v1`) remained open and untouched.
+Committed the fixes, pushed, redeployed lane-b from a final clean worktree, and told the advisor what's
+deployed so they can restore main.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn (epoch 9) — T82 item 7: inset window hardening — DONE, passing back
+
+Advisor dispatch (item 6 merged to main d5c3f2f, deployed): 3 flags from item 6's own live check. (1) a
+window crossing the main opening's real boundary must degrade "ugly but not broken," never
+`DeclaredProfileError` -- pure test first. (2) live-test the degenerate lip. (3) exercise CAM's Manufacture
+workspace live once on a window build. Ask for "Fusion free" before (2)/(3); seat A also needed Fusion.
+
+**(1) Pure test first, no Fusion.** `declared_profiles.classify()`'s final catch-all now returns `(None,
+None)` (no feature, material keeps it) for a profile whose ids are ANY mix of the main frame's own `inner`
+boundary and ANY window-related curve id (outer/inner/hole/miter) -- broadened from the previous version,
+which only tolerated the window's OUTER loop specifically (the "opening as an island" case from item 6).
+Narrowly targeted: a profile touching something from NEITHER set still raises -- a genuine, unrelated
+template bug is not silently swallowed by this. Pure tests use the EXACT curve-id combinations MEASURED live
+during item 6's own overlap crash (recovered from that session's own inspection: a sliver bounded by one
+main waist-arc id + the window's own inner-left edge + both its own left-side miters, and a smaller sliver
+of one waist-arc id + one window-outer id alone). Committed+pushed (7475aad) before requesting Fusion free,
+per the dispatch's own "pure test first" ordering.
+
+**(2) + (3), live, Fusion free granted directly (cross-session message).** Deployed from a clean worktree
+(stopped the live add-in via `app.scripts.itemsByName(...).stop()`/`.run()`, matching item 6's own pattern).
+Reused the SAME stand-in-panel harness item 6 already proved (thin, straddling Z=0, inches via `*2.54` into
+`Point3D.create`) for both live checks, both at 7x9/template_1.
+
+Degenerate lip (2): window w=h=1.8, frame_thickness=0.75, panel_lip=0.2 (needs >= 0.15 to clamp the hole
+shut, since `1.8 - 1.5 - 2*lip <= 0` at lip=0.15). Result: panel_lip param created, all 4 window bars built
+with the SAME volumes as the no-lip case (the clamp genuinely doesn't touch the bars), zero `window_hole_*`
+curves in the sketch (no hole rect drawn), zero errors -- exactly matches `inset_window.py`'s own documented
+SIMPLIFIED behaviour.
+
+CAM Manufacture (3): needed a document with BOTH a "B-Spline Set" component (for the classifier to find) AND
+a frame+window -- new territory beyond item 6's own bare-panel-in-root harness. First attempt wrapped the
+stand-in panel in its own component and passed `occurrence.component.bRepBodies.item(0)` as the core body;
+EVERY bar extrude failed with `EXTRUDE_CREATION_FAIL_ERROR ... invalid argument toEntityOne` -- a body
+reference in its NATIVE component context isn't valid as a cross-component extrude target from a SIBLING
+component (`Frame_1`); fixed by using the ROOT-CONTEXT PROXY instead (`occurrence.bRepBodies.item(0)`, not
+`.component.bRepBodies`). Second snag: after `cam_coordinator.run()` once, `app.activeProduct` became the
+CAM product, not Design, so the next `send_frame()` call's own `_require_board_params` reported the board
+params "missing" even though they plainly existed (it reads `Design.cast(app.activeProduct)`); fixed by
+reactivating the Design workspace (`ui.workspaces.itemById('FusionSolidEnvironment').activate()`) before any
+further Design-side work. Third snag, not fully explained: re-running `cam_coordinator.run()` a SECOND time
+in a document whose FIRST run had captured an empty Frame_1 kept producing an empty Frame MM snapshot on
+every rebuild after, even once the Design genuinely had all 8 bodies and even after `adsk.doEvents()` -- a
+FRESH document (build the frame correctly, run CAM exactly once) avoided it entirely and worked first try.
+Flagged in INSET-WINDOW-LIVE_CHECK.md as an open question (suspect the CAM product caching something from
+its own first acquisition in that document), not chased further under live Fusion time once the workaround
+was in hand.
+
+Final (fresh-document) result: `cam_coordinator.run(classifier=_classify_body, mode='bspline',
+skip_templates=True, skip_machine=True)` -> `ok: true`, all 3 MMs (stock/bspline_set/frame) and all 4 Setups
+(Stock/B-spline Back/B-spline Top/Frame) built, zero errors. The Frame MM's own snapshot held all 8 bar
+bodies (4 main + 4 window) with 11 move features, laid out in ONE continuous row (sorted X-ranges strictly
+increasing, zero pairwise overlap via `TemporaryBRepManager`) -- confirms the `_populate_frame_geometry`/
+`_lay_out_other_bars` CAM fix (committed in item 6, confirmed there only via fake-Fusion tests + an A/B
+diff) now ALSO live, with a real window build, continuing the main row exactly as designed. Screenshot
+(`t82i7_cam_layout.png`, top view of MM-Frame) shows the 4 main bars then the 4 small window bars in one row.
+
+Cleaned up: closed both scratch docs (`deglip`, `cam2`) by verified fingerprint; confirmed the one remaining
+"Untitled" doc was the ADVISOR's own (`adv_taper_fp`, not mine) before leaving it alone, per their explicit
+instruction. The 3 protected docs (`UI-cowork v1`, `API-claude code v1`, `OFFSET-cowork v1`) untouched
+throughout.
+
+**Gate:** `pytest` at `bspline-frame-builder/`: 880 passed, 25 skipped, 0 failed (7 new pure tests over the
+873 from item 6's own close-out). No code changed for (2)/(3) -- pure live verification, no commit needed
+beyond (1)'s own.
+
+Committed (1) and pushed as `7475aad` BEFORE the live parts (per "pure test first"); (2)/(3) are
+documentation-only (INSET-WINDOW-LIVE_CHECK.md §5, this entry) since they needed no code change, committed
++ pushed together. Redeployed lane-b from a final clean worktree once pushed, confirmed `build-info.json`
+matches and the add-in is running, then told the advisor what's deployed so they can merge + redeploy main.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn (epoch 9) — T84 items 1-2: Arched Funnel + Tulip diagrams — DONE, passing back
+
+Advisor dispatch (item 7 merged to main 8b1a438, deployed): T84 items 1-2, moved from seat C's own F31
+items 3-4 so the two seats run in parallel. Diagram only -- no template code, no Fusion. New Template 16
+"Arched Funnel" (arched top, STRAIGHT upper sides tapering to a waist, outward-bulging lower curves to a
+flat base) and Template 17 "Tulip" (same, but the upper sides curve INWARD/concave) -- "a SEPARATE template
+from F31 item 3," per Fred's own ruling quoted in the brief. Reuse seat C's own diagram approach
+(`tools/repro/f31_item1_sandtimer_diagram.mjs`/`f30_item5_arched_taper_diagram.mjs`, both on the `fb-app`
+worktree) plus a continuity check. Header rules: always miter, no thin/needle tips, simple and not too
+concave, sizes 6x9/7x9/9x12, default plus range ends. Shots to
+`C:/Users/danse/.bspline-status/shots/seatB/`.
+
+**Research first.** Neither referenced script lives on lane-b, and "the sand-timer's own pinch machinery"
+turned out not to exist as production code at all (F31 item 1 is STILL an unchecked queue item on fb-app;
+no `template_14` exists anywhere, main included) -- delegated to an Explore-style agent to read both
+scripts in full on fb-app, confirm they're plain Node scripts that `import()` THIS project's own real
+production modules by file URL (no headless browser, no served app) and run hand-built outline primitives
+through the real `outlineDefects`/`offsetOutlineInward`/`frameMiters` pipeline, and to pull the advisor's
+own approved reference geometry (a Shapely script, `C:/Users/danse/.bspline-status/shots/fred/
+flask_and_archtimer_render.py`). Then read `f31_item1_sandtimer_diagram.mjs` myself in full (the agent's
+own paraphrase of `bulgeArc` wasn't something I wanted to transcribe from memory for load-bearing geometry
+code) and the advisor's own reference script in full, to get the EXACT formulas rather than a second-hand
+summary.
+
+**Design**: both templates share ONE builder, `buildArchedTimer(archRiseFrac, waistWidthFrac,
+waistHeightFrac, bulgeFrac, upperCurveFrac, W, H)` -- `bulgeArc`'s own documented behaviour (sag<1e-9 ->
+straight line) means Funnel is simply Tulip with `upperCurveFrac=0`, no second builder needed. Converted
+the advisor's own reference formulas (y-up, origin at the board's own bottom-left) into this script's own
+y-down, centre-origin convention (`x_here = x_ref - hw; y_here = hh - y_ref`), verified the conversion
+against f31's own board-corner convention as a sanity check (both gave `(hw,hh)`/`(-hw,hh)` for the base
+corners). Defaults: archRiseFrac 0.39, waistWidthFrac 0.38, waistHeightFrac 0.55, bulgeFrac ~0.169 -- all
+derived directly from the advisor's own approved render's literal fractions, not invented.
+
+**BAR-COUNT FLAG, not resolved, surfaced for the advisor/Fred.** The dispatch and the advisor's own
+reference script caption both say "7 bars"; this diagram builds 6 (arch, upper_R, lower_R, base, lower_L,
+upper_L), the arch as ONE continuous piece. The advisor's own reference script constructs the arch as two
+mirrored halves purely to reuse its own `mirror()` helper on the right side's own point list -- the apex
+itself is perfectly tangent (top of a symmetric arc), and this project's own precedent (T7/T11: "a bar is a
+maximal run of TANGENT-joined pieces, miter only at a true corner") says that's one bar, not two. Flagged
+in the diagram's own output (a caption banner, so it travels with the shots) and here, not resolved --
+diagram-only scope, Fred already looked at a render captioned "7 bars" so this needs his own confirmation,
+not a silent pick either way.
+
+**Found and fixed 2 real bugs in my own script before trusting its output** (the kind of thing "prove the
+new check is non-vacuous" exists for, applied to a diagram script's own range-finding instead of a test):
+1. `maxFrac()`'s own call site was missing the `upperCurveFrac` argument (`check('_probe', ...args(v), W,
+   H)` against a function expecting label+5+2 args, only given label+4+2) -- silently shifted W into the
+   upperCurveFrac slot and H into W, so the Funnel's own "max clean bulge" search measured complete
+   garbage. Caught because the result was suspicious on its face (`max clean bulgeFrac = 0.000`, i.e. "any
+   bulge at all breaks it," implausible for a shape whose default bulge was already comfortably clean).
+   Fixed by always passing the FULL 5-element shape-param array through every range-finding call, matching
+   `check()`'s own positional signature exactly, with a comment explaining why (so the next person doesn't
+   reintroduce it).
+2. The Tulip's own "waist-up"/"waist-down"/"max-bulge" panels initially reused the FUNNEL's own ranges
+   (computed at `upperCurveFrac=0`), not ranges recomputed WITH the Tulip's own curve depth active. This
+   passed `clean` (no geometric defects) but silently violated `miterStaysInsideWood` (a THIN/NEEDLE TIP) at
+   the waist-up extreme, at all 3 board sizes -- exactly the header rule this diagram exists to enforce.
+   Caught by actually running `miterStaysInsideWood` (neither reference script did -- see below) and reading
+   its own `false` in the output rather than only checking `clean`. Fixed by computing the Tulip's own bulge
+   and waist-height ranges separately, with its own curve depth included throughout; `ok` (which already
+   incorporates `noThinTips`) was already the correct stopping criterion for the bisection/stepping, so once
+   the right base array was passed through, the ranges naturally excluded the violation.
+
+**Added one check neither reference script ran**: `miterStaysInsideWood` (production's own "no hooked
+corner tips" rule, `editor-frame-profile.js:299`), folded into `check()`'s own `ok` flag alongside the
+existing defect/continuity/miter-count/min-bar-length checks. Detection-only (reads a production function,
+writes nothing), so no guard-permission question.
+
+**Result**: every panel generated for the final diagram (15 per template -- default/max-bulge/waist-up/
+waist-down at 3 sizes, plus max-curve for Tulip) reports `clean=true OK=true`: 0 surface/offset defects, 0
+collapsed inner pieces, exactly 6 miters, no thin tips, a closed loop continuous to within 1e-6in, every bar
+>= 0.75in. Rendered via headless Chrome (`--headless=new --window-size=2000,6000`, not the `.mjs`'s own
+plain `writeFileSync` HTML output -- PNG is what the shots convention wants), cropped into one Funnel image
+and one Tulip image, saved as `0431_T84-item1-proposed_arched-funnel-diagram_6x9_7x9_9x12.png` and
+`0431_T84-item2-proposed_tulip-diagram_6x9_7x9_9x12.png` in `C:/Users/danse/.bspline-status/shots/seatB/`.
+
+**Not committed**: the generated `.html`/`.png` preview files (scratch render artifacts, same as f31/f30's
+own HTML outputs were never committed either -- confirmed via `git log --all` on both namesakes before
+assuming). Only the `.mjs` script itself is committed, as the reusable tool.
+
+Committed the new script as T84 items 1-2 (ONE commit -- the two items share a single builder/script, and
+the dispatch's own cross-session wording already treats them as one combined task), pushed. No Fusion
+needed or used; no gate to re-run beyond the script's own `check()` output (a diagram tool, not production
+code -- vitest/pytest untouched).
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3: Arched Funnel + Tulip template code -- IN PROGRESS, checkpoint (not passing back yet)
+
+Advisor dispatch: T84 item 3, both templates' Fusion build code, built with main's rules (closed-form
+seeds, CCW welds, isTopologyMatched=False, ResolveLineCircleCorner / the new circle-circle corner where
+needed, built==declared/preview==build, no MITER MISS, miter at every joint, the hook guard), then the
+item 61 full-matrix sweep on both at 100% BUILT, then "Fusion free" before the live run. Fred approved
+(2026-10-03): one-piece arch (6 bars), defaults as the T84 items 1-2 diagram drew, MODERATE handle ranges.
+A new guard (also Fred-approved today): no outline arc may sweep past 180 deg -- H23 item 63, already on
+main, now on lane-b too.
+
+This is a large task; this entry is a checkpoint, not the finished item. Template 16 (Arched Funnel) is
+code-complete and pytest-green end to end, including a live-Fusion-free cross-check of every arc/weld.
+Template 17 (Tulip) has NOT been started (it needs genuinely new shared machinery, see below). Nothing in
+Fusion has been touched. Not committed yet -- see "what's left" at the bottom before deciding whether to
+keep going in this session or hand this checkpoint to a review first.
+
+Pure-Python geometry foundation (fb_engine/closed_form_arc.py + NEW fb_engine/t16_geometry.py): added
+sagitta_circle(p0, p1, sag, away_point) to closed_form_arc.py (the circle through two points bulging by a
+given sagitta, ported from the T84 items 1-2 diagram's own bulgeArc) -- tested independently
+(test_closed_form_arc.py, constructs known circles and recovers them, the module's own stated philosophy).
+t16_geometry.py is the shared outline builder for BOTH templates (outline() / is_valid_outline()),
+mirroring t11_geometry.py's role: not itself Fusion code, the thing the Fusion phase files' own
+hand-derived expressions are cross-checked against.
+
+Bug found and fixed in my OWN new code, not shipped: my first is_valid_outline() checked "no arc sweeps
+past 180 deg" by always taking the MINOR-arc angle (min(d, 2*pi-d)), which is mathematically bounded at
+180 deg by construction -- it can never actually detect an undercut this way, a tautology bug. The real
+failure mode for a sagitta-built arc is the sagitta reaching HALF THE CHORD LENGTH: past that point
+sagitta_circle's own circle keeps growing again (same radius function both sides of the minimum), but
+true_via_point stays pinned to the minor-arc bisector instead of following the bulge to the intended far
+side -- so the construction silently stops meaning what it says, not "too undercut", just WRONG. Confirmed
+by hand (not just reasoned): at 7x9, bulge_frac=0.9 gives a lower-bulge sag of 3.15in against a chord of
+4.595in (half-chord 2.297in) -- sag > half_chord, and the via point measurably stops tracking the intended
+"sag away from the chord midpoint" point (checked directly against the formula's own defining property).
+Fixed by adding an explicit sag < half_chord guard (the real precondition the construction needs)
+alongside the existing 180-deg check, and rewrote the two tests that had been passing for the wrong reason
+to prove the NEW guard specifically (not the sweep angle, which can't reach 180 by construction). Caught
+entirely by my own non-vacuous testing discipline (the test asserted something mathematically impossible
+for the function to return -- worth remembering as a class of bug: an assertion that looks like it's
+testing severity when it's actually testing something the code structurally cannot produce). Sanity-swept
+a generous moderate-range grid (75 combinations, 3 sizes) afterward: 0 false positives from the new guard.
+
+A second, real bug found in SHARED app code (editor-frame-profile.js's frameCutProfile, not
+template-specific): T16's own CCW-arc convention (fusion360-quirks skill -- a clockwise-declared 3-point
+arc gets its :S/:E swapped by Fusion) means 3 of its 6 corners are only reachable by an arc's own :E,
+never its :S (waistR via lower_R, BL via lower_L, topL via arch -- confirmed by direct computation of each
+arc's declared-triple turn sign, not assumed). frameCutProfile's own corner-exemption logic (which
+primitive index to excuse from the "must be tangent" check, since a declared miter corner is SUPPOSED to
+be non-tangent) only ever stripped a trailing :S when mapping a corner id back to its seedMap primitive
+index -- every :E-declared corner silently fell out of its own exemption set, which would have made T16
+unbuildable (false notTangent defects at exactly those 3 corners, every time). No existing template has
+ever declared a :E miter (confirmed by grep across every sketches/*/template_data.py before trusting
+this) -- genuinely new ground, not a regression. Fixed by handling both suffixes and mapping each to the
+correct joint index (:S corner = the joint BEFORE its own primitive; :E corner = the joint AT its own
+primitive -- derived from outlineDefects's own notTangent index convention, read directly from source
+rather than guessed). Verified as a pure no-op for every existing template: full vitest run of
+frame-template-{7,10,11}.test.js (75 tests, the 3 suites that exercise arc-involving corners) unchanged,
+green before and after.
+
+Template 16 (Arched Funnel), Fusion side, code-complete: sketches/template_16/ -- the full phase set
+(p01_01/p01_02 shims, p02_01_projs, p02_02_loop, p02_03_welds, p03_01_encl_projs, p03_02_encl_offset,
+p03_03_inner_corner_resolve, p03_04_encl_miters, p03_05_encl_surround_rect verbatim, template_data.py). 6
+pieces (upper_R/lower_R/base/lower_L/upper_L/arch), every joint a miter (no tangent chain at all -- unlike
+T7/T11, nothing here needs a Tangent step). The arch needs no sagitta machinery (its own via point is
+exactly the apex by construction, symmetric chord). The two lower bulges need the full
+sagitta_circle+true_via_point chain; inlined, the via point's own expression blew up to ~9,200 characters
+per coordinate (measured) -- same blowup class T7's own module docstring already warns about -- so it's
+declared as 23 NAMED Fusion parameters (t16_*, SKETCH_2_PARAMETERS) instead, same escape hatch T7 used.
+lower_L is the exact x-mirror of lower_R (verified numerically against t16_geometry.outline(), which
+computes it independently, at 3 board sizes) -- no separate named chain for it. All 6 corners are
+line-meets-circle (every arc has a straight line on both sides, since there's no tangent chain) --
+resolved with the EXISTING general ResolveLineCircleCorner primitive (fb_engine.t7_roof_eave.
+line_circle_corner, genuinely reusable despite its filename), all Concave: False (every arc bulges
+outward, centre on the material's interior side -- confirmed numerically, not assumed).
+
+A second declared_profiles.py gap found while wiring this: every one of T16's 3 arcs is miter-joined at
+BOTH its own ends (no tangent-chain neighbour to absorb one end the way T7/T11's arcs do), so two miters
+per arc share the same bare curve id (just differing by :S vs :E) -- this breaks bar_index's own generic
+miter-walk default (it maps each miter to its SOURCE's bare-id outline POSITION, so same-curve miters
+collapse onto one position and only 3 bars would ever be derived, not the intended 6). Declared FRAME_BARS
+explicitly instead (Template 6's own precedent for this exact escape hatch) -- one curve, one bar, read
+directly rather than walked. Caught by actually inspecting declared_profiles.bar_index's source before
+trusting the generic default, not by a late live failure.
+
+Verification, all non-Fusion, all green:
+- fb_engine/test_t16_geometry.py (34 tests) + fb_engine/test_closed_form_arc.py (12 tests, including 4
+  new TestSagittaCircle cases) -- the pure-Python layer.
+- NEW fb_engine/test_t16_fusion_expressions.py (10 tests): resolves the 23-parameter t16_* chain in pure
+  Python (mirrors test_t11_fusion_expressions.py's pattern, extended to resolve named parameters first,
+  since T11 never needed named params and T7 never got this cross-check written at all) and checks every
+  declared point against t16_geometry.outline()'s own independently-computed values, every arc's via point
+  against its own live-computed circle, the loop closes exactly, and -- derived generically from each
+  declared triple's own turn sign, not hardcoded -- every one of the 8 welds joins two PHYSICALLY
+  coincident points. Proved non-vacuous by mutating one weld target and confirming 3/3 size-parametrized
+  cases fail, then restoring and reconfirming green (hit the documented .pyc trap doing this -- a
+  same-size in-place-then-restored mutation inside one second left stale bytecode; cleared
+  sketches/template_16/**/__pycache__ before trusting the restored result, per that memory's own fix).
+- fb_engine/test_no_miter_miss_possible.py: added template_16 to its TEMPLATES list -- an INDEPENDENT
+  guard (reads the resolved template fresh, checks every declared miter Target is covered by a real
+  resolve step) that would have caught the frameCutProfile bug's own Fusion-side analogue had one
+  existed; 15/15 green, confirming no miter-miss anywhere in T16's own corner table.
+- Full repo pytest: 837 passed, 0 regressions. The only 3 remaining failures are the EXPECTED,
+  not-yet-wired JS gaps (test_frame_defs.py's freshness/completeness checks, which need the archedFunnel
+  JS preset + a gen_frame_defs.py regen -- not yet done, see below).
+
+What's left for T84 item 3 (large; flagging rather than silently grinding through it):
+1. Template 16's own APP (JS) side: editor-shape-lattice-generator.js (PRESETS/PARAM_ORDER/
+   DERIVED_PARAM_DEFAULTS/a _solveArchedFunnel-style construction function + dispatch),
+   editor-shape-lattice-interaction.js (handle-drag segment mapping), frame-handles.js (the MODERATE range
+   function), fb_engine/frame_shape_fit.py + frame_definition.py (the arched_funnel extractor),
+   tools/gen_frame_defs.py regen + --check, tests/frame-template-16.test.js. The FRAME_SEED_MAP's own
+   reverse flags in template_data.py are a FIRST GUESS (same honest gap T7's own copy of this comment
+   flags) -- must be checked against tests/frame-seed-geometry.test.js once the solver exists, not
+   assumed.
+2. Template 17 (Tulip) entirely -- reuses T16's lower half (arch/lower_R/lower_L/base) verbatim but
+   replaces the straight upper sides with CONCAVE arcs, which makes 4 of its 6 corners arc-meets-arc
+   (topR/waistR/waistL/topL), not line-meets-circle -- ResolveLineCircleCorner genuinely cannot resolve
+   these (only BR/BL, line-meets-arc via base, can reuse it). This needs a NEW resolver
+   (ResolveCircleCircleCorner): a new step type, a parametric_engine.py dispatch branch, new math in
+   fb_engine/inner_corners.py (circle-circle intersection of two offset circles, the root nearest the
+   shared outer corner), registration in test_no_miter_miss_possible.py's _RESOLVE_STEP_TYPES, and its own
+   fake-sketch unit test. This is genuinely new shared machinery (not single-template-specific), unlike
+   everything in T16 above which only ever combined EXISTING primitives -- flagging it explicitly rather
+   than just building it, since it's the one piece of this item that isn't "apply the established
+   pattern."
+3. The item 61 full-matrix live sweep on both templates once 1-2 are done, 100% BUILT target, "Fusion
+   free" requested from the advisor first (not yet asked -- nothing Fusion-side has been touched this
+   turn).
+4. Commit, push, redeploy from a clean worktree, pass back with counts.
+
+Not committed yet (all of the above -- fb_engine/closed_form_arc.py, fb_engine/t16_geometry.py + its test,
+fb_engine/test_t16_fusion_expressions.py, fb_engine/test_no_miter_miss_possible.py's one-line addition,
+editor-frame-profile.js's fix, the full sketches/template_16/ tree -- is uncommitted, verified-green
+working-tree state). All work done at
+C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\ -- path checked before every Edit/Write this
+turn, no main-checkout mistake.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3 continued: ResolveCircleCircleCorner + Template 17 "Tulip" -- Fusion/Python side now DONE for both templates
+
+Advisor response to the checkpoint above: both shared-code fixes (frameCutProfile :E, sagitta_circle)
+approved. Directed to commit the checkpoint in separate commits, pull main first (new H23 item 63 corner
+fallbacks/guards landed there since this branch last synced), then build ResolveCircleCircleCorner as a
+declared sibling of ResolveLineCircleCorner, keeping the arch-end x as one declared value (Fred may add a
+T84 item 4 "topWidth" handle -- confirmed real and already approved, NEXT-SESSION-lane-b.md), and to ask
+before touching Fusion.
+
+**Committed the checkpoint, 4 separate commits** (a2d8b8c sagitta_circle, 03b7b70 t16_geometry.py,
+14545bc the frameCutProfile :E fix, 33c5bb8 Template 16 itself), **merged origin/main** (cd6c232, clean
+auto-merge -- H23 item 63's new corner-resolution fallbacks in fb_engine/inner_corners.py: a 3x/1.5x
+frame_thickness "slid along the surviving edge" tier and a "nearest inner-loop vertex" last resort for
+inner_corner_step, a "further round the offset circle" tier for line_circle_corner_step -- all born from
+actual measured live Fusion incidents on OTHER templates, not pre-emptive), pushed.
+
+**Single-sourced the arch-end x** (5ad7175): p02_02_loop.py was re-typing ARCH_HALF_SPAN_FRAC's own value
+(0.75) as a bare literal instead of importing the already-declared constant from t16_geometry.py -- fixed,
+no behavior change (confirmed via the full cross-check suite).
+
+**Built ResolveCircleCircleCorner** (9125bdd), a declared sibling of ResolveLineCircleCorner, needed
+because Tulip's own concave upper sides make 4 of its 6 corners arc-meets-arc (neither piece a straight
+line, so the line-circle resolver genuinely cannot resolve them):
+- `circle_circle_corner` (fb_engine/t7_roof_eave.py): the exact intersection of two offset circles, each
+  carrying its OWN independent Concave flag (no shared "interior reference point" needed -- a circle's own
+  offset direction is already fully determined by its own centre/radius). Tested from known truth (a point
+  placed exactly on both offset circles by construction, the true radii then recovered from it via each
+  Concave flag) -- 4 new tests in fb_engine/test_t7_roof_eave.py, including axis-aligned, off-axis mixed-
+  concavity, and a deliberate "raises when the circles don't intersect" case. One edit mistake caught before
+  it mattered: my first attempt at inserting the new class via Edit matched a shorter old_string than the
+  real file had, silently orphaning the tail of an existing test function below my insertion point --
+  caught immediately by running the suite (a NameError on collection, not a quiet pass), fixed by moving the
+  orphaned lines back where they belonged and re-running to confirm 23/23 green.
+- `circle_circle_corner_step` + a new `ResolveCircleCircleCorner` dispatch branch (parametric_engine.py):
+  the same "compute expected position, find nearest existing SketchPoint" approach line_circle_corner_step
+  already uses. Falls back to searching around the outer corner when the two offset circles don't intersect
+  at all (mirrors line_circle_corner_step's own minimal fallback for ITS degenerate case) -- deliberately did
+  NOT add the live-measured collapse-search tiers the sibling functions now carry from the main merge above:
+  those were each born from an actual Fusion build hitting the case, and this resolver has no live Fusion
+  mileage yet to react to (no guards without evidence). 4 new tests in fb_engine/test_inner_corners.py,
+  reusing the exact fake-sketch harness (FakeArc/FakeSketch/FakeLogger) the existing LINE-CIRCLE tests
+  already established. Registered in test_no_miter_miss_possible.py's `_RESOLVE_STEP_TYPES`.
+
+**Shared T16/T17's own lower-half SKETCH_2_PARAMETERS** (cbe147a), a rule-of-two extraction: moved the 23
+named Fusion parameters (hw/hh/ww/wy/bulge + the lower_R chain) out of template_16/template_data.py into
+`fb_engine.t16_geometry.SHARED_LOWER_SKETCH_2_PARAMETERS`, since Template 17 was about to need the exact
+same list copy-pasted otherwise. Added `UPPER_ARC_SKETCH_2_PARAMETERS` there too (T17's own new concave
+upper-right-arc chain) -- the sagitta/via-point formula needs the FLIPPED normal sign relative to the lower
+bulges' own chain (the concave bulge pulls toward the centreline, the opposite side), confirmed numerically
+against outline()'s own upper_r_centre/via at 3 board sizes before being trusted. Picked ONE cross-size
+default for T17's own upperCurveFrac (0.175, the 7x9 value) rather than the diagram script's own per-size-
+tuned "55% of max" values (0.145/0.145/0.208 at 6x9/7x9/9x12) -- a template needs ONE constant; 0.175 stays
+comfortably inside 6x9's own tighter max (0.264, ~34% margin).
+
+**Built Template 17 "Tulip" in full** (a632b83): the complete sketches/template_17/ tree. Shares Template
+16's own arch/lower_R/lower_L/base VERBATIM; the two upper sides become concave arcs instead of straight
+lines. This FLIPS their own CW/CCW classification (fusion360-quirks skill: they now turn counter-clockwise
+in declared order, not swapped, where Template 16's plain lines had no :S/:E ambiguity at all) -- but
+confirmed by direct computation (not assumed) that the NET physical effect at every one of the 6 corners is
+IDENTICAL to Template 16's own table, so p02_03_welds.py / p03_04_encl_miters.py / FRAME_REGIONS["miters"]
+are the exact same Source/Target pairs either template uses. 4 of the 6 corners now resolve via the new
+ResolveCircleCircleCorner (the 2 base corners keep ResolveLineCircleCorner, unchanged from Template 16).
+
+**Verification, all non-Fusion, all green**:
+- fb_engine/test_t17_fusion_expressions.py (10 tests): mirrors test_t16_fusion_expressions.py's own
+  pattern, extended with a CW/CCW confirmation covering both the 3 convex arcs (must turn clockwise) and
+  the 2 new concave arcs (must turn counter-clockwise). Proved non-vacuous the same way T16's own copy was:
+  mutated one weld target, confirmed 3/3 size-parametrized cases fail, restored, reconfirmed 10/10 green
+  (cleared `sketches/template_17/**/__pycache__` before trusting the restored result -- the SAME .pyc trap
+  hit again doing this the second time, same fix).
+- fb_engine/test_no_miter_miss_possible.py: added template_17 -- 16/16 green, confirming no miter-miss
+  anywhere in its own corner table (an end-to-end check of the new resolver's wiring, independent of its
+  own unit tests).
+- Full repo pytest: 868 passed, 0 regressions. The only 3 remaining failures are STILL the same
+  not-yet-wired JS gaps (test_frame_defs.py) -- nothing new broke adding either template.
+
+**Both templates are now code-complete on the Fusion/Python side.** What's left for T84 item 3 (unchanged
+from the prior checkpoint's own list, now narrowed): the JS/app-side wiring for BOTH templates (presets,
+solver functions, handle ranges, gen_frame_defs regen, frame-template-16/17.test.js, the frameCutProfile
+:E-corner cases now have a real template to exercise them against) and the live Fusion matrix sweep (item
+61) for both -- "Fusion free" not yet requested, nothing in Fusion touched this turn either. Committed
+(5 commits: a2d8b8c, 03b7b70, 14545bc, 33c5bb8 before the merge; cd6c232 the merge; then 9125bdd, 5ad7175,
+cbe147a, a632b83 this round) and pushed to origin/lane-b throughout, not held back.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3 continued: JS/app-side wiring, both templates -- ready for "Fusion free"
+
+Advisor response: keep going on the JS/app side for both templates (including T84 item 4's own "topWidth"
+handle), one default for upperCurveFrac is fine, give ResolveCircleCircleCorner the same live fallback tiers
+its siblings have before the sweep, then ask for "Fusion free" and run the full-matrix sweep. Don't wait
+between steps.
+
+**T84 item 4 (topWidth), done first**: renamed the fixed `ARCH_HALF_SPAN_FRAC` constant to
+`TOP_WIDTH_FRAC_DEFAULT` and promoted it to a real `outline()` keyword argument; added `topWidth` (basis
+hw, seeded) to both templates' own FRAME_HANDLES/FRAME_PROVISIONAL_SHAPE. No behavior change (confirmed).
+
+**Gave ResolveCircleCircleCorner the same live fallback tiers its siblings have** (advisor-directed,
+mirroring H23 item 63's own tiers): "further round one of the two offset circles" and "nearest inner-loop
+vertex" last resort, both ported directly from line_circle_corner_step/inner_corner_step. 6 new tests, each
+built from a directly-computed expected intersection, not guessed.
+
+**Fixed the REAL Python-side blocker the research agent found first**: `fit_shape_model` does
+`FEATURE_EXTRACTORS[preset]` unconditionally, before checking whether goldens exist -- `gen_frame_defs.py
+--check` crashed with `KeyError: 'arched_funnel'` on template_16 before writing anything for ANY template.
+Registered real extractors (`_arched_funnel`/`_tulip`, FIRST CUT like every sibling extractor for a brand-new
+shape, unexercised until goldens exist) + `provisional_arched_funnel_model`/`provisional_tulip_model` +
+`frame_definition.py`'s own dispatch, ORDER-SENSITIVE (tulip's own provisionalShape dict is a strict
+superset of archedFunnel's, so tulip's own distinguishing key must be checked first or every tulip record
+would silently build an archedFunnel model and drop upperCurveFrac).
+
+**The JS/app side, all 6 files**, built from a research agent's own thorough file:line survey (verified
+directly against source before trusting it, not taken on faith) plus the existing diagram script's own
+already-proven `buildArchedTimer`/`bulgeArc` geometry (ported, not re-derived): `archedFunnelConstruction` +
+a shared `_solveArchedTimer` in editor-shape-lattice-generator.js (every arc solved independently via
+`_curveSegment`, T10's own non-tangent-arc approach, NOT T7/T11's tangent-chain machinery, which this
+all-miter shape has no use for), wired into PRESETS/PARAM_ORDER/DERIVED_PARAM_DEFAULTS/SALT/
+FRAME_ONLY_PARAM_KEYS/the generateSilhouette dispatch/paramsFromShapeModel/a new `_archedTimerRange`
+(MEASURED directly against the real production validity pipeline, not assumed); computeParamHandles +
+HANDLE_SEGMENT_INDEX in editor-shape-lattice-interaction.js (confirmed, not assumed, that the generic
+mirrorSegmentIndex formula already gives this 6-piece loop's own correct two-self-mapping-segment pairing,
+so no declared SEGMENT_PAIRS table is needed, unlike T7/T11); a minimal frame-handles.js branch (exists
+only so the generic fallback doesn't crash on `_narrow(undefined)` -- `_archedTimerRange`'s own bounds are
+already thickness-aware, unlike every sibling's shape-only range); `generateRange` added to every handle in
+both templates' own FRAME_HANDLES (the MODERATE, "about halfway to each extreme" bound, measured the same
+way as the full range, T7's own gableNeckWidth precedent).
+
+**Caught and fixed two real bugs via non-vacuous round-trip checks, not by trusting the math on paper**:
+1. `sagValue`'s own drag inversion (bulgeFrac/upperCurveFrac) returned the sagitta in INCHES, never divided
+   by `hw` -- both handles silently clamped to their own range ceiling on every drag. Caught by round-
+   tripping `valueFromWorld(anchor)` against the known resolved value and finding it didn't match (0.179
+   instead of 0.169) -- not assumed correct because the formula looked right on paper.
+2. Two PRE-EXISTING tests (frame-template-9, frame-template-6) broke from appending 6 new keys to
+   FRAME_ONLY_PARAM_KEYS and 2 new templates to the label list -- both already expected exactly this kind of
+   update from every earlier frame-only preset's own addition (each test's own comment says so); fixed with
+   the real computed indices/positions, not guessed.
+
+**Regenerated frame-defs.json/.js** (`python tools/gen_frame_defs.py`, now unblocked) and updated
+tests/frame-defs.test.js's own generic FEATURES/EXTRA maps for both presets (empty EXTRA: no base-template
+leftovers).
+
+**Verified the FRAME_SEED_MAP "reverse" flags are correct, not a first guess any more**: derived by hand
+that all 6 pieces' own declared Fusion-phase-file point order already matches the app's own primitive
+direction exactly (so reverse=False everywhere), then confirmed it NUMERICALLY -- `frameSeedGeometry`'s own
+output at 7x9 matches `fb_engine.t16_geometry.outline()`'s own independently-tested closed-form values to
+the full precision checked, for every point on both templates, including each arc's own true via point.
+This is the single check that most directly bears on whether the live sweep below will actually build
+clean sketches, not just produce plausible-looking JS primitives.
+
+**Wrote dedicated test files**, tests/frame-template-16.test.js and -17.test.js (mirroring
+frame-template-11.test.js's own structure, the closest-scoped existing precedent), locking in the seed-
+geometry cross-check above as a committed test rather than a throwaway node script, plus listing/handle/
+drag-range/generateRange-extreme/board-bounds/miter checks. Caught two of my own test-writing mistakes
+before trusting them (an arc primitive has no p0/p1; the "stays within the board" bound should be the true
+board edges, not the safe zone -- a convex arc's own bulge legitimately swings ~0.0008in past it at 6x9,
+which the BBox Border margin exists to absorb) via the suite's own failures, not assumed correct.
+
+**Full gate green throughout, re-confirmed at the end**: 875 pytest passed (0 skipped-as-failing, every
+test_frame_defs.py check now genuinely passes, not just stopped crashing), 3190 vitest passed, 0
+regressions. Committed in 6 more commits (c568eb4 topWidth, 5a69e91 the fallback tiers, b3cbae8 the Python
+extractor fix, fec5271 the JS wiring, 35342a3 the regen+registry fixes, 0a8aa89 the dedicated test files),
+pushed throughout.
+
+**T84 item 3 is now fully code-complete on BOTH the Fusion/Python side and the JS/app side, for both
+templates.** The only thing left is the live matrix sweep itself (item 61: every handle x {min, default,
+max} at 7x9, 100% BUILT target) -- "Fusion free" requested from the advisor next, per its own explicit
+instruction to ask before that one step. Nothing in Fusion touched this turn.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3: the live matrix sweep, 24/24 BUILT -- DONE, passing back
+
+Advisor granted "Fusion free": run the 24-case sweep with REPO pointing at lane-b, don't redeploy the
+add-in (main already deployed, Fred may be using the palette), fingerprint scratch docs and close only
+mine, leave the 4 open docs alone, target 100% BUILT.
+
+Generated the 24 payloads first (`node tools/repro/h23_item61_make_full_matrix_payloads.mjs`, GENERIC
+across all templates -- no script edit needed once frame-defs.js carried template_16/17): 11 for Template
+16 (default + 5 handles x {min, max}), 13 for Template 17 (default + 6 handles x {min, max}, topWidth
+having added a handle to both since the item 61 brief's own original "9/11" case-count estimate). 0
+JS-side defects, 0 ranges pulled back by the no-hook-rule guard (every declared range end was already
+reachable) -- confirming the earlier JS-side verification (every generateRange extreme checked against the
+real production pipeline) generalized to the FULL drag range too, not just the moderate one.
+
+Registered both templates in `tools/repro/fusion_t11/item61_full_matrix_sweep.py`'s own TEMPLATE_META (bar
+names + count, matching FRAME_BARS exactly) -- the one addition that script itself needed; otherwise
+reused completely unchanged (it already fingerprints its own scratch docs via `adv_item61fullsw_fp`, closes
+only docs it created by direct reference -- never by name or count -- and is resumable).
+
+**Ran all 24 cases live, serial fusion_execute calls (6 batches of 3-5 cases each, well under any timeout):
+24/24 BUILT, 0 NOT BUILT.** Every case: the declared 6 bars present (no dup-suffixed bodies, no overlaps,
+no sub-0.5cm3 slivers), 0 "NOT BUILT" / "MITER MISS" / "REFLEX ARC" log lines, healthy timeline. This is
+the FIRST live confirmation that `ResolveCircleCircleCorner` (T17's own 4 arc-meets-arc corners) actually
+resolves correctly against real built Fusion geometry, not just the fake-sketch unit tests
+(fb_engine/test_inner_corners.py) or the JS-side simulation -- every upperCurveFrac case (min, max, default)
+built clean. Confirmed the Fusion session ended exactly where it started: the same 4 protected documents
+open (UI-cowork v1, API-claude code v1, OFFSET-cowork v1, Untitled), nothing else left behind. The add-in
+itself was never touched (every case builds through `fb_engine`/`b-spline-gen.py` imported directly from
+this lane-b checkout, independent of whatever's deployed) -- no redeploy, as directed.
+
+**T84 item 3 is now fully DONE**: both templates code-complete on the Fusion/Python side AND the JS/app
+side, both verified clean through the real production validity pipeline at every declared handle extreme,
+and both now LIVE-confirmed 100% BUILT at 7x9 across every handle's own {min, default, max}. Results at
+`bspline-frame-builder/scratch/item61_t16_t17_results.json` (scratch, not committed, same convention as
+every other scratch probe output this session). Registered-template commit (1bc0542) already pushed; no
+further code change from this turn (the sweep itself touches no source, only TEMPLATE_META was new and
+that's already in). Passing back to the advisor now.

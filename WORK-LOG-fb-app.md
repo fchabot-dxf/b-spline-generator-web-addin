@@ -7782,3 +7782,116 @@ corner AND the pinch, green handle dots at the pinch points): `C:/Users/danse/.b
 `tools/repro/f31_item1_sandtimer_diagram.mjs` (same repo-root-as-argv[1] convention as the taper diagram
 script). No template files touched, no Fusion used. Passing back for Fred's sign-off before any
 `template_14`-numbered code is written.
+
+## 2026-10-02: H23 item 39 -- Fred-approved guard: no hooked corner tips, every template (finishes item 38)
+
+**Fred's own correction mid-task** (relayed via `handoff.py amendments`), which changed the shape of
+this item: "a hooked tip is SHORT GRAIN -- fibres across a thin tip, it snaps. Size the margin so a
+tip is never thin, not just 'miter inside the wood'." A pure "does the miter line literally cross
+the outline again" test (my first draft) is the WRONG rule -- it would pass a near-miss graze that
+still leaves a paper-thin, short-grain sliver. The shipped rule is a MARGIN (clearance), not a
+crossing test; a literal crossing is just its own clearance-0 special case, included for free.
+
+**The rule, declared once, every template** (`editor/editor-frame-profile.js`): `frameMiters` now
+also carries each corner's own 2 bordering primitive indices (`aIdx`/`bIdx`, backward-compatible --
+the one existing consumer, the miter-line draw in this same file, only ever read `.outer`/`.inner`).
+New `miterTipMargin(outerPrims, m, cornerExcludeIn)`: samples 41 points along the miter, takes the
+min distance (`editor-primitives.js`'s own `distToPrimitive`) to every OTHER outer primitive,
+excluding (for the corner's own 2 bordering primitives ONLY) any sample whose nearest point on that
+primitive is itself within `cornerExcludeIn` of the shared vertex -- the corner legitimately
+touches those two right at the vertex; item 38's own finding was the miter re-approaching a
+FARTHER-OUT part of its own bordering arc, which this does not exclude.
+
+**MEASURED, not guessed, every constant:** my first attempt excluded by the MITER's own t-fraction
+near the vertex -- WRONG, because distance-to-the-adjacent-primitive grows roughly linearly with
+that fraction purely from the corner's own angle (every ordinary 45/90 deg corner reads "thin" a
+hair off its own vertex); a 300-seed x 13-template x 3-board sweep false-failed EVERY template at
+EVERY tested margin. Switched the exclusion to the PRIMITIVE's own arc-length from its endpoint
+(footOnPrimitive, new in `editor-primitives.js`) -- re-swept clean. Both `MITER_CORNER_EXCLUDE_T_FRAC`
+(0.2) and the margin floor `MIN_MITER_MARGIN_T_FRAC` (0.04) are fractions of the record's own
+resolved `frame_thickness` `t` (not fixed inches -- the inner-corner offset, and so the miter's own
+length, scales with `t`; confirmed scale-invariant directly at t=0.5/0.75/1.0 on T7's own eave). 0.04
+sits safely under every template's own tightest DEFAULT margin (T7's own eave, the one item 38
+already found fragile: 0.0604t at 7x9, 0.0711t at 6x9, 0.0755t at 9x12 -- every other template's
+default clears 0.14+). At that floor, a 1000-seed raw (ungated) sweep per template/board passes
+~98-100% for every template except T7 (38.6% @ 6x9, ~4.1%/4.3% @ 7x9/9x12 -- its eave sits close to
+this edge for almost any seed, not a rare unlucky one) and template_12 (~97-99%, its own shortfall
+is 100% pre-existing inner-profile defects, not this rule -- unaffected by item 39).
+
+**(1) Generate rejects** (`main/frame-panel.js`'s `generateFrame()`): one more `return false` in the
+existing `isValid` chain, after the item-23 reflex check, calling `miterStaysInsideWood(outer.
+primitives, frameMiters(outer.primitives, inner.primitives), t)` -- reuses the app's own existing
+miter geometry (`frameMiters`), per the brief ("use it, don't re-derive"), not a re-derivation.
+**GENERATE_MAX_ATTEMPTS raised 80 -> 500** (`editor/frame-handles.js`), MEASURED by simulating the
+real retry loop (same `GENERATE_RETRY_SALT`) over 2000 external seeds per board size for T7 (the
+binding template, by far the tightest raw pass rate): worst attempts-to-first-pass was 17 (6x9), 273
+(7x9), 250 (9x12); 0/2000 external seeds ever exceeded that at any board size. 500 gives real margin
+above the observed worst case and costs nothing -- timed directly: even a FULLY EXHAUSTED 500-attempt
+budget (every attempt rejected, the pathological case) costs under 10ms; a real T7 Generate call
+(500-budget, real isValid) averages 3.45ms. T7's own per-handle drag room (sampled across each
+handle's own declared range, holding the other two at default) is asymmetric but real, not a frozen
+corner: `bodyFlareHeight` and `neckHeight` each stay clear across roughly 60-70% of their own
+declared range (the risk concentrates in the NARROWER direction only); `gableNeckWidth` is the
+tightest single handle (only its own top ~20%, at/above default, stays clear) -- consistent with the
+low JOINT (all-3-at-once) raw pass rate above, which the retry budget already accounts for.
+
+**(2) The drag handles stop before breaking it** (`main/frame-panel.js`): new
+`_frameRecordBreaksNoHookRule`/`_clampDragPatchToNoHookRule`, wired into the existing pointermove
+handler in place of the bare `handleDragPatch` write. Binary-searches the drag's OWN fraction (not a
+snap-back to the drag's start) between the last-good record and the candidate patch, so the handle
+visually stops right at the limit -- the same "stop before breaking it" feel the pre-existing
+frame-opening range clamp already gives every handle (`frame-handles.js`'s own `within()`), just for
+a rule that can't be expressed as a simple per-key min/max (it depends on all 3 of T7's handles
+jointly). Checked against the RAW drawn geometry, no T10-archRise-style pin needed (a drag's own
+preview IS what gets built for every handle in this app, unlike a freshly-Generated seed -- see the
+function's own comment). Not unit-tested directly (module-private, pure DOM-event wiring around
+already-tested public functions) -- matches `cf3805f`'s own precedent, which didn't add handle-stop
+code for its reflex rule at all.
+
+**(3) The pure test** (`tests/frame-no-hooked-miters.test.js`, new, 32 tests): 3 synthetic unit
+tests isolate the geometric mechanism (an ordinary 90 deg corner passes; a deliberate near-miss
+graze -- NOT a literal crossing -- correctly fails on margin alone, proving this is not just a
+crossing test; a literal crossing reads margin 0 as that same rule's special case). Every
+template's own default passes at all 3 board sizes. T7's own real captured hook (external seed 1,
+7x9, a genuine Generate draw, not synthetic) reproduces margin 0 directly from production code.
+Swept `generateFrame()`'s own real `isValid` logic (reproduced exactly, same order of checks) across
+all 13 templates x 3 board sizes x 50 seeds each, using the shipped `GENERATE_MAX_ATTEMPTS` --
+**reduced from a first-draft 200** because template_8's own PRE-EXISTING, unrelated gap (its
+`dippedLeftWave` piece-length check already fails ~99.5% of raw seeds at 6x9, nothing to do with
+this item -- flagged below, not fixed) made every one of its seeds pay a full double-retry-budget
+cost; the sweep distinguishes a genuine item-39 regression from a pre-existing gap by re-running the
+SAME retry loop with the pre-item-39 (no-margin) chain and only failing the assertion if THAT one
+would have passed. **Mutation-tested two ways**, both red before restoring: (1) removed the margin
+check -- T7's own raw seed 2 draw (confirmed clean on every pre-existing check: defects, piece
+length, reflex) passes the OLD chain and fails the real one, proving the check is load-bearing, not
+redundant with an existing one; (2) reverted the attempts budget to the pre-item-39 80 -- confirmed
+some external seeds (of 400 tried) for T7 @ 7x9 and @ 9x12 still exceed it, proving 80 really was
+insufficient for this tighter check. All 32 pass after restoring.
+
+**Flagged, NOT fixed (out of this item's own scope -- a different template's different pre-existing
+gap, found only because this item's sweep was the first to probe template_8 broadly):**
+template_8's (`dippedLeftWave`, T8) own Generate can draw pieces shorter than `frame_thickness`
+extremely often (measured ~99.5% of raw seeds at 6x9) -- the SAME category of gap item 21 already
+closed for T7's own "no wing" case and item 23 closed for T10's own reflex case, just never closed
+for T8. Not touched here (a different template's own pre-existing Generate-safety gap, not a
+regression from this item, and fixing it was never in the brief).
+
+**Fast-tier run** (every test file importing the 4 touched modules, 35 files): `npx vitest run` ->
+**949 passed, 0 failed**. Full suite not re-run (fast-tier only, standing protocol).
+
+**No live Fusion verification performed, deliberately:** every file this item touches
+(`editor-frame-profile.js`, `editor-primitives.js`, `main/frame-panel.js`, `editor/frame-handles.js`)
+is pure client-side JS that Fusion never executes and that `fb_engine` never imports -- this guard
+can only change WHICH seeds the browser ever offers via [Generate] or a handle drag, never what
+Fusion builds for a seed that reaches it. The underlying defect it keeps users away from (a hooked
+miter producing sliver bodies + missing roof bars) was already live-confirmed in Fusion by item 38
+(this file, above); this item's own margin metric was validated against that exact known-bad
+geometric signature, not a new, unverified one (the "T7's own real captured hook" test above reads
+margin exactly 0 on a genuine Generate draw). If the advisor/Fred still wants a fresh live T7 Send
+through this guard specifically, flag it and I'll build the capture-payload pipeline for it next
+turn -- no existing captured T7 *.json payload survived in scratch/ to reuse directly, so it would be
+a new capture, not a replay.
+
+Not committed as a T7 patch: the rule, the Generate check, the drag clamp, and the test all apply to
+every template uniformly (`miterStaysInsideWood`/`miterTipMargin` take no template-specific input at
+all beyond the primitives and `t` every template already has).

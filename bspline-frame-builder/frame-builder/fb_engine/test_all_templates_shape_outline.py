@@ -127,6 +127,28 @@ def _ev_factory(W, H, bbo, sketch=None):
     return ev
 
 
+def _resolve_pts(it, items, ev):
+    """Evaluate one item's own `Points` list to (x, y) tuples. H23 item 47: a point may be a
+    `{'SeedFrom': {'id', 'side'}}` marker (a Rebuild step tracking an earlier step's own LIVE
+    endpoint -- resolved against actual Fusion geometry at build time, fb_engine/geometry.py's own
+    `_resolve_point_spec`) instead of a literal `[x_expr, y_expr]` pair. This static (no-Fusion)
+    analysis approximates it with that source's own DECLARED literal point on the same side -- the
+    exact value for the unseeded default every OTHER check in this file already assumes, and the
+    only value available without a live build."""
+    out = []
+    for p in it['Points']:
+        if isinstance(p, dict) and 'SeedFrom' in p:
+            src_id, side = p['SeedFrom']['id'], p['SeedFrom']['side']
+            src = next(s for s in items if s.get('ID') == src_id
+                       and not any(isinstance(sp, dict) for sp in s.get('Points', [])))
+            src_pts = [(ev(x), ev(y)) for x, y in src['Points']]
+            chosen = min(src_pts, key=lambda xy: xy[0]) if side == 'left' else max(src_pts, key=lambda xy: xy[0])
+            out.append(chosen)
+        else:
+            out.append((ev(p[0]), ev(p[1])))
+    return out
+
+
 def _circumcircle(p0, p1, p2):
     ax, ay = p0; bx, by = p1; cx, cy = p2
     d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
@@ -148,7 +170,7 @@ def _entity_candidates(t, sketch, W, H, bbo):
         if it.get('Type') not in ('Line', 'Arc3Point') or 'Points' not in it:
             continue
         pid = it['ID']
-        p = [(ev(x), ev(y)) for x, y in it['Points']]
+        p = _resolve_pts(it, items, ev)
         if it['Type'] == 'Line':
             cand[pid] = {'S': p[0], 'E': p[1], 'altS': p[0], 'altE': p[1], 'C': None}
         else:
@@ -241,11 +263,12 @@ EXACT_SEED_TEMPLATES = {'template_7'}  # H23 item 27: its own fix landed -- exac
 @pytest.mark.parametrize("tid", TEMPLATE_IDS)
 def test_seed_midpoint_report(tid, capsys):
     t, sk = _shape_outline_sketch(tid)
-    arcs = [it for it in _all_items(sk) if it.get('Type') == 'Arc3Point']
+    items = _all_items(sk)
+    arcs = [it for it in items if it.get('Type') == 'Arc3Point']
     ev = _ev_factory(7, 9, BBO, sk)
     worst_deg = 0.0
     for it in arcs:
-        p = [(ev(x), ev(y)) for x, y in it['Points']]
+        p = _resolve_pts(it, items, ev)
         cc = _circumcircle(*p)
         if cc is None:
             continue
@@ -296,7 +319,7 @@ def test_convex_radius_vs_frame_thickness_known_list(tid, capsys):
     findings = []
     for (W, H) in BOARDS:
         ev = _ev_factory(W, H, BBO, sk)
-        pts_by_id = {it['ID']: [(ev(x), ev(y)) for x, y in it['Points']] for it in items
+        pts_by_id = {it['ID']: _resolve_pts(it, items, ev) for it in items
                      if it.get('Type') in ('Line', 'Arc3Point') and 'Points' in it}
         all_pts = [pt for pts in pts_by_id.values() for pt in pts]
         if not all_pts:

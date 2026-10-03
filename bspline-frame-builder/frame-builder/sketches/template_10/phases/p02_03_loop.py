@@ -37,6 +37,22 @@ def get_block(ui_data=None):
          but sends `arc_shoulder_R/L` back to 357.9 deg, the "ears" bug item 15 first found and left open; it
          was never a separate bug from the arch's own, just a harder instance of the same one (3 mutually-
          tangent arcs instead of 1).
+
+         H23 item 47 (item 45/46's own live finding: the Arch-rise handle built IDENTICAL volumes at both
+         drag extremes): the anchors used to be their OWN literal `[-(HW), CY]`/`[HW, CY]` points -- a THIRD
+         independent copy of the SAME closed-form formula (`top_edge`'s own seeded Points were the first,
+         `p02_12_arch_rebuild.py`'s rebuild the second, item 46's own SeedFrom already unified THAT pair).
+         Fixing the rebuild's own duplicate did nothing for the handle, because the anchors -- not the
+         rebuild -- are what actually pin `top_edge`'s FINAL solved position: any seed sent for `top_edge`
+         only ever set its INITIAL guess; the very next steps (`Fix` + `Coincident`, right below) snapped it
+         straight back to the anchors' own always-literal position regardless. Now `SeedFrom` on a `Point`
+         step (`fb_engine/geometry.py`'s own `_create_point`, generic, not T10-specific): each anchor reads
+         `top_edge`'s own JUST-CREATED (not yet constrained) endpoint geometry directly, chosen by actual
+         LEFT/RIGHT position -- never by Fusion's `:S`/`:E` label, which item 46 measured does NOT reliably
+         correspond to which point was seeded as which (`addByThreePoints` assigns start/end by the arc's
+         own geometric direction, not argument order). Since the anchor now sits exactly where `top_edge`
+         already landed, the `Coincident` below is satisfied with zero solver movement -- `top_edge` stays
+         wherever it was actually seeded, and the handle becomes genuinely live.
       2. That same anchor-plus-Coincident layer leaves `top_edge` ITSELF on the reflex branch (a bare
          `Coincident`, even to an exactly-Fixed anchor, does not stop an Arc3Point from reinterpreting its
          own trim between two now-correctly-placed endpoints -- same ambiguity as the point-on-curve finding
@@ -90,8 +106,8 @@ def get_block(ui_data=None):
             ['0.001', LY],
             [HW, CY],
         ], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
-        {'ID': 'top_S_anchor', 'Type': 'Point', 'Points': [[f'-({HW})', CY]], 'IsConstruction': True},
-        {'ID': 'top_E_anchor', 'Type': 'Point', 'Points': [[HW, CY]], 'IsConstruction': True},
+        {'ID': 'top_S_anchor', 'Type': 'Point', 'Points': [{'SeedFrom': {'id': 'top_edge', 'side': 'left'}}], 'IsConstruction': True},
+        {'ID': 'top_E_anchor', 'Type': 'Point', 'Points': [{'SeedFrom': {'id': 'top_edge', 'side': 'right'}}], 'IsConstruction': True},
         {'Type': 'Fix', 'Targets': ['top_S_anchor', 'top_E_anchor']},
         {'Type': 'Coincident', 'Targets': ['top_edge:S', 'top_S_anchor'], 'Name': 'top_edge_pin_S'},
         {'Type': 'Coincident', 'Targets': ['top_edge:E', 'top_E_anchor'], 'Name': 'top_edge_pin_E'},

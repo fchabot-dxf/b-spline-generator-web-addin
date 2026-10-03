@@ -24,6 +24,8 @@ from fb_engine.timeline_order import (
     reorder_frame_before_inlay,
     is_inlay_item_name,
     INLAY_NAME_PREFIXES,
+    mark_before_inlay,
+    restore_marker_position,
 )
 
 
@@ -66,10 +68,18 @@ class FakeItem:
 
 class FakeTimeline:
     """`.count` + `.item(i)`, same shape reorder_frame_before_inlay reads —
-    a plain ordered list of FakeItem underneath."""
+    a plain ordered list of FakeItem underneath.
+
+    H23 item 52: also models `markerPosition` as a plain settable/gettable int (the real API's
+    own shape, MEASURED live: a new item is inserted AT that position and the marker then
+    advances by one -- but this fake has no "add a new item" method at all, so that LIVE-only
+    side effect is confirmed live, not here; this fake only needs to let mark_before_inlay /
+    restore_marker_position be CALLED without crashing and prove they read/write the right
+    index). Defaults to `count` (the end), matching a fresh real timeline's own default."""
 
     def __init__(self, names, refuses=()):
         self.items = [FakeItem(n, self, can_reorder=(n not in refuses)) for n in names]
+        self.markerPosition = len(self.items)
 
     @property
     def count(self):
@@ -80,6 +90,19 @@ class FakeTimeline:
 
     def names(self):
         return [it.name for it in self.items]
+
+    def insert_at_marker(self, name):
+        """H23 item 53: mirrors the real Timeline API (MEASURED live, item 52) that this fake
+        could not simulate before -- a newly-created item lands AT `markerPosition`, and the
+        marker then advances by one. Lets the restore-after-growth regression tests below drive
+        the exact bug the advisor caught, without touching Fusion."""
+        it = FakeItem(name, self)
+        self.items.insert(self.markerPosition, it)
+        self.markerPosition += 1
+        return it
+
+    def moveToEnd(self):
+        self.markerPosition = self.count
 
 
 class RecordingLogger:
@@ -115,7 +138,33 @@ class TestIsInlayItemName:
         assert is_inlay_item_name("Plane for pattern lattice-muj36vgj")
 
 
+class _ItemCallCountingTimeline(FakeTimeline):
+    """H23 item 51: counts `.item(i)` calls -- each one stands in for a live Fusion API call
+    against a real timeline entry (MEASURED: ~5.2s for this whole function against a real T7
+    Send's own timeline). Proves the redundant second full-timeline fetch is GONE, not just that
+    behavior is unchanged (which the existing tests above already cover)."""
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.item_calls = 0
+
+    def item(self, i):
+        self.item_calls += 1
+        return super().item(i)
+
+
 class TestReorderFrameBeforeInlay:
+    def test_scans_the_timeline_only_once_not_twice(self):
+        """H23 item 51: `items_before` used to re-fetch `[timeline.item(i) for i in range(
+        timeline.count)]` a second time, right after `items` already fetched the exact same,
+        unchanged timeline state -- a second full live-API scan for no reason. A block that
+        actually moves exercises this path (the no-op early returns above never reach it)."""
+        tl = _ItemCallCountingTimeline([
+            "B-Spline Set", "Plane for L1", "Source - L1", "Frame_1", "Frame_1_extrude",
+        ])
+        reorder_frame_before_inlay(tl, _is_frame, _is_inlay)
+        assert tl.item_calls == tl.count, (
+            f"expected exactly one full scan ({tl.count} calls), got {tl.item_calls}")
+
     def test_moves_the_whole_frame_block_as_a_unit_in_original_order(self):
         # Original chronological order: comp/body, THEN the inlay, THEN
         # the frame (built after, per FB-ORDER's own root-cause report).
@@ -271,6 +320,103 @@ class TestReorderFrameBeforeInlay:
         assert "Frame_1_extrude" in result["reason"]
         assert tl.names() == original_order  # Clean itself never touched either
         assert any(level == "WARNING" and "Frame_1_extrude" in msg for level, msg in logger.records)
+
+
+# ---------------------------------------------------------------------
+# H23 item 52: mark_before_inlay / restore_marker_position — set the timeline's own marker
+# before the inlay so new items land there directly, instead of needing reorder_frame_before_
+# inlay (above) to pull them back after the fact (MEASURED, item 51: ~5.2s of real .reorder()
+# calls on a real Send). This fake has no "create a new item" mechanism at all, so it cannot
+# simulate the "does a NEW item actually land at the marker" side effect -- that is confirmed
+# LIVE (WORK-LOG H23 item 52); these tests cover the part that IS fake-testable: does this find
+# the right inlay index, and does it set/restore markerPosition correctly.
+# ---------------------------------------------------------------------
+class TestMarkBeforeInlay:
+    def test_sets_the_marker_to_the_earliest_inlay_index_and_returns_the_prior_position(self):
+        tl = FakeTimeline(["B-Spline Set", "Plane for L1", "Source - L1"])
+        design = types_ns(timeline=tl)
+        state = mark_before_inlay(design)
+        # the fake's own default: markerPosition starts at `count`
+        assert state == {"prior": 3, "count_before": 3}
+        assert tl.markerPosition == 1  # "Plane for L1" is the earliest inlay item
+
+    def test_the_earliest_of_several_inlay_items_wins(self):
+        tl = FakeTimeline(["B-Spline Set", "Frame_1", "Plane for L2", "Source - L2", "Plane for L1"])
+        design = types_ns(timeline=tl)
+        mark_before_inlay(design)
+        assert tl.markerPosition == 2  # "Plane for L2", not the later "Plane for L1"
+
+    def test_no_inlay_is_a_no_op_and_returns_none(self):
+        tl = FakeTimeline(["B-Spline Set", "Frame_1", "Frame_1_extrude"])
+        tl.markerPosition = 3
+        design = types_ns(timeline=tl)
+        assert mark_before_inlay(design) is None
+        assert tl.markerPosition == 3  # untouched
+
+    def test_no_timeline_is_a_no_op(self):
+        assert mark_before_inlay(types_ns(timeline=None)) is None
+        assert mark_before_inlay(None) is None
+
+    def test_restore_puts_the_marker_back_when_nothing_was_inserted(self):
+        tl = FakeTimeline(["B-Spline Set", "Plane for L1"])
+        design = types_ns(timeline=tl)
+        state = mark_before_inlay(design)
+        assert tl.markerPosition == 1
+        restore_marker_position(design, state)
+        assert tl.markerPosition == 2  # back to the original end
+
+    def test_restore_with_none_is_a_no_op(self):
+        tl = FakeTimeline(["B-Spline Set", "Plane for L1"])
+        tl.markerPosition = 1
+        design = types_ns(timeline=tl)
+        restore_marker_position(design, None)
+        assert tl.markerPosition == 1  # untouched, not reset to anything
+
+    def test_restore_moves_the_marker_to_the_new_end_after_items_were_inserted(self):
+        # H23 item 53 (advisor review, caught before item 52 deployed): the marker was at the
+        # END before (nothing rolled back). The build then inserts K new items AT the marker,
+        # growing the timeline by K. Restoring to the STALE numeric `prior` -- captured when the
+        # timeline was K items shorter -- would land K items too early in the now-longer
+        # timeline, rolling back the LAST K items: the inlay's own trailing features. The fix
+        # must land the marker at the NEW end instead.
+        tl = FakeTimeline(["B-Spline Set", "Plane for L1", "Source - L1"])
+        design = types_ns(timeline=tl)
+        state = mark_before_inlay(design)  # marker -> 1 (before "Plane for L1"); prior == count == 3
+        for name in ("Frame_1", "Frame_1_sketch_outline", "Frame_1_extrude"):
+            tl.insert_at_marker(name)
+        assert tl.count == 6  # 3 original + 3 inserted
+        restore_marker_position(design, state)
+        assert tl.markerPosition == tl.count == 6  # the NEW end -- not the stale prior (3)
+        # and the inlay's own trailing items are still the LAST two, untouched by the insert
+        assert tl.names()[-2:] == ["Plane for L1", "Source - L1"]
+
+    def test_restore_shifts_by_the_insert_count_when_the_marker_was_not_at_the_end(self):
+        # If the marker was already mid-timeline on purpose before this Send even started
+        # (something already rolled back), restoring must preserve that SAME relative position,
+        # shifted by however many items the build inserted -- per the dispatch's own fix: "prior
+        # + K" when the marker was not at the end.
+        tl = FakeTimeline(["B-Spline Set", "Frame_0", "Plane for L1", "Source - L1"])
+        tl.markerPosition = 1
+        design = types_ns(timeline=tl)
+        state = mark_before_inlay(design)  # inlay earliest index = 2; prior captured = 1
+        for name in ("Frame_1", "Frame_1_sketch_outline"):
+            tl.insert_at_marker(name)
+        restore_marker_position(design, state)
+        assert tl.markerPosition == 3  # prior(1) + K(2) -- not 1, and not the new end (6)
+
+    def test_restore_falls_back_to_markerposition_without_movetoend(self):
+        # The fake has no moveToEnd() on an older-shaped stand-in -- the function must still
+        # reach the same end position via a plain markerPosition write, not raise.
+        class _NoMoveToEnd(FakeTimeline):
+            def moveToEnd(self):
+                raise AttributeError("no moveToEnd on this stand-in")
+
+        tl = _NoMoveToEnd(["B-Spline Set", "Plane for L1"])
+        design = types_ns(timeline=tl)
+        state = mark_before_inlay(design)
+        tl.insert_at_marker("Frame_1")
+        restore_marker_position(design, state)
+        assert tl.markerPosition == tl.count == 3
 
 
 # ---------------------------------------------------------------------

@@ -97,6 +97,78 @@ def test_template_8_dip_seed_radius_tracks_both_dimensions_not_just_one():
             assert got > 0, (w, h, name)  # sane: a flipped/degenerate seed would go non-positive
 
 
+def test_seed_sketch_does_not_corrupt_a_seedfrom_point_marker():
+    """H23 item 47: a {'SeedFrom': {...}} point (fb_engine/geometry.py's own `_resolve_point_spec`,
+    resolved at BUILD time against live geometry) must pass through seed_sketch's own widthIn/
+    heightIn rewrite untouched -- iterating into the dict like a plain [x, y] pair would silently
+    replace the whole marker with a 1-element list of the string 'SeedFrom', a real bug this
+    exact test caught before it ever reached Fusion (item 47's own first draft did exactly this)."""
+    sketch = {"Blocks": [{"BuildSequence": [
+        {"ID": "x", "Type": "Arc3Point", "Points": [
+            {"SeedFrom": {"id": "x", "side": "left"}},
+            ["widthIn", "heightIn"],
+            {"SeedFrom": {"id": "x", "side": "right"}},
+        ]},
+    ]}]}
+    seed_basis.seed_sketch(sketch)
+    pts = sketch["Blocks"][0]["BuildSequence"][0]["Points"]
+    assert pts[0] == {"SeedFrom": {"id": "x", "side": "left"}}
+    assert pts[2] == {"SeedFrom": {"id": "x", "side": "right"}}
+    assert "boundingboxoffset" in pts[1][0] and "boundingboxoffset" in pts[1][1]
+
+
+def test_template_10_arch_rebuild_tracks_top_edges_live_endpoints_not_a_literal():
+    """H23 item 47: the rebuild's two END points must be declared SeedFrom markers reading
+    top_edge's own live left/right endpoint -- MEASURED (item 46's own step-level SeedFrom, a pure
+    template-resolution-time copy made before any seed was applied) to leave the rebuild frozen at
+    the unseeded literal regardless of what was actually dragged, reproducing item 45's own bug one
+    layer removed. The APEX (middle point) stays a plain literal -- it only forces the correct arc
+    branch and must NOT track the seed."""
+    sk2 = resolve_template("template_10")[0]["Sketches"][1]
+    rebuilds = [st for block in sk2["Blocks"] for st in block.get("BuildSequence", [])
+                if st.get("ID") == "top_edge" and st.get("Rebuild")]
+    assert len(rebuilds) == 1
+    pts = rebuilds[0]["Points"]
+    assert len(pts) == 3
+    assert pts[0] == {"SeedFrom": {"id": "top_edge", "side": "left"}}
+    assert pts[2] == {"SeedFrom": {"id": "top_edge", "side": "right"}}
+    assert isinstance(pts[1], list) and "SeedFrom" not in pts[1]
+
+
+def _has_seedfrom(step):
+    """A step counts as explicitly seed-sourced (exempt from the duplicate-ID guard below) if ANY
+    of its own Points is a {'SeedFrom': {...}} marker -- the per-point convention item 47 settled
+    on (a step-level 'SeedFrom' key never existed for Line/Arc3Point; only the now-removed
+    apply_seed_from used one, and it was itself superseded by this same item for being frozen at
+    the pre-seed literal)."""
+    return any(isinstance(p, dict) and "SeedFrom" in p for p in step.get("Points", []) or [])
+
+
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5",
+                                  "template_6", "template_7", "template_8", "template_9", "template_10",
+                                  "template_11", "template_12", "template_13"])
+def test_no_two_seed_steps_share_an_id_without_declaring_seedfrom(tid):
+    """H23 item 46 (item 45's own live finding): template_10's pre-fix bug was exactly this -- two
+    independent Line/Arc3Point steps sharing one ID, each with its own literal Points, where
+    apply_seed_geometry's pop-on-first-match only ever reaches the first. A second step reusing an
+    earlier one's ID must declare a SeedFrom point marker (an explicit, checked relationship)
+    rather than silently shadow it with an unrelated duplicate."""
+    sk2 = resolve_template(tid)[0]["Sketches"][1]
+    seen = set()
+    for block in sk2["Blocks"]:
+        for step in block.get("BuildSequence", []):
+            if step.get("Type") not in ("Line", "Arc3Point") or "ID" not in step:
+                continue
+            sid = step["ID"]
+            if _has_seedfrom(step):
+                continue
+            assert sid not in seen, (
+                f"{tid}: step {sid!r} is declared more than once as a plain (non-SeedFrom) seed -- "
+                f"apply_seed_geometry would only ever patch the first; the later one(s) must declare "
+                f"a SeedFrom point marker instead of an independent duplicate")
+            seen.add(sid)
+
+
 def test_template_8_dip_seed_radius_would_have_caught_the_heightin_only_bug():
     """MUTATION-CHECK-BY-CONSTRUCTION: a heightIn-only radius (Template 5's own, pre-amendment) tracks neither
     board correctly except the one it was tuned on -- demonstrating this test is not vacuous without touching

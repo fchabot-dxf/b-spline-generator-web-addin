@@ -356,13 +356,87 @@ def _diamond_top_hourglass_pinch(curves, hw, hh, tol=2e-3):
     }
 
 
+def _sagitta_from_center_radius(p0, p1, center, radius):
+    """The sagitta (bulge depth) of the arc through `p0`/`p1` given its own already-built
+    centre/radius -- half_chord = |p1-p0|/2, sagitta = radius - sqrt(radius^2 - half_chord^2) (the
+    minor-arc case, true for every arc T16/T17 build at any moderate handle value -- see
+    fb_engine/t16_geometry.py's own is_valid_outline, which rejects anything past that regime)."""
+    half_chord = math.dist(p0, p1) / 2.0
+    return radius - math.sqrt(max(0.0, radius * radius - half_chord * half_chord))
+
+
+def _arched_funnel(curves, hw, hh, tol=2e-3):
+    """T16 ARCHED FUNNEL: a one-piece arch, two straight upper sides tapering to a waist, two
+    outward-bulging lower curves, a flat base -- every joint a MITER (fb_engine/t16_geometry.py's
+    own module docstring), unlike every earlier template's own tangent chain.
+
+    Features: topWidth (the arch's own chord half-span, inches), archRiseFrac (the arch's own
+    sagitta, inches), waistWidthFrac (the waist's own half-width, inches), waistHeightFrac (hh
+    minus the waist's own y, inches -- "how far down from the top edge", matching its basis="h"
+    FRAME_HANDLES convention: paramsFromShapeModel recovers the fraction as feature / (2*hh), not
+    feature / hh), bulgeFrac (the lower-right curve's own outward sagitta, inches) -- every one a
+    plain inch value, NOT pre-divided into a fraction (same convention _diamond_top_hourglass
+    above already uses: the model fits hw/hh coefficients against real inch values once goldens
+    exist; the app's own paramsFromShapeModel divides the fitted/provisional value back by hw or
+    2*hh). Valid when the arch's own two ends are symmetric about the centreline and at the same
+    height, upper_R starts exactly where the arch ends, and the base sits at y = -hh.
+
+    FIRST CUT, unverified against a real golden JSON (no template_16 goldens exist yet) -- check
+    the recorded curve dict's actual key shape the first time tools/repro/record_frame_parity.py
+    runs for this template, same caveat _diamond_top_hourglass's own docstring carries."""
+    arch = curves["arch"]
+    upper_r, lower_r, base = curves["upper_R"], curves["lower_R"], curves["base"]
+    top_r, top_l = arch["start"], arch["end"]  # arch:S=topR, arch:E=topL (the CCW-swap table, p02_02_loop.py)
+    waist_r, BR = lower_r["start"], lower_r["end"]
+    ok = (abs(top_r[0] + top_l[0]) < tol and abs(top_r[1] - top_l[1]) < tol  # arch ends symmetric, same height
+          and abs(upper_r["start"][0] - top_r[0]) < tol and abs(upper_r["start"][1] - top_r[1]) < tol
+          and abs(base["start"][1] + hh) < tol and abs(base["end"][1] + hh) < tol)  # base at y=-hh
+    return ok, {
+        "topWidth": top_r[0],
+        "archRiseFrac": hh - top_r[1],
+        "waistWidthFrac": waist_r[0],
+        "waistHeightFrac": hh - waist_r[1],
+        "bulgeFrac": _sagitta_from_center_radius(waist_r, BR, lower_r["center"], lower_r["radius"]),
+    }
+
+
+def _tulip(curves, hw, hh, tol=2e-3):
+    """T17 TULIP: Template 16's own arch/lower bulges/base, plus two CONCAVE upper sides (arcs,
+    not Template 16's plain lines) curving toward the centreline from the arch ends to the waist.
+
+    Features: Template 16's own 5, plus upperCurveFrac (the upper-right arc's own inward sagitta,
+    inches). Valid the same way Template 16's own extractor is, plus upper_R must actually be an
+    arc (carry 'center'/'radius') -- a genuinely concave side, not a degenerate straight one.
+
+    FIRST CUT, unverified against a real golden JSON (no template_17 goldens exist yet) -- same
+    caveat _arched_funnel's own docstring carries."""
+    arch = curves["arch"]
+    upper_r, lower_r, base = curves["upper_R"], curves["lower_R"], curves["base"]
+    top_r, top_l = arch["start"], arch["end"]
+    waist_r, BR = lower_r["start"], lower_r["end"]
+    ok = (abs(top_r[0] + top_l[0]) < tol and abs(top_r[1] - top_l[1]) < tol
+          and abs(upper_r["start"][0] - top_r[0]) < tol and abs(upper_r["start"][1] - top_r[1]) < tol
+          and abs(base["start"][1] + hh) < tol and abs(base["end"][1] + hh) < tol
+          and "center" in upper_r and "radius" in upper_r)  # a genuine arc, not a degenerate straight side
+    return ok, {
+        "topWidth": top_r[0],
+        "archRiseFrac": hh - top_r[1],
+        "waistWidthFrac": waist_r[0],
+        "waistHeightFrac": hh - waist_r[1],
+        "bulgeFrac": _sagitta_from_center_radius(waist_r, BR, lower_r["center"], lower_r["radius"]),
+        "upperCurveFrac": _sagitta_from_center_radius(upper_r["start"], upper_r["end"],
+                                                       upper_r["center"], upper_r["radius"]),
+    }
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
                       "bottle_taper": _bottle_taper,
                       "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape,
                       "diamond_top_hourglass": _diamond_top_hourglass,
-                      "diamond_top_hourglass_pinch": _diamond_top_hourglass_pinch}
+                      "diamond_top_hourglass_pinch": _diamond_top_hourglass_pinch,
+                      "arched_funnel": _arched_funnel, "tulip": _tulip}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):
@@ -668,6 +742,64 @@ def provisional_dipped_top_model(base_model, depth_of_hh, half_width_of_hw):
             "topDipHalfWidthOfHw": half_width_of_hw,
         },
     }
+
+
+def provisional_arched_funnel_model(top_width_of_hw, arch_rise_of_hw, waist_width_of_hw, waist_height_of_h, bulge_of_hw):
+    """T16 ARCHED FUNNEL, until its goldens are recorded live: a PROVISIONAL model (never none),
+    like T7/T9/T11: no base template to derive it from (no earlier template has a one-piece arch
+    over an all-miter outline). Every feature is a PLAIN hw- or hh-linear fraction straight from
+    the construction (fb_engine/t16_geometry.py's own outline()) -- no `rest`-style nonlinear term
+    the way T7's own neckHeight/bodyFlareHeight need (T9's own provisional_i_shape_model is the
+    closer precedent here, not T7's).
+
+    `waistHeightFrac` is the one basis="h" (full height, not half) handle: its own feature is
+    `hh - waist_r.y` (how far down from the top edge, inches) = `waist_height_frac * 2 * hh`, so
+    the hh coefficient is `2 * waist_height_of_h` with NO hw cross-term (unlike T7's own roof-
+    shape-dependent eave position) -- paramsFromShapeModel recovers the fraction as
+    `feature / (2*hh)`, matching FRAME_HANDLES' own declared basis exactly. The app clamps every
+    value into its feasible range (frame-handles.js's own frameParamRanges, each handle solved
+    independently -- fb_engine/t16_geometry.py's own module docstring: unlike T11's coupled
+    parameters, no clamp_*_handles blend-search is needed here). Marked `provisional` so nothing
+    mistakes it for a fit."""
+    return {
+        "features": {
+            "topWidth": {"hw": top_width_of_hw, "hh": 0.0},
+            "archRiseFrac": {"hw": arch_rise_of_hw, "hh": 0.0},
+            "waistWidthFrac": {"hw": waist_width_of_hw, "hh": 0.0},
+            "waistHeightFrac": {"hw": 0.0, "hh": 2 * waist_height_of_h},
+            "bulgeFrac": {"hw": bulge_of_hw, "hh": 0.0},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "topWidthFracOfHw": top_width_of_hw,
+            "archRiseFracOfHw": arch_rise_of_hw,
+            "waistWidthFracOfHw": waist_width_of_hw,
+            "waistHeightFracOfH": waist_height_of_h,
+            "bulgeFracOfHw": bulge_of_hw,
+        },
+    }
+
+
+def provisional_tulip_model(top_width_of_hw, arch_rise_of_hw, waist_width_of_hw, waist_height_of_h,
+                            bulge_of_hw, upper_curve_of_hw):
+    """T17 TULIP, until its goldens are recorded live: a PROVISIONAL model (never none). Template
+    16's own 5 features (see provisional_arched_funnel_model's own docstring) plus `upperCurveFrac`
+    -- the two concave upper sides' own inward sagitta, a plain hw-linear fraction, same shape as
+    `bulgeFrac`. Marked `provisional` so nothing mistakes it for a fit."""
+    model = provisional_arched_funnel_model(top_width_of_hw, arch_rise_of_hw, waist_width_of_hw,
+                                            waist_height_of_h, bulge_of_hw)
+    model["features"]["upperCurveFrac"] = {"hw": upper_curve_of_hw, "hh": 0.0}
+    model["provisional"]["upperCurveFracOfHw"] = upper_curve_of_hw
+    return model
 
 
 def _lsq2(X, y):

@@ -12,10 +12,10 @@ import { P, persistableP } from '../bspline-frame-builder/b-spline-gen/html/core
 import {
   normalizeFrameRecord, getFrameRecord, setFrameRecord, framePayload,
 } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
-import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
+import { frameCutProfile, outlineHasUndercut } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry, frameParamRanges } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { generateSilhouette, paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
-import { initFramePanel, setEditorTab, HANDLE_HIT_PX, frameHistoryDepth, undoFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { initFramePanel, setEditorTab, HANDLE_HIT_PX, frameHistoryDepth, undoFrame, _frameRecordBreaksNoHookRule } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { FRAME_HANDLE_RADIUS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { HANDLE_HOVER_SCALE, HANDLE_HOVER_FILL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 
@@ -428,5 +428,89 @@ describe('F20 SHOULDER-HIP: the T1 frame has a Shoulder and a Hip handle, seeded
     // an explicit new key wins over the migrated one
     expect(normalizeFrameRecord({ templateId: 'template_1', seeds: { cornerRadius: 0.2, cornerRadiusBottom: 0.3 } }).seeds)
       .toEqual({ cornerRadiusTop: 0.2, cornerRadiusBottom: 0.3 });
+  });
+});
+
+describe('H23 item 63 (d): frameSeedGeometry stays finite at every handle\'s own range end', () => {
+  // item 61's own live matrix found 2 of its 133 cases sending a literal null point to Fusion
+  // (template_10 archRise:min, template_12 taperAngle:min) -- traced to this file's own `at()`
+  // helper (line ~255) assuming `prof.primitives[e.prim]` is always a true arc (cx/rx/theta1/
+  // dTheta) for a `kind:'arc'` seedMap entry, when the silhouette generator can legitimately
+  // collapse that SAME primitive slot into a near-zero-length LINE at an extreme handle value
+  // (archRise=0 flattens T10's own arch; an extreme taper can shrink a shoulder arc's own sweep
+  // to ~0). This test re-derives the SAME 133-case matrix item 61's own live sweep used (every
+  // declared handle, every template, min/max/default at 7x9) purely in JS -- no Fusion needed --
+  // and asserts every seeded point/radius is a real, finite number.
+  it.each(FRAME_DEFS.templates.map((t) => t.id))('%s', (id) => {
+    const tpl = tplOf(FRAME_DEFS, id);
+    const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
+    const t = (tpl.params.find((p) => p.name === 'frame_thickness') || {}).default ?? 0.75;
+    const resolved = paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region);
+    const ranges = frameParamRanges(tpl, region, resolved, t);
+    const cases = [{ key: null, val: null }];
+    for (const h of tpl.handles) {
+      const range = ranges[h.key];
+      if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max)) continue;
+      cases.push({ key: h.key, val: range.min }, { key: h.key, val: range.max });
+    }
+    for (const { key, val } of cases) {
+      const seeds = key ? { [key]: val } : {};
+      const geo = frameSeedGeometry(tpl, profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id, seeds })), 7, 9);
+      for (const [eid, g] of Object.entries(geo)) {
+        const label = `${id} ${key ?? 'default'}=${val}: ${eid}`;
+        (g.points || []).forEach((pt) => {
+          expect(Number.isFinite(pt[0]), `${label} x`).toBe(true);
+          expect(Number.isFinite(pt[1]), `${label} y`).toBe(true);
+        });
+        if (g.radius != null) expect(Number.isFinite(g.radius), `${label} radius`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('H23 item 63 (a): the undercut guard catches the matrix REFLEX cases', () => {
+  // item 61's live matrix: T1 failed with REFLEX ARC at waistReach:max, cornerRadiusTop:min,
+  // cornerRadiusBottom:min and waistRadius:min. The advisor measured the payloads: the app's OWN
+  // outline sweeps 183-291 deg there (an undercut), so Fusion's refusal is right. Fred approved the
+  // guard (2026-10-03): handles and Generate stop before it, via outlineHasUndercut.
+  const rangeEnd = (id, key, end) => {
+    const tpl = tplOf(FRAME_DEFS, id);
+    const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
+    const t = (tpl.params.find((q) => q.name === 'frame_thickness') || {}).default ?? 0.75;
+    const ranges = frameParamRanges(tpl, region, paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region), t);
+    return profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id, seeds: { [key]: ranges[key][end] } }));
+  };
+  it.each([['waistReach', 'max'], ['cornerRadiusTop', 'min'], ['cornerRadiusBottom', 'min'], ['waistRadius', 'min']])(
+    'template_1 %s:%s is an undercut', (key, end) => {
+      expect(outlineHasUndercut(rangeEnd('template_1', key, end).primitives)).toBe(true);
+    });
+  it('every template default is not an undercut', () => {
+    for (const tpl of FRAME_DEFS.templates) {
+      expect(outlineHasUndercut(profile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id })).primitives), tpl.id).toBe(false);
+    }
+  });
+});
+
+describe('H23 item 63: no template default has a broken outline (the drag-stop starts from a valid shape)', () => {
+  it('every default outline has no defects', () => {
+    for (const tpl of FRAME_DEFS.templates) {
+      expect(profile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id })).defects, tpl.id).toEqual([]);
+    }
+  });
+});
+
+describe('H23 item 63: the drag-stop refuses crossing miters (Fred: guard the handles)', () => {
+  beforeEach(() => { P.frame = null; P.widthIn = 7; P.heightIn = 9; });
+  it('template_13 neckWidth at its declared min is refused (its top bar is shorter than its miters)', () => {
+    const id = 'template_13';
+    const tpl = tplOf(FRAME_DEFS, id);
+    const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
+    const ranges = frameParamRanges(tpl, region, paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region), 0.75);
+    expect(_frameRecordBreaksNoHookRule(normalizeFrameRecord({ templateId: id, seeds: { neckWidth: ranges.neckWidth.min } }))).toBe(true);
+  });
+  it('no template default at 7x9 is refused', () => {
+    for (const tpl of FRAME_DEFS.templates) {
+      expect(_frameRecordBreaksNoHookRule(normalizeFrameRecord({ templateId: tpl.id })), tpl.id).toBe(false);
+    }
   });
 });

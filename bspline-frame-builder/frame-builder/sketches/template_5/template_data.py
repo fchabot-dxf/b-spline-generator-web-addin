@@ -154,8 +154,10 @@ FRAME_HANDLE_MIGRATIONS = {}
 # parameter is added: only the seed geometry the phases already declare moves.
 #   kind "line": Points [S, E] = the primitive's ends ("reverse": E, S)
 #   kind "arc":  Points [S, mid, E] (Arc3Point) = the primitive's ends + its
-#                on-arc midpoint ("reverse" swaps S and E; T5 "nudgeX": every point
-#                moved that many inches in +x)
+#                on-arc midpoint ("reverse" swaps S and E; T5 "nudgeX": the MID point
+#                alone moved that many inches in +x -- H23 item 48, MEASURED: nudging
+#                the two ends too broke their exact mirror-symmetry against the
+#                neighboring arcs' own shared endpoints, a ~0.1-0.3in live-build error)
 #   kind "pin":  a skeleton pin: its `outer` end ("S"|"E") = the arc centre,
 #                the inner end on the Y axis at that height
 #   kind "radius": a temporary seed radius dim (deleted later by the phases)
@@ -166,8 +168,9 @@ FRAME_SEED_MAP = [
     # T5: the dipped top, app primitives 11..15 (left stub, left top shoulder, dip, right top shoulder, right stub)
     {"id": "top_edge_L",         "kind": "line", "prim": 11, "reverse": False},
     {"id": "arc_top_shoulder_L", "kind": "arc",  "prim": 12, "reverse": False},
-    # the dip's centre lands ON the Y axis; `nudgeX` (in) moves its seed points off it by the pins' own
-    # anti-auto-coincidence nudge (PIN_AXIS_NUDGE_IN), p02_06 then puts the centre on the axis explicitly
+    # the dip's centre lands ON the Y axis; `nudgeX` (in) moves its OWN MID POINT off it (an
+    # anti-auto-coincidence nudge, like the pins' own), p02_06 then puts the centre on the axis
+    # explicitly -- the two END points must NOT be nudged (frame-handles.js's own frameSeedGeometry)
     {"id": "arc_top_dip",        "kind": "arc",  "prim": 13, "reverse": False, "nudgeX": 0.01},
     {"id": "arc_top_shoulder_R", "kind": "arc",  "prim": 14, "reverse": False},
     {"id": "top_edge_R",         "kind": "line", "prim": 15, "reverse": False},

@@ -67,6 +67,7 @@ class Entity:
         self.attributes = Attrs(world, self)
 
     def deleteMe(self):
+        self._w.explicit_deletes.append(self.name)  # H23 item 55: which ones get an EXPLICIT call
         self._w.delete_entity(self)
 
 
@@ -110,6 +111,7 @@ class World:
         self.components = []
         self.rootComponent = self  # allOccurrencesByComponent lives on the root component
         self.params = {}
+        self.explicit_deletes = []  # H23 item 55: every entity.deleteMe() CALL, not the cascade it triggers
 
     # design API ---------------------------------------------------------
     def findAttributes(self, group, name):
@@ -285,6 +287,27 @@ class TestSendFrame:
         assert r["ok"] and r["deleted"] == ["Frame_1"] and r["frame"] == "Frame_1"
         assert w.frame_names() == ["Frame_1"]
         assert w.names().count("t1_TRIM_CUT") == 1  # the old one (in Clean) went with its frame
+        assert w.names() == BODY + FRAME_BLOCK + ["Plane for L1 - vbit", "Source - L1 - vbit"]
+
+    def test_a_resend_never_explicitly_deletes_a_bar_extrude_only_the_occurrence_and_the_trim_cut(self):
+        # H23 item 55 (MEASURED live: each explicit feature deleteMe() on a real document cost
+        # ~0.82-0.85s, same per-call cost as item 51's own .reorder() finding -- 5 of T7's 6
+        # tagged features were bar extrudes, ~4.1s wasted every re-Send on work the occurrence
+        # delete below does for free). A bar extrude lives INSIDE the frame's own component, so
+        # it must NOT get its own explicit deleteMe() call -- only the occurrence (which removes
+        # every bar with it, for free) and the TRIM_CUT (which lives in Clean, outside the
+        # occurrence's own reach) should.
+        w = World()
+        send_bspline(w)
+        run(w, payload())
+        before = len(w.explicit_deletes)
+        run(w, payload(params={"frame_thickness": 0.5}))
+        new_deletes = w.explicit_deletes[before:]
+        assert new_deletes == ["t1_TRIM_CUT", " Frame_1:1"], (
+            f"expected only the trim cut + the occurrence to be explicitly deleted, got {new_deletes}")
+        # the end state is UNCHANGED from the pre-item-55 behavior (test above, same assertion)
+        assert w.frame_names() == ["Frame_1"]
+        assert w.names().count("t1_TRIM_CUT") == 1
         assert w.names() == BODY + FRAME_BLOCK + ["Plane for L1 - vbit", "Source - L1 - vbit"]
 
     def test_the_other_order_a_later_inlay_then_a_resend_still_lands_before_every_inlay(self):
@@ -476,6 +499,20 @@ class TestSeedGeometry:
         assert not r["ok"] and "could not be seeded" in r["error"]
         assert b.sketch_calls == [] and w.frame_names() == ["Frame_1"]  # the previous frame is still there
 
+    def test_a_fresh_unseeded_record_still_applies_seed_geometry_one_build_path(self):
+        """H23 item 42 (ONE build path, declared): a fresh template pick (seeds == {}, nothing
+        touched yet) must still route through the SEEDED construction -- `applied` depends on
+        seed_geometry alone, not on `seeds` also being non-empty. Before this item, `applied` was
+        False here (bool({}) is False), seed_geometry was silently never passed to build_sketch,
+        and the build fell through to the template's own LEGACY literal/formula construction --
+        where T7's reflex arc and T10's unsplit miter (item 41) actually come from."""
+        w = World()
+        send_bspline(w)
+        geo = {"arc_waist_R": {"points": [[2.8, -0.6], [2.4, 0.0], [2.8, 0.6]]}}
+        r, b = run(w, payload(seeds={}, seedGeometry=geo))
+        assert r["ok"] and r["seeds"] == {"count": 0, "applied": True, "reason": None}
+        assert b.sketch_calls[0]["data"]["seed_geometry"] == geo
+
 
     def test_an_unknown_wood_is_refused_not_silently_replaced(self):
         w = World()
@@ -521,6 +558,52 @@ class TestPanelLip:
     def test_a_bad_lip_is_0(self):
         assert sf.panel_lip_of({"panelLip": "x"}) == 0.0 and sf.panel_lip_of({"panelLip": -1}) == 0.0
         assert sf.panel_lip_of({}) == 0.0 and sf.panel_lip_of({"panelLip": 0.25}) == 0.25
+
+
+# ------------------------------------------------------------------ T82 item 6: the inset window
+class TestInsetWindow:
+    """T82 item 6: [Send frame] threads the inset window record through to the sketch build, the same way
+    panel_lip/seed_geometry already do (data_dict, never ui_data -- it is not a single scalar param)."""
+
+    WINDOW = {"enabled": True, "cx": 0.5, "cy": -0.25, "w": 3.0, "h": 2.0}
+
+    def test_an_enabled_window_reaches_the_sketch_build_as_inset_window(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(insetWindow=self.WINDOW))
+        assert r["ok"]
+        assert b.sketch_calls[0]["data"]["inset_window"] == self.WINDOW
+        assert "insetWindow" not in b.sketch_calls[0]["data"]["ui_data"]  # never through the template-param path
+
+    def test_disabled_or_absent_never_reaches_the_build(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload())
+        assert r["ok"] and "inset_window" not in b.sketch_calls[0]["data"]
+        r, b = run(w, payload(insetWindow={**self.WINDOW, "enabled": False}))
+        assert r["ok"] and "inset_window" not in b.sketch_calls[0]["data"]
+
+    def test_a_malformed_window_is_dropped_not_sent_to_the_build(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(insetWindow={"enabled": True, "cx": "nope", "cy": 0, "w": 3, "h": 2}))
+        assert r["ok"] and "inset_window" not in b.sketch_calls[0]["data"]
+        r, b = run(w, payload(insetWindow={"enabled": True}))
+        assert r["ok"] and "inset_window" not in b.sketch_calls[0]["data"]
+
+    def test_the_window_and_the_lip_can_be_sent_together(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(insetWindow=self.WINDOW, panelLip=0.0625))
+        assert r["ok"]
+        data = b.sketch_calls[0]["data"]
+        assert data["inset_window"] == self.WINDOW and data["panel_lip"] == 0.0625
+
+    def test_inset_window_of_is_strict(self):
+        assert sf.inset_window_of({}) is None
+        assert sf.inset_window_of({"insetWindow": {**self.WINDOW, "enabled": False}}) is None
+        assert sf.inset_window_of({"insetWindow": {"enabled": True, "cx": 0, "cy": 0, "w": "nope", "h": 1}}) is None
+        assert sf.inset_window_of({"insetWindow": self.WINDOW}) == self.WINDOW
 
 
 class SplitEvaluator:
