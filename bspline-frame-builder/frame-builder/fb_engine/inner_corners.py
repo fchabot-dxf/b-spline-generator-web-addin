@@ -41,6 +41,7 @@ BOTH circles' centre/radius LIVE off the already-built arcs.
 import math
 
 from fb_engine.t7_roof_eave import circle_circle_corner, line_circle_corner
+from fb_engine.t11_geometry import line_line_inner_corner
 
 
 def inner_corner_step(ctx, sketch, s_name, step):
@@ -74,6 +75,19 @@ def inner_corner_step(ctx, sketch, s_name, step):
     actual offset magnitude per axis is the resolved Distance value.
     For a TL corner: outer is at top-left of envelope, inward means
     +x (rightward) and -y (downward), so Direction = (1, -1).
+
+    T84 item 9: this Direction*Distance move is only geometrically EXACT when the two edges meeting
+    at the corner are perpendicular (90 degrees) -- T13's own TR/BL corners (a slanted "horn" meeting
+    the narrow top edge) are 82 degrees, where it was measured off by ~0.11 in, large enough to be the
+    real cause of a live Fusion build failure at a short bar (not merely "too close"). When a corner's
+    config ALSO declares 'Line1FarID' and 'Line2FarID' (the far -- non-corner -- end of each of the
+    two meeting lines, read live from entity_map, the same pattern `line_circle_corner_step` already
+    uses), the TRUE offset-line intersection is computed instead via
+    `fb_engine.t11_geometry.line_line_inner_corner` (proven at T11's own non-symmetric eave corner).
+    At an exact 90-degree corner this returns the IDENTICAL point Direction*Distance already gave (both
+    are the same intersection by construction), so every existing 90-degree corner is unaffected;
+    Direction/Distance stays the fallback when either Line*FarID is absent (a declared non-line
+    neighbour, or a template not yet updated).
     """
     corners = step.get('Corners') or {}
     if not corners:
@@ -105,6 +119,8 @@ def inner_corner_step(ctx, sketch, s_name, step):
         outer_id = cfg.get('OuterID')
         inner_id = cfg.get('InnerID')
         direction = cfg.get('Direction', (0, 0))
+        line1_far_id = cfg.get('Line1FarID')
+        line2_far_id = cfg.get('Line2FarID')
 
         if not outer_id or not inner_id:
             ctx.logger.log(
@@ -112,7 +128,8 @@ def inner_corner_step(ctx, sketch, s_name, step):
                 "WARNING")
             continue
 
-        outer_ent = ctx.entity_map.get(s_name, {}).get(outer_id)
+        emap = ctx.entity_map.get(s_name, {})
+        outer_ent = emap.get(outer_id)
         if not outer_ent:
             ctx.logger.log(
                 f"INNER CORNER {label}: outer reference '{outer_id}' not in "
@@ -130,10 +147,36 @@ def inner_corner_step(ctx, sketch, s_name, step):
                 "WARNING")
             continue
 
-        # Expected inner-corner position: outer pulled inward by the
-        # resolved distance on each axis.
-        expected_x = ox + direction[0] * dist_cm
-        expected_y = oy + direction[1] * dist_cm
+        # T84 item 9: both neighbours declared as lines -- compute the TRUE offset-line
+        # intersection (exact at any angle) instead of the Direction*Distance approximation
+        # (exact only at 90 degrees).
+        expected_x = expected_y = None
+        if line1_far_id and line2_far_id:
+            far1_ent, far2_ent = emap.get(line1_far_id), emap.get(line2_far_id)
+            if far1_ent is None or far2_ent is None:
+                ctx.logger.log(
+                    f"INNER CORNER {label}: Line1FarID/Line2FarID declared but not in "
+                    f"entity_map for {s_name}; falling back to Direction*Distance",
+                    "WARNING")
+            else:
+                try:
+                    f1x, f1y = float(far1_ent.geometry.x), float(far1_ent.geometry.y)
+                    f2x, f2y = float(far2_ent.geometry.x), float(far2_ent.geometry.y)
+                    dir1 = _unit((f1x - ox, f1y - oy))
+                    dir2 = _unit((f2x - ox, f2y - oy))
+                    _, _, inner = line_line_inner_corner((ox, oy), dir1, dir2, dist_cm, (0.0, 0.0))
+                    expected_x, expected_y = inner
+                except Exception as e:
+                    ctx.logger.log(
+                        f"INNER CORNER {label}: true-intersection failed ({e}); "
+                        f"falling back to Direction*Distance",
+                        "WARNING")
+
+        if expected_x is None:
+            # Expected inner-corner position: outer pulled inward by the
+            # resolved distance on each axis.
+            expected_x = ox + direction[0] * dist_cm
+            expected_y = oy + direction[1] * dist_cm
 
         nearest_pt, nearest_dist = _find_nearest_point(
             all_points, expected_x, expected_y)
@@ -199,6 +242,13 @@ def _collect_sketch_points(sketch):
         except Exception:
             continue
     return out
+
+
+def _unit(v):
+    """Normalize a 2D vector; raises ZeroDivisionError on a zero-length input (a degenerate line,
+    caught by inner_corner_step's own try/except around this call)."""
+    n = math.hypot(v[0], v[1])
+    return (v[0] / n, v[1] / n)
 
 
 def _find_nearest_point(all_points, ex, ey):

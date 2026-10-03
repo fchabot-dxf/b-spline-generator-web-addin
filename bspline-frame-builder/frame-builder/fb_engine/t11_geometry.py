@@ -119,12 +119,19 @@ def _hourglass_side(region_w, region_h, waist_reach, corner_radius_top, corner_r
     }
 
 
-def _line_line_inner_corner(p_shared, dir_in, dir_out, frame_thickness, interior_point):
+def line_line_inner_corner(p_shared, dir_in, dir_out, frame_thickness, interior_point):
     """The TRUE inner corner where two straight edges meet at `p_shared` (outer corner), each offset
     INWARD by frame_thickness, as a (Direction, Distance) pair for ResolveInnerCorners -- the general
     two-offset-line intersection (T7's own peak_inner_corner is the special case of this at a fixed
     90-degree symmetric corner; this is the general form, needed here because T11's eave corner is NOT
     symmetric: a 45-degree roof line meeting a vertical line, not two equal-and-opposite diagonals).
+
+    T84 item 9: promoted from a T11-only helper to generic use -- ``inner_corner_step``
+    (fb_engine/inner_corners.py) now calls this directly for ANY declared ResolveInnerCorners corner
+    whose two neighbours are both lines (not just T11's own eave), since the OLD Direction*Distance
+    approximation this function replaces is only exact at a 90-degree corner (T13's own TR/BL corners
+    are 82 degrees, where the approximation was measured off by ~0.11 in -- large enough to be the
+    actual cause of a live Fusion build failure at a short bar, not merely "too close").
 
     `dir_in`/`dir_out` are UNIT vectors: the direction of travel arriving at p_shared (along the first
     edge) and leaving it (along the second edge) -- both pointing AWAY from p_shared along their own edge
@@ -161,7 +168,7 @@ def _line_line_inner_corner(p_shared, dir_in, dir_out, frame_thickness, interior
     # Intersect line (p_in0 + s*dir_in) with line (p_out0 + t*dir_out).
     denom = dir_in[0] * dir_out[1] - dir_in[1] * dir_out[0]
     if abs(denom) < 1e-12:
-        raise ValueError("_line_line_inner_corner: the two edges are parallel")
+        raise ValueError("line_line_inner_corner: the two edges are parallel")
     dx, dy = p_out0[0] - p_in0[0], p_out0[1] - p_in0[1]
     s = (dx * dir_out[1] - dy * dir_out[0]) / denom
     inner = (p_in0[0] + s * dir_in[0], p_in0[1] + s * dir_in[1])
@@ -223,7 +230,7 @@ def t11_outline(width_in, height_in, frame_thickness,
     straight_len = math.hypot(*straight_dir)
     eave_dir_out = (straight_dir[0] / straight_len, straight_dir[1] / straight_len) if straight_len > 1e-12 else (0.0, -1.0)
     interior_pt = (hw, height_in * 0.5)  # same "board centre" reference t7_roof_eave.eave_inner_corner uses
-    eave_direction, eave_dist, _eave_inner = _line_line_inner_corner(E, eave_dir_in, eave_dir_out, frame_thickness, interior_pt)
+    eave_direction, eave_dist, _eave_inner = line_line_inner_corner(E, eave_dir_in, eave_dir_out, frame_thickness, interior_pt)
 
     return dict(
         hw=hw, a=a, T=frame_thickness, peak=peak, E=E, base=base,
