@@ -142,6 +142,15 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     // "FIRST CUT, not yet re-validated against the full JS production pipeline" honesty that
     // function's own doc comment carries). No further narrowing here either -- this branch exists
     // only so the generic `else` fallback below does not crash on `R.waistReach` being undefined.
+  } else if (tpl.silhouettePreset === 'flask') {
+    // F31 item 2b: same reasoning as the sandTimer branch immediately above -- `_flaskRange`'s own
+    // bounds (editor-shape-lattice-generator.js) were MEASURED at frame_thickness=0.75in (a
+    // Python-side bisection sweep against is_valid_outline PLUS the frame_thickness floor, same
+    // "FIRST CUT, not yet re-validated against the full JS production pipeline" honesty every new
+    // preset's own range function declares for itself). No further narrowing here either -- this
+    // branch exists only so the generic `else` fallback below does not crash on `R.waistReach`
+    // being undefined (MEASURED: it did, before this branch existed -- Flask's own R has no
+    // Template-1-named keys at all).
   } else if (tpl.silhouettePreset === 'dippedLeftWave') {
     // T8: the wave's own opening rule (Template 1's waistReach rule, same formula: this preset's only pinch).
     R.waveReach = _narrow(R.waveReach, -Infinity, 1 - (t + half) / hw);

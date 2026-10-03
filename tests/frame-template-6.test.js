@@ -58,10 +58,11 @@ describe('Template 6: listing and declaration', () => {
   it('is listed as "6. Tab Top", the frame-only tabTop preset, no new parameter, 8 bars', () => {
     expect(T6.name).toBe('Template 6 - Tab Top');
     expect(frameLabel(T6)).toBe('6. Tab Top');
-    // string-sorted labels: "10."/"11."/"12."/"13."/"14."/"16."/"17." lexicographically precede "2." (all start "1").
+    // string-sorted labels: "10."/"11."/"12."/"13."/"14."/"15."/"16."/"17." lexicographically precede "2." (all start "1").
     expect(FRAME_DEFS.templates.map(frameLabel)).toEqual(['1. Hourglass', '10. Arched Hourglass', '11. Hourglass Roof',
       '12. Hourglass - Tapered sides', '13. Narrow Neck - Tapered sides',
       '14. Sand Timer', // T84 item 5
+      '15. Flask', // F31 item 2b
       '16. Arched Funnel', '17. Tulip', // T84 item 3
       '2. Narrow Neck',
       '3. Tapered Hourglass', '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top',

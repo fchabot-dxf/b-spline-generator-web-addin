@@ -50,7 +50,7 @@ import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
   TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, iShapeConstruction, taperAngleForTopCornerX,
   diamondTopHourglassConstruction, diamondTopHourglassPinchConstruction, archedFunnelConstruction,
-  sandTimerConstruction,
+  sandTimerConstruction, flaskConstruction,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -287,6 +287,34 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         key: 'bulgeFrac', label: 'Pinch bulge', axis: 'x', handleKind: 'position',
         anchor: { x: cx0 + g.lowerGeom.via.x, y: cy0 + g.lowerGeom.via.y },
         valueFromWorld: sagValue('bulgeFrac', { mx: cx0 + g.lowerGeom.mx, my: cy0 + g.lowerGeom.my, nx: g.lowerGeom.nx, ny: g.lowerGeom.ny }),
+      },
+    ]));
+  }
+
+  if (preset === 'flask') {
+    // F31 item 2b (frame-only preset, the SAME construction -- flaskConstruction): topWidth anchors
+    // at topR (x only -- this template's own top is FLAT, same as sandTimer's own topWidth).
+    // neckHeightFrac anchors at neckBottomR (y) -- UNLIKE sandTimer's own pinchReachFrac/
+    // pinchHeightFrac, nothing else here shares neckBottomR's own point, so no de-collision nudge
+    // is needed. domeFullnessFrac anchors at the dome's own arc VIA point (archedFunnel/sandTimer's
+    // own convention for a param neither chord end moves with).
+    const g = flaskConstruction(region, resolvedParams);
+    const sagValue = (key, geom) => (pt) => within(key, ((pt.x - geom.mx) * geom.nx + (pt.y - geom.my) * geom.ny) / hw);
+    return withRange(pick([
+      {
+        key: 'topWidth', label: 'Top width', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.topR.x, y: cy0 + g.topR.y },
+        valueFromWorld: (pt) => within('topWidth', (pt.x - cx0) / hw),
+      },
+      {
+        key: 'neckHeightFrac', label: 'Neck height', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0 + g.neckBottomR.x, y: cy0 + g.neckBottomR.y },
+        valueFromWorld: (pt) => within('neckHeightFrac', (pt.y - (cy0 - hh)) / (2 * hh)),
+      },
+      {
+        key: 'domeFullnessFrac', label: 'Dome fullness', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.domeGeom.via.x, y: cy0 + g.domeGeom.via.y },
+        valueFromWorld: sagValue('domeFullnessFrac', { mx: cx0 + g.domeGeom.mx, my: cy0 + g.domeGeom.my, nx: g.domeGeom.nx, ny: g.domeGeom.ny }),
       },
     ]));
   }
@@ -839,6 +867,15 @@ export const HANDLE_SEGMENT_INDEX = {
   // matching _solveSandTimer's own declared `mirror` table bit for bit) -- no declared
   // SEGMENT_PAIRS table needed.
   sandTimer: { topWidth: 5, pinchReachFrac: 1, bulgeFrac: 1, pinchHeightFrac: 1 },
+  // F31 item 2b: Template 15 (Flask, editor-shape-lattice-generator.js's own `_solveFlask` doc
+  // comment: 0 neck_R, 1 dome_R, 2 base, 3 dome_L, 4 neck_L, 5 top): topWidth moves the top's own
+  // chord (5); neckHeightFrac/domeFullnessFrac both touch the dome's own chord/sagitta, grouped
+  // with the dome arc (1), same convention sandTimer's own pinchReachFrac/pinchHeightFrac/bulgeFrac
+  // grouping uses. The generic mirror formula (mirrorSegmentIndex) gives the CORRECT pairing here
+  // too (confirmed, not assumed: same even 6-piece loop shape as sandTimer/archedFunnel/tulip,
+  // mirrorSegmentIndex(i,6) is exactly [4,3,2,1,0,5], matching _solveFlask's own declared `mirror`
+  // table bit for bit) -- no declared SEGMENT_PAIRS table needed.
+  flask: { topWidth: 5, neckHeightFrac: 1, domeFullnessFrac: 1 },
 };
 
 /** T8 DIPPED TOP + LEFT-ONLY WAVE: `controlledSegments`' own declared pairing (the shape has no bilateral

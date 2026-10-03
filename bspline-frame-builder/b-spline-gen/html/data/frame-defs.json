@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "5157a96406faf3e35cc311e90e8d8c79605700e302bd7fe3d0232aa8fd0c2841",
+  "sourceHash": "bb7cfff6d0f104ed852f313c0527a4d32e1724d5c366c6459fc94af2b073a928",
   "templates": [
     {
       "features": [
@@ -8767,6 +8767,1148 @@
                   "IsConstruction": false,
                   "Source": "proj_upper_L:S",
                   "Target": "inner_proj_upper_L:S"
+                }
+              ],
+              "Name": "Enclosure Miters",
+              "PhaseFile": "p03_04_encl_miters.py",
+              "PhaseID": "p03_04_encl_miters"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Center": [
+                    "0.001",
+                    "0.001"
+                  ],
+                  "ID": "surround_rect",
+                  "LineIDs": [
+                    "surround_top",
+                    "surround_right",
+                    "surround_bottom",
+                    "surround_left"
+                  ],
+                  "Size": [
+                    "widthIn * 1.25",
+                    "heightIn * 1.25"
+                  ],
+                  "Type": "RectangleCenter"
+                },
+                {
+                  "AllowNudge": true,
+                  "Targets": [
+                    "surround_rect:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Enclosure Surround Rectangle",
+              "PhaseFile": "p03_05_encl_surround_rect.py",
+              "PhaseID": "p03_05_encl_surround_rect"
+            }
+          ],
+          "Label": "Frame Enclosure",
+          "Name": "3_frame_enclosure",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "Frame thickness",
+              "Max": 1.5,
+              "Min": 0.25,
+              "Name": "frame_thickness",
+              "Unit": "in",
+              "Val": 0.75
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "features": [
+        {
+          "bodyNames": [
+            "frame_neck_right",
+            "frame_dome_right",
+            "frame_base",
+            "frame_dome_left",
+            "frame_neck_left",
+            "frame_top"
+          ],
+          "extent": {
+            "offset": "0 in",
+            "toFace": "core.underside"
+          },
+          "id": "bars",
+          "op": "newBody",
+          "region": "outline-minus-inner",
+          "splitBy": "miters",
+          "start": "frame_height_offset",
+          "taper": "0 deg"
+        },
+        {
+          "extent": "throughAll",
+          "id": "trim",
+          "op": "cut",
+          "region": "surround-minus-outline",
+          "start": "0 in",
+          "taper": "0 deg"
+        }
+      ],
+      "handleMigrations": {},
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "generateRange": {
+            "max": 0.48,
+            "min": 0.365
+          },
+          "key": "topWidth",
+          "label": "Top width"
+        },
+        {
+          "basis": "h",
+          "binding": "seeded",
+          "generateRange": {
+            "max": 0.62,
+            "min": 0.27
+          },
+          "key": "neckHeightFrac",
+          "label": "Neck height"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "generateRange": {
+            "max": 0.151,
+            "min": 0.082
+          },
+          "key": "domeFullnessFrac",
+          "label": "Dome fullness"
+        }
+      ],
+      "hidden": false,
+      "id": "template_15",
+      "name": "Template 15 - Flask",
+      "params": [
+        {
+          "category": "Frame Spec",
+          "default": 7.0,
+          "label": "Width (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "widthIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 9.0,
+          "label": "Height (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "heightIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.25,
+          "expose": true,
+          "label": "BBox Border",
+          "min": 0.0,
+          "name": "boundingboxoffset",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "(widthIn/2 - boundingboxoffset)",
+          "label": "t15_hw",
+          "name": "t15_hw",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "(heightIn/2 - boundingboxoffset)",
+          "label": "t15_hh",
+          "name": "t15_hh",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "0.45*t15_hw",
+          "label": "t15_nw",
+          "name": "t15_nw",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "t15_hh - 0.45*2*t15_hh",
+          "label": "t15_neckBottomY",
+          "name": "t15_neckBottomY",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "0.1421885365451818*t15_hw",
+          "label": "t15_bulge",
+          "name": "t15_bulge",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "t15_hw - t15_nw",
+          "label": "t15_dr_dx",
+          "name": "t15_dr_dx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "(-t15_hh) - t15_neckBottomY",
+          "label": "t15_dr_dy",
+          "name": "t15_dr_dy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "sqrt(t15_dr_dx*t15_dr_dx + t15_dr_dy*t15_dr_dy)",
+          "label": "t15_dr_chordlen",
+          "name": "t15_dr_chordlen",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "-t15_dr_dy / t15_dr_chordlen",
+          "label": "t15_dr_nx",
+          "name": "t15_dr_nx",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "t15_dr_dx / t15_dr_chordlen",
+          "label": "t15_dr_ny",
+          "name": "t15_dr_ny",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "t15_dr_chordlen/2",
+          "label": "t15_dr_halfchord",
+          "name": "t15_dr_halfchord",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "(t15_dr_halfchord*t15_dr_halfchord + t15_bulge*t15_bulge)/(2*t15_bulge)",
+          "label": "t15_dr_r",
+          "name": "t15_dr_r",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "(t15_nw + t15_hw)/2 + t15_dr_nx*(t15_bulge - t15_dr_r)",
+          "label": "t15_dr_cx",
+          "name": "t15_dr_cx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "(t15_neckBottomY + (-t15_hh))/2 + t15_dr_ny*(t15_bulge - t15_dr_r)",
+          "label": "t15_dr_cy",
+          "name": "t15_dr_cy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "(t15_nw - t15_dr_cx)/t15_dr_r",
+          "label": "t15_dr_u0x",
+          "name": "t15_dr_u0x",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "(t15_neckBottomY - t15_dr_cy)/t15_dr_r",
+          "label": "t15_dr_u0y",
+          "name": "t15_dr_u0y",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "(t15_hw - t15_dr_cx)/t15_dr_r",
+          "label": "t15_dr_u1x",
+          "name": "t15_dr_u1x",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "((-t15_hh) - t15_dr_cy)/t15_dr_r",
+          "label": "t15_dr_u1y",
+          "name": "t15_dr_u1y",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "t15_dr_u0x + t15_dr_u1x",
+          "label": "t15_dr_bx",
+          "name": "t15_dr_bx",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "t15_dr_u0y + t15_dr_u1y",
+          "label": "t15_dr_by",
+          "name": "t15_dr_by",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "sqrt(t15_dr_bx*t15_dr_bx + t15_dr_by*t15_dr_by)",
+          "label": "t15_dr_blen",
+          "name": "t15_dr_blen",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "t15_dr_cx + t15_dr_r*(t15_dr_bx/t15_dr_blen)",
+          "label": "t15_dr_vx",
+          "name": "t15_dr_vx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T15 Geometry",
+          "default": "t15_dr_cy + t15_dr_r*(t15_dr_by/t15_dr_blen)",
+          "label": "t15_dr_vy",
+          "name": "t15_dr_vy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.75,
+          "expose": true,
+          "label": "Frame thickness",
+          "max": 1.5,
+          "min": 0.25,
+          "name": "frame_thickness",
+          "owner": "frame",
+          "unit": "in"
+        }
+      ],
+      "prefix": "T15",
+      "regions": {
+        "bars": [
+          {
+            "curves": [
+              "proj_neck_R"
+            ],
+            "name": "frame_neck_right"
+          },
+          {
+            "curves": [
+              "proj_dome_R"
+            ],
+            "name": "frame_dome_right"
+          },
+          {
+            "curves": [
+              "proj_base"
+            ],
+            "name": "frame_base"
+          },
+          {
+            "curves": [
+              "proj_dome_L"
+            ],
+            "name": "frame_dome_left"
+          },
+          {
+            "curves": [
+              "proj_neck_L"
+            ],
+            "name": "frame_neck_left"
+          },
+          {
+            "curves": [
+              "proj_top"
+            ],
+            "name": "frame_top"
+          }
+        ],
+        "inner": [
+          "inner_proj_neck_R",
+          "inner_proj_dome_R",
+          "inner_proj_base",
+          "inner_proj_dome_L",
+          "inner_proj_neck_L",
+          "inner_proj_top"
+        ],
+        "miters": [
+          [
+            "proj_neck_R:S",
+            "inner_proj_neck_R:S"
+          ],
+          [
+            "proj_dome_R:E",
+            "inner_proj_dome_R:E"
+          ],
+          [
+            "proj_dome_R:S",
+            "inner_proj_dome_R:S"
+          ],
+          [
+            "proj_dome_L:E",
+            "inner_proj_dome_L:E"
+          ],
+          [
+            "proj_dome_L:S",
+            "inner_proj_dome_L:S"
+          ],
+          [
+            "proj_neck_L:E",
+            "inner_proj_neck_L:E"
+          ]
+        ],
+        "outline": [
+          "proj_neck_R",
+          "proj_dome_R",
+          "proj_base",
+          "proj_dome_L",
+          "proj_neck_L",
+          "proj_top"
+        ],
+        "surround": "surround_rect"
+      },
+      "seedMap": [
+        {
+          "id": "neck_R",
+          "kind": "line",
+          "prim": 0,
+          "reverse": false
+        },
+        {
+          "id": "dome_R",
+          "kind": "arc",
+          "prim": 1,
+          "reverse": false
+        },
+        {
+          "id": "base",
+          "kind": "line",
+          "prim": 2,
+          "reverse": false
+        },
+        {
+          "id": "dome_L",
+          "kind": "arc",
+          "prim": 3,
+          "reverse": false
+        },
+        {
+          "id": "neck_L",
+          "kind": "line",
+          "prim": 4,
+          "reverse": false
+        },
+        {
+          "id": "top",
+          "kind": "line",
+          "prim": 5,
+          "reverse": false
+        }
+      ],
+      "shapeModel": {
+        "features": {
+          "domeFullnessFrac": {
+            "hh": 0.0,
+            "hw": 0.1421885365451818
+          },
+          "neckHeightFrac": {
+            "hh": 0.9,
+            "hw": 0.0
+          },
+          "topWidth": {
+            "hh": 0.0,
+            "hw": 0.45
+          }
+        },
+        "fit": {
+          "exactAtFittedSizes": false,
+          "excluded": [],
+          "fittedFrom": [],
+          "maxResidualIn": null,
+          "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+          "residualsIn": {}
+        },
+        "provisional": {
+          "baseModel": null,
+          "domeFullnessFracOfHw": 0.1421885365451818,
+          "neckHeightFracOfH": 0.45,
+          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+          "topWidthFracOfHw": 0.45
+        }
+      },
+      "silhouettePreset": "flask",
+      "sketches": [
+        {
+          "Blocks": [
+            {
+              "Constraints": [
+                {
+                  "Targets": [
+                    "BB_RECT:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Dimensions": [
+                {
+                  "Expression": "widthIn",
+                  "Name": "dim_width",
+                  "Target": "BB_top"
+                },
+                {
+                  "Expression": "heightIn",
+                  "Name": "dim_height",
+                  "Target": "BB_right"
+                }
+              ],
+              "Geometry": [
+                {
+                  "Center": [
+                    0.0,
+                    0.0
+                  ],
+                  "ID": "BB_RECT",
+                  "LineIDs": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "Size": [
+                    "widthIn",
+                    "heightIn"
+                  ],
+                  "Type": "Rectangle"
+                }
+              ],
+              "Name": "BB Layout",
+              "PhaseFile": "p01_01_bb_layout.py",
+              "PhaseID": "p01_01_bb_layout"
+            },
+            {
+              "Name": "Safe Zone Offset",
+              "PhaseFile": "p01_02_bb_offset.py",
+              "PhaseID": "p01_02_bb_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "boundingboxoffset",
+                  "SourceID": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "TargetIDs": [
+                    "offset_BB_top",
+                    "offset_BB_right",
+                    "offset_BB_bottom",
+                    "offset_BB_left"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            }
+          ],
+          "Label": "Bounding Box",
+          "Name": "1_bounding_box",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Label": "Width (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "widthIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 7.0
+            },
+            {
+              "Category": "Frame Spec",
+              "Label": "Height (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "heightIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 9.0
+            },
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "BBox Border",
+              "Min": 0.0,
+              "Name": "boundingboxoffset",
+              "Unit": "in",
+              "Val": 0.25
+            }
+          ]
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Projections",
+              "PhaseFile": "p02_01_projs.py",
+              "PhaseID": "p02_01_projs",
+              "Projections": [
+                {
+                  "SourceID": "offset_BB_bottom:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BR"
+                },
+                {
+                  "SourceID": "offset_BB_left:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BL"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "EndID": "neck_R:E",
+                  "ID": "neck_R",
+                  "Points": [
+                    [
+                      "t15_nw",
+                      "t15_hh"
+                    ],
+                    [
+                      "t15_nw",
+                      "t15_neckBottomY"
+                    ]
+                  ],
+                  "StartID": "neck_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "dome_R:E",
+                  "ID": "dome_R",
+                  "Points": [
+                    [
+                      "t15_nw",
+                      "t15_neckBottomY"
+                    ],
+                    [
+                      "t15_dr_vx",
+                      "t15_dr_vy"
+                    ],
+                    [
+                      "t15_hw",
+                      "-(t15_hh)"
+                    ]
+                  ],
+                  "StartID": "dome_R:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "base:E",
+                  "ID": "base",
+                  "Points": [
+                    [
+                      "t15_hw",
+                      "-(t15_hh)"
+                    ],
+                    [
+                      "-t15_hw",
+                      "-(t15_hh)"
+                    ]
+                  ],
+                  "StartID": "base:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "dome_L:E",
+                  "ID": "dome_L",
+                  "Points": [
+                    [
+                      "-t15_hw",
+                      "-(t15_hh)"
+                    ],
+                    [
+                      "-(t15_dr_vx)",
+                      "t15_dr_vy"
+                    ],
+                    [
+                      "-(t15_nw)",
+                      "t15_neckBottomY"
+                    ]
+                  ],
+                  "StartID": "dome_L:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "neck_L:E",
+                  "ID": "neck_L",
+                  "Points": [
+                    [
+                      "-(t15_nw)",
+                      "t15_neckBottomY"
+                    ],
+                    [
+                      "-(t15_nw)",
+                      "t15_hh"
+                    ]
+                  ],
+                  "StartID": "neck_L:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "top:E",
+                  "ID": "top",
+                  "Points": [
+                    [
+                      "-(t15_nw)",
+                      "t15_hh"
+                    ],
+                    [
+                      "t15_nw",
+                      "t15_hh"
+                    ]
+                  ],
+                  "StartID": "top:S",
+                  "Type": "Line"
+                }
+              ],
+              "Name": "Silhouette",
+              "PhaseFile": "p02_02_loop.py",
+              "PhaseID": "p02_02_loop"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Name": "topR_weld",
+                  "Targets": [
+                    "top:E",
+                    "neck_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "neckBottomR_weld",
+                  "Targets": [
+                    "neck_R:E",
+                    "dome_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "base:S",
+                    "proj_off_corner_BR"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "BR_weld",
+                  "Targets": [
+                    "dome_R:S",
+                    "base:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "dome_L:E",
+                    "proj_off_corner_BL"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "BL_weld",
+                  "Targets": [
+                    "base:E",
+                    "dome_L:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "neckBottomL_weld",
+                  "Targets": [
+                    "dome_L:S",
+                    "neck_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "topL_weld",
+                  "Targets": [
+                    "neck_L:E",
+                    "top:S"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Welds",
+              "PhaseFile": "p02_03_welds.py",
+              "PhaseID": "p02_03_welds"
+            }
+          ],
+          "Label": "Shape Outline",
+          "Name": "2_shape_outline",
+          "Parameters": [
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_hw",
+              "Name": "t15_hw",
+              "Unit": "in",
+              "Val": "(widthIn/2 - boundingboxoffset)"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_hh",
+              "Name": "t15_hh",
+              "Unit": "in",
+              "Val": "(heightIn/2 - boundingboxoffset)"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_nw",
+              "Name": "t15_nw",
+              "Unit": "in",
+              "Val": "0.45*t15_hw"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_neckBottomY",
+              "Name": "t15_neckBottomY",
+              "Unit": "in",
+              "Val": "t15_hh - 0.45*2*t15_hh"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_bulge",
+              "Name": "t15_bulge",
+              "Unit": "in",
+              "Val": "0.1421885365451818*t15_hw"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_dx",
+              "Name": "t15_dr_dx",
+              "Unit": "in",
+              "Val": "t15_hw - t15_nw"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_dy",
+              "Name": "t15_dr_dy",
+              "Unit": "in",
+              "Val": "(-t15_hh) - t15_neckBottomY"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_chordlen",
+              "Name": "t15_dr_chordlen",
+              "Unit": "in",
+              "Val": "sqrt(t15_dr_dx*t15_dr_dx + t15_dr_dy*t15_dr_dy)"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_nx",
+              "Name": "t15_dr_nx",
+              "Unit": "",
+              "Val": "-t15_dr_dy / t15_dr_chordlen"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_ny",
+              "Name": "t15_dr_ny",
+              "Unit": "",
+              "Val": "t15_dr_dx / t15_dr_chordlen"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_halfchord",
+              "Name": "t15_dr_halfchord",
+              "Unit": "in",
+              "Val": "t15_dr_chordlen/2"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_r",
+              "Name": "t15_dr_r",
+              "Unit": "in",
+              "Val": "(t15_dr_halfchord*t15_dr_halfchord + t15_bulge*t15_bulge)/(2*t15_bulge)"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_cx",
+              "Name": "t15_dr_cx",
+              "Unit": "in",
+              "Val": "(t15_nw + t15_hw)/2 + t15_dr_nx*(t15_bulge - t15_dr_r)"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_cy",
+              "Name": "t15_dr_cy",
+              "Unit": "in",
+              "Val": "(t15_neckBottomY + (-t15_hh))/2 + t15_dr_ny*(t15_bulge - t15_dr_r)"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_u0x",
+              "Name": "t15_dr_u0x",
+              "Unit": "",
+              "Val": "(t15_nw - t15_dr_cx)/t15_dr_r"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_u0y",
+              "Name": "t15_dr_u0y",
+              "Unit": "",
+              "Val": "(t15_neckBottomY - t15_dr_cy)/t15_dr_r"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_u1x",
+              "Name": "t15_dr_u1x",
+              "Unit": "",
+              "Val": "(t15_hw - t15_dr_cx)/t15_dr_r"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_u1y",
+              "Name": "t15_dr_u1y",
+              "Unit": "",
+              "Val": "((-t15_hh) - t15_dr_cy)/t15_dr_r"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_bx",
+              "Name": "t15_dr_bx",
+              "Unit": "",
+              "Val": "t15_dr_u0x + t15_dr_u1x"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_by",
+              "Name": "t15_dr_by",
+              "Unit": "",
+              "Val": "t15_dr_u0y + t15_dr_u1y"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_blen",
+              "Name": "t15_dr_blen",
+              "Unit": "",
+              "Val": "sqrt(t15_dr_bx*t15_dr_bx + t15_dr_by*t15_dr_by)"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_vx",
+              "Name": "t15_dr_vx",
+              "Unit": "in",
+              "Val": "t15_dr_cx + t15_dr_r*(t15_dr_bx/t15_dr_blen)"
+            },
+            {
+              "Category": "T15 Geometry",
+              "Label": "t15_dr_vy",
+              "Name": "t15_dr_vy",
+              "Unit": "in",
+              "Val": "t15_dr_cy + t15_dr_r*(t15_dr_by/t15_dr_blen)"
+            }
+          ]
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Enclosure Projections",
+              "PhaseFile": "p03_01_encl_projs.py",
+              "PhaseID": "p03_01_encl_projs",
+              "Projections": [
+                {
+                  "SourceID": "neck_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_neck_R"
+                },
+                {
+                  "SourceID": "dome_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_dome_R"
+                },
+                {
+                  "SourceID": "base",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_base"
+                },
+                {
+                  "SourceID": "dome_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_dome_L"
+                },
+                {
+                  "SourceID": "neck_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_neck_L"
+                },
+                {
+                  "SourceID": "top",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_top"
+                }
+              ]
+            },
+            {
+              "Name": "Enclosure Offset",
+              "PhaseFile": "p03_02_encl_offset.py",
+              "PhaseID": "p03_02_encl_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "frame_thickness",
+                  "SourceID": [
+                    "proj_neck_R",
+                    "proj_dome_R",
+                    "proj_base",
+                    "proj_dome_L",
+                    "proj_neck_L",
+                    "proj_top"
+                  ],
+                  "TargetIDs": [
+                    "inner_proj_neck_R",
+                    "inner_proj_dome_R",
+                    "inner_proj_base",
+                    "inner_proj_dome_L",
+                    "inner_proj_neck_L",
+                    "inner_proj_top"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Corners": {
+                    "topL": {
+                      "Direction": [
+                        1.0,
+                        -1.0
+                      ],
+                      "InnerID": "inner_proj_neck_L:E",
+                      "OuterID": "proj_neck_L:E"
+                    },
+                    "topR": {
+                      "Direction": [
+                        -1.0,
+                        -1.0
+                      ],
+                      "InnerID": "inner_proj_neck_R:S",
+                      "OuterID": "proj_neck_R:S"
+                    }
+                  },
+                  "Distance": "frame_thickness",
+                  "Tolerance": 0.05,
+                  "Type": "ResolveInnerCorners"
+                },
+                {
+                  "Corners": {
+                    "BL": {
+                      "ArcID": "proj_dome_L",
+                      "Concave": false,
+                      "InnerID": "inner_proj_dome_L:E",
+                      "LineFarID": "proj_base:S",
+                      "LineNearID": "proj_base:E"
+                    },
+                    "BR": {
+                      "ArcID": "proj_dome_R",
+                      "Concave": false,
+                      "InnerID": "inner_proj_dome_R:S",
+                      "LineFarID": "proj_base:E",
+                      "LineNearID": "proj_base:S"
+                    },
+                    "neckBottomL": {
+                      "ArcID": "proj_dome_L",
+                      "Concave": false,
+                      "InnerID": "inner_proj_dome_L:S",
+                      "LineFarID": "proj_neck_L:E",
+                      "LineNearID": "proj_neck_L:S"
+                    },
+                    "neckBottomR": {
+                      "ArcID": "proj_dome_R",
+                      "Concave": false,
+                      "InnerID": "inner_proj_dome_R:E",
+                      "LineFarID": "proj_neck_R:S",
+                      "LineNearID": "proj_neck_R:E"
+                    }
+                  },
+                  "FrameThickness": "frame_thickness",
+                  "Tolerance": 0.2,
+                  "Type": "ResolveLineCircleCorner"
+                }
+              ],
+              "Name": "Inner Corner Resolve",
+              "PhaseFile": "p03_03_inner_corner_resolve.py",
+              "PhaseID": "p03_03_inner_corner_resolve"
+            },
+            {
+              "Miters": [
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_neck_R:S",
+                  "Target": "inner_proj_neck_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_dome_R:E",
+                  "Target": "inner_proj_dome_R:E"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_dome_R:S",
+                  "Target": "inner_proj_dome_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_dome_L:E",
+                  "Target": "inner_proj_dome_L:E"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_dome_L:S",
+                  "Target": "inner_proj_dome_L:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_neck_L:E",
+                  "Target": "inner_proj_neck_L:E"
                 }
               ],
               "Name": "Enclosure Miters",
