@@ -186,6 +186,23 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 58 -- record this week's Fusion findings in the fusion360-quirks skill, each CONFIRMED on varied cases (advisor, 2026-10-03).
+Item 57 accepted (807fec3). Speed work pauses until Fred decides win #2. Fred's rule: a finding goes in the skill only
+after varied re-tests (other shapes/docs/sizes), not one observation. Candidates from items 46-57:
+ (a) Per-call cost of timeline operations (reorder, deleteMe on a feature) grows with document history: ms in an
+     empty doc vs ~0.85 s each in a ~21-item real doc. Confirm with 3 doc sizes (count vs seconds).
+ (b) timeline.markerPosition lets you CREATE features at a past position instead of reordering them later; on
+     restore, the old index is stale (the timeline grew), so use moveToEnd() when it was at the end, else prior + K.
+     Confirm on 2 different feature types (sketch + extrude) and 2 insertion points.
+ (c) Deleting an occurrence removes the features inside its component; deleting them first is pure cost.
+     Confirm with a component holding 1, 5 and 10 features.
+ (d) addByThreePoints assigns start/end by geometric direction (always CCW), not argument order. The skill already
+     has a CCW entry (16/16): check it says this, and extend it only if your 4 cases add something new.
+Edit C:/Users/danse/APPS/fred-skills/fusion360-quirks/SKILL.md in the existing style (expected vs actual vs fix,
+MEASURED numbers), and commit it BY PATH in that repo (git commit fusion360-quirks/ ...), then push. The probe
+scripts go in tools/repro/fusion_t11/ on main. Scratch docs: fingerprint them and close only your own handles.
+Commit 'H23 item 58: ...'.
+
 ## Item 57 -- speed win #1 from item 56: validate deferred compute across the WHOLE stamp build (advisor, 2026-10-03).
 Item 56 accepted (2e8d847). Your prototype (send_stage_timing.py _apply_deferred_whole_build_variant) has a flagged
 entity-id risk. Validate it properly: same real payload + fresh seed, A/B on every stamp sketch (curve count,
@@ -480,4 +497,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-54] T7 NOT BUILT on the pre-guard real payload: today's isValid verdict, fresh payload live 5/5 with inlay, or a root fix; + where send-2's extra 8 s goes. Commit as 'H23 item 54: ...'.
 - [x] [H23-item-55] speed round 3: re-Send delete 4.3 s -> measure how it deletes, smallest identical change, send-2/send-3 clean. Commit as 'H23 item 55: ...'.
 - [x] [H23-item-56] speed round 4 MEASURE ONLY: full stage table send-1/send-2, stamp sketch per-call vs solve, top 3 remaining wins with estimates. Commit as 'H23 item 56: ...'.
-- [ ] [H23-item-57] validate whole-stamp-build deferred compute: A/B identical over 3 Sends, keep only if >= 1 s saved. Commit as 'H23 item 57: ...'.
+- [x] [H23-item-57] (reverted, under noise) validate whole-stamp-build deferred compute: A/B identical over 3 Sends, keep only if >= 1 s saved. Commit as 'H23 item 57: ...'.
+- [ ] [H23-item-58] fusion360-quirks: timeline per-call cost vs history, marker insertion + restore rule, occurrence delete covers child features, CCW arc start/end -- each confirmed on varied cases. Commit as 'H23 item 58: ...'.
