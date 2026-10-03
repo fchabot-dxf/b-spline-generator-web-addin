@@ -126,7 +126,16 @@ def reorder_frame_before_inlay(timeline, is_frame_item, is_inlay_item, logger=No
     # end: the items already moved go back, in reverse order, each before its
     # original successor (children first, so no item ever lands before the
     # component it lives in).
-    items_before = [timeline.item(i) for i in range(timeline.count)]
+    # H23 item 51: this used to re-fetch `[timeline.item(i) for i in
+    # range(timeline.count)]` a SECOND time here -- nothing between it and
+    # the `items` fetch above ever reorders anything (lines in between only
+    # READ `items` to compute frame_items/inlay_items/to_move), so it was an
+    # exact duplicate of `items`, a second full `.item(i)` scan (a live
+    # Fusion API call per timeline entry) for no reason. MEASURED (real T7
+    # Send, send_stage_timing.py): this whole function cost ~5.2s against a
+    # real document's own timeline. Reusing `items` halves the live API
+    # calls this function makes.
+    items_before = items
     successor = {id(it): (items_before[it.index + 1] if it.index + 1 < len(items_before) else None) for it in to_move}
     target = earliest_inlay_index
     moved = []

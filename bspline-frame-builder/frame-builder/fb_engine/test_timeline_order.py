@@ -115,7 +115,33 @@ class TestIsInlayItemName:
         assert is_inlay_item_name("Plane for pattern lattice-muj36vgj")
 
 
+class _ItemCallCountingTimeline(FakeTimeline):
+    """H23 item 51: counts `.item(i)` calls -- each one stands in for a live Fusion API call
+    against a real timeline entry (MEASURED: ~5.2s for this whole function against a real T7
+    Send's own timeline). Proves the redundant second full-timeline fetch is GONE, not just that
+    behavior is unchanged (which the existing tests above already cover)."""
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.item_calls = 0
+
+    def item(self, i):
+        self.item_calls += 1
+        return super().item(i)
+
+
 class TestReorderFrameBeforeInlay:
+    def test_scans_the_timeline_only_once_not_twice(self):
+        """H23 item 51: `items_before` used to re-fetch `[timeline.item(i) for i in range(
+        timeline.count)]` a second time, right after `items` already fetched the exact same,
+        unchanged timeline state -- a second full live-API scan for no reason. A block that
+        actually moves exercises this path (the no-op early returns above never reach it)."""
+        tl = _ItemCallCountingTimeline([
+            "B-Spline Set", "Plane for L1", "Source - L1", "Frame_1", "Frame_1_extrude",
+        ])
+        reorder_frame_before_inlay(tl, _is_frame, _is_inlay)
+        assert tl.item_calls == tl.count, (
+            f"expected exactly one full scan ({tl.count} calls), got {tl.item_calls}")
+
     def test_moves_the_whole_frame_block_as_a_unit_in_original_order(self):
         # Original chronological order: comp/body, THEN the inlay, THEN
         # the frame (built after, per FB-ORDER's own root-cause report).
