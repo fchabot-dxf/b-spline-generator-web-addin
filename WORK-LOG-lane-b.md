@@ -13071,3 +13071,92 @@ advisor's own dispatch; the fusion360 MCP bridge is also currently showing a cac
 separately from the seat-A hold). Will message the advisor for "Fusion free" next, then run the live check,
 then commit as "T82 item 6: ..." and pass back with counts on both channels, per the dispatch's own "Pass
 back with counts" instruction -- not done yet, so no commit this turn.
+
+## Lane B — Turn 242 (epoch 9) — T82 item 6: inset window live check — DONE, passing back
+
+Advisor granted "Fusion free" directly (cross-session message, not a formal `handoff.py pass`): "it's yours
+now for the T82 item 6 live check... serial fusion_execute calls only; fingerprint your scratch docs...
+Deploy lane-b from a clean worktree and restore main afterwards... Pass back with counts, plus the front and
+bottom screenshot paths."
+
+**Deploy.** Created a clean detached worktree (`git worktree add --detach <tmp> lane-b`, removed after),
+deployed from there (`DEPLOY_bspline-frame-builder.py bbf`) -- the add-in was live (pid check), stopped it
+via `app.scripts.itemsByName("bspline-frame-builder")[0].stop()` (confirmed `isRunning` False) before
+redeploying, `.run()` after. Mid-task, found 2 more real bugs (below) that needed code fixes; rather than
+repeat the clean-worktree dance for every iteration, redeployed straight from this own dev worktree for the
+fast cycles (my own uncommitted WIP only, nothing another seat left behind -- the rule's actual concern),
+then did one FINAL clean-worktree redeploy once everything passed, matching the commit that's actually
+pushed. `build-info.json` confirmed the deployed sha/dirty state at every step.
+
+**Bug #1 (real, caught by the live build, NOT by this turn's own fake-Fusion tests): `regions["window"]`
+never reaches classify().** First live Send: every window profile failed `DeclaredProfileError: ... not in
+the declared regions`. Root cause: `apply_inset_window()`'s own `out["Frame"]["regions"]["window"] = {...}`
+mutated the SKETCH-BUILD's own in-memory template; `solid_coordinator._declared_frame()` re-resolves the
+STATIC template FRESH FROM DISK at SOLID-build time (the same call every window-less build also makes) --
+that dict was never there to read. My own fake-Fusion test's `_frame()` helper had PAPERED OVER this: it
+manually built the `window` dict and handed it to `classify()` directly, which exercises classify()'s OWN
+logic correctly but never exercises the REAL path data takes between the two build stages -- a gap in test
+DESIGN, not in test execution (every test passed; the thing they tested wasn't the thing that runs live).
+Fixed the way `panel_lip`'s own `lip_ids(regions["outline"])` already avoids exactly this: the window's
+curve ids are FIXED names (never depend on cx/cy/w/h), so `declared_profiles.classify()` now calls
+zero-argument helpers (`inset_window.window_bars()`, `window_miters()`, `line_ids(...)`) to recompute them
+fresh every call, never reading anything stored on `regions`. Rewrote `inset_window.py` to drop the
+`regions["window"]` dict entirely (dead weight once classify() stopped reading it) and rewrote
+`test_inset_window.py`'s own `_frame_with_window_features()` helper to inject ONLY the two features
+(mirroring what `_declared_frame()` ACTUALLY does), never a `window` region key -- so the test suite's own
+assertions now run through the SAME path the live build does. Found and fixed a second bug IN THIS REWRITE
+before it ever reached Fusion: a profile touching a window-outer id AND the main frame's own `inner` ids
+(the main opening, now shaped like a picture frame around the window, its outer loop an island) was
+misrouted into the window-bar branch; fixed by requiring that branch to also check the profile does NOT
+touch `regions["inner"]` -- caught because the test passed the FULL island boundary, not a partial one.
+
+**Bug #2 (test-harness only, not a code bug): the stand-in "B-spline panel" needed 3 fixes before a real
+Send would even extrude.** Recorded in full in INSET-WINDOW-LIVE_CHECK.md §3 (so the next live check that
+needs a stand-in panel doesn't re-discover these): (1) `Point3D.create()` takes centimeters, not the
+display unit -- an inch value passed bare builds a body at 1/2.54 scale; (2) a bar's own start
+(`frame_height_offset`) must land OUTSIDE/BELOW the stand-in panel's own solid volume, not within it --
+`ToEntityExtentDefinition(matchShape=True)` (what `extrusion_engine.py` always passes) reliably fails when
+the start plane sits strictly inside the target body, MEASURED across 7 different start-offset values, all
+failing the same way, all succeeding once the panel was made thin (0.25in) instead of thick (3in); (3) a
+through-all cut's own one-sided direction depends on the PROFILE'S OWN WINDING, which can differ between two
+profiles in the SAME sketch (MEASURED via a shoelace-sign check: template_1's own TRIM profile winds
+opposite its own BAR profiles) -- `PositiveExtentDirection` (hardcoded in production) only reliably finds a
+stand-in panel built STRADDLING the sketch plane (Z=0), not one built entirely to one side of it. None of
+this touches `extrusion_engine.py`/`solid_coordinator.py`, both unchanged this turn and already proven
+against real terrain in prior sessions' own T7/T11/panel_lip live checks -- a flat test stand-in exposes
+degeneracies real, organic terrain doesn't have.
+
+**Live results, both required board sizes (template_1, frame_thickness=0.75, no panel_lip), via
+`send_frame.send_frame()` directly with the real collaborators:** 7x9 (window w=h=1.8) and 9x12 (window
+w=h=2.5) both built with ZERO errors: exactly 4 `frame_window_*` bodies + the 4 main bars (8 total, all
+positive volume, smallest ~11-19 cm3, none under the 0.5 cm3 floor), no `(1)`-suffixed bodies, 0 pairwise
+overlap (`TemporaryBRepManager` boolean intersection, every real body pair), a healthy 17-item timeline
+grouped main-bars -> TRIM_CUT -> window-bars -> WINDOW_CUT (confirming the cut-naming fix: the window's own
+cut is NOT named `t1_TRIM_CUT`, it's `t1_WINDOW_CUT`, no collision), the hole visible from both the top
+(iso-top-right) and the bottom. Window sizes were picked empirically to clear BOTH the window's own bars
+floor AND template_1's own hourglass waist pinch at that board size (the frame's own INNER opening isn't a
+rectangle) -- a naive w=3,h=2 window at 7x9 crossed the waist and HARD-CRASHED (`DeclaredProfileError`,
+refusing the whole build) instead of degrading gracefully, contradicting Fred's own "ugly but not broken"
+ruling for frame/window overlap. Flagged as a known gap in INSET-WINDOW-LIVE_CHECK.md §1 -- NOT fixed this
+turn (outside T82 item 6's own required scope; a real fix needs its own confirm-on-varied-geometry pass, not
+a rushed patch under live Fusion time). Also NOT exercised live: the degenerate-lip case (code path
+understood, not live-tested) and the CAM Manufacture workspace itself (confirmed via fake-Fusion +
+`abcam.py` A/B only, no live Manufacture setup created this turn).
+
+Screenshots (this session's scratchpad): `t82i6_7x9_iso.png`, `t82i6_7x9_bottom.png`, `t82i6_9x12_iso.png`,
+`t82i6_9x12_bottom.png`.
+
+**Gate, re-run after the live-check fixes:** `pytest` at `bspline-frame-builder/`: 873 passed, 25 skipped, 0
+failed (same count as the pre-live-check commit -- the fix changed HOW classify() gets the window's ids, not
+how many tests exist). A/B (`abpy.py`): identical hash
+`88aa3aea7ef452be2e1dc27587d5733c5edb0c70f44ad1205c83d4162b5e38a4`, confirming the rewrite didn't touch the
+window-less path. `gen_frame_defs.py --check`: fresh.
+
+Cleaned up: closed both scratch Fusion documents by verified fingerprint (never by name/count -- also found
+and closed 2 more fingerprinted leftovers from earlier failed attempts in this same turn), confirmed only
+the 3 protected docs (`UI-cowork v1`, `API-claude code v1`, `OFFSET-cowork v1`) remained open and untouched.
+Committed the fixes, pushed, redeployed lane-b from a final clean worktree, and told the advisor what's
+deployed so they can restore main.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.

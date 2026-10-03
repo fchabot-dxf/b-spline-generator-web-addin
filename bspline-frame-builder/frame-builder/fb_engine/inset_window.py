@@ -22,21 +22,32 @@ rectangle can never self-intersect regardless of size, so none of this needs `Re
 machinery exists only to repair a CONCAVE offset's own self-intersecting corners, which a rectangle never
 has).
 
+MEASURED LIVE (T82 item 6, first real build): the curve-id NAMING is fixed (never depends on cx/cy/w/h),
+which matters because `solid_coordinator._declared_frame()` re-resolves the STATIC template from disk at
+solid-build time -- it has no access to the sketch-build's own in-memory, window-augmented template, so
+nothing this module computes at apply_inset_window() time (a `regions["window"]` dict, an earlier attempt)
+ever reaches declared_profiles.classify() later. The fix, mirroring panel_lip's OWN `lip_ids()` exactly:
+classify() calls the zero-argument helpers below (`window_bars()`, `window_miters()`, `line_ids(...)`)
+FRESH each time, from these fixed names, rather than reading anything stored. A profile's curve ids either
+contain these names (the window exists in THIS sketch) or they don't (a window-less build) -- the check is
+inherently safe either way, exactly like `ids & lip_ids(...)` already is for panel_lip.
+
 Floors (mirrors core/inset-window.js's `insetWindowGeometry` exactly, so the app preview and the Fusion
 build agree on when nothing is built/cut):
   - disabled, or the window's own bars would be <= 0 (`w`/`h` <= 2 * frame_thickness): NOTHING is built --
     identity return, same as panel_lip's own "lip 0" floor.
   - bars > 0 (the common case): the outer+inner rectangles and the 4 miters are ALWAYS built.
-  - panel_lip > 0 but it would clamp the hole to <= 0 (lip wider than the window's own opening): the bars
-    still exist, but NO hole rectangle and NO cut feature are built at all (a true no-op cut, matching the
-    JS side's own "clamp it shut (zero-area) rather than invert" floor) -- not yet confirmed live on real
-    geometry (flagged in WORK-LOG, not guessed past).
   - panel_lip > 0 and the hole is valid: a third, further-inset hole rectangle is built, and the ring
     between the window's own inner boundary and its hole is a no-feature ring (the panel keeps it) --
-    exactly mirroring the main frame's own panel-lip ring. The classify() side tolerates this ring being
-    reported as one piece or split by the window's own miters (it only asserts a SUBSET of the allowed
-    ids), so either shape -- a MEASURED fact for the main lip ring, not yet separately measured here --
-    classifies correctly without needing to know which one Fusion actually produces.
+    mirrors the main frame's own panel-lip ring; classify() tolerates that ring arriving as one piece or
+    split by the window's own miters, the same tolerance the main lip ring already needed (MEASURED there).
+  - panel_lip > 0 but it would clamp the hole to <= 0 (lip wider than the window's own opening): NO hole
+    rectangle is built -- SIMPLIFIED, T82 item 6 (live build): this now cuts the FULL inner rectangle
+    (identical to no lip at all) rather than cutting nothing. The original design (a true no-op cut,
+    matching the app's own "clamp it shut" zero-area preview) needed a build-time fact (did a hole actually
+    get drawn, or was it clamped shut) that isn't derivable from curve ids alone once this stage can't see
+    the payload any more, and this combination isn't in T82 item 6's own live-check scope. Flagged, not
+    silently guessed past -- revisit if this combination is ever actually wanted.
 """
 import copy
 
@@ -53,17 +64,29 @@ HOLE_ID = "window_hole"
 
 BAR_NAMES = ("frame_window_top", "frame_window_right", "frame_window_bottom", "frame_window_left")
 _SIDES = ("", "_right", "_bottom", "_left")  # LineIDs order: top, right, bottom, left (geometry._create_rectangle)
+_CORNERS = ("TL", "TR", "BL", "BR")
 
 
-def _line_ids(base):
+def line_ids(base):
     """A RectangleCenter's own 4 line ids. The TOP line's real id ends up being `base` itself (geom_step
     overwrites LineIDs[0] with the rectangle's own ID -- geometry.py's own gotcha, confirmed live, T1's own
     surround rect already relies on it), so LineIDs[0] is declared as `base` too: no silent rename."""
     return [f"{base}{s}" for s in _SIDES]
 
 
-def _vertex_id(base, corner):
+def vertex_id(base, corner):
     return f"{base}_V_{corner}"
+
+
+def window_bars():
+    """The window's own 4 bars as `declared_profiles.bar_index`'s own N-BAR shape (fixed names, no
+    dependency on cx/cy/w/h -- see the module docstring)."""
+    return [{"name": n, "curves": [c]} for n, c in zip(BAR_NAMES, line_ids(OUTER_ID))]
+
+
+def window_miters():
+    """The window's own 4 corner miters as (Source, Target) vertex-id pairs -- fixed names."""
+    return [(vertex_id(OUTER_ID, c), vertex_id(INNER_ID, c)) for c in _CORNERS]
 
 
 def _rect_block(phase_id, geo_id, cx_expr, cy_expr, w_expr, h_expr):
@@ -75,7 +98,7 @@ def _rect_block(phase_id, geo_id, cx_expr, cy_expr, w_expr, h_expr):
             "ID": geo_id,
             "Center": [cx_expr, cy_expr],
             "Size": [w_expr, h_expr],
-            "LineIDs": _line_ids(geo_id),
+            "LineIDs": line_ids(geo_id),
         }],
     }
 
@@ -85,9 +108,8 @@ def _in(v):
 
 
 def apply_inset_window(template, window, frame_thickness_in, panel_lip_in=0.0):
-    """The template with the inset window's blocks appended to its frame sketch, and
-    `template["Frame"]["regions"]["window"]` declared for declared_profiles.classify() to read -- or the
-    template unchanged (enabled false/absent, or window bars would be <= 0)."""
+    """The template with the inset window's blocks appended to its frame sketch -- or the template
+    unchanged (enabled false/absent, or window bars would be <= 0)."""
     w = window or {}
     if not w.get("enabled"):
         return template
@@ -110,21 +132,13 @@ def apply_inset_window(template, window, frame_thickness_in, panel_lip_in=0.0):
     inner_w_expr = f"{_in(width)} - 2 * frame_thickness"
     inner_h_expr = f"{_in(height)} - 2 * frame_thickness"
     sk["Blocks"].append(_rect_block(INNER_PHASE_ID, INNER_ID, cx_e, cy_e, inner_w_expr, inner_h_expr))
-
-    miters = [
-        (_vertex_id(OUTER_ID, "TL"), _vertex_id(INNER_ID, "TL")),
-        (_vertex_id(OUTER_ID, "TR"), _vertex_id(INNER_ID, "TR")),
-        (_vertex_id(OUTER_ID, "BL"), _vertex_id(INNER_ID, "BL")),
-        (_vertex_id(OUTER_ID, "BR"), _vertex_id(INNER_ID, "BR")),
-    ]
     sk["Blocks"].append({
         "PhaseID": MITERS_PHASE_ID,
         "Name": MITERS_PHASE_ID,
-        "Miters": [{"Source": a, "Target": b, "IsConstruction": False} for a, b in miters],
+        "Miters": [{"Source": a, "Target": b, "IsConstruction": False} for a, b in window_miters()],
     })
 
     lip = max(0.0, float(panel_lip_in or 0))
-    hole_ids, cut = None, "inner"
     if lip > 0:
         hole_w, hole_h = width - 2 * ft - 2 * lip, height - 2 * ft - 2 * lip
         if hole_w > 0 and hole_h > 0:
@@ -133,16 +147,6 @@ def apply_inset_window(template, window, frame_thickness_in, panel_lip_in=0.0):
                 f"{_in(width)} - 2 * frame_thickness - 2 * panel_lip",
                 f"{_in(height)} - 2 * frame_thickness - 2 * panel_lip",
             ))
-            hole_ids, cut = _line_ids(HOLE_ID), "hole"
-        else:
-            cut = None  # the lip would clamp the hole shut: bars still exist, nothing is cut (app parity)
-
-    out["Frame"]["regions"]["window"] = {
-        "outer": _line_ids(OUTER_ID),
-        "inner": _line_ids(INNER_ID),
-        "hole": hole_ids,
-        "cut": cut,
-        "miters": miters,
-        "bars": [{"name": n, "curves": [c]} for n, c in zip(BAR_NAMES, _line_ids(OUTER_ID))],
-    }
+        # else: the lip would clamp the hole shut -- no hole rect; the window cuts its full inner
+        # rectangle instead (see the module docstring's "SIMPLIFIED" note).
     return out

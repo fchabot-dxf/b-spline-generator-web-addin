@@ -1,9 +1,13 @@
 # Inset Window (T82 item 2/6): the live Fusion check
 
-No Fusion build existed as of T82 item 5 — this seat (B) built the APP half only (data shape, 2D/3D preview,
-drag UI, the geometry every consumer shares) and verified it there. The Fusion/CAM half (§5 of
-INSET-WINDOW-DESIGN.md) is T82 item 6, built directly by seat B once a Fusion bridge became available this
-session (this file originally assumed it would be handed to a different seat; it wasn't).
+**DONE, T82 item 6 (live build, 2026-10-02).** No Fusion build existed as of T82 item 5 — this seat (B)
+built the APP half only (data shape, 2D/3D preview, drag UI, the geometry every consumer shares) and
+verified it there. The Fusion/CAM half (§5 of INSET-WINDOW-DESIGN.md) is T82 item 6, built directly by seat
+B once a Fusion bridge became available this session (this file originally assumed it would be handed to a
+different seat; it wasn't). The live check below ran via `fb_engine.send_frame.send_frame()` directly
+(the real collaborators: `frame_engine.build_sketch_logic_v3`, `solid_coordinator.build_solid_logic_v3`),
+against a simple stand-in "B-spline panel" body (not the real terrain generator) -- see §3 for why that
+needed its own fix, and what it does and doesn't prove.
 
 ## 0. What exists today, and what doesn't
 
@@ -30,51 +34,102 @@ session (this file originally assumed it would be handed to a different seat; it
   from the back/side/bottom — matching Fred's own phone shot and what a real Fusion build will look like).
 - Sidebar toggle: "Inset window" checkbox, off by default, in the FRAME panel.
 
-**NOT built (this seat has no Fusion bridge):**
-- The Fusion sketch geometry (3 nested rectangles, 4 corner miters) — design note §5 step 1-2.
-- The 4 new bar bodies (`frame_window_top/bottom/left/right`, positioned behind the panel: top face at
-  `frame_height_offset` from the sketch plane, bottom face at the panel's own underside — same rule as the
-  main frame's own bars) — design note §5 step 3.
-- The hole cut feature (`window_cut`, a through-all pocket using the hole rectangle) — design note §5 step 4.
-- `declared_profiles.classify()`'s own new mapping for the window's sketch region — design note §5 step 5.
-- CAM: **CORRECTED, T82 item 6** — a real fix IS needed in `_populate_frame_geometry()` (design note §4's own
-  table), not just naming: `other_bars` only get laid out automatically on templates without the classic 4
-  bar names (T6, T11); everywhere else `frame_window_*` would be collected and never positioned.
+**Built and live-confirmed:**
+- The Fusion sketch geometry (outer + inner RectangleCenter, 4 corner miters; a 3rd hole rectangle only when
+  `panel_lip > 0` and it wouldn't clamp shut) — `fb_engine/inset_window.py`, design note §5 step 1-2.
+- The 4 new bar bodies (`frame_window_top/bottom/left/right`), same `Frame_N` component as the main bars,
+  same Z rule (`frame_height_offset` start, `core.underside` extent) — design note §5 step 3.
+- The hole cut feature (`window_cut`, a through-all pocket), with its own distinct timeline name
+  (`t1_WINDOW_CUT`, confirmed live — does NOT collide with the main `t1_TRIM_CUT`) — design note §5 step 4.
+- `declared_profiles.classify()`'s window-aware branches — design note §5 step 5 (corrected TWICE; the first
+  live build caught a real bug the fake-Fusion tests missed, see §3).
+- CAM: the `_populate_frame_geometry()` fix (`mm_builder.py`) confirmed via fake-Fusion + A/B tests (not yet
+  exercised against a REAL Manufacture workspace this turn — the live check below stopped at the Design
+  workspace; see "Not yet done").
 
-## 1. Build it (once the Fusion side above exists)
+## 1. Live results (2026-10-02, template_1, frame_thickness=0.75, no panel_lip)
 
-1. Deploy the add-in as usual, open a design with a frame already built (any template).
-2. In the app, enable "Inset window", drag it to a reasonable size/position well inside the frame's own
-   opening, [Send frame].
-3. Check:
-   - [ ] 4 new bar bodies appear in the SAME `Frame_N` component as the main bars (not a new component), named
-     `frame_window_top/bottom/left/right`, built from new regions in the existing frame-enclosure sketch.
-   - [ ] Those 4 bodies sit BEHIND the panel (their own BOTTOM face at the panel's own underside, TOP face at
-     `frame_height_offset` from the sketch plane — not the sketch plane itself) — confirmed by inspecting
-     their own Z position directly, not assumed from the parameter wiring.
-   - [ ] A new cut feature removes material from the panel/core body in exactly the hole rectangle (outer
-     rect inset by `frame_thickness` then by `panel_lip`), through all.
-   - [ ] From a top/front view, the hole is a clean rectangle with NO visible frame member inside it (the
-     subframe bars are genuinely hidden behind the panel).
-   - [ ] The 4 corner miters on the window's own sketch are real 45 deg bisectors (trivial here: every corner
-     is 90 deg, axis-aligned, no T7-style derivation needed).
-4. CAM (Manufacture): confirm the 4 `frame_window_*` bodies appear in the SAME MM-Frame layout as the main
-   frame's own bars. **CORRECTED, T82 item 6**: this needs the `_populate_frame_geometry()` fix (§0 above) on
-   any template with the classic 4 bar names — verify the fix is actually in place before this check, not
-   just that the bodies "show up automatically."
-5. Degenerate case: shrink the window until its own bars/opening would be <= 0 (per the app's own validity
-   floor, `insetWindowGeometry`) — confirm Fusion does something equally well-defined (no feature built, or a
-   clean failure) rather than a corrupt/self-intersecting sketch.
-6. Overlap case: deliberately overlap the window with the main frame's own opening edge (NOT prevented by the
-   app, Fred's own ruling) — confirm the result is "ugly but not broken" (some valid, if visually poor,
-   geometry), not a crash or an invalid body.
+Both board sizes: window `cx=0,cy=0`, sized to clear the window's own bars floor (`w,h > 2*frame_thickness`)
+AND template_1's own hourglass waist pinch at that board size (picked empirically, not from a formula --
+see §3's own overlap-case note). 7x9: `w=h=1.8`. 9x12: `w=h=2.5`.
 
-## 2. What to send back
+- [x] Exactly 4 `frame_window_*` bodies, in the SAME `Frame_1` component as the main bars, built from new
+  regions in the existing frame-enclosure sketch (confirmed: no second component, no new sketch).
+- [x] Built bars == declared: 4 main + 4 window = 8 bar bodies at both sizes, all positive volume (smallest
+  ~11-19 cm3, comfortably over the 0.5 cm3 floor), no `(1)`-suffixed duplicates.
+- [x] 0 overlap between any pair of real bodies (pairwise `TemporaryBRepManager` boolean intersection, both
+  sizes) -- excludes the stand-in panel itself, which the window_cut legitimately pockets into.
+- [x] Timeline healthy and grouped: `Frame_1:1` occurrence -> 3 sketches -> 4 main bar extrudes -> TRIM_CUT
+  -> 4 window bar extrudes -> WINDOW_CUT, in order, at both sizes (17 timeline items total, same shape both
+  boards).
+- [x] The hole is visible from the top (iso-top-right screenshot) and from the bottom (bottom screenshot) --
+  a clean square cut through the window's own subframe, both board sizes.
+- [x] The 4 corner miters are axis-aligned 45 deg bisectors (no T7-style derivation needed, confirmed by the
+  exact vertex-id pairing in `window_miters()`).
+- [ ] CAM (Manufacture workspace): NOT exercised live this turn (the `_populate_frame_geometry` fix is
+  confirmed by fake-Fusion + A/B tests only -- see "Not yet done").
+- [ ] Degenerate case (lip clamps the hole shut): not exercised live -- the code path is understood and
+  documented (inset_window.py's own docstring: SIMPLIFIED to cut the full inner rectangle rather than
+  nothing, since the "did a hole actually get drawn" fact isn't recoverable at solid-build time -- see
+  design note §5 step 1's own "SECOND correction").
+- [ ] Overlap case (window crosses the main frame's own actual opening boundary, not just its bounding box):
+  HIT UNINTENTIONALLY on the first attempt (a naive w=3,h=2 window at 7x9 crossed template_1's own hourglass
+  waist pinch) and it did NOT degrade gracefully -- `classify()` raised `DeclaredProfileError` for every
+  affected profile, refusing the whole build. This CONTRADICTS Fred's own ruling ("ugly but not broken, then
+  it's my responsibility") for this specific case. Flagged as a known gap, not fixed this turn (not in T82
+  item 6's own required scope, and fixing it well needs its own confirm-on-varied-geometry pass, not a rushed
+  patch under live Fusion time).
 
-- Screenshots: the sketch (3 nested rectangles + miters), the 4 bar bodies in isolation, the panel with its
-  own hole cut, a front view showing the subframe is hidden, the CAM layout.
-- Whether `declared_profiles.classify()`'s new mapping needed anything beyond what design note §5 step 5
-  describes.
-- The degenerate- and overlap-case results from steps 5-6 above.
-- Any place the "reuse the existing extrusion-engine/panel_lip/declared_profiles machinery, no new mechanism"
-  assumption in the design note turned out NOT to hold once real Fusion geometry was involved.
+## 2. What's genuinely confirmed vs not
+
+- The DECLARED-PROFILE DISPATCH (classify/extrude_plan/CAM naming) is confirmed live, both board sizes,
+  with a REAL multi-bar template (template_1, so the CAM fix's own "classic 4 bar names present" case is the
+  one actually exercised, not T6/T11's already-working N-bar path).
+- The STAND-IN PANEL is NOT a real B-spline terrain -- a flat box, straddling the frame's own sketch plane
+  (see §3). It proves the FRAME/WINDOW's own engine code (my actual changes this turn); it does NOT newly
+  prove the pre-existing underside-detection/extrude-to-face machinery against real terrain, since that was
+  already proven in prior sessions' own live checks (T7, T11, panel_lip) using the real generator.
+- CAM's Manufacture-workspace layout itself was NOT run live (no Manufacture setup was created in this
+  scratch document) -- only the fake-Fusion `test_mm_builder_frame_layout.py` tests + the `abcam.py` A/B
+  comparison confirm the `_populate_frame_geometry` fix.
+
+## 3. Test-harness lessons (stand-in panel), for whoever builds the next one of these
+
+Getting a believable stand-in "B-spline panel" took 3 real, measured fixes -- recorded here since the next
+live check that needs one (without the real terrain generator) will hit the same things:
+
+1. **`Point3D.create()` takes CENTIMETERS, not the design's display unit.** Passing inch values straight in
+   silently builds a body at 1/2.54 scale. Always multiply by 2.54 (or build everything through
+   `ValueInput.createByString('X in')`-based constructs instead of raw `Point3D` coordinates).
+2. **A bar's own `start` (frame_height_offset) must land OUTSIDE/BELOW the stand-in panel's own solid
+   volume, not within it.** `ToEntityExtentDefinition` with `matchShape/isChainFaces=True` (what
+   `extrusion_engine.py` always passes) reliably FAILS ("the extrusion profile falls outside the boundary of
+   the selected body") when the extrude's own start plane sits strictly between the target body's own top
+   and bottom faces. MEASURED: a 3-inch-thick panel (start -1in, comfortably inside its 0 to -3in range)
+   failed on every bar; a thin, real-panel-like 0.25in panel (start -1in, now BELOW the panel's own bottom at
+   -0.25in) built every bar correctly. Make the stand-in panel THIN (a fraction of an inch), matching a real
+   carved panel's own actual thickness, not an arbitrary round number.
+3. **A through-all CUT's own one-sided direction depends on the profile's own winding, which can differ
+   between two profiles in the SAME sketch** (MEASURED: template_1's own TRIM profile and its BAR profiles
+   wind oppositely -- a shoelace-sum sign check on each profile's own longest loop confirmed it). The
+   production code hardcodes `PositiveExtentDirection` for every cut; this works against a real terrain
+   because real terrain has panel material on both sides of the frame's own sketch plane (Z=0) somewhere in
+   its own footprint, so "search one specific way" reliably finds it. A stand-in panel built ENTIRELY on one
+   side of Z=0 doesn't have that guarantee, and "positive" can search the empty side, failing with "body not
+   found to extrude through" even though the panel plainly exists. Fix: build the stand-in panel STRADDLING
+   Z=0 (half above, half below -- e.g. +0.125in to -0.125in), not flush with one face at the sketch plane.
+   None of this is a bug in `extrusion_engine.py`/`solid_coordinator.py` -- both are pre-existing, unchanged
+   this turn, and have already been proven against real terrain in prior sessions' own live checks.
+
+## 4. What was sent back (counts, screenshots)
+
+- Gate: `pytest` at `bspline-frame-builder/` 873 passed/25 skipped; `vitest` 3078 passed; `gen_frame_defs
+  --check` fresh; A/B (`abpy.py`) hash unchanged (`88aa3aea7ef452be2e1dc27587d5733c5edb0c70f44ad1205c83d4162b5e38a4`);
+  A/B (`abcam.py`) per-case: only the case with an extra `frame_*` body changed, by exactly one layout move.
+- Live: 0 errors at both 7x9 and 9x12 (template_1), 8 bar bodies + 1 cut each, 0 overlap, healthy timeline,
+  distinct cut names, hole visible top and bottom.
+- Screenshots (scratchpad, this session): `t82i6_7x9_iso.png`, `t82i6_7x9_bottom.png`, `t82i6_9x12_iso.png`,
+  `t82i6_9x12_bottom.png` (plus an early `t82i6_7x9_front.png`, a flat edge-on view of the oversized stand-in
+  panel, less useful -- the iso/bottom pair is the one that actually shows the window).
+- The overlap-case crash (§1) and the degenerate-lip simplification (§1) are flagged, not fixed -- out of
+  this turn's own required scope, named rather than silently left.

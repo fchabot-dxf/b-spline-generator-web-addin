@@ -159,9 +159,9 @@ INPUT to each one.
    of "surround minus outline") and that it must NOT also cut the window's own 4 new bars (set participants
    explicitly, the same way the main TRIM_CUT's own `isParticipantsAutomated` already has to reason about
    which bodies are "the stock" vs "the frame").
-5. **`declared_profiles.classify()`** (`declared_profiles.py:78-108`) — **CORRECTED, T82 item 6**: more than
-   one new branch, all inserted before the final opening/stray-id check, same dispatch-by-curve-id-set
-   pattern already used for `lip`/`outline`/opening:
+5. **`declared_profiles.classify()`** (`declared_profiles.py:78-108`) — **CORRECTED TWICE, T82 item 6**:
+   more than one new branch, all inserted before the final opening/stray-id check, same
+   dispatch-by-curve-id-set pattern already used for `lip`/`outline`/opening:
    - window outer+inner+miter ids (one side) -> a `window_bars`-style feature + that bar's own name
      (`frame_window_top` etc, §5 step 3) — mirrors the existing `outline` branch's `bar_index()` lookup.
    - window inner+hole ids (only relevant once `panel_lip > 0`, mirrors the main `lip` branch) -> `(None,
@@ -170,6 +170,17 @@ INPUT to each one.
    - the main opening branch's own stray-id tolerance must ALSO accept the window's own OUTER curve ids once
      a window exists — the main opening profile gains an inner loop made of those ids (the window is a hole
      punched in the middle of the frame's own opening), which today's opening check doesn't expect.
+
+   **SECOND correction (live build, first real Send attempt)**: the draft above had classify() read a
+   `regions["window"]` dict that `apply_inset_window()` wrote onto its OWN in-memory, sketch-build-time
+   template. That dict never reaches classify() at all — `solid_coordinator._declared_frame()` re-resolves
+   the template FRESH FROM DISK at solid-build time (the same static spec every window-less build also
+   reads), so every window profile failed with "not in the declared regions" on the very first live build.
+   Fixed the same way `panel_lip`'s own `lip_ids(regions["outline"])` already avoids this: the window's
+   curve ids are FIXED names (never depend on cx/cy/w/h), so classify() calls zero-argument helpers
+   (`inset_window.window_bars()`, `window_miters()`, `line_ids(...)`) to recompute them fresh every call,
+   instead of reading anything stored. A window-less build's curve ids simply never intersect these
+   hypothetical names, so the check is a harmless no-op either way — no stored state needed.
    No new mechanism — one more declared mapping per case, same dispatcher.
 
 ## 6. Editor interaction (Frame tab)

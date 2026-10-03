@@ -1,5 +1,9 @@
-"""T82 item 6: the inset window's Fusion side (fb_engine/inset_window.py) -- the blocks it appends, the
-window's own regions, and declared_profiles.classify()'s new branches for them."""
+"""T82 item 6: the inset window's Fusion side (fb_engine/inset_window.py) -- the blocks it appends, and
+declared_profiles.classify()'s new branches for them (fixed curve-id names, never stored in `regions`:
+MEASURED live that solid_coordinator._declared_frame() re-resolves the STATIC template from disk at
+solid-build time, so anything the sketch build stored in an in-memory `regions["window"]` never reaches
+it -- classify() recomputes the window's hypothetical ids fresh every call instead, exactly like
+panel_lip's own `lip_ids()`)."""
 import os
 import sys
 
@@ -8,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest  # noqa: E402
 
 from fb_engine.template_resolver import resolve_template  # noqa: E402
-from fb_engine.inset_window import apply_inset_window  # noqa: E402
+from fb_engine.inset_window import apply_inset_window, OUTER_ID, INNER_ID, HOLE_ID, line_ids, window_miters, window_bars  # noqa: E402
 from fb_engine.declared_profiles import classify, miter_curve_id, DeclaredProfileError  # noqa: E402
 from fb_engine.frame_definition import WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE  # noqa: E402
 
@@ -92,112 +96,105 @@ def test_the_miters_connect_the_rectangles_own_tagged_vertices():
         ("window_outer_V_TL", "window_inner_V_TL"), ("window_outer_V_TR", "window_inner_V_TR"),
         ("window_outer_V_BL", "window_inner_V_BL"), ("window_outer_V_BR", "window_inner_V_BR"),
     }
+    assert pairs == set(window_miters())
 
 
-def test_window_region_declares_the_bars_miters_and_no_hole_or_cut_at_lip_zero():
-    _, out = _with_window("template_1")
-    window = out["Frame"]["regions"]["window"]
-    assert window["cut"] == "inner" and window["hole"] is None
-    assert {b["name"] for b in window["bars"]} == set(WINDOW_BARS_FEATURE["bodyNames"])
+def test_window_bars_match_the_feature_bodynames_order():
+    assert [b["name"] for b in window_bars()] == list(WINDOW_BARS_FEATURE["bodyNames"])
+    assert [c for b in window_bars() for c in b["curves"]] == line_ids(OUTER_ID)
 
 
-def test_lip_adds_a_third_rectangle_and_the_hole_cut_region():
+def test_lip_adds_a_third_rectangle():
     t, out = _with_window("template_1", panel_lip=0.0625)
-    before = _blocks(t)
-    added = [pid for _, pid in _blocks(out) if (_, pid) not in [(s, p) for s, p in before]]
     assert "p03_93_inset_window_hole" in [b["PhaseID"] for sk in out["Sketches"] for b in sk["Blocks"]]
     hole = [b["BuildSequence"][0] for sk in out["Sketches"] for b in sk["Blocks"]
             if b["PhaseID"] == "p03_93_inset_window_hole"][0]
     assert hole["Size"] == ["3.0 in - 2 * frame_thickness - 2 * panel_lip", "2.0 in - 2 * frame_thickness - 2 * panel_lip"]
-    window = out["Frame"]["regions"]["window"]
-    assert window["cut"] == "hole" and window["hole"] == \
-        ["window_hole", "window_hole_right", "window_hole_bottom", "window_hole_left"]
+    assert hole["LineIDs"] == line_ids(HOLE_ID)
 
 
-def test_a_lip_wider_than_the_window_opening_clamps_the_cut_shut_bars_still_built():
+def test_a_lip_wider_than_the_window_opening_skips_the_hole_bars_still_built():
     # w=3, h=2, FT=0.75 -> inner is 1.5 x 0.5; a 0.3 lip would need 0.9/-0.1, h side goes negative
     _, out = _with_window("template_1", panel_lip=0.3)
-    window = out["Frame"]["regions"]["window"]
-    assert window["cut"] is None and window["hole"] is None
-    # the bars/miters are still there -- only the hole/cut is suppressed
     phase_ids = [b["PhaseID"] for sk in out["Sketches"] for b in sk["Blocks"]]
     assert "p03_91_inset_window_outer" in phase_ids and "p03_94_inset_window_miters" in phase_ids
     assert "p03_93_inset_window_hole" not in phase_ids
 
 
 # ------------------------------------------------------------------ declared_profiles.classify()
-def _frame(tid, **window_kw):
-    """`out["Frame"]` with the window's own features injected the way solid_coordinator._declared_frame does
-    (apply_inset_window itself never touches `features` -- the static template's own list -- only the
-    coordinator appends WINDOW_BARS_FEATURE/WINDOW_CUT_FEATURE, unconditionally, at build time)."""
-    _, out = _with_window(tid, **window_kw)
-    frame = dict(out["Frame"])
+def _frame_with_window_features(tid):
+    """A template's "Frame" block with the window's own features appended the way
+    solid_coordinator._declared_frame does -- unconditionally, regardless of whether THIS frame actually
+    has a window (that's the whole point: classify() decides from the curve ids it's handed, not from
+    anything stored on `frame`)."""
+    t, _ = resolve_template(tid)
+    frame = dict(t["Frame"])
     frame["features"] = list(frame["features"]) + [WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE]
     return frame
 
 
 @pytest.mark.parametrize("tid", TEMPLATES)
 def test_a_window_bar_profile_classifies_to_the_right_window_bar(tid):
-    frame = _frame(tid)
-    window = frame["regions"]["window"]
-    for side, curve in zip(WINDOW_BARS_FEATURE["bodyNames"], window["outer"]):
-        feat, name = classify([curve, window["inner"][0]], frame)
+    frame = _frame_with_window_features(tid)
+    outer, inner = line_ids(OUTER_ID), line_ids(INNER_ID)
+    for side, curve in zip(WINDOW_BARS_FEATURE["bodyNames"], outer):
+        feat, name = classify([curve, inner[0]], frame)
         assert feat["id"] == "window_bars" and name == side
 
 
 @pytest.mark.parametrize("tid", TEMPLATES)
 def test_a_window_profile_spanning_two_bars_is_refused(tid):
-    frame = _frame(tid)
-    window = frame["regions"]["window"]
+    frame = _frame_with_window_features(tid)
+    outer = line_ids(OUTER_ID)
     with pytest.raises(DeclaredProfileError):
-        classify([window["outer"][0], window["outer"][1]], frame)
+        classify([outer[0], outer[1]], frame)
 
 
 @pytest.mark.parametrize("tid", TEMPLATES)
 def test_the_window_hole_classifies_to_window_cut_no_lip(tid):
-    frame = _frame(tid)
-    window = frame["regions"]["window"]
-    feat, name = classify(window["inner"], frame)
+    frame = _frame_with_window_features(tid)
+    feat, name = classify(line_ids(INNER_ID), frame)
     assert feat["id"] == "window_cut" and name is None
 
 
 @pytest.mark.parametrize("tid", TEMPLATES)
 def test_the_window_hole_and_lip_ring_classify_correctly_with_lip(tid):
-    frame = _frame(tid, panel_lip=0.0625)
-    window = frame["regions"]["window"]
-    feat, name = classify(window["hole"], frame)
+    frame = _frame_with_window_features(tid)
+    inner, hole = line_ids(INNER_ID), line_ids(HOLE_ID)
+    feat, name = classify(hole, frame)
     assert feat["id"] == "window_cut" and name is None
     # the ring between inner and hole: no feature, whether or not it arrives pre-split by the miters
-    assert classify(window["inner"] + window["hole"], frame) == (None, None)
-    m0 = miter_curve_id(*window["miters"][0])
-    assert classify(window["inner"][:2] + window["hole"][:2] + [m0], frame) == (None, None)
+    assert classify(inner + hole, frame) == (None, None)
+    m0 = miter_curve_id(*window_miters()[0])
+    assert classify(inner[:2] + hole[:2] + [m0], frame) == (None, None)
     with pytest.raises(DeclaredProfileError):
-        classify(window["inner"] + ["somewhere_else"], frame)
+        classify(inner + ["somewhere_else"], frame)
 
 
 @pytest.mark.parametrize("tid", TEMPLATES)
-def test_a_degenerate_lip_leaves_the_window_interior_with_no_feature(tid):
-    frame = _frame(tid, panel_lip=0.3)
-    window = frame["regions"]["window"]
-    assert window["cut"] is None
-    assert classify(window["inner"], frame) == (None, None)
+def test_a_clamped_lip_build_with_no_hole_rect_still_cuts_the_full_inner_rectangle(tid):
+    """SIMPLIFIED (T82 item 6, live build): when apply_inset_window skipped the hole rect (lip would clamp
+    it shut), the sketch's own curve set is identical to the no-lip case -- the inner rectangle alone
+    bounds the cut. classify() can't and doesn't need to tell this apart from "no lip" (see
+    inset_window.py's own docstring)."""
+    frame = _frame_with_window_features(tid)
+    feat, name = classify(line_ids(INNER_ID), frame)
+    assert feat["id"] == "window_cut" and name is None
 
 
 @pytest.mark.parametrize("tid", TEMPLATES)
 def test_the_main_opening_tolerates_the_windows_own_outer_loop_as_an_island(tid):
-    frame = _frame(tid)
-    window = frame["regions"]["window"]
+    frame = _frame_with_window_features(tid)
     main_inner = frame["regions"]["inner"]
-    assert classify(list(main_inner) + list(window["outer"]), frame) == (None, None)
+    assert classify(list(main_inner) + line_ids(OUTER_ID), frame) == (None, None)
 
 
 @pytest.mark.parametrize("tid", TEMPLATES)
 def test_a_window_less_build_is_unaffected(tid):
-    """No `window` region at all (every template's own frame-defs.json, unchanged): the exact pre-T82-item-6
-    classify() behavior for the main opening."""
-    t, _ = resolve_template(tid)
-    frame = t["Frame"]
-    assert "window" not in frame["regions"]
+    """No window curves in this profile's own ids at all (every template's own frame-defs.json, unchanged):
+    the exact pre-T82-item-6 classify() behavior for the main opening, even though the window's own
+    features are present on `frame` (solid_coordinator appends them to EVERY build, unconditionally)."""
+    frame = _frame_with_window_features(tid)
     assert classify(frame["regions"]["inner"], frame) == (None, None)
 
 
