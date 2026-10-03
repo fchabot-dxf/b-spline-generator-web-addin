@@ -16046,3 +16046,56 @@ Full suite: **170 files, 3335/3335**.
 `tests/frame-wall-edge-colour.test.js`. No other file touched. All scratch diagnostics
 (`repro67c.mjs` and its own before/after scratch output dirs, the dev-server process, the chrome
 profile dirs) deleted/stopped before commit.
+
+## H23 item 68, Part 1 of 2 (SPIKE -- app side, no Fusion): render the artwork's colour layers to
+a transparent, board-aligned PNG at a declared px/in, verified live with real pixel data. Part 2
+(Fusion: decal placement, transparency-over-wood, groove alignment, timing, re-Send) needs Fusion
+access other seats (b5, de) are using first -- requesting it in the pass note, not started.
+
+**Approach: reuse the REAL app's own rendering pipeline, running for-real in a headless browser --
+not a reimplementation.** `tools/repro/decal_png_spike.mjs` (new, no new dependency -- same raw-
+CDP-over-WebSocket convention `tools/repro/capture_send_payload.mjs`/`frame_send_shots.mjs`
+already use): drives the live palette page headless, reproduces Fred's own exact scenario (the
+SAME one items 66/67/67b/67c already use for live verification -- template_1, Shape Lattice +
+Offset from frame, every contour segment striped black/white via the real Stripe tool,
+rails/ties/nodes coloured), then in-page calls the APP'S OWN existing functions in their own real
+order: `editor.save()` (the real sketch SVG) -> `buildDrapeSvg(editor._layers, sketchSvg)`
+(`drape-svg.js`, already filters down to only colour-carrying artwork, transparent everywhere
+else -- UNCHANGED, no new code needed there) -> `sanitizeSvgForRaster` -> `prepareSvgForRaster(svg,
+pxW, pxH)` -> `renderSvgNative(ctx, svg, pxW, pxH)` (`core/stamp/render-svg.js`, the SAME
+rasterizer the stamp pipeline and the 3D preview's own drape texture already use) ->
+`canvas.toDataURL('image/png')`, decoded and written to disk in Node. Pixel dimensions follow the
+SAME convention `editor.save()`'s own `dpi` param already establishes (`editor-io.js`):
+`pxW = round(boardWidthIn * declaredPxPerIn)`, `viewBox` stays raw inches -- not a new convention,
+just reused at a caller-declared resolution instead of the editor's own default 96.
+
+**Verified with REAL pixel data, not a glance at the PNG** (per this project's own "verify pixels"
+discipline): sampled the LIVE in-page canvas (no PNG decoder needed in Node -- this repo has none
+installed, confirmed) at known points BEFORE handing bytes to Node. At the declared 40 px/in on a
+7x9in board (280x360px): a corner pixel reads `(0,0,0,0)` -- fully transparent, confirming "no
+artwork, no colour" -- and the board's own centre, which this seed's own lattice happened to put a
+rail across, reads `(198,40,40,255)` -- an EXACT match to the declared `#c62828` red, fully
+opaque. Also rendered at 150 px/in (1050x1350px) for a visual-fidelity/file-size comparison: both
+resolutions show clean, correctly-coloured, board-aligned artwork on inspection (saved to
+`shots/seatA`); file size scales roughly as expected with pixel count (~17KB at 40 px/in, ~101KB
+at 150 px/in, both small enough to ship inline with a Send payload without concern).
+
+**Scope discipline, per the dispatch's own "measure, don't build it out": this tool is standalone,
+NOT wired into the real Send flow at all.** `export-flow.js`'s own `sendToFusion` (the real
+payload-assembly function) is untouched; no new field was added to the real Send payload. The ONE
+hook point for a FUTURE wiring pass, if Fred approves after seeing the Fusion spike results, is
+noted here for whoever does that: `sendToFusion` (`export-flow.js:460-548`) already bakes a
+per-stamp-layer SVG into the payload the same general way (`bakedLayers`, line 512) -- a
+`decalPng`/`pngDataUrl` field could sit alongside it there, built via this SAME in-page pipeline
+(not duplicated), the moment this spike is actually approved for production use.
+
+**One open note, not a bug, flagged for whoever eventually wires this in:** the live scenario's
+own lattice composition (tie/node counts) differed between two otherwise-identical runs of this
+tool (seed is not pinned by this spike's own setup) -- harmless for a spike (each run still
+produces an internally-consistent, correctly-rendered PNG), but a production "Send" integration
+would want the SAME seed the REST of that Send already committed to, not a fresh random one.
+
+**Committed this item:** `tools/repro/decal_png_spike.mjs` (new). No other file touched -- no
+production code changed at all for Part 1. Scratch output directories (`decal-spike`,
+`decal-spike-150dpi`), the dev-server process, and the chrome profile dir deleted/stopped before
+commit; the two representative PNGs kept only in `shots/seatA` for review.
