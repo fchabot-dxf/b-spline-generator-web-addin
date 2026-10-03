@@ -187,7 +187,7 @@ body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to 
 Commit 'H23 item 38: ...'.
 
 ## Item 39 -- FRED-APPROVED GUARD: no hooked corner tips (finishes item 38). Fred: "a guard isn't that bad, it prevents
-awkward geometry where wood grain is important" -- he chose option D (shots/fred/t7_eave_options_2026-10-02.png).
+awkward geometry where wood grain is important" -- a hooked tip is SHORT GRAIN (fibres run across a thin tip, it snaps); he chose option D (shots/fred/t7_eave_options_2026-10-02.png).
 Declare ONE rule for every template (not a T7 patch -- Flask/Arched Funnel/Tulip, queued on fb-app, have the same kind of
 line-meets-curve corner): at every frame corner, the straight miter from the outer corner to its inner corner must stay
 inside the wood (it must not cross the outer boundary again), i.e. no tip that curls back into a hook. Enforce it the way
