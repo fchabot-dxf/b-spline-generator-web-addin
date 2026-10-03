@@ -1065,6 +1065,18 @@
             <input type="number" id="brickSeed" value="1" style="flex:1;">
             <button type="button" id="brickBtnRandomSeed" class="cad-btn" title="Random seed">🎲</button>
           </div>
+
+          <!-- F35 item 2: wired to the EXISTING terrain.js `isolateSkeleton`
+               param (already a real, functioning P key -- bypasses the
+               active filter with a flat 0.5, so only the skeleton/macro
+               shape carves -- just never had a UI control). Default stays
+               OFF (Fred: "just offer it"); the note tells the user why
+               they'd want it on, rather than defaulting it on for them. -->
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+            <input type="checkbox" id="isolateSkeleton">
+            <span>Hide filter texture</span>
+          </label>
+          <div style="font-size:10px; opacity:0.65; margin:2px 0 4px;">Bricks read best with this on -- the active filter's own fine noise otherwise competes with brick-scale detail.</div>
         </div>
       </div>
 

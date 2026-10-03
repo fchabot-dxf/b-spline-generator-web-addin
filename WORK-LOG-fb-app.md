@@ -9150,3 +9150,62 @@ param-system wire-up, no new pure logic to unit-test; verified live instead, sam
 module).
 
 Commit, push, pass back, plus the f3 escalation for (a).
+
+
+### F35 item 2: Hide-filter-texture toggle shipped; Scissors/Stripe scoped, not built -- a real prerequisite found
+
+Dispatch: (a) Scissors + Stripe as declared BRICK_TOOLS entries, reusing editor-cut-tool.js /
+editor-stripe-tool.js; (b) a "Hide filter texture" toggle wired to terrain.js's existing
+isolateSkeleton, default OFF; (c) White Rocks stays greyed until f3's item 74 lands.
+
+**(b) shipped.** `isolateSkeleton` was ALREADY a real, fully wired `P` key (terrain.js's own Pass 1:
+"bypasses the filter with a flat 0.5, so downstream macro/gate/fade/smooth produce the pure skeleton
+shape") -- already in `updateP`'s boolParams list and `immediateRebuildParams`, just with zero UI
+control anywhere (confirmed by grep across the whole html/ tree: no match). Added one checkbox
+(`id="isolateSkeleton"`) to the Brick tab with the note text the dispatch asked for; the EXISTING
+generic `Object.keys(P)` binder in `main/ui-bindings.js` auto-wires any element whose id matches a
+real P key, by its own element type -- zero new JS needed in brick-panel.js. Verified live: default
+unchecked (matches P's own `false` default), clicking it flips both the checkbox and `P.
+isolateSkeleton` in one step, the 3D preview immediately shows the smooth skeleton-only shape with no
+filter texture. `shots/seatC/f35item2_hide_filter_toggle_1366.png`.
+
+**(c) unchanged, confirmed still correct** -- White Rocks stays disabled/"(coming)" in the set
+picker; no code change needed since f3's item 74 (the concave-curve escalation) hasn't landed yet.
+
+**(a) investigated properly before writing code, and NOT built this turn -- a real architectural
+prerequisite is missing, not a quick wire-up.** Read `editor-cut-tool.js` and `editor-stripe-tool.js`
+in full (not just a summary) to ground this rather than guess:
+
+- Both tools operate on GEOMETRY/COLOUR of an EXISTING, PERSISTENT editor element -- a `<line>`
+  (`cutAtNoCommit` for a line just clones it, adjusts x1/y1/x2/y2, done) or a declared multi-segment
+  CONTOUR boundary (`_cutContourAt`, which additionally depends on `resolvePatternLayer(editor,
+  layer).pattern.contour` -- a Shape-Lattice-specific data structure for its own segment-colour
+  bookkeeping). Neither tool has ANY concept of "regenerate some OTHER derived content when this
+  line/segment changes" -- that idea doesn't exist anywhere in either file.
+- Every brick a Brush/Wall/Frame action produces today is a FIRE-AND-FORGET polygon dump: real SVG
+  content, correctly tagged (`data-brick`/`data-brick-gen`) for the layer system and the stamp
+  pipeline, but NOT a persistent "element" with its own stored generation parameters (the stroke
+  path it came from, which set/profile made it). Cutting or striping a BRICK LINE therefore means
+  two things neither tool does today: (1) the stroke a Brush action was drawn along would need to
+  become a REAL, PERSISTENT, cuttable spine (a `<line>` chain or a contour-segment chain, not the
+  discarded preview path `brickBrushHandler.finish()` currently removes before baking); (2) cutting
+  or striping that spine needs to trigger a NEW regeneration step (re-run `bricksAlongPath` on each
+  resulting piece, and for Stripe, apply a DIFFERENT brick style per piece) -- there is no existing
+  hook for "something downstream of this line needs to be rebuilt when it changes," because nothing
+  else in this app derives persistent geometry from a line's own shape this way.
+- Frame bands have a real spine too (the contour polyline `resolveFrameGeom` already computes) and
+  could plausibly share the same mechanism; Wall has no natural 1D spine to cut along at all (it's an
+  area fill) and would need a genuinely different model.
+
+This is a correctly-scoped SECOND feature (a persistent, editable brick-spine representation + a
+regenerate-on-edit bridge), not a drop-in reuse of two already-built tools -- attempting it as a
+quick addition risked either silently building something that only half-works (a cut that doesn't
+regenerate the right bricks, or regenerates stale ones) or burning significant time mid-turn on a
+design that might not be the one actually wanted. Flagging it now, with the concrete missing piece
+named, rather than shipping a fragile version or guessing silently at the bigger design.
+
+Full suite green: 193 files / 3572 tests (the jump from 192/3557 is f3's own merged work, not mine --
+my own change added no new tests, a one-line HTML control with no new logic).
+
+Commit, push, pass back with the Scissors/Stripe finding as an explicit question for the advisor:
+build the spine+regenerate architecture now as its own item, or hold it for a dedicated pass.
