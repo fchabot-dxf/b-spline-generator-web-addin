@@ -7482,3 +7482,91 @@ regression.
 
 **No Fusion used** (reserved for Cowork this pass, per the dispatch) -- code + tests only. The live
 T7 Send re-check is the advisor's own next step once Fusion is free again. Commit `289568c`.
+
+## 2026-10-02: H23 item 37 -- robust underside detection (area-weighted UV grid), FUSION IS YOURS
+
+The advisor measured T7's own 7x9 panel (preserved: `bspline-frame-builder/scratch/no_underside_t7.json`)
+scored -0.6975 on its own 402 in^2 dominant downward face -- refused by the old -0.7 bound by a
+margin of 0.0025. Every other real panel measured so far scores -0.98..-0.86; moving the bound per
+new panel is whack-a-mole. Fixed the METHOD, not the number.
+
+**`_face_downward_z`** now averages n.z over a 9x9 UV grid (`face.evaluator.parametricRange()` +
+`getNormalAtParameter`/`getFirstDerivative`), each sample weighted by its own local area element
+`|dU x dV|` (the surface's own first fundamental form -- exact for any parametrization, confirmed
+live: `parametricRange()` returns a `BoundingBox2D`, `getFirstDerivative` returns `(ok, dU, dV)`,
+probed directly on a trivial extruded rectangle before writing production code against it).
+**`underside_face`** picks the most-downward face, then sanity-checks it against every OTHER face
+that also scores downward: if one is comparably large (`AREA_DOMINANCE_RATIO = 0.5`), refuse rather
+than guess. Refuses only when nothing on the body points down at all. `UNDERSIDE_MAX_NORMAL_Z` is
+gone entirely -- no more per-panel bound to tune.
+
+**Testable without a real `adsk.core.Point2D`:** `_face_downward_z`/`underside_face` take
+injectable `uv_point`/`score` collaborators (the SAME pattern `sync_panel_lip_param` already uses
+here for `value_input`), late-bound to the module-level name so a test can monkeypatch
+`send_frame._uv_point` ONCE and have it apply through the whole call chain (including the ones
+made deep inside `underside_face`/`send_frame` that never see the override directly).
+
+**Tests** (`test_send_frame.py`): retired the two item-22/23 regression tests -- their own
+mechanism (a tilted CORNER vs the mean) doesn't exist any more; the new grid-sampling has no
+concept of "corner". Replaced with `test_the_real_measured_underside_is_found_on_every_captured_panel`,
+parametrized over the EXACT (z, area) face-score lists from all 7 real captured panels
+(`tools/repro/fusion_t11/underside_results_2026-10-02.jsonl` +
+`underside_t7_7x9_refused_2026-10-02.jsonl`) -- including T7's own regression case, which must now
+succeed. Added `test_an_ambiguous_pick_two_downward_faces_of_comparable_area_is_a_clear_error` and
+`TestFaceDownwardZAreaWeighting` (two tests proving the grid+weighting MECHANICS directly: a
+uniform face scores exactly its own constant normal; a non-uniform face's weighted average differs
+from a naive mean by >0.5 -- the weighting is demonstrably real, not decorative). Fixed
+`test_a_body_with_no_downward_face_is_a_clear_error`'s own fixture (`(1.0, -0.2)` used to fail the
+OLD bound without meaning "nothing points down" under the new rule; changed to `(1.0, 0.3)`, both
+level/upward). Redesigned the shared `Face`/`Body` fakes for the new evaluator interface
+(`FlatEvaluator`: constant normal, unit Jacobian) with an explicit `.area` (the REAL, separate
+Fusion property `underside_face`'s own area-dominance check reads). 836 passed/25 skipped (+8 net
+over item 36's own count: -2 retired, +10 new).
+
+**LIVE** (loaded fresh from this repo checkout via `underside_extrude_probe.py`'s new `REPO`
+global, not the deployed add-in copy -- confirmed `frame_engine`/`template_resolver` both resolve
+to MY checkout's own files before trusting any result): all 6 non-T7 panels (fresh real captures,
+T11 @ 7x9, T1 @ 9x12/6x9, T10 @ 7x9, T12 @ 8x10, T13 @ 12x16) unchanged -- 0 overlap, 0
+min-distance, area-dominant pick, 0 unhealthy items, every one. **T7's own underside now resolves
+to -0.9649 (on the preserved regression payload) / -0.9745 (a fresh capture) -- no refusal, either
+way**, confirming the fix directly. Replaying the PRESERVED payload still shows the item-36 seed
+mismatch (`seed(s) not in the template: ['seed_rad_body_L', ...]`) -- NOT a new bug: that payload's
+own `seedGeometry` was captured by the APP, client-side, BEFORE item 36's fix (and before
+`frame-defs.json` was regenerated to match it) and is frozen with the stale keys baked in; it can
+never reflect a later server-side fix. **A FRESH T7 @ 7x9 capture (post both fixes, confirmed its
+own `seedGeometry` carries none of the 4 stale keys) builds its frame END TO END: 5 bars
+(`frame_base`, 2x `frame_side_left`/`frame_side_right` -- the diamond-hourglass neck naturally
+splits each side in two, Fusion auto-suffixing the duplicate name "(1)"; not a defect, 0 overlap on
+every one), 0 min-distance, 0 unhealthy items.**
+
+**"Source - L4 - ballnose (0.12\")" unhealthy, root-caused (not guessed):** found TWO timeline
+items matching "ballnose" (an earlier diagnostic's own `break` on the first match missed this) --
+the `[constrained]` sketch is Healthy; the PLAIN one reports `RolledBackFeatureHealthState` with an
+EMPTY message. Measured: `des.computeAll()` (or the project's own established `isComputeDeferred`
+pulse) clears it to Healthy INSTANTLY -- the sketch itself is fine (22/22 circles and profiles, not
+suppressed). It is the LAST item created before item 36's own (pre-fix) early abort on the
+preserved payload; nothing downstream ever pulses a recompute because the Send stops right there.
+Confirmed as a pure knock-on, not an independent bug: the fresh post-fix T7 capture (whose Send
+completes normally, past this point, into real sketch/solid building) reports ZERO unhealthy items.
+No separate fix needed -- per the dispatch ("fix only if clearly ours"), this one is explained, not
+ours to patch; it resolves itself once item 36's own fix lets the Send run to completion.
+
+**`underside_extrude_probe.py`** (shared, advisor's own tool): added an optional `REPO` global
+(loads fresh from a checkout instead of `sys.modules['bspline_ui']`, items 29/32/33/34/35/36's own
+pattern -- needed here since neither item 36 nor 37 had been deployed yet) and switched its own
+unhealthy-items check to recurse into timeline groups (H23 item 32: a group's own `healthState` is
+always Unknown) capturing each genuinely-unhealthy item's own warning text, not just a name.
+
+**`item35_confirmation_matrix.py`'s own M3, fixed** (the advisor's own find, confirmed together
+over a cross-session exchange): it counted arcs from a Python list of `childCurves` captured ONCE
+at creation time, filtered by `.isValid` on every later check -- never re-querying `oc.childCurves`
+itself. That can see existing entities going invalid (driving PAST the threshold) but never NEW
+ones appearing (driving back), so its own "the arc never comes back" finding was a test bug, not a
+Fusion fact. Fixed: re-fetch `oc.childCurves` fresh after every edit. Re-run live: 4 -> 0 -> 4
+arcs, exactly matching the advisor's own 5/5 measured recoveries. 44/44 checks pass.
+
+New `tools/repro/fusion_t11/item37_underside_sweep_driver.py` (committed): drives
+`underside_extrude_probe.py` across a list of (tag, payload) pairs, resumable (skips a tag already
+in `OUT` unless it crashed), used for all the LIVE numbers above.
+
+Full suite: 836 passed/25 skipped. Commit `f586403`.
