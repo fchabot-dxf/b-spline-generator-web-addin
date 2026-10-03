@@ -186,6 +186,21 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 59 -- ARCHED + TAPER, template code (moved from seat C's F30 item 6 so three seats build in parallel) (advisor, 2026-10-03)
+Item 58 accepted (fred-skills f5c7edb, 5ccf236). Fred approved Arched + taper after the advisor's Fusion retest of
+the FIXED construction: FULL range -15..+15 deg, default 8 deg. T10 + the shared taperAngle construction (as T1/T2
+already have). Source of truth for the geometry: fb-app's tools/repro/f30_item5_arched_taper_diagram.mjs at
+4be8963 (git show origin/fb-app:...), INCLUDING its negative-taper fix: the waist arc's shoulder-side endpoint is
+re-solved from tangency to the shifted shoulder circle, so the outline stays closed. Port that into production;
+don't re-derive it. Its continuityCheck becomes a pure test.
+Decide with data: a taperAngle handle on T10 itself (default 0 keeps T10 byte-identical: goldens --check) vs a new
+template slot. Prefer the handle if T10's goldens, preview==build and Generate stay unchanged at taper 0. Say which.
+Build rules: closed-form seeds, CCW welds, isTopologyMatched=False, ResolveLineCircleCorner at every line-meets-arc
+corner, built == declared, no MITER MISS, miter at every joint, the hook guard + piece length in Generate (at -15
+deg 7x9 a 0.44 in piece is rejected by Generate, NOT by narrowing the range). LIVE: -15/-8/0/+8/+15 at 7x9, and
+-15/+8 at 6x9 + 9x12: all declared bars, preview==build, 0 errors. Sweep 13/13 (or 14/14) clean.
+Commit 'H23 item 59: ...'.
+
 ## Item 58 -- record this week's Fusion findings in the fusion360-quirks skill, each CONFIRMED on varied cases (advisor, 2026-10-03).
 Item 57 accepted (807fec3). Speed work pauses until Fred decides win #2. Fred's rule: a finding goes in the skill only
 after varied re-tests (other shapes/docs/sizes), not one observation. Candidates from items 46-57:
@@ -498,4 +513,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-55] speed round 3: re-Send delete 4.3 s -> measure how it deletes, smallest identical change, send-2/send-3 clean. Commit as 'H23 item 55: ...'.
 - [x] [H23-item-56] speed round 4 MEASURE ONLY: full stage table send-1/send-2, stamp sketch per-call vs solve, top 3 remaining wins with estimates. Commit as 'H23 item 56: ...'.
 - [x] [H23-item-57] (reverted, under noise) validate whole-stamp-build deferred compute: A/B identical over 3 Sends, keep only if >= 1 s saved. Commit as 'H23 item 57: ...'.
-- [ ] [H23-item-58] fusion360-quirks: timeline per-call cost vs history, marker insertion + restore rule, occurrence delete covers child features, CCW arc start/end -- each confirmed on varied cases. Commit as 'H23 item 58: ...'.
+- [x] [H23-item-58] fusion360-quirks: timeline per-call cost vs history, marker insertion + restore rule, occurrence delete covers child features, CCW arc start/end -- each confirmed on varied cases. Commit as 'H23 item 58: ...'.
+- [ ] [H23-item-59] Arched + taper template code (moved from seat C): port the fixed construction, taper handle on T10 vs new slot (data), full -15..+15, live 5 angles + sizes, sweep clean. Commit as 'H23 item 59: ...'.
