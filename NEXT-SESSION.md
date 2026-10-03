@@ -186,6 +186,14 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 67d -- edge colour on the BOARD's edge only, never the frame (Fred, 2026-10-03)
+Fred: "the frame shouldn't change colour, only the board edge, which is only about .25 in". Today (67c) the whole
+side wall, frame included, takes the artwork colours. Restrict it to the B-spline PANEL's own side wall (its
+thickness band, ~0.25 in, at whatever height the panel sits); the FRAME's walls keep their wood/appearance look,
+and so does any wall below the panel. Keep 67c's alignment and crispness. Test: frame-wall vertices keep the frame
+colour; panel-wall vertices take the edge colour. Before/after shots at the same angle. No Fusion. Do it now, while
+you wait for your Fusion turn for item 68. Commit 'H23 item 67d: ...'.
+
 ## Item 68 -- SPIKE: artwork colours in Fusion as ONE decal (Fred, 2026-10-03). Measure, don't build it out.
 Fred wants the artwork's colours visible in Fusion, the cheap way. Fusion's API has decals (checked by the advisor):
 component.decals.createInput(imageFilename, faces) -> DecalInput{transform, opacity, isChainFaces,
@@ -666,3 +674,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-67b] (step: full-height walls done; alignment -> 67c) item 67 rework: walls coloured FULL height in the edge colours; reproduce Fred's striped-rim close-up and remove the triangles; before/after of both views. Commit as 'H23 item 67b: ...'.
 - [x] [H23-item-67c] wall colour ALIGNED with the rim (same perimeter parameter) and crisp (no interpolation across colour boundaries); pure alignment test; side-view shot; re-check Fred's triangles in his exact setup. Commit as 'H23 item 67c: ...'.
 - [ ] [H23-item-68] SPIKE: artwork colours as one transparent-PNG decal on the Stamped top face -- alignment, transparency, time, re-Send; shots; no wiring yet. Commit as 'H23 item 68: ...'.
+- [ ] [H23-item-67d] edge colour only on the board (panel) edge, ~0.25 in; frame walls unchanged; test + shots. Commit as 'H23 item 67d: ...'.
