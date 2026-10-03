@@ -7895,3 +7895,50 @@ a new capture, not a replay.
 Not committed as a T7 patch: the rule, the Generate check, the drag clamp, and the test all apply to
 every template uniformly (`miterStaysInsideWood`/`miterTipMargin` take no template-specific input at
 all beyond the primitives and `t` every template already has).
+
+## 2026-10-03: F31 item 2 -- Flask (Template 15) diagram, 6x9/7x9/9x12, no code (seat C, epoch 5)
+
+Synced fb-app with main first (one conflict, WORK-LOG-fb-app.md's own two parallel append streams, resolved
+by concatenation -- same pattern every prior sync hit). Full suite green after (vitest 3190/3190, pytest
+875+97+1098 passed/25 skipped across the three roots; one transient `test_golden_freshness` failure mid-merge,
+before the merge commit landed -- it reads git history, which a dirty merge can't give a straight answer to;
+re-ran clean after committing).
+
+Dispatch: Fred's own sketch -- a narrow straight neck (flat top, straight sides) on a DOME that sweeps out and
+down to the flat base, tangent vertical at the base. 6 bars (top, 2 neck sides, 2 dome sides, base), miter at
+every joint including neck-to-dome. Reference: the advisor's own `flask_and_archtimer_render.py` (Shapely).
+
+**TOP WIDTH, reused not reinvented:** the header's new shared handle ("key 'topWidth' ... sets where the top
+bar meets the sides") and the dispatch's own proposed "neck width" are the SAME physical quantity here -- the
+neck is dead straight for its whole height, so there is only one place for the top bar to meet the sides, not
+two. Declared Flask's neck half-width under the shared `topWidth` key rather than inventing a parallel
+`neckWidth` that would just be a second name for the same number.
+
+**Dome fullness, made genuinely tunable:** the advisor's own render pins the dome with a VERTICAL-TANGENT-AT-
+BASE constraint -- given the neck's own two corners, that leaves ZERO free parameters, so there's no handle to
+attach a "dome fullness" to. Generalised: built the dome with the Sand Timer diagram's own `bulgeArc` (a
+generic sagitta bulge away from the centreline) instead, with its own DEFAULT sagitta set to whatever the
+vertical-tangent construction implies -- computed once from the advisor's own closed-form (the circle through
+the neck-bottom corner and the base corner whose centre sits on the base's own row), not guessed. Confirmed:
+the default renders bit-for-bit what the advisor's own approved sketch shows, and "dome fullness" now has real
+room to move either side of it.
+
+**Measured range ends** (bisection, same pattern the taper/Sand-Timer diagrams used, per board size):
+- topWidth: 6x9 [0.27, 0.51], 7x9 [0.23, 0.52], 9x12 [0.18, 0.52] (narrower on shorter boards -- less room for
+  the dome to flare out to the full width before the neck crowds it).
+- neckHeight (fraction of total height, from the top): 6x9 [0.07, 0.81], 7x9 [0.07, 0.80], 9x12 [0.05, 0.84].
+- dome fullness: converges to roughly [0.02, 0.16] at every size (a genuinely narrow band -- this shape doesn't
+  tolerate a very full/round dome before the neck's own straight sides and the dome's own tangent fight each
+  other into a corner violation).
+
+**Continuity + symmetry, both checked, both clean:** added the same `continuityCheck` F30 item 5 needed (every
+piece's own end meets the next piece's own start exactly) and the mirror-symmetry check from Sand Timer; worst
+gap/mismatch at every measured case: machine precision (~1e-16in). This shape's own 6 pieces are each built
+directly from the shared corner points (same as Sand Timer, unlike the taper diagram's reused-then-rebuilt
+waist arc), so there was no equivalent defect to find -- recorded as a deliberate check, not an assumption.
+
+Diagram (21 panels: 3 board sizes x {default, topWidth min/max, neckHeight min/max, dome min/max}, same visual
+style as every other diagram this session): `C:/Users/danse/.bspline-status/shots/seatC/0920_F31-item2-
+proposed_flask-diagram_6x9_7x9_9x12.png`. Script committed: `tools/repro/f31_item2_flask_diagram.mjs` (same
+repo-root-as-argv[1] convention). No template files touched, no Fusion used. Passing back for Fred's sign-off
+before any `template_15`-numbered code is written.
