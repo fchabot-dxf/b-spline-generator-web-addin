@@ -186,6 +186,20 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 67b -- item 67 REWORK (advisor review of 1130_item67_after.png, 2026-10-03)
+Item 67 is accepted as a step (8c40319: the shared sampler, the toggle, and the manual-tie proof are good). But the
+brief was 'that colour continues straight down the side wall for the wall's FULL HEIGHT'. In the after shot the
+walls are still plain grey/beige below a thin green lip. Fred colours his real board's edges, so the preview must
+show the WHOLE wall in the edge colour (green under the contour, a red band where a rail meets the edge, the stripe
+colours under a striped contour), top to bottom.
+Saw-teeth: Fred's close-up (black/white striped contour, oblique view of the rim) shows alternating
+wall-colour/stripe-colour TRIANGLES along the rim. 'z mismatch < 0.01 in' does not explain what he saw. Reproduce
+HIS case first (a striped contour, his camera angle, zoomed on the rim), capture it, and fix what you see. If it's
+per-vertex colour interpolation across a triangle that spans two colours, give the wall its own vertices (split
+along the colour boundaries), so each triangle has one colour.
+Before/after shots of the SAME two views: the whole board, and the close-up rim at Fred's angle. Commit 'H23 item
+67b: ...'.
+
 ## Item 67 -- 3D preview: colour the board's side walls 'teint dans la masse' (Fred, 2026-10-03, screenshot)
 Fred colours the real board's edges to match the artwork, so the preview should show it: wherever the top artwork
 (lattice rails/ties/nodes/contour, stripes, stamp colours) reaches the board's outer edge, that colour continues
@@ -619,3 +633,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-65] (131/133; T10 archRise:min -> advisor's item 62; T13 neckWidth:min covered by the mitersCollide guard 578660e) re-run the full matrix on e11e15d (regenerated payloads) + triage the 2 SILENT cases. Commit as 'H23 item 65: ...'.
 - [x] [H23-item-66] Shape Lattice: no tie generated on/touching the contour -- declared clearance, fix in the generator, pure test over templates x seeds, before/after shots. Commit as 'H23 item 66: ...'.
 - [ ] [H23-item-67] 3D preview: side walls take the edge colours of the artwork (teint dans la masse), shared colour sampler, 'Colour edges' toggle, tests, before/after shots. Commit as 'H23 item 67: ...'.
+- [ ] [H23-item-67b] item 67 rework: walls coloured FULL height in the edge colours; reproduce Fred's striped-rim close-up and remove the triangles; before/after of both views. Commit as 'H23 item 67b: ...'.
