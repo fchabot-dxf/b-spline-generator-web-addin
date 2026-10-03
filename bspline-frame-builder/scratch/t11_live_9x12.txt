@@ -1,0 +1,17 @@
+doc=Untitled active=Untitled product=DesignProductType units=in params=['adv_t11_live_fp']
+param widthIn = 9"
+param heightIn = 12"
+build 1.2s, fit={'ok': True, 'safeZoneIn': 8.5, 'requiredIn': 1.5, 'message': None}
+occurrences: ['Frame_1']
+sketch T11_1_bounding_box: lines=12 arcs=0 profiles=2
+sketch T11_2_shape_outline: lines=9 arcs=6 profiles=1
+sketch T11_3_frame_enclosure: lines=27 arcs=12 profiles=7
+  shoulder_R  r=0.9350 (exp 0.9350, d=-0.0000) centre d=0.0000 sweep=46.3
+  waist_R     r=1.4025 (exp 1.4025, d=-0.0000) centre d=0.0000 sweep=136.3
+  hip_R       r=0.9350 (exp 0.9350, d=+0.0000) centre d=0.0000 sweep=90.0
+  shoulder_L  r=0.9350 (exp 0.9350, d=-0.0000) centre d=0.0000 sweep=46.3
+  waist_L     r=1.4025 (exp 1.4025, d=-0.0000) centre d=0.0000 sweep=136.3
+  hip_L       r=0.9350 (exp 0.9350, d=+0.0000) centre d=0.0000 sweep=90.0
+  sketch2 WORST deviation 0.0000 in over 6 arcs
+sketch3 arcs=12 lines=27 profiles=7
+engine errors/fallbacks/miter misses: 0

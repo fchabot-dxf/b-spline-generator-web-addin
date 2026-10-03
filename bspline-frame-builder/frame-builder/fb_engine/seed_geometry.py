@@ -47,4 +47,13 @@ def apply_seed_geometry(template, seed_geometry):
                     step["Points"] = [[_in(x), _in(y)] for x, y in pts]
     if pending:
         raise SeedGeometryError(f"seed(s) not in the template: {sorted(pending)}")
+    # 'UnseededOnly' steps (H23 item 63, T10 taper): a constraint the LITERAL (unseeded) construction needs to
+    # hold its default shape -- e.g. T10's top horns' Vertical -- but that would override sent geometry (a
+    # tapered horn). A seeded build drops them; the unseeded path (Sketch Builder, goldens) keeps them.
+    if seed_geometry:
+        for sketch in out.get("Sketches", []):
+            for block in sketch.get("Blocks", []):
+                seq = block.get("BuildSequence")
+                if seq:
+                    block["BuildSequence"] = [st for st in seq if not st.get("UnseededOnly")]
     return out

@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "52bb66ba7fa9fa2477ff95bff0936ce4567e5a79c8abcec360517f9cd90d1f42",
+  "sourceHash": "5157a96406faf3e35cc311e90e8d8c79605700e302bd7fe3d0232aa8fd0c2841",
   "templates": [
     {
       "features": [
@@ -2549,6 +2549,14 @@
                   ],
                   "StartID": "horn_BL:S",
                   "Type": "Line"
+                },
+                {
+                  "Targets": [
+                    "horn_TR",
+                    "horn_TL"
+                  ],
+                  "Type": "Vertical",
+                  "UnseededOnly": true
                 },
                 {
                   "Targets": [

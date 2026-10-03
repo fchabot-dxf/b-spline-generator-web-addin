@@ -1,0 +1,19 @@
+doc=Untitled active=Untitled product=DesignProductType units=in params=['adv_t11_live_fp']
+param widthIn = 7"
+param heightIn = 9"
+build 1.3s, fit={'ok': True, 'safeZoneIn': 6.5, 'requiredIn': 1.5, 'message': None}
+occurrences: ['Frame_1']
+sketch T11_1_bounding_box: lines=12 arcs=0 profiles=2
+sketch T11_2_shape_outline: lines=9 arcs=6 profiles=1
+sketch T11_3_frame_enclosure: lines=27 arcs=8 profiles=7
+  shoulder_R  r=0.7150 (exp 0.7150, d=+0.0000) centre d=0.0000 sweep=46.3
+  waist_R     r=1.0725 (exp 1.0725, d=+0.0000) centre d=0.0000 sweep=136.3
+  hip_R       r=0.7150 (exp 0.7150, d=+0.0000) centre d=0.0000 sweep=90.0
+  shoulder_L  r=0.7150 (exp 0.7150, d=+0.0000) centre d=0.0000 sweep=46.3
+  waist_L     r=1.0725 (exp 1.0725, d=+0.0000) centre d=0.0000 sweep=136.3
+  hip_L       r=0.7150 (exp 0.7150, d=+0.0000) centre d=0.0000 sweep=90.0
+  sketch2 WORST deviation 0.0000 in over 6 arcs
+sketch3 arcs=8 lines=27 profiles=7
+engine errors/fallbacks/miter misses: 2
+  [ERROR] OFFSET PARAMETRIC FAIL: addOffset2 failed for T11_3_frame_enclosure: 3 : Failed to create constraint: Offset creation failed as the topology of the offset curves does not match the topology of
+  [ERROR] OFFSET FALLBACK: T11_3_frame_enclosure parametric addOffset2 unavailable, using non-parametric sketch.offset() (distance='frame_thickness')

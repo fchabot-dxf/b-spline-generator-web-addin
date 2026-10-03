@@ -68,7 +68,7 @@
     "heightIn": 9,
     "recorded": "2026-10-03",
     "recorder": "tools/repro/fusion_t11/item44_record_t10_goldens.py",
-    "reverifiedAfter": "H23 item 47 (template_10's own arch anchors now SeedFrom too) -- re-run live, byte-identical",
+    "reverifiedAfter": "H23 item 63 / T84 item 7 (2026-10-03): T10 taperAngle added; top horns' Vertical made UnseededOnly. Re-recorded live (advisor): geometry identical to the item 47 recording (0 numeric diffs > 1e-4).",
     "template": "template_10",
     "timelineHealthy": true,
     "units": "in / in^2 / in^3",

@@ -1,11 +1,10 @@
-"""T84 item 7: a direct, PERMANENT regression guard for the exact root cause H23 item 59/60 found and
-this item fixed -- p02_03_loop.py's own unconditional `Vertical` constraint on horn_TR/horn_TL, which
-made Fusion's solver snap a seeded (tapered, slanted) horn straight back to vertical regardless of what
-seed was sent (confirmed live: a taper=-15 seed built with horn_TR still perfectly vertical before this
-fix). No JS-side test can see this -- the JS construction was already correct before the fix; the bug
-lived ENTIRELY in this Fusion phase declaration. horn_BR/horn_BL must stay Vertical (taper only ever
-affects the TOP corner, item 59's own construction fix leaves the bottom corner alone -- Template 12's
-own identical, already-shipped pattern)."""
+"""T84 item 7 + H23 item 63: T10's top horns are Vertical ONLY on the unseeded (literal) path.
+
+Root cause (T84 item 7): an unconditional `Vertical` on horn_TR/horn_TL made Fusion snap a seeded (tapered,
+slanted) horn back to vertical. Removing it outright (T84 item 7's first fix) broke the UNSEEDED default --
+the re-recorded goldens showed the top horns leaning in and asymmetric (3.0925 vs -3.0821 at 7x9). So the
+constraint is declared `UnseededOnly`: seed_geometry.apply_seed_geometry drops it from every seeded Send,
+and the literal path (Sketch Builder, goldens) keeps it. horn_BR/horn_BL stay Vertical always."""
 import os
 import sys
 
@@ -15,6 +14,8 @@ if _FRAME_BUILDER_ROOT not in sys.path:
     sys.path.insert(0, _FRAME_BUILDER_ROOT)
 
 import importlib.util  # noqa: E402
+
+from fb_engine.seed_geometry import apply_seed_geometry  # noqa: E402
 
 _PHASE_PATH = os.path.join(_HERE, "phases", "p02_03_loop.py")
 
@@ -34,27 +35,25 @@ def _vertical_targets(block):
     return targets
 
 
-def test_top_horns_are_not_forced_vertical():
+def _as_template(block):
+    return {"Sketches": [{"Blocks": [block]}]}
+
+
+def test_unseeded_build_keeps_the_top_horns_vertical():
     targets = _vertical_targets(_load_loop_block())
-    assert "horn_TR" not in targets, "horn_TR must stay free to slant under a tapered seed (T84 item 7)"
-    assert "horn_TL" not in targets, "horn_TL must stay free to slant under a tapered seed (T84 item 7)"
+    assert {"horn_TR", "horn_TL", "horn_BR", "horn_BL"} <= targets
 
 
-def test_bottom_horns_still_are_vertical():
-    # Taper only ever affects the TOP corner (item 59's own construction fix); the bottom horns keep
-    # Template 1's own untouched mechanism.
-    targets = _vertical_targets(_load_loop_block())
-    assert "horn_BR" in targets
-    assert "horn_BL" in targets
-
-
-def test_mutation_non_vacuous():
-    """Proves the test above is not vacuous: a BuildSequence that DOES still force horn_TR vertical
-    (the pre-fix state) must fail it."""
+def test_a_seeded_send_frees_the_top_horns_but_not_the_bottom():
     block = _load_loop_block()
-    mutated = dict(block, BuildSequence=[
-        dict(step, Targets=['horn_TR', 'horn_BR', 'horn_TL', 'horn_BL']) if step.get('Type') == 'Vertical' else step
-        for step in block["BuildSequence"]
-    ])
-    targets = _vertical_targets(mutated)
-    assert "horn_TR" in targets and "horn_TL" in targets  # the mutated (pre-fix-shaped) block DOES fail the rule above
+    seed = {"horn_TR": {"points": [[3.0, 2.7], [2.8, 1.0]]}}
+    seeded = apply_seed_geometry(_as_template(block), seed)["Sketches"][0]["Blocks"][0]
+    targets = _vertical_targets(seeded)
+    assert "horn_TR" not in targets and "horn_TL" not in targets
+    assert "horn_BR" in targets and "horn_BL" in targets
+
+
+def test_unseeded_apply_keeps_unseeded_only_steps():
+    block = _load_loop_block()
+    same = apply_seed_geometry(_as_template(block), {})["Sketches"][0]["Blocks"][0]
+    assert {"horn_TR", "horn_TL"} <= _vertical_targets(same)
