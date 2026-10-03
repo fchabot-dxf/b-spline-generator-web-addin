@@ -70,39 +70,59 @@ def _line_circle_intersection_nearer(p0, direction, center, radius, reference_s)
     return (p0[0] + s * ux, p0[1] + s * uy), s
 
 
-def eave_inner_corner(width_in, height_in, frame_thickness, neck_center, neck_radius):
-    """The TRUE inner eave corner (right side; mirror x for the left), as a (Direction, Distance) pair for
-    ResolveInnerCorners -- computed by the EXACT line-circle intersection between the offset roof line and
-    the offset neck arc, not a bisector-of-edge-directions formula (that formula points the WRONG way at a
-    cusp-like corner such as this eave -- a real bug caught and fixed in this build's own scratch miter
-    diagram, WORK-LOG-lane-b.md Turn 201: "miter_line() extrapolated from a bisector... points INTO
-    material at a convex corner like the peak but AWAY from it at the eave's own cusp shape"). This
-    function sidesteps that failure mode entirely by using the same two already-solved pieces of real
-    geometry (the roof line's own inward offset, the neck arc's own inward offset) and intersecting them
-    directly, exactly mirroring what Fusion's own sketch.offset() does to the real curves -- the Direction/
-    Distance pair returned here is only ever used to find (not compute) the matching already-correct
-    SketchPoint Fusion's offset produced.
+def line_circle_corner(line_far, line_near, interior_pt, frame_thickness, circle_center, circle_radius,
+                        concave=True):
+    """TRUE inner corner where a LINE (line_far -> line_near, tangent to the circle AT line_near) meets a
+    CIRCLE, by the EXACT intersection of the line's own inward offset with the circle's own inward offset
+    -- not a bisector-of-edge-directions formula (that formula points the WRONG way at a cusp-like corner
+    such as T7's own eave -- a real bug caught and fixed in this build's own scratch miter diagram,
+    WORK-LOG-lane-b.md Turn 201: "miter_line() extrapolated from a bisector... points INTO material at a
+    convex corner like the peak but AWAY from it at the eave's own cusp shape"). This sidesteps that
+    failure mode entirely by using the same two already-solved pieces of real geometry (the line's own
+    inward offset, the circle's own inward offset) and intersecting them directly, exactly mirroring what
+    Fusion's own sketch.offset()/addOffset2 does to the real curves.
 
-    `neck_center`/`neck_radius` describe the OUTER neck arc (not yet offset) -- this function performs the
-    neck arc's own inward offset (+frame_thickness; the neck arc is concave, its center sits on the
-    material's EXTERIOR side, so offsetting inward GROWS the radius -- the same "arcs concentric at r+t"
-    rule used throughout, see t7_geometry.py's own module docstring) before intersecting.
-    """
-    g = roof_geometry(width_in, height_in)
-    peak, E = g["peak"], g["E"]
-    interior_pt = (g["cx"], height_in * 0.5)
-    dx, dy = E[0] - peak[0], E[1] - peak[1]
+    `concave`: True GROWS circle_radius when offsetting inward (the circle's own centre sits on the
+    material's EXTERIOR side, e.g. T7's own neck arc -- the "arcs concentric at r+t" rule used throughout,
+    see t7_geometry.py's own module docstring); False shrinks it (a convex arc, centre on the material's
+    interior side). `line_far`/`line_near`/`interior_pt`/`circle_center` must already share ONE consistent
+    coordinate frame (any frame works -- every quantity here is translation-invariant except the returned
+    absolute point, which inherits whichever frame the inputs used).
+
+    Returns the absolute inner-corner point (x, y) in that same frame."""
+    dx, dy = line_near[0] - line_far[0], line_near[1] - line_far[1]
     line_len = math.hypot(dx, dy)
     n = (-dy / line_len, dx / line_len)
-    mid = ((peak[0] + E[0]) / 2, (peak[1] + E[1]) / 2)
+    mid = ((line_far[0] + line_near[0]) / 2, (line_far[1] + line_near[1]) / 2)
     to_interior = (interior_pt[0] - mid[0], interior_pt[1] - mid[1])
     if n[0] * to_interior[0] + n[1] * to_interior[1] < 0:
         n = (-n[0], -n[1])
-    p0_offset = (peak[0] + n[0] * frame_thickness, peak[1] + n[1] * frame_thickness)
+    p0_offset = (line_far[0] + n[0] * frame_thickness, line_far[1] + n[1] * frame_thickness)
     u = (dx / line_len, dy / line_len)
-    s_outer_E = line_len  # E's own distance from peak along the (unnormalized) line direction equals line_len since u is already unit
-    r_in = neck_radius + frame_thickness
-    e_in, _ = _line_circle_intersection_nearer(p0_offset, u, neck_center, r_in, s_outer_E)
+    s_near = line_len  # line_near's own distance from line_far along the (unnormalized) direction equals line_len since u is already unit
+    r_in = circle_radius + frame_thickness if concave else circle_radius - frame_thickness
+    e_in, _ = _line_circle_intersection_nearer(p0_offset, u, circle_center, r_in, s_near)
+    return e_in
+
+
+def eave_inner_corner(width_in, height_in, frame_thickness, neck_center, neck_radius):
+    """The TRUE inner eave corner (right side; mirror x for the left), as a (Direction, Distance) pair for
+    ResolveInnerCorners, computed from this template's OWN DEFAULT handle proportions (via roof_geometry
+    -- peak/E depend only on width/height, never on the neck/body handles) -- see line_circle_corner's own
+    docstring for the underlying geometry. `neck_center`/`neck_radius` describe the OUTER neck arc (not yet
+    offset); the Direction/Distance pair returned here is only ever used to find (not compute) the
+    matching already-correct SketchPoint Fusion's offset produced.
+
+    H23 item 38 (MEASURED): the app's own seeded neck/body proportions vary per Send (a randomized Shape
+    Lattice "Generate", not a fixed default), so a Distance/Direction baked here from DEFAULT proportions
+    can miss the real corner by a wide margin -- fb_engine/inner_corners.py's own LINE-CIRCLE corner step
+    computes the SAME line_circle_corner() math LIVE instead, reading the real (seeded) neck arc straight
+    from the built sketch; this function stays for the cases that genuinely have no live sketch to read
+    (the live-verify tooling, tests, and T11's own analogous corner in t11_geometry.py)."""
+    g = roof_geometry(width_in, height_in)
+    peak, E = g["peak"], g["E"]
+    interior_pt = (g["cx"], height_in * 0.5)
+    e_in = line_circle_corner(peak, E, interior_pt, frame_thickness, neck_center, neck_radius, concave=True)
 
     vec = (e_in[0] - E[0], e_in[1] - E[1])
     dist = math.hypot(*vec)

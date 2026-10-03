@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "d85c5752f713ffca6698d3366d3a3e7bdff9ac1700b887b12a3061c55ebb597f",
+  "sourceHash": "b2d76b6eda0faa56107d4e123d4444105fb330ef552a4a1473bca72ac115d7ee",
   "templates": [
     {
       "features": [
@@ -16029,25 +16029,23 @@
                 {
                   "Corners": {
                     "eave_L": {
-                      "Direction": [
-                        0.9966585473225703,
-                        0.08168072017841152
-                      ],
+                      "ArcID": "proj_arc_neck_L",
+                      "Concave": true,
                       "InnerID": "inner_proj_roof_L:S",
-                      "OuterID": "proj_roof_L:S"
+                      "LineFarID": "proj_roof_L:E",
+                      "LineNearID": "proj_roof_L:S"
                     },
                     "eave_R": {
-                      "Direction": [
-                        -0.9966585473225703,
-                        0.08168072017841152
-                      ],
+                      "ArcID": "proj_arc_neck_R",
+                      "Concave": true,
                       "InnerID": "inner_proj_arc_neck_R:S",
-                      "OuterID": "proj_arc_neck_R:S"
+                      "LineFarID": "proj_roof_R:S",
+                      "LineNearID": "proj_roof_R:E"
                     }
                   },
-                  "Distance": "1.1592195355054318 in",
+                  "FrameThickness": "frame_thickness",
                   "Tolerance": 0.2,
-                  "Type": "ResolveInnerCorners"
+                  "Type": "ResolveLineCircleCorner"
                 }
               ],
               "Name": "Inner Corner Resolve",

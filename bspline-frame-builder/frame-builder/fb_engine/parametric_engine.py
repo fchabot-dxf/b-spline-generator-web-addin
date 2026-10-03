@@ -406,6 +406,13 @@ class ParametricSketchBuilder:
                 # arcs and the resulting curves' attribute API is
                 # locked). See fb_engine/inner_corners.py.
                 inner_corners.inner_corner_step(self.ctx, sketch, sketch_name, step)
+            elif t == "ResolveLineCircleCorner":
+                # H23 item 38: a cusp-like corner where a line meets a circle (T7's own eave),
+                # computed LIVE from the real built geometry (the line's own endpoints, the
+                # circle's own centre/radius) instead of a Distance/Direction baked ahead of time
+                # from default handle proportions -- those vary per Send (a randomized seed), so a
+                # baked value almost never matches the real corner. See fb_engine/inner_corners.py.
+                inner_corners.line_circle_corner_step(self.ctx, sketch, sketch_name, step)
 
     # ------------------------------------------------------------------
     # Internal helpers
