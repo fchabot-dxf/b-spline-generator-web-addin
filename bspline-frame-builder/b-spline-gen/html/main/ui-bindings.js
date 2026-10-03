@@ -10,6 +10,7 @@ import { AppState } from './app-state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
 import { attachSliderScrollGuard } from './slider-scroll-guard.js';
 import { attachFormulaFields } from './formula-fields.js';
+import { initDecalSettingsUI } from './decal-settings-ui.js';
 
 export function bindControls(preview) {
   // UX-UNDO: the layer row's 👁/3D/palette toggles (editor/layers.js —
@@ -55,6 +56,8 @@ export function bindControls(preview) {
   };
 
   bindTogglePanel('thickenEnabled', 'thickenOptions');
+  bindTogglePanel('decalEnabled', 'decalOptions');
+  initDecalSettingsUI();
 
   const bindToolBtn = (btnId, layer, mode) => {
     const btn = document.getElementById(btnId);

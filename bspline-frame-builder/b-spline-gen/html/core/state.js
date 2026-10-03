@@ -94,6 +94,22 @@ export const DEFAULT = {
     // colour wherever it reaches the board's outer edge; OFF reverts them
     // to the plain wood/heat-map look (the top surface is unaffected).
     colourEdges: true,
+    // H23 item 71: "Fusion colour decal" (VIEW panel) -- on Send, an optional transparent PNG
+    // of the artwork's colour layers (core/stamp/decal-png.js, item 68's own spike promoted to a
+    // real module) sent alongside the payload; the add-in applies it as ONE real Fusion decal on
+    // the Stamped top face, replacing any decal from a previous Send. Off by default (Fred).
+    decalEnabled: false,
+    // A <select> of declared choices (40/100/150), same "numeric-looking string" convention
+    // `spacing` already uses -- kept a string so updateP's stringParams path (not parseFloat)
+    // owns it; Number(P.decalResolution) wherever an actual numeric dpi is needed.
+    decalResolution: '150',
+    decalOpacity: 100, // 0..100 %
+    // { [editorLayerId]: boolean } -- a layer is INCLUDED unless explicitly false (missing/true
+    // both mean included, same "visible !== false" convention editor/layers.js already uses).
+    // Keyed by layer id (stable across reorder/delete), not position -- see editor/layers.js.
+    // Written directly (not through updateP/applyParam, like P.filterTweaks) by the per-layer
+    // checkbox list; never has its own single DOM element, so the generic auto-binder skips it.
+    decalLayerIds: {},
     // Sculpt state
     activeSculptLayer: null, // can be 'top', 'bot', or null
     sculptTopRadius: 2.0,
@@ -337,13 +353,13 @@ export function loadLastSession() {
 export function updateP(key, value) {
     if (typeof value === 'number' && isNaN(value)) return;
 
-    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer'];
+    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
     const boolParams = [
         'showMesh', 'thickenEnabled', 'showLeaders', 'includeSurface',
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
         'isolateSkeleton',
-        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges'
+        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled'
     ];
 
     if (key === 'widthIn' || key === 'heightIn') {
