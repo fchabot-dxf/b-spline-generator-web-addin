@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "c194735edd393a2ce6916835381f1bcb58de8708bcb2bb9bf5041c50f23b4be3",
+  "sourceHash": "14242ea4a4e8d88e55c1d4a2cdb9d840dae480184a7a59cc58e9e2e2396c266e",
   "templates": [
     {
       "features": [
@@ -3242,6 +3242,27 @@
                   "Distance": "frame_thickness",
                   "Tolerance": 0.05,
                   "Type": "ResolveInnerCorners"
+                },
+                {
+                  "Corners": {
+                    "TL": {
+                      "ArcID": "proj_top_edge",
+                      "Concave": false,
+                      "InnerID": "inner_proj_top_edge:S",
+                      "LineFarID": "proj_horn_TL:E",
+                      "LineNearID": "proj_horn_TL:S"
+                    },
+                    "TR": {
+                      "ArcID": "proj_top_edge",
+                      "Concave": false,
+                      "InnerID": "inner_proj_horn_TR:S",
+                      "LineFarID": "proj_horn_TR:E",
+                      "LineNearID": "proj_horn_TR:S"
+                    }
+                  },
+                  "FrameThickness": "frame_thickness",
+                  "Tolerance": 0.2,
+                  "Type": "ResolveLineCircleCorner"
                 }
               ],
               "Name": "Inner Corner Resolve",

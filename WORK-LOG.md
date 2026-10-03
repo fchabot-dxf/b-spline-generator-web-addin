@@ -13284,3 +13284,69 @@ separate reason.**
 
 Committed as "H23 item 42: ...". File list: `main/frame-panel.js`, `fb_engine/send_frame.py`,
 `fb_engine/test_send_frame.py`, `tests/frame-send.test.js`.
+
+## H23 item 43 — T10's own 1/4-bar default FIXED live: the exact same gap as item 38 part 1, for the arch's own top corners
+
+**(a) Probed first, live (fusion360-quirks' own rule, item 38 part 1's own precedent).** New
+`tools/repro/fusion_t11/item43_t10_probe.py`: built T10's default (7x9) fresh from this checkout
+and dumped every SketchPoint/SketchLine/SketchArc in `T10_3_frame_enclosure`, tagged or not.
+Found it directly: an UNTAGGED arc (center `(0, -2.4425)`, radius `11.3325` -- exactly `top_edge`'s
+own `13.2375` minus `2*frame_thickness`) and two UNTAGGED lines at the exact computed inner-corner
+positions. The geometry Fusion's own offset produced is CORRECT; it is simply never named
+`inner_proj_top_edge` / `inner_proj_horn_TR` -- so `fb_engine/miters.py`'s own lookup (`g_map.get`)
+returns `None` for both, logs `MITER MISS` (confirmed live: `"MITER MISS: proj_top_edge:S(True) or
+inner_proj_top_edge:S(False)"`, same for `proj_horn_TR:S`), and silently skips drawing that miter
+-- exactly 2 of the template's 4 miters never happen, so `declared_profiles.classify` finds one
+profile spanning 3 bars (right + top + left). The TEMPLATE's own `p03_03_inner_corner_resolve.py`
+docstring had explicitly ASSUMED native tagging would always work here ("Fusion's own native
+offset already produces the geometrically true inner corner... and tags its own curve endpoints
+natively") -- MEASURED false for this template's own build. Confirmed via `fb_engine.t7_roof_eave
+.line_circle_corner` (T7's own eave math, item 38 part 1 -- already fully generic, no T10-specific
+anything) that the computed corner for this exact line-meets-arc shape (`concave=False`) lands on
+the untagged point to within 2.3e-5 cm.
+
+**(b) Fixed the SAME way as T7's own eave: declared a `ResolveLineCircleCorner` step, zero new
+math.** `sketches/template_10/phases/p03_03_inner_corner_resolve.py`: added one step (TR, TL)
+alongside the existing `ResolveInnerCorners` step for BR/BL -- `fb_engine/inner_corners.py`'s own
+`line_circle_corner_step` (item 38) was ALREADY template-agnostic, so this needed no engine
+changes, only the declaration. Regenerated `frame-defs.json/.js` (phase BuildSequences are part of
+the generated def). New `fb_engine/test_t10_inner_corners.py` (2 tests, pure Python, no Fusion):
+the declaration itself (fails on the pre-fix file -- 0 `ResolveLineCircleCorner` steps found,
+confirmed red, then restored green), and a regression pin of the measured real geometry against
+`line_circle_corner` directly. Full Python suite: 689 passed, 25 skipped, 1 KNOWN, EXPECTED
+failure (below) -- 0 unexpected regressions.
+
+**(c) LIVE: 4/4 at every required size, confirmed.** T10's default now builds all 4 declared bars
+at **6x9, 7x9, AND 9x12** (0 overlaps, 0 slivers, healthy timeline at each -- exact volumes in
+`scratch/item43_t10_live_results.json`), and all 4 re-run T10 Generate seeds at 7x9 ALSO build 4/4
+cleanly. Re-ran the full all-template sweep: **13 OF 13 TEMPLATES NOW BUILD CLEAN LIVE** (every
+declared bar count matches exactly, 0 overlaps/slivers/duplicate-named bodies, healthy timeline
+everywhere) -- up from 12/13 after item 42, up from 11/13 after item 40.
+
+**A genuine, unplanned discrepancy found while checking golden freshness (flagged, not silently
+fixed or hidden):** `test_golden_freshness.py` correctly flags T10 as needing its goldens
+re-recorded after any `phases/*.py` edit (process hygiene, not a sign of a bug by itself). Checked
+whether re-recording would actually change the committed numbers, WITHOUT touching the committed
+files or the deployed add-in (new `tools/repro/fusion_t11/item43_golden_check.py`: loads
+`frame_engine_core` + `fb_engine.solid_coordinator` fresh from THIS checkout via the same
+sys.modules-swap discipline as every other live script this session, runs
+`record_frame_parity.record_case` exactly as the real recorder would, diffs the result against the
+CURRENTLY COMMITTED `tests/fixtures/frame-parity/template_10_7x9.json` in memory only). **The
+numbers genuinely differ**: the committed golden has `frame_left` and `frame_right` at DIFFERENT
+volumes (6.05381 / 5.85073 cm3 -- an asymmetry a mirror-symmetric hourglass template should never
+have) and 7 sketch profiles; the fixed build gives `frame_left` == `frame_right` == 5.85073 cm3
+(perfectly symmetric) and 6 profiles (one fewer -- the asymmetric build's own extra, presumably
+degenerate, region is gone). This means the COMMITTED golden was ALREADY recording an asymmetric,
+not-fully-correct T10 build before this item, not a case this fix regresses -- but re-recording it
+needs the add-in actually DEPLOYED first (`record_frame_parity.py` reads `sys.modules
+["frame_engine_core"]`, the real installed copy, by design -- unlike every other live-verification
+script this session, it does not support fresh-checkout loading as a matter of its own stated
+hygiene rules). Deploying was not done here (a separate, deliberately gated operation, per project
+convention) -- flagging `tests/fixtures/frame-parity/template_10_*.json` as needing a real
+re-record (likely all 3 committed sizes, not just 7x9) for the advisor/Fred to schedule, with the
+exact before/after numbers above so the decision doesn't need to re-derive them.
+
+Committed as "H23 item 43: ...". File list: `sketches/template_10/phases/
+p03_03_inner_corner_resolve.py`, `frame-defs.json/.js` (regenerated),
+`fb_engine/test_t10_inner_corners.py` (new), `tools/repro/fusion_t11/item43_t10_probe.py` (new),
+`tools/repro/fusion_t11/item43_golden_check.py` (new).
