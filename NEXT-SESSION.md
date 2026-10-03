@@ -186,7 +186,7 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
-## Item 70 -- the top colour DECAL, wired into Send as an OPTION with good config (Fred, 2026-10-03)
+## Item 71 -- the top colour DECAL, wired into Send as an OPTION with good config (Fred, 2026-10-03)
 Fred approved the item 68 decal for the real Send, optional and configurable. Declared settings (persisted with the
 project, in the VIEW tab/section of the sidebar -- Fred: 'in view tab' -- a 'Fusion colour decal' group):
   - enabled: off by default
@@ -199,7 +199,7 @@ earlier decal from a previous Send (dedupe proven in item 68). When disabled, re
 Errors never fail the Send: log, toast 'colour decal skipped: <reason>', and carry on. Name the decal 'Artwork
 colours' in the timeline. Tests: the settings round-trip; the PNG respects the layer choice and opacity; the
 Python side replaces and removes it. LIVE (holder file = f3): Send with it on (decal present, 1 only), re-Send
-(still 1), turn it off and Send (0). Time added. Shots. Fusion order: de now, then you. Commit 'H23 item 70: ...'.
+(still 1), turn it off and Send (0). Time added. Shots. Fusion order: de now, then you. Commit 'H23 item 71: ...'.
 
 ## Item 69 -- SPIKE: the board's EDGE colours in Fusion as a wrapped strip decal (Fred chose option A, 2026-10-03)
 The top decal works (item 68). Now the board's own side edge band (~0.25 in; the same band 67d colours in the
@@ -702,4 +702,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-68] SPIKE: artwork colours as one transparent-PNG decal on the Stamped top face -- alignment, transparency, time, re-Send; shots; no wiring yet. Commit as 'H23 item 68: ...'.
 - [x] [H23-item-67d] edge colour only on the board (panel) edge, ~0.25 in; frame walls unchanged; test + shots. Commit as 'H23 item 67d: ...'.
 - [x] [H23-item-69] (single wrap: negative; 12-decal: Fred said skip) SPIKE: edge colours as a wrapped strip decal on the panel's side faces; shots; alignment with the top decal; seconds; fall back to estimating option B if it can't wrap. Commit as 'H23 item 69: ...'.
-- [ ] [H23-item-70] top colour decal in Send: optional (off by default), dpi/opacity/layers config, replace-on-re-Send, remove-when-off, never fails a Send; tests + live on/re-Send/off + shots. Commit as 'H23 item 70: ...'.
+- [ ] [H23-item-71] top colour decal in Send: optional (off by default), dpi/opacity/layers config, replace-on-re-Send, remove-when-off, never fails a Send; tests + live on/re-Send/off + shots. Commit as 'H23 item 71: ...'.
