@@ -186,6 +186,21 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 52 -- speed, round 2: the two real drivers item 51 localized (advisor, 2026-10-03). Item 51 accepted (de9fbdb).
+(A) TIMELINE REORDER, ~5.2 s = 6 Fusion .reorder() calls x ~0.87 s, run TWICE per Send. Don't batch reorders (F11
+    ordering dependency). Instead try NOT needing them: before building the frame, set design.timeline.markerPosition
+    to just before the inlay's first feature, so new frame features are CREATED in place, then restore the marker.
+    stamp-editor.py:868 already reads markerPosition; reuse that idea. If the marker approach isn't identical, at
+    least answer why the reorder runs twice (sketch-build AND solid-build), and whether one pass is enough.
+(B) STAMP SKETCH, ~5.8 s in build_constrained_sketch. It already defers compute, but projections run BEFORE the
+    deferred window (the known quirk: project() returns nothing while deferred). Measure inside it: number of
+    project() calls x cost, versus geometry+constraints, versus the final solve. Then the smallest change that keeps
+    the result identical, e.g. project each source entity ONCE and reuse it (not once per target), or skip
+    projections whose target is never constrained.
+Each change: A/B identical (bodies, volumes, timeline order, stamp sketch curve/constraint counts), preview==build
+13/13, seconds before/after on the real payload. One commit per change. If neither helps, say so with numbers.
+Fusion is yours. Commit 'H23 item 52: ...'.
+
 ## Item 51 -- speed, the REAL costs (advisor, 2026-10-03). Item 50 accepted (4f96fe9): nudges stay, Pulse not worth it.
 You were missing a real payload. Here is one: bspline-frame-builder/scratch/real_send_t7_7x9_full.json (5 MB, a
 real palette capture from 2026-10-02 with stepVariants + stamp + frame; local only, don't commit). Replay it the way
@@ -411,4 +426,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-48] T5 dip/shoulder preview vs build 0.1-0.3 in: probe, root fix, preview==build 13/13. Commit as 'H23 item 48: ...'.
 - [x] [H23-item-49] declare seed derivation (item 18): convention in fb_engine, audit every literal seed (DERIVED / FITTED-OK / WRONG), fix WRONG + re-record goldens, preview==build 13/13. Commit as 'H23 item 49: ...'.
 - [x] [H23-item-50] (nudges load-bearing, Pulse no gain; real costs not yet measured -> item 51) prune for speed: re-time a real Send, A/B each removal, keep only identical + 13/13 sweep, one commit per removal, before/after seconds. Commit as 'H23 item 50: ...'.
-- [ ] [H23-item-51] speed, real costs: replay a real full Send, time stages, attack the top 2 with identical A/B, fix step_removal_ab OUT path. Commit as 'H23 item 51: ...'.
+- [x] [H23-item-51] speed, real costs: replay a real full Send, time stages, attack the top 2 with identical A/B, fix step_removal_ab OUT path. Commit as 'H23 item 51: ...'.
+- [ ] [H23-item-52] speed round 2: timeline marker instead of reorders (or why twice); stamp sketch projections measured + reduced; A/B identical, seconds before/after. Commit as 'H23 item 52: ...'.
