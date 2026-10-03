@@ -7570,3 +7570,63 @@ New `tools/repro/fusion_t11/item37_underside_sweep_driver.py` (committed): drive
 in `OUT` unless it crashed), used for all the LIVE numbers above.
 
 Full suite: 836 passed/25 skipped. Commit `f586403`.
+
+## 2026-10-02: H23 item 38 -- T7's eave corner fixed exactly; a DEEPER, separate issue found and gated
+
+**Part 1 -- the dispatched fix, done:** `p03_03_inner_corner_resolve.py`'s own eave Direction/
+Distance was baked ONCE from `t7_geometry.py`'s own DEFAULT handle proportions (its own docstring
+already named this as a known gap). MEASURED: the app's own seeded neck/body proportions vary per
+Send (a randomized Shape Lattice "Generate", not a fixed default) -- one captured 7x9 panel's own
+real neck circle was centre (1.7988, 1.7737), r=0.5095 in, while the DEFAULT-proportions circle for
+the same board is centre (5.3027, 5.8236), r=0.6625 in -- unrelated circles, confirmed by comparing
+each against the captured seed's own circumcircle directly, not assumed.
+
+Fixed the METHOD: new `fb_engine/inner_corners.py::line_circle_corner_step` + a new
+`'ResolveLineCircleCorner'` step type (`parametric_engine.py`'s own dispatch) reads the REAL roof
+line and REAL (seeded) neck arc straight off the already-built sketch and computes the exact
+line-circle intersection LIVE -- reusing the already-proven `t7_roof_eave` math, factored out as
+`line_circle_corner(line_far, line_near, interior_pt, frame_thickness, circle_center, circle_radius,
+concave)`, now parameterized on real points instead of `roof_geometry()`'s own default-derived
+ones (`eave_inner_corner` kept as a thin wrapper over it, unchanged behaviour -- its own 19
+pre-existing tests still pass unmodified). LIVE-VERIFIED: both eave corners now resolve with a
+**0.0000 cm match** against the real offset geometry (previously wrong by inches -- the OLD baked
+value missed the real corner entirely). New `fb_engine/test_inner_corners.py`, 4 tests with fakes:
+cross-checked against the already-proven `eave_inner_corner` at default proportions (must land on
+the SAME point); a deliberately non-default circle (proves this is a genuine live read, not a
+disguised default computation); the no-match-within-tolerance and missing-entity-map warning
+paths. Mutation-tested: a wrong `Concave` flag makes the cross-check test fail red. 840 passed/25
+skipped (+4). Commit `c190ac6`.
+
+**Part 2 -- a deeper, separate issue found while verifying, NOT fixed (gated):** with the inner
+corner now EXACTLY correct, T7 still extrudes a degenerate sliver body (0.005-0.082 cm3) next to
+each side bar and never builds its 2 declared roof bars -- IDENTICAL symptom, at all 3 board sizes,
+confirmed via a live, byte-for-byte profile-classification dump taken BEFORE and AFTER this fix
+(same areas: 0.021683, 33.440265, 9.395966, 136.648454, 27.822525, 384.892568 cm2 -- the fix changed
+NOTHING about the actual sketch geometry). Traced to the real cause, not guessed: the STRAIGHT
+miter line from the outer eave corner to the (now exactly correct) inner corner RE-CROSSES the
+neck arc's own circle partway along its own length -- confirmed directly (parametrize the real
+miter as a line, solve for its second circle intersection): T1_6x9 t=0.153, 7x9 t=0.352, 9x12
+t=0.199 (all strictly inside (0,1], i.e. a real second crossing, not a near-miss). This is NOT the
+same thing as item 28's "convex radius below frame_thickness" rule -- it happens at 9x12 too,
+where the neck radius (0.9838 in) is comfortably ABOVE frame_thickness (0.75 in); the crossing
+depends on the roof-line/arc-tangent ANGLE at the eave, not simply the radius-vs-thickness
+magnitude. **Confirmed this does NOT happen at the template's own default (non-seeded) proportions,
+at any of 3 tested board sizes (5.5x8.5, 6.5x8.5, 8.5x11.5)** -- only at REAL, randomized app
+seeds. T7's own pure-Python test suite, built only against default proportions, could never have
+caught this; item 27's own live build was blocked by an unrelated Fusion API gap (min/max in
+expressions) before ever reaching a live Send, so this has likely never actually been exercised
+live until this item's own verification.
+
+**Gated back to the advisor, not fixed unilaterally** (a genuine design question, not a code
+bug I can resolve alone): the straight-miter-into-small-arc geometry is structural to T7's own
+eave shape under real seeding; a proper fix needs a decision (trim the miter at its own
+self-crossing point and merge the resulting sliver into the adjacent bar? a non-straight miter
+path? accept a known-degenerate case the way item 28/30 accepted "convex radius below bar" for 10
+other templates, if Fred is fine with it here too -- though note this is WORSE than that case: an
+extra body + a missing bar, not just a sharp corner on an otherwise-complete frame). Passed back
+with the full numbers for Fred/the advisor to choose a direction.
+
+No Fusion used for the sliver/roof-bar fix (none attempted, per the gate) -- all the numbers above
+are from the SAME live builds already run to verify Part 1. Full suite unchanged by Part 2 (no
+code touched). Commit `c190ac6` (both parts, one commit -- Part 2 is investigation + WORK-LOG
+only, no source change).
