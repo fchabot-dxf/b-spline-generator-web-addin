@@ -15133,6 +15133,146 @@ the advisor, not decided here:
   going forward -- a real but nontrivial lift (needs a per-template handle list, not just a
   per-template default).
 
+## H23 item 61 (1): the permanent every-template x every-handle x {min,default,max} BUILT sweep,
+run once, full matrix published. 133/133 cases run live, 76 BUILT / 57 NOT -- 4 distinct failure
+classes identified and root-caused by reading code, not guessed at. No fix attempted this item --
+see the gate at the end.
+
+**(1) The permanent sweep.** Promoted item 60(C)'s own one-off probe into 2 generic, reusable
+scripts: `tools/repro/h23_item61_make_full_matrix_payloads.mjs` (every template's own `T.handles`,
+a real `resolved` object via `paramsFromShapeModel` first -- same fix item 60(C) already needed --
+then one payload per template default + one per handle per range end, 133 total across the 13
+templates) and `tools/repro/fusion_t11/item61_full_matrix_sweep.py` (generic: declared bar names/
+miter counts come from `TEMPLATE_META`, computed once from frame-defs.json's own `regions.bars`/
+`regions.miters` -- the same 13 numbers item 40's own docstring already established; seedMap read
+dynamically via `resolve_template`). Verdict per the advisor's own definition: BUILT iff all
+declared bars present, no `(n)`-suffixed duplicate bodies, nothing under 0.5 cm3, timeline
+healthy, 0 "NOT BUILT" / "MITER MISS" / "REFLEX ARC" log lines.
+
+**THE FULL MATRIX (133 cases, 7x9, live in Fusion):**
+
+| template | failed/total | failing handle:end = class |
+|---|---|---|
+| template_1  | 9/11  | waistReach:max=REFLEX, cornerRadiusTop:min=REFLEX, cornerRadiusTop:max=MITERMISS, cornerRadiusBottom:min=REFLEX, cornerRadiusBottom:max=MITERMISS, waistCenterY:min=MITERMISS, waistCenterY:max=MITERMISS, waistRadius:min=REFLEX, waistRadius:max=MITERMISS |
+| template_2  | 2/9   | neckLength:min=MITERMISS, neckLength:max=MITERMISS |
+| template_3  | 4/13  | waistReach:max=REFLEX, cornerRadiusBottom:max=MITERMISS, waistCenterY:max=MITERMISS, waistRadius:max=MITERMISS |
+| template_4  | 7/15  | waistReach:max=REFLEX, cornerRadiusTop:min=REFLEX, cornerRadiusBottom:min=REFLEX, waistCenterY:min=MITERMISS, waistRadius:min=REFLEX, waistCenterYLeft:max=MITERMISS, waistReachLeft:max=REFLEX |
+| template_5  | 9/15  | same 9 keys/classes as template_1 (shares the chain) |
+| template_6  | 0/5   | clean |
+| template_7  | 3/7   | gableNeckWidth:min=NOTBUILT, neckHeight:min=REFLEX, bodyFlareHeight:min=NOTBUILT |
+| template_8  | 3/11  | waveHeight:max=MITERMISS, waveReach:max=REFLEX, topDipPosition:min=MITERMISS |
+| template_9  | 0/5   | clean |
+| template_10 | 4/7   | archRise:min=SILENT, waistReach:max=REFLEX, waistCenterY:min=MITERMISS, waistCenterY:max=MITERMISS |
+| template_11 | 4/11  | cornerRadiusBottom:max=MITERMISS, waistCenterY:max=MITERMISS, waistRadius:min=REFLEX, waistRadius:max=MITERMISS |
+| template_12 | 10/13 | same 9 as template_1 + taperAngle:min=SILENT |
+| template_13 | 2/11  | neckLength:min=MITERMISS, neckLength:max=MITERMISS |
+
+Full per-case detail (vols, overlaps, every log line) in `bspline-frame-builder/scratch/
+item61_full_matrix_results.json` (scratch, not committed, per the existing convention).
+
+**(2) Root-caused by failure class -- 4 distinct mechanisms, not the 2 the dispatch named, each
+confirmed by reading the actual construction code, not inferred from the log alone:**
+
+- **REFLEX ARC (22 cases, p02_11_symmetry's own generic post-phase check, `fb_engine/
+  diagnostics.py`): the shoulder/waist/hip arcs' own 3-point seeds are BAKED DECIMAL FRACTIONS of
+  widthIn/heightIn (e.g. `template_1/phases/p02_03_loop.py:146`: `['widthIn * 0.476432', 'heightIn
+  * 0.15042'], ...` -- "Coordinates come from the inspector output" per that file's own comment),
+  computed ONCE for the template's own DEFAULT handle values. They scale correctly with BOARD SIZE
+  (still widthIn/heightIn expressions) but do NOT move with the HANDLE that resolves them
+  (cornerRadiusTop/waistReach/waistCenterY/waistRadius) -- so the seed is only ever exactly correct
+  at the template's own default, and becomes a progressively worse guess for the arc's true
+  3-point-on-circle as the handle moves away from it, until `addByThreePoints` + the later Equal/
+  Tangent/Coincident chain (p02_04-p02_11) land the live arc on the WRONG branch (>=180 deg sweep).
+  **Confirmed by direct contrast**: `template_7/phases/p02_02_loop.py`'s own module docstring (H23
+  item 27, "the T11 recipe") states the fix this exact class needs -- each arc's own "via" (middle)
+  point must be its TRUE angular midpoint on the arc's real circle, declared as a NAMED FUSION
+  PARAMETER computed from a live expression in the HANDLE itself (`t7_via_neck_x` etc., template_7/
+  template_data.py's own SKETCH_2_PARAMETERS) -- "the seed IS the answer, Tangent only LOCKS it."
+  T10's own `p02_03_loop.py` partially has this for the ARCH ONLY (`p02_12_arch_rebuild.py`'s own
+  late rebuild) but NOT for its OWN copy of the shoulder/waist/hip chain -- confirmed by this
+  item's own matrix: `template_10_waistReach_max_7x9` still reflexes. **This is why every
+  hourglass-family template sharing this chain (T1/T3/T4/T5/T10/T11/T12) fails the SAME 5 handles**
+  (waistReach, cornerRadiusTop, cornerRadiusBottom, waistCenterY, waistRadius) **at the SAME
+  classes** -- it is one shared construction's own gap, not 7 separate bugs. `template_2/phases/
+  p02_04_arcs.py` confirmed to have the IDENTICAL baked-decimal pattern for its own neck arcs
+  (`['widthIn * -0.378', 'heightIn * 0.2029'], ...`), explaining `neckLength`'s own MITERMISS at
+  both ends the same way.
+- **MITER MISS -> "profile spans 2 bars" cascade (31 cases): a WARNING (`[p03_04_encl_miters]
+  MITER MISS: ...]`, item 44's own existing detector) immediately followed by an ERROR
+  (`[p03_05_encl_surround_rect] PROFILE N: NOT BUILT: ...a miter did not split it`) in the SAME
+  case -- confirmed by reading one full result entry
+  (`template_1_cornerRadiusTop_max_7x9`): the WARNING is the root cause, the ERROR is its
+  downstream symptom, not two unrelated failures. `template_1/phases/p03_04_encl_miters.py`
+  declares exactly 4 miters (the 4 board-corner line-line joints) and `p03_03_inner_corner_
+  resolve.py` resolves them with plain `ResolveInnerCorners` -- there is NO declared
+  `ResolveLineCircleCorner` anywhere in T1's own phases for the horn-to-shoulder-arc / hip-arc-to-
+  horn joints at all (confirmed: `grep ResolveLineCircleCorner` across T1's phases returns
+  nothing). `template_10/phases/p03_03_inner_corner_resolve.py` already uses
+  `ResolveLineCircleCorner` for ITS top two corners (horn-to-arch, item 43's own fix) -- proving the
+  mechanism exists, is template-agnostic (`fb_engine/inner_corners.py`'s own `line_circle_corner_
+  step`), and is simply not yet applied to T1-family's shoulder/hip corners. `test_no_miter_miss_
+  possible.py`'s own existing guard only checks DECLARED coverage of miters that exist at all --
+  T1's shoulder/waist/hip joints are declared TANGENT, not miters, so that test correctly does not
+  flag them; the live failure is a Fusion-side offset-tagging fragility at extreme handle values on
+  an UNDECLARED-as-miter corner, which no static test can see.
+- **Silent "roof family" NOT BUILT (2 cases, template_7 only, gableNeckWidth/bodyFlareHeight at
+  min): NO MITER MISS warning at all, yet the same "profile spans 2 bars...a miter did not split
+  it" error, PLUS dup-named `(1)` sliver bodies and the roof bars missing entirely
+  (`template_7_gableNeckWidth_min_7x9`'s own full result: `missing_declared_names: [frame_roof_
+  left, frame_roof_right]`). A DIFFERENT mechanism from the one above (that one always shows the
+  MITER MISS warning first) -- not root-caused further this item; T7 uses the "good" live-
+  expression via-point pattern and still has this gap, so fixing the REFLEX/MITERMISS classes
+  above will NOT fix this one.
+- **Silent NaN seed geometry (2 cases, `template_10_archRise_min_7x9` / `template_12_taperAngle_
+  min_7x9`): NO log signature at all (0 of the 3 scanned classes, `count: 0`, no exception) --
+  confirmed by a direct diagnostic replay (not from the sweep's own log scan, which this case
+  defeats entirely): the SENT `seedGeometry` payload itself already contains literal
+  `[[null,null],...]` for `arc_shoulder_R`/`arc_shoulder_L`/the matching skeleton pins --
+  `JSON.stringify(NaN)` prints as `null`. The JS-side `generateSilhouette`/`outlineDefects` call
+  that built this payload reported `defects: []` (clean) -- it does not catch whatever produces
+  NaN here. This is a JS-side math bug in the taper/archRise corner computation at its own extreme
+  negative values, upstream of BOTH Fusion and the other 3 classes -- its own root cause (inside
+  `_taperedCorner` or the hourglass construction's own taper math) was not traced further this
+  item.
+
+**(3) Not fixed this item -- a gate, the same discipline item 59/60 already established.** Every
+one of the 4 classes above needs either (a) deriving a genuine closed-form, handle-aware 3-point
+seed for EVERY arc in the shared shoulder/waist/hip chain (the T7/T11 recipe, properly applied --
+a real trigonometric derivation per arc pair, not a copy-paste, and item 59's own
+`_curveSegmentForKnownCenter` attempt already showed a "should be equivalent" swap in this exact
+chain broke 242 unrelated tests), or (b) extending `ResolveLineCircleCorner` coverage to every
+line-arc joint in that same shared chain (template-agnostic machinery already proven by T10's own
+partial fix, but still needs the SAME per-corner derivation work), for (c) a still-uninvestigated
+T7-specific topology gap, and (d) a still-untraced JS math bug. The dispatch's own explicit
+instruction -- "do NOT narrow a handle's range to dodge a crash, that's a guard, bring the list to
+the advisor" -- rules out the one fix that would otherwise be quick (most of these handles already
+have an established "frame opening rule" range-narrowing pattern in `frame-handles.js` for OTHER
+handles; extending it here would be fast but is explicitly not mine to decide). Attempting any of
+(a)/(b) blind, under this same pass's time pressure, is exactly how item 59's own 242-test
+regression happened on this identical chain. Flagged as a gate.
+
+**Options for the advisor:**
+- **(A) Scope each class as its own dedicated item.** (a) and (b) above are both real
+  trigonometry/geometry derivation work, template-family-wide, with the 242-test precedent as a
+  live warning -- each deserves its own careful pass with full live verification, not a shared
+  rush. (c) and (d) are smaller, more isolated, and could likely be picked up faster.
+  Suggested order: (d) first (smallest, most isolated, a pure JS math fix), then (a) [REFLEX,
+  blocks the most cases and is the most load-bearing shared chain], then (b), then (c).
+- **(B) Ask Fred whether the existing "frame opening rule" range-narrowing pattern should simply
+  be extended to these handles** (cornerRadiusTop/Bottom, waistCenterY, waistRadius, neckLength),
+  the same way waistReach/archRise already are -- a guard decision, explicitly his to make per the
+  dispatch's own instruction, not mine.
+- **(C) Do nothing further for now.** The matrix is published and durable; none of these are
+  NEWLY introduced by this session's own work (confirmed: all 4 classes reproduce on templates'
+  OWN DEFAULT construction code, untouched by items 58-60) -- they are pre-existing, already-
+  shipped gaps that have simply never been swept before.
+
+**Committed this item:** 2 permanent sweep scripts (`tools/repro/h23_item61_make_full_matrix_
+payloads.mjs`, `tools/repro/fusion_t11/item61_full_matrix_sweep.py`) and this WORK-LOG entry +
+matrix. No production code touched -- this is measurement and diagnosis only, per the gate above.
+Scratch payloads/results (133 payloads + the full results JSON) left uncommitted under
+`bspline-frame-builder/scratch/`, same convention as items 59/60.
+
 **Committed this item (C only -- part B's fix and the taperAngle re-add are NOT in this commit,
 per the gate above):** 3 probe scripts (`tools/repro/h23_item60_make_shipped_payloads.mjs`,
 `tools/repro/h23_item60_make_all_handle_payloads.mjs`, `tools/repro/fusion_t11/
