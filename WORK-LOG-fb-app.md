@@ -8383,3 +8383,95 @@ dispatch asked for; the live half is next once Fusion is free and it's my turn.
 Committed: `sketches/template_14/phases/p02_02_loop.py`, `sketches/template_15/phases/p02_02_loop.py`,
 `sketches/template_16/phases/p02_02_loop.py`, `sketches/template_17/phases/p02_02_loop.py`. Passing
 back with the live/golden half still open.
+
+### Addendum, same day: the live half (Fusion came free, fusion_holder.txt discipline observed)
+
+Advisor's dispatch: run the unseeded builds of T14/T15/T16/T17 (0 REFLEX ARC, all bars), record
+goldens for those four, PLUS re-record template_13 (main's own freshness gate was RED since b5's
+corner-fix commit 0c480ee post-dated T13's own committed goldens). Checked `fusion_holder.txt` before
+every `fusion_execute` (the new cross-seat rule) -- confirmed `de` each time.
+
+**Mechanism decision, made before touching anything:** `record_frame_parity.record_case()` is
+hard-wired to `sys.modules['frame_engine_core']` -- the DEPLOYED add-in's own already-loaded modules,
+never a repo path. Checked the deployed copy directly on disk
+(`%APPDATA%/Autodesk/Autodesk Fusion 360/API/AddIns/bspline-frame-builder`) before trusting anything:
+it does NOT have my own `Fix` steps for T14-T17 (only T10 has `UnseededOnly` on disk), confirming
+"fb-app is synced" in the dispatch note means fb-app has pulled main's latest (confirmed: my local
+`fb-app` HEAD jumped to `8b77192 Merge remote-tracking branch 'origin/main' into fb-app` without any
+fetch/merge action of my own -- the advisor's own session shares this worktree, as discovered earlier
+this engagement), not that the deployed add-in itself carries my fix. Recording via the real deployed
+copy would have silently baked the OLD (pre-fix) construction into the new goldens. Fixed by reusing
+`tools/repro/fusion_t11/item43_golden_check.py`'s own already-proven pattern (built for exactly this:
+"runs record_frame_parity.py's own record_case() with frame_engine_core etc. loaded FRESH from this
+repo checkout, never touching the deployed add-in") instead of the "restart it between sizes"
+workaround the dispatch described -- loading fresh per case sidesteps that class of problem entirely,
+and confirming correctness this way meant Fred's/other seats' deployed add-in was never touched.
+
+**Result: 0 REFLEX ARC across every one of the 12 unseeded builds tried (T14/T15/T16/T17 x
+7x9/12x6/5.51x1.97)** -- the fix holds at every board size tested, not just the one it was found on.
+Recorded goldens for what actually builds cleanly: T14/T15/T16/T17 at 7x9 (new, all 6 declared bars,
+healthy timeline), plus T15 additionally at 12x6 (also clean).
+
+**Two SEPARATE pre-existing defects surfaced by testing sizes nobody had tried on these templates'
+own unseeded path before -- confirmed unrelated to this fix, not fixed here, flagged instead:**
+
+1. T14/T16/T17 fail to build at 12x6 (and T14/T16/T17/T15 at 5.51x1.97) with a "MITER MISS" /
+   "profile spans N bars: a miter did not split it" class of error -- a declared-profile/offset
+   topology problem, zero REFLEX ARC lines involved, a different failure class entirely. Confirmed
+   NOT caused by my own `Fix` steps: re-ran T14 at 12x6 against a scratch worktree pinned to
+   `cd8f5a9` (the commit immediately before my own `Fix` commit) -- byte-identical MITER MISS output,
+   with or without the fix. Worktree removed after (`git worktree remove --force`, nothing left
+   behind). Not recorded; a new finding for whoever picks up non-default board sizes on these four
+   templates next, not this ticket's own scope (which was specifically the REFLEX ARC class).
+
+2. T13 itself -- the template whose freshness gate this dispatch was trying to clear -- hit a LIVE
+   REFLEX ARC (275.4 deg, `arc_hip_L`/`arc_hip_R` both show `M(eval_fail)` right before the crash) at
+   its own EXISTING `5.51x1.97` golden size, a size it used to build (the old committed golden proves
+   it). Worried this might be a genuine regression from b5's own corner fix (0c480ee) given main was
+   just deployed with it -- checked directly rather than assumed: a scratch worktree at `0c480ee^`
+   (one commit BEFORE the corner fix) hits the EXACT SAME crash, same traceback, same symptom. So
+   this is pre-existing and unrelated to the corner fix too -- somewhere between this golden's own
+   recording date (2026-10-01) and now, something else made T13's own tangent-chain arcs (a
+   completely different structural class from T14-T17's lone miters -- Tangent + Equal constraints,
+   not addByThreePoints-then-nothing) go reflex at this one narrow board size. Not investigated
+   further (a different template, a different arc-chain mechanism, not this ticket's scope) -- flagged
+   for whoever owns T13 next. Both scratch worktrees removed after use.
+
+**Consequence for what got committed, stated plainly rather than papered over:** T13's own
+`5.51x1.97` golden was left UNTOUCHED (still 2026-10-01 content) because no valid build exists to
+record right now. `check_golden_freshness.py`'s own freshness check is a GLOB aggregate -- it takes
+the latest commit date across ALL `template_13_*.json` files, so re-recording just the two sizes that
+DO build (7x9, 12x6) makes the check report the WHOLE template FRESH even though the third file still
+silently describes pre-corner-fix geometry nobody can currently reproduce live. Said so here rather
+than silently accepting the green gate at face value: the gate is now green because it has no way to
+see that one of three files is unverifiable against current code, not because all three genuinely
+are.
+
+Also noticed, unprompted and out of scope, so just flagged rather than touched: `python
+tools/gen_frame_defs.py --check` reports `frame-defs.json`/`.js` STALE right now. Confirmed this
+predates my own work entirely (nothing I touched this session reaches `template_data.py` or
+frame-defs generation) -- last regen was `520ea1f` (14:29, "regen frame-defs after lane-b merge"),
+and something in the subsequent merge state needs a fresh `gen_frame_defs.py` pass. Not run here (a
+cross-cutting generated file, better left to whoever's tracking the merge it came from).
+
+Fusion hygiene: confirmed exactly 3 docs open before starting (`Untitled`, `DECAL test - 2026-10-03`,
+`DECAL edge test`) and the same 3 after -- every one of the 15 scratch docs `record_case()` created
+across this session's own `fusion_execute` calls was closed by its own `finally`, zero leaks, Fred's
+and the other named docs never touched.
+
+Full suite green after: Python 812/812 (10 pre-existing skips, unrelated).
+`check_golden_freshness.py --check` now exits 0, "all golden fixtures are fresh" (the dispatch's own
+stated goal).
+
+Committed: `tests/fixtures/frame-parity/template_14_7x9.json` (new),
+`tests/fixtures/frame-parity/template_15_7x9.json` (new),
+`tests/fixtures/frame-parity/template_15_12x6.json` (new),
+`tests/fixtures/frame-parity/template_16_7x9.json` (new),
+`tests/fixtures/frame-parity/template_17_7x9.json` (new),
+`tests/fixtures/frame-parity/template_13_7x9.json`, `tests/fixtures/frame-parity/template_13_12x6.json`
+(both content-identical to before except the recorded date).
+
+Messaging the advisor "Fusion released" with the two new findings above (T14/16/17 non-default-size
+miter-miss class; T13's own reflex arc at 5.51x1.97, pre-existing, not a corner-fix regression) so
+Fusion can hand off, and so T13's own open gap gets routed to whoever owns that template next rather
+than sitting silently behind a green gate.
