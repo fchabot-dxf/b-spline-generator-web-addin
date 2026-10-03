@@ -186,6 +186,18 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 44 -- main is RED: re-record T10 goldens; make MITER MISS a permanent failure (advisor, 2026-10-03).
+Item 43 accepted (96a62f8; 13/13 live). But the full gate is red: test_golden_freshness says template_10 goldens
+are STALE (your flag). Main 96a62f8 is now DEPLOYED, so record_frame_parity.py reads the real fixed copy.
+(1) Re-record tests/fixtures/frame-parity/template_10_* (all sizes). Expect frame_left == frame_right and 6 profiles
+    at 7x9; full pytest green. Run the FULL python suite before pass-back (your fast tier missed this one).
+(2) Declare it once: Fusion's offset never tags a line-meets-arc inner corner, so every such corner needs a
+    ResolveLineCircleCorner step. Add a pure test over ALL templates: every corner frameMiters/miters.py expects has
+    a resolved inner corner (no MITER MISS possible). The sweep script also counts 'MITER MISS' log lines (must be 0).
+    Seat C's new templates (Flask, Arched Funnel, Tulip) will rely on this test.
+(3) Why does template_7 have no goldens at all? If it should, record them; if not, say why in WORK-LOG.
+Log in WORK-LOG.md. Commit 'H23 item 44: ...'.
+
 ## Item 43 -- T10 default builds 1/4 bars ("one profile spans 3 bars: a miter did not split it") (advisor, 2026-10-02).
 Item 42 accepted (8e28cda): one build path, T7 default now 5/5 live, 12/13. T10 is the last holdout, and it matters
 twice: Arched is a shipped template, and seat C's Arched + taper builds on T10.
@@ -314,4 +326,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-40] item 39 follow-ups: (1) live T7 Generate-seed Sends at 7x9 + 9x12 + the all-template built==declared sweep, (2) declare narrower T7 Generate ranges (>= 50% raw pass), (3) margin-floor render for Fred. Commit as 'H23 item 40: ...'.
 - [x] [H23-item-41] T7/T10 default 0-bar finding: trace the real Send path (code), fix at the root or fix the harness, then live 13/13 default sweep. Commit as 'H23 item 41: ...'.
 - [x] [H23-item-42] one build path: a Send without seeds sends the default params' seed geometry; T7 + T10 defaults build live; 13/13 default sweep. Commit as 'H23 item 42: ...'.
-- [ ] [H23-item-43] T10 default 1/4 bars: probe which miter fails and why, root fix + failing-first test, live 4/4 at 6x9/7x9/9x12 and 13/13 sweep. Commit as 'H23 item 43: ...'.
+- [x] [H23-item-43] T10 default 1/4 bars: probe which miter fails and why, root fix + failing-first test, live 4/4 at 6x9/7x9/9x12 and 13/13 sweep. Commit as 'H23 item 43: ...'.
+- [ ] [H23-item-44] main RED: re-record T10 goldens (full pytest green); all-template no-MITER-MISS pure test + sweep count; T7 goldens question. Commit as 'H23 item 44: ...'.
