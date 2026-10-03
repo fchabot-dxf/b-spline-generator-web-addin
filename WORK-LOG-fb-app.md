@@ -8164,3 +8164,32 @@ test_no_miter_miss_possible.py, frame-defs.test.js, frame-template-6.test.js, fr
 frame-template-15.test.js (new), item61_full_matrix_sweep.py. Passing back; will resume for the live sweep
 once Fusion is confirmed up, and starting F31 item 2c (joinable waists, code/test side) in the meantime per
 the advisor's own instruction.
+
+### Addendum, same day: the live Fusion sweep (Fusion came free, de first)
+
+7/7 Flask cases BUILT (100%): default, topWidth min/max, neckHeightFrac min/max, domeFullnessFrac min/max,
+all at 7x9 -- zero crashes, zero NOT BUILT / MITER MISS / REFLEX ARC log lines, no dup-named/sliver/overlap
+bodies, via `tools/repro/fusion_t11/item61_full_matrix_sweep.py` with `TEMPLATE_META['template_15']`
+registered (committed above).
+
+One real snag, caught and fixed rather than papered over: a first attempt to screenshot the built shape used a
+simplified hand-rolled rebuild script (to keep the doc open past the sweep script's own auto-close) that
+skipped some of the proven script's own `sys.modules` eviction/reload dance -- it silently produced a document
+with ZERO frame bodies (a `CRITICAL: Failed to load FBValueResolver: module fb_engine.fb_value_resolver not in
+sys.modules` line buried in the debug log, no exception raised since `_handle_send_frame` swallows and logs
+its own errors). Caught by checking `root.allOccurrences` for `frame_*` bodies BEFORE trusting the shot, not
+after. Fixed by reusing the EXACT proven sweep script text (patched only to skip its own final `.close()`
+call) instead of reimplementing the setup by hand -- both re-shot cases then showed the real, correct 6 bars.
+
+Shots (`C:/Users/danse/.bspline-status/shots/seatC/`): `f31item2b_fusion_default_7x9_top.png` (clean top-down,
+the approved shape, 6 mitered bars, perfectly symmetric) and `f31item2b_fusion_neckHeightFrac_min_7x9.png`
+(the worst-case extreme this item's own range-floor re-measurement was built to protect -- short neck, dome
+dominant -- also clean).
+
+Scratch-doc hygiene: used the sweep script's own self-fingerprinting (`adv_item61fullsw_fp` user parameter,
+its own startup cleanup sweep for stray empty fingerprinted docs) throughout; every doc I opened was closed by
+its own tracked handle (`HOLD.docs[case]`), never by name or count. Confirmed via `app.documents` at the end:
+exactly one document remained open, Fred's own "Untitled" -- never touched. No redeploy.
+
+Reported "Fusion released" to the advisor with full results so Fusion could hand to seat b5. Resuming F31
+item 2c now.
