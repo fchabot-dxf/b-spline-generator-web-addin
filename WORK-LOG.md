@@ -16259,3 +16259,83 @@ Fred's own original "Untitled" document untouched (confirmed by content: 0 occur
 wiring). The capture script, captured payload (~5MB), rendered decal PNG, and every intermediate
 screenshot deleted from scratch before commit; the two representative PNGs kept only in
 `shots/seatA`. The dev-server process and its chrome profile dir stopped/deleted.
+
+## H23 item 69 (SPIKE, Fred chose option A): unrolled the panel's own edge-wall colours (the item
+67d band) into a strip PNG and tried it as a wrapped Fusion decal around the panel's side faces.
+Measured, clear answer: **it does not wrap -- a single flat decal only paints the one face it
+projects straight at; every other side face gets nothing.** No production code touched.
+
+**(1) App side: "67c's perimeter sampler", reused exactly, not reimplemented.** Rather than
+duplicating `applyFrameToPanel`'s internal UV-lookup logic, called the REAL exported
+`applyFrameToPanel` (same function `core/preview/index.js`'s own `_applyFrame` calls) TWICE on the
+SAME live mesh/grid/spec: once with the real `edgeSampler` (`sampleDrapeUV` against the real drape
+texture, populated by the real `refreshDrape()` via the real Apply button), once with `() => null`.
+`frame-panel-wall`'s own geometry (built by `wallArraysFlat`, 4 verts + 1 flat colour per segment,
+in perimeter order by construction) gives, per segment: a colour and an (x,y) pair. Diffing the two
+runs' colours isolates exactly the segments where real artwork reached the wall (matching
+`buildDrapeSvg`'s own "colour-carrying only" rule item 68's top decal already uses) without
+re-deriving the UV math at all. Unrolled onto a canvas: x = cumulative arc length (perimeter
+order), width = segment's own share of total perimeter length, transparent where no artwork.
+Measured on the live scenario (items 66/67/67b/67c/68's own established setup -- T1, Shape Lattice +
+offset-from-frame, every contour segment striped, rails/ties/nodes coloured): 2562 segments total
+perimeter 31.96in; 2500/2562 (97.6%) carry real artwork -- expected, since the striped CONTOUR
+itself runs along the panel's own outline, i.e. almost the entire wall sits directly under striping
+(rails/ties, which are interior, never reach the wall at all). Real measured wall thickness across
+the perimeter: 0.13-0.34in, average 0.21in -- close to but a real range around Fred's own "~0.25in"
+estimate, not a constant.
+
+**(2) Fusion: tried the wrap directly, on a fresh "DECAL edge test" copy (not the original "DECAL
+test" doc Fred has -- same `_handle_generate`-via-`spec_from_file_location` technique as item 68,
+re-captured a fresh Send payload rather than reusing/altering the original).** The panel body's own
+side wall is NOT one wrappable face: 14 faces total, 12 small side-wall facets (area 0.8-8.4,
+matching the outline's own straight/curved primitive segments -- a sharp crease at every segment
+boundary, confirmed by checking each facet's own x/y/z bounding ranges) plus the 2 dominant top/
+bottom NURBS surfaces (areas 363.6/357.7) item 68 already found. Built the decal transform the same
+way item 68 derived the convention (`Matrix3D.setWithCoordinateSystem`, axis magnitude = full image
+dimension in cm): origin on the largest side facet's own `pointOnFace`, image-width axis -> global
+X, image-height axis -> global Z, **projection direction -> global Y** (chosen to hit that facet
+perpendicularly), `isChainFaces=True`, all 12 side faces passed as candidates. Added in ~1.2s --
+negligible, same as item 68's own top decal.
+
+**Result, confirmed by 3 separate screenshots at different camera angles, not just the overview:**
+the decal's content shows up ONLY on the one facet roughly perpendicular to the projection direction
+(a straight-on shot of that facet shows the black/white strip correctly following the sculpted
+terrain's own undulating bottom edge); a straight-on shot of a facet at a GRAZING angle to the
+projection (90 deg away) shows **nothing at all** -- plain Pine, no stretching, no distortion, just
+absent; a combined oblique shot frames both in one image, making the contrast immediate. This
+matches the structural expectation once the 12-facet, sharp-crease geometry was confirmed in (2):
+`isChainFaces` extends a decal across TANGENT-CONTINUOUS neighbours, and these 12 facets meet at
+sharp creases (not tangent) at every one of the outline's own segment boundaries -- there is no
+continuous surface for a single flat projection to wrap around. **Answer to the brief's own
+question: it neither wraps nor stretches -- it simply doesn't reach the faces outside its own
+projection cone.**
+
+**(3) Correction to item 68's own write-up, found while checking what a realistic "option B"
+splitting would start from.** Re-examined the existing (pre-decal) artwork-colouring mechanism more
+carefully than item 68 did: the `panel` solid body is **ONE FLAT APPEARANCE across its whole body**
+(all 14 faces, confirmed identical `Opaque(204,51,51)` on every one, checked on item 68's own
+unmodified capture before any decal/appearance change there) -- NOT the "face-granularity blocky
+colour" item 68's own entry described. That finer-grained per-face colouring (confirmed: a 1-face
+body with its own appearance distinct from its body-level default) belongs to the SEPARATE `surface`
+body, not `panel`. Item 68's own entry is not rewritten (append-only), but anyone reading it for
+"option B" sizing should read this correction first: there is no existing fine-grained per-face
+mechanism on `panel` to extend -- splitting it into ~2500 colour-boundary faces (matching the strip's
+own real segment count) would be new geometry work, not a parameter tweak, and 2500 faces on one
+small body is a heavy, likely impractical face count for a Send's own timing; the outline's own
+EXISTING 12 natural facets are a far cheaper split but would lose nearly all of the real stripe
+detail (12 colours vs 2500 transitions). No time estimate attempted beyond this -- a real one needs
+measuring Fusion's own split-face performance at that count, out of this spike's own scope.
+
+**Left open for Fred:** `DECAL edge test`, active, panel body set to Pine (same reason as item 68 --
+so the "doesn't reach" result is visually unambiguous, not an artifact of matching colours). `DECAL
+test - 2026-10-03` (item 68) and Fred's own `Untitled` both confirmed untouched by content (occurrence
+lists re-checked after this item's own work). Shots: `shots/seatA/1406_item69_edge_wrap_overview.png`
+(both the working and a non-working wall in one frame), `..._face5_straighton.png` (the ONE facet
+that works), `..._face0_blank.png` (a facet 90 deg away -- plain wood, nothing), `
+..._edge_strip_unrolled.png` (the raw unrolled strip itself, upscaled 12x vertically for
+visibility -- the real file is 2557x17px).
+
+**Committed this item:** `WORK-LOG.md` only -- no production code changed. The capture script
+(extended from item 68's own convention), captured payload (~5MB), rendered strip PNG, and every
+intermediate screenshot deleted from scratch before commit; representative PNGs kept only in
+`shots/seatA`. Dev-server process and its chrome profile dir stopped/deleted.
