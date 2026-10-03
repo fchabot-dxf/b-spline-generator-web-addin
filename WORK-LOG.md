@@ -15003,3 +15003,140 @@ check + the real-defect finding, 2 new tests; the `template_data.py` comment exp
 withheld handle), and 3 new probe scripts (`tools/repro/h23_item59_make_payloads.mjs`,
 `tools/repro/h23_item59_production_taper_sweep.mjs`, `tools/repro/fusion_t11/
 item59_t10_taper_sweep.py`).
+
+## H23 item 60 (C): live preview==build at handle range ends for T1/T2/T12/T13 -- does Fred
+already hit this? YES, but NOT the taper bug -- a separate, bigger, pre-existing crash family.
+
+**Dispatch (turn 472, part C):** "live preview==build at handle range ends for T1/T2/T12/T13
+(everything with kind:'pin' seed entries) -- does Fred already hit this? -- and widen the sweep
+to every handle's range ends."
+
+**First pass (narrow, flawed methodology -- caught and redone, not left as the answer).** Started
+with `frameParamRanges(T, region, {}, t)` (resolved={}) the same way the T12/T13 taper-range call
+already worked. For `taperAngle` that is fine (its range function doesn't need any OTHER param
+pre-resolved). For every OTHER key tried it silently returned `{min:null,max:null}` --
+`feasibleParamRanges` fills `v[key]` from `derived[key](v)` IN `PARAM_ORDER` AS IT GOES
+(`editor-shape-lattice-generator.js:1025-35`); with `resolved={}` and no `derived` default for
+some of these keys (e.g. `cornerRadius`), a later key's own range function reads an `undefined`
+upstream value, the arithmetic silently produces `NaN`, and `JSON.stringify(NaN)` prints as
+`null` -- indistinguishable, in the written-out payload, from "no range exists for this key" (it
+looked like a feature gap, not a call-site bug). Worked around it THE FIRST TIME by hand-picking
+near-extreme fraction values instead (0.7, 0.32, 0.38, etc.) -- reported in the prior turn's
+(pre-pass) scratch run as "8/8 clean, template_1/template_2 safe at range ends". **That
+conclusion does not survive scrutiny and is retracted below.**
+
+**Root-caused and fixed the range call** (confirmed by a direct comparison, not assumed): call
+`paramsFromShapeModel(preset, shapeModel, region)` FIRST (exactly like the production taper
+sweep already does) to get a fully-resolved `resolved` object, then pass THAT as
+`frameParamRanges`'s 3rd arg. Side-by-side for template_1 at 7x9: `resolved={}` gives
+`cornerRadiusTop: {min:null,max:null}`; `resolved=<real>` gives `{min:0.0385,max:2.5655}`. Also
+discovered, checking `T.handles` directly, that the first pass only tested 2 of template_1's own
+5 declared handles (`waistReach`, `cornerRadiusTop` -- missing `cornerRadiusBottom`,
+`waistCenterY`, `waistRadius` entirely) and 2 of template_2's own 4 (`neckWidth`, `bodyRadius` --
+missing `skeletonX`, `neckLength`), and that the hand-picked "near-max" values for
+`cornerRadiusTop`(0.32) and `bodyRadius`(0.38) were nowhere near the real max (2.57, 1.0) -- not
+a range-end check at all for those two. New script, generic across both templates:
+`tools/repro/h23_item60_make_all_handle_payloads.mjs` (reads `T.handles`, computes the real
+range per key via the fix above, writes a min/default/max payload for every one).
+
+**THE FINDING, live in Fusion, 25 cases (T1: 5 handles x min/max + 3 defaults = 13;
+T2: 4 handles x min/max + 1 default = 9; T12/T13 taper already covered separately, see below;
+harness: `tools/repro/fusion_t11/item60_shipped_taper_sweep.py`, generic, reads
+`tpl.seedMap` dynamically):**
+
+- **Template 1 (hourglass): 9 of its own 10 range-END cases (across all 5 of its declared
+  handles) fail to build in Fusion.** `waistReach` max, `cornerRadiusTop` min, `cornerRadiusBottom`
+  min, and `waistRadius` min all throw the EXACT same crash already on file in the
+  fusion360-quirks skill ("`Coincident` on an arc only pins the supporting circle, not which
+  branch gets drawn"): `[p02_11_symmetry] REFLEX ARC: ... sweeps 183-290 deg (>= 180) -- wrong
+  solver branch`, followed by `CRASH in Sketch 2_shape_outline` / `PROFILE 0: NOT BUILT`.
+  `cornerRadiusTop` max, `cornerRadiusBottom` max, `waistCenterY` min AND max, and `waistRadius`
+  max all fail a DIFFERENT way: `[p03_05_encl_surround_rect] PROFILE N: NOT BUILT: one profile
+  spans 2 bars (...): a miter did not split it`, then the bar's own Through-All extrude fails.
+  Only `waistReach` min (and the 3 defaults) built clean. **Every one of these 9 cases had
+  `defects: []` on the JS side when the payload was generated** (`generateSilhouette` /
+  `outlineDefects` sees nothing wrong) -- the same "preview says fine, Fusion build does
+  something else" SHAPE of bug item 59 found for T10's taper, but a DIFFERENT, louder failure
+  mode: a crash / no body, not a silently wrong shape. The drag handle itself visually stops
+  exactly at this value (`frame-panel.js:435-438`, the frame-opening range clamp item 39's own
+  no-hook clamp is layered on top of) -- this is a value a real drag reaches, not a synthetic
+  extreme past the UI's own limit.
+- **Template 2 (bottle): 2 of its own 8 range-end cases fail** -- `neckLength` min AND max, same
+  "a miter did not split it" / Through-All-extrude-fail signature as T1's own miter-class
+  failures. `neckWidth`, `skeletonX`, `bodyRadius` are clean at both ends.
+- **`preview_vs_build_check`'s own "0 mismatches" on every one of these crashed cases is NOT
+  evidence of correctness -- it is a narrower claim than it looks.** It only compares each
+  individual seeded primitive's own start/end POINT against the built sketch entity carrying the
+  same ID, when that entity exists at all; it does not check whether a closed, buildable PROFILE
+  or body resulted. On these 11 cases the seeded primitives landed exactly where sent (0
+  mismatches, correctly) while the sketch as a WHOLE failed to resolve into anything buildable.
+  Said plainly here so "0 mismatches" is never read as "builds fine" for a crashed case again.
+- **T12/T13's OWN taperAngle handle, the part actually asked about by name, is clean**: full
+  declared range (min 0 / default 8 / max 15) at 7x9, 6/6 cases, 0 mismatches, 0 crashes
+  (`tools/repro/h23_item60_make_shipped_payloads.mjs`, same harness). This directly answers item
+  59's own "open question": no, the SHIPPED taper templates do not share T10's taper-specific
+  bug. They share something else entirely (above).
+- **T12/T13's OWN other handles (the same `waistReach`/`cornerRadiusTop`/.../`neckLength` keys
+  T1/T2 carry, since T12 = T1 + taper and T13 = T2 + taper, identical shared phase files) were
+  NOT independently live-tested this item** -- flagged, not assumed: given the construction is
+  the literal same code, the same range-end failures are the likely outcome there too, but this
+  is an inference, not a measurement, and should be confirmed before anyone treats T12/T13 as
+  clear of it.
+
+**What this is, and is not.** This is NOT the item-59 skeleton-pin/taper gap (that one is a
+SILENT wrong shape, specific to archRise+taper interacting with T10's own skeleton pins). This is
+a SEPARATE, pre-existing, already-shipped defect family: at the geometric extremes of 6 of T1/T2's
+OWN 9 combined handles, the arc-chain solver in Fusion picks the wrong branch (reflex) or the
+enclosure's own miter-splitting logic fails to carve a bar's profile, even though the JS-side
+outline the handle's own drag is driven by reports zero defects. Both crash loudly (no body for
+that bar / for the whole outline) rather than building something silently wrong, which is at
+least a safer failure than T10's -- but a handle whose own slider stops at a position that cannot
+build at all is still a real, reachable defect.
+
+**Not fixed this item -- a decision, not an oversight.** Given (a) this is bigger than one
+dispatched task (9+ broken cases across 2 already-shipped templates, likely 2 more by inference),
+(b) the item-59 precedent of a blind fix to this SAME arc-solver-branch problem breaking 242
+unrelated tests, and (c) this item's own time/Fusion-call budget was already committed to running
+the sweep that FOUND this, no fix was attempted. Flagged as a gate for the advisor to triage
+against the rest of the H23 queue, not folded silently into whatever comes next.
+
+**On item 60's own part (B) (re-add T10's taperAngle after a generic pin-seed fix): the
+dispatch's own premise needs correcting before anyone builds against it.** Read
+`fb_engine/seed_geometry.py` in full this item: it matches BuildSequence steps by `Type`+`ID`/
+`Name`, never by the seedMap's own `kind` field -- so a `kind:"pin"` entry with `'Type':'Line'`
+(e.g. `skel_shoulder_pin_R`) DOES get its own `Points` overridden generically, the same as any
+other seeded Line. Live readback (T10, taper=-11.5, the exact captured bad seed) confirms the pin
+IS applied as an initial value (no `SeedGeometryError`) -- it just gets OVERRIDDEN afterward by
+`p02_06_waist_pins.py`'s own `Coincident` weld between the waist arc's OWN derived center and the
+pin's OWN seeded endpoint, which Fusion's solver reconciles to a position matching NEITHER seed
+(matching instead the untapered, algebraically-derived `hw - cornerRadiusTop` position). So "make
+`apply_seed_geometry` consume `kind:'pin'` generically" is not available as a fix -- it already
+does, and that is not where the bug lives. The real fix needs to look at WHY `p02_06`'s weld (and
+whatever `p02_07_tangency.py` does, not yet read) re-derives an untapered position instead of
+holding either seed -- not yet designed, let alone attempted, this item.
+
+**Recommendation (not acted on, a gate): do not proceed into (B) as originally specified.**
+The dispatch's own fix ("consume pin entries generically") is now known not to address the actual
+mechanism, and the newly-found range-end crash family above is arguably higher priority (already
+shipped, no handle needs withholding to make it unreachable, unlike T10's). Left as 3 options for
+the advisor, not decided here:
+- **(A) Triage the range-end crash family first.** It is bigger, already live, and affects more
+  templates than T10's taper gap did.
+- **(B') Re-scope item 60(B).** Drop "consume pin entries generically" (already true); redirect
+  at `p02_06`/`p02_07`'s own Coincident/Tangent chain specifically, after reading `p02_07` in full
+  -- a harder, more surgical task than originally framed.
+- **(C) Widen the general sweep permanently.** `item40_all_template_sweep.py`'s own established
+  13-template harness still only exercises each template's OWN default seed; it does not sweep
+  handle range ends at all, which is exactly why 9 broken cases sat undetected. Promoting
+  `h23_item60_make_all_handle_payloads.mjs` + `item60_shipped_taper_sweep.py`'s own pattern into
+  that permanent suite (every declared handle, both ends, every template) would catch this CLASS
+  going forward -- a real but nontrivial lift (needs a per-template handle list, not just a
+  per-template default).
+
+**Committed this item (C only -- part B's fix and the taperAngle re-add are NOT in this commit,
+per the gate above):** 3 probe scripts (`tools/repro/h23_item60_make_shipped_payloads.mjs`,
+`tools/repro/h23_item60_make_all_handle_payloads.mjs`, `tools/repro/fusion_t11/
+item60_shipped_taper_sweep.py`) and this WORK-LOG entry. No production code touched. Scratch
+payloads/results left uncommitted under `bspline-frame-builder/scratch/` per the project's own
+existing convention (item 59's own probe scripts were committed the same way, their OUTPUT was
+not).
