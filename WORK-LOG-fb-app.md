@@ -7630,3 +7630,62 @@ No Fusion used for the sliver/roof-bar fix (none attempted, per the gate) -- all
 are from the SAME live builds already run to verify Part 1. Full suite unchanged by Part 2 (no
 code touched). Commit `c190ac6` (both parts, one commit -- Part 2 is investigation + WORK-LOG
 only, no source change).
+
+## 2026-10-02: F30 item 5 -- Arched (T10) + taper diagram, 7x9 + 6x9, default 8 deg + range ends (seat C, epoch 5,
+diagram only, no code, no Fusion)
+
+Dispatch: F30 item 3(c), deferred since T10's own Fusion fix wasn't shipped yet -- it has been since (main's
+H23 items 15-25, un-hidden). Brought fb-app to current origin/main first (merge commit, 9 docs-only commits
+on top of a shared ancestor with main's own 147c6fb -- zero conflicts, confirmed by re-running vitest: 3078/
+3078 green). Then the diagram: T10's own arch + the shared taperAngle construction (the same `_taperedCorner`
+the shipped T12/T13 use), applied to the shoulder's own tangent line instead of a flat top edge.
+
+**The one new idea needed (everything else reused verbatim):** `_taperedCorner`'s own tangent-line construction
+targets a horizontal line at `y = -hh` (the board's own top edge) for T1/T2, where the horn runs all the way to
+the board edge. T10's horn does NOT reach the board edge -- it stops wherever the ARCH's own chord sits,
+`y = -hh + archRise` (eating into the horn, exactly like the plain untapered arch always has). Passing
+`hh - archRise` in place of `hh` into the UNMODIFIED shared construction reproduces that target line exactly
+(`lineAtY(..., -(hh - archRise))` is algebraically `-hh + archRise`), so the arched case needed ZERO changes to
+the shared taper code itself -- just the right value handed to the same function. The new (possibly narrower)
+top corner is then one endpoint of the arch's own chord (mirrored for the other), sagitta = T10's own resolved
+`archRise` unchanged, radius re-derived from the new (shorter) half-chord -- the arch automatically resizes with
+the taper, it isn't a second independent choice.
+
+**Built the preview safely, not by hand-deriving the whole outline:** earlier taper diagrams (T1/T2) hand-built
+all 12 primitives from the shoulder/waist/hip circles. For T10 that produced a FALSE self-intersection at 6x9
+(but not 7x9) that didn't reproduce in the real engine's own output -- tracked down to `outlineDefects`' own
+`requireTangency` default (true), which assumes every line-to-arc junction should be tangent; T10's horn-to-arch
+corner is a genuine sharp MITER by design, not a tangent continuation, so the outer check needs
+`requireTangency: false` the same way the inner (offset) check already used it. Fixed, then found a SECOND,
+real bug this exposed: my own hand-built arch primitive swept the OPPOSITE direction from the real engine's
+(same circle, same two endpoints, winding reversed) -- harmless at 7x9 (no visible crossing) but broke the
+inner offset at 6x9 (a genuine self-intersection, confirmed by diffing my arch object against
+`generateSilhouette`'s own real one at taper=0, where they should be and now are identical bit for bit except
+direction). Fixed by swapping the two endpoints passed to the arch constructor. Verified the fix against the
+REAL production code directly (not just my own hand-rolled copy): swapped only the arch primitive into the
+real engine's own untouched `generateSilhouette` output and confirmed zero defects at both sizes -- then
+switched the whole preview to that same pattern (reuse the real engine's own primitives 1-9 unchanged, hand-
+build only the 3 taper-affected pieces: both horns + the arch), removing the whole class of hand-derivation
+bugs the T1/T2 diagrams were exposed to.
+
+**Result, swept across the full declared [-15, 15] band at both sizes:** topologically clean (zero outline
+defects, zero self-intersections, zero out-of-board points) EVERYWHERE in the band, at both 7x9 and 6x9 -- so
+"the range ends" here means the literal declared +-15, not a narrower computed floor the way T1/T2's shoulder-
+collision floor was (that bisection, re-run with the fixed arch, now correctly returns -15 for both sizes: the
+shape never runs out of real tangency the way T1's own full-width shoulder did). The remaining constraint is
+piece thickness, not topology: at 7x9 every piece stays >= frame_thickness (0.75in) from about -4 deg up through
++15 deg (thinnest at -15 deg: 0.44in, the horn eaten down to nearly nothing at the widest negative lean); at
+6x9 the thinnest piece sits at 0.742in -- JUST under 0.75in -- for every taper angle from -15 up through 0 deg,
+INCLUDING the plain untapered T10 shape at 6x9 with no taper applied at all (confirmed directly against
+`generateSilhouette` alone). This is a PRE-EXISTING T10-at-6x9 characteristic, not something the taper feature
+introduces -- the same kind of marginal-piece case this project already treats as warn-only elsewhere (the
+dispatch's own note: the 7x9 convex-radius fallback is accepted the same way). Positive taper (8, 15 deg) at
+6x9 doesn't change this number at all -- the thin piece is a different, untouched part of the chain, not the
+tapered horn.
+
+Diagram (6 panels: 7x9 and 6x9, each at -15/8 deg default/15 deg, same miter-diagram style as d4de24b's own
+Hourglass/Narrow Neck one -- tan fill, blue dotted inner edge, red miter lines, THIN-piece pieces flagged
+directly in the caption): `C:/Users/danse/.bspline-status/shots/seatC/2235_F30-item5-proposed_arched-taper-
+diagram_7x9_6x9.png`. Sent to the advisor as a path, not Fred directly, per the standing routing rule. No
+template files touched, no Fusion used. Passing back for Fred's sign-off before any `template_14`-numbered (or
+however it's slotted) code is written.
