@@ -14513,7 +14513,7 @@ and `_offCentre_7x9` remain unfixed, left as the dispatch's own explicit note (t
 main-bar disruption, a different and more severe topology issue, not chased this item). No doc
 leakage: `app.documents` held exactly the 4 protected docs before and after.
 
-**Commit `[pending]`, pushed to origin/lane-b** (3 files: the classify() fix, its 2 tests, this
+**Commit `e662c84`, pushed to origin/lane-b** (3 files: the classify() fix, its 2 tests, this
 WORK-LOG entry). T85 item 3 is DONE: the real product bug is fixed at the cause (not papered over),
 mutation-tested, and live-verified on every case the dispatch named. Passing back and messaging the
 advisor now. Fusion released.
