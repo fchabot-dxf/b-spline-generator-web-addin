@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initStripeProperties } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-stripe.js';
-import { STRIPE_COLOR_PRESETS, stripeSettings } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-stripe-tool.js';
+import { STRIPE_COLOR_PRESETS, STRIPE_PATTERNS, stripeSettings } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-stripe-tool.js';
 import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
 function fixtureHTML() {
@@ -18,6 +18,9 @@ function fixtureHTML() {
     </div>
     <div id="stripeCountRow"><input id="stripeCount" type="number" min="1" step="1" value="5"></div>
     <div id="stripeLengthRow" style="display:none"><input id="stripeLength" type="number" min="0" step="0.05"></div>
+    <div id="stripePatternPresets"></div>
+    <input id="stripePatternRatio" type="text">
+    <div id="stripePatternClampNote" style="display:none"></div>
     <label><input id="stripeThree" type="checkbox"></label>
     <button id="stripeColorsReset" type="button"></button>
     <div id="stripeColorPresets"></div>
@@ -71,5 +74,48 @@ describe('F32 item 1: preset chips, rendered from the declared list', () => {
     blueWhiteChip.click();
     expect(s.colors[0]).toBe(PATTERN_DEFAULTS.colors.nodes);
     expect(s.colors[1]).toBe('#ffffff');
+  });
+});
+
+describe('F32 item 2: dash-ratio pattern chips, ratio field, clamp note', () => {
+  it('renders exactly one chip per STRIPE_PATTERNS entry, titled with its ratio', () => {
+    initStripeProperties(editor);
+    const chips = document.getElementById('stripePatternPresets').children;
+    expect(chips.length).toBe(STRIPE_PATTERNS.length);
+    expect([...chips].map((c) => c.textContent)).toEqual(STRIPE_PATTERNS.map((p) => p.name));
+    expect([...chips].map((c) => c.title)).toEqual(STRIPE_PATTERNS.map((p) => p.ratio.join(':')));
+  });
+
+  it('tapping the Dash chip sets settings.ratio and reflects it in the Ratio field', () => {
+    initStripeProperties(editor);
+    const s = stripeSettings(editor);
+    const chips = document.getElementById('stripePatternPresets').children;
+    [...chips].find((c) => c.textContent === 'Dash').click();
+    expect(s.ratio).toEqual([3, 1]);
+    expect(document.getElementById('stripePatternRatio').value).toBe('3:1');
+  });
+
+  it('typing a custom ratio applies it on change; invalid text leaves the current ratio alone', () => {
+    initStripeProperties(editor);
+    const s = stripeSettings(editor);
+    const ratioEl = document.getElementById('stripePatternRatio');
+    ratioEl.value = '2:3:2';
+    ratioEl.dispatchEvent(new Event('change'));
+    expect(s.ratio).toEqual([2, 3, 2]);
+    ratioEl.value = 'nonsense';
+    ratioEl.dispatchEvent(new Event('change'));
+    expect(s.ratio).toEqual([2, 3, 2]); // unchanged, not clobbered
+  });
+
+  it('the clamp note shows only when the hovered plan reports clamped, scoped to this editor', () => {
+    initStripeProperties(editor);
+    const note = document.getElementById('stripePatternClampNote');
+    expect(note.style.display).toBe('none');
+    document.dispatchEvent(new CustomEvent('editorStripeTarget', { detail: { editor, plan: { clamped: true } } }));
+    expect(note.style.display).toBe('block');
+    document.dispatchEvent(new CustomEvent('editorStripeTarget', { detail: { editor, plan: { clamped: false } } }));
+    expect(note.style.display).toBe('none');
+    document.dispatchEvent(new CustomEvent('editorStripeTarget', { detail: { editor: {}, plan: { clamped: true } } }));
+    expect(note.style.display).toBe('none'); // a different editor's event is ignored
   });
 });

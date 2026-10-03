@@ -14,7 +14,10 @@
 import { el, on } from './dom.js';
 import { openColorMosaic } from './editor-color.js';
 import { getLayerPattern } from './editor-lattice-pattern.js';
-import { stripeSettings, defaultStripeColors, STRIPE_COLOR_PRESETS, applyStripeColorPreset } from './editor-stripe-tool.js';
+import {
+  stripeSettings, defaultStripeColors, STRIPE_COLOR_PRESETS, applyStripeColorPreset,
+  STRIPE_PATTERNS, applyStripePattern, parseStripeRatio,
+} from './editor-stripe-tool.js';
 
 const fmtLen = (v) => (Math.round(v * 1000) / 1000).toString();
 
@@ -29,6 +32,9 @@ export function initStripeProperties(editor) {
   const byLengthEl = el('stripeByLength');
   const countRowEl = el('stripeCountRow');
   const lengthRowEl = el('stripeLengthRow');
+  const patternPresetsEl = el('stripePatternPresets');
+  const ratioEl = el('stripePatternRatio');
+  const clampNoteEl = el('stripePatternClampNote');
 
   const settings = () => stripeSettings(editor);
 
@@ -41,9 +47,41 @@ export function initStripeProperties(editor) {
     if (lengthRowEl) lengthRowEl.style.display = driveCount ? 'none' : 'flex';
     if (document.activeElement !== countEl) countEl.value = s.count;
     if (document.activeElement !== lengthEl) lengthEl.value = fmtLen(Number(s.length) || 0);
+    if (ratioEl && document.activeElement !== ratioEl) ratioEl.value = s.ratio.join(':');
+    if (patternPresetsEl) {
+      [...patternPresetsEl.children].forEach((btn, i) => btn.classList.toggle('active', JSON.stringify(STRIPE_PATTERNS[i].ratio) === JSON.stringify(s.ratio)));
+    }
   }
   if (byCountEl) on(byCountEl, 'click', () => { settings().drive = 'count'; refreshFields(); });
   if (byLengthEl) on(byLengthEl, 'click', () => { settings().drive = 'length'; refreshFields(); });
+
+  // F32 item 2 (Fred: "dashed ratio"): one chip per STRIPE_PATTERNS entry, rendered from the declared list.
+  if (patternPresetsEl) {
+    patternPresetsEl.innerHTML = '';
+    for (const pattern of STRIPE_PATTERNS) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'editor-fillmode-btn';
+      chip.style.flex = '1';
+      chip.title = pattern.ratio.join(':');
+      chip.textContent = pattern.name;
+      on(chip, 'click', (e) => { e.stopPropagation(); applyStripePattern(editor, pattern); refreshFields(); });
+      patternPresetsEl.appendChild(chip);
+    }
+  }
+  if (ratioEl) {
+    on(ratioEl, 'change', () => {
+      const parsed = parseStripeRatio(ratioEl.value);
+      if (parsed) settings().ratio = parsed; // invalid/empty text leaves the current ratio alone
+      refreshFields();
+    });
+  }
+  if (clampNoteEl && typeof document !== 'undefined') {
+    document.addEventListener('editorStripeTarget', (e) => {
+      if (!e.detail || e.detail.editor !== editor) return;
+      clampNoteEl.style.display = e.detail.plan && e.detail.plan.clamped ? 'block' : 'none';
+    });
+  }
 
   function paintSwatches() {
     const s = settings();
