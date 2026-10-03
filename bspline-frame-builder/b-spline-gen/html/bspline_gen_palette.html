@@ -1271,6 +1271,30 @@
             <input type="checkbox" id="autoRebuild" checked>
             <span>Auto Rebuild</span>
           </label>
+
+          <!-- H23 item 71: optional artwork-colour decal applied to the Stamped top face on Send. -->
+          <div style="border-top:1px solid #e2e2e2; margin-top:12px; padding-top:12px;">
+            <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+              <input type="checkbox" id="decalEnabled">
+              <span style="font-weight:700;">Fusion colour decal</span>
+            </label>
+            <div id="decalOptions" style="flex-direction:column;">
+              <label class="cad-label">Resolution</label>
+              <div class="cad-nested-input" style="width:100%; margin-bottom:10px;">
+                <select id="decalResolution" style="width:100%; border:none; background:transparent; font-size:11px;">
+                  <option value="40">40 dpi</option>
+                  <option value="100">100 dpi</option>
+                  <option value="150" selected>150 dpi</option>
+                </select>
+              </div>
+              <label class="cad-label">Opacity (%)</label>
+              <div class="cad-stepper" style="width:75px; margin-bottom:10px;">
+                <input type="number" id="decalOpacity" value="100" min="0" max="100" step="1">
+              </div>
+              <label class="cad-label" style="margin-bottom:4px;">Layers</label>
+              <div id="decalLayersList" style="display:flex; flex-direction:column; gap:4px;"></div>
+            </div>
+          </div>
         </div>
       </div>
 

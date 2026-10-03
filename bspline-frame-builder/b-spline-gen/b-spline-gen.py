@@ -8,7 +8,7 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 
 # adsk check: removed diagnostic
 
-import os, tempfile, json, re
+import os, tempfile, json, re, base64
 from datetime import datetime
 
 # T63 (SE15): the constrained-sketch builder — a sibling module in this
@@ -581,6 +581,138 @@ def _normalize_occurrence(occ):
             _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} in {target_cname!r} (isSolid={kind=='panel'})")
         except Exception as e:
             _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} in {target_cname!r} FAILED: {e}")
+
+
+# H23 item 71: the optional "Fusion colour decal" -- a real Fusion decal of the artwork's own
+# colour layers (item 68's own spike, measured proven: decals.createInput(path, [face], point),
+# transform via Matrix3D.setWithCoordinateSystem with each axis's own magnitude = that axis's
+# FULL real-world size in cm, isChainFaces=True drapes it over the sculpted terrain correctly).
+# Applied to the "Stamped" component's own panel body specifically (not whichever body happened
+# to import first) -- _find_clean_stamped/_normalize_occurrence above already canonicalize that
+# name by the time this runs. DECAL_NAME is how re-Send finds and replaces its own earlier decal
+# (never duplicates, never leaves a stale one behind when turned off) -- item 68's own proven fix.
+DECAL_NAME = 'Artwork colours'
+
+
+def _find_stamped_panel_body(import_group):
+    """The 'panel' (solid) body inside the 'Stamped' occurrence under import_group, if any was
+    sent this Send. None if no Stamped variant was selected -- the decal only ever targets the
+    Stamped body specifically, never silently falls back to Clean."""
+    if not import_group:
+        return None
+    try:
+        targets = _find_clean_stamped(import_group, depth=0)
+    except Exception:
+        return None
+    for occ in targets:
+        try:
+            if (occ.component.name or '') != 'Stamped':
+                continue
+            for b in occ.component.bRepBodies:  # plain for-each -- a real BRepBodies collection
+                bn_lower = (b.name or '').lower()  # or a simple list both iterate the same way
+                is_panel = b.isSolid if hasattr(b, 'isSolid') else _is_panel_body_name(bn_lower)
+                if is_panel:
+                    return b
+        except Exception:
+            continue
+    return None
+
+
+def _largest_area_face(body):
+    """H23 item 69's own correction: a sculpted terrain's highest Z POINT can land on a small rim
+    facet (a tie between it and the true top face), picking the wrong one -- largest AREA is the
+    robust way to find the one real top surface on a body like this."""
+    best, best_area = None, -1.0
+    try:
+        for face in body.faces:
+            try:
+                a = face.area
+            except Exception:
+                continue
+            if a > best_area:
+                best_area, best = a, face
+    except Exception:
+        pass
+    return best
+
+
+def _remove_named_decal(component, name):
+    removed = 0
+    try:
+        for d in list(component.decals):
+            if d.name == name:
+                d.deleteMe()
+                removed += 1
+    except Exception as e:
+        _log(f'[DECAL] remove failed: {e}')
+    return removed
+
+
+def _apply_colour_decal(current_import_group, stamp_data, params):
+    """Apply/replace/remove the optional 'Artwork colours' decal on the Stamped top face.
+    `stamp_data['decal']` is None/absent -> NO INSTRUCTION, leave whatever's there alone (sent on
+    append, and when the JS side's own PNG render failed transiently -- neither should delete a
+    previously-working decal). `{'enabled': False}` is the one EXPLICIT remove instruction.
+    MUST NEVER RAISE -- a failure here must never fail the Send (callers rely on this)."""
+    try:
+        decal_data = (stamp_data or {}).get('decal')
+        if decal_data is None:
+            return  # no instruction at all (append, or a transient render failure) -- leave it alone
+        body = _find_stamped_panel_body(current_import_group)
+        # H23 item 71, measured live: a real BRepBody has NO `.component` attribute at all --
+        # `.parentComponent` is the real property (confirmed directly: hasattr(body,'component')
+        # is False, hasattr(body,'parentComponent') is True, and it IS the Stamped component).
+        component = body.parentComponent if body else None
+        if not component:
+            if decal_data.get('enabled'):
+                _log('[DECAL] enabled but no Stamped body in this Send -- skipped')
+            return
+        if not decal_data.get('enabled'):
+            n = _remove_named_decal(component, DECAL_NAME)
+            if n:
+                _log(f'[DECAL] removed {n} existing "{DECAL_NAME}" decal(s) (disabled)')
+            return
+        png_b64 = decal_data.get('png') or ''
+        if not png_b64:
+            _log('[DECAL] enabled but no png data -- skipped')
+            return
+        if ',' in png_b64[:80]:
+            png_b64 = png_b64.split(',', 1)[1]
+        png_bytes = base64.b64decode(png_b64)
+        tmp_path = os.path.join(tempfile.gettempdir(), 'bspline_artwork_decal.png')
+        with open(tmp_path, 'wb') as f:
+            f.write(png_bytes)
+
+        top_face = _largest_area_face(body)
+        if not top_face:
+            _log('[DECAL] no face found on Stamped panel body -- skipped')
+            return
+
+        _remove_named_decal(component, DECAL_NAME)  # dedupe BEFORE adding -- item 68's own proven fix
+
+        point = top_face.pointOnFace
+        width_in = float(params.get('widthIn') or 0)
+        height_in = float(params.get('heightIn') or 0)
+        if width_in <= 0 or height_in <= 0:
+            _log('[DECAL] missing board width/height in payload -- skipped')
+            return
+        m = adsk.core.Matrix3D.create()
+        origin = adsk.core.Point3D.create(point.x, point.y, point.z)
+        x_axis = adsk.core.Vector3D.create(width_in * 2.54, 0, 0)
+        y_axis = adsk.core.Vector3D.create(0, height_in * 2.54, 0)
+        z_axis = adsk.core.Vector3D.create(0, 0, 1)
+        m.setWithCoordinateSystem(origin, x_axis, y_axis, z_axis)
+
+        decal_input = component.decals.createInput(tmp_path, [top_face], point)
+        decal_input.transform = m
+        decal_input.isChainFaces = True
+        opacity_pct = decal_data.get('opacity')
+        decal_input.opacity = (opacity_pct / 100.0) if isinstance(opacity_pct, (int, float)) else 1.0
+        decal = component.decals.add(decal_input)
+        decal.name = DECAL_NAME
+        _log(f'[DECAL] applied "{DECAL_NAME}" to Stamped top face (area={top_face.area:.2f} cm2)')
+    except Exception as e:
+        _log(f'[DECAL] apply FAILED (Send unaffected): {e}')
 
 
 def _uplift_through_wrappers(occurrences, targets, parent_hint=None):
@@ -1657,6 +1789,14 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     self._import_all_svg_layers(sketch_target, body_target, stamp_data, orientation, params, des)
                 except Exception as e:
                     _log(f'SVG Stamp Import/Project failed: {e}')
+
+            # ── Artwork colour decal (H23 item 71) ──────────────────────────────
+            # Independent of the SVG-stamping toggle above (stamp_data.enabled) -- a Stamped
+            # body can be sent with or without SVG artwork import; the decal has its own
+            # enabled flag. Send only (never a live preview): a decal costs ~1s+ (item 68's own
+            # measurement), not worth paying on every preview rebuild.
+            if not is_preview:
+                _apply_colour_decal(current_import_group, stamp_data, params)
 
             # ── Finalise ─────────────────────────────────────────────────────────
             _send_progress('Cleaning up graphics...')

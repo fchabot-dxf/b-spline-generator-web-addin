@@ -16452,3 +16452,149 @@ so this is a sanity check, not a direct dependency).
 **Committed this item:** `tools/repro/_edge_colour_scenario.mjs` (new), `tools/repro/
 decal_png_spike.mjs` (now calls the shared helper instead of its own inline copy), `WORK-LOG.md`. No
 other file touched. No Fusion access used.
+
+## H23 item 71: the top colour decal (item 68's own spike) wired into the real Send, as an optional,
+configurable, never-fails feature. Fred approved it for real use. App side built + tested first,
+live-verified once `fusion_holder.txt` named this seat; found and fixed one real Fusion-API bug my
+own unit tests could not have caught (see (6)).
+
+**(1) Settings: "Fusion colour decal" group, VIEW section of the sidebar (Fred: "in view tab"),
+persisted with the project.** `bspline_gen_palette.html`'s VIEW panel gained 4 controls after its
+existing 3 checkboxes, gated show/hide on `enabled` the same way THICKEN's own `thickenEnabled`/
+`thickenOptions` pair already works (`bindTogglePanel`, `ui-bindings.js`): `decalEnabled` (off by
+default), `decalResolution` (a `<select>`, 40/100/150 dpi, default 150), `decalOpacity` (0-100%,
+default 100), and a dynamic "Layers" checkbox LIST, one per artwork layer currently in the project
+(new `main/decal-settings-ui.js`, re-rendered on the existing `editorLayersChanged` event the same
+way `main/stamp/layer.js` already listens for it). Four new `P.*` keys (`core/state.js`'s own
+`DEFAULT`): `decalEnabled` (added to `boolParams`), `decalResolution` (added to `stringParams`, same
+convention `spacing`'s own numeric-looking `<select>` already uses -- a plain number would have
+been coerced wrong), `decalOpacity` (a plain number, no special list needed), `decalLayerIds` (a
+PLAIN OBJECT, `{[layerId]: boolean}`, keyed by id not position so a reorder/delete can't desync it
+-- written DIRECTLY by the layer-checkbox list, same `P.filterTweaks[id][key]` pattern
+`core/noise/tweaks-ui.js` already uses, since a dynamic per-layer dictionary has no single DOM
+element id the generic `Object.keys(P).forEach` auto-binder in `ui-bindings.js` could ever match).
+A layer is INCLUDED unless its id maps to exactly `false` (missing/true both mean included -- the
+same "visible !== false" convention `editor/layers.js` already uses everywhere, so a layer added
+after the project was last saved defaults to included, not silently dropped). Every one of these 4
+fields rides through `saveLastSession`/`loadLastSession`/`persistableP` with ZERO special-casing
+needed anywhere -- confirmed by a real round-trip test (`tests/decal-settings-persist.test.js`,
+7 tests, mutation-tested: removing `decalEnabled`/`decalResolution` from their coercion lists
+correctly breaks 2 of them), not assumed from reading the generic mechanism.
+
+**(2) Item 68's own spike promoted to a real module.** New `core/stamp/decal-png.js`,
+`buildArtworkDecalPng(editor, {dpi, opacity, layerIds})` -- the SAME real pipeline
+(`editor.save()` -> `buildDrapeSvg` -> `sanitizeSvgForRaster` -> `prepareSvgForRaster` ->
+`renderSvgNative` -> `canvas.toDataURL`) item 68's own `decal_png_spike.mjs` proved live, now a
+proper importable function instead of a repro script's own inline copy. Two things beyond the
+spike: the layer FILTER (`allLayers.filter(l => layerIds[l.id] !== false)`, passed straight into
+`buildDrapeSvg` -- reuses its own real layer-qualifying logic rather than re-deriving it) and
+OPACITY (`ctx.globalAlpha = opacity/100` set before `renderSvgNative`'s own single `drawImage`
+call -- confirmed by reading `render-svg.js` directly that nothing resets `globalAlpha` afterward,
+so this is the correct, sufficient place for it).
+
+**(3) Tests for (2): "the PNG respects the layer choice and opacity" (the brief's own words),
+`tests/decal-png.test.js`, 9 tests.** happy-dom (this suite's own test environment) has NO real
+Canvas 2D context -- confirmed directly (`canvas.getContext('2d')` returns `null`) -- so, matching
+this repo's own established split (there has never been a `render-svg.test.js`; raster-level work
+is only ever verified LIVE, with real pixel sampling, items 68/69's own precedent), only the
+canvas-touching half is faked (`document.createElement('canvas')`, and `renderSvgNative` itself via
+`vi.mock`) -- `buildDrapeSvg`'s own REAL layer-filtering logic runs for real. Verifies: an excluded
+layer (`layerIds[id]:false`) is dropped from the rendered SVG, the rest stay; a layer id MISSING
+from `layerIds` (never explicitly set) is still included; every layer excluded returns `null`
+WITHOUT ever reaching the canvas (non-vacuous: render genuinely never ran, not just "returned null
+anyway"); opacity 60 sets `ctx.globalAlpha` to exactly 0.6, default (omitted) to 1; opacity is
+clamped to [0,100] (150 -> 1, -10 -> 0); dpi sets the real pixel dimensions (7x9in @ 40dpi ->
+280x360, confirming item 68's own convention is preserved). Mutation-tested (disabling the layer
+filter): 2 of the 9 correctly failed.
+
+**(4) Wiring into the real Send (`main/export-flow.js`'s `sendToFusion`).** `params: {...P}`
+already carries the 4 new fields with zero changes needed there (every other scalar `P` field
+already rides along the same way). Added: build the PNG when `P.decalEnabled` and NOT an append
+(same reasoning `frame: isAppend ? null : frameSendPayload()` above it already uses -- append
+doesn't rebuild the Stamped body this targets), splice the result into `stamp.decal` alongside the
+existing `stamp.layers`. **Three-way `decal` value, refined once mid-build (not the first cut):**
+`null` = NO INSTRUCTION, the add-in leaves whatever decal is already there alone (append, AND a
+transient PNG-render failure while enabled -- neither is "the user turned it off", so neither may
+delete a previously-working decal); `{enabled:false}` = the one EXPLICIT remove instruction, only
+sent when the setting itself is off; `{enabled:true, dpi, opacity, png}` = apply/replace. Every
+failure path (no colour-carrying artwork found, an exception during render) is a `fusLog` + a
+`showToast('colour decal skipped: <reason>', 'warn')` (`core/toast.js`, the existing shared toast),
+never thrown -- matches the brief's own "never fails a Send" requirement, and the whole Send
+continues regardless.
+
+**(5) Python side (`b-spline-gen.py`): apply/replace/remove on the Stamped component's own top
+face, named 'Artwork colours'.** New: `DECAL_NAME`, `_find_stamped_panel_body` (reuses the
+already-proven `_find_clean_stamped`/`_normalize_occurrence` from post-import, filters to the
+literally-named `'Stamped'` occurrence's own solid body -- never silently falls back to `'Clean'`
+if no Stamped variant was sent this Send), `_largest_area_face` (item 69's own correction: a
+sculpted terrain's tallest Z POINT can tie with a small rim facet and pick the WRONG one --
+largest AREA is the robust choice, proven live in item 69), `_remove_named_decal` (item 68's own
+proven dedupe), `_apply_colour_decal` (the orchestrator, called from `_handle_generate` right
+after the existing SVG-stamp-import block, gated on `not is_preview` -- a decal costs ~1-2.5s,
+item 68's own measurement, not worth paying on every live-preview rebuild). `decal_data is None` ->
+return immediately, matching (4)'s own three-way semantics exactly. **MUST NEVER RAISE is the one
+property the whole function is built around** -- a single broad `try/except Exception` wraps
+everything from the PNG decode through `decals.add`, logging and returning rather than
+propagating, so a Fusion API failure here can never fail the rest of `_handle_generate`.
+
+**(6) Tests for (5), `test_colour_decal_handler.py`, 15 tests -- AND one real bug they didn't
+catch, found only by live verification.** Fake Fusion objects shaped to match `_find_clean_stamped`
+(pre-existing code)'s own REAL expectations -- a `.count`/`.item(i)` collection for
+`childOccurrences`, not a plain list (a plain list's own `.count` resolves to a bound METHOD, not
+an int, and silently breaks `range(n)` outside any try/except in that function -- caught this
+BEFORE running anything live, by reading `_find_clean_stamped`'s own source instead of assuming a
+simpler fake would do). Covers: dedupe-before-add (re-Send stays at 1, not 2 -- mutation-tested,
+removing the dedupe call correctly breaks it), largest-area-face selection (mutation-tested,
+switching to `faces[0]` correctly breaks 2 of the 15), `decal_data is None` leaves an existing
+decal untouched (mutation-tested), every "never raises" path including a Fusion API call that
+itself raises (`component.decals.add` throwing -- mutation-tested by narrowing the except clause,
+confirming it's load-bearing). **Despite all that, live verification (next) found a bug none of
+this caught: `_find_stamped_panel_body` returned a body, and `_apply_colour_decal` read
+`body.component` to get its owning component -- a real Fusion `BRepBody` has NO `.component`
+attribute at all (confirmed directly: `hasattr(body,'component')` is `False`); the real property is
+`.parentComponent`.** My own test fakes had a `.component` attribute because I'd WRITTEN them to
+match my own (wrong) code, not the real API shape -- the exact trap "measure, don't re-reason"
+exists to catch, except this was a genuinely NEW shape I'd never measured before writing it. Fixed
+in both the production code and the test fakes (renamed throughout); full suite re-confirmed green
+after the fix, live re-verified working (below).
+
+**(7) LIVE verification, `fusion_holder.txt` = f3.** Captured the REAL Send payload via
+`onFusionApply`'s own real path (not the wizard/download path items 68/69 used, which defaults to
+EXCLUDING the Stamped variant -- `hasStamp` gates on `activeStampLayers()`, which needs a real
+carving mask this colour-only scenario never builds; forced `stamped:true` directly via
+`executeExport`'s own options param instead, `clean:true` alongside it -- `clean:false` alone was
+tried first and broke the FRAME build as a side effect, `_find_bspline_core_body` specifically
+needs a 'Clean' component's own 'panel' body to exist, unrelated to item 71 itself but worth noting
+for the next live script). Real UI interaction confirmed the generic auto-binder's own event-type
+rule matters for a live script too: a checkbox needs an `input` event, not just `change`
+(`bindTogglePanel`'s own listener uses `change`, but the generic `P`-updating binder in
+`core/ui-utils.js` listens for `input` on anything that isn't a `<select>` -- dispatching only
+`change` left `P.decalEnabled` silently stuck at its old value although the DOM checkbox itself
+showed checked, a real gap in MY OWN capture script, not the product). Loaded `b-spline-gen.py` from
+the CHECKOUT, not the deployed AddIns copy (item 71's own new functions exist only in the
+checkout, never deployed -- confirmed via `fc.exe /B`). Measured on a real document: decal ON
+(dpi=100, opacity=70, 4 real artwork layers) -> applied in ~2.35s, named "Artwork colours",
+visibly draping the sculpted terrain with the wood/underlying colour showing through at a
+blended, non-opaque level (opacity genuinely doing something, not just wired to a no-op); SAME
+payload re-applied (re-Send) -> still exactly 1 decal, not 2, ~2.43s; OFF payload applied -> 0
+decals, ~0.1s (fast -- no PNG to decode/render, just a named lookup+delete), the view falling back
+to the pre-existing per-body appearance underneath, not wood (the decal is a NEW, separate layer on
+top of whatever was already there, never replacing it). Shots: `shots/seatA/
+1516_item71_decal_on_70pct.png`, `..._decal_off.png`. Left open, renamed `ITEM71 colour decal live
+test - 2026-10-03`, decal restored to its ON state for inspection; `DECAL test`/`DECAL edge
+test`/Fred's own `Untitled` all confirmed untouched by content throughout (occurrence lists
+re-checked after every step).
+
+**Full suite, after everything above:** vitest 175 files / 3393 tests green; pytest (b-spline-gen)
+112/112 green (111 pre-existing + 1 new for the `None`-semantics refinement in (4)/(5)).
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html`,
+`.../html/core/state.js`, `.../html/core/stamp/decal-png.js` (new),
+`.../html/main/decal-settings-ui.js` (new), `.../html/main/export-flow.js`,
+`.../html/main/ui-bindings.js`, `bspline-frame-builder/b-spline-gen/b-spline-gen.py`,
+`bspline-frame-builder/b-spline-gen/test_colour_decal_handler.py` (new), `tests/decal-png.test.js`
+(new), `tests/decal-settings-persist.test.js` (new), `WORK-LOG.md`. Scratch capture script,
+captured payloads, and intermediate screenshots deleted before commit; the two representative PNGs
+kept only in `shots/seatA`. Dev-server process and its chrome profile dir stopped/deleted; the
+local `b_spline_gen_log.txt`(.old) artifacts in the checkout (written via `workspace_link.json`'s
+own dev-visibility redirect while loading from the checkout path) deleted too, not tracked by git.
