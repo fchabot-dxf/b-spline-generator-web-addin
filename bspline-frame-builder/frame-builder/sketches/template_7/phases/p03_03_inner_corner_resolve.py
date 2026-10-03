@@ -1,25 +1,11 @@
-from fb_engine.t7_geometry import t7_outline
-from fb_engine.t7_roof_eave import eave_inner_corner
-
-
-def _float(ui_data, key, default):
-    try:
-        return float(ui_data[key])
-    except (KeyError, TypeError, ValueError):
-        return default
-
-
 def get_block(ui_data=None):
     """
     Inner Corner Resolve (Template 7 - Diamond-top Hourglass): 5 corners.
 
-    Same resolver as every template (fb_engine/inner_corners.py): each outer corner's inner
-    SketchPoint is located by computed POSITION (outer + Direction*Distance, within Tolerance),
-    bypassing the offset's own curve-tagging fragility - see that module's own docstring.
-
-    T7 has 3 DISTINCT corner shapes (fb_engine/t7_geometry.inner_corner_directions, already
-    tested against an independent oracle, fb_engine/test_t7_roof_eave.py /
-    test_t7_geometry.py), grouped into 3 ResolveInnerCorners steps by shared Distance:
+    Same resolver as every template (fb_engine/inner_corners.py) for peak/base: each outer
+    corner's inner SketchPoint is located by computed POSITION (outer + Direction*Distance,
+    within Tolerance), bypassing the offset's own curve-tagging fragility - see that module's own
+    docstring.
 
       peak:    both roof lines at +/-45deg -> Direction=(0,-1), Distance = frame_thickness *
                sqrt(2) (the fixed numeric constant, not a Fusion sqrt() call - see
@@ -27,35 +13,21 @@ def get_block(ui_data=None):
       base_R/L: a plain 90-degree axis-aligned corner (side meets base), same convention every
                other template's base corners already use - Direction=(+-1,1), Distance =
                'frame_thickness' (symbolic, always live).
-      eave_R/L: the TRUE line-circle intersection between the offset roof line and the offset
-               neck arc (t7_roof_eave.eave_inner_corner) - NOT a simple axis-aligned formula.
-               This one genuinely needs the live widthIn/heightIn/frame_thickness AND the neck/
-               body handle proportions to compute; ui_data (passed to every get_block, see
-               template_loader.py) carries the FIRST three (the template's own DECLARED Fusion
-               params - send_frame.frame_ui_data filters payload.params to declared_param_names),
-               but NOT the seeded handle fractions (seed_geometry.py only ever patches literal
-               Points/Radius values, never a ResolveInnerCorners config) - so this computation
-               necessarily uses this template's OWN DEFAULT handle proportions (the exact same
-               defaults p02_02_loop.py's own seed points use before any Send-time override).
 
-    KNOWN LIVE-VERIFY GAP (LIVE_CHECK.md): at the default handle settings this is exact. If Fred
-    drags the neck width/height or body flare handles far enough from default AND re-Sends, the
-    TRUE eave corner moves with them while this baked Distance does not, and the 0.05cm default
-    Tolerance may miss it (a WARNING in the Fusion log, that corner's miter simply not drawn - see
-    inner_corners.py's own docstring). Tolerance is widened here (0.2cm) as cheap headroom for a
-    modest drag, not a fix for a large one. If seat A's live check finds this corner failing at a
-    dragged handle, the real fix is a new, explicit channel carrying the live handle fractions
-    into ui_data (additive - every other template already ignores unknown ui_data keys), not a
-    wider Tolerance.
+    H23 item 38 (MEASURED: the app's own seeded neck/body handle proportions vary per Send -- a
+    randomized Shape Lattice "Generate", not a fixed default -- so a Distance/Direction baked
+    here ahead of time from t7_geometry.py's own DEFAULT proportions almost never matches the
+    real corner; it was previously missing the intended target point by a wide margin, wide
+    enough that Fusion's own profile classifier rejected the roof regions outright ("a miter did
+    not split it") and extruded a degenerate sliver alongside each side bar):
+
+      eave_R/L: now a 'ResolveLineCircleCorner' step (fb_engine/inner_corners.py) instead of a
+               baked ResolveInnerCorners Distance/Direction -- it reads the REAL roof line and
+               REAL (seeded) neck arc straight off the already-built sketch and computes the
+               exact line-circle intersection LIVE (t7_roof_eave.line_circle_corner, the same
+               proven math eave_inner_corner used, just fed live numbers instead of defaults).
+               OuterID/InnerID pairs preserved exactly from the earlier declaration.
     """
-    width_in = _float(ui_data or {}, 'widthIn', 7.0) - 2 * _float(ui_data or {}, 'boundingboxoffset', 0.25)
-    height_in = _float(ui_data or {}, 'heightIn', 9.0) - 2 * _float(ui_data or {}, 'boundingboxoffset', 0.25)
-    frame_thickness = _float(ui_data or {}, 'frame_thickness', 0.75)
-
-    outline = t7_outline(width_in, height_in, frame_thickness)
-    eave_dir, eave_dist, _e_in = eave_inner_corner(width_in, height_in, frame_thickness,
-                                                    outline["C_neck"], outline["r_neck"])
-
     return {
         "PhaseID": "p03_03_inner_corner_resolve",
         "Name": "Inner Corner Resolve",
@@ -78,12 +50,17 @@ def get_block(ui_data=None):
                 },
             },
             {
-                'Type': 'ResolveInnerCorners',
-                'Distance': f'{eave_dist} in',
+                'Type': 'ResolveLineCircleCorner',
+                'FrameThickness': 'frame_thickness',
                 'Tolerance': 0.2,
                 'Corners': {
-                    'eave_R': {'OuterID': 'proj_arc_neck_R:S', 'InnerID': 'inner_proj_arc_neck_R:S', 'Direction': (eave_dir[0], eave_dir[1])},
-                    'eave_L': {'OuterID': 'proj_roof_L:S',     'InnerID': 'inner_proj_roof_L:S',      'Direction': (-eave_dir[0], eave_dir[1])},
+                    # roof_R:S=peak (far from the arc), roof_R:E=E_R (tangent point, near the arc).
+                    'eave_R': {'LineFarID': 'proj_roof_R:S', 'LineNearID': 'proj_roof_R:E',
+                               'ArcID': 'proj_arc_neck_R', 'InnerID': 'inner_proj_arc_neck_R:S', 'Concave': True},
+                    # roof_L:S=E_L (tangent point, near the arc), roof_L:E=peak (far) -- REVERSED
+                    # vs the right side (p02_02_loop.py's own declared Points order).
+                    'eave_L': {'LineFarID': 'proj_roof_L:E', 'LineNearID': 'proj_roof_L:S',
+                               'ArcID': 'proj_arc_neck_L', 'InnerID': 'inner_proj_roof_L:S', 'Concave': True},
                 },
             },
         ]

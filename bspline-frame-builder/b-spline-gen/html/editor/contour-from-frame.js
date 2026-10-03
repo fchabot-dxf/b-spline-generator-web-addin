@@ -81,7 +81,8 @@ function _frameThickness(frame, tpl) {
 export function frameWindowGeometry(frame) {
   if (!hasFrame(frame)) return null;
   const tpl = frame.defs.templates.find((t) => t.id === frame.record.templateId);
-  return insetWindowGeometry(frame.record, _frameThickness(frame, tpl), frame.record.panelLip);
+  return insetWindowGeometry(frame.record, _frameThickness(frame, tpl), frame.record.panelLip,
+    frame.board.widthIn, frame.board.heightIn);
 }
 
 /** The window's hole rectangle as a closed primitive loop (see rectToPrimitives), or null -- for the Shape

@@ -181,6 +181,25 @@ export const PRESETS = {
     params: { gableNeckWidth: 0.50, neckHeight: 0.18, bodyFlareHeight: 0.72 },
     jitter: { gableNeckWidth: 0, neckHeight: 0, bodyFlareHeight: 0 },
   },
+  // T11 HOURGLASS ROOF: a FRAME-ONLY preset (Template 11): no Shape Lattice button offers it, like tabTop/
+  // iShape/diamondTopHourglass. Template 7's own gable roof + eave over Template 1's own 3-arc shoulder/waist/
+  // hip pinch side (reused verbatim, fb_engine/t11_geometry.py's own module docstring) and a plain straight base.
+  // Reuses TEMPLATE 1's OWN param key names (waistReach, cornerRadiusTop, cornerRadiusBottom, waistCenterY,
+  // waistRadius) rather than fresh ones -- deliberately: this IS Template 1's own hourglass side, just with the
+  // top horns replaced by a roof (template_data.py's own FRAME_HANDLES comment). Because these keys are REAL,
+  // already-SHAPE_PARAM_KEYS.hourglass params (not frame-only), they must NEVER be added to
+  // FRAME_ONLY_PARAM_KEYS -- that list is keyed by bare param NAME across every preset, and doing so would
+  // silently exclude Template 1's own identically-named params from the Fusion manifest too (the same collision
+  // class diamondTopHourglass's own "gable" prefix comment above already warns about, just the opposite
+  // direction: THERE a fresh name had to avoid colliding with an existing one, HERE the existing name is reused
+  // on purpose, so it must stay OUT of that list instead of being added to it). `waistRadius` omitted here (as
+  // Template 1's own hourglass omits it): it is a DERIVED_PARAM_DEFAULTS key, never a plain preset param.
+  diamondTopHourglassPinch: {
+    label: 'Hourglass Roof',
+    frameOnly: true,
+    params: { waistReach: 0.55, cornerRadiusTop: 0.22, cornerRadiusBottom: 0.22, waistCenterY: 0 },
+    jitter: { waistReach: 0, cornerRadiusTop: 0, cornerRadiusBottom: 0, waistCenterY: 0 },
+  },
 };
 
 /**
@@ -243,6 +262,17 @@ export const PARAM_ORDER = {
   // else), then the body flare height (its own range reads the already-resolved neckHeight, enforcing
   // bodyFlareHeight strictly below it -- the neck sits closer to the eave than the body's full-width point).
   diamondTopHourglass: ['gableNeckWidth', 'neckHeight', 'bodyFlareHeight'],
+  // T11 HOURGLASS ROOF (frame-only preset): Template 1's own 5 hourglass-side keys -- NOT template_data.py's own
+  // FRAME_HANDLES order (that table orders by UI label, waistReach first), but Template 1's own PARAM_ORDER.
+  // hourglass ordering (waistCenterY, waistReach, corner(s), waistRadius last): `_hourglassRange` (this preset's
+  // own range fallback, no dedicated range function of its own yet) reads `v.waistCenterY` unconditionally when
+  // resolving waistReach's own range (and `v.waistReach` when resolving the corners') -- MEASURED: the
+  // FRAME_HANDLES order left waistCenterY unresolved (undefined) at that point, producing a silent NaN range
+  // (`Math.abs(undefined)` propagating through), caught by a real `generateSilhouette` call producing NaN
+  // keypoints, not assumed safe. `waistRadius` resolved LAST: its own derived default
+  // (DERIVED_PARAM_DEFAULTS.diamondTopHourglassPinch) reads the already-resolved waistReach/cornerRadiusTop. The
+  // roof itself (`a`) is never a resolved param here: no FRAME_HANDLES entry controls it.
+  diamondTopHourglassPinch: ['waistCenterY', 'waistReach', 'cornerRadiusTop', 'cornerRadiusBottom', 'waistRadius'],
 };
 const BASE_RANGES = {
   // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
@@ -330,6 +360,14 @@ export const DERIVED_PARAM_DEFAULTS = {
     gableNeckWidth: () => 0.50,
     neckHeight: () => 0.18,
     bodyFlareHeight: () => 0.72,
+  },
+  // T11 HOURGLASS ROOF: every param has a plain default (no seeded jitter: a frame always sets all 5 from its
+  // model/seeds, as T6/T7/T9) EXCEPT waistRadius, which is DERIVED exactly the way Template 1's own hourglass
+  // waistRadius is (fb_engine/t11_geometry.py's own `_waist_radius_frac`, ported verbatim: reads the resolved
+  // waistReach and cornerRadiusTop -- NOT the plain shared `cornerRadius` Template 1 itself reads, since T11 has
+  // no shared corner key at all).
+  diamondTopHourglassPinch: {
+    waistRadius: (v) => Math.max(v.waistReach - v.cornerRadiusTop, WAIST_MIN_RADIUS_OF_DEPTH * v.waistReach),
   },
 };
 
@@ -635,6 +673,85 @@ function _diamondTopHourglassRange(key, region, stroke, v) {
   return _range(v.neckHeight + 0.4, 0.75);
 }
 
+/**
+ * T11 HOURGLASS ROOF: the side's own ranges. NOT `_hourglassRange`/`_optionalRange`'s own hourglass branches
+ * reused directly -- MEASURED: both hardcode a single shared `v.cornerRadius` (Template 1's own key, read via
+ * `DERIVED_PARAM_DEFAULTS.hourglass.waistRadius`), which T11 never has (its own corners are split from the
+ * start -- no shared-then-overridden stage the way Template 3's narrow top sequences cornerRadius -> waistRadius
+ * -> cornerRadiusTop/Bottom) -- reusing them produced a silent NaN (`v.cornerRadius` undefined, propagating
+ * through `Math.max(NaN, ...)`) the first time a real `generateSilhouette` call exercised this preset, caught by
+ * a direct probe, not assumed safe. Same formulas, read off `v.cornerRadiusTop` directly instead, and against the
+ * side's own virtual half-height (`hhR = hh - a/2`, the room BELOW the roof's own eave,
+ * diamondTopHourglassPinchConstruction's own doc comment) rather than the full region's `hh` -- the roof eats
+ * into the side's own vertical room, the same reduced-room fact that construction already establishes.
+ */
+function _diamondTopHourglassPinchRange(key, region, stroke, v) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const a = Math.min(0.62 * hw, 0.84 * hh);
+  const hhR = hh - a / 2;
+  // The TOP corner's own depth is measured from ITS OWN horn (d - topInset, same convention
+  // `hourglassConstruction`'s own T3 topInset uses) -- the roof's eave sits `a` out, so the shoulder's horn sits
+  // `hw - topInset = a` out too (diamondTopHourglassPinchConstruction's own `topX`).
+  const topInset = hw - a;
+  // Template 1's own base band is [-0.6, 0.6] (BASE_RANGES, a UI-slider-limit, not a geometric derivation) and
+  // its own corners tolerate the full band at its defaults (MEASURED directly). T11's TOP corner has LESS margin
+  // (its own depth is shrunk by `topInset`, see the cornerRadiusTop/Bottom branch below) and genuinely does NOT
+  // tolerate the full band at ITS OWN default corner sizes: a drag to +-0.6 left 4-8 non-tangent defects, not
+  // assumed safe. waistCenterY resolves FIRST (PARAM_ORDER, mirroring Template 1's own order), before
+  // waistReach/cornerRadiusTop/Bottom are known, so there is no later-resolved value to validate THIS range
+  // against yet (the same "deliberately narrow, directly-tested-safe box" compromise
+  // `_diamondTopHourglassRange`'s own doc comment already names for Template 7's neck/body heights, rather than
+  // a fully general cross-param feasibility solve nothing else in this file attempts either): narrowed to
+  // [-0.5, 0.5], MEASURED clean (0 defects) at every default-proportion drag tested, vs 4-8 at the full +-0.6.
+  if (key === 'waistCenterY') return _range(-0.5, 0.5);
+  if (key === 'waistReach') {
+    // MEASURED, not assumed: the TOP corner's own depth is `hw*waistReach - topInset` (the branch below, and
+    // waistRadius's own) -- with NO floor here, a generated `waistReach` below `topInset/hw` (~0.38 at 7x9) makes
+    // that depth NEGATIVE, a physically invalid tangency (the shoulder horn would sit on the wrong side of the
+    // pinch). Caught by a real `generateValidFrameSeeds` draw producing a negative resolved `cornerRadiusTop`/
+    // `waistRadius` and six non-tangent defects, not assumed safe from Template 1's own floor (0.05, which never
+    // needed this: topInset is always 0 there, no roof eating into the top corner's own depth).
+    const H = hhR - stroke - Math.abs(v.waistCenterY) * hhR - HORN_MIN_OF_HALF_HEIGHT * hhR;
+    return _range(Math.max(0.05, topInset / hw + EPS_FRAC), 0.92, -Infinity, H / hw);
+  }
+  if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
+    // Resolved before waistRadius (PARAM_ORDER): the same geometry-only treatment Template 1's own shared
+    // `cornerRadius` gets (`_hourglassRange`'s own generic fallback, k = WAIST_MIN_RADIUS_OF_DEPTH standing in
+    // for a not-yet-resolved waistRadius), per corner (its own vertical room, wcy signed by which corner, and its
+    // own depth -- the TOP corner's `d` shrunk by `topInset`, MEASURED: using the full `hw*waistReach` for the top
+    // corner too (an earlier version of this branch did) let `cornerRadiusTop` range past what the ACTUAL
+    // inset-shortened tangency allows, feeding a stale upper bound into waistRadius's own range below).
+    const isTop = key === 'cornerRadiusTop';
+    const wcy = hhR * v.waistCenterY, horn = HORN_MIN_OF_HALF_HEIGHT * hhR;
+    const H = hhR - stroke - horn + (isTop ? wcy : -wcy);
+    const d = hw * v.waistReach - (isTop ? topInset : 0), k = WAIST_MIN_RADIUS_OF_DEPTH;
+    const sMax = (H * H / d + d) / 2;
+    const rsMax = Math.max(sMax - k * d, (1 - k) * d);
+    return _range(0.04, 0.95, (stroke + EPS_FRAC * hw) / hw, rsMax / hw);
+  }
+  // waistRadius, resolved last: BOTH corners already resolved -- `_optionalRange`'s own hourglass formula,
+  // computed per corner (the top's own `d` shrunk by `topInset`, as above) and INTERSECTED. MEASURED, not
+  // assumed: an earlier version of this branch checked only `cornerRadiusTop` (mirroring `_optionalRange`'s own
+  // hourglass formula verbatim, which only ever has ONE corner to check) -- Template 1 never needs the other
+  // corner's own constraint because both corners share one `cornerRadius`; T11's independent corners do NOT, so
+  // a generated `cornerRadiusBottom` could leave NO waistRadius that also keeps the BOTTOM corner's own tangency
+  // real, and the un-intersected range let `waistRadius` land there anyway -- caught by a real `generateSilhouette`
+  // call producing non-tangent defects on BOTH sides' shoulder/waist/hip chains, not assumed safe.
+  const wcy = hhR * v.waistCenterY, horn = HORN_MIN_OF_HALF_HEIGHT * hhR, eps = EPS_FRAC * hw;
+  const corners = [
+    { r: hw * v.cornerRadiusTop, d: hw * v.waistReach - topInset, H: hhR - stroke - horn + wcy },
+    { r: hw * v.cornerRadiusBottom, d: hw * v.waistReach, H: hhR - stroke - horn - wcy },
+  ];
+  let lo = 0, hi = Infinity;
+  for (const c of corners) {
+    const sMax = (c.H * c.H / c.d + c.d) / 2;
+    const keyhole = c.r < c.d ? (c.d - c.r) * (c.d - c.r) / (2 * c.d) : 0;
+    lo = Math.max(lo, Math.max(c.d / 2 - c.r + eps, keyhole, eps) / hw);
+    hi = Math.min(hi, (sMax - c.r) / hw);
+  }
+  return _range(0, Infinity, lo, hi);
+}
+
 function _bottleRange(key, region, stroke, v) {
   const hw = region.w / 2, hh = region.h / 2;
   if (key === 'bodyRadius') return _optionalRange('bottle', region, stroke, v);
@@ -897,7 +1014,8 @@ function _dippedLeftWaveRange(key, region, stroke, v) {
  *  hourglass is the default). */
 const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 'tabTop' ? _tabTopRange
   : preset === 'dippedLeftWave' ? _dippedLeftWaveRange : preset === 'iShape' ? _iShapeRange
-    : preset === 'diamondTopHourglass' ? _diamondTopHourglassRange : _hourglassRange);
+    : preset === 'diamondTopHourglass' ? _diamondTopHourglassRange
+      : preset === 'diamondTopHourglassPinch' ? _diamondTopHourglassPinchRange : _hourglassRange);
 
 export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
   const fn = _rangeFn(preset);
@@ -1165,6 +1283,9 @@ const SALT = {
   iShape: { stemWidth: 631, flangeHeight: 632 },
   // T7 DIAMOND-TOP HOURGLASS: frameOnly (jitter 0 for all 3), same reason as dippedLeftWave's own comment above.
   diamondTopHourglass: { gableNeckWidth: 641, neckHeight: 642, bodyFlareHeight: 643 },
+  // T11 HOURGLASS ROOF: frameOnly (jitter 0 for all 4 plain keys; waistRadius is DERIVED, no salt needed), same
+  // reason as dippedLeftWave's own comment above.
+  diamondTopHourglassPinch: { waistReach: 651, cornerRadiusTop: 652, cornerRadiusBottom: 653, waistCenterY: 654 },
 };
 
 /** Explicit param value wins; else default + a gentle seeded jitter,
@@ -1715,6 +1836,50 @@ export function diamondTopHourglassConstruction(region, resolved) {
   return { hw, hh, a, rest, peak, E, N, B, base, rNeck, cNeck, rBody, cBody };
 }
 
+/**
+ * T11 HOURGLASS ROOF: Template 7's own gable roof + eave (`a`, `peak`, `E` -- the identical formula,
+ * diamondTopHourglassConstruction's own) over Template 1's own 3-arc shoulder/waist/hip pinch side, REUSED by
+ * calling `hourglassConstruction` itself rather than re-deriving its algebra a second time (the ONE place that
+ * algebra lives, per that function's own doc comment) -- ported from fb_engine/t11_geometry.py's own
+ * `t11_outline`/`_hourglass_side` (read before writing this, not re-derived from scratch), the only other place
+ * this exact composition exists.
+ *
+ * The trick: Template 1's own side construction is always resolved against the FULL region half-height (`hh`,
+ * read directly for `waistCenterY = hh * waistCenterYFrac`) -- but T11's side only has the room BELOW the roof's
+ * own eave to work with, a shorter "virtual" region. Calling `hourglassConstruction` with a virtual region of the
+ * SAME width but height `2*hh - a` (so ITS OWN internal half-height is `hh - a/2`, the sub-region's true half-
+ * height) reproduces fb_engine/t11_geometry.py's own `_hourglass_side(region_w, region_h=eave_y, ...)` call
+ * exactly -- `topInset = hw - a` (as a FRACTION of hw, `(hw-a)/hw`, since `hourglassConstruction` itself multiplies
+ * by hw) places the side's own top horn exactly at x=a, directly below E (the eave's own vertical straight bar).
+ *
+ * The sub-call's own return is in ITS region's local frame (Y-down, origin at the SUB-region's own centre) --
+ * every Y-valued field is re-expressed in the OUTER region's own frame (origin at the full region's centre) by
+ * adding `a/2` (the two origins are exactly that far apart on Y, both derived from the SAME sub-region anchored
+ * flush with the full region's own bottom edge): MEASURED, not assumed -- verified by hand against
+ * fb_engine/t11_geometry.py's own `t11_outline()` at 7x9/thickness 0.75 (every one of shoulderHorn/
+ * shoulderWaistJct/waistHipJct/hipHorn/CWaist's own board-coordinate values converts to this function's frame and
+ * matches to the last published digit). X-valued fields (shoulderCx, hipCx, topX, waistX) need no shift: the
+ * sub-region shares the full region's own vertical centreline.
+ */
+export function diamondTopHourglassPinchConstruction(region, resolved) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const a = Math.min(0.62 * hw, 0.84 * hh);
+  const peak = { x: 0, y: -hh };
+  const E = { x: a, y: -hh + a };
+  const g = hourglassConstruction({ w: region.w, h: 2 * hh - a }, { ...resolved, topInset: (hw - a) / hw });
+  const shift = a / 2;
+  return {
+    hw, hh, a, peak, E, base: { x: hw, y: hh },
+    depth: g.depth, radiusWaist: g.radiusWaist, waistCenterY: g.waistCenterY + shift, waistCx: g.waistCx,
+    topX: g.topX, waistX: g.waistX,
+    cornerRadiusTop: g.cornerRadiusTop, cornerRadiusBottom: g.cornerRadiusBottom,
+    shoulderCx: g.shoulderCx, shoulderY: g.shoulderY + shift,
+    hipCx: g.hipCx, hipY: g.hipY + shift,
+    ux: g.ux, uy: g.uy, uxBottom: g.uxBottom, uyBottom: g.uyBottom,
+    notchHalfSpan: g.notchHalfSpan, waistMajor: g.waistMajor,
+  };
+}
+
 /** The true line-circle intersection between a line through `p0` (direction `(ux,uy)`, a UNIT vector) and the
  *  circle `(center, radius)`, choosing whichever root's own `s` (distance along the line from `p0`) is closer to
  *  `referenceS` -- the other root is the line's far-side crossing, not a real corner. Ported from
@@ -1937,6 +2102,99 @@ function _solveDiamondTopHourglass(region, params, segmentsOverride, seed, strok
 }
 
 /**
+ * T11 HOURGLASS ROOF solver: 13 pieces (see this module's own `_OUTLINE` convention in template_data.py:
+ * roof_R, eave_straight_R, arc_shoulder_R, arc_waist_R, arc_hip_R, side_straight_R, bottom_edge, side_straight_L,
+ * arc_hip_L, arc_waist_L, arc_shoulder_L, eave_straight_L, roof_L). The shoulder/waist/hip arcs are drawn exactly
+ * as `_solveHourglass` draws Template 1's own (same construction, reused via `diamondTopHourglassPinchConstruction`
+ * -- the horn-to-arc and arc-to-arc joints are all simple "drawn radius out from a fixed centre" points, no
+ * intersection search needed, exactly as Template 1's own convex/concave corners never flip). `strokeHalfWidth`
+ * insets the drawn outline the same way as Template 1's (an arc centre never moves, a convex radius shrinks, a
+ * concave one grows) PLUS the roof's own peak (Template 7's true-miter formula, identical: both roof lines at
+ * +/-45deg, symmetric) and the eave corner, which is a PLAIN two-straight-line miter (the 45-degree roof line
+ * meeting the VERTICAL eave bar) -- simpler than Template 7's own eave (a line/CIRCLE intersection, because
+ * Template 7's roof runs straight into its neck arc with no intervening straight bar): mirrors
+ * fb_engine/t11_geometry.py's own `_line_line_inner_corner` (the general two-offset-line intersection),
+ * specialized to this one fixed pair. UNEXERCISED with a non-zero stroke by any real caller today (a frame-only
+ * preset: every real caller passes 0, same as every other frame-only preset here) -- implemented anyway rather
+ * than left half-done, same call Template 7's own solver made.
+ */
+function _solveDiamondTopHourglassPinch(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  const resolvedAll = _resolveParams('diamondTopHourglassPinch', region, params, seed, strokeHalfWidth);
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  const g = diamondTopHourglassPinchConstruction(region, resolvedAll);
+  const s = strokeHalfWidth;
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
+  const M = (x, y) => ({ x: cx0 - x, y: cy0 + y });
+
+  const topDrawn = g.cornerRadiusTop - s, bottomDrawn = g.cornerRadiusBottom - s; // convex: shrinks
+  const radiusWaistDrawn = g.radiusWaist + s; // concave: grows
+  const hwDrawn = g.hw - s, hhDrawn = g.hh - s;
+  const topDrawnX = g.topX - s; // the eave's own x under inset (== a - s, same x the eave corner below lands on)
+
+  // Peak: the true miter offset (t7_roof_eave.peak_inner_corner, diamondTopHourglass's own `_solveDiamondTop
+  // Hourglass`) -- both roof lines at +/-45deg, so by symmetry the inset peak lies exactly on the centreline,
+  // s*sqrt(2) toward the interior (+y, this Y-DOWN convention).
+  const peakIn = { x: 0, y: -g.hh + s * Math.SQRT2 };
+  // Eave corner (right; mirror x for the left): a plain two-line miter (the roof line, direction peak->E, meeting
+  // the VERTICAL eave bar) -- each line offset inward by `s` along its own normal, then intersected. The eave
+  // line's x is constant along its own length, so the intersection reduces to one division (no general line-line
+  // solve needed).
+  const dxRoof = g.E.x - g.peak.x, dyRoof = g.E.y - g.peak.y, roofLen = Math.hypot(dxRoof, dyRoof);
+  const ruxR = dxRoof / roofLen, ruyR = dyRoof / roofLen;
+  let nxR = -ruyR, nyR = ruxR;
+  const roofMid = { x: (g.peak.x + g.E.x) / 2, y: (g.peak.y + g.E.y) / 2 };
+  if (nxR * (0 - roofMid.x) + nyR * (0 - roofMid.y) < 0) { nxR = -nxR; nyR = -nyR; }
+  let nxE = -1, nyE = 0; // the eave bar is vertical; its inward normal points toward the centreline (x=0)
+  if (nxE * (0 - g.E.x) < 0) { nxE = -nxE; nyE = -nyE; }
+  const p0Roof = { x: g.peak.x + nxR * s, y: g.peak.y + nyR * s };
+  const p0Eave = { x: g.E.x + nxE * s, y: g.E.y + nyE * s };
+  const tRoof = (p0Eave.x - p0Roof.x) / ruxR;
+  const eaveInR = { x: p0Roof.x + tRoof * ruxR, y: p0Roof.y + tRoof * ruyR };
+  const eaveInL = { x: -eaveInR.x, y: eaveInR.y };
+
+  const peakPt = P(peakIn.x, peakIn.y); // one shared point, both roof lines end there
+  const eaveR = P(eaveInR.x, eaveInR.y), eaveL = P(eaveInL.x, eaveInL.y);
+  // Right side, top -> bottom (shoulder/waist/hip exactly as `_solveHourglass`'s own right side).
+  const rShoulderHorn = P(topDrawnX, g.shoulderY);
+  const rShoulderWaistJct = P(g.shoulderCx + topDrawn * g.ux, g.shoulderY + topDrawn * g.uy);
+  const rWaistHipJct = P(g.hipCx + bottomDrawn * g.uxBottom, g.hipY - bottomDrawn * g.uyBottom);
+  const rHipHorn = P(hwDrawn, g.hipY);
+  const rBase = P(hwDrawn, hhDrawn);
+  const lBase = M(hwDrawn, hhDrawn);
+  const lHipHorn = M(hwDrawn, g.hipY);
+  const lWaistHipJct = M(g.hipCx + bottomDrawn * g.uxBottom, g.hipY - bottomDrawn * g.uyBottom);
+  const lShoulderWaistJct = M(g.shoulderCx + topDrawn * g.ux, g.shoulderY + topDrawn * g.uy);
+  const lShoulderHorn = M(topDrawnX, g.shoulderY);
+
+  const keypoints = [peakPt, eaveR, rShoulderHorn, rShoulderWaistJct, rWaistHipJct, rHipHorn, rBase,
+    lBase, lHipHorn, lWaistHipJct, lShoulderWaistJct, lShoulderHorn, eaveL];
+  const fresh = [
+    STRAIGHT_SEGMENT, // 0: peak -> eave_R (roof_R)
+    STRAIGHT_SEGMENT, // 1: eave_R -> shoulder horn R (eave_straight_R)
+    _curveSegment(rShoulderHorn, rShoulderWaistJct, topDrawn, true), // 2: shoulder, convex
+    _curveSegment(rShoulderWaistJct, rWaistHipJct, radiusWaistDrawn, false, g.waistMajor), // 3: waist, concave
+    _curveSegment(rWaistHipJct, rHipHorn, bottomDrawn, true), // 4: hip, convex
+    STRAIGHT_SEGMENT, // 5: hip horn R -> base R (side_straight_R)
+    STRAIGHT_SEGMENT, // 6: base R -> base L (bottom_edge)
+    STRAIGHT_SEGMENT, // 7: base L -> hip horn L (side_straight_L)
+    _curveSegment(lHipHorn, lWaistHipJct, bottomDrawn, true), // 8: hip, convex
+    _curveSegment(lWaistHipJct, lShoulderWaistJct, radiusWaistDrawn, false, g.waistMajor), // 9: waist, concave
+    _curveSegment(lShoulderWaistJct, lShoulderHorn, topDrawn, true), // 10: shoulder, convex
+    STRAIGHT_SEGMENT, // 11: shoulder horn L -> eave_L (eave_straight_L)
+    STRAIGHT_SEGMENT, // 12: eave_L -> peak (roof_L)
+  ];
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
+  // Template 6's own convention: a declared mirror table, not the generic default. bottom_edge (6) straddles the
+  // centreline and self-maps; every other piece i pairs with 12-i (which also gives 6 -> 6).
+  const mirror = fresh.map((_, i) => 12 - i);
+
+  const resolvedParams = { ...resolvedAll };
+  for (const k of FRAME_ONLY_PARAM_KEYS) if (!params || params[k] == null) delete resolvedParams[k];
+
+  return { keypoints, segments, cx: cx0, params: resolvedParams, hasUserSegments, mirror };
+}
+
+/**
  * T8 DIPPED TOP + LEFT-ONLY WAVE solver: 12 pieces. The right side and base are a plain straight edge (Template
  * 1's classic square corners, no pinch at all); the left side reuses `hourglassConstruction`'s own `left`
  * sub-construction (this preset's `waveHeight`/`waveReach` standing in for `waistCenterYLeft`/`waistReachLeft`,
@@ -2058,7 +2316,9 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
             ? _solveIShape(region, params, segmentsOverride, seed, strokeHalfWidth)
             : preset === 'diamondTopHourglass' // T7 DIAMOND-TOP HOURGLASS (a frame-only preset)
               ? _solveDiamondTopHourglass(region, params, segmentsOverride, seed, strokeHalfWidth)
-              : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
+              : preset === 'diamondTopHourglassPinch' // T11 HOURGLASS ROOF (a frame-only preset)
+                ? _solveDiamondTopHourglassPinch(region, params, segmentsOverride, seed, strokeHalfWidth)
+                : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;

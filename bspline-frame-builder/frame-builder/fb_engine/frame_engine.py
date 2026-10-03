@@ -125,6 +125,7 @@ class FrameBuilder:
         self.user_params = self.design.userParameters if self.design else None
         self.params_dna = {}
         self.fit = None  # frame_definition.frame_fit result of the last build (FB-FIX F4)
+        self.offset_fallbacks = []  # H23 item 28: BuildContext.offset_fallbacks of the last build
         
         if external_logger:
             self.logger = external_logger
@@ -206,6 +207,7 @@ class FrameBuilder:
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver, max_phase=max_phase)
             builder.build_template(template)
+            self.offset_fallbacks = builder.ctx.offset_fallbacks
 
             # FB-ORDER: move the whole frame block (this occurrence,
             # its sketches/planes/features) to just before the earliest
@@ -242,7 +244,8 @@ class FrameBuilder:
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver)
             builder.build_template(template)
-            
+            self.offset_fallbacks = builder.ctx.offset_fallbacks
+
             if target_body and frame_comp:
                 self._create_assembly_joints(target_body, frame_comp, joint_prefix)
 

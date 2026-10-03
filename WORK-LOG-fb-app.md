@@ -6752,3 +6752,881 @@ by its own handle immediately after the crash was captured. Flagging to the advi
 check entirely until the min/max rework lands, and (since T7's roof/eave is explicitly "reused VERBATIM" by
 T11's own docstring) is worth checking against T11's own already-claimed live success too -- either T11 never
 actually exercises this exact code path, or there's something still unexplained there.
+
+## 2026-10-02: H23 item 27 -- T7 LIVE-VERIFIED at 7x9 and 9x12, both exact, 0 errors/fallbacks
+
+Resumed with the advisor's own known-good fix for the min/max blocker (T11's abs-form substitution,
+`min(a,b)=((a+b)-abs(a-b))/2`, `max(a,b)=((a+b)+abs(a-b))/2`): declared `t7_a`/`t7_nx` once each and
+pointed every other `t7_*` expression at them instead of re-inlining `min`/`max` (committed `0c15daf`
+alongside the already-pending `p02_02_loop.py` edit from the prior pass). Full suite green before
+attempting Fusion.
+
+**First live attempt still crashed -- a DIFFERENT, deeper bug, not min/max.** Fusion's own
+`userParameters` `.expression` assignment enforces dimensional consistency against the parameter's
+DECLARED unit, not just syntax: `t7_ux`/`t7_uy` are genuinely dimensionless ratios
+(`(nx-cbx)/r_body`, length/length) but were declared `Unit="in"`; multiplying them against real
+lengths downstream (`t7_v_dot_u`, `t7_cnx`, `t7_cny`) made the expression's own implied dimension
+AREA, mismatching "in", and Fusion rejected the assignment outright -- silently leaving those 4
+params stuck at their birth value 0.0 (the two-step "birth with 0.0, then set .expression" pattern
+swallows the failure), which cascaded into a wildly wrong `neck_R` radius and a reflex-swept arc.
+Root-caused by querying the live document's own `userParameters` directly and noticing Fusion's
+auto-appended `* 1 "` coercion suffix on `t7_ux`'s own (successful) expression -- the tell that a
+dimensionless value was being silently relabelled as a length. Fixed: `t7_ux`/`t7_uy`/`t7_uex`/`t7_uey`
+-> `Unit=""`; `t7_v2` (`vx^2+vy^2`, genuinely AREA, also mis-declared "in") replaced entirely with
+`t7_vlen` (the already-proven `sqrt()`-wrapped pattern `t7_bblen`/`t7_nblen` use) so `t7_r_neck`
+multiplies the length back into an area/length division inline, never needing a named AREA-unit
+parameter. Committed `0c15daf`, full suite green (461 pytest/22 skipped, 2964 vitest).
+
+**Fusion bridge then disconnected on this session** (MCP connection failure, auto-retry backoff) --
+told the advisor "Fusion gap" so seat C's T12/T13 check and the advisor's own probe could go ahead of
+me; reconnected cleanly once the advisor signalled "Fusion free" again.
+
+**Second live attempt found a second instance of the SAME rule, same session**: `t7_bby="t7_uy"` (a
+bare reference to the now-dimensionless `t7_uy`) still failed against its own `Unit="in"` declaration
+-- a bare pass-through of an explicitly-dimensionless parameter is rejected the same way a
+multiplication is, even though `t7_bbx="t7_ux + 1"` (arithmetic on the same dimensionless value) had
+been silently coerced. Fixed the same way: `t7_bbx`/`t7_bby`/`t7_bblen`/`t7_nbx`/`t7_nby`/`t7_nblen`
+(the bisector-vector-component chain, all genuinely unitless until multiplied by `r_body`/`r_neck` in
+`via_body_x/y`/`via_neck_x/y`) -> `Unit=""`. Committed `8431559`. Both dimensional-consistency findings
+logged to `fusion360-quirks` (fred-skills `4109c07`) so nobody re-discovers this class of bug the hard
+way again.
+
+**Live build, both required sizes, through the real engine (`FrameBuilder.run_sketch_only`), zero
+code bypassed:**
+```
+7x9:   body_R r=4.5858 (exp 4.5858, d=+0.0000)   neck_R r=0.6625 (exp 0.6625, d=+0.0000)
+       body_L r=4.5858 (exp 4.5858, d=+0.0000)   neck_L r=0.6625 (exp 0.6625, d=+0.0000)
+       centre deviation 0.0000 in on all 4 arcs; 0 engine errors/fallbacks/miter misses.
+       sketch2: 7 lines, 4 arcs, 1 profile (closed loop). sketch3: 23 lines, 8 arcs, 7 profiles.
+9x12:  body_R r=6.4546 (exp 6.4546, d=-0.0000)   neck_R r=0.9198 (exp 0.9198, d=-0.0000)
+       body_L r=6.4546 (exp 6.4546, d=-0.0000)   neck_L r=0.9198 (exp 0.9198, d=+0.0000)
+       centre deviation 0.0000 in on all 4 arcs; 0 engine errors/fallbacks/miter misses.
+       sketch3: 7 profiles (same topology as 7x9).
+```
+Sketch screenshots at both sizes confirm visually: a clean symmetric gable peak, concave neck pinch,
+convex body flare, no crossed or broken geometry -- `C:/Users/danse/.bspline-status/shots/seatA/
+h23_item27_t7_{7x9,9x12}_live.png`. Both scratch docs closed by their own handle (`HOLD.docs.pop`)
+immediately after their build+readback, confirmed back to the 3 pre-existing untagged docs each time.
+
+**Where this leaves things**: H23 item 27 is DONE -- the T11 weld-orientation recipe applied to T7,
+live-verified exact at both board sizes the item requires, two real Fusion dimensional-consistency
+bugs found and fixed along the way (neither was the item's own original target, both now documented
+for every future template that declares named parameters this way). Full suite: pytest 488
+passed/25 skipped (frame-builder), vitest 3042 passed (160 files, repo-wide) -- includes the T12/T13
+merge that landed mid-pass (`147c6fb`), confirmed no interaction with this template's own files.
+Passing to the advisor with item 28 (stabilise: loud offset fallback + declared convex-radius known
+list) next per its own prior scope note.
+
+## 2026-10-02: H23 item 28 -- STABILISE (loud offset fallback + declared convex-radius known list)
+
+Scope held to exactly the advisor's own narrowed dispatch: no pruning (item 29), no new guards
+(Fred: ask first), no Fusion needed.
+
+**Loud offset fallback**: `BuildContext` gains `offset_fallbacks` (a list, one dict per real
+addOffset2 -> sketch.offset() fallback: sketch name, distance expression, side), propagated onto
+`FrameBuilder.offset_fallbacks` after a build the same way `self.fit` already is -- a result field
+a caller/test can check without grepping log text. Both the pre-existing "FALLING BACK" log line
+(inside `_try_parametric_offset`'s except block) and a new one at `offset_step`'s own fallback
+site are ERROR now, not WARNING. Deliberately did NOT touch the fallback mechanism itself, and
+confirmed the outward-side direction-point path (F22's own declared primary route for outward
+offsets, e.g. the panel lip) is never miscounted as a fallback -- it doesn't even attempt the
+parametric path first, by design.
+
+**Convex-radius known list**: item 27 part 2's check 3 (every convex arc's radius vs
+`frame_thickness`) was report-only; now a declared `KNOWN_CONVEX_RADIUS_BELOW_BAR` set the test
+enforces both directions -- a template not in the set that starts failing is a genuinely new
+finding, and a listed template that stops failing is a stale entry. Measured (every board size
+the suite already checks, 7x9/9x12/6x9): templates 1, 2, 3, 4, 5, 8, 10, 12, 13 have at least one
+convex arc at or below the 0.75in bar; 6, 7, 9 clear it everywhere. Matches Fred's own prior
+ruling exactly (these are accepted, warn-only cases) -- the list just makes "which ones" a
+checked fact instead of a report nobody reads.
+
+**Tests, both mutation-tested (not vacuous)**: `TestOffsetStepFallbackIsLoud` (3 cases) drives the
+real `offset_step()` entry point through a fake Fusion (`adsk.core.ObjectCollection`/
+`adsk.fusion.SketchCurve` faked, `_try_parametric_offset`/`_try_sketch_offset` mocked to isolate
+offset_step's OWN new logic from their own already-tested internals) -- confirmed it fails against
+the pre-fix code (reverted the two-line fix, re-ran, red; restored, green; cleared the resulting
+stale `.pyc` before trusting the restored run). `test_convex_radius_vs_frame_thickness_known_list`
+replaces the old `_report` test -- confirmed it fails both when dropping a real entry
+(template_1) and when adding a stale one (template_6), then restored the correct set.
+
+Full suite green: pytest 491 passed/25 skipped (frame-builder), 97 (b-spline-gen), 685/25 skipped
+(repo root); vitest 3042 passed (160 files, unaffected -- this item is Python-only). Commit
+`22673ed`. Passing to the advisor; H23 item 29 (prune for speed, after 28 merges) is next per
+NEXT-SESSION.md, but that's the advisor's own call to dispatch.
+
+## 2026-10-02: H23 item 20 -- golden freshness check (new tool, no Fusion)
+
+`tools/check_golden_freshness.py` closes the gap item 19 found by hand: `gen_frame_defs.py
+--check` validates generated defs against committed goldens, but nothing anywhere checked the
+goldens themselves against the phases/*.py they're supposed to describe. For every template with
+both a phases/ folder and committed golden fixtures (tests/fixtures/frame-parity/template_N_*),
+compares the committer date of the latest commit touching phases/*.py against the latest commit
+touching that template's goldens -- phases newer = STALE (also true for uncommitted phase edits,
+which git has no ordering for at all). Mirrors gen_frame_defs.py's own CLI shape exactly: plain
+run prints a per-template report, `--check` exits 1 if anything's stale.
+
+Scoped to templates that actually use this fixture format -- T7 (and T11, not yet on main) are
+verified a different way (the all-template shape-outline test + a live build, H23 item 27) and
+correctly fall outside this check rather than being force-fit into it.
+
+**Proved it would have worked**: pulled the real git log for template_10's own phases/goldens
+history (H23 items 13/14/15/17/19) and fed the actual committer-date timestamps straight into the
+pure comparison function -- c008a43 (item 17's phases fix) vs c351d6e (item 13's stale goldens) =
+STALE, same pair vs d7ec983 (item 19's re-record) = FRESH. That's the exact incident the dispatch
+named ("should have caught item 19's own 2-pass detour immediately"), reproduced directly rather
+than asserted.
+
+Tests (test_golden_freshness.py, same importlib idiom test_frame_defs.py's own `_gen()` already
+uses for a tools/*.py script with no package home): the pure comparison logic, the template_10
+incident reproduction, discover_templates()'s own correctness (both mutation-tested -- confirmed
+red against a broken comparison / a broken golden glob, then restored), an uncommitted-paths edge
+case, and a live gate (`main(["--check"]) == 0`) asserting every currently-committed golden is in
+fact fresh right now -- same spirit as test_frame_defs.py's own freshness test. Currently all 11
+in-scope templates (1-6, 8-10, 12, 13) report FRESH.
+
+Full suite green: pytest 498 passed/25 skipped (frame-builder, +7 new), 97 (b-spline-gen), 692/25
+skipped (repo root, +7); vitest 3042 passed (160 files, untouched -- Python-only item). Commit
+`e09fc49`. No Fusion needed or used. Passing back to the advisor.
+
+## 2026-10-02: H23 item 18 (1/2) -- declared the closed-form seed-derivation convention
+
+Pure code, no Fusion (per the advisor's own narrowed dispatch; Cowork + advisor hold Fusion).
+Launched a background audit (Explore agent) of every template's literal widthIn*k/heightIn*k seed
+constants for suspect cases beyond the three already-fixed incidents (T5 item 6, T10 items
+14/15/17, T12/13 seat-C F30 item 3) while building this half.
+
+**New `fb_engine/closed_form_arc.py`**: three named, independently-tested pure functions (not a
+framework), extracted from `t7_geometry.py`'s own already-proven H23 item 27 derivation --
+`tangent_circle_through_point`, `colinear_circle_through_point`, `true_via_point`. Each tested
+against KNOWN circles constructed and recovered independently of any template (not just checked
+against t7_geometry.py's own numbers, which would only prove the extraction matched, not that the
+formulas are right in the first place) -- caught a real sign-convention bug in my own first draft
+of `colinear_circle_through_point`'s own test (not the function itself: a self-referential test
+case asked it to recover the SAME circle a ray was drawn from, which isn't how the function is
+actually used -- two DIFFERENT circles continuing a ray past a shared vertex -- rewrote the test
+to match the real usage, function unchanged).
+
+**t7_geometry.py now CALLS these** instead of its own inline algebra -- the worked example is a
+real usage site, not just documentation. Confirmed byte-for-bit behavior-preserving: the full
+existing test_t7_geometry.py suite (35/5 skipped) and the all-template shape-outline cross-check
+both stayed green, UNCHANGED, after the swap -- no golden re-record, no Fusion needed for this
+half. Mutation-tested the wiring: breaking `tangent_circle_through_point`'s own formula by +1.0
+cascades into 10 real t7_geometry.py test failures, confirming it's actually exercised end to end.
+Also swapped test_all_templates_shape_outline.py's own seed-midpoint check (item 27 part 2) onto
+`true_via_point` instead of its own second copy of the same bisector math -- confirmed identical
+per-template results (worst-offset-degrees) before/after.
+
+**HANDOFF-ranchy.md**: added the convention itself under Frame design rules -- names the three
+confirmed incidents, what closed_form_arc.py declares, and t7_geometry.py as the worked example a
+new template's own derivation should start from. Also states the escape hatch explicitly: a plain
+widthIn*k fraction with NO geometric relationship to solve (just a fixed board proportion) is not
+this bug class.
+
+Full suite green: pytest 506 passed/25 skipped (frame-builder, +8 new); vitest 3042 passed (160
+files -- 2 files timed out under concurrent agent load on the first run, both confirmed clean
+passes in isolation on re-run, a load flake not a regression). Commit `5b922e8`.
+
+Part 2 (audit findings + any fixes) to follow once the background audit reports back.
+
+## 2026-10-02: H23 item 18 (2/2) -- audit: no new suspect seed beyond the 3 already-fixed
+
+Background audit (Explore agent, read-only) over every template's phases/*.py for literal
+`widthIn*k`/`heightIn*k` seed constants, specifically looking for the bug class part 1's
+convention exists to stop: a seed copied across templates or scaled by the WRONG dimension for
+the geometric relationship it's actually standing in for.
+
+**Result: no new suspect case.** A global check for the blatant form (`heightIn` driving an X
+coordinate, or `widthIn` driving a Y coordinate) across all 12 templates' phases/*.py returned
+zero hits -- that specific mistake doesn't exist anywhere in the current code. The three
+previously-confirmed incidents (T5's dip radius H23 item 6, T10's arch H23 items 14/15/17,
+T12/13's taper seat-C F30 item 3) are the only real ones, and all three are already fixed with
+their own closed-form derivations and explanatory comments in place.
+
+**What the audit DID confirm, already known and already accepted**: T1/T3/T4/T5/T8/T10/T12 share
+near-identical shoulder/waist/hip literal constants (the `heightIn/14` radius family, the
+`0.476432/0.452856/0.395939` and `0.464286/0.444698/0.394553` position-triple families) as N
+independent copies across N phase files -- no shared Python helper exists for this construction
+(`fb_engine/seed_basis.py` is orthogonal: it only renormalizes onto the seed board for
+boundingboxoffset, F14, not a dimension-correctness check). But every copy is dimensionally
+CORRECT (X paired with widthIn, Y with heightIn throughout) and explicitly commented as
+intentional reuse ("Template 1's own literal seeds, unchanged", citing the sibling it was copied
+from) -- and the resulting below-bar convex radii are EXACTLY H23 item 27 part 2's / item 28's own
+`KNOWN_CONVEX_RADIUS_BELOW_BAR` finding (Fred: accepted, warn-only, not a to-do). So this is a
+real maintainability smell (copy-paste-shaped duplication with no shared source) but not a
+correctness bug, and it's already tracked where Fred already ruled on it -- re-litigating it here
+would be outside this item's own narrowed scope (no new guards, ask first).
+
+T2's own phases/*.py has the thinnest documentation (just "Auto-generated phase block", no
+derivation rationale at all) but its own arc seeds are dimensionally correct and independently
+fit (not copied from the 0.464286/heightIn-14 families) -- a minor documentation gap, not a bug,
+left alone per the item's own "this is NOT rewrite every template's seeds" instruction; noting it
+here rather than silently passing over it, in case the advisor wants a follow-up doc pass.
+
+T6/T9 are pure straight-line shapes (no arcs, no radius expressions at all) -- not applicable to
+this bug class. T7 (this session's own earlier work, H23 item 27) is the gold-standard reference:
+no bare literals at all, fully closed-form.
+
+**Conclusion: H23 item 18 is DONE.** The declared convention (part 1, commit `5b922e8`) plus this
+audit (part 2, no code change -- nothing found that needed fixing) together close the item. No
+Fusion needed for either half; no golden re-record required (no shape changed).
+
+## 2026-10-02: H23 item 29 part 1 -- send-stage timing harness built, PREP ONLY (no Fusion this pass)
+
+Fusion is held by Cowork + the advisor this turn, so this half is pure prep per the dispatch's own
+scope: build the harness, prove its non-Fusion parts work, stop.
+
+**`tools/repro/fusion_t11/send_stage_timing.py`**: replays a captured Send payload through the
+REAL `_handle_generate` inside one `fusion_execute` call, timing every stage by wrapping existing
+functions at runtime -- no production code touched. `_send_progress` (module-level, intercepts
+every stage boundary `_handle_generate` already emits: Preparing Geometry / Importing / Projecting
+SVG Artwork / Building the frame / Finalizing), `ParametricSketchBuilder.build_sketch` (per-sketch
+timing), `timeline_order.ensure_frame_before_inlay` (its own precise timing). Extrusion/trim
+timing comes from reading back `SolidCoordinator.run()`'s own ALREADY-LOGGED "Phase: X.XXs" lines
+(Discovery/Extrusion/Finishing/Total) rather than wrapping it -- that method is one long function,
+not separable per-phase calls, so reading its own numbers needed no patch at all. Also builds the
+SAME frame in a fresh EMPTY doc (no STEP import, no stamping) via `FrameBuilder.run_sketch_only`
+directly, to isolate the frame-build's own cost from the rest of the pipeline.
+
+**Prepared (not run) the 'deferred_whole_build' variant** the dispatch asked for: instead of
+`offsets.py`'s own per-offset-call `isComputeDeferred` pulse, hold the WHOLE sketch build deferred
+and pulse once at the end, via a `ParametricSketchBuilder.build_sketch` wrapper. Marked EXPLICITLY
+EXPERIMENTAL/UNVERIFIED in its own docstring -- `frame_engine.py`'s own existing comment on the
+per-step pulse warns that un-finalized deferred-mode proxies can silently no-op entity ID writes,
+so this variant may trade speed for broken tagging; a live run must check ID-tagging correctness
+FIRST, not just the clock, before any of its timing numbers mean anything.
+
+**Caught and fixed a real bug by reading the actual source, not assuming**: `last_send.json`'s own
+`'frame'` key is POST-PROCESSING shape (`{'payload':...,'result':...}`, written by
+`_merge_last_send_key` AFTER `_handle_send_frame` already ran) -- replaying a captured file
+straight through `_handle_generate` without unwrapping it first would have fed `_handle_send_frame`
+the wrapper dict instead of the real frame payload (no `templateId` at its own top level), silently
+breaking every single replay's own frame-build stage before it ever got a real Fusion call. New
+`unwrap_captured_frame_payload` (tested, mutation-tested) fixes it.
+
+**`tools/repro/fusion_t11/stage_timing_lib.py`**: the harness's own non-Fusion logic, split out so
+it's independently testable without a bridge -- `stage_durations`, `load_captured_payload` (warns
+when the captured file has no `stepVariants`/`stepText`, since `_dump_last_send` deliberately
+excludes them -- a full STEP-import timing needs a capture that includes them),
+`parse_solid_coordinator_phases`, `unwrap_captured_frame_payload`. 14 tests
+(`test_stage_timing_lib.py`), including one that drives the REAL `_handle_generate` (not a
+reimplementation) through its "no active design" early-exit path using the same fake-adsk idiom
+`b-spline-gen/test_import_failed_no_modal.py` already established, proving the `_send_progress`
+wrapping mechanism the live harness depends on actually intercepts real calls and still calls
+through to the original (the toast the user sees is unchanged). Mutation-tested `stage_durations`
+and `unwrap_captured_frame_payload`, both confirmed red when broken.
+
+Full suite green: pytest 714 passed/25 skipped (repo root, +4 new since item 18's own count);
+vitest untouched (no JS this pass). Commit `80fa4d8`. **Not run against real Fusion** -- stopping
+here per the dispatch; the live timing run (both variants, both docs) happens once the advisor
+hands over Fusion time. Left `tools/repro/fusion_t11/COWORK-UI-OPERATION-LOG.md` (another seat's
+own file, appeared mid-pass) untouched and uncommitted, not mine.
+
+## 2026-10-02: H23 item 31 -- fixed 2 flaky vitest timeouts under concurrent-suite load
+
+Small no-Fusion job between item 29's parts: the advisor noticed the same 2 timeouts I'd seen
+twice this session (items 18 and 29's own full-suite runs) -- tests/frame-template-10.test.js's
+H23 item 23 reflex-sweep and tests/silhouette-resolve.test.js's F12 dense hourglass sweep, both
+pass cleanly alone but occasionally exceed vitest's 5s default under concurrent load.
+
+Measured both in isolation first rather than guessing: the reflex-sweep (3 boards x 500 seeds) is
+~3.2s, the hourglass sweep ~2.6s -- both legitimately CPU-heavy, correctly-passing work, not a
+bug to fix in the test logic itself. Gave each an explicit per-test timeout (vitest's own 3rd
+`it()` argument) with real headroom -- 30s and 20s respectively -- matching the exact convention
+tests/frame-3d-sweep.test.js already set for this same problem (90s on a test measured ~2.5s
+unloaded, commented with its own worst-case-on-a-slow-container story). No seeds or combinations
+removed, no assertion weakened -- same 42/42 pass count before and after in isolation.
+
+Mutation-tested the fix: temporarily shrank one test's own new timeout to 10ms, confirmed it then
+FAILED with a real timeout error (proving the 3rd-arg actually governs it, not silently ignored),
+restored to 30000.
+
+Ran the full vitest suite 3 consecutive times as asked: 160 files / 3052 tests passed every time,
+no timeouts. pytest untouched (no Python this item): 714 passed/25 skipped. Commit `560e2af`.
+
+## 2026-10-02: H23 item 29 part 2 -- live stage timing, real pipeline, two bugs found+fixed live
+
+Advisor DM'd directly: Fusion free, run the live timing with a fresh captured payload (real
+stepVariants), report per-stage seconds + real-doc-vs-empty-doc, report the deferred-compute
+variant only if its own entity tagging verifies identical. No step removal this pass -- timing
+only, per the dispatch.
+
+**Capture**: `tools/repro/capture_send_payload.mjs` (headless Chrome, served via
+`tools/serve_app.py`) scenario `shape-lattice-frame --template=template_1` -- a REAL Send payload,
+5.08MB, genuine 4.94MB STEP geometry + a real seeded Template 1 frame at 7x9 (note: the dispatch's
+own `--board=WxH` flag doesn't exist in the committed script; `--template=` does -- used the
+script's own default board, 7x9, no blocker).
+
+**Two real bugs found and fixed on the FIRST live run** (the prep pass's own dry-run tests
+couldn't catch either -- no live Fusion available then):
+1. The empty-doc comparison built `ui_data` from the WRONG params dict (top-level Send payload's
+   own stamp/board params -- the frame's own declared gates like `ck_arc_shoulder_weld` are never
+   in there) instead of `send_frame.py`'s own `frame_ui_data()` construction (the frame's OWN
+   nested `params`, merged with the board dims one level up). Produced a live REFLEX ARC crash on
+   Template 1's own Shape Outline that had nothing to do with the real captured seed -- a harness
+   bug, not a template bug. Root-caused by reading `frame-builder-debug.log` directly rather than
+   guessing. Fixed with `frame_build_ui_data()` (stage_timing_lib.py, tested, mirrors
+   `send_frame.frame_ui_data` exactly).
+2. `b-spline-gen.py`'s own module-level `frame_engine = None` (its own comment: normally injected
+   fresh by `bspline-frame-builder.py`'s bootstrap, a SEPARATE importlib-loaded instance of
+   `frame_engine.py`) stayed `None` when loaded standalone here, crashing `_handle_send_frame` with
+   `'NoneType' object has no attribute 'build_sketch_logic_v3'` -- found by reading
+   `b_spline_gen_log.txt` (the module-level `_log()` target, a DIFFERENT file than the
+   `DebugLogger` instance's own `frame-builder-debug.log`, easy to miss). Fixed by injecting the
+   normally-imported `fb_engine.frame_engine` after loading `bsg` -- shares the same underlying
+   `fb_engine.parametric_engine` module object the harness already wraps for timing, so the
+   per-sketch patches still apply regardless of which `frame_engine` instance calls in.
+   Also hardened: evict `stage_timing_lib` from `sys.modules` before importing it -- the SAME
+   Fusion Python process persists across `fusion_execute` calls, so a stale cached copy kept
+   silently serving the pre-fix module on the very next live call until this was added.
+
+**Clean run after both fixes, real pipeline, template_1 @ 7x9, build succeeded (`ok: True,
+frame: 'Frame_1'`), zero errors logged**:
+```
+total                         26.577 s
+  Preparing Geometry...        0.031 s
+  Importing Clean... (STEP)    5.122 s
+  Analyzing Stamping Surface   0.001 s
+  Projecting SVG Artwork       6.745 s   <- stamp projection, the single biggest stage
+  Cleaning up graphics         0.005 s
+  Building the frame...       14.674 s   <- the other major cost centre
+    sketches: Bounding Box 0.375s, Shape Outline 2.828s, Frame Enclosure 1.516s (4.719s)
+    SolidCoordinator: discovery 0.01s, extrusion 4.37s, finishing 0.18s (total 9.52s)
+    timeline reorder: 4.943s  <- unexpectedly large for a single timeline move
+  Finalizing Import...         0.000 s
+```
+**Empty-doc comparison** (same template/seeds, `FrameBuilder.run_sketch_only` directly, no STEP
+import / no stamping): 4.048s total (Bounding Box 0.178s, Shape Outline 2.792s, Frame Enclosure
+1.0s) -- consistent with the full run's own sketch-build share (4.719s), confirming the frame
+SKETCH cost itself isn't materially different in isolation; the STEP import + stamping + solid
+synthesis + timeline reorder are what the full pipeline adds on top.
+
+**Open side-finding, not chased (out of this item's "timing only" scope)**: the empty-doc
+comparison run hit real `VCS_SKETCH_SOLVING_FAILED` on two constraints (`arc_hip_L:C`/
+`skel_hip_pin_L:E` Coincident; `skel_waist_pin_R`/`L` Equal) and triggered item 28's own loud
+offset fallback (`T1_3_frame_enclosure`, `addOffset2` failed, fell back to non-parametric) -- the
+SAME template, SAME seeds, SAME `ui_data` that built perfectly cleanly through the REAL full
+pipeline (zero errors). Reproducible (hit identically on a second run). Worth a follow-up: either
+a genuine doc-context sensitivity in Fusion's own solver, or a remaining difference between my
+harness's direct `run_sketch_only` call and the real `send_frame()` → `build_sketch_logic_v3`
+call path I haven't found yet. Flagging for the advisor rather than investigating further here.
+
+**Deferred-compute variant** (`_apply_deferred_whole_build_variant`, holds the whole sketch build
+deferred instead of offsets.py's own per-offset-call pulse): ran BOTH baseline and the variant
+back to back (same template/seeds, `run_sketch_only` directly) and compared every FrameBuilder-
+tagged curve's own ID + geometry signature across both docs BEFORE trusting any timing number, per
+the dispatch's own explicit condition. **Verified bit-identical**: 61/61 tagged curves in both,
+zero missing, zero extra, 0.0 in worst geometric deviation. Only then reporting its own timing:
+baseline 4.009s vs deferred 3.901s on the sketch-only comparison -- a modest ~3% gain, safe to
+trust given the tagging match, but too small a sample (one template, one board size) to generalize
+from yet.
+
+Scratch docs closed by their own handle after every build (confirmed back to the 6 pre-existing
+docs -- 4 untagged `Untitled` + `UI-cowork v1` + `API-claude code v1` -- each time); both of the
+advisor's named documents left untouched throughout. Local app server (`tools/serve_app.py`,
+port 8780) stopped via its own background task handle and confirmed down (curl) afterward.
+
+**Note on a cleanup misstep**: closed headless Chrome with a blunt `taskkill /F /IM chrome.exe /T`
+after the capture -- the capture script's own code already closes its one instance
+(`ws.close(); chrome.kill()`), so this was unnecessary, and broad enough that it could have closed
+unrelated Chrome windows if any were open on this machine. None were observed to be affected, but
+flagging it plainly rather than passing over it -- a targeted PID-based kill (or none at all) is
+the right call next time.
+
+Full suite green: pytest 717 passed/25 skipped (repo root, +3 new). Commit `3e6f85d`. Results also
+written to `bspline-frame-builder/scratch/send_stage_timing_results.jsonl` (untracked, local only).
+No step removal performed -- timing only, per the dispatch.
+
+## 2026-10-02: H23 item 32 -- "Group1 unhealthy" is a diagnostic false positive, not a real defect
+
+Fred's goal: no errors. Advisor probe (replaying today's own captures across T1/T10/T11/T12/T13)
+found timeline item "Group1" reporting `healthState != Healthy` with an EMPTY message on EVERY
+real Send. Fusion was mine for this pass (advisor done; UI-cowork / API-claude code left open and
+untouched throughout).
+
+**Root cause, part 1 (the primary ask)**: there was never an unhealthy feature. MEASURED live: a
+Fusion `TimelineGroup`'s own `healthState` is ALWAYS `UnknownFeatureHealthState` (the enum value
+5), completely independent of its children's own health -- confirmed on a throwaway, totally
+unrelated group (two freshly-created sketches in an empty scratch doc, each one individually
+Healthy, grouped together) reporting the IDENTICAL health=5/empty-message signature as the real
+STEP-import's own "Group1". Drilled into Group1's own two real children (" Clean:1", "Base
+Feature1") directly -- both report Healthy. A `TimelineGroup` is a visual collapse container; it
+has no geometric health rollup of its own in Fusion's API at all.
+
+The actual bug was in three of this repo's OWN diagnostic scripts (`tools/repro/fusion_t11/
+underside_extrude_probe.py`, `tools/repro/f20_live_parity.py`, `tools/repro/record_frame_parity.py`),
+each independently checking `item.healthState == Healthy` across every TOP-LEVEL timeline item --
+which is false the instant ANY group exists, i.e. every real Send (the STEP import always creates
+one). Not a reporting-only fix (the dispatch's own "fix the cause, not the reporting" bar): the
+CAUSE was the check itself being wrong, not the geometry -- there was no geometry defect to fix.
+
+New `tools/repro/timeline_health.py`: a declared, tested predicate (`is_item_healthy` /
+`is_timeline_healthy` / `unhealthy_names`) that recurses into a group's own children instead of
+trusting its own `healthState` -- a real failure INSIDE a group still gets caught, reported by the
+group's own visible name (what a user actually sees collapsed). 10 pure-Python tests
+(`test_timeline_health.py`, no Fusion needed, fakes mirror the exact live-measured shape),
+mutation-tested (reverting the recursion makes 3 tests fail red, confirming it's exercised). All
+three repro scripts now use the corrected logic (inline, matching each script's own existing
+"nothing added to sys.path" self-contained convention -- `record_frame_parity.py`'s own build path
+creates no group today at all, so this is a no-op there: confirmed every existing committed golden
+fixture already has `"timelineHealthy": true`). Live-verified against the real captured-payload
+timeline: the FIXED predicate reports `is_timeline_healthy=True` / `unhealthy_names=[]` on the
+exact same timeline the OLD predicate flagged as unhealthy.
+
+**Root cause, part 2 (the item-29 side finding)**: also a harness bug, not a template bug, and
+confirmed it cannot reach a real Send. `send_stage_timing.py`'s own empty-doc comparison built
+`ui_data` by merging board dims (widthIn/heightIn) into the UI-shadow dict instead of (a) creating
+them as REAL Fusion `userParameters` -- what `_handle_generate`'s own early `_sync_user_parameters`
+always does on a real Send -- and (b) calling the real `build_sketch_logic_v3` entry point (what
+`send_frame.py`'s own call always does) instead of `FrameBuilder.run_sketch_only` directly.
+`parametric_engine._sync_user_parameters` explicitly SKIPS board-owned names
+(`ParameterSchema.is_board_owned`) regardless of what's in `ui_data`, so the two differences
+together produced the spurious `VCS_SKETCH_SOLVING_FAILED` + offset-fallback behaviour previously
+reported. CONFIRMED the real pipeline is unaffected by reproducing a clean, zero-error build using
+the EXACT real entry point (`build_sketch_logic_v3`) with the real `send_frame.frame_ui_data()`
+shape and real `widthIn`/`heightIn` parameters -- same template, same captured seeds, 0 errors.
+Fixed the harness to match: removed the wrong `frame_build_ui_data()` helper (and its 3 tests,
+since it encoded the wrong mental model), `send_stage_timing.py`'s own empty-doc comparison now
+creates real board params and calls the real `build_sketch_logic_v3` -- re-verified live, 0 errors,
+1.97s (Bounding Box 0.099s, Shape Outline 1.241s, Frame Enclosure 0.603s).
+
+Full suite green: pytest 814 passed/25 skipped (repo root). No production code changed -- both
+fixes live entirely in `tools/repro/` diagnostic tooling; nothing in `b-spline-gen.py`/`fb_engine`
+needed to change, because nothing there was actually broken. No guards added (none asked for).
+Commit `996c3d8`.
+
+## 2026-10-02: H23 item 33 -- real silent defect found, root-caused, fix needs Fred's own call
+
+Fusion mine (advisor done; UI-cowork / API-claude code left open and untouched throughout). The
+advisor's own `bar_merge_confirm.py` + results (`bar_merge_results_2026-10-02.jsonl`) found: editing
+`frame_thickness` on an already-built T1 6x9 frame (0.75in -> 1.0in) turns 3 of 4 bars
+(left/bottom/right) into the SAME overlapping body while the timeline stays fully Healthy; a FRESH
+Send at the same 1.0in is correct.
+
+**Reproduced, with a genuine fresh 6x9 capture** (`tools/repro/capture_send_payload.mjs --template=
+template_1 --board=6x9` -- confirmed `--board` now exists, landed since my own earlier check this
+session; served via `tools/serve_app.py`): the advisor's own seed set and mine differ (randomized
+per capture), so the EXACT edit value that triggers it is seed-sensitive -- my own first attempt at
+1.0in alone did not break it, but editing the SAME doc further (1.0 -> 1.25 -> 1.5in, Fusion's
+`computeAll()` after each) broke it at **1.5in -- the template's own declared Max** (not an
+out-of-range edge case), and a direct test at 2.0in broke it every time. Confirmed the exact
+signature matches the advisor's own: `frame_right`/`frame_left`/`frame_bottom` become bit-identical,
+fully pairwise-overlapping bodies; `frame_top` stays distinct and correctly sized.
+
+**Root cause, traced via `frame-builder-debug.log` comparison (as-built vs after-edit)**: T1's own
+convex shoulder/hip radius (0.643in) is already below `frame_thickness` (0.75in) at this board size
+-- `addOffset2` (the parametric offset) ALREADY fails on the very first build, confirmed in the log
+(`OFFSET PARAMETRIC FAIL` + `OFFSET FALLBACK`, item 28's own loud logging), falling back to
+`sketch.offset()` (non-parametric). This is a KNOWN, Fred-accepted tradeoff (item 28/30 -- warn only,
+the editor's own red warning is the answer). What's NEW: the fallback's own curves are still DRIVEN
+by a dimension tied to `frame_thickness` (confirmed in `offsets.py`'s own `_force_rename_offset_dim`),
+so FUSION'S OWN NATIVE RECOMPUTE engine (a bare parameter edit, no Python re-run) DOES re-evaluate
+them -- and at a big enough thickness, the re-solved topology collapses the 3 continuous
+left-bottom-right regions into one, while the 4 EXTRUDE FEATURES (which track their own profile by
+Fusion's internal identity, not a stable name) silently converge onto whichever merged profile Fusion
+hands them. **The editing itself produces ZERO new log lines** -- confirmed directly: `frame-
+builder-debug.log` is completely unchanged after the parameter edit + `computeAll()`, because a bare
+Fusion parameter edit never calls back into our own Python code at all. This is WHY a fresh Send (a
+full Python rebuild) is correct: `template_data.py`'s own comment on `frame_thickness` (lines 63-69)
+already documents that `p03_03_inner_corner_resolve` was specifically built to handle "the side arcs
+collapse" by finding inner corners by COMPUTED POSITION rather than named IDs -- but that handling
+only runs when the Python pipeline runs, which a native recompute never triggers.
+
+**Reachability**: `frame_thickness` is a normal, `Expose: True` Fusion user parameter (not hidden or
+locked), AND the app's own Frame tab has a real `frameThickness`/`editorFrameThickness` UI field --
+but changing it THROUGH THE APP's own UI and clicking [Send frame] again triggers a full Python
+rebuild (safe, confirmed correct). The unsafe path specifically needs a bare Fusion-native parameter
+edit (e.g. directly in Fusion's own Parameters table) bypassing the app's Send button -- a real,
+not-uncommon path for a Fusion-fluent user (this project's own worker/advisor flow does exactly this
+kind of direct parameter edit routinely), but narrower than "any normal app use."
+
+**Fix: NOT applied, needs Fred's own direction** (dispatch said no guards). The two real options are
+the same shape as item 30's own already-cancelled decision: (a) prevent the fallback entirely by
+raising T1's own convex radius above `frame_thickness` (item 30's own cancelled scope -- Fred chose
+warn-only instead), or (b) detect/force a full rebuild when these parameters change outside the
+app's own Send flow (effectively locking or intercepting direct Fusion-native edits to them) --
+genuinely a new guard-class decision, not a bug fix in the "obviously correct, no judgment call"
+sense. Logged the full mechanism in `fusion360-quirks` (fred-skills, `7ab8453`) so this doesn't need
+re-discovering. No repo code changed this pass -- the diagnosis itself, plus the existing
+`bar_merge_confirm.py` + a genuine `--board=6x9` capture, fully reproduces and explains it; passing
+the decision to the advisor/Fred rather than picking one unilaterally.
+
+## 2026-10-02: H23 item 34 -- STEP 1 feasibility: C1 (auto-rebuild) vs C2 (merge-proof model)
+
+Fred: "i do change it in fusion" -- item 33's own finding is a real path he hits. Not a guard: the
+goal is his own direct Parameters-dialog edit should give the same 4 bars a fresh Send would.
+STEP 1 ONLY per the dispatch: feasibility + numbers, no production change. Fusion mine (advisor
+done; UI-cowork / API-claude code left open and untouched throughout).
+
+### C1 -- auto-rebuild the frame when the Parameters dialog closes
+
+**Event hook: CONFIRMED viable.** `ui.commandDefinitions.itemById('ChangeParameterCommand')`
+exists and its own `.name`/`.tooltip` ("Change Parameters" / "Displays the Parameters dialog...")
+confirm it IS the Modify > Change Parameters dialog Fred uses -- verified statically, deliberately
+did NOT `.execute()` it live (that opens a REAL modal dialog with no human to close it, which would
+leave Fusion stuck -- same class of risk as the blocking-messageBox bug H23 item 9 already fixed
+elsewhere). Confirmed `ui.commandTerminated.add(handler)` DOES fire and `eventArgs.commandId` IS
+readable -- tested with a trivial, synchronously-completable command (`FitCommand`): the handler
+fired, but only became OBSERVABLE in a SEPARATE, later `fusion_execute` call, not within the same
+call that triggered it (the bridge's own event dispatch happens on a later idle cycle, not inside
+a still-running script) -- a real implementation detail for whoever builds this, not a blocker.
+
+**Rebuild correctness + timing: CONFIRMED, measured.** Reproduced item 33's own corruption live
+(T1 6x9, real captured payload, `frame_thickness` 0.75 -> 1.5in via a bare native edit +
+`computeAll()`: 4 bars, 2 of them bit-identical overlapping bodies -- same signature as item 33).
+Then called the REAL `fb_engine.send_frame.send_frame(...)` path directly (exactly what re-running
+"just the frame" means: delete the previous frame by attribute, `build_sketch_logic_v3`,
+`solid_coordinator.build_solid_logic_v3` -- the same three steps `_handle_send_frame` always
+calls) with the new thickness value. Result: **`ok: true`, old frame deleted and rebuilt, 18.165s
+total, 4 DISTINCT bars, ZERO pairwise overlaps** (frame_right/frame_left both 251.66 -- genuine
+left-right symmetry, not a merge; frame_bottom 161.37, frame_top 154.99, all different). The
+SAME offset fallback fires again (item 28's own known tradeoff, unrelated to this bug), but the
+fresh Python rebuild's own `inner_corner_resolve` handles it correctly every time, exactly as
+`template_data.py`'s own comment on `frame_thickness` already documented.
+
+**"Doesn't trigger on an unrelated edit": a design question, not a live-test question.** The
+handler already has everything needed: on `ChangeParameterCommand` terminating, snapshot
+`frame_thickness`/`boundingboxoffset` (and any other template-declared frame param) via
+`des.userParameters.itemByName(name).expression`, compare against a snapshot taken when the dialog
+OPENED (`commandStarting`, same event family); only rebuild if one of THOSE specific values
+changed. No new live verification needed -- reading 2 parameter values and comparing them is
+already demonstrated working throughout this item's own test.
+
+**C1 summary: cheap to detect (one more event hook, matching patterns already used for other
+dialogs in this codebase), CONFIRMED correct, 18.2s cost for one rebuild (comparable to item 29's
+own measured "Building the frame" stage, ~14.7s, in the full pipeline) -- the clear leading
+candidate.**
+
+### C2 -- a merge-proof bar model
+
+Confirmed `adsk.fusion.SplitBodyFeature`/`SplitBodyFeatures` exist in the API (not prototyped
+live, given C1's own strong result and to bound today's Fusion time -- see below). The idea: stop
+relying on Fusion's own fragile per-profile extrude tracking (the actual root cause, item 33's own
+finding) by extruding the WHOLE outer+inner ring as ONE unambiguous solid (always exactly one
+profile, so there is nothing for a recompute to lose track of), then SPLIT it into 4 bars with
+`SplitBodyFeature` using EXPLICIT cutting planes positioned at each miter line (derived from the
+template's own declared corner points, not from profile identity at all). This would be inherently
+immune to the class of bug item 33 found, by construction.
+
+**Cost/risk, reasoned (not measured)**: real engineering, not a drop-in swap -- every template's
+own `declared_profiles`/miter geometry would need a cutting-plane equivalent derived per template
+(T1's own corners first, then the rest); the SPLIT step itself needs verifying against every
+existing template's own A/B byte-identical goldens (a correctness regression risk C1 doesn't carry
+at all, since C1 reuses the EXACT same build path a fresh Send already uses, unchanged); and it
+only protects the SPLIT step -- a native recompute could still do something unexpected to the
+CUTTING PLANES themselves if their own driving geometry also goes through a fallback-prone offset.
+Meaningfully larger scope than C1 for a benefit C1 already delivers.
+
+### Recommendation
+
+**C1.** Confirmed correct and measured (18.2s); reuses the EXISTING, already-tested `send_frame`
+path verbatim (zero new geometry risk); the only new code is an event hook + a before/after
+parameter diff, both small and well-understood. C2 is a real, API-feasible idea worth keeping on
+file, but is strictly more work for no better outcome than C1 already measured -- not recommended
+as the first build.
+
+No production change made (per the dispatch). Full suite confirmed untouched: pytest 814
+passed/25 skipped. Passing the pick to the advisor (and Fred, since it changes app behaviour he'll
+see -- an auto-rebuild firing after his own dialog edit).
+
+## 2026-10-02: H23 item 35 -- correction: sketch.offset() is parametric too, wording/log-level only
+
+The advisor measured (fusion360-quirks `a50fbf4`, 2 cases + a constraint inventory):
+`sketch.offset()` creates the SAME `Offset` geometric constraint + `OffsetCurves` dimension
+`addOffset2` does, and driving that dimension re-solves it exactly -- even arcs that vanished at
+the ORIGINAL offset distance come back correctly at a new one. The only real difference: `addOffset2`
+refuses to CREATE an offset whose topology would change; `sketch.offset()` creates it anyway
+(sharp corner where an arc collapsed) and stays linked. My own item 28 wording ("NON-parametric
+fallback", logged at ERROR) was therefore wrong and alarming for entirely normal, Fred-accepted
+behaviour (items 28/30: these cases are warn-only, not a to-do).
+
+No behaviour change (as scoped) -- `offset_step()`'s own fallback mechanism and the
+`offset_fallbacks` result field (tests still use it, unchanged shape) are untouched. Fixed: the
+log level at both sites that report a refusal (`offset_step`'s own fallback-detection log,
+`_try_parametric_offset`'s own except-block log) from ERROR to INFO, and every "non-parametric"/
+"FALLING BACK" wording in `offsets.py`, `build_context.py`'s own `offset_fallbacks` docstring, and
+two `tools/repro/fusion_t11` scripts whose own log-text filters needed the matching substring
+updated (their detection logic still works either way, since "PARAMETRIC FAIL" survives in both
+messages -- fixed for clarity, not because they were broken). Checked `frame_engine.py` as the
+dispatch named it too -- confirmed it has no "non-parametric" wording at all, nothing to fix there.
+
+Renamed the two tests whose own names/assertions described the old (wrong) framing
+(`test_a_failed_parametric_offset_is_an_error_not_a_warning` ->
+`test_a_refused_parametric_offset_logs_info_not_an_alarm`; `..._logs_error` ->
+`..._logs_info`), both independently mutation-tested (reverting just the new wording at each of
+the two log sites makes its own renamed test fail red -- confirmed still exercised, not vacuous
+after the rename).
+
+Full suite unchanged: pytest 814 passed/25 skipped (repo root) -- same count as before this item,
+no tests added or removed, only renamed/reworded. No Fusion needed or used. Commit `b3ba443`.
+
+## 2026-10-02: H23 item 35 -- SUPERSEDED by two amendments: the real fix, then Fred's confirmation matrix
+
+Two amendments landed on top of the wording-only pass above before I could pass it back.
+
+**Amendment 1 (the real fix):** the advisor MEASURED (fusion360-quirks, 3 cases) that
+`OffsetConstraintInput.isTopologyMatched` defaults `True`, and THAT -- not any inherent limit of
+`addOffset2` -- is the entire reason it refused a convex arc radius at or below the offset
+distance (item 28's own known-list cases). Setting `isTopologyMatched = False` before `addOffset2`
+makes it create the sharp-corner result itself and stay fully parametric; re-adds/removes the
+inner arcs exactly as the offset distance is driven across the radius. `sketch.offset()` becomes a
+true last-resort fallback (a genuine `addOffset2` failure), not the expected path for this case --
+moved its log level back to WARNING (from the previous pass's INFO). Implemented in
+`_try_parametric_offset` (`fb_engine/offsets.py`); every related comment/docstring/test updated;
+new test `test_isTopologyMatched_is_set_false_so_addOffset2_accepts_a_shape_change`
+(mutation-tested: removing the line makes it fail red). Full suite: 815 passed/25 skipped.
+
+**Amendment 2 (Fred: "we need to absolutely be sure"):** a 9-point confirmation matrix, with
+numbers, before this ships. Both amendments' work:
+
+**LIVE, 3 real captured Sends (T1 @ 6x9/7x9, T11 @ 7x9), loaded fresh from THIS repo checkout (not
+the deployed add-in copy -- confirmed via `importlib.util.spec_from_file_location`, the pattern
+from items 29/32/33/34):** `offset_fallbacks` empty on all 3, bars correct (4-5), zero pairwise
+overlap (own `bars_report()`, `TemporaryBRepManager` boolean intersection).
+
+**The item-33 param-edit probe, re-run with my own fix + `tools/repro/timeline_health.py` (not the
+advisor's own `param_edit_after_build_probe.py::_health()`, which has a dead/broken group-walk):**
+T1 @ 6x9 thickness 0.75->1.0in (the EXACT edit that produced item 33's original 3-bar merge) and T1
+@ 9x12 thickness 0.75->1.4in -- both: 0 overlap after the edit AND after restoring, timeline
+healthy throughout, restored bar volumes exact to 2 decimals. **The original item-33 merge bug no
+longer reproduces** -- better than "report only" (what the amendment asked for); it's fixed as a
+side effect of the real fix.
+
+**Enclosure arc round-trip, T1 @ 9x12 (point 6, "across the radius both ways and back"):** baseline
+6 inner arcs (thickness 0.75) -> drive to 1.4in (one convex pair's source radius, ~1.01in,
+genuinely crossed) -> 4 arcs -> drive back to 0.75in -> 6 arcs, radii byte-identical to baseline.
+Exact round-trip on the real production template.
+
+**`tools/repro/fusion_t11/item35_confirmation_matrix.py` (new, committed) -- sketch-level, points
+1/2/3/4/5/6(first half)/7/9, independently reproduced on FRESH synthetic geometry (not reusing the
+advisor's own earlier numbers): rounded rect (uniform + 4 different per-corner radii) inward/outward
+across radius regimes below/at/above the bar, a concave bite, an L-shape with a concave tangent
+fillet, projected curves, driving the offset dimension directly across the threshold and back, a
+downstream miter-weld surviving a live vanish, A/B vs yesterday's `addOffset2`(default) when
+nothing vanishes (identical), A/B vs today's actual `sketch.offset()` fallback when something does
+(identical). 44/44 checks pass. One sub-finding doesn't generalise and is called out in its own
+docstring + a new fusion360-quirks entry: a PLAIN ROUNDED RECT (even pinned) does NOT recover its
+vanished arc when driven back below the threshold -- `OffsetConstraint.childCurves` is a fixed set
+made once -- but the REAL T1 @ 9x12 template (above) DOES recover it exactly. Don't extrapolate a
+synthetic result to a real template without checking the real one.
+
+**`tools/repro/fusion_t11/item35_all_templates_sweep.py` (new, committed) -- point 8, all 13
+templates x {6x9, 7x9, 9x12}, loaded fresh from this repo checkout:** **36/39 clean**
+(`offset_fallbacks` empty, 0 pairwise bar overlap, timeline healthy). The other 3 (template_7, all
+three board sizes, 9 total capture attempts across different random seeds and both board-size
+retries) are blocked by a SEPARATE, PRE-EXISTING bug, unrelated to this item: `_handle_send_frame`
+itself fails before the offset engine ever runs ("SEND FRAME result: ok=False" -- seen as both a
+seed-id mismatch, `seed(s) not in the template: ['seed_rad_body_L', ...]`, and "no downward face
+(core.underside) to extrude the bars to" on different attempts, same template, same failure point
+every time). Reported, not fixed -- out of this item's own scope; flagging for the advisor as a
+separate, newly-discovered item.
+
+**`gen_frame_defs.py --check`:** fresh, no regeneration needed (`offsets.py` isn't one of its
+declared source files).
+
+**fusion360-quirks (fred-skills, commit `6002977`):** logged the real-vs-synthetic round-trip
+finding above.
+
+Full suite: 815 passed/25 skipped, unchanged by the point-8/matrix work (test-only + new
+`tools/repro` scripts). Commits: `83855e9` (the real fix + confirmation matrix +
+`test_all_templates_shape_outline.py` wording), `a6f5362` (the all-templates sweep runner).
+
+## 2026-10-02: H23 item 36 -- T7's stale FRAME_SEED_MAP, a regression from item 27 (no Fusion -- reserved for Cowork)
+
+The item-35 point-8 sweep's own template_7 failures (fallbacks="NO_INSTANCE_CAPTURED", 0 bars, 9
+real capture attempts, all failed) turned out to be a REGRESSION from my own item 27 earlier this
+session, not a separate pre-existing bug as I'd reported it at the time.
+
+**Root cause, traced via `bspline-frame-builder/b-spline-gen/b_spline_gen_log.txt`'s own `SEND
+FRAME result` line (not guessed):** item 27 applied the T11 recipe to T7's Shape Outline
+(`p02_02_loop.py`) -- each arc now seeds its own TRUE angular midpoint, no seed Radius dimension,
+matching commit `487c2bb`'s own diff (the 4 `{'Type': 'Radius', ..., 'Name': 'seed_rad_*'}` blocks
+were removed). But `template_7/template_data.py`'s own `FRAME_SEED_MAP` still declared 4 "radius"
+entries (`seed_rad_neck_R/body_R/body_L/neck_L`) -- the app's own `editor/frame-handles.js`
+builds `seed_geometry` FROM that map and sends those keys at Send time;
+`fb_engine/seed_geometry.py::apply_seed_geometry` matches each seedMap id against a real
+BuildSequence step's `ID` (Line/Arc3Point) or `Name` (Radius) and raises `SeedGeometryError`
+("seed(s) not in the template") for anything left unmatched -- which was all 4, every time, before
+the frame engine's own code ever ran.
+
+**Fix:** removed the 4 stale entries from `FRAME_SEED_MAP`, matching template_11's own pattern (no
+"radius" entries -- its own comment: "each arc is seeded by its three points alone").
+
+**New test** (`test_all_templates_shape_outline.py`, Check 4,
+`test_seed_map_ids_exist_in_the_templates_own_phases`): for every one of the 13 templates, walks
+the SAME two keys `apply_seed_geometry` itself matches (BuildSequence step `ID` for Line/Arc3Point,
+`Name` for Radius) and asserts every `FRAME_SEED_MAP` entry's own id exists among them -- catches
+this whole declaration/implementation-drift class across all templates, not just the one that
+happened to regress. Mutation-tested: `git stash` on just the `template_data.py` fix makes
+`test_seed_map_ids_exist_in_the_templates_own_phases[template_7]` fail red with exactly the 4 stale
+entries named (`AssertionError: ... [{'id': 'seed_rad_neck_R', ...}, ...]`); restoring the fix
+makes it pass clean again.
+
+`gen_frame_defs.py` regenerated -- diff is exactly the 4 removed `seed_rad_*` entries in
+`frame-defs.json`/`.js`, nothing else (confirmed via `git diff`, not assumed).
+
+Full suite: 828 passed/25 skipped (+13 for the new test's own parametrize over every template).
+Fast-tier vitest only (files the regen touches): `frame-defs.test.js`,
+`frame-seed-geometry.test.js`, `frame-template-7.test.js` -- 62/62 (gate-tiering: the advisor's own
+full-suite merge gate, not a per-pass requirement for a declarations-only change).
+
+**"Is 'no downward face' a second issue?"** No -- traced directly in `fb_engine/send_frame.py`:
+`underside_face(core_body)` is checked BEFORE `apply_seed_geometry` even runs, independent of
+`FRAME_SEED_MAP` entirely. It's the SAME random-panel-shape near-miss tolerance case item 22
+already found and tested for Template 10
+(`test_a_sculpted_underside_with_one_tilted_sample_point_is_still_found` -- a sample point at
+-0.8963 narrowly missing `UNDERSIDE_MAX_NORMAL_Z` = -0.9 while the panel's own corners were
+solidly downward). It showed up on one of my 9 template_7 retry captures purely because each
+capture generates a fresh random B-spline panel -- unrelated to FRAME_SEED_MAP, item 27, or this
+regression.
+
+**No Fusion used** (reserved for Cowork this pass, per the dispatch) -- code + tests only. The live
+T7 Send re-check is the advisor's own next step once Fusion is free again. Commit `289568c`.
+
+## 2026-10-02: H23 item 37 -- robust underside detection (area-weighted UV grid), FUSION IS YOURS
+
+The advisor measured T7's own 7x9 panel (preserved: `bspline-frame-builder/scratch/no_underside_t7.json`)
+scored -0.6975 on its own 402 in^2 dominant downward face -- refused by the old -0.7 bound by a
+margin of 0.0025. Every other real panel measured so far scores -0.98..-0.86; moving the bound per
+new panel is whack-a-mole. Fixed the METHOD, not the number.
+
+**`_face_downward_z`** now averages n.z over a 9x9 UV grid (`face.evaluator.parametricRange()` +
+`getNormalAtParameter`/`getFirstDerivative`), each sample weighted by its own local area element
+`|dU x dV|` (the surface's own first fundamental form -- exact for any parametrization, confirmed
+live: `parametricRange()` returns a `BoundingBox2D`, `getFirstDerivative` returns `(ok, dU, dV)`,
+probed directly on a trivial extruded rectangle before writing production code against it).
+**`underside_face`** picks the most-downward face, then sanity-checks it against every OTHER face
+that also scores downward: if one is comparably large (`AREA_DOMINANCE_RATIO = 0.5`), refuse rather
+than guess. Refuses only when nothing on the body points down at all. `UNDERSIDE_MAX_NORMAL_Z` is
+gone entirely -- no more per-panel bound to tune.
+
+**Testable without a real `adsk.core.Point2D`:** `_face_downward_z`/`underside_face` take
+injectable `uv_point`/`score` collaborators (the SAME pattern `sync_panel_lip_param` already uses
+here for `value_input`), late-bound to the module-level name so a test can monkeypatch
+`send_frame._uv_point` ONCE and have it apply through the whole call chain (including the ones
+made deep inside `underside_face`/`send_frame` that never see the override directly).
+
+**Tests** (`test_send_frame.py`): retired the two item-22/23 regression tests -- their own
+mechanism (a tilted CORNER vs the mean) doesn't exist any more; the new grid-sampling has no
+concept of "corner". Replaced with `test_the_real_measured_underside_is_found_on_every_captured_panel`,
+parametrized over the EXACT (z, area) face-score lists from all 7 real captured panels
+(`tools/repro/fusion_t11/underside_results_2026-10-02.jsonl` +
+`underside_t7_7x9_refused_2026-10-02.jsonl`) -- including T7's own regression case, which must now
+succeed. Added `test_an_ambiguous_pick_two_downward_faces_of_comparable_area_is_a_clear_error` and
+`TestFaceDownwardZAreaWeighting` (two tests proving the grid+weighting MECHANICS directly: a
+uniform face scores exactly its own constant normal; a non-uniform face's weighted average differs
+from a naive mean by >0.5 -- the weighting is demonstrably real, not decorative). Fixed
+`test_a_body_with_no_downward_face_is_a_clear_error`'s own fixture (`(1.0, -0.2)` used to fail the
+OLD bound without meaning "nothing points down" under the new rule; changed to `(1.0, 0.3)`, both
+level/upward). Redesigned the shared `Face`/`Body` fakes for the new evaluator interface
+(`FlatEvaluator`: constant normal, unit Jacobian) with an explicit `.area` (the REAL, separate
+Fusion property `underside_face`'s own area-dominance check reads). 836 passed/25 skipped (+8 net
+over item 36's own count: -2 retired, +10 new).
+
+**LIVE** (loaded fresh from this repo checkout via `underside_extrude_probe.py`'s new `REPO`
+global, not the deployed add-in copy -- confirmed `frame_engine`/`template_resolver` both resolve
+to MY checkout's own files before trusting any result): all 6 non-T7 panels (fresh real captures,
+T11 @ 7x9, T1 @ 9x12/6x9, T10 @ 7x9, T12 @ 8x10, T13 @ 12x16) unchanged -- 0 overlap, 0
+min-distance, area-dominant pick, 0 unhealthy items, every one. **T7's own underside now resolves
+to -0.9649 (on the preserved regression payload) / -0.9745 (a fresh capture) -- no refusal, either
+way**, confirming the fix directly. Replaying the PRESERVED payload still shows the item-36 seed
+mismatch (`seed(s) not in the template: ['seed_rad_body_L', ...]`) -- NOT a new bug: that payload's
+own `seedGeometry` was captured by the APP, client-side, BEFORE item 36's fix (and before
+`frame-defs.json` was regenerated to match it) and is frozen with the stale keys baked in; it can
+never reflect a later server-side fix. **A FRESH T7 @ 7x9 capture (post both fixes, confirmed its
+own `seedGeometry` carries none of the 4 stale keys) builds its frame END TO END: 5 bars
+(`frame_base`, 2x `frame_side_left`/`frame_side_right` -- the diamond-hourglass neck naturally
+splits each side in two, Fusion auto-suffixing the duplicate name "(1)"; not a defect, 0 overlap on
+every one), 0 min-distance, 0 unhealthy items.**
+
+**"Source - L4 - ballnose (0.12\")" unhealthy, root-caused (not guessed):** found TWO timeline
+items matching "ballnose" (an earlier diagnostic's own `break` on the first match missed this) --
+the `[constrained]` sketch is Healthy; the PLAIN one reports `RolledBackFeatureHealthState` with an
+EMPTY message. Measured: `des.computeAll()` (or the project's own established `isComputeDeferred`
+pulse) clears it to Healthy INSTANTLY -- the sketch itself is fine (22/22 circles and profiles, not
+suppressed). It is the LAST item created before item 36's own (pre-fix) early abort on the
+preserved payload; nothing downstream ever pulses a recompute because the Send stops right there.
+Confirmed as a pure knock-on, not an independent bug: the fresh post-fix T7 capture (whose Send
+completes normally, past this point, into real sketch/solid building) reports ZERO unhealthy items.
+No separate fix needed -- per the dispatch ("fix only if clearly ours"), this one is explained, not
+ours to patch; it resolves itself once item 36's own fix lets the Send run to completion.
+
+**`underside_extrude_probe.py`** (shared, advisor's own tool): added an optional `REPO` global
+(loads fresh from a checkout instead of `sys.modules['bspline_ui']`, items 29/32/33/34/35/36's own
+pattern -- needed here since neither item 36 nor 37 had been deployed yet) and switched its own
+unhealthy-items check to recurse into timeline groups (H23 item 32: a group's own `healthState` is
+always Unknown) capturing each genuinely-unhealthy item's own warning text, not just a name.
+
+**`item35_confirmation_matrix.py`'s own M3, fixed** (the advisor's own find, confirmed together
+over a cross-session exchange): it counted arcs from a Python list of `childCurves` captured ONCE
+at creation time, filtered by `.isValid` on every later check -- never re-querying `oc.childCurves`
+itself. That can see existing entities going invalid (driving PAST the threshold) but never NEW
+ones appearing (driving back), so its own "the arc never comes back" finding was a test bug, not a
+Fusion fact. Fixed: re-fetch `oc.childCurves` fresh after every edit. Re-run live: 4 -> 0 -> 4
+arcs, exactly matching the advisor's own 5/5 measured recoveries. 44/44 checks pass.
+
+New `tools/repro/fusion_t11/item37_underside_sweep_driver.py` (committed): drives
+`underside_extrude_probe.py` across a list of (tag, payload) pairs, resumable (skips a tag already
+in `OUT` unless it crashed), used for all the LIVE numbers above.
+
+Full suite: 836 passed/25 skipped. Commit `f586403`.
+
+## 2026-10-02: H23 item 38 -- T7's eave corner fixed exactly; a DEEPER, separate issue found and gated
+
+**Part 1 -- the dispatched fix, done:** `p03_03_inner_corner_resolve.py`'s own eave Direction/
+Distance was baked ONCE from `t7_geometry.py`'s own DEFAULT handle proportions (its own docstring
+already named this as a known gap). MEASURED: the app's own seeded neck/body proportions vary per
+Send (a randomized Shape Lattice "Generate", not a fixed default) -- one captured 7x9 panel's own
+real neck circle was centre (1.7988, 1.7737), r=0.5095 in, while the DEFAULT-proportions circle for
+the same board is centre (5.3027, 5.8236), r=0.6625 in -- unrelated circles, confirmed by comparing
+each against the captured seed's own circumcircle directly, not assumed.
+
+Fixed the METHOD: new `fb_engine/inner_corners.py::line_circle_corner_step` + a new
+`'ResolveLineCircleCorner'` step type (`parametric_engine.py`'s own dispatch) reads the REAL roof
+line and REAL (seeded) neck arc straight off the already-built sketch and computes the exact
+line-circle intersection LIVE -- reusing the already-proven `t7_roof_eave` math, factored out as
+`line_circle_corner(line_far, line_near, interior_pt, frame_thickness, circle_center, circle_radius,
+concave)`, now parameterized on real points instead of `roof_geometry()`'s own default-derived
+ones (`eave_inner_corner` kept as a thin wrapper over it, unchanged behaviour -- its own 19
+pre-existing tests still pass unmodified). LIVE-VERIFIED: both eave corners now resolve with a
+**0.0000 cm match** against the real offset geometry (previously wrong by inches -- the OLD baked
+value missed the real corner entirely). New `fb_engine/test_inner_corners.py`, 4 tests with fakes:
+cross-checked against the already-proven `eave_inner_corner` at default proportions (must land on
+the SAME point); a deliberately non-default circle (proves this is a genuine live read, not a
+disguised default computation); the no-match-within-tolerance and missing-entity-map warning
+paths. Mutation-tested: a wrong `Concave` flag makes the cross-check test fail red. 840 passed/25
+skipped (+4). Commit `c190ac6`.
+
+**Part 2 -- a deeper, separate issue found while verifying, NOT fixed (gated):** with the inner
+corner now EXACTLY correct, T7 still extrudes a degenerate sliver body (0.005-0.082 cm3) next to
+each side bar and never builds its 2 declared roof bars -- IDENTICAL symptom, at all 3 board sizes,
+confirmed via a live, byte-for-byte profile-classification dump taken BEFORE and AFTER this fix
+(same areas: 0.021683, 33.440265, 9.395966, 136.648454, 27.822525, 384.892568 cm2 -- the fix changed
+NOTHING about the actual sketch geometry). Traced to the real cause, not guessed: the STRAIGHT
+miter line from the outer eave corner to the (now exactly correct) inner corner RE-CROSSES the
+neck arc's own circle partway along its own length -- confirmed directly (parametrize the real
+miter as a line, solve for its second circle intersection): T1_6x9 t=0.153, 7x9 t=0.352, 9x12
+t=0.199 (all strictly inside (0,1], i.e. a real second crossing, not a near-miss). This is NOT the
+same thing as item 28's "convex radius below frame_thickness" rule -- it happens at 9x12 too,
+where the neck radius (0.9838 in) is comfortably ABOVE frame_thickness (0.75 in); the crossing
+depends on the roof-line/arc-tangent ANGLE at the eave, not simply the radius-vs-thickness
+magnitude. **Confirmed this does NOT happen at the template's own default (non-seeded) proportions,
+at any of 3 tested board sizes (5.5x8.5, 6.5x8.5, 8.5x11.5)** -- only at REAL, randomized app
+seeds. T7's own pure-Python test suite, built only against default proportions, could never have
+caught this; item 27's own live build was blocked by an unrelated Fusion API gap (min/max in
+expressions) before ever reaching a live Send, so this has likely never actually been exercised
+live until this item's own verification.
+
+**Gated back to the advisor, not fixed unilaterally** (a genuine design question, not a code
+bug I can resolve alone): the straight-miter-into-small-arc geometry is structural to T7's own
+eave shape under real seeding; a proper fix needs a decision (trim the miter at its own
+self-crossing point and merge the resulting sliver into the adjacent bar? a non-straight miter
+path? accept a known-degenerate case the way item 28/30 accepted "convex radius below bar" for 10
+other templates, if Fred is fine with it here too -- though note this is WORSE than that case: an
+extra body + a missing bar, not just a sharp corner on an otherwise-complete frame). Passed back
+with the full numbers for Fred/the advisor to choose a direction.
+
+No Fusion used for the sliver/roof-bar fix (none attempted, per the gate) -- all the numbers above
+are from the SAME live builds already run to verify Part 1. Full suite unchanged by Part 2 (no
+code touched). Commit `c190ac6` (both parts, one commit -- Part 2 is investigation + WORK-LOG
+only, no source change).

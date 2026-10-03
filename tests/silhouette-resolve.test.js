@@ -208,5 +208,7 @@ describe.each(['hourglass', 'bottle'])('F12 dense sweep of the NEW params: %s', 
     }
     expect(bad).toEqual([]);
     expect(checked).toBeGreaterThan(preset === 'hourglass' ? 10000 : 1000);
-  });
+  }, 20000); // H23 item 31: hourglass alone measured ~2.6s unloaded; timed out at the 5s default under
+  // concurrent full-suite load (H23 items 18/29) -- same fix as frame-3d-sweep.test.js's own sweep,
+  // explicit headroom, not fewer combinations checked.
 });

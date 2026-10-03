@@ -44,6 +44,34 @@ The frame is **cut as separate mitered bars on the CNC and glued up**. So:
   - pointed-top ideas: Fred said no.
 - More than 4 bars is fine. Inside (270°) corners are fine.
 
+### Seed derivation (declared convention, H23 item 18)
+
+A template's shape-outline seed (an arc's radius/position, before Fusion's constraint solver
+refines it) must be SOLVED from the actual geometric relationship it has to satisfy, never fitted
+as a `widthIn * k` / `heightIn * k` fraction picked (or copied from a sibling template) by eye. A
+fitted fraction is only correct at the one board size -- or the one template -- it was picked for;
+a closed-form solve is correct everywhere, by construction. Confirmed recurring bug class, three
+incidents before this rule was written down: Template 5's dip radius scaled with heightIn while
+the span it bridges scales with widthIn (H23 item 6); Template 10's `hw = widthIn * 0.464286`
+reused from Template 1 without re-deriving it for T10's own hip/shoulder chain (items 14/15/17);
+Template 12/13's seed computed off the raw board dimension instead of routing through
+`seed_basis.py` (seat C, F30 item 3).
+
+The declared primitives live in `fb_engine/closed_form_arc.py` (three functions -- not a
+framework): `tangent_circle_through_point` (an arc tangent to a known line at a known point,
+through a second known point), `colinear_circle_through_point` (an arc G1-continuous with a
+neighbour at a shared vertex, through a second known point), `true_via_point` (an Arc3Point's own
+middle point = the TRUE angular midpoint of the minor arc, not a chord-midpoint hint -- the seed
+IS the answer; Tangent only LOCKS it, per the fusion360-quirks skill). The worked example is
+`fb_engine/t7_geometry.py`'s own `t7_outline()` (H23 item 27): read it before deriving a new
+template's own arc seed.
+
+A plain `widthIn * k` is NOT this bug class when the constant has no geometric relationship to
+solve in the first place -- e.g. a fixed proportion of the board is a legitimate design choice on
+its own. The audit question is always: does this seed encode a relationship to OTHER geometry
+(tangency, a shared join, a pass-through point), and if so, is it solved from that relationship or
+just fitted to look right at one board size?
+
 ## 3. What's built (all pushed, all live on the website)
 
 | # | Template | Commit | Notes |

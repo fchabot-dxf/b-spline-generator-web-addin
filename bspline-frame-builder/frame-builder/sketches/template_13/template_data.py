@@ -168,7 +168,7 @@ FRAME_PROVISIONAL_SHAPE = {"from": "template_2", "taperAngleDeg": 8.0}
 # F30 item 3: hidden from the template picker until this build is verified live in Fusion (T10's own "no Fusion
 # fix yet" precedent, same flag). Flip to False once confirmed; a saved record that already picked this id still
 # loads and draws (frame-record.js looks up templates by id over the full list, hidden or not).
-FRAME_HIDDEN = True
+FRAME_HIDDEN = False
 
 
 def get_template_logic(ui_data=None):

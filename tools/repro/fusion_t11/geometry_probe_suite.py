@@ -325,7 +325,7 @@ def C1():
 
 
 def C2():
-    """The engine's FALLBACK (non-parametric sketch.offset) on the same loops."""
+    """The engine's FALLBACK (sketch.offset -- ALSO parametric, H23 item 35) on the same loops."""
     for tag, pts in (('9x12', PTS9), ('7x9', PTS7)):
         sk = new_sketch('C2_sketch_offset_' + tag)
         seq = _t11_loop(sk, pts)

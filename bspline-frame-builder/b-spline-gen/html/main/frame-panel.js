@@ -23,13 +23,13 @@ import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
 import { paramsFromShapeModel } from '../editor/editor-shape-lattice-generator.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
-import { frameCutProfile, frameInnerProfile } from '../editor/editor-frame-profile.js';
+import { frameCutProfile, frameInnerProfile, smallestConvexArcRadius } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { syncDrawerForMode } from '../editor/editor-drawer.js';
 import { inputProfileFor } from '../editor/editor-input.js';
 import { FRAME_HANDLE_RADIUS } from '../editor/editor-frame-profile.js';
-import { insetWindowGeometry } from '../core/inset-window.js';
+import { insetWindowGeometry, insetWindowOuterRect } from '../core/inset-window.js';
 
 /** F9: how close (screen px) a press must land to grab a frame shape handle -- the FLOOR (a mouse). Audit
  *  (batch 1): the reach is now the pointer's own, the same `handlePx * 1.8` Shape Lattice's identical handles
@@ -130,11 +130,31 @@ export function generateFrame(seed = nextSeed()) {
 
 const $ = (id) => document.getElementById(id);
 
+/** Advisor review on T82 item 5 (a 7/3 board-third default showed as "2.3333333333333"): round a numeric
+ *  field's DISPLAYED value to 3 decimals -- the record itself keeps full precision, only `el.value` is ever
+ *  touched here. Non-finite input passes through unchanged (the field's own "nothing to show" cases, e.g.
+ *  no template selected, already write '' or similar, not a number). */
+const _round3 = (v) => (Number.isFinite(v) ? Math.round(v * 1000) / 1000 : v);
+
 /** The frame's numeric param fields: field id -> the template param it edits
  *  (limits from the generated definition), plus the row hidden with no frame. */
 export const FRAME_PARAM_FIELDS = Object.freeze([
   { id: 'frameThickness', param: 'frame_thickness', row: 'frameThicknessRow' },
+  // T82 item 4: the SAME frame_thickness, a second field in the Frame tab's own editor panel (Fred: a
+  // visible-2D-drawing setting belongs there too, same rule as the inset window) -- this generic
+  // read/write loop is the ENTIRE sync (both directions), no extra wiring needed for the second field.
+  { id: 'editorFrameThickness', param: 'frame_thickness' },
   { id: 'frameTrimOffset', param: 'boundingboxoffset' }, // F9: "Trim offset (in)"
+]);
+
+/** T82 item 5: two views of the SAME insetWindow record (the sidebar's own fields, and #editorFramePanel's own
+ *  -- T82 item 4's own "a second view, not a second setting" pattern, extended to a compound field: there is
+ *  no single param to loop over the way FRAME_PARAM_FIELDS does, so this declares the two ID sets instead. */
+const INSET_WINDOW_FIELD_GROUPS = Object.freeze([
+  { toggle: 'frameInsetWindowToggle', fields: 'frameInsetWindowFields',
+    posX: 'frameWindowPosX', posY: 'frameWindowPosY', sizeW: 'frameWindowSizeW', sizeH: 'frameWindowSizeH' },
+  { toggle: 'editorFrameInsetWindowToggle', fields: 'editorFrameInsetWindowFields',
+    posX: 'editorWindowPosX', posY: 'editorWindowPosY', sizeW: 'editorWindowSizeW', sizeH: 'editorWindowSizeH' },
 ]);
 
 function _option(value, label) {
@@ -236,8 +256,23 @@ export function syncFramePanel() {
     if (!el) continue;
     const p = tpl?.params.find((q) => q.name === f.param);
     for (const k of ['min', 'max']) { if (p && p[k] != null) el[k] = p[k]; else el.removeAttribute(k); }
-    if (document.activeElement !== el) el.value = tpl ? frameParam(FRAME_DEFS, rec, f.param) : '';
+    if (document.activeElement !== el) el.value = tpl ? _round3(frameParam(FRAME_DEFS, rec, f.param)) : '';
     if (f.row && $(f.row)) $(f.row).style.display = tpl ? '' : 'none';
+  }
+  // T82 item 4 (advisor probes 2026-10-02): a convex arc radius <= frame_thickness makes Fusion's
+  // parametric offset refuse the enclosure (falls back to a non-parametric loop, inner corner goes
+  // sharp) -- read directly from the app's own already-solved outline/inner profile, no new formula.
+  const twarn = $('editorFrameThicknessWarning');
+  if (twarn) {
+    const ft = tpl ? frameParam(FRAME_DEFS, rec, 'frame_thickness') : null;
+    const prof = tpl ? frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }) : null;
+    const inner = tpl && prof?.fit.ok ? frameInnerProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }) : null;
+    const minR = prof && inner ? smallestConvexArcRadius(prof.primitives, inner.primitives) : Infinity;
+    const tooThick = Number.isFinite(ft) && ft >= minR;
+    twarn.style.display = tooThick ? '' : 'none';
+    twarn.textContent = tooThick
+      ? `Frame thickness (${ft.toFixed(3)} in) is at or past the tightest curve's own radius (${minR.toFixed(3)} in) -- Fusion will not build a true inner edge here.`
+      : '';
   }
   _syncTemplateSelect($('frameTemplate'), rec.templateId);
   if ($('frameBottomZ') && document.activeElement !== $('frameBottomZ')) $('frameBottomZ').value = rec.frameBottomZ;
@@ -248,18 +283,20 @@ export function syncFramePanel() {
     if (document.activeElement !== $('framePanelLip')) $('framePanelLip').value = rec.panelLip;
   }
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
-  if ($('frameInsetWindowToggle')) $('frameInsetWindowToggle').checked = !!rec.insetWindow?.enabled; // T82 item 2
-  // Position/Size steppers: the same insetWindow rect the Frame tab's own corner handles drag, read back
-  // as Position (the x1/y1 corner) + Size (width/height) rather than raw x1/y1/x2/y2 -- typing Position
-  // moves the window (both corners shift together), typing Size resizes it from that same corner, matching
-  // how a drag on the body vs. a corner behaves (_wireWindowDrag, below).
-  if ($('frameInsetWindowFields')) $('frameInsetWindowFields').style.display = rec.insetWindow?.enabled ? '' : 'none';
-  if (rec.insetWindow) {
-    const w = rec.insetWindow;
-    if ($('frameWindowPosX') && document.activeElement !== $('frameWindowPosX')) $('frameWindowPosX').value = w.x1;
-    if ($('frameWindowPosY') && document.activeElement !== $('frameWindowPosY')) $('frameWindowPosY').value = w.y1;
-    if ($('frameWindowSizeW') && document.activeElement !== $('frameWindowSizeW')) $('frameWindowSizeW').value = w.x2 - w.x1;
-    if ($('frameWindowSizeH') && document.activeElement !== $('frameWindowSizeH')) $('frameWindowSizeH').value = w.y2 - w.y1;
+  // T82 item 5: two views of the SAME insetWindow record (the sidebar's own, and #editorFramePanel's own --
+  // T82 item 4's own "a second view, not a second setting" pattern). Position X/Y = the record's own cx/cy
+  // (the window's centre, from the board centre, +y UP), Size W/H = the record's own w/h directly -- a direct
+  // read-back now (the record itself IS centre-based), no corner math the old {x1,y1,x2,y2} shape needed.
+  for (const g of INSET_WINDOW_FIELD_GROUPS) {
+    if ($(g.toggle)) $(g.toggle).checked = !!rec.insetWindow?.enabled;
+    if ($(g.fields)) $(g.fields).style.display = rec.insetWindow?.enabled ? '' : 'none';
+    if (rec.insetWindow) {
+      const w = rec.insetWindow;
+      if ($(g.posX) && document.activeElement !== $(g.posX)) $(g.posX).value = _round3(w.cx);
+      if ($(g.posY) && document.activeElement !== $(g.posY)) $(g.posY).value = _round3(w.cy);
+      if ($(g.sizeW) && document.activeElement !== $(g.sizeW)) $(g.sizeW).value = _round3(w.w);
+      if ($(g.sizeH) && document.activeElement !== $(g.sizeH)) $(g.sizeH).value = _round3(w.h);
+    }
   }
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${frameLabel(tpl)}` : '— none';
@@ -431,13 +468,68 @@ function _wireHandleDrag() {
   surface.addEventListener('pointercancel', end, true);
 }
 
+// T82 item 4 (advisor review on 24e2d07): typed Position/Size margin over insetWindowGeometry's own
+// strict '>' floor -- landing EXACTLY on 2*frame_thickness would still read back as "no window" (bars <= 0).
+const INSET_WINDOW_MIN_MARGIN = 0.1;
+
+/** The current displayed value for one Position/Size field (either field group, INSET_WINDOW_FIELD_GROUPS),
+ *  read from the record -- used to snap a field back when its typed value didn't parse, the same "reject and
+ *  restore" every other numeric field in this app effectively gets from syncFramePanel's own activeElement
+ *  guard, but explicit here since a 'change' event can still fire while the field itself is the activeElement
+ *  (Enter without a blur). T82 item 5: the record is already centre-based (cx/cy/w/h), so this is a direct
+ *  read, no corner math -- rounded for display (advisor review), same as syncFramePanel's own read-back. */
+function _insetWindowFieldValue(id, r) {
+  for (const g of INSET_WINDOW_FIELD_GROUPS) {
+    if (id === g.posX) return _round3(r.cx);
+    if (id === g.posY) return _round3(r.cy);
+    if (id === g.sizeW) return _round3(r.w);
+    if (id === g.sizeH) return _round3(r.h);
+  }
+  return undefined;
+}
+
+/** Clamp a CANDIDATE insetWindow rect (T82 item 5: `{cx, cy, w, h}`) to one that still fits the board and
+ *  still clears its own frame_thickness by INSET_WINDOW_MIN_MARGIN -- size first (so an undersized request
+ *  grows symmetrically, the centre held), then position (the centre pulled in just enough to keep the whole
+ *  rect on-board, size unchanged). */
+function _clampInsetWindowRect(r) {
+  const widthIn = P.widthIn, heightIn = P.heightIn;
+  const ft = frameParam(FRAME_DEFS, getFrameRecord(), 'frame_thickness') || 0;
+  const minSize = 2 * ft + INSET_WINDOW_MIN_MARGIN;
+  const w = Math.min(Math.max(r.w, minSize), widthIn);
+  const h = Math.min(Math.max(r.h, minSize), heightIn);
+  const cx = Math.min(Math.max(r.cx, -(widthIn - w) / 2), (widthIn - w) / 2);
+  const cy = Math.min(Math.max(r.cy, -(heightIn - h) / 2), (heightIn - h) / 2);
+  return { cx, cy, w, h };
+}
+
+/** One Position/Size stepper's own 'change' handler: parse, reject non-finite input outright (restore the
+ *  field, write nothing), else apply `build` (the field's own patch shape) to the current rect and clamp
+ *  the result before writing. `build(r, value)` returns a CANDIDATE rect (same 4 keys), not yet clamped. */
+function _applyInsetWindowStepper(input, build) {
+  const r = getFrameRecord().insetWindow;
+  const value = parseFloat(input.value);
+  if (!Number.isFinite(value)) { input.value = _insetWindowFieldValue(input.id, r); return; }
+  editFrame({ insetWindow: { ...r, ..._clampInsetWindowRect(build(r, value)) } });
+}
+
+/** T82 item 5: the window's own board-local OUTER rect (x1/y1/x2/y2, origin top-left, y down -- the frame
+ *  every drag/hit-test below works in) at a given centre-based record value, via the ONE conversion
+ *  (core/inset-window.js `insetWindowOuterRect`). */
+const _winRect = (r) => insetWindowOuterRect(r, P.widthIn, P.heightIn);
+
 /**
- * T82 item 2 (INSET-WINDOW-DESIGN.md §6): drag the inset window's own body (move) or a corner (resize), in the
- * Frame tab, on the SAME shield surface `_wireHandleDrag` uses. A separate listener (not a branch inside
+ * T82 item 2/5 (INSET-WINDOW-DESIGN.md §6): drag the inset window's own body (move) or a corner (resize), in
+ * the Frame tab, on the SAME shield surface `_wireHandleDrag` uses. A separate listener (not a branch inside
  * `_wireHandleDrag`'s own closure) so a shape-handle drag's own tightly-tuned pinch-abort/capture logic is
  * never touched; `ed._frameHandleDrag` (public on the editor) is the one shared flag that keeps the two from
- * both grabbing the same press. Deliberately NOT clamped (design note §3): a drag can push the window past the
- * frame's own opening or the board edge, same as typing an out-of-range value would do if there were a field.
+ * both grabbing the same press. A corner drag resizes SYMMETRICALLY about the centre (T82 item 5, Fred: "use
+ * the centre of frame... and make the window a centre point rect too") -- the centre (cx, cy) never moves
+ * during a resize, only w/h, by twice the dragged corner's own distance from it. Deliberately NOT clamped
+ * (design note §3): a drag can push the window past the frame's own opening or the board edge (Fred: "then
+ * it's my responsibility to not let it intersect") -- TYPED entry is clamped instead (see
+ * _clampInsetWindowRect above), a different failure mode: a single keystroke isn't bounded by the cursor's
+ * own continuous motion the way a drag is.
  */
 function _wireWindowDrag() {
   const shield = $('editorFrameShield');
@@ -455,7 +547,7 @@ function _wireWindowDrag() {
     const pt = ed._getMousePoint({ clientX, clientY });
     const edge = ed._getMousePoint({ clientX: clientX + CORNER_PX, clientY });
     const tol = Math.abs(edge.x - pt.x) || 0.1;
-    const r = rec.insetWindow;
+    const r = _winRect(rec.insetWindow);
     for (const [k, c] of Object.entries(corners(r))) if (Math.hypot(c.x - pt.x, c.y - pt.y) <= tol) return { mode: k, r };
     if (pt.x > r.x1 && pt.x < r.x2 && pt.y > r.y1 && pt.y < r.y2) return { mode: 'body', r };
     return null;
@@ -477,7 +569,7 @@ function _wireWindowDrag() {
     mode = h.mode;
     dragPointerId = e.pointerId;
     dragStartPt = ed._getMousePoint(e);
-    dragStartRect = { ...h.r };
+    dragStartRect = { ...getFrameRecord().insetWindow }; // {cx, cy, w, h} at drag start
     dragStartRecord = JSON.parse(JSON.stringify(getFrameRecord()));
     if (mode !== 'body') { ed._windowHandleDrag = mode; if (ed._frameProfile) drawFrameProfile(ed); }
     if (surface.setPointerCapture && e.pointerId != null) { try { surface.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
@@ -494,11 +586,21 @@ function _wireWindowDrag() {
     if (e.pointerId !== dragPointerId) return;
     const pt = ed._getMousePoint(e);
     const dx = pt.x - dragStartPt.x, dy = pt.y - dragStartPt.y;
-    const r = { ...dragStartRect };
-    if (mode === 'body') { r.x1 += dx; r.x2 += dx; r.y1 += dy; r.y2 += dy; }
-    else { if (mode.startsWith('x1')) r.x1 += dx; else r.x2 += dx;
-           if (mode.includes('y1')) r.y1 += dy; else r.y2 += dy; }
-    setFrameRecord({ insetWindow: { ...r, enabled: true } });
+    let next;
+    if (mode === 'body') {
+      // Board-local x translates straight onto cx; board-local y is Y-DOWN while cy is Y-UP, so it flips sign.
+      next = { ...dragStartRect, cx: dragStartRect.cx + dx, cy: dragStartRect.cy - dy };
+    } else {
+      // T82 item 5: a corner drag resizes SYMMETRICALLY about the centre -- cx/cy stay exactly as they were
+      // at drag start; only w/h change, derived from the dragged corner's own new distance from that (fixed)
+      // centre, doubled (the OPPOSITE edge moves the same amount inward/outward to keep the centre put).
+      const r0 = _winRect(dragStartRect);
+      const cxBoard = (r0.x1 + r0.x2) / 2, cyBoard = (r0.y1 + r0.y2) / 2;
+      const corner0 = corners(r0)[mode];
+      const newCornerX = corner0.x + dx, newCornerY = corner0.y + dy;
+      next = { ...dragStartRect, w: 2 * Math.abs(newCornerX - cxBoard), h: 2 * Math.abs(newCornerY - cyBoard) };
+    }
+    setFrameRecord({ insetWindow: { ...next, enabled: true } });
     if (ed._frameProfile) drawFrameProfile(ed);
     e.preventDefault();
     e.stopPropagation();
@@ -569,37 +671,36 @@ export function initFramePanel() {
   woodSel.addEventListener('change', () => editFrame({ appearance: woodSel.value }));
   $('frameBottomZ')?.addEventListener('change', (e) => editFrame({ frameBottomZ: parseFloat(e.target.value) }));
   $('framePanelLip')?.addEventListener('change', (e) => editFrame({ panelLip: parseFloat(e.target.value) }));
-  // T82 item 2: off by default; the FIRST time it is turned on with no rect yet (x1===x2, a never-placed
-  // window), seed a reasonable starting rect (roughly centred, roughly a third of the current board) so there
-  // is something to see and drag immediately -- an implementation choice, not a design constraint (design
-  // note §6). Turning it off keeps the record's own rect (so re-enabling restores the last placement).
-  $('frameInsetWindowToggle')?.addEventListener('change', (e) => {
-    const cur = getFrameRecord().insetWindow;
-    const enabled = e.target.checked;
-    const needsSeed = enabled && cur.x1 === cur.x2 && cur.y1 === cur.y2;
-    const seed = needsSeed ? { x1: P.widthIn / 3, y1: P.heightIn / 3, x2: 2 * P.widthIn / 3, y2: 2 * P.heightIn / 3 } : cur;
-    editFrame({ insetWindow: { ...seed, enabled } });
-  });
-  // Position/Size steppers (same rect _wireWindowDrag's own corner/body drag writes) -- Position moves the
-  // window (both x1/x2, or y1/y2, shift together, keeping size fixed); Size resizes it from the x1/y1
-  // corner (matching a corner drag's own "the opposite corner stays put" feel). Not clamped, same as a
-  // drag isn't (INSET-WINDOW-DESIGN.md §3/§6): typing a size past the board is the user's own call.
-  $('frameWindowPosX')?.addEventListener('change', (e) => {
-    const r = getFrameRecord().insetWindow, width = r.x2 - r.x1, x1 = parseFloat(e.target.value);
-    editFrame({ insetWindow: { ...r, x1, x2: x1 + width } });
-  });
-  $('frameWindowPosY')?.addEventListener('change', (e) => {
-    const r = getFrameRecord().insetWindow, height = r.y2 - r.y1, y1 = parseFloat(e.target.value);
-    editFrame({ insetWindow: { ...r, y1, y2: y1 + height } });
-  });
-  $('frameWindowSizeW')?.addEventListener('change', (e) => {
-    const r = getFrameRecord().insetWindow;
-    editFrame({ insetWindow: { ...r, x2: r.x1 + parseFloat(e.target.value) } });
-  });
-  $('frameWindowSizeH')?.addEventListener('change', (e) => {
-    const r = getFrameRecord().insetWindow;
-    editFrame({ insetWindow: { ...r, y2: r.y1 + parseFloat(e.target.value) } });
-  });
+  // T82 item 2/5: off by default; the FIRST time it is turned on with no rect yet (w===0 && h===0, a
+  // never-placed window), seed a reasonable starting rect (centred, roughly a third of the current board) so
+  // there is something to see and drag immediately -- an implementation choice, not a design constraint
+  // (design note §6). Turning it off keeps the record's own rect (so re-enabling restores the last placement).
+  // Wired once per field group (INSET_WINDOW_FIELD_GROUPS: the sidebar's own fields, and T82 item 5's new
+  // #editorFramePanel copy, T82 item 4's own "a second view" pattern) -- both toggles and both Position/Size
+  // quartets write the SAME insetWindow record, so either view always reflects the other (syncFramePanel).
+  // Position/Size steppers write cx/cy/w/h directly (the record IS centre-based, no corner math needed the
+  // way the old {x1,y1,x2,y2} shape required). A DRAG stays deliberately unclamped (INSET-WINDOW-DESIGN.md
+  // §3/§6, Fred: "then it's my responsibility to not let it intersect") -- but typed entry is a different
+  // failure mode: a blank/garbage field would write NaN straight into the record (nothing downstream expects
+  // that), and unlike a drag, which is bounded by the cursor's own continuous motion, a single keystroke can
+  // jump the rect anywhere. So typed Position/Size IS clamped (advisor review on 24e2d07, carried over
+  // unchanged in meaning for T82 item 5): non-finite input is ignored outright (the field snaps back to the
+  // record's own current value), a valid number is clamped to stay on the board and to clear its own
+  // frame_thickness with a small margin (insetWindowGeometry's own floor is a strict '>', so landing exactly
+  // on 2*frame_thickness would still read back as "no window").
+  for (const g of INSET_WINDOW_FIELD_GROUPS) {
+    $(g.toggle)?.addEventListener('change', (e) => {
+      const cur = getFrameRecord().insetWindow;
+      const enabled = e.target.checked;
+      const needsSeed = enabled && cur.w === 0 && cur.h === 0;
+      const seed = needsSeed ? { cx: 0, cy: 0, w: P.widthIn / 3, h: P.heightIn / 3 } : cur;
+      editFrame({ insetWindow: { ...seed, enabled } });
+    });
+    $(g.posX)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, cx: v })));
+    $(g.posY)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, cy: v })));
+    $(g.sizeW)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, w: v })));
+    $(g.sizeH)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, h: v })));
+  }
   $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
   _wireHandleDrag();
   _wireWindowDrag();

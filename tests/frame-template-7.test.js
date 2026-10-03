@@ -56,8 +56,8 @@ describe('Template 7: listing and declaration', () => {
     // (template_data.py's own SKETCH_2_PARAMETERS, t7_*) rather than inlined (inlining exploded to
     // a 170KB expression string) -- NOT user-facing (no Expose, no app-side handle reads them),
     // so this test's own "no new Fusion parameter" claim is really "no new EXPOSED one": still true.
-    const T7_GEOMETRY_PARAMS = ['t7_dy', 't7_dxn', 't7_r_body', 't7_cbx', 't7_cby', 't7_ux', 't7_uy',
-      't7_vx', 't7_vy', 't7_v_dot_u', 't7_v2', 't7_r_neck', 't7_cnx', 't7_cny', 't7_bbx', 't7_bby',
+    const T7_GEOMETRY_PARAMS = ['t7_a', 't7_nx', 't7_dy', 't7_dxn', 't7_r_body', 't7_cbx', 't7_cby', 't7_ux', 't7_uy',
+      't7_vx', 't7_vy', 't7_v_dot_u', 't7_vlen', 't7_r_neck', 't7_cnx', 't7_cny', 't7_bbx', 't7_bby',
       't7_bblen', 't7_via_body_x', 't7_via_body_y', 't7_uex', 't7_uey', 't7_nbx', 't7_nby',
       't7_nblen', 't7_via_neck_x', 't7_via_neck_y'];
     expect(T7.params.map((p) => p.name)).toEqual(['widthIn', 'heightIn', 'boundingboxoffset',

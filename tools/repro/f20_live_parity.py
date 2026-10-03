@@ -12,6 +12,19 @@ CORNER = ('arc_shoulder_R', 'arc_shoulder_L', 'arc_hip_R', 'arc_hip_L',
           'skel_shoulder_pin_R', 'skel_shoulder_pin_L', 'skel_hip_pin_R', 'skel_hip_pin_L')
 
 
+def _item_healthy(item):
+    """H23 item 32: a TimelineGroup's own healthState is ALWAYS Unknown (5) regardless of its
+    children (MEASURED, tools/repro/timeline_health.py's own docstring) -- recurse into a group's
+    own children instead of trusting its top-level state."""
+    if item.isGroup:
+        return all(_item_healthy(item.item(i)) for i in range(item.count))
+    return item.healthState == 0
+
+
+def _timeline_healthy(tl):
+    return all(_item_healthy(tl.item(i)) for i in range(tl.count))
+
+
 def fid(e):
     try:
         a = e.attributes.itemByName('FrameBuilder', 'ID')
@@ -103,7 +116,9 @@ def run_case(case_file, tag, shot=None):
                'expectedLines': case.get('lines', {}), 'fusionLines': lines,
                'maxErr': max(errs) if errs else None,
                'constraints': cons, 'dims': dims, 'fullyConstrained': sk.isFullyConstrained,
-               'healthy': all(tl.item(i).healthState == 0 for i in range(tl.count)),
+               # H23 item 32: a TimelineGroup's own healthState is ALWAYS Unknown (5) regardless of
+               # its children (MEASURED, tools/repro/timeline_health.py) -- recurse into groups.
+               'healthy': _timeline_healthy(tl),
                'userParams': [p.name for p in d.userParameters]}
         if shot:
             vp = app.activeViewport

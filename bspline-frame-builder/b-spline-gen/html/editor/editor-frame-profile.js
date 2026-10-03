@@ -134,6 +134,30 @@ export function frameInnerProfile(defs, record, board) {
   return { primitives, defects: outlineDefects(real, { requireTangency: false }) };
 }
 
+/**
+ * T82 item 4 (advisor probes 2026-10-02): the smallest CONVEX arc radius in the outline, in inches, or
+ * `Infinity` if the outline has no convex arc at all (e.g. Template 6's all-line Tab Top). "Convex" is
+ * read off the app's own already-solved offset (outline-offset.js's own `r - t` for a convex arc, `r + t`
+ * for concave -- see that module's own header comment), not re-derived here: a NON-collapsed inner arc
+ * whose radius shrank from the outer one was offset by `r - t`, i.e. convex; a COLLAPSED inner piece is,
+ * by that same module's own documented rule, always a convex arc whose radius was <= the offset distance
+ * -- so it counts too, at its own TRUE (un-offset) outer radius, not the collapsed placeholder's.
+ * `outerPrimitives`/`innerPrimitives` pair by index (frameCutProfile's `.primitives` / frameInnerProfile's
+ * `.primitives`, offset at whatever `frame_thickness` `innerPrimitives` was itself computed with).
+ */
+export function smallestConvexArcRadius(outerPrimitives, innerPrimitives) {
+  let min = Infinity;
+  if (!outerPrimitives || !innerPrimitives || innerPrimitives.length !== outerPrimitives.length) return min;
+  for (let i = 0; i < outerPrimitives.length; i++) {
+    const outer = outerPrimitives[i];
+    if (outer.type !== 'A') continue;
+    const inner = innerPrimitives[i];
+    const convex = inner.collapsed || (inner.type === 'A' && inner.rx < outer.rx);
+    if (convex) min = Math.min(min, outer.rx);
+  }
+  return min;
+}
+
 /** Everything the 3D preview needs (core/preview/frame-mesh.js), or null
  *  when there is no frame or the outline fails the guard. */
 /** F22: the panel's trim outline = the frame outline offset OUTWARD by the record's panel lip (the F8 true offset,
@@ -158,7 +182,7 @@ export function frameSolidSpec(defs, record, board) {
     outerPrimitives: prof.primitives,
     innerPrimitives: innerOk ? inner.primitives : null,
     panelPrimitives: panelTrimPrimitives(prof, record), // F22: null = trimmed on the outline
-    insetWindow: insetWindowGeometry(record, ft, record.panelLip), // T82 item 2, null when off/invalid
+    insetWindow: insetWindowGeometry(record, ft, record.panelLip, board.widthIn, board.heightIn), // T82 item 2/5, null when off/invalid
     frameBottomZ: record.frameBottomZ,
     // H8 (Fred: "make frame colour a bit different than board, tiny bit"):
     // the frame's own declared colour, not the board's raw wood colour —
@@ -283,7 +307,7 @@ function _drawFrameProfile(editor) {
   // both tabs (same as the main frame's own cutaway) since it affects the carved panel either way.
   const ftTpl = (spec.defs.templates || []).find((t) => t.id === prof.templateId);
   const ft = _param(ftTpl, spec.record, 'frame_thickness') ?? 0;
-  const win = insetWindowGeometry(spec.record, ft, spec.record.panelLip);
+  const win = insetWindowGeometry(spec.record, ft, spec.record.panelLip, W, H);
   if (win) {
     const rectD = (r) => `M${r.x1} ${r.y1} H${r.x2} V${r.y2} H${r.x1} Z`;
     const wood = frameColorFor(spec.record.appearance, spec.defs.appearance?.previewColors?.[spec.record.appearance] || '#d9c9a3');

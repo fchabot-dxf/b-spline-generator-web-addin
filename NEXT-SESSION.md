@@ -101,9 +101,102 @@ build). Then prune where the timing says it pays: Pulse (A/B: identical on T1/T8
 T10 frame dependency (stripping them moves T10's inner horn 2.18 in) is explained. Each removal re-checked with
 `tools/repro/fusion_t11/step_removal_ab.py` on two templates at 7x9 + 9x12.
 
+## Item 30 -- CANCELLED (Fred chose WARN ONLY: no convex-radius guard; the Frame editor's red warning, T82 item 4, is the whole answer). Kept for the record -- was: PREVENT, don't detect: the add-in must never hand Fusion geometry that errors or falls back (after 28)
+Fred: "the goal is that the add-in produces no errors". Today's biggest known violation: the hourglass family
+(T1/T3/T4/T5/T8/T10, and T11/T12/T13 as they land) at 6x9/7x9 has a convex shoulder/hip radius (0.643) below
+frame_thickness (0.75), so every such Send makes Fusion's addOffset2 refuse and the engine fall back (non-parametric,
+fewer curves). Prevent it in the APP, before Send, keeping the user's thickness and clamping the SHAPE:
+(1) Generate's isValid rejects any outline whose smallest convex radius <= frame_thickness + 0.05 (same retry pattern
+as cf3805f's reflex-arc gate; re-measure GENERATE_MAX_ATTEMPTS); (2) the radius handles clamp at that floor;
+(3) the template DEFAULT/fitted shape at small boards clamps the corner radius up to the floor (declare the floor
+once, e.g. CONVEX_RADIUS_MARGIN_IN, next to frame_thickness; the app's smallestConvexArcRadius from T82 item 4 is the
+measure). (cancelled) Done = item 28's KNOWN_CONVEX_RADIUS_BELOW_BAR list is EMPTY for every shipped template at 6x9/7x9/9x12,
+AND a live Send of T1 at 7x9 (real captured payload) builds with ZERO fallback/warning lines in the engine log
+(tools/repro/fusion_t11/live_build_readback.py counts them). Shapes change slightly at small boards (rounder
+shoulder/hip) -- shots before/after at 7x9 for Fred. Commit 'H23 item 30: ...'.
+
 **Separately, for the advisor + Fred (not this item):** your item 27 part 2 check 3 plus this A/B prove that the
 SHIPPED hourglass templates (T1, T3, T4, T5, T8, T10) at 6x9 and 7x9 have a shoulder/hip radius (0.643) below the bar
 (0.75), so EVERY such Send builds the frame through the non-parametric fallback (logged as a WARNING only).
+
+## Item 32 -- "no errors": every Send leaves timeline group "Group1" UNHEALTHY (advisor probe, 2026-10-02)
+Fred's goal: the add-in produces no errors. In EVERY live Send replayed today (T1/T10/T11/T12/T13, 6x9..12x16, real
+captured payloads through _handle_generate) the timeline item "Group1" reports healthState != Healthy with an EMPTY
+errorOrWarningMessage. Find what Group1 is (which feature inside it carries the warning -- open the group, check each
+item's healthState/message; likely the stamp import group, b-spline-gen.py timeline grouping), why it is unhealthy,
+and fix the cause (not the reporting). Also the item-29 side finding: the empty-doc T1 frame build hits
+VCS_SKETCH_SOLVING_FAILED + an offset fallback that the full-pipeline run doesn't -- explain it (report; fix only if it
+can reach a real Send). Tools: tools/repro/capture_send_payload.mjs (--template/--board), underside_extrude_probe.py /
+send_stage_timing.py patterns. Kill only PIDs you started. No guards without Fred. Commit 'H23 item 32: ...'.
+
+## Item 33 -- editing frame_thickness / boundingboxoffset AFTER a build silently duplicates bars (advisor probe, 2026-10-02)
+MEASURED, 3 cases, timeline HEALTHY in all: replay a real Send (T1), then change a user parameter in Fusion --
+6x9 thickness 0.75 -> 1.0: frame_left, frame_bottom and frame_right become the SAME U-shaped body (each 437.28 cm3,
+bbox = the whole board, pairwise overlap 437.28 cm3; union 561.36 = correct total), frame_top stays right; same
+signature at 6x9 with boundingboxoffset 0.25 -> 0.5, and 9x12 thickness -> 1.4 (3 bars x 882.79). Smaller edits
+(6x9 -> 0.6, 9x12 -> 0.6/1.0) stay correct. A FRESH Send at 1.0 builds 4 correct separate bars (159/119/159/124,
+no overlap). So the bar split (the miter cuts / body split in the solid build) does not survive a parametric
+recompute past some size change. Find WHY (which feature stops splitting -- SolidCoordinator / extrusion_engine; check
+each split feature's health and its tool/target references after the edit) and fix the cause so an edit gives the
+same 4 bars a fresh Send would. Repro: tools/repro/fusion_t11/bar_merge_confirm.py (+ param_edit_after_build_probe.py),
+results *_2026-10-02.jsonl next to them; captured payloads via capture_send_payload.mjs --template=template_1
+--board=6x9. A bar-overlap check (pairwise intersection volume == 0) belongs in the readback tools afterwards.
+Kill only PIDs you started; no guards without Fred. Commit 'H23 item 33: ...'.
+
+## Item 34 -- CANCELLED (Fred: a native Fusion edit that breaks the model is acceptable -- "I can see it's broken", he undoes). Kept for the record -- was: make Fred's workflow correct: he DOES edit frame_thickness / border in Fusion's Parameters dialog
+Fred (2026-10-02): "i do change it in fusion". Item 33 proved a native edit can merge 3 bars into one overlapping U
+(timeline healthy) whenever the thickness passes a convex radius, on any board; a fresh Send is always correct. Not a
+guard -- the goal is that his edit gives the same 4 bars a Send would. STEP 1 = FEASIBILITY, report before building:
+(C1) auto-rebuild: can the add-in detect the Parameters dialog finishing (ui.commandTerminated for the parameters
+command id, or a cheaper hook), read the changed frame parameters, and re-run ONLY the frame build (the Send's frame
+path: delete the previous frame by attribute + build_sketch_logic_v3 + solid) with the new values? Measure the time,
+confirm bars come out identical to a fresh Send (tools/repro/fusion_t11/bar_merge_confirm.py pattern), and that an
+unrelated parameter edit does NOT trigger it. (C2) robust model: is there a way to split/extrude the bars so the
+native recompute cannot merge them (e.g. each bar's profile bounded by its own miter lines rather than a shared
+region)? Prototype in a scratch doc only. Report both with numbers; no production change until the advisor (and Fred
+if it changes behaviour he sees) picks one. Kill only PIDs you started; leave UI-cowork / API-claude code open.
+Commit 'H23 item 34: ...'.
+
+## Item 37 -- underside detection is a hair-trigger bound on a 5-point average; make it robust (+ a stamp feature warning)
+MEASURED (advisor, 2026-10-02, at the moment send_frame picks the face): real carved panels' true undersides score
+-0.98, -0.98, -0.97, -0.95, -0.90, -0.90, -0.86 (item 23) and NOW -0.6975 (T7 7x9, payload
+bspline-frame-builder/scratch/no_underside_t7.json, 402 in2, by far the largest downward face; next-best -0.548) -> the
+-0.7 bound REFUSED the frame. The score (`_face_downward_z`) averages n.z over pointOnFace + the face's few corner
+vertices, and a doubly-curved sheet's corners tilt -- moving the bound per new panel is whack-a-mole. Fix the METHOD:
+score each face by its AREA-WEIGHTED mean normal over a UV grid (face.evaluator: parametric range, e.g. 9x9 samples,
+weight by local area / or use the face's mesh normals), pick the LARGEST face whose weighted n.z is clearly downward
+(e.g. the most-downward by weighted score, with an area-dominance sanity check against the top face), and keep a
+refusal only for bodies with no downward face at all. Tests with fakes reproducing the measured numbers (all 8 panels'
+corner-vs-mean pattern), then LIVE: replay all 7 captured payloads (tools/repro/fusion_t11/underside_results_2026-10-02.jsonl
++ underside_t7_7x9_refused_2026-10-02.jsonl list them; the T7 one above must now build its bars, min distance 0,
+overlap 0) with tools/repro/fusion_t11/underside_extrude_probe.py. ALSO: on that T7 Send (and an earlier 6x9 one) the
+STAMP timeline feature "Source - L4 - ballnose (0.12")" is genuinely unhealthy (a real feature, not a group) -- find
+its warning text and cause (Fred's "no errors" goal); report, fix only if clearly ours. No guards. Commit 'H23 item 37: ...'.
+
+## Item 38 -- Template 7's frame is incomplete: no roof bars + a sliver on each side (worker finding, 2026-10-02)
+Fresh post-fix T7 Sends, 7x9 AND 9x12: bodies = frame_base, frame_side_left (+ 'frame_side_left (1)' 0.082 / 0.005
+cm3), frame_side_right (+ '(1)' sliver); NO frame_roof_left / frame_roof_right at all. In T7_3_frame_enclosure the eave
+(roof -> neck arc) miter does not separate the regions: the roof regions span 2 bars ('one profile spans 2 bars
+(proj_arc_neck_L, proj_roof_L): a miter did not split it' -> NOT BUILT, silently), and a 0.02 cm2 sliver region next
+to proj_arc_neck_R/L is classified as a bar. Find the cause (the eave inner corner is a line-CIRCLE corner,
+t7_roof_eave.eave_inner_corner; item 27 changed T7's arcs/seeds -- check the ResolveInnerCorners direction/distance and
+the miter endpoints against the live geometry) and fix it so T7 builds exactly its 5 declared bars, 0 slivers, 0 overlap,
+at 6x9/7x9/9x12. THEN, for all 13 templates, extend tools/repro/fusion_t11/item35_all_templates_sweep.py (and the
+readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- none missing, no extra '(1)' bodies, no
+body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
+Commit 'H23 item 38: ...'.
+
+## Item 39 -- FRED-APPROVED GUARD: no hooked corner tips (finishes item 38). Fred: "a guard isn't that bad, it prevents
+awkward geometry where wood grain is important" -- a hooked tip is SHORT GRAIN (fibres run across a thin tip, it snaps); he chose option D (shots/fred/t7_eave_options_2026-10-02.png).
+Declare ONE rule for every template (not a T7 patch -- Flask/Arched Funnel/Tulip, queued on fb-app, have the same kind of
+line-meets-curve corner): at every frame corner, the straight miter from the outer corner to its inner corner must stay
+inside the wood (it must not cross the outer boundary again), i.e. no tip that curls back into a hook. Enforce it the way
+cf3805f enforces T10's reflex rule: (1) generateFrame's isValid rejects outlines that break it (re-measure
+GENERATE_MAX_ATTEMPTS), (2) the drag handles stop before breaking it, (3) a pure test over all templates at
+6x9/7x9/9x12: defaults and 500 Generate draws all pass. The app's inner-profile/miter geometry already has the corner
+points (use it, don't re-derive). Template defaults must already pass (T7 default does -- picture D). LIVE: fresh T7 Sends
+(several Generate seeds) at 7x9 + 9x12 build all 5 declared bars, no '(1)' bodies, nothing < 0.5 cm3, 0 overlap. Then re-run
+the all-template sweep (built bars == declared). Item 38's part-1 fix (live eave corner) stays. Commit 'H23 item 39: ...'.
 
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
@@ -159,3 +252,10 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11; PLUS one all-template test: weld orientation (CCW rule) + seed-midpoint report + convex radius > bar report. Commit as 'H23 item 27: ...'.
 - [ ] [H23-item-28] STABILISE (no pruning): make the offset fallback loud (result field + ERROR log + test); convert convex-radius check 3 to a declared known list. Commit as 'H23 item 28: ...'.
 - [ ] [H23-item-29] PRUNE FOR SPEED (after 28 merges): time a real Send stage by stage, then remove Pulse / explain nudges where timing says it pays, each re-checked with step_removal_ab.py. Commit as 'H23 item 29: ...'. Commit as 'H23 item 28: ...'.
+- [x] [H23-item-30] CANCELLED -- Fred: warn only (T82 item 4's editor warning). Was: PREVENT FALLBACKS (Fred: 'the add-in produces no errors'): app keeps every convex radius > frame_thickness + margin (Generate gate, handle clamp, small-board defaults); known list empty + T1 7x9 live Send with zero fallback lines. Commit as 'H23 item 30: ...'.
+- [ ] [H23-item-32] NO-ERRORS: find + fix why timeline 'Group1' is unhealthy on every Send; explain the empty-doc T1 solve failure. Commit as 'H23 item 32: ...'.
+- [x] [H23-item-33] (root-caused, fix -> item 34) PARAM EDIT AFTER BUILD DUPLICATES BARS: find + fix why the bar split doesn't survive a frame_thickness/boundingboxoffset edit (3 bars become one overlapping U body, timeline healthy). Commit as 'H23 item 33: ...'.
+- [x] [H23-item-34] CANCELLED (Fred: he sees the break and undoes; no auto-rebuild, no lock, no CAM check). Was: FRED EDITS PARAMS IN FUSION: feasibility of auto-rebuild on the Parameters dialog (C1) vs a merge-proof bar model (C2), measured, before any production change. Commit as 'H23 item 34: ...'.
+- [ ] [H23-item-37] ROBUST UNDERSIDE: area-weighted face normal instead of a 5-point average vs a -0.7 bound (T7 7x9 panel scored -0.6975 and was refused); + the unhealthy 'Source - L4 - ballnose' stamp feature. Commit as 'H23 item 37: ...'.
+- [x] [H23-item-38] (part 1 done c190ac6; part 2 -> item 39, Fred chose a guard) T7 INCOMPLETE FRAME: roof bars never built + sliver '(1)' bodies (eave miter doesn't split); fix + all-template 'built bars == declared bars' check. Commit as 'H23 item 38: ...'.
+- [ ] [H23-item-39] NO HOOKED TIPS (Fred-approved guard): the straight corner miter must stay inside the wood, for every template -- Generate rejects, handles stop, all-template test; T7 then builds all 5 bars live. Commit as 'H23 item 39: ...'.

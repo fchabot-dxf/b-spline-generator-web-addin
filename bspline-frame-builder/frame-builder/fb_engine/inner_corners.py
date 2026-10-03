@@ -19,9 +19,21 @@ compute each expected inner-corner position from the outer projection +
 frame_thickness, find the closest existing SketchPoint in the sketch,
 register it directly in entity_map under the miter's expected target
 ID. No curve sampling, no type matching, just a position lookup.
+
+H23 item 38 adds a second corner shape: a LINE meeting a CIRCLE at a
+cusp (T7's own eave, where the roof line is tangent to the concave
+neck arc). ``line_circle_corner_step`` below uses the SAME "compute
+expected position, find nearest existing SketchPoint" approach, but
+reads the circle's own centre/radius LIVE from the already-built arc
+instead of baking a Distance/Direction ahead of time from a
+template's own default proportions -- those vary per Send (the app's
+own randomized seed), so a value baked from defaults almost never
+matches the real corner (MEASURED, H23 item 38).
 """
 
 import math
+
+from fb_engine.t7_roof_eave import line_circle_corner
 
 
 def inner_corner_step(ctx, sketch, s_name, step):
@@ -163,3 +175,91 @@ def _find_nearest_point(all_points, ex, ey):
             best_d = d
             best_pt = pt
     return best_pt, best_d
+
+
+def line_circle_corner_step(ctx, sketch, s_name, step):
+    """
+    Resolve a cusp-like inner corner where a LINE is tangent to a CIRCLE (H23 item 38: T7's own
+    eave, where the roof line meets the concave neck arc) -- computed LIVE from the real,
+    already-built geometry (the line's own two endpoints, the circle's own centre/radius read
+    straight off the real arc), via fb_engine.t7_roof_eave.line_circle_corner.
+
+    Parameters
+    ----------
+    ctx, sketch, s_name : as inner_corner_step
+    step : dict with keys
+             'Tolerance'      -- max distance (cm) between expected position and nearest
+                                  SketchPoint to accept as a match. Defaults to 0.05.
+             'FrameThickness' -- expression string evaluated to a cm distance (defaults to
+                                  'frame_thickness').
+             'Corners'        -- mapping of label to corner config:
+                                    {
+                                      'eave_R': {
+                                        'LineFarID':  'proj_roof_R:S',   # far end (not tangent)
+                                        'LineNearID': 'proj_roof_R:E',   # near end (tangent pt)
+                                        'ArcID':      'proj_arc_neck_R', # the circle itself
+                                        'InnerID':    'inner_proj_arc_neck_R:S',
+                                        'Concave':    True,  # see line_circle_corner's own docstring
+                                      },
+                                      ...
+                                    }
+    The "interior" reference point used to pick the correct offset side is the board's own
+    centre, (0, 0) in Fusion's sketch coordinates -- true for any board-centred symmetric
+    template, not just T7; no per-corner config needed.
+    """
+    corners = step.get('Corners') or {}
+    if not corners:
+        ctx.logger.log("LINE-CIRCLE CORNER: no Corners declared, skipping", "WARNING")
+        return
+
+    tolerance = float(step.get('Tolerance', 0.05))
+    try:
+        ft_cm = ctx.design.unitsManager.evaluateExpression(step.get('FrameThickness', 'frame_thickness'), 'cm')
+    except Exception as e:
+        ctx.logger.log(f"LINE-CIRCLE CORNER: failed to evaluate frame thickness: {e}", "ERROR")
+        return
+
+    all_points = _collect_sketch_points(sketch)
+    if not all_points:
+        ctx.logger.log(f"LINE-CIRCLE CORNER: no SketchPoints found in {s_name}, cannot resolve", "WARNING")
+        return
+
+    for label, cfg in corners.items():
+        far_id, near_id, arc_id, inner_id = (cfg.get('LineFarID'), cfg.get('LineNearID'),
+                                              cfg.get('ArcID'), cfg.get('InnerID'))
+        if not (far_id and near_id and arc_id and inner_id):
+            ctx.logger.log(f"LINE-CIRCLE CORNER {label}: missing LineFarID/LineNearID/ArcID/InnerID, skipping", "WARNING")
+            continue
+
+        emap = ctx.entity_map.get(s_name, {})
+        far_ent, near_ent, arc_ent = emap.get(far_id), emap.get(near_id), emap.get(arc_id)
+        missing = [n for n, e in (('LineFarID', far_ent), ('LineNearID', near_ent), ('ArcID', arc_ent)) if e is None]
+        if missing:
+            ctx.logger.log(f"LINE-CIRCLE CORNER {label}: {', '.join(missing)} not in entity_map for {s_name}", "WARNING")
+            continue
+
+        try:
+            far_pt = (float(far_ent.geometry.x), float(far_ent.geometry.y))
+            near_pt = (float(near_ent.geometry.x), float(near_ent.geometry.y))
+            arc_geom = arc_ent.geometry
+            circle_center = (float(arc_geom.center.x), float(arc_geom.center.y))
+            circle_radius = float(arc_geom.radius)
+        except Exception as e:
+            ctx.logger.log(f"LINE-CIRCLE CORNER {label}: failed to read live geometry: {e}", "WARNING")
+            continue
+
+        e_in = line_circle_corner(far_pt, near_pt, (0.0, 0.0), ft_cm, circle_center, circle_radius,
+                                   concave=cfg.get('Concave', True))
+
+        nearest_pt, nearest_dist = _find_nearest_point(all_points, e_in[0], e_in[1])
+        if nearest_pt is None or nearest_dist > tolerance:
+            ctx.logger.log(
+                f"LINE-CIRCLE CORNER {label}: no SketchPoint within {tolerance:.3f} "
+                f"cm of expected ({e_in[0]:.3f}, {e_in[1]:.3f}); nearest was {nearest_dist:.4f} cm",
+                "WARNING")
+            continue
+
+        ctx.set_id(nearest_pt, s_name, "corner", override_id=inner_id)
+        ctx.logger.log(
+            f"LINE-CIRCLE CORNER {label}: resolved {inner_id} at "
+            f"({e_in[0]:.3f}, {e_in[1]:.3f}) [match dist={nearest_dist:.4f} cm]")

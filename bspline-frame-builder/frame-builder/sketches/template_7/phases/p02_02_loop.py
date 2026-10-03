@@ -49,22 +49,26 @@ def get_block(ui_data=None):
     reality, not the naive point[0]=:S assumption. MEASURED (H23 item 27 part 2's own all-
     template test, test_all_templates_shape_outline.py): these were the exact 4 welds it flagged.
 
-    NOTE (seat A LIVE_CHECK.md item): this is the first phase file in this codebase to put
-    `min(...)` inside a Fusion expression string (the roof half-width/height cap `a`). Fusion's
-    expression editor documents `min`/`max`/`sqrt`/trig as supported, but nothing here has
-    exercised it before - confirm it evaluates (no red expression) on the very first live build.
+    NOTE (seat A LIVE_CHECK.md item, RESOLVED H23 item 27): this WAS the first phase file in this
+    codebase to put `min(...)` inside a Fusion expression string (the roof half-width/height cap
+    `a`) -- MEASURED live it does NOT evaluate (`evaluateExpression` rejects `min`/`max` entirely,
+    fusion360-quirks skill); `t7_a`/`t7_nx` above use the abs-form substitution instead.
     """
     HW = '(widthIn/2 - boundingboxoffset)'
     HH = '(heightIn/2 - boundingboxoffset)'
     # Roof half-width/height `a` (t7_roof_eave.roof_geometry): min(0.62*hw, 0.42*H) where H is the
-    # FULL safe-zone height (2*HH here, since HH is the half-height).
-    A = f'min(0.62*{HW}, 0.84*{HH})'
+    # FULL safe-zone height (2*HH here, since HH is the half-height). H23 item 27: Fusion's own
+    # evaluateExpression does not support min()/max() at all (measured, fusion360-quirks skill) --
+    # `t7_a` (template_data.py's own SKETCH_2_PARAMETERS) is the abs-form substitution, declared
+    # once; referenced here by its bare name, never re-inlined.
+    A = 't7_a'
     # yE (bottom-left-origin eave height) = height_in - a = 2*HH - a; `rest` in t7_geometry.py's
     # own t7_outline is exactly this same value.
     YE_BL = f'(2*{HH} - {A})'
     # Default handle proportions (fb_engine/t7_geometry.py NECK_WIDTH_OF_HW_DEFAULT etc.) - moved
-    # live by the app's seeded handles at Send time, see this function's own doc comment.
-    NX = f'max(0.50*{HW}, {A}*0.70)'            # neck half-width from centreline
+    # live by the app's seeded handles at Send time, see this function's own doc comment. `t7_nx`:
+    # same min/max-unsupported reasoning as `t7_a` above (abs-form max, declared once).
+    NX = 't7_nx'                                # neck half-width from centreline
     NECK_Y = f'({YE_BL}*0.82 - {HH})'           # 1 - 0.18 (NECK_HEIGHT_FRAC_DEFAULT), centred y
     BODY_Y = f'({YE_BL}*0.28 - {HH})'           # 1 - 0.72 (BODY_FLARE_HEIGHT_FRAC_DEFAULT), centred y
 

@@ -12050,3 +12050,882 @@ Shape-Lattice gap was accepted against previously.
 Committing `editor-interaction.js` + the new `tests/lattice-contour-pick-priority.test.js` + this entry,
 pushing lane-b, passing back with the full honest numbers (pytest 406/24/0, vitest 2941/156/0) stated in
 the pass note itself.
+
+## Lane B — Turn 218 — T83 item 1: Template 11 diagram-first — DONE, but a real cross-branch duplicate found
+
+Dispatch: Template 11 = T7's own roof/eave + T1's own 3-arc hourglass side, diagram only, send to the
+advisor (not Fred), stop there. Derived it independently (no code, scratch only, matching T7's own
+turn-197 precedent):
+
+**Derivation**: reused `fb_engine/t7_roof_eave.py`'s own `roof_geometry(W,H)` VERBATIM (peak=(hw,H),
+`a=min(0.62hw,0.42H)`, eave E=(hw+a, H-a)) and `editor-shape-lattice-generator.js`'s own
+`hourglassConstruction` VERBATIM (T1's literal defaults: waistReach=0.55, cornerRadius=0.22,
+waistCenterY=0, waistRadius=max(0.55-0.22, 0.5*0.55)=0.33) -- ONE derived link, no new geometry: the
+hourglass's own ALREADY-DECLARED `topInset` knob (T3 TAPERED HOURGLASS) set to `hw-a` so its own "virtual
+top corner" lands EXACTLY on the eave tip E (asserted numerically, not assumed) instead of the board's
+plain half-width. The sub-region height is `eaveY` (span from the eave down to the base), width stays the
+full board width so the hip still reaches the board's own true full width, same as T7's current body does
+today. Below the hip: T1's own unmodified square bottom corner into the flat base.
+
+**Verification, not assumed**: wrote a from-scratch Python geometry+SVG script (session scratchpad, no
+repo code, per the dispatch's own "no code"), with every arc sampled as a real polyline (many points on
+the TRUE circle) rather than drawn via an SVG arc command -- T7's own turn-197 diagram hit a real SVG
+sweep-flag sign bug doing it the other way; sampling points directly and checking them sidesteps that
+whole bug class. Each arc's rotation direction picked by an explicit geometric check (convex bulges AWAY
+from the board's own vertical centreline; concave bulges TOWARD it) rather than copying sign conventions
+out of the JS. **Hit the EXACT SAME base-bar stitching bug T7's own turn-197 diagram hit** (dropping the
+wrong end of the point array before mirroring the left half skips the flat base edge and the left base
+corner entirely) -- caught by eye in the first render, fixed the same way, re-verified. Both board sizes
+(7x9, 6x9): every sampled point stays within the board, the "virtual top corner == eave" assertion holds
+exactly, all radii stay positive.
+
+**A SIGNIFICANT finding, not a code bug**: while investigating, found this EXACT task was already done,
+hours earlier today, on an entirely different, UNMERGED branch (`fb-app`, `git log --oneline fb-app`):
+commit `a5dacbe` "F30 item 1: Template 11 miter diagram, 7x9 + 6x9 (no code)", 2026-10-01 06:45 -0400 --
+BEFORE this session's own lane-b work started. Read its own WORK-LOG-fb-app.md entry in full: it used the
+SAME formula (T7 roof/eave verbatim + T1's hourglassConstruction verbatim + topInset derived from the
+eave's own position) and independently hit AND fixed the SAME base-bar stitching bug. Its own diagram
+(`C:/Users/danse/.bspline-status/shots/seatC/0700_F30-item1-proposed_miter-diagram_7x9_6x9.png` -- still on
+disk, the shared shots location survives across branches) shows the full miter/bar-width rendering (inner
++ outer offset, 5 miters marked in red) of the IDENTICAL overall shape my own independent outer-silhouette
+derivation produced. That branch did not stop at the diagram either -- `git log fb-app` shows it went on
+to build Templates 12 and 13 (taper-angle variants), Fusion-verified, with live goldens recorded, its own
+tip (`30f3568`) dated 2026-10-01 09:51 -0400 -- roughly when this machine's own lane-a/b/c fleet's work for
+today was ramping up. None of that is merged into `main` or `lane-b`. `HANDOFF-ranchy.md` (repo root)
+explains `fb-app` is a SEPARATE, longer-running lane (a session on a different physical machine, "ranchy",
+with its own WORK-LOG-fb-app.md) that has been building out the Frame Templates independently.
+
+Flagging this to the advisor rather than deciding unilaterally: this looks like the advisor coordinating
+this machine's own lane-a/b/c fleet may not know the `ranchy`/`fb-app` line already finished this exact
+diagram AND built two more templates past it, unmerged. Worth reconciling (cherry-pick/merge `fb-app`'s
+own work rather than lane-b redoing Templates 11-13 from scratch) before any further Template 11
+engineering starts on this fleet -- a real risk of duplicate work across machines, not a hypothetical.
+
+**Not done, per the dispatch's own instruction regardless of the above**: no Fusion/app code, nothing sent
+to Fred directly. Diagram: `shots/seatB/t11_outer_silhouette_7x9_6x9_2026-10-01.png` (outer silhouette
+only, no bar-width offset modeled this round -- sufficient for a first silhouette-concept pass; the
+fb-app branch's own diagram already has the fuller bar-width rendering if that branch's work is adopted
+instead of redone).
+
+Committing this WORK-LOG entry only (no code, no template files -- diagram-only turn, matching T7's own
+turn-197 precedent), pushing lane-b, passing back with the cross-branch finding as the headline, not an
+aside.
+
+## Lane B — Turn 220 — T83 item 1: Template 11 full build — PAUSED mid-build (advisor hold)
+
+Dispatch: "full build (Fusion phases + app geometry + tests), same process as T7." Followed T7's own
+pattern (t7_geometry.py / t7_roof_eave.py, the phase files under sketches/template_7/phases/) as the
+template to mirror. Wrote `bspline-frame-builder/frame-builder/fb_engine/t11_geometry.py`: T7's own
+roof/eave (`roof_geometry`, reused verbatim) feeding T1's own 3-arc hourglass side algebra (shoulder/
+waist/hip, ported from editor-shape-lattice-generator.js's `hourglassConstruction` unmodified), linked by
+pulling T1's own already-declared `topInset` knob in to sit exactly on the eave tip (`topInset = hw - a`)
+instead of T1's own default plain half-width. New `_line_line_inner_corner` generalizes T7's own
+fixed-90-degree-only `peak_inner_corner` to an arbitrary two-line miter (T11's eave corner is line-line,
+simpler than T7's own line-circle one, since the piece touching T11's eave is straight, not an arc).
+Numeric assertions inside `t11_outline` itself verify the topInset link holds exactly, both tried board
+sizes (7x9, 6x9).
+
+**Interrupted mid-debugging by the advisor**: "Fred raised a real question about whether the
+hourglass-pinched sides are actually what he wants, vs. something closer to T7's own smooth dome shape
+with no waist pinch." Told to pause exactly where I was, commit a WIP checkpoint, hold for the advisor's
+confirmation on the actual target shape before continuing -- no Fusion phase files, template_data.py, or
+test file started yet, only this one geometry module.
+
+**Known, unfixed bug, documented in the file's own WIP docstring rather than fixed blind**:
+`every_outer_point_inside_board`'s `sample_arc` helper throws ("no sweep matched") on the WAIST arc for
+every board size tried. First fix attempt (re-deriving the arc's center from its chord and matching
+against the already-known analytic center) failed on float-precision grounds and was replaced with
+sweeping directly from the GIVEN analytic center -- the error persisted past that fix, root cause not yet
+isolated (shoulder/hip arcs never reached in testing since the waist call comes first and throws). The
+Turn 218 scratch script this module is ported from handled the identical arc correctly by the same
+sampling approach, so this is a regression introduced while porting into the real engine, not a gap in the
+underlying math -- `t11_outline`, `inner_corner_directions`, and `inner_profile_radii` were checked
+independently (plain prints of their own values) before the pause and are unaffected; `is_valid_t11_outline`
+and `clamp_t11_handles` should not be trusted until the bug is found.
+
+**Ad-hoc, interleaved with the pause** (both direct from Fred via the advisor, not turn-dispatched): built
+a full 1-11 template sample montage (one consistent 7x9 board, templates 1-10 as live screenshots from the
+app's own Frame tab via headless Chrome, T11 as the Turn 218 concept sketch) so Fred could compare T11
+against the existing set while the shape question is open -- `shots/seatB/templates_1-11_montage_2026-10-01.png`,
+sent to the advisor directly (not Fred), per standing convention. Found and fixed a real tooling bug in the
+process: `node:child_process`'s `spawn()` with `stdio: 'ignore'` reliably prevents headless Chrome from
+binding its own CDP port on this Windows/Git-Bash setup (reproduced standalone, root cause not pinned
+down) -- direct `chrome.exe ... &` via Bash, or a connect-only script pointed at an already-running
+instance, both work reliably. Also caught my own first screenshot pass opening the Artwork tab
+(`btnStampEdit` with no `_openEditorOn` set) instead of the Frame tab (`btnEditFrameShape`), which rendered
+every template through its default carved-wood-texture preview instead of the shape editor's own view --
+re-ran via the Frame tab for the real montage.
+
+**Not done**: no further T11 Fusion/geometry work past this checkpoint, per the advisor's own hold
+instruction -- standing by for the target-shape confirmation.
+
+Committing `t11_geometry.py` (new file, WIP) and this WORK-LOG entry together, pushing lane-b, passing
+back.
+
+## Lane B — Turn 220 (resumed) — T83 item 1: Template 11 geometry fixed, tested, two real bugs found — DONE (partial)
+
+Fred confirmed the hourglass-pinch side is correct as designed (no change needed) -- resumed from the WIP
+checkpoint (f3c23e3) to finish the sample_arc investigation.
+
+**Root cause of the pause-era bug, found by direct numeric cross-check, not by re-reasoning about
+sample_arc's own sweep logic**: `C_waist` was computed as `to_board(hw - hc["depth"], waist_center_y)`.
+`hw - depth` is the waist pinch's own DEEPEST point (its closest approach to the centreline) -- NOT the
+arc's centre. The concave arc's true centre sits one more `radius_waist` further out. Checked by hand:
+neither `shoulder_waist_jct` nor `waist_hip_jct` (each independently solved to lie on the shoulder/hip
+circle, tangent to the waist circle) was actually at distance `r_waist` from the old C_waist -- adding
+`+ hc["radius_waist"]` to C_waist's own x made both land exactly on the corrected circle (to 1e-9, every
+board size tried). This is why `sample_arc` could never find a matching sweep: p0/p1 were never really on
+the circle it was searching, regardless of direction.
+
+**A SECOND, more serious bug found while writing an independent cross-check for the eave corner, not
+previously suspected**: `_line_line_inner_corner`'s own `interior_probe = -(dir_in + dir_out)` heuristic
+(inferring "inward" purely from the two edge directions, no reference point) gets the eave corner BACKWARDS
+-- the computed "inner" point landed FARTHER from the board centre than the outer eave vertex, i.e. outside
+the material, not inside it. This is the EXACT bug class `t7_roof_eave.eave_inner_corner`'s own docstring
+already documents and had already fixed once ("a bisector-of-edge-directions formula... points the WRONG
+way at a cusp-like corner such as this eave") -- T11's own eave is exactly that kind of cusp (both edges
+head the same general direction away from the shared point), so the same failure reproduced right on
+schedule. FIXED by changing `_line_line_inner_corner` to take an explicit `interior_point` (the board
+centre, same reference `eave_inner_corner` already uses) instead of inferring one -- cross-validated
+against T7's own already-proven `peak_inner_corner` (feeding the general function T7's symmetric peak
+corner now reproduces peak_inner_corner's exact answer, which it did NOT before the fix).
+
+**Both fixes MUTATION-TESTED** (reverted each in turn, confirmed the specific new regression tests go red
+-- 20 failures for the C_waist mutation, 7 for the eave-direction mutation -- then restored byte-identical
+via diff, confirmed green again). Wrote `fb_engine/test_t11_geometry.py` (72 tests, mirrors
+test_t7_geometry.py's own structure/coverage: outline-stays-inside-board, 7x9 regression pin, both bug's
+own regression tests, the peak-oracle cross-check, straight-run thickness margins, inner-corner directions,
+and the full raw-sweep/clamp/no-op handle-sweep trio). Split board-size test fixtures into PORTRAIT_BOARDS
+(where the construction is well-posed, used for "must be exactly right" assertions) vs EXTREME_BOARDS
+(very short/wide landscape sizes where `top_inset` can exceed the waist's own pinch `depth` entirely -- a
+real, pre-existing structural limit of this construction at extreme aspect ratios, not a bug; this project
+is portrait-only in practice, so these are only swept to prove clamp_t11_handles/every_outer_point_inside_board
+degrade gracefully, per [[project-portrait-only]], never to assert they're perfect there). Full fb_engine
+suite: 319 passed, 10 skipped (Fusion-dependent, expected outside Fusion), 0 failed.
+
+**Not done yet**: Fusion phase files (sketches/template_11/), template_data.py, and app-side JS wiring --
+next step, same as T7's own Turn 203/205/207-208 arc. This commit is the geometry-layer milestone only.
+
+## Lane B — ad-hoc (Fred via advisor, interleaved with T11) — inset window wall rendering flat black — DONE
+
+Fred's report: on a real Shape Lattice hourglass board with an inset window, the window's own inner wall
+(`frame-window-wall`, T82 item 2/3) rendered as flat solid black in the 3D preview instead of
+shaded/textured like everything else. Advisor's own lead pointed at `wallArrays()` (frame-mesh.js) having
+no UVs/relying on auto-computed normals -- that lead didn't pan out, but comparing the window wall's own
+`_mesh()` call against the OUTER panel wall's (`frame-panel-wall`) right above it found the real cause
+directly.
+
+**Root cause**: a real carved/terrain board's material has `vertexColors: true` whenever it has colour data
+(`terrain-mesh.js`'s own `buildTopOnlyMesh`/`buildSolidMesh`, `useColours`) -- this is the mechanism behind
+the wood-grain look itself, not a texture map. `wallMat = panelMesh.material.clone()` (frame-mesh.js) so
+EVERY wall built from it inherits that same `vertexColors: true`. The outer wall (line ~591) samples the
+panel's own colours at each loop point and passes them to `_mesh()` as `wallAttrs.color` -- but the window
+wall's own call, a few lines below, passed NO 4th argument at all, so its geometry got no `color` attribute
+whatsoever. A material with `vertexColors:true` reading a geometry with no matching attribute does not
+fall back to "untinted" -- it reads an unbound vertex attribute (WebGL default 0,0,0), multiplying the
+whole surface by black. Every OTHER wall/bar either carries its own sampled colours (the outer wall) or
+uses a fresh, non-cloned material with no vertexColors at all (`frame-window-bars`' own `barMat`) -- the
+window wall was the one piece built from the colour-aware cloned material without ever being given colours
+to match.
+
+**Fix**: sample the panel's own colours along `winHoleLoop` the exact same way the outer wall already does
+(same `lerpAttr(attrs.color.array, 3, full, surf.at(p.x,p.y).hi)` call, same `...c, ...c` bottom/top
+duplication) and pass it as the window wall's own `winWallAttrs.color` to `_mesh()`.
+
+**Verified non-vacuous**: the existing test asserting `frame-window-wall` merely EXISTS by name never caught
+this (the mesh is built either way, only its colour data differs) -- added a new test asserting the wall's
+own `color` attribute is actually present and matches the panel's declared colour throughout.
+MUTATION-TESTED: reverting to the old no-attrs call makes exactly this one new test fail
+(`expected undefined to be truthy` -- the attribute is absent, not merely wrong), every other test
+(29 others in this file) stays green; restored byte-identical via diff, confirmed green again (30/30).
+Ran the file's own full suite plus the two most related other suites (lattice-drag-highlight,
+lattice-contour-pick-priority) as this change's fast tier: 49/49 passed, 0 failed.
+
+## Lane B — Turn 220 (continued) — T83 item 1: Template 11 Fusion phase files + live build attempt — DONE (partial, real blocker found)
+
+Wrote the full Fusion phase-file scaffold for `sketches/template_11/` mirroring Template 7's own
+structure exactly: `sketch_1/2/3_*.py` boilerplate, `phases/p01_01/02` shims (shared `_common`),
+`p02_01_projs` through `p02_05_radius_removal` (the 13-piece shoulder/waist/hip silhouette loop, welds,
+tangency, radius removal), `p03_01_encl_projs` through `p03_05_encl_surround_rect` (projections, offset,
+inner-corner-resolve via `fb_engine.t11_geometry.inner_corner_directions`, 5 miters, surround rect), and
+`template_data.py` (TEMPLATE_NAME/DESCRIPTION, SKETCH_N_PARAMETERS, FRAME_CORNERS/BARS/REGIONS/HANDLES
+[mirrors Template 1's own 5 hourglass handles verbatim, same keys]/SEED_MAP [13 curves + 6 radius seeds]/
+FEATURES/SHAPE_EXTRACTOR/PROVISIONAL_SHAPE). `FRAME_SILHOUETTE_PRESET`/`FRAME_SHAPE_EXTRACTOR` are
+forward-declared (not yet registered in editor-shape-lattice-generator.js) -- app-side JS wiring is next,
+same multi-step arc Template 7 itself used (Turn 203/205/207-208).
+
+Every point's own Fusion EXPRESSION STRING (p02_02_loop.py) was derived in closed form from
+fb_engine.t11_geometry's own already-tested algebra and cross-checked NUMERICALLY against
+`t11_outline`'s own independently-computed values before ever touching Fusion -- new
+`fb_engine/test_t11_fusion_expressions.py` (4 board sizes, all pass).
+
+**Fusion bridge came back up this turn (advisor-verified) -- first LIVE build attempt, two real findings:**
+
+1. **Fusion's `evaluateExpression` does NOT support `min()`/`max()` at all** -- confirmed directly
+   (`design.unitsManager.evaluateExpression('min(1.0, 2.0)', 'cm')` itself raises "The expression
+   parameter is not a valid expression"). This is NOT T11-specific: Template 7's own copy of
+   `p02_02_loop.py` uses the identical `min(0.62*hw, 0.84*hh)` pattern and documents it as unverified in
+   its own `LIVE_CHECK.md` ("Fusion's expression editor documents min/max/sqrt/trig as supported but
+   nothing here has exercised it before") -- that checkbox is still unchecked; T7's own Fusion sketch
+   build has apparently never been live-verified either. `abs()` and `sqrt()` DO work (verified directly).
+   Fixed T11's own `A`/`DY_TOP` expressions using the identity `min(a,b) = (a+b-|a-b|)/2` (and the matching
+   `max(0,x) = (x+|x|)/2` for the sqrt's own radicand clamp), verified against 10 random pairs live before
+   trusting it. Not touching Template 7's own copy -- out of scope for this dispatch, flagged to the
+   advisor instead of silently fixing someone else's file.
+
+2. **WIP, UNRESOLVED: the 3-arc shoulder/waist/hip chain is under-constrained.** After a full live build
+   (fresh, empty Fusion document; pre-created `widthIn`/`heightIn` user parameters directly, simulating
+   "Send to Fusion", since `_create_skeletal_parameters` intentionally never takes ReadOnly params from
+   `ui_data` -- learned this live, it is NOT a bug, see that function's own code comment), queried the
+   actual built sketch directly: all 6 arcs (shoulder/waist/hip, both sides) sat at the literal SEED
+   radius (`1.5 * HW`) rather than their own tangent-solved shape. Root cause (not yet fixed): Template 7's
+   2-arc (neck/body) chain works with Tangent + Coincident alone because each arc keeps one end pinned to
+   an independently-fixed point; T11's chain has 2 INTERNAL joins (shoulder<->waist, waist<->hip) free at
+   BOTH ends, which tangency alone apparently doesn't fully determine. T1's own shoulder/waist/hip
+   construction uses explicit SKELETON PINS for exactly this -- an approach I considered and deliberately
+   rejected earlier this turn in favour of mirroring T7's simpler pattern; this live result says that call
+   needs revisiting for a 3-arc chain specifically. Documented in full in both `t11_geometry.py`'s own
+   module docstring and `p02_02_loop.py`'s own docstring (WIP marker) for whoever resumes this -- likely
+   me, next turn.
+
+**Also found, unrelated to the above, flagged not fixed**: `FrameBuilder()` (no `external_logger` arg)
+raises `'DebugLogger' object has no attribute 'DebugLogger'` -- `frame_engine.py`'s own module-level
+`logger` (an INSTANCE) shadows the `fb_logger` MODULE inside `FrameBuilder.__init__`'s own fallback
+branch (`self.logger = logger.DebugLogger(addin_root)`, should be `fb_logger.DebugLogger(...)`).
+Worked around for testing by always passing `external_logger=`; pre-existing, affects every template's
+`FrameBuilder()` construction, not T11-specific -- a one-line fix but out of this dispatch's own scope.
+
+**Also hit, operational**: `frame-builder-debug.log` getting clobbered mid-session by another seat's
+concurrent Fusion activity (f3, live Template 10 re-verification, item 21) -- flagged to the advisor live.
+Turns out this is an ALREADY-DOCUMENTED quirk (`fusion360-quirks` skill, "A shared debug log file can get
+clobbered by a DIFFERENT session's concurrent Fusion activity") -- should have loaded that skill before
+starting this turn's live Fusion work rather than rediscovering it; noting here so the next live-Fusion
+session on this template remembers to load it first. That same skill also reframes the arc-chain finding
+above: its own "Fix is not transitive" notes suggest the likelier, simpler fix is directly `Fix`-ing the 2
+internal joint SketchPoints rather than a full T1-style skeleton-pin layer -- see p02_02_loop.py's own
+updated docstring for the corrected hypothesis.
+
+**Verified, trustworthy as of this commit**: `t11_geometry.py`'s own math (unaffected by either Fusion
+finding above), every phase file's structure/wiring (`get_template_logic()` loads cleanly, 2/5/5 phase
+counts matching Template 7's own, `template_resolver` auto-discovers `template_11` correctly, full
+`fb_engine` suite 323 passed/10 skipped/0 failed, `test_templates.py` smoke test passes). **Not
+trustworthy yet**: the live Fusion arc SHAPE specifically (radius/position of the solved arcs) until the
+`Fix`-the-joint-points fix lands -- the miter/inner-corner-resolve failures seen live are believed to be a
+downstream consequence of this same under-constrained chain (wrong/degenerate arc shapes breaking the
+enclosure offset's own topology), not a separate bug, though not yet re-tested after a fix to confirm.
+
+Committing the phase-file scaffold + both docstring updates + the new cross-check test. Standing by per
+the advisor's own hold instruction (seat f3 live in Fusion) before any further live Fusion work.
+
+## Lane B — Turn 220 (continued, handed off) — T83 item 1: Fix-joint-points attempt, PARTIAL -- advisor taking over T11 in a separate worktree
+
+Attempted the `Fix`-the-joint-points approach flagged in the previous entry. Two real fixes landed, one
+real problem remains unresolved -- handing off to the advisor per their own instruction, not pushing
+further here.
+
+**Added a new declarative BuildSequence step type, `Fix`** (`fb_engine/constraints.py`'s own `fix_step`,
+dispatched in `parametric_engine.py` alongside `Coincident`/`Tangent`/etc.) -- a small, generically
+reusable primitive (`isFixed = True` on a resolved SketchPoint), not special-cased to Template 11. Live
+confirmed: all 8 target points (`FIX OK` for each) actually got `isFixed=True` on the right live
+SketchPoints.
+
+**Root-caused and fixed the ACTUAL reason every arc was stuck at its seed radius** (the symptom reported
+last entry): the seed Radius dimension was still PINNING each arc's size when Tangent (p02_04, as it was
+numbered then) got applied, so Tangent could only reposition/reorient the wrong-sized arc, never resize
+it. Reordered the phase files so Radius deletion runs BEFORE Tangent (new `p02_04_radius_removal.py` ->
+`p02_05_tangency.py` -> `p02_06_fix_joints.py`, renumbered from the original
+p02_04_tangency/p02_05_radius_removal/p02_05_fix_joints). Separately, ALSO seeded the Radius dimension
+with the real computed `R`/`RW` formulas (already present in this same file as `R`/`RW` variables)
+instead of the arbitrary `1.5*HW` placeholder copied from Template 7's own pattern -- the reorder alone
+still left the solver too far from the true (much smaller) radius to converge reliably.
+
+**Result, live-verified at 9x12/bbo=0.25/frame_thickness=0.75: PARTIAL, NOT CORRECT.** All 5 miters now
+report OK (concrete improvement -- 3-4 of 5 missed before). But the 6 arc radii came back MIXED: 2
+landed EXACTLY on the expected value (shoulder_R and hip_L both matched `R`=0.935in exactly), the other
+4 did not (hip_R=0.9211in close-but-not-exact; waist_R=0.5345in, waist_L=2.9082in, shoulder_L=0.3169in
+all genuinely wrong, expected R=0.935in/RW=1.4025in). A sketch-2-only screenshot confirmed this visually:
+the right side reads as a recognizable, if imperfect, pinch shape; the left side does not (two near-
+straight segments with small nubs, no smooth arcs) -- a real, visible asymmetry, not just a rounding
+difference. Full finding, including what was NOT yet tried (constraint application order across the 8
+Tangent calls, whether every via-point seed hint actually establishes its intended bulge direction, an
+actual T1-style skeleton-pin layer with a computed centre position), is in `p02_02_loop.py`'s own
+docstring in full for whoever continues this.
+
+**Handoff, mid-task**: the advisor is taking T11 over directly in a separate worktree ("Change of plan
+from Fred: I'm taking T11 myself... Don't touch sketches/template_11/* or fb_engine/t11_* from here on").
+Stopped at this commit per that instruction. Closed all 5 scratch Fusion documents this turn's live
+testing created, each by its own returned `Document` handle after verifying its own distinguishing
+parameter fingerprint first (never by name or count, per the fusion360-quirks skill's own "Scratch
+document hygiene" note) -- confirmed only the 2 pre-existing (not-mine) documents remain open afterward.
+Full `fb_engine` suite green throughout (323 passed/10 skipped/0 failed); `test_templates.py` smoke test
+passes.
+
+Committing and pushing this checkpoint now; no further Fusion calls or edits to template_11/t11_*
+after this, per the advisor's own instruction. Moving to the queued inset-window item (visible corner
+handles + Position/Size steppers) next -- pure JS, no Fusion needed.
+
+## Lane B — ad-hoc (Fred via advisor) — inset window: visible corner handles + Position/Size steppers — DONE
+
+Fred's report: the inset window's drag interaction already worked (_wireWindowDrag, main/frame-panel.js,
+blind corner hit-testing) but nothing marked where to grab -- unlike every other handle in this app (the
+declared HANDLE_KINDS convention, editor-transform-handles.js). Expanded scope: also add Position (X,Y)
+and Size (Width, Height) steppers near the Inset window checkbox, same pattern as Stock Dimensions'
+Width/Height steppers, two-way synced with the drag.
+
+**Visible corner markers** (editor-frame-profile.js, inside the existing `if (win) {...}` draw block,
+Frame tab only): 4 handle markers at `win.outer`'s own corners, keyed `x1y1/x2y1/x1y2/x2y2` (the SAME
+mode strings `_wireWindowDrag` already uses for its own hit-test), drawn via the app's own declared
+`handleKindVisual('position', ...)` + `drawParamHandle` -- the identical white/blue square look every
+other move-style handle in the app already uses, not a new convention.
+
+**Hover/drag-active state**: `_wireWindowDrag` gained its own `editor._windowHandleHover`/
+`_windowHandleDrag` (parallel to `_wireHandleDrag`'s own `_frameHandleHover`/`_frameHandleDrag`, same
+redraw-on-change pattern). Idle hover only lights a CORNER (the body has no mark to light); drag sets the
+active look for the whole gesture, cleared at release -- existing body-drag/corner-resize logic itself is
+UNCHANGED, this only adds the visual feedback layer on top.
+
+**Position/Size steppers** (`frameWindowPosX/PosY/SizeW/SizeH`, new markup in `#frameInsetWindowFields`,
+shown only while the window is enabled, same toggle pattern `#frameSettings` already uses): write via
+`editFrame({ insetWindow: {...} })` following the record-field pattern every other Frame-tab stepper uses
+(not the generic top-level-`P` pattern Stock Dimensions itself uses, since `insetWindow` lives nested in
+the frame record) -- Position moves the window (both corners shift, size preserved), Size resizes it from
+the x1/y1 corner (the anchor stays put), matching a corner-drag's own "opposite corner stays put" feel.
+Read-back added to `syncFramePanel()`, same `document.activeElement` guard every other field uses so a
+live drag or a live keystroke is never clobbered.
+
+**Mutation-tested all three pieces independently** (not vacuous): removing the corner-handle draw block
+failed exactly the 3 tests that read drawn handles; removing the stepper write handlers failed exactly
+the 1 write test; removing the read-back sync lines failed exactly the 1 read-back test; each restored
+byte-identical via diff, confirmed green again. New `tests/inset-window-handles.test.js` (10 tests, the
+same mock-SVG-layer-tree harness `tests/frame-handles.test.js` already uses for this exact kind of
+DOM-coupled handle test). One real test-authoring bug found and fixed along the way: an early choice of
+window-body click coordinates for 2 tests happened to land on template_1's own `waistCenterY` shape
+handle, which grabs the press FIRST (same precedence the real app gives a shape handle over the window
+drag) -- not a production bug, just a bad choice of test coordinates; moved those 2 tests' own window rect
+into a corner away from any shape handle.
+
+**Verified live** in a real headless-Chrome browser session (not just the test suite): enabled the inset
+window on template_1 at 7x9, confirmed all 4 corner handles render with the exact same visual language as
+the existing shape handles (screenshot), and confirmed the Position/Size fields read back the correct
+values (`posX:"1", sizeW:"2"` for a window placed at x1=1,x2=3) with zero console errors.
+
+**Full fb_engine Python suite unaffected (JS-only change)**; full JS suite (`npx vitest run`, repo root):
+157 files, 2952 passed, 0 failed.
+
+**Process note, flagged plainly rather than smoothed over**: built this entire feature in the WRONG
+checkout (`C:\Users\danse\APPS\b-spline-generator-web-addin`, seat A's own main tree) by mistake -- lost
+track of which worktree this session's cwd had drifted to mid-session. Advisor caught it live. Saved a
+diff patch + a copy of the new test file before touching anything; Fred's own call was to leave main's
+uncommitted state as-is (he will clear it himself) rather than have me run a destructive `git checkout --`
+there. Applied the SAME patch cleanly to this lane-b worktree (pulled to 2bdfbe2 first, per the advisor's
+own T11 updates), re-ran the full fast-tier AND full suite here from scratch (not reused from the main-tree
+run) before trusting any of it. No other uncommitted state existed in main beyond these exact 4 files
+(confirmed via `git status` before touching anything there) -- nothing else was at risk.
+
+Known, pre-existing, NOT mine, NOT fixed here (per the advisor's own instruction to state this plainly):
+`test_frame_defs` (3 tests) and `gen_frame_defs --check` fail on lane-b with `KeyError:
+'diamond_top_hourglass_pinch'` -- Template 11's own forward-declared shape extractor isn't registered yet.
+That is T11's own app-side wiring item, queued after this one.
+
+Committing and pushing from lane-b now. Next up per the advisor: T82 item 4 (frame thickness stepper in
+the Frame editor, synced with the sidebar, + convex-radius warning), then T83 item 2.
+
+## Lane B — T82 item 4 (prep) — inset window Position/Size steppers: reject garbage, clamp to board/thickness — DONE
+
+Advisor review on 24e2d07 (after merging it to main): the 4 Position/Size `change` handlers wrote
+`parseFloat(value)` straight into the record -- a blank/garbage entry would store NaN, and nothing
+stopped a tiny/negative size or a rect pushed off the board. Fixed, typed-entry only (the drag itself
+stays deliberately unclamped, INSET-WINDOW-DESIGN.md's own "that's my responsibility" rule -- this is a
+different failure mode: a keystroke isn't bounded by a cursor's own continuous motion the way a drag is).
+
+`_applyInsetWindowStepper(input, build)`: parses the field, and if the result isn't finite, writes
+NOTHING and snaps the field back to the record's own current value (`_insetWindowFieldValue`) -- explicit
+rather than relying on `syncFramePanel`'s own `activeElement` guard, since a 'change' event can still fire
+while the field is the activeElement (Enter without a blur). A valid number builds a candidate rect
+(`build`, one per field: Position shifts both corners keeping size, Size resizes from x1/y1) and
+`_clampInsetWindowRect` clamps it: size first (floor `2*frame_thickness + 0.1in` -- the 0.1in margin
+matters because `insetWindowGeometry`'s own floor is a strict `>`, so landing exactly on `2*ft` would
+still read back as "no window"; ceiling the board's own width/height), then position (so the whole rect
+lands on-board).
+
+Mutation-tested (not vacuous): reverting to the old bare `editFrame({ insetWindow: { ...r, ...build(r,
+value) } })` (no guard, no clamp) failed exactly the 3 new tests below, nothing else; restored
+byte-identical via diff, confirmed green again. 3 new tests in `tests/inset-window-handles.test.js`
+(now 13): non-finite input rejected + field restored (all 4 fields), size clamped both directions
+(too-small clears `2*ft`, too-large stays on-board), position clamped on-board. One existing test's own
+Size W value (10, on a 7in board) now correctly gets clamped by the NEW behaviour -- updated to a
+board-fitting value (4) since that test's own point was the resize-from-anchor shape, not the clamp
+itself (the clamp has its own dedicated tests now). Fast-tier (6 files): 188 passed, 0 failed.
+
+**Process note, flagged plainly**: made the SAME main-vs-lane-b path mistake a second time THIS turn --
+one Edit call used a stale absolute path to main's checkout out of habit (not the shell-cwd issue from
+last time; this one was just a careless copy-paste of a path), landing on top of the advisor's own
+just-completed merge of 24e2d07 into main. Caught it myself via `git status` immediately after, saved a
+diff before touching anything, flagged it to the advisor live, and applied the SAME diff to lane-b once
+confirmed clean here. Advisor discarded the stray edit in main directly this time. New standing rule from
+the advisor, now followed for the rest of this session: verify the "-lane-b" segment is actually present
+in the absolute path before every Edit/Write call, and flag (never self-fix) if main is touched again.
+
+Committing and pushing from lane-b. Next: T82 item 4 itself (frame thickness stepper in the Frame editor,
+synced with the sidebar, + convex-radius warning), then T83 item 2.
+
+## Lane B — T82 item 4 — Frame thickness in the Frame editor + convex-radius warning — DONE
+
+Fred: "a frame thickness (offset) setting can be in frame editor since it's a visible 2D feature" -- same
+rule as the inset window (settings that change the 2D drawing live in the Frame tab, not only the
+sidebar). Right after the inset-window item, same panel (`#editorFramePanel`).
+
+**The stepper itself cost almost nothing to wire**: `FRAME_PARAM_FIELDS` (main/frame-panel.js) is already
+a GENERIC read/write table -- both the write listeners (`for (const f of FRAME_PARAM_FIELDS)
+$(f.id)?.addEventListener('change', ...)`) and the read-back sync (`syncFramePanel`'s own identical loop)
+iterate it. Adding ONE declared entry, `{ id: 'editorFrameThickness', param: 'frame_thickness' }`, is the
+ENTIRE two-way sync between the sidebar's existing `#frameThickness` and the new editor-panel field --
+no new wiring code at all, both directions already existed for free. Added the matching stepper markup in
+`#editorFramePanel` (same `.cad-stepper` look every other numeric field uses) and updated the stale F8
+comment above it (it said thickness was removed from this panel per an H23 item 5 live check -- noted that
+this item supersedes that, not still in effect).
+
+**The convex-radius warning** ("a convex arc radius <= frame_thickness makes Fusion's parametric offset
+refuse and fall back to a non-parametric loop, inner corner goes sharp" -- advisor's own probes
+2026-10-02): new `smallestConvexArcRadius(outerPrimitives, innerPrimitives)` in editor-frame-profile.js,
+reading convexity OFF the app's own already-solved offset rather than re-deriving it (outline-offset.js's
+own documented rule: a convex arc's inner radius is `r - t`, concave is `r + t` -- so a NON-collapsed
+inner arc with a SMALLER radius than its outer counterpart is convex by construction; a COLLAPSED inner
+piece is, by that same module's own rule, ALWAYS a convex arc whose radius was already <= the offset
+distance, so it counts too, at its own true outer radius). No new geometry formula -- just reading the
+sign of a difference that `offsetOutlineInward` already computed. Wired into `syncFramePanel()`: computes
+`frameCutProfile` + `frameInnerProfile` at the CURRENT thickness, compares, shows/hides
+`#editorFrameThicknessWarning` (same `display:none`/red-text pattern `#frameFitWarning` already uses).
+
+**Mutation-tested both pieces independently**: forcing `smallestConvexArcRadius`'s own convexity check to
+always say "not convex" failed exactly the oracle test and the warning-threshold test, nothing else;
+removing the `editorFrameThickness` field declaration failed exactly the two sync tests, nothing else;
+both restored byte-identical via diff, confirmed green again. New `tests/frame-thickness-editor-sync.test.js`
+(5 tests): sidebar->editor-panel sync, editor-panel->sidebar sync, an oracle test proving T1 genuinely has
+a measurable convex arc (not a tautology), the warning crossing the threshold in both directions, and no
+warning with no frame selected. Full JS suite (`npx vitest run`, repo root): 158 files, 2960 passed, 0
+failed.
+
+**Verified live** in a real headless-Chrome session (not just the test suite): Template 1 at 7x9, set
+thickness to 1.5in via the SIDEBAR field -- editor-panel field followed to "1.5", warning appeared reading
+"Frame thickness (1.500 in) is at or past the tightest curve's own radius (0.623 in)..."; set back to
+0.4in -- warning cleared, editor-panel field followed to "0.4". Zero console errors. Screenshot of the
+Frame-editor panel confirms the new stepper matches the existing panel's own visual style exactly.
+
+This time the "-lane-b" path check held for every Edit/Write call -- no main-checkout mistake this turn.
+
+Committing as 'T82 item 4: ...'. Next: T83 item 2 (Template 11 app-side wiring -- registers the
+`diamondTopHourglassPinch` preset/extractor that's currently making lane-b's own gate red).
+
+## Lane B — Turn N — T83 item 2: Template 11 app-side wiring (registration + silhouette, gate GREEN) — IN PROGRESS
+
+Dispatched by the advisor with an explicit standing instruction: "lane-b's gate is red until this lands --
+say so in the pass note regardless of how far you get." Used a research Explore agent first to map Template
+7's own analogous app-side wiring (its full report captured template_data.py's exact field shapes, the
+`FRAME_ONLY_PARAM_KEYS` collision trap, and the KeyError's exact root cause) rather than re-reading all 7+
+files myself. This entry covers the REGISTRATION + SILHOUETTE half; the on-canvas drag-handle wiring
+(editor-shape-lattice-interaction.js) and the live Fusion check are still open (see "Remaining" below).
+
+**Part 1 -- the KeyError fix (fb_engine side).** `frame_shape_fit.py`: new `_diamond_top_hourglass_pinch`
+extractor (mirrors T3's own `_hourglass_narrow_top` split-corner shape: validates the roof/eave/side tangent
+chain, reports `depth/cornerR/cornerRTop/cornerRBottom/waistR/waistCy/notch` -- the roof itself is validated,
+never fitted, since no FRAME_HANDLES entry controls it) + `provisional_diamond_top_hourglass_pinch_model`
+(every feature hw/hh-linear and EXACT, not an approximation like T7's own portrait-only `rest` -- derived
+by hand, cross-checked against `paramsFromShapeModel`'s own round-trip). Registered both in
+`FEATURE_EXTRACTORS` and `frame_definition.py`'s `template_shape_model` dispatch (sniffs `"waistReachOfHw"
+in prov`, T11's own provisionalShape key, same if/elif chain T6-T10 already use). Ran `gen_frame_defs.py`
+to regenerate `frame-defs.json`/`.js`, then `test_frame_defs.py`: all 36 pass (was 33 passed / 3 failed with
+the bare KeyError before this).
+
+**Part 2 -- the JS silhouette (editor-shape-lattice-generator.js).** Registered `PRESETS.diamondTopHourglassPinch`
+(frameOnly, reusing TEMPLATE 1's OWN 4 plain param keys -- waistReach/cornerRadiusTop/cornerRadiusBottom/
+waistCenterY -- deliberately, since this preset IS Template 1's own hourglass side with the top horns
+replaced by a roof; `waistRadius` omitted from PRESETS.params as T1's own is, since it's DERIVED).
+**Critical, explicitly checked**: did NOT add these 4 reused names to `FRAME_ONLY_PARAM_KEYS` -- the research
+agent flagged that doing so would silently exclude Template 1's own identically-named params from the Fusion
+manifest too; `tests/editor-sketch-manifest.test.js` stayed green throughout, confirming no collision.
+
+New `diamondTopHourglassPinchConstruction(region, resolved)`: reuses `hourglassConstruction` itself (the "ONE
+place that algebra lives") by calling it against a VIRTUAL sub-region (same width, height `2*hh - a`, so its
+own internal half-height is the true room below the roof's eave) with `topInset = (hw-a)/hw` -- rather than
+re-deriving T1's tangency algebra a second time. Hand-derived and numerically verified against
+`fb_engine/t11_geometry.py`'s own `_hourglass_side`/`t11_outline` at 7x9/thickness 0.75 (every one of
+shoulderHorn/shoulderWaistJct/waistHipJct/hipHorn/CWaist's own board-coordinate value converts to this
+function's own frame and matches to the last published digit, BEFORE writing a line of the actual function --
+same discipline as the earlier T11 Fusion phase-file work). New `_solveDiamondTopHourglassPinch`: 13 pieces
+(roof/eave/shoulder/waist/hip/side/base x2 + the shared peak), the shoulder/waist/hip arcs drawn exactly as
+`_solveHourglass` draws Template 1's own (simple fixed-centre radius math, no intersection search needed);
+the peak miter is Template 7's own symmetric formula verbatim; the eave corner is a NEW, simpler
+two-straight-line miter (45-degree roof meeting the vertical eave bar) -- mirrors `t11_geometry.py`'s own
+`_line_line_inner_corner` conceptually, specialized to this one fixed pair (the eave's own x is constant
+along its length, so the general line-line solve collapses to one division). Wired into `generateSilhouette`'s
+dispatch ternary.
+
+**Three real bugs found and fixed via the test suite, not assumed safe:**
+1. My first `PARAM_ORDER.diamondTopHourglassPinch` used template_data.py's own FRAME_HANDLES order (waistReach
+   first) -- but `_hourglassRange` (the generic range-fallback this preset initially used) reads
+   `v.waistCenterY` unconditionally when resolving waistReach's own range. With waistCenterY not yet resolved,
+   `Math.abs(undefined)` silently produced NaN, caught by a direct `generateSilhouette` probe (NaN keypoints),
+   not by a thrown error. Fixed by reordering to Template 1's own convention (waistCenterY, waistReach,
+   corners, waistRadius last).
+2. Even after the order fix, `cornerRadiusTop`/`cornerRadiusBottom`/`waistRadius` STILL resolved to NaN:
+   `_hourglassRange`'s own cornerRadiusTop/Bottom branch and `_optionalRange`'s hourglass branch both hardcode
+   `DERIVED_PARAM_DEFAULTS.hourglass.waistRadius(v)`, which reads `v.cornerRadius` -- a key T11 never has (its
+   corners are split from the start, no shared-then-overridden stage the way Template 3 sequences cornerRadius
+   -> waistRadius -> cornerRadiusTop/Bottom). Fixed by writing a dedicated `_diamondTopHourglassPinchRange`
+   (same formulas, reading `v.cornerRadiusTop` directly, and using the SIDE's own virtual half-height `hhR =
+   hh - a/2` instead of the full region's `hh` for vertical-room math -- the roof eats into the side's own
+   room, same fact the construction function's own doc comment establishes) and wiring it into `_rangeFn`.
+3. Added `tests/frame-seed-geometry.test.js`'s own `describe.each` entry for `template_11` (per the dispatch:
+   "an explicit assertion that the radius-kind seed subset is empty") -- this caught a THIRD, more interesting
+   bug: my own `provisional_diamond_top_hourglass_pinch_model`'s `notch` feature used `d = cornerRadiusBottomOfHw`
+   where it should have used `d = waistReachOfHw` (the HIP's own true tangency depth) -- a straight algebra
+   slip. At this template's own default proportions the wrong `d` happened to make `S` (=cornerR+waistR) exactly
+   equal the TRUE depth, which made `paramsFromShapeModel`'s own root-picking formula (`S +/- sqrt(S^2-notch^2)`)
+   land in a genuine TIE (both roots equidistant from the reference `depth` feature), and the `<=` tie-break
+   silently picked the wrong root (0.715 instead of 1.7875 at 7x9) -- `waistReach` round-tripped back as 0.22,
+   not 0.55, visibly collapsing the shoulder arc. Found by comparing my own JS-computed seed points against the
+   REAL Fusion seed phase file's own literal expressions (p02_02_loop.py, evaluated in Node with `abs`/`sqrt`
+   added to the test's own eval sandbox -- no earlier template's seed expressions needed either function) --
+   this is the exact kind of cross-check the earlier T11 Fusion phase-file work used, now applied to the JS
+   side. Fixed the formula in `frame_shape_fit.py`, regenerated frame-defs, reran -- all three bugs gone,
+   `paramsFromShapeModel` now round-trips every one of T11's 5 params EXACTLY.
+
+**Gate status: GREEN.** `test_frame_defs.py`: 36/36. Full JS suite (`npx vitest run`, repo root): 158 files,
+2967 passed, 0 failed -- including the new template_11 seed-geometry coverage (verified against the real
+Fusion seed expressions, not just internal self-consistency) and two small updates to pre-existing
+data-driven tests (`tests/frame-defs.test.js`'s FEATURES/EXTRA tables, `tests/frame-template-6.test.js`'s
+hardcoded label list) that simply needed a `diamondTopHourglassPinch`/"11. Hourglass Roof" entry now that
+template_11 is a real, listed template.
+
+**Remaining for T83 item 2 (not done this entry):** on-canvas drag-handle anchors in
+editor-shape-lattice-interaction.js (T7's own `DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS`/`controlledSegments`
+pattern, for editing T11's shape live in the Frame tab); Frame-tab phone shots; the live Fusion check
+(`tools/repro/fusion_t11/live_build_readback.py` + `capture_send_payload.mjs`) -- HELD per the advisor's
+own cross-session message mid-turn: Fusion is reserved for Claude Cowork driving the UI for Fred, then the
+advisor's own probes; will message the advisor and wait for "Fusion free" before attempting it. A/B of
+every other template: covered implicitly by the full-suite green run above (every other template's own
+test file still passes unchanged).
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn N+1 — T83 item 2 (part 2): Template 11 on-canvas drag handles + a new dedicated test file
+
+Continuing the same dispatch, same turn's thread: the on-canvas drag-handle anchors in
+editor-shape-lattice-interaction.js (the piece left open at the end of part 1), plus a new
+`tests/frame-template-11.test.js` mirroring Template 7's own comprehensive coverage. Advisor sent a
+cross-session message mid-turn: Fusion is reserved for Claude Cowork driving the UI for Fred, then the
+advisor's own probes -- acknowledged, the live Fusion check stays held until "Fusion free".
+
+**`computeParamHandles`'s new `diamondTopHourglassPinch` branch**: Template 1's own 5 hourglass-side
+handles (waistReach as the waist-centre position square, cornerRadiusTop/Bottom as arc-pull grips, waistCenterY
+as a position square, waistRadius as the waist's own CAD-circle grip) -- the SAME mechanics T1's own default
+branch gives it, computed from `diamondTopHourglassPinchConstruction` instead of `hourglassConstruction`
+directly (the side sits in a virtual sub-region, see that construction's own doc comment) and with
+`waistCenterY`'s own `valueFromWorld` reading the side's own virtual half-height (`hhR`) and vertical shift
+(`a/2`), not the full region's `hh`. New `HANDLE_SEGMENT_INDEX.diamondTopHourglassPinch` and
+`DIAMOND_TOP_HOURGLASS_PINCH_SEGMENT_PAIRS` (a declared pairing table, like Template 7's own, since the generic
+`mirrorSegmentIndex` assumes an EVEN segment count and T11's outline has 13, an odd one -- MEASURED wrong: it
+mapped segment 6 (bottom_edge, actually self-paired) to 5, and segment 12 (roof_L, actually paired with 0) to
+itself).
+
+**Found and fixed THREE more real bugs, all via a new `tests/frame-template-11.test.js`** (mirroring
+`frame-template-7.test.js`'s own structure: listing/declaration, the handle table, drag-stays-valid,
+Generate-always-valid, frame-only-key isolation, paramsFromShapeModel round-trip):
+1. `_diamondTopHourglassPinchRange`'s own `cornerRadiusTop`/`cornerRadiusBottom` branch used the SAME `d =
+   hw*waistReach` for both corners -- but the TOP corner's true depth is measured from its OWN horn (`d -
+   topInset`, the same convention `hourglassConstruction`'s T3 topInset already uses), since the roof's eave sits
+   `topInset = hw - a` in from the edge. Fixed to subtract `topInset` for the top corner only.
+2. `waistRadius`'s own range (resolved last) only checked feasibility against `cornerRadiusTop` (mirroring
+   `_optionalRange`'s hourglass formula verbatim, which only ever has ONE corner since Template 1 shares a single
+   `cornerRadius`) -- never against `cornerRadiusBottom`. A `generateValidFrameSeeds` draw landed a
+   `cornerRadiusBottom` whose own tangency `waistRadius` never satisfied, and the un-intersected range let
+   `waistRadius` through anyway: six non-tangent defects on both sides' shoulder/waist/hip chains. Fixed by
+   computing BOTH corners' own `{sMax, keyhole}` and intersecting (`lo = max of both floors, hi = min of both
+   ceilings`).
+3. `waistReach` had no FLOOR at all accounting for the fixed `topInset`: at a small enough `waistReach`, `hw*
+   waistReach - topInset` goes NEGATIVE -- a physically invalid tangency (the shoulder horn would sit on the
+   wrong side of the pinch). A generated `waistReach` of 0.30 (topInset/hw ~= 0.38 at 7x9) produced a NEGATIVE
+   resolved `cornerRadiusTop` (-0.04) and `waistRadius` (-1.85). Template 1 never needed this floor (its own
+   topInset is always 0). Fixed: `waistReach`'s own range floor is now `max(0.05, topInset/hw + eps)`.
+4. (a 4th, narrower finding, not a bug but a declared gap, same discipline as Template 7's own LIVE_CHECK.md
+   entries): `waistCenterY`'s own base band was copied from Template 1's `[-0.6, 0.6]` (a UI-slider limit, not a
+   geometric one) -- but T11's TOP corner has less margin (shrunk by `topInset`) and does NOT tolerate the full
+   band at its own default corner sizes: dragging to +-0.6 left 4-8 non-tangent defects (MEASURED: Template 1
+   itself stays clean at the full +-0.6 with its own defaults; T11 does not). `waistCenterY` resolves FIRST
+   (before waistReach/cornerRadiusTop/Bottom are known), so there's no later value to validate this ceiling
+   against yet -- narrowed to the empirically-clean `[-0.5, 0.5]` (0 defects at every tested drag, vs 4-8 at the
+   full range), the same "deliberately narrow, directly-tested-safe box" compromise Template 7's own neck/body
+   ranges already accept rather than a full cross-param feasibility solve nothing else in this file attempts
+   either.
+
+**A 5th finding, flagged not fixed (out of this task's own scope)**: at this template's own DEFAULT corner
+proportions (`CORNER_RADIUS_DEFAULT = 0.22`), the shoulder arc is shorter than `frame_thickness` at every
+portrait board tested except 9x12 -- INCLUDING 7x9, the project's own primary reference board (MEASURED:
+0.578in bar vs 0.75in thickness). Independently verified against fb_engine/t11_geometry.py's own formulas (not
+a bug in this registration); a property of the declared default proportions themselves, which this task's own
+scope (app-side wiring) should not silently change. `tests/frame-template-11.test.js`'s own "every bar long
+enough" check is asserted at 9x12 only, with the gap named in its own comment, pending the advisor's/Fred's own
+call on whether T11's default corner radius needs retuning.
+
+**Gate status: still GREEN.** `test_frame_defs.py`: 36/36. Full JS suite: 159 files, 2985 passed, 0 failed
+(18 new tests in `frame-template-11.test.js`, all passing; every fix above was directly observed failing
+before and passing after via live probes during this turn, not assumed fixed).
+
+**T83 item 2 now complete except**: phone shots, and the live Fusion check (still held -- Fusion reserved for
+Claude Cowork / the advisor's own probes, per the mid-turn cross-session message; will message the advisor and
+wait for "Fusion free").
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn N+2 — T83 item 2 (part 3): Template 11 phone shots, LIVE in a real headless-Chrome mobile session
+
+Reused the ALREADY-ESTABLISHED `tools/repro/frame_tab_zoom.mjs` (mobile touch emulation, 390x844, the same
+script earlier Frame-tab-zoom work built) rather than writing a new script -- it already takes an arbitrary
+template id, so `node tools/repro/frame_tab_zoom.mjs <prefix> <paletteUrl> template_11 <port>` against the
+lane-b server (port 8899) needed no changes.
+
+**Result: `handles:5, handleOk:true, pinchOk:true`** -- 5 handles render (matching the declared table), a
+one-finger drag that starts ON a handle correctly writes its seed value (waistReach moved to 0.706) without
+moving the view, and pinch-zoom works. `panOk:false` (an UNRELATED one-finger pan-the-canvas gesture) also
+failed -- but MEASURED against the identical script run on `template_1` (the established, working baseline)
+too: SAME `panOk:false`, same `dcx:0,dcy:0`. Confirms this is a pre-existing, template-independent script/
+environment characteristic, not something T11-specific or something this turn introduced -- not investigated
+further (out of this task's own scope).
+
+**Screenshots** (`C:\Users\danse\.bspline-status\shots\seatB\`): `t83item2_01_frame_tab_t11_phone.png` (the
+full shape at 1x zoom, phone width -- the gable roof, both eave bars, the shoulder/waist/hip pinch on both
+sides, the straight base, all 5 handles visible and correctly styled: white squares for the two position
+handles, blue circles for the three arc-pull/CAD-circle radius grips) and `t83item2_02_frame_tab_t11_phone_
+zoomed.png` (post-pinch, 3x zoom on the waist pinch, confirming the handle styling up close). Visually: the
+shape renders exactly as designed, a closed, symmetric outline with no visible defects or misplaced handles.
+
+**T83 item 2 is now fully done except the live Fusion check**, held per the advisor's own mid-turn message
+(Fusion reserved for Claude Cowork driving the UI for Fred, then the advisor's own probes) -- will message the
+advisor and wait for "Fusion free" before attempting `tools/repro/fusion_t11/live_build_readback.py`.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake. No code changed this part (screenshots only); nothing to
+commit for it beyond this WORK-LOG entry.
+
+## Lane B — Turn N+3 — T82 item 5: inset window becomes a centre-point rect, + in the Frame editor
+
+Advisor redirected mid-turn (cross-session message): Fusion is busy (Claude Cowork driving the UI for Fred),
+start T82 item 5 now; will interrupt with "Fusion free" for T11's own live check when it's my turn. Also
+confirmed the T83 item 2 clamp item I'd flagged (keeping every convex radius > frame_thickness) is DROPPED --
+Fred decided "warn only" (T82 item 4's own red warning is the whole answer) and "ask before installing
+guards" in general; striking it from NEXT-SESSION-lane-b.md is the advisor's own action, not mine.
+
+**The record shape** (Fred: "use the centre of frame... and make the window a centre point rect too"):
+`insetWindow` changes from `{enabled, x1, y1, x2, y2}` (two opposite OUTER corners, board-local, origin
+top-left, y down) to `{enabled, cx, cy, w, h}` (cx/cy the window's own centre, measured from the BOARD
+CENTRE, inches, +y UP -- Fusion's own sketch convention, so `RectangleCenter` will map 1:1 onto it once a
+Fusion build reads it; w/h the OUTER size, bars included). New `core/inset-window.js` export
+`insetWindowOuterRect(rec, widthIn, heightIn)` is the ONE place this converts to the board-local rect every
+other rectangle in `insetWindowGeometry` is still built from -- `insetWindowGeometry` itself gained two new
+params (`widthIn, heightIn`) to call it, and its 3 callers (contour-from-frame.js, editor-frame-profile.js
+x2) now pass the board through (`frame.board`/`board`/`editor._mW,_mH`, all already in scope -- no new
+plumbing needed anywhere).
+
+**Migration**: an OLD-shape record (`{x1,y1,x2,y2}`) converts on READ (`normalizeFrameRecord`, same lazy,
+read-time pattern the file's own `handleMigrations` block already uses for seed-key splits, not a one-time
+rewrite) -- sniffed by key presence (`'cx' in w` etc vs `'x1' in w`), using the board's CURRENT
+`P.widthIn`/`P.heightIn`. Tested both ways (new-shape round-trip, old-shape migration, corners given in
+either order, garbage in either shape) in a new `describe` block in `tests/inset-window.test.js`.
+
+**Drag (SYMMETRIC resize, Fred's own explicit call)**: a corner drag used to move only that corner (the
+opposite one fixed); now the centre (`cx, cy`) NEVER moves during a resize -- only `w`/`h` change, each to
+twice the dragged corner's own new distance from the (unchanged) board-local centre. A body drag still just
+translates `cx`/`cy` (board-local x maps straight onto `cx`; board-local y is Y-DOWN while `cy` is Y-UP, so
+it flips sign). Position X/Y steppers now write `cx`/`cy` directly and Size W/H write `w`/`h` directly --
+SIMPLER than the old shape's own anchor-relative stepper math (no corner-anchor bookkeeping needed at all,
+since the record itself IS centre-based). The typed-value clamp (board-fit + 2*frame_thickness+margin,
+advisor review on 24e2d07) carries over in meaning, rewritten in cx/cy/w/h terms.
+
+**In the Frame editor too** (T82 item 4's own "a second view, not a second setting" pattern): added a new
+checkbox + Position/Size steppers block in `#editorFramePanel` (`editorFrameInsetWindowToggle`,
+`editorFrameInsetWindowFields`, `editorWindowPosX/Y`, `editorWindowSizeW/H`) -- the sidebar's own fields had
+NEVER been duplicated there before this turn (confirmed: `#editorFramePanel`'s markup had no inset-window
+elements at all prior to this). New `INSET_WINDOW_FIELD_GROUPS` declared table (mirroring
+`FRAME_PARAM_FIELDS`'s own convention, but for a compound field with no single param to loop a generic
+read/write over) drives BOTH the read-back in `syncFramePanel` and the write-side listener wiring in
+`initFramePanel` with one shared loop -- adding the second field group cost four lines, not a duplicated
+block.
+
+**Rewrote both existing inset-window test files** for the new shape/behaviour (`tests/inset-window.test.js`:
+17 tests, `tests/inset-window-handles.test.js`: 19 tests, both previously ~half-failing against the new
+code, now fully green) -- every test asserting raw `x1/y1/x2/y2` structure or the old anchor-relative resize
+behaviour needed rewriting, not just a field rename; new tests added for the symmetric-resize behaviour
+itself and the migration path. **Found and fixed a genuine test-correctness bug while doing this**:
+`tests/contour-from-frame.test.js` builds frames at SEVERAL different board sizes in the SAME file (7x9,
+9x12, 12x16) with no `beforeEach` setting `P.widthIn`/`P.heightIn` to match any of them -- a literal
+old-shape `insetWindow` fixture there would have silently migrated against the WRONG board (P's own default,
+7x9, confirmed via `core/state.js`) whenever a test used a different one. Fixed by adding a local `fromOuter`
+helper (the same board-local-outer-rect-to-centre-based conversion used in the other two test files) so
+every fixture states its CORRECT board explicitly, rather than relying on migration at all.
+
+**Updated `INSET-WINDOW-DESIGN.md`** (§2 Data shape, §6 Editor interaction) to describe the new record shape
+and symmetric-resize behaviour, with the original two-corner shape/anchor-resize text marked superseded
+(not deleted) and a note on WHY centre+size is the natural fit for a centre-anchored resize. §§3-5/7-8
+(validity rule, the Fusion build plan, byte-identical-when-off, the test plan) are unaffected: they describe
+the main FRAME's own-thickness/opening validity at the CONCEPT level, never the literal field names, and the
+Fusion build itself isn't wired yet (still a "once built" note).
+
+**Verified live** in a real headless-Chrome mobile session (not just the test suite): opened Template 1 in
+the Frame tab (phone width), enabled the inset window via the NEW `#editorFramePanel` toggle -- the SIDEBAR's
+own toggle reflected `checked: true` too (confirms the two-way sync), Position X/Y read 0/0, Size W/H read
+the seeded default (board/3 on each axis), zero console errors. Screenshot:
+`C:\Users\danse\.bspline-status\shots\seatB\t82item5_01_frame_tab_insetwindow_phone.png`.
+
+**Gate status: GREEN.** Full JS suite (`npx vitest run`, repo root): 159 files, 2995 passed, 0 failed.
+
+**Not done this entry** (not named in the T82 item 5 spec, so not attempted): the Fusion build itself
+(§5 of the design note is still "once built, nothing to run yet" -- this item is the app/record side only,
+same scope boundary the design note's own §4 table already drew between "today" and "with insetWindow.enabled"
+for the Fusion row).
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn N+4 — T82 item 5 review fix: round the displayed field values to 3 decimals
+
+Advisor review on commit 72f8730/deda6e5 (merging to main): the Size W field showed the raw repeating
+decimal (`2.3333333333333`, from the 7/3 board-third default) in my own phone shot. New `_round3(v)` helper
+(main/frame-panel.js) -- display only, the record keeps full precision -- applied to `FRAME_PARAM_FIELDS`'
+own generic read-back (so it covers the editor Thickness field too, per the advisor's own "if it can do the
+same" ask, plus the sidebar Thickness and Trim offset fields for free, same loop) and to the 4 inset-window
+Position/Size fields (both the regular sync read-back and the reject-and-restore path for invalid typed
+input, for consistency). New test: a 7/3 width renders as "2.333" while the record itself stays at full
+`7/3` precision (`toBeCloseTo(7/3, 12)`). Full JS suite: 159 files, 2996 passed, 0 failed. Verified live
+(headless mobile Chrome): Size W now reads "2.333".
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn N+5 — T83 item 2: Template 11 live Fusion check (the last open piece) — DONE
+
+Advisor sent "Fusion free" mid-turn: run the live check (live_build_readback.py + a real captured send at
+7x9 and 9x12), the readback counts fallbacks, 7x9's convex-radius fallback is ACCEPTED (Fred: warn only,
+report it). Left "UI-cowork v1" and Fred's own documents alone throughout; closed only my own two
+fingerprinted scratch docs, by handle, each verified against its own `adv_t11_live_fp` comment before
+closing (fusion360-quirks skill's own scratch-document hygiene).
+
+**"A real captured send"**: `tools/repro/capture_send_payload.mjs`'s own `shape-lattice-frame` scenario
+hardcoded `template_1` and had no way to set the board size -- added `--template=<id>` (default
+`template_1`, every existing caller unaffected) and `--board=WxH` (default: whatever the page's own
+fresh-profile default already is, same backward-compat) rather than writing a parallel one-off script.
+Captured a REAL `[Send frame]` payload for `template_11` at 7x9 and 9x12 straight from the running app (via
+its own editor Generate button -- a genuinely random seeded shape each time, not t11_geometry.py's own
+default proportions): `recordVersion`, `params`, a full 13-piece `seedGeometry` (the exact shape
+`frame-handles.js`'s own `frameSeedGeometry` produces, Fusion-centred inches, y up), etc.
+
+**New `tools/repro/fusion_t11/live_captured_send_readback.py`** (same `exec()`-inside-`fusion_execute`
+pattern as the existing `live_build_readback.py`, read before writing this): loads the captured payload from
+disk, calls `fb.run_sketch_only(style_id='template_11', ui_data={widthIn,heightIn,**payload.params},
+seed_geometry=payload.seedGeometry, panel_lip=...)` -- `run_sketch_only`'s own `seed_geometry` parameter
+already existed for exactly this (`apply_seed_geometry`, written by the advisor this session), so no engine
+change was needed. Verification is a PURE 3-point circumcircle check per arc (from that arc's OWN 3 seed
+points) against the live Fusion sketch's own arc -- independent of t11_geometry.py's own formula entirely,
+since a randomly-Generated `waistRadius` doesn't match that formula's own derived default and comparing
+against it would have been the wrong check.
+
+**Results, both exact:**
+- **7x9** (seeds: waistReach .552, cornerRadiusTop .741, cornerRadiusBottom .600, waistRadius .218,
+  waistCenterY -.381): build OK (1.3s, fit ok), sketch 2 = 9 lines + 6 arcs (13 pieces), all 6 arcs match
+  their own seed circumcircle to 0.0000 in (centre AND radius), 0 engine errors, **1 parametric-offset
+  fallback** -- `addOffset2 failed ... Offset creation failed as the topology of the offset curves does
+  not match the topology of the original curves ... FALLING BACK to a NON-parametric offset` -- the EXACT,
+  known class (fusion360-quirks: a convex arc's radius must exceed frame_thickness before an inward offset,
+  or the whole loop's topology changes), ACCEPTED per Fred's own ruling (warn only, no clamp), reported here
+  per the advisor's own instruction, not treated as a failure.
+- **9x12** (seeds: waistReach .531, cornerRadiusTop .553, cornerRadiusBottom .694, waistRadius .293,
+  waistCenterY -.312): build OK (1.1s, fit ok), sketch 2 = 9 lines + 6 arcs, all 6 arcs exact (0.0000 in),
+  0 engine errors, **0 fallbacks** -- fully parametric, matching the skill's own earlier 9x12 finding.
+
+Screenshot (iso view, 9x12, the frame-enclosure sketch's own S-curve sides + a visible 0.75 thickness
+dimension): `C:\Users\danse\.bspline-status\shots\seatB\t83item2_03_fusion_live_t11_9x12.png`.
+
+**T83 item 2 is now FULLY done** (registration, silhouette, drag handles, dedicated test file, phone shots,
+and now the live Fusion check, all green/accepted).
+
+Full JS suite (unrelated to this check, but re-run for cleanliness before committing): 159 files, 2996
+passed, 0 failed.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake. Fusion scratch docs closed by handle, fingerprint-checked;
+every other open document (including "UI-cowork v1") untouched.
+
+## Lane B — Turn N+6 — merge origin/main into lane-b (T11 onto main) — DONE, full gate green
+
+Advisor dispatch: merge current origin/main INTO lane-b to get T11 onto main, resolve the 8 files their own
+trial merge found, keep BOTH sides' work where main gained seat C's Templates 12/13 (taper) in the same
+files T11 touched, then the full gate + T1-T13 confirmation, push, pass back with counts (no Fusion needed).
+
+**The 8 conflicts, each resolved to keep both sides:**
+- `WORK-LOG-lane-b.md`: pure append-only conflict (main's own side of the 3-way diff was empty here --
+  this file is lane-b's own, main's copy simply predates every turn in this session) -- kept all of HEAD.
+- `tools/repro/capture_send_payload.mjs`: BOTH sides added `--template=` independently. Kept main's own
+  implementation (`editFrame()` via dynamic import, not the `<select>`'s own `.value=` -- F30 item 3's own
+  fix for a FRAME_HIDDEN template with no `<option>` in the DOM yet, strictly more robust than my own
+  select-based version) and added my own `--board=WxH` flag back in alongside it (main never had it).
+- `editor-shape-lattice-interaction.js`: a one-line import-list conflict (my own
+  `diamondTopHourglassPinchConstruction` + main's own `taperAngleForTopCornerX`) -- combined, both exports
+  already existed independently in the merged `editor-shape-lattice-generator.js` (that file merged with NO
+  conflict at all).
+- `fb_engine/frame_definition.py`: a docstring-only conflict (my own T11 paragraph + main's own T12/13 taper
+  paragraph) -- the actual dispatch code (my `if "waistReachOfHw" in prov`, main's own `elif "taperAngleDeg"
+  in prov` + its own unconditional taper-feature injection after the chain) had ALREADY merged clean on its
+  own, zero code-level conflict.
+- `tests/frame-defs.test.js`: both sides edited the same `EXTRA` object literal (my own
+  `diamondTopHourglassPinch: []` entry, main's own `taperAngle` additions to `hourglass`/`bottle`) --
+  combined into one object with all three.
+- `tests/frame-template-6.test.js`: both sides edited the same hardcoded, string-sorted label array (my own
+  "11. Hourglass Roof", main's own "12."/"13." taper labels) -- combined in the correct lexicographic
+  position ("10." < "11." < "12." < "13." < "2.").
+- `frame-defs.js`/`.json` (generated): took either side as a placeholder (`git checkout --theirs`), then
+  regenerated properly with `tools/gen_frame_defs.py` against the MERGED Python source -- the only correct
+  way to resolve a generated-file conflict, never hand-merged.
+
+**One genuine NEW finding this merge surfaced (not a merge-resolution bug, a real, expected one)**:
+`fb_engine/test_all_templates_shape_outline.py::test_convex_radius_vs_frame_thickness_known_list[template_11]`
+failed -- its own `KNOWN_CONVEX_RADIUS_BELOW_BAR` declared set (a self-updating list the test enforces both
+directions of: a template that starts/stops showing a convex-radius-below-frame_thickness finding must be
+added/removed) didn't yet have `template_11` in it, even though I'd already found and reported this exact
+condition earlier this session (the shoulder/hip radius 0.715in < 0.75in bar at 7x9, now ALSO found at 6x9:
+0.605in). The test's own failure message names the fix directly ("add to KNOWN_CONVEX_RADIUS_BELOW_BAR...
+shape fixes are still the advisor's own per-template call, not this test's") -- a pure DECLARATION of an
+already-known, already-accepted fact (Fred: warn only, no clamp), not a guard/validation rule, so it needed
+no separate sign-off (feedback_ask_before_guards's own carve-out: "tests and detection-only signals don't").
+Added `'template_11'` to the set.
+
+**Also transient, not a bug**: `test_golden_freshness.py::test_every_committed_golden_is_currently_fresh`
+failed mid-merge (before the merge commit existed) reporting `template_10`/`12`/`13` as "UNCOMMITTED" --
+traced to `check_golden_freshness.py`'s own `_has_uncommitted_changes` (a plain `git status --porcelain`
+check), which necessarily sees staged-but-not-yet-committed files as "uncommitted" during an in-progress
+merge. Resolved itself the moment the merge was actually committed; re-ran immediately after to confirm (see
+below) rather than assuming.
+
+**Full gate, all green:**
+- `npx vitest run` (repo root): 161 files, 3078 passed, 0 failed (up from my own 2996 + main's own net
+  additions, confirming T11 and the taper templates genuinely coexist).
+- `pytest` at `bspline-frame-builder/frame-builder`: 596 passed, 25 skipped, 0 failed.
+- `pytest` at `bspline-frame-builder/b-spline-gen`: 97 passed, 0 failed.
+- `pytest` at the repo root: 804 passed, 25 skipped, 0 failed.
+- `python tools/gen_frame_defs.py --check`: fresh.
+- `python tools/check_golden_freshness.py --check`: every template fresh (re-run AFTER the merge commit;
+  the mid-merge "UNCOMMITTED" reading above was the transient one, gone here).
+- **A/B** (`tools/repro/ab/abpy.py`, covers Templates 1-5 and 8 -- the ones with no part in either side's
+  own merge conflicts): ran against the merged lane-b AND a temporary detached worktree of `origin/main`
+  (removed immediately after) -- **identical hash**,
+  `88aa3aea7ef452be2e1dc27587d5733c5edb0c70f44ad1205c83d4162b5e38a4` (25 entries), both sides. Templates
+  6/7/9/10/11/12/13 aren't in that script's own coverage, but are each exercised directly by the full gate
+  above (`test_all_templates_shape_outline.py` parametrizes over every template id; `tests/frame-template-
+  *.test.js` exists per template) -- all green there too, not separately re-verified by a second hash tool.
+
+Committed the merge as `6dd696a` (316 files, matching ~106 commits of main's own history -- a real merge,
+not a resolution mistake) and pushed. No Fusion needed, none used.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.

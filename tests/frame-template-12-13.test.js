@@ -31,11 +31,11 @@ const profile = (id, seeds, W = 7, H = 9) => frameCutProfile(FRAME_DEFS, rec(id,
 const inner = (id, seeds, W = 7, H = 9) => frameInnerProfile(FRAME_DEFS, rec(id, seeds), board(W, H));
 
 describe('Template 12/13: declaration', () => {
-  it('Template 12 is "12. Hourglass - Tapered sides", the shared hourglass preset, hidden, from Template 1', () => {
+  it('Template 12 is "12. Hourglass - Tapered sides", the shared hourglass preset, shown (F30 item 4), from Template 1', () => {
     expect(T12.name).toBe('Template 12 - Hourglass - Tapered sides');
     expect(frameLabel(T12)).toBe('12. Hourglass - Tapered sides');
     expect(T12.silhouettePreset).toBe('hourglass');
-    expect(T12.hidden).toBe(true);
+    expect(T12.hidden).toBeFalsy();
     expect(T12.shapeModel.provisional.taperAngleDeg).toBe(8);
     expect(T12.shapeModel.features.taperAngle).toEqual({ hw: 0, hh: 0, const: 8 });
     // every one of Template 1's own fitted features is KEPT (not replaced, unlike T10's own rebuild).
@@ -45,12 +45,12 @@ describe('Template 12/13: declaration', () => {
     }
   });
 
-  it('Template 13 is "13. Narrow Neck - Tapered sides", the shared bottle preset, hidden, with a REAL fit '
+  it('Template 13 is "13. Narrow Neck - Tapered sides", the shared bottle preset, shown (F30 item 4), with a REAL fit '
     + '(bottle_taper, from its own recorded goldens) that still carries taperAngle', () => {
     expect(T13.name).toBe('Template 13 - Narrow Neck - Tapered sides');
     expect(frameLabel(T13)).toBe('13. Narrow Neck - Tapered sides');
     expect(T13.silhouettePreset).toBe('bottle');
-    expect(T13.hidden).toBe(true);
+    expect(T13.hidden).toBeFalsy();
     // F30 item 3: goldens recorded 2026-10-01 (tests/fixtures/frame-parity/template_13_*.json) pass
     // `bottle_taper`'s own validity check at 2 of 3 sizes, so this is no longer the provisional model --
     // frame_definition.py's own template_shape_model still re-applies taperAngle unconditionally.

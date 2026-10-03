@@ -2769,10 +2769,14 @@
           </div>
         </aside>
 
-        <!-- FB-APP F8: the Frame tab's right column -- only what shapes the frame: template, Generate/Undo and
-             the handles (Fred: every other frame setting -- thickness, trim, lip, bottom, wood -- lives in the
-             sidebar FRAME panel; thickness moved out of this panel after this comment was written -- H23 item 5
-             live check, 2026-09-30, confirmed only template/Generate/Undo/note render here). -->
+        <!-- FB-APP F8: the Frame tab's right column -- template, Generate/Undo, the handles, and (T82 item 4,
+             Fred: "a frame thickness (offset) setting can be in frame editor since it's a visible 2D feature",
+             same rule as the inset window) a Frame thickness stepper, bound to the SAME frame_thickness the
+             sidebar FRAME panel's own #frameThickness edits -- one value, two views, kept in sync exactly like
+             the inset window's own Position/Size <-> drag (FRAME_PARAM_FIELDS, main/frame-panel.js). Trim/lip/
+             bottom/wood still live in the sidebar only (Fred: those don't change the 2D drawing the way
+             thickness and the window do) -- H23 item 5's own prior removal of thickness from this panel is
+             superseded by this item, not still in effect. -->
         <aside class="editor-layers-panel" id="editorFramePanel" style="display:none;">
           <div class="layers-header"><span>Frame</span></div>
           <div style="padding:10px; display:flex; flex-direction:column; gap:10px; font-size:11px;">
@@ -2783,6 +2787,44 @@
             <div style="display:flex; gap:6px;">
               <button type="button" id="editorFrameGenerate" class="cad-btn cad-btn-primary" style="flex:1;">Generate</button>
               <button type="button" id="editorFrameUndo" class="cad-btn cad-btn-secondary" style="flex:1;" disabled>Undo</button>
+            </div>
+            <label>Thickness (in)
+              <div class="cad-stepper" style="margin-top:4px;">
+                <input type="number" id="editorFrameThickness" step="0.0625">
+              </div>
+            </label>
+            <div id="editorFrameThicknessWarning" style="display:none; color:#ff3b30;"></div>
+            <!-- T82 item 5: the SAME insetWindow record the sidebar's own #frameInsetWindowToggle/fields edit
+                 (main/frame-panel.js keeps both in sync) -- a second view, not a second setting, same pattern
+                 as the Thickness stepper above (T82 item 4). -->
+            <label class="cad-label-inline" style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="editorFrameInsetWindowToggle"> Inset window
+            </label>
+            <div id="editorFrameInsetWindowFields" style="display:none;">
+              <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <label style="flex:1;">Position X
+                  <div class="cad-stepper" style="margin-top:4px;">
+                    <input type="number" id="editorWindowPosX" step="any">
+                  </div>
+                </label>
+                <label style="flex:1;">Position Y
+                  <div class="cad-stepper" style="margin-top:4px;">
+                    <input type="number" id="editorWindowPosY" step="any">
+                  </div>
+                </label>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1;">Size W
+                  <div class="cad-stepper" style="margin-top:4px;">
+                    <input type="number" id="editorWindowSizeW" step="any">
+                  </div>
+                </label>
+                <label style="flex:1;">Size H
+                  <div class="cad-stepper" style="margin-top:4px;">
+                    <input type="number" id="editorWindowSizeH" step="any">
+                  </div>
+                </label>
+              </div>
             </div>
             <div id="editorFrameNote" style="color:#666;">Generate a random frame shape, then tweak it: drag a curve (or its blue dot) to change its roundness, or a square to move it. Changing the template resets them.</div>
           </div>

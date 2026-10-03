@@ -4,7 +4,7 @@ H23 item 27, part 2 (Fred approved): T11's own two pure-python cross-checks
 parametrised suite over EVERY template -- no Fusion needed, operates purely
 on each template's own resolved Sketch 2 (Shape Outline) BuildSequence
 (expression strings -> numbers, substituting widthIn/heightIn/
-boundingboxoffset). Three checks:
+boundingboxoffset). Four checks:
 
 1. WELD ORIENTATION (the real gate -- T7's own bug class). Fusion's SketchArc
    always runs counter-clockwise start->end (fusion360-quirks skill, section
@@ -37,17 +37,43 @@ boundingboxoffset). Three checks:
    need to be close; this just reports how close every template's actually
    is, it does not fail on an imprecise one).
 
-3. CONVEX RADIUS VS BAR (report, don't fail): every CONVEX arc's radius
-   (its own explicit seed Radius dimension if declared, else its 3-point
-   circumcircle) must exceed `frame_thickness` for Fusion's own `addOffset2`
-   to keep the whole enclosure loop parametric (fusion360-quirks, advisor
-   probe C1/C2) -- a radius at or below it silently falls back to a non-
-   parametric, differently-shaped offset. Convexity is approximated as
-   "does the arc's own via point sit farther from the outline's own
-   centroid than its chord's midpoint" (bulges outward = convex) -- a
-   reasonable, not exhaustively-verified heuristic for a report-only check;
-   shape changes are explicitly NOT made here, per the dispatch ("the
-   advisor decides per template").
+3. CONVEX RADIUS VS BAR (H23 item 28: DECLARED known list, enforced; H23
+   item 35: the real fix changed what crossing the bar MEANS, not whether
+   the list matters): every CONVEX arc's radius (its own explicit seed
+   Radius dimension if declared, else its 3-point circumcircle) vs
+   `frame_thickness` decides whether that corner's inner arc survives the
+   enclosure offset at all. Before item 35, a radius at or below the bar
+   made Fusion's own `addOffset2` refuse the WHOLE loop (fusion360-quirks,
+   advisor probe C1/C2), falling back to a differently-shaped `sketch.offset()`
+   result. H23 item 35 (MEASURED, isTopologyMatched=False on the
+   OffsetConstraintInput) fixed the refusal itself: `addOffset2` now makes
+   that sharp-corner result directly and stays parametric, so this class of
+   template no longer hits the fallback (`offset_fallbacks` stays empty --
+   confirmed live on every KNOWN_CONVEX_RADIUS_BELOW_BAR template). The bar
+   still matters: it is now simply the line between "this corner's inner
+   arc survives the offset" (radius > frame_thickness) and "this corner's
+   inner arc is sharp, by design" (radius <= frame_thickness) -- a real,
+   accepted shape difference, not a degraded fallback.
+   Convexity is approximated as "does the arc's own via point sit farther
+   from the outline's own centroid than its chord's midpoint" (bulges
+   outward = convex) -- a reasonable, not exhaustively-verified heuristic.
+   Per Fred: the templates currently below the bar are ACCEPTED cases (a
+   sharp inner corner by design, not a to-do) -- KNOWN_CONVEX_RADIUS_BELOW_BAR
+   documents exactly which templates, and the test enforces that it stays in
+   sync: a NEW template joining this class fails loudly instead of
+   disappearing into a report nobody reads, and a template that's quietly
+   LEFT the class (a seed rework, say) prompts pruning the now-stale entry.
+   Shape changes to fix an existing entry are still the advisor's own
+   per-template call, not this test's.
+
+4. SEED MAP DECLARATIONS (H23 item 36, a regression from item 27): every id a template's own
+   FRAME_SEED_MAP (template_data.py) names must exist as a real BuildSequence step somewhere in
+   that template's own resolved Sketches -- the same `ID` (Line/Arc3Point) or `Name` (Radius) key
+   `fb_engine/seed_geometry.py::apply_seed_geometry` itself matches against at Send time. Item 27
+   removed template_7's own seed Radius dims (the T11 recipe) but left 4 stale "radius" entries in
+   its FRAME_SEED_MAP naming parameters that no longer exist anywhere in its phases -- every Send
+   raised `SeedGeometryError` before the frame engine's own code ever ran. This check catches that
+   whole class across all 13 templates, not just the one that happened to regress.
 """
 import math
 import os
@@ -60,6 +86,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from fb_engine.closed_form_arc import true_via_point  # noqa: E402
 from fb_engine.template_resolver import resolve_template, get_available_templates  # noqa: E402
 
 BOARDS = [(7, 9), (9, 12), (6, 9)]
@@ -227,15 +254,15 @@ def test_seed_midpoint_report(tid, capsys):
             continue
         angs = [math.atan2(y - cy, x - cx) for x, y in p]
         a0, av, a1 = angs
-        # the minor-branch angular midpoint, independent of declared order: the bisector of the unit
-        # vectors to the two ENDS (p0, p1), on whichever side also has the smaller sweep.
+        # the minor-branch angular midpoint, independent of declared order: closed_form_arc's own
+        # true_via_point (H23 item 18) -- the same bisector-of-end-unit-vectors math this test
+        # always used, now the one declared place that math lives.
         u0 = ((p[0][0] - cx) / r, (p[0][1] - cy) / r)
         u1 = ((p[2][0] - cx) / r, (p[2][1] - cy) / r)
-        bis = (u0[0] + u1[0], u0[1] + u1[1])
-        n = math.hypot(*bis)
-        if n < 1e-9:
+        if math.hypot(u0[0] + u1[0], u0[1] + u1[1]) < 1e-9:
             continue  # a half-turn arc has no minor-branch midpoint
-        mid_ang = math.atan2(bis[1] / n, bis[0] / n)
+        vx, vy = true_via_point((cx, cy), r, p[0], p[2])
+        mid_ang = math.atan2(vy - cy, vx - cx)
         off = abs(math.degrees((av - mid_ang + math.pi) % (2 * math.pi) - math.pi))
         off = min(off, abs(180 - off))  # the major-branch midpoint is just as valid a "declared major" seed
         worst_deg = max(worst_deg, off)
@@ -245,10 +272,20 @@ def test_seed_midpoint_report(tid, capsys):
 
 
 # ---------------------------------------------------------------------------
-# Check 3: convex radius vs bar thickness (report, never fails)
+# Check 3: convex radius vs bar thickness -- declared known list, enforced
 # ---------------------------------------------------------------------------
+# H23 item 28: MEASURED (this check, every board size) which templates have at least one convex
+# arc at or below frame_thickness -- Fred: accepted, warn-only cases, not a to-do. A template not
+# in this set that starts failing is a NEW finding to report; an entry here whose template stops
+# failing is a stale entry to prune (the test below enforces both directions).
+KNOWN_CONVEX_RADIUS_BELOW_BAR = {
+    'template_1', 'template_2', 'template_3', 'template_4', 'template_5',
+    'template_8', 'template_10', 'template_11', 'template_12', 'template_13',
+}
+
+
 @pytest.mark.parametrize("tid", TEMPLATE_IDS)
-def test_convex_radius_vs_frame_thickness_report(tid, capsys):
+def test_convex_radius_vs_frame_thickness_known_list(tid, capsys):
     t, sk = _shape_outline_sketch(tid)
     items = _all_items(sk)
     arcs = [it for it in items if it.get('Type') == 'Arc3Point']
@@ -287,4 +324,45 @@ def test_convex_radius_vs_frame_thickness_report(tid, capsys):
             if convex and r <= ft_default:
                 findings.append((W, H, pid, round(r, 4)))
     print(f"{tid}: frame_thickness={ft_default}, convex-arc-below-bar: {findings}")
-    # report only -- per the dispatch, shape changes here are the advisor's own call per template.
+    has_findings = bool(findings)
+    known = tid in KNOWN_CONVEX_RADIUS_BELOW_BAR
+    assert has_findings == known, (
+        f"{tid}: convex-radius-below-bar status changed (findings={findings}) -- "
+        f"{'add to' if has_findings else 'remove'} KNOWN_CONVEX_RADIUS_BELOW_BAR "
+        f"{'' if has_findings else 'this stale entry '}(shape fixes are still the advisor's own "
+        f"per-template call, not this test's)")
+
+
+# ---------------------------------------------------------------------------
+# Check 4: FRAME_SEED_MAP ids must exist in the template's own phases
+# ---------------------------------------------------------------------------
+# H23 item 36 (a REGRESSION from item 27): item 27 applied the T11 recipe to template_7's Shape
+# Outline (no more seed Radius dims) but left 4 stale "radius" entries in its own FRAME_SEED_MAP
+# (template_data.py) naming parameters that no longer exist anywhere in its phases -- every Send
+# then raised fb_engine.seed_geometry.SeedGeometryError ("seed(s) not in the template") before the
+# frame engine's own code ever ran. apply_seed_geometry() matches a seedMap entry's own `id`
+# against a BuildSequence step's `ID` (Line/Arc3Point) or `Name` (Radius) -- this test walks the
+# SAME two keys the real function does, for every template, so a declaration/implementation drift
+# like item 27's is caught across all 13, not just the one that happened to regress.
+@pytest.mark.parametrize("tid", TEMPLATE_IDS)
+def test_seed_map_ids_exist_in_the_templates_own_phases(tid):
+    t, _ = resolve_template(tid)
+    seed_map = t.get('Frame', {}).get('seedMap', [])
+    line_arc_ids, radius_names = set(), set()
+    for sketch in t.get('Sketches', []):
+        for it in _all_items(sketch):
+            ty = it.get('Type')
+            if ty in ('Line', 'Arc3Point') and 'ID' in it:
+                line_arc_ids.add(it['ID'])
+            elif ty == 'Radius' and 'Name' in it:
+                radius_names.add(it['Name'])
+    missing = []
+    for entry in seed_map:
+        sid = entry.get('id')
+        valid_names = radius_names if entry.get('kind') == 'radius' else line_arc_ids
+        if sid not in valid_names:
+            missing.append(entry)
+    assert missing == [], (
+        f"{tid}: FRAME_SEED_MAP names id(s) with no matching BuildSequence step (ID for "
+        f"Line/Arc3Point, Name for Radius) -- a stale seedMap entry after a phase rework "
+        f"(template_data.py): {missing}")

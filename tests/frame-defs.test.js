@@ -55,9 +55,13 @@ describe('frame-defs (generated) — schema', () => {
     // template either, like T6's tab top.
     // T7 DIAMOND-TOP HOURGLASS: the frame-only diamondTopHourglass preset's model: the neck's half width and
     // height, the body flare height -- no base template either, like T6's tab top.
+    // T11 HOURGLASS ROOF: the frame-only diamondTopHourglassPinch preset's model: Template 1's own split-corner
+    // feature set (cornerR/cornerRTop/cornerRBottom/waistR/waistCy/notch/depth) -- no base template either, like
+    // T6's tab top (frame_shape_fit.provisional_diamond_top_hourglass_pinch_model).
     const FEATURES = { hourglass: ['cornerR', 'depth', 'notch', 'waistCy', 'waistR'], bottle: ['bodyR', 'neckHalfW', 'neckR', 'neckTop'],
       tabTop: ['tabHalfWidth', 'tabHeight'], dippedLeftWave: ['topDipDepth', 'topDipHalfWidth', 'topDipPosition', 'waveCy', 'waveDepth'],
-      iShape: ['flangeHeight', 'stemHalfWidth'], diamondTopHourglass: ['bodyFlareHeight', 'gableNeckWidth', 'neckHeight'] };
+      iShape: ['flangeHeight', 'stemHalfWidth'], diamondTopHourglass: ['bodyFlareHeight', 'gableNeckWidth', 'neckHeight'],
+      diamondTopHourglassPinch: ['cornerR', 'cornerRBottom', 'cornerRTop', 'depth', 'notch', 'waistCy', 'waistR'] };
     // T3 TAPERED HOURGLASS: a narrow-top hourglass model also carries topInset (and, once fitted from its own
     // goldens, the two corners separately) -- the only extras paramsFromShapeModel reads.
     // T4 OFFSET HOURGLASS: an offset-waist model also carries the left pinch (waistCyLeft, notchLeft, depthLeft).
@@ -69,7 +73,7 @@ describe('frame-defs (generated) — schema', () => {
     // the provisional shim.
     // F30 item 3 (Template 12/13, the taper copies): every base feature kept, plus one new scale-invariant
     // `taperAngle` -- the only extra either preset's own provisional model carries for these two.
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise', 'taperAngle'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [], diamondTopHourglass: [] };
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise', 'taperAngle'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [], diamondTopHourglass: [], diamondTopHourglassPinch: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);

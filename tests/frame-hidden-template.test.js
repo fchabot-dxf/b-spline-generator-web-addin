@@ -50,19 +50,19 @@ const mount = () => {
   initFramePanel();
 };
 
-// F30 item 3: the taper copies (Template 12/13) are hidden until verified live in Fusion -- the only two
-// templates with a real, non-synthetic `hidden: true` right now (T10 shipped, H23 item 25).
-const HIDDEN_IDS = ['template_12', 'template_13'];
+// F30 item 3 -> F30 item 4 merge (2026-10-02): the taper copies (Template 12/13) were hidden until verified live in
+// Fusion; both passed the real panel-join check on the merged code, so NO shipped template is hidden right now.
+const HIDDEN_IDS = [];
 
-describe('F30 item 3 / H23 item 25: only the taper copies are hidden now (T10 shipped)', () => {
+describe('F30 item 4 / H23 item 25: no shipped template is hidden now (T10, T12, T13 all shipped)', () => {
   beforeEach(mount);
   afterEach(() => { root.remove(); setEditorTab('artwork'); });
 
-  it('frame-defs: template_12 and 13 carry hidden: true, no others', () => {
+  it('frame-defs: no template carries hidden: true', () => {
     for (const t of FRAME_DEFS.templates) expect(t.hidden, t.id).toBe(HIDDEN_IDS.includes(t.id));
   });
 
-  it('neither template <select> offers either of them for a fresh pick', () => {
+  it('both template <select>s offer every template for a fresh pick', () => {
     for (const id of HIDDEN_IDS) {
       expect(optionIds($('frameTemplate'))).not.toContain(id);
       expect(optionIds($('editorFrameTemplate'))).not.toContain(id);

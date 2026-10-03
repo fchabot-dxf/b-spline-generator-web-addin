@@ -22,20 +22,31 @@ code anywhere.
 
 ## 2. Data shape
 
-One new field on the frame record, `b-spline-gen/html/core/frame-record.js`:
+**UPDATED, T82 item 5** (Fred: "use the centre of frame... and make the window a centre point rect too"):
+centre + size, not two opposite corners. One field on the frame record,
+`b-spline-gen/html/core/frame-record.js`:
 
 ```js
 record.insetWindow = {
-  enabled: false,                 // the sidebar toggle; OFF by default
-  x1: 2.0, y1: 2.0,               // outer rectangle, board-local inches, origin top-left, y down
-  x2: 5.0, y2: 4.5,               // (the SAME coordinate convention frameCutProfile's own board already uses)
+  enabled: false,     // the sidebar/editor-panel toggle; OFF by default
+  cx: 0.0, cy: 0.0,   // the window's own CENTRE, inches, measured from the BOARD CENTRE, +y UP
+                      // (Fusion's own sketch convention -- RectangleCenter maps 1:1 onto it)
+  w: 3.0, h: 2.5,     // the OUTER size (bars included)
 };
 ```
 
-Two opposite corners, not centre+size: a corner-drag moves exactly one point, a body-drag shifts all four
-numbers by the same delta, and nothing else needs renormalizing on every edit. `normalizeFrameRecord()`
-sorts them (`x1<x2`, `y1<y2`) on read/write so a drag that crosses the opposite edge never produces an
-inverted rectangle — that is bookkeeping, not a size/position LIMIT (see §3).
+`core/inset-window.js`'s own `insetWindowOuterRect(rec, widthIn, heightIn)` is the ONE place this converts
+to a board-local rect (origin top-left, y down — the convention `frameCutProfile`'s own board, and every
+rectangle below, still uses); `insetWindowGeometry` calls it first, then proceeds exactly as before. A
+record saved under the ORIGINAL shape (`{x1, y1, x2, y2}`) migrates on read (`normalizeFrameRecord`, using
+the board's current width/height), so an old project still loads correctly.
+
+Why centre+size over two opposite corners (the original §2, superseded): Fred's own ruling was that a
+corner-drag should resize SYMMETRICALLY about the centre (§6) rather than leaving the opposite corner fixed
+— centre+size makes that the NATURAL representation (the centre field simply doesn't change during a
+resize), where two-corner storage would need an explicit "recompute the other corner to keep the centre
+put" step on every resize instead. `normalizeFrameRecord()` still only type-checks the four numbers; no
+clamping (see §3).
 
 Derived, never stored (so there is exactly one place each is computed, matching how `frameCutProfile` already
 derives `region` from `boundingboxoffset` rather than storing it twice):
@@ -140,14 +151,20 @@ A new drag mode, sibling to the existing frame-handle drag (`main/frame-panel.js
 the rectangle body/corner drag already used elsewhere in the editor for boundary/extent editing — reuse
 whichever of those the implementer finds closest at build time; this note fixes the BEHAVIOUR, not the exact
 file to copy from:
-- **Body drag** (inside the window, not on a corner): translates `(x1,y1,x2,y2)` by the same delta — moves the
-  window without resizing it.
-- **Corner drag**: moves exactly the dragged corner's own `(xi,yi)` pair — resizes, and can flip which corner
-  is logically "x1" vs "x2" (handled by the normalize-on-write step in §2, not by the drag code itself).
-- Toggle: a single checkbox/switch in the FRAME sidebar panel, OFF by default, labeled "Inset window" per the
-  dispatch's own wording.
-- No board-based initial default beyond "roughly centred, roughly a third of the opening" — exact seed values
-  are an implementation choice, not a design constraint.
+- **Body drag**: translates `(cx, cy)` by the same delta (board-local y flips sign onto `cy`, which is +y UP)
+  — moves the window without resizing it, `w`/`h` unchanged.
+- **Corner drag** (**UPDATED, T82 item 5**, Fred: "use the centre of frame... and make the window a centre
+  point rect too"): resizes SYMMETRICALLY about the centre — `(cx, cy)` stay exactly where they were at drag
+  start; only `w`/`h` change, each to twice the dragged corner's own new distance from that (unchanged)
+  centre. (Superseded: the original note had the corner drag move only the dragged corner, leaving the
+  OPPOSITE corner fixed — that was the natural behaviour for the old two-corner storage; Fred's later ruling
+  replaced it with the centre-anchored resize above, which is why §2 also moved to centre+size storage.)
+- Toggle: a checkbox/switch in the FRAME sidebar panel AND in the Frame tab's own `#editorFramePanel` (T82
+  item 5, mirroring T82 item 4's "a second view, not a second setting" pattern for Thickness) — both write
+  the same record, both stay in sync; OFF by default, labeled "Inset window" per the dispatch's own wording.
+- Position X/Y fields = `cx`/`cy` directly; Size W/H fields = `w`/`h` directly — both pairs, in both panels.
+- No board-based initial default beyond "centred, roughly a third of the board" (`cx: 0, cy: 0, w: widthIn/3,
+  h: heightIn/3`) — exact seed values are an implementation choice, not a design constraint.
 
 ## 7. What stays byte-identical when off
 

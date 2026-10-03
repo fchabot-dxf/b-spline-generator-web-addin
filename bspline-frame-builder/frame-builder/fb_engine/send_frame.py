@@ -19,8 +19,9 @@ points the Frame Builder palettes use:
      except F22's `panel_lip` (sync_panel_lip_param: created/updated when the
      payload's panelLip > 0, removed when 0 and nothing references it).
   3  solid_coordinator.build_solid_logic_v3 to the declared core.underside
-     (the core body's face whose normal at pointOnFace has n.z ~ -1), start at
-     the payload's frameBottomZ, in the chosen wood
+     (the core body's dominant downward-facing face, H23 item 37: an area-
+     weighted UV-grid average, n.z ~ -1), start at the payload's frameBottomZ,
+     in the chosen wood
   4  FB-ORDER: both builds already end with ensure_frame_before_inlay (verified
      live in F3), so the whole block lands before the inlay whichever button
      came first; nothing extra here
@@ -43,13 +44,23 @@ FRAME_TYPE_VALUE = "Frame"
 FRAME_MEMBER_ATTR = ("FrameBuilder", "FrameComponent")  # value = the frame component's name (extrusion_engine)
 # core.underside (frame_definition EXTRUSION_SETTINGS toFace): n.z ~ -1, measured
 # on NURBS faces, so "~" is a declared bound, not an exact -1.
-# -0.9 until H23 item 23's live 6x9 re-check (2026-10-01): a second real sculpted
-# panel's TRUE underside scored -0.8628 by _face_downward_z (pointOnFace -0.9837,
-# but its 4 corners -0.9609..-0.7043 -- a doubly-curved sheet tilts at its corners)
-# and was refused, while that body's edge faces scored only -0.29..-0.42 (and
-# -0.52..-0.57 on item 22's body). -0.7 sits between the two populations with a
-# margin on each side; the pick itself (most-downward face) was never wrong.
-UNDERSIDE_MAX_NORMAL_Z = -0.7
+# H23 item 37 (MEASURED, 2026-10-02): a coarse pointOnFace + 4-corner average, checked against a
+# single numeric bound, is a hair-trigger -- every real sculpted panel's TRUE underside has scored
+# -0.98, -0.98, -0.97, -0.95, -0.90, -0.90, -0.86 (items 22/23) and then -0.6975 (T7 @ 7x9, 402
+# in^2, by FAR its body's largest downward face; the next-best was -0.5482 at only 10.0 in^2) --
+# refused by the old -0.7 bound by a margin of 0.0025, moving the bound per new panel is
+# whack-a-mole. _face_downward_z now averages n.z over an AREA-WEIGHTED UV grid (the surface's own
+# first fundamental form, |dU x dV| per sample -- exact for any parametrization, not an
+# approximation) instead of 5 arbitrary points, and underside_face picks the most-downward face
+# with an area-dominance sanity check against every other downward-scoring face, refusing only
+# when nothing on the body points down at all -- no more per-panel numeric-bound tuning.
+UNDERSIDE_GRID = 9  # samples per UV axis (81 points), cell centres only (never the exact boundary,
+                     # where a trimmed NURBS face's own derivatives/normals can be degenerate)
+# A second downward-scoring face whose area is this fraction of the top candidate's (or more) makes
+# the "largest downward face" pick ambiguous -- refuse loudly rather than guess. MEASURED: every
+# real panel's own edge faces are 10-20 in^2 against a 300-1200 in^2 underside (under 5%); this
+# ratio has margin on both sides of that population and has not been tripped by a real panel yet.
+AREA_DOMINANCE_RATIO = 0.5
 
 SEEDS_NOT_APPLIED = "the payload has seeds but no seedGeometry (an app older than F11 sent it)"
 
@@ -145,39 +156,76 @@ def delete_previous_frames(design, log):
     return names
 
 
-def _face_downward_z(face):
-    """A face's own "how downward is it" score: the average n.z over pointOnFace
-    and the face's own vertices, not a single arbitrary sample. MEASURED live
-    (H23 item 22): a sculpted b-spline panel's underside is a NurbsSurface, not a
-    plane, and Fusion's own pointOnFace can land in a locally-tilted spot
-    (n.z = -0.8963 measured) even though the SAME face's own corners -- and the
-    face as a whole, by far the body's largest downward face -- are solidly
-    underside (-0.995 at every corner). A single noisy sample silently refused a
-    perfectly good body. Averaging a few real, always-available points (the face
-    already has its vertices; no extra Fusion call) is robust to that one bad
-    sample without risking a genuinely non-downward face passing -- the body's
-    other (edge) faces average -0.5 to -0.6 here, nowhere near the bound."""
-    zs = []
-    ok, n = face.evaluator.getNormalAtPoint(face.pointOnFace)
-    if ok:
-        zs.append(n.z)
-    for v in face.vertices:
-        ok, n = face.evaluator.getNormalAtPoint(v.geometry)
-        if ok:
-            zs.append(n.z)
-    return sum(zs) / len(zs) if zs else None
+def _uv_point(u, v):
+    import adsk.core  # the real one -- a fake evaluator's own methods never call this
+    return adsk.core.Point2D.create(u, v)
 
 
-def underside_face(body):
-    """The core body's face pointing down the most (its own averaged downward
-    score, see _face_downward_z), when it is within the declared bound; else
-    None."""
-    best, best_z = None, 0.0
-    for face in body.faces:
-        z = _face_downward_z(face)
-        if z is not None and z < best_z:
-            best, best_z = face, z
-    return best if best is not None and best_z <= UNDERSIDE_MAX_NORMAL_Z else None
+def _face_downward_z(face, grid=UNDERSIDE_GRID, uv_point=None):
+    """A face's own "how downward is it" score: the AREA-WEIGHTED mean n.z over a
+    `grid` x `grid` UV sample (H23 item 37 -- replaces a pointOnFace + 4-corner
+    average, MEASURED to hair-trigger: a doubly-curved sheet's corners can read
+    very differently from its bulk, and a coarse 5-point average still missed a
+    genuine 402 in^2 underside by 0.0025). Each sample is weighted by its own
+    local area element |dU x dV| (the surface's own first fundamental form --
+    exact for any parametrization, not an approximation), so a small locally-
+    tilted patch can never outweigh the face's own dominant curvature.
+    `uv_point` is injected (the real one builds an adsk.core.Point2D; a fake test
+    can pass a plain tuple instead -- its own fake evaluator never needs the
+    real type). Late-bound to the module-level `_uv_point` (not a plain default
+    value) so a test can monkeypatch `send_frame._uv_point` once for every call,
+    including the ones made deep inside underside_face/send_frame -- the same
+    "collaborator injected" pattern sync_panel_lip_param already uses here for
+    value_input."""
+    uv_point = uv_point or _uv_point
+    ev = face.evaluator
+    rng = ev.parametricRange()
+    u0, v0, u1, v1 = rng.minPoint.x, rng.minPoint.y, rng.maxPoint.x, rng.maxPoint.y
+    wsum, zsum = 0.0, 0.0
+    for i in range(grid):
+        u = u0 + (u1 - u0) * (i + 0.5) / grid
+        for j in range(grid):
+            v = v0 + (v1 - v0) * (j + 0.5) / grid
+            pt = uv_point(u, v)
+            ok_n, n = ev.getNormalAtParameter(pt)
+            ok_d, du, dv = ev.getFirstDerivative(pt)
+            if not (ok_n and ok_d):
+                continue
+            w = _cross_mag(du, dv)
+            wsum += w
+            zsum += w * n.z
+    return zsum / wsum if wsum > 0 else None
+
+
+def _cross_mag(a, b):
+    """|a x b| for two Vector3D-like objects (.x/.y/.z) -- the local area-scaling
+    factor at a UV sample, from the surface's own partial derivatives."""
+    cx = a.y * b.z - a.z * b.y
+    cy = a.z * b.x - a.x * b.z
+    cz = a.x * b.y - a.y * b.x
+    return (cx * cx + cy * cy + cz * cz) ** 0.5
+
+
+def underside_face(body, score=_face_downward_z):
+    """The core body's TRUE underside: the face pointing down the most (its own
+    area-weighted score, see _face_downward_z) whose area clearly DOMINATES every
+    other face that also scores downward (H23 item 37 -- replaces a single
+    numeric bound that needed re-tuning per new panel). Refuses (None) only when
+    nothing on the body points down at all, or the pick is genuinely ambiguous
+    (another downward face is comparably large -- reported, never guessed).
+    `score` is injected (tests drive this selection logic directly with the real
+    measured (z, area) pairs, without needing a fake UV-grid evaluator too)."""
+    scored = [(z, face.area, face) for face in body.faces for z in (score(face),) if z is not None]
+    if not scored:
+        return None
+    scored.sort(key=lambda t: t[0])
+    best_z, best_area, best_face = scored[0]
+    if best_z >= 0:
+        return None  # nothing on this body points down at all
+    for z, area, _face in scored[1:]:
+        if z < 0 and area >= best_area * AREA_DOMINANCE_RATIO:
+            return None  # ambiguous: another face is both downward and comparably large
+    return best_face
 
 
 def send_frame(design, payload, find_core_body, logger, *, resolve_template, build_sketch, build_solid, value_input=None):

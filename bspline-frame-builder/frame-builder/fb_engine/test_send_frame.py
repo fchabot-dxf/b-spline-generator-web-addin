@@ -14,12 +14,19 @@ Run with:
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 from fb_engine.test_timeline_order import FakeItem, FakeTimeline  # noqa: E402  (shared fakes)
 from fb_engine.timeline_order import ensure_frame_before_inlay, FRAME_MEMBER_ATTR  # noqa: E402
 from fb_engine.template_resolver import resolve_template  # noqa: E402
 from fb_engine import send_frame as sf  # noqa: E402
+
+# H23 item 37: this whole file drives a fake Fusion world -- _face_downward_z's own real
+# collaborator (a function building an adsk.core.Point2D, late-bound so this takes) is never
+# wanted here; the fake evaluators below (FlatEvaluator) don't care what type a UV point is.
+sf._uv_point = lambda u, v: (u, v)
 
 
 # ------------------------------------------------------------------ fake world
@@ -146,33 +153,53 @@ def send_bspline(w, layer="L1"):
     w.add_item(f"Source - {layer} - vbit", w.root)
 
 
-class Vec:
-    def __init__(self, z):
-        self.z = z
+class Vec3:
+    def __init__(self, x, y, z):
+        self.x, self.y, self.z = x, y, z
 
 
-class Vertex:
-    def __init__(self, z):
-        self.geometry = Vec(z)  # a stand-in "point", tagged with its own intended normal z
+class Pt2:
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+
+class BBox2:
+    def __init__(self, u0, v0, u1, v1):
+        self.minPoint, self.maxPoint = Pt2(u0, v0), Pt2(u1, v1)
+
+
+class FlatEvaluator:
+    """H23 item 37: a FLAT face (constant normal, unit-Jacobian UV square) -- every
+    UV-grid sample agrees, so the area-weighted average trivially equals `nz`
+    regardless of grid size. Enough to fake a face's own aggregate score without
+    modelling the real curvature the grid-sampling itself is tested against
+    separately (TestFaceDownwardZAreaWeighting, below)."""
+    def __init__(self, nz):
+        self._nz = nz
+
+    def parametricRange(self):
+        return BBox2(0, 0, 1, 1)
+
+    def getNormalAtParameter(self, _pt):
+        return True, Vec3(0, 0, self._nz)
+
+    def getFirstDerivative(self, _pt):
+        return True, Vec3(1, 0, 0), Vec3(0, 1, 0)  # orthonormal -> |dU x dV| = 1 everywhere
 
 
 class Face:
-    def __init__(self, nz, vertex_nz=None):
-        """`vertex_nz` defaults to 4 copies of `nz` (a uniform/planar face, matching
-        every pre-H23-item-22 test exactly: average of N identical values is that
-        value). Pass a differing list to model a non-planar face whose pointOnFace
-        sample disagrees with its own corners (H23 item 22's measured case)."""
-        self.pointOnFace = Vec(nz)
-        self.vertices = [Vertex(z) for z in (vertex_nz if vertex_nz is not None else [nz, nz, nz, nz])]
-
-        def get_normal(_self, point):
-            return True, Vec(point.z)
-        self.evaluator = type("Ev", (), {"getNormalAtPoint": get_normal})()
+    def __init__(self, nz, area=1.0):
+        """A face whose area-weighted score (_face_downward_z) is exactly `nz`
+        (FlatEvaluator) and whose own `.area` is the SEPARATE, real Fusion
+        property underside_face's area-dominance check reads -- not derived
+        from the evaluator at all, exactly like a real Face."""
+        self.evaluator = FlatEvaluator(nz)
+        self.area = area
 
 
 class Body:
-    def __init__(self, normals=(1.0, -0.3, -0.998, 0.2), faces=None):
-        self.faces = faces if faces is not None else [Face(z) for z in normals]
+    def __init__(self, normals=(1.0, -0.3, -0.998, 0.2), areas=(1.0, 1.0, 100.0, 1.0), faces=None):
+        self.faces = faces if faces is not None else [Face(z, a) for z, a in zip(normals, areas)]
 
 
 class Log:
@@ -284,9 +311,12 @@ class TestSendFrame:
             assert not r["ok"] and text in r["error"] and b.sketch_calls == []
 
     def test_a_body_with_no_downward_face_is_a_clear_error(self):
+        # H23 item 37: refusal is no longer "nothing clears a numeric bound" (-0.2 used to fail
+        # the old -0.7 bound without pointing down at all meaningfully) -- it's "nothing on the
+        # body points down, period". Both faces here are level or upward.
         w = World()
         send_bspline(w)
-        r, b = run(w, payload(), body=Body(normals=(1.0, -0.2)))
+        r, b = run(w, payload(), body=Body(normals=(1.0, 0.3), areas=(1.0, 1.0)))
         assert not r["ok"] and "downward face" in r["error"] and b.sketch_calls == []
 
     def test_the_build_gets_the_frame_params_and_no_new_user_params(self):
@@ -312,37 +342,55 @@ class TestSendFrame:
         assert call["to_face"] is body.faces[2]  # n.z = -0.998, the downward face
         assert (call["start"], call["wood"]) == ("-1.5 in", "3D Oak - Painted")
 
-    def test_a_sculpted_underside_with_one_tilted_sample_point_is_still_found(self):
-        # H23 item 22, MEASURED live: the real 6x9 Template 10 send failed with
-        # "no downward face" even though the panel's true underside was there --
-        # its pointOnFace sample (-0.8963) narrowly missed UNDERSIDE_MAX_NORMAL_Z
-        # (-0.9) while its own 4 corners (-0.9949..-0.9955) were solidly downward.
-        # Values below are the exact ones measured on that body.
-        w = World()
-        send_bspline(w)
-        top = Face(0.9189, vertex_nz=[0.9055, 0.9055, 0.9839, 0.9839])
-        tilted_underside = Face(-0.8963, vertex_nz=[-0.9949, -0.9955, -0.9955, -0.9949])
-        edge = Face(-0.6862, vertex_nz=[-0.6793, -0.4762, -0.3855, -0.6248])  # genuinely not the underside
-        r, b = run(w, payload(), body=Body(faces=[top, tilted_underside, edge]))
-        assert r["ok"] and r["error"] is None
-        assert b.solid_calls[0]["to_face"] is tilted_underside
+    # H23 item 37 retires the two tests that lived here (items 22/23): both pinned the OLD
+    # pointOnFace + 4-corner average's own robustness against a tilted corner/sample -- a
+    # mechanism the new area-weighted UV grid doesn't have (there is no "corner" any more, just a
+    # dense grid). Replaced below with the real population this item was measured against: every
+    # one of 7 captured panels' own exact (z, area) face scores (tools/repro/fusion_t11/
+    # underside_results_2026-10-02.jsonl + underside_t7_7x9_refused_2026-10-02.jsonl), run through
+    # the SAME full send_frame() integration path the old tests used.
+    REAL_PANEL_FACE_SCORES = {
+        # tag: [(z, area), ...] -- the body's own true underside is always entry 0 (most negative).
+        "t11_7x9": [(-0.9086, 231.0), (0.0, 1.1), (0.0, 2.1), (0.0, 3.4), (0.0, 3.4), (0.0, 2.0),
+                    (0.0, 1.1), (0.0, 2.8), (0.0, 3.6), (0.0, 1.3), (0.0, 9.3), (0.0, 1.3),
+                    (0.0, 3.5), (0.0, 2.8), (0.9339, 239.0)],
+        "t1_9x12": [(-0.9288, 615.1), (0.0, 2.1), (0.0, 3.1), (0.0, 2.8), (0.0, 3.0), (0.0, 2.7),
+                    (0.0, 9.5), (0.0, 2.7), (0.0, 3.0), (0.0, 2.8), (0.0, 3.2), (0.0, 2.0),
+                    (0.0, 10.4), (0.9602, 628.3)],
+        "t1_6x9": [(-0.983, 309.7), (0.0, 1.1), (0.0, 2.6), (0.0, 1.8), (0.0, 2.1), (0.0, 2.3),
+                   (0.0, 6.8), (0.0, 2.3), (0.0, 2.1), (0.0, 1.8), (0.0, 2.6), (0.0, 1.1),
+                   (0.0, 7.5), (0.9518, 320.6)],
+        "t10_7x9": [(-0.9522, 345.1), (0.0, 4.3), (0.0, 0.9), (0.0, 2.1), (0.0, 1.3), (0.0, 2.2),
+                    (0.0, 8.7), (0.0, 2.2), (0.0, 1.3), (0.0, 2.1), (0.0, 0.9), (0.0, 4.3),
+                    (0.0, 9.3), (0.9551, 357.1)],
+        "t12_8x10": [(-0.9692, 425.0), (0.0, 4.1), (0.0, 2.3), (0.0, 2.7), (0.0, 2.8), (0.0, 1.0),
+                     (0.0, 8.7), (0.0, 1.0), (0.0, 2.8), (0.0, 2.7), (0.0, 2.3), (0.0, 4.1),
+                     (0.0, 10.1), (0.9666, 437.3)],
+        "t13_12x16": [(-0.9877, 825.8), (0.0, 5.4), (0.0, 2.5), (0.0, 4.0), (0.0, 5.3), (0.0, 6.3),
+                      (0.0, 5.3), (0.0, 4.0), (0.0, 2.5), (0.0, 5.4), (0.0, 12.3), (0.9917, 835.8)],
+        # H23 item 37's own regression: T7 @ 7x9's true underside (402 in^2) scored -0.6975 and was
+        # refused by the old -0.7 bound (margin -0.0025) -- the next-best was -0.5482 at 10.0 in^2.
+        "t7_7x9": [(-0.6975, 401.8), (-0.5482, 10.0), (-0.4787, 12.9), (-0.4787, 12.9),
+                   (-0.3276, 10.3), (0.737, 441.4)],
+    }
 
-    def test_a_doubly_curved_underside_tilted_at_its_corners_is_still_found(self):
-        # H23 item 23, MEASURED live (a second real 6x9 Template 10 send, after
-        # item 22's averaging fix): the panel's true underside sampled -0.9837 at
-        # pointOnFace but -0.9609..-0.7043 at its 4 corners (average -0.8628, the
-        # two middle corners below reconstructed from that measured average), so
-        # the -0.9 bound refused it. The same body's edge faces averaged only
-        # -0.29..-0.42. UNDERSIDE_MAX_NORMAL_Z is -0.7 for exactly this body.
+    @pytest.mark.parametrize("tag", list(REAL_PANEL_FACE_SCORES))
+    def test_the_real_measured_underside_is_found_on_every_captured_panel(self, tag):
         w = World()
         send_bspline(w)
-        top = Face(0.8909, vertex_nz=[0.7073, 0.9854, 0.8463, 0.8463])
-        curved_underside = Face(-0.9837, vertex_nz=[-0.9609, -0.8326, -0.8326, -0.7043])
-        edge_a = Face(-0.5563, vertex_nz=[-0.3101, -0.2326, -0.2326, -0.1035])
-        edge_b = Face(-0.4665, vertex_nz=[-0.4397, -0.4100, -0.4100, -0.3712])
-        r, b = run(w, payload(), body=Body(faces=[top, edge_a, curved_underside, edge_b]))
-        assert r["ok"] and r["error"] is None
-        assert b.solid_calls[0]["to_face"] is curved_underside
+        faces = [Face(z, a) for z, a in self.REAL_PANEL_FACE_SCORES[tag]]
+        r, b = run(w, payload(), body=Body(faces=faces))
+        assert r["ok"] and r["error"] is None, f"{tag}: {r.get('error')}"
+        assert b.solid_calls[0]["to_face"] is faces[0], f"{tag}: wrong face picked"
+
+    def test_an_ambiguous_pick_two_downward_faces_of_comparable_area_is_a_clear_error(self):
+        # Neither face dominates (the second is 60% of the first's area, above
+        # AREA_DOMINANCE_RATIO) -- refuse loudly rather than guess.
+        w = World()
+        send_bspline(w)
+        a, b_ = Face(-0.9, area=100.0), Face(-0.85, area=60.0)
+        r, b = run(w, payload(), body=Body(faces=[a, b_]))
+        assert not r["ok"] and "downward face" in r["error"] and b.sketch_calls == []
 
     def test_seeds_are_reported_not_applied_never_dropped_silently(self):
         w = World()
@@ -473,3 +521,45 @@ class TestPanelLip:
     def test_a_bad_lip_is_0(self):
         assert sf.panel_lip_of({"panelLip": "x"}) == 0.0 and sf.panel_lip_of({"panelLip": -1}) == 0.0
         assert sf.panel_lip_of({}) == 0.0 and sf.panel_lip_of({"panelLip": 0.25}) == 0.25
+
+
+class SplitEvaluator:
+    """H23 item 37: a UV square split in half by v (v<0.5 vs v>=0.5), each half with its OWN
+    constant normal.z and its OWN constant local-area scale (|dU x dV| = the derivative's own y
+    magnitude, since dU=(1,0,0) throughout) -- lets a test choose the two halves' own area
+    WEIGHTS independently of their normals, to prove _face_downward_z's average is weighted by
+    area and not a naive mean of samples."""
+    def __init__(self, z_lo, scale_lo, z_hi, scale_hi):
+        self._z_lo, self._s_lo, self._z_hi, self._s_hi = z_lo, scale_lo, z_hi, scale_hi
+
+    def parametricRange(self):
+        return BBox2(0, 0, 1, 1)
+
+    def getNormalAtParameter(self, pt):
+        _u, v = pt
+        return True, Vec3(0, 0, self._z_lo if v < 0.5 else self._z_hi)
+
+    def getFirstDerivative(self, pt):
+        _u, v = pt
+        s = self._s_lo if v < 0.5 else self._s_hi
+        return True, Vec3(1, 0, 0), Vec3(0, s, 0)
+
+
+class TestFaceDownwardZAreaWeighting:
+    """_face_downward_z's own grid-sampling + area-weighting mechanics (H23 item 37), independent
+    of underside_face's selection logic above."""
+
+    def test_a_uniform_face_scores_exactly_its_own_constant_normal(self):
+        face = type("F", (), {"evaluator": SplitEvaluator(-0.6, 1.0, -0.6, 1.0), "area": 1.0})()
+        assert sf._face_downward_z(face) == pytest.approx(-0.6)
+
+    def test_the_larger_area_half_dominates_the_average_not_a_naive_mean(self):
+        # v<0.5: z=+0.5 at scale 1; v>=0.5: z=-0.9 at scale 9 (9x the local area). A grid divisible
+        # by 2 (UNDERSIDE_GRID default is 9, odd -- pass an even grid explicitly) splits the 2
+        # halves into equal SAMPLE COUNTS, so only the scale drives the weighting.
+        face = type("F", (), {"evaluator": SplitEvaluator(0.5, 1.0, -0.9, 9.0), "area": 1.0})()
+        weighted = sf._face_downward_z(face, grid=10)
+        naive_mean = (0.5 + -0.9) / 2
+        expected = (1.0 * 0.5 + 9.0 * -0.9) / (1.0 + 9.0)  # = -0.76
+        assert weighted == pytest.approx(expected, abs=1e-9)
+        assert abs(weighted - naive_mean) > 0.5  # decisively NOT a naive average -- the weighting is real
