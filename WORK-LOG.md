@@ -14323,3 +14323,85 @@ blocking defect with a single fix): "H23 item 53: fix restore_marker_position to
 timeline's own growth during the build (moveToEnd when nothing was rolled back, prior+K
 otherwise) -- the advisor's review caught this before item 52 deployed". Pre-existing T7
 neck/roof miter finding flagged in the pass-back, not fixed here.
+
+## H23 item 54 -- the T7 "PROFILE 2/4 NOT BUILT" explained: a stale, pre-guard seed, not a regression; 5/5 bars confirmed live with a fresh one; send-2's extra ~8s traced
+
+Dispatch (advisor, 459): items 52+53 deployed. Check whether today's isValid (item 39's hook
+guard + item 40's narrower T7 ranges) rejects the captured payload's own seed -- if yes, explain
+and confirm 5/5 bars live with a fresh payload using the SAME stamp/stepVariants; if no, it's a
+real bug, probe + fix. Plus one line on where send-2's extra ~8s goes.
+
+**Ran the EXACT captured seed through today's real isValid (the same chain frame-panel.js's own
+generateFrame() uses -- inner defects, piece length, reflex-arc, then item 39's miterStaysInside
+Wood), via a throwaway vitest probe (not committed) importing the shipping editor modules
+directly.** The captured payload's own `frame.seeds` (`{gableNeckWidth: 0.4035, neckHeight:
+0.2241, bodyFlareHeight: 0.6847}`) fails ONLY the item-39 hook check: `minMargin = 0.00194`
+against a floor of `t * MIN_MITER_MARGIN_T_FRAC = 0.75 * 0.04 = 0.03` -- more than 15x under the
+floor. Inner defects, piece length, and reflex-arc all pass. **Confirmed: today's Generate could
+never produce this seed** -- the payload was captured 2026-10-02 21:52, the SAME day but BEFORE
+item 39's guard (merged later that session) ever existed, so it is a stale, pre-guard draw, not
+a live-reachable state and not a regression from items 51/52/53 (already independently confirmed
+in item 53's own A/B against the pre-item-51 commit, which reproduced the identical two [ERROR]
+lines on the SAME stale seed).
+
+**Built a fresh, today-valid seed and confirmed 5/5 bars live, with the inlay, per the dispatch.**
+A second throwaway vitest probe ran `generateValidFrameSeeds(tpl, region, 1, t, isValid)` with
+that SAME real isValid chain (today's actual Generate path, item 40's retry loop) for template_7
+at 7x9, got `{gableNeckWidth: 0.4877, neckHeight: 0.2331, bodyFlareHeight: 0.6704}` (passes on the
+FIRST attempt -- seed 1, no retry needed), computed its own `seedGeometry` via the same
+`frameSeedGeometry` call Send uses, and wrote a fresh payload: a deep clone of the captured one
+with ONLY `frame.seeds`/`frame.seedGeometry` replaced -- `stepVariants`/`stamp`/`params` byte-
+identical to the original capture, per the dispatch's own "same stamp/stepVariants" instruction.
+LIVE (fresh scratch doc, the real `_handle_generate` -> `_handle_send_frame` -> `send_frame.send_
+frame` path, same harness as items 51-53): **5 distinct frame bars built** (`frame_base`,
+`frame_roof_left`, `frame_roof_right`, `frame_side_left`, `frame_side_right`, all real volumes,
+NO sliver `(1)` bodies this time), **zero [ERROR]/MITER MISS/FALLBACK log lines**, all 9 inlay
+items Healthy/not-suppressed, `markerPosition == count == 21` (item 52/53's own fix still holding
+on a different seed), 16.325s (consistent with items 52/53's own ~16.1-16.3s). Both scratch test
+files deleted after use (per this project's own "probe, don't commit scratch" convention); the
+fresh payload JSON itself left in `bspline-frame-builder/scratch/` untracked, same as every other
+`itemNN_*.json` already there.
+
+**Send-2's extra ~8s, traced to a stage, not guessed at.** Re-ran this SAME fresh payload twice
+on one doc (send1 then send2), wrapping `_send_progress` to capture each stage's own timestamp
+(same mechanism as `send_stage_timing.py`):
+```
+                              send1 (fresh)   send2 (re-Send)   delta
+Preparing -> Importing Clean      0.023s          4.340s        +4.317s
+Importing Clean -> Analyzing      1.375s          1.331s        -0.044s
+Analyzing -> Projecting           0.001s          0.001s         0.000s
+Projecting -> Cleaning up         7.652s          9.736s        +2.084s
+Cleaning up -> Building           0.003s          0.004s        +0.001s
+Building -> Finalizing            7.266s          8.781s        +1.515s
+TOTAL                            16.320s         24.193s        +7.873s
+```
+The single biggest jump (+4.317s) is the "Preparing Geometry..." -> "Importing Clean..." gap --
+exactly where `_handle_generate` calls `_delete_frames` + `_remove_last_import` +
+`_delete_bspline_sets` before importing anything new (b-spline-gen.py:1297-1299). Measured
+DIRECTLY, not inferred: send1 has nothing to delete (fresh doc) and this gap costs 0.023s; send2
+deletes a real frame + B-Spline Set first and costs 4.340s. The REMAINING ~3.6s is NOT one single
+step regressing -- it's the SVG-projection stage (+2.084s) and the frame-build stage (+1.515s)
+each costing slightly MORE on the second pass, even though the final timeline item COUNT nets out
+identical (21 both times, confirmed in item 53's own check) -- consistent with the SAME pattern
+items 51/52 already measured for `.reorder()` calls: Fusion's own per-operation cost scales with
+the timeline's CUMULATIVE history (delete-then-rebuild grows the total number of timeline entries
+ever created, even though the live/visible count nets out the same), not just the visible item
+count. No fix attempted -- the dispatch asked for an explanation, not a change, and this is the
+same "real cost, not a redundant call" shape as item 52's own `_apply_constraints`/`_create_
+geometry` finding: genuine per-operation scaling, not a pattern to prune.
+
+No code change this item -- pure investigation + explanation, matching item 50's own "WORK-LOG
+only" precedent. No new committed test either: `tests/frame-no-hooked-miters.test.js` already
+declares the general property ("T7's own eave -- the captured case item 38 found, confirmed by
+this rule") that a raw T7 draw can be structurally tight enough to fail the hook check; this
+item's own captured seed is one more instance of that SAME already-tested property, not a new one
+needing its own permanent test.
+
+Full suite unaffected (no production code touched): Python 776 passed/25 skipped; JS vitest 3115
+passed across 162 files (unchanged from before this item -- the two scratch probe files were
+never part of the suite and were deleted after use).
+
+Committed as ONE commit, WORK-LOG only: "H23 item 54: T7 PROFILE 2/4 NOT BUILT explained -- a
+stale pre-guard seed, not a regression; 5/5 bars + 0 errors confirmed live with a fresh seed;
+send-2's extra ~8s traced to delete (+4.3s) + per-operation cost scaling on the larger cumulative
+timeline (+3.6s)".
