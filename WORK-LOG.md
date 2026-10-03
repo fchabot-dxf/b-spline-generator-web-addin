@@ -15541,3 +15541,137 @@ other production file touched.
 `..._template_2_neckLength_max_7x9.png`, `..._template_5_waistCenterY_min_7x9.png` (iso view,
 `viewport.saveAsImageFile` on each own scratch doc before closing it, 1200x900). Viewed one
 directly to confirm it's a real built frame, not a blank viewport, before trusting the other two.
+
+## H23 item 66: Shape Lattice ties must never touch/cross the contour -- declared clearance,
+two-layer fix (wider tie-only inset + an inset-independent brute-force backstop), mirrored on the
+manifest side, 3 regressions found+fixed, pure test over 13 templates x 50 seeds, before/after shots.
+
+**(1) Declared `TIE_CONTOUR_CLEARANCE_IN = 0.05`** (editor-lattice-pattern.js, exported, doc
+comment explains it's the EXTRA gap on top of the tie's own half-width and the contour's own
+half-width, which are already accounted for elsewhere) -- a judgment-call default, flagged for
+Fred's own review, not derived from anything in the brief.
+
+**(2) Core fix -- a tie-specific wider inward inset, ties only, never touching rails' own
+centerline behaviour.** `_resolveBoundaryPrimitives` (app side) and `resolveShapeBoundaryExtent`
+(manifest side, mirrored) now each resolve a SECOND, wider boundary inset
+(`widths.ties/2 + TIE_CONTOUR_CLEARANCE_IN`) alongside the existing rails' own inset, threaded
+through as `tiePrimitives`/`tieInsetPrimitives`. `computePattern`'s tie emission loop (span-intact
+pre-check + the clip) now clips against this WIDER boundary instead of the rails' own boundary;
+`halfTie` drops to 0 when the wider inset already baked the tie's own half-width in, avoiding a
+double subtraction. Deliberately bypasses `usesContourCenterline`'s own "rails sit exactly on the
+raw contour centerline" rule (AMEND 3, Fred's own prior explicit ask) for TIES specifically --
+`edge:'centerline'`, an explicit per-element user choice, is still always honoured. **Flagged as a
+judgment call, not silently decided**: rails and ties now behave differently in centerline mode by
+design (a rail is allowed to sit ON the contour per Fred's own prior ask; a tie must now clear it
+by the declared margin) -- re-read `shape-lattice-rails-on-contour.test.js` in full first and
+confirmed its own docstring claim ("every rail end AND TIE end must land exactly on contour") is
+not actually backed by any tie assertion in the test body itself (greps only `rail\d+` IDs), so
+this divergence does not break any existing automated guard, but it IS a real behavioural change
+from what that docstring implies and belongs in front of Fred, not assumed.
+A `collapseFallback` (the rails' own already-safely-inset primitives) is threaded through so a
+wider inset that collapses to nothing (self-intersecting offset on a tight/concave shape) falls
+back to something at least as safe as rails already get, never all the way to the fully-raw
+boundary the pre-existing `insetGeneratedPresetPathDToPrimitives` wrapper would otherwise revert to.
+
+**(3) Second layer -- an inset-algorithm-independent brute-force distance check, needed because a
+polygon offset is not perfectly uniform on a concave shape.** MEASURED live: the wider-inset fix
+alone made ZERO difference on 3 of the 13 templates (traced via a scratch diagnostic comparing
+`extent.tiePrimitives` against a direct distance oracle) -- the violating tie's own true endpoint
+distance (0.135in) did not match what the inset boundary implied it should be. Added, inside the
+tie emission loop right after `_applyEndRule`: sample 9 points along the piece (not just the
+endpoints -- a genuine MID-SPAN lateral graze on a non-perpendicular contour section was found, an
+endpoint-only check would have missed it), measure each against `trueContourPrimitives` (the TRUE,
+un-inset contour, resolved once per extent) via the existing `distToPrimitive` oracle, and `continue`
+(drop the piece, never emit it) if any sample is under clearance. Same T80-item-1 precedent as the
+brief's own instruction: skip, never move or post-hoc delete.
+**`countMin` hoisted** out of the `ties.mode==='count'`-only block (was previously local, so a
+post-loop re-check couldn't see it); after the full emission loop, `actualTieCount` is compared
+against `countMin` and `tieShortfall` is (re-)set if THIS layer's own drops created a shortfall
+`_tieSlotsByCount`'s own original candidate count couldn't have seen.
+
+**(4) Mirrored on the manifest side** (`editor-sketch-manifest.js`, the Fusion-build path) --
+`tieHalfInset()` (mirrors `shapeHalfInset`, bypasses centerline the same way) and
+`resolveShapeBoundaryExtent` now also return `tiePrimitives`/`trueContourPrimitives`. One bug of my
+own caught before it shipped: the first `trueContourPrimitives` attempt scaled the resolved
+primitives directly (`primitives.map(scalePrimitiveToLattice...)`), skipping the mandatory
+d-string round-trip this file's OWN pre-existing comment explicitly warns is required ("skipping
+this round-trip here... would silently reintroduce a real, if tiny, coordinate mismatch between
+the app and the manifest") -- fixed by routing through `insetGeneratedPresetPathDToPrimitives(d,
+0)` instead, the same convention the pre-existing `insetPrimitives` already uses.
+
+**(5) Three regressions found and fixed, each confirmed via `git stash` against the clean tree
+first (so each was a genuine regression, not pre-existing flake) before diagnosing:**
+- `shape-lattice-handle-hover.test.js` (a drag-past-threshold test, `pushes` expected 1 got 0):
+  root cause was PRE-EXISTING and latent, not new -- `shapeLatticeHandler.finish`
+  (editor-interaction.js) called `regenerateSilhouetteAndFill(editor);` fire-and-forget (no
+  `return`), unlike this SAME function's own sibling branches, which already `return` their own
+  async finish call. It happened to resolve within the test's own awaited microtask window before
+  this item; my extra `await` hop (the new raw-contour resolve call) pushed it just past that
+  window. Fixed to match the sibling branches' own existing pattern (`return
+  regenerateSilhouetteAndFill(editor);`) -- confirmed it's genuinely `async`.
+- `parity-app-manifest.test.js` (seed 17, app drew 19 pieces, manifest 18): the manifest-side
+  `trueContourPrimitives` bug described in (4) above.
+- `editor-lattice-tie-count.test.js` (T80 item 1's own hourglass sweep, `expect(honoured).toBe(20)`
+  -> actual 18): NOT a bug -- a genuine, expected cross-feature interaction. Item 66's clearance
+  rule can legitimately take Count's own delivered tie total back below its minimum (8) on a seed
+  where the only remaining valid candidates sit too close to the contour; per the brief's own
+  "skipped... never post-hoc deleted" instruction, clearance wins when the two rules conflict. This
+  DID surface one adjacent real bug first (the `countMin`-hoisting fix in (3) above) -- without it,
+  a drop below 8 went unreported (silently fewer than 8 ties, no shortfall flagged), which this
+  test's own `tieShortfall` branch correctly caught. Updated the test's own assertion to the
+  measured-correct `toBe(18)`, with a comment explaining why 18/20 (not 20/20) is now correct with
+  BOTH fixes in place.
+
+**(6) New pure test, `tests/editor-lattice-pattern-tie-contour-clearance.test.js`** -- no DOM, no
+mock editor: `latticeExtentFor` (editor-sketch-manifest.js, the EXACT entry point
+`buildSketchManifest` itself uses) resolves the extent, `computePattern` (pure by its own design)
+generates the pattern. Independent oracle (`worstTieToContourDistance`) never trusts the fix's own
+`tiePrimitives` -- it re-measures every tie's 9 sampled points against a FRESH, direct
+`contourSilhouette` call via `distToPrimitive`. Covers all 13 original H23 templates x 50 seeds
+(650 cases), T13 + Offset-from-frame among them (Fred's own reported scenario). A second
+"non-vacuous control" describe block strips BOTH `tiePrimitives` and `trueContourPrimitives` from
+the extent (simulating "no item 66 fix") across a 10-seed subset of all 13 templates and asserts at
+least one violation is found -- proving the main sweep genuinely can fail, not just happens to
+pass. One real bug in the test's OWN oracle found and fixed along the way: the oracle initially
+called `contourSilhouette` against the raw `REGION`, not `sizedBoardRegion(REGION, pattern.size)`
+(what `latticeExtentFor` actually builds the contour against) -- a geometrically different, wrong
+contour. Fixing it mattered for templates 4/5/8 (cleared immediately) but made ZERO measurable
+difference for templates 16/17 (see below) -- a red herring for those two specifically, confirmed
+by reverting and re-diffing.
+**14/14 passing, ~3s.** Full suite after all fixes: **165 files, 3217/3217** (up from the 3203
+pre-item-66 baseline, net +14 from the new file, zero other count change).
+
+**(7) Scoped OUT, flagged, not silently dropped: template_16/template_17 (Arched Funnel / Tulip).**
+A different seat's own very recent addition (not part of the original 13 H23 templates). A live
+50-seed sweep found a genuine residual shortfall surviving BOTH fix layers (down to 0.0665in, want
+0.175in). Traced as far as: their own `resolveShapeBoundaryExtent`-built `trueContourPrimitives`
+has 6 primitives where a direct `contourSilhouette` call on the same template returns 3 -- and the
+TYPES differ too (Line vs Arc for the nominally-same first primitive). Did not trace further into
+those templates' own geometry construction under time pressure, unfamiliar/actively-developing
+code -- this is a geometry-construction question for whoever owns template_16/17, not a
+tie-placement one. The committed test's own `TEMPLATE_IDS` list explicitly excludes them, with a
+comment pointing here. **Needs routing to the owning seat.**
+
+**(8) Before/after screenshots (screenshot rule)**, T13 + Offset from frame, seed 59 (found by a
+quick sweep for a seed where the UNFIXED code genuinely violates on this exact template -- seed 1,
+the first one tried, did not happen to violate here, so is not evidence either way):
+`C:/Users/danse/.bspline-status/shots/seatA/1034_item66_before.png` (a tie sits 0.1252in from the
+contour at the right shoulder, visibly inside/touching the green boundary, flagged red) and
+`..._after.png` (same template/seed, that tie is dropped per the skip-don't-move rule, worst
+clearance 0.3937in, all blue). Rendered from the REAL production call path (`latticeExtentFor` +
+`computePattern`, no mock/stub), not the live app UI -- no existing UI-automation harness covers
+the Shape Lattice editor's own canvas, and Playwright's own browser binaries are not installed on
+this machine (`npx playwright install` would be needed, not run, to keep this turn self-contained);
+used the machine's own installed Chrome directly in `--headless=new --screenshot` mode against a
+small locally-rendered SVG built from the exact `segments`/contour `primitives` the fix and the
+test both use, instead. Viewed both PNGs directly to confirm real rendered content before trusting
+them (per the pixel-verification discipline). Flagged as a choice made under this item's own time
+budget, not the live-app screenshot path other items have used when Fusion itself was the subject.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js`,
+`bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js`,
+`bspline-frame-builder/b-spline-gen/html/editor/editor-interaction.js` (the one-line regression fix),
+`tests/editor-lattice-pattern-tie-contour-clearance.test.js` (new),
+`tests/editor-lattice-tie-count.test.js` (the one-line `toBe(18)` update). No other file touched;
+all scratch diagnostics (`diag66.mjs`/`diag66b.mjs`/scratch test variants/the screenshot-render
+scripts) deleted before commit, per scratch-hygiene discipline.

@@ -2733,7 +2733,17 @@ const shapeLatticeHandler = {
         // self-corrects if it isn't (no fresh pointer position here to
         // re-test against).
         setHandleCursor(editor._shapeHandleHover ? 'hover' : null, _paramHandleAxis(editor, editor._shapeHandleHover));
-        regenerateSilhouetteAndFill(editor);
+        // H23 item 66: was fire-and-forget (no `return`) -- harmless while
+        // generatePattern's own async work finished inside the SAME
+        // microtask drain a caller's `await finish()` already waited out,
+        // but item 66's own second `_resolveBoundaryPrimitives` await
+        // (editor-lattice-pattern.js) added one more microtask hop and
+        // exposed it live (a flaky-by-construction gap, not a new one):
+        // `pushState` landed AFTER an awaiting caller's own next assertion
+        // already ran. Returned now, matching this SAME function's own
+        // sibling branches just above (`_finishLatticeMove`/
+        // `latticeHandler.finish`, both explicitly "may be a promise").
+        return regenerateSilhouetteAndFill(editor);
     },
     /** T81 item 1: hover feedback for the param handles -- grows/fills the
      *  hovered one (renderShapeLatticeHandles) and sets the shared grab

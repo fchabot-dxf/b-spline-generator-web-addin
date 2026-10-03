@@ -86,9 +86,16 @@ describe('T80 item 1: Count is honoured -- the valid ties are found first, then 
         expect(result.tieShortfall, `seed ${seed}: ${drawn} ties with no shortfall reported`).toEqual({ placed: drawn, min: 8 });
       }
     }
-    // The fix's own point: on this shape enough valid ties exist, so every
-    // seed now lands in range (before the fix: as few as 4).
-    expect(honoured).toBe(20);
+    // The fix's own point: on this shape enough valid ties exist, so almost
+    // every seed lands in range (before the fix: as few as 4). H23 item 66
+    // (a tie must also clear the contour by a declared margin, layered on
+    // TOP of this fix) can legitimately take the count back below 8 on a
+    // seed where the only remaining valid candidates are too close to the
+    // contour -- correctly REPORTED as a shortfall above, not silently
+    // dropped, so this number is no longer a strict 20: MEASURED, 18/20
+    // with item 66's own fix in place (2 genuine, correctly-reported
+    // shortfalls, not a regression of T80 item 1 itself).
+    expect(honoured).toBe(18);
   });
 
   it('when fewer than the minimum fit, all that fit are placed and the editor says so', async () => {

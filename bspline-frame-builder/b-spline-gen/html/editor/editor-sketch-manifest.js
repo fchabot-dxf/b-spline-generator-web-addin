@@ -53,10 +53,10 @@
  * `entities[]`, so every OTHER producer above keeps working in the
  * simpler natural board-space it was already written and tested in.
  */
-import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline, LATTICE_FUSION_BUILD_ORDER } from './editor-lattice-pattern.js';
+import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline, LATTICE_FUSION_BUILD_ORDER, TIE_CONTOUR_CLEARANCE_IN } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
-  primitivesBBox, insetGeneratedPresetPathDToPrimitives, sizedBoardRegion, latticeBoundaryGuide, GUIDE_ROLE,
+  primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetPathDToPrimitives, sizedBoardRegion, latticeBoundaryGuide, GUIDE_ROLE,
 } from './editor-lattice-boundary.js';
 import { generateContourSilhouette, primitivesToPathD, PRESETS, FRAME_ONLY_PARAM_KEYS } from './editor-shape-lattice-generator.js';
 import { contourSilhouette, contourFromFrameOf, frameWindowHoleLoop } from './contour-from-frame.js';
@@ -984,6 +984,22 @@ function shapeHalfInset(pattern) {
   return _effectiveContourStrokeWidth(pattern) / 2;
 }
 
+// H23 item 66: the manifest-side (pure) mirror of editor-lattice-pattern.js's
+// own app-side tie-specific inset (`generatePattern`'s own `tieHalfWidth`
+// call into `_resolveBoundaryPrimitives`) — "two tools sharing one engine"
+// means the Fusion BUILD must drop the same ties the app's own preview
+// drops, not just visually clip them tighter on screen. Bypasses
+// `usesContourCenterline` the same way the app side does (see that file's
+// own doc comment on `_resolveBoundaryPrimitives`'s `halfWidthOverride`
+// for the full rationale/judgment-call note); an explicit `edge:'centerline'`
+// choice is still honored unconditionally, same as `shapeHalfInset` above.
+function tieHalfInset(pattern, widths) {
+  const boundary = { ...PATTERN_DEFAULTS.boundary, ...(pattern.boundary || {}) };
+  const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
+  if (edge === 'centerline') return 0;
+  return widths.ties / 2 + TIE_CONTOUR_CLEARANCE_IN;
+}
+
 // Mirrors `_resolveExtent`'s own 'boundary' branch, fed the silhouette's
 // OWN primitives directly (already pure, from `generateContourSilhouette`)
 // rather than a live DOM element's — "two tools sharing one engine" (T58
@@ -1023,17 +1039,55 @@ function resolveShapeBoundaryExtent(pattern, region, frame) {
   // piece exists at all — caught live by the T72 AMEND 5 param sweep.
   const insetPrimitives = insetGeneratedPresetPathDToPrimitives(primitivesToPathD(primitives), halfInset);
   const scaled = insetPrimitives.map((p) => scalePrimitiveToLattice(p, spacing));
+  // H23 item 66: the SAME tie-specific second inset the app side computes
+  // (editor-lattice-pattern.js's own `generatePattern`) — "two tools
+  // sharing one engine": the Fusion BUILD must drop the exact same ties
+  // the app's own preview drops for contour clearance, not a looser set.
+  // Same collapse guard as the app side: a wider tie-only inset can
+  // self-intersect to nothing on a narrow/concave region the rails' own
+  // smaller inset above never does (MEASURED live, a 50-seed sweep) --
+  // falling back to the FULLY raw boundary there would give ties zero
+  // clearance; falling back to the rails' OWN already-succeeded
+  // `insetPrimitives` instead never leaves a tie worse off than a rail.
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
+  const tieHalfWidth = tieHalfInset(pattern, widths);
+  const tieD = primitivesToPathD(primitives);
+  let tieInsetPrimitives = insetPathDToPrimitives(tieD, tieHalfWidth);
+  if (!tieInsetPrimitives.length && tieHalfWidth > 0) tieInsetPrimitives = insetPrimitives;
+  const tieScaled = tieInsetPrimitives.map((p) => scalePrimitiveToLattice(p, spacing));
   // T82 item 2: the SAME fromFrame-gated hole exclusion _resolveBoundaryPrimitives applies on the app side
   // (editor-lattice-pattern.js) -- "two tools sharing one engine" means the FUSION BUILD must skip the
   // window exactly where the app's own preview does, not just visually. Appended as a second closed loop in
   // this SAME lattice-unit primitive list; insideSpans' own even-odd scan treats it as a hole for free.
+  // H23 item 66: the contour at its own TRUE, zero-inset position -- the
+  // SAME last-resort, inset-algorithm-independent distance check the app
+  // side threads through (editor-lattice-pattern.js's own `generatePattern`
+  // / `trueContourPrimitives`'s own doc comment there for the full
+  // rationale: a polygon offset is not perfectly uniform on a concave
+  // shape, so the wider tie inset above can still under-shrink a few
+  // hundredths of an inch right where it matters).
+  // T73 AMEND 3's own "ALWAYS round-trip through the d-string" rule (see
+  // `insetPrimitives`'s own comment above) applies here too -- using
+  // `primitives` directly (full float precision) instead of round-tripping
+  // it through the SAME d-string path the app side's own zero-inset call
+  // always takes (_resolveBoundaryPrimitives -> insetGeneratedPresetPathD-
+  // ToPrimitives against a DOM segment's already-string-rounded `d`)
+  // reintroduced EXACTLY the coordinate mismatch that comment warns about,
+  // right at a razor's-edge case (MEASURED: parity-app-manifest.test.js's
+  // own seed=17 hourglass sweep, one tie piece present on one side only).
+  const trueInsetPrimitives = insetGeneratedPresetPathDToPrimitives(tieD, 0);
+  const trueScaled = trueInsetPrimitives.map((p) => scalePrimitiveToLattice(p, spacing));
   const hole = contourFromFrameOf(pattern).on ? frameWindowHoleLoop(frame) : null;
   const withHole = hole ? [...scaled, ...hole.map((p) => scalePrimitiveToLattice(p, spacing))] : scaled;
+  const tieWithHole = hole ? [...tieScaled, ...hole.map((p) => scalePrimitiveToLattice(p, spacing))] : tieScaled;
+  const trueWithHole = hole ? [...trueScaled, ...hole.map((p) => scalePrimitiveToLattice(p, spacing))] : trueScaled;
   const bbox = primitivesBBox(withHole);
   if (!bbox) return { iMin: 0, jMin: 0, iMax: -1, jMax: -1, mode: 'boundary', primitives: [] };
   return {
+    trueContourPrimitives: trueWithHole,
     iMin: Math.floor(bbox.xMin), jMin: Math.floor(bbox.yMin),
     iMax: Math.ceil(bbox.xMax), jMax: Math.ceil(bbox.yMax),
+    tiePrimitives: tieWithHole,
     mode: 'boundary', primitives: withHole,
   };
 }

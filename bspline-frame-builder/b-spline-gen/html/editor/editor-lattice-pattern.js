@@ -44,7 +44,7 @@ import { setEditorStatusHint } from './editor-ui.js';
 // defers to "Slice 3's own live-wiring caller".
 import {
   insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives, shapeToPrimitives,
-  insetGeneratedPresetPathDToPrimitives, primitiveHitAt, sizedBoardRegion,
+  insetGeneratedPresetPathDToPrimitives, insetPathDToPrimitives, primitiveHitAt, sizedBoardRegion,
 } from './editor-lattice-boundary.js';
 // T73 (SE14b): the per-primitive <-> combined-d conversions the contour's
 // OWN N-segment rendering (properties-shape-lattice.js) and this file's
@@ -52,6 +52,10 @@ import {
 // below) both need — a LEAF module (no import of this file, or anything
 // that imports it), so no circular-dependency risk pulling it in here.
 import { joinSegmentPathsIntoClosedD, primitiveToPathD } from './editor-shape-lattice-generator.js';
+// H23 item 66: the inset-algorithm-independent fallback distance check (see
+// `trueContourPrimitives`'s own doc comment below) -- a leaf module (no
+// import of this file), no circular-dependency risk.
+import { distToPrimitive } from './editor-primitives.js';
 // T82 item 2: a Shape Lattice following the frame (contour.fromFrame) must skip the frame's own inset
 // window -- contourFromFrameOf gates on exactly that (not "any frame exists"); frameWindowHoleLoop and
 // frameContext are each a leaf/near-leaf (contour-from-frame.js, editor-frame-profile.js) that don't import
@@ -71,6 +75,20 @@ export { toLattice, fromLattice, latticeCrossings };
  *  own LATTICE_ATTR (data-lattice="rail"|"tie"|"node"), not a new
  *  element shape. See SE7B design §2 for the ownership/detach rules. */
 export const OWNERSHIP_ATTR = 'data-lattice-gen';
+
+/** H23 item 66 (Fred, screenshot — T13 w/ Offset from frame: a generated tie landed ON the
+ *  contour, half inside the green border): the declared minimum gap a generated TIE's own
+ *  stroke (and end nodes) must clear beyond the contour/boundary, ON TOP of the tie's own
+ *  half-width (already subtracted by the existing inset/end-rule math) and the contour's own
+ *  half-width (already subtracted by `_resolveBoundaryPrimitives`'s own inset, when not in
+ *  centerline mode) — this constant is ONLY the extra declared margin, not the whole formula.
+ *  Never applied in centerline mode (`usesContourCenterline`): Fred's own explicit, tested
+ *  choice there is for a tie/rail to touch/overlap the shown contour's own centerline exactly
+ *  (`tests/shape-lattice-rails-on-contour.test.js`) — this rule must never fight that.
+ *  A judgement-call default (not yet tuned against a live board, open to Fred's own review):
+ *  big enough to read as a real, visible gap; small enough not to force dropping ties on a
+ *  tightly-packed pattern. RAILS are unaffected — only ties were ever reported touching. */
+export const TIE_CONTOUR_CLEARANCE_IN = 0.05;
 
 /**
  * T76 (SE17, Fred: "I want ties on a layer and rails on another and nodes
@@ -331,7 +349,7 @@ export function bakeContourPieceTransform(el) {
  * the inset amount right along with the rest of the shape's own geometry
  * for a scaled boundary element, not just its raw path coordinates.
  */
-async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
+async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths, halfWidthOverride, collapseFallback) {
   const shapeId = PATTERN.boundary && PATTERN.boundary.shapeId;
   const boundaryEls = _findBoundaryElements(editor, shapeId);
   if (!boundaryEls.length) return { boundaryEl: null, boundaryEls, primitives: [] };
@@ -340,9 +358,22 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
   // T73 AMEND 3: a Shape Lattice with its contour shown clips rails/ties
   // to the contour's own RAW centerline (zero inset), same as an explicit
   // edge:'centerline' choice — see usesContourCenterline's own doc comment.
-  const halfWidth = (edge === 'centerline' || usesContourCenterline(PATTERN))
+  // H23 item 66 (Fred, screenshot): a generated TIE must keep a declared
+  // clearance from the contour "with and without Offset from frame" -- no
+  // carve-out for the contour-shown case, unlike AMEND 3's own rails/ties-
+  // share-one-rule design (AMEND 3's own test only ever exercised RAILS,
+  // confirmed by reading it -- `tests/shape-lattice-rails-on-contour.
+  // test.js` never builds a tie at all, only asserts it BY COMMENT). So:
+  // `halfWidthOverride` (the TIE-specific caller below, only) BYPASSES
+  // the auto-detected `usesContourCenterline` zeroing -- ties get their
+  // own declared clearance regardless of whether the contour is shown.
+  // An EXPLICIT `edge:'centerline'` choice in the Pattern panel is a
+  // direct, separate user preference and is still honored unconditionally
+  // (flagged in WORK-LOG for Fred's own review: this is a judgment call
+  // reconciling two of his own requests, not an obviously-settled one).
+  const halfWidth = edge === 'centerline'
     ? 0
-    : _effectiveContourWidth(boundaryEl, PATTERN, widths) / 2;
+    : halfWidthOverride ?? (usesContourCenterline(PATTERN) ? 0 : _effectiveContourWidth(boundaryEl, PATTERN, widths) / 2);
   // T73 (SE14b): a GENERATED contour is now N per-segment elements
   // sharing one shapeId — shapeToInnerBoundaryPrimitives's own per-TYPE
   // dispatch (rect/circle/ellipse/polygon/path/text) has no "N paths"
@@ -355,6 +386,20 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
   // backwards) — from there it's the IDENTICAL `d`-string-in/primitives-
   // out inset call a single-path boundary already used.
   let localPrimitives;
+  // H23 item 66: did the inset-at-`halfWidth` collapse (self-intersect to
+  // nothing)? Captured BEFORE either branch's own raw-read fallback runs,
+  // so `collapseFallback` (the TIE-specific caller below, only -- the
+  // rails' OWN already-resolved, smaller-inset primitives) can stand in
+  // for it INSTEAD of the raw boundary: a wider tie-only inset is more
+  // likely to collapse a narrow/concave region than the rails' own
+  // smaller one ever does (MEASURED live, a 50-seed sweep: template_4/8/17
+  // each showed a tie short of its own declared clearance by an amount
+  // consistent with silently landing back on the raw centerline) -- the
+  // raw boundary gives ties ZERO clearance there, while the rails' own
+  // inset (already proven non-collapsing moments earlier, in the SAME
+  // call) gives them AT LEAST what rails already safely get, never worse
+  // than before this item.
+  let collapsed = false;
   if (boundaryEls.length > 1) {
     // insetGeneratedPresetPathDToPrimitives's own halfWidth<=0 case
     // already degrades to the raw, un-inset primitives (its own inner
@@ -362,9 +407,12 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
     // edge-mode behavior the single-element branch below gets from
     // shapeToInnerBoundaryPrimitives, so this one call covers both.
     const combinedD = joinSegmentPathsIntoClosedD(boundaryEls.map((el) => el.attr('d') || ''));
-    localPrimitives = insetGeneratedPresetPathDToPrimitives(combinedD, halfWidth);
+    localPrimitives = insetPathDToPrimitives(combinedD, halfWidth);
+    collapsed = !localPrimitives.length && halfWidth > 0;
+    if (!localPrimitives.length) localPrimitives = collapsed && collapseFallback ? [] : insetGeneratedPresetPathDToPrimitives(combinedD, halfWidth);
   } else {
     localPrimitives = await shapeToInnerBoundaryPrimitives(boundaryEl, halfWidth);
+    collapsed = !localPrimitives.length && halfWidth > 0;
     // T72 (bug: the default Bottle preset generated 0 rails/ties after T71's
     // own contour-size inset): a collapsed inner-offset boundary (self-
     // intersection — see insetPathDToPrimitives's own T72 doc comment,
@@ -376,10 +424,11 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
     // unchanged (editor-lattice-boundary.test.js's own "thin arm... the
     // WHOLE shape declines" case documents why: using the raw edge there
     // would put rails ON TOP of a stroke the user genuinely drew that thin).
-    if (!localPrimitives.length && halfWidth > 0 && PATTERN.shape && PATTERN.shape.source === 'generated') {
+    if (collapsed && PATTERN.shape && PATTERN.shape.source === 'generated' && !collapseFallback) {
       localPrimitives = await shapeToPrimitives(boundaryEl);
     }
   }
+  if (collapsed && collapseFallback) return { boundaryEl, boundaryEls, primitives: collapseFallback };
   const primitives = _bakeWorldTransform(boundaryEl, localPrimitives);
   // T82 item 2: fromFrame's own hole, appended as a second closed loop in this SAME world-space list --
   // insideSpans' own even-odd scan (editor-lattice-boundary.js) already treats an extra closed loop as a
@@ -1616,6 +1665,20 @@ export function computePattern(PATTERN, opts = {}) {
   // row/column) changes with orientation, via _rowScanLine/_colScanLine.
   const isBoundary = rawExtent.mode === 'boundary';
   const boundaryPrimitives = rawExtent.primitives || [];
+  // H23 item 66: ties check against their OWN (further-inset) boundary when
+  // the caller resolved one (generatePattern, boundary mode, not centerline)
+  // — falls back to the rails' own `boundaryPrimitives` otherwise (no
+  // caller-supplied `tiePrimitives`: centerline mode, or a pure/opts-driven
+  // caller — e.g. this file's own tests — that never threads one through),
+  // so every existing caller is byte-for-byte unaffected until it opts in.
+  const tieBoundaryPrimitives = rawExtent.tiePrimitives || boundaryPrimitives;
+  // H23 item 66: the contour's own TRUE (zero-inset) primitives, in the
+  // SAME lattice-unit space — present only when a caller resolved one
+  // (same gating as `tiePrimitives` above). Used by a LAST, direct
+  // distance check in the tie emission loop below, independent of
+  // whether the offset/inset above achieved full clearance everywhere.
+  const trueContourPrimitives = rawExtent.trueContourPrimitives || null;
+  const tieClearanceLattice = (widths.ties / 2 + TIE_CONTOUR_CLEARANCE_IN) / P.spacing;
   // T49: the ending-rule/halfWidth inputs every boundary-crossing end now
   // needs. `halfWidth` is in the SAME lattice-unit space as everything
   // else here (inches / spacing). (T74 AMEND 1: the retired Border clone
@@ -1841,8 +1904,14 @@ export function computePattern(PATTERN, opts = {}) {
     if (!isBoundary) return true;
     const lo = Math.min(jStart, jEnd), hi = Math.max(jStart, jEnd);
     const colScan = _colScanLine(i, orientation);
-    const inside = insideSpans(colScan, boundaryPrimitives);
-    const combined = _unionSpans(inside, collinearSpans(colScan, boundaryPrimitives));
+    // H23 item 66: the TIE boundary here (not the rails' own) — an
+    // anchored (rail-to-rail) bridge is only declared "intact" when it
+    // ALSO clears the contour by the declared clearance, not merely when
+    // it stays inside the raw shape (MEASURED: a straight bridge can run
+    // close enough to a concave contour section, e.g. an hourglass waist,
+    // to violate clearance without ever crossing it).
+    const inside = insideSpans(colScan, tieBoundaryPrimitives);
+    const combined = _unionSpans(inside, collinearSpans(colScan, tieBoundaryPrimitives));
     const pieces = _clipToSpans(lo, hi, combined);
     return pieces.length === 1 && pieces[0].a === lo && pieces[0].b === hi;
   };
@@ -1854,6 +1923,12 @@ export function computePattern(PATTERN, opts = {}) {
   // either way (only how `tieSlots` gets built differs by mode).
   let tieSlots;
   let tieShortfall = null;
+  // H23 item 66: hoisted out of the `count`-mode branch below (was local
+  // to it) -- the LAST, inset-independent clearance check further down can
+  // drop a tie AFTER `tieShortfall` is first computed here, so the actual
+  // final count needs re-checking against this SAME minimum once every
+  // drop (clip, min-spacing, AND this item's own new one) has happened.
+  let countMin = null;
   if (ties.mode === 'count') {
     // T67 AMEND #4 — `tieSpanIntact` verifies the COLUMN stays inside the
     // boundary via `insideSpans`' own vertical (col) scan; a rail ROW's
@@ -1886,7 +1961,8 @@ export function computePattern(PATTERN, opts = {}) {
     const minSpacingCells = (ties.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing) / P.spacing;
     const byCount = _tieSlotsByCount(railRows, columns, ties, jMin, jMax, seed, tieSpanIntact, onRealRails, minSpacingCells);
     tieSlots = byCount.slots;
-    if (tieSlots.length < byCount.countMin) tieShortfall = { placed: tieSlots.length, min: byCount.countMin };
+    countMin = byCount.countMin;
+    if (tieSlots.length < countMin) tieShortfall = { placed: tieSlots.length, min: countMin };
   } else {
     tieSlots = [];
     for (const i of columns) {
@@ -1905,7 +1981,18 @@ export function computePattern(PATTERN, opts = {}) {
   // for it this is a no-op.)
   tieSlots = _enforceTieMinSpacing(tieSlots, ties.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing, P.spacing);
 
-  const halfTie = widths.ties / 2 / P.spacing;
+  // H23 item 66: whenever `tieBoundaryPrimitives` is a genuine (narrower)
+  // second boundary, the clip above ALREADY lands a piece's own crossing
+  // end at the clearance-respecting position (tie-half-width + the
+  // declared gap, already inset into the boundary geometry itself) --
+  // `_applyEndRule`'s own 'inset' pull-back must NOT ALSO subtract
+  // tie-half-width on top of that (it would double-count it, over-
+  // shortening every clipped tie by a second half-width for nothing).
+  // Centerline mode (`tieBoundaryPrimitives === boundaryPrimitives`,
+  // `endRule === 'on-boundary'`) is unaffected either way -- that branch
+  // never reads `halfWidth` at all.
+  const tieClearanceApplied = tieBoundaryPrimitives !== boundaryPrimitives;
+  const halfTie = tieClearanceApplied ? 0 : widths.ties / 2 / P.spacing;
   for (const { i, jStart, jEnd, anchored, oneEndedFree } of tieSlots) {
     // T48: the tie's own density/span/anchor (or T56 count) draw (above)
     // is UNCHANGED here — boundary mode doesn't touch WHETHER or how far
@@ -1945,8 +2032,11 @@ export function computePattern(PATTERN, opts = {}) {
       pieces = [{ a: jStart, b: jEnd, aIsCrossing: false, bIsCrossing: false }];
     } else if (isBoundary) {
       colScan = _colScanLine(i, orientation);
-      const inside = insideSpans(colScan, boundaryPrimitives);
-      const combined = _unionSpans(inside, collinearSpans(colScan, boundaryPrimitives));
+      // H23 item 66: the TIE boundary (further inset by the declared
+      // clearance), not the rails' own -- see tieBoundaryPrimitives's own
+      // doc comment above.
+      const inside = insideSpans(colScan, tieBoundaryPrimitives);
+      const combined = _unionSpans(inside, collinearSpans(colScan, tieBoundaryPrimitives));
       pieces = _clipToSpans(Math.min(jStart, jEnd), Math.max(jStart, jEnd), combined);
       if (oneEndedFree) {
         pieces = pieces.map((p) => ({
@@ -1977,6 +2067,50 @@ export function computePattern(PATTERN, opts = {}) {
       // T73 AMEND 3b: same "only a genuinely split column" scoping as the
       // rails loop above.
       if (pieces.length > 1 && Math.abs(b - a) < minTiePieceLattice) continue;
+      // H23 item 66: a LAST, inset-algorithm-INDEPENDENT clearance check,
+      // on every piece (not just a clipped free end): two real gaps
+      // MEASURED live, 50-seed sweep, neither one the clip/pull-back logic
+      // above can see --
+      //   (a) an ANCHORED tie (both ends real rail rows) skips the clip
+      //       entirely by design (both ends are correct "by construction"
+      //       for STAYING INSIDE the shape, T67 AMEND #4's own comment
+      //       above) -- but a rail can legitimately sit closer to the
+      //       contour than a tie now must (rails never got this item's own
+      //       rule), and a bridging tie inherits that closeness at an end
+      //       nothing here ever pulls back;
+      //   (b) even a genuinely CLIPPED free end can still land short: the
+      //       wider tie-inset (`tieBoundaryPrimitives`) is a polygon-OFFSET
+      //       operation, and a naive offset is not perfectly uniform on a
+      //       concave shape -- it can under-shrink right where a tie's own
+      //       column crosses a sharp concave feature, so the clip's own
+      //       "inside this region" can be a few hundredths of an inch
+      //       short of the TRUE declared clearance.
+      // One direct, independent measurement settles both: sample along
+      // this piece's own full length (not just its two ends -- MEASURED
+      // live, 50-seed sweep: a straight column CAN run genuinely close to
+      // a concave contour section somewhere in its own MIDDLE without
+      // either end ever being the closest point, e.g. a shallow arc the
+      // column grazes tangent-ish to one side of) against
+      // `trueContourPrimitives` (the contour's own TRUE, zero-inset
+      // position, never the inset approximation) with the exact same
+      // point-to-primitive distance this item's own pure test uses as its
+      // own independent oracle. Short of the declared clearance anywhere
+      // along it -> drop the tie (skip, never move -- T80 item 1's own
+      // precedent, applied to this new case). `orient()` un-rotates a
+      // canonical (i,j) into the SAME un-oriented frame
+      // `trueContourPrimitives` always lives in (see `_colScanLine`'s own
+      // doc comment for why boundary primitives are never transposed).
+      if (isBoundary && trueContourPrimitives && trueContourPrimitives.length) {
+        const toReal = (j) => { const q = orient({ i, j }, orientation); return { x: q.i, y: q.j }; };
+        const distAt = (j) => Math.min(...trueContourPrimitives.map((p) => distToPrimitive(toReal(j), p)));
+        const samples = 8;
+        let short = false;
+        for (let k = 0; k <= samples; k++) {
+          const j = a + (b - a) * k / samples;
+          if (distAt(j) < tieClearanceLattice - 1e-9) { short = true; break; }
+        }
+        if (short) continue;
+      }
       if (_occupiedHas(occupied, i, a, 'tie')) continue;
       segments.push({
         kind: 'tie', a: { i, j: a }, b: { i, j: b },
@@ -1994,6 +2128,22 @@ export function computePattern(PATTERN, opts = {}) {
       if (aJoint && !_occupiedHas(occupied, i, a, 'node')) addNode(i, a);
       if (bJoint && !_occupiedHas(occupied, i, b, 'node')) addNode(i, b);
     }
+  }
+
+  // H23 item 66: the LAST, inset-independent clearance check above can drop
+  // a count-mode tie `_tieSlotsByCount`'s own refill already accepted as
+  // meeting Count's minimum -- re-settle `tieShortfall` against the ACTUAL
+  // final count, the same T80 item 1 rule ("report when fewer than Count's
+  // minimum fit"), now that every drop (clip, min-spacing, this one) has
+  // happened. A no-op whenever nothing from this item's own check fired.
+  if (countMin != null) {
+    // (the emission loop above only ever DROPS a candidate slot, never adds
+    // one beyond what _tieSlotsByCount already chose, so actualTieCount can
+    // only be <= tieSlots.length -- an ALREADY-set tieShortfall, built from
+    // that same tieSlots.length, can only ever need lowering here, never
+    // clearing.)
+    const actualTieCount = segments.reduce((n, s) => n + (s.kind === 'tie' ? 1 : 0), 0);
+    if (actualTieCount < countMin) tieShortfall = { placed: actualTieCount, min: countMin };
   }
 
   // Crossings — reuse latticeCrossings (editor-lattice.js) rail-by-rail
@@ -2092,7 +2242,7 @@ export function computePattern(PATTERN, opts = {}) {
  *  inverted, empty extent — `computePattern`'s own row loop
  *  (`jMin > jMax`) then naturally emits nothing, same "declined
  *  gracefully" shape §2 already establishes for `insideSpans` itself. */
-export function _resolveExtent(editor, PATTERN, boundaryPrimitives) {
+export function _resolveExtent(editor, PATTERN, boundaryPrimitives, tieBoundaryPrimitives, rawContourPrimitives) {
   const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
   const extentSpec = PATTERN.extent || { mode: 'board' };
   if (extentSpec.mode === 'rect') {
@@ -2103,10 +2253,21 @@ export function _resolveExtent(editor, PATTERN, boundaryPrimitives) {
     const primitives = (boundaryPrimitives || []).map((p) => _scalePrimitiveToLattice(p, spacing));
     const bbox = primitivesBBox(primitives);
     if (!bbox) return { iMin: 0, jMin: 0, iMax: -1, jMax: -1, mode: 'boundary', primitives: [] };
+    // H23 item 66: a SEPARATE, tie-specific boundary (inset further than
+    // the rails' own) — absent whenever the caller didn't resolve one
+    // (centerline mode, or no boundary element at all), in which case
+    // every tie-side consumer below falls back to `primitives` itself,
+    // unchanged from before this item.
+    const tiePrimitives = tieBoundaryPrimitives ? tieBoundaryPrimitives.map((p) => _scalePrimitiveToLattice(p, spacing)) : null;
+    // H23 item 66: the contour at its own TRUE, zero-inset position --
+    // the last-resort, inset-algorithm-independent distance check's own
+    // input (see its call site's doc comment). Absent exactly when
+    // `tiePrimitives` is (same caller, same reason).
+    const trueContourPrimitives = rawContourPrimitives ? rawContourPrimitives.map((p) => _scalePrimitiveToLattice(p, spacing)) : null;
     return {
       iMin: Math.floor(bbox.xMin), jMin: Math.floor(bbox.yMin),
       iMax: Math.ceil(bbox.xMax), jMax: Math.ceil(bbox.yMax),
-      mode: 'boundary', primitives,
+      mode: 'boundary', primitives, tiePrimitives, trueContourPrimitives,
     };
   }
   const region = sizedBoardRegion({ x: 0, y: 0, w: editor._mW, h: editor._mH }, PATTERN.size);
@@ -2398,7 +2559,28 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
     const resolved = await _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths);
     boundaryEl = resolved.boundaryEl;
     boundaryEls = resolved.boundaryEls;
-    extent = _resolveExtent(editor, PATTERN, resolved.primitives);
+    // H23 item 66: a SECOND resolve, tie-specific, inset further by the
+    // declared TIE_CONTOUR_CLEARANCE_IN (on top of the tie's own
+    // half-width) — same element, same edge rule, only the half-width
+    // differs. _resolveBoundaryPrimitives itself still forces 0 in
+    // centerline mode regardless of what's passed, so this never fights
+    // Fred's own deliberate "touch the centerline" choice there.
+    const tieHalfWidth = widths.ties / 2 + TIE_CONTOUR_CLEARANCE_IN;
+    const tieResolved = await _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths, tieHalfWidth, resolved.primitives);
+    // H23 item 66: a THIRD resolve, the contour at ZERO inset (its own
+    // true, raw position) -- the widened inset above is a polygon-OFFSET
+    // operation, and a naive offset is not perfectly uniform everywhere on
+    // a concave shape (MEASURED live, 50-seed sweep: a tie bridging two
+    // real rails can still land short of the declared clearance even
+    // though BOTH the clip above and the anchored-tie check below already
+    // ran — the inset itself, not the logic consuming it, under-shrank
+    // near a concave feature). `computePattern`'s own emission loop uses
+    // this as a last, inset-algorithm-INDEPENDENT distance check, the
+    // same direct point-to-primitive measurement this item's own test
+    // uses as its own oracle -- never trusting the offset's own accuracy
+    // alone for a declared physical clearance.
+    const rawResolved = await _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths, 0);
+    extent = _resolveExtent(editor, PATTERN, resolved.primitives, tieResolved.primitives, rawResolved.primitives);
   } else {
     extent = _resolveExtent(editor, PATTERN);
   }
