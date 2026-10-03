@@ -8193,3 +8193,77 @@ exactly one document remained open, Fred's own "Untitled" -- never touched. No r
 
 Reported "Fusion released" to the advisor with full results so Fusion could hand to seat b5. Resuming F31
 item 2c now.
+
+## 2026-10-03: F31 item 2c -- joinable joints, manual toggle (T14/T15/T16/T17) (seat C)
+
+Dispatch: Fred's own words, "on the Flask the side can sometimes be one piece, I'd want a manual toggle" --
+generic across every two-part-waist template (T14 Sand Timer, T15 Flask, T16 Arched Funnel, T17 Tulip), done
+on the code/test side while Fusion was with seat b5.
+
+Research first: dispatched an Explore agent to map the frame record, declared_profiles.py's own bar-splitting,
+the Send-frame payload plumbing, any existing tap-to-toggle UI precedent, and the item-61 declared-bar-list
+mechanism -- it found a real, non-obvious gap: `solid_coordinator._declared_frame()` re-resolves the template
+FRESH FROM DISK at solid-build time, with no access to the sketch-build's own in-memory mutated template (the
+same reason panel_lip.py/inset_window.py's own module docstrings already flag for their own, simpler cases --
+but both of THOSE sidestep it with fixed, payload-independent curve names, which a genuinely record-dependent
+joined set cannot do). Two open design questions (the on-canvas marker's own visual, and what "needs a 1.10 in
+blank" actually measures) went to the advisor rather than being guessed; both came back answered before any
+UI code was written: reuse the Frame tab's existing round handle look (filled=joined, hollow=split, same
+hover feedback as every other handle), and blank width = the narrowest rectangle containing the merged piece's
+own outer+inner outline, measured perpendicular to the chord between its two end miters, rounded to 1/16 in.
+
+**Declaration** (`regions.joinable`, each of T14/T15/T16/T17's own template_data.py): two mirrored joints per
+template, each naming its own two bar names and which declared miter (by `Source` id) flips to
+`IsConstruction: True` when joined.
+
+**Fusion build side** (`fb_engine/joined_miters.py`, mirrors panel_lip.py's/inset_window.py's own
+`apply_X(template) -> template` shape): merges the two named bars' own curve lists into one, flips the one
+named miter, regenerates the "bars" feature's own `bodyNames`. The attribute-stamping gap above is handled by
+stamping the joined set as its OWN Fusion component attribute (`FrameBuilder.JoinedMiters`, alongside the
+existing `TemplateId` stamp) in `frame_engine.run_sketch_only`, read back and re-applied by
+`solid_coordinator._declared_frame()` before `declared_profiles.classify()` runs. Plumbed end to end:
+`core/frame-record.js` (`joinedMiters`, a template change resets it since joint ids are template-specific) ->
+`framePayload` -> `fb_engine/send_frame.py` (`joined_miters_of`) -> `frame_engine.py` `run_sketch_only`
+(applies the mutation + stamps the attribute) -> `solid_coordinator.py` (reads the attribute, re-applies the
+same mutation).
+
+**Editor UI** (built only after the advisor's own answers above, not guessed ahead of them): a small round
+marker at each joinable joint's own outer corner (`frameJoinMarkers`, editor-frame-profile.js, reusing
+`handleHoverVisual` -- the Frame tab's own existing handle look). Tapping toggles it AND its mirror together,
+one `editFrame` call (one undo step) -- `main/frame-panel.js`'s own pointerdown/pointermove wiring, checked
+BEFORE the drag-handle hit-test so a marker tap is never mistaken for the start of a drag. A read-only info
+line ("One piece: needs a 1 3/4 in blank.") shows the computed blank width (`blankWidthIn`/
+`formatBlankWidthIn`), same `frameFitWarning`-style read-only-computed-text pattern every other such line in
+this panel already uses.
+
+**Three real bugs found by the tests written for them, not by review** (each one WORTH recording so the next
+reader trusts the test suite's own coverage, not just this paragraph's claim that it exists):
+1. `frameJoinMarkers`' first cut located a joint's own corner via its declared `miterSource`'s bare outline
+   id -- WRONG: that id encodes the Fusion-side CCW-arc `:S`/`:E` swap convention (p02_02_loop.py's own
+   docstring), a completely different numbering from `frameMiters()`'s own JS-side travel-order `bIdx`. T14's
+   own pinchR landed on the BR corner instead. Caught by a mirror-symmetry test (tests/frame-join-markers.
+   test.js), not by eyeballing the numbers. Fixed: derive the corner from the joint's own declared `bars`
+   pair instead (the later of the two bars' own outline positions) -- a purely structural computation, no
+   dependency on the unrelated Fusion-side naming.
+2. `editor._frameJoinMarkers` was only ever SET inside `_drawFrameProfile`'s own Frame-tab branch, so
+   switching to the Artwork tab left it STALE (the exact same trap `_frameHandles = []`'s own unconditional
+   reset already exists to avoid, and I nearly reintroduced it). Caught by a dedicated DOM test
+   (tests/frame-join-ui.test.js), fixed with the same unconditional reset before the tab check.
+3. Mutation-tested the mirror-pair toggle itself (`main/frame-panel.js` `_toggleJoinMarker`): deliberately
+   dropping the mirror from the toggled pair was caught by 2 of the 6 DOM tests in frame-join-ui.test.js.
+   Reverted before committing.
+
+**LIVE FUSION VERIFICATION NOT YET RUN** -- this item's own completion bar ("each of the 4 templates with the
+waist joined and split, all 100% BUILT, plus shots") needs Fusion, which was handed to seat b5 partway through
+this work. The attribute-stamping mechanism (sketch-build time -> solid-build time) is the one piece here with
+no non-Fusion precedent to mutation-test against -- reviewed and internally consistent (every other piece is
+pure-Python/pure-JS tested, including the Fusion-side mutator itself via `declared_profiles.classify()`), but
+not yet confirmed against a real Fusion build. Will run the live sweep (all 4 templates x joined x split) once
+Fusion is free again.
+
+Full suite green: Python 999/999 (25 pre-existing skips, unrelated), JS vitest 171 files / 3342 tests.
+Committed: `fb_engine/joined_miters.py` (new), `fb_engine/test_joined_miters.py` (new), `send_frame.py`,
+`frame_engine.py`, `solid_coordinator.py`, `test_send_frame.py`, all 4 templates' `template_data.py`,
+`core/frame-record.js`, `editor-frame-profile.js`, `frame-panel.js`, `bspline_gen_palette.html`, `frame-defs.
+json`/`.js` (regenerated), and 3 new test files (`frame-join-markers.test.js`, `frame-join-ui.test.js`,
+`joined-miters-record.test.js`). Passing back.
