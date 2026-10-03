@@ -8745,3 +8745,61 @@ pre-existing skips).
 **Not yet done, genuinely gated on Fusion (brief: "App-only, no Fusion except one live Send at the
 end"):** `fusion_holder.txt` reads `none` right now, not `de` -- waiting for the advisor's own grant
 before the one live Send this item's own brief calls for.
+
+
+### Addendum, same day: the one live Send verification (Fusion came free, fusion_holder.txt discipline observed)
+
+Advisor's dispatch: do the one live Send this item's brief always reserved for Fusion, close only
+the resulting scratch doc via its own tracked handle, release the holder, pass back. Confirmed
+`fusion_holder.txt` read `de` before touching Fusion, same discipline as every prior call this
+engagement.
+
+**Why a browser-side STEP generation instead of the real `isFusionMode` bridge:** a standalone
+headless-Chrome session has no Fusion-hosted palette, so the actual wire transport
+(`sendFusionPayloadChunked`, `core/fusion-bridge.js`) can't run outside Fusion itself. But
+`generateThickenedStep()` (`core/stepWriter.js`) is pure JS -- it turns a `generateHeightmap()`
+output straight into real STEP text with no Fusion API involved. So the verification path was: drive
+the REAL Photo tab controls live in headless Chrome (Brick 1, `{straighten:33}`, the advisor's own
+crop `{x:0.4854,y:0.3710,w:0.4729,h:0.0647}`, `{black:0.3,white:0.75}` levels, `density:0`,
+`carveZ:0.6` -- same settings the brick-feasibility check used), call `generateThickenedStep()` live
+in the page on the real `lastResult` the UI had just produced, and write the returned STEP text to a
+local `.step` file. This is the exact same geometry function a real Send would hand to the bridge --
+only the wire hop is swapped for a local file. STEP generated cleanly: 3,320,349 bytes, grid 141x181,
+zero JS errors.
+
+**Import into Fusion** via `app.importManager.createSTEPImportOptions()` /
+`importToNewDocument()` -- genuine CAD import, not a script-side approximation. Before touching
+anything, printed the baseline doc list to know what NOT to touch: `['Untitled', 'DECAL test -
+2026-10-03', 'DECAL edge test', 'ITEM71 colour decal live test - 2026-10-03']` (4 docs, Fred's own).
+Stamped a `userParameters` fingerprint (`adv_f34item1_fp`) onto the new doc's design immediately
+after import, specifically so the close step could find it later by a property instead of by name or
+position.
+
+**The exact fusion360-quirks hazard, hit and resolved properly, not glossed over:** `doc.name` after
+import read `'Untitled'` -- IDENTICAL to the name already in the pre-existing baseline list. Per the
+skill's own explicit rule ("Fusion document names are not unique -- never close by name"), name match
+alone proved nothing. Verified properly instead: `app.documents.count` went from 4 (baseline) to 5
+right after import, and a full re-list showed the SAME 4 original names plus a 5th `'Untitled'`
+entry that was the active document -- confirming `importToNewDocument` really did create a distinct
+5th document object that merely happens to share Fusion's generic default name with Fred's own first
+doc, not a reuse of it. Re-confirmed the correct target a second way before touching it: searched all
+5 open documents for the one whose design actually carried the `adv_f34item1_fp` user parameter --
+found exactly one match, at index 4, flagged as the active document, containing exactly one body
+(`Body1`, volume 139.4572) and zero sub-occurrences -- a clean, unambiguous scratch doc, not Fred's.
+
+**Result:** `Body1`, volume 139.4572 cm^3, bbox min `[-8.89, -11.43, -0.368]` / max `[8.89, 11.43,
+0.335]` -- bbox footprint (17.78 x 22.86) is an exact match for a 7x9in board in cm
+(7in=17.78cm, 9in=22.86cm), thickness range ~0.7cm consistent with a thin relief panel. Zero import
+errors. Screenshot (`shots/seatC/f34item1_brick1_step_import_fusion.png`) shows a clean rectangular
+board with visible brick-coursing texture (horizontal rows, offset vertical joints) -- the same
+pattern the earlier app-side brick-feasibility screenshots showed, now confirmed surviving a REAL
+STEP round-trip into Fusion, not just the in-browser Three.js preview.
+
+**Close, verified before and after:** found the target doc again by its `adv_f34item1_fp` fingerprint
+(not by name/index), closed that exact handle (`target.close(False)`), then re-listed
+`app.documents`: count back to 4, names `['Untitled', 'DECAL test - 2026-10-03', 'DECAL edge test',
+'ITEM71 colour decal live test - 2026-10-03']` -- byte-for-byte the original baseline. Fred's own 4
+documents were never touched. `fusion_holder.txt` released back to `none` immediately after.
+
+F34 item 1 is now fully verified end-to-end: app-side (filter math, UI, persistence, tests) AND the
+one live Fusion Send this item's brief reserved for the end. Nothing left open on this item.
