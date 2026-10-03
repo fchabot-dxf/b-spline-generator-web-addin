@@ -109,6 +109,20 @@ def get_block(ui_data=None):
         # (this module's own docstring: symmetric by construction).
         {'ID': 'arch', 'Type': 'Arc3Point', 'Points': [
             [f'-({TOP_X})', TOP_Y], ['0', HH], [TOP_X, TOP_Y]], 'StartID': 'arch:S', 'EndID': 'arch:E'},
+
+        # F33 item 1: all three arcs above are lone miters (no Tangent chain to hold their shape) --
+        # a bare Coincident weld (p02_03_welds.py) only pins an ARC'S OWN endpoint, it does not stop
+        # addByThreePoints' own branch from being reinterpreted onto the reflex (long) way around once
+        # that endpoint gets nudged by a later constraint (fusion360-quirks skill, "Fix the arc's own
+        # endpoints directly -- never rely on a Coincident chain to propagate fixedness"; same recipe
+        # as sketches/template_14/phases/p02_02_loop.py's own copy of this fix). UnseededOnly: a
+        # seeded Send replaces these Points with the app's own absolute in-position values
+        # (apply_seed_geometry), so there the arc is never left with this ambiguity to begin with;
+        # this is purely the literal/unseeded path's own fix (Sketch Builder, record_frame_parity.py
+        # goldens).
+        {'Type': 'Fix', 'Targets': ['lower_R:S', 'lower_R:E'], 'UnseededOnly': True},
+        {'Type': 'Fix', 'Targets': ['lower_L:S', 'lower_L:E'], 'UnseededOnly': True},
+        {'Type': 'Fix', 'Targets': ['arch:S', 'arch:E'], 'UnseededOnly': True},
     ]
 
     return {
