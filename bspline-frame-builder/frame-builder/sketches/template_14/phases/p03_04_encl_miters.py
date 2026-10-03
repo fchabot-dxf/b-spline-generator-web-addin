@@ -9,8 +9,13 @@ def get_block(ui_data=None):
     owner piece p03_03's own InnerID choice did, so the two can never drift apart.
       topR   -> upper_R:E   (upper_R's own physical topR end is its :E -- swapped, see p02_02)
       pinchR -> upper_R:S   (upper_R's own physical pinchR end is its :S -- swapped, see p02_02)
-      BR     -> lower_R:S   (lower_R's own physical BR end is its :S -- swapped, see p02_02)
-      BL     -> lower_L:E   (lower_L's own physical BL end is its :E -- swapped, see p02_02)
+      BR     -> base:S      (base's own physical BR end is its :S) -- labelled under `base`, not
+                             lower_R: p03_03's own module docstring explains why (an unavoidable
+                             declaredMiterJointIndices index collision if every corner here used its
+                             own arc's tag, the way Template 16/17 always do) -- `base:S` and
+                             `lower_R:S` are the SAME physical point either way.
+      BL     -> base:E      (base's own physical BL end is its :E) -- labelled under `base`, same
+                             reason as BR (`base:E` and `lower_L:E` are the SAME physical point).
       pinchL -> upper_L:E   (upper_L's own physical pinchL end is its :E -- swapped, see p02_02)
       topL   -> upper_L:S   (upper_L's own physical topL end is its :S -- swapped, see p02_02)
     """
@@ -20,8 +25,8 @@ def get_block(ui_data=None):
         "Miters": [
             {'Source': 'proj_upper_R:E',  'Target': 'inner_proj_upper_R:E',  'IsConstruction': False},
             {'Source': 'proj_upper_R:S',  'Target': 'inner_proj_upper_R:S',  'IsConstruction': False},
-            {'Source': 'proj_lower_R:S',  'Target': 'inner_proj_lower_R:S',  'IsConstruction': False},
-            {'Source': 'proj_lower_L:E',  'Target': 'inner_proj_lower_L:E',  'IsConstruction': False},
+            {'Source': 'proj_base:S',     'Target': 'inner_proj_base:S',     'IsConstruction': False},
+            {'Source': 'proj_base:E',     'Target': 'inner_proj_base:E',     'IsConstruction': False},
             {'Source': 'proj_upper_L:E',  'Target': 'inner_proj_upper_L:E',  'IsConstruction': False},
             {'Source': 'proj_upper_L:S',  'Target': 'inner_proj_upper_L:S',  'IsConstruction': False},
         ]

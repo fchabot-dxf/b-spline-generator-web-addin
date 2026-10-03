@@ -50,6 +50,7 @@ import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
   TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, iShapeConstruction, taperAngleForTopCornerX,
   diamondTopHourglassConstruction, diamondTopHourglassPinchConstruction, archedFunnelConstruction,
+  sandTimerConstruction,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -249,6 +250,43 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         key: 'upperCurveFrac', label: 'Upper side curve', axis: 'x', handleKind: 'position',
         anchor: { x: cx0 + g.upperGeom.via.x, y: cy0 + g.upperGeom.via.y },
         valueFromWorld: sagValue('upperCurveFrac', { mx: cx0 + g.upperGeom.mx, my: cy0 + g.upperGeom.my, nx: g.upperGeom.nx, ny: g.upperGeom.ny }),
+      },
+    ]));
+  }
+
+  if (preset === 'sandTimer') {
+    // T84 item 5 (frame-only preset, the SAME construction -- sandTimerConstruction): topWidth
+    // anchors at topR (x only -- this template's own top is FLAT, unlike archedFunnel's own
+    // arched one, so there is no "rise" twin sharing topR's y). pinchReachFrac/pinchHeightFrac
+    // share pinchR the same way archedFunnel's own waistWidthFrac/waistHeightFrac share waistR --
+    // pinchReachFrac's own relationship is INVERTED (pinchR moves TOWARD the centreline as reach
+    // increases: pinchHalf = hw*(1-reach)), so its own valueFromWorld is `1 - (pt.x-cx0)/hw`, not
+    // the plain ratio every other hw-basis handle here uses. bulgeFrac anchors at its own arc's
+    // VIA point (archedFunnel's own convention for a param neither chord end moves with), via
+    // lowerGeom (the SAME choice archedFunnel's own "Lower bulge" handle makes -- bulgeFrac is one
+    // shared value across all 4 side arcs here, so either geom would do).
+    const g = sandTimerConstruction(region, resolvedParams);
+    const sagValue = (key, geom) => (pt) => within(key, ((pt.x - geom.mx) * geom.nx + (pt.y - geom.my) * geom.ny) / hw);
+    return withRange(pick([
+      {
+        key: 'topWidth', label: 'Top width', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.topR.x, y: cy0 + g.topR.y },
+        valueFromWorld: (pt) => within('topWidth', (pt.x - cx0) / hw),
+      },
+      {
+        key: 'pinchReachFrac', label: 'Pinch reach', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.pinchR.x, y: cy0 + g.pinchR.y },
+        valueFromWorld: (pt) => within('pinchReachFrac', 1 - (pt.x - cx0) / hw),
+      },
+      {
+        key: 'pinchHeightFrac', label: 'Pinch height', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0 + g.pinchR.x * 0.6, y: cy0 + g.pinchR.y },
+        valueFromWorld: (pt) => within('pinchHeightFrac', (pt.y - (cy0 - hh)) / (2 * hh)),
+      },
+      {
+        key: 'bulgeFrac', label: 'Pinch bulge', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.lowerGeom.via.x, y: cy0 + g.lowerGeom.via.y },
+        valueFromWorld: sagValue('bulgeFrac', { mx: cx0 + g.lowerGeom.mx, my: cy0 + g.lowerGeom.my, nx: g.lowerGeom.nx, ny: g.lowerGeom.ny }),
       },
     ]));
   }
@@ -791,6 +829,16 @@ export const HANDLE_SEGMENT_INDEX = {
   // `mirror` table bit for bit) -- unlike T7/T11 above, no declared SEGMENT_PAIRS table is needed.
   archedFunnel: { topWidth: 5, archRiseFrac: 5, waistWidthFrac: 1, waistHeightFrac: 1, bulgeFrac: 1 },
   tulip: { topWidth: 5, archRiseFrac: 5, waistWidthFrac: 1, waistHeightFrac: 1, bulgeFrac: 1, upperCurveFrac: 0 },
+  // T84 item 5, Template 14 (6 pieces, editor-shape-lattice-generator.js's own `_solveSandTimer`
+  // doc comment: 0 upper_R, 1 lower_R, 2 base, 3 lower_L, 4 upper_L, 5 top): topWidth moves the
+  // top's own chord (5); pinchReachFrac/pinchHeightFrac/bulgeFrac all touch pinchR, shared between
+  // upper_R and lower_R -- grouped with the lower bulge (1), same convention as archedFunnel's own
+  // waistWidthFrac/waistHeightFrac/bulgeFrac grouping. The generic mirror formula
+  // (mirrorSegmentIndex) gives the CORRECT pairing here too (confirmed, not assumed: same even
+  // 6-piece loop shape as archedFunnel/tulip, mirrorSegmentIndex(i,6) is exactly [4,3,2,1,0,5],
+  // matching _solveSandTimer's own declared `mirror` table bit for bit) -- no declared
+  // SEGMENT_PAIRS table needed.
+  sandTimer: { topWidth: 5, pinchReachFrac: 1, bulgeFrac: 1, pinchHeightFrac: 1 },
 };
 
 /** T8 DIPPED TOP + LEFT-ONLY WAVE: `controlledSegments`' own declared pairing (the shape has no bilateral

@@ -42,6 +42,8 @@ TEMPLATE_META = {
                       'frame_upper_left', 'frame_arch'], 6),
     'template_17': (['frame_upper_right', 'frame_lower_right', 'frame_base', 'frame_lower_left',
                       'frame_upper_left', 'frame_arch'], 6),
+    'template_14': (['frame_upper_right', 'frame_lower_right', 'frame_base', 'frame_lower_left',
+                      'frame_upper_left', 'frame_top'], 6),
 }
 
 HOLD = sys.modules.get('__item61_fullsw')

@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "58161fb0f77c46b74c3aa2c18c5f2612fe3c3b7a122fa3481f284dacaaa6902a",
+  "sourceHash": "bd41140696053b8791a329d5477ebf97bf59fcb7638aefec7e9221f2219e58f7",
   "templates": [
     {
       "features": [
@@ -7316,6 +7316,1441 @@ export default {
                 {
                   "Source": "proj_horn_BL:S",
                   "Target": "inner_proj_horn_BL:S"
+                }
+              ],
+              "Name": "Enclosure Miters",
+              "PhaseFile": "p03_04_encl_miters.py",
+              "PhaseID": "p03_04_encl_miters"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Center": [
+                    "0.001",
+                    "0.001"
+                  ],
+                  "ID": "surround_rect",
+                  "LineIDs": [
+                    "surround_top",
+                    "surround_right",
+                    "surround_bottom",
+                    "surround_left"
+                  ],
+                  "Size": [
+                    "widthIn * 1.25",
+                    "heightIn * 1.25"
+                  ],
+                  "Type": "RectangleCenter"
+                },
+                {
+                  "AllowNudge": true,
+                  "Targets": [
+                    "surround_rect:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Enclosure Surround Rectangle",
+              "PhaseFile": "p03_05_encl_surround_rect.py",
+              "PhaseID": "p03_05_encl_surround_rect"
+            }
+          ],
+          "Label": "Frame Enclosure",
+          "Name": "3_frame_enclosure",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "Frame thickness",
+              "Max": 1.5,
+              "Min": 0.25,
+              "Name": "frame_thickness",
+              "Unit": "in",
+              "Val": 0.75
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "features": [
+        {
+          "bodyNames": [
+            "frame_upper_right",
+            "frame_lower_right",
+            "frame_base",
+            "frame_lower_left",
+            "frame_upper_left",
+            "frame_top"
+          ],
+          "extent": {
+            "offset": "0 in",
+            "toFace": "core.underside"
+          },
+          "id": "bars",
+          "op": "newBody",
+          "region": "outline-minus-inner",
+          "splitBy": "miters",
+          "start": "frame_height_offset",
+          "taper": "0 deg"
+        },
+        {
+          "extent": "throughAll",
+          "id": "trim",
+          "op": "cut",
+          "region": "surround-minus-outline",
+          "start": "0 in",
+          "taper": "0 deg"
+        }
+      ],
+      "handleMigrations": {},
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "generateRange": {
+            "max": 1.0,
+            "min": 0.57
+          },
+          "key": "topWidth",
+          "label": "Top width"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "generateRange": {
+            "max": 0.61,
+            "min": 0.3
+          },
+          "key": "pinchReachFrac",
+          "label": "Pinch reach"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "generateRange": {
+            "max": 0.146,
+            "min": 0.07
+          },
+          "key": "bulgeFrac",
+          "label": "Pinch bulge"
+        },
+        {
+          "basis": "h",
+          "binding": "seeded",
+          "generateRange": {
+            "max": 0.57,
+            "min": 0.43
+          },
+          "key": "pinchHeightFrac",
+          "label": "Pinch height"
+        }
+      ],
+      "hidden": false,
+      "id": "template_14",
+      "name": "Template 14 - Sand Timer",
+      "params": [
+        {
+          "category": "Frame Spec",
+          "default": 7.0,
+          "label": "Width (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "widthIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 9.0,
+          "label": "Height (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "heightIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.25,
+          "expose": true,
+          "label": "BBox Border",
+          "min": 0.0,
+          "name": "boundingboxoffset",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(widthIn/2 - boundingboxoffset)",
+          "label": "t14_hw",
+          "name": "t14_hw",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(heightIn/2 - boundingboxoffset)",
+          "label": "t14_hh",
+          "name": "t14_hh",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "0.4*t14_hw",
+          "label": "t14_pinchHalf",
+          "name": "t14_pinchHalf",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_hh*(1 - 2*0.5)",
+          "label": "t14_pinchY",
+          "name": "t14_pinchY",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "0.14*t14_hw",
+          "label": "t14_bulge",
+          "name": "t14_bulge",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_pinchHalf - (1.0*t14_hw)",
+          "label": "t14_ur_dx",
+          "name": "t14_ur_dx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_pinchY - t14_hh",
+          "label": "t14_ur_dy",
+          "name": "t14_ur_dy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "sqrt(t14_ur_dx*t14_ur_dx + t14_ur_dy*t14_ur_dy)",
+          "label": "t14_ur_chordlen",
+          "name": "t14_ur_chordlen",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "-t14_ur_dy / t14_ur_chordlen",
+          "label": "t14_ur_nx",
+          "name": "t14_ur_nx",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_ur_dx / t14_ur_chordlen",
+          "label": "t14_ur_ny",
+          "name": "t14_ur_ny",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_ur_chordlen/2",
+          "label": "t14_ur_halfchord",
+          "name": "t14_ur_halfchord",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_ur_halfchord*t14_ur_halfchord + t14_bulge*t14_bulge)/(2*t14_bulge)",
+          "label": "t14_ur_r",
+          "name": "t14_ur_r",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "((1.0*t14_hw) + t14_pinchHalf)/2 + t14_ur_nx*(t14_bulge - t14_ur_r)",
+          "label": "t14_ur_cx",
+          "name": "t14_ur_cx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_hh + t14_pinchY)/2 + t14_ur_ny*(t14_bulge - t14_ur_r)",
+          "label": "t14_ur_cy",
+          "name": "t14_ur_cy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "((1.0*t14_hw) - t14_ur_cx)/t14_ur_r",
+          "label": "t14_ur_u0x",
+          "name": "t14_ur_u0x",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_hh - t14_ur_cy)/t14_ur_r",
+          "label": "t14_ur_u0y",
+          "name": "t14_ur_u0y",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_pinchHalf - t14_ur_cx)/t14_ur_r",
+          "label": "t14_ur_u1x",
+          "name": "t14_ur_u1x",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_pinchY - t14_ur_cy)/t14_ur_r",
+          "label": "t14_ur_u1y",
+          "name": "t14_ur_u1y",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_ur_u0x + t14_ur_u1x",
+          "label": "t14_ur_bx",
+          "name": "t14_ur_bx",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_ur_u0y + t14_ur_u1y",
+          "label": "t14_ur_by",
+          "name": "t14_ur_by",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "sqrt(t14_ur_bx*t14_ur_bx + t14_ur_by*t14_ur_by)",
+          "label": "t14_ur_blen",
+          "name": "t14_ur_blen",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_ur_cx + t14_ur_r*(t14_ur_bx/t14_ur_blen)",
+          "label": "t14_ur_vx",
+          "name": "t14_ur_vx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_ur_cy + t14_ur_r*(t14_ur_by/t14_ur_blen)",
+          "label": "t14_ur_vy",
+          "name": "t14_ur_vy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_hw - t14_pinchHalf",
+          "label": "t14_lr_dx",
+          "name": "t14_lr_dx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(-t14_hh) - t14_pinchY",
+          "label": "t14_lr_dy",
+          "name": "t14_lr_dy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "sqrt(t14_lr_dx*t14_lr_dx + t14_lr_dy*t14_lr_dy)",
+          "label": "t14_lr_chordlen",
+          "name": "t14_lr_chordlen",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "-t14_lr_dy / t14_lr_chordlen",
+          "label": "t14_lr_nx",
+          "name": "t14_lr_nx",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_lr_dx / t14_lr_chordlen",
+          "label": "t14_lr_ny",
+          "name": "t14_lr_ny",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_lr_chordlen/2",
+          "label": "t14_lr_halfchord",
+          "name": "t14_lr_halfchord",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_lr_halfchord*t14_lr_halfchord + t14_bulge*t14_bulge)/(2*t14_bulge)",
+          "label": "t14_lr_r",
+          "name": "t14_lr_r",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_pinchHalf + t14_hw)/2 + t14_lr_nx*(t14_bulge - t14_lr_r)",
+          "label": "t14_lr_cx",
+          "name": "t14_lr_cx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_pinchY + (-t14_hh))/2 + t14_lr_ny*(t14_bulge - t14_lr_r)",
+          "label": "t14_lr_cy",
+          "name": "t14_lr_cy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_pinchHalf - t14_lr_cx)/t14_lr_r",
+          "label": "t14_lr_u0x",
+          "name": "t14_lr_u0x",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_pinchY - t14_lr_cy)/t14_lr_r",
+          "label": "t14_lr_u0y",
+          "name": "t14_lr_u0y",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "(t14_hw - t14_lr_cx)/t14_lr_r",
+          "label": "t14_lr_u1x",
+          "name": "t14_lr_u1x",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "((-t14_hh) - t14_lr_cy)/t14_lr_r",
+          "label": "t14_lr_u1y",
+          "name": "t14_lr_u1y",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_lr_u0x + t14_lr_u1x",
+          "label": "t14_lr_bx",
+          "name": "t14_lr_bx",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_lr_u0y + t14_lr_u1y",
+          "label": "t14_lr_by",
+          "name": "t14_lr_by",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "sqrt(t14_lr_bx*t14_lr_bx + t14_lr_by*t14_lr_by)",
+          "label": "t14_lr_blen",
+          "name": "t14_lr_blen",
+          "owner": "frame",
+          "unit": ""
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_lr_cx + t14_lr_r*(t14_lr_bx/t14_lr_blen)",
+          "label": "t14_lr_vx",
+          "name": "t14_lr_vx",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "T14 Geometry",
+          "default": "t14_lr_cy + t14_lr_r*(t14_lr_by/t14_lr_blen)",
+          "label": "t14_lr_vy",
+          "name": "t14_lr_vy",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.75,
+          "expose": true,
+          "label": "Frame thickness",
+          "max": 1.5,
+          "min": 0.25,
+          "name": "frame_thickness",
+          "owner": "frame",
+          "unit": "in"
+        }
+      ],
+      "prefix": "T14",
+      "regions": {
+        "bars": [
+          {
+            "curves": [
+              "proj_upper_R"
+            ],
+            "name": "frame_upper_right"
+          },
+          {
+            "curves": [
+              "proj_lower_R"
+            ],
+            "name": "frame_lower_right"
+          },
+          {
+            "curves": [
+              "proj_base"
+            ],
+            "name": "frame_base"
+          },
+          {
+            "curves": [
+              "proj_lower_L"
+            ],
+            "name": "frame_lower_left"
+          },
+          {
+            "curves": [
+              "proj_upper_L"
+            ],
+            "name": "frame_upper_left"
+          },
+          {
+            "curves": [
+              "proj_top"
+            ],
+            "name": "frame_top"
+          }
+        ],
+        "inner": [
+          "inner_proj_upper_R",
+          "inner_proj_lower_R",
+          "inner_proj_base",
+          "inner_proj_lower_L",
+          "inner_proj_upper_L",
+          "inner_proj_top"
+        ],
+        "miters": [
+          [
+            "proj_upper_R:E",
+            "inner_proj_upper_R:E"
+          ],
+          [
+            "proj_upper_R:S",
+            "inner_proj_upper_R:S"
+          ],
+          [
+            "proj_base:S",
+            "inner_proj_base:S"
+          ],
+          [
+            "proj_base:E",
+            "inner_proj_base:E"
+          ],
+          [
+            "proj_upper_L:E",
+            "inner_proj_upper_L:E"
+          ],
+          [
+            "proj_upper_L:S",
+            "inner_proj_upper_L:S"
+          ]
+        ],
+        "outline": [
+          "proj_upper_R",
+          "proj_lower_R",
+          "proj_base",
+          "proj_lower_L",
+          "proj_upper_L",
+          "proj_top"
+        ],
+        "surround": "surround_rect"
+      },
+      "seedMap": [
+        {
+          "id": "upper_R",
+          "kind": "arc",
+          "prim": 0,
+          "reverse": false
+        },
+        {
+          "id": "lower_R",
+          "kind": "arc",
+          "prim": 1,
+          "reverse": false
+        },
+        {
+          "id": "base",
+          "kind": "line",
+          "prim": 2,
+          "reverse": false
+        },
+        {
+          "id": "lower_L",
+          "kind": "arc",
+          "prim": 3,
+          "reverse": false
+        },
+        {
+          "id": "upper_L",
+          "kind": "arc",
+          "prim": 4,
+          "reverse": false
+        },
+        {
+          "id": "top",
+          "kind": "line",
+          "prim": 5,
+          "reverse": false
+        }
+      ],
+      "shapeModel": {
+        "features": {
+          "bulgeFrac": {
+            "hh": 0.0,
+            "hw": 0.14
+          },
+          "pinchHeightFrac": {
+            "hh": 1.0,
+            "hw": 0.0
+          },
+          "pinchReachFrac": {
+            "hh": 0.0,
+            "hw": 0.6
+          },
+          "topWidth": {
+            "hh": 0.0,
+            "hw": 1.0
+          }
+        },
+        "fit": {
+          "exactAtFittedSizes": false,
+          "excluded": [],
+          "fittedFrom": [],
+          "maxResidualIn": null,
+          "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+          "residualsIn": {}
+        },
+        "provisional": {
+          "baseModel": null,
+          "bulgeFracOfHw": 0.14,
+          "pinchHeightFracOfH": 0.5,
+          "pinchReachFracOfHw": 0.6,
+          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+          "topWidthFracOfHw": 1.0
+        }
+      },
+      "silhouettePreset": "sandTimer",
+      "sketches": [
+        {
+          "Blocks": [
+            {
+              "Constraints": [
+                {
+                  "Targets": [
+                    "BB_RECT:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Dimensions": [
+                {
+                  "Expression": "widthIn",
+                  "Name": "dim_width",
+                  "Target": "BB_top"
+                },
+                {
+                  "Expression": "heightIn",
+                  "Name": "dim_height",
+                  "Target": "BB_right"
+                }
+              ],
+              "Geometry": [
+                {
+                  "Center": [
+                    0.0,
+                    0.0
+                  ],
+                  "ID": "BB_RECT",
+                  "LineIDs": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "Size": [
+                    "widthIn",
+                    "heightIn"
+                  ],
+                  "Type": "Rectangle"
+                }
+              ],
+              "Name": "BB Layout",
+              "PhaseFile": "p01_01_bb_layout.py",
+              "PhaseID": "p01_01_bb_layout"
+            },
+            {
+              "Name": "Safe Zone Offset",
+              "PhaseFile": "p01_02_bb_offset.py",
+              "PhaseID": "p01_02_bb_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "boundingboxoffset",
+                  "SourceID": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "TargetIDs": [
+                    "offset_BB_top",
+                    "offset_BB_right",
+                    "offset_BB_bottom",
+                    "offset_BB_left"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            }
+          ],
+          "Label": "Bounding Box",
+          "Name": "1_bounding_box",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Label": "Width (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "widthIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 7.0
+            },
+            {
+              "Category": "Frame Spec",
+              "Label": "Height (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "heightIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 9.0
+            },
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "BBox Border",
+              "Min": 0.0,
+              "Name": "boundingboxoffset",
+              "Unit": "in",
+              "Val": 0.25
+            }
+          ]
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Projections",
+              "PhaseFile": "p02_01_projs.py",
+              "PhaseID": "p02_01_projs",
+              "Projections": [
+                {
+                  "SourceID": "offset_BB_bottom:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BR"
+                },
+                {
+                  "SourceID": "offset_BB_left:S",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_corner_BL"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "EndID": "upper_R:E",
+                  "ID": "upper_R",
+                  "Points": [
+                    [
+                      "(1.0*t14_hw)",
+                      "t14_hh"
+                    ],
+                    [
+                      "t14_ur_vx",
+                      "t14_ur_vy"
+                    ],
+                    [
+                      "t14_pinchHalf",
+                      "t14_pinchY"
+                    ]
+                  ],
+                  "StartID": "upper_R:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "lower_R:E",
+                  "ID": "lower_R",
+                  "Points": [
+                    [
+                      "t14_pinchHalf",
+                      "t14_pinchY"
+                    ],
+                    [
+                      "t14_lr_vx",
+                      "t14_lr_vy"
+                    ],
+                    [
+                      "t14_hw",
+                      "-(t14_hh)"
+                    ]
+                  ],
+                  "StartID": "lower_R:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "base:E",
+                  "ID": "base",
+                  "Points": [
+                    [
+                      "t14_hw",
+                      "-(t14_hh)"
+                    ],
+                    [
+                      "-t14_hw",
+                      "-(t14_hh)"
+                    ]
+                  ],
+                  "StartID": "base:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "lower_L:E",
+                  "ID": "lower_L",
+                  "Points": [
+                    [
+                      "-t14_hw",
+                      "-(t14_hh)"
+                    ],
+                    [
+                      "-(t14_lr_vx)",
+                      "t14_lr_vy"
+                    ],
+                    [
+                      "-(t14_pinchHalf)",
+                      "t14_pinchY"
+                    ]
+                  ],
+                  "StartID": "lower_L:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "upper_L:E",
+                  "ID": "upper_L",
+                  "Points": [
+                    [
+                      "-(t14_pinchHalf)",
+                      "t14_pinchY"
+                    ],
+                    [
+                      "-(t14_ur_vx)",
+                      "t14_ur_vy"
+                    ],
+                    [
+                      "-((1.0*t14_hw))",
+                      "t14_hh"
+                    ]
+                  ],
+                  "StartID": "upper_L:S",
+                  "Type": "Arc3Point"
+                },
+                {
+                  "EndID": "top:E",
+                  "ID": "top",
+                  "Points": [
+                    [
+                      "-((1.0*t14_hw))",
+                      "t14_hh"
+                    ],
+                    [
+                      "(1.0*t14_hw)",
+                      "t14_hh"
+                    ]
+                  ],
+                  "StartID": "top:S",
+                  "Type": "Line"
+                }
+              ],
+              "Name": "Silhouette",
+              "PhaseFile": "p02_02_loop.py",
+              "PhaseID": "p02_02_loop"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Name": "topR_weld",
+                  "Targets": [
+                    "top:E",
+                    "upper_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "pinchR_weld",
+                  "Targets": [
+                    "upper_R:S",
+                    "lower_R:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "base:S",
+                    "proj_off_corner_BR"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "BR_weld",
+                  "Targets": [
+                    "lower_R:S",
+                    "base:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "lower_L:E",
+                    "proj_off_corner_BL"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "BL_weld",
+                  "Targets": [
+                    "base:E",
+                    "lower_L:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "pinchL_weld",
+                  "Targets": [
+                    "lower_L:S",
+                    "upper_L:E"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Name": "topL_weld",
+                  "Targets": [
+                    "upper_L:S",
+                    "top:S"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Welds",
+              "PhaseFile": "p02_03_welds.py",
+              "PhaseID": "p02_03_welds"
+            }
+          ],
+          "Label": "Shape Outline",
+          "Name": "2_shape_outline",
+          "Parameters": [
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_hw",
+              "Name": "t14_hw",
+              "Unit": "in",
+              "Val": "(widthIn/2 - boundingboxoffset)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_hh",
+              "Name": "t14_hh",
+              "Unit": "in",
+              "Val": "(heightIn/2 - boundingboxoffset)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_pinchHalf",
+              "Name": "t14_pinchHalf",
+              "Unit": "in",
+              "Val": "0.4*t14_hw"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_pinchY",
+              "Name": "t14_pinchY",
+              "Unit": "in",
+              "Val": "t14_hh*(1 - 2*0.5)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_bulge",
+              "Name": "t14_bulge",
+              "Unit": "in",
+              "Val": "0.14*t14_hw"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_dx",
+              "Name": "t14_ur_dx",
+              "Unit": "in",
+              "Val": "t14_pinchHalf - (1.0*t14_hw)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_dy",
+              "Name": "t14_ur_dy",
+              "Unit": "in",
+              "Val": "t14_pinchY - t14_hh"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_chordlen",
+              "Name": "t14_ur_chordlen",
+              "Unit": "in",
+              "Val": "sqrt(t14_ur_dx*t14_ur_dx + t14_ur_dy*t14_ur_dy)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_nx",
+              "Name": "t14_ur_nx",
+              "Unit": "",
+              "Val": "-t14_ur_dy / t14_ur_chordlen"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_ny",
+              "Name": "t14_ur_ny",
+              "Unit": "",
+              "Val": "t14_ur_dx / t14_ur_chordlen"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_halfchord",
+              "Name": "t14_ur_halfchord",
+              "Unit": "in",
+              "Val": "t14_ur_chordlen/2"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_r",
+              "Name": "t14_ur_r",
+              "Unit": "in",
+              "Val": "(t14_ur_halfchord*t14_ur_halfchord + t14_bulge*t14_bulge)/(2*t14_bulge)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_cx",
+              "Name": "t14_ur_cx",
+              "Unit": "in",
+              "Val": "((1.0*t14_hw) + t14_pinchHalf)/2 + t14_ur_nx*(t14_bulge - t14_ur_r)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_cy",
+              "Name": "t14_ur_cy",
+              "Unit": "in",
+              "Val": "(t14_hh + t14_pinchY)/2 + t14_ur_ny*(t14_bulge - t14_ur_r)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_u0x",
+              "Name": "t14_ur_u0x",
+              "Unit": "",
+              "Val": "((1.0*t14_hw) - t14_ur_cx)/t14_ur_r"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_u0y",
+              "Name": "t14_ur_u0y",
+              "Unit": "",
+              "Val": "(t14_hh - t14_ur_cy)/t14_ur_r"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_u1x",
+              "Name": "t14_ur_u1x",
+              "Unit": "",
+              "Val": "(t14_pinchHalf - t14_ur_cx)/t14_ur_r"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_u1y",
+              "Name": "t14_ur_u1y",
+              "Unit": "",
+              "Val": "(t14_pinchY - t14_ur_cy)/t14_ur_r"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_bx",
+              "Name": "t14_ur_bx",
+              "Unit": "",
+              "Val": "t14_ur_u0x + t14_ur_u1x"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_by",
+              "Name": "t14_ur_by",
+              "Unit": "",
+              "Val": "t14_ur_u0y + t14_ur_u1y"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_blen",
+              "Name": "t14_ur_blen",
+              "Unit": "",
+              "Val": "sqrt(t14_ur_bx*t14_ur_bx + t14_ur_by*t14_ur_by)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_vx",
+              "Name": "t14_ur_vx",
+              "Unit": "in",
+              "Val": "t14_ur_cx + t14_ur_r*(t14_ur_bx/t14_ur_blen)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_ur_vy",
+              "Name": "t14_ur_vy",
+              "Unit": "in",
+              "Val": "t14_ur_cy + t14_ur_r*(t14_ur_by/t14_ur_blen)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_dx",
+              "Name": "t14_lr_dx",
+              "Unit": "in",
+              "Val": "t14_hw - t14_pinchHalf"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_dy",
+              "Name": "t14_lr_dy",
+              "Unit": "in",
+              "Val": "(-t14_hh) - t14_pinchY"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_chordlen",
+              "Name": "t14_lr_chordlen",
+              "Unit": "in",
+              "Val": "sqrt(t14_lr_dx*t14_lr_dx + t14_lr_dy*t14_lr_dy)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_nx",
+              "Name": "t14_lr_nx",
+              "Unit": "",
+              "Val": "-t14_lr_dy / t14_lr_chordlen"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_ny",
+              "Name": "t14_lr_ny",
+              "Unit": "",
+              "Val": "t14_lr_dx / t14_lr_chordlen"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_halfchord",
+              "Name": "t14_lr_halfchord",
+              "Unit": "in",
+              "Val": "t14_lr_chordlen/2"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_r",
+              "Name": "t14_lr_r",
+              "Unit": "in",
+              "Val": "(t14_lr_halfchord*t14_lr_halfchord + t14_bulge*t14_bulge)/(2*t14_bulge)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_cx",
+              "Name": "t14_lr_cx",
+              "Unit": "in",
+              "Val": "(t14_pinchHalf + t14_hw)/2 + t14_lr_nx*(t14_bulge - t14_lr_r)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_cy",
+              "Name": "t14_lr_cy",
+              "Unit": "in",
+              "Val": "(t14_pinchY + (-t14_hh))/2 + t14_lr_ny*(t14_bulge - t14_lr_r)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_u0x",
+              "Name": "t14_lr_u0x",
+              "Unit": "",
+              "Val": "(t14_pinchHalf - t14_lr_cx)/t14_lr_r"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_u0y",
+              "Name": "t14_lr_u0y",
+              "Unit": "",
+              "Val": "(t14_pinchY - t14_lr_cy)/t14_lr_r"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_u1x",
+              "Name": "t14_lr_u1x",
+              "Unit": "",
+              "Val": "(t14_hw - t14_lr_cx)/t14_lr_r"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_u1y",
+              "Name": "t14_lr_u1y",
+              "Unit": "",
+              "Val": "((-t14_hh) - t14_lr_cy)/t14_lr_r"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_bx",
+              "Name": "t14_lr_bx",
+              "Unit": "",
+              "Val": "t14_lr_u0x + t14_lr_u1x"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_by",
+              "Name": "t14_lr_by",
+              "Unit": "",
+              "Val": "t14_lr_u0y + t14_lr_u1y"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_blen",
+              "Name": "t14_lr_blen",
+              "Unit": "",
+              "Val": "sqrt(t14_lr_bx*t14_lr_bx + t14_lr_by*t14_lr_by)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_vx",
+              "Name": "t14_lr_vx",
+              "Unit": "in",
+              "Val": "t14_lr_cx + t14_lr_r*(t14_lr_bx/t14_lr_blen)"
+            },
+            {
+              "Category": "T14 Geometry",
+              "Label": "t14_lr_vy",
+              "Name": "t14_lr_vy",
+              "Unit": "in",
+              "Val": "t14_lr_cy + t14_lr_r*(t14_lr_by/t14_lr_blen)"
+            }
+          ]
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Enclosure Projections",
+              "PhaseFile": "p03_01_encl_projs.py",
+              "PhaseID": "p03_01_encl_projs",
+              "Projections": [
+                {
+                  "SourceID": "upper_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_upper_R"
+                },
+                {
+                  "SourceID": "lower_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_lower_R"
+                },
+                {
+                  "SourceID": "base",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_base"
+                },
+                {
+                  "SourceID": "lower_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_lower_L"
+                },
+                {
+                  "SourceID": "upper_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_upper_L"
+                },
+                {
+                  "SourceID": "top",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_top"
+                }
+              ]
+            },
+            {
+              "Name": "Enclosure Offset",
+              "PhaseFile": "p03_02_encl_offset.py",
+              "PhaseID": "p03_02_encl_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "frame_thickness",
+                  "SourceID": [
+                    "proj_upper_R",
+                    "proj_lower_R",
+                    "proj_base",
+                    "proj_lower_L",
+                    "proj_upper_L",
+                    "proj_top"
+                  ],
+                  "TargetIDs": [
+                    "inner_proj_upper_R",
+                    "inner_proj_lower_R",
+                    "inner_proj_base",
+                    "inner_proj_lower_L",
+                    "inner_proj_upper_L",
+                    "inner_proj_top"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Corners": {
+                    "BL": {
+                      "ArcID": "proj_lower_L",
+                      "Concave": false,
+                      "InnerID": "inner_proj_base:E",
+                      "LineFarID": "proj_base:S",
+                      "LineNearID": "proj_base:E"
+                    },
+                    "BR": {
+                      "ArcID": "proj_lower_R",
+                      "Concave": false,
+                      "InnerID": "inner_proj_base:S",
+                      "LineFarID": "proj_base:E",
+                      "LineNearID": "proj_base:S"
+                    },
+                    "topL": {
+                      "ArcID": "proj_upper_L",
+                      "Concave": false,
+                      "InnerID": "inner_proj_upper_L:S",
+                      "LineFarID": "proj_top:E",
+                      "LineNearID": "proj_top:S"
+                    },
+                    "topR": {
+                      "ArcID": "proj_upper_R",
+                      "Concave": false,
+                      "InnerID": "inner_proj_upper_R:E",
+                      "LineFarID": "proj_top:S",
+                      "LineNearID": "proj_top:E"
+                    }
+                  },
+                  "FrameThickness": "frame_thickness",
+                  "Tolerance": 0.2,
+                  "Type": "ResolveLineCircleCorner"
+                },
+                {
+                  "Corners": {
+                    "pinchL": {
+                      "Arc1ID": "proj_upper_L",
+                      "Arc2ID": "proj_lower_L",
+                      "Concave1": false,
+                      "Concave2": false,
+                      "InnerID": "inner_proj_upper_L:E",
+                      "OuterID": "proj_upper_L:E"
+                    },
+                    "pinchR": {
+                      "Arc1ID": "proj_upper_R",
+                      "Arc2ID": "proj_lower_R",
+                      "Concave1": false,
+                      "Concave2": false,
+                      "InnerID": "inner_proj_upper_R:S",
+                      "OuterID": "proj_upper_R:S"
+                    }
+                  },
+                  "FrameThickness": "frame_thickness",
+                  "Tolerance": 0.2,
+                  "Type": "ResolveCircleCircleCorner"
+                }
+              ],
+              "Name": "Inner Corner Resolve",
+              "PhaseFile": "p03_03_inner_corner_resolve.py",
+              "PhaseID": "p03_03_inner_corner_resolve"
+            },
+            {
+              "Miters": [
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_upper_R:E",
+                  "Target": "inner_proj_upper_R:E"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_upper_R:S",
+                  "Target": "inner_proj_upper_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_base:S",
+                  "Target": "inner_proj_base:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_base:E",
+                  "Target": "inner_proj_base:E"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_upper_L:E",
+                  "Target": "inner_proj_upper_L:E"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_upper_L:S",
+                  "Target": "inner_proj_upper_L:S"
                 }
               ],
               "Name": "Enclosure Miters",

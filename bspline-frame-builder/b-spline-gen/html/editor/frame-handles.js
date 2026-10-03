@@ -133,6 +133,13 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     // default (SKETCH_3_PARAMETERS allows 0.25-1.5) is not re-validated against these bounds --
     // flagged, not fixed here, same honest scope every brand-new preset's own range function
     // above declares for itself.
+  } else if (tpl.silhouettePreset === 'sandTimer') {
+    // T84 item 5: same reasoning as the archedFunnel/tulip branch immediately above --
+    // `_sandTimerRange`'s own bounds (editor-shape-lattice-generator.js) were MEASURED at
+    // frame_thickness=0.75in (a Python-side bisection sweep against is_valid_outline, the same
+    // "FIRST CUT, not yet re-validated against the full JS production pipeline" honesty that
+    // function's own doc comment carries). No further narrowing here either -- this branch exists
+    // only so the generic `else` fallback below does not crash on `R.waistReach` being undefined.
   } else if (tpl.silhouettePreset === 'dippedLeftWave') {
     // T8: the wave's own opening rule (Template 1's waistReach rule, same formula: this preset's only pinch).
     R.waveReach = _narrow(R.waveReach, -Infinity, 1 - (t + half) / hw);

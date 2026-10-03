@@ -66,7 +66,10 @@ describe('frame-defs (generated) — schema', () => {
       // inch value straight from the construction (fb_engine/frame_shape_fit.py's own _arched_funnel/_tulip),
       // no base template either, like T6's tab top.
       archedFunnel: ['archRiseFrac', 'bulgeFrac', 'topWidth', 'waistHeightFrac', 'waistWidthFrac'],
-      tulip: ['archRiseFrac', 'bulgeFrac', 'topWidth', 'upperCurveFrac', 'waistHeightFrac', 'waistWidthFrac'] };
+      tulip: ['archRiseFrac', 'bulgeFrac', 'topWidth', 'upperCurveFrac', 'waistHeightFrac', 'waistWidthFrac'],
+      // T84 item 5: the frame-only sandTimer preset's own model -- same plain hw/hh-linear
+      // convention (fb_engine/frame_shape_fit.py's own _sand_timer), no base template either.
+      sandTimer: ['bulgeFrac', 'pinchHeightFrac', 'pinchReachFrac', 'topWidth'] };
     // T3 TAPERED HOURGLASS: a narrow-top hourglass model also carries topInset (and, once fitted from its own
     // goldens, the two corners separately) -- the only extras paramsFromShapeModel reads.
     // T4 OFFSET HOURGLASS: an offset-waist model also carries the left pinch (waistCyLeft, notchLeft, depthLeft).
@@ -78,7 +81,7 @@ describe('frame-defs (generated) — schema', () => {
     // the provisional shim.
     // F30 item 3 (Template 12/13, the taper copies): every base feature kept, plus one new scale-invariant
     // `taperAngle` -- the only extra either preset's own provisional model carries for these two.
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise', 'taperAngle'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [], diamondTopHourglass: [], diamondTopHourglassPinch: [], archedFunnel: [], tulip: [] };
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise', 'taperAngle'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [], diamondTopHourglass: [], diamondTopHourglassPinch: [], archedFunnel: [], tulip: [], sandTimer: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);

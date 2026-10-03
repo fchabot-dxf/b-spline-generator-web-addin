@@ -94,15 +94,20 @@ FRAME_BARS = [
 #
 # p02_02_loop.py's own docstring table: ALL FOUR arcs here are only reachable via a MIX of `:S`/`:E`
 # depending on which corner -- each pair below names whichever end is PHYSICALLY there, matching
-# p03_03/p03_04's own choice exactly.
+# p03_03/p03_04's own choice exactly. BR/BL are labelled under `base`, not their own arc (lower_R/
+# lower_L) -- p03_03_inner_corner_resolve.py's own module docstring explains why: labelling every
+# one of the 4 line-circle corners under its own arc (Template 16/17's always-arc convention)
+# collides here -- two PAIRS of corners would land on the SAME declaredMiterJointIndices index
+# (editor-frame-profile.js) -- found by brute-force search over every physically-valid label choice;
+# `base:S`/`base:E` and `lower_R:S`/`lower_L:E` are each the SAME physical point either way.
 FRAME_REGIONS = {
     "outline": _OUTLINE,                                   # p03_02 SourceID
     "inner": ["inner_" + i for i in _OUTLINE],             # p03_02 TargetIDs
     "miters": [
         ["proj_upper_R:E", "inner_proj_upper_R:E"],   # topR
         ["proj_upper_R:S", "inner_proj_upper_R:S"],   # pinchR
-        ["proj_lower_R:S", "inner_proj_lower_R:S"],   # BR
-        ["proj_lower_L:E", "inner_proj_lower_L:E"],   # BL
+        ["proj_base:S",    "inner_proj_base:S"],      # BR
+        ["proj_base:E",    "inner_proj_base:E"],      # BL
         ["proj_upper_L:E", "inner_proj_upper_L:E"],   # pinchL
         ["proj_upper_L:S", "inner_proj_upper_L:S"],   # topL
     ],
