@@ -15848,3 +15848,121 @@ this item's own tests.
 not needed). All scratch diagnostics (`diag67.mjs`/`diag67b.mjs`/`diag67c.mjs`, the dev-server
 process, the screenshot-driver script and its own chrome profile dir) deleted/stopped before
 commit.
+
+## H23 item 67b: item 67 REWORK -- full-height wall colour (the real cause was frame-bars, not
+frame-panel-wall) + the saw-teeth fix (finer colour-only wall/bars sampling), via a live
+reproduction of Fred's OWN scenario first, not re-reasoning from the prior "after" screenshot.
+
+**(1) Reproduced Fred's own case FIRST, as the dispatch asked, before touching any code.** Set up
+template_1 + Shape Lattice + Offset from frame (item 67's own scenario) + the REAL Stripe tool
+(`#toolStripe`, a real PointerEvent tap on each of the 12 contour segments via the SVG's own
+`getScreenCTM`, not a direct function call) with Colour A/B pre-seeded black/white
+(`editor._stripe.colors`) to match Fred's own striped-contour screenshot exactly. Took TWO views
+live: the whole board (same framing as item 67's own shot) and a close, oblique rim shot -- built
+by placing the orbit camera's own target directly on a REAL striped-contour point (captured during
+the stripe-tap loop, not guessed) and deriving the camera's own quaternion from a real
+`camera.lookAt()` (Z-up, `camera.up.set(0,0,1)`) rather than guessing Euler angles for the orbit
+controller's own ZXY convention a 3rd time. Both views immediately, visibly reproduced BOTH
+complaints: a thin coloured lip with plain grey/beige below, and a jagged black/white boundary at
+the rim.
+
+**(2) "Full height" root cause: MEASURED (a live raycast at the exact grey screen pixel, not
+assumed) to be `frame-bars` (the wood moulding ring), not `frame-panel-wall`.**
+`frame-panel-wall`'s own raw vertex data was independently checked FIRST and found to already be
+correctly, uniformly coloured top-to-bottom at every sampled point (item 67's own fix was never
+actually broken) -- the visible "plain grey/beige" area was a COMPLETELY DIFFERENT mesh. Read
+`editor-frame-profile.js`'s own `frameSolidSpec` to settle (empirically, via a direct bbox check,
+after the doc comments read ambiguously both ways) that `outerPrimitives`/`panel` trace the SAME
+boundary as `frame-panel-wall` (panelLip 0 means `panel === outer`) -- meaning frame-bars' own
+OUTER wall is CO-LOCATED, in XY, with frame-panel-wall, just spanning a DIFFERENT (and, for a
+typical carve, much TALLER) z-range: `frameBottomZ` up to the panel's own UNDERSIDE, vs
+frame-panel-wall's comparatively thin sliver between the underside and the true sculpted top. Bars
+are the WIDER, dominant, actually-visible "side of the piece" a viewer sees; they had NO colour
+mechanism at all before this item (a flat material colour only) -- Fred's own "the whole wall in
+the edge colour" expectation was never going to be met by fixing frame-panel-wall alone.
+**Fix**: `frame-bars`' own material gets `vertexColors:true` (color: 0xffffff base); its OUTER
+wall (oB + the top ring's own row 0, both via the SAME `edgeSampler`-with-wood-fallback the panel
+wall already used) gets the edge colour, full height; its INNER wall and the rest of its own top
+cap stay the frame's own declared wood colour (`new THREE.Color(spec.color||FRAME_COLORS[...])`,
+converted once, reused everywhere "no artwork reaches this far in" applies) -- `wood3` pushed
+literally wherever before this item the MATERIAL's own flat colour would have shown, so omitting
+`edgeSampler` (or it finding nothing anywhere) reproduces today's exact look, just via vertex
+colours. `ringArrays` (frame-mesh.js) now ALSO returns `rows`/`n` in its result object (a free,
+non-breaking addition -- existing callers destructure only `{positions,index}`) so the caller can
+mirror its own EXACT vertex-creation order (`(rows+1)` top rows of n, then n outer-bottom, then n
+inner-bottom) when building a matching per-vertex colour array, instead of re-deriving `rows` from
+`widest`/`maxStep` a 2nd time. **Caught and fixed one real regression of my own before it shipped**:
+`frame-window-bars` shares the SAME `barMat` (now always `vertexColors:true`), but its own call
+passed NO `color` attribute at all -- an absent vertex-colour attribute reads as all-zero (flat
+BLACK), not "fall back to the material's own colour" (the EXACT trap this file's own pre-existing
+`winWallAttrs` comment already names for a sibling case) -- gave it a uniform wood-colour
+attribute too.
+
+**(3) Saw-teeth root cause: a genuine colour-interpolation gap, confirmed live on Fred's OWN
+striped scenario (not re-litigating item 67's own earlier "no geometric z-gap" finding, which was
+about a DIFFERENT thing -- wall-vs-rim Z matching, already correctly ruled out there).** A single
+stripe, once a contour segment is split into ~7-10 equal pieces, is routinely narrower than
+`panel`'s own 1-sample-per-cell wall resolution -- a whole black-to-white transition can fall
+strictly between two consecutive wall vertices, and the ONE triangle spanning them linearly
+interpolates hard black-to-white across itself: the jagged "triangle" look.
+**Fix**: `WALL_COLOR_OVERSAMPLE = 4` (frame-mesh.js, declared once, doc comment explains the
+"don't touch `panel`/`outer`/`inner` as used by the clip or by `frameLoopsWorld`'s other
+consumers" constraint below) -- a SEPARATE, finer re-sampling of the SAME boundary curve
+(`samplePairedOutlines(..., cell / WALL_COLOR_OVERSAMPLE)`), built fresh and local to
+`applyFrameToPanel`, used ONLY for `wallArrays`'s own input and the bars' own OUTER-wall perimeter
+sampling -- `panel` itself (the clip/trim polygon) and `frameLoopsWorld`'s own returned
+`outer`/`inner` (consumed elsewhere, e.g. index.js's own `_trimPoly`) are completely untouched, at
+their original resolution. **MEASURED, twice, the exact failure mode item 66's own "oversample
+`panel` directly" attempt hit and I nearly repeated**: oversampling the bars' ring at
+`WALL_COLOR_OVERSAMPLE` in BOTH the perimeter AND row (across-width) dimensions at once
+quadrupled-times-quadrupled the triangle count and timed out
+`frame-bartop-drawn.test.js`'s own finest (0.05in spacing) case -- fixed by decoupling them:
+`ringArrays`'s own `maxStep` (row density) stays at the ORIGINAL `cell`; only the perimeter
+(`outer`/`inner`'s own point count) is oversampled, since no colour boundary ever runs ACROSS a
+bar's own width, only along its length.
+
+**(4) Verified BOTH fixes live, on Fred's own exact scenario, with pixel data, not a glance at the
+PNGs.** Re-ran the SAME reproduction (step 1) against the fixed code: the whole-board shot now
+shows the black/white stripe running the board's FULL wall height, no grey band at all; the
+close-up rim shot shows crisp, FULL-HEIGHT black/white bars with a clean (not jagged) boundary
+where they meet the sculpted top. Sampled a FIXED pixel column at y=350/480/610/730 (spanning most
+of the close-up's own visible wall height): all four read exactly RGB(0,0,0) (pure black) -- before
+the fix, the SAME column read RGB(214,202,170) (plain wood) at y=730. Also re-captured a genuine
+"before" pair by temporarily reverting `frame-mesh.js` to its committed (pre-this-item) HEAD state
+via `git show HEAD:... > `, running the SAME reproduction script, then restoring the fix from a
+backup copy (confirmed byte-identical to pre-revert via `git diff --stat`) -- real before/after
+images of the SAME two views, not a description of what changed.
+Saved: `shots/seatA/1214_item67b_before_whole-board.png`, `..._before_closeup-rim.png`,
+`..._after_whole-board.png`, `..._after_closeup-rim.png`.
+
+**(5) Tests, all mutation-tested against the pre-67b (item-67-only) code before trusting them**
+(reverted `frame-mesh.js` to HEAD via the same `git show` trick, re-ran, 8/8 of the new assertions
+below correctly failed, restored from the backup, confirmed byte-identical via `git diff --stat`):
+`tests/frame-wall-edge-colour.test.js` (+12): frame-bars' own outer wall takes the edge colour
+full-height with an edgeSampler and the frame's own declared wood colour without one (byte-equal
+to a null-returning sampler, proving "finds nothing" and "no sampler at all" are the same code
+path); the inner wall stays wood even when the sampler finds artwork everywhere; frame-window-bars
+gets a real (non-vacuous) wood-colour attribute, not an absent one; a narrow (0.001 of the
+perimeter's own u-range) simulated stripe is caught by at least one wall vertex AND one bars
+vertex, with a companion test proving the oversampled loop is structurally denser than
+`frameLoopsWorld`'s own unchanged coarse one (not "it happened to work once"). Two existing tests
+updated to the new architecture (vertex colours, not a flat material colour, now carry the bars'
+own wood tone): `tests/frame-3d.test.js` (bars' own material.color is now a neutral white base;
+the wood tone is asserted from the geometry's own `color` attribute instead) and
+`tests/panel-lip.test.js` (frame-panel-wall's own vertices are now a denser re-sampling of the
+SAME curve as `lipLoop`, not `lipLoop`'s own exact discrete points -- switched a point-to-nearest-
+vertex check to a point-to-polyline distance check). One more real, non-test-only bug in the
+SHARED `tests/helpers/drawn-panel.js` FakeTHREE caught and fixed along the way: its own `Color`
+stub (added earlier this item for an unrelated `specular.clone()` fix) only stored `.hex` and
+never actually parsed it -- `new THREE.Color(hex).r/.g/.b` silently read `undefined` under this
+fake, which `Float32Array.from` then silently turned into `NaN` the moment production code
+actually READ a colour value (not just called `.clone()`) -- now parses a real hex string or
+number into real 0..1 r/g/b floats. Full suite: **169 files, 3304/3304** (up from 3296, +8 new).
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js`,
+`tests/frame-wall-edge-colour.test.js`, `tests/frame-3d.test.js`, `tests/panel-lip.test.js`,
+`tests/helpers/drawn-panel.js`. No other file touched -- the fix lives entirely in frame-mesh.js
+(drape-svg.js, index.js, terrain-mesh.js, state.js, param-manager.js, the palette HTML all stay
+exactly as item 67 left them). All scratch diagnostics (`repro67b.mjs` and its own before/after
+scratch output dirs, the dev-server process, the chrome profile dirs) deleted/stopped before
+commit.

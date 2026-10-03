@@ -79,7 +79,17 @@ describe('bars', () => {
     expect([...new Set(z)].sort()).toEqual([-1, 0.5]); // bottom = frame bottom z, top = the (flat) underside
     // H8: the bars use the declared frame colour for the wood (color-
     // utils.js's own FRAME_COLORS table), not the raw board colour.
-    expect(bars.material.color).toBe(frameColorFor('3D Oak - Painted', FRAME_DEFS.appearance.previewColors['3D Oak - Painted']));
+    // H23 item 67b: the bars' own wood tone now lives in their vertex `color` attribute (so the
+    // SAME mesh can also carry the artwork colour at its outer edge, see frame-wall-edge-colour
+    // .test.js) -- material.color is a neutral white base, no longer the wood hex itself.
+    expect(bars.material.color).toBe(0xffffff);
+    expect(bars.material.vertexColors).toBe(true);
+    const hex = frameColorFor('3D Oak - Painted', FRAME_DEFS.appearance.previewColors['3D Oak - Painted']);
+    const [wr, wg, wb] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    const col = bars.geometry.attributes.color.array;
+    for (let i = 0; i < col.length; i += 3) {
+      expect(col[i]).toBeCloseTo(wr, 2); expect(col[i + 1]).toBeCloseTo(wg, 2); expect(col[i + 2]).toBeCloseTo(wb, 2);
+    }
   });
 
   it('H8: every declared wood\'s frame colour is its own declared FRAME_COLORS entry, never the raw board colour', () => {

@@ -19,11 +19,23 @@ export const FakeTHREE = {
   },
   BufferAttribute: Attr, Float32BufferAttribute: Attr,
   Mesh: class { constructor(g, m) { this.geometry = g; this.material = m; } },
-  // H23 item 67: real THREE.js wraps a numeric `specular` (e.g. buildSolidMesh's own 0x111111)
-  // into a Color instance with its own .clone() -- mirrored here so code that calls
+  // H23 item 67/67b: real THREE.js wraps a numeric `specular` (e.g. buildSolidMesh's own
+  // 0x111111) into a Color instance with its own .clone() -- mirrored here so code that calls
   // material.specular.clone() (the drape overlay's own material recipe, core/preview/index.js)
-  // works against a mesh built through this fake too, not just a hand-crafted mock material.
-  Color: class { constructor(hex) { this.hex = hex; } clone() { return new FakeTHREE.Color(this.hex); } },
+  // works against a mesh built through this fake too. Also parses an actual hex STRING (e.g.
+  // '#a17543', FRAME_COLORS' own format) into real r/g/b 0..1 floats -- item 67b's own frame-bars
+  // wood-colour fallback reads .r/.g/.b directly, and a stub that only stored .hex silently
+  // produced undefined -> NaN once something actually used the colour value, not just .clone().
+  Color: class {
+    constructor(hex) {
+      this.hex = hex;
+      const s = typeof hex === 'number' ? hex.toString(16).padStart(6, '0') : String(hex).replace('#', '');
+      this.r = parseInt(s.slice(0, 2), 16) / 255;
+      this.g = parseInt(s.slice(2, 4), 16) / 255;
+      this.b = parseInt(s.slice(4, 6), 16) / 255;
+    }
+    clone() { return new FakeTHREE.Color(this.hex); }
+  },
   MeshPhongMaterial: class {
     constructor(o) {
       Object.assign(this, o);

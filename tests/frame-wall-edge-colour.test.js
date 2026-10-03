@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameSolidSpec } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
-import { applyFrameToPanel } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
+import { applyFrameToPanel, frameLoopsWorld } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 import { topCapIndices } from '../bspline-frame-builder/b-spline-gen/html/core/preview/terrain-mesh.js';
 import { TerrainPreview } from '../bspline-frame-builder/b-spline-gen/html/core/preview/index.js';
 import { FakeTHREE, carvedPanel, PANEL_COLOUR } from './helpers/drawn-panel.js';
@@ -195,5 +195,127 @@ describe('TerrainPreview._applyFrame: the frame rim gets its own drape overlay (
     expect(disposed).toBe(true);
     expect(mock._sceneRemoves).toContain(first);
     expect(mock._frameRimDrapeMesh).not.toBe(first);
+  });
+});
+
+/**
+ * H23 item 67b (advisor rework, 2026-10-03: "the after shot still shows plain grey/beige walls
+ * below a thin green lip"): MEASURED via a live raycast that the "plain grey/beige" area was
+ * frame-bars (the wood moulding ring), not frame-panel-wall -- frame-bars' own OUTER wall sits
+ * at the EXACT SAME (x,y) as frame-panel-wall (outer === panel at panelLip 0) and, being the
+ * WIDER ring, is what a viewer actually sees as "the wall". It previously had NO colour mechanism
+ * at all (a flat material colour only) -- this proves it now takes the edge colour, full height,
+ * on its own outer wall only, with the inner wall and the rest of its own top cap staying the
+ * frame's declared wood colour.
+ */
+describe('applyFrameToPanel: frame-bars\' own OUTER wall now takes the edge colour too (H23 item 67b)', () => {
+  it('without edgeSampler: every bar vertex is the frame\'s own declared wood colour (today\'s pre-67b look, now via vertex colours instead of a flat material colour)', () => {
+    const { mesh, grid } = panel(7, 9, 71, 91);
+    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1', { appearance: '3D Oak - Painted' }), BOARD);
+    const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
+    expect(bars.material.vertexColors).toBe(true);
+    expect(bars.material.color).toBe(0xffffff);
+    const col = bars.geometry.attributes.color.array;
+    expect(col.length).toBeGreaterThan(0);
+    const wood = new FakeTHREE.Color(spec.color);
+    for (let i = 0; i < col.length; i += 3) {
+      expect(col[i]).toBeCloseTo(wood.r, 2); expect(col[i + 1]).toBeCloseTo(wood.g, 2); expect(col[i + 2]).toBeCloseTo(wood.b, 2);
+    }
+  });
+
+  it('with edgeSampler: the OUTER wall (the visible exterior face) takes the artwork colour, full height (bottom and top share the same colour)', () => {
+    const { mesh, grid } = panel(7, 9, 71, 91);
+    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1'), BOARD);
+    const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => ({ ...ARTWORK })).find((m) => m.name === 'frame-bars');
+    const col = bars.geometry.attributes.color.array;
+    let artworkCount = 0;
+    for (let i = 0; i < col.length; i += 3) {
+      if (Math.abs(col[i] - ARTWORK.r) < 1e-5 && Math.abs(col[i + 1] - ARTWORK.g) < 1e-5 && Math.abs(col[i + 2] - ARTWORK.b) < 1e-5) artworkCount++;
+    }
+    // non-vacuous: the sampler's own colour genuinely reached the bars somewhere
+    expect(artworkCount).toBeGreaterThan(0);
+  });
+
+  it('the INNER wall (closest to the panel\'s own sculpted centre) stays the wood colour even when edgeSampler finds artwork everywhere -- no artwork reaches that far in', () => {
+    const { mesh, grid } = panel(7, 9, 71, 91);
+    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1'), BOARD);
+    const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => ({ ...ARTWORK })).find((m) => m.name === 'frame-bars');
+    const col = bars.geometry.attributes.color.array;
+    const wood = new FakeTHREE.Color(spec.color);
+    let woodCount = 0;
+    for (let i = 0; i < col.length; i += 3) {
+      if (Math.abs(col[i] - wood.r) < 1e-2 && Math.abs(col[i + 1] - wood.g) < 1e-2 && Math.abs(col[i + 2] - wood.b) < 1e-2) woodCount++;
+    }
+    // the inner wall + the rest of the top cap (everything but row 0 and oB) -- a real, sizeable share
+    expect(woodCount).toBeGreaterThan(0);
+  });
+
+  it('a sampler that returns null everywhere behaves exactly like no sampler at all (the wood-colour fallback)', () => {
+    const { mesh, grid } = panel(7, 9, 71, 91);
+    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1'), BOARD);
+    const withNullSampler = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => null).find((m) => m.name === 'frame-bars');
+    const withNoSampler = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
+    expect(Array.from(withNullSampler.geometry.attributes.color.array)).toEqual(Array.from(withNoSampler.geometry.attributes.color.array));
+  });
+
+  it('frame-window-bars (the inset-window moulding) gets a uniform wood colour attribute -- NOT left without one, which would render flat black now that barMat always has vertexColors:true', () => {
+    const winRec = () => rec('template_1', { insetWindow: { enabled: true, x1: 2, y1: 3, x2: 5, y2: 6 }, frameBottomZ: -1 });
+    const { mesh, grid } = panel(7, 9, 71, 91);
+    const spec = frameSolidSpec(FRAME_DEFS, winRec(), BOARD);
+    const winBars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-window-bars');
+    expect(winBars).toBeTruthy();
+    const col = winBars.geometry.attributes.color.array;
+    expect(col.length).toBeGreaterThan(0);
+    const wood = new FakeTHREE.Color(spec.color);
+    for (let i = 0; i < col.length; i += 3) {
+      expect(col[i]).toBeCloseTo(wood.r, 2); expect(col[i + 1]).toBeCloseTo(wood.g, 2); expect(col[i + 2]).toBeCloseTo(wood.b, 2);
+    }
+  });
+});
+
+/**
+ * H23 item 67b (saw-teeth): Fred's own close-up (a striped black/white contour) showed
+ * alternating wall-colour/stripe-colour TRIANGLES -- traced to `panel`'s own coarse,
+ * 1-sample-per-cell wall resolution letting a single stripe (narrower than one cell) start and
+ * end strictly within one wall quad. WALL_COLOR_OVERSAMPLE resamples the wall's own colour-
+ * bearing geometry at a finer resolution, independent of `panel`'s own (unchanged) role as the
+ * trim/clip polygon.
+ */
+describe('WALL_COLOR_OVERSAMPLE (H23 item 67b: the saw-teeth fix)', () => {
+  it('a narrow coloured band (narrower than one cell) is caught by SOME wall vertex -- proving the oversampled resolution can resolve it, where the original 1-sample-per-cell resolution routinely could not', () => {
+    const { mesh, grid } = panel(7, 9, 71, 91);
+    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1'), BOARD);
+    // A sampler that only "finds" artwork in a narrow u-band -- narrower than 1/WALL_COLOR_OVERSAMPLE
+    // of the panel's own perimeter in u-space, simulating one thin stripe.
+    const narrowSampler = (u) => (u > 0.4995 && u < 0.5005 ? { ...ARTWORK } : null);
+    const wall = applyFrameToPanel(FakeTHREE, mesh, grid, spec, narrowSampler).find((m) => m.name === 'frame-panel-wall');
+    const col = wall.geometry.attributes.color.array;
+    let hit = false;
+    for (let i = 0; i < col.length; i += 3) {
+      if (Math.abs(col[i] - ARTWORK.r) < 1e-5 && Math.abs(col[i + 1] - ARTWORK.g) < 1e-5 && Math.abs(col[i + 2] - ARTWORK.b) < 1e-5) { hit = true; break; }
+    }
+    expect(hit, 'the narrow band was never sampled by any wall vertex at all -- the oversampling did not actually increase resolution').toBe(true);
+  });
+
+  it('non-vacuous: the fine wall loop has noticeably MORE points than panel\'s own (unchanged) coarse loop -- the structural fact the resolution claim above rests on, not just "it happened to work once"', () => {
+    const { mesh, grid } = panel(7, 9, 71, 91);
+    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1'), BOARD);
+    const coarsePanelLen = frameLoopsWorld(spec, grid).panel.length;
+    const wall = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-panel-wall');
+    const finePointCount = wall.geometry.attributes.position.array.length / 3 / 2; // /2: top+bottom per point
+    expect(finePointCount).toBeGreaterThan(coarsePanelLen * 2); // at least ~WALL_COLOR_OVERSAMPLE/2 x denser
+  });
+
+  it('frame-bars\' own outer wall is ALSO oversampled (not just the panel wall) -- it resolves the SAME narrow band the panel wall above does', () => {
+    const { mesh, grid } = panel(7, 9, 71, 91);
+    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1'), BOARD);
+    const narrowSampler = (u) => (u > 0.4995 && u < 0.5005 ? { ...ARTWORK } : null);
+    const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec, narrowSampler).find((m) => m.name === 'frame-bars');
+    const col = bars.geometry.attributes.color.array;
+    let hit = false;
+    for (let i = 0; i < col.length; i += 3) {
+      if (Math.abs(col[i] - ARTWORK.r) < 1e-5 && Math.abs(col[i + 1] - ARTWORK.g) < 1e-5 && Math.abs(col[i + 2] - ARTWORK.b) < 1e-5) { hit = true; break; }
+    }
+    expect(hit, 'the narrow band was never sampled by any bar vertex at all').toBe(true);
   });
 });
