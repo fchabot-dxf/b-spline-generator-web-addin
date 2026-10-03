@@ -7,7 +7,7 @@ import math
 import pytest
 
 from fb_engine.closed_form_arc import (
-    colinear_circle_through_point, tangent_circle_through_point, true_via_point,
+    colinear_circle_through_point, sagitta_circle, tangent_circle_through_point, true_via_point,
 )
 
 
@@ -78,6 +78,52 @@ class TestColinearCircleThroughPoint:
         centre, r = colinear_circle_through_point(N, ray_direction, E)
         assert centre == pytest.approx(cb)
         assert r == pytest.approx(Rb)
+
+
+class TestSagittaCircle:
+    def test_recovers_a_known_circle_bulging_away_from_the_origin(self):
+        # circle centre (0, 5), radius 5 -- chord from (-3,8) to (3,8) (both on the circle, since
+        # 3^2+3^2=18... use exact points instead: angle +/-36.87 deg from centre gives (3,8)/(-3,8)? check:
+        # centre(0,5) r=5: point at angle 90-36.87=53.13 -> (5*cos53.13, 5+5*sin53.13) = (3, 9). Use that.
+        p0, p1 = (-3.0, 9.0), (3.0, 9.0)  # both at radius 5 from (0,5): hypot(3,4)=5 ✓.
+        # chord midpoint (0,9); true apex of the MINOR arc bulging further from the origin is (0,10)
+        # (centre + radius straight up) -> sagitta = 10-9 = 1.
+        centre, r = sagitta_circle(p0, p1, 1.0, away_point=(0.0, 0.0))
+        assert centre == pytest.approx((0.0, 5.0))
+        assert r == pytest.approx(5.0)
+
+    def test_bulges_toward_the_far_side_from_away_point_not_the_near_side(self):
+        # same chord, but ask for the bulge on the SIDE CLOSER to the origin (sagitta pushes the arc TOWARD
+        # (0,0) from the chord) -- this is the minor arc the other way, centre (0, 8+(9-8))=(0, 8)? derive:
+        # apex must be BETWEEN origin and the chord, i.e. apex=(0,8) (sagitta 1 downward from the chord).
+        p0, p1 = (-3.0, 9.0), (3.0, 9.0)
+        centre, r = sagitta_circle(p0, p1, 1.0, away_point=(0.0, 20.0))  # "away" is now far ABOVE the chord
+        # bulging away from (0,20) means bulging DOWNWARD (toward the origin side) -> apex (0,8), centre (0,9+... )
+        # solve independently: chord half=3, sag=1 -> R=(9+1)/2=5; centre is sag-R=-4 along the (away) normal.
+        # the normal pointing away from (0,20) at mid(0,9) is (0,-1); centre = (0,9) + (0,-1)*(1-5) = (0, 9+4) = (0,13).
+        assert centre == pytest.approx((0.0, 13.0))
+        assert r == pytest.approx(5.0)
+
+    def test_via_point_round_trip_matches_the_requested_sagitta(self):
+        """The whole point of this function: feed its own (centre, radius) into true_via_point and recover
+        a point exactly `sag` away from the chord's own midpoint, on the requested side."""
+        p0, p1 = (1.0, 2.0), (6.0, 2.5)
+        sag = 0.73
+        away = (3.5, -50.0)  # far below the chord -> bulge UPWARD, away from `away`
+        centre, r = sagitta_circle(p0, p1, sag, away_point=away)
+        via = true_via_point(centre, r, p0, p1)
+        mx, my = (p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0
+        assert math.hypot(via[0] - mx, via[1] - my) == pytest.approx(sag)
+        # and it's on the far side from `away_point` (farther from `away` than the chord midpoint is)
+        d_via = math.hypot(via[0] - away[0], via[1] - away[1])
+        d_mid = math.hypot(mx - away[0], my - away[1])
+        assert d_via > d_mid
+
+    def test_small_sagitta_gives_a_large_nearly_flat_arc(self):
+        p0, p1 = (0.0, 0.0), (10.0, 0.0)
+        centre, r = sagitta_circle(p0, p1, 0.01, away_point=(5.0, -100.0))
+        assert r == pytest.approx((5.0 ** 2 + 0.01 ** 2) / (2 * 0.01))
+        assert r > 1000  # a tiny sagitta over a long chord is a very large, nearly-flat radius
 
 
 class TestTrueViaPoint:
