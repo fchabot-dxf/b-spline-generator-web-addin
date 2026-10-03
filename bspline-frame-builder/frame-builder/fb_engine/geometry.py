@@ -9,7 +9,7 @@ import json
 import random
 
 
-def _fix_rebuild_start_end(ctx, s_name, geom, geo_id, entity):
+def _fix_rebuild_start_end(ctx, s_name, geom, geo_id, entity, want_sx):
     """H23 item 17: on a `Rebuild`, re-running `addByThreePoints` on a sketch that already has significant
     other content does NOT reliably keep `startSketchPoint`/`endSketchPoint` matching the FIRST/THIRD seed
     point the way the entity's original (first-ever) creation did -- MEASURED live: rebuilding `top_edge`
@@ -17,9 +17,14 @@ def _fix_rebuild_start_end(ctx, s_name, geom, geo_id, entity):
     `:S` vs `:E`, silently sending a downstream miter to the wrong corner. Re-tag `:S`/`:E` (and the
     FrameBuilder StartID/EndID attributes `set_id` already wrote) to match the REQUESTED point order, not
     whatever Fusion happened to call "start" this time.
+
+    `want_sx` is the ALREADY-RESOLVED x the caller just used to build `pts[0]` -- H23 item 47: a
+    `{'SeedFrom': {...}}` point can only be resolved while its own source entity is still the PRIOR
+    one in `entity_map` (before this rebuild overwrote that entry with the new entity); re-resolving
+    `geom["Points"][0]` from here, after the rebuild, would read the NEW entity's own just-created
+    endpoint instead of the value actually requested.
     """
     try:
-        want_sx = ctx.resolve_val(geom["Points"][0][0])
         actual_sx = entity.startSketchPoint.geometry.x
         if abs(want_sx - actual_sx) > 0.01:  # cm; a real swap, not float noise
             start_id = geom.get("StartID", f"{geo_id}:S")
@@ -103,11 +108,9 @@ def geom_step(ctx, sketch, s_name, geom):
     if geo_type == "Line":
         entity = _create_line(ctx, curves, s_name, geom, geo_id)
     elif geo_type == "Arc3Point":
-        if geom.get("Rebuild"):
-            _delete_existing(ctx, s_name, geo_id)
-        entity = _create_arc3(ctx, sketch, curves, s_name, geom, geo_id)
+        entity, want_sx = _create_arc3(ctx, sketch, curves, s_name, geom, geo_id)
         if geom.get("Rebuild") and entity:
-            _fix_rebuild_start_end(ctx, s_name, geom, geo_id, entity)
+            _fix_rebuild_start_end(ctx, s_name, geom, geo_id, entity, want_sx)
     elif geo_type in ("Rectangle", "RectangleCenter"):
         entity = _create_rectangle(ctx, sketch, curves, s_name, geom, geo_id)
     elif geo_type == "Point":
@@ -151,10 +154,41 @@ def _create_line(ctx, curves, s_name, geom, geo_id):
 # ------------------------------------------------------------------
 # Point (bare construction/reference point, no curve)
 # ------------------------------------------------------------------
+def _point_seed_from(ctx, s_name, seed_from, geo_id):
+    """H23 item 47: a `{'SeedFrom': {'id': <already-built line/arc step ID>, 'side': 'left' or
+    'right'}}` point spec -- resolves to whichever of that OTHER entity's two CURRENT endpoints is
+    further left (smaller x) or right (larger x), chosen by actual geometry, never by Fusion's own
+    `:S`/`:E` label (MEASURED, item 46: `addByThreePoints` assigns `startSketchPoint`/
+    `endSketchPoint` by the arc's own geometric direction, not argument order -- `:S` is not
+    reliably "the one that was seeded as the left point"). This reads the source's LIVE, CURRENT
+    geometry at build time (the source entity must already exist in `entity_map` -- its own step
+    must come earlier in this SAME build sequence, and if the source is about to be rebuilt itself,
+    this must be called BEFORE that deletion happens) -- a Point anchor needs to track wherever the
+    seeded arc's endpoint ACTUALLY landed after `addByThreePoints`, not a declaration-time literal."""
+    src = ctx.entity_map.get(s_name, {}).get(seed_from["id"])
+    if src is None:
+        raise ValueError(f"SeedFrom {seed_from['id']!r} (point {geo_id!r}): no such built entity yet")
+    ends = [src.startSketchPoint.geometry, src.endSketchPoint.geometry]
+    ends.sort(key=lambda g: g.x)
+    chosen = ends[0] if seed_from.get("side") == "left" else ends[-1]
+    return chosen.x, chosen.y
+
+
+def _resolve_point_spec(ctx, s_name, p, geo_id):
+    """One point in a Point/Line/Arc3Point step's own `Points` list: either the usual literal
+    `[x_expr, y_expr]` pair (resolved via `ctx.resolve_val`), or a `{'SeedFrom': {...}}` dict
+    (resolved via `_point_seed_from`, live geometry). Declared ONCE, shared by every geometry
+    creator so a template can mix literal and SeedFrom points within the SAME step (e.g. a
+    Rebuild arc whose two ends must track a seed but whose apex must stay a fixed literal to force
+    the correct branch -- see sketches/template_10/phases/p02_12_arch_rebuild.py)."""
+    if isinstance(p, dict) and "SeedFrom" in p:
+        return _point_seed_from(ctx, s_name, p["SeedFrom"], geo_id)
+    return ctx.resolve_val(p[0]), ctx.resolve_val(p[1])
+
+
 def _create_point(ctx, sketch, s_name, geom, geo_id):
-    p = adsk.core.Point3D.create(
-        ctx.resolve_val(geom["Points"][0][0]),
-        ctx.resolve_val(geom["Points"][0][1]), 0)
+    x, y = _resolve_point_spec(ctx, s_name, geom["Points"][0], geo_id)
+    p = adsk.core.Point3D.create(x, y, 0)
     entity = sketch.sketchPoints.add(p)
     ctx.logger.log(f"POINT {geo_id}: ({p.x:.2f},{p.y:.2f})")
     return entity
@@ -164,10 +198,16 @@ def _create_point(ctx, sketch, s_name, geom, geo_id):
 # Arc (3-point)
 # ------------------------------------------------------------------
 def _create_arc3(ctx, sketch, curves, s_name, geom, geo_id):
+    # H23 item 47: resolve every point BEFORE a Rebuild deletes the existing entity under this
+    # SAME geo_id -- a {'SeedFrom': {'id': geo_id, ...}} point (the rebuild tracking its OWN prior
+    # seeded self, e.g. template_10's own top_edge) needs that prior entity to still exist in
+    # entity_map at resolution time; deleting first would resolve against nothing.
     pts = [
-        adsk.core.Point3D.create(ctx.resolve_val(p[0]), ctx.resolve_val(p[1]), 0)
+        adsk.core.Point3D.create(*_resolve_point_spec(ctx, s_name, p, geo_id), 0)
         for p in geom["Points"]
     ]
+    if geom.get("Rebuild"):
+        _delete_existing(ctx, s_name, geo_id)
 
     entity = curves.sketchArcs.addByThreePoints(pts[0], pts[1], pts[2])
 
@@ -201,7 +241,7 @@ def _create_arc3(ctx, sketch, curves, s_name, geom, geo_id):
 
     ctx.logger.log(f"ARC {geo_id}: P1({pts[0].x:.2f},{pts[0].y:.2f}) P2({pts[1].x:.2f},{pts[1].y:.2f})")
 
-    return entity
+    return entity, pts[0].x
 
 
 # ------------------------------------------------------------------

@@ -43,33 +43,11 @@ def seed_sketch(sketch):
     for block in sketch.get("Blocks", []):
         for step in block.get("BuildSequence", []):
             if step.get("Type") in ("Line", "Arc3Point") and "Points" in step:
-                step["Points"] = [[on_seed_board(v) for v in p] for p in step["Points"]]
+                # H23 item 47: a point may be a {'SeedFrom': {...}} marker (fb_engine/geometry.py's
+                # own `_resolve_point_spec`, resolved at BUILD time against live geometry) instead
+                # of a literal [x_expr, y_expr] pair -- left untouched here, not iterated into.
+                step["Points"] = [p if isinstance(p, dict) else [on_seed_board(v) for v in p]
+                                  for p in step["Points"]]
             elif step.get("Type") == "Radius" and "Expression" in step:
                 step["Expression"] = on_seed_board(step["Expression"])
-    return sketch
-
-
-def apply_seed_from(sketch):
-    """H23 item 46: a step may declare `'SeedFrom': <id>` instead of its own `Points` -- its
-    Points become an exact COPY of the step with that `ID` (one that has no `SeedFrom` of its
-    own), in place. For a template that must rebuild the same literal curve twice (e.g. a
-    `Rebuild: True` step that re-creates an earlier step's own seed to force the correct arc
-    branch, template_10's own `top_edge` -- see `sketches/template_10/phases/
-    p02_12_arch_rebuild.py`), this gives the SECOND copy a single declared source instead of an
-    independently hand-typed duplicate literal that can silently drift from the first if only one
-    copy is ever edited. Run BEFORE `seed_sketch` so both the source and any `SeedFrom` copy get
-    the SAME widthIn/heightIn -> seed-board rewrite afterward."""
-    by_id = {}
-    for block in sketch.get("Blocks", []):
-        for step in block.get("BuildSequence", []):
-            if step.get("Type") in ("Line", "Arc3Point") and "Points" in step and "SeedFrom" not in step:
-                by_id.setdefault(step.get("ID"), step["Points"])
-    for block in sketch.get("Blocks", []):
-        for step in block.get("BuildSequence", []):
-            src = step.get("SeedFrom")
-            if src is None:
-                continue
-            if src not in by_id:
-                raise ValueError(f"SeedFrom {src!r} (step {step.get('ID')!r}): no matching seed step")
-            step["Points"] = [list(p) for p in by_id[src]]
     return sketch

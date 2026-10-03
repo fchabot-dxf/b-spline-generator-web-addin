@@ -13687,3 +13687,101 @@ Committed as "H23 item 46: ...". File list: `fb_engine/seed_basis.py` (new `appl
 `tools/repro/fusion_t11/item40_all_template_sweep.py` (preview-vs-build check),
 `tests/fixtures/frame-parity/template_10_{6x9,7x9}.json` (reverifiedAfter note),
 `frame-defs.json/.js` (regenerated).
+
+## H23 item 47 -- T10's Arch-rise handle genuinely live: the anchors (not just the rebuild) needed SeedFrom, and item 46's own mechanism had a timing bug that made it moot
+
+Dispatch (advisor, 445): item 46 accepted as a step, but my own live test showed the handle still
+did nothing (identical volumes both ends). (1) Make the arch's S/E anchors take their position
+from the seeded `top_edge`'s own endpoints, chosen by left/right, keeping the anchors themselves.
+(2) Live: both archRise ends build 4/4 with DIFFERENT volumes; preview==build passes T10. (3) Item
+48 (T5 dip gap) in the same pass if time allows.
+
+**(1) The anchors, generalized (`fb_engine/geometry.py`).** New `_resolve_point_spec` (shared by
+`_create_point` and `_create_arc3`): one point in a step's own `Points` list may be a literal
+`[x_expr, y_expr]` (as always) or a `{'SeedFrom': {'id': <step>, 'side': 'left'/'right'}}` marker,
+resolved at BUILD time against the ALREADY-BUILT source entity's own live geometry (left/right by
+actual x-position, never Fusion's `:S`/`:E` label -- item 46's own measured reason why). T10's own
+`top_S_anchor`/`top_E_anchor` (`sketches/template_10/phases/p02_03_loop.py`) now declare this
+instead of their own fixed `[-(HW),CY]`/`[HW,CY]` literal -- confirmed live: dragging `top_edge`'s
+own sent seed moved both anchors with it exactly.
+
+**That alone did not move the needle -- a SECOND, independent bug was blocking it, found by
+actually re-running the live test the dispatch asked for rather than trusting the syntactic fix:**
+a direct probe (no shortcuts -- read the LIVE built `top_S_anchor`/`top_E_anchor`/`top_edge`
+positions after a seeded Send) showed the anchors correctly tracking the new seed, but `top_edge`
+ITSELF still landing at the OLD default position. Root cause: item 46's own `apply_seed_from`
+copies `top_edge`'s own Points at TEMPLATE-RESOLUTION time -- BEFORE `apply_seed_geometry` ever
+runs. So the copy it gave `p02_12_arch_rebuild.py`'s own Rebuild step was always the UNSEEDED
+literal, regardless of what was actually sent; `apply_seed_geometry`'s own pop-on-first-match then
+never reaches the Rebuild step at all (same ID as `p02_03_loop.py`'s own step, already popped).
+Item 46 was byte-identical for the unseeded default ONLY because, in that one case, "the unseeded
+literal" and "whatever was sent" are the SAME value -- it never actually fixed the live-reachable
+case this item's own dispatch is about, one layer removed from item 45's original finding.
+
+**The real fix: per-point mixed resolution, each point resolved by what it actually needs.**
+`p02_12_arch_rebuild.py`'s own Rebuild step now declares its 2 END points as `SeedFrom` markers
+pointing at `top_edge`'s own left/right endpoint (read live, same mechanism as the anchors) and
+keeps ONE literal for the APEX (`LY`, the safe zone's own top line) -- the apex's only job is
+forcing the correct (short) arc branch on `addByThreePoints`, which has nothing to do with the
+seed and must NOT track it; the two jobs ("track the seed", "force the branch") are now on the one
+point each actually governs, instead of one literal doing neither cleanly. This needed `_create_
+arc3` reordered: resolve ALL 3 points (while `top_edge`'s PRIOR self still exists in `entity_map`)
+BEFORE `Rebuild` deletes it -- resolving after would read nothing, or the brand-new entity's own
+just-created (and possibly `:S`/`:E`-swapped) endpoint instead of the value actually requested.
+`_fix_rebuild_start_end` (item 17's own swap-correction) now takes that already-resolved x directly
+rather than re-deriving it from `geom` a second time after the swap -- re-deriving would read the
+NEW entity's own geometry it is about to correct, not what was asked for.
+
+Removed `apply_seed_from` + its own call site + its own 2 T10 tests entirely (superseded by this
+item's finer-grained mechanism within the SAME work arc, not left as dead code) -- replaced with a
+declaration test for the new per-point convention and a dedicated regression test for the ONE real
+bug an early draft of this fix introduced (`seed_sketch`'s own widthIn/heightIn rewrite iterating
+into a `{'SeedFrom': ...}` dict exactly like a `[x, y]` pair, silently replacing it with `['SeedFrom']`
+-- caught by its own new test before it ever reached Fusion, not after). The all-13-template
+duplicate-seed-ID guard (item 46) updated to recognize a per-point marker as the "has an explicit
+seed-from relationship" exemption, not just a step-level key. Also fixed 3 pre-existing, generic
+cross-template static-analysis tests (`test_all_templates_shape_outline.py`'s weld-orientation,
+seed-midpoint, and convex-radius checks) that assumed every declared Point was a plain `[x, y]`
+pair -- a shared `_resolve_pts` helper approximates a `SeedFrom` marker with its source's own
+declared literal (the exact value these tests already assume for everything else, since they have
+no live Fusion to read from).
+
+**Mutation-tested, each in isolation:** reverted `seed_sketch`'s own dict-aware branch -- its new
+regression test goes RED with the exact predicted corruption (`['SeedFrom']`), restored, green.
+Reverted `p02_12`'s own Rebuild step back to the old hand-typed literal -- its own declaration test
+AND the duplicate-ID guard both go RED with the exact expected messages, restored, green.
+
+**(2) LIVE, both ends, re-run with the real fix (not the first, insufficient one):** T10 at 7x9,
+`top_edge`'s own sent Y set far apart (LOW_RISE side=1.5/apex=1.6, HIGH_RISE side=4.0/apex=4.45) --
+**genuinely different** this time: `frame_top` 40.9885 cm3 (LOW) vs 29.0462 cm3 (HIGH), `frame_left`/
+`frame_right` 31.9274 vs 43.0324 -- both 4/4 bars, healthy timeline, 0 MITER MISS. Re-ran the
+13-template preview==build sweep (item 46): `done=13 crashed=[] bad=['template_5']` -- **T10 no
+longer appears at all** (`preview_build_mismatches: []`, exactly the dispatch's own "preview==build
+passes T10"); `template_5` is the SAME already-flagged, separate, out-of-scope gap from item 46
+(item 48). Re-recorded T10's goldens at 6x9/7x9 live and diffed against committed: IDENTICAL both
+sizes -- the unseeded default build is still byte-identical, confirming the fix only changes
+behavior for a genuinely seeded/dragged build, never the default. No stray scratch documents left
+open afterward.
+
+Full Python suite: 723 passed, 25 skipped, 0 unexpected failures (the only red,
+`test_golden_freshness`, resolves at commit -- re-recorded T10 goldens live first to confirm
+byte-identical content, then bumped `reverifiedAfter` to this item so the commit carries real,
+intentional new content rather than a silent re-stamp).
+
+**(3) Item 48 (T5 dip gap): not started.** Item 47 turned out to need substantially more than the
+syntactic "wire up SeedFrom on the anchors" the dispatch first framed it as -- a second, deeper
+bug (item 46's own pre-seed-timing flaw) had to be found and fixed for the actual outcome
+(genuinely different volumes) to land at all, plus the geometry.py reordering, the 3 cross-template
+test fixes, and full mutation testing of each piece. Flagging capacity rather than rushing a second,
+unrelated investigation (a different template's own shape-model-fit accuracy, per item 46's own
+finding) into the same pass -- deferring to the advisor on whether to dispatch it as its own turn.
+
+Committed as "H23 item 47: ...". File list: `fb_engine/geometry.py` (SeedFrom generalized to
+Point + Arc3Point, `_create_arc3`/`_fix_rebuild_start_end` reordered), `fb_engine/geometry.py`'s
+own new `fb_engine/test_geometry.py` (new), `fb_engine/seed_basis.py` (`apply_seed_from` removed,
+`seed_sketch` fixed), `fb_engine/test_seed_basis.py` (tests replaced), `fb_engine/
+test_all_templates_shape_outline.py` (`_resolve_pts` helper), `sketches/template_10/phases/
+p02_03_loop.py` (anchors declare SeedFrom), `sketches/template_10/phases/p02_12_arch_rebuild.py`
+(per-point SeedFrom + one literal apex), `sketches/template_10/template_data.py` (`apply_seed_from`
+call removed), `tests/fixtures/frame-parity/template_10_{6x9,7x9}.json` (reverifiedAfter bumped),
+`frame-defs.json/.js` (regenerated).

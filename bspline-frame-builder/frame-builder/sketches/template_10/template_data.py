@@ -2,7 +2,7 @@ import os
 
 from template_loader import TemplateLoader
 from fb_engine.frame_definition import COMMON_FRAME_FEATURES
-from fb_engine.seed_basis import seed_sketch, apply_seed_from
+from fb_engine.seed_basis import seed_sketch
 
 # Per-template loader instance. State (caches, folder path) lives on the
 # instance so two templates can never share caches or step on each
@@ -172,7 +172,6 @@ def get_template_logic(ui_data=None):
 
     s2["Label"] = SKETCH_2_LABEL
     s2["Parameters"] = SKETCH_2_PARAMETERS
-    apply_seed_from(s2)  # H23 item 46: the arch Rebuild's own top_edge copies p02_03_loop's, not a 2nd literal
     seed_sketch(s2)  # F14 (S8): the seeds follow the safe zone (fb_engine/seed_basis.py)
 
     s3["Label"] = SKETCH_3_LABEL

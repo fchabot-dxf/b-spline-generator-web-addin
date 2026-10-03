@@ -40,16 +40,37 @@ def get_block(ui_data=None):
 
     H23 item 46 (item 45's own finding): this step used to re-type `p02_03_loop.py`'s own closed-form
     `HW`/`CY`/`LY` literal a SECOND time by hand -- an independently-maintained duplicate of the exact
-    same formula, the item-18 bug class item 45 went looking for (editing one copy without the other
-    would silently desync this rebuild from the arc it exists to rebuild). Declares `SeedFrom: 'top_edge'`
-    instead (`fb_engine/seed_basis.py`'s own `apply_seed_from`, resolved before this template's own
-    `seed_sketch` call) -- this step's `Points` become an exact copy of `p02_03_loop.py`'s `top_edge`
-    step: one declared source, not two hand-typed ones. `addByThreePoints` + `Rebuild` are unchanged; the
-    unseeded default build is byte-identical (the same literal, now copied instead of retyped).
+    same formula, the item-18 bug class item 45 went looking for. FIRST FIX (item 46) declared a
+    step-level `SeedFrom: 'top_edge'` (`fb_engine/seed_basis.py`'s own `apply_seed_from`, a PURE,
+    template-resolution-time copy, run BEFORE any seed is even applied) -- byte-identical for the
+    UNSEEDED default (confirmed), but MEASURED LIVE (item 47) to not help a real drag at all: it
+    copies `top_edge`'s own declared LITERAL Points, before `apply_seed_geometry` ever runs, and
+    `apply_seed_geometry`'s own pop-on-first-match (`seed_geometry.py`) only ever patches the FIRST
+    `top_edge` step (`p02_03_loop.py`'s) -- this rebuild step's own copy stayed frozen at the
+    unseeded literal regardless of what was actually sent, reproducing the exact bug item 46 set out
+    to fix, one layer removed.
+
+    H23 item 47 (the real fix): the two ENDS track `top_edge`'s own CURRENT, just-built endpoints at
+    BUILD TIME, chosen by left/right position (`fb_engine/geometry.py`'s own `_resolve_point_spec` +
+    `_point_seed_from`, item 46's own measured fix for picking by geometry, not by Fusion's `:S`/`:E`
+    label) -- resolved BEFORE this step's own `Rebuild` deletes the prior `top_edge`, so there is
+    something live left to read. The APEX stays the one, genuinely-needed fixed literal (`LY`
+    below): it exists only to force the correct (short) arc branch on `addByThreePoints`, a role
+    that has nothing to do with WHERE the seeded ends are and must not track them (the two
+    constraints -- "track the seed" and "force the branch" -- are now cleanly separated onto the
+    one point each actually governs, instead of one literal doing neither job half-right). Confirmed
+    live: both ends of T10's own Arch-rise handle now build 4/4 with DIFFERENT volumes (previously
+    identical at both ends); the unseeded default stays byte-identical (nothing here changes what
+    the LEFT/RIGHT endpoints of an un-dragged `top_edge` physically are).
     """
+    LY = 'heightIn/2 - 0.25 in'  # the safe zone's own top line -- the apex's fixed ceiling, independent of any seed
+
     seq = [
-        {'ID': 'top_edge', 'Type': 'Arc3Point', 'Rebuild': True, 'SeedFrom': 'top_edge',
-         'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
+        {'ID': 'top_edge', 'Type': 'Arc3Point', 'Rebuild': True, 'Points': [
+            {'SeedFrom': {'id': 'top_edge', 'side': 'left'}},
+            ['0.001', LY],
+            {'SeedFrom': {'id': 'top_edge', 'side': 'right'}},
+        ], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
         {'Type': 'Fix', 'Targets': ['top_edge:S', 'top_edge:E']},
         # Re-weld horn_TR/TL to the rebuilt arc -- the delete above silently dropped p02_03_loop.py's own
         # Coincident welds along with the old arc's endpoints.

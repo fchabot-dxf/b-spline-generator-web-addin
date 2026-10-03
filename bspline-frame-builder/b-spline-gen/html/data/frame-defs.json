@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "2cbbd332e27f225b82e40d5b7c8c67018509b5bbd362bd471bd2cee4880784d3",
+  "sourceHash": "c3c7888bd8eb6b8590fcded68857e11d975bdfaa7ae40b79dff2f4c666599b42",
   "templates": [
     {
       "features": [
@@ -2414,10 +2414,12 @@
                   "ID": "top_S_anchor",
                   "IsConstruction": true,
                   "Points": [
-                    [
-                      "-(widthIn/2 - 0.25 in)",
-                      "heightIn/2 - 0.175 * widthIn - 0.1625 in"
-                    ]
+                    {
+                      "SeedFrom": {
+                        "id": "top_edge",
+                        "side": "left"
+                      }
+                    }
                   ],
                   "Type": "Point"
                 },
@@ -2425,10 +2427,12 @@
                   "ID": "top_E_anchor",
                   "IsConstruction": true,
                   "Points": [
-                    [
-                      "widthIn/2 - 0.25 in",
-                      "heightIn/2 - 0.175 * widthIn - 0.1625 in"
-                    ]
+                    {
+                      "SeedFrom": {
+                        "id": "top_edge",
+                        "side": "right"
+                      }
+                    }
                   ],
                   "Type": "Point"
                 },
@@ -3029,21 +3033,24 @@
                   "EndID": "top_edge:E",
                   "ID": "top_edge",
                   "Points": [
-                    [
-                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in)",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.175 * (widthIn - 2 * (boundingboxoffset - 0.25 in)) - 0.1625 in"
-                    ],
+                    {
+                      "SeedFrom": {
+                        "id": "top_edge",
+                        "side": "left"
+                      }
+                    },
                     [
                       "0.001",
                       "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in"
                     ],
-                    [
-                      "(widthIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.175 * (widthIn - 2 * (boundingboxoffset - 0.25 in)) - 0.1625 in"
-                    ]
+                    {
+                      "SeedFrom": {
+                        "id": "top_edge",
+                        "side": "right"
+                      }
+                    }
                   ],
                   "Rebuild": true,
-                  "SeedFrom": "top_edge",
                   "StartID": "top_edge:S",
                   "Type": "Arc3Point"
                 },
