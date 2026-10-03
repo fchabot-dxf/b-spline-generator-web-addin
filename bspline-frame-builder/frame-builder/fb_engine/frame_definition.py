@@ -207,6 +207,12 @@ def template_shape_model(template_id, frame, goldens_dir):
     T11 HOURGLASS ROOF: {"waistReachOfHw": w, "cornerRadiusTopOfHw": ct, "cornerRadiusBottomOfHw": cb,
     "waistCenterYOfHh": cy, "waistRadiusOfHw": wr} (no `from`: a gable roof over Template 1's own pinch side,
     nothing earlier fits both parts at once) builds frame_shape_fit.provisional_diamond_top_hourglass_pinch_model.
+    T84 item 3, T17 TULIP: {"topWidthFracOfHw": w, "archRiseFracOfHw": r, "waistWidthFracOfHw": ww,
+    "waistHeightFracOfH": wh, "bulgeFracOfHw": b, "upperCurveFracOfHw": u} (no `from`: a one-piece arch over
+    an all-miter outline, nothing earlier fits it) builds frame_shape_fit.provisional_tulip_model -- CHECKED
+    BEFORE T16 below, since its own dict is a strict superset of T16's (the same 5 keys plus this one).
+    T84 item 3, T16 ARCHED FUNNEL: Tulip's own 5 keys minus "upperCurveFracOfHw" (straight, not concave,
+    upper sides) builds frame_shape_fit.provisional_arched_funnel_model.
     F30 item 3 (the taper copies, Template 12/13): {"from": <template id>, "taperAngleDeg": d} builds
     frame_shape_fit.provisional_taper_model (every one of the base model's own features KEPT, plus a new
     scale-invariant `taperAngle` -- unlike every other provisional model above, nothing about the base shape
@@ -243,6 +249,23 @@ def template_shape_model(template_id, frame, goldens_dir):
             return provisional_diamond_top_hourglass_pinch_model(
                 prov["waistReachOfHw"], prov["cornerRadiusTopOfHw"], prov["cornerRadiusBottomOfHw"],
                 prov["waistCenterYOfHh"], prov["waistRadiusOfHw"])
+        if "upperCurveFracOfHw" in prov:
+            # T17 TULIP: also a shape of its own (no base template -- a one-piece arch over an
+            # all-miter outline with concave upper sides). CHECKED BEFORE "topWidthFracOfHw" below:
+            # tulip's own provisionalShape dict is a SUPERSET of archedFunnel's (the same 5 keys
+            # plus this one), so the more specific key must win first or every tulip record would
+            # silently build an archedFunnel model instead (dropping upperCurveFrac entirely).
+            from fb_engine.frame_shape_fit import provisional_tulip_model
+            return provisional_tulip_model(
+                prov["topWidthFracOfHw"], prov["archRiseFracOfHw"], prov["waistWidthFracOfHw"],
+                prov["waistHeightFracOfH"], prov["bulgeFracOfHw"], prov["upperCurveFracOfHw"])
+        if "topWidthFracOfHw" in prov:
+            # T16 ARCHED FUNNEL: also a shape of its own: {"topWidthFracOfHw": w, "archRiseFracOfHw": r,
+            # "waistWidthFracOfHw": ww, "waistHeightFracOfH": wh, "bulgeFracOfHw": b}.
+            from fb_engine.frame_shape_fit import provisional_arched_funnel_model
+            return provisional_arched_funnel_model(
+                prov["topWidthFracOfHw"], prov["archRiseFracOfHw"], prov["waistWidthFracOfHw"],
+                prov["waistHeightFracOfH"], prov["bulgeFracOfHw"])
         # T8 DIPPED TOP + LEFT-ONLY WAVE: also a shape of its own (see this function's own doc comment).
         from fb_engine.frame_shape_fit import provisional_dipped_left_wave_model
         return provisional_dipped_left_wave_model(prov["waveReachOfHw"], prov["waveHeightOfHh"],
