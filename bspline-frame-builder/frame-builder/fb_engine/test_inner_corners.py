@@ -248,3 +248,39 @@ class TestSquareCornerShortSideCollapsed:
     def test_point_slid_further_than_frame_thickness_is_rejected(self):
         ctx = self._run([(6.350 - self.T - 0.1, 8.890)])
         assert 'inner_proj_horn_TR:S' not in ctx.entity_map[S]
+
+
+class TestLineCircleCornerLineCollapsed:
+    """H23 item 63 (live, T10 waistCenterY min): the horn is shorter than frame_thickness, so the
+    inner corner sits further round the arch's offset circle, past the 0.2 cm tolerance."""
+
+    T = 0.75 * 2.54
+
+    def _run(self, candidates):
+        ctx = _ctx({'frame_thickness': self.T})
+        # arch: convex, centre (0, 0), radius 10; horn from (8, 2) up to the tangent-ish point (8, 6)
+        ctx.entity_map[S] = {'proj_horn_TR:E': FakePoint(8.0, 2.0), 'proj_horn_TR:S': FakePoint(8.0, 6.0),
+                             'proj_top_edge': FakeArc(0.0, 0.0, 10.0)}
+        step = {'FrameThickness': 'frame_thickness', 'Tolerance': 0.2,
+                'Corners': {'TR': {'LineFarID': 'proj_horn_TR:E', 'LineNearID': 'proj_horn_TR:S',
+                                   'ArcID': 'proj_top_edge', 'InnerID': 'inner_proj_horn_TR:S', 'Concave': False}}}
+        inner_corners.line_circle_corner_step(ctx, FakeSketch(candidates), S, step)
+        return ctx
+
+    def _expected(self):
+        return line_circle_corner((8.0, 2.0), (8.0, 6.0), (0.0, 0.0), self.T, (0.0, 0.0), 10.0, concave=False)
+
+    def test_point_further_round_the_offset_circle_is_resolved(self):
+        import math
+        ex, ey = self._expected()
+        r_in = 10.0 - self.T
+        a = math.atan2(ey, ex) + 0.08  # ~0.65 cm further round the inner circle
+        cand = (r_in * math.cos(a), r_in * math.sin(a))
+        ctx = self._run([cand, (0.0, 0.0)])
+        got = ctx.entity_map[S].get('inner_proj_horn_TR:S')
+        assert got is not None and abs(got.geometry.x - cand[0]) < 1e-9
+
+    def test_point_off_the_offset_circle_is_rejected(self):
+        ex, ey = self._expected()
+        ctx = self._run([(ex - 0.5, ey - 0.5)])
+        assert 'inner_proj_horn_TR:S' not in ctx.entity_map[S]

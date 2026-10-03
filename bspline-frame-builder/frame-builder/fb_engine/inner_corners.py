@@ -276,10 +276,29 @@ def line_circle_corner_step(ctx, sketch, s_name, step):
             ctx.logger.log(f"LINE-CIRCLE CORNER {label}: failed to read live geometry: {e}", "WARNING")
             continue
 
-        e_in = line_circle_corner(far_pt, near_pt, (0.0, 0.0), ft_cm, circle_center, circle_radius,
-                                   concave=cfg.get('Concave', True))
-
+        concave = cfg.get('Concave', True)
+        try:
+            e_in = line_circle_corner(far_pt, near_pt, (0.0, 0.0), ft_cm, circle_center, circle_radius,
+                                       concave=concave)
+        except Exception:
+            e_in = near_pt  # no intersection left: search around the outer corner instead
         nearest_pt, nearest_dist = _find_nearest_point(all_points, e_in[0], e_in[1])
+
+        if nearest_pt is None or nearest_dist > tolerance:
+            # H23 item 63 (live, T10 waistCenterY min): when the LINE is shorter than frame_thickness,
+            # the offset drops its copy, so the inner corner is where the circle's offset meets the
+            # NEXT curve instead -- still exactly ON the offset circle, just further round it. Accept
+            # the nearest point lying on that circle within 2 x frame_thickness of the expected corner.
+            r_in = circle_radius + ft_cm if concave else circle_radius - ft_cm
+            on_circle = [(px, py, pt) for px, py, pt in all_points
+                         if abs(math.hypot(px - circle_center[0], py - circle_center[1]) - r_in) <= 1e-3]
+            slid_pt, slid_dist = _find_nearest_point(on_circle, e_in[0], e_in[1])
+            if slid_pt is not None and slid_dist <= 2 * ft_cm:
+                ctx.logger.log(
+                    f"LINE-CIRCLE CORNER {label}: line collapsed in the offset; using the point "
+                    f"{slid_dist:.4f} cm round the offset circle")
+                nearest_pt, nearest_dist = slid_pt, 0.0
+
         if nearest_pt is None or nearest_dist > tolerance:
             ctx.logger.log(
                 f"LINE-CIRCLE CORNER {label}: no SketchPoint within {tolerance:.3f} "
