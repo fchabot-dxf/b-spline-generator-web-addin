@@ -16169,3 +16169,93 @@ as expected). Saved: `shots/seatA/1328_item67d_before_closeup.png`,
 `tests/frame-3d.test.js`, `tests/frame-wall-edge-colour.test.js`. No other file touched. The scratch
 repro script, its two screenshots (copied to `shots/seatA` first), the dev-server process, and the
 chrome profile dir deleted/stopped before commit.
+
+## H23 item 68, Part 2 of 2 (SPIKE, in Fusion): applied Part 1's transparent decal PNG as a REAL
+Fusion decal on one live board's Stamped top face. Answers every question the brief asked. No
+production code touched -- still a pure measurement, nothing wired into the normal Send.
+
+**(1) Setup, for-real, not simulated.** Captured the REAL "Send to Fusion" payload (`stepVariants` +
+`stamp.layers`) from the live app via the `window.adsk` stub technique (`tools/repro/
+capture_send_payload.mjs`'s own convention), from the SAME editor state Part 1's decal PNG was
+rendered from (T1 + Shape Lattice + Offset from frame + the real Stripe tool on every contour
+segment + rails/ties/nodes coloured -- items 66/67/67b/67c/68's own established scenario), so the
+PNG and the STEP+stamp payload are guaranteed to represent the identical board. In Fusion: created a
+NEW document (`app.documents.add`), made it active, loaded `b-spline-gen.py`'s own
+`PaletteHTMLEventHandler._handle_generate(payload)` via `importlib.util.spec_from_file_location`
+(the deployed copy, confirmed byte-identical to this checkout via `fc.exe /B`) -- the SAME handler a
+real Send calls -- and ran it against the real payload. First attempt crashed in `_handle_send_frame`
+(`'NoneType' object has no attribute 'build_sketch_logic_v3'`) -- `frame_engine` is a module-level
+`None` in `b-spline-gen.py`, only ever populated by the real add-in's own `run()` bootstrap
+(`bspline-frame-builder.py`, loads `frame_engine.py` via the same `spec_from_file_location` pattern,
+injects it as `.frame_engine` on the loaded b-spline-gen module) -- not a production bug, just my
+one-off script skipping that bootstrap step. Reran with `frame_engine` wired the same way; the SAME
+still-open new document (Fred's own "Untitled" document, confirmed throughout by CONTENT (0
+occurrences), never by name/count -- both documents are named "Untitled" until renamed, matching the
+skill's own documented trap) ended up with a real `B-Spline Set` + `Frame_1`, stamp artwork applied
+the existing (pre-decal) way.
+
+**(2) Top-face selection: the inlined "pick the single max-Z-point face" pattern (documented
+elsewhere) picks the WRONG face on a genuinely sculpted terrain.** The panel body has 14 faces: 12
+small perimeter/wall facets (area 0.8-8.4) and 2 dominant ones -- face 12 (area 363.6, the sculpted
+TOP, matching the body's own flat-projected area ~356.5 within the extra area a relief surface
+adds) and face 13 (area 348.9, the bottom). The body's global max-Z point (2.380) is touched by BOTH
+face 11 (an 8.4-area rim facet) and face 12 (the true top) -- a tie -- and the documented pattern's
+strict `>` comparison keeps whichever face it visits FIRST, which for this body is face 11, the
+wrong one. Selected by LARGEST AREA instead (robust, no tie); worth fixing in the shared pattern if
+it's ever reused on more sculpted/relief bodies, not touched here (out of this spike's own scope).
+
+**(3) Decal API, measured (the brief's own signature was incomplete).**
+`component.decals.createInput(imageFilename, faces, point)` -- a required 3rd `point` arg the brief
+didn't mention, and it must lie ON the first/primary face (`face.pointOnFace`, not a bounding-box
+centre -- `BRepFace` has no `physicalProperties`/centroid helper). `faces` is a plain Python list,
+not an `ObjectCollection`. The auto-generated default `transform` (inspected before overwriting it)
+revealed the convention: `Matrix3D.setWithCoordinateSystem(origin, xAxis, yAxis, zAxis)`, where each
+axis vector's OWN magnitude is the decal's FULL width/height in cm (not half) -- derived by reading
+Fusion's own default-placement numbers back (its auto X/Y column magnitudes, at the image's own
+known 280x360px size, implied a consistent ~95 px/in default guess both axes). Built the real
+transform from that: `origin = pointOnFace`, `xAxis = (board_width_in * 2.54, 0, 0)`, `yAxis = (0,
+board_height_in * 2.54, 0)`, `zAxis = (0, 0, 1)` (global axis-aligned, not the face's own local
+tangent plane the default used) -- `isChainFaces = True` (already Fusion's own default). Placing
+`origin` ABOVE the surface (for a conceptual top-down "stamp projection") failed outright (`"failed
+to set position of new Decal"`); the origin must sit ON the target face.
+
+**(4) Results, verified by real pixel sampling (not eyeballed), not just "it looks right" --**
+screenshots saved `shots/seatA/1345_item68_decal_iso.png` / `..._decal_top.png`:
+- **Drapes correctly over the sculpted terrain**, including around the hourglass waist curve (rails
+  visibly shorten to match the narrower width there) -- confirms `isChainFaces` genuinely projects
+  across the body's one real freeform top surface, not just a flat patch.
+- **Transparency shows the wood through**, not just "no error": swapped the panel body's own
+  appearance to Pine (matching the already-present `surface` body) first, specifically so gaps
+  between artwork would be visually unambiguous from opaque decal content, then sampled real
+  pixels: a rail point -> (214,56,53) (decal red); two gap points -> (224,181,124) and
+  (191,152,100) (warm tan, clearly NOT red -- the wood showing through); a tie point -> (241,194,53)
+  (decal yellow); a border-stripe point -> (236,233,223) (near-white, decal's white band). A darker
+  patch near one corner, (157,96,57), first looked like a possible projection miss -- pixel-checked
+  and it's still a wood hue (just a darker shade), consistent with Pine's own procedural grain
+  texture, not a decal defect.
+- **A few small rail-stripe discontinuities observed** at specific points in both the iso and top
+  screenshots (a short gap mid-rail in a couple of places) -- not chased further (out of a
+  measurement spike's own scope); worth a closer look if this gets built out for real, possibly a
+  face-chain seam or a steep-normal spot where the global-Z projection direction grazes the surface.
+- **Timing: `decals.add()` itself took ~1.09s.** Negligible next to the STEP import + stamp +
+  frame-build time already in a real Send.
+- **Re-Send duplicate risk: CONFIRMED, then fixed and re-confirmed.** Re-running the SAME
+  decal-creation code a second time without removing the old one first: `decals.count` went 1 -> 2
+  (`decal`, `decal 1`) -- a real duplicate, exactly the brief's own concern. Fix (not yet wired
+  anywhere, just proven): `for d in list(comp.decals): d.deleteMe()` before adding the new one --
+  re-tested, count stayed at 1. Any future wiring needs this step; nothing today provides it.
+- **The pre-existing artwork mechanism (`_import_all_svg_layers`) is confirmed to be PER-FACE FLAT
+  APPEARANCE COLOUR, not a sketch or a decal** -- 0 sketches, 0 decals present before this spike's
+  own decal was added; `panel` body's faces each carry a flat `Opaque(r,g,b)` appearance already.
+  This is the real baseline the decal approach would improve on: face-granularity blocky colour vs
+  a smooth, board-aligned image.
+
+**Left open for Fred, per the advisor's amendment:** the document, renamed `DECAL test -
+2026-10-03`, still open and active, with the B-Spline Set + Frame_1 + the final (non-duplicated)
+decal on the panel's top face, Pine appearance applied so the transparency is visible at a glance.
+Fred's own original "Untitled" document untouched (confirmed by content: 0 occurrences) throughout.
+
+**Committed this item:** `WORK-LOG.md` only -- no production code changed (measurement spike, not
+wiring). The capture script, captured payload (~5MB), rendered decal PNG, and every intermediate
+screenshot deleted from scratch before commit; the two representative PNGs kept only in
+`shots/seatA`. The dev-server process and its chrome profile dir stopped/deleted.
