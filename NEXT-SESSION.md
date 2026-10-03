@@ -186,6 +186,18 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 66 -- Shape Lattice: ties must never be generated ON or touching the boundary/contour (Fred, screenshot, 2026-10-03)
+Fred's shot: a T13 frame with Offset from frame on; the generator placed a tie right on the right-hand contour, half
+inside the green border. Rule: a generated tie (its whole stroke, i.e. centreline +/- half the tie width, and its
+end nodes) keeps a clearance from the contour/boundary of at least the contour's own half-width + the tie's
+half-width + a declared gap (DECLARE it once, e.g. TIE_CONTOUR_CLEARANCE_IN, in the lattice pattern module).
+Ties that can't satisfy it are skipped or moved (the same way Count's minimum is honoured, T80 item 1). Covers
+rect Lattice AND Shape Lattice, every template's contour, with and without Offset from frame.
+(1) Reproduce headless (same seed Fred-style: T13 at 7x9, Offset from frame, a few seeds). (2) Fix in the
+generator (editor-lattice-pattern.js / tie placement), not a post-hoc delete. (3) Pure test: over 13+ templates x
+50 seeds, no generated tie stroke comes closer than the clearance to the contour. (4) Before/after screenshots
+into shots/seatA (per the screenshot rule). Commit 'H23 item 66: ...'.
+
 ## Item 65 -- re-run the matrix on deployed e11e15d + triage the 2 SILENT cases (advisor, 2026-10-03)
 Item 64 accepted (e6bc609, 122/133). Since then the advisor pushed: the drag-stop also refuses outer.defects
 (5cbf1be), a line-meets-arc corner fallback (3bf4638), and a far-slid edge + collapsed-corner-run fallback (e11e15d).
@@ -593,3 +605,4 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-63] (d) JS NaN in taper/archRise payload math + finite-points test; (a) pilot on T1: do sends overwrite the baked arc seeds? derived via-points arc by arc, goldens checked each step, T1 matrix re-run. Commit as 'H23 item 63: ...'.
 - [x] [H23-item-64] matrix tests reachable ends (guard-clamped, shared predicate), regenerate, live full matrix when the advisor frees Fusion. Commit as 'H23 item 64: ...'.
 - [ ] [H23-item-65] re-run the full matrix on e11e15d (regenerated payloads) + triage the 2 SILENT cases. Commit as 'H23 item 65: ...'.
+- [ ] [H23-item-66] Shape Lattice: no tie generated on/touching the contour -- declared clearance, fix in the generator, pure test over templates x seeds, before/after shots. Commit as 'H23 item 66: ...'.
