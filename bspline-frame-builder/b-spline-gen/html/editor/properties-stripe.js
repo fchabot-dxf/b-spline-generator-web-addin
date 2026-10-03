@@ -14,7 +14,7 @@
 import { el, on } from './dom.js';
 import { openColorMosaic } from './editor-color.js';
 import { getLayerPattern } from './editor-lattice-pattern.js';
-import { stripeSettings, defaultStripeColors } from './editor-stripe-tool.js';
+import { stripeSettings, defaultStripeColors, STRIPE_COLOR_PRESETS, applyStripeColorPreset } from './editor-stripe-tool.js';
 
 const fmtLen = (v) => (Math.round(v * 1000) / 1000).toString();
 
@@ -86,6 +86,29 @@ export function initStripeProperties(editor) {
     });
   });
   if (resetEl) on(resetEl, 'click', () => { settings().colors = [null, null, null]; paintSwatches(); });
+
+  // F32 item 1 (Fred: "a few template colour combos"): one chip per STRIPE_COLOR_PRESETS entry, rendered from
+  // the declared list (never hand-typed per chip); a tap applies the whole preset in one call.
+  const presetsEl = el('stripeColorPresets');
+  if (presetsEl) {
+    presetsEl.innerHTML = '';
+    for (const preset of STRIPE_COLOR_PRESETS) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'panel-color-swatch';
+      chip.title = preset.name;
+      chip.setAttribute('aria-label', preset.name);
+      chip.style.cssText = 'flex:1; height:20px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;';
+      const stops = preset.colors.map((c, i) => `${c} ${(i * 100) / preset.colors.length}% ${((i + 1) * 100) / preset.colors.length}%`);
+      chip.style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
+      on(chip, 'click', (e) => {
+        e.stopPropagation();
+        applyStripeColorPreset(editor, preset);
+        paintSwatches();
+      });
+      presetsEl.appendChild(chip);
+    }
+  }
 
   if (typeof document !== 'undefined') {
     document.addEventListener('editorModeChanged', (e) => {

@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   stripeAt, stripeRun, stripePlan, stripeCountFor, maxStripeCount, stripeColorCycle, stripePalette, defaultStripeColors,
   stripeCutPoints, primitiveLength, STRIPE_ATTR, STRIPE_SRC_ATTR, STRIPE_DEFAULTS, STRIPE_FALLBACK_COLORS,
+  STRIPE_COLOR_PRESETS, applyStripeColorPreset, stripeSettings,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-stripe-tool.js';
 import { cutKindOf, minPieceLength, CUT_KIND } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-cut-tool.js';
 import { chainOf } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
@@ -111,6 +112,44 @@ describe('F27 item 3: the colour cycle and its defaults', () => {
     expect(stripePalette(count(3), pattern)).toEqual(['#111111', '#222222']);
     expect(stripePalette(count(3, { three: true }), pattern)).toEqual(['#111111', '#222222', '#333333']);
     expect(stripePalette(count(3, { colors: [null, '#abcdef', null] }), pattern)).toEqual(['#111111', '#abcdef']);
+  });
+});
+
+describe('F32 item 1: colour presets', () => {
+  it('declares Black/White and Blue/White, the blue being the lattice\'s own node colour, not retyped', () => {
+    expect(STRIPE_COLOR_PRESETS).toEqual([
+      { name: 'Black / White', colors: ['#000000', '#ffffff'] },
+      { name: 'Blue / White', colors: [PATTERN_DEFAULTS.colors.nodes, '#ffffff'] },
+    ]);
+    expect(PATTERN_DEFAULTS.colors.nodes).toBe('#1a237e'); // the exact value Fred asked to reuse, not duplicate
+  });
+
+  it('applying a preset sets exactly those colours, through the same settings().colors[i] path a manual pick uses', () => {
+    const editor = {};
+    const s = stripeSettings(editor);
+    s.colors = ['#remnant', '#remnant', '#remnant']; // a prior manual pick, incl. a leftover C
+    s.three = true;
+    applyStripeColorPreset(editor, STRIPE_COLOR_PRESETS[0]); // Black / White, 2 colours
+    expect(s.colors).toEqual(['#000000', '#ffffff', null]); // 2-colour preset clears the stale C
+    expect(s.three).toBe(false); // Fred: "a 2-colour preset turns Use C off"
+  });
+
+  it('a 3-colour preset would set C and turn Use C on (declared data drives it, not a hardcoded 2)', () => {
+    const editor = {};
+    const s = stripeSettings(editor);
+    applyStripeColorPreset(editor, { name: 'Three', colors: ['#111111', '#222222', '#333333'] });
+    expect(s.colors).toEqual(['#111111', '#222222', '#333333']);
+    expect(s.three).toBe(true);
+  });
+
+  it('one call does all of it -- applying a preset is a single atomic settings update, not 3 separate picks', () => {
+    const editor = {};
+    const s = stripeSettings(editor);
+    const writes = [];
+    const spy = new Proxy(s.colors, { set(t, k, v) { writes.push([k, v]); t[k] = v; return true; } });
+    s.colors = spy;
+    applyStripeColorPreset(editor, STRIPE_COLOR_PRESETS[1]);
+    expect(writes.length).toBe(3); // A, B, C (C cleared to null) -- all three, in the one call
   });
 });
 
