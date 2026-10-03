@@ -65,6 +65,59 @@ generic builder from `primitives` + `joints`, never stored twice:
 - **corner-resolve type per miter joint**: derived from the two meeting primitives' own types —
   line+line, line+arc, or arc+arc (see §2).
 
+## 1a. Formulas (amendment, Fred): typed expressions in w, h, t
+
+Beyond a plain fraction of `hw`/`hh`, Fred wants to optionally TYPE a formula for any point
+coordinate or arc size (e.g. `x = 'w/2 - 1'`, `y = 'h*0.3'`) — a non-proportional relationship a
+pure fraction can't express (a fixed 1" inset from the edge regardless of board size, say).
+
+**Storage**: each coordinate value (a point's `x`/`y`, or an arc's `bulge` — the amendment's own
+"radius" maps onto this existing field, not a new parallel one) becomes one of:
+- a plain number — the existing fraction-of-`hw`/`hh` default, unchanged, fully backward compatible
+  with every template written before this amendment;
+- a string beginning with `=` (the spreadsheet convention, immediately recognizable as "this is a
+  formula, not a literal") — evaluated against the FULL board (`w`, `h`, in inches, not `hw`/`hh`
+  halves, and `t` = `frame_thickness`) rather than the fraction basis, since the whole point of a
+  formula is to express something a fraction basis can't.
+
+**Safe evaluation — no `eval`/`new Function` on user text, ever** (that's arbitrary code execution
+on a string the user typed; every fuzzed input must be inert, not just the ones we think to test).
+Nothing in this codebase already provides this (checked: no existing JS-side formula evaluator),
+so this is genuinely new, bounded machinery — not a hand-roll violation, since the grammar itself is
+tiny and fully declared up front: numbers, the three variables `w`/`h`/`t`, the four operators
+`+ - * /`, parens for grouping, and the two functions `min`/`max`. A small hand-written
+tokenizer → recursive-descent parser → evaluator, whose evaluator walks a parsed AST against a
+FIXED scope object `{w, h, t}` and a FIXED function table `{min, max}` — never string-executes
+anything. Any token outside the grammar (an identifier that isn't `w`/`h`/`t`/`min`/`max`, any other
+character) is a parse error, shown inline, Save blocked until it resolves.
+
+Resolution happens **once, on the app side**, exactly where every other seeded point already
+resolves to a real inch coordinate before reaching Fusion (`seed_geometry.py`'s own existing
+pattern: the app sends literal resolved geometry, never a formula or a parameter). **No Fusion-side
+change at all** — the generic builder (§2) still only ever receives baked literal points; it has no
+concept of a formula and needs none.
+
+**UI**: in joint-tagging mode (§3), selecting a vertex (a point) or a curve (its arc's bulge) opens
+a small side panel: the usual numeric fraction field, PLUS an "ƒ(w,h,t)" toggle that swaps it for a
+formula text field. A live preview re-renders the outline at the three standard board sizes
+(6x9 / 7x9 / 9x12) side by side as the formula is typed (debounced), so a non-proportional formula's
+effect across sizes is visible before saving, not discovered later on a different order.
+
+**Validation**: every formula-touched template must pass the FULL §5 validity-rule set
+(closed loop, no self-intersection, no undercut, every piece ≥ `frame_thickness`, no hooked tip, no
+colliding miters) at **all three standard sizes**, not just the one it happened to be drawn at — a
+formula is exactly the case where a fraction-based guarantee ("scales proportionally, so if it's
+valid at one size it's valid at every size") no longer holds. Save stays blocked until all three
+pass; the failing size (and which rule) is named in the same banner, not a generic rejection.
+Arbitrary custom board sizes beyond the three are NOT pre-validated at save time (impossible to
+enumerate every size in advance) — they're covered by the SAME live validity check Generate already
+runs for every handle-driven template today, just extended to run on a loaded user-template's own
+geometry too.
+
+**Effort**: M — the parser/evaluator is small but genuinely new (no reuse available), and the
+three-size live preview + extended validation is real, not mechanical, UI work. Sits between the
+plan's existing S and M-L items.
+
 ## 2. The generic builder, mapped onto what T14-T17 already do
 
 Walking T15's own 11-phase structure, phase by phase, against what becomes GENERATED vs stays
@@ -245,6 +298,7 @@ Concrete locations found (read directly, not guessed):
 | Step | Size | Why |
 |---|---|---|
 | Data format (schema + one derivation pass: primitives+joints → regions) | S | Shape is already proven by every existing `FRAME_REGIONS`; only the *production* of it is new |
+| Formulas (§1a): safe expression parser + 3-size live preview + extended validation | M | Genuinely new machinery (no existing evaluator to reuse), bounded by a small declared grammar |
 | Generic Fusion-side builder | M–L | The one genuinely new module; must correctly dispatch all 3 corner-resolve types + smooth-joint tangent chains + bar-grouping — the biggest single piece of real work |
 | Editor UX (draw + tag joints + save) | M | Reuses existing line/arc/kink draw tools and the existing banner pattern; the new work is the joint-tagging mode and the save/registration wiring |
 | Live proof (Flask as data) | S | Reuses `item61_full_matrix_sweep.py`'s own `bars_report()` unchanged; one throwaway conversion script |
