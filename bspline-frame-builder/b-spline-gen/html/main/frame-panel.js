@@ -119,6 +119,16 @@ export function generateFrame(seed = nextSeed()) {
     const inner = frameInnerProfile(FRAME_DEFS, { ...rec, seeds: s }, { widthIn: P.widthIn, heightIn: P.heightIn });
     if (inner && inner.defects.length > 0) return false;
     const outer = frameCutProfile(FRAME_DEFS, { ...rec, seeds: realSeedsFor(s) }, { widthIn: P.widthIn, heightIn: P.heightIn });
+    // H23 item 59 (Arched + taper): a high archRise combined with a large taper can shift the shoulder's own
+    // tangent point far enough around the waist circle that hourglassConstruction's own waistMajor shortcut
+    // (closed-form, correct only for the untapered angular relationship) no longer matches the ACTUAL arc
+    // Fusion would need to stay tangent at the shoulder/waist and waist/hip joints -- MEASURED live: a drawn
+    // seed with this exact combination produced a real notTangent defect (dot product 0.9983, a ~3.3 deg
+    // mismatch) that neither the piece-length nor reflex-arc check below ever looks at. `outer.defects` is the
+    // SAME check `frameCutProfile` already computes (outlineDefects, tangency included by default) -- Generate
+    // rejects and redraws here, the same declared pattern items 21/23/39 already established for their own
+    // measured defect classes, rather than hand-deriving a narrower range for this one combination.
+    if (outer.defects.length > 0) return false;
     if (!outer.primitives.every((p) => _primLength(p) >= t)) return false;
     if (!outer.primitives.every((p) => p.type !== 'A' || Math.abs(p.dTheta) < Math.PI)) return false;
     // H23 item 39 (Fred-approved guard -- his own correction: "a hooked tip is SHORT GRAIN, fibres

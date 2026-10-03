@@ -481,10 +481,14 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
       const g0 = hourglassConstruction(region, { ...resolvedParams, taperAngle: 0 });
       const circle = { cx: g0.shoulderCx, cy: g0.shoulderY, r: g0.cornerRadiusTop };
       const pinch = { cx: g0.waistCx, cy: g0.waistCenterY, r: g0.radiusWaist };
+      // H23 item 59 (Arched + taper): same hh -> hh - archRise target-line substitution as
+      // hourglassConstruction's own topTaper / _hourglassRange's own taperAngle branch -- g0.arch is 0/absent
+      // for every template but T10, so this is a no-op everywhere else.
+      const hhTarget = hh - (g0.arch ? g0.arch.rise : 0);
       return {
         key: 'taperAngle', label: 'Taper angle', axis: 'x', handleKind: 'position',
         anchor: { x: cx0 + g.topX, y: cy0 + (-hh + g.shoulderY) / 2 },
-        valueFromWorld: (pt) => within('taperAngle', taperAngleForTopCornerX(circle, pinch, +1, pt.x - cx0, hw, hh)),
+        valueFromWorld: (pt) => within('taperAngle', taperAngleForTopCornerX(circle, pinch, +1, pt.x - cx0, hw, hhTarget)),
       };
     })(),
   ]));

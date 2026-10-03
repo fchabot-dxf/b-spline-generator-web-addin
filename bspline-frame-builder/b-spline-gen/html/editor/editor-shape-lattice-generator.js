@@ -503,7 +503,12 @@ function _hourglassRange(key, region, stroke, v) {
     const S = r + radiusWaist, d = hw * v.waistReach - topInset, dy = Math.sqrt(Math.max(0, d * (2 * S - d)));
     const circle = { cx: hw - topInset - r, cy: waistCenterY - dy, r };
     const pinch = { cx: waistCx, cy: waistCenterY, r: radiusWaist };
-    return _range(-15, 15, _taperRange(circle, pinch, +1, hw, hh), 15);
+    // H23 item 59 (Arched + taper): same `hh - archRise` target-line substitution as
+    // hourglassConstruction's own topTaper -- archRise is 0 bit for bit for every template but T10, so this
+    // is a no-op everywhere else (inlined, not a full hourglassConstruction call, same reason the rest of
+    // this branch is already inlined: this runs on every resolve, for every template, taper or not).
+    const archRise = hh * (v.archRise ?? DERIVED_PARAM_DEFAULTS.hourglass.archRise(v));
+    return _range(-15, 15, _taperRange(circle, pinch, +1, hw, hh - archRise), 15);
   }
   if (key === 'cornerRadiusTop' || key === 'cornerRadiusBottom') {
     // F12: each corner has its OWN vertical room (y-down: a lower waist leaves
@@ -1171,11 +1176,22 @@ export function hourglassConstruction(region, resolved) {
   };
   const top0 = side(resolved.cornerRadiusTop ?? D.cornerRadiusTop(resolved), -1, topInset);
   const bot = side(resolved.cornerRadiusBottom ?? D.cornerRadiusBottom(resolved), +1, 0);
+  // H23 item 59 (Arched + taper): archRise must be known BEFORE the taper corner is solved -- moved up from
+  // its own old position below (still used there, unchanged, for `arch.halfWidth`/`arch.radius`). Computing it
+  // here first is what lets the very next line pass the taper's own REAL target line.
+  const archRise = hh * (resolved.archRise ?? D.archRise(resolved));
   // F30 item 3 (Fred's own taper copies): the shoulder's own corner, tapered -- see _taperedCorner's own doc
   // comment. Untouched (top === top0, bit for bit) when taperAngle is 0, the default for every template but the
   // two new copies.
   const taperAngle = resolved.taperAngle ?? D.taperAngle(resolved);
-  const topTaper = _taperedCorner({ cx: top0.cx, cy: top0.y, r: top0.r }, { cx: waistCx, cy: waistCenterY, r: radiusWaist }, +1, taperAngle, hw, hh);
+  // H23 item 59 (Arched + taper, ported from tools/repro/f30_item5_arched_taper_diagram.mjs @4be8963's own
+  // header comment): `_taperedCorner`'s own `hh` parameter is the TARGET LINE's distance from centre, not
+  // necessarily the board's half-height. For every flat-top hourglass (archRise 0, every template but T10)
+  // that target line IS the board edge (-hh), so `hh - archRise` reduces to plain `hh` -- bit for bit
+  // unchanged. For T10 the horn never reaches the board edge at all; it stops at the arch's own chord,
+  // `-hh + archRise` (eaten into, same as `hourglassConstruction`'s own `arch` block below does
+  // unconditionally) -- `hh - archRise` is exactly that target line's own distance from centre.
+  const topTaper = _taperedCorner({ cx: top0.cx, cy: top0.y, r: top0.r }, { cx: waistCx, cy: waistCenterY, r: radiusWaist }, +1, taperAngle, hw, hh - archRise);
   const topDist = Math.hypot(waistCx - topTaper.cx, waistCenterY - topTaper.cy) || 1;
   const top = taperAngle ? { ...top0, cx: topTaper.cx, y: topTaper.cy, ux: (waistCx - topTaper.cx) / topDist, uy: (waistCenterY - topTaper.cy) / topDist } : top0;
   // T4 OFFSET HOURGLASS: the LEFT side's own construction (in mirrored local coordinates: +x = outward), only
@@ -1215,7 +1231,6 @@ export function hourglassConstruction(region, resolved) {
   // F30 item 3: the top horns' own x is now the TAPERED corner's (identical to `hw - topInset` at taperAngle 0,
   // the removed line's own formula -- confirmed by _taperedCorner's own early return).
   const topX = topTaper.topCornerX;
-  const archRise = hh * (resolved.archRise ?? D.archRise(resolved));
   let arch = null;
   if (archRise > 0) {
     const r = (topX * topX + archRise * archRise) / (2 * archRise);

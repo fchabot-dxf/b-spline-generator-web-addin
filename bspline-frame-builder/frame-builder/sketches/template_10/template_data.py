@@ -96,6 +96,15 @@ FRAME_HANDLES = [
     {"key": "waistReach",   "label": "Waist reach",    "basis": "hw", "binding": "seeded"},
     {"key": "waistCenterY", "label": "Waist position", "basis": "hh", "binding": "seeded"},
 ]
+# H23 item 59 (Arched + taper): NOT added as a 4th handle here -- LIVE Fusion verification found the
+# shoulder/waist/hip arc chain is driven by p02_02_anatomy.py's own hardcoded skeleton "pin" lines
+# (FRAME_SEED_MAP kind:"pin", which NO Python code ever consumes -- confirmed by direct grep), so a
+# dragged/sent taperAngle builds the WRONG (untapered) shape in Fusion while the app's own preview
+# shows the correct, tapered one -- a silent preview/build mismatch, at every nonzero taper value
+# (MEASURED live, 9/9 cases). The shared hourglassConstruction fix (editor-shape-lattice-generator.js,
+# this item) is real and kept -- it is a prerequisite for the handle, not sufficient on its own. See
+# WORK-LOG H23 item 59 for the full finding and the advisor's own options A/B/C before this handle
+# is re-added.
 FRAME_HANDLE_MIGRATIONS = {}  # T10 is new: no record was ever saved before a split, so nothing to migrate.
 
 # FB-APP F11 (option B, Fred: "simply seed it in position"): where each of
