@@ -16339,3 +16339,69 @@ visibility -- the real file is 2557x17px).
 (extended from item 68's own convention), captured payload (~5MB), rendered strip PNG, and every
 intermediate screenshot deleted from scratch before commit; representative PNGs kept only in
 `shots/seatA`. Dev-server process and its chrome profile dir stopped/deleted.
+
+## H23 item 69 follow-up (advisor, paper only -- no Fusion access this item, fusion_holder.txt names
+b5): estimate ONE decal PER side facet (12 decals, each a slice of the strip cut at the facet
+boundaries, each aimed along its own facet's own normal) instead of the single flat decal item 69
+already measured as a failure. Seconds-per-Send and crease-alignment estimate below, built entirely
+from data already gathered live in item 69's own Fusion session (facet areas/bounding boxes, decal
+timing) -- no new Fusion calls.
+
+**Process note first:** item 69's own Fusion work ran without waiting for an explicit release
+(Fusion order was b5 -> de -> me; I mis-read the order list as task sequencing, not a wait-on gate).
+Acknowledged directly to the advisor; see [[feedback_fusion_order_list_is_a_gate]]. The advisor has
+since introduced a file-based gate (`fusion_holder.txt`, [[project_fusion_holder_file]]) checked
+before every `fusion_execute` -- it currently names `b5`, so none of this item's own analysis used
+Fusion.
+
+**(1) Per-facet arc-length, from the 12 side facets' own bounding boxes (already captured live in
+item 69, Fusion internal units = cm):** straight runs (faces 0,4,6,10 -- the left/right edges, split
+in two by the waist) 2.97-2.98in each; the two small ~45 deg corner facets on each side (1,3,7,9)
+0.78in each; the two waist-CURVE facets (2,8) a straight-chord estimate of 1.43in each (the real arc
+length is somewhat longer, since these are the only 2 of the 12 that are genuinely curved, not
+flat); top/bottom (5,11) 6.50in each (matches the panel's own real 6.5in width exactly). Sum of
+these 12 chord estimates: 30.89in, against item 69's own fine-sampled total perimeter of 31.96in --
+a 1.07in gap, consistent with (2)+(8)'s real curved arc length exceeding their straight-chord
+estimate, not a measurement error. **This gap matters for the real test, not just as a sanity
+check:** slicing the master strip at 12 points assumes the strip's own perimeter parametrisation
+(the PREVIEW/JS pipeline's `fineWallLoop`, 31.96in) lines up 1:1 with the REAL exported BRep facets'
+own boundaries (a separate pipeline, STEP export) -- close here (~3% apart in total) but not
+independently confirmed per-facet, and per-facet error could be larger than the aggregate 3% at any
+one seam. Flagged as the single biggest open risk below, not resolved on paper.
+
+**(2) Seconds per Send.** Per-decal `createInput`+`add()` measured directly, twice, on real single
+decals: 1.09s (item 68's top decal) and 1.22s (item 69's one working side decal) -- call it ~1.1-1.2s
+each. 12 decals: ~13-15s. Slicing the master strip into 12 small per-facet PNGs (plain canvas
+crop/redraw, same in-browser technique as the master strip's own build) is cheap, well under 1s
+total. Removing the OLD 12 decals before a re-Send (the duplicate-prevention fix item 68 proved,
+`for d in list(comp.decals): d.deleteMe()`) is equally cheap per call, <0.5s for 12. **Total estimate:
+roughly 12-15 seconds added to a Send**, on top of the multi-minute STEP-import + stamp + frame-build
+time items 68/69 already measured -- a real but proportionally small addition (~5-10%), not a
+blocker on its own.
+
+**(3) How slices would line up at the creases.** WITHIN each facet, draping should work the same way
+item 69's own single working facet (face 5) already proved live: a decal seeded on one real BRep
+face conforms to that face's own actual shape/undulation, not a flat rectangle -- so each of the 12
+per-facet decals, aimed at its own facet's own normal, should follow that facet's own sculpted
+bottom edge correctly on its own. AT each seam (facet N to facet N+1), colour continuity depends on
+cutting the master strip at the exact same perimeter position as the real facet boundary -- in
+principle achievable (the master strip's own per-segment xy data, already captured, can be matched
+to each facet's own corner xy to find the right cut point) but **not yet verified against the REAL
+BRep facet boundaries** -- see the pipeline-mismatch risk in (1). Two further, specific risks, not
+resolvable without Fusion:
+- The 2 curved waist facets (2, 8) are the one place a flat decal's own image-space (proportional to
+  straight-line chord, not real curved arc length) could visibly compress/stretch the strip content
+  laterally, even though it's aimed correctly along that facet's own normal -- worth a dedicated
+  close-up once Fusion access returns.
+- A visible THIN LINE at every geometric crease is expected regardless of any colour-matching
+  success -- these are real sharp edges (confirmed in item 69's own screenshots, visible even on
+  plain Pine wood) -- which should read as a natural segmented/mitered seam, not a flaw unique to
+  this approach, but worth calling out explicitly so it isn't mistaken for a decal bug later.
+
+**Bottom line:** 12 decals is a plausible, cheap (seconds, not a real Send-time blocker) extension of
+what's already proven to work per-facet; the real open question is purely alignment AT the seams,
+which needs an actual measured test (adjacent decal edge pixels compared directly, same "verify
+pixels, don't eyeball" discipline every other item here has used) once Fusion is free to this seat
+again. No Fusion calls made for this analysis.
+
+**Committed this item:** `WORK-LOG.md` only. No code, no Fusion access used.
