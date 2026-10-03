@@ -7,6 +7,8 @@ new one). When the profile has no angle field, the select takes the full row. Se
 core/noise: small, additive HTML/CSS only here. NO FUSION. PROGRESS automatic ("F25 item N: …").
 
 ## Checklist
+**CORNER RULE (Fred-approved guard, 2026-10-02, main's H23 item 39): at every corner the straight miter from the outer corner to its inner corner must stay inside the wood -- no hooked/curled tips (wood grain). Your new templates' defaults, Generate and handles must respect it; reuse item 39's declared check once it lands on main.**
+
 **JOINT RULE (Fred, 2026-10-02): every joint between bars is a MITER -- never a butt joint, including where a curve meets a straight piece or another curve (e.g. neck-to-dome, arch-to-side, the sand-timer pinch). A smooth tangent run inside ONE bar has no joint at all.**
 
 - [ ] [F25-item-1] Tool Profile + V-Bit Angle on one line at 390 / 768 / 834 / 1024 / 1366 (value fully visible; seat A's multi-width
