@@ -186,6 +186,15 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 54 -- the T7 'PROFILE 2/4 NOT BUILT' on the real payload (advisor, 2026-10-03). Items 52+53 accepted and DEPLOYED (a558509).
+The real payload was captured 2026-10-02 21:52, BEFORE item 39's guard and item 40's narrower T7 Generate ranges, so
+its T7 seeds may be a hooked shape that Generate can no longer produce. Check that first: run the payload's frame
+record through today's isValid (miterStaysInsideWood + piece length). If it's rejected today, the anomaly is
+explained: say so, then make a fresh payload (today's Generate seed, item-40 way) with the SAME stamp/stepVariants and
+confirm 5/5 bars live with the inlay. If today's isValid ACCEPTS it, it's a real bug: probe which miter, root fix.
+Also send-2 took 24.5 s vs 16.2 s for send-1: one line on where the extra 8 s goes (the delete?). No fix needed yet.
+Fusion is yours. Commit 'H23 item 54: ...'.
+
 ## Item 53 -- BLOCKER before deploy: item 52's marker restore can leave the inlay rolled back (advisor review).
 restore_marker_position sets markerPosition = prior_position, the index read BEFORE the frame features were
 inserted. If the marker was at the end (count N) and the build inserts K features before the inlay, the timeline now
@@ -441,4 +450,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-50] (nudges load-bearing, Pulse no gain; real costs not yet measured -> item 51) prune for speed: re-time a real Send, A/B each removal, keep only identical + 13/13 sweep, one commit per removal, before/after seconds. Commit as 'H23 item 50: ...'.
 - [x] [H23-item-51] speed, real costs: replay a real full Send, time stages, attack the top 2 with identical A/B, fix step_removal_ab OUT path. Commit as 'H23 item 51: ...'.
 - [x] [H23-item-52] speed round 2: timeline marker instead of reorders (or why twice); stamp sketch projections measured + reduced; A/B identical, seconds before/after. Commit as 'H23 item 52: ...'.
-- [ ] [H23-item-53] BLOCKER: marker restore must end at the timeline END (moveToEnd), live check with inlay + second Send. Commit as 'H23 item 53: ...'.
+- [x] [H23-item-53] BLOCKER: marker restore must end at the timeline END (moveToEnd), live check with inlay + second Send. Commit as 'H23 item 53: ...'.
+- [ ] [H23-item-54] T7 NOT BUILT on the pre-guard real payload: today's isValid verdict, fresh payload live 5/5 with inlay, or a root fix; + where send-2's extra 8 s goes. Commit as 'H23 item 54: ...'.
