@@ -95,16 +95,16 @@ FRAME_HANDLES = [
     {"key": "archRise",     "label": "Arch rise",      "basis": "hh", "binding": "seeded"},
     {"key": "waistReach",   "label": "Waist reach",    "basis": "hw", "binding": "seeded"},
     {"key": "waistCenterY", "label": "Waist position", "basis": "hh", "binding": "seeded"},
+    # T84 item 7 (H23 item 59/60's own gate, resolved): re-added after fixing the skeleton-pin
+    # Coincident/Tangent chain's own override at its cause (p02_06_waist_pins.py/p02_10_welds.py,
+    # this item) -- a dragged/sent taperAngle used to build the WRONG (untapered) shape in Fusion
+    # while the app's own preview showed the correct, tapered one (H23 item 59, MEASURED live, 9/9
+    # cases). Fred approved the full -15..+15 range (editor-shape-lattice-generator.js's own
+    # `_hourglassRange` taperAngle branch, kept unchanged since item 59 -- already exactly this
+    # band), default 8, matching T12/T13's own shipped `taperAngle` handle exactly (same basis,
+    # same binding, no narrower generateRange -- Fred's own approval is for the FULL drag range).
+    {"key": "taperAngle",   "label": "Taper angle",    "basis": "hw", "binding": "seeded"},
 ]
-# H23 item 59 (Arched + taper): NOT added as a 4th handle here -- LIVE Fusion verification found the
-# shoulder/waist/hip arc chain is driven by p02_02_anatomy.py's own hardcoded skeleton "pin" lines
-# (FRAME_SEED_MAP kind:"pin", which NO Python code ever consumes -- confirmed by direct grep), so a
-# dragged/sent taperAngle builds the WRONG (untapered) shape in Fusion while the app's own preview
-# shows the correct, tapered one -- a silent preview/build mismatch, at every nonzero taper value
-# (MEASURED live, 9/9 cases). The shared hourglassConstruction fix (editor-shape-lattice-generator.js,
-# this item) is real and kept -- it is a prerequisite for the handle, not sufficient on its own. See
-# WORK-LOG H23 item 59 for the full finding and the advisor's own options A/B/C before this handle
-# is re-added.
 FRAME_HANDLE_MIGRATIONS = {}  # T10 is new: no record was ever saved before a split, so nothing to migrate.
 
 # FB-APP F11 (option B, Fred: "simply seed it in position"): where each of
@@ -148,7 +148,10 @@ FRAME_FEATURES = COMMON_FRAME_FEATURES
 # `template_shape_model` dispatch, frame_shape_fit.provisional_arched_top_model). 0.35 x hw: a gentle dome,
 # Fred's own sketch, confirmed against the 7x9 preview he approved ("looks perfect").
 FRAME_SHAPE_EXTRACTOR = "hourglass_arched_top"
-FRAME_PROVISIONAL_SHAPE = {"from": "template_1", "archRiseOfHw": 0.35}
+# T84 item 7: `taperAngleDeg` re-applied, matching T12/T13's own identical key -- frame_definition.py's
+# own `template_shape_model` re-applies `taperAngle` unconditionally whenever this key is present,
+# the SAME generic mechanism T12/T13 already use (no new dispatch branch needed here).
+FRAME_PROVISIONAL_SHAPE = {"from": "template_1", "archRiseOfHw": 0.35, "taperAngleDeg": 8.0}
 
 # F29 item 1 (seat A's live Fusion check, H23 item 14: the arch sweeps the wrong branch in Fusion at every
 # board size -- the app's own preview/tests are unaffected, this is a Fusion-build-only defect): hidden from
