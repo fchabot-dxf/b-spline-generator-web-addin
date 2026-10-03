@@ -68,6 +68,7 @@
     "heightIn": 9,
     "recorded": "2026-10-03",
     "recorder": "tools/repro/fusion_t11/item44_record_t10_goldens.py",
+    "reverifiedAfter": "H23 item 46 (template_10's own SeedFrom refactor) -- re-run live, byte-identical",
     "template": "template_10",
     "timelineHealthy": true,
     "units": "in / in^2 / in^3",

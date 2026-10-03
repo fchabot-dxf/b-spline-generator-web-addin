@@ -37,17 +37,19 @@ def get_block(ui_data=None):
         correction above. `fb_engine/projections.py`'s own `_register_endpoints` now cross-checks a
         single-result projection's `startSketchPoint` against the SOURCE's own (already-corrected)
         `:S` and re-tags there too.
-    """
-    HW = 'widthIn/2 - 0.25 in'
-    CY = 'heightIn/2 - 0.175 * widthIn - 0.1625 in'
-    LY = 'heightIn/2 - 0.25 in'
 
+    H23 item 46 (item 45's own finding): this step used to re-type `p02_03_loop.py`'s own closed-form
+    `HW`/`CY`/`LY` literal a SECOND time by hand -- an independently-maintained duplicate of the exact
+    same formula, the item-18 bug class item 45 went looking for (editing one copy without the other
+    would silently desync this rebuild from the arc it exists to rebuild). Declares `SeedFrom: 'top_edge'`
+    instead (`fb_engine/seed_basis.py`'s own `apply_seed_from`, resolved before this template's own
+    `seed_sketch` call) -- this step's `Points` become an exact copy of `p02_03_loop.py`'s `top_edge`
+    step: one declared source, not two hand-typed ones. `addByThreePoints` + `Rebuild` are unchanged; the
+    unseeded default build is byte-identical (the same literal, now copied instead of retyped).
+    """
     seq = [
-        {'ID': 'top_edge', 'Type': 'Arc3Point', 'Rebuild': True, 'Points': [
-            [f'-({HW})', CY],
-            ['0.001', LY],
-            [HW, CY],
-        ], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
+        {'ID': 'top_edge', 'Type': 'Arc3Point', 'Rebuild': True, 'SeedFrom': 'top_edge',
+         'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
         {'Type': 'Fix', 'Targets': ['top_edge:S', 'top_edge:E']},
         # Re-weld horn_TR/TL to the rebuilt arc -- the delete above silently dropped p02_03_loop.py's own
         # Coincident welds along with the old arc's endpoints.

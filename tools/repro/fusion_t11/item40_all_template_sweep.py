@@ -87,6 +87,68 @@ def bars_report(des, declared_names, n_expected):
             'missing_declared_names': missing_names, 'extra_names': extra_names}
 
 
+def _id_of(entity):
+    try:
+        attr = entity.attributes.itemByName('FrameBuilder', 'ID')
+        if attr:
+            return attr.value
+    except Exception:
+        pass
+    return getattr(entity, 'name', None)
+
+
+CM = 2.54
+
+
+def preview_vs_build_check(fc, seed_map, seed_geometry, tol_in=0.01):
+    """H23 item 46 (2): item 45's own T10 finding generalized into a standing live guard for every
+    template -- what the BUILT Shape Outline actually has at a seedMap-covered line/arc's own :S/:E
+    must match what the payload's own seedGeometry (the app's own preview) said it would be, within
+    tol_in inches. 'pin'/'radius' seedMap kinds aren't curve endpoints and are out of this check's
+    scope. Returns a list of mismatch strings (empty = clean)."""
+    sk2 = next((s for s in fc.sketches if '2_shape_outline' in s.name), None)
+    if sk2 is None:
+        return ['no 2_shape_outline sketch found']
+    by_id = {}
+    for ln in sk2.sketchCurves.sketchLines:
+        by_id[_id_of(ln)] = ln
+    for ar in sk2.sketchCurves.sketchArcs:
+        by_id[_id_of(ar)] = ar
+    def _close(a, b):
+        return abs(a[0] - b[0]) <= tol_in and abs(a[1] - b[1]) <= tol_in
+
+    mismatches = []
+    for e in seed_map:
+        kind, sid = e.get('kind'), e.get('id')
+        if kind not in ('line', 'arc') or sid not in seed_geometry:
+            continue
+        pts = seed_geometry[sid].get('points')
+        if not pts:
+            continue
+        entity = by_id.get(sid)
+        if entity is None:
+            mismatches.append(f'{sid}: no built {kind} entity with this ID')
+            continue
+        want_s, want_e = pts[0], pts[-1]
+        got_s = (entity.startSketchPoint.geometry.x / CM, entity.startSketchPoint.geometry.y / CM)
+        got_e = (entity.endSketchPoint.geometry.x / CM, entity.endSketchPoint.geometry.y / CM)
+        if kind == 'line':
+            # addByTwoPoints preserves argument order (measured) -- a direct, ordered check.
+            ok = _close(want_s, got_s) and _close(want_e, got_e)
+        else:
+            # addByThreePoints does NOT: MEASURED live, Fusion tags startSketchPoint/endSketchPoint
+            # by the arc's own geometric direction, not by argument order -- :S can legitimately end
+            # up physically AT the sent end point and vice versa. Compare the endpoint PAIR as a set,
+            # not an ordered pair, so this check verifies the built SHAPE, not an internal tag name.
+            ok = (_close(want_s, got_s) and _close(want_e, got_e)) or \
+                 (_close(want_s, got_e) and _close(want_e, got_s))
+        if not ok:
+            mismatches.append(
+                f'{sid} preview=({tuple(round(v, 4) for v in want_s)},{tuple(round(v, 4) for v in want_e)}) '
+                f'build=({tuple(round(v, 4) for v in got_s)},{tuple(round(v, 4) for v in got_e)})')
+    return mismatches
+
+
 mod_keys = lambda: [m for m in list(sys.modules) if m == 'fb_engine' or m.startswith('fb_engine.') or m.startswith('sketches') or m == 'template_loader' or m.startswith('template_') or m == 'fb_shared' or m.startswith('fb_shared.')]
 saved_mods = {m: sys.modules[m] for m in mod_keys()}
 saved_path = list(sys.path)
@@ -140,8 +202,17 @@ try:
             with open(log_path, encoding='utf-8', errors='replace') as f:
                 miter_miss_lines = [l.strip() for l in f if 'MITER MISS' in l]
 
+            # H23 item 46 (2): does the BUILT Shape Outline actually match what this payload's own
+            # seedGeometry (the app's own preview) promised? resolve_template is already on sys.path
+            # from the fresh-checkout load above.
+            from fb_engine.template_resolver import resolve_template as _resolve_tpl
+            seed_map = _resolve_tpl(template_id)[0]['Frame'].get('seedMap', [])
+            fc = [o for o in des.rootComponent.occurrences if o.component.name.startswith('Frame_')][0].component
+            preview_build_mismatches = preview_vs_build_check(fc, seed_map, payload.get('seedGeometry') or {})
+
             r = bars_report(des, declared_names, n_miters)
             r['miter_miss_lines'] = miter_miss_lines
+            r['preview_build_mismatches'] = preview_build_mismatches
             results[template_id] = r
             _write()
 
@@ -163,5 +234,5 @@ crashed = [k for k, v in results.items() if 'CRASH' in v]
 bad = [k for k in done if results[k]['count'] != results[k]['expected_count'] or results[k]['overlaps']
        or results[k]['slivers_under_0.5cm3'] or results[k]['dup_named_bodies']
        or results[k]['missing_declared_names'] or not results[k]['timeline_healthy']
-       or results[k].get('miter_miss_lines')]
+       or results[k].get('miter_miss_lines') or results[k].get('preview_build_mismatches')]
 print('done=%d crashed=%s bad=%s' % (len(done), crashed, bad))

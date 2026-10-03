@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "ec675fa1b049867b0d355815e0f61c2f054cd6aff6bea7ed692b93a6e04712b5",
+  "sourceHash": "2cbbd332e27f225b82e40d5b7c8c67018509b5bbd362bd471bd2cee4880784d3",
   "templates": [
     {
       "features": [
@@ -3044,6 +3044,7 @@ export default {
                     ]
                   ],
                   "Rebuild": true,
+                  "SeedFrom": "top_edge",
                   "StartID": "top_edge:S",
                   "Type": "Arc3Point"
                 },

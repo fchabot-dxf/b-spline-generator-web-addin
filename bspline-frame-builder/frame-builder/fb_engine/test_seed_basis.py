@@ -97,6 +97,72 @@ def test_template_8_dip_seed_radius_tracks_both_dimensions_not_just_one():
             assert got > 0, (w, h, name)  # sane: a flipped/degenerate seed would go non-positive
 
 
+def test_apply_seed_from_copies_the_named_steps_points():
+    sketch = {"Blocks": [{"BuildSequence": [
+        {"ID": "top_edge", "Type": "Arc3Point", "Points": [["a", "b"], ["c", "d"], ["e", "f"]]},
+        {"ID": "top_edge", "Type": "Arc3Point", "Rebuild": True, "SeedFrom": "top_edge"},
+    ]}]}
+    seed_basis.apply_seed_from(sketch)
+    first, second = sketch["Blocks"][0]["BuildSequence"]
+    assert second["Points"] == first["Points"]
+    assert second["Points"] is not first["Points"]  # a copy, not an aliased list a later mutation could corrupt
+
+
+def test_apply_seed_from_unknown_source_raises():
+    sketch = {"Blocks": [{"BuildSequence": [
+        {"ID": "rebuilt", "Type": "Arc3Point", "Rebuild": True, "SeedFrom": "nonexistent"},
+    ]}]}
+    with pytest.raises(ValueError, match="nonexistent"):
+        seed_basis.apply_seed_from(sketch)
+
+
+def test_template_10_arch_rebuild_declares_seedfrom_not_a_duplicate_literal():
+    """H23 item 46: the rebuild step must get its Points via SeedFrom, not its own hand-typed
+    literal -- confirms the declaration, independent of the byte-identical-output check below."""
+    sk2 = resolve_template("template_10")[0]["Sketches"][1]
+    rebuilds = [st for block in sk2["Blocks"] for st in block.get("BuildSequence", [])
+                if st.get("ID") == "top_edge" and st.get("Rebuild")]
+    assert len(rebuilds) == 1
+    assert rebuilds[0].get("SeedFrom") == "top_edge"
+
+
+def test_template_10_arch_rebuild_points_match_the_seeded_step_exactly():
+    """Not just declared -- the rebuild's own resolved Points (after seed_sketch's board rewrite)
+    are IDENTICAL to the original top_edge step's, so the default build is byte-identical to
+    before this item's own refactor (SeedFrom replaces a literal that was hand-copied to match)."""
+    sk2 = resolve_template("template_10")[0]["Sketches"][1]
+    top_edges = [st for block in sk2["Blocks"] for st in block.get("BuildSequence", [])
+                 if st.get("ID") == "top_edge" and st.get("Type") == "Arc3Point"]
+    assert len(top_edges) == 2
+    seeded, rebuilt = (s for s in top_edges if not s.get("Rebuild")), (s for s in top_edges if s.get("Rebuild"))
+    assert next(rebuilt)["Points"] == next(seeded)["Points"]
+
+
+@pytest.mark.parametrize("tid", ["template_1", "template_2", "template_3", "template_4", "template_5",
+                                  "template_6", "template_7", "template_8", "template_9", "template_10",
+                                  "template_11", "template_12", "template_13"])
+def test_no_two_seed_steps_share_an_id_without_declaring_seedfrom(tid):
+    """H23 item 46 (item 45's own live finding): template_10's pre-fix bug was exactly this -- two
+    independent Line/Arc3Point steps sharing one ID, each with its own literal Points, where
+    apply_seed_geometry's pop-on-first-match only ever reaches the first. A second step reusing an
+    earlier one's ID must declare SeedFrom (an explicit, checked relationship) rather than silently
+    shadow it with an unrelated duplicate."""
+    sk2 = resolve_template(tid)[0]["Sketches"][1]
+    seen = set()
+    for block in sk2["Blocks"]:
+        for step in block.get("BuildSequence", []):
+            if step.get("Type") not in ("Line", "Arc3Point") or "ID" not in step:
+                continue
+            sid = step["ID"]
+            if "SeedFrom" in step:
+                continue
+            assert sid not in seen, (
+                f"{tid}: step {sid!r} is declared more than once as a plain (non-SeedFrom) seed -- "
+                f"apply_seed_geometry would only ever patch the first; the later one(s) must declare "
+                f"SeedFrom instead of an independent duplicate")
+            seen.add(sid)
+
+
 def test_template_8_dip_seed_radius_would_have_caught_the_heightin_only_bug():
     """MUTATION-CHECK-BY-CONSTRUCTION: a heightIn-only radius (Template 5's own, pre-amendment) tracks neither
     board correctly except the one it was tuned on -- demonstrating this test is not vacuous without touching

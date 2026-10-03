@@ -13589,3 +13589,101 @@ own scope.
 
 No code, no tests, no commits of build/engine files -- only this entry. Committed as "H23 item 45:
 ..." (WORK-LOG.md only).
+
+## H23 item 46 -- T10's arch rebuild declares SeedFrom (no duplicate literal); a live PREVIEW == BUILD guard for all 13 templates (found a NEW template_5 gap along the way)
+
+Dispatch (advisor, 443): (1) fix T10's own arch-rebuild duplicate literal by declaring where its
+seed comes from (`SeedFrom`), keep `addByThreePoints`, unseeded path unchanged. (2) a live
+PREVIEW==BUILT check in the sweep (built Shape Outline vs. the payload's own `seedGeometry`,
+0.01 in) for every template, plus a pure test that no template can declare 2 seed steps under one
+ID without one of them saying `SeedFrom`. (3) Live: T10 archRise at both ends still builds 4/4;
+13/13 still clean.
+
+**(1) `SeedFrom`, declared and generic (not T10-only).** New `fb_engine/seed_basis.py::apply_seed_from`
+(called before `seed_sketch`, same place every template already calls it): a step may declare
+`'SeedFrom': <id>` instead of its own `Points` -- those `Points` become an exact copy of the ONE
+other step with that `ID` that has no `SeedFrom` of its own. `sketches/template_10/phases/
+p02_12_arch_rebuild.py`'s own `top_edge` Rebuild step now declares `SeedFrom: 'top_edge'` instead
+of re-typing `p02_03_loop.py`'s `HW`/`CY`/`LY` formula a second time by hand -- one declared
+source, not two independently-maintained copies (the item-18 bug class item 45 went looking for:
+editing one copy without the other would have silently desynced the rebuild from the arc it
+rebuilds). `addByThreePoints` + `Rebuild: True` unchanged. Confirmed byte-identical, not just
+argued: resolved both `top_edge` steps' own `Points` after `seed_sketch` and diff'd them (identical
+strings); then re-ran `tools/repro/fusion_t11/item44_record_t10_goldens.py` LIVE at 6x9 and 7x9 and
+diffed the result against the committed goldens (meta excluded) -- IDENTICAL both sizes. 5 new
+tests in `fb_engine/test_seed_basis.py` (declaration, the copy's exact value, and a new
+all-13-template `test_no_two_seed_steps_share_an_id_without_declaring_seedfrom` -- item 46's own
+answer to part (2)'s pure-test ask, since it's the SAME declared mechanism). Mutation-tested:
+reverted `p02_12` to its old hand-duplicated literal, confirmed 2 of the 5 new tests go RED with
+the exact expected message (the duplicate-ID one AND the SeedFrom-declared one; the byte-identical
+one stays green either way, since the old duplicate happened to match anyway -- it tests OUTPUT,
+not DECLARATION, by design), restored, confirmed green again.
+
+**(2) The live PREVIEW==BUILD check found a REAL Fusion API quirk in its own FIRST draft, before
+any template-level finding at all -- caught and fixed before trusting the check's own results.**
+First run flagged 9 of 13 templates, every mismatch a clean `:S`<->`:E` SWAP (built `:S` exactly
+equal to the SENT `:E`, and vice versa). MEASURED in total isolation (a scratch sketch, nothing
+else involved): `sketchArcs.addByThreePoints(p1, mid, p2)` does NOT assign `startSketchPoint`
+to `p1` by argument order -- it assigns start/end by the arc's own geometric direction (whichever
+of the two outer points has the lower angle around the implied circle, regardless of which
+argument position it was passed in). Confirmed with 4 independent point sets, including the EXACT
+same 3 points passed in forward AND reversed call order -- both calls produced the IDENTICAL
+physical start/end assignment. `addByTwoPoints` (Lines) does NOT have this property -- confirmed
+separately, start/end there DOES follow argument order reliably. This isn't a functional bug
+anywhere else in the app (every miter/corner/projection step already refers to `:S`/`:E` by TAG,
+never by "whichever point was listed first," so the build itself is self-consistent regardless of
+which physical corner ends up tagged `:S`) -- it was ONLY a problem for this BRAND NEW check's own
+first-draft assumption that `seedGeometry[id]['points'][0]` must land on the built `:S`. Fixed:
+for `kind: 'arc'`, `preview_vs_build_check` (`tools/repro/fusion_t11/item40_all_template_sweep.py`)
+now compares the built `{:S, :E}` pair against the sent `{points[0], points[-1]}` pair as an
+UNORDERED set (either correspondence counts as a match); `kind: 'line'` stays a direct, ordered
+compare (matches `addByTwoPoints`'s own measured, reliable behavior). Re-ran: 11 of 13 templates
+now clean.
+
+**The 2 remaining flags are real, and different from each other -- neither silently patched:**
+  - **template_10's `top_edge`/`horn_TR`/`horn_TL`** -- EXACTLY item 45's own already-diagnosed gap,
+    now independently reproduced by a completely different mechanism (a live geometry compare,
+    not a static code trace): the sent seed's own Y differs from the built Y by about 0.35 in even
+    at the DEFAULT (nothing dragged) 7x9 payload -- `top_edge`'s `:S`/`:E` are Fix'd Coincident to
+    `top_S_anchor`/`top_E_anchor` (plain `Point`-type steps, which `apply_seed_geometry` never
+    touches at all -- only `Line`/`Arc3Point` are seed-matchable), so the FINAL solved position is
+    always the anchor's own literal, never whatever seed was sent. `SeedFrom` (part 1 above) only
+    ever addressed the REBUILD step's own duplicate literal -- it does not and was not meant to
+    touch the anchor mechanism (item 17's own docstring: the anchors are required for the rest of
+    the shoulder/waist/hip chain to solve correctly), so this mismatch is an EXPECTED, already-
+    understood, NOT-fixed-here gap, exactly consistent with "unseeded path unchanged."
+  - **template_5's `top_edge_L`/`top_edge_R`/`arc_top_shoulder_L`/`arc_top_shoulder_R`/`arc_top_dip`
+    -- a NEW finding, nothing to do with T10 or SeedFrom.** The dip region's sent seed (the app's
+    own fitted `shapeModel` preview) differs from what Fusion actually solves by ~0.1-0.3 in, even
+    though nothing here shares an ID or needs a Rebuild. `test_frame_parity_goldens.py` already
+    documents this template's own dip/shoulder region as historically finicky (symmetry/tangency
+    making 12x6 and 5.51x1.97 "DELIBERATELY" unrecorded) -- this is plausibly the SAME underlying
+    soft spot, now showing up even at 7x9's own default. Not investigated further or fixed here
+    (not in this item's own scope, and it's a shape-model-fit-accuracy question, not a duplicate-
+    literal one) -- flagging for the advisor to schedule as its own item. This is exactly the kind
+    of thing this NEW check exists to surface, and it found one on its very first real run.
+
+By the ORIGINAL "clean" definition (items 40-44: bar count matches declared, 0 overlaps/slivers/
+dup bodies/missing names, healthy timeline, 0 MITER MISS) all 13 templates are still clean --
+confirmed separately from the two preview-mismatch flags above, which are a NEW, additional signal
+this item introduces, not a regression in the old one.
+
+**(3) Live: T10 archRise at both ends.** Built T10 at 7x9 twice, directly setting `top_edge`'s own
+sent Y far apart (a "LOW_RISE" and a "HIGH_RISE" variant, both well clear of self-intersection) --
+both: 4/4 bars, healthy timeline, 0 MITER MISS, and (confirming the anchor-pinning explanation
+above, not just asserting it) IDENTICAL volumes at both extremes -- direct live proof the handle's
+own real-world effect on the Fusion build is exactly zero today, at either end of its range, not
+just at a single sampled drag.
+
+Full Python suite: 720 passed, 25 skipped, 0 unexpected failures (the only red,
+`test_golden_freshness`, is the usual commit-date lag, resolved at commit -- re-recorded both T10
+goldens live to confirm byte-identical content first, same as item 44's own discipline, then added
+a `reverifiedAfter` meta note so the files carry a genuine new commit instead of a silent re-stamp).
+
+Committed as "H23 item 46: ...". File list: `fb_engine/seed_basis.py` (new `apply_seed_from`),
+`fb_engine/test_seed_basis.py` (5 new tests, incl. the all-template duplicate-ID guard),
+`sketches/template_10/phases/p02_12_arch_rebuild.py` (SeedFrom, literal removed),
+`sketches/template_10/template_data.py` (wires `apply_seed_from`),
+`tools/repro/fusion_t11/item40_all_template_sweep.py` (preview-vs-build check),
+`tests/fixtures/frame-parity/template_10_{6x9,7x9}.json` (reverifiedAfter note),
+`frame-defs.json/.js` (regenerated).
