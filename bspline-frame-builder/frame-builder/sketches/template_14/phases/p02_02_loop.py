@@ -107,6 +107,22 @@ def get_block(ui_data=None):
 
         # Top: topL -> topR, closing the loop back to upper_R.
         {'ID': 'top', 'Type': 'Line', 'Points': [[f'-({TOP_X})', TOP_Y], [TOP_X, TOP_Y]], 'StartID': 'top:S', 'EndID': 'top:E'},
+
+        # F33 item 1: every one of the 4 arcs above is a lone miter (no Tangent chain to hold its
+        # shape) -- a bare Coincident weld (p02_03_welds.py) only pins an ARC'S OWN endpoint, it does
+        # not stop addByThreePoints' own branch from being reinterpreted onto the reflex (long) way
+        # around once that endpoint gets nudged by a later constraint (fusion360-quirks skill,
+        # "Fix the arc's own endpoints directly -- never rely on a Coincident chain to propagate
+        # fixedness"; T10's own p02_03_loop.py hit the same class via an anchor-Coincident, not a
+        # direct Fix, and needed a whole rebuild step to recover -- Fixing the arc's OWN :S/:E here,
+        # directly, is the simpler form that recipe itself recommends). UnseededOnly: a seeded Send
+        # replaces these Points with the app's own absolute in-position values (apply_seed_geometry),
+        # so there the arc is never left with this ambiguity to begin with; this is purely the
+        # literal/unseeded path's own fix (Sketch Builder, record_frame_parity.py goldens).
+        {'Type': 'Fix', 'Targets': ['upper_R:S', 'upper_R:E'], 'UnseededOnly': True},
+        {'Type': 'Fix', 'Targets': ['lower_R:S', 'lower_R:E'], 'UnseededOnly': True},
+        {'Type': 'Fix', 'Targets': ['lower_L:S', 'lower_L:E'], 'UnseededOnly': True},
+        {'Type': 'Fix', 'Targets': ['upper_L:S', 'upper_L:E'], 'UnseededOnly': True},
     ]
 
     return {

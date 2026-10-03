@@ -8310,3 +8310,168 @@ Confirmed via `app.documents` at the end: exactly one document remained open, Fr
 touched. No redeploy (main 2026.10.03-15 was already deployed).
 
 Reported "Fusion released" to the advisor with full results so Fusion could hand to seat f3.
+
+## 2026-10-03: F33 item 1 -- unseeded literal defaults of T14-T17 (my own F31 item 2c finding) (seat C)
+
+Dispatch: my own live-check payloads for F31 item 2c (above) hit a REFLEX ARC (255-267 deg sweep,
+Shape Outline) for T14 and T15 when sent WITHOUT `seedGeometry` -- a path real app users never take
+(`frameSendPayload()` always attaches it), but Fusion's own Sketch Builder command and
+`record_frame_parity.py`'s golden recording both DO build this literal/unseeded path directly. Brief
+(NEXT-SESSION-fb-app.md, advisor's own framing): make all four new templates' literal defaults build
+cleanly -- closed-form, matching the app's own default exactly (item-18/49 convention) -- pure test,
+then a live unseeded check, then record goldens. "Code first; Fusion order f3 -> b5 -> you."
+
+**First checked whether the closed-form math itself was ever wrong, rather than assuming the fix
+brief implied it was: it wasn't.** `fb_engine/test_t14_fusion_expressions.py` /
+`test_t15_fusion_expressions.py` / `test_t16_fusion_expressions.py` / `test_t17_fusion_expressions.py`
+already resolve each template's own Fusion SKETCH_2_PARAMETERS chain in pure Python and check every
+literal BuildSequence Point against that template's own `outline()` -- i.e. they already ARE the
+"literal Points == app default seed geometry" pure test the brief asks for, for all four templates,
+and all 142 of them pass (confirmed by re-running, not assumed from memory). Hand-computed T14's own
+default upper_R arc (7x9: topR=(3.25,4.25), pinchR=(1.3,0), bulge=0.455) to double-check independently
+of the test: sagitta_circle's own closed form gives a genuine ~44 deg minor-arc sweep -- nowhere near
+reflex. So the VALUES were never the defect; nothing needed changing in `t14_sandtimer_geometry.py` /
+`t15_flask_geometry.py` / their own SKETCH_2_PARAMETERS, and no new pure test was written (one already
+existing and green for each of the four is the actual deliverable, not a second copy of it).
+
+**The defect is in the live BUILD mechanism, not the geometry.** Every one of T14/T15/T16/T17's own
+side arcs is a lone MITER (their own module docstrings: no Tangent chain, no neighbour-tangency
+coupling) built via `addByThreePoints(p0, via, p1)` (`fb_engine/geometry.py::_create_arc3`). Once
+created, nothing in the build holds that arc's own shape: its two endpoints get welded (Coincident,
+`p02_03_welds.py`) to whichever neighbouring piece or bounding-box anchor shares that corner, and
+`fusion360-quirks` (this session's own loaded skill) already documents exactly this failure class --
+"`Coincident(point, curve)` only pins the SUPPORTING geometry, not which branch gets drawn" and, more
+to the point here, pinning an arc's OWN endpoints without a direct `Fix` leaves ONE remaining DOF (the
+circle itself, i.e. the bulge depth) that a later constraint pass is free to resolve onto the reflex
+(long-way-round) branch instead of back onto the original short one -- with nothing wrong in the
+numbers that put it there in the first place. Template 10's own `p02_03_loop.py` hit the exact same
+class on its own top arch and documents the clean fix in its own docstring: "`Fix` the arc's own
+endpoints directly -- never rely on a `Coincident` chain to propagate fixedness" (T10's own
+implementation is more elaborate than that because its arch ALSO has to stay correct through a
+downstream tangent chain the Fix alone doesn't serve, needing an anchor-point + rebuild-step recipe on
+top; T14/T15/T16/T17 have no tangent chain at all, so the plain direct-Fix form is the whole fix here).
+
+**Fix applied, all four templates, `UnseededOnly` (the same escape hatch T10's own taper-Vertical
+already established, `fb_engine/seed_geometry.py::apply_seed_geometry`):** right after each template's
+own `p02_02_loop.py` declares its arcs, one `{'Type': 'Fix', 'Targets': [f'{id}:S', f'{id}:E']}` step
+per arc -- T14 (upper_R, lower_R, lower_L, upper_L), T15 (dome_R, dome_L), T16 (lower_R, lower_L,
+arch), T17 (upper_R, lower_R, lower_L, upper_L, arch; T16's arch itself, needing no via-point handle
+at all by symmetry, still goes through the SAME addByThreePoints branch-selection, so it gets the same
+defensive Fix even though nothing live has shown it reflex yet -- "every new template", per the
+brief, not just the two caught live). `UnseededOnly: True` on every one of them: a seeded Send already
+replaces these same Points with the app's own absolute in-position values
+(`apply_seed_geometry`), so a seeded build never has this ambiguity to begin with -- this is purely
+the literal/unseeded construction path's own fix (Sketch Builder, `record_frame_parity.py`). Checked
+that `"Fix"` is dispatched correctly for these bare (no `ID`) steps before trusting the shape: it's in
+`parametric_engine.py`'s own `constr_types` list, routed to `constraints.py::constraint_step`'s inline
+`Fix` branch (`t.isFixed = True` on each resolved target) -- the exact same step shape T10's own
+`p02_03_loop.py` already uses live.
+
+Full suite re-run after the edit: Python 809/809 (10 pre-existing skips, unrelated), explicitly
+including every T14/T15/T16/T17/cross-template file (`test_all_templates_shape_outline.py`,
+`test_no_miter_miss_possible.py`, the four `test_t1*_fusion_expressions.py` files) -- 386/386 on that
+targeted slice alone. The new `Fix` steps have no `ID` key, so every existing static-analysis test
+that walks BuildSequence by `Type in (Line, Arc3Point, Radius)` or `'ID' in step` silently skips over
+them, confirmed by the full suite staying green rather than assumed.
+
+**Not yet done, genuinely gated on Fusion (advisor's own order, f3 -> b5 -> me, not yet my turn):** the
+live unseeded-build check itself (all four templates, UNSEEDED default payload -- no `seedGeometry` --
+0 REFLEX ARC, all declared bars present) and recording the four goldens via `record_frame_parity.py`
+once that passes. This WORK-LOG entry and the commit below are the "code first" half the advisor's own
+dispatch asked for; the live half is next once Fusion is free and it's my turn.
+
+Committed: `sketches/template_14/phases/p02_02_loop.py`, `sketches/template_15/phases/p02_02_loop.py`,
+`sketches/template_16/phases/p02_02_loop.py`, `sketches/template_17/phases/p02_02_loop.py`. Passing
+back with the live/golden half still open.
+
+### Addendum, same day: the live half (Fusion came free, fusion_holder.txt discipline observed)
+
+Advisor's dispatch: run the unseeded builds of T14/T15/T16/T17 (0 REFLEX ARC, all bars), record
+goldens for those four, PLUS re-record template_13 (main's own freshness gate was RED since b5's
+corner-fix commit 0c480ee post-dated T13's own committed goldens). Checked `fusion_holder.txt` before
+every `fusion_execute` (the new cross-seat rule) -- confirmed `de` each time.
+
+**Mechanism decision, made before touching anything:** `record_frame_parity.record_case()` is
+hard-wired to `sys.modules['frame_engine_core']` -- the DEPLOYED add-in's own already-loaded modules,
+never a repo path. Checked the deployed copy directly on disk
+(`%APPDATA%/Autodesk/Autodesk Fusion 360/API/AddIns/bspline-frame-builder`) before trusting anything:
+it does NOT have my own `Fix` steps for T14-T17 (only T10 has `UnseededOnly` on disk), confirming
+"fb-app is synced" in the dispatch note means fb-app has pulled main's latest (confirmed: my local
+`fb-app` HEAD jumped to `8b77192 Merge remote-tracking branch 'origin/main' into fb-app` without any
+fetch/merge action of my own -- the advisor's own session shares this worktree, as discovered earlier
+this engagement), not that the deployed add-in itself carries my fix. Recording via the real deployed
+copy would have silently baked the OLD (pre-fix) construction into the new goldens. Fixed by reusing
+`tools/repro/fusion_t11/item43_golden_check.py`'s own already-proven pattern (built for exactly this:
+"runs record_frame_parity.py's own record_case() with frame_engine_core etc. loaded FRESH from this
+repo checkout, never touching the deployed add-in") instead of the "restart it between sizes"
+workaround the dispatch described -- loading fresh per case sidesteps that class of problem entirely,
+and confirming correctness this way meant Fred's/other seats' deployed add-in was never touched.
+
+**Result: 0 REFLEX ARC across every one of the 12 unseeded builds tried (T14/T15/T16/T17 x
+7x9/12x6/5.51x1.97)** -- the fix holds at every board size tested, not just the one it was found on.
+Recorded goldens for what actually builds cleanly: T14/T15/T16/T17 at 7x9 (new, all 6 declared bars,
+healthy timeline), plus T15 additionally at 12x6 (also clean).
+
+**Two SEPARATE pre-existing defects surfaced by testing sizes nobody had tried on these templates'
+own unseeded path before -- confirmed unrelated to this fix, not fixed here, flagged instead:**
+
+1. T14/T16/T17 fail to build at 12x6 (and T14/T16/T17/T15 at 5.51x1.97) with a "MITER MISS" /
+   "profile spans N bars: a miter did not split it" class of error -- a declared-profile/offset
+   topology problem, zero REFLEX ARC lines involved, a different failure class entirely. Confirmed
+   NOT caused by my own `Fix` steps: re-ran T14 at 12x6 against a scratch worktree pinned to
+   `cd8f5a9` (the commit immediately before my own `Fix` commit) -- byte-identical MITER MISS output,
+   with or without the fix. Worktree removed after (`git worktree remove --force`, nothing left
+   behind). Not recorded; a new finding for whoever picks up non-default board sizes on these four
+   templates next, not this ticket's own scope (which was specifically the REFLEX ARC class).
+
+2. T13 itself -- the template whose freshness gate this dispatch was trying to clear -- hit a LIVE
+   REFLEX ARC (275.4 deg, `arc_hip_L`/`arc_hip_R` both show `M(eval_fail)` right before the crash) at
+   its own EXISTING `5.51x1.97` golden size, a size it used to build (the old committed golden proves
+   it). Worried this might be a genuine regression from b5's own corner fix (0c480ee) given main was
+   just deployed with it -- checked directly rather than assumed: a scratch worktree at `0c480ee^`
+   (one commit BEFORE the corner fix) hits the EXACT SAME crash, same traceback, same symptom. So
+   this is pre-existing and unrelated to the corner fix too -- somewhere between this golden's own
+   recording date (2026-10-01) and now, something else made T13's own tangent-chain arcs (a
+   completely different structural class from T14-T17's lone miters -- Tangent + Equal constraints,
+   not addByThreePoints-then-nothing) go reflex at this one narrow board size. Not investigated
+   further (a different template, a different arc-chain mechanism, not this ticket's scope) -- flagged
+   for whoever owns T13 next. Both scratch worktrees removed after use.
+
+**Consequence for what got committed, stated plainly rather than papered over:** T13's own
+`5.51x1.97` golden was left UNTOUCHED (still 2026-10-01 content) because no valid build exists to
+record right now. `check_golden_freshness.py`'s own freshness check is a GLOB aggregate -- it takes
+the latest commit date across ALL `template_13_*.json` files, so re-recording just the two sizes that
+DO build (7x9, 12x6) makes the check report the WHOLE template FRESH even though the third file still
+silently describes pre-corner-fix geometry nobody can currently reproduce live. Said so here rather
+than silently accepting the green gate at face value: the gate is now green because it has no way to
+see that one of three files is unverifiable against current code, not because all three genuinely
+are.
+
+Also noticed, unprompted and out of scope, so just flagged rather than touched: `python
+tools/gen_frame_defs.py --check` reports `frame-defs.json`/`.js` STALE right now. Confirmed this
+predates my own work entirely (nothing I touched this session reaches `template_data.py` or
+frame-defs generation) -- last regen was `520ea1f` (14:29, "regen frame-defs after lane-b merge"),
+and something in the subsequent merge state needs a fresh `gen_frame_defs.py` pass. Not run here (a
+cross-cutting generated file, better left to whoever's tracking the merge it came from).
+
+Fusion hygiene: confirmed exactly 3 docs open before starting (`Untitled`, `DECAL test - 2026-10-03`,
+`DECAL edge test`) and the same 3 after -- every one of the 15 scratch docs `record_case()` created
+across this session's own `fusion_execute` calls was closed by its own `finally`, zero leaks, Fred's
+and the other named docs never touched.
+
+Full suite green after: Python 812/812 (10 pre-existing skips, unrelated).
+`check_golden_freshness.py --check` now exits 0, "all golden fixtures are fresh" (the dispatch's own
+stated goal).
+
+Committed: `tests/fixtures/frame-parity/template_14_7x9.json` (new),
+`tests/fixtures/frame-parity/template_15_7x9.json` (new),
+`tests/fixtures/frame-parity/template_15_12x6.json` (new),
+`tests/fixtures/frame-parity/template_16_7x9.json` (new),
+`tests/fixtures/frame-parity/template_17_7x9.json` (new),
+`tests/fixtures/frame-parity/template_13_7x9.json`, `tests/fixtures/frame-parity/template_13_12x6.json`
+(both content-identical to before except the recorded date).
+
+Messaging the advisor "Fusion released" with the two new findings above (T14/16/17 non-default-size
+miter-miss class; T13's own reflex arc at 5.51x1.97, pre-existing, not a corner-fix regression) so
+Fusion can hand off, and so T13's own open gap gets routed to whoever owns that template next rather
+than sitting silently behind a green gate.

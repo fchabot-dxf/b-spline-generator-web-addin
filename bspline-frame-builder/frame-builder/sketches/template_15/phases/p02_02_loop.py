@@ -98,6 +98,19 @@ def get_block(ui_data=None):
 
         # Top: topL -> topR, closing the loop back to neck_R.
         {'ID': 'top', 'Type': 'Line', 'Points': [[f'-({TOP_X})', TOP_Y], [TOP_X, TOP_Y]], 'StartID': 'top:S', 'EndID': 'top:E'},
+
+        # F33 item 1: the dome is a lone miter (no Tangent chain to hold its shape) -- a bare
+        # Coincident weld (p02_03_welds.py) only pins an ARC'S OWN endpoint, it does not stop
+        # addByThreePoints' own branch from being reinterpreted onto the reflex (long) way around
+        # once that endpoint gets nudged by a later constraint (fusion360-quirks skill, "Fix the
+        # arc's own endpoints directly -- never rely on a Coincident chain to propagate fixedness";
+        # same recipe as sketches/template_14/phases/p02_02_loop.py's own copy of this fix).
+        # UnseededOnly: a seeded Send replaces these Points with the app's own absolute in-position
+        # values (apply_seed_geometry), so there the arc is never left with this ambiguity to begin
+        # with; this is purely the literal/unseeded path's own fix (Sketch Builder,
+        # record_frame_parity.py goldens).
+        {'Type': 'Fix', 'Targets': ['dome_R:S', 'dome_R:E'], 'UnseededOnly': True},
+        {'Type': 'Fix', 'Targets': ['dome_L:S', 'dome_L:E'], 'UnseededOnly': True},
     ]
 
     return {
