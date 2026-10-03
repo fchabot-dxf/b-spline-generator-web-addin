@@ -193,7 +193,7 @@ straight down the side wall for the wall's full height; elsewhere the wall keeps
 idea (measure first): the side-wall mesh in core/preview (frame-mesh.js / the panel mesh) gets per-vertex or
 per-strip colours sampled from the SAME colour source the top surface uses, at each boundary point -- one shared
 sampler, not a second colour pipeline. Applies to the panel's outer walls and, if present, the frame's outer walls.
-A toggle in the 3D view ('Colour edges', default ON, persisted) in case he wants the plain look. Tests: a rail
+A toggle in the 3D view ('Colour edges', default ON, persisted) in case he wants the plain look. ALSO FIX the saw-teeth (Fred's close-up 2026-10-03): along the rim, alternating triangles of wall colour and surface/stripe colour show where the side wall's top edge does NOT share the surface's own edge vertices (different sampling, or the grid cut by the outline). Make the wall's top edge and the surface's boundary use the SAME vertices along the true outline, so there's no gap and no teeth. Before/after close-up shots at the same angle. Tests: a rail
 crossing the boundary yields a wall band of that colour at the right position and full height; no artwork at the
 edge leaves the wall unchanged. Before/after screenshots (the same angle as Fred's shot) into shots/seatA. No
 Fusion. Commit 'H23 item 67: ...'.
