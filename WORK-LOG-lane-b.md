@@ -13624,3 +13624,41 @@ pushed throughout.
 templates.** The only thing left is the live matrix sweep itself (item 61: every handle x {min, default,
 max} at 7x9, 100% BUILT target) -- "Fusion free" requested from the advisor next, per its own explicit
 instruction to ask before that one step. Nothing in Fusion touched this turn.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3: the live matrix sweep, 24/24 BUILT -- DONE, passing back
+
+Advisor granted "Fusion free": run the 24-case sweep with REPO pointing at lane-b, don't redeploy the
+add-in (main already deployed, Fred may be using the palette), fingerprint scratch docs and close only
+mine, leave the 4 open docs alone, target 100% BUILT.
+
+Generated the 24 payloads first (`node tools/repro/h23_item61_make_full_matrix_payloads.mjs`, GENERIC
+across all templates -- no script edit needed once frame-defs.js carried template_16/17): 11 for Template
+16 (default + 5 handles x {min, max}), 13 for Template 17 (default + 6 handles x {min, max}, topWidth
+having added a handle to both since the item 61 brief's own original "9/11" case-count estimate). 0
+JS-side defects, 0 ranges pulled back by the no-hook-rule guard (every declared range end was already
+reachable) -- confirming the earlier JS-side verification (every generateRange extreme checked against the
+real production pipeline) generalized to the FULL drag range too, not just the moderate one.
+
+Registered both templates in `tools/repro/fusion_t11/item61_full_matrix_sweep.py`'s own TEMPLATE_META (bar
+names + count, matching FRAME_BARS exactly) -- the one addition that script itself needed; otherwise
+reused completely unchanged (it already fingerprints its own scratch docs via `adv_item61fullsw_fp`, closes
+only docs it created by direct reference -- never by name or count -- and is resumable).
+
+**Ran all 24 cases live, serial fusion_execute calls (6 batches of 3-5 cases each, well under any timeout):
+24/24 BUILT, 0 NOT BUILT.** Every case: the declared 6 bars present (no dup-suffixed bodies, no overlaps,
+no sub-0.5cm3 slivers), 0 "NOT BUILT" / "MITER MISS" / "REFLEX ARC" log lines, healthy timeline. This is
+the FIRST live confirmation that `ResolveCircleCircleCorner` (T17's own 4 arc-meets-arc corners) actually
+resolves correctly against real built Fusion geometry, not just the fake-sketch unit tests
+(fb_engine/test_inner_corners.py) or the JS-side simulation -- every upperCurveFrac case (min, max, default)
+built clean. Confirmed the Fusion session ended exactly where it started: the same 4 protected documents
+open (UI-cowork v1, API-claude code v1, OFFSET-cowork v1, Untitled), nothing else left behind. The add-in
+itself was never touched (every case builds through `fb_engine`/`b-spline-gen.py` imported directly from
+this lane-b checkout, independent of whatever's deployed) -- no redeploy, as directed.
+
+**T84 item 3 is now fully DONE**: both templates code-complete on the Fusion/Python side AND the JS/app
+side, both verified clean through the real production validity pipeline at every declared handle extreme,
+and both now LIVE-confirmed 100% BUILT at 7x9 across every handle's own {min, default, max}. Results at
+`bspline-frame-builder/scratch/item61_t16_t17_results.json` (scratch, not committed, same convention as
+every other scratch probe output this session). Registered-template commit (1bc0542) already pushed; no
+further code change from this turn (the sweep itself touches no source, only TEMPLATE_META was new and
+that's already in). Passing back to the advisor now.
