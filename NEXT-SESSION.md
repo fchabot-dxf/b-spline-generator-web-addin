@@ -186,6 +186,19 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 53 -- BLOCKER before deploy: item 52's marker restore can leave the inlay rolled back (advisor review).
+restore_marker_position sets markerPosition = prior_position, the index read BEFORE the frame features were
+inserted. If the marker was at the end (count N) and the build inserts K features before the inlay, the timeline now
+has N+K items, and restoring to N leaves the LAST K items (the inlay's own features) rolled back/suppressed. The sweep
+and A/B may not see this if their docs have no inlay after the frame.
+(1) Pure test with a fake timeline: marker at end, K inserts, then restore -> the marker must be at the END. Fix:
+    if the marker was at the end before, restore with timeline.moveToEnd(); otherwise prior + K.
+(2) LIVE on the real payload (has an inlay): after Send, markerPosition == timeline.count, every inlay feature is
+    active and healthy, bodies/volumes identical to the pre-item-52 build; then a SECOND Send on the same doc is
+    clean (no leftovers, marker at end).
+(3) Re-time: does the 16.1 s hold?
+The advisor will NOT deploy item 52 until this passes. Commit 'H23 item 53: ...'.
+
 ## Item 52 -- speed, round 2: the two real drivers item 51 localized (advisor, 2026-10-03). Item 51 accepted (de9fbdb).
 (A) TIMELINE REORDER, ~5.2 s = 6 Fusion .reorder() calls x ~0.87 s, run TWICE per Send. Don't batch reorders (F11
     ordering dependency). Instead try NOT needing them: before building the frame, set design.timeline.markerPosition
@@ -427,4 +440,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-49] declare seed derivation (item 18): convention in fb_engine, audit every literal seed (DERIVED / FITTED-OK / WRONG), fix WRONG + re-record goldens, preview==build 13/13. Commit as 'H23 item 49: ...'.
 - [x] [H23-item-50] (nudges load-bearing, Pulse no gain; real costs not yet measured -> item 51) prune for speed: re-time a real Send, A/B each removal, keep only identical + 13/13 sweep, one commit per removal, before/after seconds. Commit as 'H23 item 50: ...'.
 - [x] [H23-item-51] speed, real costs: replay a real full Send, time stages, attack the top 2 with identical A/B, fix step_removal_ab OUT path. Commit as 'H23 item 51: ...'.
-- [ ] [H23-item-52] speed round 2: timeline marker instead of reorders (or why twice); stamp sketch projections measured + reduced; A/B identical, seconds before/after. Commit as 'H23 item 52: ...'.
+- [x] [H23-item-52] speed round 2: timeline marker instead of reorders (or why twice); stamp sketch projections measured + reduced; A/B identical, seconds before/after. Commit as 'H23 item 52: ...'.
+- [ ] [H23-item-53] BLOCKER: marker restore must end at the timeline END (moveToEnd), live check with inlay + second Send. Commit as 'H23 item 53: ...'.
