@@ -200,6 +200,34 @@ export const PRESETS = {
     params: { waistReach: 0.55, cornerRadiusTop: 0.22, cornerRadiusBottom: 0.22, waistCenterY: 0 },
     jitter: { waistReach: 0, cornerRadiusTop: 0, cornerRadiusBottom: 0, waistCenterY: 0 },
   },
+  // T84 item 3: a FRAME-ONLY preset (Template 16): no Shape Lattice button offers it, like tabTop/
+  // iShape/diamondTopHourglass. A one-piece arch, two straight upper sides tapering to a waist,
+  // two outward-bulging lower curves, a plain straight base -- EVERY joint a miter (no tangent
+  // chain at all, unlike diamondTopHourglass/diamondTopHourglassPinch): each arc stands alone,
+  // solved from its own chord + sagitta -- ported directly from fb_engine/t16_geometry.py's own
+  // tested closed form (read before writing this), ONLY place this algebra lives on the JS side:
+  // archedFunnelConstruction (shared with tulip below -- the SAME construction, upperCurveFrac=0).
+  // Defaults = fb_engine/t16_geometry.py's own TOP_WIDTH_FRAC_DEFAULT/ARCH_RISE_FRAC_DEFAULT/
+  // WAIST_WIDTH_FRAC_DEFAULT/WAIST_HEIGHT_FRAC_DEFAULT/BULGE_FRAC_DEFAULT -- same numeric defaults,
+  // declared twice (Python + JS), keep them in sync if either changes.
+  archedFunnel: {
+    label: 'Arched Funnel',
+    frameOnly: true,
+    params: { topWidth: 0.75, archRiseFrac: 0.39, waistWidthFrac: 0.38, waistHeightFrac: 0.55, bulgeFrac: 0.169 },
+    jitter: { topWidth: 0, archRiseFrac: 0, waistWidthFrac: 0, waistHeightFrac: 0, bulgeFrac: 0 },
+  },
+  // T84 item 3: Template 16's own shape, plus the two upper sides curve INWARD (concave) toward
+  // the centreline instead of running straight -- the SAME archedFunnelConstruction, just with
+  // upperCurveFrac > 0 (0 would degenerate to archedFunnel's own straight sides, but Template 16
+  // already owns that shape as its own separate template). Default = fb_engine/t16_geometry.py's
+  // own T17_UPPER_CURVE_FRAC_DEFAULT (one cross-size value, not the diagram script's own per-size
+  // "55% of max" tuning -- a template needs one constant).
+  tulip: {
+    label: 'Tulip',
+    frameOnly: true,
+    params: { topWidth: 0.75, archRiseFrac: 0.39, waistWidthFrac: 0.38, waistHeightFrac: 0.55, bulgeFrac: 0.169, upperCurveFrac: 0.175 },
+    jitter: { topWidth: 0, archRiseFrac: 0, waistWidthFrac: 0, waistHeightFrac: 0, bulgeFrac: 0, upperCurveFrac: 0 },
+  },
 };
 
 /**
@@ -273,6 +301,13 @@ export const PARAM_ORDER = {
   // (DERIVED_PARAM_DEFAULTS.diamondTopHourglassPinch) reads the already-resolved waistReach/cornerRadiusTop. The
   // roof itself (`a`) is never a resolved param here: no FRAME_HANDLES entry controls it.
   diamondTopHourglassPinch: ['waistCenterY', 'waistReach', 'cornerRadiusTop', 'cornerRadiusBottom', 'waistRadius'],
+  // T84 item 3 (frame-only preset): every arc is independently solved (no tangent chain, no
+  // coupling between handles -- fb_engine/t16_geometry.py's own module docstring), so order does
+  // not matter for feasibility the way T1/T7's own coupled ranges do; declared in the same order
+  // template_data.py's own FRAME_HANDLES table lists them.
+  archedFunnel: ['topWidth', 'archRiseFrac', 'waistWidthFrac', 'waistHeightFrac', 'bulgeFrac'],
+  // T84 item 3: Template 16's own 5 keys, plus upperCurveFrac (also independent of the rest).
+  tulip: ['topWidth', 'archRiseFrac', 'waistWidthFrac', 'waistHeightFrac', 'bulgeFrac', 'upperCurveFrac'],
 };
 const BASE_RANGES = {
   // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
@@ -369,6 +404,27 @@ export const DERIVED_PARAM_DEFAULTS = {
   diamondTopHourglassPinch: {
     waistRadius: (v) => Math.max(v.waistReach - v.cornerRadiusTop, WAIST_MIN_RADIUS_OF_DEPTH * v.waistReach),
   },
+  // T84 item 3: every param has a plain default (no seeded jitter: a frame always sets all 5 from
+  // its model/seeds, as T6/T7/T9) -- fb_engine/t16_geometry.py's own TOP_WIDTH_FRAC_DEFAULT/
+  // ARCH_RISE_FRAC_DEFAULT/WAIST_WIDTH_FRAC_DEFAULT/WAIST_HEIGHT_FRAC_DEFAULT/BULGE_FRAC_DEFAULT
+  // (see PRESETS.archedFunnel's own doc comment on keeping these in sync).
+  archedFunnel: {
+    topWidth: () => 0.75,
+    archRiseFrac: () => 0.39,
+    waistWidthFrac: () => 0.38,
+    waistHeightFrac: () => 0.55,
+    bulgeFrac: () => 0.169,
+  },
+  // T84 item 3: Template 16's own 5, plus upperCurveFrac -- fb_engine/t16_geometry.py's own
+  // T17_UPPER_CURVE_FRAC_DEFAULT.
+  tulip: {
+    topWidth: () => 0.75,
+    archRiseFrac: () => 0.39,
+    waistWidthFrac: () => 0.38,
+    waistHeightFrac: () => 0.55,
+    bulgeFrac: () => 0.169,
+    upperCurveFrac: () => 0.175,
+  },
 };
 
 /** F12: the params the Shape Lattice panel offers (a slider and a handle each).
@@ -394,7 +450,11 @@ export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLef
   // T7 DIAMOND-TOP HOURGLASS (frame-only preset):
   'gableNeckWidth', 'neckHeight', 'bodyFlareHeight',
   // F30 item 3 (the taper copies, both the hourglass and bottle presets):
-  'taperAngle']);
+  'taperAngle',
+  // T84 item 3 (frame-only presets archedFunnel/tulip): every key is brand new (unlike T11's own
+  // deliberate reuse of Template 1's real param names, see that comment above), so every one goes
+  // here. upperCurveFrac is tulip-only.
+  'topWidth', 'archRiseFrac', 'waistWidthFrac', 'waistHeightFrac', 'bulgeFrac', 'upperCurveFrac']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -877,6 +937,21 @@ export function paramsFromShapeModel(preset, model, region) {
     const g = diamondTopHourglassConstruction(region, {});
     return { gableNeckWidth: f.gableNeckWidth / hw, neckHeight: f.neckHeight / g.rest, bodyFlareHeight: f.bodyFlareHeight / g.rest };
   }
+  // T84 item 3 (frame_shape_fit.py `arched_funnel`/`tulip`): every feature is a plain hw- or
+  // hh-linear fraction straight from the construction (fb_engine/t16_geometry.py's own outline()
+  // -- no `rest`-style nonlinear term the way T7's own neckHeight/bodyFlareHeight need).
+  // `waistHeightFrac`'s own feature is `hh - waist_r.y` (how far down from the top edge), whose
+  // coefficient on the Python side is `2 * waist_height_of_h` (provisional_arched_funnel_model's
+  // own doc comment) -- dividing back by `2*hh`, not `hh`, matches its basis="h" (full height)
+  // FRAME_HANDLES declaration exactly.
+  if (preset === 'archedFunnel' || preset === 'tulip') {
+    const out = {
+      topWidth: f.topWidth / hw, archRiseFrac: f.archRiseFrac / hw, waistWidthFrac: f.waistWidthFrac / hw,
+      waistHeightFrac: f.waistHeightFrac / (2 * hh), bulgeFrac: f.bulgeFrac / hw,
+    };
+    if (f.upperCurveFrac != null) out.upperCurveFrac = f.upperCurveFrac / hw; // tulip only
+    return out;
+  }
   // Depth from the construction's own tangency: d = S +/- sqrt(S^2 - notch^2); the
   // fitted depth only picks the root (minor when the waist centre is outside the
   // shoulder column, major inside: Fusion's T1 is minor at 7x9, major at 12x6).
@@ -1020,7 +1095,44 @@ function _dippedLeftWaveRange(key, region, stroke, v) {
 const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 'tabTop' ? _tabTopRange
   : preset === 'dippedLeftWave' ? _dippedLeftWaveRange : preset === 'iShape' ? _iShapeRange
     : preset === 'diamondTopHourglass' ? _diamondTopHourglassRange
-      : preset === 'diamondTopHourglassPinch' ? _diamondTopHourglassPinchRange : _hourglassRange);
+      : preset === 'diamondTopHourglassPinch' ? _diamondTopHourglassPinchRange
+        : preset === 'archedFunnel' || preset === 'tulip' ? _archedTimerRange : _hourglassRange);
+
+/**
+ * T84 item 3 (Templates 16/17, both share this range function -- every handle is independently
+ * solved, no coupling between them, fb_engine/t16_geometry.py's own module docstring, so unlike
+ * T1/T7's own coupled ranges there is no reason to split by preset here). Bounds are the DRAWN-
+ * geometry validity extremes (no reflex arc, every bar >= frame_thickness, no self-intersection,
+ * no hooked/thin tip) at frame_thickness=0.75in, MEASURED by the same bisection/stepping sweep
+ * tools/repro/t84_items1_2_archedfunnel_tulip_diagram.mjs's own range-finders use, across all 3
+ * portrait sizes (6x9/7x9/9x12 -- project_portrait_only), taking the TIGHTEST bound at each key
+ * (a value feasible at every size's own worst case is feasible everywhere this app currently
+ * draws). Not a closed form (unlike T10's own archRise-vs-horn-length relation): this shape's own
+ * failure modes (self-intersection, collapsed inner offset, thin miter tips) don't reduce to one
+ * clean algebraic bound the way a single arc-vs-wall tangency does, so these are declared
+ * literals, same honest choice fb_engine/t16_geometry.py's own t16_geometry.py ARCH_RISE_FRAC_
+ * DEFAULT-adjacent comments already made on the Python side. "MODERATE" (Generate-only, about
+ * halfway from default to each of these) ranges are declared separately, per handle, as
+ * `generateRange` in each template's own template_data.py FRAME_HANDLES (T7's own gableNeckWidth
+ * precedent) -- this function returns the FULL drag-feasible range, same contract as every other
+ * preset's own range function.
+ *
+ * ONE function serves both presets (the `key`s overlap, and at the point PARAM_ORDER resolves
+ * `topWidth` -- index 0 for both -- `v` is still empty, so there is no way to tell archedFunnel
+ * from tulip from `v` alone): bounds are the TIGHTEST across BOTH templates' own measured
+ * extremes, not just across board sizes within one of them -- slightly more conservative for
+ * archedFunnel than its own true feasible range, but "moderate, not too extreme" is this whole
+ * item's own stated goal anyway, not maximum reach.
+ */
+function _archedTimerRange(key, region, stroke, v) {
+  if (key === 'topWidth') return _range(0.53, 0.97);
+  if (key === 'archRiseFrac') return _range(0.02, 0.74);
+  if (key === 'waistWidthFrac') return _range(0.33, 0.43);
+  if (key === 'waistHeightFrac') return _range(0.35, 0.77);
+  if (key === 'bulgeFrac') return _range(0.009, 0.179);
+  // upperCurveFrac: tulip only (archedFunnel's own PARAM_ORDER never asks for this key).
+  return _range(0.005, 0.255);
+}
 
 export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
   const fn = _rangeFn(preset);
@@ -1301,6 +1413,10 @@ const SALT = {
   // T11 HOURGLASS ROOF: frameOnly (jitter 0 for all 4 plain keys; waistRadius is DERIVED, no salt needed), same
   // reason as dippedLeftWave's own comment above.
   diamondTopHourglassPinch: { waistReach: 651, cornerRadiusTop: 652, cornerRadiusBottom: 653, waistCenterY: 654 },
+  // T84 item 3: frameOnly (jitter 0 for all 5), same reason as dippedLeftWave's own comment above.
+  archedFunnel: { topWidth: 661, archRiseFrac: 662, waistWidthFrac: 663, waistHeightFrac: 664, bulgeFrac: 665 },
+  // T84 item 3: Template 16's own 5, plus upperCurveFrac.
+  tulip: { topWidth: 671, archRiseFrac: 672, waistWidthFrac: 673, waistHeightFrac: 674, bulgeFrac: 675, upperCurveFrac: 676 },
 };
 
 /** Explicit param value wins; else default + a gentle seeded jitter,
@@ -2292,6 +2408,150 @@ function _solveDippedLeftWave(region, params, segmentsOverride, seed, strokeHalf
 }
 
 /**
+ * T84 item 3: Templates 16 (Arched Funnel) / 17 (Tulip) -- a one-piece arch, two upper sides
+ * (straight for Template 16, concave for Template 17) tapering to a waist, two outward-bulging
+ * lower curves, a flat base. EVERY joint a MITER -- unlike every earlier frame-only preset above
+ * (diamondTopHourglass/diamondTopHourglassPinch), there is no tangent chain at all: each arc
+ * stands alone, solved from its own chord + sagitta (fb_engine/t16_geometry.py's own module
+ * docstring) -- ported directly from that already-tested closed form (read before writing this,
+ * not re-derived from scratch), ONLY place this algebra lives on the JS side:
+ * archedFunnelConstruction. `topWidthFrac`/`archRiseFrac`/`waistWidthFrac`/`waistHeightFrac`/
+ * `bulgeFrac`/`upperCurveFrac` = fb_engine/t16_geometry.py's own TOP_WIDTH_FRAC_DEFAULT/
+ * ARCH_RISE_FRAC_DEFAULT/WAIST_WIDTH_FRAC_DEFAULT/WAIST_HEIGHT_FRAC_DEFAULT/BULGE_FRAC_DEFAULT/
+ * T17_UPPER_CURVE_FRAC_DEFAULT -- same numeric defaults, declared twice (Python + JS), keep them
+ * in sync if either changes.
+ *
+ * `region`-local, Y-DOWN (top edge at -hh, matching every other construction above):
+ *   topR = (A, -hh+rise), topL = (-A, -hh+rise)   A = topWidthFrac*hw, rise = archRiseFrac*hw
+ *   waistR = (ww, waistY), waistL = (-ww, waistY)  ww = waistWidthFrac*hw
+ *   waistY = -hh + waistHeightFrac*2*hh            (0 = top edge, 1 = bottom edge)
+ *   BR = (hw, hh), BL = (-hw, hh)
+ * `upperCurveFrac` (Template 17 only; 0 for Template 16, degenerating the two upper arcs to
+ * `_curveSegment`'s own near-zero-bulge straight-line path, bit for bit the same shape Template
+ * 16 draws) is the two upper sides' own INWARD sagitta, same convention as `bulgeFrac`.
+ *
+ * Every arc's own radius is the exact sagitta/half-chord relation
+ * `fb_engine.closed_form_arc.sagitta_circle` already proves (R = (halfChord^2 + sag^2) / (2*sag)):
+ * NO via-point/centre bookkeeping is needed on this side at all (unlike the Python/Fusion side's
+ * own named-parameter chain) -- `_curveSegment(a, b, radius, outward, major, up)` derives the
+ * drawn arc directly from its own chord + radius, exactly like T10's own non-tangent `archRise`
+ * arc (hourglassConstruction's own `arch` branch) -- NOT T7/T11's tangent-chain machinery
+ * (`_tangentPairForKnownCenters`), which this shape has no use for (no two arcs here ever share a
+ * neighbour's own tangency).
+ */
+export function archedFunnelConstruction(region, resolved) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const D = DERIVED_PARAM_DEFAULTS.archedFunnel;
+  const topWidthFrac = resolved.topWidth ?? D.topWidth(resolved);
+  const archRiseFrac = resolved.archRiseFrac ?? D.archRiseFrac(resolved);
+  const waistWidthFrac = resolved.waistWidthFrac ?? D.waistWidthFrac(resolved);
+  const waistHeightFrac = resolved.waistHeightFrac ?? D.waistHeightFrac(resolved);
+  const bulgeFrac = resolved.bulgeFrac ?? D.bulgeFrac(resolved);
+  const upperCurveFrac = resolved.upperCurveFrac ?? 0; // absent (Template 16) -> straight sides
+
+  const A = topWidthFrac * hw, rise = archRiseFrac * hw;
+  const waistHalf = waistWidthFrac * hw;
+  const waistY = -hh + waistHeightFrac * 2 * hh;
+  const bulge = bulgeFrac * hw, upperCurve = upperCurveFrac * hw;
+
+  const topR = { x: A, y: -hh + rise }, topL = { x: -A, y: -hh + rise };
+  const BR = { x: hw, y: hh }, BL = { x: -hw, y: hh };
+  const waistR = { x: waistHalf, y: waistY }, waistL = { x: -waistHalf, y: waistY };
+
+  const halfChordArch = A; // topL/topR share y, chord is horizontal
+  const archRadius = (halfChordArch * halfChordArch + rise * rise) / (2 * rise);
+  const halfChordLower = Math.hypot(BR.x - waistR.x, BR.y - waistR.y) / 2;
+  const lowerRadius = (halfChordLower * halfChordLower + bulge * bulge) / (2 * bulge);
+  const halfChordUpper = Math.hypot(waistR.x - topR.x, waistR.y - topR.y) / 2;
+  const upperRadius = upperCurve > 1e-9
+    ? (halfChordUpper * halfChordUpper + upperCurve * upperCurve) / (2 * upperCurve)
+    : null; // Template 16 (or Template 17 at upperCurveFrac=0): a straight side, no arc at all
+
+  // Each arc's own CENTRE/VIA point (for interaction handle anchors only -- `_curveSegment` itself
+  // never needs either, it derives the drawn arc from radius + chord alone): `via` = the chord's
+  // own midpoint pushed `sag` away along the chord normal (on whichever side `awayPoint` is NOT),
+  // `centre`/`radius` the circle that bulge sits on (fb_engine.closed_form_arc.sagitta_circle's own
+  // formula, ported directly -- coordinate-convention agnostic, works the same in this Y-DOWN
+  // frame as the Fusion side's own Y-UP one). `nx,ny,mx,my` are exposed too: a handle anchored at
+  // `via` inverts a drag back to a sagitta with a single dot product against the SAME fixed
+  // normal/midpoint (`sag = (pt-mid).n`), a clean monotonic relationship -- unlike `centre`'s own
+  // position, which is NOT a monotonic function of sag (R(sag) has a minimum at sag=halfChord, so
+  // two different sag values can share one centre; realistic/moderate handle ranges never approach
+  // that regime -- fb_engine/t16_geometry.py's own is_valid_outline sag<halfChord guard -- but `via`
+  // avoids the ambiguity entirely rather than relying on staying clear of it).
+  const sagittaGeom = (p0, p1, sag, awayPoint) => {
+    const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+    const dx = p1.x - p0.x, dy = p1.y - p0.y, L = Math.hypot(dx, dy) || 1;
+    let nx = -dy / L, ny = dx / L;
+    const dAway = (mx + nx - awayPoint.x) ** 2 + (my + ny - awayPoint.y) ** 2;
+    const dMid = (mx - awayPoint.x) ** 2 + (my - awayPoint.y) ** 2;
+    if (dAway < dMid) { nx = -nx; ny = -ny; }
+    const R = (L * L / 4 + sag * sag) / (2 * sag);
+    return { centre: { x: mx + nx * (sag - R), y: my + ny * (sag - R) }, radius: R,
+      via: { x: mx + nx * sag, y: my + ny * sag }, nx, ny, mx, my };
+  };
+  const archGeom = sagittaGeom(topL, topR, rise, { x: 0, y: hh });
+  const lowerGeom = sagittaGeom(waistR, BR, bulge, { x: 0, y: (waistR.y + BR.y) / 2 });
+  const upperGeom = upperRadius != null ? sagittaGeom(topR, waistR, upperCurve, { x: hw * 3, y: (topR.y + waistR.y) / 2 }) : null;
+
+  return { hw, hh, topR, topL, waistR, waistL, BR, BL, archRadius, lowerRadius, upperRadius,
+    archGeom, lowerGeom, upperGeom,
+    topWidthFrac, archRiseFrac, waistWidthFrac, waistHeightFrac, bulgeFrac, upperCurveFrac };
+}
+
+/** Shared solver for Templates 16/17 (the SAME construction, `preset` only picks which PARAM_ORDER/
+ * DERIVED_PARAM_DEFAULTS/SALT table and whether upperCurveFrac is resolved at all) -- 6 pieces,
+ * clockwise from the top-right corner (matches template_data.py's own FRAME_SEED_MAP `prim` order
+ * and _OUTLINE: 0 upper_R, 1 lower_R, 2 base, 3 lower_L, 4 upper_L, 5 arch). EVERY joint a miter.
+ */
+function _solveArchedTimer(preset, region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  const resolvedAll = _resolveParams(preset, region, params, seed, strokeHalfWidth);
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  const g = archedFunnelConstruction(region, resolvedAll);
+  const s = strokeHalfWidth;
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
+  const M = (x, y) => ({ x: cx0 - x, y: cy0 + y });
+
+  // convex (arch, the 2 lower bulges): radius SHRINKS by the stroke, like any other convex arc.
+  const archRadiusDrawn = g.archRadius - s;
+  const lowerRadiusDrawn = g.lowerRadius - s;
+  // concave (the 2 upper sides, Template 17 only): radius GROWS by the stroke.
+  const upperRadiusDrawn = g.upperRadius != null ? g.upperRadius + s : null;
+  const hwD = g.hw - s, hhD = g.hh - s;
+
+  const topR = P(g.topR.x, g.topR.y), topL = M(g.topR.x, g.topR.y); // topL is the mirror of topR
+  const waistR = P(g.waistR.x, g.waistR.y), waistL = M(g.waistR.x, g.waistR.y);
+  const BR = P(hwD, hhD), BL = M(hwD, hhD);
+
+  const keypoints = [topR, waistR, BR, BL, waistL, topL];
+  const upperSeg = (a, b) => (upperRadiusDrawn != null
+    ? _curveSegment(a, b, upperRadiusDrawn, false) // concave: bulges toward the centreline, dir:'in'
+    : STRAIGHT_SEGMENT); // Template 16 (or Template 17 at upperCurveFrac=0): a plain straight side
+  const fresh = [
+    upperSeg(topR, waistR), // 0: upper_R (topR -> waistR)
+    _curveSegment(waistR, BR, lowerRadiusDrawn, true), // 1: lower_R, convex (outward)
+    STRAIGHT_SEGMENT, // 2: base (BR -> BL)
+    _curveSegment(BL, waistL, lowerRadiusDrawn, true), // 3: lower_L, convex (outward)
+    upperSeg(waistL, topL), // 4: upper_L (waistL -> topL)
+    _curveSegment(topL, topR, archRadiusDrawn, true, false, true), // 5: arch, convex, TOP edge (up=true)
+  ];
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
+  // Unlike T7/T11's single self-mapping piece (an odd-length loop with one piece straddling the
+  // centreline), this 6-piece EVEN loop has TWO: base (2) and arch (5), each spanning the full
+  // width -- a declared table (not the generic mirrorSegmentIndex(i,6) default), matching Template
+  // 6's own convention for exactly this reason.
+  const mirror = [4, 3, 2, 1, 0, 5];
+
+  return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments, mirror };
+}
+function _solveArchedFunnel(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  return _solveArchedTimer('archedFunnel', region, params, segmentsOverride, seed, strokeHalfWidth);
+}
+function _solveTulip(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  return _solveArchedTimer('tulip', region, params, segmentsOverride, seed, strokeHalfWidth);
+}
+
+/**
  * `region: {x,y,w,h}` (SE14 §3, Q5 ruling) + `shape` ->
  * `{ keypoints, segments, primitives, cx, params }`. `shape.preset`
  * selects `'hourglass'` (default) or `'bottle'`; `shape.params` overrides
@@ -2333,7 +2593,11 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
               ? _solveDiamondTopHourglass(region, params, segmentsOverride, seed, strokeHalfWidth)
               : preset === 'diamondTopHourglassPinch' // T11 HOURGLASS ROOF (a frame-only preset)
                 ? _solveDiamondTopHourglassPinch(region, params, segmentsOverride, seed, strokeHalfWidth)
-                : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
+                : preset === 'archedFunnel' // T84 item 3, T16 ARCHED FUNNEL (a frame-only preset)
+                  ? _solveArchedFunnel(region, params, segmentsOverride, seed, strokeHalfWidth)
+                  : preset === 'tulip' // T84 item 3, T17 TULIP (a frame-only preset)
+                    ? _solveTulip(region, params, segmentsOverride, seed, strokeHalfWidth)
+                    : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;

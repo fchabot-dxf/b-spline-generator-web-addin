@@ -119,6 +119,20 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     // floor so `2 * (gableNeckWidth * hw) - 2t >= FRAME_MIN_OPENING_IN`, the same shape the hourglass waist/T6
     // tab rules already use for "the inner edges cross if the pinch is too tight".
     R.gableNeckWidth = _narrow(R.gableNeckWidth, (t + half) / hw, Infinity);
+  } else if (tpl.silhouettePreset === 'archedFunnel' || tpl.silhouettePreset === 'tulip') {
+    // T84 item 3: unlike every branch above, `_archedTimerRange`'s own bounds (editor-shape-
+    // lattice-generator.js) are ALREADY thickness-aware -- they were MEASURED directly against
+    // the real production validity pipeline (outlineDefects/offsetOutlineInward/frameMiters/
+    // miterStaysInsideWood) at frame_thickness=0.75in (SKETCH_3_PARAMETERS' own default), the
+    // same `t` every other branch here narrows TOWARD, not a thickness-UNAWARE geometric-only
+    // margin the way T10's own archRise range is (hourglassConstruction's own shape-only check,
+    // narrowed here separately using the real `t`). No further narrowing is applied here; this
+    // branch exists only so `_narrow(R.waistReach, ...)` below (the generic `else` fallback,
+    // keyed by Template 1's own param names, which this template's own keys never match) does
+    // not crash on `R.waistReach` being undefined. FIRST CUT: a frame_thickness far from the
+    // default (SKETCH_3_PARAMETERS allows 0.25-1.5) is not re-validated against these bounds --
+    // flagged, not fixed here, same honest scope every brand-new preset's own range function
+    // above declares for itself.
   } else if (tpl.silhouettePreset === 'dippedLeftWave') {
     // T8: the wave's own opening rule (Template 1's waistReach rule, same formula: this preset's only pinch).
     R.waveReach = _narrow(R.waveReach, -Infinity, 1 - (t + half) / hw);

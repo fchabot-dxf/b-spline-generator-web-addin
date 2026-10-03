@@ -49,7 +49,7 @@
 import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
   TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, iShapeConstruction, taperAngleForTopCornerX,
-  diamondTopHourglassConstruction, diamondTopHourglassPinchConstruction,
+  diamondTopHourglassConstruction, diamondTopHourglassPinchConstruction, archedFunnelConstruction,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -195,6 +195,60 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         key: 'bodyFlareHeight', label: 'Body flare height', axis: 'y', handleKind: 'position',
         anchor: { x: cx0 + g.B.x, y: cy0 + g.B.y },
         valueFromWorld: (pt) => within('bodyFlareHeight', (pt.y - (cy0 + g.E.y)) / g.rest),
+      },
+    ]));
+  }
+
+  if (preset === 'archedFunnel' || preset === 'tulip') {
+    // T84 item 3 (both frame-only presets, the same construction -- archedFunnelConstruction):
+    // topWidth/archRiseFrac share the chord-end point topR (its OWN x moves with topWidth, its
+    // OWN y moves with archRiseFrac -- same "handle sits where the dragged value actually lives"
+    // logic as T10's own archRise); waistWidthFrac/waistHeightFrac share waistR the same way.
+    // bulgeFrac/upperCurveFrac anchor at their own arc's VIA point instead (T1's own waistReach
+    // precedent for "neither chord end moves with this param, only the arc's own shape between
+    // them does" -- but VIA, not the arc's own CENTRE: centre is NOT a monotonic function of the
+    // sagitta, archedFunnelConstruction's own sagittaGeom doc comment), inverting a drag via a
+    // single dot product against the chord's own fixed normal/midpoint. Right side only (the
+    // generator mirrors for free, this module's own header comment); nudged off their own shared
+    // point's twin so the two squares don't sit exactly on top of each other (T7's own convention).
+    const g = archedFunnelConstruction(region, resolvedParams);
+    // The dot product recovers the sagitta in INCHES ((via-mid).n = sag exactly, by construction);
+    // bulgeFrac/upperCurveFrac are each a FRACTION of hw, same basis as every other handle here.
+    const sagValue = (key, geom) => (pt) => within(key, ((pt.x - geom.mx) * geom.nx + (pt.y - geom.my) * geom.ny) / hw);
+    return withRange(pick([
+      {
+        key: 'topWidth', label: 'Top width', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.topR.x, y: cy0 + g.topR.y },
+        valueFromWorld: (pt) => within('topWidth', (pt.x - cx0) / hw),
+      },
+      {
+        key: 'archRiseFrac', label: 'Arch rise', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0 + g.topR.x * 0.6, y: cy0 + g.topR.y },
+        valueFromWorld: (pt) => within('archRiseFrac', (pt.y - (cy0 - hh)) / hw),
+      },
+      {
+        key: 'waistWidthFrac', label: 'Waist width', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.waistR.x, y: cy0 + g.waistR.y },
+        valueFromWorld: (pt) => within('waistWidthFrac', (pt.x - cx0) / hw),
+      },
+      {
+        key: 'waistHeightFrac', label: 'Waist height', axis: 'y', handleKind: 'position',
+        anchor: { x: cx0 + g.waistR.x * 0.6, y: cy0 + g.waistR.y },
+        valueFromWorld: (pt) => within('waistHeightFrac', (pt.y - (cy0 - hh)) / (2 * hh)),
+      },
+      {
+        // 'x' (not 'arc', F27 item 2's OWN arc-pull mechanism -- it carries segment/mirrorSegment/
+        // arcs fields this handle doesn't set, a different dedicated path, editor-interaction.js's
+        // own axis==='arc' filter): a plain position square, just reading a PROJECTED coordinate
+        // (sagValue's own dot product against the chord's fixed normal) instead of a raw x/y.
+        key: 'bulgeFrac', label: 'Lower bulge', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.lowerGeom.via.x, y: cy0 + g.lowerGeom.via.y },
+        valueFromWorld: sagValue('bulgeFrac', { mx: cx0 + g.lowerGeom.mx, my: cy0 + g.lowerGeom.my, nx: g.lowerGeom.nx, ny: g.lowerGeom.ny }),
+      },
+      keys.includes('upperCurveFrac') && {
+        key: 'upperCurveFrac', label: 'Upper side curve', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.upperGeom.via.x, y: cy0 + g.upperGeom.via.y },
+        valueFromWorld: sagValue('upperCurveFrac', { mx: cx0 + g.upperGeom.mx, my: cy0 + g.upperGeom.my, nx: g.upperGeom.nx, ny: g.upperGeom.ny }),
       },
     ]));
   }
@@ -727,6 +781,16 @@ export const HANDLE_SEGMENT_INDEX = {
   // waistRadius map to the shoulder/waist/hip arcs), each index shifted by the roof's own 2 extra pieces (roof_R,
   // eave_straight_R) ahead of them.
   diamondTopHourglassPinch: { cornerRadiusTop: 2, waistReach: 3, cornerRadiusBottom: 4, waistCenterY: 3, waistRadius: 3 },
+  // T84 item 3, Templates 16/17 (6 pieces, editor-shape-lattice-generator.js's own `_solveArchedTimer`
+  // doc comment: 0 upper_R, 1 lower_R, 2 base, 3 lower_L, 4 upper_L, 5 arch): topWidth/archRiseFrac
+  // both move the arch's own chord (5); waistWidthFrac/waistHeightFrac/bulgeFrac all touch waistR,
+  // shared between upper_R and lower_R -- grouped with the lower bulge (1), the arc each of them
+  // most directly shapes; upperCurveFrac (tulip only) maps to its own arc, upper_R (0). The generic
+  // mirror formula (mirrorSegmentIndex) gives the CORRECT pairing here (confirmed, not assumed:
+  // mirrorSegmentIndex(i,6) for i=0..5 is exactly [4,3,2,1,0,5], matching the solver's own declared
+  // `mirror` table bit for bit) -- unlike T7/T11 above, no declared SEGMENT_PAIRS table is needed.
+  archedFunnel: { topWidth: 5, archRiseFrac: 5, waistWidthFrac: 1, waistHeightFrac: 1, bulgeFrac: 1 },
+  tulip: { topWidth: 5, archRiseFrac: 5, waistWidthFrac: 1, waistHeightFrac: 1, bulgeFrac: 1, upperCurveFrac: 0 },
 };
 
 /** T8 DIPPED TOP + LEFT-ONLY WAVE: `controlledSegments`' own declared pairing (the shape has no bilateral

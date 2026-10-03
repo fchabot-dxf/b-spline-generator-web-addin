@@ -113,14 +113,23 @@ FRAME_REGIONS = {
 #     already owns that shape as its own separate template, so this one stays > 0.
 # H23 item 63's own 180-deg undercut guard (outlineHasUndercut) applies here same as any other
 # template; T84 item 3's own dispatch asks for MODERATE ranges specifically so Generate stays
-# clear of it.
+# clear of it. `generateRange` MEASURED the same way as Template 16's own copy of this comment
+# (editor-shape-lattice-generator.js's own _archedTimerRange), WITH this template's own
+# upperCurveFrac active throughout (not Template 16's own ranges reused -- the same "Tulip's OWN
+# bulge/waist-height ranges" lesson the diagram script's own header comment already recorded).
 FRAME_HANDLES = [
-    {"key": "topWidth",        "label": "Top width",        "basis": "hw", "binding": "seeded"},
-    {"key": "archRiseFrac",    "label": "Arch rise",        "basis": "hw", "binding": "seeded"},
-    {"key": "waistWidthFrac",  "label": "Waist width",      "basis": "hw", "binding": "seeded"},
-    {"key": "waistHeightFrac", "label": "Waist height",     "basis": "h",  "binding": "seeded"},
-    {"key": "bulgeFrac",       "label": "Lower bulge",      "basis": "hw", "binding": "seeded"},
-    {"key": "upperCurveFrac",  "label": "Upper side curve", "basis": "hw", "binding": "seeded"},
+    {"key": "topWidth",        "label": "Top width",        "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.64, "max": 0.86}},
+    {"key": "archRiseFrac",    "label": "Arch rise",        "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.205, "max": 0.565}},
+    {"key": "waistWidthFrac",  "label": "Waist width",      "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.335, "max": 0.405}},
+    {"key": "waistHeightFrac", "label": "Waist height",     "basis": "h",  "binding": "seeded",
+     "generateRange": {"min": 0.45, "max": 0.67}},
+    {"key": "bulgeFrac",       "label": "Lower bulge",      "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.089, "max": 0.174}},
+    {"key": "upperCurveFrac",  "label": "Upper side curve", "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.09, "max": 0.215}},
 ]
 # T17 is new: no record was ever saved before a split, so nothing to migrate.
 FRAME_HANDLE_MIGRATIONS = {}

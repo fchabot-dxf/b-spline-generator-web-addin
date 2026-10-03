@@ -128,12 +128,21 @@ FRAME_REGIONS = {
 # outline same as any other; T84 item 3's own dispatch asks for MODERATE ranges (about halfway
 # from the default to each extreme the diagram found) specifically so Generate stays clear of it,
 # not because this template needs its own bespoke floor the way T7's gableNeckWidth did.
+# `generateRange` MEASURED the same way as editor-shape-lattice-generator.js's own
+# _archedTimerRange (the full drag-feasible bound): the same bisection/stepping sweep
+# tools/repro/t84_items1_2_archedfunnel_tulip_diagram.mjs's own range-finders use, taking the
+# midpoint-to-extreme HALFWAY point at each board size, tightest across all 3 (6x9/7x9/9x12).
 FRAME_HANDLES = [
-    {"key": "topWidth",        "label": "Top width",     "basis": "hw", "binding": "seeded"},
-    {"key": "archRiseFrac",    "label": "Arch rise",     "basis": "hw", "binding": "seeded"},
-    {"key": "waistWidthFrac",  "label": "Waist width",   "basis": "hw", "binding": "seeded"},
-    {"key": "waistHeightFrac", "label": "Waist height",  "basis": "h",  "binding": "seeded"},
-    {"key": "bulgeFrac",       "label": "Lower bulge",   "basis": "hw", "binding": "seeded"},
+    {"key": "topWidth",        "label": "Top width",     "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.58, "max": 0.86}},
+    {"key": "archRiseFrac",    "label": "Arch rise",     "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.205, "max": 0.565}},
+    {"key": "waistWidthFrac",  "label": "Waist width",   "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.355, "max": 0.405}},
+    {"key": "waistHeightFrac", "label": "Waist height",  "basis": "h",  "binding": "seeded",
+     "generateRange": {"min": 0.375, "max": 0.66}},
+    {"key": "bulgeFrac",       "label": "Lower bulge",   "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.089, "max": 0.174}},
 ]
 # T16 is new: no record was ever saved before a split, so nothing to migrate.
 FRAME_HANDLE_MIGRATIONS = {}
