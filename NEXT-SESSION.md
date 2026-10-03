@@ -186,6 +186,19 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 51 -- speed, the REAL costs (advisor, 2026-10-03). Item 50 accepted (4f96fe9): nudges stay, Pulse not worth it.
+You were missing a real payload. Here is one: bspline-frame-builder/scratch/real_send_t7_7x9_full.json (5 MB, a
+real palette capture from 2026-10-02 with stepVariants + stamp + frame; local only, don't commit). Replay it the way
+the palette does: sys.modules['bspline_ui'].PaletteHTMLEventHandler()._handle_generate(payload) in a fresh,
+fingerprinted doc.
+(1) Time it stage by stage. Earlier numbers: stamp projection ~6.7 s, timeline reorder ~4.9 s of ~16 s. Report the
+    top 5 stages.
+(2) Attack the top 2. For each: why it costs (per-feature recompute? projecting every curve? a reorder that moves N
+    features one at a time?), then the smallest change that keeps the result identical (A/B: bodies, volumes, timeline
+    order, preview==build sweep 13/13). One commit per change; report seconds before/after.
+(3) Fix step_removal_ab.py's OUT path (your flag).
+Fusion is yours (the advisor's doc 'adv_taper_fp' stays open; don't close it). Commit 'H23 item 51: ...'.
+
 ## Item 50 -- item 29 un-parked: PRUNE FOR SPEED, now that the build is stable (advisor, 2026-10-03).
 Fred: "stabilise before pruning". Stable now: preview==build 13/13, 0 MITER MISS, built==declared 13/13, gate green.
 Earlier measurement: stamp projection ~6.7 s, timeline reorder ~4.9 s of a ~16 s real Send.
@@ -397,4 +410,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-47] T10 arch-rise handle really changes the build: anchors take their position from the seeded arch's endpoints (by position); live different volumes at both ends; preview==build passes T10. Commit as 'H23 item 47: ...'.
 - [x] [H23-item-48] T5 dip/shoulder preview vs build 0.1-0.3 in: probe, root fix, preview==build 13/13. Commit as 'H23 item 48: ...'.
 - [x] [H23-item-49] declare seed derivation (item 18): convention in fb_engine, audit every literal seed (DERIVED / FITTED-OK / WRONG), fix WRONG + re-record goldens, preview==build 13/13. Commit as 'H23 item 49: ...'.
-- [ ] [H23-item-50] prune for speed: re-time a real Send, A/B each removal, keep only identical + 13/13 sweep, one commit per removal, before/after seconds. Commit as 'H23 item 50: ...'.
+- [x] [H23-item-50] (nudges load-bearing, Pulse no gain; real costs not yet measured -> item 51) prune for speed: re-time a real Send, A/B each removal, keep only identical + 13/13 sweep, one commit per removal, before/after seconds. Commit as 'H23 item 50: ...'.
+- [ ] [H23-item-51] speed, real costs: replay a real full Send, time stages, attack the top 2 with identical A/B, fix step_removal_ab OUT path. Commit as 'H23 item 51: ...'.
