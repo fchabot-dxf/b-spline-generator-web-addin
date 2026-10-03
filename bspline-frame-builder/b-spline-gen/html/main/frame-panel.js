@@ -407,7 +407,7 @@ function _clearFrameHover() {
  *  Fusion any differently from what it draws. An inner-profile defect (a crossed/degenerate
  *  offset) is a different, pre-existing failure this rule doesn't own -- ignored here so the
  *  drag-stop never fights it. */
-function _frameRecordBreaksNoHookRule(rec) {
+export function _frameRecordBreaksNoHookRule(rec) {
   const board = { widthIn: P.widthIn, heightIn: P.heightIn };
   const outer = frameCutProfile(FRAME_DEFS, rec, board);
   // H23 item 63 (Fred-approved guard): the drag also stops before any outline arc becomes an
