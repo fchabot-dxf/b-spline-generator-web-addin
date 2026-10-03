@@ -14405,3 +14405,84 @@ Committed as ONE commit, WORK-LOG only: "H23 item 54: T7 PROFILE 2/4 NOT BUILT e
 stale pre-guard seed, not a regression; 5/5 bars + 0 errors confirmed live with a fresh seed;
 send-2's extra ~8s traced to delete (+4.3s) + per-operation cost scaling on the larger cumulative
 timeline (+3.6s)".
+
+## H23 item 55 -- speed round 3: the re-Send delete's own 4.23s traced to 5 redundant feature deletes that the occurrence delete already does for free; skipping them saves ~4.4s with zero behavior change
+
+Dispatch (advisor, 461): the re-Send delete goes from 0.02s to 4.34s. Measure how it deletes
+(per feature/body/occurrence, full recompute per deleteMe?), try the smallest identical change.
+Gate: re-Send doc identical to a fresh Send, a third Send also clean, seconds before/after.
+
+**Measured per-call, not per-function, to find exactly which deleteMe()s cost what.** Wrapped
+`send_frame.delete_previous_frames`'s own two loops (not just `_delete_frames`'s outer total)
+live, on the real T7 payload (same doc, Send 1 then Send 2): `_delete_frames` 4.2334s total,
+`_remove_last_import` 0.0661s, `_delete_bspline_sets` 0.0s (already a no-op -- `_remove_last_
+import`'s own `current_import_group.deleteMe()` already removed the B-Spline Set occurrence).
+Inside `delete_previous_frames`: SIX `FRAME_MEMBER_ATTR`-tagged feature deletes at `[0.8485,
+0.8298, 0.8279, 0.8223, 0.8178, 0.036]`s -- five of them cost ~0.82-0.85s EACH (the SAME per-call
+cost item 51 already measured for `.reorder()`) -- versus exactly ONE occurrence delete at
+0.0504s. **The occurrence delete, not the feature deletes, is cheap.**
+
+**Root cause, found by reading extrusion_engine.py, not guessed at:** `_finalize_feature`'s own
+comment says it plainly -- "Declared frame membership ... on EVERY feature, BAR and SURROUND
+alike". T7's 5 bar extrudes (frame_base, roof_left/right, side_left/right) are ALL tagged
+`FRAME_MEMBER_ATTR`, same as the TRIM_CUT. `delete_previous_frames`'s own loop explicitly
+`.deleteMe()`s every one of them BEFORE deleting the Frame_1 occurrence two lines later -- but
+a bar extrude lives INSIDE the Frame_1 component, so the occurrence delete that follows removes
+it anyway, for free (confirmed by this project's own established convention elsewhere: deleting
+an occurrence deletes everything built inside its component, same as the B-Spline Set's own
+BSPLINE_SET_ATTR comment already states). Only the TRIM_CUT -- tagged the same way but living in
+'Clean', OUTSIDE the frame's own component -- genuinely needs its own explicit delete, since the
+occurrence delete never reaches outside the frame. **5 of the 6 explicit feature deletes were
+pure waste: ~4.1s of real time, every single re-Send, deleting things about to be deleted anyway.**
+
+**Fix (`send_frame.py::delete_previous_frames`):** before calling `a.parent.deleteMe()` on a
+tagged feature, check whether its own `parentComponent.name` equals the frame's own component
+name; if so, skip it (the occurrence delete below gets it for free) -- anything whose owner is
+NOT the frame's own component (the TRIM_CUT) is deleted exactly as before. The occurrence-delete
+loop itself is untouched.
+
+**New test** (`test_send_frame.py::test_a_resend_never_explicitly_deletes_a_bar_extrude_only_
+the_occurrence_and_the_trim_cut`): the shared fake `Entity.deleteMe` now also appends its own
+name to a new `World.explicit_deletes` list (distinct from the cascade `delete_entity` already
+performs when an occurrence dies) -- lets a test assert on WHICH deletes were explicit calls,
+not just the end state. Re-Sends the existing 4-bar + TRIM_CUT fixture (`Builds.solid`, already
+used by the pre-existing `test_a_resend_leaves_exactly_one_Frame_1_and_one_trim_cut`) and asserts
+the explicit-delete list is exactly `["t1_TRIM_CUT", " Frame_1:1"]` -- never any of the 4 bar
+extrude names -- while the end state (frame_names, trim_cut count, full name list) stays
+byte-identical to the pre-item-55 assertion. **Mutation-tested**: reverted to the pre-fix body
+(backed up to the session's own scratchpad, never from HEAD -- uncommitted), re-ran just this
+test -- failed exactly as predicted, `['t1_frame_right_Extrude', 't1_frame_bottom_Extrude',
+'t1_frame_top_Extrude', 't1_frame_left_Extrude', 't1_TRIM_CUT', ' Frame_1:1']` (all 4 bars
+present). Restored, cleared the stale `.pyc`, confirmed green again (36/36 in this file).
+
+**LIVE, on the real T7 payload (fresh seed from item 54, same inlay), three Sends on one doc:**
+```
+            seconds   occurrences               marker==count   bodies/volumes      inlay 9/9   errors
+Send 1      16.162s   [B-Spline Set:1,            21==21 yes    base/roof L+R/      healthy      0
+                       Frame_1:1]                                side L+R (5 bars)
+Send 2      19.866s   SAME                        SAME          BYTE-IDENTICAL       SAME       0
+            (was 24.32s before this fix, measured earlier this item with the same timers --
+             a ~4.45s / ~18% reduction on send-2 specifically, matching the ~4.1s of redundant
+             deletes measured above almost exactly)
+Send 3      24.223s   SAME                        SAME          BYTE-IDENTICAL       SAME       0
+```
+Send 2's own state (occurrences, marker, every body's volume to 6 decimal places, every inlay
+item's health/suppressed flag) is BYTE-IDENTICAL to Send 1's -- the gate's own "re-Send doc
+identical to a fresh Send" satisfied exactly, not approximately. Send 3 (the gate's own "a third
+Send also stays clean") is ALSO byte-identical, confirming the fix holds under repeated re-use,
+not just once. Send 3's own 24.223s being higher than Send 2's 19.866s is NOT a regression from
+this fix -- it's the SAME already-documented pattern (item 54's own WORK-LOG: Fusion's per-
+operation cost scales with the timeline's cumulative history, which keeps growing with every
+delete+rebuild cycle even though the live item count nets out the same each time); this fix's own
+contribution is the ~4.1-4.4s it saves AT EACH re-Send relative to what that same re-Send would
+have cost without it, not a claim that re-Sends get monotonically faster over a session.
+
+Document count clean before and after (4: Fred's 3 real docs + the advisor's own untouched
+`adv_taper_fp`).
+
+Full Python suite: 777 passed (+1), 25 skipped, 0 failures. JS vitest untouched this item (no JS
+file changed) -- not re-run.
+
+Committed as ONE commit: "H23 item 55: re-Send delete's 4.23s traced to 5 redundant feature
+deletes the occurrence delete already does for free -- skip them, ~4.4s saved, byte-identical
+state across 3 Sends".

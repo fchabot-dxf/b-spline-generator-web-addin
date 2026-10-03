@@ -164,13 +164,29 @@ def find_frames(design):
 
 def delete_previous_frames(design, log):
     """Delete every tagged frame: first the features it owns elsewhere (by
-    FrameComponent tag), then its occurrences. Returns the deleted names."""
+    FrameComponent tag), then its occurrences. Returns the deleted names.
+
+    H23 item 55 (MEASURED live, real T7 payload: a re-Send's own delete step cost 4.23s, of
+    which 5 of 6 FRAME_MEMBER_ATTR-tagged deletes below cost ~0.82-0.85s EACH -- 4.1s total --
+    the SAME per-call cost item 51 already found for `.reorder()`): extrusion_engine._finalize_
+    feature tags EVERY frame feature with FRAME_MEMBER_ATTR, "BAR and SURROUND alike" (its own
+    comment), but a BAR extrude lives INSIDE the frame's own component -- the occurrence delete
+    just below removes it for free (deleting an occurrence deletes its whole component's
+    contents), so explicitly deleting it here first is pure waste. Only a feature living
+    ELSEWHERE (the SURROUND/TRIM cut, tagged but built in 'Clean' -- the body it cuts) genuinely
+    needs its own explicit delete, since the occurrence delete never reaches outside the frame's
+    own component. Skip exactly the bars; keep deleting anything the occurrence delete can't
+    reach, unchanged."""
     names = []
     for comp in find_frames(design):
         name = comp.name
         for a in list(design.findAttributes(*FRAME_MEMBER_ATTR) or []):
-            if getattr(a, "value", None) == name and a.parent is not None:
-                a.parent.deleteMe()
+            if getattr(a, "value", None) != name or a.parent is None:
+                continue
+            owner = getattr(a.parent, "parentComponent", None)
+            if owner is not None and getattr(owner, "name", None) == name:
+                continue  # lives inside the frame's own component -- the occurrence delete below gets it for free
+            a.parent.deleteMe()
         for occ in list(design.rootComponent.allOccurrencesByComponent(comp) or []):
             occ.deleteMe()
         names.append(name)

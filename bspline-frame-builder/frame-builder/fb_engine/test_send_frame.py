@@ -67,6 +67,7 @@ class Entity:
         self.attributes = Attrs(world, self)
 
     def deleteMe(self):
+        self._w.explicit_deletes.append(self.name)  # H23 item 55: which ones get an EXPLICIT call
         self._w.delete_entity(self)
 
 
@@ -110,6 +111,7 @@ class World:
         self.components = []
         self.rootComponent = self  # allOccurrencesByComponent lives on the root component
         self.params = {}
+        self.explicit_deletes = []  # H23 item 55: every entity.deleteMe() CALL, not the cascade it triggers
 
     # design API ---------------------------------------------------------
     def findAttributes(self, group, name):
@@ -285,6 +287,27 @@ class TestSendFrame:
         assert r["ok"] and r["deleted"] == ["Frame_1"] and r["frame"] == "Frame_1"
         assert w.frame_names() == ["Frame_1"]
         assert w.names().count("t1_TRIM_CUT") == 1  # the old one (in Clean) went with its frame
+        assert w.names() == BODY + FRAME_BLOCK + ["Plane for L1 - vbit", "Source - L1 - vbit"]
+
+    def test_a_resend_never_explicitly_deletes_a_bar_extrude_only_the_occurrence_and_the_trim_cut(self):
+        # H23 item 55 (MEASURED live: each explicit feature deleteMe() on a real document cost
+        # ~0.82-0.85s, same per-call cost as item 51's own .reorder() finding -- 5 of T7's 6
+        # tagged features were bar extrudes, ~4.1s wasted every re-Send on work the occurrence
+        # delete below does for free). A bar extrude lives INSIDE the frame's own component, so
+        # it must NOT get its own explicit deleteMe() call -- only the occurrence (which removes
+        # every bar with it, for free) and the TRIM_CUT (which lives in Clean, outside the
+        # occurrence's own reach) should.
+        w = World()
+        send_bspline(w)
+        run(w, payload())
+        before = len(w.explicit_deletes)
+        run(w, payload(params={"frame_thickness": 0.5}))
+        new_deletes = w.explicit_deletes[before:]
+        assert new_deletes == ["t1_TRIM_CUT", " Frame_1:1"], (
+            f"expected only the trim cut + the occurrence to be explicitly deleted, got {new_deletes}")
+        # the end state is UNCHANGED from the pre-item-55 behavior (test above, same assertion)
+        assert w.frame_names() == ["Frame_1"]
+        assert w.names().count("t1_TRIM_CUT") == 1
         assert w.names() == BODY + FRAME_BLOCK + ["Plane for L1 - vbit", "Source - L1 - vbit"]
 
     def test_the_other_order_a_later_inlay_then_a_resend_still_lands_before_every_inlay(self):
