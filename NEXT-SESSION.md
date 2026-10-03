@@ -616,6 +616,6 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-62] (after 61) T10 taper, re-scoped (B'): read p02_06/p02_07's Coincident/Tangent chain, fix the override, re-add taperAngle, item 59's 9 live cases.
 - [ ] [H23-item-63] (d) JS NaN in taper/archRise payload math + finite-points test; (a) pilot on T1: do sends overwrite the baked arc seeds? derived via-points arc by arc, goldens checked each step, T1 matrix re-run. Commit as 'H23 item 63: ...'.
 - [x] [H23-item-64] matrix tests reachable ends (guard-clamped, shared predicate), regenerate, live full matrix when the advisor frees Fusion. Commit as 'H23 item 64: ...'.
-- [ ] [H23-item-65] re-run the full matrix on e11e15d (regenerated payloads) + triage the 2 SILENT cases. Commit as 'H23 item 65: ...'.
+- [x] [H23-item-65] (131/133; T10 archRise:min -> advisor's item 62; T13 neckWidth:min covered by the mitersCollide guard 578660e) re-run the full matrix on e11e15d (regenerated payloads) + triage the 2 SILENT cases. Commit as 'H23 item 65: ...'.
 - [ ] [H23-item-66] Shape Lattice: no tie generated on/touching the contour -- declared clearance, fix in the generator, pure test over templates x seeds, before/after shots. Commit as 'H23 item 66: ...'.
 - [ ] [H23-item-67] 3D preview: side walls take the edge colours of the artwork (teint dans la masse), shared colour sampler, 'Colour edges' toggle, tests, before/after shots. Commit as 'H23 item 67: ...'.
