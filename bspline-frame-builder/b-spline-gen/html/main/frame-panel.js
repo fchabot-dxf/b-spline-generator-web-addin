@@ -23,7 +23,7 @@ import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
 import { paramsFromShapeModel } from '../editor/editor-shape-lattice-generator.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
-import { frameCutProfile, frameInnerProfile, smallestConvexArcRadius, frameMiters, miterStaysInsideWood } from '../editor/editor-frame-profile.js';
+import { frameCutProfile, frameInnerProfile, smallestConvexArcRadius, frameMiters, miterStaysInsideWood, outlineHasUndercut } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { syncDrawerForMode } from '../editor/editor-drawer.js';
@@ -130,7 +130,7 @@ export function generateFrame(seed = nextSeed()) {
     // measured defect classes, rather than hand-deriving a narrower range for this one combination.
     if (outer.defects.length > 0) return false;
     if (!outer.primitives.every((p) => _primLength(p) >= t)) return false;
-    if (!outer.primitives.every((p) => p.type !== 'A' || Math.abs(p.dTheta) < Math.PI)) return false;
+    if (outlineHasUndercut(outer.primitives)) return false;
     // H23 item 39 (Fred-approved guard -- his own correction: "a hooked tip is SHORT GRAIN, fibres
     // across a thin tip snap -- size the margin so a tip is never thin, not just 'miter inside the
     // wood'"): every miter's own straight line (its outer corner to its matching inner corner) must
@@ -407,11 +407,17 @@ function _clearFrameHover() {
  *  Fusion any differently from what it draws. An inner-profile defect (a crossed/degenerate
  *  offset) is a different, pre-existing failure this rule doesn't own -- ignored here so the
  *  drag-stop never fights it. */
-function _frameRecordBreaksNoHookRule(rec) {
+export function _frameRecordBreaksNoHookRule(rec) {
   const board = { widthIn: P.widthIn, heightIn: P.heightIn };
+  const outer = frameCutProfile(FRAME_DEFS, rec, board);
+  // H23 item 63 (Fred-approved guard): the drag also stops before any outline arc becomes an
+  // undercut (>= a half-circle) -- Fusion refuses to build one.
+  if (outlineHasUndercut(outer.primitives)) return true;
+  // ...and before the outline itself breaks (self-intersection etc.) -- Generate already rejects
+  // outer.defects; item 64's matrix found T12 cornerRadiusTop:max reachable by drag with one.
+  if (outer.defects.length > 0) return true;
   const inner = frameInnerProfile(FRAME_DEFS, rec, board);
   if (inner && inner.defects.length > 0) return false;
-  const outer = frameCutProfile(FRAME_DEFS, rec, board);
   const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
   return !miterStaysInsideWood(outer.primitives, frameMiters(outer.primitives, inner.primitives), t);
 }

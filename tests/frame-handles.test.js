@@ -12,7 +12,7 @@ import { P, persistableP } from '../bspline-frame-builder/b-spline-gen/html/core
 import {
   normalizeFrameRecord, getFrameRecord, setFrameRecord, framePayload,
 } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { frameCutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { frameCutProfile, outlineHasUndercut } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry, frameParamRanges } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { generateSilhouette, paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { initFramePanel, setEditorTab, HANDLE_HIT_PX, frameHistoryDepth, undoFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
@@ -464,6 +464,37 @@ describe('H23 item 63 (d): frameSeedGeometry stays finite at every handle\'s own
         });
         if (g.radius != null) expect(Number.isFinite(g.radius), `${label} radius`).toBe(true);
       }
+    }
+  });
+});
+
+describe('H23 item 63 (a): the undercut guard catches the matrix REFLEX cases', () => {
+  // item 61's live matrix: T1 failed with REFLEX ARC at waistReach:max, cornerRadiusTop:min,
+  // cornerRadiusBottom:min and waistRadius:min. The advisor measured the payloads: the app's OWN
+  // outline sweeps 183-291 deg there (an undercut), so Fusion's refusal is right. Fred approved the
+  // guard (2026-10-03): handles and Generate stop before it, via outlineHasUndercut.
+  const rangeEnd = (id, key, end) => {
+    const tpl = tplOf(FRAME_DEFS, id);
+    const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
+    const t = (tpl.params.find((q) => q.name === 'frame_thickness') || {}).default ?? 0.75;
+    const ranges = frameParamRanges(tpl, region, paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region), t);
+    return profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id, seeds: { [key]: ranges[key][end] } }));
+  };
+  it.each([['waistReach', 'max'], ['cornerRadiusTop', 'min'], ['cornerRadiusBottom', 'min'], ['waistRadius', 'min']])(
+    'template_1 %s:%s is an undercut', (key, end) => {
+      expect(outlineHasUndercut(rangeEnd('template_1', key, end).primitives)).toBe(true);
+    });
+  it('every template default is not an undercut', () => {
+    for (const tpl of FRAME_DEFS.templates) {
+      expect(outlineHasUndercut(profile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id })).primitives), tpl.id).toBe(false);
+    }
+  });
+});
+
+describe('H23 item 63: no template default has a broken outline (the drag-stop starts from a valid shape)', () => {
+  it('every default outline has no defects', () => {
+    for (const tpl of FRAME_DEFS.templates) {
+      expect(profile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id })).defects, tpl.id).toEqual([]);
     }
   });
 });

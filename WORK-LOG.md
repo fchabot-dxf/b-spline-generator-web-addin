@@ -15351,3 +15351,56 @@ range-end fixes himself in Fusion; this worker is standing clear of `seed_geomet
 
 **Committed this item:** `bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js` (the
 2-branch fix) and `tests/frame-handles.test.js` (the new describe block). No other file touched.
+
+## H23 item 64: the matrix tests the REACHABLE range end now, not just the declared one -- tooling
+only, no Fusion run yet (waiting on "Fusion free" from the advisor, per the dispatch).
+
+**Why.** Item 63's own guards (the advisor's (a) Fred-approved undercut guard, d92ae70; the
+pre-existing no-hook guard, item 39) pull a REAL drag to a stop BEFORE it ever reaches a declared
+handle's own `frameParamRanges` end, whenever that declared end would already break one of them.
+The item 61 matrix tested the declared end directly -- a value a real drag might never actually
+reach -- so some of its own "NOT BUILT"/REFLEX/MITERMISS cases may never have been reachable by a
+user at all. Testing the reachable end instead is what the dispatch asked for before re-running
+the live sweep.
+
+**(1) Reused the live drag-stop's own predicate, did not copy it.** `frame-panel.js`'s own
+`_frameRecordBreaksNoHookRule(rec)` (undercut OR miter-escapes-the-wood; inner-profile defects are
+deliberately NOT this rule's own job, per its own existing doc comment) is now `export`ed --
+the one-line change, nothing else touched in that file. `tools/repro/
+h23_item61_make_full_matrix_payloads.mjs` imports it directly and bisects from the template's own
+known-safe default toward the declared end (24 halvings, the same count `_clampDragPatchToNoHookRule`
+itself uses) whenever the declared end trips the guard -- the exact shape of the live drag-stop's
+own bisection, just specialized to one scalar handle instead of a generic multi-key patch.
+**One wrinkle, worth being honest about rather than working around:** `frame-panel.js` is a large
+UI module whose own import graph (via `editor-ui.js`) touches `document` at module scope -- fatal
+in plain Node. Stubbed a bare `jsdom` `document`/`window` (nothing it actually calls touches a
+real DOM element) before the import; `P.widthIn`/`P.heightIn` set the same way the existing test
+file already does, for the same reason (`_frameRecordBreaksNoHookRule`'s own board size comes from
+that global, not a parameter).
+
+**(2) Regenerated all 133 payloads.** 25 of the 120 handle-range-end cases got pulled back from
+their own declared end -- recorded in `manifest.json` as `{declaredEnd, reachableEnd, pulledBack}`
+per case. Every pulled-back case is one of item 61's own already-found REFLEX/MITERMISS classes
+(`waistReach:max`, `cornerRadiusTop/Bottom:min`, `waistRadius:min/max`, `waveReach:max`,
+`gableNeckWidth/neckHeight/bodyFlareHeight:min`) -- strong, independent confirmation that the
+guards are correctly stopping a real drag before most of what the live matrix flagged, without my
+having to re-derive which ones by hand.
+
+**One known gap, left alone, not mine to close.** `template_12_cornerRadiusTop_max` still shows
+JS-side `notTangent`/`selfIntersection` defects (unchanged from item 61's own finding) AND is NOT
+pulled back -- `_frameRecordBreaksNoHookRule` only checks the OUTER profile for an undercut, never
+its full `outlineDefects`, so a self-intersecting-but-not-undercut outer profile slips through
+this guard entirely. This is squarely inside the advisor's own "last 8 corner cases" -- not
+touched, not diagnosed further, per this item's own explicit scope (tooling only).
+
+**Verification:** full JS suite 3135/3135 (3130 + 5 from the advisor's own commits, 0 regressions
+from this item's own 1-line export); `gen_frame_defs.py --check`: fresh (no Python touched).
+
+**Not done yet:** the live Fusion re-run of the full matrix -- waiting on the advisor's own
+"Fusion free" signal, per the dispatch ("ask the advisor for 'Fusion free' and run the full matrix
+live"), since Fred is actively in Fusion fixing the remaining corner cases.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/main/frame-panel.js` (1-line
+export, no behavior change) and `tools/repro/h23_item61_make_full_matrix_payloads.mjs` (the
+reachable-end bisection). Scratch payloads/manifest left uncommitted under `bspline-frame-builder/
+scratch/`, same convention as every prior item.
