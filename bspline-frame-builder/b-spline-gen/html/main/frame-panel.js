@@ -23,7 +23,7 @@ import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
 import { paramsFromShapeModel } from '../editor/editor-shape-lattice-generator.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
-import { frameCutProfile, frameInnerProfile, smallestConvexArcRadius } from '../editor/editor-frame-profile.js';
+import { frameCutProfile, frameInnerProfile, smallestConvexArcRadius, frameMiters, miterStaysInsideWood } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { syncDrawerForMode } from '../editor/editor-drawer.js';
@@ -120,7 +120,22 @@ export function generateFrame(seed = nextSeed()) {
     if (inner && inner.defects.length > 0) return false;
     const outer = frameCutProfile(FRAME_DEFS, { ...rec, seeds: realSeedsFor(s) }, { widthIn: P.widthIn, heightIn: P.heightIn });
     if (!outer.primitives.every((p) => _primLength(p) >= t)) return false;
-    return outer.primitives.every((p) => p.type !== 'A' || Math.abs(p.dTheta) < Math.PI);
+    if (!outer.primitives.every((p) => p.type !== 'A' || Math.abs(p.dTheta) < Math.PI)) return false;
+    // H23 item 39 (Fred-approved guard -- his own correction: "a hooked tip is SHORT GRAIN, fibres
+    // across a thin tip snap -- size the margin so a tip is never thin, not just 'miter inside the
+    // wood'"): every miter's own straight line (its outer corner to its matching inner corner) must
+    // keep real clearance from the rest of the outer boundary along its whole length, not merely
+    // never cross it outright. One declared rule for every template (not a T7 patch): item 38 found
+    // that an exactly-correct miter line can still re-approach the outline it started from -- an
+    // angle-dependent property of a line meeting an arc at a cusp-like corner (T7's own eave),
+    // present even when the arc's radius exceeds frame_thickness, so NOT the same thing as item 28's
+    // radius-vs-thickness rule. Reuses the app's own existing miter geometry (frameMiters) rather
+    // than re-deriving corner points here. MEASURED (H23 item 39 sweep, all 13 templates): every
+    // template's own default clears this with real margin; T7's eave is the one structurally tight
+    // case (its own default margin is the tightest of any template, 0.0604t at 7x9, still well clear
+    // of the 0.04t floor) -- see editor-frame-profile.js's own MIN_MITER_MARGIN_T_FRAC comment and
+    // WORK-LOG for the full numbers, including T7's own measured low per-draw pass rate.
+    return miterStaysInsideWood(outer.primitives, frameMiters(outer.primitives, inner.primitives), t);
   });
   pushFrameHistory();
   setFrameRecord({ seeds, genSeed: seed });
@@ -365,6 +380,56 @@ function _clearFrameHover() {
   setHandleCursor(null);
 }
 
+/** H23 item 39 (Fred-approved guard, part 2 -- "the drag handles stop before breaking it"): does
+ *  `rec`'s own drawn cut profile have a miter whose straight line hooks back into the wood?
+ *  Checked the same way generateFrame's isValid checks it (frameMiters + miterStaysInsideWood),
+ *  against the RAW drawn geometry -- a drag sees exactly what's on screen, and (unlike Generate's
+ *  own seed derivation) never needs T10's archRise pin: that handle's own drag never reaches
+ *  Fusion any differently from what it draws. An inner-profile defect (a crossed/degenerate
+ *  offset) is a different, pre-existing failure this rule doesn't own -- ignored here so the
+ *  drag-stop never fights it. */
+function _frameRecordBreaksNoHookRule(rec) {
+  const board = { widthIn: P.widthIn, heightIn: P.heightIn };
+  const inner = frameInnerProfile(FRAME_DEFS, rec, board);
+  if (inner && inner.defects.length > 0) return false;
+  const outer = frameCutProfile(FRAME_DEFS, rec, board);
+  const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
+  return !miterStaysInsideWood(outer.primitives, frameMiters(outer.primitives, inner.primitives), t);
+}
+const _mergeFrameRecord = (rec, patch) => ({
+  ...rec,
+  ...(patch.seeds ? { seeds: { ...(rec.seeds || {}), ...patch.seeds } } : {}),
+  ...(patch.params ? { params: { ...(rec.params || {}), ...patch.params } } : {}),
+});
+const _lerpPatch = (prevRec, patch, f) => {
+  const out = {};
+  for (const group of ['seeds', 'params']) {
+    if (!patch[group]) continue;
+    out[group] = {};
+    for (const k of Object.keys(patch[group])) {
+      const a = prevRec[group]?.[k] ?? patch[group][k];
+      out[group][k] = a + (patch[group][k] - a) * f;
+    }
+  }
+  return out;
+};
+/** H23 item 39: the patch a drag WOULD write, clamped so it never crosses into a hooked-tip
+ *  outline -- binary-searches the drag's own fraction (not a snap-back to the drag's start) so
+ *  the handle visually STOPS right at the limit, the same feel the frame-opening range clamp
+ *  already gives every other handle (frame-handles.js's own within()). Only does the extra work
+ *  when the full patch actually breaks the rule -- the common case (no hook risk at all) costs
+ *  nothing beyond the one check every drag tick already needs. One declared rule, every template:
+ *  no per-preset code here. */
+function _clampDragPatchToNoHookRule(prevRec, patch) {
+  if (!_frameRecordBreaksNoHookRule(_mergeFrameRecord(prevRec, patch))) return patch;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (_frameRecordBreaksNoHookRule(_mergeFrameRecord(prevRec, _lerpPatch(prevRec, patch, mid)))) hi = mid; else lo = mid;
+  }
+  return _lerpPatch(prevRec, patch, lo);
+}
+
 function _wireHandleDrag() {
   const shield = $('editorFrameShield');
   if (!shield || !shield.parentElement) return;
@@ -441,7 +506,8 @@ function _wireHandleDrag() {
     dragLastPt = { x: e.clientX, y: e.clientY };
     const h = (ed?._frameHandles || []).find((q) => q.key === dragKey);
     if (!h) return;
-    setFrameRecord(handleDragPatch(getFrameRecord(), h, ed._getMousePoint(e), ed._frameProfile.region, dragCtx));
+    const prevRec = getFrameRecord();
+    setFrameRecord(_clampDragPatchToNoHookRule(prevRec, handleDragPatch(prevRec, h, ed._getMousePoint(e), ed._frameProfile.region, dragCtx)));
     drawFrameProfile(ed);
     e.preventDefault();
     e.stopPropagation();

@@ -317,7 +317,14 @@ const GENERATE_RETRY_SALT = 104729; // a prime, decorrelated from FRAME_GEN_SALT
 // inner-defects check alone did -- MEASURED (5000-seed sweeps, portrait sizes): worst case needed 51 attempts
 // (7x9), 35 (6x9), 28 (9x12); 20 left 7-17/1000 still bad, 40 still left 1/1000 bad at 7x9. 80 gives 0/5000 at
 // every portrait size with real margin above the observed worst case, confirmed stable from 1000 to 5000 seeds.
-const GENERATE_MAX_ATTEMPTS = 80;
+// H23 item 39: the new no-hooked-tip margin check (frame-panel.js's generateFrame) is far tighter for ONE
+// template -- T7's own eave corner is structurally close to this floor for almost any seed (MEASURED:
+// raw per-draw pass rate 38.6% at 6x9, only ~4.1%/4.3% at 7x9/9x12 -- every other template passes
+// ~98-100% raw, so 80 was never the binding case before). MEASURED worst-case attempts-to-first-pass
+// over 2000 external seeds, T7 (the binding template): 17 (6x9), 273 (7x9), 250 (9x12); 0/2000 ever
+// exceeded that. 500 gives real margin above the observed worst case (273) and costs nothing -- even a
+// fully-exhausted 500-attempt budget (every attempt rejected, the pathological case) measures under 7ms.
+const GENERATE_MAX_ATTEMPTS = 500;
 export function generateValidFrameSeeds(tpl, region, seed, t, isValid) {
   let seeds = generateFrameSeeds(tpl, region, seed, t);
   for (let attempt = 1; attempt < GENERATE_MAX_ATTEMPTS && !isValid(seeds); attempt++) {
