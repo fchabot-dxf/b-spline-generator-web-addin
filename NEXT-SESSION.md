@@ -187,7 +187,7 @@ body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to 
 Commit 'H23 item 38: ...'.
 
 ## Item 40 -- item 39 REVIEW follow-ups (advisor, 2026-10-02). Item 39 accepted (775b88d; full vitest 3110/3110).
-Three things owed; (1) is required, it was in item 39's brief:
+Three things owed; (1) is required, it was in item 39's brief. ORDER: seat B is in Fusion first -- do (2), (3) and the payload captures, then ask the advisor for 'Fusion free' before (1)'s Sends:
 (1) LIVE PROOF. The guard decides which shapes reach Fusion, so whether those shapes BUILD can only be shown in Fusion.
     Capture fresh T7 payloads (tools/repro/capture_send_payload.mjs, --template=template_7) for 4 Generate seeds each at
     7x9 and 9x12 (the guard now applies), Send them live: every one builds all 5 declared bars, no '(1)' bodies,
