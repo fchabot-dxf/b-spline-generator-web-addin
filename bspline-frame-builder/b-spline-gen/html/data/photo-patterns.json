@@ -123,5 +123,80 @@
       "rotation": 0,
       "repeat": 0
     }
+  },
+  {
+    "id": "bark",
+    "name": "Bark",
+    "image": "data/photo-patterns/bark.jpg",
+    "thumb": "data/photo-patterns/bark_thumb.jpg",
+    "settings": {
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  },
+  {
+    "id": "pebble_close",
+    "name": "Pebble close",
+    "image": "data/photo-patterns/pebble_close.jpg",
+    "thumb": "data/photo-patterns/pebble_close_thumb.jpg",
+    "settings": {
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  },
+  {
+    "id": "chalk_rose",
+    "name": "Chalk rose",
+    "image": "data/photo-patterns/chalk_rose.jpg",
+    "thumb": "data/photo-patterns/chalk_rose_thumb.jpg",
+    "settings": {
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
   }
 ]
