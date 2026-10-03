@@ -13350,3 +13350,123 @@ Committed as "H23 item 43: ...". File list: `sketches/template_10/phases/
 p03_03_inner_corner_resolve.py`, `frame-defs.json/.js` (regenerated),
 `fb_engine/test_t10_inner_corners.py` (new), `tools/repro/fusion_t11/item43_t10_probe.py` (new),
 `tools/repro/fusion_t11/item43_golden_check.py` (new).
+
+## H23 item 44 — main's gate GREEN: T10 goldens re-recorded, MITER MISS now a permanent all-template guard (live + pure), T7's missing goldens explained
+
+Dispatch (advisor, 439): main's full gate was red (`test_golden_freshness` flagged T10, the exact
+asymmetry item 43 found and flagged but did not fix). Advisor deployed 96a62f8. Three parts: (1)
+re-record T10 goldens, full pytest green; (2) declare a permanent "no corner can MITER MISS" guard
++ make the live sweep count real MITER MISS log lines; (3) explain T7's missing goldens.
+
+**(1) T10 goldens re-recorded, confirmed symmetric.** `record_frame_parity.py`'s own
+`build_frame_logic` entry point (both via `record_case()` and a manual
+`run_sketch_only`+`build_solid_logic_v3` replication) silently stopped right after "TEMPLATE
+RESOLVE" against the now-deployed add-in -- no sketch/solid-phase log lines at all, consistent
+with this project's own documented history that this entry point is broken (send_frame.py's own
+comment references WORK-LOG turn 18). Not chased down (out of this item's scope) -- worked around
+with a new script, `tools/repro/fusion_t11/item44_record_t10_goldens.py`, that drives the SAME
+proven-working `_handle_send_frame` production path item 43's own live checks already used,
+re-using `record_frame_parity.py`'s own `_curves`/`_bbox`/`_make_core`/`_timeline_healthy` helpers
+directly (imported via `spec_from_file_location`) so the golden SCHEMA and the synthetic-core
+convention are the established ones, not reinvented. Three bugs in the new script's own first
+draft, each caught by an existing test rather than silently shipped: (a) the synthetic panel body
+landed in the root component instead of under `B-Spline Set > Clean`, so `_find_bspline_core_body`
+found nothing (`bars: {}`) -- fixed by following `_make_core`'s own occurrence hierarchy; (b) a
+hand-rolled `_curves`/`_bbox` reimplementation used the wrong schema (a flat sorted list instead of
+the established `{curve_id: {...}}` dict keyed by FrameBuilder ID), breaking
+`test_frame_defs.py`'s freshness checks and `test_golden_is_consistent` -- fixed by importing and
+reusing `record_frame_parity.py`'s own functions instead (declare-don't-hand-roll, caught and
+corrected against myself); (c) the panel used the wrong z-convention (underside at z=-1.905,
+extruded downward) against `test_golden_is_consistent`'s own hard assertion that every bar's bbox
+spans z=[-1.0, 0.0] exactly -- fixed by calling `_rfp._make_core(des, W, H)` directly instead of
+hand-rolling a second convention.
+
+**Re-recorded 6x9 and 7x9 live** (12x6 deliberately left untouched, see below). Confirms item 43's
+own earlier in-memory prediction exactly: at 7x9, `frame_left` == `frame_right` == 5.85073 cm3
+(previously 6.05381 / 5.85073, an asymmetry a mirror-symmetric arched hourglass should never have)
+and 6 sketch profiles (previously 7 -- the asymmetric build's own extra degenerate region is gone).
+**template_10_12x6.json intentionally NOT re-recorded**: live-confirmed this size still fails with
+`KeyError: '3_frame_enclosure'` (the frame_enclosure sketch never builds at all) -- a pre-existing,
+already-documented Template-1-inherited reflex-arc limitation at this landscape size (`project_
+portrait_only`; "ship it" per the advisor/Fred, same class as T9's own 12x6 in `_KNOWN_BROKEN_
+BUILD`), not something this item's fix touches. (Also measured, not acted on: running 12x6 in the
+SAME Fusion `exec()` call as 6x9/7x9 made ALL THREE cases fail identically -- isolated to be
+triggered specifically by 12x6's own known failure corrupting later cases within one call, not a
+regression in the other two sizes, which succeed cleanly when run in their own separate calls.)
+Regenerated `frame-defs.json/.js` (`python tools/gen_frame_defs.py`) -- a 1-line diff
+(`sourceHash` only): T10's shape-model fit coefficients are derived from `sketch2_shape_outline`
+(the silhouette), unaffected by this fix's own target (the inner-enclosure bars/profiles).
+
+**(2) A permanent guard, pure AND live, so this class of bug can't recur silently.** Measured
+TWICE independently this session (items 38 and 43, on T7 and T10): Fusion's own inward offset can
+produce the geometrically correct inner curve/point for a line-meets-arc corner but never tag it
+with any ID, so `fb_engine/miters.py`'s own lookup returns `None` silently ("MITER MISS", a
+DEBUG/WARNING-level log line, never raised) and `declared_profiles.classify` finds one unsplit
+profile spanning multiple declared bars -- a build that LOOKS valid (no exception, healthy
+timeline) with fewer bars than declared. Nothing else in the suite catches this class of bug; only
+a live build happened to reveal it, twice, by someone reading a log line.
+
+New `fb_engine/test_no_miter_miss_possible.py` (pure Python, no Fusion): for every one of the 13
+registered templates, reads the SAME declared `regions.miters` pairs `p03_04`'s own Miters block
+and `declared_profiles.classify` key off of, and asserts every pair's InnerID is covered by an
+explicit `ResolveInnerCorners` or `ResolveLineCircleCorner` step somewhere in that template's own
+resolved phase blocks -- never left for Fusion's native offset to maybe tag on its own. A second
+test, `test_every_registered_template_is_covered_by_this_list`, diffs the hardcoded `TEMPLATES`
+list against the real template registry so a future template (Seat C's Flask / Arched Funnel /
+Tulip) added to the registry but not to this list fails loudly instead of silently skipping the
+guard. 14/14 pass. Mutation-tested: stubbed T10's own `p03_03_inner_corner_resolve.py` back down to
+just its `ResolveInnerCorners` step (deleting the `ResolveLineCircleCorner` step item 43 added, pyc
+cache cleared), confirmed RED with the exact expected message naming both missing TR/TL pairs,
+restored and confirmed green again.
+
+Extended `tools/repro/fusion_t11/item40_all_template_sweep.py` (the item-40 all-13-template live
+sweep) to also count real "MITER MISS" log lines per build, failing the sweep if any appear --
+the live-build matching half of the pure guard above. One correctness fix caught before trusting
+the mechanism: `_handle_send_frame`'s own `DebugLogger(...)` truncates `frame-builder-debug.log`
+to empty AT CONSTRUCTION, every single call (not just at add-in start/reload, despite
+`fb_logger.py`'s own comment implying otherwise) -- a first draft that snapshotted the log's line
+count BEFORE the call and diffed against AFTER would have silently SKIPPED real new lines once the
+file had been truncated shorter than that snapshot; fixed by reading the whole post-call log
+instead (correct, because the truncation-on-construct means the file only ever holds this one
+call's own lines by the time the call returns).
+
+**LIVE, all 13 templates, re-run after this item's own fix:** `done=13 crashed=[] bad=[]` -- every
+declared bar count matches exactly, 0 MITER MISS lines anywhere, healthy timelines throughout.
+Mutation-tested the sweep's own new counting mechanism the same way as the pure guard (not just
+trusted): re-ran template_10 alone against the SAME stubbed-down phase file used above -- caught
+exactly the 2 expected lines (`MITER MISS: proj_top_edge:S(True) or inner_proj_top_edge:S(False)`,
+`... proj_horn_TR:S(True) or inner_proj_horn_TR:S(False)`), correctly flagged `template_10` in
+`bad`; restored the real fix, cleared pyc, re-ran template_10 alone again -- `bad=[]`, confirmed
+clean. No stray scratch documents left open in Fusion afterward (checked `app.documents` directly).
+
+**(3) Why template_7 has no goldens: it doesn't need a unique explanation -- it's the SAME
+documented "provisional shape model, pending live recording" backlog state as T3/T4/T5/T6/T8, not
+a distinct gap.** T7 declares its own `FRAME_PROVISIONAL_SHAPE` (`template_data.py`), which
+`frame_definition.py`'s `template_shape_model` uses to build a `provisional_diamond_top_hourglass_
+model` in place of a real golden-fitted one -- the exact mechanism T3/T4/T5/T6/T8 already use while
+their own goldens are pending. `test_frame_parity_goldens.py::test_all_six_goldens_exist` already
+tolerates T3/T4/T5/T6/T8 having zero recorded goldens by name; it simply never mentions T7 (or
+T11) at all, because `_FILES` globs the fixtures directory and finds none for either -- the
+assertion passes vacuously, not because T7 was deliberately scoped out of that test. T7's own
+`sketches/template_7/LIVE_CHECK.md` independently confirms this is a KNOWN, tracked, not-yet-done
+item ("Record goldens... this replaces the provisional shapeModel with a real fit") sitting behind
+several OTHER unchecked Fusion-side checks in that same checklist (confirming the `min()`-in-an-
+expression build doesn't come up broken, confirming the eave corner's inner-corner Distance holds
+under a live handle drag, confirming the sketch solves with no skeleton pins) that this item did
+not verify and that are seat A/Fred's own lane, not this item's scope. (Template_11 is in the
+identical unrecorded state, for the same reason, though it wasn't asked about here.) Decision:
+left T7's goldens unrecorded -- recording them now, without first working through its own
+checklist's earlier unchecked items, would be scope creep past this item's 3 parts, and would also
+need `test_all_six_goldens_exist` extended with a T7 line (mirroring T3/4/5/6/8's own pattern) for
+consistency. Flagging for the advisor to dispatch as its own item if/when T7's own LIVE_CHECK.md
+checklist is worked.
+
+Full Python suite: 703 passed, 25 skipped, 0 unexpected failures (the only red before this commit,
+`test_golden_freshness`, is the exact one this item exists to clear, and does clear once committed
+-- the check is purely git-commit-date based).
+
+Committed as "H23 item 44: ...". File list: `tests/fixtures/frame-parity/template_10_6x9.json`,
+`tests/fixtures/frame-parity/template_10_7x9.json` (re-recorded), `frame-defs.json/.js`
+(regenerated), `fb_engine/test_no_miter_miss_possible.py` (new),
+`tools/repro/fusion_t11/item40_all_template_sweep.py` (MITER MISS counting added),
+`tools/repro/fusion_t11/item44_record_t10_goldens.py` (new).

@@ -28,7 +28,7 @@
           -1.0
         ]
       },
-      "volume": 6.05381
+      "volume": 5.85073
     },
     "frame_right": {
       "bbox": {
@@ -58,16 +58,16 @@
           -1.0
         ]
       },
-      "volume": 4.42102
+      "volume": 4.6241
     }
   },
   "meta": {
-    "core": "flat box 7x9x0.75 in, underside z=0",
+    "core": "flat box 7x9x0.75 in, underside at z=0 (record_frame_parity._make_core convention, extruded upward) (item 44 re-record, send_frame path)",
     "frame_height_offset": "-1 in",
     "frame_thickness": "template default (0.75 in)",
     "heightIn": 9,
-    "recorded": "2026-10-01",
-    "recorder": "tools/repro/record_frame_parity.py",
+    "recorded": "2026-10-03",
+    "recorder": "tools/repro/fusion_t11/item44_record_t10_goldens.py",
     "template": "template_10",
     "timelineHealthy": true,
     "units": "in / in^2 / in^3",
@@ -382,129 +382,6 @@
     }
   },
   "sketch3_frame_enclosure": {
-    "inner_proj_arc_waist_L": {
-      "center": [
-        -2.89305,
-        -0.00069
-      ],
-      "construction": false,
-      "end": [
-        -2.5,
-        1.37751
-      ],
-      "mid": [
-        -1.45991,
-        -0.00069
-      ],
-      "radius": 1.43315,
-      "start": [
-        -2.5,
-        -1.37888
-      ],
-      "type": "arc"
-    },
-    "inner_proj_arc_waist_R": {
-      "center": [
-        2.89305,
-        -0.00069
-      ],
-      "construction": false,
-      "end": [
-        2.5,
-        -1.37888
-      ],
-      "mid": [
-        1.45991,
-        -0.00069
-      ],
-      "radius": 1.43315,
-      "start": [
-        2.5,
-        1.37751
-      ],
-      "type": "arc"
-    },
-    "inner_proj_bottom_edge": {
-      "construction": false,
-      "end": [
-        -2.5,
-        -3.5
-      ],
-      "start": [
-        2.5,
-        -3.5
-      ],
-      "type": "line"
-    },
-    "inner_proj_horn_BL": {
-      "construction": false,
-      "end": [
-        -2.5,
-        -1.37888
-      ],
-      "start": [
-        -2.5,
-        -3.5
-      ],
-      "type": "line"
-    },
-    "inner_proj_horn_BR": {
-      "construction": false,
-      "end": [
-        2.5,
-        -1.37888
-      ],
-      "start": [
-        2.5,
-        -3.5
-      ],
-      "type": "line"
-    },
-    "inner_proj_horn_TL": {
-      "construction": false,
-      "end": [
-        -2.5,
-        1.37751
-      ],
-      "start": [
-        -2.5,
-        2.73379
-      ],
-      "type": "line"
-    },
-    "inner_proj_horn_TR": {
-      "construction": false,
-      "end": [
-        2.5,
-        1.37751
-      ],
-      "start": [
-        2.5,
-        2.73379
-      ],
-      "type": "line"
-    },
-    "inner_proj_top_edge": {
-      "center": [
-        0.0,
-        -0.96161
-      ],
-      "construction": false,
-      "end": [
-        -2.5,
-        2.73379
-      ],
-      "mid": [
-        0.0,
-        3.5
-      ],
-      "radius": 4.46161,
-      "start": [
-        2.5,
-        2.73379
-      ],
-      "type": "arc"
-    },
     "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S": {
       "construction": false,
       "end": [
@@ -544,7 +421,7 @@
     "miter-proj_top_edge:S_inner_proj_top_edge:S": {
       "construction": false,
       "end": [
-        2.5,
+        -2.5,
         2.73379
       ],
       "start": [
@@ -865,7 +742,7 @@
       }
     },
     {
-      "area": 6.05381,
+      "area": 5.85073,
       "bbox": {
         "max": [
           -1.45991,
@@ -880,7 +757,7 @@
       }
     },
     {
-      "area": 4.42102,
+      "area": 4.6241,
       "bbox": {
         "max": [
           3.25,
@@ -895,31 +772,16 @@
       }
     },
     {
-      "area": 27.68472,
+      "area": 29.54242,
       "bbox": {
         "max": [
           2.5,
-          3.02976,
+          4.42508,
           0.0
         ],
         "min": [
           -2.5,
           -3.5,
-          0.0
-        ]
-      }
-    },
-    {
-      "area": 1.8577,
-      "bbox": {
-        "max": [
-          2.5,
-          4.1953,
-          0.0
-        ],
-        "min": [
-          -1.99373,
-          2.73379,
           0.0
         ]
       }

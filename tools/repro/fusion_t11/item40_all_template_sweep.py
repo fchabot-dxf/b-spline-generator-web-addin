@@ -120,10 +120,28 @@ try:
 
             make_synthetic_panel(des, W, H)
 
+            # H23 item 44 (2): MITER MISS (fb_engine/miters.py) is the exact, silent symptom items
+            # 38/43 each found live -- a declared corner relying on Fusion's native offset tagging
+            # instead of an explicit ResolveInnerCorners/ResolveLineCircleCorner step. The pure
+            # test (test_no_miter_miss_possible.py) already proves this can't happen for any of
+            # the 13 templates as DECLARED; this is the matching LIVE confirmation -- count real
+            # "MITER MISS" log lines this case's own build produces (must be 0).
+            # NOTE: _handle_send_frame's own DebugLogger(...) truncates frame-builder-debug.log to
+            # empty at construction (b-spline-gen.py's own "clean slate" -- confirmed in fb_logger.py)
+            # EVERY call, not just on add-in start -- so the file after this one call already holds
+            # ONLY this build's own lines; no before/after snapshot needed (an earlier draft of this
+            # diff tried snapshotting line counts before the call, which would have silently SKIPPED
+            # real new lines once the file had been truncated shorter than that snapshot).
+            log_path = os.path.join(FB, 'frame-builder-debug.log')
+
             handler = bsg.PaletteHTMLEventHandler()
             handler._handle_send_frame(payload)
 
+            with open(log_path, encoding='utf-8', errors='replace') as f:
+                miter_miss_lines = [l.strip() for l in f if 'MITER MISS' in l]
+
             r = bars_report(des, declared_names, n_miters)
+            r['miter_miss_lines'] = miter_miss_lines
             results[template_id] = r
             _write()
 
@@ -144,5 +162,6 @@ done = [k for k, v in results.items() if 'CRASH' not in v]
 crashed = [k for k, v in results.items() if 'CRASH' in v]
 bad = [k for k in done if results[k]['count'] != results[k]['expected_count'] or results[k]['overlaps']
        or results[k]['slivers_under_0.5cm3'] or results[k]['dup_named_bodies']
-       or results[k]['missing_declared_names'] or not results[k]['timeline_healthy']]
+       or results[k]['missing_declared_names'] or not results[k]['timeline_healthy']
+       or results[k].get('miter_miss_lines')]
 print('done=%d crashed=%s bad=%s' % (len(done), crashed, bad))
