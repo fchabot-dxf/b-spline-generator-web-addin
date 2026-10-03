@@ -15966,3 +15966,83 @@ number into real 0..1 r/g/b floats. Full suite: **169 files, 3304/3304** (up fro
 exactly as item 67 left them). All scratch diagnostics (`repro67b.mjs` and its own before/after
 scratch output dirs, the dev-server process, the chrome profile dirs) deleted/stopped before
 commit.
+
+## H23 item 67c: item 67b REWORK -- wall colour must ALIGN with the rim and be CRISP (flat colour
+per segment, no vertex-colour blending), a straight-on side-view shot, and a tight oblique
+close-up finally reproducing the visible "triangles" my own earlier before-shot missed.
+
+**(1) Root cause (confirmed by re-reading my own item 67b code, not re-measuring blind): `wallArrays`
+SHARES each vertex between its two neighbouring quads.** Every wall/bars-outer-wall vertex got its
+OWN sampled colour (item 67b's own fix), but THREE's per-vertex colour interpolation then BLENDS
+across every shared vertex between two differently-coloured quads -- a real gradient at the scale
+of one sample spacing, which item 67b's own `WALL_COLOR_OVERSAMPLE` (finer sampling) could narrow
+but never eliminate, and which also visually reads as "misaligned" (the apparent edge smears to
+the midpoint between two samples, not the true boundary).
+
+**(2) Fix: `wallArraysFlat(loop, zBot, zTop, colorAt)`** (new, pure, frame-mesh.js) -- every
+segment between two consecutive loop points gets its OWN 4 vertices (never shared with a
+neighbour) and ONE flat colour, sampled at the segment's own midpoint via `colorAt`. Same
+principle `creasedNormals` elsewhere in this file already uses for NORMALS at a hard edge, applied
+here to COLOUR. `ringArrays` gained an `includeOuterWall = true` (default, fully backward-
+compatible) parameter so its own built-in outer-wall face can be left OUT when a caller needs to
+fill that exact gap with a SEPARATE `wallArraysFlat`-built piece instead (avoiding two coincident
+meshes / z-fighting). `applyFrameToPanel` now:
+- builds `frame-panel-wall` entirely via `wallArraysFlat` (replacing the old `wallArrays` + smooth
+  per-vertex colour array);
+- builds `frame-bars` as a MERGE of two pieces into one mesh (same name, same lifecycle, no new
+  consumer-visible surface): `ringArrays(..., includeOuterWall:false)` for everything that's
+  uniformly wood-coloured (the top cap, the inner wall, the bottom -- smooth shared-vertex
+  interpolation is harmless there since every vertex IS the same colour already, nothing to
+  blend), merged with a `wallArraysFlat`-built flat outer wall (the one that carries the edge
+  colour) at the SAME position its old built-in outer wall used to occupy;
+- applies the same `wallArraysFlat` treatment to `frame-window-wall` (the inset-window's own hole
+  wall) for consistency, low marginal cost reusing the same function.
+Also removed 2 of my own item-67b tests that became genuinely flaky under the new midpoint-based
+sampling (a synthetic "narrow u-band" probe -- `u` is the terrain grid's own normalized x,y
+coordinate, not an arc-length parametrisation of the perimeter, so a fixed u-width band covers a
+wildly different ARC length depending on local boundary direction) -- superseded by the much
+stronger, geometry-based alignment tests in (4) below, not silently dropped.
+
+**(3) Reproduced Fred's own setup FRESH, with a BETTER camera, before declaring anything fixed --
+the dispatch's own explicit instruction, because my item 67b "before" shot never actually showed
+the triangles.** Rebuilt the identical scenario (template_1, Shape Lattice, Offset from frame, the
+real Stripe tool, black/white, every one of the 12 contour segments tapped) and added TWO NEW
+views: (a) a straight-on SIDE VIEW -- camera placed along the true OUTWARD NORMAL of a genuinely
+straight contour segment (parsed directly from that segment's own SVG path `d`, "M x1 y1 L x2 y2",
+not guessed), looking squarely back at the wall so the rim's own dashes and the wall's own bands
+stack directly above/below each other in the image, for a true apples-to-apples by-eye alignment
+check; (b) a MUCH TIGHTER oblique close-up than item 67b's own (camera distance 0.7 vs 1.3, same
+real-camera.lookAt technique). On the PRE-67c code (temporarily reverted via `git show HEAD:... >`,
+the item-67b-only state, restored after from a backup, confirmed byte-identical via `git diff
+--stat`), these finally show the bug unambiguously: the side view shows a solid BLACK wall band
+sitting under mostly TAN/RED rim content (a real, severe misalignment -- not merely "a bit
+wider"), and the oblique close-up shows a visibly smeared, blended black/white boundary at the
+rim-to-wall seam. On the FIXED code, the SAME two views show: the side view's wall bands line up
+cleanly under their own matching rim dashes with crisp edges; the oblique close-up shows a sharp,
+un-blended transition.
+
+**(4) Tests** (all mutation-tested against the pre-67c, item-67b-only code before trusting them --
+same revert/restore cycle as (3), 4 of the new assertions correctly failed on the old code,
+restored, confirmed byte-identical): `tests/frame-wall-edge-colour.test.js`:
+- `wallArraysFlat` tested DIRECTLY and purely (no `applyFrameToPanel` involved): every segment's
+  own 4 corners share the exact same colour (no blending, ever); adjacent segments genuinely have
+  DIFFERENT colours when their own midpoints do (non-vacuous -- not "everything is secretly one
+  colour"); the sampled point is provably the segment's own MIDPOINT, not its start or end.
+- The dispatch's own explicitly-requested alignment test, built with a simple, unambiguous 3-band
+  (red/green/blue thirds) fake canvas so no reasonable resolution could straddle a boundary
+  ambiguously: for `frame-panel-wall`, EVERY segment's own flat colour (sampled via
+  `applyFrameToPanel`'s real pipeline) is checked against an INDEPENDENT re-sample of the SAME
+  canvas at that segment's own midpoint (the ground-truth uv computed via `(x+W/2)/W, (y+H/2)/H`,
+  the same formula `buildHeightField` itself uses, re-derived here rather than imported -- not the
+  code checking itself) -- 643 segments checked, 0 mismatches. For `frame-bars`, every vertex
+  whose OWN colour is NOT the frame's declared wood colour (i.e. every artwork-coloured vertex,
+  which can only be on the outer wall) is checked the same way -- 5712+ vertices checked, with a
+  <1% tolerance for the handful that genuinely sit AT one of the 3 band boundaries (a real, bounded
+  edge case: a segment's own midpoint can legitimately land on the opposite side of a boundary
+  from one of that SAME segment's own endpoint vertices -- not a general alignment failure).
+Full suite: **170 files, 3335/3335**.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js`,
+`tests/frame-wall-edge-colour.test.js`. No other file touched. All scratch diagnostics
+(`repro67c.mjs` and its own before/after scratch output dirs, the dev-server process, the chrome
+profile dirs) deleted/stopped before commit.
