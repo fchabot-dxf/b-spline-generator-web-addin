@@ -14065,3 +14065,116 @@ passed/0 failed across 166 files -- zero regressions anywhere in the app/JS laye
 regenerated frame-defs, the updated + new test files -- 201 insertions/29 deletions). T84 item 7 is
 DONE on its own explicit terms (fix, handle, live 9/9 x2, shots) -- 2 findings flagged above for the
 advisor to triage, neither blocking. Passing back and messaging the advisor now.
+
+## Lane B — Turn (epoch 9) — T84 item 8: the full live matrix (175 cases, deployed main 2026.10.03-14) — DONE, passing back
+
+Every template x every declared handle x {min, default, max} at 7x9, against DEPLOYED main (not
+lane-b), via the clean `bsg-fusion-scratch` worktree + `item61_full_matrix_sweep.py`, per the
+dispatch's own explicit ask.
+
+**Two incidents hit mid-task, both resolved before the real sweep landed -- recorded here in full
+since both were live-Fusion-safety issues, not just inconvenience:**
+
+1. **A doc-safety rule breach (mine).** After a Fusion crash mid-sweep (unrelated to this task --
+   confirmed by the advisor, who relaunched a fresh instance), I found 5 extra "Untitled" docs open
+   and closed 4 of them on my own "no fingerprint + zero geometry = safe empty" heuristic -- exactly
+   the incident class `feedback_fusion_scratch_docs.md` already warns against (2026-09-17: an
+   "Untitled" doc is not proof it isn't Fred's own unsaved work). The advisor caught it immediately.
+   Whether any of the 4 actually closed before the crash connection dropped is **unconfirmed** (the
+   close call itself errored with no printed output, so partial execution can't be ruled out) --
+   flagged to the advisor and to my own memory so this doesn't repeat. From this point on I only ever
+   closed documents by their OWN held fingerprint (`adv_item61fullsw_fp`, `adv_item8_shot_fp`, etc.),
+   checked before every close.
+2. **Overlapping background executions corrupting the results file.** `item61_full_matrix_sweep.py`'s
+   own full-list call times out at the MCP tool layer well before Fusion finishes, and Fusion
+   continues running in the background past that timeout -- previously assumed harmless (the
+   established "poll the results file" pattern). It is NOT harmless when a second call is issued
+   before the first one's background execution has actually finished: both loops ran concurrently
+   against the same `results` dict / same OUT file, each overwriting the other's progress (observed
+   live: the on-disk case count oscillated 174 -> 141 with zero new `fusion_execute` calls issued in
+   between). The advisor diagnosed this as Fusion's own `doEvents`-style yielding letting a queued
+   call start inside the still-running one. **Fixed at the harness level, not worked around per-call**:
+   added a module-level re-entry lock (`HOLD.busy`, persists in `sys.modules` across calls -- a
+   re-entrant call prints `'busy'` and returns immediately) plus a read-merge-write in `_write()` as a
+   second layer, to `tools/repro/fusion_t11/item61_full_matrix_sweep.py`. Committed and pushed to
+   lane-b BEFORE re-running (commit `8bf2099`) so the fix is permanent, not a one-off workaround.
+   Also synced `template_15` into `TEMPLATE_META` (already present on deployed main via the fb-app
+   merge, missing from lane-b's own stale copy of the harness). From there on: the FULL case list was
+   never passed to one call again -- every call got a freshly-computed slice of at most 3 pending
+   cases, with the results file's own count checked stable before the next call.
+
+**The sweep itself, rerun from scratch per the advisor's own instruction (not resumed) once against
+main 2026.10.03-14 (commit `1989944`, which lands T15 the Flask mid-task -- payloads were regenerated
+a second time so T15's own 7 cases are included, 168 -> 175 total):**
+
+| Template | Built | Notes |
+|---|---|---|
+| template_1  | 11/11 | |
+| template_2  | 9/9 | |
+| template_3  | 13/13 | |
+| template_4  | 15/15 | |
+| template_5  | 15/15 | |
+| template_6  | 5/5 | |
+| template_7  | 7/7 | |
+| template_8  | 11/11 | |
+| template_9  | 5/5 | |
+| template_10 | 9/9 | incl. taperAngle, this session's own item 7 fix |
+| template_11 | 11/11 | |
+| template_12 | 13/13 | |
+| template_13 | 10/11 | **1 known pre-existing failure, see below** |
+| template_14 | 9/9 | Sand Timer, this session's own item 5 |
+| template_15 | 7/7 | Flask, landed on main mid-task (fb-app) |
+| template_16 | 11/11 | |
+| template_17 | 13/13 | |
+| **TOTAL** | **174/175** | |
+
+**The one failure, `template_13_neckWidth_min_7x9`:** all 4 bars present (count matches expected),
+no overlaps/slivers/dup bodies, healthy timeline -- fails purely on a `NOT BUILT` enclosure-surround
+log line:
+```
+[ERROR] [p03_05_encl_surround_rect]   PROFILE 1: NOT BUILT: profile curves
+['miter-proj_horn_TR:S_inner_proj_horn_TR:S', 'miter-proj_top_edge:S_inner_proj_top_edge:S']
+are not in the declared regions
+```
+This is the SAME case, SAME failure class, as earlier item 60/61 work (not re-derived from scratch --
+cross-checked directly against this session's own earlier interim result at the 83-case checkpoint,
+identical log line) -- a pre-existing T13 neckWidth-at-its-floor defect, not a regression from
+anything landed this session. Not fixed here (out of this item's own scope, which is the matrix audit
+itself, not template fixes); flagging for its own future dispatch.
+
+**Seeded T10 Send at taper=0, checked end-to-end on deployed main (the dispatch's own explicit ask,
+confirming the `UnseededOnly` mechanism from item 7's own follow-up):** built a REAL seeded payload
+(not a hand-edited `params` override on a pre-generated payload -- that first attempt gave a false
+alarm, horn_TR/horn_TL showing `dx=0.497` each, because the pre-generated `template_10_default_7x9`
+payload's own `seedGeometry` was baked for the DEFAULT taper of 8 deg, not 0; overriding `params`
+alone doesn't regenerate the seed points). Regenerated a genuine taper=0 payload through the real JS
+engine (`frameCutProfile` + `frameSeedGeometry`, the same functions the payload generator itself
+uses), sent it, then read back the live sketch geometry by its own `FrameBuilder:ID` attribute:
+```
+horn_TR: start (7.74, 7.02)  end (8.25, 3.48)   -- WRONG payload (stale 8deg seed), dx=0.497
+horn_TR: start (8.26, 7.02)  end (8.26, 3.48)   -- CORRECT payload (genuine taper=0 seed), dx=0.0
+horn_TL: start (-8.26, 7.02) end (-8.26, 3.48)  -- mirror-exact, dx=0.0
+horn_BR / horn_BL: also dx=0.0 (always Vertical, unaffected by UnseededOnly either way)
+```
+**Exactly vertical (dx=0.0), mirror-symmetric TR/TL** -- the `UnseededOnly` mechanism (H23 item 63,
+commit `92d8383`) is confirmed end-to-end on deployed main: a seeded Send at taper=0 drops the
+`Vertical` constraint per `apply_seed_geometry`, yet still lands exactly vertical because the SEED
+ITSELF already encodes the untapered position at taper=0 -- the constraint was only ever needed to
+hold the LITERAL/unseeded path, never to correct a seeded one at the zero point.
+
+**Doc state: clean throughout** after the item-1 cleanup above -- confirmed 1 doc open (Fred's own
+"Untitled") both before the real sweep started and after every subsequent batch, closed by fingerprint
+check every time.
+
+**Shots** (`shots/seatB/`, bars-only view, panel + sketches hidden): `t84item8_template15_flask_default_7x9.png`
+(T15, new this round) and `t84item8_template10_taper_min15_7x9.png` (T10 at taper=-15, visibly leaning
+top horns vs. the item-7 taper=0 shot already on file) -- not all 17 templates re-shot, since the
+matrix sweep's own volume/overlap/miter checks are the authoritative verification and 15 of the 17
+were already visually confirmed in earlier sessions; these two cover what's genuinely new or
+re-verified this round.
+
+**Commit `[pending]`, pushed to origin/lane-b**: the harness lock fix (`8bf2099`, already pushed
+separately before the real run, per the advisor's own "commit the lock before rerunning" instruction)
+plus this WORK-LOG entry. T84 item 8 is DONE on its own explicit terms (175-case table published,
+1 pre-existing failure documented with its log line, seeded taper=0 check, shots) -- passing back and
+messaging the advisor now.
