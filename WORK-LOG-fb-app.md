@@ -8612,3 +8612,68 @@ tests. `check_golden_freshness.py --check` and `gen_frame_defs.py --check` both 
 Committed: `tests/fixtures/frame-parity/template_5_7x9.json`, `tools/check_golden_freshness.py`,
 `bspline-frame-builder/b-spline-gen/html/data/frame-defs.json`/`.js` (regenerated). Pushed, passing
 back.
+
+## 2026-10-03: F34 item 1 -- Photo filter + small editor (seat C)
+
+[... the full F34 item 1 build is covered by its own commits (8abac4f, 972e376, fc1dafd, 6107ce3 and
+the tab-restructure commit below) -- this entry covers the Art-vs-Photo reuse audit Fred asked for
+before the panel was finished, since it directly shaped the final shape of the Photo tab.]
+
+**Art-section reuse audit (Fred: "the Photo tab should reuse tools that already exist in the ART
+section where they overlap... list Art's tools vs your Photo ops... before finishing the panel").**
+Dispatched an Explore pass over the live Art/Artwork editor (SVG sketch + Vector Stamping) rather
+than assuming; the honest finding is that NONE of the four capabilities Fred named actually exist
+there in a form reusable for a raster photo:
+
+| Capability | Exists in Art/Artwork? | Reusable for Photo as-is? |
+|---|---|---|
+| Image upload | No -- `#stampUpload` is `accept=".svg"` only (`main/stamp/svg-source.js`), reads text and imports vector child nodes; no PNG/JPEG path anywhere in the Art tab | No -- needs a new accept type and a new import path |
+| On-canvas move/scale/rotate handles | Yes, generically, for vector shapes (`editor/editor-transform-handles.js`, a real Figma-style 8-handle system keyed off `editor._selectedElements`) | Partial only -- `handle-edit.js`'s own `HANDLE_EDIT` table has no `image` entry (falls to a generic scale fallback), and `bakeMatrixIntoElement()` EXPLICITLY REFUSES to bake `text, image, g` -- a photo layer could visually drag on screen but couldn't commit into exportable geometry without new code. More fundamentally, nothing in the editor ever creates or selects an `<image>` node in the live sketch at all (the only existing `<image>` use is a non-interactive 3D background preview, never hit-tested, never added to `_selectedElements`) |
+| Crop | No -- absent from `editor/` entirely | No |
+| Image adjustments (brightness/contrast/levels/blur/invert) | No -- `editor/editor-color.js` is a fixed 32-swatch stroke/fill palette for vector shapes, not pixel adjustment | No -- different pipeline (RGB vector fill/stroke vs. a single-channel greyscale heightmap) |
+
+Net: reusing the ONE closest piece (the transform-handle system) would need three genuinely NEW
+pieces of plumbing that don't exist today (a `HANDLE_EDIT['image']` rule, an image-baking path in
+`bakeMatrixIntoElement`, and new code to insert a selectable `<image>` node into the live sketch on
+upload) -- that is MORE work than the already-built, already-tested Photo tab, not less, and it
+would also change WHAT the feature is (an SVG-editor image layer feeding the vector/stamping depth
+pipeline) rather than what was asked (a photo's own brightness feeding the terrain heightmap
+directly, a different and simpler pipeline by design). Did not refactor the Photo tab onto Art's
+system on the strength of this finding -- flagged it to the advisor/Fred instead of guessing, per
+their own explicit ask to see the table first. The Photo tab's own crop/levels/brightness/contrast/
+blur/invert/straighten implementation (`main/photo-panel.js`, `core/photo/ops.js`) stands as
+originally built.
+
+**Also landed in this same pass, before the audit was requested:** the Photo tab was promoted from a
+Filter-nested sub-panel to its own top-level sidebar panel (Fred: "its own tab next to Filter...
+instead of living inside the Filter section"), reordered into declared Prepare (straighten/crop/
+rotate90/flip) and Edit (levels/brightness/contrast/blur) groups, and the filter's own 6 effect-param
+tweaks (depth/scale/offset/rotation/repeat) now render a SECOND time inside this tab too -- reusing
+the EXACT same generic Edit-Filter rendering (`core/noise/tweaks-ui.js`'s own `buildRow`/schema),
+generalized to support multiple registered render targets (`registerTweaksTarget`) rather than
+copy-pasting the row-building logic, so editing a slider in either location updates the same
+`P.filterTweaks.photo` state. Picking a pattern or loading your own photo now also switches the
+active filter to 'photo' itself (dispatching a real `change` event on `#noiseType`, so every existing
+listener -- the rebuild, the tweaks render, this tab's own sync -- fires the normal way once, not a
+duplicated code path). A `Photo | Bricks` mode switch was asked for, then explicitly dropped in favor
+of Bricks becoming its OWN separate top-level tab later (F34 item 2, now owned by seat f3 for the
+brick-sampling engine itself; this seat's own item 2 becomes wiring that engine into a Bricks tab,
+reusing the Photo tab's own prepare/edit/Relief as shared components once it lands) -- built, then
+removed, the one dead-end file (`core/photo/modes.js`) before it was ever committed.
+
+Full suite green throughout: JS 182 files / 3475 tests.
+
+**Addendum for f3 (brick engine targeting Art's own vector-art format, per Fred: "bricks are more
+like vectors"):** the entry point is `importSvgIntoLayer(editor, svgText)`
+(`main/stamp/svg-source.js:178-215`) -- takes a raw SVG string, parses it (`DOMParser`), strips any
+`.editor-metadata` defs, ensures an active editor layer exists (creating one via `addLayer` if not),
+then appends every TOP-LEVEL CHILD of the parsed `<svg>` root directly into `editor._sketchLayer.node`
+(a live SVG DOM `<g>`), stamping each one with `data-layer="<layerId>"` (a string id matching one of
+`editor._layers[]`, each layer carrying its own CNC tooling config -- `TOOLING_DEFAULTS` in
+`editor/layers.js`). This is the SAME live DOM the Vector Stamping / relief / colour pipeline already
+reads from (`core/stamp/index.js`'s own `rasterizeSvg`), so a brick piece emitted as plain SVG shapes
+(rect/path/etc.) with a `data-layer` attribute set to whichever layer should own its own
+depth/profile/colour settings is consumable as-is. Persisted form is the editor's own `save()`
+serialization into `P.editorSvg` (a plain string, `core/state.js`'s own `editorSvg: null` field) --
+the SAME shape `tests/decal-png.test.js`'s own `fakeEditor({save: () => SKETCH})` fixture already
+exercises, where `SKETCH` is a raw `<svg>` string with `data-layer="..."` on each top-level shape.
