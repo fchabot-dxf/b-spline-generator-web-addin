@@ -186,6 +186,18 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 39 -- FRED-APPROVED GUARD: no hooked corner tips (finishes item 38). Fred: "a guard isn't that bad, it prevents
+awkward geometry where wood grain is important" -- he chose option D (shots/fred/t7_eave_options_2026-10-02.png).
+Declare ONE rule for every template (not a T7 patch -- Flask/Arched Funnel/Tulip, queued on fb-app, have the same kind of
+line-meets-curve corner): at every frame corner, the straight miter from the outer corner to its inner corner must stay
+inside the wood (it must not cross the outer boundary again), i.e. no tip that curls back into a hook. Enforce it the way
+cf3805f enforces T10's reflex rule: (1) generateFrame's isValid rejects outlines that break it (re-measure
+GENERATE_MAX_ATTEMPTS), (2) the drag handles stop before breaking it, (3) a pure test over all templates at
+6x9/7x9/9x12: defaults and 500 Generate draws all pass. The app's inner-profile/miter geometry already has the corner
+points (use it, don't re-derive). Template defaults must already pass (T7 default does -- picture D). LIVE: fresh T7 Sends
+(several Generate seeds) at 7x9 + 9x12 build all 5 declared bars, no '(1)' bodies, nothing < 0.5 cm3, 0 overlap. Then re-run
+the all-template sweep (built bars == declared). Item 38's part-1 fix (live eave corner) stays. Commit 'H23 item 39: ...'.
+
 - [ ] [H16-item-1] (Fred: "no, just a colour vs grey") The Save (disk) icon is in its normal COLOUR when there are unsaved changes and
       GREYED (like disabled Redo) when saved; still clickable; title "Save" / "Saved". One source of truth: the dirty flag
       cloud-project-manager already tracks. No badge dot.
@@ -245,4 +257,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-33] (root-caused, fix -> item 34) PARAM EDIT AFTER BUILD DUPLICATES BARS: find + fix why the bar split doesn't survive a frame_thickness/boundingboxoffset edit (3 bars become one overlapping U body, timeline healthy). Commit as 'H23 item 33: ...'.
 - [x] [H23-item-34] CANCELLED (Fred: he sees the break and undoes; no auto-rebuild, no lock, no CAM check). Was: FRED EDITS PARAMS IN FUSION: feasibility of auto-rebuild on the Parameters dialog (C1) vs a merge-proof bar model (C2), measured, before any production change. Commit as 'H23 item 34: ...'.
 - [ ] [H23-item-37] ROBUST UNDERSIDE: area-weighted face normal instead of a 5-point average vs a -0.7 bound (T7 7x9 panel scored -0.6975 and was refused); + the unhealthy 'Source - L4 - ballnose' stamp feature. Commit as 'H23 item 37: ...'.
-- [ ] [H23-item-38] T7 INCOMPLETE FRAME: roof bars never built + sliver '(1)' bodies (eave miter doesn't split); fix + all-template 'built bars == declared bars' check. Commit as 'H23 item 38: ...'.
+- [x] [H23-item-38] (part 1 done c190ac6; part 2 -> item 39, Fred chose a guard) T7 INCOMPLETE FRAME: roof bars never built + sliver '(1)' bodies (eave miter doesn't split); fix + all-template 'built bars == declared bars' check. Commit as 'H23 item 38: ...'.
+- [ ] [H23-item-39] NO HOOKED TIPS (Fred-approved guard): the straight corner miter must stay inside the wood, for every template -- Generate rejects, handles stop, all-template test; T7 then builds all 5 bars live. Commit as 'H23 item 39: ...'.
