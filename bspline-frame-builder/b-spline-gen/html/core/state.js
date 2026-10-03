@@ -63,6 +63,21 @@ export const DEFAULT = {
     // (not a module-local var) so it survives a reload via the existing
     // generic session save/load, same as photoImageDataUrl/photoEdits above.
     photoPatternId: null,
+    // F35 item 1: the Brick tab's own common settings (core/bricks/library.js's
+    // BRICK_SETS is the declared source for defaults per set -- these are the
+    // user's CURRENT overrides, shared by all three tools (Brush/Wall/Frame)).
+    // grout/reliefIn start at Set 1's own declared values (library.js) so the
+    // panel shows real numbers on first use, not a second, independent guess.
+    brickSettings: {
+      setId: 1,
+      scale: 1,
+      grout: { widthIn: 0.06, depthIn: 0.05, profile: 'flush' },
+      reliefIn: 0.125,
+      invert: false,
+      suppression: 0,
+      clumping: 0.3,
+      seed: 1,
+    },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.
     // At detailDensity = 1 it has no visible effect (no empty zones exist).

@@ -25,6 +25,7 @@ import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
 import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { initPhotoPanel, syncPhotoPanel } from './photo-panel.js';
+import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
 import { saveLastSession, isFusionMode } from '../core/state.js';
 import { isDirty } from '../core/dirty.js';
@@ -119,6 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
             0,
         ),
     });
+
+    // F35 item 1: the Brick tab (set picker + declared tool list + common
+    // controls). Output lands on the editor's own layers -- rebuilds happen
+    // through the SAME commitEdit -> editor._onChange -> updateStampMasks
+    // path every other carved layer already triggers, so this needs no
+    // onChange callback of its own.
+    initBrickPanel();
 
     // 5. Sidebar / header / theme / project manager.
     bindControls(preview);

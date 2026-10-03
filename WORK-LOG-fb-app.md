@@ -8879,3 +8879,130 @@ still dominant at default density) he'll tune from live, not a pre-tuned result 
 he's actually about to do.
 
 Nothing else touched. Commit, push, pass back.
+
+
+### F35 item 1: the Brick tab (Brush, Wall, Frame)
+
+Advisor's dispatch (after extensive, fast-iterating UI-design back-and-forth that eventually
+settled, see cross-session messages): a top-level `[Art][Photo][Brick]` tab, a declared tool list
+`[{id,label,icon,settingsSection,engineEntry}]`, first 3 tools Brush/Wall/Frame wired to f3's
+`core/bricks/` primitives per their own WORK-LOG adapter table (H23 item 72, P1a), a set picker
+(Red Brick selectable, White Rocks greyed "coming"), Scale/Grout/Relief/Height/Suppression/
+Clumping/Seed common controls, output onto editor LAYERS, height into the terrain "like the other
+sources." App-only, no Fusion.
+
+**Investigation before writing any code** (this item touches 5 existing subsystems at once --
+core/bricks/, editor layers, editor tool-mode dispatch, the stamp-mask/terrain pipeline, and the
+frame-contour geometry -- getting any one wrong would silently misplace or mis-height every brick):
+dispatched an Explore agent for the editor-side facts (layers.js's `data-layer` + kind-marker
+convention, the `draw`/`line` mode-handler pattern + `modeHandlers` dispatch table, `editor-cut-
+tool.js`'s `cutAt`/`commitCutEdit` for a later item, `contour-from-frame.js`'s `frameContourSilhouette`
+return shape, Photo's own Relief toggle markup, and the panel-registration convention), while reading
+f3's own `core/bricks/` source + WORK-LOG entry (H23 item 72, lines 16602-16801) directly myself in
+parallel.
+
+**The one load-bearing fact verified EMPIRICALLY, not assumed:** whether `core/bricks/`'s own
+"board inches" polygon output needs any transform before being drawn onto `editor._sketchLayer`.
+Opened the real SVG editor in headless Chrome, drew a literal `rect(1,1).move(0,0)` via
+`fusion_execute`-style direct eval, and confirmed by SCREENSHOT it lands exactly in the board's own
+top-left corner -- the editor's native drawing-surface units ARE board inches directly
+(`editor._mW`/`_mH` === `P.widthIn`/`heightIn`), origin top-left, Y down, no DPI scale, no flip. This
+meant every brick polygon core/bricks/ returns draws with ZERO coordinate transform -- a real
+unknown resolved by measurement before it could silently misplace geometry (same discipline as this
+engagement's earlier sign-convention catches).
+
+**Architecture decision: height into the terrain reuses the EXISTING generic stamp pipeline
+wholesale, no bespoke brick-height code.** `main/stamp-mask-manager.js`'s `updateStampMasks` already
+rasterizes ANY carved editor layer's own SVG content into a mask via the generic `rasterizeSvg` +
+profile-module pipeline (`core/stamp/profiles/`), regardless of which tool drew it -- so a "Bricks"
+layer just needs the right PER-LAYER TOOLING fields: `profile:'flat'` (core/stamp/profiles/flat.js:
+vertical wall + flat plateau, no taper -- matches a brick's own flat top far better than vbit/
+ballnose), `edgeFilletRadius:0` (sharp joints), `depth: reliefIn`. Verified this ACTUALLY reaches the
+real terrain, not just that the layer's own fields look right: flattened the shared macro layer
+(density:0, small carveZ, the same finding F34 item 1 made for Photo), ran Wall, closed the editor,
+and rendered the MAIN 3D preview -- it shows genuine raised bricks with real joint grooves, correctly
+following the board's own non-rectangular silhouette. Screenshot:
+`shots/seatC/f35item1_terrain_with_bricks.png`.
+
+Raised/Carved (the Relief toggle, mirroring Photo's own UI pattern) is a single sign flip on that
+same `depth` field -- `core/engine/apply-stamp-layers.js`'s own compositor already treats a NEGATIVE
+layer depth as "carve down from the base" (`layerSign`/`filletAmplitude` are explicitly signed, not
+clamped to non-negative), confirmed by reading that file directly rather than assuming it would
+just work.
+
+**Named, honest simplifications (not silent gaps):**
+- Every brick renders at a UNIFORM depth (the layer's own `depth` field) -- f3's own
+  `core/bricks/engine.js` `sampleHeight`/`buildSpatialIndex` (per-brick `heightOffset` jitter, the
+  'continuous' profile's own undulation) are NOT wired in. That needs a BRICK-SPECIFIC mask
+  rasterizer (calling `sampleHeight` per grid point) instead of the generic SVG rasterizer, which
+  can't see per-polygon height variation once everything's flattened to one alpha mask. A real
+  follow-up, not attempted here.
+- `grout.profile:'recessed'` is a stored, user-facing setting but has NO visual effect yet -- joints
+  currently sit at the base terrain level, which is exactly 'flush'. A genuine carved recess needs a
+  second, inverse-shaped stamp layer at a negative depth (the joint gaps, not the bricks); not built.
+  Defaulted the UI to 'flush' specifically BECAUSE it's the one that's actually implemented, rather
+  than defaulting to the set's own declared 'recessed' and silently doing nothing different.
+- Wall fills the WHOLE BOARD only, not an arbitrary selected shape (no existing "arbitrary SVG
+  element -> polygon points" utility was found in this codebase to reuse, and hand-rolling one for
+  every element type -- rect/circle/path -- was out of scope here).
+- Frame uses `FRAME_PRESETS.single_soldier` only (the dispatch's own common-controls list for this
+  item doesn't mention a band-preset picker UI; `settingsSection` is declared on each tool entry in
+  `BRICK_TOOLS` for exactly this kind of future per-tool UI, not built yet).
+
+**Implementation:**
+- `core/state.js`: `P.brickSettings` (`setId, scale, grout:{widthIn,depthIn,profile}, reliefIn,
+  invert, suppression, clumping, seed`) -- the one shared settings object every tool reads/writes,
+  same convention as `P.photoEdits`/`P.filterTweaks`.
+- `editor/editor-brick-tool.js` (NEW) -- the adapter: `ensureBricksLayer` (find-or-create a layer
+  literally named "Bricks", shared by all 3 tools so output always lands together),
+  `applyBrickLayerTooling` (depth/profile/edgeFilletRadius/carve, the sign-flip for Raised/Carved),
+  `drawBrick`/`drawBricks`/`clearGenerated` (the `data-layer` + `BRICK_ATTR` ('brush'|'wall'|'frame')
+  + `BRICK_GEN_ATTR` ownership-marker tagging convention, mirroring `editor-lattice.js`'s own
+  `emitSegment`/`data-lattice-gen` precedent -- found via the Explore agent, not invented fresh),
+  `runWallTool`/`runFrameTool` (button-driven), `primitivesToPolyline` (the one pure, unit-tested
+  piece: `contour-from-frame.js`'s `{type:'L'|'A',...}` primitives -> a flat polyline + corner
+  indices, arcs subdivided into 16 points, not collapsed to endpoints), `brickBrushHandler` (the
+  interactive mode handler -- mirrors `editor-interaction.js`'s own `makeDrawingHandler`/
+  `createDrawingShape` pattern for the LIVE preview stroke, but on `finish()` discards that preview
+  path and bakes real `bricksAlongPath` bricks along the drawn polyline instead of keeping it as a
+  plain path).
+- `editor/editor-interaction.js`: registered `brickBrush` in the `modeHandlers` dispatch table (one
+  new entry, same place `cut`/`stripe`/`lattice` were each added).
+- `main/brick-panel.js` (NEW) -- `BRICK_TOOLS` (the declared `[{id,label,icon,settingsSection,hint}]`
+  list Fred's own dispatch asked for, so a 4th tool is a data entry + its own `run` wiring, not a UI
+  rework), set picker, all common-control bindings, `selectTool()` (Brush arms the interactive mode;
+  Wall/Frame run immediately as one-shot actions, since there's nothing to "arm" for a fill/band
+  operation). Reads `window.svgEditor` FRESH at the point of use rather than caching it at init --
+  confirmed via `app-init.js` that the editor is created LAZILY on first modal-open, not at app
+  start, so a module-level reference taken at `initBrickPanel()` time would be stale/null.
+  `editor._brickSettings = P.brickSettings` (same object, mutated in place) right before arming
+  Brush -- editor/ files never import `core/state.js` directly (an existing, deliberate boundary
+  confirmed by grep: zero hits across the whole editor/ directory), so this is the one declared
+  bridge point, same role `onChange` plays for Photo.
+- `bspline_gen_palette.html`: new `.panel.panel-brick` section (same header/body accordion markup
+  every panel already uses -- confirmed there's no registry to hook into, accordion persistence is
+  automatic by class name alone), placed right after Photo.
+- `main/main.js`: `initBrickPanel()` call alongside the other panel inits.
+
+**Tests:** `tests/bricks-editor-adapter.test.js` (4 tests) for `primitivesToPolyline` -- the only
+pure, DOM-free piece (everything else is svg.js/DOM-dependent, same "not unit-tested, verified live"
+precedent as `main/photo-panel.js`). Mutation-tested the arc-subdivision math (shifted the arc
+center by 999 in one coordinate) and confirmed the radius-check assertion catches it, then reverted.
+Full suite: 192 files / 3554 tests green (+4 from this item; the rest of the jump from 182/3485 to
+192/3554 across this session is f3's own 9 bricks-engine test files merged from main in between).
+
+**Live verification (headless Chrome, own scratch dev server since the two already-running
+instances on this machine were confirmed serving OTHER seats' worktrees):**
+- Wall: 298 bricks, a clean running-bond fill of the whole 7x9 board, correct joint gaps.
+  `shots/seatC/f35item1_wall_1366.png`.
+- Frame: selected a real frame template (`template_1`), 125 bricks in a soldier band following the
+  frame's own contour. `shots/seatC/f35item1_frame_1366.png`.
+- Brush: drove the REAL mode handler (`getModeHandler('brickBrush')`) through a multi-point drag,
+  same call shape a real pointer gesture uses -- 11 bricks correctly following a diagonal curved
+  stroke, mitred at each turn. `shots/seatC/f35item1_brush_solo_{1366,390}.png`.
+- The Brick tab's own sidebar panel (set picker, tool row, all 7 common controls) at both required
+  widths: `shots/seatC/f35item1_brick_panel_{1366,390}.png`.
+- The terrain-height proof: `shots/seatC/f35item1_terrain_with_bricks.png` (described above).
+- Zero JS errors across every pass.
+
+Nothing else touched. Commit, push, pass back.
