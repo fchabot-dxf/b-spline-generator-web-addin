@@ -186,6 +186,19 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 65 -- re-run the matrix on deployed e11e15d + triage the 2 SILENT cases (advisor, 2026-10-03)
+Item 64 accepted (e6bc609, 122/133). Since then the advisor pushed: the drag-stop also refuses outer.defects
+(5cbf1be), a line-meets-arc corner fallback (3bf4638), and a far-slid edge + collapsed-corner-run fallback (e11e15d).
+Live spot checks by the advisor: T10 waistCenterY min, T2/T13 neckLength max, T5 x2, T11 x2 are all BUILT now.
+Deployed: e11e15d.
+(1) Regenerate the payloads (your generator uses the shared drag-stop predicate, which now includes outer defects),
+    run the full matrix live, and publish the table.
+(2) Triage the 2 SILENT cases (T10 archRise:min, T12 taperAngle:min): what fails and where, file:line. Fix it if it
+    is app-side JS or harness; if it's in inner_corners.py or a phase file, report it to the advisor and don't fix.
+(3) Known open: T13 neckWidth:min, where the 2 top miters cross because the top bar is shorter than its miters. Just
+    report it; the advisor takes it.
+Fusion is yours. Commit 'H23 item 65: ...'.
+
 ## Item 64 -- the matrix must test REACHABLE range ends now that the guards exist (advisor, 2026-10-03)
 Item 63 (d) accepted (326be4d). The advisor did (b) the square-corner miter fallback (7d5a5a3: 23 of 31 MITER MISS
 cases now BUILT) and (a) Fred's undercut guard (d92ae70: outlineHasUndercut, read by Generate + the drag-stop).
@@ -578,4 +591,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-61] (matrix + classes done; fixes -> 63+) range-end crash family: permanent every-handle x {min,default,max} BUILT sweep + matrix, root fix per failure class (reflex arc, unsplit profile), 100% BUILT or a list for the advisor; no range narrowing. Commit as 'H23 item 61: ...'.
 - [ ] [H23-item-62] (after 61) T10 taper, re-scoped (B'): read p02_06/p02_07's Coincident/Tangent chain, fix the override, re-add taperAngle, item 59's 9 live cases.
 - [ ] [H23-item-63] (d) JS NaN in taper/archRise payload math + finite-points test; (a) pilot on T1: do sends overwrite the baked arc seeds? derived via-points arc by arc, goldens checked each step, T1 matrix re-run. Commit as 'H23 item 63: ...'.
-- [ ] [H23-item-64] matrix tests reachable ends (guard-clamped, shared predicate), regenerate, live full matrix when the advisor frees Fusion. Commit as 'H23 item 64: ...'.
+- [x] [H23-item-64] matrix tests reachable ends (guard-clamped, shared predicate), regenerate, live full matrix when the advisor frees Fusion. Commit as 'H23 item 64: ...'.
+- [ ] [H23-item-65] re-run the full matrix on e11e15d (regenerated payloads) + triage the 2 SILENT cases. Commit as 'H23 item 65: ...'.
