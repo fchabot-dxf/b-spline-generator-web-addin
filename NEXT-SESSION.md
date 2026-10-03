@@ -186,6 +186,18 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 50 -- item 29 un-parked: PRUNE FOR SPEED, now that the build is stable (advisor, 2026-10-03).
+Fred: "stabilise before pruning". Stable now: preview==build 13/13, 0 MITER MISS, built==declared 13/13, gate green.
+Earlier measurement: stamp projection ~6.7 s, timeline reorder ~4.9 s of a ~16 s real Send.
+(1) Re-time a real Send stage by stage (send_stage_timing.py) for T1, T7, T10 at 7x9 in a document with a real
+    B-spline panel. Report the top 5 costs.
+(2) For each candidate removal (Pulse, explain/nudge steps, redundant solves, timeline reorder, projections):
+    step_removal_ab.py A/B, keep a removal only if the A/B is identical AND the live sweep (preview==build,
+    built==declared, MITER MISS) stays 13/13. One commit per removal, so any one can be reverted.
+(3) Report before/after seconds per template. Don't remove anything a test or a recorded finding says is load-
+    bearing (item 15/17 anchors, isTopologyMatched, ResolveLineCircleCorner).
+Fusion: ask the advisor first (short probe pending for Fred). Commit 'H23 item 50: ...'.
+
 ## Item 49 -- item 18 resumed: declare seed derivation (advisor, 2026-10-03). Items 46-48 accepted: preview==build 13/13.
 The literal seeds stay (Sketch Builder + golden recording use them, item 45), so they must be right. Use item 45's
 file:line map. (1) Write the convention once in fb_engine (seed_basis.py or a sibling): a seed is solved from the
@@ -367,7 +379,7 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-26] FrameBuilder() WITHOUT external_logger CRASHES: frame_engine.py:133 uses the logger instance instead of fb_logger. One line + test. Commit as 'H23 item 26: ...'.
 - [x] [H23-item-27] TEMPLATE 7 CROSSED ARC WELDS: apply T11's recipe (exact midpoint seeds, no seed Radius/nudges, CCW-correct welds + weld test), live-build 7x9/9x12 with tools/repro/fusion_t11; PLUS one all-template test: weld orientation (CCW rule) + seed-midpoint report + convex radius > bar report. Commit as 'H23 item 27: ...'.
 - [x] [H23-item-28] STABILISE (no pruning): make the offset fallback loud (result field + ERROR log + test); convert convex-radius check 3 to a declared known list. Commit as 'H23 item 28: ...'.
-- [ ] [H23-item-29] PRUNE FOR SPEED (after 28 merges): time a real Send stage by stage, then remove Pulse / explain nudges where timing says it pays, each re-checked with step_removal_ab.py. Commit as 'H23 item 29: ...'. Commit as 'H23 item 28: ...'.
+- [x] [H23-item-29] (-> item 50) PRUNE FOR SPEED (after 28 merges): time a real Send stage by stage, then remove Pulse / explain nudges where timing says it pays, each re-checked with step_removal_ab.py. Commit as 'H23 item 29: ...'. Commit as 'H23 item 28: ...'.
 - [x] [H23-item-30] CANCELLED -- Fred: warn only (T82 item 4's editor warning). Was: PREVENT FALLBACKS (Fred: 'the add-in produces no errors'): app keeps every convex radius > frame_thickness + margin (Generate gate, handle clamp, small-board defaults); known list empty + T1 7x9 live Send with zero fallback lines. Commit as 'H23 item 30: ...'.
 - [x] [H23-item-32] NO-ERRORS: find + fix why timeline 'Group1' is unhealthy on every Send; explain the empty-doc T1 solve failure. Commit as 'H23 item 32: ...'.
 - [x] [H23-item-33] (root-caused, fix -> item 34) PARAM EDIT AFTER BUILD DUPLICATES BARS: find + fix why the bar split doesn't survive a frame_thickness/boundingboxoffset edit (3 bars become one overlapping U body, timeline healthy). Commit as 'H23 item 33: ...'.
@@ -384,4 +396,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-46] (partial: SeedFrom + live preview==build check done; the handle still has no effect -> item 47) T10 arch rise ignored by Fusion: declare the rebuild's seed source; live preview==build check for all templates; T10 archRise ends live. Commit as 'H23 item 46: ...'.
 - [x] [H23-item-47] T10 arch-rise handle really changes the build: anchors take their position from the seeded arch's endpoints (by position); live different volumes at both ends; preview==build passes T10. Commit as 'H23 item 47: ...'.
 - [x] [H23-item-48] T5 dip/shoulder preview vs build 0.1-0.3 in: probe, root fix, preview==build 13/13. Commit as 'H23 item 48: ...'.
-- [ ] [H23-item-49] declare seed derivation (item 18): convention in fb_engine, audit every literal seed (DERIVED / FITTED-OK / WRONG), fix WRONG + re-record goldens, preview==build 13/13. Commit as 'H23 item 49: ...'.
+- [x] [H23-item-49] declare seed derivation (item 18): convention in fb_engine, audit every literal seed (DERIVED / FITTED-OK / WRONG), fix WRONG + re-record goldens, preview==build 13/13. Commit as 'H23 item 49: ...'.
+- [ ] [H23-item-50] prune for speed: re-time a real Send, A/B each removal, keep only identical + 13/13 sweep, one commit per removal, before/after seconds. Commit as 'H23 item 50: ...'.
