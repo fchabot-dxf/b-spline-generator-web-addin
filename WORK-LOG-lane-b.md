@@ -14290,3 +14290,92 @@ regenerated frame-defs, both test files -- 177 insertions/14 deletions). T84 ite
 at the cause (not the floor), pure-tested, live 175/175, every pre-existing gate re-confirmed green
 except the one honestly-flagged golden-staleness follow-up. Passing back and messaging the advisor
 now; Fusion released.
+
+## Lane B — Turn (epoch 9) — T84 item 10: trimmed stress test (97 cases) — DONE, passing back
+
+Fred's original ask ("is my app rugged enough?") was scoped down twice by the advisor mid-task:
+first to ~1260 live cases trimmed to ~380 (20 seeds/template instead of 50), then again to Fred's
+own "I don't care that much about failure" ruling -- cut to 97 cases across 3 parts, with random
+Generate dropped entirely and the size matrix reduced to defaults-only. All three remaining parts
+ran live on deployed main 2026.10.03-18 (colour decal option included, off by default), Fusion held
+by `fusion_holder.txt=b5` throughout, each sweep using the item-8 re-entry-lock + merge-on-write
+pattern. Payload generators and sweep harnesses are new permanent tools under `tools/repro/` (see
+commits below); their raw JSON results live in the scratch worktree only (throwaway, not committed).
+
+**Part 1 -- SIZE DEFAULTS at 6x9 + 9x12 (34 cases, every template's own default shape, no handle
+sweep): 34/34 BUILT (100%).** No fix needed.
+
+**Part 2 -- INSET WINDOW (60 cases: every template's default + window ON at 6x9/7x9/9x12, plus
+T1/T10/T16 at the window's own range ends -- smallest/largest/off-centre -- at 7x9): 22/60 BUILT
+(37%).** Per Fred's own "log anything else as a finding, without chasing it" ruling, NOT fixed this
+session -- characterized only, for Fred's scoping call. Two distinct failure classes, by log
+signature (full build log dumped, not just the sweep's own narrow NOT-BUILT/MITER-MISS/REFLEX-ARC
+filter -- the filter alone would have missed Class A entirely):
+
+- **Class A -- window profile silently dropped (15/38 failures: T1/T3/T4/T5/T7/T9/T11/T12 at their
+  default window, mostly at 6x9, T7/T9/T11 at all 3 sizes).** 3-line diagnosis: (1) zero `NOT BUILT`/
+  `MITER MISS`/`REFLEX ARC` lines in the build log for these cases -- the window's own bar-profile
+  extrude is never even ATTEMPTED, not rejected. (2) Main bars build at their full declared count
+  every time; only `frame_window_*` bodies are short (down to 0/4). (3) This sits UPSTREAM of
+  `declared_profiles.classify` (classify only logs on a profile ID mismatch, and there is none here)
+  -- most likely the window rectangle's sketch profile never resolves into a distinct closed region
+  at these template/size combinations (the same class of silent topology collapse already measured
+  for `addOffset2` at small convex radii), but this is NOT yet confirmed against app-side
+  (frameSeedGeometry never emitting a window-bar seed for these cases) -- that needs one sketch-
+  profile-count dump on a failing case before a fix is scoped.
+- **Class B -- window cut collides with existing miter declarations (23/38 failures: T6/T10/T14/
+  T15/T16/T17, 1-12 `NOT BUILT` lines per case, present at ALL 3 sizes for T14/T15/T17).** 3-line
+  diagnosis: (1) explicit `NOT BUILT ... not in the declared regions` lines -- the SAME
+  `declared_profiles.classify` rejection mechanism just fixed for T13's own main bars in item 9,
+  now triggered by the window's additional cut edges. (2) The window's extra profile boundaries
+  intersect a template's PRE-EXISTING miter region declarations (e.g. T6:
+  `miter-proj_tab_side_L:S_inner_proj_tab_side_L:S`), producing Fusion profile IDs that match no
+  declared region. (3) A fix would likely mirror item 9's shape -- declare the window-adjacent
+  corner's true intersection, or extend each affected miter region's declared boundary to
+  anticipate the window cut -- but needs per-template verification, not a blanket rule.
+- **Flagged, not characterized as a clean third class:** at the window's own range extremes
+  (T1/T10/T16 `largest`/`offCentre`) and uniformly for T17 at every size, `main_count` EXCEEDS the
+  declared count (e.g. 17 built vs 4 declared, 12 vs 6) with no `(n)`-suffixed duplicate names --
+  consistent with the window cut splitting one main bar into multiple separately-classified
+  pieces, but not isolated to sketch-vs-classify. Noted for Fred's scoping call, not chased.
+- A separate, already-known, non-blocking artifact also appears in several window logs:
+  `Could not complete Through All Extrude, body not found to extrude through` on the synthetic
+  test panel's own "trim"/"window_cut" SURROUND bodies -- a pre-existing synthetic-panel-harness
+  limitation (already flagged for T10 earlier this session), not a real-document issue; bars still
+  build independently of it.
+
+**Part 3 -- RANDOM GENERATE: DROPPED** per Fred's second scope cut. Payloads/generator script
+(20 seeds/template, 340 files) stay committed as unused infra in case this is revisited.
+
+**Part 4 -- END-TO-END x3 (Send -> re-Send same doc -> CAM setups/layout, no toolpath generation,
+on T1/T15/T17, all at default 7x9): 3/3 CLEAN.** Fixed one bug in my own new harness
+(`item10_part4_end_to_end.py`): `des.products.itemByProductType('CAMProductType')` crashed with
+`AttributeError: 'Design' object has no attribute 'products'` -- `.products` belongs to the
+`Document`, not the `Design`; the already-held `doc` object (from `app.documents.add(...)`) was
+right there in scope. Fixed to `doc.products.itemByProductType(...)`; re-ran all 3 cases clean. For
+every case: re-Send replaced rather than duplicated (exactly 1 frame both before and after, same
+name, identical bar volumes send1 == send2, no `(n)`-suffixed bodies, healthy timeline, marker at
+end), and CAM reached 4 setups (`ok: true`) via `cam_coordinator.run(skip_templates=True,
+skip_machine=True)` without ever calling toolpath generation, confirming `send_frame.py`'s
+`delete_previous_frames` and the CAM setup/layout path both hold up end-to-end, not just in their
+own fake-Fusion unit tests.
+
+**Summary table (97 cases total):**
+
+| Part | Cases | Built | Rate |
+|---|---|---|---|
+| 1. Size defaults (6x9+9x12) | 34 | 34 | 100% |
+| 2. Inset window (3 sizes + 3 range-end templates) | 60 | 22 | 37% |
+| 3. Random Generate | dropped (scope cut) | -- | -- |
+| 4. End-to-end (Send/re-Send/CAM, T1/T15/T17) | 3 | 3 | 100% |
+| **Total (parts 1/2/4)** | **97** | **59** | **61%** |
+
+No doc leakage at any point: `app.documents` held exactly the 4 protected docs (`Untitled`,
+`DECAL test - 2026-10-03`, `DECAL edge test`, `ITEM71 colour decal live test - 2026-10-03`)
+throughout, confirmed before and after each part.
+
+**Commit `[pending]`, pushed to origin/lane-b** (2 files: the CAM-lookup bugfix in
+`item10_part4_end_to_end.py`, this WORK-LOG entry). T84 item 10 is DONE on its trimmed terms: size
+defaults and end-to-end are clean (100%), the inset-window set is characterized into two failure
+classes with a 3-line diagnosis each for Fred's scoping call, per his own explicit "don't chase it"
+ruling. Passing back and messaging the advisor now with both diagnoses; Fusion released.

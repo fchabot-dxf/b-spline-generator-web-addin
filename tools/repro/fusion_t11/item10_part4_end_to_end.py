@@ -160,7 +160,7 @@ else:
 
                         report = cam_coordinator.run(classifier=cam_mod._classify_body, app=app, logger=_L(),
                                                       mode='bspline', skip_templates=True, skip_machine=True)
-                        cam = des.products.itemByProductType('CAMProductType')
+                        cam = doc.products.itemByProductType('CAMProductType')
                         cam_result = {
                             'ok': bool(report.get('ok')) if isinstance(report, dict) else None,
                             'setups_count': cam.setups.count if cam else None,
