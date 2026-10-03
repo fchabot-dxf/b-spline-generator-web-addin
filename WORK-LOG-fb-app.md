@@ -8677,3 +8677,71 @@ depth/profile/colour settings is consumable as-is. Persisted form is the editor'
 serialization into `P.editorSvg` (a plain string, `core/state.js`'s own `editorSvg: null` field) --
 the SAME shape `tests/decal-png.test.js`'s own `fakeEditor({save: () => SKETCH})` fixture already
 exercises, where `SKETCH` is a raw `<svg>` string with `data-layer="..."` on each top-level shape.
+
+### Live browser verification (real Chrome, headless CDP, no Fusion -- app-only per the brief)
+
+Served the palette locally (`python -m http.server`, own PID tracked and stopped afterward -- no
+bare-subshell zombie, [project_scratch_server_zombies] applied) and drove it with a dedicated CDP
+script forked from `tools/repro/filter_shots.mjs`'s own proven driver (headless Chrome + swiftshader,
+raw debugger websocket, `window.__preview.getSnapshot()` for layout-independent 3D shots) -- the
+SAME pattern every other filter verification in this repo already uses, not a new one.
+
+**End-to-end confirmed, zero console errors throughout:** the Photo tab renders, the pattern row
+populates from `data/photo-patterns.json`, clicking a thumbnail switches the active filter to
+`'photo'` automatically (confirmed: `#noiseType` reads `'photo'` afterward) and the 3D preview
+updates live. Drove the REAL DOM controls exactly as a user would (set slider values, dispatch
+`input` events, click buttons) rather than calling internals directly.
+
+**Brick feasibility check (Fred's own pass/fail bar: bricks raised, joints as grooves, crop+levels+
+blur(+invert) only, no segmentation).** Brick 1's own curved diagonal edging has no axis-aligned
+rectangle that captures pure brick (confirmed by eye on the actual photo before touching code --
+pavement one side, mulch/plants the other). The advisor independently found a working straighten
+angle + crop box by prototyping outside this app (-33 degrees in their own tool's sign convention,
+then a tight crop) and handed over the exact numbers; my own `straighten` op's sign convention had
+already been fixed to match `rotate90`'s (verified empirically, not re-derived, see the ops.js
+commit) -- translating their numbers through MY OWN convention needed the OPPOSITE sign (+33, not
+-33), confirmed by running both signs through a quick Python prototype of the exact same formula
+(crop+straighten) against the real `brick_1.jpg` and inspecting which one actually produces a
+horizontal, pavement/mulch-free brick strip (it was +33; the other sign left the crop full of leaf
+clutter) -- measured, not assumed, before trusting either sign in the real app.
+
+Applied `{straighten: 33}` then `{crop: {x:0.4854, y:0.3710, w:0.4729, h:0.0647}}` through the REAL
+Photo tab's own controls (not a script shortcut): `P.photoEdits` read back afterward matches exactly.
+3D preview after this step: a recognizable brick strip is visible, but DOMINATED by the shared
+macro/coarse redistribution layer (`core/terrain.js`'s own Pass 2 -- `h = lerp(fine*LOW,
+PEAK_BASE+fine*PEAK_RNG, coarse)`) at its own DEFAULT `density`/`macroScale`, the exact same
+filter-INDEPENDENT layer every other filter (Moon/Mars/etc.) already goes through -- confirmed by
+sampling the real heightmap (`generateHeightmap`) and seeing a smooth, large-scale symmetric rise/
+fall (symmetry='x' is the app's own default, so the mirrored shape is expected and correct) with
+only a small ripple riding on top. Setting `density: 0` (an EXISTING, filter-independent knob
+already in the Skeleton panel, not something new) silences that shared layer entirely; re-shot with
+it at 0 plus a levels nudge: the board goes flat overall and clear vertical brick/joint banding
+becomes visible in the render, confirming the photo's own texture IS there and IS usable, just
+masked by the shared macro layer at its own defaults -- the SAME consideration that applies to every
+other filter on this app, not something specific to or missing from Photo.
+
+**Honest verdict, not smoothed over:** the TOOLS (straighten + crop + levels + the existing density
+knob) CAN isolate a clean, legible brick/joint pattern from Brick 1's own curved photo with no new
+machinery -- confirmed live, not just in the Python prototype. Reaching the FINAL crisp "bricks
+raised, joints as grooves" look still needs levels/contrast values tuned to this specific crop's own
+actual histogram (my own quick `{black:0.3, white:0.75}` guess under-used the available contrast --
+the sampled mid-row only spanned 0.041-0.055, far short of the photo's own full range) -- exactly the
+live human-judgment step Fred said he and the advisor would do together, not something to perfect
+here. Brick 2 was not independently re-tuned (same reasoning: "don't tune on your own" applies to
+discovering ITS OWN best crop too, not just levels) -- the MECHANISM is proven on Brick 1, which is
+what the feasibility check was actually asking.
+
+Drain Grate and Rusty Grate (axis-aligned, no curve problem) load and render cleanly at their own
+defaults with no edits at all -- confirms the pipeline doesn't depend on the brick case's own extra
+steps to produce a plausible result.
+
+Screenshots saved to `shots/seatC/` (`f34item1_brick1_before_raw_1366.png`,
+`f34item1_brick1_after_straighten_crop_{1366,390}.png`, `f34item1_brick1_density0_levels_1366.png`,
+`f34item1_drain_grate_default_1366.png`, `f34item1_rusty_grate_default_1366.png`).
+
+Full suite green throughout this entire session: JS 182 files / 3475 tests, Python 892 (10
+pre-existing skips).
+
+**Not yet done, genuinely gated on Fusion (brief: "App-only, no Fusion except one live Send at the
+end"):** `fusion_holder.txt` reads `none` right now, not `de` -- waiting for the advisor's own grant
+before the one live Send this item's own brief calls for.
