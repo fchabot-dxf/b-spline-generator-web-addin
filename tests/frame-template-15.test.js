@@ -88,12 +88,17 @@ describe('Template 15: listing and declaration', () => {
     const BR = primPt(domeR, true), BL = primPt(base, true);
     const top = prof.primitives[5], topL = primPt(top, false);
     const neckBottomL = primPt(prof.primitives[3], true); // dome_L: BL -> neckBottomL
-    expect(topR.x - cx0).toBeCloseTo(-(topL.x - cx0), 9);
-    expect(topR.y).toBeCloseTo(topL.y, 9);
-    expect(neckBottomR.x - cx0).toBeCloseTo(-(neckBottomL.x - cx0), 9);
-    expect(neckBottomR.y).toBeCloseTo(neckBottomL.y, 9);
-    expect(BR.x - cx0).toBeCloseTo(-(BL.x - cx0), 9);
-    expect(BR.y).toBeCloseTo(BL.y, 9);
+    // F33 item 1: T15 now has recorded Fusion goldens, so frame-defs.js's own shapeModel is FIT
+    // from them (gen_frame_defs.py's own fit_shape_model, round(_, 6) coefficients) instead of the
+    // old exact provisional closed-form constant -- precision loosened from 9 to 6 to match that
+    // new source's own real-world rounding (measured residual here: ~5e-10, nowhere near this
+    // tolerance), same reasoning as the seed-geometry check below.
+    expect(topR.x - cx0).toBeCloseTo(-(topL.x - cx0), 6);
+    expect(topR.y).toBeCloseTo(topL.y, 6);
+    expect(neckBottomR.x - cx0).toBeCloseTo(-(neckBottomL.x - cx0), 6);
+    expect(neckBottomR.y).toBeCloseTo(neckBottomL.y, 6);
+    expect(BR.x - cx0).toBeCloseTo(-(BL.x - cx0), 6);
+    expect(BR.y).toBeCloseTo(BL.y, 6);
   });
 
   // 0..W / 0..H (the true board edges), not the safe zone: a convex arc's own bulge can swing
@@ -118,7 +123,7 @@ describe('Template 15: listing and declaration', () => {
   it('every handle at its own full DRAG-range extreme keeps the outline within the true board edges', () => {
     for (const [W, H] of PORTRAIT_BOARDS) {
       const region = profile({}, W, H).region;
-      const R = frameParamRanges(T15, region, { topWidth: 0.45, neckHeightFrac: 0.45, domeFullnessFrac: 0.1421885365451818 });
+      const R = frameParamRanges(T15, region, { topWidth: 0.45, neckHeightFrac: 0.45, domeFullnessFrac: 0.142188 });
       for (const key of KEYS) {
         for (const v of [R[key].min, R[key].max]) {
           const prof = profile({ [key]: v }, W, H);
@@ -157,6 +162,14 @@ describe('Template 15: listing and declaration', () => {
   // proved correct (fb_engine/test_t15_fusion_expressions.py), not just "a reasonable-looking shape".
   // Board-local, Fusion y-up inches, BBO=0.25 -> HW=3.25, HH=4.25 (7x9): computed directly from
   // fb_engine/t15_flask_geometry.py's own outline(6.5, 8.5, 0.75), not re-derived here.
+  //
+  // F33 item 1 (2026-10-03): T15 now has recorded Fusion goldens (tests/fixtures/frame-parity/
+  // template_15_7x9.json / _12x6.json), so frame-defs.js's own shapeModel.domeFullnessFrac is now
+  // FIT from them (gen_frame_defs.py's own fit_shape_model, round(_, 6)) instead of the old exact
+  // provisional constant 0.1421885365451818 -- "the golden fit is the project's rule for templates
+  // with goldens" (advisor, same day). domeRVia below is recomputed at the new rounded truth
+  // (0.142188, not the old full-precision value): outline(6.5, 8.5, 0.75,
+  // dome_fullness_frac=0.142188)'s own dome_r_via.
   it('the Fusion seeds match fb_engine.t15_flask_geometry.outline()\'s own closed-form values exactly, at 7x9', () => {
     const prof = profile({}, 7, 9);
     const geo = frameSeedGeometry(T15, prof, 7, 9);
@@ -165,7 +178,7 @@ describe('Template 15: listing and declaration', () => {
     const topR = [1.4625, 4.25], topL = [-1.4625, 4.25];
     const neckBottomR = [1.4625, 0.425], neckBottomL = [-1.4625, 0.425];
     const BR = [3.25, -4.25], BL = [-3.25, -4.25];
-    const domeRVia = [2.7878872562281574, -1.7474622255598224];
+    const domeRVia = [2.7878856274548705, -1.7474628483260788];
     approx(geo.neck_R.points[0], topR);
     approx(geo.neck_R.points[1], neckBottomR);
     approx(geo.dome_R.points[0], neckBottomR);
@@ -254,12 +267,18 @@ describe('Template 15 does not disturb anything else', () => {
     for (const k of KEYS) expect(FRAME_ONLY_PARAM_KEYS).toContain(k);
   });
 
-  it('paramsFromShapeModel round-trips the provisional model exactly (every feature a plain hw/hh fraction)', () => {
+  // F33 item 1 (2026-10-03): renamed from "...the provisional model..." -- T15 now has recorded
+  // Fusion goldens, so its own shapeModel is FIT from them (gen_frame_defs.py's own
+  // fit_shape_model, round(_, 6) coefficients), not the old provisional block. topWidth/
+  // neckHeightFrac still round-trip to the old exact fraction (their own fit residual is 0 at both
+  // recorded sizes); domeFullnessFrac's own fit coefficient rounds to 0.142188, not the full-
+  // precision 0.1421885365451818 the provisional constant used.
+  it('paramsFromShapeModel round-trips the fit model exactly (every feature a plain hw/hh fraction)', () => {
     const region = profile({}).region;
     const out = paramsFromShapeModel('flask', T15.shapeModel, region);
     expect(out.topWidth).toBeCloseTo(0.45, 9);
     expect(out.neckHeightFrac).toBeCloseTo(0.45, 9);
-    expect(out.domeFullnessFrac).toBeCloseTo(0.1421885365451818, 9);
+    expect(out.domeFullnessFrac).toBeCloseTo(0.142188, 9);
   });
 
   it('flaskConstruction is internally consistent: a positive dome radius, mirrored topR/neckBottomR L/R', () => {
@@ -271,7 +290,7 @@ describe('Template 15 does not disturb anything else', () => {
 
   it('frameParamRanges does not crash and returns the full drag-feasible range for every handle', () => {
     const region = profile({}).region;
-    const R = frameParamRanges(T15, region, { topWidth: 0.45, neckHeightFrac: 0.45, domeFullnessFrac: 0.1421885365451818 });
+    const R = frameParamRanges(T15, region, { topWidth: 0.45, neckHeightFrac: 0.45, domeFullnessFrac: 0.142188 });
     for (const k of KEYS) { expect(R[k].min).toBeLessThan(R[k].max); }
   });
 
