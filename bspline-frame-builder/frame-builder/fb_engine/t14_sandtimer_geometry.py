@@ -70,7 +70,7 @@ SKETCH_2_PARAMETERS = [
     {"Name": "t14_hw",            "Label": "t14_hw",            "Category": "T14 Geometry", "Val": "(widthIn/2 - boundingboxoffset)", "Unit": "in"},
     {"Name": "t14_hh",            "Label": "t14_hh",            "Category": "T14 Geometry", "Val": "(heightIn/2 - boundingboxoffset)", "Unit": "in"},
     {"Name": "t14_pinchHalf",     "Label": "t14_pinchHalf",     "Category": "T14 Geometry", "Val": f"{1.0 - PINCH_REACH_FRAC_DEFAULT}*t14_hw", "Unit": "in"},
-    {"Name": "t14_pinchY",        "Label": "t14_pinchY",        "Category": "T14 Geometry", "Val": f"t14_hh*(2*{PINCH_HEIGHT_FRAC_DEFAULT} - 1)", "Unit": "in"},
+    {"Name": "t14_pinchY",        "Label": "t14_pinchY",        "Category": "T14 Geometry", "Val": f"t14_hh*(1 - 2*{PINCH_HEIGHT_FRAC_DEFAULT})", "Unit": "in"},
     {"Name": "t14_bulge",         "Label": "t14_bulge",         "Category": "T14 Geometry", "Val": f"{BULGE_FRAC_DEFAULT}*t14_hw", "Unit": "in"},
 
     # upper_R: chord topR=(topWidthFrac*hw, hh) -> pinchR=(pinchHalf, pinchY).
@@ -127,7 +127,7 @@ def outline(width_in, height_in, frame_thickness,
     A = hw * top_width_frac
     pinch_half = hw * (1.0 - pinch_reach_frac)
     bulge = hw * bulge_frac
-    pinch_y = -hh + pinch_height_frac * 2.0 * hh
+    pinch_y = hh - pinch_height_frac * 2.0 * hh
 
     top_r = (A, hh)
     top_l = (-A, hh)

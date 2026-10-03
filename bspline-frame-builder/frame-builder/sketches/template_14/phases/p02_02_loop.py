@@ -44,7 +44,8 @@ def get_block(ui_data=None):
       topR = (topWidthFrac*hw, hh); topL = mirror.           (A = topWidthFrac*hw, the ONE handle)
       pinchR = (hw*(1-0.6), pinchY); pinchL = mirror.          (pinchHalf = hw*(1-pinchReachFrac))
       BR = (hw, -hh); BL = (-hw, -hh).
-      pinchY = hh*(2*0.5 - 1) = 0 at the default (centred); t14_pinchY in general.
+      pinchY = hh*(1 - 2*0.5) = 0 at the default (centred); t14_pinchY in general (0=top edge,
+        1=bottom edge, matching Template 16's own waistHeightFrac sign convention in y-UP).
       upper_R: chord topR->pinchR, sagitta 0.14*hw, bulging OUTWARD (away from the centreline) --
         t14_ur_cx/cy (the circle's own centre) and t14_ur_vx/vy (the TRUE via point) are the named
         parameter chain's own final outputs (template_data.py).
