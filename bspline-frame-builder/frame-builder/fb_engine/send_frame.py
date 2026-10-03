@@ -77,6 +77,19 @@ def panel_lip_of(payload):
     return v if v > 0 else 0.0
 
 
+def inset_window_of(payload):
+    """The payload's inset window record ({enabled, cx, cy, w, h}), or None when absent/disabled/malformed
+    (T82 item 6; `core/frame-record.js`'s own normalized shape, carried in framePayload() as `insetWindow`)."""
+    w = payload.get("insetWindow")
+    if not isinstance(w, dict) or not w.get("enabled"):
+        return None
+    try:
+        float(w["cx"]), float(w["cy"]), float(w["w"]), float(w["h"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return w
+
+
 def sync_panel_lip_param(design, lip, log, value_input=None):
     """F22: the ONE writer of `panel_lip` (ParameterSchema FRAME group). lip > 0: create or update it
     ("<lip> in") and tag it FrameBuilder.owner. lip 0: remove it when it exists and nothing references it
@@ -277,6 +290,9 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
             data["panel_lip"] = lip
         if applied:
             data["seed_geometry"] = seed_geometry
+        window = inset_window_of(payload)
+        if window:
+            data["inset_window"] = window
         result["fit"] = build_sketch(style_id=template_id, external_logger=logger, data=data)
         frames = find_frames(design)
         if not frames:

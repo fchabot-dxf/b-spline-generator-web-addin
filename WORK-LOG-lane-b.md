@@ -12929,3 +12929,145 @@ not a resolution mistake) and pushed. No Fusion needed, none used.
 
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn 241 (epoch 9) — T82 item 6: inset window, Fusion + CAM side (code + fake-Fusion tests) — IN PROGRESS, Fusion free not yet requested
+
+Advisor dispatch: "T82 item 6, the inset window's Fusion + CAM side... Do code + fake-Fusion tests first,
+and ask me for 'Fusion free' before the live check (seat A is in Fusion right now)." Before touching any
+engine code, spawned an Explore agent (opus) over `panel_lip.py`/`declared_profiles.py`/
+`extrusion_engine.py`/`solid_coordinator.py`/CAM naming/the test harness, because the prior
+INSET-WINDOW-DESIGN.md (written before this seat had engine access) turned out to have 3 real factual
+errors, each caught by that research, not by me re-deriving them live:
+
+1. **Bar Z-placement was backwards.** The design said the window's bars "start AT the underside." MEASURED
+   fact (via the agent's read of `extrusion_engine.py:169-177` + `solid_coordinator.py:77-104`): a bar's
+   `start` is `frame_height_offset`, an `OffsetStartDefinition` FROM THE SKETCH PLANE; its `extent` is a
+   `ToEntityExtentDefinition` TO the underside face. Start=offset, end=underside -- the opposite direction.
+   Also corrected in INSET-WINDOW-LIVE_CHECK.md (two places) since its own checklist repeated the same
+   backwards claim ("top face at the underside" -> corrected to "bottom face at the underside").
+2. **"Zero CAM code changes" was false.** `_populate_frame_geometry`'s own generic N-bar path
+   (`_populate_n_bar_frame_geometry`) only runs when the classic 4 bar names are ABSENT. On every template
+   that still has them (1-5, 8, 10, 12, 13), `frame_window_*` bodies would be collected into `other_bars`
+   and never laid out at all -- confirmed by reading the actual body-walk code, not assumed.
+3. **"New component" would have broken 3 unrelated things.** A second tagged component breaks
+   `find_frame_component`'s "first tag hit," `send_frame.find_frames(design)[-1]`, delete-on-resend, and
+   CAM's one-`parentComponent`-per-move assumption. The window belongs in the SAME `Frame_N` component and
+   the SAME frame-enclosure sketch as the main bars, as new Blocks (`panel_lip.py`'s own append pattern).
+
+Fixed all 3 in INSET-WINDOW-DESIGN.md (sections 4 and 5) and INSET-WINDOW-LIVE_CHECK.md before writing any
+engine code -- this project's own "probe/design before template" discipline applied to a design DOC, not
+just to Fusion geometry: get the written record right before building from it. Also tightened §5 step 5
+(classify() needs several new branches, not "one more case") and §8's Z-placement test description.
+
+**`fb_engine/inset_window.py` (new, mirrors `panel_lip.py`'s exact shape).** `apply_inset_window(template,
+window, frame_thickness_in, panel_lip_in=0.0)`: pure, no adsk, identity-returns the template when disabled,
+malformed, or below the bars floor (`w`/`h` <= 2*frame_thickness -- the SAME floor
+`core/inset-window.js`'s own `insetWindowGeometry` already enforces, so the app preview and the Fusion
+build agree on when nothing is built). Appends up to 4 new Blocks to the EXISTING frame-enclosure sketch
+(found via `panel_lip._frame_sketch`, imported directly rather than duplicated): outer RectangleCenter,
+inner RectangleCenter (sized `w/h - 2*frame_thickness`, bare `frame_thickness` embedded in the Fusion
+expression so it stays parametric), a Miters block (4 corners, outer-vertex to inner-vertex, using
+RectangleCenter's own `_V_TL/_V_TR/_V_BL/_V_BR` tags -- no `:S`/`:E` convention needed since those vertices
+are already individually tagged), and -- only when `panel_lip > 0` AND it wouldn't clamp the hole shut -- a
+third hole RectangleCenter (`w/h - 2*frame_thickness - 2*panel_lip`). Declares
+`template["Frame"]["regions"]["window"]` = `{outer, inner, hole, cut, miters, bars}` for
+`declared_profiles.classify()` to read (`cut` is `"inner"` / `"hole"` / `None` -- 3 states: no lip, a real
+hole, or a lip wide enough to clamp the hole shut, in which case the bars still exist but NOTHING is cut,
+matching the app's own "clamp it shut (zero-area)" floor rather than falling back to a full, uncut hole).
+Didn't use `Offset` (the mechanism `panel_lip.py`/the main outline's own inner offset use) for the inner/
+hole rectangles, even though it would be fewer steps: a plain centred rectangle never self-intersects
+regardless of size (so it needs no `ResolveInnerCorners`), but offsetting a PURE-RECTANGLE loop (no arcs at
+all) is not a case this engine's own `addOffset2` quirks have been MEASURED on -- the fusion360-quirks
+skill's arc-vanishing-topology findings are all arc-specific, and I have no Fusion access this turn to
+measure a rectangle case fresh (`probe before template` cuts the other way with no probe available: stay on
+the ALREADY-PROVEN primitive, literal nested RectangleCenters, rather than a plausible-but-unmeasured one).
+
+**`declared_profiles.classify()`**: new branches, inserted after the main bars check, before the final
+opening/stray check -- unconditionally safe for a window-less build (`regions.get("window")` is `None` for
+every existing template; every new branch short-circuits False and falls through to the UNCHANGED original
+final check). A window-outer profile maps to a window bar via `bar_index(c, {"bars": window["bars"]})` --
+reusing `bar_index` with a shaped sub-dict rather than fighting its `.split(":")[0]` outline-id convention,
+which RectangleCenter's own `_V_*` vertex tags don't follow. **Found one real bug writing the test for
+this**: a profile touching a window-outer id AND the MAIN frame's own `inner` ids (the main opening, now
+shaped like a picture frame around the window, with the window's outer loop as an island) was being
+misrouted into the window-BAR branch, which then correctly complained "spans 4 bars" since the whole island
+boundary was present at once. Fixed by requiring the window-bar branch to ALSO check the profile does NOT
+touch `regions["inner"]` (a genuine window bar never does) -- caught because
+`test_the_main_opening_tolerates_the_windows_own_outer_loop_as_an_island` passed the FULL island boundary,
+not a same-bug-shaped partial one; a lazier test (one curve only) would have missed this.
+
+**`frame_definition.py`**: `WINDOW_BARS_FEATURE`/`WINDOW_CUT_FEATURE`, declared the same way
+`COMMON_FRAME_FEATURES`'s own `bars`/`trim` are (same Z rule, literal region-name strings, not
+cross-imported from declared_profiles.py -- matches the existing COMMON_FRAME_FEATURES precedent of not
+importing those constants either).
+
+**`solid_coordinator._declared_frame()`**: appends both new features to `frame["features"]`
+UNCONDITIONALLY (a shallow copy, never mutating template_resolver's own cached spec) -- safe because
+classify() only ever produces `window_bars`/`window_cut` ids when `inset_window` actually built window
+curves into THIS build's own sketch; a window-less build's candidate list is byte-identical (confirmed by
+the A/B hash below, not just reasoned).
+
+**`extrusion_engine._finalize_feature()`**: the SURROUND-kind cut name used to be unconditionally
+`f"{prefix}_TRIM_CUT"` for every cut feature -- would have collided (same literal name) for `window_cut`.
+Now keyed off `plan.get("order")` (`{"window_cut": "WINDOW_CUT"}`, default `"TRIM_CUT"` for `"trim"` AND for
+the bounding-box path's plans, which carry no `"order"` key at all) -- preserves the EXACT existing literal
+`test_send_frame.py` already asserts for the main trim.
+
+**CAM fix, `mm_builder.py` `_populate_frame_geometry()`** (the 2nd design-doc error, made real): added
+`_lay_out_other_bars()`, called at the end of the classic 4-bar layout when `other_bars` (any non-classic
+`frame_*`-named body, e.g. the window's own bars) is non-empty -- continues the SAME row from the classic
+layout's own `prev_right_edge`, using the SAME `move_features`/idempotent gate already passed (deliberately
+NOT calling the existing `_populate_n_bar_frame_geometry` here: it owns its OWN idempotent check keyed on
+the SAME `owner_comp.features.moveFeatures.count`, which would immediately see the classic layout's own
+just-added moves and skip -- two independently-gated functions can't layer on the same component's move
+history). New test `test_a_classic_four_bar_frame_with_a_window_also_lays_out_the_window_bars` in
+`test_mm_builder_frame_layout.py`; confirmed non-vacuous by monkeypatching `_lay_out_other_bars` to a no-op
+and watching the test's own overlap/rotation assertions fail.
+
+**Fake-Fusion tests**: new `fb_engine/test_inset_window.py` (55 tests, mirrors `test_panel_lip.py`'s own
+pattern: identity-at-disabled/malformed/below-floor, exact block/region assertions, classify() branch
+coverage across 4 templates including T6/T11's own non-4-bar naming) + a `TestInsetWindow` class in
+`test_send_frame.py` (5 tests: the record reaches the build as `data["inset_window"]`, never through
+`ui_data`; disabled/malformed never reaches the build; lip + window can be sent together;
+`inset_window_of()`'s own strictness). Updated `test_solid_coordinator_reorder.py`'s
+`test_the_extruder_gets_the_stamped_templates_declared_features` -- its old assertion
+(`["bars", "trim"]`) was the EXACT pre-this-turn behavior, correctly expected to change now that the
+coordinator appends the window features unconditionally; not a regression, so updated rather than
+investigated as one.
+
+**Wiring**: `send_frame.py` (`inset_window_of(payload)`, same strictness pattern as `panel_lip_of`; threads
+`data["inset_window"]` through exactly like `panel_lip`/`seed_geometry` already do) ->
+`frame_engine.build_sketch_logic_v3` (`data_dict.get('inset_window')`) -> `run_sketch_only` (new
+`inset_window=` kwarg; calls `apply_inset_window` AFTER `apply_panel_lip`, per the dispatch's own explicit
+order, though the two touch disjoint curve-id sets so the order has no actual effect; `frame_thickness_in`
+read straight off `ui_data.get("frame_thickness")` -- already the plain inches value the app sent, declared
+param, no live-Fusion-parameter round trip needed).
+
+**Gate (no Fusion needed for any of this, none used):**
+- `python -m pytest` at `bspline-frame-builder/`: 873 passed, 25 skipped, 0 failed (covers frame-builder,
+  CAM-builder, template-maker, b-spline-gen in one run).
+- `npx vitest run` at the repo root: 3078 passed (161 files), 0 failed -- untouched by this turn's
+  Python-only engine changes; run anyway since "no JS changed" is a claim worth checking, not assuming.
+- `python tools/gen_frame_defs.py --check`: STALE at first (frame_definition.py's own file hash moved
+  because of the new WINDOW_BARS_FEATURE/WINDOW_CUT_FEATURE constants) -- regenerated; the diff was
+  EXACTLY the `sourceHash` line in frame-defs.json/.js, zero template-content changes, confirming the new
+  constants don't reach any existing template's own declared data. Fresh after regenerating.
+- `python tools/check_golden_freshness.py`: every template FRESH.
+- **A/B, engine (`tools/repro/ab/abpy.py`)**: `88aa3aea7ef452be2e1dc27587d5733c5edb0c70f44ad1205c83d4162b5e38a4`
+  (25 entries) -- IDENTICAL to the hash already recorded earlier this session for the post-merge lane-b
+  tree, confirming the window-less path is genuinely unaffected by every change this turn (declared_profiles,
+  extrusion_engine, solid_coordinator), not just reasoned to be.
+- **A/B, CAM (`tools/repro/ab/abcam.py`)**: ran against a temporary detached worktree at this turn's own
+  starting HEAD (removed after) AND against lane-b now, per-case (not just the combined hash, to see WHICH
+  case moved): `t1`/`t1_missing_left`/`none`/`t1_swapped_aspect` byte-identical on both sides; only
+  `t1_plus_extra` (a `frame_extra` body alongside the classic 4 -- exactly the window's own shape) gained
+  ONE new translate move, continuing the row -- the intended fix, not a surprise.
+
+**Not yet done (pending, this is a mid-task log, not a close-out):** the live Fusion check per
+INSET-WINDOW-LIVE_CHECK.md's own criteria (4 `frame_window_*` bodies + main bars at 7x9/9x12, built==
+declared, no duplicate-suffix bodies, nothing < 0.5 cm3, 0 overlap, healthy timeline, hole visible from
+top, front+bottom screenshots) -- blocked on "Fusion free" (seat A holds Fusion for T7 right now, per the
+advisor's own dispatch; the fusion360 MCP bridge is also currently showing a cached connection failure,
+separately from the seat-A hold). Will message the advisor for "Fusion free" next, then run the live check,
+then commit as "T82 item 6: ..." and pass back with counts on both channels, per the dispatch's own "Pass
+back with counts" instruction -- not done yet, so no commit this turn.

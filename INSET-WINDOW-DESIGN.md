@@ -95,8 +95,8 @@ inline warning in the Frame panel, not a blocked drag).
 | Shape Lattice / pattern (`editor/contour-from-frame.js`) | opt-in per pattern (`pattern.contour.fromFrame`); `frameContourSilhouette()` returns ONE offset silhouette | when the owning pattern already reads `fromFrame`, the window's own hole/trim profile is carried alongside as a second, EXCLUDED region — a pattern generator that already walks "inside this silhouette" treats the hole as an island to skip, the same way an inner (reflex) boundary would be skipped; patterns that don't opt into `fromFrame` are unaffected, same as today |
 | 3D preview bars | `applyFrameToPanel()` builds a bar ring from the main frame's own inner profile (`ringArrays()`, line 519) | **SUPERSEDED (T82 item 3, Fred, phone shot from the bottom: "inset window doesn't show a frame" — "hide the subframe" meant hidden FROM THE FRONT by the panel overhang, not absent):** the window's own bars ARE added, via the SAME `ringArrays` primitive, between the window's outer/inner rectangles, in the frame's own material — top follows the panel's own underside, bottom is that underside offset down by `frame_height_offset` (a fixed depth, not a flat world z), so they are mounted to the panel's own back and never visible from the front |
 | Editor 2D (Frame tab) | draws the frame's own band/miters, clips the grid/snapping to the outline | draws the window's own outer+inner rectangle (same band-drawing primitive the main frame's own `_drawFrameProfile` already uses, rectangular case), with its own drag handles (§6) |
-| Fusion sketch/solid build | 4 (or N) bar bodies + 1 trim cut, see `extrusion_engine.py`/`panel_lip.py` | 4 MORE bar bodies (new component) + 1 MORE cut feature (the hole) — both via the SAME declared-profile machinery, see §5 |
-| CAM (`mm_builder.py`) | classifies `frame*`-named bodies into the 'frame' manufacturing model, lays out `frame_*` bodies in a row | the window's own 4 bars are named to match the SAME convention (§5) — picked up automatically, zero CAM code changes |
+| Fusion sketch/solid build | 4 (or N) bar bodies + 1 trim cut, see `extrusion_engine.py`/`panel_lip.py` | 4 MORE bar bodies + 1 MORE cut feature (the hole), both via the SAME declared-profile machinery, see §5. **CORRECTED, T82 item 6**: in the SAME frame-enclosure sketch and the SAME `Frame_N` component as the main bars, not a new component — a second component would break `find_frame_component`'s "first tag hit" lookup, `send_frame`'s `find_frames(design)[-1]`, delete-on-resend, and CAM's "one `parentComponent`" assumption for its own body moves |
+| CAM (`mm_builder.py`) | classifies `frame*`-named bodies into the 'frame' manufacturing model, lays out `frame_*` bodies in a row | the window's own 4 bars are named to match the SAME convention (§5). **CORRECTED, T82 item 6**: NOT automatic -- `_classify_occurrence` is by COMPONENT name (so the window's bodies land in MM-Frame fine), but `_populate_frame_geometry`'s own body walk only reaches its generic N-bar layout path when the 4 CLASSIC bar names (`frame_top/right/bottom/left`) are ABSENT; on every template that still has them (1-5, 8, 10, 12, 13), `frame_window_*` would be collected into `other_bars` and then never laid out at all. A small CAM change is needed: lay out `other_bars` too, after the classic 4-bar layout, not only when it's the ONLY bar set present |
 
 ## 5. Fusion build steps
 
@@ -104,12 +104,25 @@ All four pieces below reuse EXISTING, already-proven machinery (`extrusion_engin
 `panel_lip.py`'s own offset-and-append pattern) — nothing here is a new kind of Fusion operation, only a new
 INPUT to each one.
 
-1. **Sketch geometry**: a new sketch (or a new region in the existing frame-enclosure sketch — implementation
-   detail to settle against the real sketch-phase structure, not this note) draws the window's own outer
-   rectangle, inner rectangle (thickness offset), and hole/trim rectangle (lip offset) — three nested
+1. **Sketch geometry**: **CORRECTED, T82 item 6** — the EXISTING frame-enclosure sketch (the same one
+   `panel_lip.py`'s own `_frame_sketch()` locates, via the `Offset` step whose `SourceID == outline`), not a
+   new sketch or a new component. A second tagged component would break `find_frame_component`'s "first tag
+   hit" lookup, `send_frame.py`'s own `find_frames(design)[-1]`, delete-on-resend, and CAM's single-
+   `parentComponent`-per-move assumption — the window's bars belong in the SAME `Frame_N` component as the
+   main bars, as new Blocks appended to that one sketch (`panel_lip.py`'s own append pattern, §1 above). The
+   new region draws the window's own outer rectangle, inner rectangle (thickness offset), and hole/trim
+   rectangle (lip offset) — three nested
    rectangles, all AXIS-ALIGNED (no arcs, no corner-radius concept at all: a rectangle's own 4 corners are
    always 90 deg miters, bisected 45/45, the SAME generic miter rule every other corner in this engine already
-   uses — no special case).
+   uses — no special case). **UPDATED, T82 item 5**: the record's own `{cx, cy, w, h}` IS the natural input to
+   Fusion's own centre-point rectangle construction (`SketchLines.addCenterPointRectangle`, the API's own
+   two-point-from-centre form, fusion360-quirks: "the API adds NO constraints" for any rectangle tool --
+   add the usual H/V + parallel/perpendicular yourself if the sketch needs them locked) -- the OUTER rectangle
+   is `addCenterPointRectangle((cx, cy), (cx + w/2, cy + h/2))`, no corner-coordinate conversion at all; the
+   inner and hole rectangles are the SAME centre, offset inward by `frame_thickness` then `panel_lip` (still
+   centred at `(cx, cy)`, only the half-extents shrink) -- `core/inset-window.js`'s own `insetWindowOuterRect`
+   is the ONE place a board-local x1/y1/x2/y2 form is ever derived from this, for the 2D app side only;
+   Fusion-side code should read `cx`/`cy`/`w`/`h` directly and never needs that conversion.
 2. **Miters**: 4, one per corner of the OUTER-to-inner pair (outer vertex -> inner vertex, same
    `ResolveInnerCorners`/miter-line mechanism `ResolveInnerCorners`+`p03_04`-style phases already use for
    every template) — direction `(±1,±1)` per corner, the plain axis-aligned case, no T7-style derivation
@@ -119,17 +132,23 @@ INPUT to each one.
    main frame's own bars). Named `frame_window_top` / `frame_window_bottom` / `frame_window_left` /
    `frame_window_right` — starting with `frame` (so `_classify_occurrence()`, `mm_builder.py:1058-1059`,
    still classifies them into the 'frame' manufacturing model) but NOT matching the 4 classic names, so
-   `_populate_frame_geometry()` (`mm_builder.py:693-931`) automatically routes them into the EXISTING generic
-   N-bar layout path (`_populate_n_bar_frame_geometry`) alongside the main frame's own bars — no CAM code
-   change, a naming choice only.
-   **Z placement** (Fred: "the way the frame sits relative to the panel lip," behind/under the panel): SAME
-   start/extent rule the main frame's own bars already use — start `toFace: core.underside` (the panel's own
-   underside, wherever the carve put it, `send_frame.py`'s own `underside_face()`), extent driven by the SAME
-   `frame_height_offset` parameter the main frame already reads (`_sync_offset_param`,
-   `extrusion_engine.py:169-177`) — no new Z parameter. Because the bars start AT the underside (not at the
-   sketch/top plane the main frame's own bars start at), they are physically behind the panel by
-   construction, never visible from the front — this is the one geometric difference between a main-frame bar
-   and a window bar, and it is entirely in WHICH face `start` is computed from, not a new mechanism.
+   `_populate_frame_geometry()` (`mm_builder.py:693-931`) — **CORRECTED, T82 item 6**: this auto-routing into
+   `_populate_n_bar_frame_geometry` only actually fires when the classic 4 bar names (`frame_top/right/
+   bottom/left`) are ABSENT from the build. Every template that still has them (1-5, 8, 10, 12, 13) collects
+   `frame_window_*` into `other_bars` and currently never lays them out at all — a real CAM fix is needed in
+   `_populate_frame_geometry()`: lay out `other_bars` too, after the classic 4-bar layout succeeds, not only
+   when it is the sole bar set present. (T6/T11, which already use non-classic bar names, happen to hit the
+   N-bar path today — that's the one case where the naming choice alone is enough.)
+   **Z placement** (Fred: "the way the frame sits relative to the panel lip," behind/under the panel):
+   **CORRECTED, T82 item 6** — the main frame's own bars do NOT start at the underside; they start at
+   `frame_height_offset` (an `OffsetStartDefinition` measured FROM THE SKETCH PLANE, the same parameter named
+   in `frame_definition.py`'s `FRAME_BOTTOM_PARAM`) and their `extent` is a `ToEntityExtentDefinition` TO the
+   underside face (`to_face`, from `send_frame.py`'s own `underside_face()`) — i.e. START at the offset, END
+   at the underside, the opposite of what an earlier draft of this note assumed. The window bars use the
+   IDENTICAL rule (same `start`/`extent` construction, same `frame_height_offset`, no new Z parameter) — the
+   offset-and-underside convention already puts them behind the panel by construction; there is no separate
+   "start at the underside" mechanism to invoke. (`_sync_offset_param`'s real home is
+   `solid_coordinator.py:77-104`, not `extrusion_engine.py`.)
 4. **The hole cut**: one new feature, modeled on the `"trim"` entry in `COMMON_FRAME_FEATURES`
    (`frame_definition.py:106-107`) but inverted — a POCKET through the panel/core body instead of a trim
    around the stock's own edge:
@@ -140,10 +159,18 @@ INPUT to each one.
    of "surround minus outline") and that it must NOT also cut the window's own 4 new bars (set participants
    explicitly, the same way the main TRIM_CUT's own `isParticipantsAutomated` already has to reason about
    which bodies are "the stock" vs "the frame").
-5. **`declared_profiles.classify()`** (`declared_profiles.py:78-108`) needs one more case: a sketch region
-   bounded by the window's own curve IDs maps to the `window_cut` feature above, the same way it already maps
-   the panel-lip ring and the frame's own opening to their own (or no) feature — no new MECHANISM, one more
-   declared mapping.
+5. **`declared_profiles.classify()`** (`declared_profiles.py:78-108`) — **CORRECTED, T82 item 6**: more than
+   one new branch, all inserted before the final opening/stray-id check, same dispatch-by-curve-id-set
+   pattern already used for `lip`/`outline`/opening:
+   - window outer+inner+miter ids (one side) -> a `window_bars`-style feature + that bar's own name
+     (`frame_window_top` etc, §5 step 3) — mirrors the existing `outline` branch's `bar_index()` lookup.
+   - window inner+hole ids (only relevant once `panel_lip > 0`, mirrors the main `lip` branch) -> `(None,
+     None)`, no feature.
+   - the hole itself (bounded by the hole/trim rectangle's own ids) -> the `window_cut` feature (§5 step 4).
+   - the main opening branch's own stray-id tolerance must ALSO accept the window's own OUTER curve ids once
+     a window exists — the main opening profile gains an inner loop made of those ids (the window is a hole
+     punched in the middle of the frame's own opening), which today's opening check doesn't expect.
+   No new mechanism — one more declared mapping per case, same dispatcher.
 
 ## 6. Editor interaction (Frame tab)
 
@@ -194,15 +221,20 @@ flare a no-op today) — same shape, new field:
 - **Hole size**: MEASURED, not assumed — the actual cut boundary equals the inner rectangle offset inward by
   `panelLip` exactly (a direct coordinate check, the same style used to confirm T7's hip-flare cap numerically
   rather than by eye).
-- **Z placement**: the window's own bars' top face coincides with the panel's own underside at that location
-  (not the sketch plane), confirmed in Fusion, not assumed from the parameter wiring alone.
+- **Z placement**: **CORRECTED, T82 item 6** — the window's own bars' BOTTOM face (the extent end, not the
+  start) coincides with the panel's own underside at that location; the TOP face sits at `frame_height_offset`
+  from the sketch plane, same as the main frame's own bars. Confirmed in Fusion by inspecting both faces
+  directly, not assumed from the parameter wiring alone.
 - **Below the validity floor** (window bars/opening <= 0): no crash, no feature built, UI shows the inline
   warning from §3 — mutation-test this guard the same way every other floor in this codebase gets mutation
   tested (temporarily remove the guard, confirm the degenerate case now DOES build/crash, restore).
-- **Drag gestures**: body drag translates all four coordinates by an equal delta and leaves the window's own
-  size unchanged; corner drag changes exactly one corner and leaves the opposite one fixed; both normalize
-  correctly if dragged past the opposite edge. Mirrors the existing handle-drag test pattern in
-  `tests/frame-template-*.test.js`.
+- **Drag gestures** (**UPDATED, T82 item 5**; superseded: the original note described a corner drag that
+  changed one corner and left the opposite one fixed, the natural behaviour for the old two-corner storage):
+  body drag translates `(cx, cy)` by an equal delta and leaves `w`/`h` unchanged; corner drag resizes
+  SYMMETRICALLY about the centre -- `(cx, cy)` never move, only `w`/`h` change, each to twice the dragged
+  corner's own new distance from that fixed centre. Covered by `tests/inset-window-handles.test.js` (DONE,
+  T82 item 5) and `tests/inset-window.test.js`'s own migration describe block (old-shape records still load
+  correctly).
 - **Overlap with the main frame** (Fred: not validated, not prevented): one explicit test that an overlapping
   window still builds SOMETHING well-defined (even if visually poor) rather than throwing — "ugly but not
   broken" is the bar, matching §3's own ruling.

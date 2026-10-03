@@ -219,8 +219,11 @@ class ExtrusionEngine:
                 bodies.append(b)
             return bodies
 
-        # SURROUND
-        feat.name = f"{prefix}_TRIM_CUT"
+        # SURROUND. The declared path's own feature id names the cut (T82 item 6: "window_cut" gets its own
+        # name so it doesn't collide with the main trim in the timeline/CAM); the bounding-box path (no
+        # declared "order" at all) and the "trim" feature itself both keep the original literal.
+        cut_name = {"window_cut": "WINDOW_CUT"}.get(plan.get("order"), "TRIM_CUT")
+        feat.name = f"{prefix}_{cut_name}"
         # Clear the grey-steel face overrides Fusion stamps onto newly
         # cut faces so they inherit the body appearance (wood grain,
         # etc.). AppearanceManager.restore_core_appearance does the deep

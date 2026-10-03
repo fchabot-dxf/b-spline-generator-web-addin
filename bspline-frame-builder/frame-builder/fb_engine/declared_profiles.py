@@ -24,6 +24,10 @@ Pure: no adsk. extrusion_engine gathers the ids and builds from the plan.
 
 SURROUND_REGION = "surround-minus-outline"
 BAR_REGION = "outline-minus-inner"
+# T82 item 6: the inset window (fb_engine/inset_window.py), a second mitred subframe entirely inside the
+# main frame's own opening -- same dispatch pattern, its own region names.
+WINDOW_BAR_REGION = "window-outline-minus-inner"
+WINDOW_CUT_REGION = "window-hole"
 
 
 def miter_curve_id(src_id, tgt_id):
@@ -102,9 +106,43 @@ def classify(curve_ids, frame):
             raise DeclaredProfileError(
                 f"one profile spans {len(bars)} bars ({sorted(outline)}): a miter did not split it")
         return feat, feat["bodyNames"][bars.pop()]
-    stray = ids - set(regions["inner"])
+
+    window = regions.get("window")
+    window_outer_ids = set(window["outer"]) if window else set()
+    # A profile that ALSO touches the main frame's own inner ids is the opening with the window's outer
+    # loop as an island (below), never a window-bar profile -- a genuine window bar never touches `inner`.
+    if window and (ids & window_outer_ids) and not (ids & set(regions["inner"])):
+        feat = _feature_for(features, WINDOW_BAR_REGION)
+        touched = ids & window_outer_ids
+        bars = {bar_index(c, {"bars": window["bars"]}) for c in touched}
+        if len(bars) != 1:
+            raise DeclaredProfileError(
+                f"one window profile spans {len(bars)} bars ({sorted(touched)}): a miter did not split it")
+        return feat, feat["bodyNames"][bars.pop()]
+
+    if window:
+        w_inner = set(window["inner"])
+        cut = window.get("cut")  # "inner" | "hole" | None (fb_engine.inset_window's own 3 cut states)
+        w_hole = set(window["hole"]) if window.get("hole") else None
+        if cut == "inner" and ids and not (ids - w_inner):
+            return _feature_for(features, WINDOW_CUT_REGION), None
+        if cut == "hole":
+            if ids and not (ids - w_hole):
+                return _feature_for(features, WINDOW_CUT_REGION), None
+            if ids & (w_inner | w_hole):
+                w_miters = {miter_curve_id(a, b) for a, b in window["miters"]}
+                stray = ids - w_inner - w_hole - w_miters
+                if stray:
+                    raise DeclaredProfileError(
+                        f"window lip profile curves {sorted(stray)} are not the window's inner boundary, "
+                        "its hole or a miter")
+                return None, None  # the window's own lip ring: the panel keeps it
+        if cut is None and ids and not (ids - w_inner):
+            return None, None  # the lip clamped the hole shut: the window's own interior, nothing cut
+
+    stray = ids - set(regions["inner"]) - window_outer_ids
     if not stray:
-        return None, None  # the opening
+        return None, None  # the opening (punched by the window's own outer loop, if a window exists)
     raise DeclaredProfileError(f"profile curves {sorted(stray)} are not in the declared regions")
 
 

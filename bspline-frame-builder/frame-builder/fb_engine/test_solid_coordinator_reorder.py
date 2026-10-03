@@ -76,11 +76,18 @@ class _Attrs:
         return types.SimpleNamespace(value=v) if v else None
 
 
-@pytest.mark.parametrize("stamp, expect", [("template_1", ["bars", "trim"]), ("template_2", ["bars", "trim"]), (None, None)])
+@pytest.mark.parametrize("stamp, expect", [
+    ("template_1", ["bars", "trim", "window_bars", "window_cut"]),
+    ("template_2", ["bars", "trim", "window_bars", "window_cut"]),
+    (None, None),
+])
 def test_the_extruder_gets_the_stamped_templates_declared_features(monkeypatch, stamp, expect):
     """F14 (S6): the frame component's TemplateId stamp -> that template's
     declared "Frame" block reaches extrude_profiles; no stamp -> None (the
-    extruder's bounding-box path)."""
+    extruder's bounding-box path). T82 item 6: window_bars/window_cut are
+    appended unconditionally (a no-op on a window-less build -- classify()
+    never produces their ids unless inset_window actually built window
+    curves into this build's own sketch)."""
     monkeypatch.setattr(solid_coordinator.timeline_order, "ensure_frame_before_inlay", lambda *a, **k: None)
     sc = _coordinator([])
     comp = types.SimpleNamespace(name="Frame_1", attributes=_Attrs(
@@ -93,4 +100,7 @@ def test_the_extruder_gets_the_stamped_templates_declared_features(monkeypatch, 
     assert (got[0] and [f["id"] for f in got[0]["features"]]) == expect
     if stamp:
         from fb_engine.template_resolver import resolve_template
-        assert got[0] == resolve_template(stamp)[0]["Frame"]
+        from fb_engine.frame_definition import WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE
+        real_frame = resolve_template(stamp)[0]["Frame"]
+        assert got[0]["regions"] == real_frame["regions"]
+        assert got[0]["features"] == list(real_frame["features"]) + [WINDOW_BARS_FEATURE, WINDOW_CUT_FEATURE]

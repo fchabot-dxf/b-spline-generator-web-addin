@@ -107,6 +107,21 @@ COMMON_FRAME_FEATURES = (
      "extent": "throughAll", "taper": "0 deg"},
 )
 
+# T82 item 6: the inset window's own bars + hole cut (fb_engine/inset_window.py). Appended UNCONDITIONALLY
+# to every build's declared features by solid_coordinator._declared_frame -- a harmless no-op on a
+# window-less build, since declared_profiles.classify() only ever produces these ids when inset_window
+# actually added window curves to THIS build's sketch (never part of a template's own frame-defs.json, so
+# no A/B diff on any existing template). Same Z rule as the main bars (frame_height_offset -> core.underside).
+WINDOW_BARS_FEATURE = {
+    "id": "window_bars", "op": "newBody", "region": "window-outline-minus-inner", "splitBy": "window-miters",
+    "start": FRAME_BOTTOM_PARAM, "extent": {"toFace": "core.underside", "offset": "0 in"}, "taper": "0 deg",
+    "bodyNames": ["frame_window_top", "frame_window_right", "frame_window_bottom", "frame_window_left"],
+}
+WINDOW_CUT_FEATURE = {
+    "id": "window_cut", "op": "cut", "region": "window-hole", "start": "0 in",
+    "extent": "throughAll", "taper": "0 deg",
+}
+
 
 def frame_features(body_names=None):
     """N-BAR: the common features with the bars' `bodyNames` set to a template's own bar list (in its `miters`

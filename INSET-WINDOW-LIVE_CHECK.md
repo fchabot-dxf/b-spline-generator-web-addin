@@ -1,17 +1,22 @@
-# Inset Window (T82 item 2): the live Fusion check
+# Inset Window (T82 item 2/6): the live Fusion check
 
-No Fusion build exists yet on the app/Python side either — this seat (B, no Fusion bridge) built the APP half
-only (data shape, 2D/3D preview, drag UI, the geometry every consumer shares) and verified it there. The
-Fusion/CAM half (§5 of INSET-WINDOW-DESIGN.md) is NOT implemented — this file is what seat A needs to build
-and check once it picks that up, not a report of something already working in Fusion.
+No Fusion build existed as of T82 item 5 — this seat (B) built the APP half only (data shape, 2D/3D preview,
+drag UI, the geometry every consumer shares) and verified it there. The Fusion/CAM half (§5 of
+INSET-WINDOW-DESIGN.md) is T82 item 6, built directly by seat B once a Fusion bridge became available this
+session (this file originally assumed it would be handed to a different seat; it wasn't).
 
 ## 0. What exists today, and what doesn't
 
 **App side (done, tested, A/B-confirmed byte-identical when off):**
-- `core/inset-window.js`: `insetWindowGeometry(record, frameThickness, panelLip)` — the ONE declared geometry
-  function (outer/inner/hole rectangles), null when disabled or geometrically invalid.
-- `core/frame-record.js`: `record.insetWindow = {enabled, x1, y1, x2, y2}`, normalized (sorted corners) but
-  NOT clamped against the frame or board (Fred's own ruling, design note §3). Carried in `framePayload()`.
+- `core/inset-window.js`: `insetWindowGeometry(record, frameThickness, panelLip, widthIn, heightIn)` — the
+  ONE declared geometry function (outer/inner/hole rectangles, board-local), null when disabled or
+  geometrically invalid. `insetWindowOuterRect(rec, widthIn, heightIn)` is the ONE place the record's own
+  centre-based storage converts to that board-local form.
+- `core/frame-record.js`: `record.insetWindow = {enabled, cx, cy, w, h}` (T82 item 5: `cx`/`cy` the window's
+  own centre, inches, from the BOARD CENTRE, +y UP -- Fusion's own sketch convention, so the Fusion side
+  below reads it directly, no corner conversion), normalized (type-checked) but NOT clamped against the
+  frame or board (Fred's own ruling, design note §3). An OLD-shape record (`{x1,y1,x2,y2}`) migrates on read.
+  Carried in `framePayload()`.
 - 2D editor (Frame tab): the window's own outer/inner rectangles drawn, a dark cutaway for the hole, drag to
   move (body) or resize (any corner) — `main/frame-panel.js`'s own `_wireWindowDrag()`.
 - 3D preview: the hole is a real absence of panel mesh — an EXACT clip against the hole rectangle
@@ -27,12 +32,14 @@ and check once it picks that up, not a report of something already working in Fu
 
 **NOT built (this seat has no Fusion bridge):**
 - The Fusion sketch geometry (3 nested rectangles, 4 corner miters) — design note §5 step 1-2.
-- The 4 new bar bodies (`frame_window_top/bottom/left/right`, positioned behind the panel via `toFace:
-  core.underside` + the existing `frame_height_offset`) — design note §5 step 3.
+- The 4 new bar bodies (`frame_window_top/bottom/left/right`, positioned behind the panel: top face at
+  `frame_height_offset` from the sketch plane, bottom face at the panel's own underside — same rule as the
+  main frame's own bars) — design note §5 step 3.
 - The hole cut feature (`window_cut`, a through-all pocket using the hole rectangle) — design note §5 step 4.
 - `declared_profiles.classify()`'s own new mapping for the window's sketch region — design note §5 step 5.
-- CAM: nothing to change (naming convention only, design note §4's own table) — but UNVERIFIED until the
-  bodies above actually exist to classify.
+- CAM: **CORRECTED, T82 item 6** — a real fix IS needed in `_populate_frame_geometry()` (design note §4's own
+  table), not just naming: `other_bars` only get laid out automatically on templates without the classic 4
+  bar names (T6, T11); everywhere else `frame_window_*` would be collected and never positioned.
 
 ## 1. Build it (once the Fusion side above exists)
 
@@ -40,11 +47,11 @@ and check once it picks that up, not a report of something already working in Fu
 2. In the app, enable "Inset window", drag it to a reasonable size/position well inside the frame's own
    opening, [Send frame].
 3. Check:
-   - [ ] A new component (or sketch region, per however the implementer structures it) appears with 4 new
-     bar bodies, named `frame_window_top/bottom/left/right`.
-   - [ ] Those 4 bodies sit BEHIND the panel (their own top face at the panel's own underside, not the top
-     sketch plane) — confirmed by inspecting their own Z position directly, not assumed from the parameter
-     wiring.
+   - [ ] 4 new bar bodies appear in the SAME `Frame_N` component as the main bars (not a new component), named
+     `frame_window_top/bottom/left/right`, built from new regions in the existing frame-enclosure sketch.
+   - [ ] Those 4 bodies sit BEHIND the panel (their own BOTTOM face at the panel's own underside, TOP face at
+     `frame_height_offset` from the sketch plane — not the sketch plane itself) — confirmed by inspecting
+     their own Z position directly, not assumed from the parameter wiring.
    - [ ] A new cut feature removes material from the panel/core body in exactly the hole rectangle (outer
      rect inset by `frame_thickness` then by `panel_lip`), through all.
    - [ ] From a top/front view, the hole is a clean rectangle with NO visible frame member inside it (the
@@ -52,8 +59,9 @@ and check once it picks that up, not a report of something already working in Fu
    - [ ] The 4 corner miters on the window's own sketch are real 45 deg bisectors (trivial here: every corner
      is 90 deg, axis-aligned, no T7-style derivation needed).
 4. CAM (Manufacture): confirm the 4 `frame_window_*` bodies appear in the SAME MM-Frame layout as the main
-   frame's own bars (no new CAM code should be needed at all — if it doesn't show up automatically, that is
-   itself the finding to report, not something to patch around in CAM).
+   frame's own bars. **CORRECTED, T82 item 6**: this needs the `_populate_frame_geometry()` fix (§0 above) on
+   any template with the classic 4 bar names — verify the fix is actually in place before this check, not
+   just that the bodies "show up automatically."
 5. Degenerate case: shrink the window until its own bars/opening would be <= 0 (per the app's own validity
    floor, `insetWindowGeometry`) — confirm Fusion does something equally well-defined (no feature built, or a
    clean failure) rather than a corrupt/self-intersecting sketch.

@@ -929,7 +929,65 @@ def _populate_frame_geometry(mm, source_design, logger):
          f"FRAME LAYOUT ({mm.name}): laid out 4 pieces in row "
          f"(anchor=frame_right, clearance={clearance_cm:.4f} cm, "
          f"row span ≈ {prev_right_edge - centers['frame_right'][0] + sizes['frame_right'][0] / 2:.2f} cm)")
+
+    # T82 item 6: a template that ALSO has non-classic frame_*-named bodies (the inset window's own
+    # frame_window_* bars) never reaches _populate_n_bar_frame_geometry above -- that path only runs when
+    # the classic 4 are ABSENT. Continue the SAME row (same owner_comp, same move_features, same idempotent
+    # gate already passed) rather than calling that function, which would re-run its own idempotent check
+    # against the moves just added above and skip.
+    if other_bars:
+        _lay_out_other_bars(mm, move_features, other_bars, clearance_cm, prev_right_edge, rot_z_90, logger)
     return True
+
+
+def _lay_out_other_bars(mm, move_features, other_bars, clearance_cm, start_edge, rot_z_90, logger):
+    """Continue a lay-flat row with any `frame_*`-named bodies the classic 4-bar layout above didn't
+    recognize (T82 item 6: `frame_window_*`), starting just past `start_edge` (the row's current right
+    edge). Same rotate-if-wider-than-tall + pack-along-+X rule as n_bar_layout_plan; no idempotent check of
+    its own -- the caller already owns one shared check for the whole row."""
+    try:
+        def _bbox(name):
+            bb = other_bars[name].boundingBox
+            mn, mx = bb.minPoint, bb.maxPoint
+            return (mx.x - mn.x, mx.y - mn.y), ((mx.x + mn.x) / 2, (mx.y + mn.y) / 2)
+
+        sizes = {n: _bbox(n)[0] for n in other_bars}
+        rotate, order, _ = n_bar_layout_plan(sizes, clearance_cm)
+        for name in rotate:
+            try:
+                coll = adsk.core.ObjectCollection.create()
+                coll.add(other_bars[name])
+                move_input = move_features.createInput2(coll)
+                move_input.defineAsFreeMove(rot_z_90)
+                move_features.add(move_input)
+                _log(logger, f"FRAME LAYOUT ({mm.name}): rotated {name} by 90° around world Z (other_bars)")
+            except Exception as e:
+                _log(logger, f"FRAME LAYOUT ({mm.name}): rotate {name} failed: {e}", "WARNING")
+
+        row_edge = start_edge
+        for name in order:
+            (w, _h), (cx, cy) = _bbox(name)  # re-read: rotation above may have changed it
+            tx = row_edge + clearance_cm + w / 2
+            row_edge = tx + w / 2
+            dx, dy = tx - cx, 0.0 - cy
+            if abs(dx) < 1e-4 and abs(dy) < 1e-4:
+                continue
+            try:
+                coll = adsk.core.ObjectCollection.create()
+                coll.add(other_bars[name])
+                move_input = move_features.createInput2(coll)
+                move_input.defineAsTranslateXYZ(
+                    adsk.core.ValueInput.createByReal(dx), adsk.core.ValueInput.createByReal(dy),
+                    adsk.core.ValueInput.createByReal(0.0), True)
+                move_features.add(move_input)
+            except Exception as e:
+                _log(logger, f"FRAME LAYOUT ({mm.name}): translate {name} failed: {e}", "WARNING")
+        _log(logger, f"FRAME LAYOUT ({mm.name}): laid out {len(order)} more piece(s) continuing the row "
+                     f"(other_bars: {sorted(order)})")
+        return True
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): other_bars layout failed: {e}", "WARNING")
+        return False
 
 
 def n_bar_layout_plan(sizes, clearance_cm):
