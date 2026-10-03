@@ -490,3 +490,11 @@ describe('H23 item 63 (a): the undercut guard catches the matrix REFLEX cases', 
     }
   });
 });
+
+describe('H23 item 63: no template default has a broken outline (the drag-stop starts from a valid shape)', () => {
+  it('every default outline has no defects', () => {
+    for (const tpl of FRAME_DEFS.templates) {
+      expect(profile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id })).defects, tpl.id).toEqual([]);
+    }
+  });
+});

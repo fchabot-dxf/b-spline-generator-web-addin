@@ -413,6 +413,9 @@ export function _frameRecordBreaksNoHookRule(rec) {
   // H23 item 63 (Fred-approved guard): the drag also stops before any outline arc becomes an
   // undercut (>= a half-circle) -- Fusion refuses to build one.
   if (outlineHasUndercut(outer.primitives)) return true;
+  // ...and before the outline itself breaks (self-intersection etc.) -- Generate already rejects
+  // outer.defects; item 64's matrix found T12 cornerRadiusTop:max reachable by drag with one.
+  if (outer.defects.length > 0) return true;
   const inner = frameInnerProfile(FRAME_DEFS, rec, board);
   if (inner && inner.defects.length > 0) return false;
   const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
