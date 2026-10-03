@@ -69,14 +69,6 @@ _KNOWN_UNVERIFIABLE_GOLDENS = {
     # recording forever; test_frame_parity_goldens.py's own _KNOWN_BROKEN_BUILD already names this
     # exact file.
     "template_10_12x6.json",
-    # SURFACED by this per-file check, NOT yet triaged (2026-10-03, F33 item 1): template_5's own
-    # phases/p02_03_loop.py was edited at its root cause (c2cce2a, "WIP: H23 items 10/6/11... item
-    # 6: fixed the root cause... Not yet built live, no goldens recorded... this item is not
-    # done") but its one recorded golden (7x9) was never re-recorded afterward -- genuinely stale,
-    # NOT an accepted gap like the two above. Excluded here only so this check's own gate doesn't
-    # block on someone else's unfinished work; whoever owns H23 item 6 next should re-record it
-    # live (or revert the phase edit), then remove this line.
-    "template_5_7x9.json",
 }
 
 
