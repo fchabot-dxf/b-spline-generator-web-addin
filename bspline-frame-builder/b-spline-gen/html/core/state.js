@@ -90,6 +90,10 @@ export const DEFAULT = {
     includeUnstampedSolid: false,
     thickenWireframe: false, // false → shaded solid, true → wireframe view
     flatShading: false,
+    // H23 item 67: side walls (and the frame/window walls) take the artwork
+    // colour wherever it reaches the board's outer edge; OFF reverts them
+    // to the plain wood/heat-map look (the top surface is unaffected).
+    colourEdges: true,
     // Sculpt state
     activeSculptLayer: null, // can be 'top', 'bot', or null
     sculptTopRadius: 2.0,
@@ -339,7 +343,7 @@ export function updateP(key, value) {
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
         'isolateSkeleton',
-        'includeUnstampedSolid', 'thickenWireframe', 'flatShading'
+        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges'
     ];
 
     if (key === 'widthIn' || key === 'heightIn') {

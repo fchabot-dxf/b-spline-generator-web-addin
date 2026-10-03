@@ -141,10 +141,24 @@ describe('3D: the panel follows the lip, the bars do not; lip 0 == today', () =>
       if (!pointInPolygon(cx, cy, outer)) outsideOutline++;
     }
     expect(outsideOutline).toBeGreaterThan(0);
-    // the panel's edge wall stands on the lip loop (not on the outline)
+    // the panel's edge wall stands on the lip loop (not on the outline).
+    // H23 item 67b: frame-panel-wall's own vertices are now a FINER, oversampled (colour-only)
+    // re-sampling of the SAME curve `panel`/`lipLoop` traces (WALL_COLOR_OVERSAMPLE,
+    // frame-mesh.js), not `lipLoop`'s own exact discrete points -- a point-to-POLYLINE distance,
+    // not point-to-nearest-vertex, so a denser wall point that falls between two lipLoop samples
+    // on a curve still measures close to it.
     const wall = e1.find((m) => m.name === 'frame-panel-wall').geometry.attributes.position.array;
-    const near = (x, y, loop) => loop.some((q) => Math.hypot(q.x - x, q.y - y) < 1e-4); // Float32 positions
-    for (let k = 0; k < wall.length; k += 3) expect(near(wall[k], wall[k + 1], lipLoop)).toBe(true);
-    expect(near(wall[0], wall[1], outer)).toBe(false); // non-vacuous: not the outline's own points
+    const distToPolyline = (x, y, poly) => {
+      let best = Infinity;
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length];
+        const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / L2));
+        best = Math.min(best, Math.hypot(a.x + t * dx - x, a.y + t * dy - y));
+      }
+      return best;
+    };
+    for (let k = 0; k < wall.length; k += 3) expect(distToPolyline(wall[k], wall[k + 1], lipLoop)).toBeLessThan(0.01);
+    expect(distToPolyline(wall[0], wall[1], outer)).toBeGreaterThan(0.01); // non-vacuous: not the outline itself
   });
 });

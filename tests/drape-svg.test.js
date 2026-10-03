@@ -23,7 +23,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  buildDrapeSvg, DRAPE_TEXTURE_FLIPY, sampleRowForV, nextPow2,
+  buildDrapeSvg, DRAPE_TEXTURE_FLIPY, sampleRowForV, nextPow2, sampleDrapeUV,
 } from '../bspline-frame-builder/b-spline-gen/html/core/preview/drape-svg.js';
 
 const SKETCH = `<svg xmlns="http://www.w3.org/2000/svg" width="672" height="864" viewBox="0 0 7 9" preserveAspectRatio="none">` +
@@ -199,6 +199,72 @@ describe('SE11c: drape/heightfield orientation guard (empirically settled — se
  * actual mipmap behaviour needs a real WebGL context, proven live in
  * Fusion instead — see WORK-LOG).
  */
+/**
+ * H23 item 67: sampleDrapeUV is the ONE shared colour source "what does the
+ * artwork look like at this point" -- the top surface's own overlay mesh
+ * samples the SAME canvas on the GPU (via uv), this is the JS-side version
+ * the new wall/rim colouring calls. `canvas` is duck-typed (width/height/
+ * getContext) so no real <canvas> is needed (this environment's
+ * getContext('2d') returns null -- the same gap drape-mesh.test.js's own
+ * header documents).
+ */
+function fakeCanvas(width, height, pixelAt) {
+  return {
+    width,
+    height,
+    getContext(type) {
+      if (type !== '2d') return null;
+      return {
+        getImageData(x, y) {
+          return { data: Uint8ClampedArray.from(pixelAt(x, y)) };
+        },
+      };
+    },
+  };
+}
+
+describe('sampleDrapeUV (H23 item 67: the shared artwork-colour sampler)', () => {
+  it('returns null for a missing canvas, or one with no getContext at all', () => {
+    expect(sampleDrapeUV(null, 0.5, 0.5)).toBeNull();
+    expect(sampleDrapeUV(undefined, 0.5, 0.5)).toBeNull();
+    expect(sampleDrapeUV({ width: 10, height: 10 }, 0.5, 0.5)).toBeNull();
+  });
+
+  it('returns null when getContext(\'2d\') itself returns null (the happy-dom/vitest gap drape-mesh.test.js documents)', () => {
+    const canvas = { width: 10, height: 10, getContext: () => null };
+    expect(sampleDrapeUV(canvas, 0.5, 0.5)).toBeNull();
+  });
+
+  it('returns null at a fully transparent pixel (alpha 0) -- the caller\'s cue to fall back to the plain colour', () => {
+    const canvas = fakeCanvas(4, 4, () => [10, 20, 30, 0]);
+    expect(sampleDrapeUV(canvas, 0.5, 0.5)).toBeNull();
+  });
+
+  it('returns {r,g,b} in 0..1, matching the sampled pixel scaled down from 0..255', () => {
+    const canvas = fakeCanvas(4, 4, () => [255, 128, 0, 255]);
+    const c = sampleDrapeUV(canvas, 0.5, 0.5);
+    expect(c).toEqual({ r: 1, g: 128 / 255, b: 0 });
+  });
+
+  it('non-vacuous: v follows the SAME measured DRAPE_TEXTURE_FLIPY row mapping the top surface\'s own GPU sampling uses (v=1 -> row 0)', () => {
+    const texH = 8;
+    const rows = [];
+    const canvas = fakeCanvas(2, texH, (x, y) => { rows.push(y); return [x === 0 ? 200 : 10, 0, 0, 255]; });
+    sampleDrapeUV(canvas, 0, 1); // v=1
+    expect(rows).toEqual([sampleRowForV(1, texH, DRAPE_TEXTURE_FLIPY)]);
+    expect(rows).toEqual([0]); // the measured mapping this file already pins above
+  });
+
+  it('u has no flip (column follows u directly) -- u=0 reads column 0, u=1 reads the last column', () => {
+    const texW = 8;
+    const cols = [];
+    const canvas = fakeCanvas(texW, 2, (x) => { cols.push(x); return [0, 0, 0, 255]; });
+    sampleDrapeUV(canvas, 0, 0);
+    sampleDrapeUV(canvas, 1, 0);
+    expect(cols).toEqual([0, texW - 1]);
+  });
+});
+
 describe('nextPow2 (SE11e amend: power-of-two texture sizing for mipmaps)', () => {
   it('an exact power of two is returned unchanged', () => {
     expect(nextPow2(512)).toBe(512);

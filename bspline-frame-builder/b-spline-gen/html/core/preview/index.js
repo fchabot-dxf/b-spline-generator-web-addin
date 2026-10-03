@@ -50,7 +50,9 @@ import {
   buildSolidWireframe,
   buildIsoCurves,
   extractSolidExportArrays,
+  topCapIndices,
 } from './terrain-mesh.js';
+import { sampleDrapeUV } from './drape-svg.js';
 
 export class TerrainPreview {
   /** @param {HTMLCanvasElement} canvas */
@@ -61,6 +63,7 @@ export class TerrainPreview {
     this._THREE  = THREE;
     this._canvas = canvas;
     this._mesh   = null;
+    this._meshIsSolid = false;
     this._curves = null;
     this._animId = null;
     this._needsRender = true;
@@ -86,6 +89,7 @@ export class TerrainPreview {
     // actually drawn, at the end of update() and on every refreshFrame().
     this._frameProvider = null;
     this._frameMeshes = [];
+    this._frameRimDrapeMesh = null; // H23 item 67: the rim's own drape overlay, see _applyFrame
 
     // SE11: the drape texture, if any — survives mesh rebuilds (re-applied
     // in update(), same pattern as _heatColours) since it's independent of
@@ -97,6 +101,12 @@ export class TerrainPreview {
     // separate mesh, not a
     // material property on the terrain mesh itself.
     this._drapeMesh = null;
+    // H23 item 67: "Colour edges" view toggle, default ON (today's new
+    // behaviour) -- OFF reverts the WALLS (not the top surface, which always
+    // showed the drape) to their pre-item-67 wood/heat-map look. Survives
+    // mesh rebuilds the same way _drapeTexture does (set via setColourEdges,
+    // read by _rebuildDrapeMesh and _applyFrame).
+    this._colourEdges = true;
 
     // Renderer + scene + camera + lights.
     this._renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -183,6 +193,7 @@ export class TerrainPreview {
     const showSolid = hasSolid && !thickenWireframe;
     const liveBrushColours = buildLiveBrushColours(meshColours, this._sculpt.getConfig(), nx, nz);
 
+    this._meshIsSolid = showSolid; // H23 item 67: topCapIndices only applies to buildSolidMesh's own layout
     if (showSolid) {
       const topColours = liveBrushColours || (useMeshColours ? meshColours : null);
       if (liveBrushColours) dbg('VertexColor', 'liveBrushColours sample:', Array.from(liveBrushColours.slice(0, 12)));
@@ -428,6 +439,26 @@ export class TerrainPreview {
    * No-ops (leaves it removed) when there's no drape texture or no
    * terrain mesh yet.
    */
+  /** The drape overlay's own LIT material, matching whatever base material it's drawn on top of
+   *  (specular/shininess/flatShading/side) -- shared by the terrain's own overlay (_rebuildDrapeMesh)
+   *  and the frame rim's own overlay (_applyFrame, H23 item 67), so there's one recipe, not two. */
+  _drapeOverlayMaterial(baseMat) {
+    const THREE = this._THREE;
+    return new THREE.MeshPhongMaterial({
+      map: this._drapeTexture,
+      color: 0xffffff,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+      side: baseMat.side,
+      specular: baseMat.specular ? baseMat.specular.clone() : undefined,
+      shininess: baseMat.shininess,
+      flatShading: baseMat.flatShading,
+    });
+  }
+
   _rebuildDrapeMesh() {
     if (this._drapeMesh) {
       this._scene.remove(this._drapeMesh);
@@ -436,21 +467,26 @@ export class TerrainPreview {
     }
     if (!this._drapeTexture || !this._mesh) return;
     const THREE = this._THREE;
-    const terrainMat = this._mesh.material;
-    const mat = new THREE.MeshPhongMaterial({
-      map: this._drapeTexture,
-      color: 0xffffff,
-      transparent: true,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
-      side: terrainMat.side,
-      specular: terrainMat.specular ? terrainMat.specular.clone() : undefined,
-      shininess: terrainMat.shininess,
-      flatShading: terrainMat.flatShading,
-    });
-    this._drapeMesh = new THREE.Mesh(this._mesh.geometry, mat);
+    const mat = this._drapeOverlayMaterial(this._mesh.material);
+    let geometry = this._mesh.geometry;
+    // H23 item 67 ('Colour edges' OFF): paint the drape on the top/bottom
+    // caps only, not the side walls -- a separate, lightweight geometry
+    // SHARING the terrain's own position/uv/normal/color attribute objects
+    // (no copy, same reason as the shared-geometry case above) but with a
+    // top-cap-only index, so the walls show through the plain terrain mesh
+    // underneath instead. Never disposed (same discipline as the shared
+    // geometry case: dispose() would free the attribute buffers THIS
+    // geometry shares with this._mesh.geometry, breaking the base mesh
+    // too) -- a stale wrapper object is simply garbage-collected.
+    if (this._meshIsSolid && !this._colourEdges) {
+      const capGeom = new THREE.BufferGeometry();
+      for (const name of ['position', 'uv', 'normal', 'color']) {
+        if (geometry.attributes[name]) capGeom.setAttribute(name, geometry.attributes[name]);
+      }
+      capGeom.setIndex(topCapIndices(this._lastNx, this._lastNz));
+      geometry = capGeom;
+    }
+    this._drapeMesh = new THREE.Mesh(geometry, mat);
     this._drapeMesh.visible = this._mesh.visible;
     this._scene.add(this._drapeMesh);
   }
@@ -465,6 +501,18 @@ export class TerrainPreview {
     }
     this._drapeTexture = texture || null;
     this._rebuildDrapeMesh();
+    this._needsRender = true;
+  }
+
+  /** H23 item 67: toggle the side walls (and the frame/window walls) between
+   *  the artwork colour at each edge point and today's plain wood/heat-map
+   *  look. The top surface is unaffected either way (it always shows the
+   *  drape, same as before this item) -- a lightweight, no-rebuild update,
+   *  same shape as setCurvesVisible/setGroundGridVisible. */
+  setColourEdges(v) {
+    this._colourEdges = !!v;
+    this._rebuildDrapeMesh();
+    this.refreshFrame();
     this._needsRender = true;
   }
 
@@ -513,6 +561,7 @@ export class TerrainPreview {
     this._groundGrid.dispose();
     this._sculpt.dispose();
     if (this._drapeMesh) { this._scene.remove(this._drapeMesh); this._drapeMesh.material.dispose(); }
+    if (this._frameRimDrapeMesh) { this._scene.remove(this._frameRimDrapeMesh); this._frameRimDrapeMesh.material.dispose(); }
     if (this._drapeTexture) this._drapeTexture.dispose();
     this._renderer.dispose();
     if (this._viewCube) this._viewCube.dispose();
@@ -549,19 +598,53 @@ export class TerrainPreview {
 
   _applyFrame() {
     this._clearFrameMeshes();
+    if (this._frameRimDrapeMesh) {
+      this._scene.remove(this._frameRimDrapeMesh);
+      this._frameRimDrapeMesh.material.dispose();
+      this._frameRimDrapeMesh = null;
+    }
     if (!this._mesh || !this._lastGrid) return;
     const g = this._lastGrid;
     const spec = this._frameProvider ? this._frameProvider(g.W, g.H) : null;
     try { this._trimPoly = spec ? frameLoopsWorld(spec, g).panel : null; } catch (_) { this._trimPoly = null; }
     this._leaders.setData(this._visibleWorstPts(), this._showLeaders);
-    for (const m of applyFrameToPanel(this._THREE, this._mesh, g, spec)) {
+    // H23 item 67: the one shared artwork-colour sampler, read from the SAME
+    // drape canvas the top surface's own overlay samples (sampleDrapeUV,
+    // drape-svg.js) -- only when the toggle is on and a drape exists; the
+    // walls fall back to applyFrameToPanel's own existing heat-map colour
+    // otherwise (undefined edgeSampler reproduces the exact pre-item-67
+    // behaviour, see that function's own doc comment).
+    const edgeSampler = (this._colourEdges && this._drapeTexture && this._drapeTexture.image)
+      ? (u, v) => sampleDrapeUV(this._drapeTexture.image, u, v)
+      : null;
+    for (const m of applyFrameToPanel(this._THREE, this._mesh, g, spec, edgeSampler)) {
       this._scene.add(m);
       this._frameMeshes.push(m);
+      // The rim is the TOP SURFACE's own trimmed boundary strip -- it shows
+      // the drape unconditionally (like the rest of the top), NOT gated by
+      // colourEdges (that toggle is about the WALLS only). A separate
+      // overlay (not pushed into _frameMeshes, whose own cleanup disposes
+      // each mesh's geometry -- this one SHARES the rim's geometry, same
+      // "never dispose a shared geometry" discipline as _rebuildDrapeMesh).
+      if (m.name === 'frame-panel-rim' && this._drapeTexture) {
+        const rimMat = this._drapeOverlayMaterial(m.material);
+        this._frameRimDrapeMesh = new this._THREE.Mesh(m.geometry, rimMat);
+        this._scene.add(this._frameRimDrapeMesh);
+      }
     }
   }
 
   _dispose() {
     this._clearFrameMeshes();
+    // H23 item 67: shares the rim mesh's own geometry (just disposed by
+    // _clearFrameMeshes above, since the rim IS one of _frameMeshes) --
+    // dispose only this overlay's own material, same discipline as the
+    // terrain drape mesh below.
+    if (this._frameRimDrapeMesh) {
+      this._scene.remove(this._frameRimDrapeMesh);
+      this._frameRimDrapeMesh.material.dispose();
+      this._frameRimDrapeMesh = null;
+    }
     if (this._mesh)   { this._scene.remove(this._mesh);   this._mesh.geometry.dispose();  this._mesh.material.dispose(); }
     // SE11e: the drape mesh SHARES this geometry (just disposed above) —
     // remove it and dispose only its own material, never the geometry a

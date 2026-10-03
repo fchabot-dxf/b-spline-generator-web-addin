@@ -15675,3 +15675,427 @@ budget, not the live-app screenshot path other items have used when Fusion itsel
 `tests/editor-lattice-tie-count.test.js` (the one-line `toBe(18)` update). No other file touched;
 all scratch diagnostics (`diag66.mjs`/`diag66b.mjs`/scratch test variants/the screenshot-render
 scripts) deleted before commit, per scratch-hygiene discipline.
+
+## H23 item 67: 3D preview side walls take the artwork's edge colours ("teint dans la masse"),
+shared colour sampler, 'Colour edges' toggle, tests, before/after shots. Plus the mid-task
+amendment: proved item 66's clearance never touches a manually-placed/dragged tie.
+
+**(0) Measured FIRST, before writing any fix -- a false lead found and discarded.** The dispatch
+bundled a geometric "saw-teeth" claim (wall top edge vs rim boundary not sharing vertices) with
+the colour-flood ask. A first diagnostic (reading wall vertex z back out of the BUILT
+`frame-panel-wall` mesh, indexed by its own pre-`_mesh()` layout) showed a ~1in max z gap and
+~0.014in average -- looked like a real geometry bug, and I started building a fix for it
+(oversampling the wall's own boundary loop). Live-tested that fix against the FULL suite: it
+broke `frame-bartop-drawn.test.js` (a NEW seam opened between panel and bars, oversampling `panel`
+independent of `outer`/`inner`); fixed that by sharing one oversampled `cell` across all three
+loops instead -- which then TIMED OUT the 0.05-spacing test cases (4x more points on every bar
+ring, too expensive). Before pushing further on the geometry angle, re-measured with a CORRECTED
+diagnostic (reading wall z via the SAME `surf.at(x,y).hi.z` the production wall-builder itself
+uses, not re-indexing into `_mesh()`'s post-`creasedNormals` OUTPUT array, which reorders/
+duplicates vertices at creases -- the ORIGINAL diagnostic's own indexing was wrong, not the
+geometry): the REAL, unmodified, un-oversampled wall-vs-rim gap is already small, max ~0.008in,
+avg ~0.002-0.003in, across 4 templates, including the templates my first ("fixed") diagnostic
+reported ~1in on. **Conclusion: no geometric saw-teeth bug exists at a magnitude worth fixing --
+the oversampling code was fully reverted (`git diff` on frame-mesh.js and panel-lip.test.js both
+clean, confirmed).** The REAL "saw-teeth" Fred saw is a COLOUR mismatch: the wall had NO artwork
+colour mechanism at all (always heat-map/wood), so it visibly tore against the top surface's own
+drape-textured edge regardless of how fine the geometry was -- (1) below fixes exactly that, and
+the live screenshots in (6) show the seam is gone once colour is unified, with no separate
+geometry change needed. Flagged here in case a FUTURE saw-teeth report turns out to be the tiny
+remaining ~0.008in gap after all (a measured ceiling, not zero) -- re-diagnose with the CORRECTED
+method above, not the first one.
+
+**(1) One shared colour sampler, `sampleDrapeUV(canvas, u, v)`** (new, `drape-svg.js`, next to
+`DRAPE_TEXTURE_FLIPY`/`sampleRowForV`, reusing the LATTER so the wall's own u,v->pixel mapping is
+the identical, already-measured convention the top surface's GPU sampling uses): returns
+`{r,g,b}` (0..1) or `null` (no canvas, or fully transparent = no artwork there, the caller's cue
+to fall back to the plain colour). Duck-typed (`width`/`height`/`getContext`), so testable with a
+fake canvas (this environment's real `getContext('2d')` returns null, per drape-mesh.test.js's
+own established note).
+
+**(2) Plain panel (no frame): already worked, for free, once I checked -- no new code.** Verified
+by reading, not assumed: `buildSolidMesh` (terrain-mesh.js) already gives the wall's top AND
+bottom rim vertices the SAME uv as their boundary top vertex (`topUvs`, already passed by
+index.js's own `update()` call); `_rebuildDrapeMesh`'s overlay already shares `this._mesh`'s own
+FULL geometry (incl. walls) unconditionally. Since both wall ends share one uv, the GPU already
+flood-fills the wall with whatever texel is at that uv, full height -- exactly "continues straight
+down the wall," already live before this item. Added the 'Colour edges' OFF path for this case
+(3) and a confirming test regime, but the ON/default case needed zero production changes here.
+
+**(3) New 'Colour edges' toggle** (`P.colourEdges`, default true, `core/state.js` + boolParams +
+`main/param-manager.js` -> `preview.setColourEdges(v)`, checkbox in the palette's VIEW panel) --
+OFF reverts the WALLS only (never the top surface, which keeps showing the drape exactly as
+before this item, on or off) to the plain wood/heat-map look Fred can still ask for. Implementation
+for the plain-panel case (2): `topCapIndices(nx,nz)` (new export, terrain-mesh.js, factored out of
+`solidIndices` so the full-solid index is now literally `topCapIndices(...).concat(wall faces)` --
+one declaration, not two copies) lets `_rebuildDrapeMesh` swap the overlay to a SEPARATE geometry
+(sharing the SAME position/uv/normal/color attribute objects -- no copy) with a top-cap-only index
+when OFF, so the walls fall back to showing the plain base mesh underneath. Gated on a new
+`this._meshIsSolid` flag (set in `update()`) -- the top-only mesh (no thicken) has no walls to
+begin with, so OFF is a no-op there, confirmed by a dedicated test.
+
+**(4) Frame present: `applyFrameToPanel` (frame-mesh.js) takes a new optional 5th argument,
+`edgeSampler(u, v) -> {r,g,b} | null`.** Used by `frame-panel-wall` (the outline wall) and
+`frame-window-wall` (the inset-window hole's own wall) -- both already had "the panel's own
+colours at the top edge" full-height-flood plumbing from before this item, wired to the heat-map
+`attrs.color`; now each wall point tries `edgeSampler` first (via the SAME `attrs.uv` lerp the
+heat-map colour already uses, so both read the identical hit) and falls back to the heat-map
+colour when the sampler returns null or isn't given at all -- omitting the argument entirely
+reproduces the EXACT pre-item-67 behaviour (confirmed: every pre-existing frame test, incl.
+`frame-bartop-drawn.test.js`'s own byte-exact heat-map-colour assertions, passes unmodified). The
+frame BARS (the wood moulding ring, `frame-bars`/`frame-window-bars`) are deliberately NOT
+touched -- artwork doesn't belong on the moulding itself, only on the exposed board edge; re-read
+item 67's own brief text ("the panel's outer walls and, if present, the frame's outer walls") and
+concluded "the frame's outer walls" means the inset-WINDOW's own wall (same colour-flood pattern,
+already existed, just needed re-pointing), not the literal wooden bars -- a judgment call, flagged
+here for review.
+
+**(5) The frame RIM (the top surface's own trimmed boundary strip, right at the cut edge) gets its
+own drape overlay too** (new, `TerrainPreview._applyFrame`, index.js): previously, when a frame
+trimmed the panel, the cut-edge strip (`frame-panel-rim`) used the plain wood/heat-map material
+only -- the drape texture never reached it, even though the WALL right below it (once (4) above
+re-points it) now does, which would have left a NEW top-vs-rim seam at the very edge. Mirrors
+`_rebuildDrapeMesh`'s own established recipe (extracted into a new shared `_drapeOverlayMaterial`
+helper, used by both) -- a second mesh SHARING the rim's own geometry (no copy), unconditionally
+(the rim is top surface, not a wall; NOT gated by colourEdges). Lifecycle: NOT added to
+`_frameMeshes` (whose own cleanup disposes each mesh's OWN geometry -- correct for the rim/wall/
+bars, which have their own; would be WRONG for this overlay, which shares the rim's) -- a
+dedicated `_frameRimDrapeMesh` field, cleaned up the same "dispose material only, never the shared
+geometry" way `_drapeMesh` already is.
+
+**(6) Before/after screenshots, REAL app, REAL browser** (not a synthetic re-render like item 66's
+SVG approach -- this is a WebGL scene, `getSnapshot()` is the only proven capture path, per
+`scripts/smoke-editor.mjs`'s own header comment): template_1 (Hourglass) + a frame + Shape
+Lattice with "Offset from frame" + coloured rails/ties/nodes, driven headless via CDP (reused
+`smoke-editor.mjs`'s own driver pattern: lattice-generate, SE9 colour-select, Apply). One
+environment gotcha hit and fixed: a `--user-data-dir` under this repo's own `scratch/` folder made
+Chrome print "Opening in existing browser session" and hand off to Fred's own running Chrome
+instead of starting a fresh headless one with its own CDP port -- moved the profile dir to the OS
+temp dir (same as every other one-shot `--screenshot=` invocation already used successfully this
+session) and it worked immediately; root cause not traced further, flagged for whoever next
+reaches for a persistent (not one-shot) headless Chrome session in this repo. **Pixel-verified, not
+eyeballed**: scanned the toggled-ON screenshot for green-tinted pixels in the wall region, took the
+10 deepest (furthest down the wall, least likely to be the rim) hits, and sampled the SAME exact
+coordinates in the toggled-OFF screenshot -- e.g. (452,604): OFF = RGB(189,160,118) (plain wood),
+ON = RGB(88,130,70) (green, matching the contour) -- a real, measured, same-pixel-same-scene
+difference, not an impression from looking at the PNG. Saved: `shots/seatA/1130_item67_before.png`
+(toggle off) / `..._after.png` (toggle on).
+
+**(7) Tests** (all new, non-vacuous checked -- mutation-tested the core wall-colour claim: reverted
+`frame-mesh.js`'s edgeColor to heat-map-only and `index.js`'s rim-overlay block to a no-op,
+re-ran, 7/12 of the new assertions correctly failed, then restored both files via `git diff`
+confirming byte-identical to pre-mutation): `tests/drape-svg.test.js` (+6, `sampleDrapeUV` pixel/
+transparency/flip-convention/edge-clamp checks), `tests/drape-mesh.test.js` (+4, the colourEdges
+toggle's geometry swap: ON shares the full mesh, OFF+solid swaps to a top-cap-only wrapper
+geometry sharing attributes, OFF+not-solid is a no-op, flipping back ON restores the shared
+geometry), `tests/frame-wall-edge-colour.test.js` (new, 12 tests: edgeSampler colours the wall
+where it finds artwork and falls back to heat-map where it doesn't -- non-vacuous, differs from
+the no-sampler case; full-height flood; the window wall gets the same treatment, verified against
+a byte-corrected `winRec()` shape read from frame-3d.test.js, not guessed -- my FIRST attempt at
+this used a guessed record shape and the assertion silently never ran, caught before committing by
+adding an explicit `expect(spec.insetWindow).toBeTruthy()` guard; `topCapIndices` is exactly the
+PREFIX of `buildSolidMesh`'s own full index; `_applyFrame`'s own rim-overlay wiring, incl. "still
+appears with colourEdges OFF" and "a stale overlay is removed before a fresh one is built"). Two
+small, genuine (not test-only) fixes surfaced along the way and kept: `tests/helpers/drawn-panel.js`
+(the SHARED FakeTHREE used by ~6 frame test files) was missing a `uv` attribute on its own built
+mesh entirely (no test needed it before) -- added via `buildHeightField`'s own already-computed
+`uvs`, matching index.js's real `topUvs: field.uvs` call; and `FakeTHREE.MeshPhongMaterial`
+silently left a numeric `specular` (e.g. buildSolidMesh's own `0x111111`) un-wrapped where real
+THREE.js wraps it in a `Color` instance with its own `.clone()` -- added a tiny `FakeTHREE.Color`
+stand-in (plus no-op `dispose()` on both the fake geometry and material, exercised for the first
+time by `_clearFrameMeshes` running against a FakeTHREE-built mesh here). Full suite: **168 files,
+3273/3273** (up from the 3270 pre-item-67-amendment baseline... see (8) for the +3).
+
+**(8) Mid-task amendment (Fred, via the advisor, turn 489): prove item 66's clearance never blocks
+a MANUAL tie.** New test file, `tests/shape-lattice-manual-tie-survives-regenerate.test.js` (3
+tests), driven through the REAL interaction handlers (`getModeHandler`, same convention as
+`lattice-rail-end-stretch.test.js`), not reasoned-about in a comment: (a) a tie placed with the
+Tie tool (a bare click through `_spawnTieBetweenRails`, positioned at the real midpoint between
+two actual adjacent rail rows found in the fixture, not a guessed offset -- my first attempt
+guessed `railY+0.1` and silently placed nothing, caught by a `toBe(before+1)` non-vacuous count
+check before trusting it) carries NO `OWNERSHIP_ATTR` and survives a second `generatePattern` call
+(= pressing Generate/Regenerate again) byte-identical; (b) a tie DRAGGED by its body (confirmed via
+code reading that body-move is a free, unclamped rigid translate -- `_updateLatticeMove`, no
+boundary/clearance check of any kind) onto the board's own far corner, explicitly re-tagged with no
+`OWNERSHIP_ATTR` to test the genuinely-manual case, also survives Regenerate byte-identical; (c) a
+non-vacuous control -- a GENERATED (owned) tie does NOT survive an unrelated Regenerate (a reseed),
+proving (a)/(b) are testing real ownership-gated behaviour, not "nothing ever gets removed."
+**Root-caused via a targeted Explore-agent investigation (not assumed): this already worked by
+design before any item-67 code change** -- `computePattern` is pure (no DOM/editor parameter at
+all, cannot see or touch pre-existing elements, generated or manual); the generator's own
+clear-before-redraw step is gated on `OWNERSHIP_ATTR` presence, which only the generator's own
+`tagOwned` ever sets -- the Tie tool's `emitSegment` and a drag's `_finishLatticeMove` both never
+touch it. **One attempted mutation test (deliberately removing the `OWNERSHIP_ATTR` gate from the
+clear step, to confirm the new tests would catch that regression) was blocked by this session's
+own sandbox permission classifier** ("Irreversible Local Destruction") before I could re-run the
+suite against it; restored the file immediately from a pre-edit backup (confirmed clean via
+`git diff`, no trace left) and did not retry. Confidence here rests on the direct, line-by-line
+code investigation above plus the 3 new tests passing against the real (unmutated) code -- flagged
+honestly as the one claim in this item NOT also mutation-proven, unlike item 66's and the rest of
+this item's own tests.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/core/preview/drape-svg.js`,
+`bspline-frame-builder/b-spline-gen/html/core/preview/terrain-mesh.js`,
+`bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js`,
+`bspline-frame-builder/b-spline-gen/html/core/preview/index.js`,
+`bspline-frame-builder/b-spline-gen/html/core/state.js`,
+`bspline-frame-builder/b-spline-gen/html/main/param-manager.js`,
+`bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html` (the checkbox),
+`tests/drape-svg.test.js`, `tests/drape-mesh.test.js`, `tests/helpers/drawn-panel.js`,
+`tests/frame-wall-edge-colour.test.js` (new),
+`tests/shape-lattice-manual-tie-survives-regenerate.test.js` (new). No `frame-bars`/
+`frame-window-bars` (wood moulding) touched, no saw-teeth geometry change (see (0): measured,
+not needed). All scratch diagnostics (`diag67.mjs`/`diag67b.mjs`/`diag67c.mjs`, the dev-server
+process, the screenshot-driver script and its own chrome profile dir) deleted/stopped before
+commit.
+
+## H23 item 67b: item 67 REWORK -- full-height wall colour (the real cause was frame-bars, not
+frame-panel-wall) + the saw-teeth fix (finer colour-only wall/bars sampling), via a live
+reproduction of Fred's OWN scenario first, not re-reasoning from the prior "after" screenshot.
+
+**(1) Reproduced Fred's own case FIRST, as the dispatch asked, before touching any code.** Set up
+template_1 + Shape Lattice + Offset from frame (item 67's own scenario) + the REAL Stripe tool
+(`#toolStripe`, a real PointerEvent tap on each of the 12 contour segments via the SVG's own
+`getScreenCTM`, not a direct function call) with Colour A/B pre-seeded black/white
+(`editor._stripe.colors`) to match Fred's own striped-contour screenshot exactly. Took TWO views
+live: the whole board (same framing as item 67's own shot) and a close, oblique rim shot -- built
+by placing the orbit camera's own target directly on a REAL striped-contour point (captured during
+the stripe-tap loop, not guessed) and deriving the camera's own quaternion from a real
+`camera.lookAt()` (Z-up, `camera.up.set(0,0,1)`) rather than guessing Euler angles for the orbit
+controller's own ZXY convention a 3rd time. Both views immediately, visibly reproduced BOTH
+complaints: a thin coloured lip with plain grey/beige below, and a jagged black/white boundary at
+the rim.
+
+**(2) "Full height" root cause: MEASURED (a live raycast at the exact grey screen pixel, not
+assumed) to be `frame-bars` (the wood moulding ring), not `frame-panel-wall`.**
+`frame-panel-wall`'s own raw vertex data was independently checked FIRST and found to already be
+correctly, uniformly coloured top-to-bottom at every sampled point (item 67's own fix was never
+actually broken) -- the visible "plain grey/beige" area was a COMPLETELY DIFFERENT mesh. Read
+`editor-frame-profile.js`'s own `frameSolidSpec` to settle (empirically, via a direct bbox check,
+after the doc comments read ambiguously both ways) that `outerPrimitives`/`panel` trace the SAME
+boundary as `frame-panel-wall` (panelLip 0 means `panel === outer`) -- meaning frame-bars' own
+OUTER wall is CO-LOCATED, in XY, with frame-panel-wall, just spanning a DIFFERENT (and, for a
+typical carve, much TALLER) z-range: `frameBottomZ` up to the panel's own UNDERSIDE, vs
+frame-panel-wall's comparatively thin sliver between the underside and the true sculpted top. Bars
+are the WIDER, dominant, actually-visible "side of the piece" a viewer sees; they had NO colour
+mechanism at all before this item (a flat material colour only) -- Fred's own "the whole wall in
+the edge colour" expectation was never going to be met by fixing frame-panel-wall alone.
+**Fix**: `frame-bars`' own material gets `vertexColors:true` (color: 0xffffff base); its OUTER
+wall (oB + the top ring's own row 0, both via the SAME `edgeSampler`-with-wood-fallback the panel
+wall already used) gets the edge colour, full height; its INNER wall and the rest of its own top
+cap stay the frame's own declared wood colour (`new THREE.Color(spec.color||FRAME_COLORS[...])`,
+converted once, reused everywhere "no artwork reaches this far in" applies) -- `wood3` pushed
+literally wherever before this item the MATERIAL's own flat colour would have shown, so omitting
+`edgeSampler` (or it finding nothing anywhere) reproduces today's exact look, just via vertex
+colours. `ringArrays` (frame-mesh.js) now ALSO returns `rows`/`n` in its result object (a free,
+non-breaking addition -- existing callers destructure only `{positions,index}`) so the caller can
+mirror its own EXACT vertex-creation order (`(rows+1)` top rows of n, then n outer-bottom, then n
+inner-bottom) when building a matching per-vertex colour array, instead of re-deriving `rows` from
+`widest`/`maxStep` a 2nd time. **Caught and fixed one real regression of my own before it shipped**:
+`frame-window-bars` shares the SAME `barMat` (now always `vertexColors:true`), but its own call
+passed NO `color` attribute at all -- an absent vertex-colour attribute reads as all-zero (flat
+BLACK), not "fall back to the material's own colour" (the EXACT trap this file's own pre-existing
+`winWallAttrs` comment already names for a sibling case) -- gave it a uniform wood-colour
+attribute too.
+
+**(3) Saw-teeth root cause: a genuine colour-interpolation gap, confirmed live on Fred's OWN
+striped scenario (not re-litigating item 67's own earlier "no geometric z-gap" finding, which was
+about a DIFFERENT thing -- wall-vs-rim Z matching, already correctly ruled out there).** A single
+stripe, once a contour segment is split into ~7-10 equal pieces, is routinely narrower than
+`panel`'s own 1-sample-per-cell wall resolution -- a whole black-to-white transition can fall
+strictly between two consecutive wall vertices, and the ONE triangle spanning them linearly
+interpolates hard black-to-white across itself: the jagged "triangle" look.
+**Fix**: `WALL_COLOR_OVERSAMPLE = 4` (frame-mesh.js, declared once, doc comment explains the
+"don't touch `panel`/`outer`/`inner` as used by the clip or by `frameLoopsWorld`'s other
+consumers" constraint below) -- a SEPARATE, finer re-sampling of the SAME boundary curve
+(`samplePairedOutlines(..., cell / WALL_COLOR_OVERSAMPLE)`), built fresh and local to
+`applyFrameToPanel`, used ONLY for `wallArrays`'s own input and the bars' own OUTER-wall perimeter
+sampling -- `panel` itself (the clip/trim polygon) and `frameLoopsWorld`'s own returned
+`outer`/`inner` (consumed elsewhere, e.g. index.js's own `_trimPoly`) are completely untouched, at
+their original resolution. **MEASURED, twice, the exact failure mode item 66's own "oversample
+`panel` directly" attempt hit and I nearly repeated**: oversampling the bars' ring at
+`WALL_COLOR_OVERSAMPLE` in BOTH the perimeter AND row (across-width) dimensions at once
+quadrupled-times-quadrupled the triangle count and timed out
+`frame-bartop-drawn.test.js`'s own finest (0.05in spacing) case -- fixed by decoupling them:
+`ringArrays`'s own `maxStep` (row density) stays at the ORIGINAL `cell`; only the perimeter
+(`outer`/`inner`'s own point count) is oversampled, since no colour boundary ever runs ACROSS a
+bar's own width, only along its length.
+
+**(4) Verified BOTH fixes live, on Fred's own exact scenario, with pixel data, not a glance at the
+PNGs.** Re-ran the SAME reproduction (step 1) against the fixed code: the whole-board shot now
+shows the black/white stripe running the board's FULL wall height, no grey band at all; the
+close-up rim shot shows crisp, FULL-HEIGHT black/white bars with a clean (not jagged) boundary
+where they meet the sculpted top. Sampled a FIXED pixel column at y=350/480/610/730 (spanning most
+of the close-up's own visible wall height): all four read exactly RGB(0,0,0) (pure black) -- before
+the fix, the SAME column read RGB(214,202,170) (plain wood) at y=730. Also re-captured a genuine
+"before" pair by temporarily reverting `frame-mesh.js` to its committed (pre-this-item) HEAD state
+via `git show HEAD:... > `, running the SAME reproduction script, then restoring the fix from a
+backup copy (confirmed byte-identical to pre-revert via `git diff --stat`) -- real before/after
+images of the SAME two views, not a description of what changed.
+Saved: `shots/seatA/1214_item67b_before_whole-board.png`, `..._before_closeup-rim.png`,
+`..._after_whole-board.png`, `..._after_closeup-rim.png`.
+
+**(5) Tests, all mutation-tested against the pre-67b (item-67-only) code before trusting them**
+(reverted `frame-mesh.js` to HEAD via the same `git show` trick, re-ran, 8/8 of the new assertions
+below correctly failed, restored from the backup, confirmed byte-identical via `git diff --stat`):
+`tests/frame-wall-edge-colour.test.js` (+12): frame-bars' own outer wall takes the edge colour
+full-height with an edgeSampler and the frame's own declared wood colour without one (byte-equal
+to a null-returning sampler, proving "finds nothing" and "no sampler at all" are the same code
+path); the inner wall stays wood even when the sampler finds artwork everywhere; frame-window-bars
+gets a real (non-vacuous) wood-colour attribute, not an absent one; a narrow (0.001 of the
+perimeter's own u-range) simulated stripe is caught by at least one wall vertex AND one bars
+vertex, with a companion test proving the oversampled loop is structurally denser than
+`frameLoopsWorld`'s own unchanged coarse one (not "it happened to work once"). Two existing tests
+updated to the new architecture (vertex colours, not a flat material colour, now carry the bars'
+own wood tone): `tests/frame-3d.test.js` (bars' own material.color is now a neutral white base;
+the wood tone is asserted from the geometry's own `color` attribute instead) and
+`tests/panel-lip.test.js` (frame-panel-wall's own vertices are now a denser re-sampling of the
+SAME curve as `lipLoop`, not `lipLoop`'s own exact discrete points -- switched a point-to-nearest-
+vertex check to a point-to-polyline distance check). One more real, non-test-only bug in the
+SHARED `tests/helpers/drawn-panel.js` FakeTHREE caught and fixed along the way: its own `Color`
+stub (added earlier this item for an unrelated `specular.clone()` fix) only stored `.hex` and
+never actually parsed it -- `new THREE.Color(hex).r/.g/.b` silently read `undefined` under this
+fake, which `Float32Array.from` then silently turned into `NaN` the moment production code
+actually READ a colour value (not just called `.clone()`) -- now parses a real hex string or
+number into real 0..1 r/g/b floats. Full suite: **169 files, 3304/3304** (up from 3296, +8 new).
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js`,
+`tests/frame-wall-edge-colour.test.js`, `tests/frame-3d.test.js`, `tests/panel-lip.test.js`,
+`tests/helpers/drawn-panel.js`. No other file touched -- the fix lives entirely in frame-mesh.js
+(drape-svg.js, index.js, terrain-mesh.js, state.js, param-manager.js, the palette HTML all stay
+exactly as item 67 left them). All scratch diagnostics (`repro67b.mjs` and its own before/after
+scratch output dirs, the dev-server process, the chrome profile dirs) deleted/stopped before
+commit.
+
+## H23 item 67c: item 67b REWORK -- wall colour must ALIGN with the rim and be CRISP (flat colour
+per segment, no vertex-colour blending), a straight-on side-view shot, and a tight oblique
+close-up finally reproducing the visible "triangles" my own earlier before-shot missed.
+
+**(1) Root cause (confirmed by re-reading my own item 67b code, not re-measuring blind): `wallArrays`
+SHARES each vertex between its two neighbouring quads.** Every wall/bars-outer-wall vertex got its
+OWN sampled colour (item 67b's own fix), but THREE's per-vertex colour interpolation then BLENDS
+across every shared vertex between two differently-coloured quads -- a real gradient at the scale
+of one sample spacing, which item 67b's own `WALL_COLOR_OVERSAMPLE` (finer sampling) could narrow
+but never eliminate, and which also visually reads as "misaligned" (the apparent edge smears to
+the midpoint between two samples, not the true boundary).
+
+**(2) Fix: `wallArraysFlat(loop, zBot, zTop, colorAt)`** (new, pure, frame-mesh.js) -- every
+segment between two consecutive loop points gets its OWN 4 vertices (never shared with a
+neighbour) and ONE flat colour, sampled at the segment's own midpoint via `colorAt`. Same
+principle `creasedNormals` elsewhere in this file already uses for NORMALS at a hard edge, applied
+here to COLOUR. `ringArrays` gained an `includeOuterWall = true` (default, fully backward-
+compatible) parameter so its own built-in outer-wall face can be left OUT when a caller needs to
+fill that exact gap with a SEPARATE `wallArraysFlat`-built piece instead (avoiding two coincident
+meshes / z-fighting). `applyFrameToPanel` now:
+- builds `frame-panel-wall` entirely via `wallArraysFlat` (replacing the old `wallArrays` + smooth
+  per-vertex colour array);
+- builds `frame-bars` as a MERGE of two pieces into one mesh (same name, same lifecycle, no new
+  consumer-visible surface): `ringArrays(..., includeOuterWall:false)` for everything that's
+  uniformly wood-coloured (the top cap, the inner wall, the bottom -- smooth shared-vertex
+  interpolation is harmless there since every vertex IS the same colour already, nothing to
+  blend), merged with a `wallArraysFlat`-built flat outer wall (the one that carries the edge
+  colour) at the SAME position its old built-in outer wall used to occupy;
+- applies the same `wallArraysFlat` treatment to `frame-window-wall` (the inset-window's own hole
+  wall) for consistency, low marginal cost reusing the same function.
+Also removed 2 of my own item-67b tests that became genuinely flaky under the new midpoint-based
+sampling (a synthetic "narrow u-band" probe -- `u` is the terrain grid's own normalized x,y
+coordinate, not an arc-length parametrisation of the perimeter, so a fixed u-width band covers a
+wildly different ARC length depending on local boundary direction) -- superseded by the much
+stronger, geometry-based alignment tests in (4) below, not silently dropped.
+
+**(3) Reproduced Fred's own setup FRESH, with a BETTER camera, before declaring anything fixed --
+the dispatch's own explicit instruction, because my item 67b "before" shot never actually showed
+the triangles.** Rebuilt the identical scenario (template_1, Shape Lattice, Offset from frame, the
+real Stripe tool, black/white, every one of the 12 contour segments tapped) and added TWO NEW
+views: (a) a straight-on SIDE VIEW -- camera placed along the true OUTWARD NORMAL of a genuinely
+straight contour segment (parsed directly from that segment's own SVG path `d`, "M x1 y1 L x2 y2",
+not guessed), looking squarely back at the wall so the rim's own dashes and the wall's own bands
+stack directly above/below each other in the image, for a true apples-to-apples by-eye alignment
+check; (b) a MUCH TIGHTER oblique close-up than item 67b's own (camera distance 0.7 vs 1.3, same
+real-camera.lookAt technique). On the PRE-67c code (temporarily reverted via `git show HEAD:... >`,
+the item-67b-only state, restored after from a backup, confirmed byte-identical via `git diff
+--stat`), these finally show the bug unambiguously: the side view shows a solid BLACK wall band
+sitting under mostly TAN/RED rim content (a real, severe misalignment -- not merely "a bit
+wider"), and the oblique close-up shows a visibly smeared, blended black/white boundary at the
+rim-to-wall seam. On the FIXED code, the SAME two views show: the side view's wall bands line up
+cleanly under their own matching rim dashes with crisp edges; the oblique close-up shows a sharp,
+un-blended transition.
+
+**(4) Tests** (all mutation-tested against the pre-67c, item-67b-only code before trusting them --
+same revert/restore cycle as (3), 4 of the new assertions correctly failed on the old code,
+restored, confirmed byte-identical): `tests/frame-wall-edge-colour.test.js`:
+- `wallArraysFlat` tested DIRECTLY and purely (no `applyFrameToPanel` involved): every segment's
+  own 4 corners share the exact same colour (no blending, ever); adjacent segments genuinely have
+  DIFFERENT colours when their own midpoints do (non-vacuous -- not "everything is secretly one
+  colour"); the sampled point is provably the segment's own MIDPOINT, not its start or end.
+- The dispatch's own explicitly-requested alignment test, built with a simple, unambiguous 3-band
+  (red/green/blue thirds) fake canvas so no reasonable resolution could straddle a boundary
+  ambiguously: for `frame-panel-wall`, EVERY segment's own flat colour (sampled via
+  `applyFrameToPanel`'s real pipeline) is checked against an INDEPENDENT re-sample of the SAME
+  canvas at that segment's own midpoint (the ground-truth uv computed via `(x+W/2)/W, (y+H/2)/H`,
+  the same formula `buildHeightField` itself uses, re-derived here rather than imported -- not the
+  code checking itself) -- 643 segments checked, 0 mismatches. For `frame-bars`, every vertex
+  whose OWN colour is NOT the frame's declared wood colour (i.e. every artwork-coloured vertex,
+  which can only be on the outer wall) is checked the same way -- 5712+ vertices checked, with a
+  <1% tolerance for the handful that genuinely sit AT one of the 3 band boundaries (a real, bounded
+  edge case: a segment's own midpoint can legitimately land on the opposite side of a boundary
+  from one of that SAME segment's own endpoint vertices -- not a general alignment failure).
+Full suite: **170 files, 3335/3335**.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js`,
+`tests/frame-wall-edge-colour.test.js`. No other file touched. All scratch diagnostics
+(`repro67c.mjs` and its own before/after scratch output dirs, the dev-server process, the chrome
+profile dirs) deleted/stopped before commit.
+
+## H23 item 68, Part 1 of 2 (SPIKE -- app side, no Fusion): render the artwork's colour layers to
+a transparent, board-aligned PNG at a declared px/in, verified live with real pixel data. Part 2
+(Fusion: decal placement, transparency-over-wood, groove alignment, timing, re-Send) needs Fusion
+access other seats (b5, de) are using first -- requesting it in the pass note, not started.
+
+**Approach: reuse the REAL app's own rendering pipeline, running for-real in a headless browser --
+not a reimplementation.** `tools/repro/decal_png_spike.mjs` (new, no new dependency -- same raw-
+CDP-over-WebSocket convention `tools/repro/capture_send_payload.mjs`/`frame_send_shots.mjs`
+already use): drives the live palette page headless, reproduces Fred's own exact scenario (the
+SAME one items 66/67/67b/67c already use for live verification -- template_1, Shape Lattice +
+Offset from frame, every contour segment striped black/white via the real Stripe tool,
+rails/ties/nodes coloured), then in-page calls the APP'S OWN existing functions in their own real
+order: `editor.save()` (the real sketch SVG) -> `buildDrapeSvg(editor._layers, sketchSvg)`
+(`drape-svg.js`, already filters down to only colour-carrying artwork, transparent everywhere
+else -- UNCHANGED, no new code needed there) -> `sanitizeSvgForRaster` -> `prepareSvgForRaster(svg,
+pxW, pxH)` -> `renderSvgNative(ctx, svg, pxW, pxH)` (`core/stamp/render-svg.js`, the SAME
+rasterizer the stamp pipeline and the 3D preview's own drape texture already use) ->
+`canvas.toDataURL('image/png')`, decoded and written to disk in Node. Pixel dimensions follow the
+SAME convention `editor.save()`'s own `dpi` param already establishes (`editor-io.js`):
+`pxW = round(boardWidthIn * declaredPxPerIn)`, `viewBox` stays raw inches -- not a new convention,
+just reused at a caller-declared resolution instead of the editor's own default 96.
+
+**Verified with REAL pixel data, not a glance at the PNG** (per this project's own "verify pixels"
+discipline): sampled the LIVE in-page canvas (no PNG decoder needed in Node -- this repo has none
+installed, confirmed) at known points BEFORE handing bytes to Node. At the declared 40 px/in on a
+7x9in board (280x360px): a corner pixel reads `(0,0,0,0)` -- fully transparent, confirming "no
+artwork, no colour" -- and the board's own centre, which this seed's own lattice happened to put a
+rail across, reads `(198,40,40,255)` -- an EXACT match to the declared `#c62828` red, fully
+opaque. Also rendered at 150 px/in (1050x1350px) for a visual-fidelity/file-size comparison: both
+resolutions show clean, correctly-coloured, board-aligned artwork on inspection (saved to
+`shots/seatA`); file size scales roughly as expected with pixel count (~17KB at 40 px/in, ~101KB
+at 150 px/in, both small enough to ship inline with a Send payload without concern).
+
+**Scope discipline, per the dispatch's own "measure, don't build it out": this tool is standalone,
+NOT wired into the real Send flow at all.** `export-flow.js`'s own `sendToFusion` (the real
+payload-assembly function) is untouched; no new field was added to the real Send payload. The ONE
+hook point for a FUTURE wiring pass, if Fred approves after seeing the Fusion spike results, is
+noted here for whoever does that: `sendToFusion` (`export-flow.js:460-548`) already bakes a
+per-stamp-layer SVG into the payload the same general way (`bakedLayers`, line 512) -- a
+`decalPng`/`pngDataUrl` field could sit alongside it there, built via this SAME in-page pipeline
+(not duplicated), the moment this spike is actually approved for production use.
+
+**One open note, not a bug, flagged for whoever eventually wires this in:** the live scenario's
+own lattice composition (tie/node counts) differed between two otherwise-identical runs of this
+tool (seed is not pinned by this spike's own setup) -- harmless for a spike (each run still
+produces an internally-consistent, correctly-rendered PNG), but a production "Send" integration
+would want the SAME seed the REST of that Send already committed to, not a fresh random one.
+
+**Committed this item:** `tools/repro/decal_png_spike.mjs` (new). No other file touched -- no
+production code changed at all for Part 1. Scratch output directories (`decal-spike`,
+`decal-spike-150dpi`), the dev-server process, and the chrome profile dir deleted/stopped before
+commit; the two representative PNGs kept only in `shots/seatA` for review.

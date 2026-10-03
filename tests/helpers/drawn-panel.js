@@ -15,12 +15,34 @@ export const FakeTHREE = {
     setAttribute(k, a) { this.attributes[k] = a; }
     setIndex(ix) { this.index = { array: Array.isArray(ix) ? ix : Array.from(ix) }; }
     computeVertexNormals() {}
+    dispose() {} // H23 item 67: TerrainPreview._clearFrameMeshes calls this on teardown
   },
   BufferAttribute: Attr, Float32BufferAttribute: Attr,
   Mesh: class { constructor(g, m) { this.geometry = g; this.material = m; } },
+  // H23 item 67/67b: real THREE.js wraps a numeric `specular` (e.g. buildSolidMesh's own
+  // 0x111111) into a Color instance with its own .clone() -- mirrored here so code that calls
+  // material.specular.clone() (the drape overlay's own material recipe, core/preview/index.js)
+  // works against a mesh built through this fake too. Also parses an actual hex STRING (e.g.
+  // '#a17543', FRAME_COLORS' own format) into real r/g/b 0..1 floats -- item 67b's own frame-bars
+  // wood-colour fallback reads .r/.g/.b directly, and a stub that only stored .hex silently
+  // produced undefined -> NaN once something actually used the colour value, not just .clone().
+  Color: class {
+    constructor(hex) {
+      this.hex = hex;
+      const s = typeof hex === 'number' ? hex.toString(16).padStart(6, '0') : String(hex).replace('#', '');
+      this.r = parseInt(s.slice(0, 2), 16) / 255;
+      this.g = parseInt(s.slice(2, 4), 16) / 255;
+      this.b = parseInt(s.slice(4, 6), 16) / 255;
+    }
+    clone() { return new FakeTHREE.Color(this.hex); }
+  },
   MeshPhongMaterial: class {
-    constructor(o) { Object.assign(this, o); }
+    constructor(o) {
+      Object.assign(this, o);
+      if (typeof this.specular === 'number') this.specular = new FakeTHREE.Color(this.specular);
+    }
     clone() { return new FakeTHREE.MeshPhongMaterial({ ...this }); }
+    dispose() {} // H23 item 67: TerrainPreview._clearFrameMeshes calls this on teardown
   },
 };
 
@@ -31,7 +53,7 @@ export const PANEL_COLOUR = [0.6, 0.5, 0.3];
 export function carvedPanel(W, H, nx, nz, f, thick) {
   const heights = new Float32Array(nx * nz);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) heights[j * nx + i] = f(-W / 2 + (i / (nx - 1)) * W, -H / 2 + (j / (nz - 1)) * H);
-  const { pos } = buildHeightField(heights, nx, nz, W, H);
+  const { pos, uvs } = buildHeightField(heights, nx, nz, W, H);
   const off = new Float32Array(pos.length), e = 1e-4, colours = new Float32Array(nx * nz * 3);
   for (let k = 0; k < nx * nz; k++) {
     const x = pos[k * 3], y = pos[k * 3 + 1];
@@ -39,7 +61,11 @@ export function carvedPanel(W, H, nx, nz, f, thick) {
     off[k * 3] = x + (gx / l) * thick; off[k * 3 + 1] = y + (gy / l) * thick; off[k * 3 + 2] = pos[k * 3 + 2] - thick / l;
     colours.set(PANEL_COLOUR, k * 3);
   }
-  const mesh = buildSolidMesh(FakeTHREE, pos, off, nx, nz, { topColours: colours });
+  // H23 item 67: real boards always carry a uv attribute (index.js's own buildSolidMesh call
+  // passes topUvs: field.uvs) -- the edgeSampler colouring reads attrs.uv the same way attrs.color
+  // is read, so this helper needs to supply it too, or every wall-colour test would (silently)
+  // never reach the sampler path at all.
+  const mesh = buildSolidMesh(FakeTHREE, pos, off, nx, nz, { topColours: colours, topUvs: uvs });
   // the whole solid as drawn before any trim (top, underside, side walls)
   const solid = { geometry: { attributes: mesh.geometry.attributes, index: { array: Array.from(mesh.geometry.index.array) } } };
   return { mesh, solid, grid: { W, H, nx, nz, topPos: pos, botPos: off } };

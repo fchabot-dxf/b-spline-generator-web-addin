@@ -186,6 +186,50 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 68 -- SPIKE: artwork colours in Fusion as ONE decal (Fred, 2026-10-03). Measure, don't build it out.
+Fred wants the artwork's colours visible in Fusion, the cheap way. Fusion's API has decals (checked by the advisor):
+component.decals.createInput(imageFilename, faces) -> DecalInput{transform, opacity, isChainFaces,
+creationOccurrence, targetBaseFeature}; decals.add(input). PNG/JPEG/TIFF.
+(1) App side (no Fusion): on Send, render the artwork's colour layers to a TRANSPARENT PNG (alpha = 0 where no
+    artwork; the same colours as the 3D preview) at a declared resolution (e.g. 40 px/in), board-aligned, and ship
+    it with the payload (or write it next to the STEP).
+(2) Fusion spike, ONE real board (a T1 Send with lattice + a striped contour): apply the PNG as a decal on the
+    Stamped body's top face with isChainFaces, scaled/positioned to the board. Answer with screenshots: does the
+    PNG transparency show the wood through? Does the image line up with the carved grooves (over the whole board,
+    and on steep slopes)? Seconds added to a Send? Does it survive a re-Send (old decal removed, no duplicates)?
+(3) Report + shots to the advisor; no wiring into the normal Send until Fred sees it.
+Fusion: ask the advisor for 'Fusion free' (b5 and de go first). Commit 'H23 item 68: ...'.
+
+## Item 67c -- wall colours must ALIGN with the rim, crisp (advisor review of 1214_item67b_after_closeup-rim.png)
+Full-height wall colour is in (fd5dfd0). Two things still wrong in your own after close-up:
+ 1. MISALIGNED: the wall's black/white bands do not sit under the rim's black/white dashes. A black rim dash sits
+    over a white wall band, and the wall bands are much wider than the dashes. Requirement: the wall colour at
+    perimeter position s == the top artwork's colour at the SAME outline point s, exactly. Check the perimeter
+    parametrisation the wall uses against the one the stripe/contour drawing uses (arc length from the same
+    start point, same direction, same units?) and the sampling density (a 0.25 in dash needs wall vertices at
+    least that dense, e.g. split at every colour boundary).
+ 2. BLURRY: band edges fade over a wide gradient. Use flat colour per wall segment (split vertices at the colour
+    boundary, or a 1D texture with NEAREST filtering), never vertex-colour interpolation across a boundary.
+Test: sample N points along the outline; for each, the wall colour (top AND bottom of the wall) == the rim colour
+there (pure, no WebGL). Shots: the same two views plus a straight-on side view of one wall with the rim visible,
+so alignment can be judged by eye. And re-check Fred's triangles: your 'before' rim shot does not show them, so
+build his exact setup (oblique view, striped black/white contour like his 10.png) before declaring them gone.
+Commit 'H23 item 67c: ...'.
+
+## Item 67b -- item 67 REWORK (advisor review of 1130_item67_after.png, 2026-10-03)
+Item 67 is accepted as a step (8c40319: the shared sampler, the toggle, and the manual-tie proof are good). But the
+brief was 'that colour continues straight down the side wall for the wall's FULL HEIGHT'. In the after shot the
+walls are still plain grey/beige below a thin green lip. Fred colours his real board's edges, so the preview must
+show the WHOLE wall in the edge colour (green under the contour, a red band where a rail meets the edge, the stripe
+colours under a striped contour), top to bottom.
+Saw-teeth: Fred's close-up (black/white striped contour, oblique view of the rim) shows alternating
+wall-colour/stripe-colour TRIANGLES along the rim. 'z mismatch < 0.01 in' does not explain what he saw. Reproduce
+HIS case first (a striped contour, his camera angle, zoomed on the rim), capture it, and fix what you see. If it's
+per-vertex colour interpolation across a triangle that spans two colours, give the wall its own vertices (split
+along the colour boundaries), so each triangle has one colour.
+Before/after shots of the SAME two views: the whole board, and the close-up rim at Fred's angle. Commit 'H23 item
+67b: ...'.
+
 ## Item 67 -- 3D preview: colour the board's side walls 'teint dans la masse' (Fred, 2026-10-03, screenshot)
 Fred colours the real board's edges to match the artwork, so the preview should show it: wherever the top artwork
 (lattice rails/ties/nodes/contour, stripes, stamp colours) reaches the board's outer edge, that colour continues
@@ -619,3 +663,6 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-65] (131/133; T10 archRise:min -> advisor's item 62; T13 neckWidth:min covered by the mitersCollide guard 578660e) re-run the full matrix on e11e15d (regenerated payloads) + triage the 2 SILENT cases. Commit as 'H23 item 65: ...'.
 - [x] [H23-item-66] Shape Lattice: no tie generated on/touching the contour -- declared clearance, fix in the generator, pure test over templates x seeds, before/after shots. Commit as 'H23 item 66: ...'.
 - [ ] [H23-item-67] 3D preview: side walls take the edge colours of the artwork (teint dans la masse), shared colour sampler, 'Colour edges' toggle, tests, before/after shots. Commit as 'H23 item 67: ...'.
+- [x] [H23-item-67b] (step: full-height walls done; alignment -> 67c) item 67 rework: walls coloured FULL height in the edge colours; reproduce Fred's striped-rim close-up and remove the triangles; before/after of both views. Commit as 'H23 item 67b: ...'.
+- [x] [H23-item-67c] wall colour ALIGNED with the rim (same perimeter parameter) and crisp (no interpolation across colour boundaries); pure alignment test; side-view shot; re-check Fred's triangles in his exact setup. Commit as 'H23 item 67c: ...'.
+- [ ] [H23-item-68] SPIKE: artwork colours as one transparent-PNG decal on the Stamped top face -- alignment, transparency, time, re-Send; shots; no wiring yet. Commit as 'H23 item 68: ...'.

@@ -382,11 +382,39 @@ export function wallArrays(poly, zBot, zTop) {
   return { positions, index };
 }
 
+/**
+ * H23 item 67c (Fred's own close-up, reviewed again: the wall's black/white bands were
+ * MISALIGNED with the rim's own dashes and BLURRY -- band edges fading over a wide gradient):
+ * `wallArrays` above shares each vertex between its two neighbouring quads, so THREE's own
+ * per-vertex colour interpolation smoothly BLENDS any two quads that sampled a different colour
+ * -- the "wide gradient" is that blend, at the scale of one sample spacing, not a resolution
+ * problem alone (item 67b's own WALL_COLOR_OVERSAMPLE already samples far finer than one stripe).
+ * This is the SAME "flat colour per segment" fix the dispatch itself names (duplicate vertices at
+ * every segment boundary, same principle `creasedNormals`, elsewhere in this file, already uses
+ * for NORMALS at a hard edge): each segment between two consecutive `loop` points gets its OWN 4
+ * vertices (never shared with its neighbours) and ONE flat colour, sampled at the segment's own
+ * MIDPOINT via `colorAt` -- so a colour boundary falling between two loop points still lands on
+ * the correct side of the nearer segment, with NO blend zone at all, matching the rim's own crisp,
+ * per-pixel-exact texture edge instead of smearing across a whole sample spacing.
+ */
+export function wallArraysFlat(loop, zBot, zTop, colorAt) {
+  const n = loop.length, positions = [], index = [], colors = [];
+  for (let k = 0; k < n; k++) {
+    const a = loop[k], b = loop[(k + 1) % n];
+    const c = colorAt({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const base = positions.length / 3;
+    positions.push(a.x, a.y, zBot(a), a.x, a.y, zTop(a), b.x, b.y, zBot(b), b.x, b.y, zTop(b));
+    for (let i = 0; i < 4; i++) colors.push(c[0], c[1], c[2]);
+    index.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+  }
+  return { positions, index, colors };
+}
+
 /** The bar ring between corresponding `outer`/`inner` loops: top (at zTop) and bottom (at zBottom), outer
  *  wall and inner wall. `zTop`/`zBottom` are each a per-point function OR a fixed number, so the same
  *  primitive serves a bottom that follows the surface (the top, which always tracks the underside) as well
  *  as one that stays flat (both bars' own bottom, coplanar with the main frame's own frameBottomZ plane). */
-export function ringArrays(outer, inner, zBottom, zTop, maxStep = Infinity) {
+export function ringArrays(outer, inner, zBottom, zTop, maxStep = Infinity, includeOuterWall = true) {
   const n = outer.length;
   if (inner.length !== n) throw new Error(`ringArrays: loops do not correspond (${n} vs ${inner.length})`);
   const positions = [], index = [];
@@ -409,11 +437,38 @@ export function ringArrays(outer, inner, zBottom, zTop, maxStep = Infinity) {
     }
     index.push(oB[k], iB[k], oB[m], iB[k], iB[m], oB[m]); // bottom, per zBottom(p)
     const oT = top[0], iT = top[rows];
-    index.push(oB[k], oB[m], oT[k], oT[k], oB[m], oT[m]); // outer wall
+    // H23 item 67c: `includeOuterWall=false` leaves this one face out -- the OUTER wall vertices
+    // (oB/oT) still exist (the bottom ring + top cap's own row 0 both need them), just not
+    // connected into their own vertical quad here. Lets a caller fill that exact gap with a
+    // SEPARATE, flat-coloured wallArraysFlat mesh instead (the bars' own outer wall needs crisp,
+    // non-blended colour the SAME way frame-panel-wall now does; the rest of the ring -- this
+    // inner wall, the top cap, the bottom -- stays uniformly wood-coloured, where smooth
+    // shared-vertex interpolation is harmless since every vertex there is the SAME colour anyway).
+    if (includeOuterWall) index.push(oB[k], oB[m], oT[k], oT[k], oB[m], oT[m]); // outer wall
     index.push(iB[k], iT[k], iB[m], iT[k], iT[m], iB[m]); // inner wall
   }
-  return { positions, index };
+  // `rows`/`n` (H23 item 67b): so a caller building a MATCHING per-vertex colour array (the
+  // bars' own outer-wall edge colour, applyFrameToPanel) can reproduce this function's exact
+  // vertex order ([(rows+1) top rows of n][n outer-bottom][n inner-bottom]) without re-deriving
+  // `rows` from `widest`/`maxStep` a 2nd time -- the one true computation stays here.
+  return { positions, index, rows, n };
 }
+
+/**
+ * H23 item 67b (Fred's own close-up: a striped black/white contour showed alternating wall-
+ * colour/stripe-colour TRIANGLES along the rim): `panel`'s own 1-sample-per-cell resolution is
+ * coarse enough that a single stripe (routinely narrower than one cell once a contour segment is
+ * split into several) can start and end strictly BETWEEN two consecutive wall vertices -- the one
+ * wall quad spanning them then linearly interpolates hard black-to-white across its own triangle,
+ * which is exactly the "sawtooth" look. This oversamples the SAME boundary curve `panel`/`outer`/
+ * `inner` already trace, SEPARATELY, for the wall's and bars' own colour-bearing geometry only --
+ * never `panel` itself (the clip/trim polygon) or `outer`/`inner` as returned by `frameLoopsWorld`
+ * (consumed elsewhere, e.g. index.js's own `_trimPoly`), since oversampling THOSE directly was
+ * tried first and MEASURED to break `frame-bartop-drawn.test.js` (a new seam opens between the
+ * panel and the bars when they stop sharing the exact same boundary resolution -- see this file's
+ * own git history). Colour needs this; the panel/bars trim boundary does not.
+ */
+export const WALL_COLOR_OVERSAMPLE = 4;
 
 /** The grid-fine world-space loops the trim, wall and bars all use (one place). */
 export function frameLoopsWorld(spec, grid) {
@@ -514,8 +569,21 @@ function _mesh(THREE, { positions, index }, material, attrs = {}) {
  * mesh: trim its index in place (from the untrimmed copy kept in userData)
  * and return the extra meshes (edge wall + bars) the caller adds to the scene.
  * `spec == null` restores the untrimmed panel and returns [].
+ *
+ * H23 item 67 (Fred: "teint dans la masse" -- the board's edge should show
+ * whatever artwork colour reaches it): `edgeSampler(u, v) -> {r,g,b} (0..1)
+ * | null`, optional. When given, the panel's own outline wall and the
+ * inset-window wall sample it (at each point's own uv, via the SAME
+ * `lerpAttr`+`surf.at` machinery the heat-map colour already uses) INSTEAD
+ * of the heat-map colour -- falling back to the heat-map when the sampler
+ * returns null (no artwork at that point, e.g. fully transparent) or isn't
+ * given at all, so omitting it reproduces the exact pre-item-67 behaviour.
+ * Plain callback, not a canvas/texture reference, so this stays testable
+ * with a fake and the caller (TerrainPreview) owns the real drape-canvas
+ * sampling (drape-svg.js's sampleDrapeUV) -- one shared sampler, not a
+ * colour pipeline duplicated in here.
  */
-export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
+export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
   const geom = panelMesh.geometry;
   if (!geom.userData.fullIndex && geom.index) geom.userData.fullIndex = Array.from(geom.index.array);
   const full = geom.userData.fullIndex;
@@ -586,25 +654,106 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
     const bot = (p) => surf.at(p.x, p.y).lo.z;
     const wallMat = panelMesh.material.clone();
     wallMat.side = THREE.DoubleSide;
-    const w = wallArrays(panel, bot, top);
-    const wallAttrs = {};
-    if (attrs.color) { // the panel's own colours at the top edge, as its own side walls
-      const col = [];
-      for (const p of panel) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
-      wallAttrs.color = { array: col, itemSize: 3 };
+    // H23 item 67b: a finer, colour-only sampling of the SAME boundary `panel` traces (its own
+    // role as the trim/clip polygon above is untouched) -- see WALL_COLOR_OVERSAMPLE's own doc
+    // comment for why (the saw-teeth fix).
+    const panelPrimsForWall = spec.panelPrimitives || spec.outerPrimitives;
+    const fineWallLoop = toWorld(samplePairedOutlines(panelPrimsForWall, panelPrimsForWall, cell / WALL_COLOR_OVERSAMPLE).outer, W, H);
+    // H23 item 67: the artwork colour at this edge point if edgeSampler finds one there, else the
+    // panel's own heat-map colour (today's look) -- see applyFrameToPanel's own doc comment. Only
+    // overrides when the board has heat-map colour data at all (attrs.color) -- same precondition
+    // as before this item (wallMat.vertexColors only reads true when the panel material has it,
+    // which `useColours` in terrain-mesh.js already gates on that same data existing).
+    const edgeColor = (p) => {
+      const hit = surf.at(p.x, p.y).hi;
+      if (edgeSampler && attrs.uv) {
+        const [u, v] = lerpAttr(attrs.uv.array, 2, full, hit);
+        const c = edgeSampler(u, v);
+        if (c) return [c.r, c.g, c.b];
+      }
+      return lerpAttr(attrs.color.array, 3, full, hit);
+    };
+    // H23 item 67c: wallArraysFlat (not wallArrays) -- flat, non-blended colour per segment, see
+    // that function's own doc comment for why (the misalignment/blur rework).
+    let wall;
+    if (attrs.color) {
+      const flat = wallArraysFlat(fineWallLoop, bot, top, edgeColor);
+      wall = _mesh(THREE, flat, wallMat, { color: { array: flat.colors, itemSize: 3 } });
+    } else {
+      wall = _mesh(THREE, wallArrays(fineWallLoop, bot, top), wallMat, {});
     }
-    const wall = _mesh(THREE, w, wallMat, wallAttrs);
     wall.name = 'frame-panel-wall';
     extra.push(wall);
     if (inner || windowed) {
       // H8: spec.color is already the declared frame colour (frameSolidSpec,
       // editor-frame-profile.js) — this fallback only fires when it's null
       // (no matching wood found); Ash's own declared entry keeps it consistent.
-      const barMat = new THREE.MeshPhongMaterial({ color: spec.color || FRAME_COLORS['3D Ash - Unfinished'], side: THREE.DoubleSide,
-        shininess: 12, specular: 0x0a0a0a });
+      const woodColorHex = spec.color || FRAME_COLORS['3D Ash - Unfinished'];
+      // H23 item 67b (MEASURED via a live raycast into the "plain grey/beige" area the advisor's
+      // own close-up review pointed at): frame-bars' own OUTER wall sits at the EXACT SAME (x,y)
+      // as frame-panel-wall above (outer === panel whenever panelLip is 0, F22's own comment) --
+      // and, being the WIDER ring extending all the way to the frame's true outer edge, it is what
+      // a viewer actually sees as "the side of the piece", not the comparatively thin
+      // frame-panel-wall sliver sitting mostly behind/under it. vertexColors on unconditionally
+      // (not gated on attrs.color like the panel wall above -- bars never read the thinness
+      // heat-map at all, only the edge sampler or their own plain wood colour, so there's no
+      // "no colour data" case to gate on): every point gets EITHER the artwork colour (if
+      // edgeSampler finds one there) or the frame's own declared wood colour, so omitting
+      // edgeSampler (or it finding nothing anywhere) reproduces today's flat-wood look exactly,
+      // just painted via vertex colours instead of a flat material colour.
+      const barMat = new THREE.MeshPhongMaterial({ color: 0xffffff, side: THREE.DoubleSide,
+        shininess: 12, specular: 0x0a0a0a, vertexColors: true });
       capFrameBrightness(barMat);
+      // Shared by both the main bars (if (inner) below) and the window bars (if (windowed) below)
+      // -- barMat now always has vertexColors:true, so EVERY mesh using it needs its own `color`
+      // attribute or it renders flat black (vertexColors reads an absent attribute as all-zero,
+      // not "use the material's own colour") -- the exact trap winWallAttrs' own comment below
+      // already names for a sibling case.
+      const woodColor = new THREE.Color(woodColorHex);
+      const wood3 = [woodColor.r, woodColor.g, woodColor.b];
       if (inner) {
-        const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
+        const barEdgeColor = (p) => {
+          if (edgeSampler && attrs.uv) {
+            const hit = surf.at(p.x, p.y).hi;
+            const [u, v] = lerpAttr(attrs.uv.array, 2, full, hit);
+            const c = edgeSampler(u, v);
+            if (c) return [c.r, c.g, c.b];
+          }
+          return wood3;
+        };
+        // Oversampled (WALL_COLOR_OVERSAMPLE) the SAME way as the panel wall above, and for the
+        // SAME reason (the saw-teeth fix) -- a fresh outer/inner pair LOCAL to this call, never
+        // replacing frameLoopsWorld's own (coarser) outer/inner, which other callers still use at
+        // their original resolution (index.js's own _trimPoly, etc).
+        // Oversample the PERIMETER only (outer/inner's own point count) -- `maxStep` below (the
+        // row/across-width subdivision) stays at the ORIGINAL `cell`, not cell/OVERSAMPLE:
+        // quadrupling perimeter AND row density at once (perimeter x rows triangle count)
+        // MEASURED a real timeout at the finest declared spacing (frame-bartop-drawn.test.js,
+        // 0.05in); rows don't need the extra resolution (no colour boundary runs across the bar's
+        // own width), only the perimeter does.
+        const finePaired = samplePairedOutlines(spec.outerPrimitives, spec.innerPrimitives || spec.outerPrimitives, cell / WALL_COLOR_OVERSAMPLE);
+        const fineOuter = toWorld(finePaired.outer, W, H);
+        const fineInner = toWorld(finePaired.inner, W, H);
+        // H23 item 67c: the OUTER wall (the one carrying the edge colour) is built SEPARATELY, flat
+        // (wallArraysFlat, no blending across a colour boundary -- the same fix as the panel wall
+        // above) -- `ringArrays` itself builds everything else (top cap, inner wall, bottom), with
+        // its own outer wall left OUT (`includeOuterWall: false`) so the two pieces don't occupy
+        // the same space twice. Everything ringArrays still builds is uniformly wood-coloured, so
+        // its own shared-vertex smooth interpolation is harmless there (every vertex is the same
+        // colour already -- nothing to blend).
+        const restGeom = ringArrays(fineOuter, fineInner, spec.frameBottomZ, bot, cell, false);
+        const restCol = [];
+        for (let i = 0; i < restGeom.positions.length / 3; i++) restCol.push(wood3[0], wood3[1], wood3[2]);
+        const outerWallGeom = wallArraysFlat(fineOuter, (p) => (typeof spec.frameBottomZ === 'function' ? spec.frameBottomZ(p) : spec.frameBottomZ), bot, barEdgeColor);
+        // Merge: the outer wall's own vertex indices are offset past restGeom's own vertex count,
+        // one mesh (named 'frame-bars', unchanged), not two coincident ones.
+        const vBase = restGeom.positions.length / 3;
+        const barGeom = {
+          positions: restGeom.positions.concat(outerWallGeom.positions),
+          index: restGeom.index.concat(outerWallGeom.index.map((i) => i + vBase)),
+        };
+        const barCol = restCol.concat(outerWallGeom.colors);
+        const bars = _mesh(THREE, barGeom, barMat, { color: { array: barCol, itemSize: 3 } });
         bars.name = 'frame-bars';
         extra.push(bars);
       }
@@ -619,8 +768,13 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
         // lines above passes) -- not terrain-following. So the bar's thickness genuinely VARIES (thicker
         // where the terrain dips deeper), which is correct and intended; only its top follows the terrain.
         const winPaired = samplePairedOutlines(rectToPrimitives(win.outer), rectToPrimitives(win.inner), cell);
-        const winBars = _mesh(THREE,
-          ringArrays(toWorld(winPaired.outer, W, H), toWorld(winPaired.inner, W, H), spec.frameBottomZ, bot, cell), barMat);
+        const winBarGeom = ringArrays(toWorld(winPaired.outer, W, H), toWorld(winPaired.inner, W, H), spec.frameBottomZ, bot, cell);
+        // No artwork reaches the inset window's own moulding (it's not an outer edge the top
+        // surface's own artwork can touch) -- plain wood colour throughout, via the SAME
+        // vertexColors:true barMat the main bars now share (see that material's own comment).
+        const winBarCol = [];
+        for (let i = 0; i < winBarGeom.positions.length / 3; i++) winBarCol.push(...wood3);
+        const winBars = _mesh(THREE, winBarGeom, barMat, { color: { array: winBarCol, itemSize: 3 } });
         winBars.name = 'frame-window-bars';
         extra.push(winBars);
       }
@@ -636,13 +790,15 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
       // colour map (terrain-mesh.js's own useColours), and without a matching `color` attribute on THIS
       // geometry too, that material renders flat black here (the vertex colour attribute is simply unset,
       // not "no tint") instead of just losing its own per-vertex shading -- the exact reported symptom.
-      const winWallAttrs = {};
+      // H23 item 67c: flat per-segment colour here too (wallArraysFlat), same fix/reason as
+      // frame-panel-wall above.
+      let winWall;
       if (attrs.color) {
-        const col = [];
-        for (const p of winHoleLoop) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
-        winWallAttrs.color = { array: col, itemSize: 3 };
+        const flat = wallArraysFlat(winHoleLoop, bot, top, edgeColor);
+        winWall = _mesh(THREE, flat, wallMat.clone(), { color: { array: flat.colors, itemSize: 3 } });
+      } else {
+        winWall = _mesh(THREE, wallArrays(winHoleLoop, bot, top), wallMat.clone(), {});
       }
-      const winWall = _mesh(THREE, wallArrays(winHoleLoop, bot, top), wallMat.clone(), winWallAttrs);
       winWall.name = 'frame-window-wall';
       extra.push(winWall);
     }

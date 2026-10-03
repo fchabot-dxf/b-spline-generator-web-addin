@@ -245,12 +245,26 @@ export function buildSolidMesh(THREE, topPos, offsetPts, nx, nz, opts) {
 }
 
 /**
+ * Top-cap + bottom-cap index buffer only (no side walls) for a solid laid
+ * out as [Top (count), Bottom (count), SideTop (B), SideBot (B)]. H23 item
+ * 67: the 'Colour edges' toggle, OFF, swaps the drape overlay mesh (which
+ * otherwise shares the FULL solid index, terrain-mesh.js's own
+ * `buildSolidMesh`) to this top+bottom-only index instead, so the artwork
+ * keeps showing on the top/bottom caps but stops appearing on the walls —
+ * without touching buildSolidMesh's own geometry, which still carries the
+ * wall triangles for the base wood/heat-map mesh underneath.
+ */
+export function topCapIndices(nx, nz) {
+  return COORD_SYSTEM.gridQuadFaceIndices(nx, nz, 0, false)
+    .concat(COORD_SYSTEM.gridQuadFaceIndices(nx, nz, nx * nz, true));
+}
+
+/**
  * Top-cap + bottom-cap + side-wall index buffer for a solid laid out as
  * [Top (count), Bottom (count), SideTop (B), SideBot (B)].
  */
 function solidIndices(nx, nz, B, sideStart) {
-  let indices = COORD_SYSTEM.gridQuadFaceIndices(nx, nz, 0, false);
-  indices = indices.concat(COORD_SYSTEM.gridQuadFaceIndices(nx, nz, nx * nz, true));
+  let indices = topCapIndices(nx, nz);
   for (let i = 0; i < B; i++) {
     const next = (i + 1) % B;
     const t1 = sideStart + i;

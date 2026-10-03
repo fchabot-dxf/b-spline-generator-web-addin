@@ -101,6 +101,10 @@ export function applyParam(key, value) {
     AppState.preview?.setCurvesVisible(value);
   }
 
+  if (key === 'colourEdges') {
+    AppState.preview?.setColourEdges(value);
+  }
+
   if (key === 'thickenEnabled') {
     const thickenCon = document.getElementById('thickenOptions');
     if (thickenCon) thickenCon.style.display = value ? 'flex' : 'none';
