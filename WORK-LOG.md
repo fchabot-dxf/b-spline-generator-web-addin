@@ -13053,3 +13053,90 @@ primitive plus two independently-found `start`/`end`-swap bugs (one in entity re
 hacks. 12x6 still fails -- confirmed a PRE-EXISTING Template 1 bug (same failure class, T1 itself reflexes
 there), not this item's own regression. A/B byte-identical on Templates 1-9. `FRAME_HIDDEN` left `True`,
 advisor's own call on whether 12x6's T1-inherited limitation blocks un-hiding.
+
+## H23 item 40 — item 39 follow-ups: live proof, narrowed T7 Generate ranges, a margin-floor render for Fred
+
+Three parts, all done; one new finding flagged (not fixed, out of this item's own scope).
+
+**(2) T7's own Generate ranges, narrowed as DATA, not code.** MEASURED (a joint grid sweep over
+gableNeckWidth x neckHeight x bodyFlareHeight against item 39's real margin rule, all 3 portrait
+sizes): item 39's own 4% raw pass rate at 7x9 was real, not a fluke -- T7's safe region concentrates
+in the upper part of each handle's own range (gableNeckWidth especially: only its own top ~20%, at
+or above the default, stays clear). New `generateRange` field on T7's own 3 `FRAME_HANDLES`
+(`template_data.py`: gableNeckWidth >= 0.45, neckHeight >= 0.13, bodyFlareHeight >= 0.65) --
+`frame-handles.js`'s `generateFrameSeeds` now intersects a handle's own `generateRange` into the
+computed feasible range it draws from; `frameHandles`/drag reads the FULL feasible range directly
+and is untouched, so dragging still reaches everywhere it always could -- this narrows only what
+[Generate] is willing to draw. MEASURED after wiring it in (the REAL `generateFrameSeeds`, 1000 raw
+draws each): 100% (6x9), 59% (7x9), 75% (9x12) -- comfortably past the >= 50% target at every
+portrait size. `GENERATE_MAX_ATTEMPTS` stays at 500 (item 39's own value) as the backstop for the
+remainder; the retry mechanism itself is still load-bearing (mutation-tested: a 3-attempt budget
+still fails for some external seeds). 2 new tests in `tests/frame-template-7.test.js` (the real raw
+pass rate at all 3 sizes; a mutation test stripping `generateRange` from a T7 copy reproduces the
+old low pass rate via the SAME `generateFrameSeeds`), plus 2 tests in
+`tests/frame-no-hooked-miters.test.js` recalibrated (the captured "seed 1" case no longer reads a
+literal 0 margin now that the range is narrower -- found a fresh raw-failing seed and a smaller
+mutation budget that are still true after the narrowing). Regenerated `frame-defs.json/.js`.
+Fast-tier: 970 passed, 0 failed (36 files).
+
+**(1) LIVE PROOF.** Headless-Chrome CDP capture (`capture_send_payload.mjs`) is not reachable from
+this sandboxed session -- Node's own `fetch()` to a freshly-spawned child Chrome's loopback debug
+port failed consistently (confirmed directly: the same port answered `curl` from a plain shell
+launch but not from Node's `spawn`+`fetch` in isolation), and `dangerouslyDisableSandbox` was
+explicitly denied by the auto-mode classifier. Worked around it the RIGHT way, not a shortcut: built
+real `[Send frame]` payloads WITHOUT a browser, using the exact same pure functions
+`frameSendPayload()` itself calls (`generateValidFrameSeeds` + `frameCutProfile` +
+`frameInnerProfile` + `frameSeedGeometry` + `framePayload`, run under vitest, no DOM needed) --
+4 Generate-seed payloads each at 7x9 and 9x12 (8 total, all passing the real guard), saved to
+`scratch/item40_t7_payloads/` as asked. Built a synthetic placeholder B-spline panel directly in
+Fusion (`tools/repro/fusion_t11/item40_send_frame_live.py`, new) -- a plain flat box in the exact
+`B-Spline Set > Clean > panel` hierarchy `_find_bspline_core_body` looks for, since the frame's own
+bar geometry depends only on a body existing with a usable downward face, never on the B-spline's
+own sculpted shape -- then called `_handle_send_frame(payload)` directly, bypassing
+`_handle_generate`'s own STEP-import requirement (irrelevant here) entirely. **LIVE RESULT: all 8
+builds, both board sizes, exactly 5 declared bars, 0 overlaps, 0 slivers under 0.5 cm3, 0
+Fusion-auto-suffixed "(1)" bodies, healthy timeline.** Exact volumes in
+`scratch/item40_send_frame_live_results.json` (not committed, matching items 35/37/38's own
+scratch-json convention).
+
+Then item 38's own owed all-template sweep (new `tools/repro/fusion_t11/item40_all_template_sweep.py`,
+same synthetic-panel technique): every template's own DEFAULT at 7x9, built bar count checked
+against `len(regions.miters)` -- MEASURED (frame-defs.json) to equal `len(FRAME_BARS)` exactly for
+every template that declares names (T6/7/9/11), so it's the one declared count that generalizes to
+every template, named or not. **11 of 13 templates clean** (1,2,3,4,5,6,8,9,11,12,13: exact bar
+count, 0 overlaps, 0 slivers, 0 "(1)" bodies, healthy timeline).
+
+**NEW FINDING, flagged not fixed (out of this item's own scope):** T7 and T10's own DEFAULT
+(unseeded) builds fail live, 0 bars, when sent this way -- `ResolveError: cannot resolve
+'((0.62*(widthIn/2 - boundingboxoffset)...` (T7's own DNA-style derived param). Traced the real
+cause, not guessed: `BuildContext.resolve_val` (`build_context.py`) checks `val in self.active_vars`
+BEFORE falling through to Fusion's own `unitsManager.evaluateExpression` -- and `active_vars` IS
+`ui_data` verbatim (`active_vars = ui_data if ui_data else {}`), which for an untouched default
+includes the param's own raw formula STRING (`frameParam()`'s fallback to the template's declared
+`default`, which for a DNA/derived param like T7's `t7_a` or T10's `archRise` chain IS a formula, not
+a number) under its own name -- so the lookup finds a match and tries
+`ParameterSchema.to_cm(formula_string, unit)`, which only parses a plain number or a unit-suffixed
+one, never a multi-term expression, and raises. **This is NOT caused by this item or item 39** --
+confirmed directly: T7's own SEEDED builds (this item's own 8/8 live passes above) never hit this
+code path at all (`apply_seed_geometry` injects literal points, bypassing the whole DNA-formula
+chain), and T1/2/3/4/5/6/8/9/11/12/13's own defaults have no formula-valued params to trip it.
+Whether the REAL app (through the full `_handle_generate` flow, not this item's own direct
+`_handle_send_frame` call) hits the same thing, or does something upstream that resolves these
+formulas first, is unverified -- flagged for the advisor/Fred to triage as its own item, not
+investigated further here (scope: this item is about the no-hooked-miter guard, not DNA-parameter
+resolution).
+
+**(3) The margin-floor render, for Fred.** Published as a Claude Artifact (real app geometry, not a
+mockup): T7's own eave corner at 7x9, at 4 configurations -- the default (0.060t), the thinnest shape
+that still passes today's 0.04t floor (0.040t), a Generate draw near 0.10t (0.098t), and the FARTHEST
+this corner can be pushed within T7's own declared handle ranges at this board size (0.106t -- 0.15t
+is not reachable here without widening those ranges, itself a useful data point). Each panel shows
+the real outer/inner profile and the actual miter line, labelled with the clearance in inches (0.75in
+frame_thickness: 0.030in / 0.030in / 0.074in / 0.079in). `https://claude.ai/artifact/F3kQ5wcisohBUfNM6uoYEz`.
+Per the brief: the floor itself (0.04t) is UNCHANGED, pending Fred's own call.
+
+Committed as "H23 item 40: ...". File list: `frame-defs.json/.js` (regenerated),
+`editor/frame-handles.js`, `sketches/template_7/template_data.py`,
+`tests/frame-no-hooked-miters.test.js`, `tests/frame-template-7.test.js`,
+`tools/repro/fusion_t11/item40_send_frame_live.py` (new),
+`tools/repro/fusion_t11/item40_all_template_sweep.py` (new).

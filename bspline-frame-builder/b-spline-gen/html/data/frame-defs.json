@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "b2d76b6eda0faa56107d4e123d4444105fb330ef552a4a1473bca72ac115d7ee",
+  "sourceHash": "a5aeb990ef967a63556ece9c9552c3f6405e15fb5eb672ed50bf59fd0350b021",
   "templates": [
     {
       "features": [
@@ -14749,18 +14749,27 @@
         {
           "basis": "hw",
           "binding": "seeded",
+          "generateRange": {
+            "min": 0.45
+          },
           "key": "gableNeckWidth",
           "label": "Neck width"
         },
         {
           "basis": "hh",
           "binding": "seeded",
+          "generateRange": {
+            "min": 0.13
+          },
           "key": "neckHeight",
           "label": "Neck height"
         },
         {
           "basis": "hh",
           "binding": "seeded",
+          "generateRange": {
+            "min": 0.65
+          },
           "key": "bodyFlareHeight",
           "label": "Body flare height"
         }

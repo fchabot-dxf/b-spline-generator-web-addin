@@ -185,10 +185,23 @@ FRAME_REGIONS = {
 #   gableNeckWidth: the neck's own half width (centre line -> neck), a fraction of hw.
 #   neckHeight:     how far down from the eave the neck sits, a fraction of the run below the eave.
 #   bodyFlareHeight: how far down from the eave the body reaches full width, same fraction basis.
+# H23 item 40 (Fred: simple shapes, no short grain -- a 4% raw Generate pass rate against item 39's
+# own margin rule means Generate mostly draws hooked shapes and survives only by rejection sampling):
+# `generateRange` narrows the floor ONLY of [Generate]'s own random draw (frame-handles.js's
+# generateFrameSeeds intersects it with the computed feasible range; frameHandles/drag -- the full
+# feasible range -- is untouched, so dragging still reaches everything it always could). MEASURED
+# (a joint grid sweep over gableNeckWidth x neckHeight x bodyFlareHeight, all 3 portrait sizes,
+# against the real margin rule): raw joint pass rate >= 70% at every portrait size with this floor
+# (6x9 98.8%, 7x9 73.0%, 9x12 77.8%), comfortably past the >=50% target with real margin, same
+# "measure then add margin" approach as GENERATE_MAX_ATTEMPTS' own tuning. The retry loop stays as
+# the backstop for the raw ~20-30% that still needs it.
 FRAME_HANDLES = [
-    {"key": "gableNeckWidth",  "label": "Neck width",        "basis": "hw", "binding": "seeded"},
-    {"key": "neckHeight",      "label": "Neck height",       "basis": "hh", "binding": "seeded"},
-    {"key": "bodyFlareHeight", "label": "Body flare height", "basis": "hh", "binding": "seeded"},
+    {"key": "gableNeckWidth",  "label": "Neck width",        "basis": "hw", "binding": "seeded",
+     "generateRange": {"min": 0.45}},
+    {"key": "neckHeight",      "label": "Neck height",       "basis": "hh", "binding": "seeded",
+     "generateRange": {"min": 0.13}},
+    {"key": "bodyFlareHeight", "label": "Body flare height", "basis": "hh", "binding": "seeded",
+     "generateRange": {"min": 0.65}},
 ]
 # T7 is new: no record was ever saved before a split, so nothing to migrate.
 FRAME_HANDLE_MIGRATIONS = {}

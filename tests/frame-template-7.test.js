@@ -12,10 +12,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
-import { normalizeFrameRecord, framePayload } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { frameCutProfile, frameInnerProfile, frameMiters } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { normalizeFrameRecord, framePayload, frameParam } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
+import { frameCutProfile, frameInnerProfile, frameMiters, miterStaysInsideWood } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import {
-  frameHandles, handleDragPatch, frameSeedGeometry, generateValidFrameSeeds,
+  frameHandles, handleDragPatch, frameSeedGeometry, generateValidFrameSeeds, generateFrameSeeds,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import {
   paramsFromShapeModel, PARAM_ORDER, SHAPE_PARAM_KEYS, FRAME_ONLY_PARAM_KEYS,
@@ -180,9 +180,11 @@ describe('Template 7: the neck/body handles', () => {
 
   it('the table is exactly the approved 3, all seeded, in the app\'s own declared order', () => {
     expect(T7.handles).toEqual([
-      { key: 'gableNeckWidth', label: 'Neck width', basis: 'hw', binding: 'seeded' },
-      { key: 'neckHeight', label: 'Neck height', basis: 'hh', binding: 'seeded' },
-      { key: 'bodyFlareHeight', label: 'Body flare height', basis: 'hh', binding: 'seeded' },
+      // H23 item 40: generateRange narrows only [Generate]'s own draw (frame-handles.js's
+      // generateFrameSeeds); the drag range (frameHandles, below) is the full feasible range, unaffected.
+      { key: 'gableNeckWidth', label: 'Neck width', basis: 'hw', binding: 'seeded', generateRange: { min: 0.45 } },
+      { key: 'neckHeight', label: 'Neck height', basis: 'hh', binding: 'seeded', generateRange: { min: 0.13 } },
+      { key: 'bodyFlareHeight', label: 'Body flare height', basis: 'hh', binding: 'seeded', generateRange: { min: 0.65 } },
     ]);
     expect(T7.handleMigrations).toEqual({});
     const { hs } = drag('gableNeckWidth', {}, 0, 0);
@@ -224,6 +226,50 @@ describe('Template 7: the neck/body handles', () => {
     const payload = framePayload(FRAME_DEFS, rec7(generateValidFrameSeeds(T7, region, 3, undefined, isValid)));
     expect(Object.keys(payload.params).sort()).toEqual(T7.params.filter((p) => p.owner === 'frame').map((p) => p.name).sort());
   });
+
+  it('H23 item 40 (Fred: simple shapes, no short grain -- a 4% raw Generate pass rate against the no-hooked' +
+    '-tip margin rule meant Generate mostly drew hooked shapes and survived only by rejection sampling): ' +
+    'each handle\'s own declared generateRange narrows ONLY [Generate]\'s own raw draw, never below its ' +
+    'floor, and raw (no-retry) pass rate against the margin rule is now >= 50% at every portrait size -- ' +
+    'MEASURED: 100% (6x9), 59% (7x9), 75% (9x12) over 1000 raw draws each.', () => {
+    const t = frameParam(FRAME_DEFS, rec7({}), 'frame_thickness');
+    for (const [W, H] of [[6, 9], [7, 9], [9, 12]]) {
+      const b = board(W, H);
+      const region = frameCutProfile(FRAME_DEFS, rec7({}), b).region;
+      let pass = 0;
+      const N = 1000;
+      for (let seed = 1; seed <= N; seed++) {
+        const seeds = generateFrameSeeds(T7, region, seed * 104729, t); // RAW -- no retry
+        for (const [k, h] of [['gableNeckWidth', 0.45], ['neckHeight', 0.13], ['bodyFlareHeight', 0.65]]) {
+          expect(seeds[k], `${W}x${H} seed ${seed} ${k}`).toBeGreaterThanOrEqual(h);
+        }
+        const outer = frameCutProfile(FRAME_DEFS, rec7(seeds), b);
+        const inn = frameInnerProfile(FRAME_DEFS, rec7(seeds), b);
+        if (outer.defects.length || inn.defects.length) continue;
+        if (miterStaysInsideWood(outer.primitives, frameMiters(outer.primitives, inn.primitives), t)) pass++;
+      }
+      expect(pass / N, `${W}x${H} raw pass rate`).toBeGreaterThanOrEqual(0.5);
+    }
+  }, 30000);
+
+  it('MUTATION (strip generateRange -- the pre-item-40 state): the SAME generateFrameSeeds, given a T7 ' +
+    'copy whose handles have no generateRange, reproduces the old low raw pass rate (<= 10%) at 7x9 -- ' +
+    'proving the declared override is load-bearing, not decorative.', () => {
+    const t = frameParam(FRAME_DEFS, rec7({}), 'frame_thickness');
+    const b = board(7, 9);
+    const region = frameCutProfile(FRAME_DEFS, rec7({}), b).region;
+    const T7_NO_RANGE = { ...T7, handles: T7.handles.map((h) => { const { generateRange, ...rest } = h; return rest; }) };
+    let pass = 0;
+    const N = 1000;
+    for (let seed = 1; seed <= N; seed++) {
+      const seeds = generateFrameSeeds(T7_NO_RANGE, region, seed * 104729, t);
+      const outer = frameCutProfile(FRAME_DEFS, rec7(seeds), b);
+      const inn = frameInnerProfile(FRAME_DEFS, rec7(seeds), b);
+      if (outer.defects.length || inn.defects.length) continue;
+      if (miterStaysInsideWood(outer.primitives, frameMiters(outer.primitives, inn.primitives), t)) pass++;
+    }
+    expect(pass / N, '7x9 raw pass rate with generateRange stripped').toBeLessThanOrEqual(0.1);
+  }, 10000);
 });
 
 describe('the Shape Lattice and every other template never get the neck/body params', () => {

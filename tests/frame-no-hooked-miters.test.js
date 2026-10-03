@@ -125,13 +125,15 @@ describe('H23 item 39: every template\'s own default passes', () => {
 });
 
 describe('H23 item 39: T7\'s own eave -- the captured case item 38 found, confirmed by this rule', () => {
-  it('seed 1 (external seed 1, GENERATE_RETRY_SALT=104729) at 7x9: a real Generate draw with margin 0 ' +
-    '-- a literal re-crossing at the eave, reproduced directly from production code, not a synthetic case', () => {
+  it('seed 1 (external seed 1, GENERATE_RETRY_SALT=104729) at 7x9: a real Generate draw still thin ' +
+    '-- H23 item 40 narrowed T7\'s own generateRange, so this raw draw is no longer a literal 0-margin ' +
+    'crossing (it was, before item 40), but it is still a real reject below the floor, confirming the ' +
+    'rule still catches a genuine near-miss graze, not just the old literal-crossing case', () => {
     const tpl = FRAME_DEFS.templates.find((x) => x.id === 'template_7');
     const b = board(7, 9);
     const region = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: 'template_7', seeds: {} }), b).region;
     const t = frameParam(FRAME_DEFS, normalizeFrameRecord({ templateId: 'template_7', seeds: {} }), 'frame_thickness');
-    const seeds = generateFrameSeeds(tpl, region, 1, t); // RAW draw, no retry -- this is the bad one item 38 found the shape of
+    const seeds = generateFrameSeeds(tpl, region, 1, t); // RAW draw, no retry
     const rec = normalizeFrameRecord({ templateId: 'template_7', seeds });
     const outer = frameCutProfile(FRAME_DEFS, rec, b);
     const inner = frameInnerProfile(FRAME_DEFS, rec, b);
@@ -139,7 +141,7 @@ describe('H23 item 39: T7\'s own eave -- the captured case item 38 found, confir
     expect(inner.defects).toEqual([]);
     const miters = frameMiters(outer.primitives, inner.primitives);
     const margins = miters.map((m) => miterTipMargin(outer.primitives, m, t * MITER_CORNER_EXCLUDE_T_FRAC));
-    expect(Math.min(...margins)).toBeCloseTo(0, 3);
+    expect(Math.min(...margins)).toBeLessThan(t * MIN_MITER_MARGIN_T_FRAC);
     expect(miterStaysInsideWood(outer.primitives, miters, t)).toBe(false);
   });
 });
@@ -194,11 +196,13 @@ describe('H23 item 39: mutation tests -- proving the sweep above is not vacuous'
     expect(realIsValid(tpl, baseRec, b, region, t, seeds), 'the real (new) isValid correctly rejects it').toBe(false);
   });
 
-  it('MUTATION 2 (revert the attempts budget to the pre-item-39 80): some external seeds for T7 @ 7x9/9x12 ' +
-    'exceed it -- MEASURED worst case over 2000 external seeds was 273 (7x9) / 250 (9x12) attempts, so 80 ' +
-    'must fail for some of them', () => {
+  it('MUTATION 2 (an attempts budget below the measured worst case still fails for some external seeds): ' +
+    'H23 item 40\'s own generateRange narrowing (template_data.py) dropped T7\'s worst-case attempts-to-' +
+    'first-pass from 273 (7x9, pre-item-40) to 13 -- GENERATE_MAX_ATTEMPTS stays at 500 regardless (cheap, ' +
+    'and the backstop for whatever raw pass rate the retry still needs), but the RETRY MECHANISM ITSELF ' +
+    'is still load-bearing: a budget of 3 (well under the new worst case) must still fail for some seeds.', () => {
     const tpl = FRAME_DEFS.templates.find((x) => x.id === 'template_7');
-    const OLD_BUDGET = 80;
+    const OLD_BUDGET = 3;
     const SALT = 104729;
     const genValidWithBudget = (region, seed, t, isValid, maxAttempts) => {
       let seeds = generateFrameSeeds(tpl, region, seed, t);
@@ -218,7 +222,7 @@ describe('H23 item 39: mutation tests -- proving the sweep above is not vacuous'
         const seeds = genValidWithBudget(region, seed, t, isValid, OLD_BUDGET);
         if (!isValid(seeds)) sawAFailureAtOldBudget = true;
       }
-      expect(sawAFailureAtOldBudget, `${W}x${H}: expected at least one external seed (of 400) to exceed the old 80-attempt budget`).toBe(true);
+      expect(sawAFailureAtOldBudget, `${W}x${H}: expected at least one external seed (of 400) to exceed a 3-attempt budget`).toBe(true);
     }
   }, 20000);
 });

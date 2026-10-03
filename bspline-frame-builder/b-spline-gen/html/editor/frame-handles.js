@@ -285,16 +285,27 @@ export function frameSeedGeometry(tpl, prof, W, H) {
  * PARAM_ORDER, each range conditional on the values drawn before it, so a
  * generated frame (outline AND inner edge) can never loop or invert. The same
  * `seed` gives the same shape. `region` = the frame's cut-profile region.
+ *
+ * H23 item 40 (Fred: simple shapes, no short grain): a handle's own declared
+ * `generateRange` (template_data.py's FRAME_HANDLES, e.g. T7's own
+ * gableNeckWidth/neckHeight/bodyFlareHeight) narrows the floor/ceiling of
+ * [Generate]'s OWN draw -- intersected with the computed feasible range, so
+ * it can only ever narrow, never widen past what's actually feasible. Drag
+ * handles (frameHandles below) read the full feasible range directly and are
+ * NOT affected -- this only changes what Generate is willing to draw.
  */
 export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl)) {
   const preset = tpl.silhouettePreset;
-  const seeded = new Set(frameHandleTable(tpl).filter((h) => h.binding === 'seeded').map((h) => h.key));
+  const table = frameHandleTable(tpl);
+  const seeded = new Set(table.filter((h) => h.binding === 'seeded').map((h) => h.key));
   const params = { ...paramsFromShapeModel(preset, tpl.shapeModel, region) };
   const seeds = {};
   PARAM_ORDER[preset].forEach((key, i) => {
     if (!seeded.has(key)) return;
     const resolved = generateSilhouette(region, { preset, params }).params;
-    const r = frameParamRanges(tpl, region, resolved, t)[key];
+    let r = frameParamRanges(tpl, region, resolved, t)[key];
+    const gen = table.find((h) => h.key === key)?.generateRange;
+    if (gen) r = { min: Math.max(r.min, gen.min ?? r.min), max: Math.min(r.max, gen.max ?? r.max) };
     const u = FRAME_GEN_BAND[0] + (FRAME_GEN_BAND[1] - FRAME_GEN_BAND[0]) * seededUnit(seed, FRAME_GEN_SALT + i);
     params[key] = seeds[key] = r.min + (r.max - r.min) * u;
   });
