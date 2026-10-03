@@ -186,6 +186,17 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 42 -- one build path: T7/T10 unseeded defaults (advisor, 2026-10-02). Item 41 accepted (cd80bb0).
+The unseeded path is what Fred hits if he picks T7 or T10 and Sends without touching Generate or a handle. Today it
+builds a reflex arc (T7) or 1/4 bars (T10), while the SEEDED path is the one we've tested and fixed (8/8 live).
+(a) Confirm with file:line when the app sends a record without seeds (fresh template pick? after a reset?).
+(b) Preferred fix: DECLARE one path -- whenever seeds are absent, the app sends the seed geometry of the current
+    (default) params, so every Send takes the seeded path. Fix the legacy unseeded construction only if (b) can't
+    cover a real case; say which and why.
+(c) Pure test: a fresh T7 and T10 record's Send payload carries seeds. LIVE: T7 + T10 defaults at 7x9 build all
+    declared bars; all-template default sweep reaches 13/13. Fusion is free (seat B will ask me before its live part).
+Log in WORK-LOG.md. Commit 'H23 item 42: ...'.
+
 ## Item 41 -- triage item 40's finding: T7 + T10 DEFAULT builds give 0 bars via _handle_send_frame (advisor, 2026-10-02).
 Item 40 accepted (b0b644d). Is the 0-bar default real for Fred, or an artifact of skipping the app's own path?
 (a) CODE FIRST (no Fusion): trace what Fred's real Send does -- the palette's message -> bspline_ui's handler(s) ->
@@ -290,4 +301,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-38] (part 1 done c190ac6; part 2 -> item 39, Fred chose a guard) T7 INCOMPLETE FRAME: roof bars never built + sliver '(1)' bodies (eave miter doesn't split); fix + all-template 'built bars == declared bars' check. Commit as 'H23 item 38: ...'.
 - [x] [H23-item-39] NO HOOKED TIPS (Fred-approved guard): the straight corner miter must stay inside the wood, for every template -- Generate rejects, handles stop, all-template test; T7 then builds all 5 bars live. Commit as 'H23 item 39: ...'.
 - [x] [H23-item-40] item 39 follow-ups: (1) live T7 Generate-seed Sends at 7x9 + 9x12 + the all-template built==declared sweep, (2) declare narrower T7 Generate ranges (>= 50% raw pass), (3) margin-floor render for Fred. Commit as 'H23 item 40: ...'.
-- [ ] [H23-item-41] T7/T10 default 0-bar finding: trace the real Send path (code), fix at the root or fix the harness, then live 13/13 default sweep. Commit as 'H23 item 41: ...'.
+- [x] [H23-item-41] T7/T10 default 0-bar finding: trace the real Send path (code), fix at the root or fix the harness, then live 13/13 default sweep. Commit as 'H23 item 41: ...'.
+- [ ] [H23-item-42] one build path: a Send without seeds sends the default params' seed geometry; T7 + T10 defaults build live; 13/13 default sweep. Commit as 'H23 item 42: ...'.
