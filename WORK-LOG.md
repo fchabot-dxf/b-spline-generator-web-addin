@@ -14244,3 +14244,82 @@ hypothesis for cost #2 measured and found wrong (project() is ~4.5% of that cost
 dominant share) -- no fix attempted there, flagged for a dedicated follow-up". Part (B) has no
 code change to commit -- same "measured, explained, nothing safe to prune" shape as item 51's own
 SVG-projection and item 50's own Pulse findings.
+
+## H23 item 53 -- BLOCKER fix: item 52's marker restore could roll back the inlay's own trailing features; the advisor's review caught it before deploy
+
+Dispatch (advisor, 457): item 52 accepted pending one blocker. `restore_marker_position` restores
+the index READ BEFORE the frame's own K features were inserted; with the marker at the end, the
+build growing the timeline by K leaves the restore pointing K items too early, rolling back the
+LAST K items -- the inlay's own trailing features. (1) Pure test + fix: `moveToEnd()` if the
+marker was at the end before, else `prior + K`. (2) LIVE on the real payload: markerPosition ==
+count after Send, every inlay feature active and healthy, identical bodies, a second Send clean.
+(3) Re-time: does 16.1s hold.
+
+**Confirmed the bug exactly as described, by reading the code, before writing anything.**
+`mark_before_inlay` captured only a bare int (`prior = timeline.markerPosition`) with no record
+of the timeline's own count at that moment; `restore_marker_position` blindly wrote that stale
+int back. Once the build inserts K new items AT the marker (H23 item 52's own confirmed
+behavior -- the marker auto-advances per new item), the timeline is K items longer, so the old
+`prior` index now sits K positions too early in the GROWN timeline -- squarely in the territory
+item 53's own dispatch describes.
+
+**Fix:** `mark_before_inlay` now returns `{"prior": ..., "count_before": ...}` (an opaque state,
+callers never inspect it -- `send_frame.py` passes it straight through unchanged) instead of a
+bare int. `restore_marker_position` reads `count_after = timeline.count` at restore time: if
+`prior == count_before` (the marker was at the end before -- the normal case, nothing was rolled
+back), it calls `timeline.moveToEnd()` (falling back to `markerPosition = count_after` if that
+method isn't present, e.g. an older fake); otherwise it restores to `prior + (count_after -
+count_before)`, shifting the old boundary forward by exactly how much the timeline grew, per the
+dispatch's own literal fix. Confirmed live first that `design.timeline.moveToEnd()` actually
+exists on the real API before relying on it (`hasattr` check against the live doc).
+
+**New tests** (`test_timeline_order.py::TestMarkBeforeInlay`): the fake gained an `insert_at_
+marker(name)` method (mirrors the real API confirmed live in item 52 -- a new item lands AT
+`markerPosition`, which then advances by one) and a plain `moveToEnd()`, since the old fake had
+no way to simulate "the timeline grew between mark and restore" at all. Three new cases: (a) the
+actual bug scenario -- marker at the end, 3 items inserted, restore must land at the NEW end (6),
+not the stale prior (3); (b) marker NOT at the end before (something already rolled back on
+purpose) -- restore must land at `prior + K`, not `prior` and not the new end; (c) a stand-in
+timeline with no `moveToEnd()` still reaches the same end position via the `markerPosition`
+fallback. Also updated the two pre-existing tests that asserted the OLD bare-int return shape.
+
+**Mutation-tested**: reverted `restore_marker_position` to the pre-fix body (`timeline.
+markerPosition = state["prior"]`, discarding the count-tracking entirely) and re-ran just the
+`TestMarkBeforeInlay` class -- the 3 new tests failed with exactly the predicted wrong numbers
+(`1 == 3` and `2 == 3` for the two growth-aware cases; `2 == 3` for the moveToEnd-fallback case),
+the 6 pre-existing ones stayed green. Restored from the session's own scratchpad copy (never from
+HEAD -- this fix was never committed yet), cleared the stale `.pyc`, re-ran: all 9 green again.
+
+**LIVE, on the real T7 payload (has a real inlay -- lattice + 4 SVG stamp layers), a fresh scratch
+doc, replaying `_handle_generate` through the ACTUAL production path (`_handle_send_frame` ->
+`fb_engine.send_frame.send_frame`, the function item 52 wired the marker into):**
+- Send 1: 16.152s (matches item 52's own 16.1s claim -- holds). `timeline.markerPosition == timeline.count == 21` (the marker IS at the new end, not the stale pre-build count). Zero unhealthy timeline items. All 9 inlay-named items (`Plane for pattern lattice-...`, 4x `Source - L*-...[constrained]`, 4x their build-only counterparts) report `HealthyFeatureHealthState` and `isSuppressed == False` -- none rolled back.
+- Send 2 (same doc, same payload, `isAppend=False` -- the real "click Send again" path: `_handle_generate` deletes the previous frame + B-Spline Set and rebuilds from scratch): 24.461s. Timeline count unchanged at 21 (nothing leaked). `markerPosition == count == 21` again. Same 9 inlay items, same indices, same healthy/not-suppressed state. `root.occurrences` == exactly `["B-Spline Set:1", "Frame_1:1"]` -- no `:2` duplicates, no leftovers.
+- Document count confirmed clean before and after (4: Fred's 3 real docs + the advisor's own `adv_taper_fp`, never touched).
+
+**One live anomaly found, investigated, and ruled OUT as unrelated.** Both sends logged two
+`[ERROR]` lines: `PROFILE 2/4: NOT BUILT: one profile spans 2 bars (['proj_arc_neck_L/R',
+'proj_roof_L/R']): a miter did not split it` (T7's own neck/roof miter, the same failure CLASS as
+item 38's "eave miter doesn't split" sliver bodies). Before trusting item 53's own result, checked
+whether this was a NEW regression from items 52/53: built a throwaway detached worktree at
+4f96fe9 (the commit immediately before item 51 touched anything) and replayed the IDENTICAL
+payload through the UNMODIFIED pre-51 code. **Same two `[ERROR]` lines, same bars, verbatim.**
+Pre-existing in this exact captured payload, confirmed by direct A/B, not caused by items 51/52/53
+-- flagging for a separate item, not fixing here (out of this item's own scope; T7's neck/roof
+miter chain has its own history of exactly this failure class). Worktree removed after the check.
+
+**Did not re-run the 13-template sweep.** item 53 changes behavior ONLY inside the `prior is
+not None` branch of `restore_marker_position` -- the no-inlay case (`mark_before_inlay` returns
+`None`) hits the exact same `state is None` early-return it always has, character-for-character
+unchanged. The 13-template sweep exclusively exercises the no-inlay path (confirmed in item 52's
+own writeup), so it cannot exercise this item's own change at all; re-running it would spend
+Fusion time proving nothing new. The REAL-payload live check above is the one that actually
+exercises the fixed branch, and it ran twice (fresh Send + re-Send).
+
+Full Python suite: 776 passed (+3, the new growth-aware restore cases), 25 skipped, 0 failures.
+
+Committed as ONE commit (pure fix + tests only -- no separate "part" split, since this is a single
+blocking defect with a single fix): "H23 item 53: fix restore_marker_position to account for the
+timeline's own growth during the build (moveToEnd when nothing was rolled back, prior+K
+otherwise) -- the advisor's review caught this before item 52 deployed". Pre-existing T7
+neck/roof miter finding flagged in the pass-back, not fixed here.

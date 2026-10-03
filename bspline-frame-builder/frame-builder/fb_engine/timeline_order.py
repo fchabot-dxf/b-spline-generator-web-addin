@@ -223,12 +223,14 @@ def mark_before_inlay(design, logger=None):
     sketch AND solid phases insert at the SAME marker, which Fusion itself advances with each new
     item -- confirmed live, no need to re-set it between the two phases).
 
-    Returns the marker's OWN PRIOR position (pass it to `restore_marker_position` when the build
-    finishes), or `None` if there is no inlay at all -- nothing is changed in that case; the
-    caller's new items land at the end exactly as they always have, and `ensure_frame_before_
-    inlay`'s own post-hoc reorder above is the one thing that still needs to run afterward (its
-    own "no inlay present" early return is already a cheap no-op either way, so calling it
-    unconditionally as a safety net costs nothing when it has nothing to do)."""
+    Returns an opaque STATE for `restore_marker_position` (the marker's own prior position PLUS
+    the timeline's count at that moment -- H23 item 53: the build inserts new items AT the
+    marker, growing the timeline, so restoring needs to know by how much the count grew, not
+    just the old marker's own numeric index), or `None` if there is no inlay at all -- nothing is
+    changed in that case; the caller's new items land at the end exactly as they always have, and
+    `ensure_frame_before_inlay`'s own post-hoc reorder above is the one thing that still needs to
+    run afterward (its own "no inlay present" early return is already a cheap no-op either way,
+    so calling it unconditionally as a safety net costs nothing when it has nothing to do)."""
     def _log(msg, level="INFO"):
         if logger:
             try:
@@ -249,23 +251,45 @@ def mark_before_inlay(design, logger=None):
     if inlay_idx is None:
         return None
     prior = timeline.markerPosition
+    count_before = timeline.count
     timeline.markerPosition = inlay_idx
     _log(f"FB-ORDER: marker set to {inlay_idx} (before the inlay) -- new items will land there directly")
-    return prior
+    return {"prior": prior, "count_before": count_before}
 
 
-def restore_marker_position(design, prior_position, logger=None):
+def restore_marker_position(design, state, logger=None):
     """Companion to `mark_before_inlay` -- restores the marker to its own prior position
-    (typically the end, wherever it was before the frame build started). Best-effort: `prior_
-    position` of `None` (mark_before_inlay's own "no inlay" case) is a no-op, and a failure to
-    restore is logged, never raised -- a marker left mid-timeline is a cosmetic/future-insert
-    concern, not a reason to fail an already-completed frame build."""
-    if prior_position is None or not design or not getattr(design, "timeline", None):
+    (typically the end, wherever it was before the frame build started). Best-effort: a `state`
+    of `None` (mark_before_inlay's own "no inlay" case) is a no-op, and a failure to restore is
+    logged, never raised -- a marker left mid-timeline is a cosmetic/future-insert concern, not a
+    reason to fail an already-completed frame build.
+
+    H23 item 53 (advisor review of item 52, caught before deploy): the build inserts K new items
+    AT the marker between `mark_before_inlay` and this call, growing the timeline by K. Restoring
+    to the OLD numeric `prior` -- captured when the timeline was K items shorter -- now points K
+    items too early in the GROWN timeline, rolling back the LAST K items instead of leaving them
+    active. If the marker was AT THE END before (`prior == count_before`, the normal case: nothing
+    was rolled back), the correct restore is the NEW end, not the stale old count. Otherwise some
+    items were already rolled back on purpose before this Send even started -- shift that same
+    boundary forward by however much the timeline grew, so the same relative state is preserved."""
+    if state is None or not design or not getattr(design, "timeline", None):
         return
+    timeline = design.timeline
     try:
-        design.timeline.markerPosition = prior_position
+        prior = state["prior"]
+        count_before = state["count_before"]
+        count_after = timeline.count
+        if prior == count_before:
+            try:
+                timeline.moveToEnd()
+            except AttributeError:
+                timeline.markerPosition = count_after
+            restored = count_after
+        else:
+            restored = prior + (count_after - count_before)
+            timeline.markerPosition = restored
         if logger:
-            logger.log(f"FB-ORDER: marker restored to {prior_position}")
+            logger.log(f"FB-ORDER: marker restored to {restored}")
     except Exception as e:
         if logger:
             try:
