@@ -13224,3 +13224,63 @@ this item fixed.**
 
 Committed as "H23 item 41: ...". File list: `fb_engine/build_context.py`,
 `fb_engine/test_build_context.py` (new).
+
+## H23 item 42 — ONE build path: an unseeded Send now carries the current params' own seed geometry (T7 fixed live; T10 hits a separate, unrelated miter bug)
+
+**(a) Confirmed, file:line, when a Send carries no seeds.** `core/frame-record.js`'s own
+`setFrameRecord` (lines 170-177): "A template change resets the seeds" -- `const reset =
+'templateId' in patch && patch.templateId !== cur.templateId ? { seeds: {}, genSeed: null } :
+{}`. `main/frame-panel.js`'s own template `<select>` change handlers (lines 714, 736) call
+`editFrame({ templateId: ..., params: {} })` on every pick. So: pick T7 or T10 from the dropdown,
+Send immediately (no Generate, no handle drag) -- `record.seeds` is `{}`. Exactly what Fred hits.
+
+**(b) Fixed by declaring ONE path, not two maintained branches.** `frame-panel.js::
+frameSendPayload()` used to attach `seedGeometry` ONLY `if (Object.keys(rec.seeds || {}).length)`
+-- now unconditional: every Send computes `frameCutProfile`'s own CURRENT profile (seeded or the
+template's own default -- `frameCutProfile` already resolves both the same way) and sends its
+`frameSeedGeometry`. Every one of the 13 templates already declares a non-empty `seedMap`
+(MEASURED: 8-31 entries each, frame-defs.json), so this needed no per-template branching.
+
+**A SECOND gate, on the Python side, also had to change** (found only by testing live, not
+guessed): `send_frame.py`'s own `applied = bool(seeds) and bool(seed_geometry)` ALSO required the
+UI's own normalized `seeds` dict to be non-empty before `apply_seed_geometry`/`data["seed_geometry"]`
+were ever used -- so a fresh record (`seeds == {}`) sending real `seedGeometry` would have had it
+silently ignored, still falling through to the template's own LEGACY literal/formula construction.
+`seeds` is really only for the `SEEDS_NOT_APPLIED` version-skew warning ("the payload has seeds but
+no seedGeometry (an app older than F11 sent it)") -- whether the geometry gets APPLIED must depend
+on `seed_geometry` alone. Changed to `applied = bool(seed_geometry)`; the warning's own trigger
+(`seeds and not applied`) is untouched, so a genuine seeds-without-geometry case still warns exactly
+as before. Checked every existing `test_send_frame.py` assertion against both OLD and NEW formulas
+by hand before touching it -- none exercises the new case (seeds empty, seedGeometry present), so
+nothing already-passing could have silently started asserting the wrong thing.
+
+**(c) Pure tests.** JS: `tests/frame-send.test.js`, 2 new (T7 + T10: a FRESH record's Send payload
+carries the FULL seedGeometry key set, matching its own declared `seedMap`). Python:
+`test_send_frame.py`, 1 new (a fresh/unseeded payload with real `seedGeometry` now reports
+`applied: True` and reaches `build_sketch`'s own `data["seed_geometry"]`). **Mutation-tested both**:
+reverted each fix in turn, confirmed its own new test fails red (JS: `seedGeometry` undefined;
+Python: `applied: False` instead of `True`) -- restored, confirmed green. JS fast-tier (36 files
+touching frame-panel.js or its own dependents): 972 passed, 0 failed. Full Python suite: 688
+passed, 25 skipped, 0 regressions.
+
+**LIVE (Fusion granted, no live use by seat B this pass).** Regenerated every template's own
+default payload through the REAL `frameSendPayload()` (not a reconstruction) and re-ran the
+all-template default sweep: **T7's default now builds its full 5 declared bars, 0 overlaps, 0
+slivers, 0 "(1)" bodies, healthy timeline** -- the reflex arc (item 41's own finding) is GONE,
+confirmed by the build now taking ~3s of real constraint-solving instead of the old instant
+literal-formula shortcut. **T10's default still builds only 1 of its 4 declared bars** -- same
+EXACT symptom as before ("one profile spans 3 bars... a miter did not split it"), but for a
+DIFFERENT, now-isolated reason: with BOTH item 41's formula-crash fix AND this item's seeded-path
+fix in place, T10 is confirmed to be going through the SAME tested seeded construction T7 now uses
+successfully (same longer build time, same declared features list including `window_bars`/
+`window_cut`) -- yet the SAME 3 bars (shoulder/waist/hip's own 11-curve group) still fail to split.
+This is NOT a seeding or formula-resolution issue at all (both are now fixed and this is the result
+of running T10 WITH them fixed) -- it is a genuine, separate, pre-existing miter/inner-corner
+construction gap specific to T10's own enclosure sketch at its default proportions, unrelated to
+items 41 or 42. Flagged, not fixed here (out of scope: this item was the seeded-vs-unseeded
+dispatch, not T10's own miter resolution). **Final count: 12 of 13 templates' defaults build
+clean (T7 newly fixed, joining the 11 already clean); T10 is the sole holdout, for its own
+separate reason.**
+
+Committed as "H23 item 42: ...". File list: `main/frame-panel.js`, `fb_engine/send_frame.py`,
+`fb_engine/test_send_frame.py`, `tests/frame-send.test.js`.

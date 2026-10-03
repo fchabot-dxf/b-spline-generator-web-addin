@@ -233,11 +233,20 @@ export function frameSendPayload() {
   const rec = getFrameRecord();
   const payload = framePayload(FRAME_DEFS, rec);
   if (!payload) return null;
-  // F11 option B: seeded handles go as the template's own seed geometry
-  if (Object.keys(rec.seeds || {}).length) {
-    const prof = frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn });
-    payload.seedGeometry = frameSeedGeometry(findFrameTemplate(FRAME_DEFS, rec.templateId), prof, P.widthIn, P.heightIn);
-  }
+  // H23 item 42 (ONE build path, declared -- not two maintained separately): every Send carries
+  // the CURRENT params' own seed geometry, seeded or not (F11 option B's own mechanism, now used
+  // unconditionally). A fresh template pick resets seeds to {} (setFrameRecord's own "a template
+  // change resets the seeds" rule, core/frame-record.js) -- Sending right after, with no Generate
+  // or handle drag in between, used to skip seedGeometry entirely and fall back to the template's
+  // OWN legacy literal/formula construction in Fusion. MEASURED (H23 item 41): that legacy path has
+  // its own pre-existing, unrelated defects for T7 (a reflex arc) and T10 (an unsplit miter),
+  // neither ever reachable live before because an even earlier bug (item 41, now fixed) always
+  // crashed first -- the SEEDED path is the one already tested and fixed end to end (item 40: 8/8
+  // live). frameSeedGeometry reads whatever frameCutProfile resolves to (seeded or the template's
+  // own default), so this needs no per-template branching: every template's own declared seedMap
+  // already covers its default shape, not just a dragged one.
+  const prof = frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn });
+  payload.seedGeometry = frameSeedGeometry(findFrameTemplate(FRAME_DEFS, rec.templateId), prof, P.widthIn, P.heightIn);
   return payload;
 }
 

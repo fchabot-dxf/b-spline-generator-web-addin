@@ -476,6 +476,20 @@ class TestSeedGeometry:
         assert not r["ok"] and "could not be seeded" in r["error"]
         assert b.sketch_calls == [] and w.frame_names() == ["Frame_1"]  # the previous frame is still there
 
+    def test_a_fresh_unseeded_record_still_applies_seed_geometry_one_build_path(self):
+        """H23 item 42 (ONE build path, declared): a fresh template pick (seeds == {}, nothing
+        touched yet) must still route through the SEEDED construction -- `applied` depends on
+        seed_geometry alone, not on `seeds` also being non-empty. Before this item, `applied` was
+        False here (bool({}) is False), seed_geometry was silently never passed to build_sketch,
+        and the build fell through to the template's own LEGACY literal/formula construction --
+        where T7's reflex arc and T10's unsplit miter (item 41) actually come from."""
+        w = World()
+        send_bspline(w)
+        geo = {"arc_waist_R": {"points": [[2.8, -0.6], [2.4, 0.0], [2.8, 0.6]]}}
+        r, b = run(w, payload(seeds={}, seedGeometry=geo))
+        assert r["ok"] and r["seeds"] == {"count": 0, "applied": True, "reason": None}
+        assert b.sketch_calls[0]["data"]["seed_geometry"] == geo
+
 
     def test_an_unknown_wood_is_refused_not_silently_replaced(self):
         w = World()

@@ -253,7 +253,16 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
     log = lambda msg, level="INFO": logger.log(msg, level)
     seeds = dict(payload.get("seeds") or {})
     seed_geometry = payload.get("seedGeometry") or None
-    applied = bool(seeds) and bool(seed_geometry)
+    # H23 item 42 (ONE build path, declared): `seeds` is the UI's own normalized handle values
+    # (for the "N seed(s) sent but not applied" version-skew warning below, SEEDS_NOT_APPLIED's
+    # own reason -- an app older than F11 sending seeds with no seedGeometry at all); whether
+    # seed_geometry gets APPLIED must depend on seed_geometry alone. A fresh/unseeded record
+    # (seeds == {}, e.g. right after picking a template, before Generate or a handle) still sends
+    # the current params' own seed geometry (frame-panel.js's frameSendPayload, now unconditional)
+    # -- this used to read `applied = False` here and silently fall through to the template's own
+    # LEGACY literal/formula construction, which is where T7's reflex arc and T10's unsplit miter
+    # (H23 item 41) were actually coming from, not from anything seed-related.
+    applied = bool(seed_geometry)
     result = {"ok": False, "error": None, "deleted": [], "frame": None, "fit": None,
               "seeds": {"count": len(seeds), "applied": applied,
                         "reason": SEEDS_NOT_APPLIED if seeds and not applied else None}}
