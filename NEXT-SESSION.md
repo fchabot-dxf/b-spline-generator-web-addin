@@ -186,6 +186,17 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 43 -- T10 default builds 1/4 bars ("one profile spans 3 bars: a miter did not split it") (advisor, 2026-10-02).
+Item 42 accepted (8e28cda): one build path, T7 default now 5/5 live, 12/13. T10 is the last holdout, and it matters
+twice: Arched is a shipped template, and seat C's Arched + taper builds on T10.
+(a) Probe first (feedback rule: inject the real geometry in a scratch doc, measure): which miter fails to split,
+    and why -- a miter that misses its inner corner, an inner corner resolved from stale/baked values (like item 38
+    part 1 for T7), a CW/CCW weld, or an arc on the wrong branch? Compare T10's default with the Generate seeds that
+    DO build (item 23/cf3805f's 6x9/7x9 work).
+(b) Fix at the root, same family as item 38 part 1 if it's the same cause. Pure test that fails on today's code.
+(c) LIVE: T10 default at 6x9, 7x9 and 9x12 builds 4/4; 13/13 default sweep; re-run 4 T10 Generate seeds at 7x9.
+Log in WORK-LOG.md. Commit 'H23 item 43: ...'.
+
 ## Item 42 -- one build path: T7/T10 unseeded defaults (advisor, 2026-10-02). Item 41 accepted (cd80bb0).
 The unseeded path is what Fred hits if he picks T7 or T10 and Sends without touching Generate or a handle. Today it
 builds a reflex arc (T7) or 1/4 bars (T10), while the SEEDED path is the one we've tested and fixed (8/8 live).
@@ -302,4 +313,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-39] NO HOOKED TIPS (Fred-approved guard): the straight corner miter must stay inside the wood, for every template -- Generate rejects, handles stop, all-template test; T7 then builds all 5 bars live. Commit as 'H23 item 39: ...'.
 - [x] [H23-item-40] item 39 follow-ups: (1) live T7 Generate-seed Sends at 7x9 + 9x12 + the all-template built==declared sweep, (2) declare narrower T7 Generate ranges (>= 50% raw pass), (3) margin-floor render for Fred. Commit as 'H23 item 40: ...'.
 - [x] [H23-item-41] T7/T10 default 0-bar finding: trace the real Send path (code), fix at the root or fix the harness, then live 13/13 default sweep. Commit as 'H23 item 41: ...'.
-- [ ] [H23-item-42] one build path: a Send without seeds sends the default params' seed geometry; T7 + T10 defaults build live; 13/13 default sweep. Commit as 'H23 item 42: ...'.
+- [x] [H23-item-42] one build path: a Send without seeds sends the default params' seed geometry; T7 + T10 defaults build live; 13/13 default sweep. Commit as 'H23 item 42: ...'.
+- [ ] [H23-item-43] T10 default 1/4 bars: probe which miter fails and why, root fix + failing-first test, live 4/4 at 6x9/7x9/9x12 and 13/13 sweep. Commit as 'H23 item 43: ...'.
