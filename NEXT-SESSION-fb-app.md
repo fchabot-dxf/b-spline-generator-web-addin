@@ -7,6 +7,8 @@ new one). When the profile has no angle field, the select takes the full row. Se
 core/noise: small, additive HTML/CSS only here. NO FUSION. PROGRESS automatic ("F25 item N: …").
 
 ## Checklist
+**TOP WIDTH (Fred approved 2026-10-03): every new template (Sand Timer, Flask, and seat B's Arched Funnel/Tulip) gets ONE shared declared handle: key 'topWidth', label 'Top width', basis 'hw', which sets where the top bar meets the sides. The default equals the current drawn top width, the range is moderate, and the guards apply. Add it to the Flask diagram and to Sand Timer's code.**
+
 **SHAPE PREFERENCE (Fred, 2026-10-02): simple, minimal shapes, not too concave. Keep curves gentle and default concavity modest; Generate ranges should favour mild curves. No short-grain tips.**
 
 **CORNER RULE (Fred-approved guard, 2026-10-02, main's H23 item 39): at every corner the straight miter from the outer corner to its inner corner must stay inside the wood -- no hooked/curled tips (wood grain). Your new templates' defaults, Generate and handles must respect it; reuse item 39's declared check once it lands on main.**
