@@ -211,3 +211,40 @@ class TestLineCircleCornerStep:
         }
         inner_corners.line_circle_corner_step(ctx, sketch, S, step)  # must not raise
         assert any(level == 'WARNING' for level, _msg in ctx.logger.entries)
+
+
+class TestSquareCornerShortSideCollapsed:
+    """H23 item 63 (live, T1 cornerRadiusTop max, 7x9): the horn at TR is shorter than
+    frame_thickness, so the inward offset drops its copy and the real inner corner sits ON the
+    inner top edge, slid 0.074 cm along it from (outer - t, outer - t) -- past the 0.05 tolerance,
+    so the miter used to MISS and two bars merged."""
+
+    T = 0.75 * 2.54
+
+    def _run(self, candidates):
+        ctx = _ctx({'frame_thickness': self.T})
+        ctx.entity_map[S] = {'proj_horn_TR:S': FakePoint(8.255, 10.795)}
+        step = {'Distance': 'frame_thickness', 'Tolerance': 0.05,
+                'Corners': {'TR': {'OuterID': 'proj_horn_TR:S', 'InnerID': 'inner_proj_horn_TR:S',
+                                   'Direction': (-1, -1)}}}
+        inner_corners.inner_corner_step(ctx, FakeSketch(candidates), S, step)
+        return ctx
+
+    def test_point_slid_along_the_surviving_edge_is_resolved(self):
+        ctx = self._run([(6.276, 8.890), (5.9, 7.1)])
+        got = ctx.entity_map[S].get('inner_proj_horn_TR:S')
+        assert got is not None
+        assert (round(got.geometry.x, 3), round(got.geometry.y, 3)) == (6.276, 8.890)
+
+    def test_exact_corner_still_preferred(self):
+        ctx = self._run([(6.350, 8.890), (6.276, 8.890)])
+        got = ctx.entity_map[S]['inner_proj_horn_TR:S']
+        assert round(got.geometry.x, 3) == 6.350
+
+    def test_point_off_both_axis_lines_is_still_rejected(self):
+        ctx = self._run([(6.25, 8.80)])
+        assert 'inner_proj_horn_TR:S' not in ctx.entity_map[S]
+
+    def test_point_slid_further_than_frame_thickness_is_rejected(self):
+        ctx = self._run([(6.350 - self.T - 0.1, 8.890)])
+        assert 'inner_proj_horn_TR:S' not in ctx.entity_map[S]

@@ -131,6 +131,22 @@ def inner_corner_step(ctx, sketch, s_name, step):
         nearest_pt, nearest_dist = _find_nearest_point(
             all_points, expected_x, expected_y)
 
+        axis_aligned = all(abs(abs(float(d)) - 1.0) < 1e-9 for d in direction)
+        if (nearest_pt is None or nearest_dist > tolerance) and axis_aligned:
+            # H23 item 63 (live, T1 cornerRadiusTop max): when a square corner's SHORT side (a horn)
+            # is shorter than frame_thickness, the inward offset drops its copy, so the inner corner
+            # is where the surviving straight edge's offset meets the next curve -- still ON that
+            # edge's axis line, just slid along it (0.074 cm there, past the 0.05 tolerance). Accept
+            # the nearest point lying exactly on either axis line through the expected corner,
+            # slid by at most the offset distance. Square (+-1, +-1) corners only.
+            slid_pt, slid_dist = _find_point_slid_along_axis(
+                all_points, expected_x, expected_y, max_slide=dist_cm)
+            if slid_pt is not None:
+                ctx.logger.log(
+                    f"INNER CORNER {label}: short side collapsed in the offset; using the point "
+                    f"slid {slid_dist:.4f} cm along the surviving edge")
+                nearest_pt, nearest_dist = slid_pt, 0.0
+
         if nearest_pt is None or nearest_dist > tolerance:
             ctx.logger.log(
                 f"INNER CORNER {label}: no SketchPoint within {tolerance:.3f} "
@@ -175,6 +191,18 @@ def _find_nearest_point(all_points, ex, ey):
             best_d = d
             best_pt = pt
     return best_pt, best_d
+
+
+def _find_point_slid_along_axis(all_points, ex, ey, max_slide, on_line_eps=1e-3):
+    """Nearest point lying on the horizontal or vertical line through (ex, ey) (within
+    `on_line_eps` cm), at most `max_slide` cm from (ex, ey) along that line. Returns
+    (point, slide_cm) or (None, inf)."""
+    best_pt, best_s = None, math.inf
+    for px, py, pt in all_points:
+        for off_axis, along in ((abs(py - ey), abs(px - ex)), (abs(px - ex), abs(py - ey))):
+            if off_axis <= on_line_eps and along <= max_slide and along < best_s:
+                best_pt, best_s = pt, along
+    return best_pt, best_s
 
 
 def line_circle_corner_step(ctx, sketch, s_name, step):
