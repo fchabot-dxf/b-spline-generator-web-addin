@@ -263,7 +263,14 @@ export function frameSeedGeometry(tpl, prof, W, H) {
       let [s, m, t] = [F(at(p, 0)), F(at(p, 0.5)), F(at(p, 1))];
       // T5 HOURGLASS DIPPED TOP: an arc whose centre is on the Y axis (the top dip) is seeded `nudgeX` in off it
       // (the pins' own anti-auto-coincidence nudge); its phase puts the centre on the axis explicitly.
-      if (e.nudgeX) [s, m, t] = [s, m, t].map(([x, y]) => [x + e.nudgeX, y]);
+      // H23 item 48 (MEASURED live): the nudge must move ONLY the mid (bulge) point, matching the Python
+      // literal seed's own convention (p02_03_loop.py nudges just its arc's middle Points entry) -- nudging
+      // the two END points too (the previous code here) breaks the exact mirror-symmetry the dip's shared
+      // endpoints need against the shoulder arcs' own sent ends, which the Y-axis-centering constraint then
+      // resolves by moving the WHOLE tangent chain by ~0.1-0.3 in instead of the intended ~0.01 in -- the
+      // "preview != build" gap item 46's own sweep first found. Confirmed: un-nudging the ends made the live
+      // build land back on the literal/golden position to the ten-thousandth of an inch.
+      if (e.nudgeX) m = [m[0] + e.nudgeX, m[1]];
       out[e.id] = { points: e.reverse ? [t, m, s] : [s, m, t] };
     } else if (e.kind === 'pin') {
       const c = F({ x: p.cx, y: p.cy });

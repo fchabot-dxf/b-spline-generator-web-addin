@@ -74,6 +74,25 @@ describe.each(['template_1', 'template_2', 'template_3', 'template_4', 'template
   }
 });
 
+describe('nudgeX moves only the middle point (H23 item 48)', () => {
+  it("template_5's own arc_top_dip keeps its two ends exactly mirror-symmetric, nudging only the bulge", () => {
+    // MEASURED LIVE: nudging the two END points too (not just the middle) broke the dip's own exact
+    // mirror-symmetry against the shoulder arcs' own shared endpoints -- the Y-axis-centering constraint
+    // then resolved that asymmetry by moving the WHOLE tangent chain ~0.1-0.3 in instead of ~0.01 in, the
+    // "preview != build" gap item 46's own sweep first found (WORK-LOG H23 item 48). This is the one
+    // pure-JS property whose absence let that live bug ship: an un-nudged end pair is EXACTLY mirrored.
+    const tpl = tplOf('template_5');
+    const entry = tpl.seedMap.find((e) => e.id === 'arc_top_dip');
+    expect(entry.nudgeX).toBeTruthy();
+    const prof = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: 'template_5' }), { widthIn: W, heightIn: H });
+    const geo = frameSeedGeometry(tpl, prof, W, H);
+    const [s, m, t] = geo.arc_top_dip.points;
+    expect(s[1]).toBeCloseTo(t[1], 9);
+    expect(s[0]).toBeCloseTo(-t[0], 9); // exact mirror symmetry -- the ends must NOT carry the nudge
+    expect(m[0]).toBeCloseTo(entry.nudgeX, 9); // the nudge is still applied, to the middle point alone
+  });
+});
+
 describe('the geometry follows the seeds', () => {
   it('a seeded waist moves the waist arc seeds (and nothing is added outside the map)', () => {
     const base = normalizeFrameRecord({ templateId: 'template_1' });

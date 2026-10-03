@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "c3c7888bd8eb6b8590fcded68857e11d975bdfaa7ae40b79dff2f4c666599b42",
+  "sourceHash": "d9886b552529b8b841d611065ef49cd06c0f95f86f346fa54278960dab44c5c2",
   "templates": [
     {
       "features": [

@@ -13785,3 +13785,89 @@ p02_03_loop.py` (anchors declare SeedFrom), `sketches/template_10/phases/p02_12_
 (per-point SeedFrom + one literal apex), `sketches/template_10/template_data.py` (`apply_seed_from`
 call removed), `tests/fixtures/frame-parity/template_10_{6x9,7x9}.json` (reverifiedAfter bumped),
 `frame-defs.json/.js` (regenerated).
+
+## H23 item 48 -- T5's dip/shoulder preview==build gap: a one-line JS bug (nudgeX hit all 3 arc points, not just the bulge)
+
+Dispatch (advisor, 447): item 46's own sweep flagged template_5's dip/shoulder region -- the sent
+preview differs from the built Shape Outline by 0.1-0.3in. Probe first: is the app's fitted
+shapeModel wrong, or does Fusion solve the seeded chain elsewhere? Root fix, failing-first test,
+live preview==build 13/13.
+
+**Probe, in order, each one actually run before trusting the next:**
+1. **Is the sent seed internally self-consistent?** Computed the circumcircle of the sent
+   `arc_top_shoulder_L`/`arc_top_dip`/`arc_top_shoulder_R` points by hand: all three radii equal
+   (2.449419946215...) to 12 significant figures -- the "one radius" design property holds. Not a
+   shapeModel-fit error.
+2. **Does the GOLDEN (unseeded/literal path) match the sent seed?** `tests/fixtures/frame-parity/
+   template_5_7x9.json`'s own recorded `top_edge_L:E` is `-2.33976`, matching the sent seed's
+   `-2.339762` almost exactly (0.00024in). The literal path and the preview agree. Not a stale
+   golden either.
+3. **Live, isolated: does the UNSEEDED path (via the real `_handle_send_frame`, not `record_frame_
+   parity.py`'s own broken entry point) reproduce the golden?** Built template_5 at 7x9 with an
+   EMPTY payload -- `top_edge_L:E` = `-2.3397`. Matches the golden and the literal seed.
+4. **Live, isolated: does the SEEDED path (same seed values, same entry point) reproduce the SAME
+   result?** Built with the item40 default payload's own `seedGeometry` -- `top_edge_L:E` =
+   `-2.0497`. **Does NOT match** -- a genuine 0.29in divergence that only appears once seeded,
+   confirming "Fusion solves the seeded chain elsewhere" is the right half of the dispatch's own
+   question, not "the shapeModel is wrong" (steps 1-2 already ruled that out).
+5. **Isolated the TOP region alone** (seeded ONLY `top_edge_L/R`, the 3 top arcs, and their 3 seed
+   radii; everything else -- the side waist/shoulder/hip chain, skeleton pins -- left unseeded):
+   same `-2.0497` result. Rules out any side-chain interaction; the bug is self-contained to the
+   top region's own 8 seeded entries.
+6. **Compared every sent point against the literal, value by value.** Found it: `arc_top_dip`'s
+   own two END points (shared, via an explicit `Coincident`, with the shoulder arcs' own ends) are
+   offset from the literal by `+0.01` in X -- exactly `PIN_AXIS_NUDGE_IN`. The MIDDLE point is
+   offset too, by the same `0.01` (expected -- that's the declared, intentional nudge,
+   `template_data.py`'s own `FRAME_SEED_MAP` entry: `{"id": "arc_top_dip", ..., "nudgeX": 0.01}`).
+   But the literal Python seed (`p02_03_loop.py`) only ever nudges its OWN middle point (`'0.001'`
+   on `Points[1][0]` alone) -- `frame-handles.js`'s own `frameSeedGeometry` nudges ALL THREE.
+7. **Confirmed by removing the nudge from the two ends only, live:** fed a corrected seed (dip's
+   own end points moved back onto the shoulder arcs' own exact shared X, middle point still
+   nudged) -- the build landed EXACTLY back on the literal/golden position (`top_edge_L:E` =
+   `-2.3398`, radius/center all matching). **Root cause confirmed, not guessed.**
+
+**Why a 0.01in asymmetry cascades into a 0.29in build error:** `arc_top_dip`'s own centre is
+pinned EXACTLY onto the Y axis (`p02_06_waist_pins.py`'s own `Coincident(arc_top_dip:C, Y_AXIS)`),
+and its radius is FIXED (an active seed `Radius` dimension, deleted later). With the nudged seed,
+the dip's own circle (built from 3 points centred at x=0.01, not 0) must be re-centred onto x=0
+while keeping that SAME fixed radius -- the solver's only remaining freedom to absorb that is the
+whole tangent-welded chain (shoulder radius ALSO fixed, tangent to a horizontal stub at its OTHER
+end), so the correction propagates into the stub length instead of staying a tiny local nudge.
+
+**The fix** (`bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js::frameSeedGeometry`):
+nudge only the arc's own middle (bulge) point, matching the literal Python seed's own convention
+exactly -- `if (e.nudgeX) m = [m[0] + e.nudgeX, m[1]];` in place of mapping all three. `template_5`
+is the ONLY template declaring `nudgeX` (confirmed: grepped every `template_data.py`), so this is
+a targeted, not speculative, fix.
+
+**New failing-first test** (`tests/frame-seed-geometry.test.js`): asserts `arc_top_dip`'s own two
+end points stay EXACTLY mirror-symmetric (untouched by the nudge) while the middle point still
+carries it. Mutation-tested: reverted to the old all-three-points nudge, confirmed RED with the
+exact predicted asymmetry (`0.02` apart, expected `~0`), restored, green. Full vitest: 3115 passed
+(162 files) -- the existing `frame-seed-geometry.test.js` coverage (0.75in tolerance, there for a
+different purpose: "is the preview roughly near the literal seed," not "is it exactly self-
+consistent") already tolerated both the broken and fixed behavior, which is WHY it never caught
+this -- the new test checks the actual property that was missing.
+
+**LIVE, re-run after the fix:** regenerated `item40_all_template_payloads/template_5_default_
+7x9.json`'s own `seedGeometry` (via a one-off Node script calling the real `frameSeedGeometry`,
+since this captured-payload file has no committed generator -- confirmed the new dip points are
+exactly mirror-symmetric). Full 13-template sweep: **`done=13 crashed=[] bad=[]`** -- template_5
+no longer appears at all (`preview_build_mismatches: []`, 4/4 bars, healthy timeline, 0 MITER
+MISS, symmetric volumes). Re-ran the full sweep a second time, independently, after an amendment
+noted the advisor had just redeployed main into Fusion mid-pass (my own live calls all use fresh-
+checkout loading, unaffected by the deployed add-in, but re-confirmed anyway rather than assuming)
+-- identical result both times. T5's own committed golden (unseeded/literal path, never touched by
+this JS-only fix) needs no re-recording.
+
+Full suites: Python 724 passed/25 skipped/0 failed; vitest 3115 passed (162 files), 0 failed.
+
+Committed as "H23 item 48: ...". File list: `bspline-frame-builder/b-spline-gen/html/editor/
+frame-handles.js` (the fix), `tests/frame-seed-geometry.test.js` (new failing-first test),
+`sketches/template_5/template_data.py` (2 stale comments corrected), `frame-defs.json/.js`
+(regenerated). `bspline-frame-builder/scratch/item40_all_template_payloads/template_5_default_
+7x9.json` was ALSO regenerated locally (its own `seedGeometry` now reflects the fix) but, like
+every other file under `scratch/`, left uncommitted -- consistent with this whole session's own
+convention, and the same "no committed generator" limitation item 45 already flagged for this
+entire payload directory. A future session re-running the sweep from a fresh checkout would need
+to regenerate it the same way (the one-off Node script's own approach is in this entry above).
