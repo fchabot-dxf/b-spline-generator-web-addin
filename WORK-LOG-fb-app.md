@@ -8475,3 +8475,89 @@ Messaging the advisor "Fusion released" with the two new findings above (T14/16/
 miter-miss class; T13's own reflex arc at 5.51x1.97, pre-existing, not a corner-fix regression) so
 Fusion can hand off, and so T13's own open gap gets routed to whoever owns that template next rather
 than sitting silently behind a green gate.
+
+### Addendum, same day: 3 merge follow-ups before the advisor can merge (no Fusion needed)
+
+Advisor accepted the live half but found 3 things before merging to main (holder handed to f3, so
+this was pure code/test work): merged `origin/main` into `fb-app` first (fast-forward, 3 files,
+picked up `99561be regen frame-defs after fb-app merge` -- this ALSO happened to clear the
+`gen_frame_defs.py --check` STALE flag the previous addendum flagged as out-of-scope, for free).
+
+**(1) `tests/frame-template-15.test.js`, 3 failures.** Root cause: T15 recording its own first
+goldens this session flipped `frame-defs.js`'s own `shapeModel` from a `provisional` block (the
+exact closed-form constant, `DOME_FULLNESS_FRAC_DEFAULT = 0.1421885365451818`) to a `fit` block
+(`gen_frame_defs.py`'s own `fit_shape_model`, coefficients `round(_, 6)`) -- the project's own
+established rule once real Fusion goldens exist (confirmed directly: the regen diff shows
+`"domeFullnessFrac": {"hw": 0.1421885365451818}` -> `{"hw": 0.142188}`, `"provisional"` block
+replaced by `"fit": {"exactAtFittedSizes": true, "fittedFrom": ["12x6", "7x9"], "maxResidualIn":
+0.0, ...}`). Did NOT just loosen tolerances blindly: recomputed the actual new truth in Python
+(`t15_flask_geometry.outline(6.5, 8.5, 0.75, dome_fullness_frac=0.142188)`'s own `dome_r_via`,
+`(2.7878856274548705, -1.7474628483260788)`, matching the JS failure's own actual value to float
+noise) and used THAT as the new expected literal, with a comment explaining why it changed. The
+one genuinely "just loosen it" case (the symmetry check, 9dp -> 6dp) is loosened because the new
+golden-fit code path itself introduces ~5e-10 of float noise neither side can avoid (a dot-product
+over rounded coefficients vs. reading one exact constant) -- 6dp still fails on anything a real
+asymmetry bug would produce, said so in the comment rather than leaving a bare magic number. Also
+updated the two OTHER call sites in the same file that passed the OLD full-precision constant as
+`frameParamRanges`' own "current value" input (not an assertion, but a stale magic number worth
+keeping in sync now that two different literals in one file would otherwise claim to both be "the"
+default). Renamed the round-trip test from "...the provisional model..." to "...the fit model..."
+-- the test's own name was making a now-false claim about which code path it exercises.
+
+**(2) `test_frame_parity_goldens.py::test_all_six_goldens_exist` hardcoded set.** This test declared
+each of 9 templates' own allowed golden-file states as a separately-named local variable, then
+hand-subtracted all 9 from `names` at the very end to assert the remainder was exactly
+`{template_1, template_2}`'s own fixed set -- a pattern that goes stale the moment ANY new template
+gets its own first golden (exactly what just happened for T14-T17), since nothing enforces that a
+new template's own subtraction actually gets added to that final line. Refactored to ONE declared
+dict, `_ALLOWED_GOLDEN_STATES` (template id -> list of allowed `{filename}` sets), with a generic
+loop deriving the "remainder must be exactly the T1/T2 fixed set" check FROM the dict instead of by
+hand -- a new template now needs exactly one new dict entry, and the aggregate check can't forget
+to subtract it. Preserved every one of the original per-template comments verbatim (T5's own
+documented partial-state history, T9/T10's own portrait-only size-set precedent, etc.) -- this is a
+mechanical refactor of HOW the allowed states are checked, not a change to WHAT they are. Added
+T14/T15/T16/T17's own new partial states (7x9-only for T14/T16/T17, 7x9+12x6 for T15, matching
+exactly what got recorded in the live-half addendum above). Mutation-tested the refactor itself
+before trusting it: removed `template_14`'s own entry from the dict in-process (no file touched)
+and confirmed the test fails as expected (its own file lands in "remaining" and breaks the T1/T2
+equality) -- reverted (in-memory only, nothing to restore on disk).
+
+**(3) `check_golden_freshness.py`'s own glob-aggregate gotcha (my own finding from the live-half
+addendum).** `_latest_committer_date(golden_files)` took the MAX commit date across every one of a
+template's own golden files as a single number -- so re-recording only SOME of them (T13's own
+7x9/12x6, leaving 5.51x1.97 untouched) made the whole template's own "latest golden" jump to the
+re-recording's date, reporting the ENTIRE template FRESH even though one file was still silently
+describing pre-fix geometry. Rewrote `check_template` to compare the phases' own latest commit
+against EACH golden file's own commit date INDIVIDUALLY -- any ONE stale file now makes the whole
+template report STALE, closing the exact gap that let T13 report falsely green.
+
+Running this corrected, per-file check for the first time immediately surfaced TWO MORE real,
+previously-hidden gaps the old aggregate logic had been masking all along (neither touched by my
+own F33 item 1 work, found entirely BY turning this check on, not sought out):
+  - `template_10_12x6.json` -- a long-documented, already-accepted exception
+    (`test_frame_parity_goldens.py`'s own `_KNOWN_BROKEN_BUILD`, H23 item 13, Fred: "ship it" --
+    sketch 3 never forms at all at this size, a Template 1 limitation T10 inherits, no correct
+    shape exists to re-record).
+  - `template_5_7x9.json` -- genuinely stale, NOT an accepted gap: commit `c2cce2a` ("WIP: H23
+    items 10/6/11... item 6: fixed the root cause [sketches/template_5/phases/p02_03_loop.py]...
+    Not yet built live, no goldens recorded... this item is not done") edited T5's own phases on
+    2026-09-30 and never came back to re-record its one golden. Confirmed via its own commit
+    message before declaring anything, not assumed.
+Declared BOTH in a new `_KNOWN_UNVERIFIABLE_GOLDENS` set (the same "declared exception, never
+silent" pattern `test_frame_parity_goldens.py` already uses for `_DEGENERATE`/`_KNOWN_BROKEN_BUILD`)
+so this check's own gate doesn't block on gaps that are either already-accepted or someone else's
+unfinished work -- worded the two comments differently on purpose (one says "ship it", the other
+says "whoever owns H23 item 6 next should re-record it live... then remove this line") so neither
+reads as more settled than it actually is. Did NOT touch template_5's own phases or try to re-record
+it live -- a different template, someone else's open item, not this ticket's scope; flagging it
+here is the whole job.
+
+Portrait-only reminder (advisor, same note): T14/T16/T17's own 12x6/5.51x1.97 failures and T15's own
+5.51x1.97 failure (both logged in the live-half addendum above) stay unfixed on purpose -- Fred's
+app never sends a landscape or near-square board, so these are out of scope, not forgotten.
+
+Full suite green: Python 860/860 (10 pre-existing skips, unrelated), JS vitest 173 files / 3387
+tests. `check_golden_freshness.py --check` exits 0, `gen_frame_defs.py --check` exits 0.
+
+Committed: `tests/frame-template-15.test.js`, `test_frame_parity_goldens.py`,
+`tools/check_golden_freshness.py`. Passing back for the merge.
