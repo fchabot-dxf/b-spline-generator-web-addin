@@ -3,9 +3,9 @@ import os
 from template_loader import TemplateLoader
 from fb_engine.frame_definition import frame_features
 from fb_engine.seed_basis import seed_sketch
-from fb_engine.t16_geometry import (ARCH_RISE_FRAC_DEFAULT, WAIST_WIDTH_FRAC_DEFAULT,
-                                     WAIST_HEIGHT_FRAC_DEFAULT, BULGE_FRAC_DEFAULT,
-                                     SHARED_LOWER_SKETCH_2_PARAMETERS)
+from fb_engine.t16_geometry import (TOP_WIDTH_FRAC_DEFAULT, ARCH_RISE_FRAC_DEFAULT,
+                                     WAIST_WIDTH_FRAC_DEFAULT, WAIST_HEIGHT_FRAC_DEFAULT,
+                                     BULGE_FRAC_DEFAULT, SHARED_LOWER_SKETCH_2_PARAMETERS)
 
 # Per-template loader instance. State (caches, folder path) lives on the
 # instance so two templates can never share caches or step on each
@@ -110,10 +110,13 @@ FRAME_REGIONS = {
     "surround": "surround_rect",                           # p03_05
     "bars": [dict(b) for b in FRAME_BARS],
 }
-# FB-APP F9: the frame shape HANDLES (see template_1's table for the binding rules). All 4 seeded:
+# FB-APP F9: the frame shape HANDLES (see template_1's table for the binding rules). All 5 seeded:
 # no template param sets the outline's own shape (the phases leave it to the seeds,
 # p02_02_loop.py), so moving the seeds IS setting it -- no parameter (same convention as every
 # other hand-built template's own seeded handles).
+#   topWidth:        T84 item 4 (Fred-approved): the arch's own half-span, a fraction of hw --
+#                    shared key with seat C's own Sand Timer/Flask (fb_engine/t16_geometry.py's
+#                    own TOP_WIDTH_FRAC_DEFAULT).
 #   archRiseFrac:    the arch's own rise, a fraction of hw.
 #   waistWidthFrac:  the waist's own half-width, a fraction of hw.
 #   waistHeightFrac: how far down the waist sits (0=top edge, 1=bottom edge of the full safe
@@ -126,6 +129,7 @@ FRAME_REGIONS = {
 # from the default to each extreme the diagram found) specifically so Generate stays clear of it,
 # not because this template needs its own bespoke floor the way T7's gableNeckWidth did.
 FRAME_HANDLES = [
+    {"key": "topWidth",        "label": "Top width",     "basis": "hw", "binding": "seeded"},
     {"key": "archRiseFrac",    "label": "Arch rise",     "basis": "hw", "binding": "seeded"},
     {"key": "waistWidthFrac",  "label": "Waist width",   "basis": "hw", "binding": "seeded"},
     {"key": "waistHeightFrac", "label": "Waist height",  "basis": "h",  "binding": "seeded"},
@@ -154,6 +158,7 @@ FRAME_FEATURES = frame_features([b["name"] for b in FRAME_BARS])
 # (fb_engine/t16_geometry.py's own *_DEFAULT constants - DRY, not re-typed here).
 FRAME_SHAPE_EXTRACTOR = "arched_funnel"
 FRAME_PROVISIONAL_SHAPE = {
+    "topWidthFracOfHw": TOP_WIDTH_FRAC_DEFAULT,
     "archRiseFracOfHw": ARCH_RISE_FRAC_DEFAULT,
     "waistWidthFracOfHw": WAIST_WIDTH_FRAC_DEFAULT,
     "waistHeightFracOfH": WAIST_HEIGHT_FRAC_DEFAULT,

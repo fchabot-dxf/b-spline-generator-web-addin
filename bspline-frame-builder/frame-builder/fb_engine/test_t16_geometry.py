@@ -7,8 +7,8 @@ import math
 import pytest
 
 from fb_engine.t16_geometry import (
-    ARCH_RISE_FRAC_DEFAULT, BULGE_FRAC_DEFAULT, WAIST_HEIGHT_FRAC_DEFAULT, WAIST_WIDTH_FRAC_DEFAULT,
-    is_valid_outline, outline,
+    ARCH_RISE_FRAC_DEFAULT, BULGE_FRAC_DEFAULT, TOP_WIDTH_FRAC_DEFAULT, WAIST_HEIGHT_FRAC_DEFAULT,
+    WAIST_WIDTH_FRAC_DEFAULT, is_valid_outline, outline,
 )
 
 SIZES = [(6.0, 9.0), (7.0, 9.0), (9.0, 12.0)]
@@ -158,6 +158,7 @@ class TestDefaultsMatchTheApprovedDiagram:
     drift them."""
 
     def test_default_constants(self):
+        assert TOP_WIDTH_FRAC_DEFAULT == pytest.approx(0.75)
         assert ARCH_RISE_FRAC_DEFAULT == pytest.approx(0.39)
         assert WAIST_WIDTH_FRAC_DEFAULT == pytest.approx(0.38)
         assert WAIST_HEIGHT_FRAC_DEFAULT == pytest.approx(0.55)

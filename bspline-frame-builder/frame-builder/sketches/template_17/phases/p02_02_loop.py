@@ -1,4 +1,4 @@
-from fb_engine.t16_geometry import ARCH_HALF_SPAN_FRAC
+from fb_engine.t16_geometry import TOP_WIDTH_FRAC_DEFAULT
 
 
 def get_block(ui_data=None):
@@ -58,10 +58,9 @@ def get_block(ui_data=None):
     LR_VX, LR_VY = 't16_lr_vx', 't16_lr_vy'
     UR_VX, UR_VY = 't17_ur_vx', 't17_ur_vy'
 
-    # topR / topL: A = ARCH_HALF_SPAN_FRAC*hw (FIXED proportion, not a handle -- imported, see
-    # Template 16's own copy of this phase for the T84 item 4 rationale), rise = 0.39*hw
-    # (ARCH_RISE_FRAC_DEFAULT).
-    TOP_X, TOP_Y = f'({ARCH_HALF_SPAN_FRAC}*{HW})', f'({HH} - 0.39*{HW})'
+    # topR / topL: A = topWidthFrac*hw (T84 item 4's own seeded "Top width" handle -- imported, see
+    # Template 16's own copy of this phase), rise = 0.39*hw (ARCH_RISE_FRAC_DEFAULT).
+    TOP_X, TOP_Y = f'({TOP_WIDTH_FRAC_DEFAULT}*{HW})', f'({HH} - 0.39*{HW})'
 
     seq = [
         # Upper right: topR -> waistR, concave (curving toward the centreline), seeded with its

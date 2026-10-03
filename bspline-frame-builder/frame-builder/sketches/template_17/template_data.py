@@ -3,9 +3,9 @@ import os
 from template_loader import TemplateLoader
 from fb_engine.frame_definition import frame_features
 from fb_engine.seed_basis import seed_sketch
-from fb_engine.t16_geometry import (ARCH_RISE_FRAC_DEFAULT, WAIST_WIDTH_FRAC_DEFAULT,
-                                     WAIST_HEIGHT_FRAC_DEFAULT, BULGE_FRAC_DEFAULT,
-                                     T17_UPPER_CURVE_FRAC_DEFAULT,
+from fb_engine.t16_geometry import (TOP_WIDTH_FRAC_DEFAULT, ARCH_RISE_FRAC_DEFAULT,
+                                     WAIST_WIDTH_FRAC_DEFAULT, WAIST_HEIGHT_FRAC_DEFAULT,
+                                     BULGE_FRAC_DEFAULT, T17_UPPER_CURVE_FRAC_DEFAULT,
                                      SHARED_LOWER_SKETCH_2_PARAMETERS, UPPER_ARC_SKETCH_2_PARAMETERS)
 
 # Per-template loader instance. State (caches, folder path) lives on the
@@ -102,10 +102,11 @@ FRAME_REGIONS = {
     "surround": "surround_rect",                           # p03_05
     "bars": [dict(b) for b in FRAME_BARS],
 }
-# FB-APP F9: the frame shape HANDLES. 5 seeded (Template 16's own 4, plus this template's own
+# FB-APP F9: the frame shape HANDLES. 6 seeded (Template 16's own 5, plus this template's own
 # upperCurveFrac): no template param sets the outline's own shape (the phases leave it to the
 # seeds, p02_02_loop.py), so moving the seeds IS setting it -- no parameter.
-#   archRiseFrac/waistWidthFrac/waistHeightFrac/bulgeFrac: identical to Template 16's own table.
+#   topWidth/archRiseFrac/waistWidthFrac/waistHeightFrac/bulgeFrac: identical to Template 16's own
+#     table (topWidth is T84 item 4's own shared key, same as seat C's Sand Timer/Flask).
 #   upperCurveFrac: the two upper sides' own INWARD (concave) sagitta, a fraction of hw -- 0 would
 #     degenerate to Template 16's own straight sides (bulgeArc's own documented sag<1e-9 -> a
 #     straight-line identity, fb_engine/t16_geometry.py's own outline() docstring), but Template 16
@@ -114,6 +115,7 @@ FRAME_REGIONS = {
 # template; T84 item 3's own dispatch asks for MODERATE ranges specifically so Generate stays
 # clear of it.
 FRAME_HANDLES = [
+    {"key": "topWidth",        "label": "Top width",        "basis": "hw", "binding": "seeded"},
     {"key": "archRiseFrac",    "label": "Arch rise",        "basis": "hw", "binding": "seeded"},
     {"key": "waistWidthFrac",  "label": "Waist width",      "basis": "hw", "binding": "seeded"},
     {"key": "waistHeightFrac", "label": "Waist height",     "basis": "h",  "binding": "seeded"},
@@ -141,6 +143,7 @@ FRAME_FEATURES = frame_features([b["name"] for b in FRAME_BARS])
 # (fb_engine/t16_geometry.py's own *_DEFAULT constants - DRY, not re-typed here).
 FRAME_SHAPE_EXTRACTOR = "tulip"
 FRAME_PROVISIONAL_SHAPE = {
+    "topWidthFracOfHw": TOP_WIDTH_FRAC_DEFAULT,
     "archRiseFracOfHw": ARCH_RISE_FRAC_DEFAULT,
     "waistWidthFracOfHw": WAIST_WIDTH_FRAC_DEFAULT,
     "waistHeightFracOfH": WAIST_HEIGHT_FRAC_DEFAULT,

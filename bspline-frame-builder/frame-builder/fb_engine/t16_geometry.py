@@ -30,10 +30,10 @@ import math
 
 from fb_engine.closed_form_arc import sagitta_circle, true_via_point
 
-ARCH_HALF_SPAN_FRAC = 0.75  # FIXED proportion of hw (the advisor's own approved render); not a
-# handle YET -- T84 item 4 (Fred-approved, NEXT-SESSION-lane-b.md) adds a shared "topWidth" handle
-# to both T16 and T17 built from this same value, so every consumer (this module, both templates'
-# own p02_02_loop.py phase files) imports this ONE constant rather than re-typing 0.75.
+TOP_WIDTH_FRAC_DEFAULT = 0.75  # T84 item 4 (Fred-approved): the shared "topWidth" handle (basis
+# "hw", same key seat C's own Sand Timer/Flask use) -- a half-width fraction of hw, same convention
+# as waist_width_frac. Default = the current drawn top width (the value this constant held BEFORE
+# item 4, when it was still a fixed, non-handle proportion named ARCH_HALF_SPAN_FRAC).
 
 # Fred-approved defaults (diagram commit 19f7bbb), all fractions of hw except waist_height_frac (fraction
 # of the full safe height, 0=top edge 1=bottom edge, matching F31 item 1's own pinchHeightFrac convention).
@@ -101,7 +101,7 @@ SHARED_LOWER_SKETCH_2_PARAMETERS = [
 # pulls INWARD toward the centreline, the opposite side from the lower bulges' own outward pull,
 # so the SAME "-dy/chordlen, dx/chordlen" formula would place the centre on the wrong side. upper_L
 # is the exact x-mirror (verified the same way) -- no separate named chain for it either.
-_TOP_X = f"{ARCH_HALF_SPAN_FRAC}*t16_hw"
+_TOP_X = f"{TOP_WIDTH_FRAC_DEFAULT}*t16_hw"
 _TOP_Y = f"t16_hh - {ARCH_RISE_FRAC_DEFAULT}*t16_hw"
 UPPER_ARC_SKETCH_2_PARAMETERS = [
     {"Name": "t17_upper",      "Label": "t17_upper",      "Category": "T17 Geometry", "Val": f"{T17_UPPER_CURVE_FRAC_DEFAULT}*t16_hw", "Unit": "in"},
@@ -127,6 +127,7 @@ UPPER_ARC_SKETCH_2_PARAMETERS = [
 
 
 def outline(width_in, height_in, frame_thickness,
+            top_width_frac=TOP_WIDTH_FRAC_DEFAULT,
             arch_rise_frac=ARCH_RISE_FRAC_DEFAULT,
             waist_width_frac=WAIST_WIDTH_FRAC_DEFAULT,
             waist_height_frac=WAIST_HEIGHT_FRAC_DEFAULT,
@@ -136,7 +137,7 @@ def outline(width_in, height_in, frame_thickness,
     point). Returns a dict with every key point, the per-arc circles, and each corner's own outer point
     (for the inner-corner resolvers to reference by name)."""
     hw, hh = width_in / 2.0, height_in / 2.0
-    A = hw * ARCH_HALF_SPAN_FRAC
+    A = hw * top_width_frac
     rise = hw * arch_rise_frac
     ww = hw * waist_width_frac
     wy = hh - waist_height_frac * 2.0 * hh
