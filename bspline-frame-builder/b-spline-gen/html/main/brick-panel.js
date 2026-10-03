@@ -18,7 +18,7 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession } from '../core/state.js';
-import { runWallTool, runFrameTool, primitivesToPolyline } from '../editor/editor-brick-tool.js';
+import { runBricks, primitivesToPolyline } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS } from '../core/bricks/library.js';
@@ -157,22 +157,38 @@ function selectTool(id) {
     return;
   }
   if (id === 'wall') {
-    runWallTool(editor, P.brickSettings);
+    // Advisor review (turn 131): Wall must respect an EXISTING frame's own
+    // interior, not just fill the raw board -- resolve the frame the same
+    // way the Frame tool does; runBricks clips Wall to it via generateBricks
+    // when one is usable, and simply fills the whole board when there isn't.
+    runBricks(editor, P.brickSettings, resolveFrameGeom(editor));
     notifyChange();
     return;
   }
   if (id === 'frame') {
-    const ctx = frameContext(editor);
-    const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
-    if (sil.error) {
-      console.warn('Brick Frame tool: no usable frame contour (' + sil.error + ')');
+    const frameGeom = resolveFrameGeom(editor);
+    if (!frameGeom) {
+      console.warn('Brick Frame tool: no usable frame contour on this board.');
       return;
     }
-    const { points, cornerIndices } = primitivesToPolyline(sil.primitives);
-    runFrameTool(editor, P.brickSettings, points, cornerIndices, FRAME_PRESETS.single_soldier);
+    runBricks(editor, P.brickSettings, frameGeom);
     notifyChange();
     return;
   }
+}
+
+/** The current frame's own contour, as `{path, cornerIndices, bands}` for
+ *  generateBricks/bricksContourBands -- or null when no real frame resolves
+ *  (no template selected, or the offset is degenerate). `sil.corners` (NOT
+ *  every primitive boundary) is passed through to primitivesToPolyline --
+ *  see that function's own header for why marking every boundary broke
+ *  curved runs (advisor review, turn 131). */
+function resolveFrameGeom(editor) {
+  const ctx = frameContext(editor);
+  const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
+  if (sil.error) return null;
+  const { points, cornerIndices } = primitivesToPolyline(sil.primitives, sil.corners);
+  return { path: points, cornerIndices, bands: FRAME_PRESETS.single_soldier };
 }
 
 export function initBrickPanel() {

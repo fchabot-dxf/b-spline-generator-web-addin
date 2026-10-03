@@ -45,7 +45,7 @@
  */
 import { ensureActiveLayer, addLayer } from './layers.js';
 import { commitEdit } from './editor-commit.js';
-import { bricksAlongPath, bricksFillShape, bricksContourBands } from '../core/bricks/index.js';
+import { bricksAlongPath, generateBricks } from '../core/bricks/index.js';
 import { brickSetById } from '../core/bricks/library.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame'
@@ -144,56 +144,75 @@ function setForId(id) {
   return brickSetById(id) || brickSetById(1);
 }
 
-/** The Wall tool (button-driven, no drag): fills the whole board with
- *  bricks via bricksFillShape, replacing this tool's own prior output. */
-export function runWallTool(editor, settings) {
+/** Wall + Frame (button-driven, no drag), unified: f3's own `generateBricks`
+ *  composer (core/bricks/engine.js) already does "Frame then Wall, Wall
+ *  fills the Frame's own interiorOutline" -- advisor review (turn 131):
+ *  running them as two INDEPENDENT fills (Wall over the whole board, Frame
+ *  drawn after) left Frame's band sitting on TOP of Wall's own bricks with
+ *  no clipping between them. Using the one real composer instead of two
+ *  separate calls means Wall is ALWAYS clipped to whatever the frame's true
+ *  interior is (when a frame resolves), with no overlap, regardless of
+ *  which button the user clicked. `frameGeom` is `{path, cornerIndices,
+ *  bands}` or null/undefined (no usable frame -- Wall alone fills the whole
+ *  board, same as before Frame existed). */
+export function runBricks(editor, settings, frameGeom) {
   const layer = ensureBricksLayer(editor);
   clearGenerated(editor, layer, 'wall');
-  applyBrickLayerTooling(layer, settings);
-  const { bricks } = bricksFillShape(boardPolygon(editor), null, toBrickOpts(settings));
-  drawBricks(editor, layer, bricks, 'wall');
-  commitEdit(editor);
-  return bricks.length;
-}
-
-/** The Frame tool (button-driven, no drag): contour bands along the
- *  CURRENT frame's own silhouette. `framePrimitives` is already a flat
- *  {x,y}[] polyline + cornerIndices (see primitivesToPolyline below) --
- *  callers resolve the actual frame contour (contour-from-frame.js's
- *  frameContourSilhouette) since that depends on frame state this module
- *  has no reason to import directly. */
-export function runFrameTool(editor, settings, path, cornerIndices, bands) {
-  const layer = ensureBricksLayer(editor);
   clearGenerated(editor, layer, 'frame');
   applyBrickLayerTooling(layer, settings);
-  const { bricks } = bricksContourBands(path, bands, { ...toBrickOpts(settings), cornerIndices });
-  drawBricks(editor, layer, bricks, 'frame');
+
+  const set = { ...setForId(settings.setId), grout: { ...setForId(settings.setId).grout, widthIn: settings.grout.widthIn } };
+  const input = {
+    boardOutline: boardPolygon(editor),
+    set,
+    scale: settings.scale,
+    suppression: settings.suppression,
+    clumping: settings.clumping,
+    seed: settings.seed,
+  };
+  if (frameGeom) input.frame = frameGeom;
+
+  const { bricks, frameBricks } = generateBricks(input);
+  drawBricks(editor, layer, frameBricks, 'frame');
+  drawBricks(editor, layer, bricks, 'wall');
   commitEdit(editor);
-  return bricks.length;
+  return { wallCount: bricks.length, frameCount: frameBricks.length };
 }
 
 /** primitives (contour-from-frame.js's own {type:'L'|'A', ...} loop) -> a
- *  flat {x,y}[] polyline + the indices of its real corners, exactly what
- *  bricksContourBands expects as (path, opts.cornerIndices). An 'L'
- *  primitive is already a straight edge (its own two endpoints are enough);
- *  an 'A' is subdivided into ARC_STEPS points so a curved frame edge still
- *  gets a reasonably smooth brick band, not one giant straight chord. */
+ *  flat {x,y}[] polyline + the indices of its REAL corners, exactly what
+ *  bricksContourBands/bricksAlongPath expect as (path, opts.cornerIndices).
+ *  `corners` is frameContourSilhouette's own declared field: "indices into
+ *  primitives that are sharp (merged) joints, not tangent" -- advisor
+ *  review (turn 131): marking EVERY primitive boundary as a corner (the
+ *  first version of this function) forced a mitred brick-boundary + corner
+ *  correction at every tangent arc-to-arc sample too, not just true
+ *  corners, producing overlapping blobs/diagonal shards around a curved
+ *  run. Only indices in `corners` are marked now; a run between two real
+ *  corners -- however many 'A' primitives it's subdivided into -- is left
+ *  to bricksAlongPath's own arc-length tangent sampling to follow smoothly,
+ *  which is exactly what it's already built to do between two declared
+ *  corners (its own un-mitred "plain point" path). An 'L' primitive is
+ *  already a straight edge (its own two endpoints are enough); an 'A' is
+ *  subdivided into ARC_STEPS points so a curved frame edge still gets a
+ *  reasonably smooth polyline approximation, not one giant straight chord. */
 const ARC_STEPS = 16;
 
-export function primitivesToPolyline(primitives) {
+export function primitivesToPolyline(primitives, corners) {
+  const cornerSet = new Set(corners || []);
   const points = [];
   const cornerIndices = [];
-  for (const prim of primitives || []) {
-    cornerIndices.push(points.length); // every primitive's own START is a declared corner
+  (primitives || []).forEach((prim, i) => {
+    if (cornerSet.has(i)) cornerIndices.push(points.length);
     if (prim.type === 'A') {
-      for (let i = 0; i < ARC_STEPS; i++) {
-        const t = prim.theta1 + (prim.dTheta * i) / ARC_STEPS;
+      for (let k = 0; k < ARC_STEPS; k++) {
+        const t = prim.theta1 + (prim.dTheta * k) / ARC_STEPS;
         points.push({ x: prim.cx + prim.rx * Math.cos(t), y: prim.cy + prim.ry * Math.sin(t) });
       }
     } else {
       points.push({ x: prim.p0.x, y: prim.p0.y });
     }
-  }
+  });
   return { points, cornerIndices };
 }
 

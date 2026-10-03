@@ -9006,3 +9006,84 @@ instances on this machine were confirmed serving OTHER seats' worktrees):**
 - Zero JS errors across every pass.
 
 Nothing else touched. Commit, push, pass back.
+
+
+### F35 item 1, advisor review (turn 131): 3 fixes + 2 extra checks
+
+Advisor held the merge after reviewing the first pass's shots: (1) Wall overhangs the board edge,
+(2) Frame breaks into overlapping blobs/diagonal shards on the real curved T1 contour, (3) Wall was
+drawn independently of Frame, leaving them overlapping. A follow-up message added (4) verify bricks
+actually drape on the real B-spline terrain (not just a flattened slab) and (5) report the real
+relief depth + whether the preview applies any Z exaggeration.
+
+**(2) and (3) fixed; (1) is a genuine `core/bricks/` engine limitation, escalated to f3 (cc
+advisor) rather than patched around in the adapter -- same protocol the advisor's own review message
+set for the curve issue ("if the engine can't do curves, tell f3 directly").**
+
+**(2) root cause, found by re-reading my own adapter, not the engine:** `primitivesToPolyline`
+marked EVERY primitive's own start as a declared "corner" passed to `bricksAlongPath`/
+`bricksContourBands`'s `cornerIndices` -- including the boundary between two 'A' primitives that are
+actually a TANGENT continuation of the same smooth curve (how a long arc gets represented once split
+into several primitive objects). Forcing a mitred-corner correction at those non-corner points is
+exactly what produced the overlapping shards at the hourglass waist. Fix: use
+`frameContourSilhouette`'s own declared `corners` field ("indices into primitives that are sharp
+(merged) joints, not tangent") to mark ONLY real corners; everything between two declared corners
+-- however many 'A' primitives it's subdivided into -- is left to `bricksAlongPath`'s own arc-length
+tangent sampling, which already fans smoothly along an un-mitred run by design. Rewrote
+`tests/bricks-editor-adapter.test.js` for the new `primitivesToPolyline(primitives, corners)`
+signature (7 tests, up from 4) -- added a dedicated case for two consecutive arcs with only the
+first declared a corner, confirming the tangent join produces NO extra corner.
+
+**(3) fixed by using f3's own composer instead of two independent calls.** Replaced the separate
+`runWallTool`/`runFrameTool` with one `runBricks(editor, settings, frameGeom)` built on
+`generateBricks()` (core/bricks/engine.js) -- "Frame then Wall, Wall fills the Frame's own
+interiorOutline" was already built and already the right behavior; the first pass just didn't use
+it, calling `bricksFillShape`/`bricksContourBands` separately with no shared boundary. Now BOTH the
+Wall and Frame buttons resolve the current frame contour the same way and call the same function --
+whichever one the user clicks, if a frame is resolvable the result is identical (band + a wall fill
+clipped to its own interior, zero overlap); with no frame, Wall alone still fills the whole board
+exactly as before. Verified live against the SAME real curved template (`template_1`) that showed
+the original breakage: Frame now shows a clean soldier band FANNING (not mitring) around the
+hourglass waist's two concave arcs, Wall's own fill sits entirely inside it with no overlap --
+`shots/seatC/f35item1_fix_frame_1366.png` / `f35item1_fix_wall_1366.png` (now identical, confirming
+the two buttons converge) / `f35item1_fix_both_1366.png`.
+
+**(1) Wall overhangs the board edge -- a DOCUMENTED, DELIBERATE simplification in f3's own
+`core/bricks/layouts/bond.js`, not an adapter bug:** that file's own header states it plainly: "Edge
+treatment (a declared simplification, not full polygon clipping): a cell is kept only when its own
+CENTROID falls inside boardOutline -- whole bricks, dropped (not cut/stretched) at the board edge."
+A brick whose centre is inside but whose own far edge extends past the boundary is kept WHOLE,
+hanging past the edge -- exactly what Fred saw. General polygon clipping against a boundary that can
+be CONCAVE (the same hourglass shape) is real, nontrivial geometry work (`core/bricks/`'s own
+WORK-LOG documents three separate, compounding bugs just getting MITRE-CORNER clipping right) -- the
+kind of thing that belongs in the portable engine itself (so `bricksFillShape`'s own "clipped to
+polygon" doc comment becomes literally true), not hacked into this adapter by re-clipping SVG
+polygons after the fact outside the engine's own data model. Confirmed this is STILL present with no
+frame active (bond.js's own code is unchanged) -- `shots/seatC/f35item1_wall_noframe_1366.png`.
+Flagged to f3 directly (cc advisor) with the exact repro: `bricksFillShape(boardPolygon, null, {set:
+BRICK_SETS[0], seed:1})` on the current app's own 7x9in board. NOT attempted here.
+
+**(4) bricks genuinely drape on the real terrain, additive -- verified at BOTH a normal and a much
+stronger terrain, not just the flattened slab the first pass's own terrain shot used:** ran Wall+
+Frame with the app's own REAL DEFAULT settings untouched (`carveZ:1.5, density:1`, genuine B-spline/
+noise terrain active), screenshotted iso + top views -- the brick courses visibly bend and climb
+following the terrain's own rolling hills, joints stay visible as grooves on the sloped sections too
+(exactly what additive stamp compositing guarantees by construction: `core/engine/apply-stamp-
+layers.js`'s own `stampedHeights[k] += bodyVal * layerDepth + ...` adds the brick relief ON TOP of
+whatever the real local terrain height already was, never replacing it). Repeated at `carveZ:3.0`
+(a much more dramatic terrain) -- same correct draping holds at any terrain scale.
+`shots/seatC/f35item1_fix_terrain_{default,strong}_{iso,top}.png`.
+
+**(5) the actual relief value + no preview Z-exaggeration exists, confirmed by reading the renderer's
+own source, not assumed:** the brick layer's `depth` is exactly `P.brickSettings.reliefIn` = 0.125in
+(the declared default, unchanged) in every shot. Searched `core/preview/terrain-mesh.js` (where
+heightmap values become actual mesh vertex Z positions) for any multiplier applied to height before
+it reaches the GPU -- there is none; `z = heights[idx]` is used directly, no exaggeration factor
+anywhere in the renderer. The "very tall and blocky" look in the FIRST pass's flat-slab screenshot is
+a real property of a genuinely sharp-edged (flat profile, 0 fillet), 0.125in-tall brick seen up close
+relative to a 7x9in board -- not a display-scale artifact.
+
+Full suite still green: 192 files / 3557 tests (+3 from the expanded primitivesToPolyline coverage).
+
+Commit, push, pass back, and a separate message to f3 (cc advisor) for the escalated edge-clipping
+gap.
