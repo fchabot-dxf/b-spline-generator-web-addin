@@ -103,23 +103,55 @@ function buildArchedTaper(taperDeg, W, H) {
   const waOrig = { cx: g.waistCx, cy: g.waistCenterY, r: g.radiusWaist };
   const { circle: sh, topCorner, tanPt: hornPt } = taperedCorner(
     { cx: g.shoulderCx, cy: g.shoulderY, r: g.cornerRadiusTop }, waOrig, +1, taperDeg, hw, hh - archRise);
-  const shWa = extTangentPt(sh, sh.r, waOrig, waOrig.r); // shoulder-to-waist tangent, re-derived (sh may have
-  // shifted off the real engine's own shoulder centre if taperedCorner took its inset branch).
+  // BUG FIX (Fred, live in Fusion: 0.248in gap at -15deg, 0.122in at -8deg): when taperedCorner takes its
+  // INSET branch (the shoulder circle itself moves, not just the horn), the waist arc can no longer be reused
+  // verbatim from the real engine's own untapered output -- THAT arc starts from the OLD (pre-shift) tangent
+  // point. Re-solve it from its own tangency to the NEW shoulder circle (shWa) on one end; the hip-side end
+  // (waHp) is untouched by a shoulder-side shift, so read it directly off the real engine's own arc instead of
+  // re-deriving it (one less place to get the hip's own geometry wrong).
+  const shWa = extTangentPt(sh, sh.r, waOrig, waOrig.r); // shoulder-to-waist tangent, re-derived for the NEW sh.
+  const waistArcOrig = sil.primitives[2];
+  const waHp = {
+    x: waistArcOrig.cx + waistArcOrig.rx * Math.cos(waistArcOrig.theta1 + waistArcOrig.dTheta),
+    y: waistArcOrig.cy + waistArcOrig.ry * Math.sin(waistArcOrig.theta1 + waistArcOrig.dTheta),
+  };
   const arch = archPrimitive(Mx(topCorner), topCorner, archRise);
   const prims = [...sil.primitives];
   prims[0] = mkLine(topCorner, hornPt);
   prims[1] = mkArc(sh, sh.r, hornPt, shWa, false);
+  prims[2] = mkArc(waOrig, waOrig.r, shWa, waHp, g.waistMajor);
   prims[10] = mkLine(Mx(hornPt), Mx(topCorner));
   prims[9] = mkArc({ cx: -sh.cx, cy: sh.cy }, sh.r, Mx(shWa), Mx(hornPt), false);
+  prims[8] = mkArc({ cx: -waOrig.cx, cy: waOrig.cy }, waOrig.r, Mx(waHp), Mx(shWa), g.waistMajor);
   prims[11] = arch;
   return { hw, hh, prims, topCorner, hornPt, sh, wa: waOrig, archRise, topX: topCorner.x };
 }
 
 const primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : p.rx * Math.abs(p.dTheta));
+const primEnd = (p, atEnd) => (p.type === 'L' ? (atEnd ? p.p1 : p.p0) : { x: p.cx + p.rx * Math.cos(atEnd ? p.theta1 + p.dTheta : p.theta1), y: p.cy + p.ry * Math.sin(atEnd ? p.theta1 + p.dTheta : p.theta1) });
+
+/** Fred's own amendment (a real gap found live in Fusion, -15/-8 deg, missed by outlineDefects): every piece's
+ *  own END must exactly meet the NEXT piece's own START. outlineDefects checks TANGENCY (direction) where it
+ *  applies, never plain coincidence, and skips the check entirely between two lines or when requireTangency is
+ *  off (needed here, this shape has genuine sharp corners) -- so a piece that's merely DISCONNECTED from its
+ *  neighbour (same direction, wrong position; exactly what reusing the real engine's own un-shifted waist arc
+ *  produced) was never caught. Returns the worst gap found, in inches, and where.
+ */
+function continuityCheck(prims) {
+  let worst = 0, worstAt = null;
+  const n = prims.length;
+  for (let i = 0; i < n; i++) {
+    const a = prims[i], b = prims[(i + 1) % n];
+    const gap = Math.hypot(primEnd(a, true).x - primEnd(b, false).x, primEnd(a, true).y - primEnd(b, false).y);
+    if (gap > worst) { worst = gap; worstAt = `${i}->${(i + 1) % n}`; }
+  }
+  return { worstGapIn: worst, worstAt };
+}
 
 function check(label, build, taperDeg, W, H) {
   const b = build(taperDeg, W, H);
   const outerDef = outlineDefects(b.prims, { requireTangency: false }).filter((d) => d.kind !== 'notTangent');
+  const continuity = continuityCheck(b.prims);
   const inner = offsetOutlineInward(b.prims, T);
   const innerReal = inner.filter((p) => !p.collapsed);
   const innerDef = outlineDefects(innerReal, { requireTangency: false });
@@ -132,8 +164,9 @@ function check(label, build, taperDeg, W, H) {
     const pts = p.type === 'L' ? [p.p0, p.p1] : Array.from({ length: 9 }, (_, i) => ({ x: p.cx + p.rx * Math.cos(p.theta1 + p.dTheta * i / 8), y: p.cy + p.ry * Math.sin(p.theta1 + p.dTheta * i / 8) }));
     for (const q of pts) if (q.x < -hw - 1e-6 || q.x > hw + 1e-6 || q.y < -hh - 1e-6 || q.y > hh + 1e-6) oob++;
   }
-  const clean = outerDef.length === 0 && innerDef.length === 0 && oob === 0;
+  const clean = outerDef.length === 0 && innerDef.length === 0 && oob === 0 && continuity.worstGapIn < 1e-6;
   const ok = clean && minLen >= T - 1e-9;
+  if (continuity.worstGapIn >= 1e-6) console.log(`  CONTINUITY GAP: ${continuity.worstGapIn.toFixed(4)}in at piece ${continuity.worstAt}`);
   console.log(`${label} ${W}x${H} taper=${taperDeg.toFixed(2)}deg: outerDef=${outerDef.length} innerDef=${innerDef.length} minLen=${minLen.toFixed(4)} oob=${oob} miters=${miters.length} clean=${clean} OK=${ok} topX=${b.topX.toFixed(4)} archRise=${b.archRise.toFixed(4)}`);
   if (outerDef.length) console.log('  outerDef detail', JSON.stringify(outerDef));
   if (innerDef.length) console.log('  innerDef detail', JSON.stringify(innerDef));
@@ -260,7 +293,8 @@ const EXPORT_ANGLES = [-15, -8, 0, 8];
 const exportCases = EXPORT_ANGLES.map((deg) => {
   const r = check('(export)', buildArchedTaper, deg, 7, 9);
   const sym = mirrorCheck(r.b.prims);
-  console.log(`EXPORT taper=${deg}deg symmetry check: worst mismatch ${sym.worstMismatchIn.toFixed(6)}in at ${sym.worstAt}`);
+  const cont = continuityCheck(r.b.prims);
+  console.log(`EXPORT taper=${deg}deg symmetry check: worst mismatch ${sym.worstMismatchIn.toFixed(6)}in at ${sym.worstAt}; continuity worst gap ${cont.worstGapIn.toFixed(6)}in at ${cont.worstAt}`);
   return {
     taperAngleDeg: deg,
     boardWidthIn: 7, boardHeightIn: 9,
@@ -268,6 +302,9 @@ const exportCases = EXPORT_ANGLES.map((deg) => {
     archRiseIn: r.b.archRise,
     frameThicknessIn: T,
     symmetryCheck: sym,
+    continuityCheck: cont, // every piece's own end vs the next piece's own start -- the fix for the live
+    // Fusion gap (0.248in at -15deg, 0.122in at -8deg): the waist arc is now re-solved from its own tangency
+    // to the (possibly shifted) shoulder circle instead of reused verbatim from the untapered engine output.
     topologyClean: r.clean, minPieceLengthIn: r.minLen,
     outerPrimitives: r.b.prims.map((p, i) => ({ name: PIECE_NAMES[i], ...primToExport(p) })),
   };

@@ -7689,3 +7689,47 @@ directly in the caption): `C:/Users/danse/.bspline-status/shots/seatC/2235_F30-i
 diagram_7x9_6x9.png`. Sent to the advisor as a path, not Fred directly, per the standing routing rule. No
 template files touched, no Fusion used. Passing back for Fred's sign-off before any `template_14`-numbered (or
 however it's slotted) code is written.
+
+## 2026-10-03: F30 item 5 amendment -- committed the diagram script, exported outlines for Fusion, found + fixed
+a REAL shoulder/waist discontinuity (seat C, epoch 5, no Fusion)
+
+Two asks landed together: (1) Fred: "try it in Fusion first" -- export the Arched+taper OUTER outline
+primitives at 7x9 for -15/-8/0/8 deg exactly as drawn, commit the diagram script so it is a real reusable
+tool, not scratch; (2) Fred, looking at the -15 deg panels: "left has a notch, right's miter ends outside the
+outline -- check symmetry."
+
+Committed `tools/repro/f30_item5_arched_taper_diagram.mjs` (repo root as argv[1], same convention as
+`tools/repro/ab/ab6.mjs`) and added a mirror-symmetry self-check (right-side pieces vs their left-side
+partners: endpoints, radii). First result: the raw outline primitives were symmetric to MACHINE PRECISION at
+every exported angle, including -15 -- which looked like it cleared Fred's own concern (a rendering artifact
+in this script's own SVG path/miter drawing, not the geometry), and was reported that way.
+
+**Wrong -- or at least incomplete.** The advisor built the exported JSON in Fusion directly and found a real
+gap between the shoulder and waist arcs: 0.248in at -15 deg, 0.122in at -8 deg. Root cause, once named: when
+`taperedCorner` takes its INSET branch (the shoulder circle itself moves to stay tangent to the tilted horn
+AND the waist circle -- active for every negative angle at this board size, not just the extremes), the
+*shoulder* arc was correctly rebuilt from the new circle, but the *waist* arc was still reused VERBATIM from
+the real engine's own untapered output -- which starts from the OLD, pre-shift tangent point. Two pieces that
+are each individually "correct" relative to a DIFFERENT shoulder position are not continuous with each other.
+Mirror symmetry couldn't catch this: both sides have the identical bug, so they remain exact mirrors of each
+other while both being disconnected from their own waist arc -- a defect class symmetry checking is blind to
+by construction.
+
+Fixed by re-solving the waist arc's own shoulder-side endpoint from its tangency to the (possibly shifted)
+shoulder circle, instead of reusing the engine's untapered one; the hip-side endpoint is read directly off the
+real engine's own arc (untouched by a shoulder-side shift, no need to re-derive it). Added the check that
+should have caught this the first time: `continuityCheck` walks every consecutive primitive pair and asserts
+the first's own end point exactly meets the next's own start (not a tangency check -- `outlineDefects`' own
+`notTangent` only fires between two pieces that are SUPPOSED to be tangent, and this shape has genuine sharp
+corners everywhere, so that check was already disabled here; a piece that's merely DISCONNECTED in the same
+direction was never checked by anything). Independent confirmation the fix is real, not just the new check
+passing: `frameMiters` now reports exactly 4 miters (the 2 top + 2 base corners) at every angle, where the
+buggy version reported 6 -- the gap itself was being treated as two extra "corners" needing their own miter
+markers.
+
+Re-swept after the fix: still topologically clean across the full declared [-15, 15] band at 7x9 and 6x9 (same
+true floor as before, -15 -- the fix corrected a connectivity defect, not a feasibility one). Re-exported
+`taper_outlines_7x9.json` (now carrying a `continuityCheck` field per case, worst gap ~1e-15in at every angle)
+and redrew the diagram: `C:/Users/danse/.bspline-status/shots/seatC/0233_F30-item5-fixed_arched-taper-
+diagram_7x9_6x9.png`. Sent to the advisor to retest in Fusion. Still no template files touched, no Fusion used
+on this end.
