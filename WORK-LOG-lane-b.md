@@ -13753,3 +13753,106 @@ script -- 166 insertions / 18 deletions). Screenshots live under `shots/seatB/` 
 convention as every other shot this session) -- the advisor/Fred can open them directly from this
 worktree. T84 item 6 is DONE. Per the dispatch's own explicit sequencing ("Then continue the Sand Timer"),
 next up is T84 item 5 (Sand Timer, Template 14) -- passing back now.
+
+## Lane B -- Turn 264 (epoch 9) -- T84 item 5 (Sand Timer, Template 14): geometry, Fusion phases,
+## JS/app-side wiring all DONE and verified -- requesting 'Fusion free' for the live sweep
+
+Advisor ACKed item 6 (merged, deployed) and said continue item 5, ask for 'Fusion free' before the
+live matrix, sign with the HANDLED turn (264). Built the full pipeline, same architecture as T16/T17,
+in 4 steps (commits aeef8b5, 6e890bb, 4eb20f2, d3dce2e), each gated by its own real verification
+before moving on -- not a single "trust it" commit at the end.
+
+**(1/4) `fb_engine/t14_sandtimer_geometry.py`** (commit aeef8b5): ported
+`tools/repro/f31_item1_sandtimer_diagram.mjs`'s own `buildSandTimer()`/`bulgeArc()` (Fred-approved,
+fb-app 5e0b5fa) to Python via `sagitta_circle` (the same primitive T16/T17 use -- `bulgeArc` was
+itself already a hand re-implementation of it). Added the one new thing the diagram never had: a
+`topWidth` handle (T84 item 4's shared key), default 1.0 reproducing the diagram's own full-width top
+exactly. Cross-checked numerically against the diagram's own measured output at 3 board sizes (ran
+its own functions directly, pinned the exact pinch/centre/radius values as a test fixture) -- matches
+to 1e-9. Proved non-vacuous by negating the bulge sign: 12/22 tests failed. 22/22 clean; fb_engine
+suite 709/10 skipped, zero regressions (nothing depends on this module yet at that point).
+
+**(2/4) Fusion build code** (commit 6e890bb): full `sketches/template_14/` phase set. The CW-arc-swap
+table (fusion360-quirks skill) needed re-deriving from scratch for FOUR arcs this time (T16 only had
+3, and its two straight upper sides never faced the question) -- confirmed numerically (every one
+turns clockwise in declared order, same as T16's own lower bulges) rather than assumed, then hand-
+derived the full weld table from that. `test_t14_fusion_expressions.py` (10 tests, mirrors
+`test_t16_fusion_expressions.py`'s own pattern) resolves the REAL phase-file expression strings in
+pure Python and checks every point against the Python geometry module, confirms the loop closes
+exactly, and all 8 welds join physically coincident points -- **passed on the FIRST run**, confirming
+the hand-derived weld table was right the first time. 6 corners split: 4 line-circle
+(`ResolveLineCircleCorner`, Concave=False -- every arc bulges outward) + 2 circle-circle (the two
+pinches, `ResolveCircleCircleCorner`, T84 item 3's own new resolver) -- confirmed the Concave1=
+Concave2=False flag pair numerically (the only one of 4 combinations landing the inner point on the
+configuration's own required y=0 mirror-symmetry line without exceeding the outer pinch point).
+Registered in `test_no_miter_miss_possible.py`'s own TEMPLATES list: 17/17 passed, confirms every
+declared miter's own InnerID is covered by a resolve step. Full fb_engine suite: 726/10 skipped.
+
+**Mid-step fix, same commit area:** `pinchHeightFrac`'s own sign was copied from the diagram's y-DOWN
+formula (`-hh + f*2*hh`) literally instead of translated to this module's own y-UP convention (should
+be `hh - f*2*hh`, T16's own `waistHeightFrac` formula shape) -- invisible at the symmetric default
+(f=0.5) and in every test so far (none exercised a non-default value), caught by re-deriving the
+diagram's own y-convention from first principles instead of re-trusting the copied formula. Fixed in
+both the Python `outline()` AND the matching Fusion `t14_pinchY` expression; verified the DIRECTION
+numerically (f=0.2 now gives +y, toward the true top edge) not just that something changed.
+
+**(3/4) JS/app-side wiring** (commit 4eb20f2 registered the shape extractor only; commit d3dce2e did
+the rest): `fb_engine/frame_shape_fit.py`'s `_sand_timer` extractor + `provisional_sand_timer_model`,
+`frame_definition.py`'s dispatch (the Sand Timer branch checked BEFORE the archedFunnel one, since
+its own provisionalShape dict ALSO carries the shared `topWidthFracOfHw` key -- same order-sensitivity
+T17-before-T16 already established). Then the full JS side: `PRESETS.sandTimer`, `PARAM_ORDER`,
+`DERIVED_PARAM_DEFAULTS`, `FRAME_ONLY_PARAM_KEYS`, `SALT`, `sandTimerConstruction` + `_solveSandTimer`
+(editor-shape-lattice-generator.js) -- Y-DOWN this time (every other JS construction's own
+convention), re-derived from first principles rather than copied from the Python side's Y-UP one
+(learned from the pinchHeightFrac mistake two steps earlier -- didn't repeat it on the JS side).
+`HANDLE_SEGMENT_INDEX.sandTimer` + `computeParamHandles` branch (editor-shape-lattice-interaction.js)
+-- `pinchReachFrac`'s own `valueFromWorld` is `1 - x/hw`, the one inverted relationship among this
+template's own handles (pinchR moves TOWARD the centreline as reach increases). Minimal no-op branch
+in frame-handles.js.
+
+**Two more real bugs caught live** (both by running the actual integration, not by inspection):
+1. `topWidth`'s own default (1.0, the approved full-width top) sat OUTSIDE `_sandTimerRange`'s own
+   declared ceiling (0.97 -- copied from archedFunnel's own margined convention without checking it
+   against THIS template's own default, which sits exactly AT its structural ceiling). `_resolveParams`
+   silently clamped every resolve, so the "default" shape actually drawn was always 0.97, never the
+   approved 1.0 -- caught by the new dedicated test's own seed-geometry check reading back 3.1525
+   instead of 3.25 at 7x9. Fixed: the ceiling is now the TRUE structural limit (1.0, A<=hw), no margin,
+   since the default must sit AT it.
+2. Declaring BR/BL's own inner-corner label under their own arc (matching T16/T17's "always the arc"
+   convention exactly) collided with topR/topL's own choice in `declaredMiterJointIndices`
+   (editor-frame-profile.js) -- TWO pairs of corners landed on the SAME joint index, leaving 2 of 6
+   real joints unexempted (notTangent defects, caught by frame-handles.test.js's own cross-template
+   sweep: "every default outline has no defects" / "no template default at 7x9 is refused"). Root
+   cause: T16's OWN corners happened to all land on distinct indices by coincidence; this template's
+   own :S/:E swap pattern doesn't share that coincidence. Confirmed by reading `inner_corners.py`
+   directly that `InnerID` is just an output LABEL (`ArcID` supplies the real geometry) -- relabelled
+   BR/BL under `base` instead (found by brute-force search over the 4 full-coverage label
+   combinations that exist, picking the one changing fewest corners from "always arc").
+
+Regenerated `frame-defs.js/.json`. Fixed 3 pre-existing registry tests the same class of fix T16/T17
+needed (measured indices/lists, not guessed): `frame-template-9.test.js`'s own FRAME_ONLY_PARAM_KEYS
+slice (-15,-13), `frame-template-6.test.js`'s own sorted label list, `frame-defs.test.js`'s own
+FEATURES/EXTRA maps. Extended T84 item 6's own regression test to also skip 'tooSmall' at template_14
+12x6 (a landscape extreme, project_portrait_only's own "simple fallback" category -- a different,
+later check than the precondition it already skipped, not a regression of that fix).
+
+**(4/4) Dedicated test file**, same commit as the rest above: `tests/frame-template-14.test.js`, 19
+tests mirroring `frame-template-16.test.js`'s own structure (listing/declaration, the 4 handles'
+round-trip + drag-range + generateRange-extreme validity at every portrait board, non-disturbance of
+every other template) -- all 19 passed. Registered `template_14` in
+`tools/repro/fusion_t11/item61_full_matrix_sweep.py`'s own TEMPLATE_META (6 bar names). Generated the
+9 item-61 payloads (default + 4 handles x {min,max}) via the fully generic
+`h23_item61_make_full_matrix_payloads.mjs` -- 0 JS-side defects across EVERY template (not just this
+one, confirming no disturbance elsewhere), 4 of this template's own 9 cases pulled back from their
+declared range end by the no-hook-rule guard (normal, several pre-existing templates show the same
+pattern) to the real reachable drag-stop.
+
+**Verification gate, cumulative:** full vitest suite 3233 passed/0 failed across 165 files; full
+fb_engine pytest suite 726 passed/10 skipped. Zero regressions anywhere in either suite across this
+entire 4-step build.
+
+**Not yet done:** the live Fusion build itself (item-61 matrix sweep, target 100% BUILT) -- everything
+above is JS/Python-side verified only, same honest gap every new template's own test file states for
+itself. Per the dispatch's own explicit instruction, asking the advisor for 'Fusion free' before that
+step. Payloads are ready at `bspline-frame-builder/scratch/item61_t14_payloads/` (9 cases, not
+committed, same scratch convention as every other probe output this session). Passing back now.
