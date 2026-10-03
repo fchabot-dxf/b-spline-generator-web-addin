@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "1d53d0097fa8e542abd9377dd98699e946c2915862770777b30f5f9be112451c",
+  "sourceHash": "33e8820e3471ea0091e26f82de550aac2e6ec6f75beed99991406bc1565622cd",
   "templates": [
     {
       "features": [
@@ -17677,12 +17677,12 @@ export default {
             "hw": -0.015632
           },
           "topDipDepth": {
-            "hh": 0.156118,
-            "hw": -0.021117
+            "hh": 0.15611,
+            "hw": -0.021114
           },
           "topDipHalfWidth": {
-            "hh": 0.126135,
-            "hw": 0.554981
+            "hh": 0.126112,
+            "hw": 0.554991
           },
           "waistCy": {
             "hh": -0.012054,
@@ -17719,11 +17719,11 @@ export default {
             ],
             "topDipDepth": [
               -0.0,
-              0.0
+              -0.0
             ],
             "topDipHalfWidth": [
-              0.0,
-              0.0
+              -0.0,
+              -0.0
             ],
             "waistCy": [
               0.0,
