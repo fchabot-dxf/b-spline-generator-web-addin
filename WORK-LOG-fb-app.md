@@ -8310,3 +8310,76 @@ Confirmed via `app.documents` at the end: exactly one document remained open, Fr
 touched. No redeploy (main 2026.10.03-15 was already deployed).
 
 Reported "Fusion released" to the advisor with full results so Fusion could hand to seat f3.
+
+## 2026-10-03: F33 item 1 -- unseeded literal defaults of T14-T17 (my own F31 item 2c finding) (seat C)
+
+Dispatch: my own live-check payloads for F31 item 2c (above) hit a REFLEX ARC (255-267 deg sweep,
+Shape Outline) for T14 and T15 when sent WITHOUT `seedGeometry` -- a path real app users never take
+(`frameSendPayload()` always attaches it), but Fusion's own Sketch Builder command and
+`record_frame_parity.py`'s golden recording both DO build this literal/unseeded path directly. Brief
+(NEXT-SESSION-fb-app.md, advisor's own framing): make all four new templates' literal defaults build
+cleanly -- closed-form, matching the app's own default exactly (item-18/49 convention) -- pure test,
+then a live unseeded check, then record goldens. "Code first; Fusion order f3 -> b5 -> you."
+
+**First checked whether the closed-form math itself was ever wrong, rather than assuming the fix
+brief implied it was: it wasn't.** `fb_engine/test_t14_fusion_expressions.py` /
+`test_t15_fusion_expressions.py` / `test_t16_fusion_expressions.py` / `test_t17_fusion_expressions.py`
+already resolve each template's own Fusion SKETCH_2_PARAMETERS chain in pure Python and check every
+literal BuildSequence Point against that template's own `outline()` -- i.e. they already ARE the
+"literal Points == app default seed geometry" pure test the brief asks for, for all four templates,
+and all 142 of them pass (confirmed by re-running, not assumed from memory). Hand-computed T14's own
+default upper_R arc (7x9: topR=(3.25,4.25), pinchR=(1.3,0), bulge=0.455) to double-check independently
+of the test: sagitta_circle's own closed form gives a genuine ~44 deg minor-arc sweep -- nowhere near
+reflex. So the VALUES were never the defect; nothing needed changing in `t14_sandtimer_geometry.py` /
+`t15_flask_geometry.py` / their own SKETCH_2_PARAMETERS, and no new pure test was written (one already
+existing and green for each of the four is the actual deliverable, not a second copy of it).
+
+**The defect is in the live BUILD mechanism, not the geometry.** Every one of T14/T15/T16/T17's own
+side arcs is a lone MITER (their own module docstrings: no Tangent chain, no neighbour-tangency
+coupling) built via `addByThreePoints(p0, via, p1)` (`fb_engine/geometry.py::_create_arc3`). Once
+created, nothing in the build holds that arc's own shape: its two endpoints get welded (Coincident,
+`p02_03_welds.py`) to whichever neighbouring piece or bounding-box anchor shares that corner, and
+`fusion360-quirks` (this session's own loaded skill) already documents exactly this failure class --
+"`Coincident(point, curve)` only pins the SUPPORTING geometry, not which branch gets drawn" and, more
+to the point here, pinning an arc's OWN endpoints without a direct `Fix` leaves ONE remaining DOF (the
+circle itself, i.e. the bulge depth) that a later constraint pass is free to resolve onto the reflex
+(long-way-round) branch instead of back onto the original short one -- with nothing wrong in the
+numbers that put it there in the first place. Template 10's own `p02_03_loop.py` hit the exact same
+class on its own top arch and documents the clean fix in its own docstring: "`Fix` the arc's own
+endpoints directly -- never rely on a `Coincident` chain to propagate fixedness" (T10's own
+implementation is more elaborate than that because its arch ALSO has to stay correct through a
+downstream tangent chain the Fix alone doesn't serve, needing an anchor-point + rebuild-step recipe on
+top; T14/T15/T16/T17 have no tangent chain at all, so the plain direct-Fix form is the whole fix here).
+
+**Fix applied, all four templates, `UnseededOnly` (the same escape hatch T10's own taper-Vertical
+already established, `fb_engine/seed_geometry.py::apply_seed_geometry`):** right after each template's
+own `p02_02_loop.py` declares its arcs, one `{'Type': 'Fix', 'Targets': [f'{id}:S', f'{id}:E']}` step
+per arc -- T14 (upper_R, lower_R, lower_L, upper_L), T15 (dome_R, dome_L), T16 (lower_R, lower_L,
+arch), T17 (upper_R, lower_R, lower_L, upper_L, arch; T16's arch itself, needing no via-point handle
+at all by symmetry, still goes through the SAME addByThreePoints branch-selection, so it gets the same
+defensive Fix even though nothing live has shown it reflex yet -- "every new template", per the
+brief, not just the two caught live). `UnseededOnly: True` on every one of them: a seeded Send already
+replaces these same Points with the app's own absolute in-position values
+(`apply_seed_geometry`), so a seeded build never has this ambiguity to begin with -- this is purely
+the literal/unseeded construction path's own fix (Sketch Builder, `record_frame_parity.py`). Checked
+that `"Fix"` is dispatched correctly for these bare (no `ID`) steps before trusting the shape: it's in
+`parametric_engine.py`'s own `constr_types` list, routed to `constraints.py::constraint_step`'s inline
+`Fix` branch (`t.isFixed = True` on each resolved target) -- the exact same step shape T10's own
+`p02_03_loop.py` already uses live.
+
+Full suite re-run after the edit: Python 809/809 (10 pre-existing skips, unrelated), explicitly
+including every T14/T15/T16/T17/cross-template file (`test_all_templates_shape_outline.py`,
+`test_no_miter_miss_possible.py`, the four `test_t1*_fusion_expressions.py` files) -- 386/386 on that
+targeted slice alone. The new `Fix` steps have no `ID` key, so every existing static-analysis test
+that walks BuildSequence by `Type in (Line, Arc3Point, Radius)` or `'ID' in step` silently skips over
+them, confirmed by the full suite staying green rather than assumed.
+
+**Not yet done, genuinely gated on Fusion (advisor's own order, f3 -> b5 -> me, not yet my turn):** the
+live unseeded-build check itself (all four templates, UNSEEDED default payload -- no `seedGeometry` --
+0 REFLEX ARC, all declared bars present) and recording the four goldens via `record_frame_parity.py`
+once that passes. This WORK-LOG entry and the commit below are the "code first" half the advisor's own
+dispatch asked for; the live half is next once Fusion is free and it's my turn.
+
+Committed: `sketches/template_14/phases/p02_02_loop.py`, `sketches/template_15/phases/p02_02_loop.py`,
+`sketches/template_16/phases/p02_02_loop.py`, `sketches/template_17/phases/p02_02_loop.py`. Passing
+back with the live/golden half still open.
