@@ -13140,3 +13140,87 @@ Committed as "H23 item 40: ...". File list: `frame-defs.json/.js` (regenerated),
 `tests/frame-no-hooked-miters.test.js`, `tests/frame-template-7.test.js`,
 `tools/repro/fusion_t11/item40_send_frame_live.py` (new),
 `tools/repro/fusion_t11/item40_all_template_sweep.py` (new).
+
+## H23 item 41 — triage item 40's T7/T10 0-bar default finding: real, fixed at the root (parts a+b; part c gated on 'Fusion free')
+
+**(a) Traced Fred's real Send path, no Fusion, file:line.** The chain:
+`frame-panel.js::frameSendPayload()` -> `framePayload()` (`core/frame-record.js:135`) ->
+`frameParam()` (`core/frame-record.js:156`, falls back to `p.default` for any untouched param --
+for T7's own `t7_a` etc. that default IS a declared formula STRING, confirmed directly in
+`frame-defs.json`) -> `adsk.fusionSendData('send_frame', ...)` -> Python's
+`_handle_send_frame` (`b-spline-gen.py:1199`) -> `fb_send.send_frame()` (`send_frame.py:231`) ->
+`frame_ui_data()` (`send_frame.py:121`: `{k: str(v) for k, v in params.items() if k in
+declared_names}` -- a straight passthrough, no evaluation) -> `build_sketch_logic_v3`
+(`frame_engine.py:74`) -> `FrameBuilder.run_sketch_only` (`frame_engine.py:183`) ->
+`_create_skeletal_parameters` (`frame_engine.py:293`) **does** create every declared param as a
+REAL Fusion user parameter with its own expression (Phase 1 masters at line ~340, Phase 2
+dependents at line ~368 -- `p.expression = str(val_expr)`, letting FUSION's own expression engine
+resolve the chain correctly) -- but it never updates `ui_data`/`active_vars` itself. The SAME
+`ui_data` dict (still raw formula strings for every untouched DNA param) is then handed unchanged
+into `ParametricSketchBuilder(..., ui_data=ui_data, ...)` (`frame_engine.py:208`) ->
+`BuildContext.__init__` (`build_context.py:47`: `self.active_vars = ui_data if ui_data else {}`).
+**Answer: no, nothing turns the formula strings into numbers before `resolve_val` sees them** --
+this is the REAL path, not an artifact of item 40's own harness skipping `_handle_generate`. T7's
+own geometry phases reference `t7_a` etc. by NAME in their declared `"Points"` for the unseeded
+construction (`fb_engine/geometry.py::_create_line` -> `BuildContext.resolve_val`,
+`build_context.py:54`), which checks `val in self.active_vars` and finds the raw formula string
+there, never reaching Fusion's own (correct) parameter.
+
+**(b) Fixed at the root** (`build_context.py:70-75`, `resolve_val`): the `active_vars` branch's own
+`ParameterSchema.to_cm` call is designed to parse "a number or a unit-suffixed string" only (its
+own docstring) -- it was never going to resolve a multi-term formula, and raising there was simply
+wrong once a DNA param's own untouched default reaches it. A genuine user override is ALWAYS a bare
+number or a unit-suffixed one (the one shape `to_cm` actually parses); a DNA param's own declared
+default is the only other shape that can land in `active_vars` under its own name, and
+`_create_skeletal_parameters` has ALREADY created that exact name as a real, correctly-resolving
+Fusion parameter by the time geometry building runs. So: `to_cm`'s own `ResolveError` for THIS
+specific key no longer re-raises -- it falls through to the SAME `design.unitsManager.
+evaluateExpression(val, "cm")` branch the "not in active_vars" case already used (now reached via
+Fusion's own real parameter of that name, not the raw string). New `fb_engine/test_build_context.py`
+(5 tests, the project's own established `BuildContext.__new__` + fake `adsk`/`unitsManager` stub
+idiom): a plain-number override still resolves via `to_cm` directly (never touching the fake
+Fusion evaluator -- it raises if asked for an unexpected name, so reaching it would fail loudly); a
+unit-suffixed override, same; T7's own real `t7_a` formula now falls through and returns the fake
+evaluator's own answer; a name absent from `active_vars` entirely still resolves via Fusion
+unchanged (the pre-existing, already-working path); and a formula string with NO matching Fusion
+parameter either (a genuine gap, not this item's case) still raises `ResolveError` -- no silent 0.
+**Mutation-tested**: reverted the fix, confirmed the formula-string test fails RED with the EXACT
+live error message (`cannot resolve '((0.62*(widthIn/2 - boundingboxoffset)...': not a number with
+a known unit`) -- restored, confirmed green again (pyc cache cleared first, per the project's own
+mutation-restore trap). Full Python suite: `python -m pytest` -> **627 passed, 25 skipped**, zero
+regressions.
+
+**(c) LIVE -- the fix is confirmed correct, but it was not the only thing standing between T7/T10
+and a built default.** The advisor granted "Fusion free" mid-pass (seat B done). Re-ran
+`tools/repro/fusion_t11/item40_all_template_sweep.py` for T7 and T10's own defaults at 7x9 with the
+fix in place (fresh-checkout-loaded, same technique as items 35-40): **the formula-resolution crash
+is GONE for both** -- `_create_skeletal_parameters` -> Fusion's own expression engine now resolves
+`t7_a`/T10's own chain correctly, confirmed by the build progressing well past where it died before
+(T7: "EXTRUDER: ... processing 2 profiles" now runs at all; T10: "EXTRUDER: ... processing 4
+profiles" too). **But each hits a SECOND, DEEPER, pre-existing defect, never reachable before
+because the formula crash always blocked the build first:**
+- **T7: a REFLEX ARC.** `diagnostics.py::assert_no_reflex_arcs` -- "`REFLEX ARC: [unknown_arc] in
+  Shape Outline sweeps 330.7 deg (>= 180) -- wrong solver branch, not a valid shape`" -- the SAME
+  class of bug item 15 fixed for T10's own arch (`Coincident(point, curve)` pins only the
+  supporting circle, not which of its two branches the solver picks), but for T7's OWN neck/body
+  arc, at its OWN literal/unseeded default proportions, which (per item 38's own finding) have
+  never actually been live-built via the full sketch-construction path before -- the seeded path
+  (this item's own 8/8 passes, item 40) bypasses this construction entirely via direct point
+  injection, and nothing else has ever sent T7 a true zero-seed default through to a real
+  Fusion build until this fix unblocked it far enough to reach this step. 0 bars (T7_2_shape_outline
+  never finishes).
+- **T10: a miter failed to split a profile.** `declared_profiles.classify` -- "`one profile spans 3
+  bars (...11 curve ids...): a miter did not split it`" -- 1 of 4 declared bars built
+  (`frame_bottom`), the rest collapsed into one NOT-BUILT region -- a different symptom, same
+  family (a geometry/miter resolution gap at T10's own literal default, distinct from items
+  15/17's own already-fixed "ears" issue, which was about the SEEDED/dragged arch).
+
+Both are clearly OUT OF THIS ITEM'S OWN SCOPE (item 41 was about the formula-string crash, now
+fixed and tested) -- flagged, not fixed, for their own triage. T1/2/3 re-confirmed unaffected (4
+bars, 0 overlaps) -- the fix changes behaviour ONLY for formula-valued default params, which only
+T7/T10 have. **Final count: 11/13 templates' own defaults build clean (unchanged from item 40);
+T7 and T10 progress further than before but still fail live, for a NEW reason each, not the one
+this item fixed.**
+
+Committed as "H23 item 41: ...". File list: `fb_engine/build_context.py`,
+`fb_engine/test_build_context.py` (new).

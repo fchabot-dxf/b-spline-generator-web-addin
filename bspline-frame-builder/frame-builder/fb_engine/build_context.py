@@ -70,9 +70,17 @@ class BuildContext:
             if val in self.active_vars:
                 try:
                     return ParameterSchema.to_cm(self.active_vars[val], ParameterSchema.default_unit(val))
-                except ResolveError as e:
-                    self.logger.log_error(f"FAIL RESOLVE: {val} = {self.active_vars[val]!r}: {e}")
-                    raise
+                except ResolveError:
+                    # H23 item 41: active_vars holds ui_data VERBATIM, so an untouched DNA/derived
+                    # param (e.g. T7's own 't7_a', T10's own 'archRise' chain) carries its own
+                    # DECLARED FORMULA STRING here, not a plain value -- a genuine user override
+                    # would be a bare number or a unit-suffixed one (to_cm's own contract), which
+                    # already returned above. _create_skeletal_parameters (frame_engine.py) already
+                    # created `val` as a REAL Fusion user parameter with this exact expression, so
+                    # fall through to Fusion's own evaluator below -- it resolves the formula (and
+                    # whatever chain it references) correctly; to_cm never could, by design (it
+                    # parses "a number or a unit-suffixed string", never a multi-term expression).
+                    self.logger.log(f"SHADOW STATE '{val}' is a formula, not a value -- falling through to Fusion's own expression engine", "INFO")
             try:
                 resolved = self.design.unitsManager.evaluateExpression(val, "cm")
             except Exception as e:
