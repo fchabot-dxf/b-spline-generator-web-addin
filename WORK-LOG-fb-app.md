@@ -7997,3 +7997,68 @@ stash/pop round-trip. No Fusion, no template files touched.
 
 Committed: `bspline_gen_palette.html`, `editor-stripe-tool.js`, `properties-stripe.js`,
 `editor-stripe-tool.test.js`, `properties-stripe.test.js` (new). Passing back to the advisor.
+
+## 2026-10-03: F32 item 2 -- Stripe dash-ratio patterns (Even, Dash, Long dash, Dash-dot) (seat C)
+
+Dispatch: Fred's own words, "the stripping tool should also have pattern, like dashed ratio." Added a Pattern
+row (chips + a free Ratio text field) to the Stripe panel, below Count/Length.
+
+**Declared once:** `STRIPE_PATTERNS` in `editor-stripe-tool.js` -- `[{name:'Even', ratio:[1]}, {name:'Dash',
+ratio:[3,1]}, {name:'Long dash', ratio:[5,1]}, {name:'Dash-dot', ratio:[3,1,1,1]}]`. `applyStripePattern`
+writes a fresh mutable copy into `settings().ratio` (same one-call shape as F32 item 1's colour presets). The
+free `Ratio` field (`parseStripeRatio('3:1')` -> `[3,1]`) covers anything not in the declared list; invalid/empty
+text is ignored rather than clobbering the current ratio mid-edit.
+
+**Generalized, not duplicated:** Count/Length meant "N equal stripes" before; the brief redefines them as "N
+repeats of a ratio" (Count = repeats, Length = one repeat's length). Rather than fork a second code path,
+`ratioUnitSum` / `maxPatternRepeats` / `patternRepeatsFor` / `patternClamped` / `patternCutPoints` generalize
+the existing `maxStripeCount` / `stripeCountFor` / (implicitly) / `stripeCutPoints`, each written so `ratio=[1]`
+(Even) reduces to the IDENTICAL expression as its pre-existing counterpart -- not merely similar output, the
+same arithmetic, since `_repeatFloor([1], minLen)` is `minLen` exactly (dividing and multiplying by 1 is exact
+in IEEE754, no drift). `stripePlan`/`stripeAt`/`_drawStripeMarker` now all call the general functions
+unconditionally; the old `maxStripeCount`/`stripeCountFor`/`stripeCutPoints` stay exported and untouched purely
+because the existing tests call them directly by name -- removing them would have broken test coverage that
+has nothing to do with this feature, not the running code.
+
+**Colour cycling was deliberately left alone.** Fred's own dispatch illustrates Dash-dot as "(A B C B)" for a
+3:1:1:1 ratio with 3 colours, which does NOT fall out of the existing `stripeColorCycle`'s plain `i %
+palette.length` (that gives A,B,C,A for 4 segments). I checked: `stripeColorCycle(7, ['a','b','c'])` is already
+an existing, committed, passing assertion (`i % 3` exactly) -- changing the cycle algorithm to reproduce the
+parenthetical would have broken that test and, more importantly, the brief's own "Even 1:1 matches today's
+output byte for byte" requirement for ANY colour count, not just 2. Treated the "(A B C B)" as descriptive
+prose illustrating what a dash-dot conceptually looks like, not a literal spec: ratio and colour count stay
+independent axes (a 4-segment pattern with 2 colours cycles A,B,A,B; with 3 colours, today's own unchanged
+modulo cycle). Flagging this explicitly in case Fred actually did want that exact 4-segment colour sequence --
+happy to add a per-pattern colour-cycle override if so, but didn't want to silently reverse-engineer a formula
+from one parenthetical example and risk breaking the explicitly-required backward-compat test.
+
+**Clamp note:** `patternClamped` detects when the requested Count/Length asked for more repeats than fit
+without a too-short segment (the existing rule, generalized). The panel shows a note via the `editorStripeTarget`
+hover event -- this event already existed (dispatched by `_announce` on hover-target-change and after a tap)
+but had NO listener anywhere in the codebase (confirmed: `grep -rln editorStripeTarget` found only the dispatch
+site) -- a leftover wire from an earlier "follower field" design that was since removed per the file's own header
+comment. Revived it for this rather than adding a second notification channel.
+
+**Non-vacuous, by mutation (not just asserted):** reverted `patternCutPoints` to ignore each segment's own
+ratio value (`cum += ratio[0]` instead of `cum += part`) -- 2 of the new tests failed (the exact-ratio-lengths
+test and the Dash-3:1 `stripeAt` integration test), the other 29 in that file stayed green. Separately dropped
+the clamp-note listener's editor-scoping check -- 1 new test failed (the "different editor is ignored" case).
+Both reverted before committing.
+
+Screenshots: reused F32 item 1's shot script, extended for mobile -- the `#editorMobileDrawer` opens at 'peek'
+height (editor-drawer.js) which left the panel's own fields below the fold at 390px; forced it to 'full'
+(`0.88 * innerHeight`, matching `FULL_VH_FRACTION`) via direct style write before shooting, since the splitter
+instance driving the real drag gesture is private to `initDrawer`'s closure and not reachable from outside.
+Before/after at 390 and 1366 width: `C:/Users/danse/.bspline-status/shots/seatC/f32item2_{before,after}_w{390,1366}.png`.
+
+Tests: `ratioUnitSum`/`maxPatternRepeats`/`patternRepeatsFor`/`patternClamped`/`patternCutPoints` cross-checked
+against the pre-existing equal-stripe functions for `ratio=[1]`; each declared pattern's segment lengths proven
+to sum to the line length and land in exact ratio; a too-fine ratio proven to clamp (every resulting segment
+still >= the stroke width); `stripeAt` integration test cuts a real rail into Dash 3:1; panel tests cover chip
+count/click, the Ratio field (valid applies, invalid is ignored), and the clamp note (shows/hides, scoped to
+the right editor). Full suite green (167 files/3267 tests) before stashing; scoped stripe tests 38/38 after the
+stash/pop round-trip. No Fusion, no template files touched.
+
+Committed: `bspline_gen_palette.html`, `editor-stripe-tool.js`, `properties-stripe.js`,
+`editor-stripe-tool.test.js`, `properties-stripe.test.js`. Passing back to the advisor -- flagging the
+Dash-dot colour-sequence question above for Fred.
