@@ -41,6 +41,79 @@ _BULGE_EPS = 1e-9  # below this, a side degenerates to a straight line (mirrors 
 # all 4 side arcs here (unlike T16's two independent bulge-ish parameters), so this is an all-or-
 # nothing case: every side is a line, or every side is an arc.
 
+# ---------------------------------------------------------------------------
+# Fusion SKETCH_2_PARAMETERS (named-parameter expression chains), declared ONCE here, same reasoning
+# as fb_engine/t16_geometry.py's own SHARED_LOWER_SKETCH_2_PARAMETERS comment: inlining a via point's
+# own formula (which references its own circle's centre, which references its own radius, which
+# references the chord -- each substituted in by hand) blows up to thousands of characters per
+# coordinate, so every arc's own centre/radius/via chain is a NAMED Fusion parameter chain instead.
+# Units: the *nx/*ny/*u0x/*u0y/*u1x/*u1y/*bx/*by/*blen entries are genuine dimensionless ratios
+# (Unit="") -- the SAME "a userParameter's .expression assignment enforces dimensional consistency"
+# quirk T7/T16's own comments already found (fusion360-quirks skill): declaring these "in" instead
+# would make Fusion silently reject the assignment and leave the parameter stuck at its birth value
+# 0.0.
+#
+# UNLIKE T16 (one shared lower chain + T17's one upper chain), this template needs exactly TWO
+# independent chains -- upper_R's own (topR->pinchR) and lower_R's own (pinchR->BR) -- because all
+# four of its own side pieces are arcs, but lower_L/upper_L are each the EXACT x-mirror of
+# lower_R/upper_R (verified numerically against outline() at 3 board sizes, same as T16's own
+# lower_L-mirrors-lower_R finding) -- no separate named chain for them, p02_02_loop.py's own Points
+# just negate t14_lr_vx/t14_ur_vx (and cx, inline in p02_02 -- never read directly here).
+#
+# CONFIRMED numerically (2026-10-03, before being trusted here): the plain `nx=-dy/chordlen,
+# ny=dx/chordlen` formula (no away_point disambiguation, no conditional flip) reproduces every one of
+# the 4 arcs' own sagitta_circle() centre/radius to 1e-9 -- the SAME zero-flip finding T16's own
+# lower-bulge chain already made for its own (different) chord directions; this module's own
+# test_t14_sandtimer_geometry.py pins the exact values.
+_TOP_X = f'{TOP_WIDTH_FRAC_DEFAULT}*t14_hw'
+SKETCH_2_PARAMETERS = [
+    {"Name": "t14_hw",            "Label": "t14_hw",            "Category": "T14 Geometry", "Val": "(widthIn/2 - boundingboxoffset)", "Unit": "in"},
+    {"Name": "t14_hh",            "Label": "t14_hh",            "Category": "T14 Geometry", "Val": "(heightIn/2 - boundingboxoffset)", "Unit": "in"},
+    {"Name": "t14_pinchHalf",     "Label": "t14_pinchHalf",     "Category": "T14 Geometry", "Val": f"{1.0 - PINCH_REACH_FRAC_DEFAULT}*t14_hw", "Unit": "in"},
+    {"Name": "t14_pinchY",        "Label": "t14_pinchY",        "Category": "T14 Geometry", "Val": f"t14_hh*(2*{PINCH_HEIGHT_FRAC_DEFAULT} - 1)", "Unit": "in"},
+    {"Name": "t14_bulge",         "Label": "t14_bulge",         "Category": "T14 Geometry", "Val": f"{BULGE_FRAC_DEFAULT}*t14_hw", "Unit": "in"},
+
+    # upper_R: chord topR=(topWidthFrac*hw, hh) -> pinchR=(pinchHalf, pinchY).
+    {"Name": "t14_ur_dx",         "Label": "t14_ur_dx",         "Category": "T14 Geometry", "Val": f"t14_pinchHalf - ({_TOP_X})", "Unit": "in"},
+    {"Name": "t14_ur_dy",         "Label": "t14_ur_dy",         "Category": "T14 Geometry", "Val": "t14_pinchY - t14_hh", "Unit": "in"},
+    {"Name": "t14_ur_chordlen",   "Label": "t14_ur_chordlen",   "Category": "T14 Geometry", "Val": "sqrt(t14_ur_dx*t14_ur_dx + t14_ur_dy*t14_ur_dy)", "Unit": "in"},
+    {"Name": "t14_ur_nx",         "Label": "t14_ur_nx",         "Category": "T14 Geometry", "Val": "-t14_ur_dy / t14_ur_chordlen", "Unit": ""},
+    {"Name": "t14_ur_ny",         "Label": "t14_ur_ny",         "Category": "T14 Geometry", "Val": "t14_ur_dx / t14_ur_chordlen", "Unit": ""},
+    {"Name": "t14_ur_halfchord",  "Label": "t14_ur_halfchord",  "Category": "T14 Geometry", "Val": "t14_ur_chordlen/2", "Unit": "in"},
+    {"Name": "t14_ur_r",          "Label": "t14_ur_r",          "Category": "T14 Geometry", "Val": "(t14_ur_halfchord*t14_ur_halfchord + t14_bulge*t14_bulge)/(2*t14_bulge)", "Unit": "in"},
+    {"Name": "t14_ur_cx",         "Label": "t14_ur_cx",         "Category": "T14 Geometry", "Val": f"(({_TOP_X}) + t14_pinchHalf)/2 + t14_ur_nx*(t14_bulge - t14_ur_r)", "Unit": "in"},
+    {"Name": "t14_ur_cy",         "Label": "t14_ur_cy",         "Category": "T14 Geometry", "Val": "(t14_hh + t14_pinchY)/2 + t14_ur_ny*(t14_bulge - t14_ur_r)", "Unit": "in"},
+    {"Name": "t14_ur_u0x",        "Label": "t14_ur_u0x",        "Category": "T14 Geometry", "Val": f"(({_TOP_X}) - t14_ur_cx)/t14_ur_r", "Unit": ""},
+    {"Name": "t14_ur_u0y",        "Label": "t14_ur_u0y",        "Category": "T14 Geometry", "Val": "(t14_hh - t14_ur_cy)/t14_ur_r", "Unit": ""},
+    {"Name": "t14_ur_u1x",        "Label": "t14_ur_u1x",        "Category": "T14 Geometry", "Val": "(t14_pinchHalf - t14_ur_cx)/t14_ur_r", "Unit": ""},
+    {"Name": "t14_ur_u1y",        "Label": "t14_ur_u1y",        "Category": "T14 Geometry", "Val": "(t14_pinchY - t14_ur_cy)/t14_ur_r", "Unit": ""},
+    {"Name": "t14_ur_bx",         "Label": "t14_ur_bx",         "Category": "T14 Geometry", "Val": "t14_ur_u0x + t14_ur_u1x", "Unit": ""},
+    {"Name": "t14_ur_by",         "Label": "t14_ur_by",         "Category": "T14 Geometry", "Val": "t14_ur_u0y + t14_ur_u1y", "Unit": ""},
+    {"Name": "t14_ur_blen",       "Label": "t14_ur_blen",       "Category": "T14 Geometry", "Val": "sqrt(t14_ur_bx*t14_ur_bx + t14_ur_by*t14_ur_by)", "Unit": ""},
+    {"Name": "t14_ur_vx",         "Label": "t14_ur_vx",         "Category": "T14 Geometry", "Val": "t14_ur_cx + t14_ur_r*(t14_ur_bx/t14_ur_blen)", "Unit": "in"},
+    {"Name": "t14_ur_vy",         "Label": "t14_ur_vy",         "Category": "T14 Geometry", "Val": "t14_ur_cy + t14_ur_r*(t14_ur_by/t14_ur_blen)", "Unit": "in"},
+
+    # lower_R: chord pinchR=(pinchHalf, pinchY) -> BR=(hw, -hh).
+    {"Name": "t14_lr_dx",         "Label": "t14_lr_dx",         "Category": "T14 Geometry", "Val": "t14_hw - t14_pinchHalf", "Unit": "in"},
+    {"Name": "t14_lr_dy",         "Label": "t14_lr_dy",         "Category": "T14 Geometry", "Val": "(-t14_hh) - t14_pinchY", "Unit": "in"},
+    {"Name": "t14_lr_chordlen",   "Label": "t14_lr_chordlen",   "Category": "T14 Geometry", "Val": "sqrt(t14_lr_dx*t14_lr_dx + t14_lr_dy*t14_lr_dy)", "Unit": "in"},
+    {"Name": "t14_lr_nx",         "Label": "t14_lr_nx",         "Category": "T14 Geometry", "Val": "-t14_lr_dy / t14_lr_chordlen", "Unit": ""},
+    {"Name": "t14_lr_ny",         "Label": "t14_lr_ny",         "Category": "T14 Geometry", "Val": "t14_lr_dx / t14_lr_chordlen", "Unit": ""},
+    {"Name": "t14_lr_halfchord",  "Label": "t14_lr_halfchord",  "Category": "T14 Geometry", "Val": "t14_lr_chordlen/2", "Unit": "in"},
+    {"Name": "t14_lr_r",          "Label": "t14_lr_r",          "Category": "T14 Geometry", "Val": "(t14_lr_halfchord*t14_lr_halfchord + t14_bulge*t14_bulge)/(2*t14_bulge)", "Unit": "in"},
+    {"Name": "t14_lr_cx",         "Label": "t14_lr_cx",         "Category": "T14 Geometry", "Val": "(t14_pinchHalf + t14_hw)/2 + t14_lr_nx*(t14_bulge - t14_lr_r)", "Unit": "in"},
+    {"Name": "t14_lr_cy",         "Label": "t14_lr_cy",         "Category": "T14 Geometry", "Val": "(t14_pinchY + (-t14_hh))/2 + t14_lr_ny*(t14_bulge - t14_lr_r)", "Unit": "in"},
+    {"Name": "t14_lr_u0x",        "Label": "t14_lr_u0x",        "Category": "T14 Geometry", "Val": "(t14_pinchHalf - t14_lr_cx)/t14_lr_r", "Unit": ""},
+    {"Name": "t14_lr_u0y",        "Label": "t14_lr_u0y",        "Category": "T14 Geometry", "Val": "(t14_pinchY - t14_lr_cy)/t14_lr_r", "Unit": ""},
+    {"Name": "t14_lr_u1x",        "Label": "t14_lr_u1x",        "Category": "T14 Geometry", "Val": "(t14_hw - t14_lr_cx)/t14_lr_r", "Unit": ""},
+    {"Name": "t14_lr_u1y",        "Label": "t14_lr_u1y",        "Category": "T14 Geometry", "Val": "((-t14_hh) - t14_lr_cy)/t14_lr_r", "Unit": ""},
+    {"Name": "t14_lr_bx",         "Label": "t14_lr_bx",         "Category": "T14 Geometry", "Val": "t14_lr_u0x + t14_lr_u1x", "Unit": ""},
+    {"Name": "t14_lr_by",         "Label": "t14_lr_by",         "Category": "T14 Geometry", "Val": "t14_lr_u0y + t14_lr_u1y", "Unit": ""},
+    {"Name": "t14_lr_blen",       "Label": "t14_lr_blen",       "Category": "T14 Geometry", "Val": "sqrt(t14_lr_bx*t14_lr_bx + t14_lr_by*t14_lr_by)", "Unit": ""},
+    {"Name": "t14_lr_vx",         "Label": "t14_lr_vx",         "Category": "T14 Geometry", "Val": "t14_lr_cx + t14_lr_r*(t14_lr_bx/t14_lr_blen)", "Unit": "in"},
+    {"Name": "t14_lr_vy",         "Label": "t14_lr_vy",         "Category": "T14 Geometry", "Val": "t14_lr_cy + t14_lr_r*(t14_lr_by/t14_lr_blen)", "Unit": "in"},
+]
+
 
 def outline(width_in, height_in, frame_thickness,
             top_width_frac=TOP_WIDTH_FRAC_DEFAULT,
