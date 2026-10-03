@@ -188,7 +188,7 @@ Commit 'H23 item 38: ...'.
 
 ## Item 70 -- the top colour DECAL, wired into Send as an OPTION with good config (Fred, 2026-10-03)
 Fred approved the item 68 decal for the real Send, optional and configurable. Declared settings (persisted with the
-project, in Export settings, a 'Fusion colour decal' group):
+project, in the VIEW tab/section of the sidebar -- Fred: 'in view tab' -- a 'Fusion colour decal' group):
   - enabled: off by default
   - resolution: 40 / 100 / 150 dpi (default 150)
   - opacity: 0-100 % (default 100)
