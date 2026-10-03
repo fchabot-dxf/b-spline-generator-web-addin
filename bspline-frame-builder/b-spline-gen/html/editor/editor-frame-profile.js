@@ -76,6 +76,31 @@ const _param = (tpl, record, name) => {
 };
 
 /**
+ * T10 ARCHED HOURGLASS / T84 item 6: the ONE declared source of "which outlineDefects joint index
+ * is a real declared miter corner, not an accidental break in a tangent chain" -- every consumer of
+ * a template's own silhouette (frameCutProfile below, frameContourSilhouette in contour-from-
+ * frame.js) must exempt `notTangent` at exactly these indices, or a template whose own corners are
+ * genuinely non-tangent (a line meeting an arc, T10; an all-miter outline with NO tangent chain at
+ * all, T16/T17) gets flagged as invalid everywhere a tangent chain was merely assumed.
+ *
+ * `n` = the outline's own primitive count. `outlineDefects`' own `notTangent` index `i` is the
+ * joint between primitive i and primitive i+1 (that function's own definition): a corner declared
+ * via its outer piece's `:S` is that piece's own START, i.e. the joint BEFORE it (index p-1); a
+ * `:E` corner is its own END, i.e. the joint AFTER it (index p itself) -- T84 item 3 (Arched
+ * Funnel/Tulip): a CCW-swapped arc (fusion360-quirks skill, "A SketchArc ALWAYS runs counter-
+ * clockwise") can make a corner's own outer id end in `:E` rather than `:S`; the only honest name
+ * for the corner is whichever end is actually there.
+ */
+export function declaredMiterJointIndices(tpl, n) {
+  const primOf = (bareId) => tpl.seedMap?.find((e) => e.id === bareId)?.prim;
+  return new Set((tpl.regions.miters || []).map(([src]) => {
+    const isEnd = /:E$/.test(src);
+    const p = primOf(src.replace(/^proj_/, '').replace(/:[SE]$/, ''));
+    return p == null ? null : (isEnd ? p : p - 1 + n) % n;
+  }).filter((i) => i != null));
+}
+
+/**
  * Pure: frame definition + record + board size (inches) -> the cut profile,
  * or null when there is no frame. Board coordinates are the editor's own
  * (origin top-left, y down, inches).
@@ -97,23 +122,13 @@ export function frameCutProfile(defs, record, { widthIn, heightIn }) {
   // every corner a template declares via `regions.miters` is an EXPECTED real angle, so outlineDefects' own
   // universal "an arc-involving joint must be tangent" guard (built to catch an ACCIDENTAL break in a tangent
   // CHAIN, like the shoulder/waist/hip arcs, which never involves a declared corner) is filtered here at exactly
-  // those declared corners -- the SAME "a declared corner excuses its own notTangent" rule tests/contour-from-
-  // frame.test.js already applies to a from-frame contour's own corner list. A no-op for every other template:
-  // their own corners are always line-line, already exempt inside outlineDefects itself.
+  // those declared corners. T84 item 6: `frameContourSilhouette` (contour-from-frame.js) needs the exact same
+  // exemption for the SAME reason -- declaredMiterJointIndices below is the one declared source both now call,
+  // so they can never drift apart again the way they already had (contour-from-frame.js's own corner list was
+  // collapse-only, which a template with no tangent chain at all -- T16/T17 -- never triggers). A no-op for
+  // every pre-T10 template: their own corners are always line-line, already exempt inside outlineDefects itself.
   const n = sil.primitives.length;
-  const primOf = (bareId) => tpl.seedMap?.find((e) => e.id === bareId)?.prim;
-  // T84 item 3 (Arched Funnel / Tulip): a CCW-swapped arc (fusion360-quirks skill, "A SketchArc ALWAYS
-  // runs counter-clockwise") can make a corner's OWN outer id end in `:E` rather than `:S` -- the only
-  // honest name for the corner is whichever end is actually there. `outlineDefects`' own `notTangent`
-  // index `i` is the joint between primitive i and primitive i+1 (its own definition, just above): a
-  // `:S` corner is primitive p's own START, i.e. the joint BEFORE p (index p-1); a `:E` corner is p's own
-  // END, i.e. the joint AFTER p (index p itself) -- no prior template ever declared a `:E` miter (every
-  // corner happened to be reachable via `:S` on one of its two pieces), so this branch was dead until now.
-  const cornerIndices = new Set((tpl.regions.miters || []).map(([src]) => {
-    const isEnd = /:E$/.test(src);
-    const p = primOf(src.replace(/^proj_/, '').replace(/:[SE]$/, ''));
-    return p == null ? null : (isEnd ? p : p - 1 + n) % n;
-  }).filter((i) => i != null));
+  const cornerIndices = declaredMiterJointIndices(tpl, n);
   const defects = outlineDefects(sil.primitives).filter((d) => !(d.kind === 'notTangent' && cornerIndices.has(d.index)));
   return {
     // F27 item 2 arc pull: `shapeParams` = the params the outline was generated FROM (the arc grips re-solve over them)

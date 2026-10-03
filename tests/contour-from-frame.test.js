@@ -404,3 +404,42 @@ describe('T82 item 2: end to end -- a rail row crossing the window is split into
     expect(plainSegs.filter((s) => s.kind === 'rail' && s.a.j === j)).toHaveLength(1);
   });
 });
+
+describe('T84 item 6 (Fred, screenshot): every template\'s default gives a contour with "Offset from frame" ON', () => {
+  // T16/T17 (Arched Funnel / Tulip) are an ALL-MITER outline -- no tangent chain at all, so every one of
+  // their joints is a real declared corner independent of collapse, unlike every pre-T16/T17 template
+  // (a tangent-chain shape where a declared corner is only ever a SIDE EFFECT of a piece collapsing in
+  // the offset). frameContourSilhouette's own `corners` list used to be built PURELY from collapse, so it
+  // never recognized an all-miter template's corners as declared, and outlineDefects flagged every single
+  // joint `notTangent` -- fromFrameError on every call, for every board size. Covers every template once
+  // (not just T16/T17) so this can never silently regress to the collapse-only case for a FUTURE all-miter
+  // template either.
+  const BOARDS = [[7, 9], [12, 6], [9, 12]];
+  it.each(FRAME_DEFS.templates.map((tpl) => tpl.id))('%s: default record, all 3 board sizes', (tplId) => {
+    for (const [W, H] of BOARDS) {
+      const frame = frameOf(tplId, W, H);
+      // A board the template's own default record doesn't fit (e.g. template_7 at 12x6, a landscape
+      // extreme its default handles never cover) is a pre-existing, unrelated frameCutProfile defect --
+      // same precondition convention as H23 item 39 (frame-no-hooked-miters.test.js) -- not this bug.
+      const prof = frameCutProfile(FRAME_DEFS, frame.record, frame.board);
+      if (prof.defects.length || !prof.fit.ok) continue;
+      const sil = frameContourSilhouette(frame, CONTOUR_FROM_FRAME_DEFAULTS.distance, SW);
+      expect(sil.error, `${tplId} ${W}x${H}: ${sil.error}`).toBeUndefined();
+      expect(sil.primitives.length, `${tplId} ${W}x${H}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('MUTATION (non-vacuous): without any corner exemption, every one of template_16/17\'s own joints ' +
+    'really does read back notTangent -- an all-miter outline never collapses a piece, so the OLD ' +
+    'collapse-only `corners` list was always empty here, and the fix\'s declared-miter union must cover ' +
+    'every single one of them or frameContourSilhouette would still raise fromFrameError like before this item', () => {
+    for (const tplId of ['template_16', 'template_17']) {
+      const sil = frameContourSilhouette(frameOf(tplId, 7, 9), CONTOUR_FROM_FRAME_DEFAULTS.distance, SW);
+      expect(sil.error).toBeUndefined();
+      const rawDefects = outlineDefects(sil.primitives).filter((d) => d.kind === 'notTangent');
+      expect(rawDefects.length, `${tplId}: expected every joint to be a real non-tangent corner`).toBeGreaterThan(0);
+      const uncovered = rawDefects.filter((d) => !sil.corners.includes(d.index));
+      expect(uncovered, `${tplId}: declared corners must cover every real notTangent joint`).toEqual([]);
+    }
+  });
+});

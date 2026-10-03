@@ -26,7 +26,7 @@
  * the Fusion manifest and its fill clip), so they can never disagree.
  */
 import { generateContourSilhouette, generateSilhouette, outlineDefects } from './editor-shape-lattice-generator.js';
-import { frameCutProfile } from './editor-frame-profile.js';
+import { frameCutProfile, declaredMiterJointIndices } from './editor-frame-profile.js';
 import { offsetOutlineInward } from './outline-offset.js';
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { distToPrimitive } from './editor-primitives.js';
@@ -119,11 +119,25 @@ export function frameContourSilhouette(frame, distance, strokeWidth) {
   if (primitives.length < 3) return { error: 'tooSmall' };
   // a joint next to a dropped piece is a merged corner (kept index i = the joint between kept i and i+1)
   const kept = all.map((_, i) => i).filter((i) => keep[i]);
+  const at = new Map(kept.map((orig, k) => [orig, k]));
   const corners = [];
   kept.forEach((orig, k) => {
     const next = kept[(k + 1) % kept.length];
     if ((next - orig + all.length) % all.length !== 1) corners.push(k);
   });
+  // T84 item 6 (Fred, screenshot: "Offset from frame" fails on Tulip/Arched Funnel): the merge-based
+  // `corners` above only ever recognizes a real corner that happens to ALSO collapse a neighbouring
+  // piece in the offset -- true for every tangent-chain template (T1's own hourglass side), where a
+  // declared corner is a side-effect of collapse, but never true for an ALL-MITER outline with no
+  // tangent chain at all (T16/T17: every joint is a real corner, nothing ever collapses there). Add
+  // every DECLARED miter joint that survived the offset untouched (both its own pieces kept) --
+  // declaredMiterJointIndices is the SAME declared source frameCutProfile itself already uses for
+  // this exact purpose on the un-offset outline (editor-frame-profile.js), so the two can never
+  // drift apart again. A joint whose own piece collapsed instead is already covered by the merge
+  // logic above; this only adds the case that logic structurally cannot see.
+  for (const i of declaredMiterJointIndices(tpl, all.length)) {
+    if (keep[i] && keep[(i + 1) % all.length]) corners.push(at.get(i));
+  }
   const defects = outlineDefects(primitives).filter((d) => !(d.kind === 'notTangent' && corners.includes(d.index)));
   if (defects.length) return { error: 'invalid', defects };
   // an offset only exists while the loop stays on its OWN side of the frame outline (inside for a positive
@@ -146,7 +160,6 @@ export function frameContourSilhouette(frame, distance, strokeWidth) {
   // T5 HOURGLASS DIPPED TOP: a dipped frame outline carries its own mirror table (16 segments); carried over to
   // the kept pieces (a dropped piece's partner mirrors itself), so the Fusion manifest pairs the right entities.
   // Absent (every other frame): no `mirror`, the manifest's plain mirrorSegmentIndex rule, exactly as before.
-  const at = new Map(kept.map((orig, k) => [orig, k]));
   const mirror = Array.isArray(sil.mirror) ? kept.map((orig, k) => at.get(sil.mirror[orig]) ?? k) : null;
   // the OUTSIDE bounding box (the manifest's contour_width / contour_height): the centerline's extent + half stroke
   const pts = primitives.flatMap((p) => (p.type === 'L' ? [p.p0, p.p1]
