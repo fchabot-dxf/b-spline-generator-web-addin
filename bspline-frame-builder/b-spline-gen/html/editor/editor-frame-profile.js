@@ -484,3 +484,26 @@ export function frameSnapGate(editor, snapped, raw) {
 export function frameFitRegion(editor) {
   return (editor && editor._frameProfile && editor._frameProfile.region) || null;
 }
+
+/** Two miters' inner corners closer than this fraction of frame_thickness leave an inner edge
+ *  Fusion's offset drops (T13 neckWidth:min: 0.028 in), so the miters collide in the build. */
+export const MIN_MITER_GAP_T_FRAC = 0.25;
+
+/**
+ * H23 item 63 (Fred-approved guard, 2026-10-03: "guard the handles"): do any two miters (each outer
+ * corner -> its inner corner, frameMiters' own output) cross, or end closer than
+ * MIN_MITER_GAP_T_FRAC x t on the inner edge? A bar shorter than its own two miters (T13
+ * neckWidth:min) does this, and Fusion then builds a stray sliver between them.
+ */
+export function mitersCollide(miters, t) {
+  const cross = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  for (let i = 0; i < miters.length; i++) {
+    for (let j = i + 1; j < miters.length; j++) {
+      const p = miters[i].outer, q = miters[i].inner, r = miters[j].outer, s = miters[j].inner;
+      if (Math.hypot(q.x - s.x, q.y - s.y) < MIN_MITER_GAP_T_FRAC * t) return true;
+      const d1 = cross(p, q, r), d2 = cross(p, q, s), d3 = cross(r, s, p), d4 = cross(r, s, q);
+      if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+    }
+  }
+  return false;
+}

@@ -15404,3 +15404,62 @@ live"), since Fred is actively in Fusion fixing the remaining corner cases.
 export, no behavior change) and `tools/repro/h23_item61_make_full_matrix_payloads.mjs` (the
 reachable-end bisection). Scratch payloads/manifest left uncommitted under `bspline-frame-builder/
 scratch/`, same convention as every prior item.
+
+## H23 item 64 (live run): "Fusion free" granted -- the full 133-case reachable-end matrix,
+against deployed main `d92ae70` (the advisor's own corner fix already live). **122/133 BUILT
+(92%), up from item 61's own 76/133 (57%) -- 7 of 13 templates now fully clean.**
+
+**THE NEW MATRIX (133 cases, reachable ends, 7x9, live in Fusion):**
+
+| template | failed/total | failing handle:end = class |
+|---|---|---|
+| template_1  | 0/11  | CLEAN |
+| template_2  | 1/9   | neckLength:max=MITERMISS |
+| template_3  | 0/13  | CLEAN |
+| template_4  | 0/15  | CLEAN |
+| template_5  | 2/15  | waistCenterY:min=MITERMISS, waistRadius:max=MITERMISS |
+| template_6  | 0/5   | CLEAN |
+| template_7  | 0/7   | CLEAN |
+| template_8  | 0/11  | CLEAN |
+| template_9  | 0/5   | CLEAN |
+| template_10 | 2/7   | archRise:min=SILENT, waistCenterY:min=MITERMISS |
+| template_11 | 2/11  | waistCenterY:max=MITERMISS, waistRadius:max=MITERMISS |
+| template_12 | 2/13  | cornerRadiusTop:max=NOTBUILT, taperAngle:min=SILENT |
+| template_13 | 2/11  | neckWidth:min=NOTBUILT, neckLength:max=MITERMISS |
+
+Full per-case detail in `bspline-frame-builder/scratch/item64_matrix_results.json` (scratch, not
+committed, same convention as item 61's own results).
+
+**Notes on the 11 remaining, reported as found -- no further root-causing attempted (not this
+item's own scope):**
+- **None of the 11 were pulled back by the reachable-end guard** (`manifest.json`'s own
+  `pulledBack` is `false` for all 11) -- the guard considers the value sent fine; Fusion disagrees.
+  This is the SAME shape of gap item 64's own tooling write-up already flagged for
+  `template_12_cornerRadiusTop:max` (a self-intersection the guard's outer-undercut-only check
+  doesn't catch) -- now confirmed to recur on 10 more cases across 5 more templates, all still
+  `MITERMISS`/`NOTBUILT`/`SILENT`, none `REFLEX` (the reflex-arc class is gone from the matrix
+  entirely -- 22 -> 0).
+- **The 2 `SILENT` cases (`template_10` `archRise:min`, `template_12` `taperAngle:min`) are NOT a
+  recurrence of item 63(d)'s own NaN bug** -- that fix is confirmed holding (the finite-points test
+  passes, and a direct check of these 2 payloads' own `seedGeometry` shows no `null` anywhere).
+  Both still show `count: 0`, 0 of the 3 scanned log classes, same shape as before the NaN fix --
+  whatever fails now is a DIFFERENT, downstream issue (unfixed by item 63(d), never claimed to be).
+  `archRise:min` (= 0, T10's own plain flat top, identical in kind to every OTHER template's
+  default) is notable: it is NOT a guard-flagged value at all -- the guard treats it as fine (it
+  IS fine, geometrically), yet T10 alone can't build it. T1 itself builds archRise's own absence
+  perfectly (it has no `archRise` handle at all); whatever's wrong is T10-specific.
+- **`template_13_neckWidth:min` is a genuinely NEW failure**, not present in item 61's own original
+  matrix (that run had T13 at 9/11 clean, only `neckLength` failing). Likely a side effect of the
+  advisor's own (b) square-corner-miter fix changing behavior at a value nearby -- not
+  investigated further here, reported as found.
+- **5 of the 6 still-failing templates share `waistCenterY`/`waistRadius`/`neckLength` as their
+  own common failing key** (T2/T5/T10/T11/T13) -- the SAME shared shoulder/waist/hip (or neck)
+  chain family item 61 first implicated, now narrowed to just these 3 handles plus the 2
+  already-known/isolated gaps (T12 cornerRadiusTop, the 2 SILENT cases).
+
+**Verification:** this was a pure measurement run -- no code changed this half of the item. Harness
+unchanged from item 61/64's own tooling (`item61_full_matrix_sweep.py`), run against the NEW
+reachable-end payloads (`item64_matrix_payloads/`, from this item's own earlier tooling half).
+
+**Passed back to the advisor** with this matrix; they continue the remaining corner-case work from
+code, without Fusion, per their own note.

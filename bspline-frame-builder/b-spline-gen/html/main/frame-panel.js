@@ -23,7 +23,7 @@ import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
 import { paramsFromShapeModel } from '../editor/editor-shape-lattice-generator.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
-import { frameCutProfile, frameInnerProfile, smallestConvexArcRadius, frameMiters, miterStaysInsideWood, outlineHasUndercut } from '../editor/editor-frame-profile.js';
+import { frameCutProfile, frameInnerProfile, smallestConvexArcRadius, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { syncDrawerForMode } from '../editor/editor-drawer.js';
@@ -145,7 +145,8 @@ export function generateFrame(seed = nextSeed()) {
     // case (its own default margin is the tightest of any template, 0.0604t at 7x9, still well clear
     // of the 0.04t floor) -- see editor-frame-profile.js's own MIN_MITER_MARGIN_T_FRAC comment and
     // WORK-LOG for the full numbers, including T7's own measured low per-draw pass rate.
-    return miterStaysInsideWood(outer.primitives, frameMiters(outer.primitives, inner.primitives), t);
+    const miters = frameMiters(outer.primitives, inner.primitives);
+    return !mitersCollide(miters, t) && miterStaysInsideWood(outer.primitives, miters, t);
   });
   pushFrameHistory();
   setFrameRecord({ seeds, genSeed: seed });
@@ -418,8 +419,12 @@ export function _frameRecordBreaksNoHookRule(rec) {
   if (outer.defects.length > 0) return true;
   const inner = frameInnerProfile(FRAME_DEFS, rec, board);
   if (inner && inner.defects.length > 0) return false;
+  const miters = frameMiters(outer.primitives, inner.primitives);
+  // H23 item 63 (Fred-approved guard, 2026-10-03: "guard the handles"): ...and before two corner
+  // cuts cross or collide -- T13 neckWidth:min made the top bar shorter than its own two miters.
   const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
-  return !miterStaysInsideWood(outer.primitives, frameMiters(outer.primitives, inner.primitives), t);
+  if (mitersCollide(miters, t)) return true;
+  return !miterStaysInsideWood(outer.primitives, miters, t);
 }
 const _mergeFrameRecord = (rec, patch) => ({
   ...rec,
@@ -446,11 +451,12 @@ const _lerpPatch = (prevRec, patch, f) => {
  *  nothing beyond the one check every drag tick already needs. One declared rule, every template:
  *  no per-preset code here. */
 function _clampDragPatchToNoHookRule(prevRec, patch) {
-  if (!_frameRecordBreaksNoHookRule(_mergeFrameRecord(prevRec, patch))) return patch;
+  const breaks = _frameRecordBreaksNoHookRule;
+  if (!breaks(_mergeFrameRecord(prevRec, patch))) return patch;
   let lo = 0, hi = 1;
   for (let i = 0; i < 24; i++) {
     const mid = (lo + hi) / 2;
-    if (_frameRecordBreaksNoHookRule(_mergeFrameRecord(prevRec, _lerpPatch(prevRec, patch, mid)))) hi = mid; else lo = mid;
+    if (breaks(_mergeFrameRecord(prevRec, _lerpPatch(prevRec, patch, mid)))) hi = mid; else lo = mid;
   }
   return _lerpPatch(prevRec, patch, lo);
 }
