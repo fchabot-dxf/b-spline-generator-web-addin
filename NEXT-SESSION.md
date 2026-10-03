@@ -186,6 +186,15 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 55 -- speed round 3: the re-Send delete (4.3 s) (advisor, 2026-10-03). Item 54 accepted (ea0f22d).
+Fred re-Sends a lot, so a second Send at 24.5 s matters as much as the first at 16.2 s. The delete step goes from
+0.02 s to 4.34 s. Measure how it deletes: feature by feature, body by body, or occurrence by occurrence? Does each
+deleteMe trigger a full recompute? Try the smallest identical change, e.g. one deleteMe on the occurrence (or on
+the timeline group) instead of many, or delete inside a single deferred/rolled-back marker window. Gate: after the
+re-Send the doc is identical to a fresh Send (occurrences [B-Spline Set:1, Frame_1:1], 9/9 inlay healthy, marker ==
+count, bodies/volumes equal), and a third Send also stays clean. Seconds before/after for send-2. One commit.
+Fusion is yours. Commit 'H23 item 55: ...'.
+
 ## Item 54 -- the T7 'PROFILE 2/4 NOT BUILT' on the real payload (advisor, 2026-10-03). Items 52+53 accepted and DEPLOYED (a558509).
 The real payload was captured 2026-10-02 21:52, BEFORE item 39's guard and item 40's narrower T7 Generate ranges, so
 its T7 seeds may be a hooked shape that Generate can no longer produce. Check that first: run the payload's frame
@@ -451,4 +460,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-51] speed, real costs: replay a real full Send, time stages, attack the top 2 with identical A/B, fix step_removal_ab OUT path. Commit as 'H23 item 51: ...'.
 - [x] [H23-item-52] speed round 2: timeline marker instead of reorders (or why twice); stamp sketch projections measured + reduced; A/B identical, seconds before/after. Commit as 'H23 item 52: ...'.
 - [x] [H23-item-53] BLOCKER: marker restore must end at the timeline END (moveToEnd), live check with inlay + second Send. Commit as 'H23 item 53: ...'.
-- [ ] [H23-item-54] T7 NOT BUILT on the pre-guard real payload: today's isValid verdict, fresh payload live 5/5 with inlay, or a root fix; + where send-2's extra 8 s goes. Commit as 'H23 item 54: ...'.
+- [x] [H23-item-54] T7 NOT BUILT on the pre-guard real payload: today's isValid verdict, fresh payload live 5/5 with inlay, or a root fix; + where send-2's extra 8 s goes. Commit as 'H23 item 54: ...'.
+- [ ] [H23-item-55] speed round 3: re-Send delete 4.3 s -> measure how it deletes, smallest identical change, send-2/send-3 clean. Commit as 'H23 item 55: ...'.
