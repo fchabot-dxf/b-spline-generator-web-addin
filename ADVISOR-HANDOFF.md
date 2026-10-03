@@ -23,7 +23,7 @@ From the outgoing advisor (session `b-spline-generator-web-addin-54`) to the new
 | C | `b-spline-generator-web-addin-de` | `-fb-app` / `fb-app` | 5 | de | F30 item 3: taper copies |
 | spare | `-39`, `-d3` | none | none | none | PARKED (no wait, no edits, no Fusion) |
 
-Decommissioned, all signed with 🪦 except `af`, which is closed: af, 66, d6, 55.
+Decommissioned, all signed with 🪦 except `af`, which is closed: af, 66, d6, 55, 4a (archived 2026-10-03, never had a task).
 
 Fleet mechanics:
 - **Seat lock.** `handoff.py seat --session <name>` per worktree; a worker `wait` must pass the matching
