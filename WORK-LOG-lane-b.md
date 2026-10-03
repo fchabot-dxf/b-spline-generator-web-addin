@@ -13160,3 +13160,76 @@ deployed so they can restore main.
 
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn (epoch 9) — T82 item 7: inset window hardening — DONE, passing back
+
+Advisor dispatch (item 6 merged to main d5c3f2f, deployed): 3 flags from item 6's own live check. (1) a
+window crossing the main opening's real boundary must degrade "ugly but not broken," never
+`DeclaredProfileError` -- pure test first. (2) live-test the degenerate lip. (3) exercise CAM's Manufacture
+workspace live once on a window build. Ask for "Fusion free" before (2)/(3); seat A also needed Fusion.
+
+**(1) Pure test first, no Fusion.** `declared_profiles.classify()`'s final catch-all now returns `(None,
+None)` (no feature, material keeps it) for a profile whose ids are ANY mix of the main frame's own `inner`
+boundary and ANY window-related curve id (outer/inner/hole/miter) -- broadened from the previous version,
+which only tolerated the window's OUTER loop specifically (the "opening as an island" case from item 6).
+Narrowly targeted: a profile touching something from NEITHER set still raises -- a genuine, unrelated
+template bug is not silently swallowed by this. Pure tests use the EXACT curve-id combinations MEASURED live
+during item 6's own overlap crash (recovered from that session's own inspection: a sliver bounded by one
+main waist-arc id + the window's own inner-left edge + both its own left-side miters, and a smaller sliver
+of one waist-arc id + one window-outer id alone). Committed+pushed (7475aad) before requesting Fusion free,
+per the dispatch's own "pure test first" ordering.
+
+**(2) + (3), live, Fusion free granted directly (cross-session message).** Deployed from a clean worktree
+(stopped the live add-in via `app.scripts.itemsByName(...).stop()`/`.run()`, matching item 6's own pattern).
+Reused the SAME stand-in-panel harness item 6 already proved (thin, straddling Z=0, inches via `*2.54` into
+`Point3D.create`) for both live checks, both at 7x9/template_1.
+
+Degenerate lip (2): window w=h=1.8, frame_thickness=0.75, panel_lip=0.2 (needs >= 0.15 to clamp the hole
+shut, since `1.8 - 1.5 - 2*lip <= 0` at lip=0.15). Result: panel_lip param created, all 4 window bars built
+with the SAME volumes as the no-lip case (the clamp genuinely doesn't touch the bars), zero `window_hole_*`
+curves in the sketch (no hole rect drawn), zero errors -- exactly matches `inset_window.py`'s own documented
+SIMPLIFIED behaviour.
+
+CAM Manufacture (3): needed a document with BOTH a "B-Spline Set" component (for the classifier to find) AND
+a frame+window -- new territory beyond item 6's own bare-panel-in-root harness. First attempt wrapped the
+stand-in panel in its own component and passed `occurrence.component.bRepBodies.item(0)` as the core body;
+EVERY bar extrude failed with `EXTRUDE_CREATION_FAIL_ERROR ... invalid argument toEntityOne` -- a body
+reference in its NATIVE component context isn't valid as a cross-component extrude target from a SIBLING
+component (`Frame_1`); fixed by using the ROOT-CONTEXT PROXY instead (`occurrence.bRepBodies.item(0)`, not
+`.component.bRepBodies`). Second snag: after `cam_coordinator.run()` once, `app.activeProduct` became the
+CAM product, not Design, so the next `send_frame()` call's own `_require_board_params` reported the board
+params "missing" even though they plainly existed (it reads `Design.cast(app.activeProduct)`); fixed by
+reactivating the Design workspace (`ui.workspaces.itemById('FusionSolidEnvironment').activate()`) before any
+further Design-side work. Third snag, not fully explained: re-running `cam_coordinator.run()` a SECOND time
+in a document whose FIRST run had captured an empty Frame_1 kept producing an empty Frame MM snapshot on
+every rebuild after, even once the Design genuinely had all 8 bodies and even after `adsk.doEvents()` -- a
+FRESH document (build the frame correctly, run CAM exactly once) avoided it entirely and worked first try.
+Flagged in INSET-WINDOW-LIVE_CHECK.md as an open question (suspect the CAM product caching something from
+its own first acquisition in that document), not chased further under live Fusion time once the workaround
+was in hand.
+
+Final (fresh-document) result: `cam_coordinator.run(classifier=_classify_body, mode='bspline',
+skip_templates=True, skip_machine=True)` -> `ok: true`, all 3 MMs (stock/bspline_set/frame) and all 4 Setups
+(Stock/B-spline Back/B-spline Top/Frame) built, zero errors. The Frame MM's own snapshot held all 8 bar
+bodies (4 main + 4 window) with 11 move features, laid out in ONE continuous row (sorted X-ranges strictly
+increasing, zero pairwise overlap via `TemporaryBRepManager`) -- confirms the `_populate_frame_geometry`/
+`_lay_out_other_bars` CAM fix (committed in item 6, confirmed there only via fake-Fusion tests + an A/B
+diff) now ALSO live, with a real window build, continuing the main row exactly as designed. Screenshot
+(`t82i7_cam_layout.png`, top view of MM-Frame) shows the 4 main bars then the 4 small window bars in one row.
+
+Cleaned up: closed both scratch docs (`deglip`, `cam2`) by verified fingerprint; confirmed the one remaining
+"Untitled" doc was the ADVISOR's own (`adv_taper_fp`, not mine) before leaving it alone, per their explicit
+instruction. The 3 protected docs (`UI-cowork v1`, `API-claude code v1`, `OFFSET-cowork v1`) untouched
+throughout.
+
+**Gate:** `pytest` at `bspline-frame-builder/`: 880 passed, 25 skipped, 0 failed (7 new pure tests over the
+873 from item 6's own close-out). No code changed for (2)/(3) -- pure live verification, no commit needed
+beyond (1)'s own.
+
+Committed (1) and pushed as `7475aad` BEFORE the live parts (per "pure test first"); (2)/(3) are
+documentation-only (INSET-WINDOW-LIVE_CHECK.md §5, this entry) since they needed no code change, committed
++ pushed together. Redeployed lane-b from a final clean worktree once pushed, confirmed `build-info.json`
+matches and the add-in is running, then told the advisor what's deployed so they can merge + redeploy main.
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
