@@ -7733,3 +7733,52 @@ true floor as before, -15 -- the fix corrected a connectivity defect, not a feas
 and redrew the diagram: `C:/Users/danse/.bspline-status/shots/seatC/0233_F30-item5-fixed_arched-taper-
 diagram_7x9_6x9.png`. Sent to the advisor to retest in Fusion. Still no template files touched, no Fusion used
 on this end.
+
+## 2026-10-03: F31 item 1 -- Sand Timer (Template 14) diagram, 6x9/7x9/9x12, no code (seat C, epoch 5)
+
+Dispatch: Fred's own sand-timer sketch (flat top/bottom, 45-deg corner miters, each side = two OUTWARD-bulging
+arcs meeting at a sharp pinch, mitered there too -- 6 bars). Reference: Fred's pencil sketch + the advisor's
+own `sandtimer_render.py` (a Shapely-based approximation) and its two preview renders (bulge comparison, offset
+comparison) in `.bspline-status/shots/fred/`.
+
+Built against the SAME production pipeline every diagram this session used (`outlineDefects` +
+`offsetOutlineInward` + `frameMiters`), not Shapely -- so this shows what the real engine would actually
+build, not an approximation of it. Generalised the T10+taper diagram's own `archPrimitive` (a closed-form
+sagitta arc between two points) into `bulgeArc(p0, p1, sag, awayPoint)`: same circle-from-chord-and-sagitta
+algebra, but the bulge DIRECTION is computed from the chord's own normal (whichever side sits farther from
+`awayPoint`) instead of assumed "up", and the sweep branch is picked by checking the TRUE apex point lies on
+it instead of a fixed angle -- one shared helper, reused for all 4 side arcs (two per side) by varying which
+point is the "away" reference.
+
+Three handles, as fractions so they scale with the board (Fred's own dispatch names: pinch reach, bulb bulge,
+offset): `pinchReachFrac` (how far in from the side the pinch sits), `bulgeFrac` (the outward sagitta, fraction
+of hw), `pinchHeightFrac` (0 = pinch at the top edge, 1 = at the bottom, 0.5 = centred -- Fred's own sketch).
+Defaults (reach 0.6, bulge 0.14) were picked to land close to the advisor's own "Sand-timer (your sketch)"
+variant (pinch 1.25in / bulge 0.45in at 7x9's own hw=3.25in: reach = 1-1.25/3.25 = 0.615, bulge = 0.45/3.25 =
+0.138) -- close enough that this independently reproduces the SAME shape the advisor's own Shapely script drew
+for that variant, confirmed visually.
+
+**The dispatch's own "propose the valid range" (where the neck opening stays open):** added a direct
+`neckOpening` measurement (the real distance between the two pinch points AFTER the production inward offset,
+not the outer ones) plus a bisection search (same pattern this session's own taper-floor searches used) to
+find the max clean `bulgeFrac` at the default pinch reach. Result: the valid band is NARROW and board-size
+dependent -- 0.160 at 6x9, 0.156 at 7x9, 0.180 at 9x12 (vs the 0.14 default) -- confirming the advisor's own
+"rounder bulbs" variant (bulge 0.80in / hw 3.25in = 0.246) sits OUTSIDE the valid range and really would cross,
+exactly as its own panel showed. Did the same bisection for the offset handle's own range (holding reach/bulge
+at default): the valid `pinchHeightFrac` band is similarly narrow near centre -- [0.33, 0.67] at 6x9, [0.35,
+0.65] at 7x9, widening to [0.22, 0.78] at the taller 9x12 (more vertical room per chamber).
+
+**Applied F30 item 5's own lesson before it could bite twice:** added the same `continuityCheck` (every
+piece's own end must exactly meet the next piece's own start) this session just had to add AFTER a real bug
+got past mirror-symmetry checking alone. Confirmed clean here (worst gap 0) -- this shape's own 6 pieces are
+each built directly from the shared corner/pinch points, nothing reused-then-partially-rebuilt the way the
+taper diagram's waist arc was, so there was no equivalent defect to find; recorded as a deliberate check, not
+an assumption.
+
+Diagram (12 panels: 3 board sizes x {default, max-clean-bulge, offset-up-limit, offset-down-limit}, same
+visual style as every other diagram this session -- tan fill, blue dotted inner edge, red miter lines at every
+corner AND the pinch, green handle dots at the pinch points): `C:/Users/danse/.bspline-status/shots/seatC/
+0230_F31-item1-proposed_sandtimer-diagram_6x9_7x9_9x12.png`. Script committed:
+`tools/repro/f31_item1_sandtimer_diagram.mjs` (same repo-root-as-argv[1] convention as the taper diagram
+script). No template files touched, no Fusion used. Passing back for Fred's sign-off before any
+`template_14`-numbered code is written.
