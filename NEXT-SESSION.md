@@ -186,6 +186,21 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 60 -- the skeleton-pin gap (item 59's GATE): check the shipped templates first, then fix it once (advisor, 2026-10-03)
+Item 59 accepted as a gate (7628ac2): construction fix kept, handle withheld -- right call. Your options C then B,
+in that order, same pass:
+(C) SHIPPED TEMPLATES FIRST (Fred may already hit this): live preview==build with the taper (or any handle that
+    moves a pinned skeleton point) at BOTH range ends + default for T1, T2, T12, T13 and anything else whose
+    FRAME_SEED_MAP has kind:'pin' entries, at 7x9. Why didn't item 46's 13/13 sweep catch it -- did its Generate
+    seeds leave pinned points at their literals? Make the sweep cover every declared handle's range ends so it can
+    catch this class from now on.
+(B) FIX ONCE, DECLARED: kind:'pin' seedMap entries are declared data that no Python consumes. Make
+    apply_seed_geometry (or the build-time SeedFrom resolver from item 47) consume pin entries generically, so a
+    pinned skeleton line/point takes the sent position. No per-template patch, no waistMajor special case (you saw
+    242 tests break). Unseeded path + goldens stay byte-identical (--check). Pure test: a pin entry moves the pinned
+    entity. Then re-add T10's taperAngle handle and run item 59's 9 live cases: preview==build at every taper.
+Report T1/T2/T12/T13 before/after. Fusion is yours. Commit 'H23 item 60: ...' (separate commits for C, B and the handle).
+
 ## Item 59 -- ARCHED + TAPER, template code (moved from seat C's F30 item 6 so three seats build in parallel) (advisor, 2026-10-03)
 Item 58 accepted (fred-skills f5c7edb, 5ccf236). Fred approved Arched + taper after the advisor's Fusion retest of
 the FIXED construction: FULL range -15..+15 deg, default 8 deg. T10 + the shared taperAngle construction (as T1/T2
@@ -514,4 +529,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-56] speed round 4 MEASURE ONLY: full stage table send-1/send-2, stamp sketch per-call vs solve, top 3 remaining wins with estimates. Commit as 'H23 item 56: ...'.
 - [x] [H23-item-57] (reverted, under noise) validate whole-stamp-build deferred compute: A/B identical over 3 Sends, keep only if >= 1 s saved. Commit as 'H23 item 57: ...'.
 - [x] [H23-item-58] fusion360-quirks: timeline per-call cost vs history, marker insertion + restore rule, occurrence delete covers child features, CCW arc start/end -- each confirmed on varied cases. Commit as 'H23 item 58: ...'.
-- [ ] [H23-item-59] Arched + taper template code (moved from seat C): port the fixed construction, taper handle on T10 vs new slot (data), full -15..+15, live 5 angles + sizes, sweep clean. Commit as 'H23 item 59: ...'.
+- [x] [H23-item-59] (gate: handle withheld -> item 60) Arched + taper template code (moved from seat C): port the fixed construction, taper handle on T10 vs new slot (data), full -15..+15, live 5 angles + sizes, sweep clean. Commit as 'H23 item 59: ...'.
+- [ ] [H23-item-60] skeleton-pin gap: live-check T1/T2/T12/T13 range ends first, sweep covers every handle's range ends, consume kind:'pin' seed entries generically, re-add T10 taper handle + 9 live cases. Commit as 'H23 item 60: ...'.
