@@ -236,6 +236,20 @@ try:
 except Exception:
     out['CRASH'] = traceback.format_exc()[-1200:]
 finally:
+    # H23 item 51: the orphan-cleanup loop at the top of this script only ever matches a doc
+    # whose rootComponent has NO occurrences/sketches yet (meant for a doc that failed before any
+    # geometry landed) -- a doc that successfully built a real T7 frame (occurrences + sketches
+    # present) never matches it, so 'full'/'empty' were left open FOREVER, one more pair every run
+    # (MEASURED: 2 separate runs this item left 4 orphaned docs behind, confirmed by their own
+    # 'adv_stage_timing_fp' fingerprint before closing them by hand). Close by HANDLE, popped from
+    # HOLD.docs -- never by name/count (this project's own established scratch-doc hygiene rule).
+    for _k in ('full', 'empty'):
+        _d = HOLD.docs.pop(_k, None)
+        if _d:
+            try:
+                _d.close(False)
+            except Exception:
+                pass
     for m in mod_keys():
         if m in sys.modules: del sys.modules[m]
     sys.modules.update(saved_mods)

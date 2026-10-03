@@ -14049,3 +14049,97 @@ nothing in production code was touched this item). No live 13-template sweep nee
 no removal to re-check it against.
 
 Committed as "H23 item 50: ..." (WORK-LOG.md only -- no code).
+
+## H23 item 51 -- the REAL costs: a real captured Send payload, the top 2 stages located precisely, one genuine fix landed, the other's cost localized but left unfixed
+
+Dispatch (advisor, 453): a real, full palette payload (stepVariants + stamp + frame, template_7
+at 7x9) at `bspline-frame-builder/scratch/real_send_t7_7x9_full.json`. Replay via
+`_handle_generate`, time the stages, attack the top 2 (stamp projection ~6.7s, timeline reorder
+~4.9s) with identical A/B, one commit each, seconds before/after; also fix `step_removal_ab.py`'s
+own `OUT` path (item 50's own flagged-not-fixed finding). Mid-session: paused twice for the
+advisor's own taper-probe retests (~3-5 min each), confirmed via SendMessage each time, touched
+nothing of the advisor's own `adv_taper_fp` document either time.
+
+**The real payload, replayed (`send_stage_timing.py`, already built and committed as prep-only
+by an earlier session -- this is its first live run):** `total_seconds: 21.57` (matches the
+historical "~25s Send" closely). `empty_doc_seconds: 0.878` vs. the real document's own frame-
+build cost -- confirms item 29's own original finding AT FULL SCALE (my own item 50 synthetic
+"heavy doc" only reached a 1.66x slowdown; this REAL document reaches ~14x, the same order of
+magnitude as the original "8-16x" estimate). Stage breakdown: "Projecting SVG Artwork..." 7.721s,
+"Building the frame..." 12.413s (of which `timeline_reorder_calls: [5.1976]` and
+`solid_coordinator_phases.extrusion: 3.26`).
+
+**Cost #1, "timeline reorder" (~5.2s) -- LOCALIZED PRECISELY, one genuine dead-code fix landed,
+honest about its own (near-zero) measured benefit for THIS stage.**
+`fb_engine/timeline_order.py::reorder_frame_before_inlay` re-fetched `items_before = [timeline.
+item(i) for i in range(timeline.count)]` right after `items` had ALREADY fetched the exact same,
+unchanged timeline (nothing between the two fetches ever reorders anything) -- a second full
+live-API scan for no reason. Fixed: `items_before = items`. New test
+(`fb_engine/test_timeline_order.py::test_scans_the_timeline_only_once_not_twice`, a counting fake
+timeline) proves the scan count halves; mutation-tested (reverted, confirmed red at exactly 2x the
+expected count, restored, green). 21/21 existing tests stayed green -- behavior-preserving, not
+just argued.
+
+But LIVE, re-measured against the SAME real payload after the fix: `timeline_reorder_calls:
+[5.1538]` -- **no meaningful change** (confirmed a 3rd time, [5.1534], after also fixing the
+orphan-doc bug below). Investigated WHY, rather than stopping at "it didn't work": instrumented
+`is_frame_timeline_item` directly -- 36 calls across the whole build, summing to **0.001s total**.
+The redundant fetch (and the per-item entity/attribute filtering it was part of) was never the
+real cost. Instrumented the ACTUAL `.reorder()`/`.canReorder()` calls next (a proxy wrapper around
+the timeline object, no production code touched for this probe): `reorder_frame_before_inlay` is
+called TWICE per Send (confirmed the sketch-build and solid-build call sites `ensure_frame_before_
+inlay`'s own docstring already said exist) -- the FIRST call (early, fewer timeline items) costs
+0.14s across 4 reorders (~0.03s each); the SECOND (late, solid build, more items already in the
+timeline) costs 5.18s across 6 reorders (~0.85-0.90s EACH) -- matching the measured 5.2s almost
+exactly. **The cost is the `.reorder()` CALLS THEMSELVES** (Fusion's own per-call cost, presumably
+an internal recompute/revalidation, scaling with how much model already exists when each call is
+made), not any surrounding Python logic. Did not attempt to reduce the NUMBER of `.reorder()`
+calls: this module's own docstring documents a MEASURED (live, F11) ordering dependency --
+moving items one at a time with a `canReorder` check immediately before EACH move is why a sketch
+inside Frame_N only accepts the move once the component's own occurrence has already moved first
+-- batching these calls risks reintroducing exactly the failure this careful sequencing exists to
+avoid, for a cost (5.2s of a 21s Send) this item's own time budget does not justify risking
+without a dedicated investigation into whether Fusion's own API offers any batched/deferred
+reorder primitive. Flagging for the advisor rather than attempting it rushed.
+
+**Cost #2, "Projecting SVG Artwork" (~7.6-7.7s) -- localized to one specific function, NOT fixed.**
+Instrumented `_compute_artwork_plane` / `_build_constrained_sketch_for_layer` /
+`_import_single_layer_svg` directly (wrapping the handler's own bound methods, no production code
+touched for this probe either). This payload's own stamp has 5 layers, all 5 carrying a
+`sketchManifest`: `_build_constrained_sketch_for_layer` costs 0.075/1.952/0.632/1.565/1.575s =
+**5.799s of the 7.6s** (the plain-SVG import path, `_import_single_layer_svg`, adds another
+1.828s for the 3 layers that also carry raw SVG content). The real work happens inside
+`sketch_manifest_builder.build_constrained_sketch` -- real constraint-based sketch construction
+(projections, geometry creation), not a simple redundant-call pattern like cost #1's own. Did not
+attempt a fix: this is complex, content-dependent geometry-building code I have not read in full,
+and the cost clearly scales with EACH layer's own manifest complexity (0.075s for an empty layer
+vs. 1.5-2s for a real one) rather than looking like one obvious wasted call. A real optimization
+here needs a dedicated pass through `sketch_manifest_builder.py` itself, not a rushed guess against
+code this item's own time budget did not allow fully understanding first.
+
+**A related fix, discovered while USING the tools above, not asked for but directly necessary:**
+`send_stage_timing.py`'s own orphan-cleanup loop (at the top of the script) only ever matches a
+doc whose `rootComponent` has NO occurrences/sketches -- meant for a doc that failed before any
+geometry landed. A doc that successfully built a real T7 frame (occurrences + sketches present)
+never matches it, so the 'full'/'empty' docs it creates were left open FOREVER, one more pair
+every run. MEASURED: this item's own first 2 runs left 4 orphaned docs behind (confirmed by their
+own `adv_stage_timing_fp` fingerprint before closing them by hand, never by name/count). Fixed:
+explicit `HOLD.docs.pop(...).close(False)` for both, in the script's own `finally`. Re-ran twice
+after the fix -- confirmed 0 new orphans each time.
+
+**The explicitly-requested fix:** `step_removal_ab.py`'s own `OUT` path resolved to `<repo>/
+scratch/...` (one `dirname` too many), not `<repo>/bspline-frame-builder/scratch/...` (every other
+script in this directory's own convention) -- crashed with `FileNotFoundError` on its first use
+last item. Fixed the path and added `os.makedirs(..., exist_ok=True)` defensively.
+
+**13-template live sweep, re-run after the one code change that touches the real Send pipeline
+(`timeline_order.py`):** `done=13 crashed=[] bad=[]` -- confirmed nothing regressed. No stray
+scratch documents left open at any point (checked `app.documents` directly after each live call;
+the advisor's own `adv_taper_fp` document was never touched).
+
+Full Python suite: 767 passed (+1, the new timeline-scan-count test), 25 skipped, 0 failures.
+
+Committed as THREE separate commits per the dispatch's own "one commit each": "H23 item 51 (1/3):
+fix step_removal_ab.py's OUT path", "H23 item 51 (2/3): timeline_order.py's redundant timeline
+scan removed", "H23 item 51 (3/3): send_stage_timing.py's own orphan-doc leak fixed" (this
+WORK-LOG entry lands with the third).
