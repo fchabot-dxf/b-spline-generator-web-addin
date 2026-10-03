@@ -200,77 +200,56 @@ describe('TerrainPreview._applyFrame: the frame rim gets its own drape overlay (
 });
 
 /**
- * H23 item 67b (advisor rework, 2026-10-03: "the after shot still shows plain grey/beige walls
- * below a thin green lip"): MEASURED via a live raycast that the "plain grey/beige" area was
- * frame-bars (the wood moulding ring), not frame-panel-wall -- frame-bars' own OUTER wall sits
- * at the EXACT SAME (x,y) as frame-panel-wall (outer === panel at panelLip 0) and, being the
- * WIDER ring, is what a viewer actually sees as "the wall". It previously had NO colour mechanism
- * at all (a flat material colour only) -- this proves it now takes the edge colour, full height,
- * on its own outer wall only, with the inner wall and the rest of its own top cap staying the
- * frame's declared wood colour.
+ * H23 item 67d (Fred, direct, 2026-10-03: "the frame shouldn't change colour, only the board
+ * edge, which is only about .25 in") -- a deliberate REVERSAL of item 67b's own choice to also
+ * colour frame-bars' own outer wall. The frame's own wood moulding (the bars, main AND window) is
+ * a separate piece of wood in Fred's own real craft practice: it NEVER takes the artwork colour,
+ * regardless of what edgeSampler finds -- only the B-spline PANEL's own side wall
+ * (frame-panel-wall / frame-window-wall, both unchanged by this item, still flat+aligned per
+ * item 67c) does. This proves the frame stays wood-only even when artwork covers the WHOLE
+ * perimeter (the strongest possible counter-case), while the SAME call's panel wall still
+ * correctly takes it -- the dispatch's own explicit test requirement: "frame-wall vertices keep
+ * the frame colour; panel-wall vertices take the edge colour."
  */
-describe('applyFrameToPanel: frame-bars\' own OUTER wall now takes the edge colour too (H23 item 67b)', () => {
-  it('without edgeSampler: every bar vertex is the frame\'s own declared wood colour (today\'s pre-67b look, now via vertex colours instead of a flat material colour)', () => {
+describe('applyFrameToPanel: the FRAME (bars) never takes the edge colour -- only the board/panel wall does (H23 item 67d)', () => {
+  it('frame-bars: EVERY vertex is the frame\'s own declared wood colour, even with an edgeSampler that finds artwork EVERYWHERE (the strongest counter-case) -- a single flat material colour, no vertex colours at all', () => {
     const { mesh, grid } = panel(7, 9, 71, 91);
     const spec = frameSolidSpec(FRAME_DEFS, rec('template_1', { appearance: '3D Oak - Painted' }), BOARD);
-    const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
-    expect(bars.material.vertexColors).toBe(true);
-    expect(bars.material.color).toBe(0xffffff);
-    const col = bars.geometry.attributes.color.array;
-    expect(col.length).toBeGreaterThan(0);
-    const wood = new FakeTHREE.Color(spec.color);
-    for (let i = 0; i < col.length; i += 3) {
-      expect(col[i]).toBeCloseTo(wood.r, 2); expect(col[i + 1]).toBeCloseTo(wood.g, 2); expect(col[i + 2]).toBeCloseTo(wood.b, 2);
-    }
+    const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => ({ ...ARTWORK })).find((m) => m.name === 'frame-bars');
+    expect(bars.material.vertexColors).toBeFalsy();
+    expect(bars.geometry.attributes.color).toBeUndefined();
+    expect(bars.material.color).toBe(spec.color);
   });
 
-  it('with edgeSampler: the OUTER wall (the visible exterior face) takes the artwork colour, full height (bottom and top share the same colour)', () => {
+  it('frame-window-bars: SAME -- wood only, even with artwork everywhere', () => {
+    const winRec = () => rec('template_1', { insetWindow: { enabled: true, x1: 2, y1: 3, x2: 5, y2: 6 }, frameBottomZ: -1 });
+    const { mesh, grid } = panel(7, 9, 71, 91);
+    const spec = frameSolidSpec(FRAME_DEFS, winRec(), BOARD);
+    const winBars = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => ({ ...ARTWORK })).find((m) => m.name === 'frame-window-bars');
+    expect(winBars).toBeTruthy();
+    expect(winBars.material.vertexColors).toBeFalsy();
+    expect(winBars.geometry.attributes.color).toBeUndefined();
+  });
+
+  it('non-vacuous, in the SAME call: frame-panel-wall STILL correctly takes the artwork colour -- proving the bars\' own wood-only result above is a real distinction, not "edgeSampler was silently ignored everywhere"', () => {
     const { mesh, grid } = panel(7, 9, 71, 91);
     const spec = frameSolidSpec(FRAME_DEFS, rec('template_1'), BOARD);
-    const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => ({ ...ARTWORK })).find((m) => m.name === 'frame-bars');
-    const col = bars.geometry.attributes.color.array;
+    const extra = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => ({ ...ARTWORK }));
+    const wall = extra.find((m) => m.name === 'frame-panel-wall');
+    const col = wall.geometry.attributes.color.array;
     let artworkCount = 0;
     for (let i = 0; i < col.length; i += 3) {
       if (Math.abs(col[i] - ARTWORK.r) < 1e-5 && Math.abs(col[i + 1] - ARTWORK.g) < 1e-5 && Math.abs(col[i + 2] - ARTWORK.b) < 1e-5) artworkCount++;
     }
-    // non-vacuous: the sampler's own colour genuinely reached the bars somewhere
     expect(artworkCount).toBeGreaterThan(0);
   });
 
-  it('the INNER wall (closest to the panel\'s own sculpted centre) stays the wood colour even when edgeSampler finds artwork everywhere -- no artwork reaches that far in', () => {
+  it('bars\' own flat material colour is identical with or without edgeSampler -- it has no effect on the frame at all, not even a fallback path to skip', () => {
     const { mesh, grid } = panel(7, 9, 71, 91);
     const spec = frameSolidSpec(FRAME_DEFS, rec('template_1'), BOARD);
-    const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => ({ ...ARTWORK })).find((m) => m.name === 'frame-bars');
-    const col = bars.geometry.attributes.color.array;
-    const wood = new FakeTHREE.Color(spec.color);
-    let woodCount = 0;
-    for (let i = 0; i < col.length; i += 3) {
-      if (Math.abs(col[i] - wood.r) < 1e-2 && Math.abs(col[i + 1] - wood.g) < 1e-2 && Math.abs(col[i + 2] - wood.b) < 1e-2) woodCount++;
-    }
-    // the inner wall + the rest of the top cap (everything but row 0 and oB) -- a real, sizeable share
-    expect(woodCount).toBeGreaterThan(0);
-  });
-
-  it('a sampler that returns null everywhere behaves exactly like no sampler at all (the wood-colour fallback)', () => {
-    const { mesh, grid } = panel(7, 9, 71, 91);
-    const spec = frameSolidSpec(FRAME_DEFS, rec('template_1'), BOARD);
-    const withNullSampler = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => null).find((m) => m.name === 'frame-bars');
-    const withNoSampler = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
-    expect(Array.from(withNullSampler.geometry.attributes.color.array)).toEqual(Array.from(withNoSampler.geometry.attributes.color.array));
-  });
-
-  it('frame-window-bars (the inset-window moulding) gets a uniform wood colour attribute -- NOT left without one, which would render flat black now that barMat always has vertexColors:true', () => {
-    const winRec = () => rec('template_1', { insetWindow: { enabled: true, x1: 2, y1: 3, x2: 5, y2: 6 }, frameBottomZ: -1 });
-    const { mesh, grid } = panel(7, 9, 71, 91);
-    const spec = frameSolidSpec(FRAME_DEFS, winRec(), BOARD);
-    const winBars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-window-bars');
-    expect(winBars).toBeTruthy();
-    const col = winBars.geometry.attributes.color.array;
-    expect(col.length).toBeGreaterThan(0);
-    const wood = new FakeTHREE.Color(spec.color);
-    for (let i = 0; i < col.length; i += 3) {
-      expect(col[i]).toBeCloseTo(wood.r, 2); expect(col[i + 1]).toBeCloseTo(wood.g, 2); expect(col[i + 2]).toBeCloseTo(wood.b, 2);
-    }
+    const withSampler = applyFrameToPanel(FakeTHREE, mesh, grid, spec, () => ({ ...ARTWORK })).find((m) => m.name === 'frame-bars');
+    const withoutSampler = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
+    expect(withSampler.material.color).toBe(withoutSampler.material.color);
   });
 });
 
@@ -399,32 +378,14 @@ describe('H23 item 67c: wall/bars colour ALIGNS with the rim at the same outline
     expect(mismatches, `${mismatches}/${checked} wall segments did not match the independently-sampled ground truth colour at their own midpoint`).toBe(0);
   });
 
-  it('frame-bars\' own outer wall: SAME alignment check -- every vertex whose OWN colour is NOT plain wood (i.e. every artwork-coloured vertex, which can only be on the outer wall -- the inner wall and top cap always stay wood) matches the ground truth at its own (x,y)', () => {
+  it('H23 item 67d: frame-bars stays the plain wood colour with this SAME real banded-canvas edgeSampler -- not just the synthetic flat-sampler case tested elsewhere, the identical sampler that frame-panel-wall above genuinely reads from', () => {
     const { mesh, grid } = panel(W, H, 71, 91);
     const canvas = bandedCanvas();
     const spec = frameSolidSpec(FRAME_DEFS, rec('template_1', { appearance: '3D Oak - Painted' }), BOARD);
     const edgeSampler = (u, v) => sampleDrapeUV(canvas, u, v);
     const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec, edgeSampler).find((m) => m.name === 'frame-bars');
-    const pos = bars.geometry.attributes.position.array, col = bars.geometry.attributes.color.array;
-    const wood = new FakeTHREE.Color(spec.color);
-    const total = pos.length / 3;
-    let checked = 0, mismatches = 0;
-    for (let i = 0; i < total; i++) {
-      const cr = col[i * 3], cg = col[i * 3 + 1], cb = col[i * 3 + 2];
-      const isWood = closeEnough(cr, wood.r) && closeEnough(cg, wood.g) && closeEnough(cb, wood.b);
-      if (isWood) continue; // only the outer wall's own artwork-coloured vertices are checked here
-      const truth = groundTruthAt(canvas, pos[i * 3], pos[i * 3 + 1]);
-      if (!truth) continue;
-      checked++;
-      if (!closeEnough(cr, truth.r) || !closeEnough(cg, truth.g) || !closeEnough(cb, truth.b)) mismatches++;
-    }
-    expect(checked, 'non-vacuous: at least some bar vertices must actually be artwork-coloured (the outer wall)').toBeGreaterThan(20);
-    // A handful of vertices genuinely sit AT one of the 3 band boundaries (their own segment's flat
-    // colour is sampled at the MIDPOINT, which can legitimately land on the opposite side of a
-    // boundary from one of that same segment's own ENDPOINT vertices) -- a real, bounded, expected
-    // edge case (the dispatch's own brief: "a 0.25in dash needs wall vertices AT LEAST that dense"
-    // -- implying some imprecision within one segment's own width is tolerated), not a general
-    // alignment failure. Bounded well under 1% of all checked vertices.
-    expect(mismatches / checked, `${mismatches}/${checked} artwork-coloured bar vertices did not match the ground truth`).toBeLessThan(0.01);
+    expect(bars.material.vertexColors).toBeFalsy();
+    expect(bars.geometry.attributes.color).toBeUndefined();
+    expect(bars.material.color).toBe(spec.color);
   });
 });

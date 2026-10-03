@@ -16099,3 +16099,356 @@ would want the SAME seed the REST of that Send already committed to, not a fresh
 production code changed at all for Part 1. Scratch output directories (`decal-spike`,
 `decal-spike-150dpi`), the dev-server process, and the chrome profile dir deleted/stopped before
 commit; the two representative PNGs kept only in `shots/seatA` for review.
+
+## H23 item 67d: edge colour only on the BOARD's own edge (the panel's wall) -- the FRAME's own
+wood moulding (the bars, main and window) NEVER takes the artwork colour (Fred, direct dispatch
+while I waited on Fusion: "the frame shouldn't change colour, only the board edge, which is only
+about .25 in"). A deliberate REVERSAL of item 67b's own choice to also colour frame-bars' outer
+wall; item 67c's own alignment/crispness fix to the PANEL wall is untouched and still applies.
+
+**(1) Interpretation.** Two readings of "~0.25in thickness band" were possible: (a) a literal
+z-range carve-out WITHIN frame-panel-wall's own geometry (a coloured top slice over a wood-coloured
+deeper slice), or (b) a full revert of item 67b's own extension of artwork-colouring onto
+frame-bars, leaving frame-panel-wall/frame-window-wall exactly as 67c left them. Went with (b):
+the dispatch's own test requirement is phrased as a binary MESH-level distinction ("frame-wall
+vertices keep the frame colour; panel-wall vertices take the edge colour"), not a sub-mesh z-split,
+and "~0.25in" reads as Fred's own loose estimate of the panel wall's visual thickness (matching his
+real dyed-edge practice), not a new geometric constraint. frame-bars and frame-window-bars are a
+SEPARATE piece of wood in his own real craft practice -- never dyed to match the panel.
+
+**(2) Fix (`frame-mesh.js`, `applyFrameToPanel`).** Reverted the bars-construction block
+(`if (inner || windowed) {...}`) back to its pre-item-67b form: a single flat-colour
+`MeshPhongMaterial` (no `vertexColors`), built from the coarse `outer`/`inner` loops via plain
+`ringArrays(outer, inner, spec.frameBottomZ, bot, cell)` (default `includeOuterWall:true`).
+Removed: the `woodColor`/`wood3` variables, the `barEdgeColor` closure, the fine-sampled
+`fineOuter`/`fineInner`/`finePaired`, and the `restGeom`+`outerWallGeom` merge via
+`wallArraysFlat` -- item 67b/67c's own per-vertex colour machinery for the bars, now dead weight
+since there's no colour boundary left on a uniformly wood-coloured surface to resolve.
+`frame-panel-wall` and `frame-window-wall` (the `wallArraysFlat`+`edgeColor`+
+`WALL_COLOR_OVERSAMPLE` construction, above and below this block respectively) were left
+COMPLETELY UNTOUCHED -- still exactly item 67c's alignment/crispness fix. `WALL_COLOR_OVERSAMPLE`
+and `wallArraysFlat` stay exported (still used by the wall pieces); `ringArrays`' own
+`includeOuterWall` 6th parameter stays in the signature (harmless, unused with its default now that
+the bars don't need a separate flat outer-wall piece to merge).
+
+**(3) Tests** (`tests/frame-3d.test.js`, `tests/frame-wall-edge-colour.test.js`), all mutation-
+tested against the pre-67d code (temporarily reverted via `git show HEAD:... >`, restored after
+from a scratch backup, confirmed byte-identical via `git diff --stat` both times):
+- `frame-3d.test.js`'s own "bars" test reverted to checking `bars.material.color` directly against
+  the declared wood hex, `vertexColors` falsy (was checking a per-vertex colour array).
+- `frame-wall-edge-colour.test.js`'s whole item-67b describe block (5 tests asserting frame-bars'
+  outer wall takes the edge colour) replaced with a new describe proving the OPPOSITE: frame-bars
+  and frame-window-bars stay the plain wood colour -- non-vacuously, even with an edgeSampler that
+  returns artwork EVERYWHERE (the strongest counter-case: genuinely present artwork, correctly
+  ignored) -- while frame-panel-wall, in the SAME call, still correctly takes it (proving the bars'
+  wood-only result is a real distinction, not "edgeSampler was silently ignored entirely").
+- The item-67c alignment test for frame-bars' own outer wall (same real banded-canvas edgeSampler
+  that test file's frame-panel-wall alignment test already uses) replaced with the same wood-only
+  assertion, using that SAME sampler -- not just the synthetic flat-sampler case above.
+- All 4 new/changed assertions correctly FAILED against the pre-67d (HEAD) code when mutation-
+  tested; the 2 assertions left alone (frame-panel-wall still artwork-coloured; bars' own colour is
+  identical with/without a sampler) correctly still passed against both versions, as expected (they
+  assert things true in both). Full relevant suite: 148/148 (`frame-wall-edge-colour.test.js`,
+  `frame-3d.test.js`, `frame-bartop-drawn.test.js`, `panel-lip.test.js`, `frame-mesh-normals.test.js`).
+
+**(4) Before/after shots, same camera, same scenario** (template_1, Shape Lattice + Offset from
+frame, the real Stripe tool on every contour segment black/white, rails/ties/nodes coloured --
+items 66/67/67b/67c's own established setup), via a scratch CDP script (deleted before commit,
+same convention as repro67b.mjs/repro67c.mjs): clicked the real `editorApply` button to close the
+stamp editor and run the app's own real `refreshDrape()` (same function Apply/commit already
+calls), then the same oblique close-up camera item 67c used (`_orbit` Euler/radius/target). BEFORE
+(pre-67d/HEAD): the frame's bars wall shows the black/white/red/yellow stripe pattern bleeding onto
+it, same bug item 67b/67c left in place. AFTER (67d): the SAME wall is a flat, uniform wood/cream
+colour, no stripes. Numeric state readback (not just the image) from the live app itself, both
+runs: before -- `frame-bars: {vertexColors: true}`; after -- `frame-bars: {vertexColors: false,
+flatColor: '#efe9d9'}`; `frame-panel-wall` stayed `{vertexColors: true}` in both runs (unaffected,
+as expected). Saved: `shots/seatA/1328_item67d_before_closeup.png`,
+`shots/seatA/1328_item67d_after_closeup.png`.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js`,
+`tests/frame-3d.test.js`, `tests/frame-wall-edge-colour.test.js`. No other file touched. The scratch
+repro script, its two screenshots (copied to `shots/seatA` first), the dev-server process, and the
+chrome profile dir deleted/stopped before commit.
+
+## H23 item 68, Part 2 of 2 (SPIKE, in Fusion): applied Part 1's transparent decal PNG as a REAL
+Fusion decal on one live board's Stamped top face. Answers every question the brief asked. No
+production code touched -- still a pure measurement, nothing wired into the normal Send.
+
+**(1) Setup, for-real, not simulated.** Captured the REAL "Send to Fusion" payload (`stepVariants` +
+`stamp.layers`) from the live app via the `window.adsk` stub technique (`tools/repro/
+capture_send_payload.mjs`'s own convention), from the SAME editor state Part 1's decal PNG was
+rendered from (T1 + Shape Lattice + Offset from frame + the real Stripe tool on every contour
+segment + rails/ties/nodes coloured -- items 66/67/67b/67c/68's own established scenario), so the
+PNG and the STEP+stamp payload are guaranteed to represent the identical board. In Fusion: created a
+NEW document (`app.documents.add`), made it active, loaded `b-spline-gen.py`'s own
+`PaletteHTMLEventHandler._handle_generate(payload)` via `importlib.util.spec_from_file_location`
+(the deployed copy, confirmed byte-identical to this checkout via `fc.exe /B`) -- the SAME handler a
+real Send calls -- and ran it against the real payload. First attempt crashed in `_handle_send_frame`
+(`'NoneType' object has no attribute 'build_sketch_logic_v3'`) -- `frame_engine` is a module-level
+`None` in `b-spline-gen.py`, only ever populated by the real add-in's own `run()` bootstrap
+(`bspline-frame-builder.py`, loads `frame_engine.py` via the same `spec_from_file_location` pattern,
+injects it as `.frame_engine` on the loaded b-spline-gen module) -- not a production bug, just my
+one-off script skipping that bootstrap step. Reran with `frame_engine` wired the same way; the SAME
+still-open new document (Fred's own "Untitled" document, confirmed throughout by CONTENT (0
+occurrences), never by name/count -- both documents are named "Untitled" until renamed, matching the
+skill's own documented trap) ended up with a real `B-Spline Set` + `Frame_1`, stamp artwork applied
+the existing (pre-decal) way.
+
+**(2) Top-face selection: the inlined "pick the single max-Z-point face" pattern (documented
+elsewhere) picks the WRONG face on a genuinely sculpted terrain.** The panel body has 14 faces: 12
+small perimeter/wall facets (area 0.8-8.4) and 2 dominant ones -- face 12 (area 363.6, the sculpted
+TOP, matching the body's own flat-projected area ~356.5 within the extra area a relief surface
+adds) and face 13 (area 348.9, the bottom). The body's global max-Z point (2.380) is touched by BOTH
+face 11 (an 8.4-area rim facet) and face 12 (the true top) -- a tie -- and the documented pattern's
+strict `>` comparison keeps whichever face it visits FIRST, which for this body is face 11, the
+wrong one. Selected by LARGEST AREA instead (robust, no tie); worth fixing in the shared pattern if
+it's ever reused on more sculpted/relief bodies, not touched here (out of this spike's own scope).
+
+**(3) Decal API, measured (the brief's own signature was incomplete).**
+`component.decals.createInput(imageFilename, faces, point)` -- a required 3rd `point` arg the brief
+didn't mention, and it must lie ON the first/primary face (`face.pointOnFace`, not a bounding-box
+centre -- `BRepFace` has no `physicalProperties`/centroid helper). `faces` is a plain Python list,
+not an `ObjectCollection`. The auto-generated default `transform` (inspected before overwriting it)
+revealed the convention: `Matrix3D.setWithCoordinateSystem(origin, xAxis, yAxis, zAxis)`, where each
+axis vector's OWN magnitude is the decal's FULL width/height in cm (not half) -- derived by reading
+Fusion's own default-placement numbers back (its auto X/Y column magnitudes, at the image's own
+known 280x360px size, implied a consistent ~95 px/in default guess both axes). Built the real
+transform from that: `origin = pointOnFace`, `xAxis = (board_width_in * 2.54, 0, 0)`, `yAxis = (0,
+board_height_in * 2.54, 0)`, `zAxis = (0, 0, 1)` (global axis-aligned, not the face's own local
+tangent plane the default used) -- `isChainFaces = True` (already Fusion's own default). Placing
+`origin` ABOVE the surface (for a conceptual top-down "stamp projection") failed outright (`"failed
+to set position of new Decal"`); the origin must sit ON the target face.
+
+**(4) Results, verified by real pixel sampling (not eyeballed), not just "it looks right" --**
+screenshots saved `shots/seatA/1345_item68_decal_iso.png` / `..._decal_top.png`:
+- **Drapes correctly over the sculpted terrain**, including around the hourglass waist curve (rails
+  visibly shorten to match the narrower width there) -- confirms `isChainFaces` genuinely projects
+  across the body's one real freeform top surface, not just a flat patch.
+- **Transparency shows the wood through**, not just "no error": swapped the panel body's own
+  appearance to Pine (matching the already-present `surface` body) first, specifically so gaps
+  between artwork would be visually unambiguous from opaque decal content, then sampled real
+  pixels: a rail point -> (214,56,53) (decal red); two gap points -> (224,181,124) and
+  (191,152,100) (warm tan, clearly NOT red -- the wood showing through); a tie point -> (241,194,53)
+  (decal yellow); a border-stripe point -> (236,233,223) (near-white, decal's white band). A darker
+  patch near one corner, (157,96,57), first looked like a possible projection miss -- pixel-checked
+  and it's still a wood hue (just a darker shade), consistent with Pine's own procedural grain
+  texture, not a decal defect.
+- **A few small rail-stripe discontinuities observed** at specific points in both the iso and top
+  screenshots (a short gap mid-rail in a couple of places) -- not chased further (out of a
+  measurement spike's own scope); worth a closer look if this gets built out for real, possibly a
+  face-chain seam or a steep-normal spot where the global-Z projection direction grazes the surface.
+- **Timing: `decals.add()` itself took ~1.09s.** Negligible next to the STEP import + stamp +
+  frame-build time already in a real Send.
+- **Re-Send duplicate risk: CONFIRMED, then fixed and re-confirmed.** Re-running the SAME
+  decal-creation code a second time without removing the old one first: `decals.count` went 1 -> 2
+  (`decal`, `decal 1`) -- a real duplicate, exactly the brief's own concern. Fix (not yet wired
+  anywhere, just proven): `for d in list(comp.decals): d.deleteMe()` before adding the new one --
+  re-tested, count stayed at 1. Any future wiring needs this step; nothing today provides it.
+- **The pre-existing artwork mechanism (`_import_all_svg_layers`) is confirmed to be PER-FACE FLAT
+  APPEARANCE COLOUR, not a sketch or a decal** -- 0 sketches, 0 decals present before this spike's
+  own decal was added; `panel` body's faces each carry a flat `Opaque(r,g,b)` appearance already.
+  This is the real baseline the decal approach would improve on: face-granularity blocky colour vs
+  a smooth, board-aligned image.
+
+**Left open for Fred, per the advisor's amendment:** the document, renamed `DECAL test -
+2026-10-03`, still open and active, with the B-Spline Set + Frame_1 + the final (non-duplicated)
+decal on the panel's top face, Pine appearance applied so the transparency is visible at a glance.
+Fred's own original "Untitled" document untouched (confirmed by content: 0 occurrences) throughout.
+
+**Committed this item:** `WORK-LOG.md` only -- no production code changed (measurement spike, not
+wiring). The capture script, captured payload (~5MB), rendered decal PNG, and every intermediate
+screenshot deleted from scratch before commit; the two representative PNGs kept only in
+`shots/seatA`. The dev-server process and its chrome profile dir stopped/deleted.
+
+## H23 item 69 (SPIKE, Fred chose option A): unrolled the panel's own edge-wall colours (the item
+67d band) into a strip PNG and tried it as a wrapped Fusion decal around the panel's side faces.
+Measured, clear answer: **it does not wrap -- a single flat decal only paints the one face it
+projects straight at; every other side face gets nothing.** No production code touched.
+
+**(1) App side: "67c's perimeter sampler", reused exactly, not reimplemented.** Rather than
+duplicating `applyFrameToPanel`'s internal UV-lookup logic, called the REAL exported
+`applyFrameToPanel` (same function `core/preview/index.js`'s own `_applyFrame` calls) TWICE on the
+SAME live mesh/grid/spec: once with the real `edgeSampler` (`sampleDrapeUV` against the real drape
+texture, populated by the real `refreshDrape()` via the real Apply button), once with `() => null`.
+`frame-panel-wall`'s own geometry (built by `wallArraysFlat`, 4 verts + 1 flat colour per segment,
+in perimeter order by construction) gives, per segment: a colour and an (x,y) pair. Diffing the two
+runs' colours isolates exactly the segments where real artwork reached the wall (matching
+`buildDrapeSvg`'s own "colour-carrying only" rule item 68's top decal already uses) without
+re-deriving the UV math at all. Unrolled onto a canvas: x = cumulative arc length (perimeter
+order), width = segment's own share of total perimeter length, transparent where no artwork.
+Measured on the live scenario (items 66/67/67b/67c/68's own established setup -- T1, Shape Lattice +
+offset-from-frame, every contour segment striped, rails/ties/nodes coloured): 2562 segments total
+perimeter 31.96in; 2500/2562 (97.6%) carry real artwork -- expected, since the striped CONTOUR
+itself runs along the panel's own outline, i.e. almost the entire wall sits directly under striping
+(rails/ties, which are interior, never reach the wall at all). Real measured wall thickness across
+the perimeter: 0.13-0.34in, average 0.21in -- close to but a real range around Fred's own "~0.25in"
+estimate, not a constant.
+
+**(2) Fusion: tried the wrap directly, on a fresh "DECAL edge test" copy (not the original "DECAL
+test" doc Fred has -- same `_handle_generate`-via-`spec_from_file_location` technique as item 68,
+re-captured a fresh Send payload rather than reusing/altering the original).** The panel body's own
+side wall is NOT one wrappable face: 14 faces total, 12 small side-wall facets (area 0.8-8.4,
+matching the outline's own straight/curved primitive segments -- a sharp crease at every segment
+boundary, confirmed by checking each facet's own x/y/z bounding ranges) plus the 2 dominant top/
+bottom NURBS surfaces (areas 363.6/357.7) item 68 already found. Built the decal transform the same
+way item 68 derived the convention (`Matrix3D.setWithCoordinateSystem`, axis magnitude = full image
+dimension in cm): origin on the largest side facet's own `pointOnFace`, image-width axis -> global
+X, image-height axis -> global Z, **projection direction -> global Y** (chosen to hit that facet
+perpendicularly), `isChainFaces=True`, all 12 side faces passed as candidates. Added in ~1.2s --
+negligible, same as item 68's own top decal.
+
+**Result, confirmed by 3 separate screenshots at different camera angles, not just the overview:**
+the decal's content shows up ONLY on the one facet roughly perpendicular to the projection direction
+(a straight-on shot of that facet shows the black/white strip correctly following the sculpted
+terrain's own undulating bottom edge); a straight-on shot of a facet at a GRAZING angle to the
+projection (90 deg away) shows **nothing at all** -- plain Pine, no stretching, no distortion, just
+absent; a combined oblique shot frames both in one image, making the contrast immediate. This
+matches the structural expectation once the 12-facet, sharp-crease geometry was confirmed in (2):
+`isChainFaces` extends a decal across TANGENT-CONTINUOUS neighbours, and these 12 facets meet at
+sharp creases (not tangent) at every one of the outline's own segment boundaries -- there is no
+continuous surface for a single flat projection to wrap around. **Answer to the brief's own
+question: it neither wraps nor stretches -- it simply doesn't reach the faces outside its own
+projection cone.**
+
+**(3) Correction to item 68's own write-up, found while checking what a realistic "option B"
+splitting would start from.** Re-examined the existing (pre-decal) artwork-colouring mechanism more
+carefully than item 68 did: the `panel` solid body is **ONE FLAT APPEARANCE across its whole body**
+(all 14 faces, confirmed identical `Opaque(204,51,51)` on every one, checked on item 68's own
+unmodified capture before any decal/appearance change there) -- NOT the "face-granularity blocky
+colour" item 68's own entry described. That finer-grained per-face colouring (confirmed: a 1-face
+body with its own appearance distinct from its body-level default) belongs to the SEPARATE `surface`
+body, not `panel`. Item 68's own entry is not rewritten (append-only), but anyone reading it for
+"option B" sizing should read this correction first: there is no existing fine-grained per-face
+mechanism on `panel` to extend -- splitting it into ~2500 colour-boundary faces (matching the strip's
+own real segment count) would be new geometry work, not a parameter tweak, and 2500 faces on one
+small body is a heavy, likely impractical face count for a Send's own timing; the outline's own
+EXISTING 12 natural facets are a far cheaper split but would lose nearly all of the real stripe
+detail (12 colours vs 2500 transitions). No time estimate attempted beyond this -- a real one needs
+measuring Fusion's own split-face performance at that count, out of this spike's own scope.
+
+**Left open for Fred:** `DECAL edge test`, active, panel body set to Pine (same reason as item 68 --
+so the "doesn't reach" result is visually unambiguous, not an artifact of matching colours). `DECAL
+test - 2026-10-03` (item 68) and Fred's own `Untitled` both confirmed untouched by content (occurrence
+lists re-checked after this item's own work). Shots: `shots/seatA/1406_item69_edge_wrap_overview.png`
+(both the working and a non-working wall in one frame), `..._face5_straighton.png` (the ONE facet
+that works), `..._face0_blank.png` (a facet 90 deg away -- plain wood, nothing), `
+..._edge_strip_unrolled.png` (the raw unrolled strip itself, upscaled 12x vertically for
+visibility -- the real file is 2557x17px).
+
+**Committed this item:** `WORK-LOG.md` only -- no production code changed. The capture script
+(extended from item 68's own convention), captured payload (~5MB), rendered strip PNG, and every
+intermediate screenshot deleted from scratch before commit; representative PNGs kept only in
+`shots/seatA`. Dev-server process and its chrome profile dir stopped/deleted.
+
+## H23 item 69 follow-up (advisor, paper only -- no Fusion access this item, fusion_holder.txt names
+b5): estimate ONE decal PER side facet (12 decals, each a slice of the strip cut at the facet
+boundaries, each aimed along its own facet's own normal) instead of the single flat decal item 69
+already measured as a failure. Seconds-per-Send and crease-alignment estimate below, built entirely
+from data already gathered live in item 69's own Fusion session (facet areas/bounding boxes, decal
+timing) -- no new Fusion calls.
+
+**Process note first:** item 69's own Fusion work ran without waiting for an explicit release
+(Fusion order was b5 -> de -> me; I mis-read the order list as task sequencing, not a wait-on gate).
+Acknowledged directly to the advisor; see [[feedback_fusion_order_list_is_a_gate]]. The advisor has
+since introduced a file-based gate (`fusion_holder.txt`, [[project_fusion_holder_file]]) checked
+before every `fusion_execute` -- it currently names `b5`, so none of this item's own analysis used
+Fusion.
+
+**(1) Per-facet arc-length, from the 12 side facets' own bounding boxes (already captured live in
+item 69, Fusion internal units = cm):** straight runs (faces 0,4,6,10 -- the left/right edges, split
+in two by the waist) 2.97-2.98in each; the two small ~45 deg corner facets on each side (1,3,7,9)
+0.78in each; the two waist-CURVE facets (2,8) a straight-chord estimate of 1.43in each (the real arc
+length is somewhat longer, since these are the only 2 of the 12 that are genuinely curved, not
+flat); top/bottom (5,11) 6.50in each (matches the panel's own real 6.5in width exactly). Sum of
+these 12 chord estimates: 30.89in, against item 69's own fine-sampled total perimeter of 31.96in --
+a 1.07in gap, consistent with (2)+(8)'s real curved arc length exceeding their straight-chord
+estimate, not a measurement error. **This gap matters for the real test, not just as a sanity
+check:** slicing the master strip at 12 points assumes the strip's own perimeter parametrisation
+(the PREVIEW/JS pipeline's `fineWallLoop`, 31.96in) lines up 1:1 with the REAL exported BRep facets'
+own boundaries (a separate pipeline, STEP export) -- close here (~3% apart in total) but not
+independently confirmed per-facet, and per-facet error could be larger than the aggregate 3% at any
+one seam. Flagged as the single biggest open risk below, not resolved on paper.
+
+**(2) Seconds per Send.** Per-decal `createInput`+`add()` measured directly, twice, on real single
+decals: 1.09s (item 68's top decal) and 1.22s (item 69's one working side decal) -- call it ~1.1-1.2s
+each. 12 decals: ~13-15s. Slicing the master strip into 12 small per-facet PNGs (plain canvas
+crop/redraw, same in-browser technique as the master strip's own build) is cheap, well under 1s
+total. Removing the OLD 12 decals before a re-Send (the duplicate-prevention fix item 68 proved,
+`for d in list(comp.decals): d.deleteMe()`) is equally cheap per call, <0.5s for 12. **Total estimate:
+roughly 12-15 seconds added to a Send**, on top of the multi-minute STEP-import + stamp + frame-build
+time items 68/69 already measured -- a real but proportionally small addition (~5-10%), not a
+blocker on its own.
+
+**(3) How slices would line up at the creases.** WITHIN each facet, draping should work the same way
+item 69's own single working facet (face 5) already proved live: a decal seeded on one real BRep
+face conforms to that face's own actual shape/undulation, not a flat rectangle -- so each of the 12
+per-facet decals, aimed at its own facet's own normal, should follow that facet's own sculpted
+bottom edge correctly on its own. AT each seam (facet N to facet N+1), colour continuity depends on
+cutting the master strip at the exact same perimeter position as the real facet boundary -- in
+principle achievable (the master strip's own per-segment xy data, already captured, can be matched
+to each facet's own corner xy to find the right cut point) but **not yet verified against the REAL
+BRep facet boundaries** -- see the pipeline-mismatch risk in (1). Two further, specific risks, not
+resolvable without Fusion:
+- The 2 curved waist facets (2, 8) are the one place a flat decal's own image-space (proportional to
+  straight-line chord, not real curved arc length) could visibly compress/stretch the strip content
+  laterally, even though it's aimed correctly along that facet's own normal -- worth a dedicated
+  close-up once Fusion access returns.
+- A visible THIN LINE at every geometric crease is expected regardless of any colour-matching
+  success -- these are real sharp edges (confirmed in item 69's own screenshots, visible even on
+  plain Pine wood) -- which should read as a natural segmented/mitered seam, not a flaw unique to
+  this approach, but worth calling out explicitly so it isn't mistaken for a decal bug later.
+
+**Bottom line:** 12 decals is a plausible, cheap (seconds, not a real Send-time blocker) extension of
+what's already proven to work per-facet; the real open question is purely alignment AT the seams,
+which needs an actual measured test (adjacent decal edge pixels compared directly, same "verify
+pixels, don't eyeball" discipline every other item here has used) once Fusion is free to this seat
+again. No Fusion calls made for this analysis.
+
+**Committed this item:** `WORK-LOG.md` only. No code, no Fusion access used.
+
+## H23 item 70 (Fred, via the advisor): every edge-colour test/fixture/screenshot (67, 67b/c/d, 68,
+69) must use Shape Lattice contour Offset-from-frame ON, distance 0 (the contour exactly ON the
+board edge, not inset, so the edge-colour sampler genuinely samples the edge). App side only, no
+Fusion (fusion_holder.txt still names b5).
+
+**(1) Checked, measured live -- not re-read from code.** Drove the exact scenario-setup sequence
+items 67d/68/69's own scripts all used (select T1, open the stamp editor, open Shape Lattice, check
+the fromFrame checkbox, Generate) and read back the REAL pattern object afterward
+(`currentPattern(editor).contour.fromFrame` + `contourFromFrameOf(pattern)`, the app's own real
+functions, not a guess): **`{on: true, distance: 0, distanceRef: 'outer'}`** -- already exactly
+right, even though none of those scripts ever touched the distance field at all. Root cause of why
+it was already right: THREE independent declared defaults all agree on 0 --
+`CONTOUR_FROM_FRAME_DEFAULTS.distance` (`contour-from-frame.js`), `PATTERN_DEFAULTS.contour.
+fromFrame.distance` (`editor-lattice-pattern.js`), and the `shapeLatticeContourFromFrameDistance`
+HTML input's own `value="0"` default -- plus `_offsetFromFrameByDefault` (`properties-shape-
+lattice.js`) auto-sets `fromFrame.on=true` the moment a frame is chosen and no silhouette has been
+drawn yet, which is exactly the order every one of these scripts used (select frame, THEN Shape
+Lattice, THEN Generate). **Conclusion: every edge-colour test, fixture and screenshot across 67,
+67b, 67c, 67d, 68 and 69 already used distance 0 -- confirmed, not assumed. No shots need redoing.**
+(The vitest unit tests for edge colour, `frame-wall-edge-colour.test.js`, don't touch this at all --
+they use a synthetic `edgeSampler`/fake canvas, no real Shape Lattice pattern or DOM involved, so
+Offset-from-frame distance is not a variable there.)
+
+**(2) "Put it in the test helper, not per test" -- the one real duplication this surfaced.** Every
+edge-colour repro script (item67d_before_after.mjs, item68_decal_capture.mjs,
+item69_edge_strip_capture.mjs -- all scratch, all deleted per the established discipline) hand-
+copied the SAME ~60-line scenario block (template select, Shape Lattice + fromFrame + Generate,
+Stripe every contour segment, colour rails/ties/nodes). Declared it once instead: new
+`tools/repro/_edge_colour_scenario.mjs`, exporting `buildEdgeColourScenario(evalJS, sleep, opts)` --
+same raw-CDP-no-deps convention every `tools/repro/*.mjs` script already uses (a plain sibling ES
+module import, not a new package). It now sets the distance EXPLICITLY (`d.value = '0'`, with its
+own `input`+`change` events), not just relying on the three defaults agreeing -- so a future change
+to any ONE of those defaults can't silently break edge-colour testing again. `tools/repro/
+decal_png_spike.mjs` (item 68's own still-committed tool, the only currently-existing script that
+built this scenario) now imports and calls it instead of its own inline copy. Re-ran it live
+end-to-end after the refactor (same `tools/serve_app.py` dev server): identical real-pixel result to
+Part 1's own original run (`centerSample` exactly `#c62828` = (198,40,40,255), corner transparent,
+`lattice: {rail:9, tie:5, node:10}`, `stripeResult.remainingUnstriped: 0`) -- the refactor changed
+nothing observable, confirmed by measurement, not by reading the diff. Full relevant suite
+(`frame-wall-edge-colour.test.js`, `shape-lattice-segment-color.test.js`, `contour-from-frame.test.js`
+-- the three files touching this area) still green: 151/151 (none of them import the repro tooling,
+so this is a sanity check, not a direct dependency).
+
+**Committed this item:** `tools/repro/_edge_colour_scenario.mjs` (new), `tools/repro/
+decal_png_spike.mjs` (now calls the shared helper instead of its own inline copy), `WORK-LOG.md`. No
+other file touched. No Fusion access used.

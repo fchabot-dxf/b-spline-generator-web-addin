@@ -688,72 +688,20 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
       // H8: spec.color is already the declared frame colour (frameSolidSpec,
       // editor-frame-profile.js) — this fallback only fires when it's null
       // (no matching wood found); Ash's own declared entry keeps it consistent.
-      const woodColorHex = spec.color || FRAME_COLORS['3D Ash - Unfinished'];
-      // H23 item 67b (MEASURED via a live raycast into the "plain grey/beige" area the advisor's
-      // own close-up review pointed at): frame-bars' own OUTER wall sits at the EXACT SAME (x,y)
-      // as frame-panel-wall above (outer === panel whenever panelLip is 0, F22's own comment) --
-      // and, being the WIDER ring extending all the way to the frame's true outer edge, it is what
-      // a viewer actually sees as "the side of the piece", not the comparatively thin
-      // frame-panel-wall sliver sitting mostly behind/under it. vertexColors on unconditionally
-      // (not gated on attrs.color like the panel wall above -- bars never read the thinness
-      // heat-map at all, only the edge sampler or their own plain wood colour, so there's no
-      // "no colour data" case to gate on): every point gets EITHER the artwork colour (if
-      // edgeSampler finds one there) or the frame's own declared wood colour, so omitting
-      // edgeSampler (or it finding nothing anywhere) reproduces today's flat-wood look exactly,
-      // just painted via vertex colours instead of a flat material colour.
-      const barMat = new THREE.MeshPhongMaterial({ color: 0xffffff, side: THREE.DoubleSide,
-        shininess: 12, specular: 0x0a0a0a, vertexColors: true });
+      // H23 item 67d (Fred, direct: "the frame shouldn't change colour, only the board edge,
+      // which is only about .25 in" -- a real, deliberate reversal of item 67b's own choice to
+      // ALSO colour the bars): the frame's own wood moulding (the bars, main AND window) is a
+      // SEPARATE piece of wood in Fred's own real craft practice, never dyed to match the panel's
+      // own artwork -- only the B-spline PANEL's own side wall (frame-panel-wall / frame-window-
+      // wall, both untouched by this item) gets the edge colour. Back to a single flat material
+      // colour (no vertexColors, no per-vertex sampling, no WALL_COLOR_OVERSAMPLE -- there is no
+      // colour boundary left to resolve on a UNIFORMLY wood-coloured surface), matching the
+      // bars' own pre-item-67b look exactly.
+      const barMat = new THREE.MeshPhongMaterial({ color: spec.color || FRAME_COLORS['3D Ash - Unfinished'],
+        side: THREE.DoubleSide, shininess: 12, specular: 0x0a0a0a });
       capFrameBrightness(barMat);
-      // Shared by both the main bars (if (inner) below) and the window bars (if (windowed) below)
-      // -- barMat now always has vertexColors:true, so EVERY mesh using it needs its own `color`
-      // attribute or it renders flat black (vertexColors reads an absent attribute as all-zero,
-      // not "use the material's own colour") -- the exact trap winWallAttrs' own comment below
-      // already names for a sibling case.
-      const woodColor = new THREE.Color(woodColorHex);
-      const wood3 = [woodColor.r, woodColor.g, woodColor.b];
       if (inner) {
-        const barEdgeColor = (p) => {
-          if (edgeSampler && attrs.uv) {
-            const hit = surf.at(p.x, p.y).hi;
-            const [u, v] = lerpAttr(attrs.uv.array, 2, full, hit);
-            const c = edgeSampler(u, v);
-            if (c) return [c.r, c.g, c.b];
-          }
-          return wood3;
-        };
-        // Oversampled (WALL_COLOR_OVERSAMPLE) the SAME way as the panel wall above, and for the
-        // SAME reason (the saw-teeth fix) -- a fresh outer/inner pair LOCAL to this call, never
-        // replacing frameLoopsWorld's own (coarser) outer/inner, which other callers still use at
-        // their original resolution (index.js's own _trimPoly, etc).
-        // Oversample the PERIMETER only (outer/inner's own point count) -- `maxStep` below (the
-        // row/across-width subdivision) stays at the ORIGINAL `cell`, not cell/OVERSAMPLE:
-        // quadrupling perimeter AND row density at once (perimeter x rows triangle count)
-        // MEASURED a real timeout at the finest declared spacing (frame-bartop-drawn.test.js,
-        // 0.05in); rows don't need the extra resolution (no colour boundary runs across the bar's
-        // own width), only the perimeter does.
-        const finePaired = samplePairedOutlines(spec.outerPrimitives, spec.innerPrimitives || spec.outerPrimitives, cell / WALL_COLOR_OVERSAMPLE);
-        const fineOuter = toWorld(finePaired.outer, W, H);
-        const fineInner = toWorld(finePaired.inner, W, H);
-        // H23 item 67c: the OUTER wall (the one carrying the edge colour) is built SEPARATELY, flat
-        // (wallArraysFlat, no blending across a colour boundary -- the same fix as the panel wall
-        // above) -- `ringArrays` itself builds everything else (top cap, inner wall, bottom), with
-        // its own outer wall left OUT (`includeOuterWall: false`) so the two pieces don't occupy
-        // the same space twice. Everything ringArrays still builds is uniformly wood-coloured, so
-        // its own shared-vertex smooth interpolation is harmless there (every vertex is the same
-        // colour already -- nothing to blend).
-        const restGeom = ringArrays(fineOuter, fineInner, spec.frameBottomZ, bot, cell, false);
-        const restCol = [];
-        for (let i = 0; i < restGeom.positions.length / 3; i++) restCol.push(wood3[0], wood3[1], wood3[2]);
-        const outerWallGeom = wallArraysFlat(fineOuter, (p) => (typeof spec.frameBottomZ === 'function' ? spec.frameBottomZ(p) : spec.frameBottomZ), bot, barEdgeColor);
-        // Merge: the outer wall's own vertex indices are offset past restGeom's own vertex count,
-        // one mesh (named 'frame-bars', unchanged), not two coincident ones.
-        const vBase = restGeom.positions.length / 3;
-        const barGeom = {
-          positions: restGeom.positions.concat(outerWallGeom.positions),
-          index: restGeom.index.concat(outerWallGeom.index.map((i) => i + vBase)),
-        };
-        const barCol = restCol.concat(outerWallGeom.colors);
-        const bars = _mesh(THREE, barGeom, barMat, { color: { array: barCol, itemSize: 3 } });
+        const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
         bars.name = 'frame-bars';
         extra.push(bars);
       }
@@ -768,13 +716,8 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
         // lines above passes) -- not terrain-following. So the bar's thickness genuinely VARIES (thicker
         // where the terrain dips deeper), which is correct and intended; only its top follows the terrain.
         const winPaired = samplePairedOutlines(rectToPrimitives(win.outer), rectToPrimitives(win.inner), cell);
-        const winBarGeom = ringArrays(toWorld(winPaired.outer, W, H), toWorld(winPaired.inner, W, H), spec.frameBottomZ, bot, cell);
-        // No artwork reaches the inset window's own moulding (it's not an outer edge the top
-        // surface's own artwork can touch) -- plain wood colour throughout, via the SAME
-        // vertexColors:true barMat the main bars now share (see that material's own comment).
-        const winBarCol = [];
-        for (let i = 0; i < winBarGeom.positions.length / 3; i++) winBarCol.push(...wood3);
-        const winBars = _mesh(THREE, winBarGeom, barMat, { color: { array: winBarCol, itemSize: 3 } });
+        const winBars = _mesh(THREE,
+          ringArrays(toWorld(winPaired.outer, W, H), toWorld(winPaired.inner, W, H), spec.frameBottomZ, bot, cell), barMat);
         winBars.name = 'frame-window-bars';
         extra.push(winBars);
       }

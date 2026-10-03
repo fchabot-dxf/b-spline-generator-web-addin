@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "2caf4d3d4900b09ebd47d0eeb6c8d9c0fe67556c7e1ed7024895e6ecfa9783c9",
+  "sourceHash": "562759ecfb2eebc15bf15e4f5e07fcb74bfcc87aac815e5234becc78ade82da6",
   "templates": [
     {
       "features": [
@@ -7296,6 +7296,8 @@ export default {
                         -1
                       ],
                       "InnerID": "inner_proj_top_edge:S",
+                      "Line1FarID": "proj_top_edge:E",
+                      "Line2FarID": "proj_horn_TL:E",
                       "OuterID": "proj_top_edge:S"
                     },
                     "TR": {
@@ -7304,6 +7306,8 @@ export default {
                         -1
                       ],
                       "InnerID": "inner_proj_horn_TR:S",
+                      "Line1FarID": "proj_horn_TR:E",
+                      "Line2FarID": "proj_top_edge:S",
                       "OuterID": "proj_horn_TR:S"
                     }
                   },

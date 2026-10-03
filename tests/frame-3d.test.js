@@ -79,17 +79,12 @@ describe('bars', () => {
     expect([...new Set(z)].sort()).toEqual([-1, 0.5]); // bottom = frame bottom z, top = the (flat) underside
     // H8: the bars use the declared frame colour for the wood (color-
     // utils.js's own FRAME_COLORS table), not the raw board colour.
-    // H23 item 67b: the bars' own wood tone now lives in their vertex `color` attribute (so the
-    // SAME mesh can also carry the artwork colour at its outer edge, see frame-wall-edge-colour
-    // .test.js) -- material.color is a neutral white base, no longer the wood hex itself.
-    expect(bars.material.color).toBe(0xffffff);
-    expect(bars.material.vertexColors).toBe(true);
-    const hex = frameColorFor('3D Oak - Painted', FRAME_DEFS.appearance.previewColors['3D Oak - Painted']);
-    const [wr, wg, wb] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
-    const col = bars.geometry.attributes.color.array;
-    for (let i = 0; i < col.length; i += 3) {
-      expect(col[i]).toBeCloseTo(wr, 2); expect(col[i + 1]).toBeCloseTo(wg, 2); expect(col[i + 2]).toBeCloseTo(wb, 2);
-    }
+    // H23 item 67d (Fred, direct: "the frame shouldn't change colour, only the board edge" --
+    // reversing item 67b's own choice to also colour the bars): back to a single flat material
+    // colour, no vertex colours at all -- the bars never carry the artwork, only the panel's own
+    // wall does (frame-wall-edge-colour.test.js).
+    expect(bars.material.color).toBe(frameColorFor('3D Oak - Painted', FRAME_DEFS.appearance.previewColors['3D Oak - Painted']));
+    expect(bars.material.vertexColors).toBeFalsy();
   });
 
   it('H8: every declared wood\'s frame colour is its own declared FRAME_COLORS entry, never the raw board colour', () => {

@@ -14173,8 +14173,120 @@ matrix sweep's own volume/overlap/miter checks are the authoritative verificatio
 were already visually confirmed in earlier sessions; these two cover what's genuinely new or
 re-verified this round.
 
-**Commit `[pending]`, pushed to origin/lane-b**: the harness lock fix (`8bf2099`, already pushed
+**Commit `eb036d6`, pushed to origin/lane-b**: the harness lock fix (`8bf2099`, already pushed
 separately before the real run, per the advisor's own "commit the lock before rerunning" instruction)
 plus this WORK-LOG entry. T84 item 8 is DONE on its own explicit terms (175-case table published,
 1 pre-existing failure documented with its log line, seeded taper=0 check, shots) -- passing back and
 messaging the advisor now.
+
+## Lane B — Turn (epoch 9) — T84 item 9: the last matrix failure, fixed at the cause (175/175) — DONE, passing back
+
+**Diagnosis, in two stages.** First, confirmed hypothesis (a) in pure code: the matrix generator's
+own reachable-end bisection for T13 neckWidth:min lands EXACTLY at `mitersCollide`'s own floor
+(gap = 0.18750, `MIN_MITER_GAP_T_FRAC * t` = 0.18750 to 5 decimals) -- the guard isn't catching
+this case, it's defining its own boundary right where Fusion fails. Live-bisected the real
+transition (`item61_full_matrix_sweep.py`, 9 gap/t fractions on deployed main 2026.10.03-16): 0.25
+and 0.26 FAIL, 0.27 through 0.50 all BUILD.
+
+**But raising the floor would have been wrong.** Before setting a new constant, checked it against
+every OTHER template's own already-good case in item 8's 174/175 -- and found
+`template_9_flangeHeight_min_7x9` sits at EXACTLY the old floor (0.2500) and is already confirmed
+BUILT. Any universal floor above 0.26 that stays below T9's own 0.2691 default-adjacent gap leaves
+only a ~0.009-wide safe window: technically satisfiable, but far too thin to trust as a permanent
+guard meant to protect every future template too. That contradiction -- the SAME raw gap/t ratio,
+different real Fusion outcomes on two different templates -- is what redirected the fix.
+
+**Root cause (option B, advisor-approved over the narrower floor-only option A I flagged first):**
+measured the actual corner angle. T9's corners are all exactly 90 degrees (axis-aligned lines).
+T13's own failing TR corner (horn_TR meets top_edge) measures 82 degrees -- 8 degrees off square.
+`ResolveInnerCorners` computes the inner point as `outer + Direction*Distance`, a fixed diagonal
+move that is geometrically EXACT only at 90 degrees; at 82 degrees it's an approximation, hand-
+computed independently at ~0.11 in off the true offset-line intersection (T13's own literal 7x9
+coordinates from `p02_03_lines.py`: outer (1.810851, 4.25); true inner (1.158883, 3.5); old
+approximation (1.060851, 3.5) -- same y since top_edge is horizontal, only x differs, by the
+measured ~0.1 in). That's large enough, at a short bar, to make Fusion's offset merge two separate
+corner profiles into one, which `declared_profiles.classify` then rejects as stray ids ("NOT
+BUILT... are not in the declared regions") -- the SAME root class `test_no_miter_miss_possible.py`
+already documents for a silent MITER MISS, just surfacing as a raised `DeclaredProfileError` here.
+
+**Fix**: promoted T11's own `_line_line_inner_corner` (private, T11-eave-only) to generic use as
+`line_line_inner_corner` (`fb_engine/t11_geometry.py`, one import-site update in its own test file).
+`inner_corner_step` (`fb_engine/inner_corners.py`) now computes the TRUE offset-line intersection
+when a corner's config declares `Line1FarID`/`Line2FarID` (read LIVE from entity_map, the exact
+pattern `line_circle_corner_step` already uses for its own Far/Near ids) -- falling back to the
+original Direction*Distance move, UNCONDITIONALLY, whenever either is absent. At exactly 90 degrees
+the two methods are the SAME intersection by construction, so every other `ResolveInnerCorners`
+corner in every other template is untouched; wired `Line1FarID`/`Line2FarID` onto T13's own TR/TL
+only (its BR/BL are genuine 90-degree corners -- confirmed, not assumed -- left exactly as they
+were).
+
+**Re-bisected with the fix in** (same 7 gap/t fractions, down to 0.05 this time): ALL build,
+including today's exact 0.25 floor. Per the advisor's own condition: **`MIN_MITER_GAP_T_FRAC` stays
+at 0.25, unchanged** -- no JS file touched at all for this fix.
+
+**Pure test** (`fb_engine/test_inner_corners.py::TestInnerCornerStepTrueLineIntersection`, 3 tests):
+a synthetic 90-degree corner proves old==new to 1e-9; T13's own real 82-degree TR corner (the exact
+literal coordinates above) proves new != old (by >0.05 in, asserted) and matches the independently
+hand-computed intersection to 1e-3; a third proves the fallback still applies unconditionally when
+`Line1FarID`/`Line2FarID` are absent (not an opt-in per template).
+
+**Live: the full 175-case matrix, re-run from scratch against lane-b (the fix isn't merged to main
+yet, so tested the same way T84 item 7 was -- directly against the lane-b checkout, not the
+deployed-main scratch worktree), batched 3 cases per call per the advisor's own discipline, the
+`C:/Users/danse/.bspline-status/fusion_holder.txt` holder-file check read before every single call
+(the new seat-coordination rule that landed mid-task):**
+
+| Template | Built | Notes |
+|---|---|---|
+| template_1  | 11/11 | |
+| template_2  | 9/9 | |
+| template_3  | 13/13 | |
+| template_4  | 15/15 | |
+| template_5  | 15/15 | |
+| template_6  | 5/5 | |
+| template_7  | 7/7 | |
+| template_8  | 11/11 | |
+| template_9  | 5/5 | incl. flangeHeight:min, the case that ruled out a floor-only fix |
+| template_10 | 9/9 | |
+| template_11 | 11/11 | |
+| template_12 | 13/13 | |
+| template_13 | 11/11 | **neckWidth:min now BUILT -- the original failure, fixed** |
+| template_14 | 9/9 | |
+| template_15 | 7/7 | |
+| template_16 | 11/11 | |
+| template_17 | 13/13 | |
+| **TOTAL** | **175/175** | **every known failure resolved, zero new ones** |
+
+One transient `CRASH` during the run (`template_10_waistReach_max_7x9`, `RuntimeError: 3 : Bad
+index parameter` on `doc.close` -- a stale-handle artifact from an earlier lock-contention timeout
+on a DIFFERENT case, not a geometry failure) self-healed automatically on the resumable sweep's own
+retry, confirming the T84 item 8 harness lock fix is doing its job: the SAME class of incident that
+corrupted results silently before now surfaces as one retryable crash instead.
+
+**Verification gates, both re-run clean after the fix**: `pytest` (frame-builder root) 960
+passed/25 skipped -- the ONE remaining failure, `test_golden_freshness.py`, is EXPECTED and
+flagged below, not swept under. `vitest` (full suite) 170/170 files, 3335/3335 passed -- one
+transient flake in `frame-gen.test.js` (an unrelated template_1 seeded-random test) did NOT
+reproduce in isolation (24/24 clean) or on a clean full re-run (3335/3335 clean), confirmed a flake
+before trusting the suite, not argued past it.
+
+**Flagged, not fixed -- the same honest gap T84 item 7's own Finding 2 already established a
+precedent for**: T13's own committed parity goldens are now stale (`test_golden_freshness.py`'s
+own H23 item 20 gate correctly flags `template_13: UNCOMMITTED` pre-commit, matching the exact
+mechanism). Re-recording needs `record_frame_parity.py`, which reads `sys.modules
+['frame_engine_core']` directly -- the INSTALLED add-in's own bootstrap, not my own lane-b
+checkout's code. Since this fix isn't merged/deployed yet, attempting a re-record right now would
+record goldens against the OLD (unfixed, pre-this-commit) `inner_corners.py`, which is wrong on
+its own terms: the fix measurably changes T13's own inner-corner coordinates at its TR/TL corners
+(a property of the 82-degree outline shape itself, present at ANY handle value, not just the tight
+neckWidth extreme) -- recording now would bake in exactly the ~0.1 in error this commit removes.
+Recommend re-recording `template_13_{7x9,6x9,12x6}.json` once this fix is merged and deployed, the
+same low-risk mechanical follow-up item 7's own Finding 2 already recommended for a different
+reason.
+
+**Commit `0c480ee`, pushed to origin/lane-b** (7 files: the promoted geometry helper + its one
+import-site rename, the generic corner-resolve integration, T13's own corner declaration, the
+regenerated frame-defs, both test files -- 177 insertions/14 deletions). T84 item 9 is DONE: fixed
+at the cause (not the floor), pure-tested, live 175/175, every pre-existing gate re-confirmed green
+except the one honestly-flagged golden-staleness follow-up. Passing back and messaging the advisor
+now; Fusion released.

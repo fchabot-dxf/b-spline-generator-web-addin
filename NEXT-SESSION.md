@@ -186,6 +186,17 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 69 -- SPIKE: the board's EDGE colours in Fusion as a wrapped strip decal (Fred chose option A, 2026-10-03)
+The top decal works (item 68). Now the board's own side edge band (~0.25 in; the same band 67d colours in the
+preview): (1) app side: 'unroll' the edge colours into a long thin transparent PNG (length = outline perimeter,
+height = the panel's edge band), using the SAME perimeter sampler 67c uses, so it lines up with the rim; (2) Fusion,
+on the 'DECAL test - 2026-10-03' doc (it's yours; Fred has looked or will look at it -- duplicate it rather than
+altering it if he hasn't said he's done; a copy named 'DECAL edge test'): apply it to the panel's side faces with
+isChainFaces=True, positioned/scaled so it wraps around. Answer with shots (whole board + close-up at Fred's rim
+angle + a corner): does Fusion wrap it around the band, or project/stretch it? Do the colours line up with the top
+decal's rim? Seconds? If it can't wrap, say so plainly and estimate option B (split the side face at each colour
+boundary + an appearance per segment) instead of forcing it. Leave the test doc open for Fred. Commit 'H23 item 69: ...'.
+
 ## Item 67d -- edge colour on the BOARD's edge only, never the frame (Fred, 2026-10-03)
 Fred: "the frame shouldn't change colour, only the board edge, which is only about .25 in". Today (67c) the whole
 side wall, frame included, takes the artwork colours. Restrict it to the B-spline PANEL's own side wall (its
@@ -673,5 +684,6 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [ ] [H23-item-67] 3D preview: side walls take the edge colours of the artwork (teint dans la masse), shared colour sampler, 'Colour edges' toggle, tests, before/after shots. Commit as 'H23 item 67: ...'.
 - [x] [H23-item-67b] (step: full-height walls done; alignment -> 67c) item 67 rework: walls coloured FULL height in the edge colours; reproduce Fred's striped-rim close-up and remove the triangles; before/after of both views. Commit as 'H23 item 67b: ...'.
 - [x] [H23-item-67c] wall colour ALIGNED with the rim (same perimeter parameter) and crisp (no interpolation across colour boundaries); pure alignment test; side-view shot; re-check Fred's triangles in his exact setup. Commit as 'H23 item 67c: ...'.
-- [ ] [H23-item-68] SPIKE: artwork colours as one transparent-PNG decal on the Stamped top face -- alignment, transparency, time, re-Send; shots; no wiring yet. Commit as 'H23 item 68: ...'.
-- [ ] [H23-item-67d] edge colour only on the board (panel) edge, ~0.25 in; frame walls unchanged; test + shots. Commit as 'H23 item 67d: ...'.
+- [x] [H23-item-68] SPIKE: artwork colours as one transparent-PNG decal on the Stamped top face -- alignment, transparency, time, re-Send; shots; no wiring yet. Commit as 'H23 item 68: ...'.
+- [x] [H23-item-67d] edge colour only on the board (panel) edge, ~0.25 in; frame walls unchanged; test + shots. Commit as 'H23 item 67d: ...'.
+- [ ] [H23-item-69] SPIKE: edge colours as a wrapped strip decal on the panel's side faces; shots; alignment with the top decal; seconds; fall back to estimating option B if it can't wrap. Commit as 'H23 item 69: ...'.

@@ -14,7 +14,7 @@ from fb_engine.t7_roof_eave import roof_geometry, peak_inner_corner  # noqa: E40
 from fb_engine.t11_geometry import (  # noqa: E402
     t11_outline, base_inner_corner, inner_corner_directions, inner_profile_radii,
     every_outer_point_inside_board, is_valid_t11_outline, clamp_t11_handles,
-    _line_line_inner_corner,
+    line_line_inner_corner,
     WAIST_REACH_DEFAULT, CORNER_RADIUS_DEFAULT, WAIST_CENTER_Y_FRAC_DEFAULT,
 )
 
@@ -146,7 +146,7 @@ def test_line_line_inner_corner_matches_the_proven_peak_oracle():
         roof_dir = (dx / L, dy / L)
         left_dir = (-roof_dir[0], roof_dir[1])
         interior_pt = (g["cx"], h * 0.5)
-        direction, dist, _inner = _line_line_inner_corner(peak, left_dir, roof_dir, T, interior_pt)
+        direction, dist, _inner = line_line_inner_corner(peak, left_dir, roof_dir, T, interior_pt)
         p_dir, p_dist = peak_inner_corner(T)
         assert direction == pytest.approx(p_dir, abs=1e-9), f"{w}x{h}"
         assert dist == pytest.approx(p_dist, abs=1e-9), f"{w}x{h}"
