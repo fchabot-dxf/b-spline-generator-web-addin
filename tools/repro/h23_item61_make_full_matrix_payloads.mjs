@@ -13,7 +13,10 @@
 // not copied), bisected from the template's own known-safe default toward the declared end the
 // same way `_clampDragPatchToNoHookRule` bisects a drag. Records BOTH ends per case.
 //
-// Usage: node tools/repro/h23_item61_make_full_matrix_payloads.mjs <repoRoot> <outDir>
+// T84 item 10 (1): board size is now a CLI arg (default 7x9, unchanged) -- "SIZES" asks for the
+// SAME matrix at 6x9 and 9x12 too, and hand-patching this file per size (the item 9 gap-fraction
+// probe's own throwaway pattern) doesn't scale to three permanent runs.
+// Usage: node tools/repro/h23_item61_make_full_matrix_payloads.mjs <repoRoot> <outDir> [widthIn] [heightIn]
 import { pathToFileURL } from 'node:url';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
@@ -25,7 +28,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>');
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 
-const [ROOT_ARG, OUT_DIR] = process.argv.slice(2);
+const [ROOT_ARG, OUT_DIR, W_ARG, H_ARG] = process.argv.slice(2);
 const ROOT = pathToFileURL(ROOT_ARG).href.replace(/\/$/, '');
 const root = `${ROOT}/bspline-frame-builder/b-spline-gen/html/`;
 const imp = (p) => import(root + p);
@@ -38,7 +41,7 @@ const { P } = await imp('core/state.js');
 const { _frameRecordBreaksNoHookRule } = await imp('main/frame-panel.js');
 
 mkdirSync(OUT_DIR, { recursive: true });
-const W = 7, H = 9;
+const W = W_ARG ? Number(W_ARG) : 7, H = H_ARG ? Number(H_ARG) : 9;
 P.widthIn = W; P.heightIn = H;
 const manifest = [];
 
