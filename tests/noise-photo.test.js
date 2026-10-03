@@ -117,6 +117,40 @@ describe('photo.js: the effect-param tweaks (depth/scale/offset/rotation/repeat)
     expect(corner).not.toBeCloseTo(oppositeCorner, 6); // sanity: the test image isn't 180-symmetric
   });
 
+  it('NEVER STRETCHES: one image pixel costs the SAME isotropic board distance in X as in Y, at both a 6x9 and a 9x12 board aspect (Fred: "a brick must never look stretched, whatever the board size or shape")', () => {
+    // su_per_pixel * aspect (isotropic X distance per pixel) must equal
+    // sv_per_pixel (isotropic Y distance per pixel) -- that equality IS the
+    // "no separate x/y scale" property, regardless of the board's own aspect.
+    const imgW = 40, imgH = 10; // a non-square (4:1) test image, like a brick's own proportions
+    // Scan outward in small steps until the sampled pixel changes (every pixel in the ramp
+    // image below has a unique value) -- a direct, empirical measurement of "how much su/sv
+    // is one image pixel", not a re-derivation of the sampling formula.
+    const sample = (aspect, su, sv) => photo.fn(su, sv, aspect, { photoImageDataUrl: 'data:aspect', photoEdits: [] });
+    const stepFor = (aspect, axis) => {
+      const STEP = 1e-5;
+      let su = 0.5, sv = 0.5;
+      const start = sample(aspect, su, sv);
+      let steps = 0;
+      while (steps < 200000) {
+        if (axis === 'x') su += STEP; else sv += STEP;
+        steps++;
+        if (sample(aspect, su, sv) !== start) break;
+      }
+      return steps * STEP; // su (or sv) distance for one pixel step
+    };
+
+    globalThis.__fakeDecoded = { 'data:aspect': { data: Float32Array.from(Array.from({ length: imgW * imgH }, (_, k) => k / (imgW * imgH - 1))), w: imgW, h: imgH } };
+    return ensurePhotoDecoded('data:aspect').then(() => {
+      for (const aspect of [6 / 9, 9 / 12]) {
+        const suPerPixel = stepFor(aspect, 'x');
+        const svPerPixel = stepFor(aspect, 'y');
+        const isoX = suPerPixel * aspect;
+        const isoY = svPerPixel;
+        expect(Math.abs(isoX - isoY) / isoY, `aspect=${aspect}`).toBeLessThan(0.02); // within 2%
+      }
+    });
+  });
+
   it('repeat=0 (default) clamps past the edge; repeat=1 tiles instead', () => {
     const edgeValue = photo.fn(1.0, 0.5, 1, { photoImageDataUrl: 'data:grid4', photoEdits: [] });
     const clamped = sampleWith({ scale: 1, offsetX: 0.3, repeat: 0 }, 1.0, 0.5); // pushed past u=1

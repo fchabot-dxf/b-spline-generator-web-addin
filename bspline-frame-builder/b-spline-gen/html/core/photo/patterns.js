@@ -7,10 +7,15 @@
  * collection via tools/add_photo_pattern.py, nothing here changes.
  *
  * A pattern's own `settings` is a FLAT, one-value-per-control object (the
- * shape Fred asked for directly: {crop, rotate, flip, levels, brightness,
- * contrast, blur, invert, depth, scale, offsetX, offsetY, rotation,
- * repeat}) -- simple enough to hand-author or freeze from a live-tuned
- * session. settingsToPhotoEdits()/settingsToTweaks() expand it into this
+ * shape Fred asked for directly: {crop, rotate, straighten, flip, levels,
+ * brightness, contrast, blur, invert, depth, scale, offsetX, offsetY,
+ * rotation, repeat}) -- simple enough to hand-author or freeze from a
+ * live-tuned session. `straighten` (degrees, free angle, +-45 range) is
+ * separate from `rotate` (90deg steps) -- added when a 90deg-only rotate
+ * turned out not to be enough to straighten a diagonal subject (a curved
+ * brick edging shot at an angle) before cropping; declared edit order is
+ * straighten, THEN crop, then everything else (advisor/Fred, same day).
+ * settingsToPhotoEdits()/settingsToTweaks() expand it into this
  * app's own internal shapes (the ORDERED {op,params} list core/photo/
  * ops.js's applyPhotoEdits expects, and the P.filterTweaks.photo object
  * core/noise/photo.js's own tweaks read) -- the two shapes serve different
@@ -27,6 +32,7 @@ const PATTERNS_URL = 'data/photo-patterns.json';
 export function settingsToPhotoEdits(settings) {
   const s = settings || {};
   const steps = [];
+  if (s.straighten) steps.push({ op: 'straighten', params: { degrees: s.straighten } });
   if (s.crop) {
     const { x = 0, y = 0, w = 1, h = 1 } = s.crop;
     steps.push({ op: 'crop', params: { x, y, w, h } });

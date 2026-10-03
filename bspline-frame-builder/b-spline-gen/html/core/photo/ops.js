@@ -51,6 +51,54 @@ function rotate90Op(img, { dir = 1 } = {}) {
   return { data: out, w: H, h: W };
 }
 
+// Bilinear sample at a continuous (x, y), or `fill` outside the image's own
+// bounds -- shared by straightenOp below.
+function bilinearSample(data, W, H, x, y, fill) {
+  if (x < 0 || y < 0 || x > W - 1 || y > H - 1) return fill;
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const x1 = Math.min(W - 1, x0 + 1), y1 = Math.min(H - 1, y0 + 1);
+  const fx = x - x0, fy = y - y0;
+  const v00 = data[y0 * W + x0], v10 = data[y0 * W + x1];
+  const v01 = data[y1 * W + x0], v11 = data[y1 * W + x1];
+  const top = v00 + (v10 - v00) * fx;
+  const bot = v01 + (v11 - v01) * fx;
+  return top + (bot - top) * fy;
+}
+
+// A free-angle rotate (Fred/advisor: "straightening a photo is part of the
+// prepare step" -- rotate90 alone can't line up a diagonal subject, e.g. a
+// curved brick edging shot at an angle). `degrees`: positive = clockwise,
+// same sense as rotate90's own dir:1 (confirmed by
+// tests/photo-ops.test.js's own "approximates rotate90 at exactly 90deg"
+// check, not just derived and trusted). Canvas EXPANDS to fit the fully
+// rotated source (nothing is clipped) -- the declared edit ORDER is
+// straighten, then crop, so the straighten step is never responsible for
+// framing, only for levelling the subject; corners the rotated source
+// doesn't cover fill with a neutral 0.5 (mid-grey), on the assumption the
+// very next crop step removes them anyway. Bilinear, not bicubic -- simpler
+// and sufficient for a height-source prepare step, not a photographic export.
+function straightenOp(img, { degrees = 0 } = {}) {
+  if (!degrees) return img;
+  const { data, w: W, h: H } = img;
+  const rad = (degrees * Math.PI) / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const outW = Math.max(1, Math.round(Math.abs(W * cos) + Math.abs(H * sin)));
+  const outH = Math.max(1, Math.round(Math.abs(W * sin) + Math.abs(H * cos)));
+  const out = new Float32Array(outW * outH).fill(0.5);
+  const cx0 = W / 2, cy0 = H / 2;
+  const cx1 = outW / 2, cy1 = outH / 2;
+  for (let oy = 0; oy < outH; oy++) {
+    for (let ox = 0; ox < outW; ox++) {
+      const dx = ox - cx1, dy = oy - cy1;
+      // Inverse of the forward clockwise-by-`degrees` rotation (dest -> source).
+      const sx = dx * cos + dy * sin + cx0;
+      const sy = -dx * sin + dy * cos + cy0;
+      out[oy * outW + ox] = bilinearSample(data, W, H, sx, sy, 0.5);
+    }
+  }
+  return { data: out, w: outW, h: outH };
+}
+
 function flipOp(img, { axis = 'h' } = {}) {
   const { data, w: W, h: H } = img;
   const out = new Float32Array(W * H);
@@ -126,6 +174,7 @@ function invertOp(img) {
 const OPS = {
   crop: cropOp,
   rotate90: rotate90Op,
+  straighten: straightenOp,
   flip: flipOp,
   levels: levelsOp,
   brightnessContrast: brightnessContrastOp,
@@ -139,6 +188,7 @@ const OPS = {
 export const OP_DEFAULTS = {
   crop: { x: 0, y: 0, w: 1, h: 1 },
   rotate90: { dir: 1 },
+  straighten: { degrees: 0 },
   flip: { axis: 'h' },
   levels: { black: 0, white: 1, mid: 1 },
   brightnessContrast: { brightness: 0, contrast: 0 },

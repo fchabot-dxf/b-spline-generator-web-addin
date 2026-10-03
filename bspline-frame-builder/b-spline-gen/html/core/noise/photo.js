@@ -38,6 +38,19 @@
  *              out-of-frame sampling to the image edge (a single placed
  *              photo); on tiles it, so a brick/pebble photo fills the board
  *              as a repeating pattern.
+ *
+ * NEVER STRETCH (Fred: "a brick must never look stretched, whatever the
+ * board size or shape" -- map the image to the board with ONE uniform
+ * scale, never separate x/y scales): su/sv alone are board-FRACTION
+ * coordinates (0..1 over widthIn x heightIn), so sampling the image
+ * directly at (su, sv) would squash it to the board's own aspect ratio.
+ * Every other filter avoids exactly this for its own noise frequency via
+ * `su * aspect` (e.g. simplex.js's own sfx/sfz) -- same fix applied here:
+ * work in an ISOTROPIC board-unit space (1 unit = the same physical
+ * distance in X and Y) for the rotate/scale/offset tweaks, then place the
+ * image into that space with ONE "cover" scale (like CSS background-size:
+ * cover -- the image fills the whole board, centred, cropping whichever
+ * axis has excess) instead of two independent per-axis scales.
  */
 import { getProcessedPhotoImage } from '../photo/state.js';
 
@@ -73,19 +86,30 @@ export const fn = (su, sv, aspect, params) => {
   const rotation = (t.rotation ?? 0) * Math.PI / 180;
   const repeat = (t.repeat ?? 0) >= 0.5;
 
-  let du = su - 0.5, dv = sv - 0.5;
+  // Isotropic board-unit space: the board spans [-aspect/2, aspect/2] x
+  // [-0.5, 0.5] here, so one unit is the SAME physical distance in both
+  // directions (su is widened by `aspect`, sv is not -- same convention
+  // simplex.js's own sfx/sfz already use for its own frequency).
+  let bx = (su - 0.5) * aspect, by = sv - 0.5;
   if (rotation !== 0) {
     // Rotate the SAMPLE point by -rotation around the board centre, so the
     // photo itself appears to turn by +rotation (standard "rotate the
     // lookup, not the content" trick -- same reasoning terrain.js's own
     // seedRotation uses for the coarse field, Pass 2).
     const cs = Math.cos(-rotation), sn = Math.sin(-rotation);
-    const rdu = du * cs - dv * sn;
-    const rdv = du * sn + dv * cs;
-    du = rdu; dv = rdv;
+    const rbx = bx * cs - by * sn;
+    const rby = bx * sn + by * cs;
+    bx = rbx; by = rby;
   }
-  let u = 0.5 + du / scale + offsetX;
-  let v = 0.5 + dv / scale + offsetY;
+  bx = bx / scale + offsetX * aspect;
+  by = by / scale + offsetY;
+
+  // COVER: the one uniform units-per-pixel scale that makes the image fill
+  // the whole board without separate x/y stretch -- the larger of the two
+  // per-axis requirements wins (same logic as CSS background-size: cover).
+  const unitsPerPixel = Math.max(aspect / img.w, 1 / img.h);
+  let u = 0.5 + bx / unitsPerPixel / img.w;
+  let v = 0.5 + by / unitsPerPixel / img.h;
   u = repeat ? wrap01(u) : clamp01(u);
   v = repeat ? wrap01(v) : clamp01(v);
 

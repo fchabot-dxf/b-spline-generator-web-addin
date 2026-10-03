@@ -84,6 +84,7 @@ def test_settings_are_neutral_not_guessed(mod, a_photo):
     mod.main([a_photo, "Brick 1"])
     with open(mod.PATTERNS_JSON, encoding="utf-8") as f:
         settings = json.load(f)[0]["settings"]
+    assert settings["straighten"] == 0
     assert settings["crop"] is None
     assert settings["levels"] is None
     assert settings["invert"] is False

@@ -5,6 +5,7 @@
     "image": "data/photo-patterns/brick_1.jpg",
     "thumb": "data/photo-patterns/brick_1_thumb.jpg",
     "settings": {
+      "straighten": 0,
       "crop": null,
       "rotate": 0,
       "flip": {
@@ -30,6 +31,7 @@
     "image": "data/photo-patterns/brick_2.jpg",
     "thumb": "data/photo-patterns/brick_2_thumb.jpg",
     "settings": {
+      "straighten": 0,
       "crop": null,
       "rotate": 0,
       "flip": {
@@ -55,6 +57,7 @@
     "image": "data/photo-patterns/pebble_concrete.jpg",
     "thumb": "data/photo-patterns/pebble_concrete_thumb.jpg",
     "settings": {
+      "straighten": 0,
       "crop": null,
       "rotate": 0,
       "flip": {
@@ -80,6 +83,7 @@
     "image": "data/photo-patterns/drain_grate.jpg",
     "thumb": "data/photo-patterns/drain_grate_thumb.jpg",
     "settings": {
+      "straighten": 0,
       "crop": null,
       "rotate": 0,
       "flip": {
@@ -105,6 +109,7 @@
     "image": "data/photo-patterns/rusty_grate.jpg",
     "thumb": "data/photo-patterns/rusty_grate_thumb.jpg",
     "settings": {
+      "straighten": 0,
       "crop": null,
       "rotate": 0,
       "flip": {
@@ -130,6 +135,7 @@
     "image": "data/photo-patterns/bark.jpg",
     "thumb": "data/photo-patterns/bark_thumb.jpg",
     "settings": {
+      "straighten": 0,
       "crop": null,
       "rotate": 0,
       "flip": {
@@ -155,6 +161,7 @@
     "image": "data/photo-patterns/pebble_close.jpg",
     "thumb": "data/photo-patterns/pebble_close_thumb.jpg",
     "settings": {
+      "straighten": 0,
       "crop": null,
       "rotate": 0,
       "flip": {
@@ -180,6 +187,7 @@
     "image": "data/photo-patterns/chalk_rose.jpg",
     "thumb": "data/photo-patterns/chalk_rose_thumb.jpg",
     "settings": {
+      "straighten": 0,
       "crop": null,
       "rotate": 0,
       "flip": {

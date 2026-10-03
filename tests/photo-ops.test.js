@@ -51,6 +51,44 @@ describe('photo/ops.js: each op on a tiny synthetic image gives the expected pix
     expect(arr(out)).toEqual([0, 1]);
   });
 
+  it('straighten at 0 degrees is a no-op', () => {
+    const base = img([0, 1, 2, 3], 2, 2);
+    expect(arr(applyPhotoEdits(base, [{ op: 'straighten', params: { degrees: 0 } }]))).toEqual(arr(base));
+  });
+
+  it('straighten expands the canvas to fit the fully-rotated source (45deg of a square doubles toward its diagonal)', () => {
+    const base = img(new Array(16).fill(0.5), 4, 4);
+    const out = applyPhotoEdits(base, [{ op: 'straighten', params: { degrees: 45 } }]);
+    const expectedSide = Math.round(4 * Math.SQRT2);
+    expect(out.w).toBe(expectedSide);
+    expect(out.h).toBe(expectedSide);
+  });
+
+  it('straighten at exactly 90deg approximates rotate90Op\'s own already-proven clockwise result (same sign convention, confirmed empirically rather than re-derived)', () => {
+    // A bigger, non-constant image so bilinear interpolation at a few border
+    // pixels can't accidentally make a WRONG sign convention look right.
+    const n = 10;
+    const data = Array.from({ length: n * n }, (_, k) => (k % n) / (n - 1));
+    const base = img(data, n, n);
+    const exact = applyPhotoEdits(base, [{ op: 'rotate90', params: { dir: 1 } }]);
+    const free = applyPhotoEdits(base, [{ op: 'straighten', params: { degrees: 90 } }]);
+    expect([free.w, free.h]).toEqual([exact.w, exact.h]);
+    // Compare interior pixels only (bilinear sampling softens the exact edges/corners a little).
+    for (let j = 2; j < exact.h - 2; j++) {
+      for (let i = 2; i < exact.w - 2; i++) {
+        expect(free.data[j * free.w + i]).toBeCloseTo(exact.data[j * exact.w + i], 1);
+      }
+    }
+  });
+
+  it('straighten fills the newly-exposed corners with neutral mid-grey (0.5), not the edge pixel or black', () => {
+    const base = img(new Array(16).fill(1), 4, 4); // a solid WHITE square
+    const out = applyPhotoEdits(base, [{ op: 'straighten', params: { degrees: 30 } }]);
+    // The output's own corner (0,0) is outside the rotated white square for a 30deg turn of a
+    // square -- must be the declared neutral fill, not accidentally sampled from the white source.
+    expect(out.data[0]).toBeCloseTo(0.5, 6);
+  });
+
   it('flip h mirrors left-right, flip v mirrors top-bottom', () => {
     const base = img([0, 1, 2, 3], 2, 2); // row0=[0,1] row1=[2,3]
     expect(arr(applyPhotoEdits(base, [{ op: 'flip', params: { axis: 'h' } }]))).toEqual([1, 0, 3, 2]);
@@ -137,7 +175,7 @@ describe('photo/ops.js: each op on a tiny synthetic image gives the expected pix
   });
 
   it('OP_DEFAULTS declares every op id applyPhotoEdits understands', () => {
-    const ids = ['crop', 'rotate90', 'flip', 'levels', 'brightnessContrast', 'blur', 'invert'];
+    const ids = ['crop', 'rotate90', 'straighten', 'flip', 'levels', 'brightnessContrast', 'blur', 'invert'];
     expect(Object.keys(OP_DEFAULTS).sort()).toEqual(ids.sort());
   });
 });

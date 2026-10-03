@@ -58,9 +58,47 @@ function setAdjustableOp(opName, params) {
   notifyChange();
 }
 
+// Straighten is declared to always come FIRST (advisor/Fred: "edit order:
+// straighten -> crop -> the rest") -- unlike the other adjustable ops
+// (setAdjustableOp above), re-adjusting it must find and update its own
+// step WHEREVER it sits, never append a second one after crop.
+function setStraighten(degrees) {
+  const steps = (P.photoEdits || []).slice();
+  const idx = steps.findIndex((s) => s.op === 'straighten');
+  const step = { op: 'straighten', params: { degrees } };
+  if (idx >= 0) steps[idx] = step;
+  else steps.unshift(step);
+  P.photoEdits = steps;
+  notifyChange();
+}
+
 function appendDiscreteOp(opName, params) {
   P.photoEdits = [...(P.photoEdits || []), { op: opName, params }];
   notifyChange();
+}
+
+// Relief toggle (Raised/Carved): a 2-state control over the SAME `invert`
+// op, so it's idempotent and removable rather than append-only like the
+// other discrete ops -- clicking "Raised" repeatedly must not pile up
+// invert steps, and clicking back must actually remove the effect.
+function isInverted() {
+  return (P.photoEdits || []).some((s) => s.op === 'invert');
+}
+
+function setInvert(on) {
+  const steps = (P.photoEdits || []).filter((s) => s.op !== 'invert');
+  if (on) steps.push({ op: 'invert', params: {} });
+  P.photoEdits = steps;
+  syncReliefToggle();
+  notifyChange();
+}
+
+function syncReliefToggle() {
+  const raised = document.getElementById('photoBtnReliefRaised');
+  const carved = document.getElementById('photoBtnReliefCarved');
+  const inverted = isInverted();
+  raised?.classList.toggle('active', !inverted);
+  carved?.classList.toggle('active', inverted);
 }
 
 function undo() {
@@ -82,15 +120,18 @@ function setPair(sliderId, numberId, v) {
  * onto their sliders -- needed after loading a pattern/file or undoing, so
  * the controls don't show stale values from whatever was edited before. */
 function syncControlsFromState() {
+  const straighten = currentOpParams('straighten', { degrees: 0 });
   const levels = currentOpParams('levels', { black: 0, white: 1, mid: 1 });
   const bc = currentOpParams('brightnessContrast', { brightness: 0, contrast: 0 });
   const blur = currentOpParams('blur', { radius: 0 });
+  setPair('photoStraightenSlider', 'photoStraighten', straighten.degrees);
   setPair('photoLevelsBlackSlider', 'photoLevelsBlack', levels.black);
   setPair('photoLevelsWhiteSlider', 'photoLevelsWhite', levels.white);
   setPair('photoLevelsMidSlider', 'photoLevelsMid', levels.mid);
   setPair('photoBrightnessSlider', 'photoBrightness', bc.brightness);
   setPair('photoContrastSlider', 'photoContrast', bc.contrast);
   setPair('photoBlurSlider', 'photoBlur', blur.radius);
+  syncReliefToggle();
 }
 
 function loadImage(urlOrDataUrl, edits, tweaks) {
@@ -196,7 +237,8 @@ export function initPhotoPanel({ onChange }) {
   document.getElementById('photoBtnRotate')?.addEventListener('click', () => appendDiscreteOp('rotate90', { dir: 1 }));
   document.getElementById('photoBtnFlipH')?.addEventListener('click', () => appendDiscreteOp('flip', { axis: 'h' }));
   document.getElementById('photoBtnFlipV')?.addEventListener('click', () => appendDiscreteOp('flip', { axis: 'v' }));
-  document.getElementById('photoBtnInvert')?.addEventListener('click', () => appendDiscreteOp('invert', {}));
+  document.getElementById('photoBtnReliefRaised')?.addEventListener('click', () => setInvert(false));
+  document.getElementById('photoBtnReliefCarved')?.addEventListener('click', () => setInvert(true));
   document.getElementById('photoBtnUndo')?.addEventListener('click', undo);
 
   document.getElementById('photoBtnApplyCrop')?.addEventListener('click', () => {
@@ -206,6 +248,18 @@ export function initPhotoPanel({ onChange }) {
       w: Math.max(0.01, pct('photoCropW')), h: Math.max(0.01, pct('photoCropH')),
     });
   });
+
+  const straightenSlider = document.getElementById('photoStraightenSlider');
+  const straightenNumber = document.getElementById('photoStraighten');
+  const applyStraighten = (raw) => {
+    const v = parseFloat(raw);
+    if (!Number.isFinite(v)) return;
+    if (straightenSlider) straightenSlider.value = String(v);
+    if (straightenNumber) straightenNumber.value = String(v);
+    setStraighten(v);
+  };
+  straightenSlider?.addEventListener('input', (e) => applyStraighten(e.target.value));
+  straightenNumber?.addEventListener('input', (e) => applyStraighten(e.target.value));
 
   bindSlider('photoLevelsBlackSlider', 'photoLevelsBlack', 'levels', 'black', { black: 0, white: 1, mid: 1 });
   bindSlider('photoLevelsWhiteSlider', 'photoLevelsWhite', 'levels', 'white', { black: 0, white: 1, mid: 1 });

@@ -45,7 +45,7 @@ JPEG_QUALITY = 80
 # such edit step at all" (core/photo/patterns.js's own settingsToPhotoEdits
 # convention), not a no-op step at default values.
 NEUTRAL_SETTINGS = {
-    "crop": None, "rotate": 0, "flip": {"h": False, "v": False},
+    "straighten": 0, "crop": None, "rotate": 0, "flip": {"h": False, "v": False},
     "levels": None, "brightness": 0, "contrast": 0, "blur": 0, "invert": False,
     "depth": 1.0, "scale": 1.0, "offsetX": 0.0, "offsetY": 0.0, "rotation": 0, "repeat": 0,
 }

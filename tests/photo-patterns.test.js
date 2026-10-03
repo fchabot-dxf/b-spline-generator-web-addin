@@ -22,17 +22,25 @@ describe('TWEAK_KEYS matches core/noise/photo.js\'s own declared schema exactly'
 });
 
 describe('settingsToPhotoEdits: a fully-neutral pattern produces an EMPTY edit list', () => {
-  it('no crop/rotate/flip/levels/brightness/contrast/blur/invert at all -> []', () => {
+  it('no straighten/crop/rotate/flip/levels/brightness/contrast/blur/invert at all -> []', () => {
     expect(settingsToPhotoEdits({})).toEqual([]);
     expect(settingsToPhotoEdits(undefined)).toEqual([]);
     expect(settingsToPhotoEdits({
-      crop: null, rotate: 0, flip: { h: false, v: false }, levels: null,
+      straighten: 0, crop: null, rotate: 0, flip: { h: false, v: false }, levels: null,
       brightness: 0, contrast: 0, blur: 0, invert: false,
     })).toEqual([]);
   });
 });
 
 describe('settingsToPhotoEdits: each field expands to its own declared op', () => {
+  it('straighten, non-zero, becomes one straighten step -- and comes BEFORE crop (declared edit order)', () => {
+    expect(settingsToPhotoEdits({ straighten: -33 })).toEqual([{ op: 'straighten', params: { degrees: -33 } }]);
+    expect(settingsToPhotoEdits({ straighten: -33, crop: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 } })).toEqual([
+      { op: 'straighten', params: { degrees: -33 } },
+      { op: 'crop', params: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 } },
+    ]);
+  });
+
   it('crop, present, becomes one crop step', () => {
     expect(settingsToPhotoEdits({ crop: { x: 0.1, y: 0.2, w: 0.5, h: 0.6 } })).toEqual([
       { op: 'crop', params: { x: 0.1, y: 0.2, w: 0.5, h: 0.6 } },
@@ -84,7 +92,7 @@ describe('settingsToPhotoEdits: each field expands to its own declared op', () =
 
   it('a fully-populated settings object expands in the declared, applyPhotoEdits-compatible order', () => {
     const edits = settingsToPhotoEdits({
-      crop: { x: 0, y: 0, w: 0.8, h: 0.8 }, rotate: 90, flip: { h: true, v: false },
+      straighten: 5, crop: { x: 0, y: 0, w: 0.8, h: 0.8 }, rotate: 90, flip: { h: true, v: false },
       levels: { black: 0.05, white: 0.95, mid: 1 }, brightness: 0, contrast: 0.1, blur: 1, invert: false,
     });
     // Must be a valid BuildSequence for applyPhotoEdits -- run it on a tiny image, confirm no throw

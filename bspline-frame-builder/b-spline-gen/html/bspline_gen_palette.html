@@ -890,8 +890,33 @@
                 <button type="button" id="photoBtnRotate" class="cad-btn">⟳ Rotate 90°</button>
                 <button type="button" id="photoBtnFlipH" class="cad-btn">⇋ Flip H</button>
                 <button type="button" id="photoBtnFlipV" class="cad-btn">⇅ Flip V</button>
-                <button type="button" id="photoBtnInvert" class="cad-btn">Invert</button>
                 <button type="button" id="photoBtnUndo" class="cad-btn">Undo</button>
+              </div>
+
+              <!-- Fred: "a cute 2-state segmented toggle", not a plain checkbox -- drives the
+                   same `invert` setting (core/photo/ops.js), no new state. -->
+              <label class="cad-label">Relief</label>
+              <div class="relief-toggle" id="photoReliefToggle" style="margin-bottom:12px;">
+                <button type="button" class="relief-toggle-btn active" id="photoBtnReliefRaised" title="Light areas raised, dark areas as grooves">
+                  <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
+                    <rect x="0" y="6" width="5" height="6"/><rect x="6" y="3" width="5" height="9"/>
+                    <rect x="12" y="6" width="5" height="6"/><rect x="18" y="3" width="5" height="9"/>
+                  </svg>
+                  <span>Raised</span>
+                </button>
+                <button type="button" class="relief-toggle-btn" id="photoBtnReliefCarved" title="Inverted: dark areas raised, light areas as grooves">
+                  <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
+                    <rect x="0" y="0" width="5" height="6"/><rect x="6" y="0" width="5" height="9"/>
+                    <rect x="12" y="0" width="5" height="6"/><rect x="18" y="0" width="5" height="9"/>
+                  </svg>
+                  <span>Carved</span>
+                </button>
+              </div>
+
+              <label class="cad-label">Straighten (degrees)</label>
+              <div class="cad-slider-row" style="margin-bottom:10px;">
+                <input type="range" id="photoStraightenSlider" class="cad-slider" min="-45" max="45" step="0.5" value="0">
+                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoStraighten" value="0"></div>
               </div>
 
               <label class="cad-label">Crop (%)</label>
