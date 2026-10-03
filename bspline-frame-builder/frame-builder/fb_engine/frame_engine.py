@@ -97,11 +97,14 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
     # T82 item 6: the inset window record ({enabled, cx, cy, w, h}), never in ui_data (same reason as
     # seed_geometry/panel_lip: it is not a single scalar, so it can't become a user parameter).
     inset_window = data_dict.get('inset_window') if isinstance(data_dict, dict) else None
+    # F31 item 2c: the joined-joint ids (Fred: "the side can sometimes be one piece"), never in
+    # ui_data (same reason as inset_window: a list, not a single scalar).
+    joined_miters = data_dict.get('joined_miters') if isinstance(data_dict, dict) else None
 
     if external_logger:
         external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars, max_phase={max_phase}, seeds={len(seed_geometry or {})}")
     builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase, seed_geometry=seed_geometry,
-                            panel_lip=panel_lip, inset_window=inset_window)
+                            panel_lip=panel_lip, inset_window=inset_window, joined_miters=joined_miters)
     return builder.fit
 
 def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
@@ -184,7 +187,7 @@ class FrameBuilder:
             self.logger.log(f"Warning: could not restore root active component: {e}", "WARNING")
 
     def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None, max_phase=None, seed_geometry=None,
-                        panel_lip=None, inset_window=None):
+                        panel_lip=None, inset_window=None, joined_miters=None):
         start_time = time.time()
         try:
             self.logger.session_start(f"SKETCH ONLY: {style_id}")
@@ -196,6 +199,17 @@ class FrameBuilder:
             self._check_frame_fit()
             frame_comp = self._create_incremental_component(style_id)
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
+            # F31 item 2c: stamped alongside TemplateId (_create_incremental_component) so
+            # solid_coordinator._declared_frame() -- which re-resolves the template FRESH FROM DISK
+            # at solid-build time, with no access to this method's own in-memory mutated template --
+            # can re-apply the SAME joined-miters mutation before declared_profiles.classify() runs
+            # (fb_engine/joined_miters.py's own module docstring explains why this one needs its own
+            # stamp, unlike panel_lip/inset_window).
+            if joined_miters and frame_comp:
+                try:
+                    frame_comp.attributes.add('FrameBuilder', 'JoinedMiters', json.dumps(list(joined_miters)))
+                except Exception as e:
+                    self.logger.log(f"Could not tag component '{frame_comp.name}' with JoinedMiters attribute: {e}", "WARNING")
 
             # Resolve template and prefix from registry
             template, prefix = _resolve_template(style_id, ui_data)
@@ -213,6 +227,10 @@ class FrameBuilder:
                 template = apply_inset_window(template, inset_window, frame_thickness_in, panel_lip)
                 self.logger.log(f"INSET WINDOW: cx={inset_window.get('cx')} cy={inset_window.get('cy')} "
                                  f"w={inset_window.get('w')} h={inset_window.get('h')}")
+            if joined_miters:
+                from fb_engine.joined_miters import apply_joined_miters
+                template = apply_joined_miters(template, joined_miters)
+                self.logger.log(f"JOINED MITERS: {list(joined_miters)}")
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver, max_phase=max_phase)
             builder.build_template(template)

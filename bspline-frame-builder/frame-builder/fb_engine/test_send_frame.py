@@ -606,6 +606,55 @@ class TestInsetWindow:
         assert sf.inset_window_of({"insetWindow": self.WINDOW}) == self.WINDOW
 
 
+# ------------------------------------------------------------------ F31 item 2c: joined miters
+class TestJoinedMiters:
+    """F31 item 2c (Fred: "the side can sometimes be one piece"): [Send frame] threads the joined-
+    joint ids through to the sketch build, the same way inset_window/panel_lip already do (data_dict,
+    never ui_data -- it is a list, not a single scalar param)."""
+
+    WINDOW = TestInsetWindow.WINDOW
+
+    def test_joined_ids_reach_the_sketch_build_as_joined_miters(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(templateId="template_14", joinedMiters=["pinchR"]))
+        assert r["ok"]
+        assert b.sketch_calls[0]["data"]["joined_miters"] == ["pinchR"]
+        assert "joinedMiters" not in b.sketch_calls[0]["data"]["ui_data"]  # never through the template-param path
+
+    def test_absent_or_empty_never_reaches_the_build(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(templateId="template_14"))
+        assert r["ok"] and "joined_miters" not in b.sketch_calls[0]["data"]
+        r, b = run(w, payload(templateId="template_14", joinedMiters=[]))
+        assert r["ok"] and "joined_miters" not in b.sketch_calls[0]["data"]
+
+    def test_a_malformed_joinedMiters_is_dropped_not_sent_to_the_build(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(templateId="template_14", joinedMiters="pinchR"))  # a bare string, not a list
+        assert r["ok"] and "joined_miters" not in b.sketch_calls[0]["data"]
+        r, b = run(w, payload(templateId="template_14", joinedMiters=[1, 2]))  # non-string entries
+        assert r["ok"] and "joined_miters" not in b.sketch_calls[0]["data"]
+
+    def test_the_joined_ids_and_the_window_and_the_lip_can_all_be_sent_together(self):
+        w = World()
+        send_bspline(w)
+        r, b = run(w, payload(templateId="template_14", joinedMiters=["pinchR"],
+                              insetWindow=self.WINDOW, panelLip=0.0625))
+        assert r["ok"]
+        data = b.sketch_calls[0]["data"]
+        assert data["joined_miters"] == ["pinchR"] and data["inset_window"] == self.WINDOW and data["panel_lip"] == 0.0625
+
+    def test_joined_miters_of_is_strict(self):
+        assert sf.joined_miters_of({}) == []
+        assert sf.joined_miters_of({"joinedMiters": "pinchR"}) == []  # not a list at all
+        assert sf.joined_miters_of({"joinedMiters": [1, 2]}) == []  # every entry non-string
+        assert sf.joined_miters_of({"joinedMiters": ["pinchR", 1, "pinchL"]}) == ["pinchR", "pinchL"]  # non-strings filtered out, strings kept
+        assert sf.joined_miters_of({"joinedMiters": ["pinchR"]}) == ["pinchR"]
+
+
 class SplitEvaluator:
     """H23 item 37: a UV square split in half by v (v<0.5 vs v>=0.5), each half with its OWN
     constant normal.z and its OWN constant local-area scale (|dU x dV| = the derivative's own y

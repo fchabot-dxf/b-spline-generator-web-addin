@@ -2,12 +2,13 @@
 Solid Coordinator — The orchestrator for frame synthesis.
 Coordinates document discovery, geometry extrusion, and appearance finishing.
 """
-import adsk.core, adsk.fusion, traceback, os, importlib, time
+import adsk.core, adsk.fusion, traceback, os, importlib, json, time
 from fb_engine.appearance_manager import AppearanceManager, APPEARANCE_PRESETS
 from fb_engine.appearance_strategy import AppearanceStrategy, DefaultAppearanceStrategy
 from fb_engine.document_discovery import DocumentDiscovery
 from fb_engine.extrusion_engine import ExtrusionEngine
 from fb_engine import timeline_order
+from fb_engine.joined_miters import JOINED_MITERS_ATTR
 
 # F14 (S6): the template a frame component was built from (stamped by
 # frame_engine._create_incremental_component), so the solid build reads that
@@ -170,6 +171,23 @@ class SolidCoordinator:
         except Exception:
             self.log.log(f"COORDINATOR CRASH:\n{traceback.format_exc()}", "ERROR")
 
+    def _joined_miters_of(self, comp):
+        """F31 item 2c: the joined-joint ids stamped onto `comp` (frame_engine.run_sketch_only,
+        alongside TemplateId) -- a template re-resolved from disk here has no other way to learn
+        which joints a live frame record asked to be built as one piece (fb_engine/joined_miters.py's
+        own module docstring). `[]` when absent/malformed."""
+        try:
+            a = comp.attributes.itemByName(*JOINED_MITERS_ATTR)
+        except Exception:
+            a = None
+        if not a or not a.value:
+            return []
+        try:
+            ids = json.loads(a.value)
+        except (ValueError, TypeError):
+            return []
+        return ids if isinstance(ids, list) else []
+
     def _declared_frame(self, comp):
         """The "Frame" block (regions + features) of the template ``comp`` was
         built from, or None (no stamp: built before S6; or a template that
@@ -183,6 +201,15 @@ class SolidCoordinator:
             return None
         from fb_engine.template_resolver import resolve_template
         spec, _ = resolve_template(a.value)
+        # F31 item 2c: re-apply the SAME joined-miters mutation the sketch build applied (stamped
+        # alongside TemplateId) -- the sketch-build's own in-memory mutated template is not
+        # reachable here (this re-resolves fresh from disk), so the mutation must be redone from the
+        # stamped attribute, not assumed to have carried over.
+        joined = self._joined_miters_of(comp)
+        if joined:
+            from fb_engine.joined_miters import apply_joined_miters
+            spec = apply_joined_miters(spec, joined)
+            self.log.log(f"DECLARED FEATURES: '{comp.name}' re-applying joined miters {joined}")
         frame = spec.get("Frame") or {}
         if not (frame.get("regions") and frame.get("features")):
             self.log.log(f"DECLARED FEATURES: template '{a.value}' declares none")

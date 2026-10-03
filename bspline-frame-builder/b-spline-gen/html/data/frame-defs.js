@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "bb7cfff6d0f104ed852f313c0527a4d32e1724d5c366c6459fc94af2b073a928",
+  "sourceHash": "2caf4d3d4900b09ebd47d0eeb6c8d9c0fe67556c7e1ed7024895e6ecfa9783c9",
   "templates": [
     {
       "features": [
@@ -7888,6 +7888,26 @@ export default {
           "inner_proj_upper_L",
           "inner_proj_top"
         ],
+        "joinable": [
+          {
+            "bars": [
+              "frame_upper_right",
+              "frame_lower_right"
+            ],
+            "id": "pinchR",
+            "mirror": "pinchL",
+            "miterSource": "proj_upper_R:S"
+          },
+          {
+            "bars": [
+              "frame_lower_left",
+              "frame_upper_left"
+            ],
+            "id": "pinchL",
+            "mirror": "pinchR",
+            "miterSource": "proj_upper_L:E"
+          }
+        ],
         "miters": [
           [
             "proj_upper_R:E",
@@ -9169,6 +9189,26 @@ export default {
           "inner_proj_neck_L",
           "inner_proj_top"
         ],
+        "joinable": [
+          {
+            "bars": [
+              "frame_neck_right",
+              "frame_dome_right"
+            ],
+            "id": "neckBottomR",
+            "mirror": "neckBottomL",
+            "miterSource": "proj_dome_R:E"
+          },
+          {
+            "bars": [
+              "frame_neck_left",
+              "frame_dome_left"
+            ],
+            "id": "neckBottomL",
+            "mirror": "neckBottomR",
+            "miterSource": "proj_dome_L:S"
+          }
+        ],
         "miters": [
           [
             "proj_neck_R:S",
@@ -10330,6 +10370,26 @@ export default {
           "inner_proj_lower_L",
           "inner_proj_upper_L",
           "inner_proj_arch"
+        ],
+        "joinable": [
+          {
+            "bars": [
+              "frame_upper_right",
+              "frame_lower_right"
+            ],
+            "id": "waistR",
+            "mirror": "waistL",
+            "miterSource": "proj_lower_R:E"
+          },
+          {
+            "bars": [
+              "frame_lower_left",
+              "frame_upper_left"
+            ],
+            "id": "waistL",
+            "mirror": "waistR",
+            "miterSource": "proj_lower_L:S"
+          }
         ],
         "miters": [
           [
@@ -11659,6 +11719,26 @@ export default {
           "inner_proj_lower_L",
           "inner_proj_upper_L",
           "inner_proj_arch"
+        ],
+        "joinable": [
+          {
+            "bars": [
+              "frame_upper_right",
+              "frame_lower_right"
+            ],
+            "id": "waistR",
+            "mirror": "waistL",
+            "miterSource": "proj_lower_R:E"
+          },
+          {
+            "bars": [
+              "frame_lower_left",
+              "frame_upper_left"
+            ],
+            "id": "waistL",
+            "mirror": "waistR",
+            "miterSource": "proj_lower_L:S"
+          }
         ],
         "miters": [
           [

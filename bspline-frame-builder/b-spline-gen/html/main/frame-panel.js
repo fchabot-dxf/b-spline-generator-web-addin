@@ -23,7 +23,7 @@ import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
 import { paramsFromShapeModel } from '../editor/editor-shape-lattice-generator.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
-import { frameCutProfile, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide } from '../editor/editor-frame-profile.js';
+import { frameCutProfile, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide, blankWidthIn, formatBlankWidthIn } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { syncDrawerForMode } from '../editor/editor-drawer.js';
@@ -329,6 +329,35 @@ export function syncFramePanel() {
     warn.textContent = fit.ok ? '' : `Board too small for this frame: the safe zone is ${fit.safeZoneIn.toFixed(2)} in `
       + `but the frame needs more than ${fit.requiredIn.toFixed(2)} in.`;
   }
+  // F31 item 2c (the advisor's own ruling): "one piece: needs a 1 1/16 in blank" -- one line per
+  // currently-joined joint (deduped: a symmetric default shape's own mirrored pair always measures
+  // the same width, so showing both would just repeat it), same read-only-computed-text pattern
+  // frameFitWarning above already uses. Computed FRESH from `rec` (not read off `ed._frameProfile`,
+  // which `drawFrameProfile` below only updates AFTER this point -- reading it here would show the
+  // PREVIOUS record's own geometry for one sync cycle after every change, the same staleness trap
+  // frameFitWarning's own fresh frameFit() call already avoids).
+  const joinInfo = $('frameJoinInfo');
+  if (joinInfo) {
+    const seen = new Set();
+    const lines = [];
+    if (tpl && (rec.joinedMiters || []).length) {
+      const board = { widthIn: P.widthIn, heightIn: P.heightIn };
+      const outerProf = frameCutProfile(FRAME_DEFS, rec, board);
+      const innerProf = !outerProf.defects.length ? frameInnerProfile(FRAME_DEFS, rec, board) : null;
+      if (innerProf && !innerProf.defects.length) {
+        for (const id of rec.joinedMiters) {
+          const j = tpl.regions.joinable?.find((q) => q.id === id);
+          if (!j || seen.has(id) || (j.mirror && seen.has(j.mirror))) continue;
+          seen.add(id);
+          const w = blankWidthIn(tpl, outerProf.primitives, innerProf.primitives, id);
+          const text = w != null ? formatBlankWidthIn(w) : null;
+          if (text) lines.push(`One piece: needs a ${text} blank.`);
+        }
+      }
+    }
+    joinInfo.style.display = lines.length ? '' : 'none';
+    joinInfo.textContent = lines.join(' ');
+  }
   if (typeof window !== 'undefined' && window.svgEditor) drawFrameProfile(window.svgEditor);
   AppState.preview?.refreshFrame?.(); // F7: the 3D trimmed panel + wood bars, live
 }
@@ -372,17 +401,60 @@ function _hitFrameHandle(ed, clientX, clientY, pointerType = 'mouse') {
   return hitTestArcGrip(ed._frameHandles, pt, tol);
 }
 
+/** F31 item 2c: the SAME nearest-within-HANDLE_HIT_PX rule _hitFrameHandle uses, over
+ *  `ed._frameJoinMarkers` (editor-frame-profile.js's own draw loop stashes it there, the same way
+ *  it stashes `ed._frameHandles` for the function above -- never recomputed here). */
+function _hitJoinMarker(ed, clientX, clientY, pointerType = 'mouse') {
+  const pt = ed._getMousePoint({ clientX, clientY });
+  const edge = ed._getMousePoint({ clientX: clientX + _frameHandleHitPx(ed, pointerType), clientY });
+  const tol = Math.abs(edge.x - pt.x);
+  let best = null, bestD = Infinity;
+  for (const jm of ed._frameJoinMarkers || []) {
+    const d = Math.hypot(jm.anchor.x - pt.x, jm.anchor.y - pt.y);
+    if (d < bestD) { bestD = d; best = jm; }
+  }
+  return best && bestD <= tol ? best : null;
+}
+
+/** F31 item 2c: tapping a joinable-joint marker toggles IT AND ITS MIRROR together (Fred:
+ *  "Mirrored pairs toggle together") -- one `editFrame` call, so it is one undo step, same as
+ *  every other Frame-tab control (`editFrame`'s own doc comment). */
+function _toggleJoinMarker(jm) {
+  const rec = getFrameRecord();
+  const cur = new Set(rec.joinedMiters || []);
+  const pair = [jm.id, jm.mirror].filter(Boolean);
+  const nowJoined = cur.has(jm.id);
+  const next = new Set(cur);
+  for (const id of pair) { if (nowJoined) next.delete(id); else next.add(id); }
+  editFrame({ joinedMiters: [...next] });
+}
+
 // T81 item 1: module scope (not inside _wireHandleDrag's own closure) so
 // setEditorTab, below, can clear it when the Frame tab is left -- same
 // "a mode/tab switch invalidates a stale hover" rule editor-ui.js's setMode
 // already applies to its own snap/grid hover state.
 let _frameHoverKey = null;
+// F31 item 2c: the same "live while this tab is open" idle-hover state as _frameHoverKey above,
+// for the joinable-joint markers (a separate id-space -- joint ids, not handle keys -- so it is
+// its own variable, not folded into _frameHoverKey).
+let _frameJoinHoverId = null;
 function _clearFrameHover() {
-  if (_frameHoverKey === null) return;
-  _frameHoverKey = null;
   const ed = typeof window !== 'undefined' ? window.svgEditor : null;
-  if (ed) ed._frameHandleHover = null;
-  setHandleCursor(null);
+  if (_frameHoverKey !== null) {
+    _frameHoverKey = null;
+    if (ed) ed._frameHandleHover = null;
+    setHandleCursor(null);
+  }
+  if (_frameJoinHoverId !== null) {
+    _frameJoinHoverId = null;
+    if (ed) ed._frameJoinHover = null;
+  }
+}
+function _setJoinHover(ed, id) {
+  if (_frameJoinHoverId === id) return;
+  _frameJoinHoverId = id;
+  if (ed) { ed._frameJoinHover = id; if (ed._frameProfile) drawFrameProfile(ed); }
+  setHandleCursor(id ? 'hover' : null);
 }
 
 /** H23 item 39 (Fred-approved guard, part 2 -- "the drag handles stop before breaking it"): does
@@ -496,7 +568,17 @@ function _wireHandleDrag() {
       return;
     }
     const ed = editor();
-    if (!ed || !ed._frameProfile || !(ed._frameHandles || []).length) return;
+    if (!ed || !ed._frameProfile) return;
+    // F31 item 2c: a joinable-joint marker is a TAP (toggle, one undo step via editFrame), never a
+    // drag -- checked first so it never falls through to the drag-handle hit-test below.
+    const joinHit = _hitJoinMarker(ed, e.clientX, e.clientY, e.pointerType);
+    if (joinHit) {
+      _toggleJoinMarker(joinHit);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (!(ed._frameHandles || []).length) return;
     const hit = _hitFrameHandle(ed, e.clientX, e.clientY, e.pointerType);
     if (!hit) return;
     const best = hit.handle;
@@ -518,7 +600,12 @@ function _wireHandleDrag() {
     const ed = editor();
     if (!dragKey) {
       // T81 item 1: idle hover -- only while the Frame tab's own handles are live.
-      setHover(ed, inFrameTab() && ed && ed._frameProfile ? (_hitFrameHandle(ed, e.clientX, e.clientY, e.pointerType)?.handle.key ?? null) : null);
+      const inFrame = inFrameTab() && ed && ed._frameProfile;
+      // F31 item 2c: checked first, same priority order as the pointerdown hit-test above -- a
+      // hovered join marker shows ITS OWN hover look, not a handle's.
+      const joinHover = inFrame ? _hitJoinMarker(ed, e.clientX, e.clientY, e.pointerType)?.id ?? null : null;
+      _setJoinHover(ed, joinHover);
+      setHover(ed, !joinHover && inFrame ? (_hitFrameHandle(ed, e.clientX, e.clientY, e.pointerType)?.handle.key ?? null) : null);
       return;
     }
     if (e.pointerId !== dragPointerId) return; // another finger (a pinch): never drags the handle

@@ -99,6 +99,19 @@ def inset_window_of(payload):
     return w
 
 
+def joined_miters_of(payload):
+    """The payload's joined-miter joint ids (F31 item 2c, Fred: "the side can sometimes be one
+    piece"), or an empty list when absent/malformed. `core/frame-record.js`'s own normalized shape,
+    carried in framePayload() as `joinedMiters` -- a stale/unknown id is tolerated here (filtered to
+    strings only) and tolerated again by fb_engine.joined_miters.apply_joined_miters itself (which
+    silently ignores any id not in the template's own declared `regions["joinable"]`), the same
+    two-layer tolerance an old record surviving a template swap already needs elsewhere."""
+    ids = payload.get("joinedMiters")
+    if not isinstance(ids, list):
+        return []
+    return [i for i in ids if isinstance(i, str)]
+
+
 def sync_panel_lip_param(design, lip, log, value_input=None):
     """F22: the ONE writer of `panel_lip` (ParameterSchema FRAME group). lip > 0: create or update it
     ("<lip> in") and tag it FrameBuilder.owner. lip 0: remove it when it exists and nothing references it
@@ -327,6 +340,9 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
         window = inset_window_of(payload)
         if window:
             data["inset_window"] = window
+        joined = joined_miters_of(payload)
+        if joined:
+            data["joined_miters"] = joined
         # H23 item 52: set the marker before the inlay ONCE, covering BOTH build_sketch and
         # build_solid below (Fusion advances the marker itself as each new item lands, confirmed
         # live -- no need to re-set it between the two calls) -- restored in the finally
