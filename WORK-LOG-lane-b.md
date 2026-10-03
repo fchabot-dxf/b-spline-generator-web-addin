@@ -13662,3 +13662,94 @@ and both now LIVE-confirmed 100% BUILT at 7x9 across every handle's own {min, de
 every other scratch probe output this session). Registered-template commit (1bc0542) already pushed; no
 further code change from this turn (the sweep itself touches no source, only TEMPLATE_META was new and
 that's already in). Passing back to the advisor now.
+
+## Lane B -- Turn 220 (epoch 9) -- T84 item 6 (PRIORITY, Fred's screenshot): "Offset from frame" fails on
+## T16/T17 -- fixed, DONE, passing back
+
+Advisor's dispatch jumped the queue ahead of item 5 (Sand Timer): Fred reported that the Shape Lattice's
+"Offset from frame" doesn't work with the Tulip/Arched Funnel frames, though it works on T1. Asked to
+reproduce in the app first, find the cause in contour-from-frame.js/contourSilhouette (an error, or
+falling back to the preset?), fix it for every frame-only preset (not a T16/T17 special case), add a pure
+test, and save before/after screenshots.
+
+**Reproduced first, in the real app** (headless Chrome through the live panel, the same pattern
+f26_offset_from_frame_shots.mjs already established for this exact feature): Frame tab -> template_16 ->
+Shape Lattice -> "Offset from frame" ON. The panel's own status line read "the frame opening is too small
+for this distance, so the Shape preset is drawn" -- confirming the dispatch's own second hypothesis
+(falls back to the preset), not the first (an outright error). `exp.fromFrameError` was `'frameInvalid'`,
+`exp.fromFrame` was `false`, and the drawn contour was still the independent Hourglass PATTERN shape (12
+primitives), not T16's own 6-piece outline at all. Screenshot:
+`shots/seatB/t84item6_before_template_16_offset_from_frame.png`.
+
+**Root cause, found by reading the actual source of both the WORKING precedent and the BROKEN parallel,
+not by guessing from the hint list:** `editor-frame-profile.js`'s `frameCutProfile` already solves this
+correctly -- it reads `tpl.regions.miters` directly to know which `outlineDefects` joints are declared
+miter corners (real, not tangent) and exempts them. `contour-from-frame.js`'s `frameContourSilhouette`
+never got the same treatment: its own `corners` array (the thing it exempts `notTangent` against) was
+built PURELY from pieces that COLLAPSED during the offset -- true for every pre-T16/T17 template, where a
+declared corner is always a side effect of a neighbouring piece collapsing in a tangent chain (T1's own
+hourglass waist, T7's eave, etc.), but T16/T17 are an ALL-MITER outline with no tangent chain anywhere --
+nothing ever collapses, so the collapse-based `corners` list was always empty and every one of T16/T17's 6
+real joints read back `notTangent` with nothing to exempt it. Also found (and fixed in the same pass) a
+STALE comment in `editor-frame-profile.js` claiming equivalence with `tests/contour-from-frame.test.js`'s
+own coverage -- grepped that test and confirmed it only ever exercised the collapse case.
+
+**Fix, at the cause, for every frame-only preset (not a T16/T17 special case):** extracted the shared
+logic as a new EXPORTED function, `declaredMiterJointIndices(tpl, n)`, in `editor-frame-profile.js` --
+maps each declared miter's own outer-piece id (`:S`/`:E`) to the `outlineDefects` joint index it covers,
+the SAME declared source `frameCutProfile` itself already needed. Had `frameCutProfile` call it (removing
+the old duplicated inline computation) and imported it into `contour-from-frame.js`, unioning its output
+(mapped through the offset's own kept/collapsed index remapping) into `frameContourSilhouette`'s existing
+collapse-based `corners` array. A pre-T16/T17 template's own corners are always line-line joints, which
+`outlineDefects`' own tangency loop already skips unconditionally (`if (a.type==='L' && b.type==='L')
+continue`) -- so for those templates this union only ever ADDS already-redundant, harmless entries; it
+never changes behaviour, only makes the list match each template's true declared corners more completely.
+
+**Verified against the real app again after the fix:** same headless script, same panel sequence --
+`fromFrameError` now `null`, `fromFrame` `true`, the drawn contour now 6 primitives (T16's own outline,
+not the Hourglass preset) and visibly follows the frame's arched-top/waisted/flared-base shape in the
+screenshot. Also a direct Node reproduction across ALL 15 templates (not just T16/T17) confirms every
+single one now returns OK with a plausible primitive/corner count and no regression (e.g. `template_1 OK,
+primitives=12 corners=4`, `template_9 OK, primitives=12 corners=12`). Screenshots (both templates, both
+states): `shots/seatB/t84item6_{before,after}_template_{16,17}_offset_from_frame.png`. New capture script,
+adapted directly from `f26_offset_from_frame_shots.mjs`'s own proven pattern:
+`tools/repro/t84_item6_offset_from_frame_t16t17_shots.mjs`.
+
+**The explicitly-requested pure test**, added to `tests/contour-from-frame.test.js`: an `it.each` over
+every `FRAME_DEFS.templates` id, default record, 3 board sizes (7x9/12x6/9x12, this file's own existing
+convention), asserting `frameContourSilhouette(...)` returns no `.error` and a non-empty primitive list --
+skipping any board a template's own default genuinely doesn't fit (`frameCutProfile`'s own `defects`/`fit`
+gate), the SAME precondition convention `frame-no-hooked-miters.test.js`'s H23 item 39 sweep already
+established, since that's a pre-existing, unrelated condition (confirmed live: template_7 at 12x6 is
+`frameInvalid` even on the FIXED tree -- its own default simply doesn't fit that landscape extreme, nothing
+to do with this bug). Plus a second, non-vacuous mutation test: confirms every one of T16/T17's own raw
+`notTangent` defects (computed with NO exemption at all) is still fully covered by the fix's own `corners`
+list, proving the union is doing real work, not a no-op.
+
+**Non-vacuous, proven by actually reverting the fix, not argued:** after committing, checked out the two
+source files' PARENT-commit blobs over the working tree (`git checkout c3db72c~1 -- <2 files>`, the fix's
+own prior commit -- kept the new test as-is) and re-ran `tests/contour-from-frame.test.js`: **5/5 of the
+new assertions failed against the pre-fix tree, measured exactly** -- `template_7` 7x9 `invalid`,
+`template_10` 7x9 `invalid`, `template_16` 7x9 `invalid`, `template_17` 7x9 `invalid`, and the MUTATION
+test, all the same `'invalid'` (frameInvalid) failure the live repro also showed. (template_7's OWN
+*skip*-worthy case is 12x6, a genuinely-too-narrow default for that template -- a DIFFERENT, unrelated
+case from the 7x9 failure here, which is the real bug.) `git checkout HEAD -- <2 files>` restored the
+committed fix exactly (confirmed via `git status`: clean); re-ran clean: 106/106. Also re-ran the full
+touched-file fast tier after restoring (33 files sharing an import of either changed module): **960/960,
+zero regressions.**
+
+**A process-tree note for the next turn's `proc_health.py watch`:** capturing the before/after screenshots
+needed stashing the fix twice (before-shots, then pop to restore for after/tests), each through a fresh
+headless Chrome launch. One of those launches (profile `chrome-t84item6-9612`) orphaned its full process
+tree (main + crashpad_handler + gpu-process + 2x utility + 3x renderer) past the script's own `chrome.kill()`
+-- Windows doesn't cascade-kill a spawned child tree on the parent's exit. Found and killed by exact PID
+(matched via `Get-CimInstance ... | Where CommandLine -like '*t84item6*'`), never by bare process name, then
+removed the now-unlocked scratch profile dirs. Nothing of mine should be running now; the lane-b background
+HTTP server (port 8898, already running before this turn) was left alone since another turn may still want
+it.
+
+**Commit c3db72c, pushed to origin/lane-b** (4 files: the two fix files, the test file, the new capture
+script -- 166 insertions / 18 deletions). Screenshots live under `shots/seatB/` (gitignored, same
+convention as every other shot this session) -- the advisor/Fred can open them directly from this
+worktree. T84 item 6 is DONE. Per the dispatch's own explicit sequencing ("Then continue the Sand Timer"),
+next up is T84 item 5 (Sand Timer, Template 14) -- passing back now.
