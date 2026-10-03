@@ -228,6 +228,22 @@ export const PRESETS = {
     params: { topWidth: 0.75, archRiseFrac: 0.39, waistWidthFrac: 0.38, waistHeightFrac: 0.55, bulgeFrac: 0.169, upperCurveFrac: 0.175 },
     jitter: { topWidth: 0, archRiseFrac: 0, waistWidthFrac: 0, waistHeightFrac: 0, bulgeFrac: 0, upperCurveFrac: 0 },
   },
+  // T84 item 5 (Template 14, moved from seat C's F31 item 1b, Fred approved the diagram as drawn,
+  // fb-app 5e0b5fa, tools/repro/f31_item1_sandtimer_diagram.mjs): a FRAME-ONLY preset, like
+  // archedFunnel/tulip above: no Shape Lattice button offers it. A flat top and base, two outward-
+  // bulging arcs per side meeting at a sharp pinch -- EVERY joint a miter (no tangent chain at
+  // all, same structural class as archedFunnel/tulip) -- ported directly from
+  // fb_engine/t14_sandtimer_geometry.py's own tested closed form (read before writing this), ONLY
+  // place this algebra lives on the JS side: sandTimerConstruction.
+  // Defaults = fb_engine/t14_sandtimer_geometry.py's own TOP_WIDTH_FRAC_DEFAULT/
+  // PINCH_REACH_FRAC_DEFAULT/BULGE_FRAC_DEFAULT/PINCH_HEIGHT_FRAC_DEFAULT -- same numeric
+  // defaults, declared twice (Python + JS), keep them in sync if either changes.
+  sandTimer: {
+    label: 'Sand Timer',
+    frameOnly: true,
+    params: { topWidth: 1.0, pinchReachFrac: 0.6, bulgeFrac: 0.14, pinchHeightFrac: 0.5 },
+    jitter: { topWidth: 0, pinchReachFrac: 0, bulgeFrac: 0, pinchHeightFrac: 0 },
+  },
 };
 
 /**
@@ -308,6 +324,11 @@ export const PARAM_ORDER = {
   archedFunnel: ['topWidth', 'archRiseFrac', 'waistWidthFrac', 'waistHeightFrac', 'bulgeFrac'],
   // T84 item 3: Template 16's own 5 keys, plus upperCurveFrac (also independent of the rest).
   tulip: ['topWidth', 'archRiseFrac', 'waistWidthFrac', 'waistHeightFrac', 'bulgeFrac', 'upperCurveFrac'],
+  // T84 item 5 (frame-only preset): every arc is independently solved (no tangent chain, no
+  // coupling between handles -- fb_engine/t14_sandtimer_geometry.py's own module docstring), same
+  // as archedFunnel/tulip above; declared in the same order template_data.py's own FRAME_HANDLES
+  // table lists them.
+  sandTimer: ['topWidth', 'pinchReachFrac', 'bulgeFrac', 'pinchHeightFrac'],
 };
 const BASE_RANGES = {
   // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
@@ -425,6 +446,16 @@ export const DERIVED_PARAM_DEFAULTS = {
     bulgeFrac: () => 0.169,
     upperCurveFrac: () => 0.175,
   },
+  // T84 item 5: every param has a plain default (no seeded jitter: a frame always sets all 4 from
+  // its model/seeds, as T6/T7/T9/T16/T17) -- fb_engine/t14_sandtimer_geometry.py's own
+  // TOP_WIDTH_FRAC_DEFAULT/PINCH_REACH_FRAC_DEFAULT/BULGE_FRAC_DEFAULT/PINCH_HEIGHT_FRAC_DEFAULT
+  // (see PRESETS.sandTimer's own doc comment on keeping these in sync).
+  sandTimer: {
+    topWidth: () => 1.0,
+    pinchReachFrac: () => 0.6,
+    bulgeFrac: () => 0.14,
+    pinchHeightFrac: () => 0.5,
+  },
 };
 
 /** F12: the params the Shape Lattice panel offers (a slider and a handle each).
@@ -454,7 +485,10 @@ export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLef
   // T84 item 3 (frame-only presets archedFunnel/tulip): every key is brand new (unlike T11's own
   // deliberate reuse of Template 1's real param names, see that comment above), so every one goes
   // here. upperCurveFrac is tulip-only.
-  'topWidth', 'archRiseFrac', 'waistWidthFrac', 'waistHeightFrac', 'bulgeFrac', 'upperCurveFrac']);
+  'topWidth', 'archRiseFrac', 'waistWidthFrac', 'waistHeightFrac', 'bulgeFrac', 'upperCurveFrac',
+  // T84 item 5 (frame-only preset sandTimer): topWidth/bulgeFrac are already listed above
+  // (shared keys), so only its OWN new keys are added here.
+  'pinchReachFrac', 'pinchHeightFrac']);
 
 /**
  * T6 TAB TOP (a frame-only preset: the Shape Lattice has no button for it): a rectangle with a narrower rectangular
@@ -952,6 +986,19 @@ export function paramsFromShapeModel(preset, model, region) {
     if (f.upperCurveFrac != null) out.upperCurveFrac = f.upperCurveFrac / hw; // tulip only
     return out;
   }
+  // T84 item 5 (frame_shape_fit.py `sand_timer`): same plain-fraction convention. pinchReachFrac's
+  // own feature is already `hw*pinchReachFrac` directly (hw minus the pinch's own half-width, NOT
+  // the half-width itself -- _sand_timer's own docstring), so it divides back by hw exactly like
+  // topWidth/bulgeFrac need no special inversion. pinchHeightFrac's own feature is `hh - pinch_r.y`
+  // (coefficient `2 * pinch_height_of_h` on the Python side, provisional_sand_timer_model's own doc
+  // comment) -- dividing back by `2*hh`, matching its basis="h" FRAME_HANDLES declaration exactly,
+  // same as archedFunnel/tulip's own waistHeightFrac above.
+  if (preset === 'sandTimer') {
+    return {
+      topWidth: f.topWidth / hw, pinchReachFrac: f.pinchReachFrac / hw,
+      bulgeFrac: f.bulgeFrac / hw, pinchHeightFrac: f.pinchHeightFrac / (2 * hh),
+    };
+  }
   // Depth from the construction's own tangency: d = S +/- sqrt(S^2 - notch^2); the
   // fitted depth only picks the root (minor when the waist centre is outside the
   // shoulder column, major inside: Fusion's T1 is minor at 7x9, major at 12x6).
@@ -1096,7 +1143,8 @@ const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 't
   : preset === 'dippedLeftWave' ? _dippedLeftWaveRange : preset === 'iShape' ? _iShapeRange
     : preset === 'diamondTopHourglass' ? _diamondTopHourglassRange
       : preset === 'diamondTopHourglassPinch' ? _diamondTopHourglassPinchRange
-        : preset === 'archedFunnel' || preset === 'tulip' ? _archedTimerRange : _hourglassRange);
+        : preset === 'archedFunnel' || preset === 'tulip' ? _archedTimerRange
+          : preset === 'sandTimer' ? _sandTimerRange : _hourglassRange);
 
 /**
  * T84 item 3 (Templates 16/17, both share this range function -- every handle is independently
@@ -1132,6 +1180,46 @@ function _archedTimerRange(key, region, stroke, v) {
   if (key === 'bulgeFrac') return _range(0.009, 0.179);
   // upperCurveFrac: tulip only (archedFunnel's own PARAM_ORDER never asks for this key).
   return _range(0.005, 0.255);
+}
+
+/**
+ * T84 item 5 (Template 14, frame-only preset): every handle is independently solved (no tangent
+ * chain, no coupling -- fb_engine/t14_sandtimer_geometry.py's own module docstring), same reasoning
+ * as _archedTimerRange above. Bounds are the structural-validity extremes (positive radii, no
+ * sagitta past half-chord, no 180-deg undercut, the pinch strictly between the centreline and the
+ * board edge) MEASURED by a closed-form bisection sweep against
+ * fb_engine.t14_sandtimer_geometry.is_valid_outline, across all 3 portrait sizes
+ * (6x9/7x9/9x12 -- project_portrait_only), taking the TIGHTEST bound at each key, with a small
+ * safety margin inside the raw computed edge -- EXCEPT topWidth's own ceiling, which is exactly 1.0
+ * (A<=hw, is_valid_outline's own check), not margined below it the way _archedTimerRange's own
+ * topWidth ceiling (0.97) is: the Fred-approved default IS 1.0 (the diagram's own full-width top,
+ * TOP_WIDTH_FRAC_DEFAULT) -- a ceiling below the default would silently CLAMP it on every resolve
+ * (`_resolveParams`, MEASURED: frameCutProfile's own `params.topWidth` read back 0.97 against a
+ * `shapeParams.topWidth` of 1.0 before this was caught), making the "as drawn" shape unreachable.
+ * NOT yet cross-checked against the full JS production pipeline (outlineHasUndercut,
+ * miterStaysInsideWood, outline-offset.js's own self-intersection/collapse detection) the way
+ * _archedTimerRange's own bounds eventually were.
+ *
+ * pinchReachFrac's own floor is NOT the structural bisection sweep's raw 0.02 -- the live item-61
+ * matrix sweep (T84 item 5) caught a real defect that sweep never checked: at a low reach, the
+ * upper/lower bulge arcs' own chord goes nearly VERTICAL (topR/BR sit at the full board edge,
+ * pinchR sits close to their own x), so the FIXED bulgeFrac pushes the arc's own via point (near-
+ * horizontal normal) OUTWARD PAST THE TRUE BOARD EDGE, not just the safe zone -- Fusion's own
+ * extrude then fails outright ("the extrusion profile falls outside the boundary of the selected
+ * body"), MEASURED live: template_14_pinchReachFrac_min_7x9 built only 2 of 6 bars (all 4 arcs
+ * missing). Re-measured (fb_engine.t14_sandtimer_geometry.outline(), each arc's own via.x against
+ * the FULL board half-width, not the safe-zone one) at all 3 portrait sizes: the true floor is
+ * ~0.15 (6x9) / ~0.10 (7x9) / ~0.20 (9x12, the tightest) -- 0.20 clears all three with margin
+ * (0.04-0.09 in). generateRange's own floor (0.30, template_data.py) was already safely above this,
+ * so [Generate] was never affected -- only a hand-drag past the OLD 0.02 floor could have reached
+ * it.
+ */
+function _sandTimerRange(key, region, stroke, v) {
+  if (key === 'topWidth') return _range(0.15, 1.0);
+  if (key === 'pinchReachFrac') return _range(0.20, 0.60);
+  if (key === 'bulgeFrac') return _range(0.01, 0.148);
+  // pinchHeightFrac
+  return _range(0.36, 0.64);
 }
 
 export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
@@ -1417,6 +1505,8 @@ const SALT = {
   archedFunnel: { topWidth: 661, archRiseFrac: 662, waistWidthFrac: 663, waistHeightFrac: 664, bulgeFrac: 665 },
   // T84 item 3: Template 16's own 5, plus upperCurveFrac.
   tulip: { topWidth: 671, archRiseFrac: 672, waistWidthFrac: 673, waistHeightFrac: 674, bulgeFrac: 675, upperCurveFrac: 676 },
+  // T84 item 5: frameOnly (jitter 0 for all 4), same reason as dippedLeftWave's own comment above.
+  sandTimer: { topWidth: 681, pinchReachFrac: 682, bulgeFrac: 683, pinchHeightFrac: 684 },
 };
 
 /** Explicit param value wins; else default + a gentle seeded jitter,
@@ -2552,6 +2642,119 @@ function _solveTulip(region, params, segmentsOverride, seed, strokeHalfWidth = 0
 }
 
 /**
+ * T84 item 5: Template 14 (Sand Timer) -- a flat top and base, two outward-bulging arcs per side
+ * meeting at a sharp pinch partway in from each edge (a genuine miter corner -- the two arcs' own
+ * tangents differ there). EVERY joint a MITER, same structural class as archedFunnel/tulip above:
+ * each arc stands alone, solved from its own chord + sagitta -- ported directly from
+ * fb_engine/t14_sandtimer_geometry.py's own tested closed form (read before writing this), ONLY
+ * place this algebra lives on the JS side: sandTimerConstruction. `topWidthFrac`/`pinchReachFrac`/
+ * `bulgeFrac`/`pinchHeightFrac` = fb_engine/t14_sandtimer_geometry.py's own
+ * TOP_WIDTH_FRAC_DEFAULT/PINCH_REACH_FRAC_DEFAULT/BULGE_FRAC_DEFAULT/PINCH_HEIGHT_FRAC_DEFAULT --
+ * same numeric defaults, declared twice (Python + JS), keep them in sync if either changes.
+ *
+ * `region`-local, Y-DOWN (top edge at -hh, matching every other construction above -- UNLIKE
+ * fb_engine/t14_sandtimer_geometry.py's own Y-UP convention; a T84 item 5 fix already caught one
+ * sign bug from copying a formula across this exact flip without re-deriving it, see that module's
+ * own git history -- `pinchY` below is therefore the diagram script's OWN original y-DOWN formula,
+ * re-derived from first principles for Y-DOWN, not copied from the Python side's Y-UP one):
+ *   topR = (A, -hh), topL = (-A, -hh)              A = topWidthFrac*hw
+ *   pinchR = (pinchHalf, pinchY), pinchL = mirror   pinchHalf = hw*(1-pinchReachFrac)
+ *   pinchY = -hh + pinchHeightFrac*2*hh             (0 = top edge, 1 = bottom edge, in THIS y-DOWN frame)
+ *   BR = (hw, hh), BL = (-hw, hh)
+ *
+ * Every arc's own radius is the exact sagitta/half-chord relation
+ * `fb_engine.closed_form_arc.sagitta_circle` already proves (R = (halfChord^2 + sag^2) / (2*sag)) --
+ * same `_curveSegment(a, b, radius, outward, major, up)` chord-only derivation archedFunnelConstruction's
+ * own lower bulges use; no via-point/centre bookkeeping needed for the drawn arc itself (`sagittaGeom`
+ * below is for interaction handle anchors only, same convention as archedFunnelConstruction's own).
+ */
+export function sandTimerConstruction(region, resolved) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const D = DERIVED_PARAM_DEFAULTS.sandTimer;
+  const topWidthFrac = resolved.topWidth ?? D.topWidth(resolved);
+  const pinchReachFrac = resolved.pinchReachFrac ?? D.pinchReachFrac(resolved);
+  const bulgeFrac = resolved.bulgeFrac ?? D.bulgeFrac(resolved);
+  const pinchHeightFrac = resolved.pinchHeightFrac ?? D.pinchHeightFrac(resolved);
+
+  const A = topWidthFrac * hw;
+  const pinchHalf = hw * (1 - pinchReachFrac);
+  const pinchY = -hh + pinchHeightFrac * 2 * hh;
+  const bulge = bulgeFrac * hw;
+
+  const topR = { x: A, y: -hh }, topL = { x: -A, y: -hh };
+  const BR = { x: hw, y: hh }, BL = { x: -hw, y: hh };
+  const pinchR = { x: pinchHalf, y: pinchY }, pinchL = { x: -pinchHalf, y: pinchY };
+
+  const halfChordUR = Math.hypot(pinchR.x - topR.x, pinchR.y - topR.y) / 2;
+  const upperRadius = (halfChordUR * halfChordUR + bulge * bulge) / (2 * bulge);
+  const halfChordLR = Math.hypot(BR.x - pinchR.x, BR.y - pinchR.y) / 2;
+  const lowerRadius = (halfChordLR * halfChordLR + bulge * bulge) / (2 * bulge);
+
+  // Each arc's own CENTRE/VIA point (interaction handle anchors only, see archedFunnelConstruction's
+  // own doc comment on `sagittaGeom` for the full rationale -- identical here, convention-agnostic).
+  const sagittaGeom = (p0, p1, sag, awayPoint) => {
+    const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+    const dx = p1.x - p0.x, dy = p1.y - p0.y, L = Math.hypot(dx, dy) || 1;
+    let nx = -dy / L, ny = dx / L;
+    const dAway = (mx + nx - awayPoint.x) ** 2 + (my + ny - awayPoint.y) ** 2;
+    const dMid = (mx - awayPoint.x) ** 2 + (my - awayPoint.y) ** 2;
+    if (dAway < dMid) { nx = -nx; ny = -ny; }
+    const R = (L * L / 4 + sag * sag) / (2 * sag);
+    return { centre: { x: mx + nx * (sag - R), y: my + ny * (sag - R) }, radius: R,
+      via: { x: mx + nx * sag, y: my + ny * sag }, nx, ny, mx, my };
+  };
+  const upperGeom = sagittaGeom(topR, pinchR, bulge, { x: 0, y: (topR.y + pinchR.y) / 2 });
+  const lowerGeom = sagittaGeom(pinchR, BR, bulge, { x: 0, y: (pinchR.y + BR.y) / 2 });
+
+  return { hw, hh, topR, topL, pinchR, pinchL, BR, BL, upperRadius, lowerRadius,
+    upperGeom, lowerGeom, topWidthFrac, pinchReachFrac, bulgeFrac, pinchHeightFrac };
+}
+
+/** T84 item 5: Template 14 (Sand Timer) -- 6 pieces, clockwise from the top-right corner (matches
+ * template_data.py's own FRAME_SEED_MAP `prim` order and _OUTLINE: 0 upper_R, 1 lower_R, 2 base,
+ * 3 lower_L, 4 upper_L, 5 top). EVERY joint a miter, every side arc convex (outward).
+ */
+function _solveSandTimer(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  const resolvedAll = _resolveParams('sandTimer', region, params, seed, strokeHalfWidth);
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  const g = sandTimerConstruction(region, resolvedAll);
+  const s = strokeHalfWidth;
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
+  const M = (x, y) => ({ x: cx0 - x, y: cy0 + y });
+
+  // All 4 side arcs are convex (bulge outward): radius SHRINKS by the stroke, like the archedFunnel
+  // lower bulges above.
+  const upperRadiusDrawn = g.upperRadius - s;
+  const lowerRadiusDrawn = g.lowerRadius - s;
+  const hwD = g.hw - s, hhD = g.hh - s;
+
+  // topR.x only ever reaches hw at topWidthFrac's own ceiling (1.0, the default -- a genuine board
+  // CORNER there, unlike archedFunnel's own topR, which is never closer than archRiseFrac>0 pulls
+  // it from the edge); min(.., hwD) keeps that one case stroke-safe without affecting every other
+  // topWidthFrac value, where g.topR.x is already comfortably inside hwD.
+  const topRX = Math.min(g.topR.x, hwD);
+  const topR = P(topRX, -hhD), topL = M(topRX, -hhD); // topL is the mirror of topR
+  const pinchR = P(g.pinchR.x, g.pinchR.y), pinchL = M(g.pinchR.x, g.pinchR.y);
+  const BR = P(hwD, hhD), BL = M(hwD, hhD);
+
+  const keypoints = [topR, pinchR, BR, BL, pinchL, topL];
+  const fresh = [
+    _curveSegment(topR, pinchR, upperRadiusDrawn, true), // 0: upper_R, convex (outward)
+    _curveSegment(pinchR, BR, lowerRadiusDrawn, true), // 1: lower_R, convex (outward)
+    STRAIGHT_SEGMENT, // 2: base (BR -> BL)
+    _curveSegment(BL, pinchL, lowerRadiusDrawn, true), // 3: lower_L, convex (outward)
+    _curveSegment(pinchL, topL, upperRadiusDrawn, true), // 4: upper_L, convex (outward)
+    STRAIGHT_SEGMENT, // 5: top (topL -> topR)
+  ];
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
+  // Same EVEN 6-piece loop shape as archedFunnel/tulip above (TWO self-mapping pieces, base (2)
+  // and top (5), each spanning the full width) -- the SAME declared table applies directly.
+  const mirror = [4, 3, 2, 1, 0, 5];
+
+  return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments, mirror };
+}
+
+/**
  * `region: {x,y,w,h}` (SE14 §3, Q5 ruling) + `shape` ->
  * `{ keypoints, segments, primitives, cx, params }`. `shape.preset`
  * selects `'hourglass'` (default) or `'bottle'`; `shape.params` overrides
@@ -2597,7 +2800,9 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
                   ? _solveArchedFunnel(region, params, segmentsOverride, seed, strokeHalfWidth)
                   : preset === 'tulip' // T84 item 3, T17 TULIP (a frame-only preset)
                     ? _solveTulip(region, params, segmentsOverride, seed, strokeHalfWidth)
-                    : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
+                    : preset === 'sandTimer' // T84 item 5, T14 SAND TIMER (a frame-only preset)
+                      ? _solveSandTimer(region, params, segmentsOverride, seed, strokeHalfWidth)
+                      : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;
