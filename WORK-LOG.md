@@ -16405,3 +16405,50 @@ pixels, don't eyeball" discipline every other item here has used) once Fusion is
 again. No Fusion calls made for this analysis.
 
 **Committed this item:** `WORK-LOG.md` only. No code, no Fusion access used.
+
+## H23 item 70 (Fred, via the advisor): every edge-colour test/fixture/screenshot (67, 67b/c/d, 68,
+69) must use Shape Lattice contour Offset-from-frame ON, distance 0 (the contour exactly ON the
+board edge, not inset, so the edge-colour sampler genuinely samples the edge). App side only, no
+Fusion (fusion_holder.txt still names b5).
+
+**(1) Checked, measured live -- not re-read from code.** Drove the exact scenario-setup sequence
+items 67d/68/69's own scripts all used (select T1, open the stamp editor, open Shape Lattice, check
+the fromFrame checkbox, Generate) and read back the REAL pattern object afterward
+(`currentPattern(editor).contour.fromFrame` + `contourFromFrameOf(pattern)`, the app's own real
+functions, not a guess): **`{on: true, distance: 0, distanceRef: 'outer'}`** -- already exactly
+right, even though none of those scripts ever touched the distance field at all. Root cause of why
+it was already right: THREE independent declared defaults all agree on 0 --
+`CONTOUR_FROM_FRAME_DEFAULTS.distance` (`contour-from-frame.js`), `PATTERN_DEFAULTS.contour.
+fromFrame.distance` (`editor-lattice-pattern.js`), and the `shapeLatticeContourFromFrameDistance`
+HTML input's own `value="0"` default -- plus `_offsetFromFrameByDefault` (`properties-shape-
+lattice.js`) auto-sets `fromFrame.on=true` the moment a frame is chosen and no silhouette has been
+drawn yet, which is exactly the order every one of these scripts used (select frame, THEN Shape
+Lattice, THEN Generate). **Conclusion: every edge-colour test, fixture and screenshot across 67,
+67b, 67c, 67d, 68 and 69 already used distance 0 -- confirmed, not assumed. No shots need redoing.**
+(The vitest unit tests for edge colour, `frame-wall-edge-colour.test.js`, don't touch this at all --
+they use a synthetic `edgeSampler`/fake canvas, no real Shape Lattice pattern or DOM involved, so
+Offset-from-frame distance is not a variable there.)
+
+**(2) "Put it in the test helper, not per test" -- the one real duplication this surfaced.** Every
+edge-colour repro script (item67d_before_after.mjs, item68_decal_capture.mjs,
+item69_edge_strip_capture.mjs -- all scratch, all deleted per the established discipline) hand-
+copied the SAME ~60-line scenario block (template select, Shape Lattice + fromFrame + Generate,
+Stripe every contour segment, colour rails/ties/nodes). Declared it once instead: new
+`tools/repro/_edge_colour_scenario.mjs`, exporting `buildEdgeColourScenario(evalJS, sleep, opts)` --
+same raw-CDP-no-deps convention every `tools/repro/*.mjs` script already uses (a plain sibling ES
+module import, not a new package). It now sets the distance EXPLICITLY (`d.value = '0'`, with its
+own `input`+`change` events), not just relying on the three defaults agreeing -- so a future change
+to any ONE of those defaults can't silently break edge-colour testing again. `tools/repro/
+decal_png_spike.mjs` (item 68's own still-committed tool, the only currently-existing script that
+built this scenario) now imports and calls it instead of its own inline copy. Re-ran it live
+end-to-end after the refactor (same `tools/serve_app.py` dev server): identical real-pixel result to
+Part 1's own original run (`centerSample` exactly `#c62828` = (198,40,40,255), corner transparent,
+`lattice: {rail:9, tie:5, node:10}`, `stripeResult.remainingUnstriped: 0`) -- the refactor changed
+nothing observable, confirmed by measurement, not by reading the diff. Full relevant suite
+(`frame-wall-edge-colour.test.js`, `shape-lattice-segment-color.test.js`, `contour-from-frame.test.js`
+-- the three files touching this area) still green: 151/151 (none of them import the repro tooling,
+so this is a sanity check, not a direct dependency).
+
+**Committed this item:** `tools/repro/_edge_colour_scenario.mjs` (new), `tools/repro/
+decal_png_spike.mjs` (now calls the shared helper instead of its own inline copy), `WORK-LOG.md`. No
+other file touched. No Fusion access used.

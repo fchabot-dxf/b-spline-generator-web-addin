@@ -15,10 +15,12 @@
 //   node tools/repro/decal_png_spike.mjs <outDir> [paletteUrl] [--template=<id>] [--board=WxH] [--dpi=<n>]
 //
 // Reproduces Fred's own exact scenario by default (same as items 66/67's own live reproductions):
-// template_1, Shape Lattice + Offset from frame, every contour segment striped black/white via the
-// REAL Stripe tool, rails/ties/nodes coloured red/yellow/navy.
+// template_1, Shape Lattice + Offset from frame (distance 0 -- H23 item 70), every contour segment
+// striped black/white via the REAL Stripe tool, rails/ties/nodes coloured red/yellow/navy. The
+// scenario itself is shared (./_edge_colour_scenario.mjs) -- every edge-colour repro script uses it.
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
+import { buildEdgeColourScenario } from './_edge_colour_scenario.mjs';
 
 const OUT = process.argv[2] || 'bspline-frame-builder/scratch/decal-spike';
 const URL = process.argv[3] && !process.argv[3].startsWith('--')
@@ -91,71 +93,12 @@ if (BOARD) {
   await sleep(600);
 }
 
-// 1. Frame template.
-await evalJS(`(() => { const sel = document.getElementById('frameTemplate'); sel.value = '${TEMPLATE}'; sel.dispatchEvent(new Event('change')); return sel.value; })()`);
-await sleep(1200);
-
-// 2. Shape Lattice + Offset from frame + Generate.
-await evalJS(`document.getElementById('btnStampEdit').click(); true`);
-await sleep(2000);
-await evalJS(`document.getElementById('toolShapeLattice').click(); true`);
-await sleep(800);
-await evalJS(`(() => { const el = document.getElementById('shapeLatticeContourFromFrame'); el.checked = true; el.dispatchEvent(new Event('input', { bubbles: true })); return el.checked; })()`);
-await sleep(500);
-await evalJS(`document.getElementById('shapeLatticeGenerate').click(); true`);
-await sleep(3000);
+// 1-4: template select, Shape Lattice + Offset-from-frame (ON, distance 0 -- H23 item 70) +
+// Generate, Stripe every contour segment black/white, rails/ties/nodes coloured -- the shared
+// scenario every edge-colour repro script now uses (was duplicated inline here before item 70).
+const scenario = await buildEdgeColourScenario(evalJS, sleep, { template: TEMPLATE });
 report.lattice = await evalJS(`(() => { const c = {}; document.querySelectorAll('#editorSVGContainer [data-lattice]').forEach(e => { const k = e.getAttribute('data-lattice'); c[k] = (c[k]||0)+1; }); return c; })()`);
-
-// 3. Stripe the CONTOUR black/white, every segment (Fred's own exact setup, items 66/67's own
-// established technique).
-report.stripeResult = await evalJS(`(async () => {
-  document.getElementById('toolStripe').click();
-  await new Promise(r => setTimeout(r, 400));
-  window.svgEditor._stripe = { drive: 'count', count: 10, length: 1, three: false, colors: ['#000000', '#ffffff', null], ratio: [1] };
-  const svg = document.querySelector('#editorSVGContainer svg');
-  const tapAt = async (ex, ey) => {
-    const pt = svg.createSVGPoint(); pt.x = ex; pt.y = ey;
-    const screenPt = pt.matrixTransform(svg.getScreenCTM());
-    const opts = { clientX: screenPt.x, clientY: screenPt.y, bubbles: true, cancelable: true, pointerId: 1, button: 0, isPrimary: true };
-    document.elementFromPoint(screenPt.x, screenPt.y)?.dispatchEvent(new PointerEvent('pointerdown', opts));
-    await new Promise(r => setTimeout(r, 30));
-    window.dispatchEvent(new PointerEvent('pointerup', opts));
-    await new Promise(r => setTimeout(r, 60));
-  };
-  let tapped = 0;
-  for (let guard = 0; guard < 30; guard++) {
-    const segs = [...document.querySelectorAll('[data-contour-seg]')].filter((s) => !s.hasAttribute('data-stripe'));
-    if (!segs.length) break;
-    const seg = segs[0];
-    let ex, ey;
-    if (seg.tagName === 'line') {
-      ex = (parseFloat(seg.getAttribute('x1')) + parseFloat(seg.getAttribute('x2'))) / 2;
-      ey = (parseFloat(seg.getAttribute('y1')) + parseFloat(seg.getAttribute('y2'))) / 2;
-    } else if (seg.getTotalLength) {
-      const len = seg.getTotalLength();
-      if (!len) break;
-      const p = seg.getPointAtLength(len / 2);
-      ex = p.x; ey = p.y;
-    } else break;
-    await tapAt(ex, ey);
-    tapped++;
-  }
-  return { tapped, remainingUnstriped: document.querySelectorAll('[data-contour-seg]:not([data-stripe])').length };
-})()`);
-
-// Colour rails/ties/nodes too.
-await evalJS(`(() => {
-  const wrap = (sel) => [...document.querySelectorAll(sel)].map(n => window.SVG.adopt(n)).filter(Boolean);
-  window.svgEditor._selectMany(wrap('[data-lattice=rail]'));
-  window.svgEditor.setColor('#c62828');
-  window.svgEditor._selectMany(wrap('[data-lattice=tie]'));
-  window.svgEditor.setColor('#f9c80e');
-  window.svgEditor._selectMany(wrap('[data-lattice=node]'));
-  window.svgEditor.setColor('#1a237e');
-  window.svgEditor._selectMany([]);
-  true;
-})()`);
-await sleep(300);
+report.stripeResult = scenario.stripeResult;
 
 // 4. The actual spike: editor.save() -> buildDrapeSvg -> sanitize/prepare -> renderSvgNative ->
 // canvas.toDataURL('image/png'), at the declared DPI, board-aligned (viewBox stays raw inches,
