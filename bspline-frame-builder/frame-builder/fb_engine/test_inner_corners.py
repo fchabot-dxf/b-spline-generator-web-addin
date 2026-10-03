@@ -245,8 +245,13 @@ class TestSquareCornerShortSideCollapsed:
         ctx = self._run([(6.25, 8.80)])
         assert 'inner_proj_horn_TR:S' not in ctx.entity_map[S]
 
-    def test_point_slid_further_than_frame_thickness_is_rejected(self):
-        ctx = self._run([(6.350 - self.T - 0.1, 8.890)])
+    def test_point_slid_far_along_the_edge_is_resolved(self):
+        # T2 neckLength max: the inner bottom edge ends 2.85 cm along it (1.5 t)
+        ctx = self._run([(6.350 - 2.85, 8.890)])
+        assert 'inner_proj_horn_TR:S' in ctx.entity_map[S]
+
+    def test_point_slid_further_than_three_frame_thicknesses_is_rejected(self):
+        ctx = self._run([(6.350 - 3 * self.T - 0.1, 8.890)])
         assert 'inner_proj_horn_TR:S' not in ctx.entity_map[S]
 
 
@@ -283,4 +288,45 @@ class TestLineCircleCornerLineCollapsed:
     def test_point_off_the_offset_circle_is_rejected(self):
         ex, ey = self._expected()
         ctx = self._run([(ex - 0.5, ey - 0.5)])
+        assert 'inner_proj_horn_TR:S' not in ctx.entity_map[S]
+
+
+class _Attr:
+    def __init__(self, v):
+        self.value = v
+
+
+class _FakeCurve:
+    def __init__(self, cid, a, b):
+        self.attributes = types.SimpleNamespace(itemByName=lambda g, n: _Attr(cid) if cid else None)
+        self.startSketchPoint, self.endSketchPoint = FakePoint(*a), FakePoint(*b)
+
+
+class TestSquareCornerWholeRunCollapsed:
+    """H23 item 63 (live, T5 waistCenterY min): top edge, horn and shoulder arc all vanish in the
+    offset; the inner corner is where two inner arcs meet, 1.83 cm away, on neither axis line."""
+
+    T = 0.75 * 2.54
+
+    def _run(self, curves, points):
+        ctx = _ctx({'frame_thickness': self.T})
+        ctx.entity_map[S] = {'proj_horn_TR:S': FakePoint(8.255, 10.795)}
+        sk = FakeSketch(points)
+        sk.sketchCurves = curves
+        step = {'Distance': 'frame_thickness', 'Tolerance': 0.05,
+                'Corners': {'TR': {'OuterID': 'proj_horn_TR:S', 'InnerID': 'inner_proj_horn_TR:S',
+                                   'Direction': (-1, -1)}}}
+        inner_corners.inner_corner_step(ctx, sk, S, step)
+        return ctx
+
+    def test_inner_loop_vertex_is_resolved(self):
+        curves = [_FakeCurve('inner_proj_arc_top_shoulder_R', (4.528, 8.774), (3.508, 8.541)),
+                  _FakeCurve('inner_proj_arc_waist_R', (4.528, 8.774), (6.350, 2.980))]
+        ctx = self._run(curves, [(4.528, 8.774), (3.508, 8.541)])
+        got = ctx.entity_map[S].get('inner_proj_horn_TR:S')
+        assert got is not None and (round(got.geometry.x, 3), round(got.geometry.y, 3)) == (4.528, 8.774)
+
+    def test_outer_points_never_qualify(self):
+        curves = [_FakeCurve('proj_top_edge_R', (5.946, 10.795), (8.255, 10.795))]
+        ctx = self._run(curves, [(5.946, 10.795)])
         assert 'inner_proj_horn_TR:S' not in ctx.entity_map[S]

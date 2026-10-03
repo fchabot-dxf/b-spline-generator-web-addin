@@ -138,14 +138,29 @@ def inner_corner_step(ctx, sketch, s_name, step):
             # is where the surviving straight edge's offset meets the next curve -- still ON that
             # edge's axis line, just slid along it (0.074 cm there, past the 0.05 tolerance). Accept
             # the nearest point lying exactly on either axis line through the expected corner,
-            # slid by at most the offset distance. Square (+-1, +-1) corners only.
+            # slid along it. Square (+-1, +-1) corners only.
+            # 3 x frame_thickness: a big neighbouring arc (T2 neckLength max: the hip) can end the
+            # inner edge 2.85 cm along it (1.5 t), MEASURED live.
             slid_pt, slid_dist = _find_point_slid_along_axis(
-                all_points, expected_x, expected_y, max_slide=dist_cm)
+                all_points, expected_x, expected_y, max_slide=3 * dist_cm)
             if slid_pt is not None:
                 ctx.logger.log(
                     f"INNER CORNER {label}: short side collapsed in the offset; using the point "
                     f"slid {slid_dist:.4f} cm along the surviving edge")
                 nearest_pt, nearest_dist = slid_pt, 0.0
+
+        if nearest_pt is None or nearest_dist > tolerance:
+            # H23 item 63 (live, T5 waistCenterY min): the WHOLE corner run (top edge, horn, small
+            # shoulder arc) can collapse in the offset, leaving the inner corner where two inner
+            # ARCS meet -- on neither axis line, 1.83 cm from (outer - t, outer - t). Last resort:
+            # the nearest vertex of the inner loop itself (an endpoint of an offset curve, tagged
+            # 'inner_*'), within 1.5 x frame_thickness. Outer points never qualify.
+            v_pt, v_dist = _find_nearest_point(_inner_loop_vertices(sketch), expected_x, expected_y)
+            if v_pt is not None and v_dist <= 1.5 * dist_cm:
+                ctx.logger.log(
+                    f"INNER CORNER {label}: corner run collapsed in the offset; using the inner "
+                    f"loop's own vertex {v_dist:.4f} cm away")
+                nearest_pt, nearest_dist = v_pt, 0.0
 
         if nearest_pt is None or nearest_dist > tolerance:
             ctx.logger.log(
@@ -191,6 +206,25 @@ def _find_nearest_point(all_points, ex, ey):
             best_d = d
             best_pt = pt
     return best_pt, best_d
+
+
+def _inner_loop_vertices(sketch):
+    """[(x, y, sketch_point)] for the endpoints of every curve whose FrameBuilder ID starts with
+    'inner_' (the offset's own children)."""
+    out = []
+    curves = getattr(sketch, 'sketchCurves', None)
+    if curves is None:
+        return out
+    for c in curves:
+        try:
+            a = c.attributes.itemByName('FrameBuilder', 'ID')
+            if not a or not str(a.value).startswith('inner_'):
+                continue
+            for sp in (c.startSketchPoint, c.endSketchPoint):
+                out.append((float(sp.geometry.x), float(sp.geometry.y), sp))
+        except Exception:
+            continue
+    return out
 
 
 def _find_point_slid_along_axis(all_points, ex, ey, max_slide, on_line_eps=1e-3):
