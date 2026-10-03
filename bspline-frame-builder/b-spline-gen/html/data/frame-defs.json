@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "bd41140696053b8791a329d5477ebf97bf59fcb7638aefec7e9221f2219e58f7",
+  "sourceHash": "78a461e2d7402aef62db1a94ec143634cadd220c3ea2e389a6f5efa4794cf9c3",
   "templates": [
     {
       "features": [
@@ -1717,6 +1717,12 @@
           "binding": "seeded",
           "key": "waistCenterY",
           "label": "Waist position"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "key": "taperAngle",
+          "label": "Taper angle"
         }
       ],
       "hidden": false,
@@ -2010,6 +2016,11 @@
           "notch": {
             "hh": 0.232589,
             "hw": 0.09041
+          },
+          "taperAngle": {
+            "const": 8.0,
+            "hh": 0.0,
+            "hw": 0.0
           },
           "waistCy": {
             "hh": 0.000101,

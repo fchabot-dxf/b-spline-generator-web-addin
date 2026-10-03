@@ -13938,3 +13938,130 @@ files; full fb_engine pytest suite 726 passed/10 skipped. Zero regressions.
 and the live matrix sweep (4/4, this turn) all complete and verified, including one real Fusion build
 bug found live and fixed with a permanent regression test added. Commits aeef8b5, 6e890bb, 4eb20f2,
 d3dce2e, 0a0231c, f692ef1 all pushed to origin/lane-b. Passing back and messaging the advisor now.
+
+## Lane B -- Turn 268 (epoch 9) -- T84 item 7: Arched + taper on T10 -- the Fusion override fixed at
+## its cause, taperAngle re-added, live 9/9 BUILT (two harnesses), preview==build -- DONE, with 2
+## findings flagged for the advisor
+
+Advisor: item 5 accepted/merged/deployed, next T84 item 7 (moved from main's H23 item 62): fix the
+p02_06/07 override at its cause, re-add taperAngle, live-check the 5 angles + sizes, preview==build,
+100% BUILT, add to the item-61 matrix. Read main's WORK-LOG items 59-61 first.
+
+**Read items 59-61 in full before touching anything** (per the dispatch's own instruction). Item 59:
+ported the shared taper construction fix (hourglassConstruction's hh->hh-archRise substitution) into
+production, LIVE-verified 8/9 cases built the WRONG, untapered shape (horn_TR stayed vertical
+regardless of the sent taper) -- root-caused to "p02_06's own Coincident weld... Fusion's solver
+reconciles to a position matching NEITHER seed", handle withheld. Item 60: re-root-caused more
+precisely -- the skeleton pin IS seeded correctly (confirmed live), it's `p02_06`'s own weld to the
+waist arc's centre that gets overridden; flagged `p02_07_tangency.py` as "not yet read" and the real
+fix as "not yet designed". Item 61: the unrelated 133-case full matrix (not this item's own concern,
+skipped per the dispatch's own scoping -- T10's OWN handle table was never touched by that item).
+
+**Root cause, found by reading EVERY relevant T10 phase file in full, then MEASURING, not guessing
+from the text** (p02_02_anatomy, p02_03_loop, p02_04_chain, p02_05_horns, p02_06_waist_pins,
+p02_07_tangency, p02_08_horn_tangency, p02_10_welds, p02_11_symmetry): item 60's own suspects (p02_06's
+Coincident weld, p02_07's Tangent chain) are NOT the actual cause -- both are fine. The real culprit is
+`p02_03_loop.py`'s own UNCONDITIONAL `{'Type': 'Vertical', 'Targets': ['horn_TR', 'horn_BR', 'horn_TL',
+'horn_BL']}`, a constraint so early and so blunt it overrides EVERYTHING downstream regardless of what
+the skeleton pins or the tangency chain resolve to -- Fusion's own solver satisfies `Vertical`
+unconditionally, so a seeded (tapered, slanted) horn snaps straight back to vertical the instant the
+sketch solves. Found this by comparing T10's own phase files directly against Template 12's (the
+ALREADY-SHIPPED, working taper template) -- T12's own `p02_03_loop.py` docstring states the fix in so
+many words: "drops horn_TR/horn_TL from the Vertical targets (a slanted line has no such constraint)".
+T10's own copy, inherited from Template 1, never got this treatment because no PRIOR T10 handle ever
+needed the top horns to be non-vertical.
+
+**Confirmed LIVE, not just by comparison** (the discipline this project's own culture demands, 2
+builds): built item 59's own captured bad case (taper=-15, 7x9) BEFORE any fix, read back horn_TR's
+own live sketch geometry directly (not through any wrapper) -- S=(3.25,2.7625) E=(3.25,1.1029),
+PERFECTLY VERTICAL, x unchanged -- exact reproduction of item 59's own finding. Applied the one-line
+fix (dropped horn_TR/horn_TL from Vertical, kept horn_BR/horn_BL -- taper only ever touches the TOP
+corner, item 59's own construction fix never touches the bottom). Rebuilt the SAME case: horn_TR now
+reads E=(2.7552,0.9159), matching the JS-side seed to 4 decimal places.
+
+**Re-added taperAngle** (template_data.py): T10's 4th handle, basis hw, binding seeded, generateRange
+OMITTED (Fred approved the FULL -15..+15 band per the dispatch, not a narrower Generate-only subset --
+`_hourglassRange`'s own taperAngle branch, kept unchanged since item 59, already declares exactly this
+band). `FRAME_PROVISIONAL_SHAPE` gained `"taperAngleDeg": 8.0`, re-using T12/T13's own already-generic
+`frame_definition.py` dispatch mechanism (unconditional re-application whenever this key is present --
+no new branch needed).
+
+**LIVE-verified, 2 independent harnesses, both 9/9 BUILT:**
+1. `item59_t10_taper_sweep.py`, the dispatch's own EXACT 9 cases (taper {-15,-8,0,8,15} @ 7x9,
+   {-15,8} @ 6x9/9x12): regenerated the payloads (`h23_item59_make_payloads.mjs`, now that the handle
+   exists again) and ran the full sweep. **9/9 BUILT** (4/4 bars, 0 overlaps/slivers/dup, healthy
+   timeline, 0 miter-miss), **preview==build (item 46's own check) with 0 mismatches at EVERY single
+   case** -- was 8/9 mismatched (every nonzero taper) before this fix, confirmed by first running the
+   SAME sweep against the UNFIXED phase file (see the module-contamination note below for why that
+   first run's own error_lines were noisy) before applying the fix, then again after.
+2. `item61_full_matrix_sweep.py`, T10's own FULL handle matrix (archRise/waistReach/waistCenterY/
+   taperAngle x {min,max} + default, 9 cases @ 7x9, the dispatch's own "add to the item-61 matrix"
+   ask): generic, no script edit needed (reads `T.handles` dynamically). **9/9 BUILT.**
+
+Screenshots (default + taper=-15, both confirmed built clean, bars-only view, sketches/panel hidden):
+`shots/seatB/t84item7_t10_taper0_7x9.png`, `..._taper-15_7x9.png` (+ a front-view attempt that turned
+out edge-on/degenerate, kept for honesty, not useful), copied to the status page
+(`C:/Users/danse/.bspline-status/shots/seatB/1054_item7_t10_taper*.png`).
+
+**A pre-existing, taper-INDEPENDENT artifact noted, not fixed** (confirmed out of this item's own
+scope): every T10 case in this synthetic-panel harness logs one "Through All Extrude... body not found"
+ERROR from the surround/trim step -- present even at the UNMODIFIED taper=0 default. Cross-checked
+against `item61_full_matrix_sweep.py`'s own (less strict, more battle-tested) `built` criterion for
+the SAME default case: `built: true` (it doesn't look at generic `[ERROR]` lines, only NOT BUILT/MITER
+MISS/REFLEX ARC patterns) -- confirms this is a synthetic-panel limitation (the trim feature wanting
+something a bare single-rectangle panel doesn't have), not a regression from this fix.
+
+**Finding 1, a real incident this item's own live work caused and cleaned up: Fusion-session
+sys.path/sys.modules contamination.** While diagnosing (many `fusion_execute` calls, each saving/
+inserting/restoring its own `sys.path`/`sys.modules` around a lane-b import), an intentional 397-module
+purge earlier this session (done to fix an unrelated stale-FBValueResolver error, T84 item 5's own
+turn) was never followed by a matching cleanup -- 8 separate lane-b `sys.path` entries accumulated
+across calls (each call's own "restore to saved state" was restoring to an ALREADY-slightly-
+contaminated baseline from the call before it, then adding one more layer). CAUGHT when
+`record_frame_parity.py` (see Finding 2) crashed with `KeyError: '3_frame_enclosure'` -- sketch 3
+should always exist. Investigated directly: `sys.modules['frame_engine_core'].__file__` pointed at the
+INSTALLED add-in's own deployed path (correct), but `sys.modules['fb_engine'].__file__` (and every
+`fb_engine.*`/`fb_utils.*` submodule it depends on) had been SWAPPED to point at MY OWN lane-b
+checkout instead -- a live, mixed-version runtime for the SAME add-in the advisor explicitly asked not
+to redeploy. **Cleaned up directly, not left for someone else to trip over**: removed all 8 lane-b
+`sys.path` entries, purged the affected `sys.modules` entries (`fb_engine`/`fb_utils`/`sketches`/
+`template_*`/`frame_engine_core`) so the next real import resolves against the installed add-in's own
+path again. Re-verified MY OWN build mechanism (explicit per-call sys.path save/insert/restore, the
+SAME pattern every live check this item and item 5 used) still resolves correctly afterward. Did
+**NOT** attempt to manually re-bootstrap `frame_engine_core` itself -- it is only ever populated by the
+add-in's own UI/palette bootstrap, which I have no safe way to trigger from a script; faking it risked
+making the contamination WORSE, not better. **Flagging this for the advisor/Fred**: if the Frame
+Builder palette misbehaves in THIS Fusion session before it's next genuinely reloaded (new design,
+add-in restart, or simply opening the palette once), this is almost certainly why -- the module cache
+should now be clean, but I have not been able to verify the palette's own live behavior end to end
+(that needs the UI, which I don't drive).
+
+**Finding 2, flagged, not fixed: T10's own committed parity goldens are now stale.**
+`tools/check_golden_freshness.py`'s own gate (H23 item 20, enforced by `test_golden_freshness.py` at
+the frame-builder ROOT -- NOT inside `fb_engine/`, so it never showed up in my own per-task gate,
+`pytest fb_engine/ -q`, until I happened to run the FULL root-level suite out of curiosity) requires
+re-recording a template's own `tests/fixtures/frame-parity/*.json` goldens any time its own phases/*.py
+changes. This is the FIRST time since T16/T17's own earlier work this session that a COMMITTED
+phase file (not a brand-new one) has actually been edited -- T14/16/17 had no prior goldens to go
+stale. Attempted the re-record live (`record_frame_parity.py`, 7x9) -- this is exactly where Finding 1
+was caught: it crashed because it depends on `sys.modules['frame_engine_core']` already being
+populated by the add-in's own bootstrap (never a fresh import itself), which the contamination above
+had corrupted. After the Finding-1 cleanup, `frame_engine_core` is no longer in `sys.modules` at all
+(purged), and nothing short of the add-in's own UI can safely re-populate it from a script. **Not
+blocking**: the underlying GEOMETRY is unaffected at taper=0 (confirmed byte-identical via the 0-
+mismatch live sweep above -- the fix only ever matters when taper is nonzero, and the goldens' own
+recorded board sizes/values were never about taper in the first place), so the goldens' own recorded
+VALUES stay numerically accurate; only their own git-freshness marker is stale. Recommend a dedicated
+live pass (ideally after confirming the palette itself still opens cleanly) to re-record
+`template_10_{7x9,6x9,12x6}.json` via `record_frame_parity.py` -- low-risk, mechanical, not urgent.
+
+**Verification gate:** `pytest fb_engine/ sketches/template_10/ -q`: 729 passed/10 skipped (unaffected
+by both findings above -- neither failing test lives in this scope). Full root-level pytest (out of
+curiosity, surfaced Finding 2): 915 passed/25 skipped/3 failed -- 2 are frame-defs staleness (resolves
+at this very commit), 1 is Finding 2 (flagged above, not resolved this item). Full vitest: 3252
+passed/0 failed across 166 files -- zero regressions anywhere in the app/JS layer.
+
+**Commit 1136738, pushed to origin/lane-b** (6 files: the phase-file fix, the handle re-add, the
+regenerated frame-defs, the updated + new test files -- 201 insertions/29 deletions). T84 item 7 is
+DONE on its own explicit terms (fix, handle, live 9/9 x2, shots) -- 2 findings flagged above for the
+advisor to triage, neither blocking. Passing back and messaging the advisor now.

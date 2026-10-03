@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord, framePayload } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile, frameInnerProfile, frameMiters } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
-import { frameHandles, handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
+import { frameHandles, handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds, frameParamRanges } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { generateSilhouette, outlineDefects, paramsFromShapeModel, PARAM_ORDER } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { frameLabel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { sampleOutline } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
@@ -19,12 +19,18 @@ import { sampleOutline } from '../bspline-frame-builder/b-spline-gen/html/core/p
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const T1 = tplOf('template_1'), T10 = tplOf('template_10');
 const BOARDS = [[7, 9], [12, 6], [9, 7], [5.51, 1.97]];
-const KEYS = ['archRise', 'waistReach', 'waistCenterY'];
-// H23 item 59 (Arched + taper): NOT added as a 4th handle -- LIVE Fusion verification found the
-// shoulder/waist/hip arc chain ignores a sent taperAngle (p02_02_anatomy.py's own hardcoded skeleton
-// pins), so the handle is withheld pending that fix; see WORK-LOG and template_data.py's own comment.
-// The shared construction fix below (hourglassConstruction, _hourglassRange, taperAngleForTopCornerX)
-// is real and kept -- these tests exercise it directly via explicit seeds, with no handle needed.
+const KEYS = ['archRise', 'waistReach', 'waistCenterY', 'taperAngle'];
+// T84 item 7 (H23 item 59/60's own gate, resolved): taperAngle is now a REAL 4th handle. H23 item 59
+// found the shoulder/waist/hip arc chain ignored a sent taperAngle entirely -- root-caused (item 60,
+// this item) to p02_03_loop.py's own UNCONDITIONAL `Vertical` constraint on horn_TR/TL: Fusion's
+// solver snaps a seeded (slanted) horn straight back to vertical regardless of the sent taper, no
+// matter what the skeleton pins or tangency chain do downstream (`Tangent on an arc chain LOCKS the
+// seed, it does not SOLVE for the shape`, fusion360-quirks skill). Fixed by dropping horn_TR/TL from
+// the Vertical targets (Template 12's own identical, already-shipped pattern, p02_03_loop.py's own
+// docstring: "a slanted line has no such constraint") -- horn_BR/BL stay Vertical, untouched (taper
+// only ever affects the TOP corner). Verified LIVE in Fusion, 9/9 declared cases (taper
+// {-15,-8,0,8,15} @ 7x9, {-15,8} @ 6x9/9x12): preview==build, 0 mismatches at every case (was 8/9
+// mismatched before the fix) -- see WORK-LOG T84 item 7 for the full live readback.
 const T = 0.75; // the default frame thickness
 const board = (W, H) => ({ widthIn: W, heightIn: H });
 const rec10 = (seeds, extra = {}) => normalizeFrameRecord({ templateId: 'template_10', seeds, ...extra });
@@ -33,7 +39,7 @@ const inner = (seeds, W = 7, H = 9, extra) => frameInnerProfile(FRAME_DEFS, rec1
 const primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : p.rx * Math.abs(p.dTheta));
 
 describe('Template 10: listing and declaration', () => {
-  it('is listed as "10. Arched Hourglass", the SHARED hourglass preset (not frame-only), 3 handles', () => {
+  it('is listed as "10. Arched Hourglass", the SHARED hourglass preset (not frame-only), 4 handles', () => {
     expect(T10.name).toBe('Template 10 - Arched Hourglass');
     expect(frameLabel(T10)).toBe('10. Arched Hourglass');
     expect(T10.silhouettePreset).toBe('hourglass'); // reused, like Templates 1/3/4/5 -- not a new preset
@@ -161,11 +167,12 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     return { h, hs, prof, rec, next: normalizeFrameRecord({ ...rec, ...handleDragPatch(rec, h, pt, prof.region) }) };
   };
 
-  it('the table is exactly the advisor-approved 3, all seeded, in order', () => {
+  it('the table is exactly the advisor-approved 4, all seeded, in order', () => {
     expect(T10.handles).toEqual([
       { key: 'archRise', label: 'Arch rise', basis: 'hh', binding: 'seeded' },
       { key: 'waistReach', label: 'Waist reach', basis: 'hw', binding: 'seeded' },
       { key: 'waistCenterY', label: 'Waist position', basis: 'hh', binding: 'seeded' },
+      { key: 'taperAngle', label: 'Taper angle', basis: 'hw', binding: 'seeded' },
     ]);
     // computeParamHandles' own `pick()` preserves ITS OWN catalogue order (waistReach, ..., waistCenterY, ...,
     // archRise last), not FRAME_HANDLES' own declared order -- same as every other template's own handle list.
@@ -405,14 +412,14 @@ describe('the Shape Lattice and Templates 1-9 never get the arch', () => {
  * disconnected-but-same-direction joint would slip past it) -- now a pure, permanent test instead of a one-off
  * diagram script's own throwaway check.
  *
- * T10 has NO taperAngle HANDLE (LIVE Fusion verification found the shoulder/waist/hip arc chain ignores a
- * sent value -- see template_data.py's own comment and WORK-LOG for the full finding) -- these tests exercise
- * the SHARED CONSTRUCTION directly (generateSilhouette, bypassing frameCutProfile/normalizeFrameRecord,
- * which would silently DROP a taperAngle seed for a template with no declared handle for it, per frame-
- * record.js's own `seeded.has(k)` filter). The fix is real and correct at this level regardless of whether
- * any template exposes it yet.
+ * T84 item 7: T10 now HAS a real taperAngle handle (the Fusion-side gate these tests predate is fixed --
+ * see this file's own header comment and WORK-LOG T84 item 7). These tests are KEPT exactly as item 59
+ * wrote them: they exercise the SHARED CONSTRUCTION directly (generateSilhouette, bypassing
+ * frameCutProfile/normalizeFrameRecord) specifically to isolate the JS-side construction's own
+ * correctness from the (now also fixed) Fusion build layer -- a genuinely different, still-useful claim
+ * from "the handle works end to end", which the new describe block below this one checks instead.
  */
-describe('H23 item 59: Arched + taper (shared construction only -- T10 has no handle for this yet)', () => {
+describe('H23 item 59: Arched + taper (shared construction, independent of the Fusion/handle layer)', () => {
   const primEnd = (p, atEnd) => (p.type === 'L' ? (atEnd ? p.p1 : p.p0) : {
     x: p.cx + p.rx * Math.cos(atEnd ? p.theta1 + p.dTheta : p.theta1),
     y: p.cy + p.ry * Math.sin(atEnd ? p.theta1 + p.dTheta : p.theta1),
@@ -473,5 +480,77 @@ describe('H23 item 59: Arched + taper (shared construction only -- T10 has no ha
     expect(continuityCheck(sil.primitives), 'captured bad case (explicit, not clamped): still connected').toBeLessThan(1e-9);
     expect(realDefects(sil.primitives).some((d) => d.kind === 'notTangent'),
       'captured bad case: the real defect this item found').toBe(true);
+  });
+});
+
+/**
+ * T84 item 7: taperAngle END TO END, through the REAL handle-gated path (frameCutProfile /
+ * frameInnerProfile / frameHandles / frameSeedGeometry) this file's own H23 item 59 block deliberately
+ * bypassed. LIVE-verified clean in Fusion (WORK-LOG T84 item 7): the dispatch's own 9 declared cases
+ * (taper in {-15,-8,0,8,15} @ 7x9, {-15,8} @ 6x9/9x12), 9/9 BUILT, preview==build with 0 mismatches at
+ * every one (was 8/9 mismatched before the fix). These tests prove the JS-side half of that claim --
+ * the record/profile layer resolves a sent taperAngle cleanly -- the same way every other template's
+ * own handle tests do; they cannot re-prove the Fusion build itself (that is the live sweep's own job).
+ */
+describe('T84 item 7: taperAngle, the real handle (not the shared-construction bypass above)', () => {
+  const DECLARED_CASES = [[7, 9, -15], [7, 9, -8], [7, 9, 0], [7, 9, 8], [7, 9, 15], [6, 9, -15], [6, 9, 8], [9, 12, -15], [9, 12, 8]];
+
+  it('the dispatch\'s own 9 declared cases: 0 defects, 4 miters (piece length NOT asserted here -- MEASURED, ' +
+    'taper=-15 7x9 genuinely shrinks the shoulder arc to 0.44in, under frame_thickness 0.75in, yet LIVE ' +
+    'Fusion still builds it clean -- a thin-but-valid bar, not a defect this item\'s own success criteria ' +
+    '(preview==build, 100% BUILT) ever required to be excluded; see WORK-LOG T84 item 7)', () => {
+    for (const [W, H, taper] of DECLARED_CASES) {
+      const prof = profile({ taperAngle: taper }, W, H);
+      expect(prof.primitives.length, `${W}x${H} taper=${taper}`).toBe(12);
+      expect(prof.defects, `${W}x${H} taper=${taper}`).toEqual([]);
+      const inn = inner({ taperAngle: taper }, W, H);
+      expect(inn.defects, `${W}x${H} taper=${taper}`).toEqual([]);
+      expect(frameMiters(prof.primitives, inn.primitives), `${W}x${H} taper=${taper}`).toHaveLength(4);
+    }
+  });
+
+  it('a nonzero taper actually moves horn_TR off vertical (the exact live Fusion finding, reproduced ' +
+    'here in the JS seed the record layer actually sends -- the seed was always correct; T84 item 7 ' +
+    'fixed Fusion ignoring it, not this)', () => {
+    const prof0 = profile({ taperAngle: 0 }, 7, 9);
+    const geo0 = frameSeedGeometry(T10, prof0, 7, 9);
+    expect(geo0.horn_TR.points[0][0]).toBeCloseTo(geo0.horn_TR.points[1][0], 6); // vertical at taper=0
+
+    const profT = profile({ taperAngle: -15 }, 7, 9);
+    const geoT = frameSeedGeometry(T10, profT, 7, 9);
+    expect(Math.abs(geoT.horn_TR.points[0][0] - geoT.horn_TR.points[1][0])).toBeGreaterThan(0.3); // slanted
+    // matches the live-measured build value (WORK-LOG T84 item 7) to the seed, not just "not vertical".
+    expect(geoT.horn_TR.points[1][0]).toBeCloseTo(2.7552, 3);
+    expect(geoT.horn_TR.points[1][1]).toBeCloseTo(0.9159, 3);
+  });
+
+  it('generateRange is the full Fred-approved -15..15 band, default 8 (matching _hourglassRange\'s own ' +
+    'declared taperAngle branch exactly -- no narrower Generate-only range, unlike a moderate-range ' +
+    'handle such as T7\'s own gableNeckWidth: Fred approved the FULL range here)', () => {
+    const region = profile({}).region;
+    const R = frameParamRanges(T10, region, { ...paramsFromShapeModel('hourglass', T10.shapeModel, region) });
+    expect(R.taperAngle.min).toBeCloseTo(-15, 6);
+    expect(R.taperAngle.max).toBeCloseTo(15, 6);
+    expect(paramsFromShapeModel('hourglass', T10.shapeModel, region).taperAngle).toBeCloseTo(8, 6);
+  });
+
+  it('dragged to each extreme, the frame stays valid (12 pieces, 0 defects, 4 miters) at 7x9', () => {
+    const drag = (key, seeds, dx, dy) => {
+      const rec = rec10(seeds);
+      const prof = frameCutProfile(FRAME_DEFS, rec, board(7, 9));
+      const hs = frameHandles(T10, prof);
+      const h = hs.find((q) => q.key === key);
+      const pt = { x: h.anchor.x + dx, y: h.anchor.y + dy };
+      return normalizeFrameRecord({ ...rec, ...handleDragPatch(rec, h, pt, prof.region) });
+    };
+    for (const [dx, dy] of [[20, 0], [-20, 0]]) {
+      const next = drag('taperAngle', {}, dx, dy);
+      const after = frameCutProfile(FRAME_DEFS, next, board(7, 9));
+      expect(after.primitives.length).toBe(12);
+      expect(after.defects).toEqual([]);
+      const innAfter = frameInnerProfile(FRAME_DEFS, next, board(7, 9));
+      expect(innAfter && innAfter.defects).toEqual([]);
+      expect(frameMiters(after.primitives, innAfter.primitives)).toHaveLength(4);
+    }
   });
 });

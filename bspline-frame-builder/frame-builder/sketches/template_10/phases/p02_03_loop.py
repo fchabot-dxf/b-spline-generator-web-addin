@@ -121,7 +121,15 @@ def get_block(ui_data=None):
         {'ID': 'horn_TL', 'Type': 'Line', 'Points': [['-widthIn/2 + 0.001', CY], ['-widthIn/2', 'heightIn * 0.183']], 'StartID': 'horn_TL:S', 'EndID': 'horn_TL:E'},
         {'ID': 'horn_BL', 'Type': 'Line', 'Points': [['-widthIn/2 + 0.001', '-heightIn/2 + 0.001'], ['-widthIn/2', '-heightIn * 0.183']], 'StartID': 'horn_BL:S', 'EndID': 'horn_BL:E'},
 
-        {'Type': 'Vertical', 'Targets': ['horn_TR', 'horn_BR', 'horn_TL', 'horn_BL']},
+        # T84 item 7 (H23 item 59/60's own gate, resolved): horn_TR/TL dropped from Vertical -- a
+        # slanted (tapered) horn has no such constraint (Template 12's own identical pattern,
+        # p02_03_loop.py's own docstring: "drops horn_TR/horn_TL from the Vertical targets"). At
+        # taperAngle=0 this is a no-op (both endpoints are still individually pinned -- :S to
+        # top_edge's own end, :E to the shoulder arc's own tangent point via horn_tip_weld,
+        # p02_05_horns.py -- so the line is still fully determined, 0 remaining DOF, and lands
+        # exactly vertical anyway). horn_BR/BL (untouched by taper, item 59's own construction fix
+        # leaves the bottom corner alone) stay Vertical, unchanged.
+        {'Type': 'Vertical', 'Targets': ['horn_BR', 'horn_BL']},
 
         # 3. Corner topology. BR/BL unchanged (anchored to the real board corners). TR/TL: NOT anchored to the
         # board corner directly -- tied to the arch's own chord end instead, already pinned exactly in section
