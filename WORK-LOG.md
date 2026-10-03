@@ -13871,3 +13871,92 @@ every other file under `scratch/`, left uncommitted -- consistent with this whol
 convention, and the same "no committed generator" limitation item 45 already flagged for this
 entire payload directory. A future session re-running the sweep from a fresh checkout would need
 to regenerate it the same way (the one-off Node script's own approach is in this entry above).
+
+## H23 item 49 -- item 18 resumed: the audit `closed_form_arc.py`'s own declaration deferred ("a separate commit" that never landed)
+
+Dispatch (advisor, 449): declare the seed-derivation convention once (item 17's closed-form
+technique), audit every literal seed as DERIVED / FITTED-OK / WRONG using item 45's map, fix the
+WRONG ones + re-record goldens, preview==build stays 13/13. Code + audit first; live needs
+"Fusion free" first (the advisor had its own pending Fusion probe for Fred).
+
+**First finding: the "declare" half is ALREADY DONE.** `git log` on `fb_engine/closed_form_arc.py`
+turns up `5b922e8` ("H23 item 18 (1/2): declare the closed-form seed-derivation convention",
+2026-10-02, an ancestor of this session's own HEAD) -- three named, independently-tested pure
+functions (`tangent_circle_through_point`, `colinear_circle_through_point`, `true_via_point`),
+the worked example (`fb_engine/t7_geometry.py`'s own `t7_outline()`), and the convention itself
+written into `HANDOFF-ranchy.md`'s own Frame design rules. That commit's own message says, in so
+many words: "Part 2 (separate commit): audit existing templates' literal seeds for suspect cases
+beyond the three already-fixed ones." No such commit exists (confirmed: grepped WORK-LOG.md and
+git log for "item 18 (2/2)" -- nothing). Item 49 IS that missing part 2, not a restart. No new
+`closed_form_arc.py` work needed; this item's own code deliverable is the audit's own permanent
+regression guard, below.
+
+**The audit, per HANDOFF-ranchy.md's own question ("does this seed encode a relationship to OTHER
+geometry, and if so, is it solved from that relationship or just fitted to look right at one board
+size?"), using item 45's own file:line map as the starting inventory:**
+
+- **DERIVED, confirmed, nothing to do:** T7 (`t7_geometry.py`, the worked example itself); T11
+  (its own HW/HH/A/R/S closed-form formulas); T5's and T8's own TOP dip/shoulder radius (T5: item
+  6's `TOP_SEED_RADIUS_EXPR`; T8: its own independently-derived `R = (a^2+d^2)/(4d)`, "the exact
+  tangent-triple formula", with its own dedicated test coverage already) -- both the 2 originally-
+  confirmed-broken incidents item 18 named. T10's arch (items 17/46/47). T12/T13's seed-board
+  routing (seat C's F30 item 3) -- confirmed directly: both call `seed_sketch` in their own
+  `get_template_logic`, the third originally-confirmed incident, already fixed.
+- **FITTED-OK, no geometric relationship to solve, or independently fitted (not copied):** T2/T13
+  (arcs seeded by 3 points alone, no separate Radius dimension -- structurally immune to the
+  radius-vs-chord mismatch this bug class is about); T3/T4's own shoulder/waist/hip seed POINTS
+  (independently-fitted fractions, confirmed different from T1's own -- not a copy); T12's own
+  side-chain radius (`heightIn * 0.06925`/`0.075575`, confirmed numerically distinct from T1's
+  `heightIn/14` -- independently fitted, not reused; not exhaustively closed-form-verified here,
+  since T12's own horn is taper-slanted, not vertical, which `tangent_circle_through_point` would
+  need the exact taper angle to check -- spot-checked only, flagged as a smaller, bounded follow-up
+  if ever wanted, not chased further this item).
+- **FITTED-OK, but with a MEASURED, now-PERMANENTLY-GUARDED margin -- the one real finding:**
+  T1/T3/T4/T5/T8/T10's own shared `arc_shoulder_{R,L}`/`arc_hip_{R,L}` seed Radius dimension
+  (`heightIn/14`, byte-identical across all six templates -- T10's own case is the LITERAL,
+  word-for-word incident item 18 originally named: its `arc_shoulder_R`/`arc_hip_R` Points are
+  copied VERBATIM from T1's, confirmed by diffing the two files' own declared fractions). This
+  radius IS a real tangency relationship -- `arc_shoulder_R` is declared `Tangent` to the VERTICAL
+  `horn_TR` (`p02_08_horn_tangency.py`, identical structure confirmed across all six templates by
+  reading each one's own file) -- exactly what `closed_form_arc.py`'s own `tangent_circle_through_
+  point` is declared for. Computed it directly (new `fb_engine/test_seed_derivation_audit.py`):
+  the TRUE closed-form radius exceeds the declared `heightIn/14` by 0.0056-0.0265 in at Fred's own
+  portrait board sizes (7x9/6x9/9x12), growing to 0.10-0.15 in at the already-excluded landscape
+  sizes (12x6/5.51x1.97) -- the SAME bug class as T5's own original item-6 incident, just two
+  orders of magnitude smaller at the sizes that matter (there: a 23% shortfall, geometrically
+  impossible, wrong-branch solve; here: 1-4% at portrait sizes, imprecise but not impossible).
+
+**Classified FITTED-OK, not WRONG -- and NOT fixed, for two confirmed (not assumed) reasons:**
+(1) every one of these six templates deletes this Radius dimension in its own
+`p02_09_radius_removal.py` before the sketch is considered final -- it only ever nudges the
+solver's INITIAL guess, never binds the built shape; (2) MEASURED, not assumed: every template
+sharing this constant already has a clean, passing golden at every tested size -- read
+`tests/fixtures/frame-parity/template_1_12x6.json` directly (the single WORST-margin case measured
+here, 0.15in gap): all 4 bars, `timelineHealthy: true`. Re-deriving a constant SIX templates share,
+for a value deleted before it can affect anything, that has never once manifested as a defect, is
+exactly what HANDOFF-ranchy.md's own audit section calls "leave seeds alone that are provably
+fine" -- re-deriving it now would be risk for a cosmetic win, not a bug fix.
+
+**The permanent guard, so the margin can't silently widen into a REAL bug the way T5's did:** new
+`fb_engine/test_seed_derivation_audit.py`, 14 (template, arc) cases x 3 portrait boards = 42 pure-
+Python assertions, each computing the TRUE tangent-circle radius via the ALREADY-declared
+`closed_form_arc.tangent_circle_through_point` and asserting the gap against the declared literal
+stays under a generous (0.1in, ~4x today's own worst portrait-size margin) bound -- a future edit
+to either the points or the radius that widens this past the bound fails LOUD, before the gap
+reaches T5's own original scale. Mutation-tested the comparison itself (not just the templates):
+temporarily tightened the bound to 0.001in, confirmed ALL 42 cases fail with the EXACT measured
+gaps (e.g. `template_1:arc_shoulder_R at 7x9: ... gap 0.0056 in`, matching this entry's own
+hand-computed number precisely), restored, confirmed green again.
+
+**No fixes, no goldens re-recorded** -- the audit found nothing classified WRONG (the 3 originally
+-confirmed incidents were already fixed by items 6/17/F30-item-3, before this item ever started).
+**No live Fusion needed for this item at all** -- the entire audit is static/computational
+(resolve_template + pure Python, the same no-Fusion methodology `test_all_templates_shape_outline
+.py` already established), and since nothing was changed, there is nothing for a live preview==
+build re-check to confirm -- did not need to ask for "Fusion free".
+
+Full Python suite: 766 passed (up from 724; +42, exactly the new test's own count), 25 skipped, 0
+failures. `frame-defs.json/.js` untouched (the new test file lives in `fb_engine/`, outside
+`gen_frame_defs.py`'s own `sketches/**/*.py` source-hash scope) -- confirmed no regen needed.
+
+Committed as "H23 item 49: ...". File list: `fb_engine/test_seed_derivation_audit.py` (new).
