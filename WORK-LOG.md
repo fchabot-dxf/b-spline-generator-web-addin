@@ -13960,3 +13960,92 @@ failures. `frame-defs.json/.js` untouched (the new test file lives in `fb_engine
 `gen_frame_defs.py`'s own `sketches/**/*.py` source-hash scope) -- confirmed no regen needed.
 
 Committed as "H23 item 49: ...". File list: `fb_engine/test_seed_derivation_audit.py` (new).
+
+## H23 item 50 -- item 29 un-parked: PRUNE FOR SPEED -- both named candidates measured and NEITHER should be removed
+
+Dispatch (advisor, 451): re-time a real Send stage by stage (T1/T7/T10 7x9), A/B each candidate
+removal (Pulse, nudges), keep only identical A/B + 13/13 live sweep, one commit per removal,
+report before/after seconds. Keep load-bearing steps (anchors, isTopologyMatched,
+ResolveLineCircleCorner). Ask for "Fusion free" first -- an amendment confirmed it mid-turn.
+Mid-session: the advisor needed Fusion for ~5 min for Fred's own taper probe; paused cleanly
+between calls (confirmed via SendMessage), resumed once told "Fusion back", touched nothing of
+the advisor's own open document.
+
+**Nudges: CONCLUSIVELY NOT safe to remove.** `tools/repro/fusion_t11/step_removal_ab.py`'s own
+`no_nudges` variant, live:
+  - **template_1 at 7x9: `same=False`, geometric deviation 2.12371 in at `3_frame_enclosure`'s own
+    `inner_proj_horn_TL`** -- independently reproduces the SAME class of finding NEXT-SESSION.md's
+    own item 29 text already named for template_10 (2.18 in), now confirmed on a SECOND template,
+    not just inherited folklore.
+  - **template_10 at 7x9: `same=False`, geometric deviation 166.83949 (!) at `2_shape_outline`'s
+    own `top_edge`, plus 2 live warnings** -- catastrophically worse than T1: stripping the
+    `0.001` apex-forcing nudge (`p02_03_loop.py`'s own `top_edge` Arc3Point, `['0.001', LY]`) lets
+    the apex sit EXACTLY on the Y-axis symmetry line, the precise condition items 14/15/17's own
+    multi-session saga already established triggers Fusion's own wrong-branch/degenerate solve.
+  - **template_7 at 7x9: `removed=0`** -- T7 declares no literal `0.00[12]`-style nudges at all
+    (its own DNA-formula params have nothing to strip), so this bug class does not apply to it.
+  - **Explained, not just measured**: every template's own phase docstrings already document WHY
+    (a `0.001`/`0.002` gap exists specifically so Fusion's own AUTO-coincidence detection doesn't
+    weld 2 points together at CREATION time, before the EXPLICIT, ordered `Coincident` chain gets
+    to do it correctly) -- this item's own live A/B is the first time that explanation has been
+    checked against an actual measured failure rather than just asserted. Confirms the dispatch's
+    own "keep load-bearing steps" instinct was right to flag nudges as a real risk, not a safe prune.
+
+**Pulse: geometrically safe (6/6 A/B checks), but the timing says it does NOT pay -- so it is also
+NOT removed.** `no_pulse` on T1/T7/T10, BOTH 7x9 and 9x12 (6 checks): every one `same=True`, 0.0
+geometric deviation, 0 warnings -- the symmetry/welds-phase Pulse (`p02_10_welds.py`/
+`p02_11_symmetry.py`, "Pulse to snap symmetry into the viewport") is genuinely redundant.
+Structurally explained, not just empirically observed: `parametric_engine.py`'s own
+`deferred_compute(sketch)` context manager already wraps the WHOLE sketch build and GUARANTEES
+(in its own `finally`) exactly one full recompute when the build finishes, regardless of any
+intermediate Pulse -- unlike `offsets.py`'s own internal pulse inside `offset_step` (which exists
+to finalize proxy entities an IMMEDIATELY-FOLLOWING miter/projection step needs to look up by
+attribute, a genuinely different, load-bearing need this Pulse doesn't share), nothing between
+the symmetry/welds Pulse and the guaranteed final recompute needs an intermediate snapshot.
+
+But geometric safety was never the whole gate -- item 29's own text: "prune where the TIMING SAYS
+it pays." Measured directly, twice, in two different contexts:
+  - **Isolated (empty doc, run_sketch_only alone):** template_1 baseline 2.5s vs. no_pulse
+    (isolated from baseline in its own run) ~2.4s -- within noise, no measurable benefit.
+  - **A synthetic "heavy" document** (a flat panel + a 15x15 grid of 225 small extruded bump
+    features joined onto it -- 230 timeline entries, NOT a claim this matches a real sculpted
+    B-spline surface's own cost profile, just a cheap way to give Fusion a longer precedent
+    timeline to recompute against): baseline alone rose to 4.16s (confirming heavier documents DO
+    cost more, the right DIRECTION per item 29's own original ~16s-vs-1-2s finding) -- but
+    baseline (4.16s) vs. no_pulse (4.12s), each built in its OWN fresh heavy document (not
+    sequentially in one, which an earlier same-document attempt confirmed confounds the
+    comparison with the delete-and-rebuild overhead in between): still within noise. The gap
+    between baseline and no_pulse did not widen as document weight did.
+  - **Honest limit on this evidence**: my own synthetic heavy document is a ~1.66x slowdown over
+    empty (4.16s vs 2.5s); the ORIGINAL item-29 finding was 8-16x (16s of a 25s Send vs 1-2s
+    empty). I could not reproduce that scale without a REAL captured Send payload carrying
+    `stepVariants`/`stepText` (`send_stage_timing.py`'s own prep-only harness, already built,
+    needs exactly this) -- `~/.bspline-frame-builder/last_send.json` currently holds an unrelated
+    capture (`frame.templateId` is `None`, no frame Send at all), and genuinely reproducing a
+    STEP-imported, stamped panel requires either a real Fred-performed Send with that field kept,
+    or Fred's own document, neither of which this pass had. The TREND across the two weights I
+    could test (no widening gap as weight rose 1x -> 1.66x) is evidence against Pulse's own cost
+    scaling with document weight, but is not proof it stays flat all the way to a REAL document's
+    own full weight -- flagging this boundary explicitly rather than overclaiming a clean negative.
+
+**Decision: remove neither.** Nudges fail the safety gate outright (confirmed broken, one
+catastrophically). Pulse passes safety but fails the TIMING gate on every measurement taken (2
+contexts, 0 measured benefit in either) -- "safe to remove" was never alone sufficient per the
+dispatch's own framing, and removing working code for a benefit that hasn't shown up anywhere
+it's been measured is not a prune, it's just risk. **No code changes, no commit of production
+files, one commit (this entry) for the record** -- "one commit per removal" has nothing to apply
+to when the audit's own conclusion is that neither candidate should be removed.
+
+**Side finding, flagged not fixed:** `step_removal_ab.py`'s own `OUT` path
+(`os.path.join(os.path.dirname(os.path.dirname(FB)), 'scratch', ...)`) resolves to `<repo>/
+scratch/step_removal_results.jsonl`, not `<repo>/bspline-frame-builder/scratch/...` (every OTHER
+script in this directory's own convention) -- the directory didn't exist, so the FIRST run this
+item made crashed with `FileNotFoundError` until the directory was created by hand. Not this
+item's own tool to fix (pre-existing, unrelated to Pulse/nudges); noting it here so the next
+session doesn't re-discover the same crash from scratch.
+
+Full Python suite re-confirmed: 766 passed, 25 skipped, 0 failures (unchanged from item 49 --
+nothing in production code was touched this item). No live 13-template sweep needed -- there is
+no removal to re-check it against.
+
+Committed as "H23 item 50: ..." (WORK-LOG.md only -- no code).
