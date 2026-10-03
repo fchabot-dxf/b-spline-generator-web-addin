@@ -107,6 +107,17 @@ FRAME_REGIONS = {
     ],
     "surround": "surround_rect",                           # p03_05
     "bars": [dict(b) for b in FRAME_BARS],
+    # F31 item 2c (Fred: "on the Flask the side can sometimes be one piece, I'd want a manual
+    # toggle"): the neck/dome joint, both sides -- fb_engine/joined_miters.py's own
+    # apply_joined_miters() reads this to merge the two named bars into one and flip the named
+    # miter's own IsConstruction when the user toggles it JOINED (the default is SPLIT, i.e. this
+    # list is declared but inert until a frame record actually asks for it).
+    "joinable": [
+        {"id": "neckBottomR", "bars": ["frame_neck_right", "frame_dome_right"],
+         "miterSource": "proj_dome_R:E", "mirror": "neckBottomL"},
+        {"id": "neckBottomL", "bars": ["frame_neck_left", "frame_dome_left"],
+         "miterSource": "proj_dome_L:S", "mirror": "neckBottomR"},
+    ],
 }
 # FB-APP F9: the frame shape HANDLES (see template_1's table for the binding rules). All 3 seeded:
 # no template param sets the outline's own shape (the phases leave it to the seeds,

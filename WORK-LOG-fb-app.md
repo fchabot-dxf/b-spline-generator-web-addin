@@ -8164,3 +8164,149 @@ test_no_miter_miss_possible.py, frame-defs.test.js, frame-template-6.test.js, fr
 frame-template-15.test.js (new), item61_full_matrix_sweep.py. Passing back; will resume for the live sweep
 once Fusion is confirmed up, and starting F31 item 2c (joinable waists, code/test side) in the meantime per
 the advisor's own instruction.
+
+### Addendum, same day: the live Fusion sweep (Fusion came free, de first)
+
+7/7 Flask cases BUILT (100%): default, topWidth min/max, neckHeightFrac min/max, domeFullnessFrac min/max,
+all at 7x9 -- zero crashes, zero NOT BUILT / MITER MISS / REFLEX ARC log lines, no dup-named/sliver/overlap
+bodies, via `tools/repro/fusion_t11/item61_full_matrix_sweep.py` with `TEMPLATE_META['template_15']`
+registered (committed above).
+
+One real snag, caught and fixed rather than papered over: a first attempt to screenshot the built shape used a
+simplified hand-rolled rebuild script (to keep the doc open past the sweep script's own auto-close) that
+skipped some of the proven script's own `sys.modules` eviction/reload dance -- it silently produced a document
+with ZERO frame bodies (a `CRITICAL: Failed to load FBValueResolver: module fb_engine.fb_value_resolver not in
+sys.modules` line buried in the debug log, no exception raised since `_handle_send_frame` swallows and logs
+its own errors). Caught by checking `root.allOccurrences` for `frame_*` bodies BEFORE trusting the shot, not
+after. Fixed by reusing the EXACT proven sweep script text (patched only to skip its own final `.close()`
+call) instead of reimplementing the setup by hand -- both re-shot cases then showed the real, correct 6 bars.
+
+Shots (`C:/Users/danse/.bspline-status/shots/seatC/`): `f31item2b_fusion_default_7x9_top.png` (clean top-down,
+the approved shape, 6 mitered bars, perfectly symmetric) and `f31item2b_fusion_neckHeightFrac_min_7x9.png`
+(the worst-case extreme this item's own range-floor re-measurement was built to protect -- short neck, dome
+dominant -- also clean).
+
+Scratch-doc hygiene: used the sweep script's own self-fingerprinting (`adv_item61fullsw_fp` user parameter,
+its own startup cleanup sweep for stray empty fingerprinted docs) throughout; every doc I opened was closed by
+its own tracked handle (`HOLD.docs[case]`), never by name or count. Confirmed via `app.documents` at the end:
+exactly one document remained open, Fred's own "Untitled" -- never touched. No redeploy.
+
+Reported "Fusion released" to the advisor with full results so Fusion could hand to seat b5. Resuming F31
+item 2c now.
+
+## 2026-10-03: F31 item 2c -- joinable joints, manual toggle (T14/T15/T16/T17) (seat C)
+
+Dispatch: Fred's own words, "on the Flask the side can sometimes be one piece, I'd want a manual toggle" --
+generic across every two-part-waist template (T14 Sand Timer, T15 Flask, T16 Arched Funnel, T17 Tulip), done
+on the code/test side while Fusion was with seat b5.
+
+Research first: dispatched an Explore agent to map the frame record, declared_profiles.py's own bar-splitting,
+the Send-frame payload plumbing, any existing tap-to-toggle UI precedent, and the item-61 declared-bar-list
+mechanism -- it found a real, non-obvious gap: `solid_coordinator._declared_frame()` re-resolves the template
+FRESH FROM DISK at solid-build time, with no access to the sketch-build's own in-memory mutated template (the
+same reason panel_lip.py/inset_window.py's own module docstrings already flag for their own, simpler cases --
+but both of THOSE sidestep it with fixed, payload-independent curve names, which a genuinely record-dependent
+joined set cannot do). Two open design questions (the on-canvas marker's own visual, and what "needs a 1.10 in
+blank" actually measures) went to the advisor rather than being guessed; both came back answered before any
+UI code was written: reuse the Frame tab's existing round handle look (filled=joined, hollow=split, same
+hover feedback as every other handle), and blank width = the narrowest rectangle containing the merged piece's
+own outer+inner outline, measured perpendicular to the chord between its two end miters, rounded to 1/16 in.
+
+**Declaration** (`regions.joinable`, each of T14/T15/T16/T17's own template_data.py): two mirrored joints per
+template, each naming its own two bar names and which declared miter (by `Source` id) flips to
+`IsConstruction: True` when joined.
+
+**Fusion build side** (`fb_engine/joined_miters.py`, mirrors panel_lip.py's/inset_window.py's own
+`apply_X(template) -> template` shape): merges the two named bars' own curve lists into one, flips the one
+named miter, regenerates the "bars" feature's own `bodyNames`. The attribute-stamping gap above is handled by
+stamping the joined set as its OWN Fusion component attribute (`FrameBuilder.JoinedMiters`, alongside the
+existing `TemplateId` stamp) in `frame_engine.run_sketch_only`, read back and re-applied by
+`solid_coordinator._declared_frame()` before `declared_profiles.classify()` runs. Plumbed end to end:
+`core/frame-record.js` (`joinedMiters`, a template change resets it since joint ids are template-specific) ->
+`framePayload` -> `fb_engine/send_frame.py` (`joined_miters_of`) -> `frame_engine.py` `run_sketch_only`
+(applies the mutation + stamps the attribute) -> `solid_coordinator.py` (reads the attribute, re-applies the
+same mutation).
+
+**Editor UI** (built only after the advisor's own answers above, not guessed ahead of them): a small round
+marker at each joinable joint's own outer corner (`frameJoinMarkers`, editor-frame-profile.js, reusing
+`handleHoverVisual` -- the Frame tab's own existing handle look). Tapping toggles it AND its mirror together,
+one `editFrame` call (one undo step) -- `main/frame-panel.js`'s own pointerdown/pointermove wiring, checked
+BEFORE the drag-handle hit-test so a marker tap is never mistaken for the start of a drag. A read-only info
+line ("One piece: needs a 1 3/4 in blank.") shows the computed blank width (`blankWidthIn`/
+`formatBlankWidthIn`), same `frameFitWarning`-style read-only-computed-text pattern every other such line in
+this panel already uses.
+
+**Three real bugs found by the tests written for them, not by review** (each one WORTH recording so the next
+reader trusts the test suite's own coverage, not just this paragraph's claim that it exists):
+1. `frameJoinMarkers`' first cut located a joint's own corner via its declared `miterSource`'s bare outline
+   id -- WRONG: that id encodes the Fusion-side CCW-arc `:S`/`:E` swap convention (p02_02_loop.py's own
+   docstring), a completely different numbering from `frameMiters()`'s own JS-side travel-order `bIdx`. T14's
+   own pinchR landed on the BR corner instead. Caught by a mirror-symmetry test (tests/frame-join-markers.
+   test.js), not by eyeballing the numbers. Fixed: derive the corner from the joint's own declared `bars`
+   pair instead (the later of the two bars' own outline positions) -- a purely structural computation, no
+   dependency on the unrelated Fusion-side naming.
+2. `editor._frameJoinMarkers` was only ever SET inside `_drawFrameProfile`'s own Frame-tab branch, so
+   switching to the Artwork tab left it STALE (the exact same trap `_frameHandles = []`'s own unconditional
+   reset already exists to avoid, and I nearly reintroduced it). Caught by a dedicated DOM test
+   (tests/frame-join-ui.test.js), fixed with the same unconditional reset before the tab check.
+3. Mutation-tested the mirror-pair toggle itself (`main/frame-panel.js` `_toggleJoinMarker`): deliberately
+   dropping the mirror from the toggled pair was caught by 2 of the 6 DOM tests in frame-join-ui.test.js.
+   Reverted before committing.
+
+**LIVE FUSION VERIFICATION NOT YET RUN** -- this item's own completion bar ("each of the 4 templates with the
+waist joined and split, all 100% BUILT, plus shots") needs Fusion, which was handed to seat b5 partway through
+this work. The attribute-stamping mechanism (sketch-build time -> solid-build time) is the one piece here with
+no non-Fusion precedent to mutation-test against -- reviewed and internally consistent (every other piece is
+pure-Python/pure-JS tested, including the Fusion-side mutator itself via `declared_profiles.classify()`), but
+not yet confirmed against a real Fusion build. Will run the live sweep (all 4 templates x joined x split) once
+Fusion is free again.
+
+Full suite green: Python 999/999 (25 pre-existing skips, unrelated), JS vitest 171 files / 3342 tests.
+Committed: `fb_engine/joined_miters.py` (new), `fb_engine/test_joined_miters.py` (new), `send_frame.py`,
+`frame_engine.py`, `solid_coordinator.py`, `test_send_frame.py`, all 4 templates' `template_data.py`,
+`core/frame-record.js`, `editor-frame-profile.js`, `frame-panel.js`, `bspline_gen_palette.html`, `frame-defs.
+json`/`.js` (regenerated), and 3 new test files (`frame-join-markers.test.js`, `frame-join-ui.test.js`,
+`joined-miters-record.test.js`). Passing back.
+
+### Addendum, same day: the live Fusion sweep (Fusion came free, "b5 -> you -> f3")
+
+Pulled main first (`8bf2099 T84 item 8: harden item61_full_matrix_sweep.py against overlapping runs` -- a
+re-entry lock, `HOLD.busy`, plus a read-merge-write on every `_write()`, after a timed-out `fusion_execute`
+call let two copies of the sweep loop run concurrently against the same results file). Confirmed my own
+`TEMPLATE_META['template_15']` entry survived the merge; full suite re-checked green after (Python 999/999, JS
+173 files/3378 tests) before touching Fusion.
+
+8/8 BUILT (100%): all 4 templates (T14/T15/T16/T17), both SPLIT (default) and fully-JOINED, at 7x9 -- zero
+crashes, zero NOT BUILT/MITER MISS/REFLEX ARC log lines, no dup-named/sliver/overlap bodies. The item-61 sweep
+script itself isn't joined-aware (its own `TEMPLATE_META` is a flat per-templateId table, not a function of
+the record), so this used a dedicated script built on its exact proven pattern (same document fingerprinting,
+`HOLD.busy` re-entry lock, `bars_report`), but with the expected bar list computed DYNAMICALLY per case --
+`fb_engine.joined_miters.apply_joined_miters()` on the real resolved template, then
+`declared_profiles.frame_bars()` on the result -- exactly the research's own recommendation, not a second
+hand-maintained table that could drift from the first. Run in 3 batches of <=3 cases each, per the advisor's
+own instruction (the new re-entry lock's own caller discipline).
+
+**One real snag, caught before it cost a wasted build cycle, not papered over:** the first payload-generator
+attempt built payloads via `framePayload()` directly and omitted `seedGeometry` entirely. Without it,
+`send_frame.py`'s own `applied` flag is `False` and the template falls back to its own LITERAL/default sketch
+construction -- which, for T14 and T15's own un-seeded defaults, hit a live REFLEX ARC (255-267 deg sweep) in
+Shape Outline, unrelated to the joined-miters work itself. The real app's own `frameSendPayload()`
+(frame-panel.js) always attaches `seedGeometry`, even for a fresh/unseeded record -- my own simplified
+generator just didn't match that. Fixed by computing it the same way (`frameCutProfile` + `frameSeedGeometry`),
+re-ran clean. Recorded here specifically so a future reader building their own payload generator for this
+app reaches for `frameSendPayload()`'s own pattern first, not `framePayload()` alone.
+
+Confirmed the merged bar count directly on the built Flask (T15) doc before trusting the screenshot: 4 bodies
+(`frame_top`, `frame_neck_left`, `frame_neck_right`, `frame_base`) where the split default has 6 -- the two
+neck/dome pairs merged exactly as declared, nothing else touched. Shot saved (top view, panel body hidden):
+`C:/Users/danse/.bspline-status/shots/seatC/f31item2c_fusion_template15_joined_top.png` -- visually confirms
+continuous wood grain across both neck-to-dome joints (no miter line there), top/base still separately
+mitered.
+
+Scratch-doc hygiene: the live-check script's own fingerprinting (`adv_f31item2c_fp` user parameter, the same
+startup-cleanup-sweep-for-stray-empty-docs pattern `item61_full_matrix_sweep.py` already uses), every doc
+closed by its own tracked handle except the one held open for the screenshot, closed explicitly right after.
+Confirmed via `app.documents` at the end: exactly one document remained open, Fred's own "Untitled" -- never
+touched. No redeploy (main 2026.10.03-15 was already deployed).
+
+Reported "Fusion released" to the advisor with full results so Fusion could hand to seat f3.

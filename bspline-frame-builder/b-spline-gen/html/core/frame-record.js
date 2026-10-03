@@ -56,6 +56,7 @@ export function defaultFrameRecord(defs = FRAME_DEFS) {
     panelLip: _extrusion(defs, 'panelLip').default ?? 0, // F22
     appearance: defs.appearance?.default ?? null,
     insetWindow: { enabled: false, cx: 0, cy: 0, w: 0, h: 0 }, // T82 item 2/5, off by default
+    joinedMiters: [], // F31 item 2c, every joint SPLIT (today's behaviour) by default
   };
 }
 
@@ -123,6 +124,15 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
       }
     }
   }
+  // F31 item 2c (Fred: "the side can sometimes be one piece"): a list of joint ids from this
+  // template's own declared `regions.joinable` -- never geometry-clamped here (same convention as
+  // insetWindow above), just filtered to ids the CURRENT template actually declares, so a stale id
+  // left over from an old template swap (or a hand-edited save file) is silently dropped rather
+  // than crashing the build.
+  if (tpl && Array.isArray(raw.joinedMiters)) {
+    const joinable = new Set((tpl.regions?.joinable || []).map((j) => j.id));
+    out.joinedMiters = raw.joinedMiters.filter((id) => typeof id === 'string' && joinable.has(id));
+  }
   return out;
 }
 
@@ -139,7 +149,8 @@ export function framePayload(defs, record) {
   for (const p of tpl.params) if (p.owner === 'frame') params[p.name] = frameParam(defs, record, p.name);
   return { recordVersion: record.recordVersion, templateId: tpl.id, params, seeds: { ...(record.seeds || {}) },
     frameBottomZ: record.frameBottomZ, panelLip: record.panelLip ?? 0, appearance: record.appearance,
-    insetWindow: { ...(record.insetWindow || defaultFrameRecord(defs).insetWindow) } };
+    insetWindow: { ...(record.insetWindow || defaultFrameRecord(defs).insetWindow) },
+    joinedMiters: [...(record.joinedMiters || [])] };
 }
 
 /** F22: the panel lip's declared range for `record`: frame-defs `extrusion` panelLip {min, max}, where `max` names a
@@ -169,7 +180,9 @@ export function getFrameRecord() {
  *  A template change resets the seeds (F9: they belong to that template's shape). */
 export function setFrameRecord(patch) {
   const cur = getFrameRecord();
-  const reset = 'templateId' in patch && patch.templateId !== cur.templateId ? { seeds: {}, genSeed: null } : {};
+  // F31 item 2c: joint ids are template-specific (a different template's own `regions.joinable`
+  // may not even have the same ids), so a template change resets them too, same reason seeds does.
+  const reset = 'templateId' in patch && patch.templateId !== cur.templateId ? { seeds: {}, genSeed: null, joinedMiters: [] } : {};
   P.frame = normalizeFrameRecord({ ...cur, ...reset, ...patch });
   saveLastSession();
   markDirty();

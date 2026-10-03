@@ -17,7 +17,7 @@ import { offsetOutlineInward } from './outline-offset.js';
 import { insetWindowGeometry } from '../core/inset-window.js';
 import { shapeParamOverrides, frameHandles, clampToFrameRanges, FRAME_CLAMPED_PRESETS } from './frame-handles.js';
 import { frameColorFor } from '../core/color-utils.js';
-import { handleKindVisual, drawParamHandle, drawSegmentHighlight } from './editor-transform-handles.js';
+import { handleKindVisual, handleHoverVisual, drawParamHandle, drawSegmentHighlight, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
 import { controlledSegments } from './editor-shape-lattice-interaction.js';
 import { distToPrimitive, footOnPrimitive } from './editor-primitives.js';
 
@@ -226,6 +226,120 @@ export function frameMiters(outerPrims, innerPrims) {
   return out;
 }
 
+/**
+ * F31 item 2c (Fred: "on the Flask the side can sometimes be one piece, I'd want a manual
+ * toggle"): `tpl`'s own declared joinable joints (template_data.py `regions.joinable`, T14/T15/
+ * T16/T17), each as `{id, mirror, anchor, joined}` -- `anchor` is the SAME outer corner point
+ * `frameMiters()` itself computes for that joint, so a marker always sits exactly on the drawn
+ * corner, never a second independently-computed point that could drift from it.
+ *
+ * The joint's own `bars` pair (its two bar names) locates WHICH of frameMiters()'s own corners is
+ * theirs: a corner's `bIdx` is the travel-order index of whichever bar STARTS there (frameMiters'
+ * own `b = outerPrims[i]`), i.e. whichever of the two joined bars' own curves sits at the HIGHER
+ * `regions.outline` position (bars are travel-adjacent, so the later one always starts exactly
+ * where the earlier one ends). MEASURED, not assumed: `j.miterSource`'s own bare outline id was
+ * tried here first and gave the WRONG corner for T14's pinchR (it encodes which Fusion :S/:E
+ * endpoint the physical point lands on -- the CCW-arc-swap convention from p02_02_loop.py's own
+ * docstring -- a completely different, unrelated numbering from frameMiters()'s own JS-side
+ * travel-order `bIdx`; the two conventions do not correspond). Caught by the mirror-symmetry test
+ * in tests/frame-join-markers.test.js, not assumed correct from code review alone.
+ *
+ * None of this session's own declared joinable joints sit at the outline's own wrap boundary
+ * (between the last and first bar) -- `Math.max` of the two bars' own outline indices would pick
+ * the wrong one there (frameMiters' own `aIdx = (i-1+n)%n` wraps, `Math.max` does not); flagged
+ * here rather than handled, since no current declaration needs it.
+ *
+ * `joined` reads straight off `joinedIds` (the record's own `joinedMiters`) -- pure, no DOM; the
+ * Frame-tab-only gate and the actual tap-to-toggle live in the two callers (this file's own draw
+ * loop, main/frame-panel.js's own hit-test), the same split frameHandles()/`_hitFrameHandle`
+ * already uses.
+ */
+export function frameJoinMarkers(tpl, outerPrims, innerPrims, joinedIds) {
+  const joinable = tpl?.regions?.joinable || [];
+  if (!joinable.length || !innerPrims || innerPrims.length !== outerPrims.length) return [];
+  const miters = frameMiters(outerPrims, innerPrims);
+  const outline = tpl.regions.outline || [];
+  const barCurves = new Map((tpl.regions.bars || []).map((b) => [b.name, b.curves || []]));
+  const joined = new Set(joinedIds || []);
+  const out = [];
+  for (const j of joinable) {
+    const idxs = (j.bars || []).map((name) => {
+      const curves = barCurves.get(name) || [];
+      return Math.max(-1, ...curves.map((c) => outline.indexOf(c)));
+    });
+    if (idxs.some((i) => i < 0)) continue; // a declared bar name this template no longer has
+    const bIdx = Math.max(...idxs);
+    const m = miters.find((q) => q.bIdx === bIdx);
+    if (!m) continue; // the corner isn't currently a real miter (e.g. a degenerate/collapsed corner
+    // at an extreme handle value) -- no marker there
+    out.push({ id: j.id, mirror: j.mirror, anchor: m.outer, joined: joined.has(j.id) });
+  }
+  return out;
+}
+
+const _primEnd = (p) => (p.type === 'L' ? { ...p.p1 } : { x: p.cx + p.rx * Math.cos(p.theta1 + p.dTheta), y: p.cy + p.ry * Math.sin(p.theta1 + p.dTheta) });
+
+/**
+ * F31 item 2c (the advisor's own ruling, 2026-10-03): the straight stock width a JOINED piece
+ * needs to be cut in one, in inches -- "the width of the narrowest straight rectangle that
+ * contains the merged piece's outline (outer + inner edge), measured perpendicular to the piece's
+ * long axis (the chord from one end miter to the other)". `joinId` is one of `tpl`'s own declared
+ * `regions.joinable` ids; `null` when it isn't found or the inner profile isn't usable (same
+ * "nothing to measure" contract frameJoinMarkers' own callers already expect).
+ *
+ * The merged piece's own primitives are `outerPrims`/`innerPrims` sliced from the LOWER to the
+ * HIGHER of its two bars' own outline indices (travel-adjacent, same derivation frameJoinMarkers
+ * uses and for the same reason: a declared `miterSource`'s bare id is the WRONG convention here,
+ * see that function's own doc comment) -- the chord runs from the first piece's own outer START to
+ * the last piece's own outer END, and every outer+inner point (densely sampled, not just the
+ * primitives' own endpoints, since an arc's own bulge can extend past them) is projected onto the
+ * chord's own PERPENDICULAR axis; the width is that projection's own (max - min).
+ */
+export function blankWidthIn(tpl, outerPrims, innerPrims, joinId) {
+  const j = (tpl?.regions?.joinable || []).find((q) => q.id === joinId);
+  if (!j || !innerPrims || innerPrims.length !== outerPrims.length) return null;
+  const outline = tpl.regions.outline || [];
+  const barCurves = new Map((tpl.regions.bars || []).map((b) => [b.name, b.curves || []]));
+  const idxs = [];
+  for (const name of j.bars || []) for (const c of barCurves.get(name) || []) idxs.push(outline.indexOf(c));
+  if (!idxs.length || idxs.some((i) => i < 0)) return null;
+  const lo = Math.min(...idxs), hi = Math.max(...idxs);
+  const outerSlice = outerPrims.slice(lo, hi + 1);
+  const innerSlice = innerPrims.slice(lo, hi + 1);
+  if (!outerSlice.length) return null;
+
+  const p0 = _primStart(outerSlice[0]);
+  const p1 = _primEnd(outerSlice[outerSlice.length - 1]);
+  const dx = p1.x - p0.x, dy = p1.y - p0.y, len = Math.hypot(dx, dy) || 1;
+  const nx = dy / len, ny = -dx / len; // the chord's own perpendicular unit vector
+
+  const pts = [...sampleOutline(outerSlice, 24), _primEnd(outerSlice[outerSlice.length - 1]),
+    ...sampleOutline(innerSlice, 24), _primEnd(innerSlice[innerSlice.length - 1])];
+  let projMin = Infinity, projMax = -Infinity;
+  for (const p of pts) {
+    const proj = (p.x - p0.x) * nx + (p.y - p0.y) * ny;
+    if (proj < projMin) projMin = proj;
+    if (proj > projMax) projMax = proj;
+  }
+  return projMax - projMin;
+}
+
+/** The advisor's own display rule: `blankWidthIn`'s result, rounded to the nearest 1/16 in and
+ *  formatted the way a woodworker reads a tape measure ("1 1/16 in", "3/4 in", "2 in" -- never a
+ *  decimal, never an unreduced fraction). `null`/non-finite input -> `null` (the caller decides
+ *  whether to show anything at all). */
+export function formatBlankWidthIn(widthIn) {
+  if (!Number.isFinite(widthIn)) return null;
+  const sixteenths = Math.round(widthIn * 16);
+  const whole = Math.floor(sixteenths / 16);
+  const rem = sixteenths % 16;
+  if (rem === 0) return `${whole} in`;
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  const g = gcd(rem, 16);
+  const frac = `${rem / g}/${16 / g}`;
+  return whole > 0 ? `${whole} ${frac} in` : `${frac} in`;
+}
+
 // H23 item 39 (Fred's own correction mid-task: "a hooked tip is SHORT GRAIN -- fibres across a
 // thin tip, it snaps. Size the margin so a tip is never thin, not just 'miter inside the wood'"):
 // a miter's own corner legitimately touches its 2 bordering primitives EXACTLY at the vertex (the
@@ -417,6 +531,9 @@ function _drawFrameProfile(editor) {
   }
   // F9: the shape handles, in the Frame tab only (dragged through its shield, main/frame-panel.js).
   editor._frameHandles = [];
+  editor._frameJoinMarkers = []; // F31 item 2c: reset here (not just inside the Frame-tab branch
+  // below), same reason _frameHandles is -- an Artwork-tab redraw must never leave a STALE marker
+  // list from the last time the Frame tab was open (MEASURED: it did, before this line existed).
   if (editor._editorTab === 'frame') {
     const tpl = (spec.defs.templates || []).find((t) => t.id === prof.templateId);
     editor._frameHandles = frameHandles(tpl, prof, _param(tpl, spec.record, 'frame_thickness') ?? 0);
@@ -443,6 +560,21 @@ function _drawFrameProfile(editor) {
       const vis = handleKindVisual(h.handleKind, FRAME_HANDLE_RADIUS, FRAME_OUTLINE_COLOR, active);
       drawParamHandle(g, vis, h.anchor.x, h.anchor.y, 0.03)
         .addClass('frame-handle').attr('data-key', h.key).attr('data-kind', h.handleKind || 'position');
+    }
+    // F31 item 2c (Fred: "the side can sometimes be one piece, I'd want a manual toggle"): one
+    // round marker per declared joinable joint, tap (not drag) to toggle -- the Frame tab's own
+    // existing round handle look (handleHoverVisual, same radius/hover-grow as a 'radius' param
+    // handle), filled when JOINED, hollow (white fill, accent stroke) when SPLIT. Hit-tested by
+    // main/frame-panel.js's own pointerdown wiring, same split frameHandles()/_hitFrameHandle uses.
+    editor._frameJoinMarkers = inner && !inner.defects.length && inner.primitives.length === prof.primitives.length
+      ? frameJoinMarkers(tpl, prof.primitives, inner.primitives, spec.record.joinedMiters)
+      : [];
+    for (const jm of editor._frameJoinMarkers) {
+      const active = editor._frameJoinHover === jm.id;
+      const idleFill = jm.joined ? HANDLE_HOVER_FILL : '#ffffff';
+      const vis = handleHoverVisual(FRAME_HANDLE_RADIUS, idleFill, HANDLE_HOVER_FILL, active);
+      g.circle(vis.radius * 2).center(jm.anchor.x, jm.anchor.y).fill(vis.fill).stroke({ color: vis.stroke, width: 0.03 })
+        .addClass('frame-join-marker').attr('data-join-id', jm.id).attr('data-joined', String(jm.joined));
     }
   }
   return prof;
