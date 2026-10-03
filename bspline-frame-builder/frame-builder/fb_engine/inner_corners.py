@@ -29,11 +29,18 @@ instead of baking a Distance/Direction ahead of time from a
 template's own default proportions -- those vary per Send (the app's
 own randomized seed), so a value baked from defaults almost never
 matches the real corner (MEASURED, H23 item 38).
+
+T84 item 3 adds a third corner shape: two CIRCLES meeting (T17 Tulip's
+own concave-upper-side-meets-arch / concave-upper-side-meets-lower-bulge
+corners -- 4 of its 6, since neither piece there is a straight line).
+``circle_circle_corner_step`` below is the same "compute expected
+position, find nearest existing SketchPoint" approach again, reading
+BOTH circles' centre/radius LIVE off the already-built arcs.
 """
 
 import math
 
-from fb_engine.t7_roof_eave import line_circle_corner
+from fb_engine.t7_roof_eave import circle_circle_corner, line_circle_corner
 
 
 def inner_corner_step(ctx, sketch, s_name, step):
@@ -343,4 +350,98 @@ def line_circle_corner_step(ctx, sketch, s_name, step):
         ctx.set_id(nearest_pt, s_name, "corner", override_id=inner_id)
         ctx.logger.log(
             f"LINE-CIRCLE CORNER {label}: resolved {inner_id} at "
+            f"({e_in[0]:.3f}, {e_in[1]:.3f}) [match dist={nearest_dist:.4f} cm]")
+
+
+def circle_circle_corner_step(ctx, sketch, s_name, step):
+    """
+    Resolve an inner corner where TWO CIRCLES meet (T84 item 3: T17 Tulip's own concave-upper-side
+    corners -- 4 of its 6, since neither piece there is a straight line, so `line_circle_corner_step`
+    above cannot resolve them). Sibling of that function, same "compute expected position, find
+    nearest existing SketchPoint" approach, fed LIVE centre/radius off BOTH already-built arcs via
+    fb_engine.t7_roof_eave.circle_circle_corner.
+
+    Parameters
+    ----------
+    ctx, sketch, s_name : as line_circle_corner_step
+    step : dict with keys
+             'Tolerance'      -- max distance (cm) between expected position and nearest
+                                  SketchPoint to accept as a match. Defaults to 0.05.
+             'FrameThickness' -- expression string evaluated to a cm distance (defaults to
+                                  'frame_thickness').
+             'Corners'        -- mapping of label to corner config:
+                                    {
+                                      'topR': {
+                                        'Arc1ID':   'proj_arch',      # either order -- symmetric
+                                        'Arc2ID':   'proj_upper_R',
+                                        'OuterID':  'proj_arch:S',    # the un-offset shared corner,
+                                                                      # only used to pick the right
+                                                                      # one of the 2 intersection roots
+                                        'InnerID':  'inner_proj_arch:S',
+                                        'Concave1': False,            # fb_engine.t7_roof_eave
+                                        'Concave2': True,             # .circle_circle_corner's own
+                                                                      # per-circle convention
+                                      },
+                                      ...
+                                    }
+    Unlike `line_circle_corner_step`, there is no single shared "interior reference point" here --
+    each circle's own offset direction is already fully determined by its own `Concave*` flag.
+    """
+    corners = step.get('Corners') or {}
+    if not corners:
+        ctx.logger.log("CIRCLE-CIRCLE CORNER: no Corners declared, skipping", "WARNING")
+        return
+
+    tolerance = float(step.get('Tolerance', 0.05))
+    try:
+        ft_cm = ctx.design.unitsManager.evaluateExpression(step.get('FrameThickness', 'frame_thickness'), 'cm')
+    except Exception as e:
+        ctx.logger.log(f"CIRCLE-CIRCLE CORNER: failed to evaluate frame thickness: {e}", "ERROR")
+        return
+
+    all_points = _collect_sketch_points(sketch)
+    if not all_points:
+        ctx.logger.log(f"CIRCLE-CIRCLE CORNER: no SketchPoints found in {s_name}, cannot resolve", "WARNING")
+        return
+
+    for label, cfg in corners.items():
+        arc1_id, arc2_id, outer_id, inner_id = (cfg.get('Arc1ID'), cfg.get('Arc2ID'),
+                                                  cfg.get('OuterID'), cfg.get('InnerID'))
+        if not (arc1_id and arc2_id and outer_id and inner_id):
+            ctx.logger.log(f"CIRCLE-CIRCLE CORNER {label}: missing Arc1ID/Arc2ID/OuterID/InnerID, skipping", "WARNING")
+            continue
+
+        emap = ctx.entity_map.get(s_name, {})
+        arc1_ent, arc2_ent, outer_ent = emap.get(arc1_id), emap.get(arc2_id), emap.get(outer_id)
+        missing = [n for n, e in (('Arc1ID', arc1_ent), ('Arc2ID', arc2_ent), ('OuterID', outer_ent)) if e is None]
+        if missing:
+            ctx.logger.log(f"CIRCLE-CIRCLE CORNER {label}: {', '.join(missing)} not in entity_map for {s_name}", "WARNING")
+            continue
+
+        try:
+            g1, g2 = arc1_ent.geometry, arc2_ent.geometry
+            c1, r1 = (float(g1.center.x), float(g1.center.y)), float(g1.radius)
+            c2, r2 = (float(g2.center.x), float(g2.center.y)), float(g2.radius)
+            outer_pt = (float(outer_ent.geometry.x), float(outer_ent.geometry.y))
+        except Exception as e:
+            ctx.logger.log(f"CIRCLE-CIRCLE CORNER {label}: failed to read live geometry: {e}", "WARNING")
+            continue
+
+        try:
+            e_in = circle_circle_corner(c1, r1, cfg.get('Concave1', True), c2, r2, cfg.get('Concave2', True),
+                                         ft_cm, outer_pt)
+        except ValueError:
+            e_in = outer_pt  # no intersection left: search around the outer corner instead
+
+        nearest_pt, nearest_dist = _find_nearest_point(all_points, e_in[0], e_in[1])
+        if nearest_pt is None or nearest_dist > tolerance:
+            ctx.logger.log(
+                f"CIRCLE-CIRCLE CORNER {label}: no SketchPoint within {tolerance:.3f} "
+                f"cm of expected ({e_in[0]:.3f}, {e_in[1]:.3f}); nearest was {nearest_dist:.4f} cm",
+                "WARNING")
+            continue
+
+        ctx.set_id(nearest_pt, s_name, "corner", override_id=inner_id)
+        ctx.logger.log(
+            f"CIRCLE-CIRCLE CORNER {label}: resolved {inner_id} at "
             f"({e_in[0]:.3f}, {e_in[1]:.3f}) [match dist={nearest_dist:.4f} cm]")

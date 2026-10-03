@@ -37,7 +37,7 @@ TEMPLATES = ['template_1', 'template_2', 'template_3', 'template_4', 'template_5
              'template_7', 'template_8', 'template_9', 'template_10', 'template_11', 'template_12',
              'template_13', 'template_16']
 
-_RESOLVE_STEP_TYPES = ('ResolveInnerCorners', 'ResolveLineCircleCorner')
+_RESOLVE_STEP_TYPES = ('ResolveInnerCorners', 'ResolveLineCircleCorner', 'ResolveCircleCircleCorner')
 
 
 def _covered_inner_ids(template):

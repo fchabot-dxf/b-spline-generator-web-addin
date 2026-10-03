@@ -62,7 +62,7 @@ import pytest
 
 from fb_engine.build_context import BuildContext
 from fb_engine import inner_corners
-from fb_engine.t7_roof_eave import roof_geometry, line_circle_corner
+from fb_engine.t7_roof_eave import roof_geometry, line_circle_corner, circle_circle_corner
 
 
 class FakeLogger:
@@ -330,3 +330,84 @@ class TestSquareCornerWholeRunCollapsed:
         curves = [_FakeCurve('proj_top_edge_R', (5.946, 10.795), (8.255, 10.795))]
         ctx = self._run(curves, [(5.946, 10.795)])
         assert 'inner_proj_horn_TR:S' not in ctx.entity_map[S]
+
+
+def _setup_cc(c1, r1, c2, r2, outer, candidate_points, frame_thickness=0.75 * 2.54,
+              concave1=False, concave2=True):
+    ctx = _ctx({'frame_thickness': frame_thickness})
+    ctx.entity_map[S] = {
+        'proj_arch': FakeArc(*c1, r1),
+        'proj_upper_R': FakeArc(*c2, r2),
+        'proj_arch:S': FakePoint(*outer),
+    }
+    sketch = FakeSketch(candidate_points)
+    step = {
+        'FrameThickness': 'frame_thickness',
+        'Tolerance': 0.2,
+        'Corners': {
+            'topR': {'Arc1ID': 'proj_arch', 'Arc2ID': 'proj_upper_R', 'OuterID': 'proj_arch:S',
+                     'InnerID': 'inner_proj_arch:S', 'Concave1': concave1, 'Concave2': concave2},
+        },
+    }
+    return ctx, sketch, step
+
+
+class TestCircleCircleCornerStep:
+    """T84 item 3: fb_engine/inner_corners.py::circle_circle_corner_step -- the arc-meets-arc
+    sibling of TestLineCircleCornerStep above, same fake-sketch harness, needed by T17 Tulip's own
+    concave-upper-side corners (neither piece there is a straight line)."""
+
+    def test_resolves_the_true_corner_from_two_known_offset_circles(self):
+        # Same known construction as test_t7_roof_eave.TestCircleCircleCorner's own off-axis case:
+        # P sits exactly on both offset circles by construction.
+        P = (5.0, 4.0)
+        c1, c2 = (1.0, 1.0), (10.0, 2.0)
+        r1_in = ((P[0] - c1[0]) ** 2 + (P[1] - c1[1]) ** 2) ** 0.5
+        r2_in = ((P[0] - c2[0]) ** 2 + (P[1] - c2[1]) ** 2) ** 0.5
+        t = 1.905  # 0.75 in, in cm
+        r1, r2 = r1_in + t, r2_in - t  # concave1=False (+t), concave2=True (-t)
+        expected = circle_circle_corner(c1, r1, False, c2, r2, True, t, outer_corner=P)
+
+        # the ONE real candidate point sits exactly at the expected position; a decoy nearby
+        decoy = (expected[0] + 1.0, expected[1])
+        ctx, sketch, step = _setup_cc(c1, r1, c2, r2, P, candidate_points=[expected, decoy],
+                                       frame_thickness=t, concave1=False, concave2=True)
+
+        inner_corners.circle_circle_corner_step(ctx, sketch, S, step)
+
+        resolved = ctx.entity_map[S].get('inner_proj_arch:S')
+        assert resolved is not None
+        assert resolved.geometry.x == pytest.approx(expected[0], abs=1e-6)
+        assert resolved.geometry.y == pytest.approx(expected[1], abs=1e-6)
+
+    def test_no_candidate_within_tolerance_logs_a_warning_and_sets_nothing(self):
+        ctx, sketch, step = _setup_cc((0.0, 0.0), 6.0, (8.0, 0.0), 6.0, (4.0, 10.0),
+                                       candidate_points=[(500.0, 500.0)], frame_thickness=1.0,
+                                       concave1=False, concave2=False)
+        inner_corners.circle_circle_corner_step(ctx, sketch, S, step)
+        assert ctx.entity_map[S].get('inner_proj_arch:S') is None
+        assert any(level == 'WARNING' and 'no SketchPoint within' in msg for level, msg in ctx.logger.entries)
+
+    def test_missing_entity_map_reference_logs_a_warning_not_a_crash(self):
+        ctx = _ctx({'frame_thickness': 1.905})
+        ctx.entity_map[S] = {}  # nothing registered at all
+        sketch = FakeSketch([(0, 0)])
+        step = {
+            'Corners': {
+                'topR': {'Arc1ID': 'proj_arch', 'Arc2ID': 'proj_upper_R', 'OuterID': 'proj_arch:S',
+                         'InnerID': 'inner_proj_arch:S', 'Concave1': False, 'Concave2': True},
+            },
+        }
+        inner_corners.circle_circle_corner_step(ctx, sketch, S, step)  # must not raise
+        assert any(level == 'WARNING' for level, _msg in ctx.logger.entries)
+
+    def test_no_intersection_falls_back_to_searching_near_the_outer_corner_not_a_crash(self):
+        # Two circles whose offsets don't reach each other at all -- circle_circle_corner itself
+        # raises ValueError; the step must catch it and keep searching (around outer_corner),
+        # not propagate the exception.
+        ctx, sketch, step = _setup_cc((0.0, 0.0), 1.0, (100.0, 0.0), 1.0, (0.0, 0.0),
+                                       candidate_points=[(500.0, 500.0)], frame_thickness=0.1,
+                                       concave1=False, concave2=False)
+        inner_corners.circle_circle_corner_step(ctx, sketch, S, step)  # must not raise
+        assert ctx.entity_map[S].get('inner_proj_arch:S') is None
+        assert any(level == 'WARNING' and 'no SketchPoint within' in msg for level, msg in ctx.logger.entries)
