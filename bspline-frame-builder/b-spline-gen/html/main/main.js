@@ -218,10 +218,12 @@ function handleFusionHandshake(ev) {
             if (status === 'unknown' || sha === 'unknown') {
                 badge.className = 'cad-nav-version build-unknown';
             } else {
-                const date  = String(info.built_at || '').slice(0, 10);   // YYYY-MM-DD
+                // Fred (2026-10-03): the date-based version (YYYY.MM.DD-N) leads; older
+                // deploys without one fall back to the build date.
+                const label = info.version || String(info.built_at || '').slice(0, 10);
                 const glyph = status === 'ok' ? '✓' : '⚠';
                 const edits = info.dirty ? ' +edits' : '';
-                badge.textContent = `${glyph} ${sha} · ${date}${edits}`;
+                badge.textContent = `${glyph} ${label} · ${sha}${edits}`;
                 badge.className   = `cad-nav-version build-${status}`;
             }
         } catch (e) {
