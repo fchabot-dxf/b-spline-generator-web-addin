@@ -15,7 +15,7 @@ import {
 import { frameCutProfile, outlineHasUndercut } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { frameHandles, handleDragPatch, frameHandleTable, frameSeedGeometry, frameParamRanges } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { generateSilhouette, paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
-import { initFramePanel, setEditorTab, HANDLE_HIT_PX, frameHistoryDepth, undoFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { initFramePanel, setEditorTab, HANDLE_HIT_PX, frameHistoryDepth, undoFrame, _frameRecordBreaksNoHookRule } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { FRAME_HANDLE_RADIUS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { HANDLE_HOVER_SCALE, HANDLE_HOVER_FILL } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 
@@ -495,6 +495,22 @@ describe('H23 item 63: no template default has a broken outline (the drag-stop s
   it('every default outline has no defects', () => {
     for (const tpl of FRAME_DEFS.templates) {
       expect(profile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id })).defects, tpl.id).toEqual([]);
+    }
+  });
+});
+
+describe('H23 item 63: the drag-stop refuses crossing miters (Fred: guard the handles)', () => {
+  beforeEach(() => { P.frame = null; P.widthIn = 7; P.heightIn = 9; });
+  it('template_13 neckWidth at its declared min is refused (its top bar is shorter than its miters)', () => {
+    const id = 'template_13';
+    const tpl = tplOf(FRAME_DEFS, id);
+    const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
+    const ranges = frameParamRanges(tpl, region, paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region), 0.75);
+    expect(_frameRecordBreaksNoHookRule(normalizeFrameRecord({ templateId: id, seeds: { neckWidth: ranges.neckWidth.min } }))).toBe(true);
+  });
+  it('no template default at 7x9 is refused', () => {
+    for (const tpl of FRAME_DEFS.templates) {
+      expect(_frameRecordBreaksNoHookRule(normalizeFrameRecord({ templateId: tpl.id })), tpl.id).toBe(false);
     }
   });
 });
