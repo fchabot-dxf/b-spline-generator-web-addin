@@ -264,6 +264,28 @@ export function frameHandles(tpl, prof, t = _templateThickness(tpl)) {
  * profile (frameCutProfile) on a `W` x `H` board.
  */
 export const PIN_AXIS_NUDGE_IN = 0.01; // a pin's inner end sits this far off the Y axis (the phases' own anti-auto-coincidence nudge)
+/** H23 item 65: a degenerate (collapsed-to-a-line) primitive's own stand-in for a true arc's
+ *  S/bulge/E points and radius -- EXACTLY the midpoint of `p0`/`p1` is not enough (3 EXACTLY
+ *  collinear points have no circumscribing circle at all; MEASURED live: Fusion's own
+ *  `addByThreePoints` throws "Some input argument is invalid" on it, item 63(d)'s own first
+ *  attempt at this fix). Nudges the bulge point `PIN_AXIS_NUDGE_IN` off the chord, perpendicular
+ *  to it, the same declared nudge the 'pin' branch below already uses for the same reason --
+ *  then reports the EXACT radius that same nudged triangle implies (the sagitta formula
+ *  `hourglassConstruction`'s own arch radius already uses: `(halfChord^2 + nudge^2) / (2*nudge)`),
+ *  so a `kind:'radius'` seed for this SAME primitive never disagrees with the 3 points sent for
+ *  it -- disagreeing would hand Fusion's solver a Radius dimension it must immediately resolve
+ *  away from the seeded points, the "seed is not the answer" trap item 27 already named. */
+const _degenerateArcSeed = (F, p0, p1, nudge = PIN_AXIS_NUDGE_IN) => {
+  const s = F(p0), t = F(p1);
+  const dx = t[0] - s[0], dy = t[1] - s[1];
+  const len = Math.hypot(dx, dy) || 1;
+  const halfChord = len / 2;
+  const mid = [(s[0] + t[0]) / 2, (s[1] + t[1]) / 2];
+  const m = [mid[0] - (dy / len) * nudge, mid[1] + (dx / len) * nudge];
+  const radius = (halfChord * halfChord + nudge * nudge) / (2 * nudge);
+  return { s, m, t, radius };
+};
+
 export function frameSeedGeometry(tpl, prof, W, H) {
   const F = (p) => [p.x - W / 2, H / 2 - p.y];
   const at = (a, t) => ({ x: a.cx + a.rx * Math.cos(a.theta1 + a.dTheta * t), y: a.cy + a.rx * Math.sin(a.theta1 + a.dTheta * t) });
@@ -274,17 +296,19 @@ export function frameSeedGeometry(tpl, prof, W, H) {
       const pts = [F(p.p0), F(p.p1)];
       out[e.id] = { points: e.reverse ? pts.reverse() : pts };
     } else if (e.kind === 'arc') {
-      // H23 item 63 (d): at an extreme handle value the silhouette generator can legitimately
+      // H23 item 63 (d) / 65: at an extreme handle value the silhouette generator can legitimately
       // collapse this SAME primitive slot into a near-zero-length LINE instead of a true arc
       // (MEASURED: template_10 archRise=0 flattens its own arch; an extreme taper can shrink
       // template_12's own shoulder arc's sweep to ~0) -- `at()` then reads `cx`/`rx`/`theta1` off
       // a line primitive (`p0`/`p1` only), producing NaN, sent to Fusion as a literal null point.
       // Seed a well-formed (if degenerate) 3-point arc through the line's own two endpoints
-      // instead, its arithmetic midpoint standing in for the bulge point -- the declared
-      // BuildSequence step is still 'Arc3Point' either way, so the shape sent must still be one.
+      // instead, `_degenerateArcSeed`'s own nudged bulge point standing in for the true one --
+      // the declared BuildSequence step is still 'Arc3Point' either way, so the shape sent must
+      // still be one Fusion can actually build (a bare midpoint is NOT: 3 exactly collinear
+      // points have no circle through them at all).
       let [s, m, t] = p.type === 'A'
         ? [F(at(p, 0)), F(at(p, 0.5)), F(at(p, 1))]
-        : [F(p.p0), [(F(p.p0)[0] + F(p.p1)[0]) / 2, (F(p.p0)[1] + F(p.p1)[1]) / 2], F(p.p1)];
+        : (({ s, m, t }) => [s, m, t])(_degenerateArcSeed(F, p.p0, p.p1));
       // T5 HOURGLASS DIPPED TOP: an arc whose centre is on the Y axis (the top dip) is seeded `nudgeX` in off it
       // (the pins' own anti-auto-coincidence nudge); its phase puts the centre on the axis explicitly.
       // H23 item 48 (MEASURED live): the nudge must move ONLY the mid (bulge) point, matching the Python
@@ -300,12 +324,19 @@ export function frameSeedGeometry(tpl, prof, W, H) {
       // H23 item 63 (d): same degenerate-primitive case as the 'arc' branch above -- a pin
       // anchors to an arc's own centre (`p.cx`/`p.cy`), which a collapsed-to-a-line primitive
       // doesn't have; its own two endpoints' midpoint is where that centre would sit anyway once
-      // the arc's sweep has shrunk this close to zero.
+      // the arc's sweep has shrunk this close to zero. (A bare line, unlike Arc3Point, has no
+      // collinearity constraint -- no nudge needed here.)
       const c = p.type === 'A' ? F({ x: p.cx, y: p.cy }) : [(F(p.p0)[0] + F(p.p1)[0]) / 2, (F(p.p0)[1] + F(p.p1)[1]) / 2];
       const inner = [Math.sign(c[0]) * PIN_AXIS_NUDGE_IN, c[1]];
       out[e.id] = { points: e.outer === 'S' ? [c, inner] : [inner, c] };
     } else if (e.kind === 'radius') {
-      out[e.id] = { radius: p.rx };
+      // H23 item 65: the SAME degenerate case, one level up -- a `kind:'radius'` seed targets
+      // this same primitive slot's own Radius dimension. `p.rx` doesn't exist on a collapsed-to-
+      // a-line primitive (caught live: Fusion refused the whole Send, "a Radius seed needs
+      // 'radius'", before touching the sketch at all) -- report the EXACT radius the 'arc'
+      // branch's own matching nudge implies, so the two seeds for the same primitive never
+      // disagree (see `_degenerateArcSeed`'s own doc comment for why that matters).
+      out[e.id] = { radius: p.type === 'A' ? p.rx : _degenerateArcSeed(F, p.p0, p.p1).radius };
     }
   }
   return out;

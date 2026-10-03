@@ -431,7 +431,7 @@ describe('F20 SHOULDER-HIP: the T1 frame has a Shoulder and a Hip handle, seeded
   });
 });
 
-describe('H23 item 63 (d): frameSeedGeometry stays finite at every handle\'s own range end', () => {
+describe('H23 item 63 (d) / 65: frameSeedGeometry stays finite AND buildable at every handle\'s own range end', () => {
   // item 61's own live matrix found 2 of its 133 cases sending a literal null point to Fusion
   // (template_10 archRise:min, template_12 taperAngle:min) -- traced to this file's own `at()`
   // helper (line ~255) assuming `prof.primitives[e.prim]` is always a true arc (cx/rx/theta1/
@@ -441,6 +441,18 @@ describe('H23 item 63 (d): frameSeedGeometry stays finite at every handle\'s own
   // to ~0). This test re-derives the SAME 133-case matrix item 61's own live sweep used (every
   // declared handle, every template, min/max/default at 7x9) purely in JS -- no Fusion needed --
   // and asserts every seeded point/radius is a real, finite number.
+  //
+  // H23 item 65: the FIRST fix (a bare midpoint standing in for the missing bulge point) passed
+  // this test's own `!= null` radius check VACUOUSLY -- `undefined != null` is `false` in JS, so
+  // a `kind:'radius'` entry with no `radius` key at all (exactly what the bug produced) never hit
+  // the assertion below it at all. MEASURED live: that same bare-midpoint fix still crashed
+  // Fusion's own `addByThreePoints` ("Some input argument is invalid") on template_10's own
+  // archRise:min, because 3 EXACTLY collinear points have no circle through them -- a failure
+  // this test's own finite-number check cannot see (collinear points ARE finite numbers). Fixed
+  // the vacuous check (`'radius' in g`, not `!= null`) and added the collinearity check below,
+  // which fails on the bare-midpoint code (confirmed: reverting `_degenerateArcSeed`'s own nudge
+  // back to a bare midpoint reproduces both failures here, 2/13 templates red, before re-applying
+  // the fix brings it back to 13/13 green).
   it.each(FRAME_DEFS.templates.map((t) => t.id))('%s', (id) => {
     const tpl = tplOf(FRAME_DEFS, id);
     const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
@@ -462,7 +474,14 @@ describe('H23 item 63 (d): frameSeedGeometry stays finite at every handle\'s own
           expect(Number.isFinite(pt[0]), `${label} x`).toBe(true);
           expect(Number.isFinite(pt[1]), `${label} y`).toBe(true);
         });
-        if (g.radius != null) expect(Number.isFinite(g.radius), `${label} radius`).toBe(true);
+        if ('radius' in g) expect(Number.isFinite(g.radius), `${label} radius`).toBe(true);
+        if (g.points && g.points.length === 3) {
+          // A 3-point Arc3Point seed: addByThreePoints needs a real (non-zero) triangle --
+          // twice the signed area, the cross product of the two chord vectors.
+          const [p0, p1, p2] = g.points;
+          const area2 = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+          expect(Math.abs(area2), `${label} 3 collinear points -- no circle through them`).toBeGreaterThan(1e-9);
+        }
       }
     }
   });

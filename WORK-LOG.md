@@ -15463,3 +15463,81 @@ reachable-end payloads (`item64_matrix_payloads/`, from this item's own earlier 
 
 **Passed back to the advisor** with this matrix; they continue the remaining corner-case work from
 code, without Fusion, per their own note.
+
+## H23 item 65: matrix re-run on e11e15d (131/133) + the 2 SILENT cases fixed one, reported the
+other (phase-file, not mine to touch); T13 neckWidth:min reported as asked.
+
+**(1) Regenerated + re-ran the full 133-case matrix** against deployed `e11e15d` (3 more corner
+fallbacks since item 64's own run). **131/133 BUILT -- only `template_10_archRise_min_7x9` and
+`template_13_neckWidth_min_7x9` remain**, both already called out by name in this item's own
+dispatch. Every other case the item-64 matrix still had failing (T10 waistCenterY, T2/T13
+neckLength:max, T5 waistCenterY/waistRadius, T11 waistCenterY/waistRadius, T12 cornerRadiusTop:max)
+is now BUILT -- the advisor's own 3 corner fallbacks since the last run account for all of it.
+
+**(2) Triaged the 2 SILENT cases, file:line, found a second bug in MY OWN item 63(d) fix --
+fixed it (frame-handles.js, in scope: "app-side JS").** A direct diagnostic replay (not just the
+sweep's own 3-pattern log scan, which this class of failure defeats) showed:
+- `template_12_taperAngle_min_7x9`: Python refused the Send outright -- `[WARNING] SEND FRAME
+  refused: ... seed 'seed_rad_shoulder_R': a Radius seed needs 'radius'`. Root cause:
+  `frame-handles.js`'s own `kind:'radius'` branch (`out[e.id] = { radius: p.rx }`) never got the
+  item 63(d) degenerate-primitive fix the `'arc'`/`'pin'` branches did -- `p.rx` is `undefined` on
+  a collapsed-to-a-line primitive, so the Radius seed for `arc_shoulder_R`'s own matching entry
+  silently had no `radius` key at all.
+- `template_10_archRise_min_7x9`: a live Fusion crash INSIDE `_create_arc3`
+  (`fb_engine/geometry.py:212`, `curves.sketchArcs.addByThreePoints(...)`) --
+  `RuntimeError: 3 : Some input argument is invalid`. Root cause: item 63(d)'s own fix used the
+  BARE arithmetic midpoint of the line's two endpoints as the arc's own bulge point -- 3 points
+  where the middle one is the EXACT midpoint of the other two are, by construction, perfectly
+  COLLINEAR, and a circle through 3 collinear points does not exist. `addByThreePoints` correctly
+  refused it; item 63(d)'s own finite-points test could not see this, because collinear points
+  ARE finite numbers -- a different property than the one that test checked.
+  **Both are the SAME underlying gap**: a degenerate (collapsed-to-a-line) primitive's own
+  stand-in arc needs an ACTUAL nudge off the chord (not a bare midpoint) to be a real triangle,
+  AND the matching Radius seed for that SAME primitive must agree with whatever triangle gets
+  sent, or the Radius dimension fights the 3 points at solve time (the "seed is not the answer"
+  trap item 27 already named for a different case).
+  **Fix**: a new shared helper, `_degenerateArcSeed(F, p0, p1, nudge)`, nudges the bulge point
+  `PIN_AXIS_NUDGE_IN` (0.01in, the SAME declared constant the `'pin'` branch already uses, not a
+  new magic number) perpendicular to the chord, and reports the EXACT radius that nudged triangle
+  implies via the sagitta formula `hourglassConstruction` already uses for the arch's own radius
+  (`(halfChord^2 + nudge^2) / (2*nudge)`) -- so the `'arc'` and `'radius'` branches, called
+  independently for the same primitive, always agree. Both branches now call it when
+  `p.type !== 'A'`.
+- **Live-confirmed the fix**: `template_12_taperAngle_min_7x9` now BUILDS (was refused). Also
+  caught and fixed the SAME vacuous-test gap this bug exploited: item 63(d)'s own finite-points
+  test checked `g.radius != null`, and `undefined != null` is `false` in JS -- a missing `radius`
+  key never reached the assertion at all. Changed to `'radius' in g`, and added a genuinely NEW
+  check (3-point seeds must have a non-zero triangle area, `> 1e-9`) that the old test had no
+  equivalent of. **Proven non-vacuous**: reverted `_degenerateArcSeed` to a bare midpoint (the
+  item 63(d) code, byte-reproduced), re-ran -- fails exactly 2/13 templates, the same 2 as the
+  live matrix; restored (diffed byte-identical against a saved copy), re-ran -- 13/13 clean.
+  Full suite 3136/3136, `gen_frame_defs.py --check`: fresh (Python untouched).
+- **`template_10_archRise_min_7x9` STILL fails after this fix -- for a DIFFERENT, DOWNSTREAM
+  reason, now precisely isolated and reported, not fixed (it's in a phase file).** With the
+  collinearity crash gone, the SAME case now fails later, in `p02_12_arch_rebuild.py`'s own
+  rebuild step: `[p02_12_arch_rebuild] PROFILE 0: NOT BUILT: profile curves [...] are not in the
+  declared regions`. Read that file (not edited): its own `Points` (lines 69-73) hardcode the
+  rebuild's own apex at `['0.001', LY]` where `LY = heightIn/2 - 0.25 in` -- the safe zone's own
+  TOP line, used as a fixed ceiling specifically so `addByThreePoints` is forced onto the short
+  arc branch (the file's own docstring, lines 53-64). At `archRise=0` the chord itself already
+  SITS at that same `LY` (by definition -- there is no "rise" left to force a ceiling above), so
+  this rebuild step's own 3 points (`SeedFrom(left)`, the hardcoded apex, `SeedFrom(right)`) are
+  AGAIN exactly collinear -- the identical failure class item 63(d)/65 just fixed in
+  `frame-handles.js`, recurring one phase later from an INDEPENDENT hardcoded literal that was
+  never seed-aware to begin with. Flagged to the advisor; not touched (a phase file, explicitly
+  out of this item's own scope).
+
+**(3) T13 neckWidth:min, reported as asked, not re-diagnosed** (the dispatch already named the
+cause): the 2 top miters cross because the top bar is shorter than its own miters at that value.
+Confirmed still failing in this item's own live matrix; no further investigation this item.
+
+**Committed this item:** `bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js` (the
+`_degenerateArcSeed` helper + both branches calling it) and `tests/frame-handles.test.js` (the
+vacuous-check fix + the new collinearity assertion). No phase file, no `inner_corners.py`, no
+other production file touched.
+
+**Screenshots (new standing rule, mid-item amendment):** 3 newly-BUILT range ends saved to
+`C:/Users/danse/.bspline-status/shots/seatA/` -- `0939_item65_template_1_cornerRadiusTop_max_7x9.png`,
+`..._template_2_neckLength_max_7x9.png`, `..._template_5_waistCenterY_min_7x9.png` (iso view,
+`viewport.saveAsImageFile` on each own scratch doc before closing it, 1200x900). Viewed one
+directly to confirm it's a real built frame, not a blank viewport, before trusting the other two.
