@@ -533,3 +533,13 @@ describe('H23 item 63: the drag-stop refuses crossing miters (Fred: guard the ha
     }
   });
 });
+
+describe('H23 item 63: T10 arch rise never goes flat (a flat arch has no arc for Fusion to build)', () => {
+  it('the arch rise range starts at MIN_ARCH_RISE_IN, not 0', () => {
+    const id = 'template_10';
+    const tpl = tplOf(FRAME_DEFS, id);
+    const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
+    const ranges = frameParamRanges(tpl, region, paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region), 0.75);
+    expect(ranges.archRise.min * (region.h / 2)).toBeCloseTo(0.125, 6);
+  });
+});

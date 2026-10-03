@@ -34,6 +34,8 @@ const FRAME_GEN_SALT = 700;
  * 0.78 left a 1.44 in pinch for a 2 x 0.75 in frame). A declared minimum.
  */
 export const FRAME_MIN_OPENING_IN = 0.25;
+/** T10's arch never goes flatter than this (inches of rise): a flat arch has no arc to build. */
+export const MIN_ARCH_RISE_IN = 0.125;
 const _templateThickness = (tpl) => tpl.params.find((p) => p.name === 'frame_thickness')?.default ?? 0;
 const _narrow = (r, lo, hi) => {
   const a = Math.max(r.min, lo), b = Math.min(r.max, hi);
@@ -177,7 +179,10 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
       const hh = region.h / 2;
       const g = hourglassConstruction(region, { ...resolved, archRise: undefined });
       const hornLen = Math.min(hh + g.shoulderY, g.left ? hh + g.left.shoulderY : Infinity);
-      R.archRise = _narrow(R.archRise, -Infinity, Math.max(hornLen - t, HORN_MIN_OF_HALF_HEIGHT * hh) / hh);
+      // H23 item 63 (live, item 65's last T10 failure): archRise 0 is a FLAT top -- the rebuild's three arc
+      // points (p02_12) are then collinear and Fusion's addByThreePoints throws. The handle stops at
+      // MIN_ARCH_RISE_IN instead (Fred's standing rule: handles stop before the shape breaks).
+      R.archRise = _narrow(R.archRise, MIN_ARCH_RISE_IN / hh, Math.max(hornLen - t, HORN_MIN_OF_HALF_HEIGHT * hh) / hh);
     }
     // T5 HOURGLASS DIPPED TOP (only a frame whose outline has the dip: its resolved params carry it). The dip's
     // inner edge (the dip offset down by t) lies within |x| <= a, from t to D + t below the top; the sides' inner
