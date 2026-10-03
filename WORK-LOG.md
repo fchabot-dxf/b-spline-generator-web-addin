@@ -14619,3 +14619,85 @@ No production code changed this item, per the dispatch's own "measure + propose 
 
 Committed as ONE commit, WORK-LOG only: "H23 item 56: full send-1/send-2 stage table + stamp-
 sketch per-call breakdown; top 3 remaining wins ranked with estimates, none attempted".
+
+## H23 item 57 -- validate win #1 (deferred compute across the stamp build): REVERTED, saves under 1s -- the per-call costs are solver/API work, not suppressible recompute
+
+Dispatch (advisor, 465): validate item 56's own "win #1" properly -- A/B every stamp sketch
+(curve/constraint/dimension counts, fully-constrained state, entity ids/attributes later steps
+use), bodies, inlay, marker, over send-1/2/3. Keep only if identical AND >= 1s saved; otherwise
+revert and report the numbers.
+
+**Corrected my own item 56 mis-citation before building anything.** Item 56's own WORK-LOG named
+`send_stage_timing.py::_apply_deferred_whole_build_variant` as "an unvalidated prototype of this
+exact idea" -- re-reading it for this item found that is WRONG: that prototype wraps `fb_engine.
+parametric_engine.ParametricSketchBuilder.build_sketch`, the FRAME's own sketch builder (T7_1/
+T7_2/T7_3), not `sketch_manifest_builder.build_constrained_sketch` (the STAMP layer builder where
+`_apply_constraints`/`_create_geometry` actually live). No reusable prototype existed for the
+thing this item actually needed to validate -- built a fresh one.
+
+**Read `build_constrained_sketch` before touching anything, and found the premise was already
+half-wrong too.** Geometry+constraints and dimensions are NOT un-deferred today -- `build_
+constrained_sketch` ALREADY wraps them in `sketch.isComputeDeferred = True/False` windows (3
+separate ones per layer: geometry+constraints, a documented "manual pulse", then dimensions).
+Item 56's own per-call measurements (Coincident ~0.01s, Tangent up to 0.42s, Diameter ~0.036s
+each) happened INSIDE those existing deferred windows -- meaning those costs are NOT suppressed
+by deferred mode today, which is itself evidence against the hypothesis before any new code ran:
+if `isComputeDeferred` already covers these calls and they still cost real per-call time, merging
+MORE deferred windows together is unlikely to help, since the mechanism that would need to
+suppress the cost is already active and isn't suppressing it.
+
+**Tested the narrowest, safest version of the idea first, not the riskiest.** "Across the WHOLE
+stamp build" (the dispatch's own phrase) would mean holding ALL 5 layers' sketches deferred
+SIMULTANEOUSLY, resolving only at the very end -- but `build_constrained_sketch`'s own existing
+comment (on why projections run BEFORE its deferred window opens) states outright that a LATER
+layer's projection needs an EARLIER layer's sketch to be "ALREADY-BUILT" -- i.e. NOT deferred.
+Holding every layer deferred at once would violate that documented invariant for L2/L3's own
+cross-layer projections (7/26 of them). Tested the risk-free version instead: collapsed ONE
+layer's own 3 existing windows (geometry+constraints / manual pulse / dimensions) into ONE,
+within `build_constrained_sketch` itself -- no caller change, no cross-layer deferral, nothing
+that could touch the projection invariant at all.
+
+**LIVE, three Sends on one doc, full checklist, same real T7 payload (item 54's fresh seed):**
+```
+                  send-1     send-2     send-3
+baseline (items 55/56)   16.16-16.50s   19.77-19.87s   24.22s
+experiment (this item)   16.351s        19.833s        24.250s
+difference               within ~0.15-0.3s noise of the baseline RANGE already measured across
+                          3 separate prior live runs -- nowhere near the >= 1s the gate requires
+```
+Per-sketch checklist (all 5 stamp sketches, send-1 vs send-2, experimental run): curve/
+constraint/dimension/point counts and `isFullyConstrained` IDENTICAL both times (L1: 43/56/7/63,
+L2: 60/80/14/79, L3: 72/103/13/93, L4: 26/26/26/53 fullyConstrained=True, Lattice Boundary:
+4/8/0/9) -- the merge didn't corrupt or change anything, it just didn't save time either. Bodies/
+volumes byte-identical across all 3 sends (same 5 bars + panel/surface as every prior item this
+segment). Marker == count == 21 on all 3 sends. 9/9 inlay items healthy/not-suppressed on every
+check. Zero `[ERROR]`/MITER MISS/FALLBACK/"project() returned nothing" log lines across all 3
+sends -- the one PRE-EXISTING documented Fusion quirk this item's own change could plausibly have
+triggered (a deferred TARGET sketch breaking `sketch.project()`) never fired, consistent with this
+experiment never widening any sketch's own deferred window far enough to overlap a projection
+call (projections already run before ANY window opens, per the existing code -- unchanged by
+this merge).
+
+**Reverted** (gate: < 1s saved) -- `sketch_manifest_builder.py` restored from the session's own
+scratchpad backup (never from HEAD -- this was never committed), confirmed `git diff` empty
+against the committed version. Both affected suites re-run green after the revert: `fb_engine`
+777 passed/25 skipped; `b-spline-gen` 97 passed.
+
+**Conclusion for win #1, reported plainly per the dispatch's own "otherwise revert and report the
+numbers":** deferred compute does not help here because the window that WOULD matter (geometry
++constraints, already deferred today) already contains the expensive calls and they're already
+not being suppressed -- the per-call cost measured in item 56 is genuine solver/API work (each
+`constraint_step`/`dimension_step` call does real work Fusion can't defer away), not a redundant-
+recompute pattern the way items 51/55's own `.reorder()`/`.deleteMe()` findings were. The riskier
+cross-layer version (literally "the WHOLE stamp build" at once) was not attempted -- the risk-
+free version already answered the mechanism question (deferred compute isn't suppressing these
+costs), so there is no reason to take on the projection-invariant risk for a win that evidently
+isn't there. Win #1 is closed, not deferred for later -- the mechanism itself doesn't work, not
+just this specific implementation of it.
+
+Win #2 (L4's 26 node-circle dimensions) still waits on Fred's own answer, per the dispatch.
+
+Committed as ONE commit, WORK-LOG only (no production code survives this item): "H23 item 57:
+win #1 (deferred compute across the stamp build) validated and REVERTED -- saves under 1s on all
+3 Sends, the per-call costs are genuine solver work the existing deferred windows already don't
+suppress".
