@@ -429,6 +429,39 @@ def _tulip(curves, hw, hh, tol=2e-3):
     }
 
 
+def _sand_timer(curves, hw, hh, tol=2e-3):
+    """T14 SAND TIMER: a flat top and base, two outward-bulging arcs per side meeting at a sharp
+    pinch -- every joint a MITER (fb_engine/t14_sandtimer_geometry.py's own module docstring),
+    structurally the same all-miter class as T16/T17.
+
+    Features: topWidth (the top's own half-span, inches), pinchReachFrac (hw minus the pinch's own
+    half-width, inches -- i.e. hw*pinchReachFrac directly, NOT the pinch half-width itself, so the
+    generic `value/hw` recovery paramsFromShapeModel already uses for every other hw-basis feature
+    works unchanged -- no special-cased inversion), bulgeFrac (the lower-right curve's own outward
+    sagitta, inches -- one shared value across all 4 side arcs by construction, read from either),
+    pinchHeightFrac (hh minus the pinch's own y, inches = pinchHeightFrac * 2 * hh, matching
+    Template 16's own waistHeightFrac sign convention in y-UP: 0=top edge, 1=bottom edge) -- every
+    one a plain inch value, NOT pre-divided into a fraction, same convention _arched_funnel above
+    already uses. Valid when the top's own two ends are symmetric about the centreline and at the
+    same height, upper_R starts exactly where the top ends, and the base sits at y = -hh.
+
+    FIRST CUT, unverified against a real golden JSON (no template_14 goldens exist yet) -- same
+    caveat _arched_funnel's own docstring carries."""
+    top = curves["top"]
+    upper_r, lower_r, base = curves["upper_R"], curves["lower_R"], curves["base"]
+    top_l, top_r = top["start"], top["end"]  # top:S=topL, top:E=topR (the CCW-swap table, p02_02_loop.py)
+    pinch_r, BR = lower_r["end"], lower_r["start"]  # lower_R:S=BR, lower_R:E=pinchR
+    ok = (abs(top_l[0] + top_r[0]) < tol and abs(top_l[1] - top_r[1]) < tol  # top ends symmetric, same height
+          and abs(upper_r["end"][0] - top_r[0]) < tol and abs(upper_r["end"][1] - top_r[1]) < tol
+          and abs(base["start"][1] + hh) < tol and abs(base["end"][1] + hh) < tol)  # base at y=-hh
+    return ok, {
+        "topWidth": top_r[0],
+        "pinchReachFrac": hw - pinch_r[0],
+        "bulgeFrac": _sagitta_from_center_radius(pinch_r, BR, lower_r["center"], lower_r["radius"]),
+        "pinchHeightFrac": hh - pinch_r[1],
+    }
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
@@ -436,7 +469,8 @@ FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_nar
                       "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape,
                       "diamond_top_hourglass": _diamond_top_hourglass,
                       "diamond_top_hourglass_pinch": _diamond_top_hourglass_pinch,
-                      "arched_funnel": _arched_funnel, "tulip": _tulip}
+                      "arched_funnel": _arched_funnel, "tulip": _tulip,
+                      "sand_timer": _sand_timer}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):
@@ -785,6 +819,47 @@ def provisional_arched_funnel_model(top_width_of_hw, arch_rise_of_hw, waist_widt
             "waistWidthFracOfHw": waist_width_of_hw,
             "waistHeightFracOfH": waist_height_of_h,
             "bulgeFracOfHw": bulge_of_hw,
+        },
+    }
+
+
+def provisional_sand_timer_model(top_width_of_hw, pinch_reach_of_hw, bulge_of_hw, pinch_height_of_h):
+    """T14 SAND TIMER, until its goldens are recorded live: a PROVISIONAL model (never none), same
+    shape as provisional_arched_funnel_model's own docstring (no base template to derive it from --
+    no earlier template has this flat-top/flat-base, all-miter, double-bulge-per-side outline).
+    Every feature is a PLAIN hw- or hh-linear fraction straight from the construction
+    (fb_engine/t14_sandtimer_geometry.py's own outline()).
+
+    `pinchHeightFrac` is the one basis="h" handle, same convention as T16's own `waistHeightFrac`:
+    its own feature is `hh - pinch_r.y` = `pinch_height_frac * 2 * hh`, so the hh coefficient is
+    `2 * pinch_height_of_h` with NO hw cross-term -- paramsFromShapeModel recovers the fraction as
+    `feature / (2*hh)`, matching FRAME_HANDLES' own declared basis exactly. `pinchReachFrac`'s own
+    feature is already `hw * pinchReachFrac` (see _sand_timer's own docstring -- NOT the pinch half-
+    width itself), so it needs no special inversion either: coefficient `hw: pinch_reach_of_hw`
+    exactly like every other hw-basis feature. Marked `provisional` so nothing mistakes it for a
+    fit."""
+    return {
+        "features": {
+            "topWidth": {"hw": top_width_of_hw, "hh": 0.0},
+            "pinchReachFrac": {"hw": pinch_reach_of_hw, "hh": 0.0},
+            "bulgeFrac": {"hw": bulge_of_hw, "hh": 0.0},
+            "pinchHeightFrac": {"hw": 0.0, "hh": 2 * pinch_height_of_h},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "topWidthFracOfHw": top_width_of_hw,
+            "pinchReachFracOfHw": pinch_reach_of_hw,
+            "bulgeFracOfHw": bulge_of_hw,
+            "pinchHeightFracOfH": pinch_height_of_h,
         },
     }
 

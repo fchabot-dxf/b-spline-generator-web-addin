@@ -213,6 +213,10 @@ def template_shape_model(template_id, frame, goldens_dir):
     BEFORE T16 below, since its own dict is a strict superset of T16's (the same 5 keys plus this one).
     T84 item 3, T16 ARCHED FUNNEL: Tulip's own 5 keys minus "upperCurveFracOfHw" (straight, not concave,
     upper sides) builds frame_shape_fit.provisional_arched_funnel_model.
+    T84 item 5, T14 SAND TIMER: {"topWidthFracOfHw": w, "pinchReachFracOfHw": r, "bulgeFracOfHw": b,
+    "pinchHeightFracOfH": h} (no `from`: a flat top/base over an all-miter outline, nothing earlier fits it)
+    builds frame_shape_fit.provisional_sand_timer_model -- CHECKED BEFORE T16 above, since its own dict ALSO
+    carries the shared "topWidthFracOfHw" key (T84 item 4's convention).
     F30 item 3 (the taper copies, Template 12/13): {"from": <template id>, "taperAngleDeg": d} builds
     frame_shape_fit.provisional_taper_model (every one of the base model's own features KEPT, plus a new
     scale-invariant `taperAngle` -- unlike every other provisional model above, nothing about the base shape
@@ -259,6 +263,17 @@ def template_shape_model(template_id, frame, goldens_dir):
             return provisional_tulip_model(
                 prov["topWidthFracOfHw"], prov["archRiseFracOfHw"], prov["waistWidthFracOfHw"],
                 prov["waistHeightFracOfH"], prov["bulgeFracOfHw"], prov["upperCurveFracOfHw"])
+        if "pinchReachFracOfHw" in prov:
+            # T84 item 5, T14 SAND TIMER: also a shape of its own (no base template -- a flat top/
+            # base over an all-miter outline with two outward bulges per side). CHECKED BEFORE
+            # "topWidthFracOfHw" below: Sand Timer's own dict ALSO carries "topWidthFracOfHw" (the
+            # shared T84 item 4 key), so the more specific "pinchReachFracOfHw" must win first or
+            # every Sand Timer record would silently build an archedFunnel model instead (and crash
+            # on the missing archRiseFracOfHw/waistWidthFracOfHw/waistHeightFracOfH keys).
+            from fb_engine.frame_shape_fit import provisional_sand_timer_model
+            return provisional_sand_timer_model(
+                prov["topWidthFracOfHw"], prov["pinchReachFracOfHw"], prov["bulgeFracOfHw"],
+                prov["pinchHeightFracOfH"])
         if "topWidthFracOfHw" in prov:
             # T16 ARCHED FUNNEL: also a shape of its own: {"topWidthFracOfHw": w, "archRiseFracOfHw": r,
             # "waistWidthFracOfHw": ww, "waistHeightFracOfH": wh, "bulgeFracOfHw": b}.
