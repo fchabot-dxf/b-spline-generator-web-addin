@@ -22,6 +22,7 @@ import { runBricks, primitivesToPolyline } from '../editor/editor-brick-tool.js'
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS } from '../core/bricks/library.js';
+import { applyParam } from './param-manager.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -191,7 +192,27 @@ function resolveFrameGeom(editor) {
   return { path: points, cornerIndices, bands: FRAME_PRESETS.single_soldier };
 }
 
+// Advisor review (turn 131, round 2): a grout groove needs the terrain's own
+// mesh to sample it at least 2-3 times across, or it reads as a blur rather
+// than a visible line -- a 0.06in groove needs P.spacing <= ~0.02in, well
+// finer than this app's own 0.05in default (tuned for smooth terrain, not
+// brick-scale features). Only TIGHTENS spacing (never loosens a user's own
+// already-finer setting), and only when real brick content actually exists
+// (editor-brick-tool.js's own 'bricksGenerated' event) -- not a blanket
+// global default change for users who never touch the Brick tab.
+const SAMPLES_ACROSS_GROUT = 3;
+
+function ensureFineEnoughMesh(groutWidthIn) {
+  if (!(groutWidthIn > 0)) return;
+  const targetSpacing = groutWidthIn / SAMPLES_ACROSS_GROUT;
+  if (P.spacing > targetSpacing) {
+    applyParam('spacing', targetSpacing);
+  }
+}
+
 export function initBrickPanel() {
+  document.addEventListener('bricksGenerated', (e) => ensureFineEnoughMesh(e.detail?.groutWidthIn));
+
   renderToolList(document.getElementById('brickToolList'));
   syncToolButtons();
 

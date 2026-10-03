@@ -9087,3 +9087,66 @@ Full suite still green: 192 files / 3557 tests (+3 from the expanded primitivesT
 
 Commit, push, pass back, and a separate message to f3 (cc advisor) for the escalated edge-clipping
 gap.
+
+
+### F35 item 1, advisor review round 2 (turn 131, follow-up): mesh resolution + concave-curve escalation
+
+Fred: wall/frame overlap fix confirmed good. Two new findings: (a) on the hourglass waist's CONCAVE
+arcs, the frame band fans out as a sunburst with wedge-shaped gaps wider than the grout, and the
+radial bricks poke out as spikes -- not what a real curved course looks like (bricks should taper on
+the inner side or stay joint-parallel with stepping). Advisor says this is engine curve handling,
+already queued as f3's own item 74, and to send it with the shot. (b) On the real terrain, bricks
+read as "melted ripples" -- asked to check the mesh resolution against the grout width and bump it
+when bricks are present, show one shot with the filter noise off / macro on, and report the mesh
+step.
+
+**(a) Escalated to f3 directly (cc advisor), not fixed here** -- matches the advisor's own routing
+(f3 already has curved-contour support queued at item 74, this is squarely engine geometry, the same
+"tell f3 directly" protocol as the board-edge-overhang escalation). Sent with
+`shots/seatC/f35item1_fix_frame_1366.png` (the exact shot showing the sunburst) and today's own
+cornerIndices fix as context (the fan BEHAVIOR along a declared non-corner run is correct per my own
+fix -- bricksAlongPath's un-mitred tangent sampling IS fanning, not mitring, as asked; the PROBLEM is
+what that fan looks like on a CONCAVE run specifically: on the outside of a curve the perpendicular
+rays naturally spread apart, which is fine; on the INSIDE of a concave curve they converge, and the
+current geometry doesn't taper/converge the bricks themselves to match, leaving wedge gaps instead).
+
+**(b) investigated and partially fixed, reported honestly on the remainder.**
+
+Mesh step, read from `resolveGrid` directly rather than assumed: the app's own default `P.spacing`
+is 0.05in, which on this 7x9in board resolves to a 141x181 grid (`spacing = widthIn/(nx-1)` exactly
+0.05in/sample). Set 1's own grout width is 0.06in -- 0.06/0.05 = 1.2 samples across the groove, nowhere
+near the 2-3 the advisor named as the floor for a groove to read as a visible line rather than a blur.
+
+Fix: `editor-brick-tool.js` now dispatches a `bricksGenerated` CustomEvent (same declared-bridge
+convention as layers.js's own `layer-tooling-commit` / stamp-mask-manager.js's `stampMaskUpdated` --
+editor/ files never import core/state.js directly, so a plain DOM event is the established crossing
+point) carrying the active grout width; `main/brick-panel.js` listens and TIGHTENS `P.spacing` to
+`groutWidthIn / 3` via the real `applyParam('spacing', ...)` path -- never loosens an already-finer
+user setting, and only fires when real brick content actually exists (not a blanket global default
+change for every user). Verified live: before any bricks, spacing=0.05 (141x181); immediately after
+running Wall, spacing auto-tightened to 0.02 (351x451), giving exactly 3 samples across the 0.06in
+groove, confirmed by direct `resolveGrid` math in the same page session.
+
+Honest result on the "melted ripples" look: the finer mesh alone (`f35item1_r2_terrain_finemesh_
+iso.png`) did NOT meaningfully fix the visual softness at default filter settings -- the active
+filter's OWN fine-grained bumps (simplex at its default scale) sit at a similar visual frequency to
+the bricks and keep competing with them regardless of sampling density, exactly as Fred suspected
+("the filter noise at the same scale swamps them"). The requested "filter noise off, B-spline macro
+on" shot uses an EXISTING, already-built flag found by reading terrain.js directly --
+`params.isolateSkeleton`: "bypasses the filter with a flat 0.5, so downstream macro/gate/fade/smooth
+produce the pure skeleton shape with no filter character mixed in" -- exactly the "macro shape
+without fine filter texture" split Fred described, just not currently exposed in the UI (a real,
+working P key with zero wiring to a control). With it on (`f35item1_r2_terrain_isolateSkeleton_
+iso.png`), individual brick courses read far more distinctly, especially on the flatter parts of the
+board; the steepest slope still shows some softening from THIS camera angle, which looks like an
+inherent limit of representing fine, sharp joints on a continuously steep height-field mesh (a
+triangulated height mesh can't hold a perfectly crisp vertical groove edge across a slope without
+even finer sampling than 3-across) rather than a bug in this adapter's own code. Not attempting a
+further fix here -- `isolateSkeleton` surfaced as a real finding worth a UI control of its own
+someday, separate from this item's scope.
+
+Full suite still green: 192 files / 3557 tests (no new tests this round -- the fix is a DOM-event/
+param-system wire-up, no new pure logic to unit-test; verified live instead, same as the rest of this
+module).
+
+Commit, push, pass back, plus the f3 escalation for (a).

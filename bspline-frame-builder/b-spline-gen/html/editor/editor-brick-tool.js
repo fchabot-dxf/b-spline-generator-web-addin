@@ -176,7 +176,20 @@ export function runBricks(editor, settings, frameGeom) {
   drawBricks(editor, layer, frameBricks, 'frame');
   drawBricks(editor, layer, bricks, 'wall');
   commitEdit(editor);
+  notifyBricksGenerated(settings);
   return { wallCount: bricks.length, frameCount: frameBricks.length };
+}
+
+/** Advisor review (turn 131, round 2): a 0.06in grout groove needs the
+ *  terrain's own mesh to sample it at least 2-3 times across to read as a
+ *  visible groove rather than a blur -- that's a GLOBAL mesh-resolution
+ *  concern (P.spacing), which main/ owns, not this editor/ module (editor/
+ *  files never import core/state.js -- see this file's own header). A plain
+ *  CustomEvent is the declared bridge, same convention as layers.js's own
+ *  'layer-tooling-commit' / stamp-mask-manager.js's 'stampMaskUpdated'. */
+function notifyBricksGenerated(settings) {
+  if (typeof document === 'undefined' || typeof CustomEvent === 'undefined') return;
+  document.dispatchEvent(new CustomEvent('bricksGenerated', { detail: { groutWidthIn: settings.grout.widthIn } }));
 }
 
 /** primitives (contour-from-frame.js's own {type:'L'|'A', ...} loop) -> a
@@ -256,5 +269,6 @@ export const brickBrushHandler = {
     const { bricks } = bricksAlongPath(polyline, { ...toBrickOpts(settings), closed: false });
     drawBricks(editor, layer, bricks, 'brush');
     commitEdit(editor);
+    notifyBricksGenerated(settings);
   },
 };
