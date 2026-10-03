@@ -1,0 +1,210 @@
+[
+  {
+    "id": "brick_1",
+    "name": "Brick 1",
+    "image": "data/photo-patterns/brick_1.jpg",
+    "thumb": "data/photo-patterns/brick_1_thumb.jpg",
+    "settings": {
+      "straighten": 0,
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  },
+  {
+    "id": "brick_2",
+    "name": "Brick 2",
+    "image": "data/photo-patterns/brick_2.jpg",
+    "thumb": "data/photo-patterns/brick_2_thumb.jpg",
+    "settings": {
+      "straighten": 0,
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  },
+  {
+    "id": "pebble_concrete",
+    "name": "Pebble Concrete",
+    "image": "data/photo-patterns/pebble_concrete.jpg",
+    "thumb": "data/photo-patterns/pebble_concrete_thumb.jpg",
+    "settings": {
+      "straighten": 0,
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  },
+  {
+    "id": "drain_grate",
+    "name": "Drain Grate",
+    "image": "data/photo-patterns/drain_grate.jpg",
+    "thumb": "data/photo-patterns/drain_grate_thumb.jpg",
+    "settings": {
+      "straighten": 0,
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  },
+  {
+    "id": "rusty_grate",
+    "name": "Rusty Grate",
+    "image": "data/photo-patterns/rusty_grate.jpg",
+    "thumb": "data/photo-patterns/rusty_grate_thumb.jpg",
+    "settings": {
+      "straighten": 0,
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  },
+  {
+    "id": "bark",
+    "name": "Bark",
+    "image": "data/photo-patterns/bark.jpg",
+    "thumb": "data/photo-patterns/bark_thumb.jpg",
+    "settings": {
+      "straighten": 0,
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  },
+  {
+    "id": "pebble_close",
+    "name": "Pebble close",
+    "image": "data/photo-patterns/pebble_close.jpg",
+    "thumb": "data/photo-patterns/pebble_close_thumb.jpg",
+    "settings": {
+      "straighten": 0,
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  },
+  {
+    "id": "chalk_rose",
+    "name": "Chalk rose",
+    "image": "data/photo-patterns/chalk_rose.jpg",
+    "thumb": "data/photo-patterns/chalk_rose_thumb.jpg",
+    "settings": {
+      "straighten": 0,
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
+  }
+]

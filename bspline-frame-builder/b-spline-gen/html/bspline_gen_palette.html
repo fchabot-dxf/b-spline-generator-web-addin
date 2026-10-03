@@ -866,6 +866,130 @@
               <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel(). -->
             </div>
           </div>
+
+        </div>
+      </div>
+
+      <!-- F34 item 1 (Fred): the Photo tools get their OWN top-level tab,
+           next to Filter etc., not nested inside it (main/photo-panel.js).
+           ALWAYS visible/clickable (unlike the old Filter-nested sub-panel)
+           -- picking a pattern or loading your own photo here switches
+           noiseType to 'photo' itself (main/photo-panel.js's own
+           switchToPhotoFilter()), same as picking "Photo" from the Filter
+           panel's own dropdown. Effect params (Depth/Scale/Offset/Rotation/
+           Repeat) are declared `tweaks` (core/noise/photo.js) and stay in
+           the Filter panel's own shared "Edit Filter" panel -- that
+           mechanism is common to every filter (Moon/Mars/etc. included),
+           not something to duplicate or relocate here. -->
+      <div class="panel panel-photo">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🖼️ PHOTO</div>
+        <div class="panel-body hidden">
+          <label class="cad-label">Patterns</label>
+          <div id="photoPatternRow" class="photo-pattern-row"></div>
+
+          <label class="cad-label">Load my own</label>
+          <input type="file" id="photoFileInput" accept="image/png,image/jpeg" style="width:100%; font-size:11px; margin-bottom:10px;">
+
+          <canvas id="photoPreviewCanvas" width="220" height="160" class="photo-preview-canvas"></canvas>
+          <div style="font-size:10px; opacity:0.6; text-align:center; margin:-4px 0 12px;">dimmed = mirrored by Symmetry, not sampled directly</div>
+
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Prepare</label>
+          <div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;">
+            <button type="button" id="photoBtnRotate" class="cad-btn">⟳ Rotate 90°</button>
+            <button type="button" id="photoBtnFlipH" class="cad-btn">⇋ Flip H</button>
+            <button type="button" id="photoBtnFlipV" class="cad-btn">⇅ Flip V</button>
+            <button type="button" id="photoBtnUndo" class="cad-btn">Undo</button>
+          </div>
+          <label class="cad-label">Straighten (degrees)</label>
+          <div class="cad-slider-row" style="margin-bottom:10px;">
+            <input type="range" id="photoStraightenSlider" class="cad-slider" min="-45" max="45" step="0.5" value="0">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoStraighten" value="0"></div>
+          </div>
+          <label class="cad-label">Crop (%)</label>
+          <div style="display:flex; gap:4px; margin-bottom:6px;">
+            <input type="number" id="photoCropX" value="0" min="0" max="100" step="1" style="width:25%;" title="Left">
+            <input type="number" id="photoCropY" value="0" min="0" max="100" step="1" style="width:25%;" title="Top">
+            <input type="number" id="photoCropW" value="100" min="1" max="100" step="1" style="width:25%;" title="Width">
+            <input type="number" id="photoCropH" value="100" min="1" max="100" step="1" style="width:25%;" title="Height">
+          </div>
+          <button type="button" id="photoBtnApplyCrop" class="cad-btn" style="width:100%; margin-bottom:14px;">Apply Crop</button>
+
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Edit</label>
+          <label class="cad-label">Levels — Black point</label>
+          <div class="cad-slider-row" style="margin-bottom:8px;">
+            <input type="range" id="photoLevelsBlackSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsBlack" value="0"></div>
+          </div>
+          <label class="cad-label">Levels — White point</label>
+          <div class="cad-slider-row" style="margin-bottom:8px;">
+            <input type="range" id="photoLevelsWhiteSlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsWhite" value="1"></div>
+          </div>
+          <label class="cad-label">Levels — Midpoint (gamma)</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="photoLevelsMidSlider" class="cad-slider" min="0.2" max="3" step="0.05" value="1">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsMid" value="1"></div>
+          </div>
+          <label class="cad-label">Brightness</label>
+          <div class="cad-slider-row" style="margin-bottom:8px;">
+            <input type="range" id="photoBrightnessSlider" class="cad-slider" min="-0.5" max="0.5" step="0.01" value="0">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoBrightness" value="0"></div>
+          </div>
+          <label class="cad-label">Contrast</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="photoContrastSlider" class="cad-slider" min="-0.9" max="3" step="0.05" value="0">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoContrast" value="0"></div>
+          </div>
+          <label class="cad-label">Blur</label>
+          <div class="cad-slider-row" style="margin-bottom:14px;">
+            <input type="range" id="photoBlurSlider" class="cad-slider" min="0" max="8" step="1" value="0">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoBlur" value="0"></div>
+          </div>
+
+          <!-- Fred: "a cute 2-state segmented toggle", not a plain checkbox -- drives the
+               same `invert` setting (core/photo/ops.js), no new state. -->
+          <label class="cad-label">Relief</label>
+          <div class="relief-toggle" id="photoReliefToggle" style="margin-bottom:4px;">
+            <button type="button" class="relief-toggle-btn active" id="photoBtnReliefRaised" title="Light areas raised, dark areas as grooves">
+              <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
+                <rect x="0" y="6" width="5" height="6"/><rect x="6" y="3" width="5" height="9"/>
+                <rect x="12" y="6" width="5" height="6"/><rect x="18" y="3" width="5" height="9"/>
+              </svg>
+              <span>Raised</span>
+            </button>
+            <button type="button" class="relief-toggle-btn" id="photoBtnReliefCarved" title="Inverted: dark areas raised, light areas as grooves">
+              <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
+                <rect x="0" y="0" width="5" height="6"/><rect x="6" y="0" width="5" height="9"/>
+                <rect x="12" y="0" width="5" height="6"/><rect x="18" y="0" width="5" height="9"/>
+              </svg>
+              <span>Carved</span>
+            </button>
+          </div>
+
+          <!-- F34 item 3 (Fred: "height wouldn't ever be more than 1/4 for
+               now"): the PHYSICAL carve depth (same real P.carveZ every other
+               filter uses), just scoped here to a photo-appropriate range --
+               distinct from the "Depth" effect param below, which is a
+               unitless relief-strength multiplier, not a real dimension. -->
+          <label class="cad-label">Max Height (in)</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="photoReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
+          </div>
+
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin:8px 0 4px;">Effect params</label>
+          <div id="photoTweaksBody">
+            <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel() --
+                 a SECOND render target for the SAME schema/state the Filter panel's own
+                 "⚙️ Edit Filter" panel uses (registerTweaksTarget), not a copy. -->
+          </div>
+
+          <!-- F34 item 3: writes the live edits+tweaks+Max Height back into
+               the loaded pattern's own `settings` (data/photo-patterns.json),
+               downloaded as an updated file for the advisor to apply -- same
+               "save a real file" idiom as Settings > Save log. Disabled for a
+               user's own upload (main/photo-panel.js's syncSaveButtonState). -->
+          <button type="button" id="photoBtnSaveToPattern" class="cad-btn cad-btn-secondary" style="width:100%; margin-top:14px;" disabled>💾 Save settings to this pattern</button>
         </div>
       </div>
 

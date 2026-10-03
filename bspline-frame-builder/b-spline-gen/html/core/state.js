@@ -44,6 +44,25 @@ export const DEFAULT = {
     // Session-only — defaults live in each filter's `tweaks` schema and
     // are NOT seeded here. Empty object means "use schema defaults".
     filterTweaks: {},
+    // F34 item 1: the 'photo' filter's own source. photoImageDataUrl is the
+    // RAW (unedited) decoded source image, embedded as a PNG data: URL,
+    // downscaled at upload time (core/photo/codec.js's own PHOTO_MAX_DIM) so
+    // saved projects stay small. photoEdits is the declared, ORDERED list
+    // of {op, params} edit steps (crop/rotate90/flip/levels/
+    // brightnessContrast/blur/invert, core/photo/ops.js) applied to it in
+    // one pure function — "undo" is popping the last entry. Both are plain
+    // JSON, so they round-trip through saveLastSession/loadLastSession like
+    // any other P field; written DIRECTLY (not through updateP/applyParam),
+    // same convention as P.stampLayers/P.decalLayerIds/P.editorSvg — none of
+    // these is a single scalar a generic <input> binds to.
+    photoImageDataUrl: null,
+    photoEdits: [],
+    // F34 item 3: which built-in pattern (data/photo-patterns.json id) the
+    // current photo came from, if any -- null for a user's own upload. Drives
+    // "Save settings to this pattern" (main/photo-panel.js); declared on P
+    // (not a module-local var) so it survives a reload via the existing
+    // generic session save/load, same as photoImageDataUrl/photoEdits above.
+    photoPatternId: null,
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.
     // At detailDensity = 1 it has no visible effect (no empty zones exist).

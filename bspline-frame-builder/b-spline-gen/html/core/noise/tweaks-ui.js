@@ -186,25 +186,46 @@ function buildRow(filterId, schema) {
   return wrap;
 }
 
+// F34 item 1 (Fred: "show the photo's effect params inside the Photo tab
+// too... reuse the same generic Edit Filter control rendering, not a
+// copy"): a SECOND (or third, ...) place the same schema renders into.
+// Row-level behavior (writeOverride, reset) is unchanged either way -- it's
+// the same buildRow() writing to the same P.filterTweaks[filterId], so
+// editing a slider in one location updates the other the next time either
+// one re-renders (both are re-rendered together below).
+const _secondaryTargets = []; // [{ panelEl, bodyEl }]
+
+/** Register an additional {panelEl, bodyEl} pair to keep in sync with the
+ * primary one (bindTweaksUI's own). Render-only -- no separate "Reset all"
+ * button; use the primary one for that. Call BEFORE the next
+ * renderTweaksPanel() so it isn't left stale. */
+export function registerTweaksTarget(panelEl, bodyEl) {
+  if (bodyEl) _secondaryTargets.push({ panelEl, bodyEl });
+}
+
+function _allTargets() {
+  const targets = _secondaryTargets.slice();
+  if (_bodyEl) targets.unshift({ panelEl: _panelEl, bodyEl: _bodyEl });
+  return targets;
+}
+
 /**
- * Populate the panel body for a given filter. Hides the whole panel
- * if the filter declares no tweaks.
+ * Populate EVERY registered panel body for a given filter (the primary one
+ * from bindTweaksUI, plus any registerTweaksTarget() ones). Hides a target's
+ * own wrapping panelEl if the filter declares no tweaks (skipped for a
+ * target with no panelEl -- e.g. a plain section with no collapsible header
+ * of its own).
  */
 export function renderTweaksPanel(filterId) {
-  if (!_panelEl || !_bodyEl) return;
-
   const schema = NoiseTweaks[filterId] ?? [];
-  _bodyEl.innerHTML = '';
-
-  if (schema.length === 0) {
-    // No tweaks for this filter — collapse and hide entirely.
-    _panelEl.style.display = 'none';
-    return;
-  }
-
-  _panelEl.style.display = '';
-  for (const t of schema) {
-    _bodyEl.appendChild(buildRow(filterId, t));
+  for (const { panelEl, bodyEl } of _allTargets()) {
+    bodyEl.innerHTML = '';
+    if (schema.length === 0) {
+      if (panelEl) panelEl.style.display = 'none';
+      continue;
+    }
+    if (panelEl) panelEl.style.display = '';
+    for (const t of schema) bodyEl.appendChild(buildRow(filterId, t));
   }
 }
 
