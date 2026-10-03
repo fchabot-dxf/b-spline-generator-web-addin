@@ -13233,3 +13233,91 @@ matches and the add-in is running, then told the advisor what's deployed so they
 
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake.
+
+## Lane B — Turn (epoch 9) — T84 items 1-2: Arched Funnel + Tulip diagrams — DONE, passing back
+
+Advisor dispatch (item 7 merged to main 8b1a438, deployed): T84 items 1-2, moved from seat C's own F31
+items 3-4 so the two seats run in parallel. Diagram only -- no template code, no Fusion. New Template 16
+"Arched Funnel" (arched top, STRAIGHT upper sides tapering to a waist, outward-bulging lower curves to a
+flat base) and Template 17 "Tulip" (same, but the upper sides curve INWARD/concave) -- "a SEPARATE template
+from F31 item 3," per Fred's own ruling quoted in the brief. Reuse seat C's own diagram approach
+(`tools/repro/f31_item1_sandtimer_diagram.mjs`/`f30_item5_arched_taper_diagram.mjs`, both on the `fb-app`
+worktree) plus a continuity check. Header rules: always miter, no thin/needle tips, simple and not too
+concave, sizes 6x9/7x9/9x12, default plus range ends. Shots to
+`C:/Users/danse/.bspline-status/shots/seatB/`.
+
+**Research first.** Neither referenced script lives on lane-b, and "the sand-timer's own pinch machinery"
+turned out not to exist as production code at all (F31 item 1 is STILL an unchecked queue item on fb-app;
+no `template_14` exists anywhere, main included) -- delegated to an Explore-style agent to read both
+scripts in full on fb-app, confirm they're plain Node scripts that `import()` THIS project's own real
+production modules by file URL (no headless browser, no served app) and run hand-built outline primitives
+through the real `outlineDefects`/`offsetOutlineInward`/`frameMiters` pipeline, and to pull the advisor's
+own approved reference geometry (a Shapely script, `C:/Users/danse/.bspline-status/shots/fred/
+flask_and_archtimer_render.py`). Then read `f31_item1_sandtimer_diagram.mjs` myself in full (the agent's
+own paraphrase of `bulgeArc` wasn't something I wanted to transcribe from memory for load-bearing geometry
+code) and the advisor's own reference script in full, to get the EXACT formulas rather than a second-hand
+summary.
+
+**Design**: both templates share ONE builder, `buildArchedTimer(archRiseFrac, waistWidthFrac,
+waistHeightFrac, bulgeFrac, upperCurveFrac, W, H)` -- `bulgeArc`'s own documented behaviour (sag<1e-9 ->
+straight line) means Funnel is simply Tulip with `upperCurveFrac=0`, no second builder needed. Converted
+the advisor's own reference formulas (y-up, origin at the board's own bottom-left) into this script's own
+y-down, centre-origin convention (`x_here = x_ref - hw; y_here = hh - y_ref`), verified the conversion
+against f31's own board-corner convention as a sanity check (both gave `(hw,hh)`/`(-hw,hh)` for the base
+corners). Defaults: archRiseFrac 0.39, waistWidthFrac 0.38, waistHeightFrac 0.55, bulgeFrac ~0.169 -- all
+derived directly from the advisor's own approved render's literal fractions, not invented.
+
+**BAR-COUNT FLAG, not resolved, surfaced for the advisor/Fred.** The dispatch and the advisor's own
+reference script caption both say "7 bars"; this diagram builds 6 (arch, upper_R, lower_R, base, lower_L,
+upper_L), the arch as ONE continuous piece. The advisor's own reference script constructs the arch as two
+mirrored halves purely to reuse its own `mirror()` helper on the right side's own point list -- the apex
+itself is perfectly tangent (top of a symmetric arc), and this project's own precedent (T7/T11: "a bar is a
+maximal run of TANGENT-joined pieces, miter only at a true corner") says that's one bar, not two. Flagged
+in the diagram's own output (a caption banner, so it travels with the shots) and here, not resolved --
+diagram-only scope, Fred already looked at a render captioned "7 bars" so this needs his own confirmation,
+not a silent pick either way.
+
+**Found and fixed 2 real bugs in my own script before trusting its output** (the kind of thing "prove the
+new check is non-vacuous" exists for, applied to a diagram script's own range-finding instead of a test):
+1. `maxFrac()`'s own call site was missing the `upperCurveFrac` argument (`check('_probe', ...args(v), W,
+   H)` against a function expecting label+5+2 args, only given label+4+2) -- silently shifted W into the
+   upperCurveFrac slot and H into W, so the Funnel's own "max clean bulge" search measured complete
+   garbage. Caught because the result was suspicious on its face (`max clean bulgeFrac = 0.000`, i.e. "any
+   bulge at all breaks it," implausible for a shape whose default bulge was already comfortably clean).
+   Fixed by always passing the FULL 5-element shape-param array through every range-finding call, matching
+   `check()`'s own positional signature exactly, with a comment explaining why (so the next person doesn't
+   reintroduce it).
+2. The Tulip's own "waist-up"/"waist-down"/"max-bulge" panels initially reused the FUNNEL's own ranges
+   (computed at `upperCurveFrac=0`), not ranges recomputed WITH the Tulip's own curve depth active. This
+   passed `clean` (no geometric defects) but silently violated `miterStaysInsideWood` (a THIN/NEEDLE TIP) at
+   the waist-up extreme, at all 3 board sizes -- exactly the header rule this diagram exists to enforce.
+   Caught by actually running `miterStaysInsideWood` (neither reference script did -- see below) and reading
+   its own `false` in the output rather than only checking `clean`. Fixed by computing the Tulip's own bulge
+   and waist-height ranges separately, with its own curve depth included throughout; `ok` (which already
+   incorporates `noThinTips`) was already the correct stopping criterion for the bisection/stepping, so once
+   the right base array was passed through, the ranges naturally excluded the violation.
+
+**Added one check neither reference script ran**: `miterStaysInsideWood` (production's own "no hooked
+corner tips" rule, `editor-frame-profile.js:299`), folded into `check()`'s own `ok` flag alongside the
+existing defect/continuity/miter-count/min-bar-length checks. Detection-only (reads a production function,
+writes nothing), so no guard-permission question.
+
+**Result**: every panel generated for the final diagram (15 per template -- default/max-bulge/waist-up/
+waist-down at 3 sizes, plus max-curve for Tulip) reports `clean=true OK=true`: 0 surface/offset defects, 0
+collapsed inner pieces, exactly 6 miters, no thin tips, a closed loop continuous to within 1e-6in, every bar
+>= 0.75in. Rendered via headless Chrome (`--headless=new --window-size=2000,6000`, not the `.mjs`'s own
+plain `writeFileSync` HTML output -- PNG is what the shots convention wants), cropped into one Funnel image
+and one Tulip image, saved as `0431_T84-item1-proposed_arched-funnel-diagram_6x9_7x9_9x12.png` and
+`0431_T84-item2-proposed_tulip-diagram_6x9_7x9_9x12.png` in `C:/Users/danse/.bspline-status/shots/seatB/`.
+
+**Not committed**: the generated `.html`/`.png` preview files (scratch render artifacts, same as f31/f30's
+own HTML outputs were never committed either -- confirmed via `git log --all` on both namesakes before
+assuming). Only the `.mjs` script itself is committed, as the reusable tool.
+
+Committed the new script as T84 items 1-2 (ONE commit -- the two items share a single builder/script, and
+the dispatch's own cross-session wording already treats them as one combined task), pushed. No Fusion
+needed or used; no gate to re-run beyond the script's own `check()` output (a diagram tool, not production
+code -- vitest/pytest untouched).
+
+All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
+Edit/Write this turn, no main-checkout mistake.
