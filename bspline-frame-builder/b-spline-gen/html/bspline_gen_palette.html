@@ -2746,6 +2746,13 @@
               <label id="stripeLengthRow" style="display:none; flex-direction:column; gap:2px;">Length (in)
                 <input id="stripeLength" type="number" min="0" step="0.05" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
               </label>
+              <!-- F32 item 2 (Fred: "dashed ratio"): one chip per STRIPE_PATTERNS entry, rendered by
+                   properties-stripe.js -- never hand-added here per pattern. -->
+              <div id="stripePatternPresets" role="group" class="segmented-group" style="margin-top:4px;"></div>
+              <label style="display:flex; flex-direction:column; gap:2px;">Ratio (e.g. 3:1)
+                <input id="stripePatternRatio" type="text" placeholder="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              </label>
+              <div id="stripePatternClampNote" style="display:none; color:#b45309;">Too fine for this line -- fewer repeats fit so no stripe is thinner than the line.</div>
             </div>
             <div data-no-collapse style="display:flex; flex-direction:column; gap:4px;">
               <div style="display:flex; align-items:center; gap:6px;">

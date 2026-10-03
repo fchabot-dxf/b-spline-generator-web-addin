@@ -67,8 +67,41 @@ export const STRIPE_D_DIGITS = CONTOUR_D_DIGITS; // audit batch 2: the ONE conto
 const STRIPE_MARKER_ID = 'stripe-marker';
 
 /** The panel's settings (per editor session, `editor._stripe`). `colors[i]` null = "the default for the line's
- *  own layer" (below); a pick fixes it. `three` = Colour C on (off by default, the checklist). */
-export const STRIPE_DEFAULTS = Object.freeze({ drive: 'count', count: 5, length: 1, three: false, colors: Object.freeze([null, null, null]) });
+ *  own layer" (below); a pick fixes it. `three` = Colour C on (off by default, the checklist). `ratio` is the
+ *  F32 item 2 dash pattern: `[1]` ("Even", one segment per repeat) is a plain equal stripe -- today's only shape,
+ *  so every pre-existing settings object (spread from this default) keeps behaving exactly as before. */
+export const STRIPE_DEFAULTS = Object.freeze({ drive: 'count', count: 5, length: 1, three: false, colors: Object.freeze([null, null, null]), ratio: Object.freeze([1]) });
+
+/** F32 item 2 (Fred: "the stripping tool should also have pattern, like dashed ratio"): declared once so the
+ *  panel can render one chip per pattern (never hand-roll a second list). Each `ratio` is the relative length of
+ *  the segments in ONE repeat, start to end, cycling A B (C) same as today -- 'Even' is `[1]`: a single-segment
+ *  repeat, so it is not merely similar to today's plain equal-stripe behaviour, it IS that behaviour (see
+ *  `maxPatternRepeats`/`patternRepeatsFor`/`patternCutPoints` below, each written to reduce to the pre-existing
+ *  `maxStripeCount`/`stripeCountFor`/`stripeCutPoints` exactly when `ratio.length === 1`). 'Dash-dot' needs 3
+ *  colours to read as a real dash-dot (drawn with only 2 it just cycles A B A B across its 4 segments, which is
+ *  still a valid, well-defined pattern -- ratio and colour count are independent, neither gates the other). */
+export const STRIPE_PATTERNS = Object.freeze([
+  Object.freeze({ name: 'Even', ratio: Object.freeze([1]) }),
+  Object.freeze({ name: 'Dash', ratio: Object.freeze([3, 1]) }),
+  Object.freeze({ name: 'Long dash', ratio: Object.freeze([5, 1]) }),
+  Object.freeze({ name: 'Dash-dot', ratio: Object.freeze([3, 1, 1, 1]) }),
+]);
+
+/** Parse a free-typed ratio like `'3:1'` or `'2 : 3 : 2'` into `[2, 3, 2]`; `null` when nothing valid survives
+ *  (an empty field, stray text, zero/negative parts) so the caller can leave the current ratio alone rather than
+ *  clobber it with garbage mid-edit. */
+export function parseStripeRatio(text) {
+  const parts = String(text == null ? '' : text).split(':').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0);
+  return parts.length ? parts : null;
+}
+
+/** Apply a declared pattern to `editor`'s stripe settings: `ratio` set to a fresh (mutable) copy of the preset's,
+ *  same one-call-one-write shape as `applyStripeColorPreset`. */
+export function applyStripePattern(editor, pattern) {
+  const s = stripeSettings(editor);
+  s.ratio = [...pattern.ratio];
+  return s;
+}
 
 /** A plain line on a layer with no lattice pattern has no Rails/Ties/Nodes colours to default to: black, white,
  *  then grey (Fred's black/white stripe image; VECTOR_COLORS' own Neutral row, never a hand-typed hex). */
@@ -102,7 +135,7 @@ export function applyStripeColorPreset(editor, preset) {
 
 /** The editor's live stripe settings, created on first use. */
 export function stripeSettings(editor) {
-  if (!editor._stripe) editor._stripe = { ...STRIPE_DEFAULTS, colors: [...STRIPE_DEFAULTS.colors] };
+  if (!editor._stripe) editor._stripe = { ...STRIPE_DEFAULTS, colors: [...STRIPE_DEFAULTS.colors], ratio: [...STRIPE_DEFAULTS.ratio] };
   return editor._stripe;
 }
 
@@ -121,6 +154,63 @@ export function stripeCountFor(settings, lineLen, minLen) {
     ? Math.round(lineLen / Math.max(Number(settings.length) || minLen, minLen))
     : Math.round(Number(settings.count) || 1);
   return Math.min(max, Math.max(1, raw));
+}
+
+// ─── F32 item 2: dash-ratio patterns ─────────────────────────────────────────────────────────────────────────
+// Generalizes the Count/Length math above from "N equal stripes" to "N repeats of a ratio", e.g. Dash 3:1 repeats
+// a long segment then a short one. Each function reduces to its plain counterpart above exactly when
+// `ratio.length === 1` (same expressions, `minLen` in place of the single-element repeat's own floor, which
+// always equals `minLen` regardless of that one ratio value) -- so "Even" is not a re-implementation of today's
+// behaviour, it is the `ratio.length === 1` case of the one general implementation.
+
+/** How many units long one repeat of `ratio` is, e.g. Dash 3:1 -> 4. */
+export function ratioUnitSum(ratio) { return ratio.reduce((a, b) => a + b, 0); }
+
+/** The shortest a whole repeat of `ratio` may be with no segment shorter than `minLen`: the smallest ratio VALUE
+ *  sets the floor unit (that one segment must be >= minLen), the repeat is `ratioUnitSum(ratio)` of those units.
+ *  `ratio=[1]` reduces to exactly `minLen` -- today's per-stripe floor. */
+function _repeatFloor(ratio, minLen) {
+  return (minLen / Math.min(...ratio)) * ratioUnitSum(ratio);
+}
+
+/** The most repeats of `ratio` that fit a line of length `lineLen` with no segment shorter than `minLen`.
+ *  Generalizes `maxStripeCount`. */
+export function maxPatternRepeats(ratio, lineLen, minLen) {
+  if (!(lineLen > 0)) return 1;
+  return Math.max(1, Math.floor(lineLen / Math.max(_repeatFloor(ratio, minLen), 1e-12) + 1e-9));
+}
+
+function _rawPatternRepeats(settings, ratio, lineLen, minLen) {
+  const floor = _repeatFloor(ratio, minLen);
+  return Math.max(1, settings.drive === 'length'
+    ? Math.round(lineLen / Math.max(Number(settings.length) || floor, floor))
+    : Math.round(Number(settings.count) || 1));
+}
+
+/** How many repeats of `ratio` `settings` gives a line of length `lineLen` (Count = repeats of the pattern,
+ *  Length = the length of one repeat -- see the header). Generalizes `stripeCountFor`. */
+export function patternRepeatsFor(settings, ratio, lineLen, minLen) {
+  return Math.min(maxPatternRepeats(ratio, lineLen, minLen), _rawPatternRepeats(settings, ratio, lineLen, minLen));
+}
+
+/** True when `settings`' own requested Count/Length asked for more repeats than fit without a too-short segment
+ *  -- the panel shows this so a clamp is never silent. */
+export function patternClamped(settings, ratio, lineLen, minLen) {
+  return _rawPatternRepeats(settings, ratio, lineLen, minLen) > maxPatternRepeats(ratio, lineLen, minLen);
+}
+
+/** The cut points splitting `prim` into `reps` repeats of `ratio`, start to end. Generalizes `stripeCutPoints`. */
+export function patternCutPoints(prim, ratio, reps) {
+  const totalUnits = ratioUnitSum(ratio) * reps;
+  const points = [];
+  let cum = 0;
+  for (let r = 0; r < reps; r++) {
+    for (const part of ratio) {
+      cum += part;
+      if (cum < totalUnits - 1e-9) points.push(primitivePointAt(prim, cum / totalUnits));
+    }
+  }
+  return points;
 }
 
 /** The colour of each of `n` stripes: `palette` cycled from the start (A B A B... / A B C A B C...). */
@@ -225,15 +315,19 @@ function _runGeometry(run) {
 }
 
 /** What a tap on `el` would produce with `settings`: the run, its geometry and length, the stroke-width floor,
- *  the stripe count and each stripe's length. */
+ *  the dash-ratio pattern (`ratio`, how many times it `reps`eats, and whether that was `clamped` down to fit),
+ *  the total stripe count and each stripe's average length. */
 export function stripePlan(editor, el, settings = stripeSettings(editor)) {
   const run = stripeRun(editor, el);
   const prim = _runGeometry(run);
   if (!prim) return null;
   const length = primitiveLength(prim);
   const minLength = minPieceLength(el);
-  const count = stripeCountFor(settings, length, minLength);
-  return { run, prim, length, minLength, count, stripeLength: length / count };
+  const ratio = settings.ratio && settings.ratio.length ? settings.ratio : [1];
+  const reps = patternRepeatsFor(settings, ratio, length, minLength);
+  const clamped = patternClamped(settings, ratio, length, minLength);
+  const count = reps * ratio.length;
+  return { run, prim, length, minLength, ratio, reps, clamped, count, stripeLength: length / count };
 }
 
 // ─── the command ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -262,10 +356,11 @@ export function stripeAt(editor, el, settings = stripeSettings(editor), opts = {
   if (contour && run.length > 1 && piece.node.getAttribute(STRIPE_SRC_ATTR)) piece.attr('d', src); // the exact original
   const prim = pieceGeometry(piece);
   if (!prim) return null;
-  const n = stripeCountFor(settings, primitiveLength(prim), minPieceLength(piece));
+  const ratio = settings.ratio && settings.ratio.length ? settings.ratio : [1];
+  const reps = patternRepeatsFor(settings, ratio, primitiveLength(prim), minPieceLength(piece));
   const stripes = [piece];
-  for (const p of stripeCutPoints(prim, n)) {
-    // the stroke-width floor is already guaranteed by n; the cut keeps only a no-zero-length guard
+  for (const p of patternCutPoints(prim, ratio, reps)) {
+    // the stroke-width floor is already guaranteed by reps/ratio; the cut keeps only a no-zero-length guard
     const pair = cutAtNoCommit(editor, stripes[stripes.length - 1], p, { recolor: false, min: CUT_MIN_PLAIN_IN / 10, digits: STRIPE_D_DIGITS });
     if (!pair) break;
     stripes[stripes.length - 1] = pair[0];
@@ -303,7 +398,7 @@ function _drawStripeMarker(editor, plan) {
   const r = getDynamicTolerance(editor, 5, 'markPx'); // audit tidy-up: a mark size, not the hit reach
   const g = editor._handleLayer.group().id(STRIPE_MARKER_ID).attr('pointer-events', 'none');
   drawTargetHighlight(editor, g, plan.run); // the run the tap would stripe, lit (Fred: "highlight feedback")
-  for (const p of stripeCutPoints(plan.prim, plan.count)) g.circle(2 * r).center(p.x, p.y).fill('#fff').stroke({ color: '#ff6f00', width: r / 2 });
+  for (const p of patternCutPoints(plan.prim, plan.ratio, plan.reps)) g.circle(2 * r).center(p.x, p.y).fill('#fff').stroke({ color: '#ff6f00', width: r / 2 });
 }
 
 /** Touch (Fred: "Stripe tool, I don't understand how to confirm the action on mobile"; the scissors were

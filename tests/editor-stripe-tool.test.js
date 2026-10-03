@@ -9,6 +9,8 @@ import {
   stripeAt, stripeRun, stripePlan, stripeCountFor, maxStripeCount, stripeColorCycle, stripePalette, defaultStripeColors,
   stripeCutPoints, primitiveLength, STRIPE_ATTR, STRIPE_SRC_ATTR, STRIPE_DEFAULTS, STRIPE_FALLBACK_COLORS,
   STRIPE_COLOR_PRESETS, applyStripeColorPreset, stripeSettings,
+  STRIPE_PATTERNS, applyStripePattern, parseStripeRatio, ratioUnitSum, maxPatternRepeats, patternRepeatsFor,
+  patternClamped, patternCutPoints,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-stripe-tool.js';
 import { cutKindOf, minPieceLength, CUT_KIND } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-cut-tool.js';
 import { chainOf } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-chains.js';
@@ -150,6 +152,94 @@ describe('F32 item 1: colour presets', () => {
     s.colors = spy;
     applyStripeColorPreset(editor, STRIPE_COLOR_PRESETS[1]);
     expect(writes.length).toBe(3); // A, B, C (C cleared to null) -- all three, in the one call
+  });
+});
+
+describe('F32 item 2: dash-ratio patterns', () => {
+  it('declares Even/Dash/Long dash/Dash-dot once, Even a single-segment repeat (today\'s equal stripes)', () => {
+    expect(STRIPE_PATTERNS).toEqual([
+      { name: 'Even', ratio: [1] },
+      { name: 'Dash', ratio: [3, 1] },
+      { name: 'Long dash', ratio: [5, 1] },
+      { name: 'Dash-dot', ratio: [3, 1, 1, 1] },
+    ]);
+  });
+  it('applying a pattern sets ratio through the one declared path, a fresh mutable copy (not the frozen preset)', () => {
+    const ed = makeEditor(null);
+    const s = applyStripePattern(ed, STRIPE_PATTERNS[1]);
+    expect(s.ratio).toEqual([3, 1]);
+    s.ratio.push(9); // must not throw / must not mutate the declared preset
+    expect(STRIPE_PATTERNS[1].ratio).toEqual([3, 1]);
+  });
+  it('parseStripeRatio: "3:1" / spaced / single -> arrays; empty, non-numeric, all-zero -> null', () => {
+    expect(parseStripeRatio('3:1')).toEqual([3, 1]);
+    expect(parseStripeRatio(' 2 : 3 : 2 ')).toEqual([2, 3, 2]);
+    expect(parseStripeRatio('5')).toEqual([5]);
+    expect(parseStripeRatio('')).toBeNull();
+    expect(parseStripeRatio('abc')).toBeNull();
+    expect(parseStripeRatio('0:-1')).toBeNull(); // no positive part survives
+    expect(parseStripeRatio('0:1')).toEqual([1]); // the zero part is dropped, the valid one kept
+  });
+  it('ratio=[1] (Even) reduces EXACTLY to the pre-existing equal-stripe functions -- "byte for byte"', () => {
+    expect(ratioUnitSum([1])).toBe(1);
+    for (const [lineLen, minLen] of [[10, 0.07], [1, 0.07], [3.33, 0.1]]) {
+      expect(maxPatternRepeats([1], lineLen, minLen)).toBe(maxStripeCount(lineLen, minLen));
+    }
+    for (const settings of [count(4), count(5), count(0), count(50), count(1, { drive: 'length', length: 2 }), count(1, { drive: 'length', length: 4 })]) {
+      expect(patternRepeatsFor(settings, [1], 10, 0.07)).toBe(stripeCountFor(settings, 10, 0.07));
+    }
+    const prim = { type: 'L', p0: { x: 0, y: 0 }, p1: { x: 8, y: 0 } };
+    for (const n of [1, 3, 4, 7]) {
+      expect(patternCutPoints(prim, [1], n)).toEqual(stripeCutPoints(prim, n));
+    }
+  });
+  it('each declared ratio gives segment lengths in exactly that ratio and they sum to the line length', () => {
+    const prim = { type: 'L', p0: { x: 0, y: 0 }, p1: { x: 20, y: 0 } };
+    for (const { ratio } of STRIPE_PATTERNS) {
+      const reps = 3;
+      const cuts = patternCutPoints(prim, ratio, reps);
+      const xs = [0, ...cuts.map((p) => p.x), 20];
+      const lens = xs.slice(1).map((x, i) => x - xs[i]);
+      expect(lens).toHaveLength(ratio.length * reps);
+      const unit = 20 / (ratioUnitSum(ratio) * reps);
+      const expected = Array.from({ length: reps }, () => ratio).flat().map((r) => r * unit);
+      expected.forEach((e, i) => expect(lens[i]).toBeCloseTo(e, 10));
+      expect(lens.reduce((a, b) => a + b, 0)).toBeCloseTo(20, 10);
+    }
+  });
+  it('a too-fine ratio is clamped: fewer repeats than requested, and patternClamped says so', () => {
+    const ratio = [3, 1]; // unit sum 4, smallest part 1 -> one repeat needs 4x the stroke width
+    const lineLen = 1, minLen = 0.07;
+    const max = maxPatternRepeats(ratio, lineLen, minLen); // floor(1 / 0.28) = 3
+    expect(max).toBe(3);
+    expect(patternRepeatsFor(count(100), ratio, lineLen, minLen)).toBe(max); // 100 requested, capped to 3
+    expect(patternClamped(count(100), ratio, lineLen, minLen)).toBe(true);
+    expect(patternClamped(count(2), ratio, lineLen, minLen)).toBe(false); // 2 fits under the cap, not clamped
+    // every resulting segment is still >= the stroke width
+    const cuts = patternCutPoints({ type: 'L', p0: { x: 0, y: 0 }, p1: { x: lineLen, y: 0 } }, ratio, max);
+    const xs = [0, ...cuts.map((p) => p.x), lineLen];
+    const lens = xs.slice(1).map((x, i) => x - xs[i]);
+    for (const len of lens) expect(len).toBeGreaterThanOrEqual(minLen - 1e-9);
+  });
+  it('stripeAt actually cuts a rail into the declared ratio (Dash 3:1), colours cycling as always (A B A B)', () => {
+    const pattern = { spacing: 0.25, colors: { rails: '#c62828', ties: '#f9c80e', nodes: '#1a237e' } };
+    const ed = makeEditor(pattern);
+    const rail = ed.line(0, 1, 8, 1, RAIL);
+    const stripes = stripeAt(ed, rail, count(2, { ratio: [3, 1] })); // 2 repeats of 3:1 over length 8 -> unit 1
+    expect(stripes).toHaveLength(4);
+    const lens = stripes.map((s) => Math.abs(+s.store.x2 - +s.store.x1));
+    expect(lens.map((l) => Math.round(l * 1e9) / 1e9)).toEqual([3, 1, 3, 1]);
+    expect(stripes.map((s) => s.store.stroke)).toEqual(['#c62828', '#f9c80e', '#c62828', '#f9c80e']);
+    expect(ed.commits).toBe(1); // still one undo step
+  });
+  it('the hover/tap plan exposes ratio, reps and clamped for the panel to read', () => {
+    const pattern = { spacing: 0.25, colors: { rails: '#c62828', ties: '#f9c80e', nodes: '#1a237e' } };
+    const ed = makeEditor(pattern);
+    const rail = ed.line(0, 1, 1, 1, RAIL); // short line, stroke width 0.07
+    const plan = stripePlan(ed, rail, count(100, { ratio: [3, 1] }));
+    expect(plan.ratio).toEqual([3, 1]);
+    expect(plan.clamped).toBe(true);
+    expect(plan.count).toBe(plan.reps * 2);
   });
 });
 
