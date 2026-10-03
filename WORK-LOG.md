@@ -16598,3 +16598,203 @@ captured payloads, and intermediate screenshots deleted before commit; the two r
 kept only in `shots/seatA`. Dev-server process and its chrome profile dir stopped/deleted; the
 local `b_spline_gen_log.txt`(.old) artifacts in the checkout (written via `workspace_link.json`'s
 own dev-visibility redirect while loading from the checkout path) deleted too, not tracked by git.
+
+## H23 item 72, P1a: the BRICK ENGINE -- a new, PORTABLE (zero imports outside itself) `core/bricks/`
+module shipping the Masonry engine's P1a scope (red brick, bond layout) as three declared
+primitives, behind the "Brick tab: Brush/Wall/Frame" UI Fred locked. No UI, no adapter wiring --
+pure data in, vector polygons out -- per the dispatch.
+
+**(0) Scope history, condensed (the full back-and-forth lives in this session's own transcript, not
+repeated here).** The original spec (NEXT-SESSION.md) was a single "brick wall generator" producing
+a height-field. A rapid stream of advisor amendments (channelling Fred, live) reframed it
+repeatedly: bricks are vectors, not a height-map-first thing; reuse the Shape Lattice where
+possible (gated on a WORK-LOG note sent BEFORE building, approved: "separate portable engine; the
+adapter borrows frameContourSilhouette + the boundary clip"); the engine must be portable enough to
+copy-paste into a sibling app, MathieuConnery; bricks are "a STYLE any editor element can wear", not
+a separate toolset -- collapsing to exactly two primitives, later three once Fred locked a real UI
+(Brush/Wall/Frame, a third tool for contour bands). A SECOND gate: Fred's "bricks are basically a
+squared brush" prompted the advisor to propose re-building the whole engine on MathieuConnery's own
+ribbon/spine/intersection-graph pipeline (its "Chiseled Ribbon" architecture, for clean mitres at
+CROSSING strokes). I flagged the real cost (a genuine rewrite of both primitives, not a drop-in --
+that pipeline is tangled with MathieuConnery's own shading/palette code) against the benefit (zero
+of P1a's own scenarios need crossing-stroke mitres). Resolved: ship P1a on today's local-geometry
+engine; declare the richer vocabulary now (`profile:'bricks'|'continuous'|'ridge'`,
+`caps:'square'|'notch'`, 'ridge'/'notch' declared-but-throw) so the ribbon engine can slot in later
+behind the SAME contract; the ribbon port becomes P2's own item, scoped to MathieuConnery (chiselled
+hip/pyramid tiles) + the Lattice tool's own junction handling, explicitly parked ("Fred: MC can be
+something we find later"). Masonry itself grew a 3rd set (ashlar/"white rocks", a fieldstone
+layout) and a quoins frame-band kind, BOTH explicitly parked as P1c/P1b, after P1a.
+
+**(1) The public API -- three primitives, one composer, portable.** `core/bricks/index.js` re-exports:
+- `bricksAlongPath(polyline, opts)` -- the Brush tool. Open or closed path, per-brick or one
+  unbroken textured band (`profile:'bricks'|'continuous'`), mitred corners.
+- `bricksFillShape(polygon, holes, opts)` -- the Wall tool. A bond-wall fill clipped to a shape,
+  with declared ZONES (`opts.zones`: horizontal bands top->bottom, each its own bond kind --
+  running/half-stagger, stack/no-stagger, soldier/upright -- and size).
+- `bricksContourBands(path, bands, opts)` -- the Frame tool. A declared list of bands outer->inner
+  along a closed contour, each its own width + pattern (soldier/stretcher), snapped to whole
+  brick-rows (never stretched) via `library.js`'s own natural-width-per-pattern lookup.
+- `generateBricks(input)` (`engine.js`) -- a convenience composer (Frame then Wall) for the common
+  "whole board, optional contour frame" case; the adapter is free to call the three primitives
+  directly per editor-element type instead (table below).
+Every file under `core/bricks/` imports ONLY from other files in that same directory (geometry.js,
+rng.js, noise2d.js, library.js) -- `tests/bricks-portability.test.js` statically scans every import
+in every file and asserts this, with a deliberately-introduced violation proven to fail the scan
+first (the test is not vacuous).
+
+**(2) `opts.scale` and `grout` (advisor, turn 504+, after P1a's own corner work landed).** Every
+primitive (+ `generateBricks`) now takes `opts.scale` (uniform multiplier on the active set's own
+`brickLengthIn`/`brickHeightIn`, default 1) via `library.js`'s new `scaledSet(set, scale)` -- a
+scaled COPY, grout untouched, no-op (`=== set`, no allocation) at scale 1. The old flat
+`jointWidthIn` field is now `grout: {widthIn, depthIn, profile:'recessed'}` on every BRICK_SETS
+entry -- ONE shared declared group every Masonry layout/band/brush reads (`widthIn`, for the joint
+gap); `depthIn`/`profile` are declared for the height-map adapter, NOT read anywhere in
+`core/bricks/` itself (no raised-bead profile exists -- Fred didn't pick that one).
+
+**(3) Declared data (`library.js`).** `PIECE_CATALOGUE`: 16 frozen pieces (1 single + A1-A6 two-
+brick groups + B1-B9 three-brick groups), offsets read directly off `brick_piece_catalog.png`'s own
+labels, all `enabled:true` (Fred still picking). `BRICK_SETS`: Set 1 = the red-brick swap (below);
+Set 2 = `b2_*` stones, unchanged, `engine:'mc'` (P2, inert layout `'grid'` not yet implemented);
+Set 3 = an explicit empty slot, un-parked as P1c (ashlar/"white rocks") but not built here.
+`FRAME_PRESETS`: 3 bands (`single_soldier`, `soldier_stretcher`, `three_band`), widths chosen to
+land exactly on contour-bands.js's own row-snapping so what ships matches what's declared (e.g.
+`three_band`'s middle stretcher band is genuinely 3 courses deep, demonstrating multi-row stacking,
+not a single wide brick).
+
+**Set 1 source SWAP (advisor mid-build):** the original b1_* garden-edging crops dropped in favour
+of Fred's own two red-brick wall photos, auto-extracted by the advisor to 47 crops
+(`shots/advisor/redbricks/`). Proportions and joint width MEASURED directly, not assumed: pixel
+dimensions of all 47 crops (median w/h 3.70:1, mean 3.67:1 -- the advisor's own "~3.3:1" was a quick
+eyeball, the direct pixel measurement is used instead, rounded to a clean 3.75:1); joint width from
+a column-redness profile on the closeup photo (2 clean head-joint runs, ratio 0.085 of brick-run
+width -> 0.064in, rounded to 0.06 -- the wall photo's own single-scanline estimate, 0.14, was
+rejected as noisier/perspective-skewed, per "measure, don't re-reason": prefer the better-
+conditioned measurement, don't average two disagreeing ones together). The 4 measurably-darkest
+crops (mean luminance 83-93 vs the pack's own 109 median) are flagged `odd:true`, drawn at
+`oddSampleRate: 0.08` via `samples.js`'s own two-pool (main/odd) weighted pick -- Fred: "a few odd
+samples can appear at a low, declared rate."
+
+**(4) Geometry primitives (`geometry.js`, `along-path.js`) -- THE hard part of this item, and the
+most instructive to document precisely, because getting it right took three separate, compounding
+bugs, each only found by actually rendering and measuring, never by reasoning alone:**
+
+- **Bug 1 (`offsetPathInward`, per-VERTEX offset):** the original implementation offset each
+  polygon vertex along the AVERAGE of its two neighbouring edges' own normals, by the declared
+  `width` directly. At a square's 90deg corner this under-shoots by exactly `cos(45deg)` (~0.71x)
+  -- a 0.75in band's own corner lands 0.53in from the true edge, not 0.75in. Fixed: the vertex
+  moves along the bisector of its two edge normals, by `width / cos(half the turn angle)` (floored
+  at `cos=0.2` to avoid blow-up near a near-reflex corner) -- the standard mitre construction.
+  Caught by a band-width regression test (`sqrt(innerArea)` for a single declared band width,
+  asserted against `10 - 2*width` on a 10x10 square) that failed before the fix and passes after.
+
+- **Bug 2 (`sidePoint`, the SAME under-correction one level down, per ARC-LENGTH sample):**
+  `bricksAlongPath`'s own per-brick left/right offset had the identical bug, PLUS a second one: for
+  a CLOSED path, the probe window used to detect "is this a real corner" was clamped to `[0,
+  total]`, which silently turned the real corner at arc-length 0 (the seam) into a fake "open path
+  end" (no incoming edge) -- the same under-shoot, now additionally gated off at exactly the one
+  place (the seam) where every rectangular/closed contour's own first declared corner lives.
+  MEASURED via a rendered contour-bands preview: a ~0.375in-wide uncovered wedge at every outer
+  corner. Fixed: the probe is NOT clamped for closed paths (goes negative / past total, relying on
+  `pointAtArcLength`'s own modulo wraparound).
+
+- **Bug 3 (the deep one -- overlap, not gap, between REGULAR bricks of PERPENDICULAR runs):** even
+  with bugs 1-2 fixed, a SHORT corner-clamped brick's own mitre correction could overshoot past its
+  own near edge (a self-intersecting "bowtie" polygon) -- and, worse, EVERY regular brick spans the
+  band's FULL cross-width, so two bricks approaching the SAME corner from perpendicular runs
+  routinely overlap each other OUTRIGHT, not just via some theoretical corner filler. Several
+  approaches were tried and rejected before landing on the one that works, in order: (a) a full
+  bisector-corrected offset on both brick ends -- self-intersects when the mitre's own reach
+  exceeds a short brick's own remaining length; (b) reorder the 4 points by angle around their
+  centroid as a safety net -- always produces a SIMPLE polygon, but doesn't prevent that polygon
+  from overlapping a DIFFERENT brick from the perpendicular run; (c) clip a plain (uncorrected)
+  quad to the corner's own mitre half-plane -- geometrically sound but the raw material, sized only
+  to the brick's own short pitch slice, often doesn't reach far enough toward the corner for the
+  clip to reveal anything (clipping only ever shrinks, never extends). **What actually works,
+  landed:** every REGULAR brick uses PLAIN, explicitly-directional perpendiculars
+  (`plainPointAt(..., 'in'|'out')` -- resolving the tangent by probing just before/after the query
+  point, rather than trusting `pointAtArcLength`'s own tangent at an exact segment boundary, which
+  always resolves to the OUTGOING segment and silently breaks an 'in'-direction query at a run's own
+  end), THEN every regular brick is clipped against EVERY nearby corner's own true mitre line
+  (`mitreLineAt` + `clipToHalfPlane`), bounded to a `MITRE_REACH` window (`halfWidth*5`, matching
+  the `cos=0.2` floor's own worst-case) so a corner's infinite line can never reach past its own
+  legitimate zone into an unrelated part of the band (a SEPARATE bug, caught by the advisor on a
+  rendered preview AFTER the overlap fix: on a non-square board, an un-bounded mitre line sliced
+  clean across a short side's own middle). The resulting small triangular gap this still leaves at
+  every corner (on the band's OUTER side reliably; the INNER side's own gap, when reached by no
+  regular brick, needs a filler too) is filled EXPLICITLY, once per corner per side, by a dedicated
+  triangle sharing an edge with each neighbour by construction -- but ONLY added when it doesn't
+  overlap a brick already placed (checked via grid-sampled point-in-polygon, not exact polygon
+  clipping -- clipping was tried first and MEASURED to silently degenerate to an empty result
+  whenever a filler's own vertex, by construction, lands exactly on a neighbour's own edge line, a
+  genuine floating-point edge case for Sutherland-Hodgman, not a logic bug).
+
+- **The remaining, KNOWN, NAMED limitation (advisor-approved as a follow-up, not a blocker):** the
+  small corner gap is not always perfectly closed by a mitred cut -- it can show as a small white
+  triangle rather than two mitred end-bricks meeting cleanly on the diagonal. Follow-up, named by
+  the advisor: **"P1a-corners: every band corner is filled by two mitred end bricks cut along the
+  diagonal (no void)."** NOT built here. "No overlap" was this item's own hard constraint (verified,
+  below); "no gap at all" was always the explicitly softer one.
+
+**(5) Verification for (4) -- what was tried, and an honest account of what didn't quite work.**
+`tests/bricks-contour-bands.test.js`'s own "BLOCKER" test checks, on every declared preset plus a
+deliberately mismatched band-width case: no brick is self-intersecting (a proper simple-polygon
+edge-crossing check, not just "did it render"), no two bricks overlap (grid-sampled overlap
+FRACTION between every pair of bricks whose bounding boxes even touch -- exact polygon-clip area
+was tried first and has the SAME Sutherland-Hodgman degenerate-vertex problem noted above, so
+sampling replaced it here too), nothing extends outside the board. A SECOND test (the advisor's own
+follow-up ask, after spotting the "infinite mitre line" bug on a rendered preview) checks 2D-area
+coverage stays high along the middle of every side on a non-square board -- but this test, EVEN
+AFTER being upgraded from a 1D line to a proper 2D grid, did NOT reliably discriminate the exact
+mutation it was written for (a disabled `MITRE_REACH` bound): the mutated geometry's own cascading
+clips left enough small, overlapping, oddly-shaped slivers to sum to a plausible-looking total area
+(72-91%, inside the "normal joints only" range), even though the SHAPES were visibly, obviously
+wrong once rendered. A THIRD, more surgical test (bricks far from every corner must keep their own
+declared, undistorted cross-width) finally mutation-kills it reliably, once its own "far enough"
+distance threshold was corrected twice: first to clear `MITRE_REACH` itself, then to additionally
+clear the CUMULATIVE inset of a multi-band stack's own innermost band (whose own corner sits well
+inside the true board corner -- a brick near it is "far" from the board corner by raw Euclidean
+distance while still being legitimately close to, and correctly clipped by, its OWN band's corner).
+**The verification actually trusted most for this item is a rendered, distinct-per-brick-coloured
+comparison** (every brick a different hue, full resolution, mutated vs fixed side by side) -- this
+made both the original bug and the fix unambiguous by eye in a way none of the three automated
+checks alone fully captured; all three stayed in the suite regardless, as genuine regression value
+even where their mutation-kill power for this one pathological case proved weaker than intended.
+
+**(6) Supporting primitives, briefly (unchanged in spirit from how they were originally built,
+each with its own test file):** `rng.js` (mulberry32 + `seedFor` hash-combine, byte-identical to
+MathieuConnery's own implementation); `layouts/bond.js` (course/stagger grid + declared ZONES --
+`running`/`stack`/`soldier` bond kinds, each its own pitch/orientation, an unsized zone filling
+whatever height the sized ones don't claim); `pieces.js` (adjacency-walk grouping into 1-3 cell
+pieces, offsets declared but NOT used to reposition cells in P1 -- a documented simplification);
+`suppression.js` (exact-%, top-biased, clump-correlated removal of whole PIECES, via
+`noise2d.js`'s own minimal value-noise); `samples.js` (per-cell sample+flip+jitter, now with the
+odd-sample low-rate pool).
+
+**(7) The adapter table (for de, building the Brick tab's own UI/tool-binding later) -- how an
+editor element type maps to a primitive:**
+```
+path / freehand stroke        -> bricksAlongPath (the Brush tool)
+rect / filled shape / board   -> bricksFillShape  (the Wall tool)
+a closed contour (frame/T1)   -> bricksContourBands (the Frame tool), Wall fills its own innerPath
+lattice rail/tie bars         -> bricksAlongPath, one call per bar (P2: proper CROSSING/junction
+                                  mitres need the ribbon/intersection-graph engine -- noted, not built)
+```
+Output lands on the editor's existing LAYERS (`editor/layers.js`): the adapter writes brick
+elements into a target layer (`data-layer` tag + kind marker, direct svg.js construction, same
+convention the Shape Lattice generators already use) -- the core itself is unaffected by this;
+only documented here for whoever wires it up.
+
+**(8) Tests + files.** 9 new test files (`tests/bricks-{portability,fill-shape,along-path,zones,
+contour-bands,engine,library,profile-stubs,scale-grout}.test.js`), 65 tests, all mutation-verified
+non-vacuous where the finding was non-obvious (see (5) for the corner-geometry ones specifically).
+13 new source files under `core/bricks/` (`index.js, rng.js, library.js, geometry.js,
+layouts/bond.js, pieces.js, noise2d.js, suppression.js, samples.js, along-path.js, fill-shape.js,
+contour-bands.js, engine.js`). 52 sample PNGs copied into `html/data/bricks/` (47 red-brick crops +
+5 `b2_*` stones) -- `library.js`'s own `BRICK_SETS` IS the one declared manifest (image path +
+odd flag + measured proportions); no separate `bricks.json` written, to avoid a second,
+driftable source of the same data. Preview script `bspline-frame-builder/scratch/
+item72_brick_previews.mjs` (scratch, not committed) renders 7 panels to `shots/seatA/
+item72_brick_previews.png`: wall zones (soldier/running/soldier, suppression+clumping), an S-curve
+brush stroke in both profiles, all 3 frame presets + the three_band+Wall-fill combination.
+
+Full suite: 184 files / 3468 tests green (vitest).
