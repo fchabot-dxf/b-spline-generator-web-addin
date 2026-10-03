@@ -186,6 +186,23 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 61 -- range-end crash family on SHIPPED T1/T2 (and likely T12/T13): measure all, then fix at the root (advisor, 2026-10-03)
+Item 60(C) accepted (ad5869d) -- excellent, and thanks for correcting (B)'s premise. Decision: (A) + your permanent-
+sweep idea first; T10's taper (B') waits.
+(1) PERMANENT SWEEP FIRST: promote h23_item60_make_all_handle_payloads.mjs + item60_shipped_taper_sweep.py into the
+    standing live sweep: every template x every declared handle x {min, default, max}, at 7x9. The verdict per case is
+    BUILT (all declared bars, no '(1)', nothing < 0.5 cm3, 0 NOT BUILT, 0 MITER MISS, 0 REFLEX ARC) -- not just
+    preview==build points. Run it once and publish the full matrix (template x handle x end) in WORK-LOG.
+(2) ROOT FIX by failure class, not per case:
+    - REFLEX ARC at p02_11_symmetry: apply the recipe that fixed T7/T10/T11 (exact closed-form seeds, Fix the arc's
+      own endpoints after its welds, CCW-correct welds) to the shared T1-family chain. Confirm on T1 AND T12.
+    - 'one profile spans 2 bars': is it a missing ResolveLineCircleCorner at a corner that only appears at the
+      extremes (an arc whose offset vanishes -> isTopologyMatched=False changes the topology)? Probe, then declare.
+    Pure tests that fail on today's code. Goldens --check stays green (defaults must not move).
+(3) Re-run the matrix: target 100% BUILT. Anything still failing gets listed with its value. Do NOT narrow a handle's
+    range to dodge a crash (that's a guard, and Fred decides guards); bring the list to the advisor instead.
+Fusion is yours. Separate commits per class. Commit 'H23 item 61: ...'.
+
 ## Item 60 -- the skeleton-pin gap (item 59's GATE): check the shipped templates first, then fix it once (advisor, 2026-10-03)
 Item 59 accepted as a gate (7628ac2): construction fix kept, handle withheld -- right call. Your options C then B,
 in that order, same pass:
@@ -530,4 +547,6 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-57] (reverted, under noise) validate whole-stamp-build deferred compute: A/B identical over 3 Sends, keep only if >= 1 s saved. Commit as 'H23 item 57: ...'.
 - [x] [H23-item-58] fusion360-quirks: timeline per-call cost vs history, marker insertion + restore rule, occurrence delete covers child features, CCW arc start/end -- each confirmed on varied cases. Commit as 'H23 item 58: ...'.
 - [x] [H23-item-59] (gate: handle withheld -> item 60) Arched + taper template code (moved from seat C): port the fixed construction, taper handle on T10 vs new slot (data), full -15..+15, live 5 angles + sizes, sweep clean. Commit as 'H23 item 59: ...'.
-- [ ] [H23-item-60] skeleton-pin gap: live-check T1/T2/T12/T13 range ends first, sweep covers every handle's range ends, consume kind:'pin' seed entries generically, re-add T10 taper handle + 9 live cases. Commit as 'H23 item 60: ...'.
+- [x] [H23-item-60] (C done; B re-scoped -> after item 61) skeleton-pin gap: live-check T1/T2/T12/T13 range ends first, sweep covers every handle's range ends, consume kind:'pin' seed entries generically, re-add T10 taper handle + 9 live cases. Commit as 'H23 item 60: ...'.
+- [ ] [H23-item-61] range-end crash family: permanent every-handle x {min,default,max} BUILT sweep + matrix, root fix per failure class (reflex arc, unsplit profile), 100% BUILT or a list for the advisor; no range narrowing. Commit as 'H23 item 61: ...'.
+- [ ] [H23-item-62] (after 61) T10 taper, re-scoped (B'): read p02_06/p02_07's Coincident/Tangent chain, fix the override, re-add taperAngle, item 59's 9 live cases.
