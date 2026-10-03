@@ -114,6 +114,35 @@ describe('Template 14: listing and declaration', () => {
     }
   });
 
+  // T84 item 5, MEASURED LIVE (not by inspection): at pinchReachFrac's own OLD drag-range floor
+  // (0.02), the fixed-bulge side arcs' own chord goes nearly vertical and their via point swings
+  // PAST the true board edge -- Fusion's own extrude then refuses outright ("the extrusion profile
+  // falls outside the boundary of the selected body"), missing all 4 arc bars. The default-only
+  // board-edge check above never exercised this (generateRange's own floor, 0.30, was already safe
+  // -- only the wider DRAG range reached it). Checks every handle's own frameParamRanges extreme
+  // (the full drag-feasible bound, not just generateRange) against the true board edges, at every
+  // portrait board -- the cheapest layer that can catch this class of bug before a live Fusion sweep
+  // has to.
+  it('every handle at its own full DRAG-range extreme keeps the outline within the true board edges', () => {
+    for (const [W, H] of PORTRAIT_BOARDS) {
+      const region = profile({}, W, H).region;
+      const R = frameParamRanges(T14, region, { topWidth: 1.0, pinchReachFrac: 0.6, bulgeFrac: 0.14, pinchHeightFrac: 0.5 });
+      for (const key of KEYS) {
+        for (const v of [R[key].min, R[key].max]) {
+          const prof = profile({ [key]: v }, W, H);
+          const poly = sampleOutline(prof.primitives, 96);
+          const tag = `${W}x${H} ${key}=${v}`;
+          for (const p of poly) {
+            expect(p.x, `${tag} x=${p.x}`).toBeGreaterThanOrEqual(0 - 1e-6);
+            expect(p.x, `${tag} x=${p.x}`).toBeLessThanOrEqual(W + 1e-6);
+            expect(p.y, `${tag} y=${p.y}`).toBeGreaterThanOrEqual(0 - 1e-6);
+            expect(p.y, `${tag} y=${p.y}`).toBeLessThanOrEqual(H + 1e-6);
+          }
+        }
+      }
+    }
+  });
+
   it('the 6 miters sit strictly inside the band, and no miter hooks outside the wood (Fred: no thin/needle tips)', () => {
     for (const [W, H] of PORTRAIT_BOARDS) {
       const outer = profile({}, W, H);

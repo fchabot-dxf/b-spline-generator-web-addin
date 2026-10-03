@@ -1198,13 +1198,25 @@ function _archedTimerRange(key, region, stroke, v) {
  * `shapeParams.topWidth` of 1.0 before this was caught), making the "as drawn" shape unreachable.
  * NOT yet cross-checked against the full JS production pipeline (outlineHasUndercut,
  * miterStaysInsideWood, outline-offset.js's own self-intersection/collapse detection) the way
- * _archedTimerRange's own bounds eventually were -- tests/frame-template-14.test.js exercises that
- * path directly; if it finds a failure inside these bounds, tighten here, the same honest iterative
- * process every other range function's own history already shows.
+ * _archedTimerRange's own bounds eventually were.
+ *
+ * pinchReachFrac's own floor is NOT the structural bisection sweep's raw 0.02 -- the live item-61
+ * matrix sweep (T84 item 5) caught a real defect that sweep never checked: at a low reach, the
+ * upper/lower bulge arcs' own chord goes nearly VERTICAL (topR/BR sit at the full board edge,
+ * pinchR sits close to their own x), so the FIXED bulgeFrac pushes the arc's own via point (near-
+ * horizontal normal) OUTWARD PAST THE TRUE BOARD EDGE, not just the safe zone -- Fusion's own
+ * extrude then fails outright ("the extrusion profile falls outside the boundary of the selected
+ * body"), MEASURED live: template_14_pinchReachFrac_min_7x9 built only 2 of 6 bars (all 4 arcs
+ * missing). Re-measured (fb_engine.t14_sandtimer_geometry.outline(), each arc's own via.x against
+ * the FULL board half-width, not the safe-zone one) at all 3 portrait sizes: the true floor is
+ * ~0.15 (6x9) / ~0.10 (7x9) / ~0.20 (9x12, the tightest) -- 0.20 clears all three with margin
+ * (0.04-0.09 in). generateRange's own floor (0.30, template_data.py) was already safely above this,
+ * so [Generate] was never affected -- only a hand-drag past the OLD 0.02 floor could have reached
+ * it.
  */
 function _sandTimerRange(key, region, stroke, v) {
   if (key === 'topWidth') return _range(0.15, 1.0);
-  if (key === 'pinchReachFrac') return _range(0.02, 0.60);
+  if (key === 'pinchReachFrac') return _range(0.20, 0.60);
   if (key === 'bulgeFrac') return _range(0.01, 0.148);
   // pinchHeightFrac
   return _range(0.36, 0.64);
