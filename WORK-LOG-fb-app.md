@@ -7942,3 +7942,58 @@ style as every other diagram this session): `C:/Users/danse/.bspline-status/shot
 proposed_flask-diagram_6x9_7x9_9x12.png`. Script committed: `tools/repro/f31_item2_flask_diagram.mjs` (same
 repo-root-as-argv[1] convention). No template files touched, no Fusion used. Passing back for Fred's sign-off
 before any `template_15`-numbered code is written.
+
+## 2026-10-03: F32 item 1 -- Stripe tool colour presets, black/white + blue/white (seat C)
+
+Dispatch: Fred's own words, "in stripping tool I want a few template colour combos: black and white, blue
+(same blue) and white." Added a row of preset chips above the existing A/B/C swatches in the Stripe panel
+(`#editorStripePanel`, `properties-stripe.js`).
+
+**Declared once, not hand-rolled per chip:** `STRIPE_COLOR_PRESETS` in `editor-stripe-tool.js` --
+`[{name:'Black / White', colors:['#000000','#ffffff']}, {name:'Blue / White', colors:[...]}]`. The panel
+renders one chip per entry (`tests/properties-stripe.test.js` proves the count tracks the declared list, not a
+hardcoded 2). `applyStripeColorPreset(editor, preset)` writes `stripeSettings(editor).colors[i]` for every i --
+the SAME path a manual A/B/C pick uses -- and sets `.three` from `colors.length >= 3`, so a 2-colour preset
+turns Use C off in the same call. One tap, one atomic settings update; undo/persistence/re-render are whatever
+the existing manual-pick path already does (unchanged).
+
+**Blue is the lattice's own node colour, not retyped:** the Blue/White entry reads
+`PATTERN_DEFAULTS.colors.nodes` (`#1a237e`) from `editor-lattice-pattern.js` instead of a second literal.
+Doing that as a plain eager property hit the pre-existing circular import between that module and
+`editor-stripe-tool.js` (`editor-lattice-pattern.js` imports `STRIPE_ATTR` from `editor-stripe-tool.js` at its
+own line 31, before `PATTERN_DEFAULTS` -- defined around line 393 -- is assigned; when `properties-stripe.js`
+is the entry point, `editor-lattice-pattern.js` loads first and `editor-stripe-tool.js`'s top-level read ran
+into `undefined`). Fixed by making `colors` a lazy getter on that one preset entry, deferring the read until a
+chip is actually rendered/tapped -- confined to the new code, no change to either module's existing import
+graph. `editor-stripe-tool.test.js` was unaffected (it imports `editor-stripe-tool.js` directly, so the cycle
+never triggers that ordering) -- the new `properties-stripe.test.js` is what caught it.
+
+**Verified the real rendered colours, not a screenshot eyeball:** a live DOM probe (CDP, same Chrome activation
+sequence as the shots below) read `getComputedStyle(chip).backgroundImage` on both chips post-render:
+`rgb(0,0,0)`/`rgb(255,255,255)` and `rgb(26,35,126)`/`rgb(255,255,255)` -- 26/35/126 is `#1a237e` exactly. (The
+390-width screenshot's thumbnail made the second chip's white half look faintly lavender at a glance; the DOM
+readout is the actual truth and it's pure white -- logging this per the "verify pixels, don't eyeball" habit
+rather than trusting the image.)
+
+**Screenshot script note:** the first draft tried to reuse one headless-Chrome session across two
+`Page.navigate` + `Emulation.setDeviceMetricsOverride` cycles (390 then 1366 width) to save a launch -- it hung
+indefinitely with no error on the second width (confirmed via `Get-CimInstance Win32_Process` that the node
+script and its Chrome subtree were still alive, just stuck; no prior script in `tools/repro/` does this
+double-navigate pattern, so it wasn't a proven one). Fixed by giving the script one width per invocation
+(fresh Chrome launch each time, matching every existing `tools/repro/*_shots.mjs` script's own pattern) plus a
+per-CDP-command timeout so a repeat hang would fail loudly instead of stalling silently. Killed only the
+specific PID confirmed via its own command line (`Get-CimInstance ... | Where CommandLine -match 'stripepreset'`)
+-- never a blanket `taskkill` by image name.
+
+Before/after shots (stashed the 3 source files, confirmed via `curl` that the dev server was actually serving
+the reverted code before shooting "before," then popped the stash and reconfirmed) at 390 and 1366 width:
+`C:/Users/danse/.bspline-status/shots/seatC/f32item1_{before,after}_w{390,1366}.png`.
+
+Tests: `editor-stripe-tool.test.js` covers the declared list + `applyStripeColorPreset`'s atomicity (one call,
+exactly those colours, three-flag derived from length); new `tests/properties-stripe.test.js` covers the panel
+wiring (chip count matches the declared list, a tap goes through the real DOM and updates the real swatches).
+Full suite green (165 files/3194 tests) before stashing; scoped stripe tests re-run 26/26 after the
+stash/pop round-trip. No Fusion, no template files touched.
+
+Committed: `bspline_gen_palette.html`, `editor-stripe-tool.js`, `properties-stripe.js`,
+`editor-stripe-tool.test.js`, `properties-stripe.test.js` (new). Passing back to the advisor.
