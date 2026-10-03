@@ -87,15 +87,30 @@ export const BRICK_SETS = Object.freeze([
     reliefIn: 0.125,
     reliefMaxIn: 0.25,
     heightJitterIn: 0.015, // well inside the reliefIn budget
+    // H23 item 73(c) (advisor, shots/advisor/brick_3d_compare.png: "rounded worn edges + slight
+    // crown + chipped corners"): the 3D height PROFILE within a brick's own top face, declared
+    // data read by height-profile.js's own brickTopHeight. Not measured off the photo (it's a
+    // style reference, not a dimensioned one) -- declared defaults, chosen to read clearly at this
+    // set's own miniature scale (brickHeightIn=0.2) while staying comfortably inside reliefIn.
+    heightProfile: {
+      edgeRadiusIn: 0.035, // the rounded shoulder's own reach, well under brickHeightIn/2 (0.1)
+      crown: 0.12, // within the advisor's own declared 0-0.2 range
+      chipRate: 0.06, // Fred's own "chipped corners" -- occasional, not universal
+      chipSizeIn: 0.045,
+      surfaceShare: 0.3, // the advisor's own earlier number ("a declared share of the budget, e.g. 30%")
+    },
     oddSampleRate: 0.08, // ~1 in 12 bricks draws from the odd (darker) pool instead of the main one
+    // H23 item 73(b): re-encoded from the original 47 PNG crops (~10MB total) to JPEG q85, max
+    // 480px long side (textures, not pixel-art -- MEASURED visually clean at this quality/size) --
+    // 0.82MB total, well under the 3MB target; `.png` -> `.jpg` is the ONLY change here, same ids.
     samples: [
       'rc_02', 'rc_03', 'rc_04', 'rc_05', 'rc_06', 'rc_07',
       'rw_01', 'rw_06', 'rw_07', 'rw_09', 'rw_10', 'rw_11', 'rw_13', 'rw_14', 'rw_15', 'rw_16',
       'rw_17', 'rw_18', 'rw_19', 'rw_20', 'rw_21', 'rw_22', 'rw_23', 'rw_24', 'rw_25', 'rw_26',
       'rw_27', 'rw_28', 'rw_29', 'rw_30', 'rw_31', 'rw_32', 'rw_33', 'rw_34', 'rw_35', 'rw_36',
       'rw_37', 'rw_38', 'rw_39', 'rw_40', 'rw_41', 'rw_42', 'rw_43',
-    ].map((id) => ({ id, image: `data/bricks/${id}.png` })).concat(
-      ['rw_44', 'rw_45', 'rw_46', 'rw_47'].map((id) => ({ id, image: `data/bricks/${id}.png`, odd: true })),
+    ].map((id) => ({ id, image: `data/bricks/${id}.jpg` })).concat(
+      ['rw_44', 'rw_45', 'rw_46', 'rw_47'].map((id) => ({ id, image: `data/bricks/${id}.jpg`, odd: true })),
     ),
   },
   {

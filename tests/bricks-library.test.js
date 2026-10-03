@@ -87,3 +87,26 @@ describe('FRAME_PRESETS', () => {
     }
   });
 });
+
+describe('bundled sample assets (H23 item 73(b))', () => {
+  it('every declared sample image file actually exists, and every file on disk totals <=3MB', async () => {
+    const { readdirSync, statSync, existsSync } = await import('node:fs');
+    const path = await import('node:path');
+    const dataDir = path.resolve(process.cwd(), 'bspline-frame-builder/b-spline-gen/html/data/bricks') + path.sep;
+
+    // every declared sample's own image path resolves to a real file (catches a stale .png
+    // reference after the q85/480px JPEG re-encode -- MEASURED to fail before the library.js
+    // extension update that went with it).
+    for (const set of BRICK_SETS) {
+      for (const sample of set.samples) {
+        const fileName = sample.image.replace(/^data\/bricks\//, '');
+        expect(existsSync(dataDir + fileName), `${set.name}: ${sample.image} does not exist on disk`).toBe(true);
+      }
+    }
+
+    // the WHOLE directory (not just declared samples -- catches an orphaned large file too)
+    // stays within the item 73(b) budget: re-encoded from ~10MB (PNG) to JPEG q85/480px long side.
+    const totalBytes = readdirSync(dataDir).reduce((sum, f) => sum + statSync(dataDir + f).size, 0);
+    expect(totalBytes, `data/bricks/ total size (${(totalBytes / 1024 / 1024).toFixed(2)}MB)`).toBeLessThanOrEqual(3 * 1024 * 1024);
+  });
+});

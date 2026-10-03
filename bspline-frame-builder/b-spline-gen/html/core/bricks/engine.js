@@ -12,6 +12,7 @@
 import { bricksFillShape } from './fill-shape.js';
 import { bricksContourBands } from './contour-bands.js';
 import { pointInPolygon } from './geometry.js';
+import { brickTopHeight } from './height-profile.js';
 
 /**
  * @param {object} input
@@ -24,7 +25,9 @@ import { pointInPolygon } from './geometry.js';
  * @param {{bond?:'running'|'stack'|'soldier', rows?:number, heightIn?:number}[]} [input.zones]
  * @param {number} [input.scale=1] — uniform multiplier on the set's own brick length/height (grout unaffected)
  * @param {number} input.seed
- * @returns {{ bricks: Array, frameBricks: Array }}
+ * @returns {{ bricks: Array, frameBricks: Array, seed: number }} `seed` is carried along so
+ *   sampleHeight (below) can reach it without a breaking signature change -- height-profile chip
+ *   placement is seeded.
  */
 export function generateBricks(input) {
   const { boardOutline, set, frame, seed, scale } = input;
@@ -44,7 +47,7 @@ export function generateBricks(input) {
     clumping: input.clumping ?? 0.3,
     zones: input.zones,
   });
-  return { bricks, frameBricks };
+  return { bricks, frameBricks, seed };
 }
 
 /** A simple grid-bucket spatial index over a brick list, so repeated point queries (a terrain
@@ -69,17 +72,21 @@ export function buildSpatialIndex(bricks, cellSizeIn) {
 /**
  * The SECOND, DERIVED output: height at a board-inch point (x,y). Fred: brick relief is in
  * inches, default `set.reliefIn`, NEVER more than `set.reliefMaxIn` -- every brick's own raised
- * top (reliefIn + that brick's own heightOffset, whether per-brick jitter or the 'continuous'
- * mode's own low-freq undulation) is clamped to reliefMaxIn here, the one place every source of
- * height variation funnels through. Falls back to `jointHeightIn` (0 = the groove floor) when the
- * point is in a joint, not inside any brick.
+ * top, now a full 3D PROFILE (H23 item 73(c): rounded shoulder + slight crown + chipped corners,
+ * `height-profile.js`'s own `brickTopHeight`, declared per set as `set.heightProfile`; a set with
+ * no declared profile reduces exactly to the original flat `reliefIn + heightOffset`), is clamped
+ * to reliefMaxIn here, the one place every source of height variation funnels through. Falls back
+ * to `jointHeightIn` (0 = the groove floor) when the point is in a joint, not inside any brick.
+ *
+ * @param {(x:number,y:number,brick:object)=>number} [sampleDetailAt] — optional, see
+ *   height-profile.js's own header: the adapter's de-lit high-pass sample surface, not built here.
  */
-export function sampleHeight(result, index, x, y, set, jointHeightIn = 0) {
+export function sampleHeight(result, index, x, y, set, jointHeightIn = 0, sampleDetailAt) {
   const candidates = index ? index.query(x, y) : [...result.bricks, ...result.frameBricks];
   for (const b of candidates) {
     if (pointInPolygon(x, y, b.polygon)) {
-      const raw = (set.reliefIn ?? 0.125) + (b.heightOffset || 0);
-      return Math.min(set.reliefMaxIn ?? 0.25, raw);
+      const raw = brickTopHeight(x, y, b, set, result.seed, sampleDetailAt);
+      return Math.max(0, Math.min(set.reliefMaxIn ?? 0.25, raw));
     }
   }
   return jointHeightIn;

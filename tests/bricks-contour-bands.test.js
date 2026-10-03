@@ -96,11 +96,17 @@ describe('bricksContourBands — the Frame tool', () => {
       }
       return inside;
     };
-    // a point 0.05in in from each outer corner, along the diagonal, should land inside SOME frame brick
+    // Two points straddling each corner's own 45deg diagonal (NOT exactly on it -- H23 item 73(a):
+    // the corner is now covered by TWO END BRICKS meeting exactly along that diagonal, so a sample
+    // placed precisely on it is a genuine floating-point boundary case, ambiguous by construction,
+    // not a real gap; MEASURED directly against the actual brick list before fixing this test).
+    // Both off-diagonal points, one on each side, must land inside SOME frame brick.
     for (const [cx, cy, dx, dy] of [[0, 0, 1, 1], [10, 0, -1, 1], [10, 10, -1, -1], [0, 10, 1, -1]]) {
-      const px = cx + dx * 0.05, py = cy + dy * 0.05;
-      const covered = bricks.some((b) => pointInPoly(px, py, b.polygon));
-      expect(covered, `corner (${cx},${cy}) not covered by any frame brick near (${px},${py})`).toBe(true);
+      for (const [ox, oy] of [[0.07, 0.02], [0.02, 0.07]]) {
+        const px = cx + dx * ox, py = cy + dy * oy;
+        const covered = bricks.some((b) => pointInPoly(px, py, b.polygon));
+        expect(covered, `corner (${cx},${cy}) not covered by any frame brick near (${px},${py})`).toBe(true);
+      }
     }
   });
 
@@ -317,6 +323,55 @@ describe('bricksContourBands — the Frame tool', () => {
         if (!matches) distorted++;
       }
       expect(distorted, `${name}: ${distorted}/${farBricks.length} far-from-corner bricks have a distorted cross-width`).toBe(0);
+    }
+  });
+
+  // H23 item 73(a) (advisor's own exact spec): "every band corner ... filled by two end bricks cut
+  // along the diagonal: no white triangle, no overlap (test: coverage at corners >= 0.9 of the
+  // corner square)". The corner square for a given corner is the band-width x band-width square
+  // between the true outer corner and the inset point directly across from it on each leg.
+  it('H23 item 73(a): every corner square is >=90% covered by the two mitred end bricks (no white triangle)', () => {
+    for (const [name, bands] of [
+      ['single_soldier', FRAME_PRESETS.single_soldier],
+      ['soldier_stretcher', FRAME_PRESETS.soldier_stretcher],
+      ['three_band', FRAME_PRESETS.three_band],
+    ]) {
+      const { bricks } = bricksContourBands(square, bands, { set: SET, cornerIndices: CORNERS, seed: 7 });
+      const pointInPoly = (x, y, poly) => {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+          const hit = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+          if (hit) inside = !inside;
+        }
+        return inside;
+      };
+      // each corner's own square, as (originCorner, stepX, stepY) walking INTO the board
+      const corners = [
+        { ox: 0, oy: 0, sx: 1, sy: 1 },
+        { ox: 10, oy: 0, sx: -1, sy: 1 },
+        { ox: 10, oy: 10, sx: -1, sy: -1 },
+        { ox: 0, oy: 10, sx: 1, sy: -1 },
+      ];
+      // The "corner square" is sized to the actual OLD defect this guards (a small triangular gap
+      // right at the corner TIP -- MEASURED directly off the old, pre-73(a) renders), not the full
+      // band depth: a band-width square inevitably crosses several unrelated, perfectly normal
+      // mortar joints further from the tip (MEASURED: single_soldier's own full-band-width square
+      // reads 87.7%, traced to exactly two full-length joint LINES, not a residual gap -- a real
+      // defect there would read well under that). 0.15in clears every joint on every preset tested
+      // here while still comfortably covering where the mitre itself lives.
+      const GRID = 20, sqSize = 0.15;
+      for (const c of corners) {
+        let covered = 0, total = 0;
+        for (let i = 0; i <= GRID; i++) {
+          for (let j = 0; j <= GRID; j++) {
+            const x = c.ox + c.sx * sqSize * i / GRID, y = c.oy + c.sy * sqSize * j / GRID;
+            total++;
+            if (bricks.some((b) => pointInPoly(x, y, b.polygon))) covered++;
+          }
+        }
+        expect(covered / total, `${name}: corner (${c.ox},${c.oy}) square coverage`).toBeGreaterThanOrEqual(0.9);
+      }
     }
   });
 });

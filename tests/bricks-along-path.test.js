@@ -46,21 +46,37 @@ describe('bricksAlongPath — "bricks" profile (default)', () => {
     expect(oBox.maxY - oBox.minY).toBeCloseTo(SET.brickLengthIn, 3);
   });
 
-  it('a declared corner forces a brick boundary there — no brick straddles it', () => {
+  it('a declared corner forces a brick boundary there — every brick is simple and stays within the mitre\'s own reach (no unmitred straddle)', () => {
     // An L-shaped path with a sharp 90deg turn at vertex 1 (arc-length = 5, the first leg's length).
     const lShape = [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 5 }];
     const { bricks } = bricksAlongPath(lShape, { set: SET, orientation: 'stretcher', seed: 2, cornerIndices: [1] });
-    // every brick's own 4 corners should lie entirely on one side of x=5 or entirely on y>=0 after
-    // the turn -- i.e. no polygon has points with x<5-eps AND points past the corner on the
-    // vertical leg (y far from 0, x far from 5). Simplify: assert no single brick's bbox straddles
-    // BOTH legs by checking width/height stay brick-length-sized (never elongated across the bend).
+    const halfWidth = SET.brickHeightIn / 2; // 'stretcher' cross-dimension
+    // H23 item 73(a): the corner's own END bricks are now legitimately MITRED (extended past the
+    // corner, then clipped to the true cut) -- their own bbox can exceed brickLengthIn (that was
+    // the old, now-too-strict, bound). The real invariant: every brick stays a SIMPLE polygon (no
+    // self-intersecting "unmitred straddle"), and none reaches further than the mitre's own
+    // declared maximum reach (MITRE_REACH = halfWidth*5, mirrored here) plus one ordinary pitch.
+    const maxReasonableSpan = halfWidth * 5 + SET.brickLengthIn + 1e-3;
+    const isSimplePolygon = (poly) => {
+      const cross = (o, p, q) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+      const segCross = (a0, a1, b0, b1) => {
+        const d1 = cross(b0, b1, a0), d2 = cross(b0, b1, a1), d3 = cross(a0, a1, b0), d4 = cross(a0, a1, b1);
+        return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+      };
+      const n = poly.length;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          if (j === (i + 1) % n || i === (j + 1) % n) continue;
+          if (segCross(poly[i], poly[(i + 1) % n], poly[j], poly[(j + 1) % n])) return false;
+        }
+      }
+      return true;
+    };
     for (const b of bricks) {
+      expect(isSimplePolygon(b.polygon), `brick ${b.id} is self-intersecting`).toBe(true);
       const box = bbox(b.polygon);
       const w = box.maxX - box.minX, h = box.maxY - box.minY;
-      // a brick confined to one straight leg has one dimension ~jointless brick size (small) and
-      // the other ~brickHeightIn (the band width) -- neither should be grossly larger than the
-      // declared brickLengthIn, which WOULD happen if a brick quad spanned the corner.
-      expect(Math.max(w, h)).toBeLessThanOrEqual(SET.brickLengthIn + 1e-3);
+      expect(Math.max(w, h)).toBeLessThanOrEqual(maxReasonableSpan);
     }
   });
 

@@ -16798,3 +16798,109 @@ item72_brick_previews.png`: wall zones (soldier/running/soldier, suppression+clu
 brush stroke in both profiles, all 3 frame presets + the three_band+Wall-fill combination.
 
 Full suite: 184 files / 3468 tests green (vitest).
+
+## H23 item 73: Masonry follow-ups from item 72's P1a review -- (a) corner mitre fill (no white
+triangle), (b) data/bricks 11MB -> 1.3MB, (c) the 3D height profile. All three land in this item.
+
+**(a) P1a-corners, actually fixed this time.** Item 72's own corner construction (regular PLAIN
+bricks + a separate filler triangle, added only when it didn't overlap) still left a small white
+triangle at every corner -- MEASURED by eye on the re-rendered preview, confirmed by a dedicated
+coverage test. Root cause: a separate filler can only ever cover what the ADJACENT regular bricks
+don't already reach, and a plain (un-mitred) regular brick's own natural pitch slot routinely falls
+short of the true mitre point, by an amount that varies with exactly how the pitch divides the run
+-- there's no single filler SHAPE that reliably closes that gap for every pitch/corner-angle
+combination. **Replaced the whole construction**, in `along-path.js`: the path is now walked in
+CORNER-BOUNDED RUNS; a run's own FIRST and/or LAST brick, when that boundary is a real declared
+corner, is built as an END BRICK whose own near/far edge is EXTRAPOLATED a safe distance PAST the
+corner along that run's own FIXED local tangent (`extrapolatedPointAt` -- a straight-line push,
+deliberately NOT following the path's own bend there, which would twist the quad) before being
+clipped, same as every other brick, against every nearby corner's own TRUE mitre line
+(`clipToHalfPlane`). A half-plane clip of a simple polygon is always simple, and the raw material,
+now deliberately oversized, always has enough to trim down to the exact right shape regardless of
+how short that end brick's own natural pitch slot is -- no separate filler piece, no overlap-check
+gate, no "sometimes correct" case left out. Two adjacent runs' own end bricks, clipped by the SAME
+corner's own line from opposite sides, meet EXACTLY along it: Fred's own "two end bricks cut along
+the diagonal." Verified three ways: (1) the full existing overlap/self-intersection/bounds suite,
+unchanged in intent, all green; (2) a NEW test matching the advisor's own exact spec ("coverage at
+corners >= 0.9 of the corner square") -- sized the square to where the OLD defect actually lived
+(near the corner TIP, ~0.15in), not the full band depth (MEASURED: a band-width-deep square reads
+only 75-88% even on the FIXED geometry, because it inevitably crosses several real, unrelated
+mortar joints further from the tip -- a real defect there reads near 0%, cleanly distinguishable);
+mutation-tested by disabling the extrapolation, confirmed 0% coverage, confirmed restored. (3) A
+rendered, full-resolution preview re-generated and compared directly against the prior (still-
+white-triangle) one -- every corner on every preset now shows a clean diagonal cut, no void.
+Two of the OLD test's own assumptions had to be relaxed to match the now-CORRECT geometry rather
+than the old, too-conservative one: a brick's own bbox can legitimately exceed brickLengthIn now
+(an end brick reaching a mitre point is SUPPOSED to be bigger than a plain brick), and a sample
+point placed EXACTLY on a corner's own 45deg diagonal is a genuine floating-point boundary case
+(two end bricks meet exactly there) rather than a coverage signal -- both fixed to test the real
+invariant instead of a stale assumption.
+
+**(b) data/bricks: 11MB -> 1.3MB.** The 47 red-brick crops (Set 1) re-encoded from PNG to JPEG
+q85, longest side capped at 480px (Python/PIL, `Image.LANCZOS` resize then `save(..., 'JPEG',
+quality=85, optimize=True)`) -- 9.99MB -> 0.82MB for those 47 files alone; visually confirmed clean
+at this quality (read one back, no visible artifacting at the texture scale these are used at).
+`library.js`'s own `BRICK_SETS[0].samples` updated `.png` -> `.jpg` (the ONE change, same ids, same
+`odd` flags); old PNGs deleted. Set 2's `b2_*` (already small, ~335KB) left untouched -- the
+dispatch's own spec named "the 47 samples" specifically. New regression test
+(`bricks-library.test.js`): every declared sample's own image path resolves to a real file on disk
+(catches a stale extension reference -- mutation-tested by temporarily removing one JPG, confirmed
+it fails, restored), AND the whole `data/bricks/` directory stays <=3MB (catches a future oversized
+file added back, declared or not).
+
+**(c) The 3D height profile.** New file `core/bricks/height-profile.js`, `brickTopHeight(x, y,
+brick, set, seed, sampleDetailAt?)` -- a rounded SHOULDER (sine-eased 0 at the brick's own edge to
+full height at `edgeRadiusIn` inward), a slight CROWN (an independent dome bonus, 0 at the edge,
+`crown` extra at the centre -- ADDED on top of the shoulder, not combined via `min(1, ...)`; that
+first attempt silently zeroed the whole dome everywhere the shoulder was already at its own max,
+which is most of a brick's own interior once past `edgeRadiusIn` -- caught by a test asserting the
+centre reads higher WITH a declared crown than without, non-vacuous since it failed before the
+fix), and seeded per-brick CHIPS (a declared chance of one corner dipping toward 0, ramping back up
+over `chipSizeIn`). All declared per set as `set.heightProfile = {edgeRadiusIn, crown, chipRate,
+chipSizeIn, surfaceShare}` -- Set 1 gets real, declared defaults (edgeRadiusIn 0.035in, crown 0.12,
+chipRate 0.06, chipSizeIn 0.045in, surfaceShare 0.3), chosen to read clearly at this set's own
+miniature scale while staying inside `reliefIn`; reference shots/advisor/brick_3d_compare.png
+("rounded worn edges + slight crown + chipped corners") is a STYLE reference, not a dimensioned
+one, so these are declared, not measured off it. A set with NO declared `heightProfile` reduces
+EXACTLY to the original flat `reliefIn + heightOffset` (edgeRadiusIn defaults to 0 -> shoulder=1
+everywhere, crown defaults to 0 -> no dome) -- confirmed by a dedicated backward-compatibility test
+and by every PRE-EXISTING `sampleHeight` test in the suite passing unchanged.
+
+The "real photo surface" detail Fred also asked for (a de-lit, high-pass version of the brick's own
+sample photo) is EXPLICITLY NOT built in the portable core -- it needs real pixel decoding (blur,
+luminance), which `core/bricks/` can't do (no canvas; the SAME split already approved for the
+'continuous' profile's own pixel blending in item 72). `brickTopHeight` instead takes an OPTIONAL
+`sampleDetailAt(x, y, brick)` callback the adapter can supply (a value in [-1,1], clamped
+defensively here even though the contract says the adapter owns that range, scaled by
+`surfaceShare * reliefIn` and added on top of the shape); omitted, `surfaceShare` still correctly
+reduces the shape's own share of the budget (`reliefIn * (1-surfaceShare) * shoulder`) rather than
+silently ignoring the setting or producing a wrong/NaN height. `engine.js`'s `sampleHeight` now
+routes through `brickTopHeight` (still the one place everything gets clamped to `reliefMaxIn`);
+`generateBricks` now also returns `seed` in its own result (a non-breaking addition) so
+`sampleHeight` can reach it for the chip RNG without changing its own existing call signature.
+
+13 new tests (`tests/bricks-height-profile.test.js`): the backward-compatible flat case, shoulder
+monotonicity edge->centre, the crown fix itself (regression-tested against the exact bug just
+described), chips (guaranteed-dip at chipRate=1, guaranteed-none at chipRate=0, deterministic for a
+seed), surfaceShare (no callback = shape-only, +/-1 callback = +/-`surfaceShare*reliefIn`, an out-
+of-range callback value clamped), and `sampleHeight`'s own clamping/determinism still holding
+through the new code path.
+
+**Preview (c):** `bspline-frame-builder/scratch/item73c_height_profile_preview.mjs` (scratch, not
+committed) renders a small patch's own height field as a shaded image (surface normal from the
+height gradient, Lambert-shaded, lit top-left per the reference's own convention) via an HTML
+canvas + headless Chrome, flat-vs-profiled side by side -- `shots/seatA/item73c_height_profile.png`
+shows the declared profile's own rounded, bevelled edges clearly, matching the reference image's
+own look. `shots/seatA/item72_brick_previews.png` (the item 72 preview, re-rendered) now shows
+every corner on every panel cleanly mitred, no white triangle.
+
+**Files:** `core/bricks/along-path.js` (rewritten corner construction), `core/bricks/engine.js`
+(sampleHeight routes through brickTopHeight, generateBricks returns seed), `core/bricks/library.js`
+(grout-adjacent `heightProfile` declared data for Set 1, `.jpg` sample paths), `core/bricks/
+height-profile.js` (new), `core/bricks/index.js` (exports brickTopHeight); `data/bricks/*.jpg` (47
+new, replacing the deleted `*.png`); `tests/bricks-along-path.test.js`, `tests/bricks-contour-
+bands.test.js` (both: relaxed two now-incorrect assumptions, added the corner-square coverage
+test), `tests/bricks-library.test.js` (asset-size regression), `tests/bricks-height-profile.test.js`
+(new).
+
+Full suite: 192 files / 3565 tests green (vitest).

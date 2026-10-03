@@ -32,32 +32,25 @@
  * brickLengthIn, half-width = brickHeightIn/2); 'soldier': length runs ACROSS the path (pitch =
  * brickHeightIn, half-width = brickLengthIn/2).
  *
- * Mitring + corner-snapping ('bricks' profile): every REGULAR brick's own quad uses PLAIN,
- * DIRECTIONALLY-EXPLICIT perpendiculars (plainPointAt, 'out' at its own start, 'in' at its own
- * end) -- always a simple, honest, never-stretched rectangle, never self-intersecting, never
- * overlapping its own neighbour (two tries at a CORRECTED, bisector-based offset for the whole
- * quad were measured, via a rendered contour-bands preview, to self-intersect OR overlap a
- * neighbour whenever a corner-clamped brick's own remaining length was shorter than the mitre's
- * own reach -- a short brick simply cannot absorb a full 45deg cut without becoming a non-simple
- * or overlapping shape). Every declared corner still forces a brick boundary there (so nothing
- * straddles one), which leaves a small gap on the band's OUTER side at every corner (the approach/
- * departure points there sit close together, near the true sharp corner) -- filled explicitly by a
- * dedicated TRIANGLE: [the approaching run's own plain corner point, the TRUE mitred corner point
- * (geometry.js's own bisector construction, via sidePoint), the departing run's own plain corner
- * point]. On the band's INNER side the SAME construction's own triangle is typically much BIGGER
- * (the inner mitre point sits far from the approach/departure points, on the far side of the
- * centreline's own corner) and, MEASURED via a rendered preview, overlaps whichever regular
- * bricks further along each run already cover that same territory (every regular brick already
- * spans the band's FULL cross-width, so later bricks routinely reach the inner mitre point on
- * their own). So every candidate filler triangle is checked against bricks already placed
- * (trianglesOverlapAny) and only added when it doesn't overlap any of them -- correct by
- * construction rather than by hand-classifying "inner always skip, outer always fill", which
- * doesn't hold for every band width/pitch combination. The one accepted trade-off: a rare
- * configuration can still leave a hairline INNER gap where no regular brick happens to reach
- * exactly to the mitre point -- a documented minor limitation, not a silent one; "no overlap" is
- * the hard constraint here, "no gap" is the soft one. The general CROSSING/branching case (P2's
- * own ribbon/intersection-graph engine) is deliberately not built here, per the worker/advisor
- * gate on this item.
+ * Mitring + corner-snapping ('bricks' profile), H23 item 73(a) design (supersedes an earlier
+ * separate-filler-triangle attempt -- see git history / WORK-LOG for why that one still left
+ * visible gaps): every REGULAR brick's own quad uses PLAIN, DIRECTIONALLY-EXPLICIT perpendiculars
+ * (plainPointAt, 'out' at its own start, 'in' at its own end) -- always a simple, honest, never-
+ * stretched rectangle. The path is walked in CORNER-BOUNDED RUNS; the brick at the START and/or
+ * END of a run, when that boundary is a real declared corner, is NOT built from the run's own
+ * clamped arc-length -- its near/far edge is EXTRAPOLATED, via extrapolatedPointAt, straight along
+ * that run's OWN fixed local tangent, a safe distance PAST the corner (not following the path's
+ * own bend there, which would twist the quad) -- giving a plain, oversized, still-perfectly-SIMPLE
+ * rectangle that's GUARANTEED to reach past the TRUE mitre point on both the inner and outer side,
+ * regardless of how short that end brick's own natural pitch slot is. EVERY brick (regular or
+ * extended) is then clipped against every nearby corner's own TRUE mitre line (clipToHalfPlane) --
+ * a half-plane clip of a simple polygon is ALWAYS simple (this is what makes the construction
+ * robust: clipping only ever trims, and the raw material, once deliberately over-sized, always has
+ * enough to trim down to the exact right shape). Two adjacent runs' own end bricks, clipped by the
+ * SAME corner's own line from opposite sides, meet EXACTLY along it -- Fred's own "two end bricks
+ * cut along the diagonal" -- with no separate filler piece needed at all. The general CROSSING/
+ * branching case (P2's own ribbon/intersection-graph engine) is deliberately not built here, per
+ * the worker/advisor gate on item 72.
  */
 import { cumulativeLengths, pointAtArcLength } from './geometry.js';
 import { mulberry32, seedFor } from './rng.js';
@@ -105,14 +98,14 @@ function sidePoint(path, cum, s, total, closed, dist) {
   return { x: p.x + nx * dist, y: p.y + ny * dist };
 }
 
-/** The point offset by `dist` along the PLAIN perpendicular at arc-length `s`, explicitly in the
- *  'in' (incoming segment's own tangent) or 'out' (outgoing segment's own tangent) direction --
- *  never blended/corrected, so it can never "overshoot" a short brick's own near edge. Explicit
- *  direction (rather than trusting pointAtArcLength's own tangent at an exact segment boundary,
- *  which always resolves to the OUTGOING segment) matters at a run's own end/seam: MEASURED, using
- *  the wrong (outgoing) tangent for an 'in'-direction query produced a garbage polygon wrapping a
- *  closed path's own seam. */
-function plainPointAt(path, cum, s, total, closed, dist, direction) {
+/** The position + unit tangent at arc-length `s`, explicitly in the 'in' (incoming segment's own
+ *  tangent) or 'out' (outgoing segment's own tangent) direction -- explicit direction (rather than
+ *  trusting pointAtArcLength's own tangent at an exact segment boundary, which always resolves to
+ *  the OUTGOING segment) matters at a run's own end/seam: MEASURED, using the wrong (outgoing)
+ *  tangent for an 'in'-direction query produced a garbage polygon wrapping a closed path's own
+ *  seam. Shared by plainPointAt (position = `s` itself) and extrapolatedPointAt (position pushed
+ *  further along this SAME fixed tangent, not following the path). */
+function localTangent(path, cum, s, total, closed, direction) {
   const p = pointAtArcLength(path, cum, s, closed);
   const eps = Math.min(0.01, total * 0.001) || 0.001;
   const probeS = direction === 'in'
@@ -122,8 +115,26 @@ function plainPointAt(path, cum, s, total, closed, dist, direction) {
   let tx = direction === 'in' ? p.x - q.x : q.x - p.x;
   let ty = direction === 'in' ? p.y - q.y : q.y - p.y;
   const len = Math.hypot(tx, ty) || 1;
-  tx /= len; ty /= len;
-  return { x: p.x - ty * dist, y: p.y + tx * dist };
+  return { x: p.x, y: p.y, tx: tx / len, ty: ty / len };
+}
+
+/** The point offset by `dist` along the PLAIN perpendicular at arc-length `s` -- never blended/
+ *  corrected, so it can never "overshoot" a short brick's own near edge. */
+function plainPointAt(path, cum, s, total, closed, dist, direction) {
+  const { x, y, tx, ty } = localTangent(path, cum, s, total, closed, direction);
+  return { x: x - ty * dist, y: y + tx * dist };
+}
+
+/** Like plainPointAt, but the POSITION is pushed `extendBy` further along `s`'s own fixed local
+ *  tangent first (a straight-line extrapolation, NOT a walk along the path's own arc-length -- the
+ *  path may bend at a corner just past `s`, and an end brick hasn't actually turned that corner).
+ *  `extendBy` negative pushes backward. Used only to build an END BRICK's own raw (pre-clip) far
+ *  edge, deliberately oversized so clipToHalfPlane always has enough material to reach the TRUE
+ *  mitre point regardless of how short that brick's own natural pitch slot is. */
+function extrapolatedPointAt(path, cum, s, total, closed, dist, direction, extendBy) {
+  const { x, y, tx, ty } = localTangent(path, cum, s, total, closed, direction);
+  const ex = x + tx * extendBy, ey = y + ty * extendBy;
+  return { x: ex - ty * dist, y: ey + tx * dist };
 }
 
 /** The TRUE mitre LINE at a corner (a point on it, plus its own direction) -- null when `s` isn't
@@ -165,52 +176,6 @@ function clipToHalfPlane(poly, line, keepRef) {
     }
   }
   return out;
-}
-
-/** Polygon AREA (shoelace, unsigned) -- the candidate filler's own degenerate-triangle check. */
-function polygonArea(poly) {
-  let a = 0;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) a += (poly[j].x + poly[i].x) * (poly[j].y - poly[i].y);
-  return Math.abs(a / 2);
-}
-
-/** Standard ray-casting point-in-polygon (works regardless of winding direction). */
-function pointInPolygon(x, y, poly) {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
-    const hit = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
-    if (hit) inside = !inside;
-  }
-  return inside;
-}
-
-/** Does `candidate` overlap any polygon in `existingBricks` -- by GRID-SAMPLING `candidate`'s own
- *  interior and point-testing each sample against each nearby brick, rather than exact polygon
- *  clipping. Exact clipping (Sutherland-Hodgman) was tried first and is MEASURED to degenerate
- *  exactly where it matters most here: a mitre filler's own vertices are CONSTRUCTED to land
- *  precisely on an existing brick's own edge line (same formula, same point), and clipping against
- *  a line a vertex sits exactly on is a classic floating-point edge case that silently collapsed
- *  the result to an empty sliver, hiding a real, substantial overlap. Sampling has no such
- *  degeneracy -- a grid point is never pinned to exactly land on a boundary by construction. */
-function overlapsAny(candidate, existingBricks) {
-  const xs = candidate.map((p) => p.x), ys = candidate.map((p) => p.y);
-  const cMinX = Math.min(...xs), cMaxX = Math.max(...xs), cMinY = Math.min(...ys), cMaxY = Math.max(...ys);
-  const nearby = existingBricks.filter((b) => {
-    const bxs = b.polygon.map((p) => p.x), bys = b.polygon.map((p) => p.y);
-    const bMinX = Math.min(...bxs), bMaxX = Math.max(...bxs), bMinY = Math.min(...bys), bMaxY = Math.max(...bys);
-    return !(cMaxX < bMinX - 1e-6 || bMaxX < cMinX - 1e-6 || cMaxY < bMinY - 1e-6 || bMaxY < cMinY - 1e-6);
-  });
-  if (!nearby.length) return false;
-  const GRID = 16;
-  for (let i = 0; i <= GRID; i++) {
-    for (let j = 0; j <= GRID; j++) {
-      const x = cMinX + (cMaxX - cMinX) * i / GRID, y = cMinY + (cMaxY - cMinY) * j / GRID;
-      if (!pointInPolygon(x, y, candidate)) continue;
-      if (nearby.some((b) => pointInPolygon(x, y, b.polygon))) return true;
-    }
-  }
-  return false;
 }
 
 function pickSample(set, seed, purpose, id) {
@@ -258,16 +223,6 @@ export function bricksAlongPath(polyline, opts) {
 
   const cornerS = cornerIndices.map((i) => cum[Math.min(i, cum.length - 1)])
     .filter((s) => s > 1e-6 && s < total - 1e-6).sort((a, b) => a - b);
-
-  // PLAIN, directional points for every regular brick (see this file's own header for why: always
-  // a simple rectangle, never self-intersecting, never overlapping a neighbour).
-  const quadAt = (s, sEnd) => {
-    const leftStart = plainPointAt(path, cum, s, total, closed, halfWidth, 'out');
-    const leftEnd = plainPointAt(path, cum, sEnd, total, closed, halfWidth, 'in');
-    const rightEnd = plainPointAt(path, cum, sEnd, total, closed, -halfWidth, 'in');
-    const rightStart = plainPointAt(path, cum, s, total, closed, -halfWidth, 'out');
-    return [leftStart, leftEnd, rightEnd, rightStart];
-  };
 
   const bricks = [];
   let nextId = 0;
@@ -323,12 +278,11 @@ export function bricksAlongPath(polyline, opts) {
   }
 
   // Every declared corner (plus the closed-path seam at arc-length 0, if it's itself a real
-  // corner) gets its own TRUE mitre line (mitreLineAt), used twice below: to trim every REGULAR
-  // brick that reaches close enough to cross into the perpendicular run's own territory (every
-  // brick spans the band's FULL cross-width, so this is common, not an edge case -- MEASURED via
-  // the overlap-fraction test), and to size the corner filler. The line itself is INFINITE, so
-  // each one is only applied to bricks within MITRE_REACH of ITS OWN corner (arc-length, wrapping
-  // for a closed path) -- MEASURED, via a rendered preview on a non-square board, that applying it
+  // corner) gets its own TRUE mitre line (mitreLineAt) -- used to trim any brick that reaches
+  // close enough to cross into the perpendicular run's own territory, AND (see the run loop below)
+  // to cut each run's own END brick exactly at the true cut. The line itself is INFINITE, so each
+  // one is only applied to bricks within MITRE_REACH of ITS OWN corner (arc-length, wrapping for a
+  // closed path) -- MEASURED, via a rendered preview on a non-square board, that applying it
   // unconditionally sliced bricks clean across a SHORT side, far from either corner, because the
   // far end of a 45deg line from one corner reached the middle of that side.
   const fillerCandidates = closed ? [0, ...cornerS] : cornerS;
@@ -336,61 +290,60 @@ export function bricksAlongPath(polyline, opts) {
     .map((cs) => ({ cs, line: mitreLineAt(path, cum, cs, total, closed) }))
     .filter((m) => m.line);
   const MITRE_REACH = halfWidth * 5; // matches clipToHalfPlane/sidePoint's own cos-floor worst case (cos>=0.2 -> reach<=dist/0.2)
+  const EXTEND_BY = MITRE_REACH + 0.05; // an end brick's own raw material reaches comfortably past MITRE_REACH, so the clip below always has enough to work with
   const arcDistanceToCorner = (s, cs) => {
     const d = Math.abs(s - cs);
     return closed ? Math.min(d, total - d) : d;
   };
 
-  // 'bricks' profile: individual bricks, one per pitch slot, each its own joint. The brick's own
-  // quad spans exactly `pitch` (its natural length) -- the joint is the gap added separately below
-  // (`s = sEnd + J`), never folded into the quad itself. Every declared corner forces a boundary
-  // (the pitch step is clamped back to a corner's own arc-length, shortening that one brick) --
-  // always a plain, safe quad (see quadAt's own comment), then trimmed against every corner's own
-  // mitre line (a no-op where the brick doesn't reach it); the small gap this leaves at every
-  // corner is filled explicitly below.
-  let s = 0, guard = 0;
-  while (s < total - 1e-6 && guard++ < 10000) {
-    let sEnd = Math.min(s + pitch, total);
-    const nextCorner = cornerS.find((c) => c > s + 1e-6 && c < sEnd - 1e-6);
-    if (nextCorner !== undefined) sEnd = nextCorner;
-    if (sEnd - s < 1e-6) { s = sEnd + J; continue; }
+  // 'bricks' profile: individual bricks, one per pitch slot, each its own joint, walked in CORNER-
+  // BOUNDED RUNS (a run boundary is a real corner unless it's an OPEN path's own true end). A
+  // run's own FIRST/LAST brick, when that boundary is a real corner, is built as an END BRICK --
+  // its near/far edge EXTRAPOLATED past the corner (extrapolatedPointAt) rather than clamped to
+  // it -- so after the SAME mitre-line clip every brick gets, it reaches exactly the true mitre
+  // point with no separate filler piece needed (see this file's own header).
+  const bounds = [0, ...cornerS, total];
+  for (let k = 0; k < bounds.length - 1; k++) {
+    const runStart = bounds[k], runEnd = bounds[k + 1];
+    if (runEnd - runStart < 1e-6) continue;
+    const startIsCorner = k > 0 || closed;
+    const endIsCorner = k < bounds.length - 2 || closed;
 
-    let polygon = quadAt(s, sEnd);
-    const mid = (s + sEnd) / 2;
-    const refPoint = pointAtArcLength(path, cum, mid, closed);
-    for (const { cs, line } of mitreLines) {
-      if (polygon.length < 3) break;
-      if (arcDistanceToCorner(mid, cs) > MITRE_REACH) continue;
-      polygon = clipToHalfPlane(polygon, line, refPoint);
-    }
-    if (polygon.length < 3) { s = sEnd + J; continue; } // fully consumed -- degenerate pitch/width combo
+    let s = runStart, guard = 0, isFirst = true;
+    while (s < runEnd - 1e-6 && guard++ < 10000) {
+      const sEnd = Math.min(s + pitch, runEnd);
+      const isLast = sEnd >= runEnd - 1e-6;
 
-    const id = nextId++;
-    const { sampleId, flip } = pickSample(set, seed, 'bricks', id);
-    const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', id))() * 2 - 1) * (set.heightJitterIn || 0);
-    bricks.push({ id: `${pieceId}-${id}`, polygon, pieceId, sampleId, flip, heightOffset });
-    s = sEnd + J;
-  }
+      const leftStart = (isFirst && startIsCorner)
+        ? extrapolatedPointAt(path, cum, s, total, closed, halfWidth, 'out', -EXTEND_BY)
+        : plainPointAt(path, cum, s, total, closed, halfWidth, 'out');
+      const rightStart = (isFirst && startIsCorner)
+        ? extrapolatedPointAt(path, cum, s, total, closed, -halfWidth, 'out', -EXTEND_BY)
+        : plainPointAt(path, cum, s, total, closed, -halfWidth, 'out');
+      const leftEnd = (isLast && endIsCorner)
+        ? extrapolatedPointAt(path, cum, sEnd, total, closed, halfWidth, 'in', EXTEND_BY)
+        : plainPointAt(path, cum, sEnd, total, closed, halfWidth, 'in');
+      const rightEnd = (isLast && endIsCorner)
+        ? extrapolatedPointAt(path, cum, sEnd, total, closed, -halfWidth, 'in', EXTEND_BY)
+        : plainPointAt(path, cum, sEnd, total, closed, -halfWidth, 'in');
 
-  // Corner MITRE FILLERS: trimming regular bricks above can still leave a small gap at a corner
-  // (on at least the band's OUTER side) between the approaching run's own last trimmed brick and
-  // the departing run's own first trimmed brick -- candidate-filled by [approaching's own plain
-  // corner point, the TRUE mitred corner point (sidePoint's own bisector construction), departing's
-  // own plain corner point], but only ADDED when it doesn't overlap a brick already placed (see
-  // this file's own header for why the inner side's own same construction is routinely rejected
-  // here instead of always added).
-  for (const cs of fillerCandidates) {
-    for (const dist of [halfWidth, -halfWidth]) {
-      const inPt = plainPointAt(path, cum, cs, total, closed, dist, 'in');
-      const outPt = plainPointAt(path, cum, cs, total, closed, dist, 'out');
-      if (Math.hypot(inPt.x - outPt.x, inPt.y - outPt.y) < 1e-6) continue; // not a real corner on this side
-      const mitrePt = sidePoint(path, cum, cs, total, closed, dist);
-      const polygon = [inPt, mitrePt, outPt];
-      if (polygonArea(polygon) < 1e-9 || overlapsAny(polygon, bricks)) continue;
-      const id = nextId++;
-      const { sampleId, flip } = pickSample(set, seed, 'bricks-corner', id);
-      const heightOffset = (mulberry32(seedFor(seed, 'bricks-corner-jitter', id))() * 2 - 1) * (set.heightJitterIn || 0);
-      bricks.push({ id: `${pieceId}-corner-${id}`, polygon, pieceId, sampleId, flip, heightOffset });
+      let polygon = [leftStart, leftEnd, rightEnd, rightStart];
+      const mid = (s + sEnd) / 2;
+      const refPoint = pointAtArcLength(path, cum, mid, closed);
+      for (const { cs, line } of mitreLines) {
+        if (polygon.length < 3) break;
+        if (arcDistanceToCorner(mid, cs) > MITRE_REACH) continue;
+        polygon = clipToHalfPlane(polygon, line, refPoint);
+      }
+
+      if (polygon.length >= 3) {
+        const id = nextId++;
+        const { sampleId, flip } = pickSample(set, seed, 'bricks', id);
+        const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', id))() * 2 - 1) * (set.heightJitterIn || 0);
+        bricks.push({ id: `${pieceId}-${id}`, polygon, pieceId, sampleId, flip, heightOffset });
+      }
+      s = sEnd + J;
+      isFirst = false;
     }
   }
   return { bricks };
