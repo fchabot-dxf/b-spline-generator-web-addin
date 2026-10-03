@@ -14374,7 +14374,7 @@ No doc leakage at any point: `app.documents` held exactly the 4 protected docs (
 `DECAL test - 2026-10-03`, `DECAL edge test`, `ITEM71 colour decal live test - 2026-10-03`)
 throughout, confirmed before and after each part.
 
-**Commit `[pending]`, pushed to origin/lane-b** (2 files: the CAM-lookup bugfix in
+**Commit `a03a8e1`, pushed to origin/lane-b** (2 files: the CAM-lookup bugfix in
 `item10_part4_end_to_end.py`, this WORK-LOG entry). T84 item 10 is DONE on its trimmed terms: size
 defaults and end-to-end are clean (100%), the inset-window set is characterized into two failure
 classes with a 3-line diagnosis each for Fred's scoping call, per his own explicit "don't chase it"
