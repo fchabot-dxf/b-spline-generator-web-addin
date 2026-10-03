@@ -186,6 +186,21 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 47 -- finish item 46: the T10 Arch-rise handle must actually change the build (advisor, 2026-10-03)
+Item 46 accepted as a step (2e95a32; gate green). But its own live test proves the user-facing bug is still there:
+both archRise extremes build IDENTICAL volumes, because top_S_anchor/top_E_anchor are literal Point steps that
+apply_seed_geometry never touches. Same declaration, one level further: let a Point step take its position from a
+seeded step's endpoint (e.g. 'SeedFrom': 'top_edge:S' / 'top_edge:E'), so the anchors follow the sent arch. Keep
+item 15/17's anchor mechanism itself (they're needed for the chain to solve); only their position changes source.
+Mind the :S/:E quirk you measured: pick the endpoint by POSITION (left/right), not by Fusion's start/end label.
+LIVE: T10 7x9 at both archRise ends builds 4/4 with DIFFERENT volumes, and the preview==build sweep passes T10
+(12/13 then, T5 left). Unseeded path and goldens unchanged (--check).
+Log in WORK-LOG.md. Commit 'H23 item 47: ...'.
+
+## Item 48 -- (queued after 47) T5 dip/shoulder: preview differs from build by 0.1-0.3 in (item 46's sweep finding).
+Probe first: is the app's fitted shapeModel wrong, or does Fusion solve the seeded chain somewhere else? Fix at the
+root; the sweep's preview==build must pass T5 (13/13).
+
 ## Item 46 -- T10's Arch-rise handle does nothing in Fusion; + a PREVIEW == BUILD check for all templates (advisor, 2026-10-03)
 Item 45 accepted (26c126e): keep the literal path (Sketch Builder + goldens use it), resume item 18 after this.
 (1) T10: p02_12's rebuild re-declares top_edge from the fixed 0.175*widthIn literal, and apply_seed_geometry pops the
@@ -356,4 +371,6 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-43] T10 default 1/4 bars: probe which miter fails and why, root fix + failing-first test, live 4/4 at 6x9/7x9/9x12 and 13/13 sweep. Commit as 'H23 item 43: ...'.
 - [x] [H23-item-44] main RED: re-record T10 goldens (full pytest green); all-template no-MITER-MISS pure test + sweep count; T7 goldens question. Commit as 'H23 item 44: ...'.
 - [x] [H23-item-45] PLAN ONLY: after item 42, who still reads the literal seed constants? Propose retire-the-legacy-path vs derive (item 18), with the full caller/test/golden list. No code.
-- [ ] [H23-item-46] T10 arch rise ignored by Fusion: declare the rebuild's seed source; live preview==build check for all templates; T10 archRise ends live. Commit as 'H23 item 46: ...'.
+- [x] [H23-item-46] (partial: SeedFrom + live preview==build check done; the handle still has no effect -> item 47) T10 arch rise ignored by Fusion: declare the rebuild's seed source; live preview==build check for all templates; T10 archRise ends live. Commit as 'H23 item 46: ...'.
+- [ ] [H23-item-47] T10 arch-rise handle really changes the build: anchors take their position from the seeded arch's endpoints (by position); live different volumes at both ends; preview==build passes T10. Commit as 'H23 item 47: ...'.
+- [ ] [H23-item-48] T5 dip/shoulder preview vs build 0.1-0.3 in: probe, root fix, preview==build 13/13. Commit as 'H23 item 48: ...'.
