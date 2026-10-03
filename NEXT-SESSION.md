@@ -186,6 +186,22 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 67c -- wall colours must ALIGN with the rim, crisp (advisor review of 1214_item67b_after_closeup-rim.png)
+Full-height wall colour is in (fd5dfd0). Two things still wrong in your own after close-up:
+ 1. MISALIGNED: the wall's black/white bands do not sit under the rim's black/white dashes. A black rim dash sits
+    over a white wall band, and the wall bands are much wider than the dashes. Requirement: the wall colour at
+    perimeter position s == the top artwork's colour at the SAME outline point s, exactly. Check the perimeter
+    parametrisation the wall uses against the one the stripe/contour drawing uses (arc length from the same
+    start point, same direction, same units?) and the sampling density (a 0.25 in dash needs wall vertices at
+    least that dense, e.g. split at every colour boundary).
+ 2. BLURRY: band edges fade over a wide gradient. Use flat colour per wall segment (split vertices at the colour
+    boundary, or a 1D texture with NEAREST filtering), never vertex-colour interpolation across a boundary.
+Test: sample N points along the outline; for each, the wall colour (top AND bottom of the wall) == the rim colour
+there (pure, no WebGL). Shots: the same two views plus a straight-on side view of one wall with the rim visible,
+so alignment can be judged by eye. And re-check Fred's triangles: your 'before' rim shot does not show them, so
+build his exact setup (oblique view, striped black/white contour like his 10.png) before declaring them gone.
+Commit 'H23 item 67c: ...'.
+
 ## Item 67b -- item 67 REWORK (advisor review of 1130_item67_after.png, 2026-10-03)
 Item 67 is accepted as a step (8c40319: the shared sampler, the toggle, and the manual-tie proof are good). But the
 brief was 'that colour continues straight down the side wall for the wall's FULL HEIGHT'. In the after shot the
@@ -633,4 +649,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-65] (131/133; T10 archRise:min -> advisor's item 62; T13 neckWidth:min covered by the mitersCollide guard 578660e) re-run the full matrix on e11e15d (regenerated payloads) + triage the 2 SILENT cases. Commit as 'H23 item 65: ...'.
 - [x] [H23-item-66] Shape Lattice: no tie generated on/touching the contour -- declared clearance, fix in the generator, pure test over templates x seeds, before/after shots. Commit as 'H23 item 66: ...'.
 - [ ] [H23-item-67] 3D preview: side walls take the edge colours of the artwork (teint dans la masse), shared colour sampler, 'Colour edges' toggle, tests, before/after shots. Commit as 'H23 item 67: ...'.
-- [ ] [H23-item-67b] item 67 rework: walls coloured FULL height in the edge colours; reproduce Fred's striped-rim close-up and remove the triangles; before/after of both views. Commit as 'H23 item 67b: ...'.
+- [x] [H23-item-67b] (step: full-height walls done; alignment -> 67c) item 67 rework: walls coloured FULL height in the edge colours; reproduce Fred's striped-rim close-up and remove the triangles; before/after of both views. Commit as 'H23 item 67b: ...'.
+- [ ] [H23-item-67c] wall colour ALIGNED with the rim (same perimeter parameter) and crisp (no interpolation across colour boundaries); pure alignment test; side-view shot; re-check Fred's triangles in his exact setup. Commit as 'H23 item 67c: ...'.
