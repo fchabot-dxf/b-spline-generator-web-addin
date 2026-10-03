@@ -514,8 +514,21 @@ function _mesh(THREE, { positions, index }, material, attrs = {}) {
  * mesh: trim its index in place (from the untrimmed copy kept in userData)
  * and return the extra meshes (edge wall + bars) the caller adds to the scene.
  * `spec == null` restores the untrimmed panel and returns [].
+ *
+ * H23 item 67 (Fred: "teint dans la masse" -- the board's edge should show
+ * whatever artwork colour reaches it): `edgeSampler(u, v) -> {r,g,b} (0..1)
+ * | null`, optional. When given, the panel's own outline wall and the
+ * inset-window wall sample it (at each point's own uv, via the SAME
+ * `lerpAttr`+`surf.at` machinery the heat-map colour already uses) INSTEAD
+ * of the heat-map colour -- falling back to the heat-map when the sampler
+ * returns null (no artwork at that point, e.g. fully transparent) or isn't
+ * given at all, so omitting it reproduces the exact pre-item-67 behaviour.
+ * Plain callback, not a canvas/texture reference, so this stays testable
+ * with a fake and the caller (TerrainPreview) owns the real drape-canvas
+ * sampling (drape-svg.js's sampleDrapeUV) -- one shared sampler, not a
+ * colour pipeline duplicated in here.
  */
-export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
+export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
   const geom = panelMesh.geometry;
   if (!geom.userData.fullIndex && geom.index) geom.userData.fullIndex = Array.from(geom.index.array);
   const full = geom.userData.fullIndex;
@@ -587,10 +600,24 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
     const wallMat = panelMesh.material.clone();
     wallMat.side = THREE.DoubleSide;
     const w = wallArrays(panel, bot, top);
+    // H23 item 67: the artwork colour at this edge point if edgeSampler finds one there, else the
+    // panel's own heat-map colour (today's look) -- see applyFrameToPanel's own doc comment. Only
+    // overrides when the board has heat-map colour data at all (attrs.color) -- same precondition
+    // as before this item (wallMat.vertexColors only reads true when the panel material has it,
+    // which `useColours` in terrain-mesh.js already gates on that same data existing).
+    const edgeColor = (p) => {
+      const hit = surf.at(p.x, p.y).hi;
+      if (edgeSampler && attrs.uv) {
+        const [u, v] = lerpAttr(attrs.uv.array, 2, full, hit);
+        const c = edgeSampler(u, v);
+        if (c) return [c.r, c.g, c.b];
+      }
+      return lerpAttr(attrs.color.array, 3, full, hit);
+    };
     const wallAttrs = {};
     if (attrs.color) { // the panel's own colours at the top edge, as its own side walls
       const col = [];
-      for (const p of panel) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
+      for (const p of panel) { const c = edgeColor(p); col.push(...c, ...c); }
       wallAttrs.color = { array: col, itemSize: 3 };
     }
     const wall = _mesh(THREE, w, wallMat, wallAttrs);
@@ -639,7 +666,7 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec) {
       const winWallAttrs = {};
       if (attrs.color) {
         const col = [];
-        for (const p of winHoleLoop) { const c = lerpAttr(attrs.color.array, 3, full, surf.at(p.x, p.y).hi); col.push(...c, ...c); }
+        for (const p of winHoleLoop) { const c = edgeColor(p); col.push(...c, ...c); }
         winWallAttrs.color = { array: col, itemSize: 3 };
       }
       const winWall = _mesh(THREE, wallArrays(winHoleLoop, bot, top), wallMat.clone(), winWallAttrs);

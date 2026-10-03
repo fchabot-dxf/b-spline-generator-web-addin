@@ -142,3 +142,37 @@ export function sampleRowForV(v, texH, flipY) {
 export function nextPow2(n) {
   return Math.pow(2, Math.ceil(Math.log2(Math.max(1, n))));
 }
+
+/**
+ * H23 item 67: the ONE shared colour source for "what does the artwork look
+ * like at this point on the board" — the top surface (via the drape overlay
+ * mesh's own texture map, GPU-sampled) and the new side-wall/rim colouring
+ * both need this same answer, and this is the single place that computes it
+ * in JS rather than on the GPU, so there is one sampler, not two pipelines.
+ *
+ * `canvas` is duck-typed (`width`/`height`/`getContext('2d')`) so this is
+ * testable with a plain fake, no real `<canvas>` needed (`getContext('2d')`
+ * returns null in vitest/happy-dom — see drape-mesh.test.js's own note).
+ * `u`/`v` follow the SAME convention the terrain mesh's own uv attribute
+ * uses (buildHeightField, terrain-mesh.js) — `sampleRowForV` is the same,
+ * already-measured v->row mapping the GPU itself uses (DRAPE_TEXTURE_FLIPY
+ * above); u->column has no such flip (never measured otherwise).
+ *
+ * Returns `{ r, g, b }` in 0..1 (matching the vertex-colour convention
+ * elsewhere in this codebase, e.g. the thinness heat-map's own `col.fill`)
+ * or `null` when there's no canvas, or the sampled pixel is fully
+ * transparent (no artwork at that point — the caller's cue to fall back to
+ * the plain wood/heat-map colour it would have used before this item).
+ */
+export function sampleDrapeUV(canvas, u, v) {
+  if (!canvas || typeof canvas.getContext !== 'function') return null;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const w = canvas.width, h = canvas.height;
+  if (!(w > 0) || !(h > 0)) return null;
+  const col = Math.min(w - 1, Math.max(0, Math.round(u * (w - 1))));
+  const row = Math.min(h - 1, Math.max(0, sampleRowForV(v, h, DRAPE_TEXTURE_FLIPY)));
+  const px = ctx.getImageData(col, row, 1, 1).data;
+  if (px[3] === 0) return null;
+  return { r: px[0] / 255, g: px[1] / 255, b: px[2] / 255 };
+}
