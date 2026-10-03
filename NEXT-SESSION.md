@@ -186,6 +186,14 @@ readback tools): built bar bodies must EQUAL the declared FRAME_BARS names -- no
 body under 0.5 cm3 -- and add the profile classifier's 'NOT BUILT' log lines to the counted failures. No guards.
 Commit 'H23 item 38: ...'.
 
+## Item 57 -- speed win #1 from item 56: validate deferred compute across the WHOLE stamp build (advisor, 2026-10-03).
+Item 56 accepted (2e8d847). Your prototype (send_stage_timing.py _apply_deferred_whole_build_variant) has a flagged
+entity-id risk. Validate it properly: same real payload + fresh seed, A/B on every stamp sketch (curve count,
+constraint count, dimension count, fully-constrained state, every entity id/attribute the later steps look up),
+bodies/volumes, inlay health, marker == count, send-1 AND send-2 AND send-3. Keep it only if everything is
+identical and it saves >= 1 s; otherwise revert and report the numbers. Win #2 (L4's 26 circle dimensions) waits on
+Fred. Fusion is yours. Commit 'H23 item 57: ...'.
+
 ## Item 56 -- speed round 4, MEASURE + PROPOSE only (advisor, 2026-10-03). Item 55 accepted + deployed (405c34e).
 Now: Send-1 ~16.2 s, Send-2 ~19.9 s. Items 51-55 found the pattern: each Fusion call costs more as the timeline
 grows (~0.85 s per reorder/delete on the real doc). Make the full stage table for send-1 and send-2 on the real
@@ -471,4 +479,5 @@ Commit by path, push immediately, then `python ~/.claude/skills/multi-agent-hand
 - [x] [H23-item-53] BLOCKER: marker restore must end at the timeline END (moveToEnd), live check with inlay + second Send. Commit as 'H23 item 53: ...'.
 - [x] [H23-item-54] T7 NOT BUILT on the pre-guard real payload: today's isValid verdict, fresh payload live 5/5 with inlay, or a root fix; + where send-2's extra 8 s goes. Commit as 'H23 item 54: ...'.
 - [x] [H23-item-55] speed round 3: re-Send delete 4.3 s -> measure how it deletes, smallest identical change, send-2/send-3 clean. Commit as 'H23 item 55: ...'.
-- [ ] [H23-item-56] speed round 4 MEASURE ONLY: full stage table send-1/send-2, stamp sketch per-call vs solve, top 3 remaining wins with estimates. Commit as 'H23 item 56: ...'.
+- [x] [H23-item-56] speed round 4 MEASURE ONLY: full stage table send-1/send-2, stamp sketch per-call vs solve, top 3 remaining wins with estimates. Commit as 'H23 item 56: ...'.
+- [ ] [H23-item-57] validate whole-stamp-build deferred compute: A/B identical over 3 Sends, keep only if >= 1 s saved. Commit as 'H23 item 57: ...'.
