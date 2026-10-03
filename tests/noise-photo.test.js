@@ -58,7 +58,70 @@ describe('photo.js: fn() contract', () => {
     expect(photo.fn(5, 0, 1, params)).toBeCloseTo(0.9, 6);
   });
 
-  it('declares no tweaks (crop/levels/etc. are NOT sliders in the generic Edit-Filter schema)', () => {
-    expect(photo.tweaks).toEqual([]);
+  it('declares its own effect params (depth/scale/offset/rotation/repeat) via the generic tweaks schema -- NOT the editor\'s own crop/levels/etc., which are not sliders', () => {
+    const keys = photo.tweaks.map((t) => t.key).sort();
+    expect(keys).toEqual(['depth', 'offsetX', 'offsetY', 'repeat', 'rotation', 'scale'].sort());
+  });
+
+  it('every declared tweak default reproduces the pre-tweak identity sampling (no visible change from registering them)', () => {
+    globalThis.__fakeDecoded['data:tw'] = { data: Float32Array.from([0, 1, 0.5, 0.25]), w: 2, h: 2 };
+    return ensurePhotoDecoded('data:tw').then(() => {
+      const base = { photoImageDataUrl: 'data:tw', photoEdits: [] };
+      const withDefaults = { ...base, tweaks: Object.fromEntries(photo.tweaks.map((t) => [t.key, t.default])) };
+      for (const [su, sv] of [[0, 0], [0.9, 0], [0, 0.9], [0.9, 0.9], [0.3, 0.7]]) {
+        expect(photo.fn(su, sv, 1, withDefaults)).toBeCloseTo(photo.fn(su, sv, 1, base), 6);
+      }
+    });
+  });
+});
+
+describe('photo.js: the effect-param tweaks (depth/scale/offset/rotation/repeat)', () => {
+  const GRID4 = { data: Float32Array.from([0, 1 / 3, 2 / 3, 1, 1 / 3, 2 / 3, 1, 0, 2 / 3, 1, 0, 1 / 3, 1, 0, 1 / 3, 2 / 3]), w: 4, h: 4 };
+
+  beforeEach(async () => {
+    globalThis.__fakeDecoded['data:grid4'] = GRID4;
+    await ensurePhotoDecoded('data:grid4');
+  });
+
+  const sampleWith = (tweaks, su = 0.5, sv = 0.5) =>
+    photo.fn(su, sv, 1, { photoImageDataUrl: 'data:grid4', photoEdits: [], tweaks });
+
+  it('depth=1 is unchanged; depth>1 pushes values further from mid-grey; depth=0 flattens to mid-grey', () => {
+    // su=0.3,sv=0 hits grid index (i=1,j=0) = 1/3 -- NOT already clamped at 0 or 1, so depth=2 has
+    // visible room to push it further from mid-grey without saturating.
+    const raw = photo.fn(0.3, 0, 1, { photoImageDataUrl: 'data:grid4', photoEdits: [] }); // 1/3
+    expect(raw).toBeCloseTo(1 / 3, 6);
+    expect(sampleWith({ depth: 1 }, 0.3, 0)).toBeCloseTo(raw, 6);
+    expect(sampleWith({ depth: 0 }, 0.3, 0)).toBeCloseTo(0.5, 6);
+    expect(sampleWith({ depth: 2 }, 0.3, 0)).toBeLessThan(raw); // further below 0.5 than the raw value
+  });
+
+  it('scale > 1 zooms in: a point near the edge samples closer to the image centre', () => {
+    const base = photo.fn(0.9, 0.5, 1, { photoImageDataUrl: 'data:grid4', photoEdits: [] });
+    const zoomed = sampleWith({ scale: 2 }, 0.9, 0.5);
+    // Zoomed in, su=0.9 maps to u = 0.5 + (0.9-0.5)/2 = 0.7, pulled toward centre -- a different pixel
+    // than the un-zoomed (clamped-to-edge-ish) sample, for this clearly-varying test image.
+    expect(zoomed).not.toBe(base);
+  });
+
+  it('offsetX pans the sampled column', () => {
+    const left = photo.fn(0.25, 0.5, 1, { photoImageDataUrl: 'data:grid4', photoEdits: [] });
+    const shifted = sampleWith({ offsetX: 0.25 }, 0, 0.5); // su=0 + offsetX=0.25 -> same u as su=0.25, offsetX=0
+    expect(shifted).toBeCloseTo(left, 6);
+  });
+
+  it('rotation=180 degrees samples the point-mirrored pixel', () => {
+    const corner = photo.fn(0.0, 0.0, 1, { photoImageDataUrl: 'data:grid4', photoEdits: [] });
+    const oppositeCorner = photo.fn(1.0, 1.0, 1, { photoImageDataUrl: 'data:grid4', photoEdits: [] });
+    expect(sampleWith({ rotation: 180 }, 0.0, 0.0)).toBeCloseTo(oppositeCorner, 6);
+    expect(corner).not.toBeCloseTo(oppositeCorner, 6); // sanity: the test image isn't 180-symmetric
+  });
+
+  it('repeat=0 (default) clamps past the edge; repeat=1 tiles instead', () => {
+    const edgeValue = photo.fn(1.0, 0.5, 1, { photoImageDataUrl: 'data:grid4', photoEdits: [] });
+    const clamped = sampleWith({ scale: 1, offsetX: 0.3, repeat: 0 }, 1.0, 0.5); // pushed past u=1
+    expect(clamped).toBeCloseTo(edgeValue, 6);
+    const tiled = sampleWith({ scale: 1, offsetX: 0.3, repeat: 1 }, 1.0, 0.5); // wraps back near u=0.3
+    expect(tiled).not.toBeCloseTo(clamped, 6);
   });
 });
