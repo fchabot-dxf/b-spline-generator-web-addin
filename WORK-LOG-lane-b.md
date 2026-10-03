@@ -13321,3 +13321,344 @@ code -- vitest/pytest untouched).
 
 All work done at `C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\` -- path checked before every
 Edit/Write this turn, no main-checkout mistake.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3: Arched Funnel + Tulip template code -- IN PROGRESS, checkpoint (not passing back yet)
+
+Advisor dispatch: T84 item 3, both templates' Fusion build code, built with main's rules (closed-form
+seeds, CCW welds, isTopologyMatched=False, ResolveLineCircleCorner / the new circle-circle corner where
+needed, built==declared/preview==build, no MITER MISS, miter at every joint, the hook guard), then the
+item 61 full-matrix sweep on both at 100% BUILT, then "Fusion free" before the live run. Fred approved
+(2026-10-03): one-piece arch (6 bars), defaults as the T84 items 1-2 diagram drew, MODERATE handle ranges.
+A new guard (also Fred-approved today): no outline arc may sweep past 180 deg -- H23 item 63, already on
+main, now on lane-b too.
+
+This is a large task; this entry is a checkpoint, not the finished item. Template 16 (Arched Funnel) is
+code-complete and pytest-green end to end, including a live-Fusion-free cross-check of every arc/weld.
+Template 17 (Tulip) has NOT been started (it needs genuinely new shared machinery, see below). Nothing in
+Fusion has been touched. Not committed yet -- see "what's left" at the bottom before deciding whether to
+keep going in this session or hand this checkpoint to a review first.
+
+Pure-Python geometry foundation (fb_engine/closed_form_arc.py + NEW fb_engine/t16_geometry.py): added
+sagitta_circle(p0, p1, sag, away_point) to closed_form_arc.py (the circle through two points bulging by a
+given sagitta, ported from the T84 items 1-2 diagram's own bulgeArc) -- tested independently
+(test_closed_form_arc.py, constructs known circles and recovers them, the module's own stated philosophy).
+t16_geometry.py is the shared outline builder for BOTH templates (outline() / is_valid_outline()),
+mirroring t11_geometry.py's role: not itself Fusion code, the thing the Fusion phase files' own
+hand-derived expressions are cross-checked against.
+
+Bug found and fixed in my OWN new code, not shipped: my first is_valid_outline() checked "no arc sweeps
+past 180 deg" by always taking the MINOR-arc angle (min(d, 2*pi-d)), which is mathematically bounded at
+180 deg by construction -- it can never actually detect an undercut this way, a tautology bug. The real
+failure mode for a sagitta-built arc is the sagitta reaching HALF THE CHORD LENGTH: past that point
+sagitta_circle's own circle keeps growing again (same radius function both sides of the minimum), but
+true_via_point stays pinned to the minor-arc bisector instead of following the bulge to the intended far
+side -- so the construction silently stops meaning what it says, not "too undercut", just WRONG. Confirmed
+by hand (not just reasoned): at 7x9, bulge_frac=0.9 gives a lower-bulge sag of 3.15in against a chord of
+4.595in (half-chord 2.297in) -- sag > half_chord, and the via point measurably stops tracking the intended
+"sag away from the chord midpoint" point (checked directly against the formula's own defining property).
+Fixed by adding an explicit sag < half_chord guard (the real precondition the construction needs)
+alongside the existing 180-deg check, and rewrote the two tests that had been passing for the wrong reason
+to prove the NEW guard specifically (not the sweep angle, which can't reach 180 by construction). Caught
+entirely by my own non-vacuous testing discipline (the test asserted something mathematically impossible
+for the function to return -- worth remembering as a class of bug: an assertion that looks like it's
+testing severity when it's actually testing something the code structurally cannot produce). Sanity-swept
+a generous moderate-range grid (75 combinations, 3 sizes) afterward: 0 false positives from the new guard.
+
+A second, real bug found in SHARED app code (editor-frame-profile.js's frameCutProfile, not
+template-specific): T16's own CCW-arc convention (fusion360-quirks skill -- a clockwise-declared 3-point
+arc gets its :S/:E swapped by Fusion) means 3 of its 6 corners are only reachable by an arc's own :E,
+never its :S (waistR via lower_R, BL via lower_L, topL via arch -- confirmed by direct computation of each
+arc's declared-triple turn sign, not assumed). frameCutProfile's own corner-exemption logic (which
+primitive index to excuse from the "must be tangent" check, since a declared miter corner is SUPPOSED to
+be non-tangent) only ever stripped a trailing :S when mapping a corner id back to its seedMap primitive
+index -- every :E-declared corner silently fell out of its own exemption set, which would have made T16
+unbuildable (false notTangent defects at exactly those 3 corners, every time). No existing template has
+ever declared a :E miter (confirmed by grep across every sketches/*/template_data.py before trusting
+this) -- genuinely new ground, not a regression. Fixed by handling both suffixes and mapping each to the
+correct joint index (:S corner = the joint BEFORE its own primitive; :E corner = the joint AT its own
+primitive -- derived from outlineDefects's own notTangent index convention, read directly from source
+rather than guessed). Verified as a pure no-op for every existing template: full vitest run of
+frame-template-{7,10,11}.test.js (75 tests, the 3 suites that exercise arc-involving corners) unchanged,
+green before and after.
+
+Template 16 (Arched Funnel), Fusion side, code-complete: sketches/template_16/ -- the full phase set
+(p01_01/p01_02 shims, p02_01_projs, p02_02_loop, p02_03_welds, p03_01_encl_projs, p03_02_encl_offset,
+p03_03_inner_corner_resolve, p03_04_encl_miters, p03_05_encl_surround_rect verbatim, template_data.py). 6
+pieces (upper_R/lower_R/base/lower_L/upper_L/arch), every joint a miter (no tangent chain at all -- unlike
+T7/T11, nothing here needs a Tangent step). The arch needs no sagitta machinery (its own via point is
+exactly the apex by construction, symmetric chord). The two lower bulges need the full
+sagitta_circle+true_via_point chain; inlined, the via point's own expression blew up to ~9,200 characters
+per coordinate (measured) -- same blowup class T7's own module docstring already warns about -- so it's
+declared as 23 NAMED Fusion parameters (t16_*, SKETCH_2_PARAMETERS) instead, same escape hatch T7 used.
+lower_L is the exact x-mirror of lower_R (verified numerically against t16_geometry.outline(), which
+computes it independently, at 3 board sizes) -- no separate named chain for it. All 6 corners are
+line-meets-circle (every arc has a straight line on both sides, since there's no tangent chain) --
+resolved with the EXISTING general ResolveLineCircleCorner primitive (fb_engine.t7_roof_eave.
+line_circle_corner, genuinely reusable despite its filename), all Concave: False (every arc bulges
+outward, centre on the material's interior side -- confirmed numerically, not assumed).
+
+A second declared_profiles.py gap found while wiring this: every one of T16's 3 arcs is miter-joined at
+BOTH its own ends (no tangent-chain neighbour to absorb one end the way T7/T11's arcs do), so two miters
+per arc share the same bare curve id (just differing by :S vs :E) -- this breaks bar_index's own generic
+miter-walk default (it maps each miter to its SOURCE's bare-id outline POSITION, so same-curve miters
+collapse onto one position and only 3 bars would ever be derived, not the intended 6). Declared FRAME_BARS
+explicitly instead (Template 6's own precedent for this exact escape hatch) -- one curve, one bar, read
+directly rather than walked. Caught by actually inspecting declared_profiles.bar_index's source before
+trusting the generic default, not by a late live failure.
+
+Verification, all non-Fusion, all green:
+- fb_engine/test_t16_geometry.py (34 tests) + fb_engine/test_closed_form_arc.py (12 tests, including 4
+  new TestSagittaCircle cases) -- the pure-Python layer.
+- NEW fb_engine/test_t16_fusion_expressions.py (10 tests): resolves the 23-parameter t16_* chain in pure
+  Python (mirrors test_t11_fusion_expressions.py's pattern, extended to resolve named parameters first,
+  since T11 never needed named params and T7 never got this cross-check written at all) and checks every
+  declared point against t16_geometry.outline()'s own independently-computed values, every arc's via point
+  against its own live-computed circle, the loop closes exactly, and -- derived generically from each
+  declared triple's own turn sign, not hardcoded -- every one of the 8 welds joins two PHYSICALLY
+  coincident points. Proved non-vacuous by mutating one weld target and confirming 3/3 size-parametrized
+  cases fail, then restoring and reconfirming green (hit the documented .pyc trap doing this -- a
+  same-size in-place-then-restored mutation inside one second left stale bytecode; cleared
+  sketches/template_16/**/__pycache__ before trusting the restored result, per that memory's own fix).
+- fb_engine/test_no_miter_miss_possible.py: added template_16 to its TEMPLATES list -- an INDEPENDENT
+  guard (reads the resolved template fresh, checks every declared miter Target is covered by a real
+  resolve step) that would have caught the frameCutProfile bug's own Fusion-side analogue had one
+  existed; 15/15 green, confirming no miter-miss anywhere in T16's own corner table.
+- Full repo pytest: 837 passed, 0 regressions. The only 3 remaining failures are the EXPECTED,
+  not-yet-wired JS gaps (test_frame_defs.py's freshness/completeness checks, which need the archedFunnel
+  JS preset + a gen_frame_defs.py regen -- not yet done, see below).
+
+What's left for T84 item 3 (large; flagging rather than silently grinding through it):
+1. Template 16's own APP (JS) side: editor-shape-lattice-generator.js (PRESETS/PARAM_ORDER/
+   DERIVED_PARAM_DEFAULTS/a _solveArchedFunnel-style construction function + dispatch),
+   editor-shape-lattice-interaction.js (handle-drag segment mapping), frame-handles.js (the MODERATE range
+   function), fb_engine/frame_shape_fit.py + frame_definition.py (the arched_funnel extractor),
+   tools/gen_frame_defs.py regen + --check, tests/frame-template-16.test.js. The FRAME_SEED_MAP's own
+   reverse flags in template_data.py are a FIRST GUESS (same honest gap T7's own copy of this comment
+   flags) -- must be checked against tests/frame-seed-geometry.test.js once the solver exists, not
+   assumed.
+2. Template 17 (Tulip) entirely -- reuses T16's lower half (arch/lower_R/lower_L/base) verbatim but
+   replaces the straight upper sides with CONCAVE arcs, which makes 4 of its 6 corners arc-meets-arc
+   (topR/waistR/waistL/topL), not line-meets-circle -- ResolveLineCircleCorner genuinely cannot resolve
+   these (only BR/BL, line-meets-arc via base, can reuse it). This needs a NEW resolver
+   (ResolveCircleCircleCorner): a new step type, a parametric_engine.py dispatch branch, new math in
+   fb_engine/inner_corners.py (circle-circle intersection of two offset circles, the root nearest the
+   shared outer corner), registration in test_no_miter_miss_possible.py's _RESOLVE_STEP_TYPES, and its own
+   fake-sketch unit test. This is genuinely new shared machinery (not single-template-specific), unlike
+   everything in T16 above which only ever combined EXISTING primitives -- flagging it explicitly rather
+   than just building it, since it's the one piece of this item that isn't "apply the established
+   pattern."
+3. The item 61 full-matrix live sweep on both templates once 1-2 are done, 100% BUILT target, "Fusion
+   free" requested from the advisor first (not yet asked -- nothing Fusion-side has been touched this
+   turn).
+4. Commit, push, redeploy from a clean worktree, pass back with counts.
+
+Not committed yet (all of the above -- fb_engine/closed_form_arc.py, fb_engine/t16_geometry.py + its test,
+fb_engine/test_t16_fusion_expressions.py, fb_engine/test_no_miter_miss_possible.py's one-line addition,
+editor-frame-profile.js's fix, the full sketches/template_16/ tree -- is uncommitted, verified-green
+working-tree state). All work done at
+C:\Users\danse\APPS\b-spline-generator-web-addin-lane-b\ -- path checked before every Edit/Write this
+turn, no main-checkout mistake.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3 continued: ResolveCircleCircleCorner + Template 17 "Tulip" -- Fusion/Python side now DONE for both templates
+
+Advisor response to the checkpoint above: both shared-code fixes (frameCutProfile :E, sagitta_circle)
+approved. Directed to commit the checkpoint in separate commits, pull main first (new H23 item 63 corner
+fallbacks/guards landed there since this branch last synced), then build ResolveCircleCircleCorner as a
+declared sibling of ResolveLineCircleCorner, keeping the arch-end x as one declared value (Fred may add a
+T84 item 4 "topWidth" handle -- confirmed real and already approved, NEXT-SESSION-lane-b.md), and to ask
+before touching Fusion.
+
+**Committed the checkpoint, 4 separate commits** (a2d8b8c sagitta_circle, 03b7b70 t16_geometry.py,
+14545bc the frameCutProfile :E fix, 33c5bb8 Template 16 itself), **merged origin/main** (cd6c232, clean
+auto-merge -- H23 item 63's new corner-resolution fallbacks in fb_engine/inner_corners.py: a 3x/1.5x
+frame_thickness "slid along the surviving edge" tier and a "nearest inner-loop vertex" last resort for
+inner_corner_step, a "further round the offset circle" tier for line_circle_corner_step -- all born from
+actual measured live Fusion incidents on OTHER templates, not pre-emptive), pushed.
+
+**Single-sourced the arch-end x** (5ad7175): p02_02_loop.py was re-typing ARCH_HALF_SPAN_FRAC's own value
+(0.75) as a bare literal instead of importing the already-declared constant from t16_geometry.py -- fixed,
+no behavior change (confirmed via the full cross-check suite).
+
+**Built ResolveCircleCircleCorner** (9125bdd), a declared sibling of ResolveLineCircleCorner, needed
+because Tulip's own concave upper sides make 4 of its 6 corners arc-meets-arc (neither piece a straight
+line, so the line-circle resolver genuinely cannot resolve them):
+- `circle_circle_corner` (fb_engine/t7_roof_eave.py): the exact intersection of two offset circles, each
+  carrying its OWN independent Concave flag (no shared "interior reference point" needed -- a circle's own
+  offset direction is already fully determined by its own centre/radius). Tested from known truth (a point
+  placed exactly on both offset circles by construction, the true radii then recovered from it via each
+  Concave flag) -- 4 new tests in fb_engine/test_t7_roof_eave.py, including axis-aligned, off-axis mixed-
+  concavity, and a deliberate "raises when the circles don't intersect" case. One edit mistake caught before
+  it mattered: my first attempt at inserting the new class via Edit matched a shorter old_string than the
+  real file had, silently orphaning the tail of an existing test function below my insertion point --
+  caught immediately by running the suite (a NameError on collection, not a quiet pass), fixed by moving the
+  orphaned lines back where they belonged and re-running to confirm 23/23 green.
+- `circle_circle_corner_step` + a new `ResolveCircleCircleCorner` dispatch branch (parametric_engine.py):
+  the same "compute expected position, find nearest existing SketchPoint" approach line_circle_corner_step
+  already uses. Falls back to searching around the outer corner when the two offset circles don't intersect
+  at all (mirrors line_circle_corner_step's own minimal fallback for ITS degenerate case) -- deliberately did
+  NOT add the live-measured collapse-search tiers the sibling functions now carry from the main merge above:
+  those were each born from an actual Fusion build hitting the case, and this resolver has no live Fusion
+  mileage yet to react to (no guards without evidence). 4 new tests in fb_engine/test_inner_corners.py,
+  reusing the exact fake-sketch harness (FakeArc/FakeSketch/FakeLogger) the existing LINE-CIRCLE tests
+  already established. Registered in test_no_miter_miss_possible.py's `_RESOLVE_STEP_TYPES`.
+
+**Shared T16/T17's own lower-half SKETCH_2_PARAMETERS** (cbe147a), a rule-of-two extraction: moved the 23
+named Fusion parameters (hw/hh/ww/wy/bulge + the lower_R chain) out of template_16/template_data.py into
+`fb_engine.t16_geometry.SHARED_LOWER_SKETCH_2_PARAMETERS`, since Template 17 was about to need the exact
+same list copy-pasted otherwise. Added `UPPER_ARC_SKETCH_2_PARAMETERS` there too (T17's own new concave
+upper-right-arc chain) -- the sagitta/via-point formula needs the FLIPPED normal sign relative to the lower
+bulges' own chain (the concave bulge pulls toward the centreline, the opposite side), confirmed numerically
+against outline()'s own upper_r_centre/via at 3 board sizes before being trusted. Picked ONE cross-size
+default for T17's own upperCurveFrac (0.175, the 7x9 value) rather than the diagram script's own per-size-
+tuned "55% of max" values (0.145/0.145/0.208 at 6x9/7x9/9x12) -- a template needs ONE constant; 0.175 stays
+comfortably inside 6x9's own tighter max (0.264, ~34% margin).
+
+**Built Template 17 "Tulip" in full** (a632b83): the complete sketches/template_17/ tree. Shares Template
+16's own arch/lower_R/lower_L/base VERBATIM; the two upper sides become concave arcs instead of straight
+lines. This FLIPS their own CW/CCW classification (fusion360-quirks skill: they now turn counter-clockwise
+in declared order, not swapped, where Template 16's plain lines had no :S/:E ambiguity at all) -- but
+confirmed by direct computation (not assumed) that the NET physical effect at every one of the 6 corners is
+IDENTICAL to Template 16's own table, so p02_03_welds.py / p03_04_encl_miters.py / FRAME_REGIONS["miters"]
+are the exact same Source/Target pairs either template uses. 4 of the 6 corners now resolve via the new
+ResolveCircleCircleCorner (the 2 base corners keep ResolveLineCircleCorner, unchanged from Template 16).
+
+**Verification, all non-Fusion, all green**:
+- fb_engine/test_t17_fusion_expressions.py (10 tests): mirrors test_t16_fusion_expressions.py's own
+  pattern, extended with a CW/CCW confirmation covering both the 3 convex arcs (must turn clockwise) and
+  the 2 new concave arcs (must turn counter-clockwise). Proved non-vacuous the same way T16's own copy was:
+  mutated one weld target, confirmed 3/3 size-parametrized cases fail, restored, reconfirmed 10/10 green
+  (cleared `sketches/template_17/**/__pycache__` before trusting the restored result -- the SAME .pyc trap
+  hit again doing this the second time, same fix).
+- fb_engine/test_no_miter_miss_possible.py: added template_17 -- 16/16 green, confirming no miter-miss
+  anywhere in its own corner table (an end-to-end check of the new resolver's wiring, independent of its
+  own unit tests).
+- Full repo pytest: 868 passed, 0 regressions. The only 3 remaining failures are STILL the same
+  not-yet-wired JS gaps (test_frame_defs.py) -- nothing new broke adding either template.
+
+**Both templates are now code-complete on the Fusion/Python side.** What's left for T84 item 3 (unchanged
+from the prior checkpoint's own list, now narrowed): the JS/app-side wiring for BOTH templates (presets,
+solver functions, handle ranges, gen_frame_defs regen, frame-template-16/17.test.js, the frameCutProfile
+:E-corner cases now have a real template to exercise them against) and the live Fusion matrix sweep (item
+61) for both -- "Fusion free" not yet requested, nothing in Fusion touched this turn either. Committed
+(5 commits: a2d8b8c, 03b7b70, 14545bc, 33c5bb8 before the merge; cd6c232 the merge; then 9125bdd, 5ad7175,
+cbe147a, a632b83 this round) and pushed to origin/lane-b throughout, not held back.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3 continued: JS/app-side wiring, both templates -- ready for "Fusion free"
+
+Advisor response: keep going on the JS/app side for both templates (including T84 item 4's own "topWidth"
+handle), one default for upperCurveFrac is fine, give ResolveCircleCircleCorner the same live fallback tiers
+its siblings have before the sweep, then ask for "Fusion free" and run the full-matrix sweep. Don't wait
+between steps.
+
+**T84 item 4 (topWidth), done first**: renamed the fixed `ARCH_HALF_SPAN_FRAC` constant to
+`TOP_WIDTH_FRAC_DEFAULT` and promoted it to a real `outline()` keyword argument; added `topWidth` (basis
+hw, seeded) to both templates' own FRAME_HANDLES/FRAME_PROVISIONAL_SHAPE. No behavior change (confirmed).
+
+**Gave ResolveCircleCircleCorner the same live fallback tiers its siblings have** (advisor-directed,
+mirroring H23 item 63's own tiers): "further round one of the two offset circles" and "nearest inner-loop
+vertex" last resort, both ported directly from line_circle_corner_step/inner_corner_step. 6 new tests, each
+built from a directly-computed expected intersection, not guessed.
+
+**Fixed the REAL Python-side blocker the research agent found first**: `fit_shape_model` does
+`FEATURE_EXTRACTORS[preset]` unconditionally, before checking whether goldens exist -- `gen_frame_defs.py
+--check` crashed with `KeyError: 'arched_funnel'` on template_16 before writing anything for ANY template.
+Registered real extractors (`_arched_funnel`/`_tulip`, FIRST CUT like every sibling extractor for a brand-new
+shape, unexercised until goldens exist) + `provisional_arched_funnel_model`/`provisional_tulip_model` +
+`frame_definition.py`'s own dispatch, ORDER-SENSITIVE (tulip's own provisionalShape dict is a strict
+superset of archedFunnel's, so tulip's own distinguishing key must be checked first or every tulip record
+would silently build an archedFunnel model and drop upperCurveFrac).
+
+**The JS/app side, all 6 files**, built from a research agent's own thorough file:line survey (verified
+directly against source before trusting it, not taken on faith) plus the existing diagram script's own
+already-proven `buildArchedTimer`/`bulgeArc` geometry (ported, not re-derived): `archedFunnelConstruction` +
+a shared `_solveArchedTimer` in editor-shape-lattice-generator.js (every arc solved independently via
+`_curveSegment`, T10's own non-tangent-arc approach, NOT T7/T11's tangent-chain machinery, which this
+all-miter shape has no use for), wired into PRESETS/PARAM_ORDER/DERIVED_PARAM_DEFAULTS/SALT/
+FRAME_ONLY_PARAM_KEYS/the generateSilhouette dispatch/paramsFromShapeModel/a new `_archedTimerRange`
+(MEASURED directly against the real production validity pipeline, not assumed); computeParamHandles +
+HANDLE_SEGMENT_INDEX in editor-shape-lattice-interaction.js (confirmed, not assumed, that the generic
+mirrorSegmentIndex formula already gives this 6-piece loop's own correct two-self-mapping-segment pairing,
+so no declared SEGMENT_PAIRS table is needed, unlike T7/T11); a minimal frame-handles.js branch (exists
+only so the generic fallback doesn't crash on `_narrow(undefined)` -- `_archedTimerRange`'s own bounds are
+already thickness-aware, unlike every sibling's shape-only range); `generateRange` added to every handle in
+both templates' own FRAME_HANDLES (the MODERATE, "about halfway to each extreme" bound, measured the same
+way as the full range, T7's own gableNeckWidth precedent).
+
+**Caught and fixed two real bugs via non-vacuous round-trip checks, not by trusting the math on paper**:
+1. `sagValue`'s own drag inversion (bulgeFrac/upperCurveFrac) returned the sagitta in INCHES, never divided
+   by `hw` -- both handles silently clamped to their own range ceiling on every drag. Caught by round-
+   tripping `valueFromWorld(anchor)` against the known resolved value and finding it didn't match (0.179
+   instead of 0.169) -- not assumed correct because the formula looked right on paper.
+2. Two PRE-EXISTING tests (frame-template-9, frame-template-6) broke from appending 6 new keys to
+   FRAME_ONLY_PARAM_KEYS and 2 new templates to the label list -- both already expected exactly this kind of
+   update from every earlier frame-only preset's own addition (each test's own comment says so); fixed with
+   the real computed indices/positions, not guessed.
+
+**Regenerated frame-defs.json/.js** (`python tools/gen_frame_defs.py`, now unblocked) and updated
+tests/frame-defs.test.js's own generic FEATURES/EXTRA maps for both presets (empty EXTRA: no base-template
+leftovers).
+
+**Verified the FRAME_SEED_MAP "reverse" flags are correct, not a first guess any more**: derived by hand
+that all 6 pieces' own declared Fusion-phase-file point order already matches the app's own primitive
+direction exactly (so reverse=False everywhere), then confirmed it NUMERICALLY -- `frameSeedGeometry`'s own
+output at 7x9 matches `fb_engine.t16_geometry.outline()`'s own independently-tested closed-form values to
+the full precision checked, for every point on both templates, including each arc's own true via point.
+This is the single check that most directly bears on whether the live sweep below will actually build
+clean sketches, not just produce plausible-looking JS primitives.
+
+**Wrote dedicated test files**, tests/frame-template-16.test.js and -17.test.js (mirroring
+frame-template-11.test.js's own structure, the closest-scoped existing precedent), locking in the seed-
+geometry cross-check above as a committed test rather than a throwaway node script, plus listing/handle/
+drag-range/generateRange-extreme/board-bounds/miter checks. Caught two of my own test-writing mistakes
+before trusting them (an arc primitive has no p0/p1; the "stays within the board" bound should be the true
+board edges, not the safe zone -- a convex arc's own bulge legitimately swings ~0.0008in past it at 6x9,
+which the BBox Border margin exists to absorb) via the suite's own failures, not assumed correct.
+
+**Full gate green throughout, re-confirmed at the end**: 875 pytest passed (0 skipped-as-failing, every
+test_frame_defs.py check now genuinely passes, not just stopped crashing), 3190 vitest passed, 0
+regressions. Committed in 6 more commits (c568eb4 topWidth, 5a69e91 the fallback tiers, b3cbae8 the Python
+extractor fix, fec5271 the JS wiring, 35342a3 the regen+registry fixes, 0a8aa89 the dedicated test files),
+pushed throughout.
+
+**T84 item 3 is now fully code-complete on BOTH the Fusion/Python side and the JS/app side, for both
+templates.** The only thing left is the live matrix sweep itself (item 61: every handle x {min, default,
+max} at 7x9, 100% BUILT target) -- "Fusion free" requested from the advisor next, per its own explicit
+instruction to ask before that one step. Nothing in Fusion touched this turn.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3: the live matrix sweep, 24/24 BUILT -- DONE, passing back
+
+Advisor granted "Fusion free": run the 24-case sweep with REPO pointing at lane-b, don't redeploy the
+add-in (main already deployed, Fred may be using the palette), fingerprint scratch docs and close only
+mine, leave the 4 open docs alone, target 100% BUILT.
+
+Generated the 24 payloads first (`node tools/repro/h23_item61_make_full_matrix_payloads.mjs`, GENERIC
+across all templates -- no script edit needed once frame-defs.js carried template_16/17): 11 for Template
+16 (default + 5 handles x {min, max}), 13 for Template 17 (default + 6 handles x {min, max}, topWidth
+having added a handle to both since the item 61 brief's own original "9/11" case-count estimate). 0
+JS-side defects, 0 ranges pulled back by the no-hook-rule guard (every declared range end was already
+reachable) -- confirming the earlier JS-side verification (every generateRange extreme checked against the
+real production pipeline) generalized to the FULL drag range too, not just the moderate one.
+
+Registered both templates in `tools/repro/fusion_t11/item61_full_matrix_sweep.py`'s own TEMPLATE_META (bar
+names + count, matching FRAME_BARS exactly) -- the one addition that script itself needed; otherwise
+reused completely unchanged (it already fingerprints its own scratch docs via `adv_item61fullsw_fp`, closes
+only docs it created by direct reference -- never by name or count -- and is resumable).
+
+**Ran all 24 cases live, serial fusion_execute calls (6 batches of 3-5 cases each, well under any timeout):
+24/24 BUILT, 0 NOT BUILT.** Every case: the declared 6 bars present (no dup-suffixed bodies, no overlaps,
+no sub-0.5cm3 slivers), 0 "NOT BUILT" / "MITER MISS" / "REFLEX ARC" log lines, healthy timeline. This is
+the FIRST live confirmation that `ResolveCircleCircleCorner` (T17's own 4 arc-meets-arc corners) actually
+resolves correctly against real built Fusion geometry, not just the fake-sketch unit tests
+(fb_engine/test_inner_corners.py) or the JS-side simulation -- every upperCurveFrac case (min, max, default)
+built clean. Confirmed the Fusion session ended exactly where it started: the same 4 protected documents
+open (UI-cowork v1, API-claude code v1, OFFSET-cowork v1, Untitled), nothing else left behind. The add-in
+itself was never touched (every case builds through `fb_engine`/`b-spline-gen.py` imported directly from
+this lane-b checkout, independent of whatever's deployed) -- no redeploy, as directed.
+
+**T84 item 3 is now fully DONE**: both templates code-complete on the Fusion/Python side AND the JS/app
+side, both verified clean through the real production validity pipeline at every declared handle extreme,
+and both now LIVE-confirmed 100% BUILT at 7x9 across every handle's own {min, default, max}. Results at
+`bspline-frame-builder/scratch/item61_t16_t17_results.json` (scratch, not committed, same convention as
+every other scratch probe output this session). Registered-template commit (1bc0542) already pushed; no
+further code change from this turn (the sweep itself touches no source, only TEMPLATE_META was new and
+that's already in). Passing back to the advisor now.

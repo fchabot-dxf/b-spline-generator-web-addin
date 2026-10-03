@@ -413,6 +413,12 @@ class ParametricSketchBuilder:
                 # from default handle proportions -- those vary per Send (a randomized seed), so a
                 # baked value almost never matches the real corner. See fb_engine/inner_corners.py.
                 inner_corners.line_circle_corner_step(self.ctx, sketch, sketch_name, step)
+            elif t == "ResolveCircleCircleCorner":
+                # T84 item 3: a corner where TWO circles meet (T17 Tulip's own concave-upper-side
+                # corners -- neither piece there is a straight line, so ResolveLineCircleCorner
+                # above cannot resolve them), computed LIVE off both already-built arcs. See
+                # fb_engine/inner_corners.py.
+                inner_corners.circle_circle_corner_step(self.ctx, sketch, sketch_name, step)
 
     # ------------------------------------------------------------------
     # Internal helpers
