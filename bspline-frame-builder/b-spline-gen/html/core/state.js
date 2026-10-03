@@ -57,6 +57,12 @@ export const DEFAULT = {
     // these is a single scalar a generic <input> binds to.
     photoImageDataUrl: null,
     photoEdits: [],
+    // F34 item 3: which built-in pattern (data/photo-patterns.json id) the
+    // current photo came from, if any -- null for a user's own upload. Drives
+    // "Save settings to this pattern" (main/photo-panel.js); declared on P
+    // (not a module-local var) so it survives a reload via the existing
+    // generic session save/load, same as photoImageDataUrl/photoEdits above.
+    photoPatternId: null,
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.
     // At detailDensity = 1 it has no visible effect (no empty zones exist).

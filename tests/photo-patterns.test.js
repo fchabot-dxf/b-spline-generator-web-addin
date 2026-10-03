@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   settingsToPhotoEdits, settingsToTweaks, TWEAK_KEYS, loadPhotoPatterns,
+  settingsToRelief, editsToSettings, DEFAULT_PHOTO_RELIEF_IN, MAX_PHOTO_RELIEF_IN,
 } from '../bspline-frame-builder/b-spline-gen/html/core/photo/patterns.js';
 import * as photo from '../bspline-frame-builder/b-spline-gen/html/core/noise/photo.js';
 import { applyPhotoEdits } from '../bspline-frame-builder/b-spline-gen/html/core/photo/ops.js';
@@ -121,6 +122,84 @@ describe('settingsToTweaks: only the declared effect-param keys, only when actua
 
   it('a null value for a tweak key is treated as "not set" (schema default applies), not a literal null override', () => {
     expect(settingsToTweaks({ depth: null, scale: 1.5 })).toEqual({ scale: 1.5 });
+  });
+});
+
+describe('settingsToRelief: F34 item 3, max 0.25in, default 0.125in', () => {
+  it('missing/invalid relief -> the declared default', () => {
+    expect(settingsToRelief({})).toBe(DEFAULT_PHOTO_RELIEF_IN);
+    expect(settingsToRelief(undefined)).toBe(DEFAULT_PHOTO_RELIEF_IN);
+    expect(settingsToRelief({ relief: 0 })).toBe(DEFAULT_PHOTO_RELIEF_IN);
+    expect(settingsToRelief({ relief: -1 })).toBe(DEFAULT_PHOTO_RELIEF_IN);
+  });
+
+  it('a valid relief passes through', () => {
+    expect(settingsToRelief({ relief: 0.2 })).toBe(0.2);
+  });
+
+  it('a hand-edited pattern above the max is clamped down, never allowed through', () => {
+    expect(settingsToRelief({ relief: 5 })).toBe(MAX_PHOTO_RELIEF_IN);
+  });
+});
+
+describe('editsToSettings: the inverse of settingsToPhotoEdits/settingsToTweaks (Save settings to this pattern)', () => {
+  it('an empty edit list + no tweaks + no relief -> an empty settings object', () => {
+    expect(editsToSettings([], {}, undefined)).toEqual({});
+    expect(editsToSettings(undefined, undefined, undefined)).toEqual({});
+  });
+
+  it('round-trips a realistic Brick-1-style edit list back to its flat settings', () => {
+    const edits = settingsToPhotoEdits({
+      straighten: 33, crop: { x: 0.4854, y: 0.371, w: 0.4729, h: 0.0647 },
+      levels: { black: 0.3, white: 0.75, mid: 1 },
+    });
+    const settings = editsToSettings(edits, { depth: 1.2 }, 0.125);
+    expect(settings.straighten).toBe(33);
+    expect(settings.crop).toEqual({ x: 0.4854, y: 0.371, w: 0.4729, h: 0.0647 });
+    expect(settings.levels).toEqual({ black: 0.3, white: 0.75, mid: 1 });
+    expect(settings.depth).toBe(1.2);
+    expect(settings.relief).toBe(0.125);
+  });
+
+  it('multiple rotate90 clicks collapse to their NET turns, not one step per click', () => {
+    const edits = [
+      { op: 'rotate90', params: { dir: 1 } }, { op: 'rotate90', params: { dir: 1 } }, { op: 'rotate90', params: { dir: 1 } },
+    ];
+    expect(editsToSettings(edits, {}, undefined).rotate).toBe(270);
+    // a full 4 turns nets to NOTHING (back to the start) -- omitted, not rotate:360
+    const full = [...edits, { op: 'rotate90', params: { dir: 1 } }];
+    expect(editsToSettings(full, {}, undefined).rotate).toBeUndefined();
+  });
+
+  it('flip clicks collapse to PARITY, not presence -- flipping twice cancels out', () => {
+    const once = [{ op: 'flip', params: { axis: 'h' } }];
+    expect(editsToSettings(once, {}, undefined).flip).toEqual({ h: true, v: false });
+    const twice = [...once, { op: 'flip', params: { axis: 'h' } }];
+    expect(editsToSettings(twice, {}, undefined).flip).toBeUndefined();
+  });
+
+  it('two sequential crops COMPOSE into one equivalent region (second crop is relative to the first\'s output)', () => {
+    // Matches applyPhotoEdits' own sequential application: crop2 crops HALF of
+    // crop1's own already-cropped output, starting at its own (0.5, 0) corner.
+    const edits = [
+      { op: 'crop', params: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 } },
+      { op: 'crop', params: { x: 0.5, y: 0, w: 0.5, h: 1 } },
+    ];
+    const settings = editsToSettings(edits, {}, undefined);
+    expect(settings.crop.x).toBeCloseTo(0.1 + 0.5 * 0.8, 9);
+    expect(settings.crop.y).toBeCloseTo(0.1, 9);
+    expect(settings.crop.w).toBeCloseTo(0.4, 9);
+    expect(settings.crop.h).toBeCloseTo(0.8, 9);
+  });
+
+  it('invert is captured as a flag regardless of how it got there', () => {
+    expect(editsToSettings([{ op: 'invert', params: {} }], {}, undefined).invert).toBe(true);
+    expect(editsToSettings([], {}, undefined).invert).toBeUndefined();
+  });
+
+  it('only declared TWEAK_KEYS leak into settings -- an unrelated tweaks field is ignored', () => {
+    const settings = editsToSettings([], { depth: 1.1, notARealTweak: 99 }, undefined);
+    expect(settings).toEqual({ depth: 1.1 });
   });
 });
 

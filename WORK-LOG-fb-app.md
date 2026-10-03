@@ -8803,3 +8803,79 @@ documents were never touched. `fusion_holder.txt` released back to `none` immedi
 
 F34 item 1 is now fully verified end-to-end: app-side (filter math, UI, persistence, tests) AND the
 one live Fusion Send this item's brief reserved for the end. Nothing left open on this item.
+
+
+### F34 item 3: Photo tab polish (Max Height in inches, Save settings to this pattern, Brick 1 preset shots)
+
+Advisor's dispatch, for Fred's upcoming tuning session: (a) a relief/depth control on photos, max
+0.25in, default 0.125in, declared in inches; (b) a "Save settings to this pattern" action writing the
+live edits+tweaks back into the pattern's own entry; (c) screenshots of Brick 1 with the +33
+straighten + crop preset, to shots/seatC. App-only, no Fusion.
+
+**(a) Max Height (in)** -- NOT the same thing as the existing "Depth" effect param (a unitless
+relief-strength multiplier around mid-grey, 0.3-2.0). Fred's "height wouldn't ever be more than 1/4"
+is a PHYSICAL dimension, and the app already has exactly one real physical carve-height knob:
+`P.carveZ` (the generic Skeleton tab's own 0.1-20in "Carve Depth (Z)" slider, multiplied onto the
+normalized 0..1 heightmap at the very end of terrain.js, filter-independent). Rather than inventing a
+second, parallel height concept, the Photo tab gets its OWN pair of elements
+(`photoReliefHeightSlider`/`photoReliefHeight`) bound to that SAME real `carveZ` via `applyParam`
+(main/photo-panel.js's new `setReliefHeight`/`syncReliefHeightDisplay`) -- just scoped to a
+photo-appropriate 0.01-0.25in range instead of the generic tab's 0.1-20in, so Send/thicken/CAM
+downstream need zero special-casing (it's the real parameter, not a shadow copy). Constants
+(`DEFAULT_PHOTO_RELIEF_IN = 0.125`, `MAX_PHOTO_RELIEF_IN = 0.25`) declared once in core/photo/
+patterns.js so the UI and the save-back path can't drift apart.
+
+Default application: `loadImage()` gained a 4th param (`reliefIn`, defaulting to
+`DEFAULT_PHOTO_RELIEF_IN`) applied via `setReliefHeight()` right after switching the filter -- so a
+fresh "Load my own" photo gets 0.125in, and a built-in pattern gets ITS OWN saved relief if present
+(`settingsToRelief(pattern.settings)`), else the same 0.125in default. Verified live (headless
+Chrome): picking Brick 1 fresh shows Max Height = 0.125 by default (no saved relief yet in its
+pattern entry); dragging the slider to 0.2 updates the real `P.carveZ` to exactly 0.2, confirmed by
+reading P directly, not just the slider's own echoed value.
+
+**(b) Save settings to this pattern** -- `editsToSettings(photoEdits, tweaks, reliefIn)`
+(core/photo/patterns.js) is the declared INVERSE of the existing `settingsToPhotoEdits`/
+`settingsToTweaks`: collapses the live, ordered edit list back into the same flat `settings` shape a
+pattern entry stores, adding a new `relief` field to that shape. Discrete ops that can be clicked
+more than once don't just grab "the last one" (which would silently drop real state): rotate90 clicks
+collapse to their NET turns mod 4 (3 clicks = rotate:270, 4 clicks nets to nothing, not rotate:360),
+flip clicks collapse to PARITY (flip twice = back to unflipped, not still-flipped), and multiple crop
+steps COMPOSE into the one equivalent region applyPhotoEdits' own sequential application already
+implies (a second crop is a fraction OF the first crop's output) -- verified this one isn't vacuous by
+mutation-testing it: swapping the compose loop for a naive "take the last crop" made the dedicated
+composition test fail immediately (0 vs the expected composed 0.1-offset), then reverted.
+
+Which pattern to save into is tracked as `P.photoPatternId` (declared on P itself, not a module-local
+variable, specifically so it round-trips through the EXISTING generic saveLastSession/
+loadLastSession session persistence for free -- set on every pattern-row click, cleared on "Load my
+own" since a raw upload has no pattern entry to write back into). The action itself downloads an
+updated `photo-patterns.json` (same "real file, not a clipboard blob" idiom Settings > Save log
+already uses, FileSaver-or-`<a download>` fallback) with just that one pattern's `settings` replaced
+-- there's no filesystem/process access from a browser page to shell out to `add_photo_pattern.py` or
+write the repo file directly, so the advisor/Fred applies the downloaded file the same manual way as
+any other exported JSON. Verified live: Save button is disabled with no pattern loaded or after
+"Load my own", enabled the instant a built-in pattern is clicked (`P.photoPatternId` reads back
+correctly, e.g. `"brick_1"`), and the click path runs with zero JS errors.
+
+11 new unit tests (tests/photo-patterns.test.js, now 28/28): settingsToRelief's default/clamp
+behavior, and editsToSettings' round-trip + the three collapse cases (rotate parity, flip parity,
+crop composition) + tweaks-key filtering. Full JS suite still green: 182 files / 3485 tests (+10 from
+this item).
+
+**(c) Screenshots** -- own scratch dev server (`tools/serve_app.py` on a fresh port, since the two
+already-running instances on this machine were confirmed via curl to be serving OTHER seats'
+worktrees, not this one -- left untouched, killed only the one process I started myself after).
+Brick 1, fresh load: Max Height shows 0.125 (the declared default). Applied the advisor's own
+straighten:33 + crop `{x:0.4854,y:0.3710,w:0.4729,h:0.0647}` preset through the real UI controls.
+Full Photo-tab panel shots (showing the new Max Height slider and Save button alongside the existing
+controls) plus an isolated 3D terrain shot, saved to `shots/seatC/`
+(`f34item3_photo_tab_brick1_default_1366.png`,
+`f34item3_photo_tab_brick1_straighten_crop_1366.png`,
+`f34item3_photo_tab_max_height_02in_1366.png`, `f34item3_brick1_straighten_crop_terrain.png`).
+Deliberately did NOT also re-tune density/levels for these shots beyond the preset the dispatch
+named -- item 1 already showed that tuning path works, and the brief says this polish is specifically
+"for Fred's tuning session," so the terrain shot honestly shows the DEFAULT state (shared macro layer
+still dominant at default density) he'll tune from live, not a pre-tuned result that would hide what
+he's actually about to do.
+
+Nothing else touched. Commit, push, pass back.

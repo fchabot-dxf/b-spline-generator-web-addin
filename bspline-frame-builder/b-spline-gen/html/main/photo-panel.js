@@ -27,11 +27,15 @@
  * the one pure, testable piece this panel uses is core/photo/mirror-dim.js.
  */
 import { P, saveLastSession } from '../core/state.js';
-import { loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks } from '../core/photo/patterns.js';
+import {
+  loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks, settingsToRelief, editsToSettings,
+  DEFAULT_PHOTO_RELIEF_IN, MAX_PHOTO_RELIEF_IN,
+} from '../core/photo/patterns.js';
 import { fileToDataUrl } from '../core/photo/codec.js';
 import { ensurePhotoDecoded, getRawPhotoImage } from '../core/photo/state.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
+import { applyParam } from './param-manager.js';
 
 let _onChange = null;
 let _patterns = [];
@@ -106,6 +110,21 @@ function syncReliefToggle() {
   carved?.classList.toggle('active', inverted);
 }
 
+const clampReliefIn = (v) => Math.min(MAX_PHOTO_RELIEF_IN, Math.max(0.01, v));
+
+// F34 item 3 (Fred: "height wouldn't ever be more than 1/4 for now"): the
+// Photo tab's own Max Height control, bound to the SAME real `carveZ` param
+// every other filter already uses downstream (Send/thicken/CAM) -- just
+// presented here with photo-appropriate bounds/default instead of the
+// generic Skeleton tab's 0.1-20in Carve Depth slider.
+function setReliefHeight(v) {
+  applyParam('carveZ', clampReliefIn(v));
+}
+
+function syncReliefHeightDisplay() {
+  setPair('photoReliefHeightSlider', 'photoReliefHeight', clampReliefIn(P.carveZ ?? DEFAULT_PHOTO_RELIEF_IN));
+}
+
 function undo() {
   const steps = P.photoEdits || [];
   if (!steps.length) return;
@@ -137,6 +156,7 @@ function syncControlsFromState() {
   setPair('photoContrastSlider', 'photoContrast', bc.contrast);
   setPair('photoBlurSlider', 'photoBlur', blur.radius);
   syncReliefToggle();
+  syncReliefHeightDisplay();
 }
 
 // Picking a pattern or loading your own photo IS choosing the Photo filter
@@ -154,18 +174,54 @@ function switchToPhotoFilter() {
   }
 }
 
-function loadImage(urlOrDataUrl, edits, tweaks) {
+function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_IN) {
   switchToPhotoFilter();
   P.photoImageDataUrl = urlOrDataUrl;
   P.photoEdits = edits;
   if (!P.filterTweaks) P.filterTweaks = {};
   P.filterTweaks.photo = { ...tweaks };
+  setReliefHeight(reliefIn);
   syncControlsFromState();
+  syncSaveButtonState();
   ensurePhotoDecoded(urlOrDataUrl).then(() => {
     drawPreview();
     notifyChange();
   });
   notifyChange();
+}
+
+function syncSaveButtonState() {
+  const btn = document.getElementById('photoBtnSaveToPattern');
+  if (!btn) return;
+  btn.disabled = !P.photoPatternId;
+  btn.title = P.photoPatternId ? '' : 'Load a built-in pattern first -- a photo you loaded yourself has no pattern entry to save into';
+}
+
+function saveSettingsToCurrentPattern() {
+  if (!P.photoPatternId) return; // nothing to save into -- button is disabled in this state too
+  const settings = editsToSettings(P.photoEdits, P.filterTweaks?.photo, P.carveZ);
+  _patterns = _patterns.map((p) => (p.id === P.photoPatternId ? { ...p, settings } : p));
+  const text = JSON.stringify(_patterns, null, 2);
+  downloadTextFile(text, 'photo-patterns.json');
+}
+
+// Mirrors main/copy-log.js's own tiny "Save log" download idiom (FileSaver if
+// loaded, else a plain <a download> fallback) -- not imported from there
+// since that module's helper is private, and this is a few lines either way.
+function downloadTextFile(text, name) {
+  try {
+    const blob = new Blob([text], { type: 'application/json' });
+    if (typeof saveAs === 'function') { saveAs(blob, name); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch (e) {
+    console.warn('downloadTextFile failed:', e);
+  }
 }
 
 function renderPatternRow(container) {
@@ -181,7 +237,14 @@ function renderPatternRow(container) {
     img.alt = pattern.name;
     btn.appendChild(img);
     btn.addEventListener('click', () => {
-      loadImage(pattern.image, settingsToPhotoEdits(pattern.settings), settingsToTweaks(pattern.settings));
+      P.photoPatternId = pattern.id;
+      loadImage(
+        pattern.image,
+        settingsToPhotoEdits(pattern.settings),
+        settingsToTweaks(pattern.settings),
+        settingsToRelief(pattern.settings),
+      );
+      syncSaveButtonState();
     });
     container.appendChild(btn);
   }
@@ -262,7 +325,9 @@ export function initPhotoPanel({ onChange }) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const dataUrl = await fileToDataUrl(file);
+    P.photoPatternId = null; // a user's own upload has no pattern entry to save back into
     loadImage(dataUrl, [], {});
+    syncSaveButtonState();
   });
 
   document.getElementById('photoBtnRotate')?.addEventListener('click', () => appendDiscreteOp('rotate90', { dir: 1 }));
@@ -298,6 +363,20 @@ export function initPhotoPanel({ onChange }) {
   bindSlider('photoBrightnessSlider', 'photoBrightness', 'brightnessContrast', 'brightness', { brightness: 0, contrast: 0 });
   bindSlider('photoContrastSlider', 'photoContrast', 'brightnessContrast', 'contrast', { brightness: 0, contrast: 0 });
   bindSlider('photoBlurSlider', 'photoBlur', 'blur', 'radius', { radius: 0 });
+
+  const reliefSlider = document.getElementById('photoReliefHeightSlider');
+  const reliefNumber = document.getElementById('photoReliefHeight');
+  const applyRelief = (raw) => {
+    const v = parseFloat(raw);
+    if (!Number.isFinite(v)) return;
+    setReliefHeight(v);
+    syncReliefHeightDisplay();
+  };
+  reliefSlider?.addEventListener('input', (e) => applyRelief(e.target.value));
+  reliefNumber?.addEventListener('input', (e) => applyRelief(e.target.value));
+
+  document.getElementById('photoBtnSaveToPattern')?.addEventListener('click', saveSettingsToCurrentPattern);
+  syncSaveButtonState();
 
   // Keep the mirror-dim overlay honest if Symmetry changes while this panel is visible.
   ['symmetry', 'symOffsetXSlider', 'symOffsetYSlider'].forEach((id) => {

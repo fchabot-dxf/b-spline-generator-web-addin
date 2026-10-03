@@ -965,12 +965,31 @@
               <span>Carved</span>
             </button>
           </div>
+
+          <!-- F34 item 3 (Fred: "height wouldn't ever be more than 1/4 for
+               now"): the PHYSICAL carve depth (same real P.carveZ every other
+               filter uses), just scoped here to a photo-appropriate range --
+               distinct from the "Depth" effect param below, which is a
+               unitless relief-strength multiplier, not a real dimension. -->
+          <label class="cad-label">Max Height (in)</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="photoReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
+          </div>
+
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin:8px 0 4px;">Effect params</label>
           <div id="photoTweaksBody">
             <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel() --
                  a SECOND render target for the SAME schema/state the Filter panel's own
                  "⚙️ Edit Filter" panel uses (registerTweaksTarget), not a copy. -->
           </div>
+
+          <!-- F34 item 3: writes the live edits+tweaks+Max Height back into
+               the loaded pattern's own `settings` (data/photo-patterns.json),
+               downloaded as an updated file for the advisor to apply -- same
+               "save a real file" idiom as Settings > Save log. Disabled for a
+               user's own upload (main/photo-panel.js's syncSaveButtonState). -->
+          <button type="button" id="photoBtnSaveToPattern" class="cad-btn cad-btn-secondary" style="width:100%; margin-top:14px;" disabled>💾 Save settings to this pattern</button>
         </div>
       </div>
 
