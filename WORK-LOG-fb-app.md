@@ -7631,6 +7631,158 @@ are from the SAME live builds already run to verify Part 1. Full suite unchanged
 code touched). Commit `c190ac6` (both parts, one commit -- Part 2 is investigation + WORK-LOG
 only, no source change).
 
+## 2026-10-02: F30 item 5 -- Arched (T10) + taper diagram, 7x9 + 6x9, default 8 deg + range ends (seat C, epoch 5,
+diagram only, no code, no Fusion)
+
+Dispatch: F30 item 3(c), deferred since T10's own Fusion fix wasn't shipped yet -- it has been since (main's
+H23 items 15-25, un-hidden). Brought fb-app to current origin/main first (merge commit, 9 docs-only commits
+on top of a shared ancestor with main's own 147c6fb -- zero conflicts, confirmed by re-running vitest: 3078/
+3078 green). Then the diagram: T10's own arch + the shared taperAngle construction (the same `_taperedCorner`
+the shipped T12/T13 use), applied to the shoulder's own tangent line instead of a flat top edge.
+
+**The one new idea needed (everything else reused verbatim):** `_taperedCorner`'s own tangent-line construction
+targets a horizontal line at `y = -hh` (the board's own top edge) for T1/T2, where the horn runs all the way to
+the board edge. T10's horn does NOT reach the board edge -- it stops wherever the ARCH's own chord sits,
+`y = -hh + archRise` (eating into the horn, exactly like the plain untapered arch always has). Passing
+`hh - archRise` in place of `hh` into the UNMODIFIED shared construction reproduces that target line exactly
+(`lineAtY(..., -(hh - archRise))` is algebraically `-hh + archRise`), so the arched case needed ZERO changes to
+the shared taper code itself -- just the right value handed to the same function. The new (possibly narrower)
+top corner is then one endpoint of the arch's own chord (mirrored for the other), sagitta = T10's own resolved
+`archRise` unchanged, radius re-derived from the new (shorter) half-chord -- the arch automatically resizes with
+the taper, it isn't a second independent choice.
+
+**Built the preview safely, not by hand-deriving the whole outline:** earlier taper diagrams (T1/T2) hand-built
+all 12 primitives from the shoulder/waist/hip circles. For T10 that produced a FALSE self-intersection at 6x9
+(but not 7x9) that didn't reproduce in the real engine's own output -- tracked down to `outlineDefects`' own
+`requireTangency` default (true), which assumes every line-to-arc junction should be tangent; T10's horn-to-arch
+corner is a genuine sharp MITER by design, not a tangent continuation, so the outer check needs
+`requireTangency: false` the same way the inner (offset) check already used it. Fixed, then found a SECOND,
+real bug this exposed: my own hand-built arch primitive swept the OPPOSITE direction from the real engine's
+(same circle, same two endpoints, winding reversed) -- harmless at 7x9 (no visible crossing) but broke the
+inner offset at 6x9 (a genuine self-intersection, confirmed by diffing my arch object against
+`generateSilhouette`'s own real one at taper=0, where they should be and now are identical bit for bit except
+direction). Fixed by swapping the two endpoints passed to the arch constructor. Verified the fix against the
+REAL production code directly (not just my own hand-rolled copy): swapped only the arch primitive into the
+real engine's own untouched `generateSilhouette` output and confirmed zero defects at both sizes -- then
+switched the whole preview to that same pattern (reuse the real engine's own primitives 1-9 unchanged, hand-
+build only the 3 taper-affected pieces: both horns + the arch), removing the whole class of hand-derivation
+bugs the T1/T2 diagrams were exposed to.
+
+**Result, swept across the full declared [-15, 15] band at both sizes:** topologically clean (zero outline
+defects, zero self-intersections, zero out-of-board points) EVERYWHERE in the band, at both 7x9 and 6x9 -- so
+"the range ends" here means the literal declared +-15, not a narrower computed floor the way T1/T2's shoulder-
+collision floor was (that bisection, re-run with the fixed arch, now correctly returns -15 for both sizes: the
+shape never runs out of real tangency the way T1's own full-width shoulder did). The remaining constraint is
+piece thickness, not topology: at 7x9 every piece stays >= frame_thickness (0.75in) from about -4 deg up through
++15 deg (thinnest at -15 deg: 0.44in, the horn eaten down to nearly nothing at the widest negative lean); at
+6x9 the thinnest piece sits at 0.742in -- JUST under 0.75in -- for every taper angle from -15 up through 0 deg,
+INCLUDING the plain untapered T10 shape at 6x9 with no taper applied at all (confirmed directly against
+`generateSilhouette` alone). This is a PRE-EXISTING T10-at-6x9 characteristic, not something the taper feature
+introduces -- the same kind of marginal-piece case this project already treats as warn-only elsewhere (the
+dispatch's own note: the 7x9 convex-radius fallback is accepted the same way). Positive taper (8, 15 deg) at
+6x9 doesn't change this number at all -- the thin piece is a different, untouched part of the chain, not the
+tapered horn.
+
+Diagram (6 panels: 7x9 and 6x9, each at -15/8 deg default/15 deg, same miter-diagram style as d4de24b's own
+Hourglass/Narrow Neck one -- tan fill, blue dotted inner edge, red miter lines, THIN-piece pieces flagged
+directly in the caption): `C:/Users/danse/.bspline-status/shots/seatC/2235_F30-item5-proposed_arched-taper-
+diagram_7x9_6x9.png`. Sent to the advisor as a path, not Fred directly, per the standing routing rule. No
+template files touched, no Fusion used. Passing back for Fred's sign-off before any `template_14`-numbered (or
+however it's slotted) code is written.
+
+## 2026-10-03: F30 item 5 amendment -- committed the diagram script, exported outlines for Fusion, found + fixed
+a REAL shoulder/waist discontinuity (seat C, epoch 5, no Fusion)
+
+Two asks landed together: (1) Fred: "try it in Fusion first" -- export the Arched+taper OUTER outline
+primitives at 7x9 for -15/-8/0/8 deg exactly as drawn, commit the diagram script so it is a real reusable
+tool, not scratch; (2) Fred, looking at the -15 deg panels: "left has a notch, right's miter ends outside the
+outline -- check symmetry."
+
+Committed `tools/repro/f30_item5_arched_taper_diagram.mjs` (repo root as argv[1], same convention as
+`tools/repro/ab/ab6.mjs`) and added a mirror-symmetry self-check (right-side pieces vs their left-side
+partners: endpoints, radii). First result: the raw outline primitives were symmetric to MACHINE PRECISION at
+every exported angle, including -15 -- which looked like it cleared Fred's own concern (a rendering artifact
+in this script's own SVG path/miter drawing, not the geometry), and was reported that way.
+
+**Wrong -- or at least incomplete.** The advisor built the exported JSON in Fusion directly and found a real
+gap between the shoulder and waist arcs: 0.248in at -15 deg, 0.122in at -8 deg. Root cause, once named: when
+`taperedCorner` takes its INSET branch (the shoulder circle itself moves to stay tangent to the tilted horn
+AND the waist circle -- active for every negative angle at this board size, not just the extremes), the
+*shoulder* arc was correctly rebuilt from the new circle, but the *waist* arc was still reused VERBATIM from
+the real engine's own untapered output -- which starts from the OLD, pre-shift tangent point. Two pieces that
+are each individually "correct" relative to a DIFFERENT shoulder position are not continuous with each other.
+Mirror symmetry couldn't catch this: both sides have the identical bug, so they remain exact mirrors of each
+other while both being disconnected from their own waist arc -- a defect class symmetry checking is blind to
+by construction.
+
+Fixed by re-solving the waist arc's own shoulder-side endpoint from its tangency to the (possibly shifted)
+shoulder circle, instead of reusing the engine's untapered one; the hip-side endpoint is read directly off the
+real engine's own arc (untouched by a shoulder-side shift, no need to re-derive it). Added the check that
+should have caught this the first time: `continuityCheck` walks every consecutive primitive pair and asserts
+the first's own end point exactly meets the next's own start (not a tangency check -- `outlineDefects`' own
+`notTangent` only fires between two pieces that are SUPPOSED to be tangent, and this shape has genuine sharp
+corners everywhere, so that check was already disabled here; a piece that's merely DISCONNECTED in the same
+direction was never checked by anything). Independent confirmation the fix is real, not just the new check
+passing: `frameMiters` now reports exactly 4 miters (the 2 top + 2 base corners) at every angle, where the
+buggy version reported 6 -- the gap itself was being treated as two extra "corners" needing their own miter
+markers.
+
+Re-swept after the fix: still topologically clean across the full declared [-15, 15] band at 7x9 and 6x9 (same
+true floor as before, -15 -- the fix corrected a connectivity defect, not a feasibility one). Re-exported
+`taper_outlines_7x9.json` (now carrying a `continuityCheck` field per case, worst gap ~1e-15in at every angle)
+and redrew the diagram: `C:/Users/danse/.bspline-status/shots/seatC/0233_F30-item5-fixed_arched-taper-
+diagram_7x9_6x9.png`. Sent to the advisor to retest in Fusion. Still no template files touched, no Fusion used
+on this end.
+
+## 2026-10-03: F31 item 1 -- Sand Timer (Template 14) diagram, 6x9/7x9/9x12, no code (seat C, epoch 5)
+
+Dispatch: Fred's own sand-timer sketch (flat top/bottom, 45-deg corner miters, each side = two OUTWARD-bulging
+arcs meeting at a sharp pinch, mitered there too -- 6 bars). Reference: Fred's pencil sketch + the advisor's
+own `sandtimer_render.py` (a Shapely-based approximation) and its two preview renders (bulge comparison, offset
+comparison) in `.bspline-status/shots/fred/`.
+
+Built against the SAME production pipeline every diagram this session used (`outlineDefects` +
+`offsetOutlineInward` + `frameMiters`), not Shapely -- so this shows what the real engine would actually
+build, not an approximation of it. Generalised the T10+taper diagram's own `archPrimitive` (a closed-form
+sagitta arc between two points) into `bulgeArc(p0, p1, sag, awayPoint)`: same circle-from-chord-and-sagitta
+algebra, but the bulge DIRECTION is computed from the chord's own normal (whichever side sits farther from
+`awayPoint`) instead of assumed "up", and the sweep branch is picked by checking the TRUE apex point lies on
+it instead of a fixed angle -- one shared helper, reused for all 4 side arcs (two per side) by varying which
+point is the "away" reference.
+
+Three handles, as fractions so they scale with the board (Fred's own dispatch names: pinch reach, bulb bulge,
+offset): `pinchReachFrac` (how far in from the side the pinch sits), `bulgeFrac` (the outward sagitta, fraction
+of hw), `pinchHeightFrac` (0 = pinch at the top edge, 1 = at the bottom, 0.5 = centred -- Fred's own sketch).
+Defaults (reach 0.6, bulge 0.14) were picked to land close to the advisor's own "Sand-timer (your sketch)"
+variant (pinch 1.25in / bulge 0.45in at 7x9's own hw=3.25in: reach = 1-1.25/3.25 = 0.615, bulge = 0.45/3.25 =
+0.138) -- close enough that this independently reproduces the SAME shape the advisor's own Shapely script drew
+for that variant, confirmed visually.
+
+**The dispatch's own "propose the valid range" (where the neck opening stays open):** added a direct
+`neckOpening` measurement (the real distance between the two pinch points AFTER the production inward offset,
+not the outer ones) plus a bisection search (same pattern this session's own taper-floor searches used) to
+find the max clean `bulgeFrac` at the default pinch reach. Result: the valid band is NARROW and board-size
+dependent -- 0.160 at 6x9, 0.156 at 7x9, 0.180 at 9x12 (vs the 0.14 default) -- confirming the advisor's own
+"rounder bulbs" variant (bulge 0.80in / hw 3.25in = 0.246) sits OUTSIDE the valid range and really would cross,
+exactly as its own panel showed. Did the same bisection for the offset handle's own range (holding reach/bulge
+at default): the valid `pinchHeightFrac` band is similarly narrow near centre -- [0.33, 0.67] at 6x9, [0.35,
+0.65] at 7x9, widening to [0.22, 0.78] at the taller 9x12 (more vertical room per chamber).
+
+**Applied F30 item 5's own lesson before it could bite twice:** added the same `continuityCheck` (every
+piece's own end must exactly meet the next piece's own start) this session just had to add AFTER a real bug
+got past mirror-symmetry checking alone. Confirmed clean here (worst gap 0) -- this shape's own 6 pieces are
+each built directly from the shared corner/pinch points, nothing reused-then-partially-rebuilt the way the
+taper diagram's waist arc was, so there was no equivalent defect to find; recorded as a deliberate check, not
+an assumption.
+
+Diagram (12 panels: 3 board sizes x {default, max-clean-bulge, offset-up-limit, offset-down-limit}, same
+visual style as every other diagram this session -- tan fill, blue dotted inner edge, red miter lines at every
+corner AND the pinch, green handle dots at the pinch points): `C:/Users/danse/.bspline-status/shots/seatC/
+0230_F31-item1-proposed_sandtimer-diagram_6x9_7x9_9x12.png`. Script committed:
+`tools/repro/f31_item1_sandtimer_diagram.mjs` (same repo-root-as-argv[1] convention as the taper diagram
+script). No template files touched, no Fusion used. Passing back for Fred's sign-off before any
+`template_14`-numbered code is written.
+
 ## 2026-10-02: H23 item 39 -- Fred-approved guard: no hooked corner tips, every template (finishes item 38)
 
 **Fred's own correction mid-task** (relayed via `handoff.py amendments`), which changed the shape of
@@ -7743,3 +7895,105 @@ a new capture, not a replay.
 Not committed as a T7 patch: the rule, the Generate check, the drag clamp, and the test all apply to
 every template uniformly (`miterStaysInsideWood`/`miterTipMargin` take no template-specific input at
 all beyond the primitives and `t` every template already has).
+
+## 2026-10-03: F31 item 2 -- Flask (Template 15) diagram, 6x9/7x9/9x12, no code (seat C, epoch 5)
+
+Synced fb-app with main first (one conflict, WORK-LOG-fb-app.md's own two parallel append streams, resolved
+by concatenation -- same pattern every prior sync hit). Full suite green after (vitest 3190/3190, pytest
+875+97+1098 passed/25 skipped across the three roots; one transient `test_golden_freshness` failure mid-merge,
+before the merge commit landed -- it reads git history, which a dirty merge can't give a straight answer to;
+re-ran clean after committing).
+
+Dispatch: Fred's own sketch -- a narrow straight neck (flat top, straight sides) on a DOME that sweeps out and
+down to the flat base, tangent vertical at the base. 6 bars (top, 2 neck sides, 2 dome sides, base), miter at
+every joint including neck-to-dome. Reference: the advisor's own `flask_and_archtimer_render.py` (Shapely).
+
+**TOP WIDTH, reused not reinvented:** the header's new shared handle ("key 'topWidth' ... sets where the top
+bar meets the sides") and the dispatch's own proposed "neck width" are the SAME physical quantity here -- the
+neck is dead straight for its whole height, so there is only one place for the top bar to meet the sides, not
+two. Declared Flask's neck half-width under the shared `topWidth` key rather than inventing a parallel
+`neckWidth` that would just be a second name for the same number.
+
+**Dome fullness, made genuinely tunable:** the advisor's own render pins the dome with a VERTICAL-TANGENT-AT-
+BASE constraint -- given the neck's own two corners, that leaves ZERO free parameters, so there's no handle to
+attach a "dome fullness" to. Generalised: built the dome with the Sand Timer diagram's own `bulgeArc` (a
+generic sagitta bulge away from the centreline) instead, with its own DEFAULT sagitta set to whatever the
+vertical-tangent construction implies -- computed once from the advisor's own closed-form (the circle through
+the neck-bottom corner and the base corner whose centre sits on the base's own row), not guessed. Confirmed:
+the default renders bit-for-bit what the advisor's own approved sketch shows, and "dome fullness" now has real
+room to move either side of it.
+
+**Measured range ends** (bisection, same pattern the taper/Sand-Timer diagrams used, per board size):
+- topWidth: 6x9 [0.27, 0.51], 7x9 [0.23, 0.52], 9x12 [0.18, 0.52] (narrower on shorter boards -- less room for
+  the dome to flare out to the full width before the neck crowds it).
+- neckHeight (fraction of total height, from the top): 6x9 [0.07, 0.81], 7x9 [0.07, 0.80], 9x12 [0.05, 0.84].
+- dome fullness: converges to roughly [0.02, 0.16] at every size (a genuinely narrow band -- this shape doesn't
+  tolerate a very full/round dome before the neck's own straight sides and the dome's own tangent fight each
+  other into a corner violation).
+
+**Continuity + symmetry, both checked, both clean:** added the same `continuityCheck` F30 item 5 needed (every
+piece's own end meets the next piece's own start exactly) and the mirror-symmetry check from Sand Timer; worst
+gap/mismatch at every measured case: machine precision (~1e-16in). This shape's own 6 pieces are each built
+directly from the shared corner points (same as Sand Timer, unlike the taper diagram's reused-then-rebuilt
+waist arc), so there was no equivalent defect to find -- recorded as a deliberate check, not an assumption.
+
+Diagram (21 panels: 3 board sizes x {default, topWidth min/max, neckHeight min/max, dome min/max}, same visual
+style as every other diagram this session): `C:/Users/danse/.bspline-status/shots/seatC/0920_F31-item2-
+proposed_flask-diagram_6x9_7x9_9x12.png`. Script committed: `tools/repro/f31_item2_flask_diagram.mjs` (same
+repo-root-as-argv[1] convention). No template files touched, no Fusion used. Passing back for Fred's sign-off
+before any `template_15`-numbered code is written.
+
+## 2026-10-03: F32 item 1 -- Stripe tool colour presets, black/white + blue/white (seat C)
+
+Dispatch: Fred's own words, "in stripping tool I want a few template colour combos: black and white, blue
+(same blue) and white." Added a row of preset chips above the existing A/B/C swatches in the Stripe panel
+(`#editorStripePanel`, `properties-stripe.js`).
+
+**Declared once, not hand-rolled per chip:** `STRIPE_COLOR_PRESETS` in `editor-stripe-tool.js` --
+`[{name:'Black / White', colors:['#000000','#ffffff']}, {name:'Blue / White', colors:[...]}]`. The panel
+renders one chip per entry (`tests/properties-stripe.test.js` proves the count tracks the declared list, not a
+hardcoded 2). `applyStripeColorPreset(editor, preset)` writes `stripeSettings(editor).colors[i]` for every i --
+the SAME path a manual A/B/C pick uses -- and sets `.three` from `colors.length >= 3`, so a 2-colour preset
+turns Use C off in the same call. One tap, one atomic settings update; undo/persistence/re-render are whatever
+the existing manual-pick path already does (unchanged).
+
+**Blue is the lattice's own node colour, not retyped:** the Blue/White entry reads
+`PATTERN_DEFAULTS.colors.nodes` (`#1a237e`) from `editor-lattice-pattern.js` instead of a second literal.
+Doing that as a plain eager property hit the pre-existing circular import between that module and
+`editor-stripe-tool.js` (`editor-lattice-pattern.js` imports `STRIPE_ATTR` from `editor-stripe-tool.js` at its
+own line 31, before `PATTERN_DEFAULTS` -- defined around line 393 -- is assigned; when `properties-stripe.js`
+is the entry point, `editor-lattice-pattern.js` loads first and `editor-stripe-tool.js`'s top-level read ran
+into `undefined`). Fixed by making `colors` a lazy getter on that one preset entry, deferring the read until a
+chip is actually rendered/tapped -- confined to the new code, no change to either module's existing import
+graph. `editor-stripe-tool.test.js` was unaffected (it imports `editor-stripe-tool.js` directly, so the cycle
+never triggers that ordering) -- the new `properties-stripe.test.js` is what caught it.
+
+**Verified the real rendered colours, not a screenshot eyeball:** a live DOM probe (CDP, same Chrome activation
+sequence as the shots below) read `getComputedStyle(chip).backgroundImage` on both chips post-render:
+`rgb(0,0,0)`/`rgb(255,255,255)` and `rgb(26,35,126)`/`rgb(255,255,255)` -- 26/35/126 is `#1a237e` exactly. (The
+390-width screenshot's thumbnail made the second chip's white half look faintly lavender at a glance; the DOM
+readout is the actual truth and it's pure white -- logging this per the "verify pixels, don't eyeball" habit
+rather than trusting the image.)
+
+**Screenshot script note:** the first draft tried to reuse one headless-Chrome session across two
+`Page.navigate` + `Emulation.setDeviceMetricsOverride` cycles (390 then 1366 width) to save a launch -- it hung
+indefinitely with no error on the second width (confirmed via `Get-CimInstance Win32_Process` that the node
+script and its Chrome subtree were still alive, just stuck; no prior script in `tools/repro/` does this
+double-navigate pattern, so it wasn't a proven one). Fixed by giving the script one width per invocation
+(fresh Chrome launch each time, matching every existing `tools/repro/*_shots.mjs` script's own pattern) plus a
+per-CDP-command timeout so a repeat hang would fail loudly instead of stalling silently. Killed only the
+specific PID confirmed via its own command line (`Get-CimInstance ... | Where CommandLine -match 'stripepreset'`)
+-- never a blanket `taskkill` by image name.
+
+Before/after shots (stashed the 3 source files, confirmed via `curl` that the dev server was actually serving
+the reverted code before shooting "before," then popped the stash and reconfirmed) at 390 and 1366 width:
+`C:/Users/danse/.bspline-status/shots/seatC/f32item1_{before,after}_w{390,1366}.png`.
+
+Tests: `editor-stripe-tool.test.js` covers the declared list + `applyStripeColorPreset`'s atomicity (one call,
+exactly those colours, three-flag derived from length); new `tests/properties-stripe.test.js` covers the panel
+wiring (chip count matches the declared list, a tap goes through the real DOM and updates the real swatches).
+Full suite green (165 files/3194 tests) before stashing; scoped stripe tests re-run 26/26 after the
+stash/pop round-trip. No Fusion, no template files touched.
+
+Committed: `bspline_gen_palette.html`, `editor-stripe-tool.js`, `properties-stripe.js`,
+`editor-stripe-tool.test.js`, `properties-stripe.test.js` (new). Passing back to the advisor.

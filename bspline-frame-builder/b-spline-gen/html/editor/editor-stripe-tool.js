@@ -51,7 +51,7 @@ import {
 import { primitiveFromContourD, contourPrimitiveEnds, mergeContourPrimitives, CONTOUR_D_DIGITS } from './editor-contour-cut.js';
 import { JOINT_TOL } from './editor-lattice-chains.js';
 import {
-  BOUNDARY_REF_ATTR, _findBoundaryElements, resolvePatternLayer, latticeColorPool,
+  BOUNDARY_REF_ATTR, _findBoundaryElements, resolvePatternLayer, latticeColorPool, PATTERN_DEFAULTS,
 } from './editor-lattice-pattern.js';
 import { VECTOR_COLORS } from './editor-color.js';
 import { getDynamicTolerance } from './editor-hit.js';
@@ -74,6 +74,31 @@ export const STRIPE_DEFAULTS = Object.freeze({ drive: 'count', count: 5, length:
  *  then grey (Fred's black/white stripe image; VECTOR_COLORS' own Neutral row, never a hand-typed hex). */
 const NEUTRAL = VECTOR_COLORS[VECTOR_COLORS.length - 1];
 export const STRIPE_FALLBACK_COLORS = Object.freeze([NEUTRAL[3], NEUTRAL[0], NEUTRAL[1]]);
+
+/** F32 item 1 (Fred: "a few template colour combos: black and white, blue (same blue) and white"): declared
+ *  once so the panel can render one chip per preset (never hand-roll a second list). '#1a237e' is the
+ *  lattice's own node blue, PATTERN_DEFAULTS.colors.nodes -- imported, not retyped, so the two can never drift.
+ *  `colors` is a GETTER, not a plain value: this module and editor-lattice-pattern.js import each other
+ *  (STRIPE_ATTR one way, PATTERN_DEFAULTS this way), and reading PATTERN_DEFAULTS.colors eagerly at module-
+ *  evaluation time can run before that module's own PATTERN_DEFAULTS assignment, depending on which side of the
+ *  cycle happens to load first (MEASURED: fails exactly that way when a different entry point imports
+ *  editor-lattice-pattern.js before this module). Deferring the read to first ACCESS (well after both modules
+ *  have finished loading) sidesteps the ordering hazard without touching either module's own import graph. */
+export const STRIPE_COLOR_PRESETS = Object.freeze([
+  Object.freeze({ name: 'Black / White', colors: Object.freeze(['#000000', '#ffffff']) }),
+  Object.freeze({ name: 'Blue / White', get colors() { return Object.freeze([PATTERN_DEFAULTS.colors.nodes, '#ffffff']); } }),
+]);
+
+/** Apply a declared preset to `editor`'s stripe settings: Colour A/B(/C) and 'three' all set in one call, each
+ *  slot through the EXACT path a manual swatch pick already uses (`settings().colors[i] = hex`) -- no second
+ *  write path to keep in sync. A 2-colour preset clears C (Fred: "turns Use C off") rather than leaving a
+ *  stale colour picked earlier. Returns the settings object; the caller re-renders (paintSwatches). */
+export function applyStripeColorPreset(editor, preset) {
+  const s = stripeSettings(editor);
+  for (let i = 0; i < 3; i++) s.colors[i] = preset.colors[i] ?? null;
+  s.three = preset.colors.length >= 3;
+  return s;
+}
 
 /** The editor's live stripe settings, created on first use. */
 export function stripeSettings(editor) {
