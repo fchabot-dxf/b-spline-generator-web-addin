@@ -301,6 +301,17 @@ export function miterStaysInsideWood(outerPrims, miters, t, minMarginTFrac = MIN
   return miters.every((m) => miterTipMargin(outerPrims, m, cornerExcludeIn) >= t * minMarginTFrac);
 }
 
+/**
+ * H23 item 63 (Fred-approved guard, 2026-10-03: "stop before undercut"): an outline arc sweeping a
+ * half-circle or more is an undercut (a keyhole notch). Fusion's own build refuses it (p02_11's
+ * REFLEX ARC check) -- MEASURED: the 22 REFLEX cases of item 61's matrix were the app's OWN outline
+ * sweeping 183-291 deg at a handle's range end, not a solver branch flip. One declared rule, read by
+ * both Generate and the drag-stop.
+ */
+export function outlineHasUndercut(outerPrims) {
+  return outerPrims.some((p) => p.type === 'A' && Math.abs(p.dTheta) >= Math.PI);
+}
+
 let _provider = null;
 /** `fn() -> { defs, record }`, registered by the app (main/frame-panel.js),
  *  so this editor module never imports app state directly. */
