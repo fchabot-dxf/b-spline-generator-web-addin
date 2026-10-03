@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "78a461e2d7402aef62db1a94ec143634cadd220c3ea2e389a6f5efa4794cf9c3",
+  "sourceHash": "52bb66ba7fa9fa2477ff95bff0936ce4567e5a79c8abcec360517f9cd90d1f42",
   "templates": [
     {
       "features": [
@@ -2553,9 +2553,7 @@ export default {
                 },
                 {
                   "Targets": [
-                    "horn_TR",
                     "horn_BR",
-                    "horn_TL",
                     "horn_BL"
                   ],
                   "Type": "Vertical"
