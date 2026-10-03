@@ -6,7 +6,8 @@
 import sys, os, re, math, json, time, traceback, copy
 import adsk.core, adsk.fusion
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(FB)), 'scratch', 'step_removal_results.jsonl')  # gitignored scratch
+OUT = os.path.join(os.path.dirname(FB), 'scratch', 'step_removal_results.jsonl')  # gitignored scratch
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
 CM = 2.54
 NUDGE = re.compile(r'\s*[-+]\s*0\.00[12](?![0-9])')
 
