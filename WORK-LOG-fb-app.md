@@ -8561,3 +8561,54 @@ tests. `check_golden_freshness.py --check` exits 0, `gen_frame_defs.py --check` 
 
 Committed: `tests/frame-template-15.test.js`, `test_frame_parity_goldens.py`,
 `tools/check_golden_freshness.py`. Passing back for the merge.
+
+## 2026-10-03: F33 item 2 -- re-record the stale template_5_7x9 golden (seat C)
+
+Dispatch: my own per-file freshness finding from F33 item 1's own merge follow-ups --
+`template_5_7x9.json` was declared `_KNOWN_UNVERIFIABLE_GOLDENS` as "not yet triaged". Brief:
+code-reading first, no Fusion -- is the phase edit an intended change (re-record) or unfinished WIP
+(report what to revert, don't revert it myself)? Live re-record only once `fusion_holder.txt` said
+`de` (f3, then b5's stress test, were ahead).
+
+**Code reading, before touching anything.** `git show c2cce2a -- .../template_5/phases/
+p02_03_loop.py`: replaces a single literal seed radius (`heightIn * 0.272158`, the dip/shoulder
+arcs' own shared radius) with a declared closed-form expression, `TOP_SEED_RADIUS_EXPR` --
+chord/sagitta -> radius, the standard circular-segment formula, built from the SAME half-chord/
+sagitta values the arcs' own seed Points already use. The commit's own message calls this "fixed
+the root cause" for H23 item 6 (the old literal was heightIn-only, so it diverged from the chord it
+had to span at any OTHER aspect ratio) -- the "not yet built live... this item is not done" line in
+that same commit refers to the SESSION's other items (10, 11) and the fact that nobody re-recorded
+goldens before the Fusion bridge went down that day, not to the formula itself being a draft.
+
+**Verified numerically before concluding "intended, not WIP"** (not trusting the commit message
+alone): the new formula evaluates to 2.449397 at 7x9 vs. the old literal's 2.449422 -- a ~2.5e-5 in
+gap, consistent with the old constant having been a ROUNDED empirical fit at 7x9, not an exact
+closed form. At 12x6 the old literal (1.632948) was smaller than the chord's own half-length
+(2.005716) it had to span -- geometrically impossible, exactly the bug class the commit describes --
+while the new formula gives 10.24, a valid (if shallow) arc. Conclusion: a genuine, deliberate,
+correct fix, not guesswork -- re-record, don't revert.
+
+**Live re-record** (`fusion_holder.txt` = `de`, confirmed before calling `fusion_execute`; holder
+handed off to `f3` then `b5` immediately after, per the advisor's own queue): reused F33 item 1's
+own proven fresh-module-load script (`tools/repro/fusion_t11/item43_golden_check.py`'s pattern,
+never touches the deployed add-in) for a single case, `template_5` at 7x9. Clean build: 0 REFLEX
+ARC, 0 MITER MISS, all declared bars, healthy timeline. The diff against the stale golden landed
+exactly where the numeric check predicted -- radius 2.44942 -> 2.4494, volume 4.46184 -> 4.46183,
+6th-decimal-place shifts throughout, same shape at corrected precision, no structural change (same
+bar count, same profile count). Doc hygiene: 4 docs open before and after (Untitled, DECAL test,
+DECAL edge test, f3's own ITEM71 decal test doc), only my own scratch doc touched; released Fusion
+and messaged the advisor immediately once the build confirmed clean, before doing any of the
+commit/test bookkeeping below, per their own explicit ask (b5 was waiting on it for the window fix).
+
+Removed `template_5_7x9.json` from `check_golden_freshness.py`'s own `_KNOWN_UNVERIFIABLE_GOLDENS`
+now that it genuinely builds live again. Ran `gen_frame_defs.py` afterward (its own `--check` had
+flagged STALE once the golden changed) -- the regen shifted T5's own fitted `topDipDepth`/
+`topDipHalfWidth` coefficients by the same ~1e-5 the golden itself moved, 6th decimal place, no
+structural change; confirmed via the full JS suite staying green rather than assumed.
+
+Full suite green: Python 860/860 (10 pre-existing skips, unrelated), JS vitest 173 files / 3387
+tests. `check_golden_freshness.py --check` and `gen_frame_defs.py --check` both exit 0.
+
+Committed: `tests/fixtures/frame-parity/template_5_7x9.json`, `tools/check_golden_freshness.py`,
+`bspline-frame-builder/b-spline-gen/html/data/frame-defs.json`/`.js` (regenerated). Pushed, passing
+back.
