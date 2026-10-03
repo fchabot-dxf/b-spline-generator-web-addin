@@ -13542,3 +13542,85 @@ solver functions, handle ranges, gen_frame_defs regen, frame-template-16/17.test
 61) for both -- "Fusion free" not yet requested, nothing in Fusion touched this turn either. Committed
 (5 commits: a2d8b8c, 03b7b70, 14545bc, 33c5bb8 before the merge; cd6c232 the merge; then 9125bdd, 5ad7175,
 cbe147a, a632b83 this round) and pushed to origin/lane-b throughout, not held back.
+
+## Lane B -- Turn (epoch 9) -- T84 item 3 continued: JS/app-side wiring, both templates -- ready for "Fusion free"
+
+Advisor response: keep going on the JS/app side for both templates (including T84 item 4's own "topWidth"
+handle), one default for upperCurveFrac is fine, give ResolveCircleCircleCorner the same live fallback tiers
+its siblings have before the sweep, then ask for "Fusion free" and run the full-matrix sweep. Don't wait
+between steps.
+
+**T84 item 4 (topWidth), done first**: renamed the fixed `ARCH_HALF_SPAN_FRAC` constant to
+`TOP_WIDTH_FRAC_DEFAULT` and promoted it to a real `outline()` keyword argument; added `topWidth` (basis
+hw, seeded) to both templates' own FRAME_HANDLES/FRAME_PROVISIONAL_SHAPE. No behavior change (confirmed).
+
+**Gave ResolveCircleCircleCorner the same live fallback tiers its siblings have** (advisor-directed,
+mirroring H23 item 63's own tiers): "further round one of the two offset circles" and "nearest inner-loop
+vertex" last resort, both ported directly from line_circle_corner_step/inner_corner_step. 6 new tests, each
+built from a directly-computed expected intersection, not guessed.
+
+**Fixed the REAL Python-side blocker the research agent found first**: `fit_shape_model` does
+`FEATURE_EXTRACTORS[preset]` unconditionally, before checking whether goldens exist -- `gen_frame_defs.py
+--check` crashed with `KeyError: 'arched_funnel'` on template_16 before writing anything for ANY template.
+Registered real extractors (`_arched_funnel`/`_tulip`, FIRST CUT like every sibling extractor for a brand-new
+shape, unexercised until goldens exist) + `provisional_arched_funnel_model`/`provisional_tulip_model` +
+`frame_definition.py`'s own dispatch, ORDER-SENSITIVE (tulip's own provisionalShape dict is a strict
+superset of archedFunnel's, so tulip's own distinguishing key must be checked first or every tulip record
+would silently build an archedFunnel model and drop upperCurveFrac).
+
+**The JS/app side, all 6 files**, built from a research agent's own thorough file:line survey (verified
+directly against source before trusting it, not taken on faith) plus the existing diagram script's own
+already-proven `buildArchedTimer`/`bulgeArc` geometry (ported, not re-derived): `archedFunnelConstruction` +
+a shared `_solveArchedTimer` in editor-shape-lattice-generator.js (every arc solved independently via
+`_curveSegment`, T10's own non-tangent-arc approach, NOT T7/T11's tangent-chain machinery, which this
+all-miter shape has no use for), wired into PRESETS/PARAM_ORDER/DERIVED_PARAM_DEFAULTS/SALT/
+FRAME_ONLY_PARAM_KEYS/the generateSilhouette dispatch/paramsFromShapeModel/a new `_archedTimerRange`
+(MEASURED directly against the real production validity pipeline, not assumed); computeParamHandles +
+HANDLE_SEGMENT_INDEX in editor-shape-lattice-interaction.js (confirmed, not assumed, that the generic
+mirrorSegmentIndex formula already gives this 6-piece loop's own correct two-self-mapping-segment pairing,
+so no declared SEGMENT_PAIRS table is needed, unlike T7/T11); a minimal frame-handles.js branch (exists
+only so the generic fallback doesn't crash on `_narrow(undefined)` -- `_archedTimerRange`'s own bounds are
+already thickness-aware, unlike every sibling's shape-only range); `generateRange` added to every handle in
+both templates' own FRAME_HANDLES (the MODERATE, "about halfway to each extreme" bound, measured the same
+way as the full range, T7's own gableNeckWidth precedent).
+
+**Caught and fixed two real bugs via non-vacuous round-trip checks, not by trusting the math on paper**:
+1. `sagValue`'s own drag inversion (bulgeFrac/upperCurveFrac) returned the sagitta in INCHES, never divided
+   by `hw` -- both handles silently clamped to their own range ceiling on every drag. Caught by round-
+   tripping `valueFromWorld(anchor)` against the known resolved value and finding it didn't match (0.179
+   instead of 0.169) -- not assumed correct because the formula looked right on paper.
+2. Two PRE-EXISTING tests (frame-template-9, frame-template-6) broke from appending 6 new keys to
+   FRAME_ONLY_PARAM_KEYS and 2 new templates to the label list -- both already expected exactly this kind of
+   update from every earlier frame-only preset's own addition (each test's own comment says so); fixed with
+   the real computed indices/positions, not guessed.
+
+**Regenerated frame-defs.json/.js** (`python tools/gen_frame_defs.py`, now unblocked) and updated
+tests/frame-defs.test.js's own generic FEATURES/EXTRA maps for both presets (empty EXTRA: no base-template
+leftovers).
+
+**Verified the FRAME_SEED_MAP "reverse" flags are correct, not a first guess any more**: derived by hand
+that all 6 pieces' own declared Fusion-phase-file point order already matches the app's own primitive
+direction exactly (so reverse=False everywhere), then confirmed it NUMERICALLY -- `frameSeedGeometry`'s own
+output at 7x9 matches `fb_engine.t16_geometry.outline()`'s own independently-tested closed-form values to
+the full precision checked, for every point on both templates, including each arc's own true via point.
+This is the single check that most directly bears on whether the live sweep below will actually build
+clean sketches, not just produce plausible-looking JS primitives.
+
+**Wrote dedicated test files**, tests/frame-template-16.test.js and -17.test.js (mirroring
+frame-template-11.test.js's own structure, the closest-scoped existing precedent), locking in the seed-
+geometry cross-check above as a committed test rather than a throwaway node script, plus listing/handle/
+drag-range/generateRange-extreme/board-bounds/miter checks. Caught two of my own test-writing mistakes
+before trusting them (an arc primitive has no p0/p1; the "stays within the board" bound should be the true
+board edges, not the safe zone -- a convex arc's own bulge legitimately swings ~0.0008in past it at 6x9,
+which the BBox Border margin exists to absorb) via the suite's own failures, not assumed correct.
+
+**Full gate green throughout, re-confirmed at the end**: 875 pytest passed (0 skipped-as-failing, every
+test_frame_defs.py check now genuinely passes, not just stopped crashing), 3190 vitest passed, 0
+regressions. Committed in 6 more commits (c568eb4 topWidth, 5a69e91 the fallback tiers, b3cbae8 the Python
+extractor fix, fec5271 the JS wiring, 35342a3 the regen+registry fixes, 0a8aa89 the dedicated test files),
+pushed throughout.
+
+**T84 item 3 is now fully code-complete on BOTH the Fusion/Python side and the JS/app side, for both
+templates.** The only thing left is the live matrix sweep itself (item 61: every handle x {min, default,
+max} at 7x9, 100% BUILT target) -- "Fusion free" requested from the advisor next, per its own explicit
+instruction to ask before that one step. Nothing in Fusion touched this turn.
