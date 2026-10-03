@@ -604,7 +604,7 @@ def deploy_local(force=False):
 
 def next_version(prev_info, now):
     """Fred (2026-10-03): a date-based version, YYYY.MM.DD-N, N = this day's deploy count. Reads the
-    previous deploy's build-info (kept across deploys, DEST_ONLY_KEEP_NAMES): same day -> N + 1."""
+    previous deploy's version (the last line of ~/.bspline-status/deploys.log): same day -> N + 1."""
     today = now.strftime("%Y.%m.%d")
     prev = str((prev_info or {}).get("version", ""))
     if prev.startswith(today + "-"):
@@ -658,11 +658,16 @@ def _write_build_info():
     dirty = bool(_git("status", "--porcelain", "--untracked-files=no", default=""))
 
     now = datetime.now().astimezone()
+    # The previous version comes from the deploy log (outside DEST): clean_dir wipes DEST,
+    # build-info.json included, before this runs (MEASURED: two deploys both stamped "-1").
+    log_path = Path.home() / ".bspline-status" / "deploys.log"
+    prev_info = None
     try:
-        with open(DEST_DIR / "build-info.json", encoding="utf-8") as f:
-            prev_info = json.load(f)
+        lines = [l for l in log_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        if lines:
+            prev_info = {"version": lines[-1].split()[0]}
     except Exception:
-        prev_info = None
+        pass
     version = next_version(prev_info, now)
 
     info = {
@@ -680,7 +685,6 @@ def _write_build_info():
         print(f"  Build info: {version} {sha} ({branch}){' DIRTY' if dirty else ''} @ {info['built_at']}")
         # One changelog line per deploy, outside the repo (so a deploy never dirties it).
         subject = _git("log", "-1", "--format=%s", default="")
-        log_path = Path.home() / ".bspline-status" / "deploys.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"{version}  {sha}{'+edits' if dirty else ''}  {info['built_at']}  {subject}\n")
