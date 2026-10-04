@@ -76,9 +76,25 @@ const CASES = readdirSync(DIR).filter((f) => f.endsWith('.json')).map((f) => {
  * difference for a user opening this template at these sizes, not just a test
  * tolerance nuisance, so it isn't left as a bare skip. Update this set (or
  * remove it) once that item resolves which side is correct.
+ *
+ * H23 item 79: Template 9 at 12x6 -- the SAME divergence class as Template 6 above, not a new
+ * one. Raising the template's own default flangeHeight to 0.7 (Fred's pick) genuinely FIXED
+ * 12x6's build (see KNOWN_BROKEN_BUILD's own history above: 0 bars -> all 12, healthy), but the
+ * recorded golden is still built UNSEEDED, straight from `p02_02_loop.py`'s own fixed 0.7-based
+ * literal fraction -- the same fraction at every board size, no per-board clamp awareness at all
+ * -- while `frameCutProfile`'s own `clampToFrameRanges` (the mechanism this item's own
+ * ask-before-guards check found already in place, no new guard written) pulls the APP's drawn
+ * default DOWN to frameParamRanges' ceiling at this board. MEASURED: golden's own raw flange
+ * (`flange_side_R`/`flange_side_BL`, both sides agree) is 1.983in; the app's own clamped default
+ * resolves to flangeHeight fraction 0.591 (exactly `frameParamRanges(...).flangeHeight.max`),
+ * 1.625in at 12x6's own hh=2.75in (the safe zone, not heightIn/2) -- a 0.358in raw gap, matching
+ * the outline test's own measured 0.358in exactly (the inner-edge test's smaller 0.238in is the
+ * same clamp carried through the offset).
+ * Not routed through `fit.excluded`: the real fit (fittedFrom 12x6/6x9/7x9, maxResidualIn 0.008)
+ * stays good, this is purely the app's own intentional default-clamp vs an unclamped golden.
  */
-const CLAMP_DIVERGENT_OUTLINE = new Set(['template_6_12x6', 'template_6_5.51x1.97']);
-const CLAMP_DIVERGENT_INNER = new Set(['template_6_12x6']); // 5.51x1.97 already skips via the fit.ok===false branch below
+const CLAMP_DIVERGENT_OUTLINE = new Set(['template_6_12x6', 'template_6_5.51x1.97', 'template_9_12x6']);
+const CLAMP_DIVERGENT_INNER = new Set(['template_6_12x6', 'template_9_12x6']); // 5.51x1.97 already skips via the fit.ok===false branch below
 
 /**
  * H23 item 11: Template 8 at 5.51x1.97 -- both sides AGREE the frame doesn't fit this board
@@ -99,17 +115,20 @@ const OUTSIDE_FIT_RANGE_OUTLINE = new Set(['template_8_5.51x1.97']);
 /**
  * H23 item 13: Template 9 at 12x6 -- NOT a shapeModel-fit issue (the outline extractor correctly
  * finds this a perfectly valid I-shape silhouette, `fit.excluded` stays empty, maxResidualIn 0.008in
- * across all 3 sizes) -- the recorded Fusion GOLDEN itself is from a known-broken build: the frame
- * enclosure's own inner-offset miter resolution fails at 2 of 12 corners (`shoulder_TL`/
- * `flange_side_TL`) specifically when the flange's own available height shrinks relative to
+ * across all 3 sizes) -- the recorded Fusion GOLDEN itself was from a known-broken build: the frame
+ * enclosure's own inner-offset miter resolution failed at 2 of 12 corners (`shoulder_TL`/
+ * `flange_side_TL`) specifically when the flange's own available height shrank relative to
  * frame_thickness (MEASURED: flange height 1.13in vs frame_thickness 0.75in at 12x6 -- a 66% ratio,
- * vs ~44% at 7x9/6x9 where it works), so NO bars get built at all (not just those 2) and the golden's
- * own `sketch3_frame_enclosure` inner curves are left partial/malformed. Comparing the app's correct
- * prediction against that broken golden is comparing against known-bad data, not a real app-vs-Fusion
- * divergence -- excluded here, not via `fit.excluded` (the shape itself isn't invalid), same
- * reasoning as the other named exceptions above. NOT fixed this session -- flagged as a priority
- * follow-up (LIVE-RESULTS-ranchy.md item 13): this breaks at 12x6, a MAINSTREAM board size, not an
- * extreme stress-test value like Template 8's own item-11 finding.
+ * vs ~44% at 7x9/6x9 where it worked), so NO bars got built at all (not just those 2) and the golden's
+ * own `sketch3_frame_enclosure` inner curves were left partial/malformed.
+ *
+ * RESOLVED, H23 item 79: raising the template's own default flangeHeight to 0.7 (Fred's own pick, up
+ * from 0.4) changes WHICH of frameParamRanges' own two bounds 12x6 clamps against -- the old default
+ * clamped UP to the opening-rule FLOOR there (the exact 66%-ratio regime that broke); the new one
+ * clamps DOWN to the CEILING instead, a different, healthier flange height. Re-recorded live:
+ * `template_9_12x6`'s own golden now builds all 12 bars, healthy, no malformed curves. No longer a
+ * broken build -- removed from this set. (Its app-vs-Fusion OUTLINE/INNER comparison still needs its
+ * own exclusion, for an unrelated, already-known reason: see CLAMP_DIVERGENT_OUTLINE/_INNER below.)
  *
  * H23 item 13: Template 10 at ALL 3 sizes (7x9/6x9/12x6) -- root-caused precisely, a genuine
  * construction defect, more severe than Template 9's: `p02_03_loop.py`'s own "circle through 2 fixed
@@ -134,7 +153,7 @@ const OUTSIDE_FIT_RANGE_OUTLINE = new Set(['template_8_5.51x1.97']);
  * case), see LIVE-RESULTS-ranchy.md item 13.
  */
 const KNOWN_BROKEN_BUILD = new Set([
-  'template_9_12x6', 'template_10_7x9', 'template_10_6x9', 'template_10_12x6',
+  'template_10_7x9', 'template_10_6x9', 'template_10_12x6',
 ]);
 
 /**
