@@ -87,8 +87,14 @@ describe('opts.scale', () => {
     const primitives = square.map((p, i) => ({ type: 'line', p0: p, p1: square[(i + 1) % square.length] }));
     const base = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 5 });
     const doubled = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 5, scale: 2 });
-    const b0 = bbox(base.bricks.find((b) => !b.id.includes('corner')).polygon);
-    const d0 = bbox(doubled.bricks.find((b) => !b.id.includes('corner')).polygon);
+    // H23 item 76 (advisor review): every run's OWN first/last piece is now deliberately corner-fit
+    // (planCornerRun, from the declared fraction set) rather than a plain scaled whole piece -- so
+    // `bricks[0]` (what this test used to pick) no longer has a simple *2 relationship to its own
+    // scaled counterpart (the two scales can pick a DIFFERENT best-fit corner fraction). Index 10 is
+    // safely past either run's own corner-affected pieces (100+ pieces per side at the base scale,
+    // 50+ at 2x) -- a genuinely plain, scaled whole piece, which is what this test means to check.
+    const b0 = bbox(base.bricks.filter((b) => !b.id.includes('corner'))[10].polygon);
+    const d0 = bbox(doubled.bricks.filter((b) => !b.id.includes('corner'))[10].polygon);
     expect(Math.max(d0.w, d0.h)).toBeCloseTo(Math.max(b0.w, b0.h) * 2, 2);
   });
 });

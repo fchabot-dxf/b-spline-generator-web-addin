@@ -31,8 +31,8 @@
  * generally to every live-live joint instead of only pre-declared ones.
  */
 import { curveIntersection } from './curve-intersect.js';
-import { clipToHalfPlane } from './geometry.js';
-import { planPieceLengths, pickSample } from './piece-plan.js';
+import { clipToHalfPlane, signedArea } from './geometry.js';
+import { planCornerRun, mergeSlivers, pickSample } from './piece-plan.js';
 import { isArcFeasible, voussoirPieces } from './arc-voussoir.js';
 import { FILL_FRACTIONS } from './library.js';
 import { mulberry32, seedFor } from './rng.js';
@@ -84,7 +84,12 @@ function jointPointAt(primitives, prevIdx, curIdx, depth) {
 function mitreLine(o, q, keepRefAsStart, keepRefAsEnd) {
   const dx = q.x - o.x, dy = q.y - o.y, len = Math.hypot(dx, dy);
   if (len < 1e-9) return null; // o and q coincide (a degenerate zero-depth row) -- no meaningful mitre direction, so no clip
-  return { point: o, dirX: dx / len, dirY: dy / len, keepRefAsStart, keepRefAsEnd };
+  // `q` (the joint's own point at this row's DEEPEST edge, d1) is kept on the returned object, not
+  // just folded into dirX/dirY -- H23 item 76 (advisor review): `linePieces`/`voussoirPieces` both
+  // need `q` ITSELF (not just the mitre line's direction) to measure this run's own TRUE reach to
+  // the corner (see `planCornerRun`'s own header for why: the deep edge is this row's own worst-case
+  // reach, the same measure the mitreReach fix already established).
+  return { point: o, q, dirX: dx / len, dirY: dy / len, keepRefAsStart, keepRefAsEnd };
 }
 
 const KEEP_REF_STEP_IN = 0.01; // H23 item 76: how far past `o` (this joint's own point at depth d0)
@@ -108,34 +113,89 @@ function tangentAt(prim, point) {
 function stepFrom(point, tangent, signedStep) {
   return { x: point.x + tangent.x * signedStep, y: point.y + tangent.y * signedStep };
 }
+const CLIP_EPS_IN = 0.02; // a small safety margin on the piece touching a corner's own extreme edge
+// (float precision only, plus the fact the piece's own flat end is tangent to, not crossing, the
+// mitre line exactly AT its own sStart/sEnd by construction -- see this function's own header).
 
-/** A straight primitive's own pieces between its d0/d1 offset lines, end pieces extended + mitre-
- *  clipped against `jointStart`/`jointEnd` (either may be `null` at a genuinely open path's own free
- *  end -- never happens for this codebase's always-closed frame contours, but handled honestly
- *  rather than assumed away). */
-function linePieces(prim, d0, d1, jointStart, jointEnd, extendBy, mitreReach, pitch, nominalJoint, set, seed, pieceId, startId) {
+/** A straight primitive's own pieces between its d0/d1 offset lines, clipped against `jointStart`/
+ *  `jointEnd` (either may be `null` at a genuinely open path's own free end -- never happens for this
+ *  codebase's always-closed frame contours, but handled honestly rather than assumed away). */
+function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, startId) {
   const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y;
   const totalLen = Math.hypot(dx, dy);
   if (totalLen < 1e-6) return { pieces: [], nextId: startId };
   const tx = dx / totalLen, ty = dy / totalLen;
   const worldAt = (sVal, depth) => ({ x: prim.p0.x + tx * sVal + prim.nx * depth, y: prim.p0.y + ty * sVal + prim.ny * depth });
+  // project a world point onto THIS line's own fixed tangent -- valid at any depth, since offsetting
+  // a line only shifts it perpendicular (never changes its own tangent).
+  const project = (pt) => (pt.x - prim.p0.x) * tx + (pt.y - prim.p0.y) * ty;
 
-  const { lengths, jointWidth } = planPieceLengths(totalLen, pitch, nominalJoint, FILL_FRACTIONS);
-  const pieces = [];
-  let s = 0, nextId = startId;
+  // H23 item 76 (advisor review): plan this run across its TRUE corner-to-corner reach, not its own
+  // nominal [0,totalLen] span. A joint's own mitre LINE runs from `o` (its point at this row's OUTER
+  // edge, d0) to `q` (at the DEEPEST edge, d1) -- MEASURED (not assumed): for an ordinary 90deg corner
+  // these two project to nearly the same s (o close to 0, q shifted by ~d1), but for a corner whose
+  // OWN neighbour dropped out (the fillet case this item exists to fix) `o` can land FAR further back
+  // than `q` -- using `q` alone (an earlier version of this fix) left that whole outer-edge excess for
+  // ONE piece alone to absorb (MEASURED: a 2.95x-nominal trapezoid). Taking whichever of `o`/`q` is
+  // the MORE EXTREME (the one requiring MORE material) as this run's own true boundary means the
+  // piece SEQUENCE itself (not just the one corner piece) covers the full wedge, each piece's own
+  // share naturally bounded by `planCornerRun`'s own declared fractions -- the same diagonal-staircase
+  // effect a mitre clip already produces at an ordinary corner, now correctly anchored for every
+  // corner, oblique or not. `hiStart`/`loEnd` (the OTHER of each pair) is the mitre line's own
+  // opposite extreme -- the farthest a clip could ever reach forward/backward -- used below to decide
+  // which pieces actually need clipping at all (never past that point, by construction). Falls back
+  // to the primitive's own nominal endpoint when a joint is absent (a degenerate zero-depth row, see
+  // `mitreLine`'s own header -- never happens for a real row, handled honestly rather than assumed
+  // away).
+  // `trustO` (computed once per joint in `ribbonPieces`, see its own header): false when `o` is a
+  // FICTITIOUS point (a primitive dropped between this joint's own two neighbours is still feasible
+  // at d0, so `o` doesn't reflect the TRUE outer-edge boundary) -- fall back to `q` alone for that
+  // side's own sizing rather than risk extending a piece past the real board edge.
+  const startO = jointStart && jointStart.trustO ? project(jointStart.point) : null;
+  const startQ = jointStart ? project(jointStart.q) : 0;
+  const endO = jointEnd && jointEnd.trustO ? project(jointEnd.point) : null;
+  const endQ = jointEnd ? project(jointEnd.q) : totalLen;
+  const sStart = jointStart ? (startO === null ? startQ : Math.min(startO, startQ)) : 0;
+  const hiStart = jointStart ? (startO === null ? startQ : Math.max(startO, startQ)) : 0;
+  const sEnd = jointEnd ? (endO === null ? endQ : Math.max(endO, endQ)) : totalLen;
+  const loEnd = jointEnd ? (endO === null ? endQ : Math.min(endO, endQ)) : totalLen;
+  const effectiveLen = sEnd - sStart;
+  const { lengths, jointWidth } = effectiveLen > 1e-6
+    ? planCornerRun(effectiveLen, pitch, nominalJoint, FILL_FRACTIONS)
+    : { lengths: [], jointWidth: nominalJoint };
+
+  // build ONE piece's own clipped polygon for an arbitrary [sA,sB] span -- shared by the normal
+  // per-piece build below AND the merge pass that follows it (a merged span is built exactly the
+  // same way, just wider).
+  const buildPiece = (sA, sB, isVeryFirst, isVeryLast) => {
+    const sStartPiece = isVeryFirst ? sA - CLIP_EPS_IN : sA;
+    const sFinishPiece = isVeryLast ? sB + CLIP_EPS_IN : sB;
+    let polygon = [worldAt(sStartPiece, d0), worldAt(sFinishPiece, d0), worldAt(sFinishPiece, d1), worldAt(sStartPiece, d1)];
+    // `+ 1e-9`: when `trustO` was false, hiStart/loEnd COINCIDE with sStart/sEnd exactly (the `q`-only
+    // fallback), which would otherwise make the very first/last piece ineligible for its own corner
+    // clip -- the epsilon guarantees it's always still checked.
+    if (jointStart && sA < hiStart + 1e-9) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
+    if (jointEnd && sB > loEnd - 1e-9) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
+    return polygon;
+  };
+
+  const spans = [];
+  let s = sStart;
   for (let i = 0; i < lengths.length; i++) {
-    const sEnd = s + lengths[i];
-    const isFirst = i === 0, isLast = i === lengths.length - 1;
-    const sStart = isFirst ? s - extendBy : s;
-    const sFinish = isLast ? sEnd + extendBy : sEnd;
-    let polygon = [worldAt(sStart, d0), worldAt(sFinish, d0), worldAt(sFinish, d1), worldAt(sStart, d1)];
-    if (jointStart && (isFirst || s < mitreReach)) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
-    if (jointEnd && (isLast || totalLen - sEnd < mitreReach)) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
+    spans.push({ sA: s, sB: s + lengths[i] });
+    s = s + lengths[i] + jointWidth;
+  }
+  mergeSlivers(spans, (sA, sB) => Math.abs(signedArea(buildPiece(sA, sB, sA <= sStart, sB >= sEnd))), pitch * (d1 - d0));
+
+  const pieces = [];
+  let nextId = startId;
+  for (let i = 0; i < spans.length; i++) {
+    const { sA, sB } = spans[i];
+    const polygon = buildPiece(sA, sB, i === 0, i === spans.length - 1);
     const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
     const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
     pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
     nextId++;
-    s = sEnd + jointWidth;
   }
   return { pieces, nextId };
 }
@@ -158,28 +218,29 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   const m = liveIndices.length;
 
   const halfWidth = (d1 - d0) / 2;
-  // H23 item 76 (MEASURED, three_band's own cross-row/cross-primitive overlap the advisor flagged):
-  // along-path.js's own MITRE_REACH = halfWidth*5 is a PIECE-SCALE reach, correct THERE because that
-  // architecture's own row centreline is ALREADY a true mitred offset polygon (offsetPathInward's
-  // own per-vertex bisector, exact at any depth) -- MITRE_REACH only had to cover the last few
-  // pieces nearest a corner, not the corner's own reach itself. This architecture has no such
-  // pre-mitred centreline: EVERY row is independent, and the ONLY thing that keeps a piece from
-  // reaching past a corner's own TRUE mitre line is whichever of mitreReach/isFirst/isLast actually
-  // triggers the clip -- so mitreReach itself must cover the corner's own full reach, not just a
-  // piece-width margin. For a 90deg corner that reach IS exactly `d1` (CONFIRMED: the mitre crosses
-  // at s=depth there) -- MEASURED directly: a stretcher row0 piece (halfWidth=0.1, so the OLD
-  // halfWidth*5=0.5in reach) sat 0.821in from a real 90deg corner and was never clipped at all,
-  // overlapping a DIFFERENT row's own piece on the ADJACENT (differently-oriented) edge, 0.5in
-  // short of where it needed to reach. `Math.max(..., d1)` keeps the existing halfWidth*5 margin for
-  // shallow rows (already comfortably larger there) and grows it for deep ones, where it matters.
-  const mitreReach = Math.max(halfWidth * 5, d1);
-  const extendBy = mitreReach + 0.05; // matches along-path.js's own EXTEND_BY formula exactly
 
   const jointBefore = liveIndices.map((curIdx, k) => {
     const prevIdx = liveIndices[(k - 1 + m) % m];
     const o = jointPointAt(primitives, prevIdx, curIdx, d0);
     const q = jointPointAt(primitives, prevIdx, curIdx, d1);
     if (!o || !q) return null;
+    // H23 item 76 (advisor review -- MEASURED OOB regression, see WORK-LOG): `o` (this joint's own
+    // point at the row's OUTER edge, d0) is computed by intersecting `prevIdx`/`curIdx` DIRECTLY,
+    // skipping whatever dropped out between them -- correct IF every skipped primitive is ALSO
+    // infeasible at d0 (it was never really there at this depth either). WRONG when a skipped
+    // primitive is still feasible AT d0 and only drops before d1 (a "transitional" primitive within
+    // THIS row): `o` then intersects two primitives that, at the TRUE outer edge, are not actually
+    // adjacent at all (the transitional one is still physically between them) -- a fictitious point
+    // that can land past the board's own true boundary. MEASURED directly: a shoulder fillet
+    // feasible at d0=0 but not d1=0.75 produced an `o` 0.68in past the true edge, and `linePieces`
+    // (trusting `o` for sizing, see its own header) built a piece reaching past the board. `trustO`
+    // is false whenever this applies -- the one case `linePieces`/`voussoirPieces` fall back to `q`
+    // alone for that side's own sizing (the "ordinary corner" / "d0-also-infeasible" cases, the vast
+    // majority, keep trusting `o`, which is what the original fillet-collapse fix above needed).
+    let trustO = true;
+    for (let idx = (prevIdx + 1) % n; idx !== curIdx; idx = (idx + 1) % n) {
+      if (primitiveLiveAtDepth(primitives[idx], d0)) { trustO = false; break; }
+    }
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of
     // its own mitre line (each keeps only its own half of the cut) -- `keepRefAsStart` (stepping
     // FORWARD along `curIdx`'s own tangent at `o`) is for whichever primitive STARTS here;
@@ -187,7 +248,8 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     // primitive ENDS here.
     const keepRefAsStart = stepFrom(o, tangentAt(primitives[curIdx], o), KEEP_REF_STEP_IN);
     const keepRefAsEnd = stepFrom(o, tangentAt(primitives[prevIdx], o), -KEEP_REF_STEP_IN);
-    return mitreLine(o, q, keepRefAsStart, keepRefAsEnd);
+    const joint = mitreLine(o, q, keepRefAsStart, keepRefAsEnd);
+    return joint && { ...joint, trustO };
   });
 
   const pieces = [];
@@ -198,12 +260,12 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     const jointStart = jointBefore[k];
     const jointEnd = jointBefore[(k + 1) % m];
     const built = prim.type === 'line'
-      ? linePieces(prim, d0, d1, jointStart, jointEnd, extendBy, mitreReach, pitch, nominalJoint, set, seed, pieceId, nextId)
+      ? linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, nextId)
       : (() => {
         const centerlineR = prim.r - prim.radialSign * ((d0 + d1) / 2);
         return voussoirPieces(
           prim.cx, prim.cy, centerlineR, prim.theta1, prim.theta2, halfWidth, prim.radialSign,
-          pitch, nominalJoint, set, seed, pieceId, nextId, extendBy, extendBy, jointStart, jointEnd, mitreReach,
+          pitch, nominalJoint, set, seed, pieceId, nextId, jointStart, jointEnd,
         );
       })();
     pieces.push(...built.pieces);

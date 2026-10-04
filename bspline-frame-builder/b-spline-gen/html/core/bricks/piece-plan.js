@@ -54,3 +54,104 @@ export function planPieceLengths(runLength, pitch, nominalJoint, fractions) {
   const jointWidth = nJoints > 0 ? Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints) : nominalJoint;
   return { lengths, jointWidth };
 }
+
+/**
+ * H23 item 76 (advisor review of the wired-in fillet collapse + corner cascade): plan a run's own
+ * piece lengths across its TRUE corner-to-corner reach -- `runLength` here is NOT necessarily a
+ * primitive's own declared [0,totalLen] span; the CALLER (primitive-ribbon.js) measures the real
+ * distance to each neighbour's own true mitre point first, which can be LONGER (a neighbour primitive
+ * dropped out -- an infeasible fillet -- so this run must reach all the way to the next LIVE one) or
+ * SHORTER (an ordinary declared corner simply doesn't line up with this run's own whole-pitch
+ * phase) than the primitive's own nominal length.
+ *
+ * `planPieceLengths` above gives a fractional END piece but an unconditionally WHOLE start piece --
+ * correct for a run with one open/free end, wrong for THIS codebase's every-joint-is-a-corner closed
+ * contours: with no start-side correction, a run meeting a corner it doesn't naturally reach left the
+ * entire mismatch for the mitre CLIP alone to absorb, two different ways depending on which direction
+ * it missed by: (1) a neighbour's own dropped primitive forced ONE end piece to extend arbitrarily far
+ * past its own natural size (MEASURED: up to 2.46x a nominal brick's own area, a visible oversized
+ * triangle at a collapsed fillet); (2) an ordinary corner's own small, essentially RANDOM phase
+ * mismatch let the clip shave an unbounded sliver off whichever piece happened to straddle the mitre
+ * line (MEASURED: as small as 0.033x a nominal brick's own area, "a fractal of tiny bricks" at some
+ * corners and not others, purely by chance of where each primitive's own independent whole-pitch
+ * count happened to land). Both are the SAME root cause (no declared floor/ceiling on the clipped
+ * remnant's own size) and the SAME fix: choose BOTH end pieces explicitly from the declared
+ * `fractions` (the advisor's own approved corner set -- kingCloser/mitredThreeQuarter/mitredHalf are
+ * literally fractions 1/0.75/0.5, "nothing below 1/4" is `fractions`' own smallest declared entry),
+ * with whole pieces filling in between -- by CONSTRUCTION, not by hoping a generic half-plane clip
+ * happens to land somewhere reasonable.
+ *
+ * @param {number} runLength — the TRUE corner-to-corner reach (caller-measured, see above)
+ * @param {number} pitch @param {number} nominalJoint @param {number[]} fractions — same meaning as `planPieceLengths`
+ * @returns {{lengths:number[], jointWidth:number}} — lengths[0] and lengths[last] are each one of
+ *   `fractions`*pitch (the SAME piece when lengths.length===1); every length between is a whole pitch.
+ */
+export function planCornerRun(runLength, pitch, nominalJoint, fractions) {
+  const minFraction = Math.min(...fractions);
+  if (runLength < pitch * minFraction * 2 - 1e-9) {
+    // too short for two independent end pieces (even the smallest declared fraction each) -- a
+    // single piece spans the whole run, same honest fallback `planPieceLengths` uses.
+    return { lengths: [runLength], jointWidth: nominalJoint };
+  }
+  let best = null;
+  for (const fStart of fractions) {
+    for (const fEnd of fractions) {
+      const endsLen = (fStart + fEnd) * pitch;
+      if (endsLen > runLength + 1e-9) continue; // even 0 whole pieces would overshoot -- not viable
+      let wholeCount = Math.max(0, Math.round((runLength - endsLen - nominalJoint) / (pitch + nominalJoint)));
+      // back off until the (wholeCount+1) joints between pieces don't need to go unreasonably
+      // negative to absorb the mismatch -- mirrors `planPieceLengths`' own back-off loop.
+      while (wholeCount > 0 && endsLen + wholeCount * pitch - pitch * 0.5 > runLength) wholeCount--;
+      const nJoints = wholeCount + 1;
+      const idealTotal = endsLen + wholeCount * pitch + nJoints * nominalJoint;
+      const err = Math.abs(runLength - idealTotal);
+      if (!best || err < best.err) best = { fStart, fEnd, wholeCount, nJoints, idealTotal, err };
+    }
+  }
+  const { fStart, fEnd, wholeCount, nJoints, idealTotal } = best;
+  const lengths = [fStart * pitch, ...Array(wholeCount).fill(pitch), fEnd * pitch];
+  const jointWidth = Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints);
+  return { lengths, jointWidth };
+}
+
+/**
+ * H23 item 76 (advisor review, "nothing below 1/4"... "no piece larger than a whole brick, cap the
+ * piece area at 1.2x"): MERGE any piece whose own CLIPPED area falls below `floorFraction` of one
+ * whole piece's own nominal area into its immediate neighbour, in place. `planCornerRun`'s own
+ * declared fractions bound a piece's PLANNED (pre-clip) length, but the mitre clip itself can still
+ * trim an individual piece's own FINAL area to an arbitrary sliver wherever the mitre line happens to
+ * cross close to a planned boundary (MEASURED: as small as 0.03% of a nominal brick -- a near-zero-
+ * area triangle) -- a property of the CLIP, not of the plan, so it can only be caught after the real
+ * (clipped) area is known, not predicted in advance from `lengths` alone.
+ *
+ * The CEILING guard matters just as much as the merge itself: a run of several consecutive slivers
+ * can still sit under `floorFraction` even combined (several genuinely tiny pieces in a row), so the
+ * naive "merge forward while under floor" loop can keep pulling in neighbours and, on the merge that
+ * FINALLY clears the floor, accidentally swallow an already-normal-sized piece whole -- MEASURED: a
+ * merge chain that stayed under the 0.25 floor through two tiny pieces then absorbed a full ~1.0
+ * piece on the third step, landing at 1.27x, over the advisor's own declared 1.2x cap. Never merging
+ * past `ceilingFraction` means that rare case leaves ONE sliver below the floor rather than ever
+ * building a piece above the ceiling -- the explicit, numbered cap is the harder constraint of the
+ * two (an oversized piece is what item 1 was specifically about), so it wins when they conflict.
+ *
+ * @param {{sA:number, sB:number}[]} spans — mutated in place (`sA`/`sB` are whatever coordinate the
+ *   caller's own `areaOf` understands -- linear inches for a straight run, radians for an arc).
+ * @param {(sA:number, sB:number) => number} areaOf — returns a span's own TRUE (clipped) area,
+ *   built exactly the way the caller will build the final piece.
+ * @param {number} nominalArea — one whole piece's own nominal (unclipped) area.
+ */
+export function mergeSlivers(spans, areaOf, nominalArea, floorFraction = 0.25, ceilingFraction = 1.2) {
+  const floor = nominalArea * floorFraction, ceiling = nominalArea * ceilingFraction;
+  while (spans.length > 1 && areaOf(spans[0].sA, spans[0].sB) < floor) {
+    const merged = { sA: spans[0].sA, sB: spans[1].sB };
+    if (areaOf(merged.sA, merged.sB) > ceiling) break;
+    spans[1].sA = merged.sA;
+    spans.shift();
+  }
+  while (spans.length > 1 && areaOf(spans[spans.length - 1].sA, spans[spans.length - 1].sB) < floor) {
+    const merged = { sA: spans[spans.length - 2].sA, sB: spans[spans.length - 1].sB };
+    if (areaOf(merged.sA, merged.sB) > ceiling) break;
+    spans[spans.length - 2].sB = merged.sB;
+    spans.pop();
+  }
+}

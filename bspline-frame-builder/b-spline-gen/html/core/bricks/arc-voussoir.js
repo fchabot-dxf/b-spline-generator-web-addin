@@ -31,8 +31,8 @@
  */
 import { mulberry32, seedFor } from './rng.js';
 import { FILL_FRACTIONS } from './library.js';
-import { planPieceLengths, pickSample } from './piece-plan.js';
-import { clipToHalfPlane } from './geometry.js';
+import { planCornerRun, mergeSlivers, pickSample } from './piece-plan.js';
+import { clipToHalfPlane, signedArea } from './geometry.js';
 
 const MAX_SEGMENT_ANGLE = (5 * Math.PI) / 180; // H23 item 76: an outer/inner arc edge is sampled
 // densely enough that no single straight sub-segment spans more than ~5deg -- a declared smoothness
@@ -44,15 +44,15 @@ const MIN_RADIUS_IN = 0.01; // a declared floor (same "don't blow up" pattern as
 // tight bend (a real physical constraint -- a wide brick doesn't fit around a narrow enough curve),
 // clamped here to a tiny positive sliver rather than letting the inner radius go to zero or negative.
 const MAX_EXTEND_ANGLE = Math.PI / 6; // H23 item 76: a declared cap (30deg) on how far an end piece's
-// own OVERSIZED sampling range (extendStartIn/extendEndIn, see below) is allowed to push past its
-// true edge, converted to angle -- MEASURED to matter on a small-radius arc, where a joint-reach
-// linear distance tuned for ordinary declared corners can translate to well over 90deg. 30deg (not a
-// looser bound) is itself MEASURED, not guessed: a half-plane clip is only guaranteed to keep a
-// polygon simple when the polygon's own boundary crosses the clip line at most twice: past ~45deg of
-// extension on T12's own waist arc, the oversized outer+inner annular sector curves back far enough
-// to cross the SAME joint line a 2nd time, and clipToHalfPlane's single-pass Sutherland-Hodgman
-// produces a self-intersecting "bowtie" instead (CONFIRMED directly: 45deg and below stayed simple
-// on that exact case, 60deg did not) -- 30deg keeps real margin below that measured threshold.
+// own OVERSIZED sampling range (the small finishing-clip epsilon, see `voussoirPieces`' own
+// CLIP_EPS_ANGLE) is allowed to push past its true edge, converted to angle -- a half-plane clip is
+// only guaranteed to keep a polygon simple when the polygon's own boundary crosses the clip line at
+// most twice: past ~45deg of extension on T12's own waist arc, the oversized outer+inner annular
+// sector curves back far enough to cross the SAME joint line a 2nd time, and clipToHalfPlane's
+// single-pass Sutherland-Hodgman produces a self-intersecting "bowtie" instead (CONFIRMED directly:
+// 45deg and below stayed simple on that exact case, 60deg did not) -- 30deg keeps real margin below
+// that measured threshold. The epsilon itself is now tiny (float precision only, now that the piece
+// is already planned to reach the true corner), so this cap is a safety backstop, not a live limit.
 
 /** Whether a row's own arc at true radius `r` (already adjusted for this row's own depth, same
  *  convention as `voussoirPieces`' own `r`) can fit a piece of cross-width `2*halfWidth` at all --
@@ -77,31 +77,21 @@ export function isArcFeasible(r, radialSign, halfWidth) {
  * @param {number} seed
  * @param {string} pieceId
  * @param {number} startId — first piece id to use (the caller's own running brick-id counter)
- * @param {number} [extendStartIn=0] @param {number} [extendEndIn=0] — H23 item 76 (primitive-ribbon.js):
- *   push the FIRST/LAST piece's own geometric sampling range (never the underlying theta walk/length
- *   planning) this many inches further out, so a caller doing its own mitre-clip against a true joint
- *   (see `jointStart`/`jointEnd` below) always has enough raw material to reach it -- the SAME
- *   "extend oversized, then clip" technique along-path.js's own `extrapolatedPointAt` uses for a
- *   straight run's own end piece, just expressed in angle instead of a linear tangent push. 0 (the
- *   default) reproduces the exact prior behaviour for every EXISTING caller (along-path.js's own arc
- *   dispatch, which handles its own corners externally and never wants this).
- * @param {{point:{x,y},dirX:number,dirY:number,keepRefAsStart:{x,y},keepRefAsEnd:{x,y}}|null} [jointStart=null]
+ * @param {{point:{x,y},q:{x,y},dirX:number,dirY:number,keepRefAsStart:{x,y},keepRefAsEnd:{x,y}}|null} [jointStart=null]
  * @param {object|null} [jointEnd=null] — H23 item 76 (primitive-ribbon.js): a true mitre line to clip
- *   this arc's own first/last piece against, plus any piece within `mitreReach` of it (two pieces
- *   approaching the SAME joint from different primitives can overlap directly near it -- the EXISTING
- *   along-path.js technique for declared corners, reused here unchanged). The SAME joint object is
- *   shared by both of the two primitives that meet there, one calling it `jointStart` (the primitive
- *   that STARTS there -- uses `keepRefAsStart`) and the other `jointEnd` (ENDS there -- uses
- *   `keepRefAsEnd`); the two keepRefs are on OPPOSITE sides of the line by construction (each
- *   primitive keeps only its own half of the mitre cut) -- see primitive-ribbon.js's own
- *   `KEEP_REF_STEP_IN` header for why they can't be derived locally here. `null` (the default)
- *   applies NO clipping, identical to every existing caller's prior behaviour.
- * @param {number} [mitreReach=0]
+ *   this arc's own first/last piece against. The SAME joint object is shared by both of the two
+ *   primitives that meet there, one calling it `jointStart` (the primitive that STARTS there -- uses
+ *   `keepRefAsStart`) and the other `jointEnd` (ENDS there -- uses `keepRefAsEnd`); the two keepRefs
+ *   are on OPPOSITE sides of the line by construction (each primitive keeps only its own half of the
+ *   mitre cut) -- see primitive-ribbon.js's own `KEEP_REF_STEP_IN` header for why they can't be
+ *   derived locally here. `null` (the default) applies NO clipping, identical to every existing
+ *   caller's prior behaviour (along-path.js's own arc dispatch, which handles its own corners
+ *   externally and never wants this).
  * @returns {{ pieces: Array, nextId: number }}
  */
 export function voussoirPieces(
   cx, cy, r, theta1, theta2, halfWidth, radialSign, pitch, nominalJoint, set, seed, pieceId, startId,
-  extendStartIn = 0, extendEndIn = 0, jointStart = null, jointEnd = null, mitreReach = 0,
+  jointStart = null, jointEnd = null,
 ) {
   const direction = Math.sign(theta2 - theta1) || 1;
   const totalArcLength = r * Math.abs(theta2 - theta1);
@@ -127,31 +117,52 @@ export function voussoirPieces(
   // T12's own single_soldier case, where the fillet sits immediately against the waist arc with no
   // straight run between them at all) -- tracked as remaining item 76 scope, not shipped broken.
   if (!isArcFeasible(r, radialSign, halfWidth)) return { pieces: [], nextId: startId };
-  const { lengths, jointWidth } = planPieceLengths(totalArcLength, pitch, nominalJoint, FILL_FRACTIONS);
 
-  const pieces = [];
-  let theta = theta1, nextId = startId, sAlong = 0;
-  for (let i = 0; i < lengths.length; i++) {
-    const dTheta = (lengths[i] / r) * direction;
-    const thetaEnd = theta + dTheta;
-    const isFirst = i === 0, isLast = i === lengths.length - 1;
-    const sEnd = sAlong + lengths[i];
-    // the extension is in ANGLE here (so it moves uniformly in arc-LENGTH regardless of radius),
-    // converted from the caller's own linear inches the same way `dTheta` converts piece length --
-    // CAPPED at MAX_EXTEND_ANGLE (H23 item 76, primitive-ribbon.js): a joint newly exposed by a
-    // DROPPED neighbour (not a declared template corner) can land unusually far from this piece's
-    // own nominal edge, and `extendStartIn`/`extendEndIn` are a single linear distance shared by
-    // every primitive regardless of radius -- on a SMALL-radius arc that same linear distance can
-    // convert to well over 90deg of extension (MEASURED: 1.925in / 1.055in radius = 104.6deg),
-    // sweeping the oversized sampling range back past the arc's own start, long before the clip
-    // below ever runs. The cap keeps the OVERSIZED-then-clipped technique sane; a joint that
-    // genuinely needs more reach than this is a template-geometry case worth a fresh look, not
-    // something to paper over with an ever-larger extension.
-    const extendAngle = (in_) => Math.min(in_ / r, MAX_EXTEND_ANGLE);
-    const sampleThetaStart = isFirst ? theta - extendAngle(extendStartIn) * direction : theta;
-    const sampleThetaEnd = isLast ? thetaEnd + extendAngle(extendEndIn) * direction : thetaEnd;
+  // H23 item 76 (advisor review, "the waist's first voussoir should meet on the mitre line"): plan
+  // this arc across its TRUE corner-to-corner reach in ANGLE-space, the same "take whichever of a
+  // joint's own `o`(d0)/`q`(d1) is the MORE EXTREME" treatment primitive-ribbon.js's own `linePieces`
+  // applies to straight runs (see that function's own header, and `planCornerRun`'s in piece-plan.js,
+  // for why: an ordinary declared corner's `o`/`q` are close together, but a corner exposed by a
+  // DROPPED neighbour -- an infeasible fillet, exactly this item's own "waist" case -- can need `o`
+  // far more reach than `q` or vice versa; using only one left the whole excess for one piece to
+  // absorb). Convert each to an angle relative to this arc's own centre (never a tangent -- an arc
+  // has no single fixed one), unwrapped onto THIS arc's own branch (atan2's own [-pi,pi] wrap could
+  // otherwise land a point's angle a full turn away from theta1/theta2).
+  const thetaAt = (pt) => Math.atan2(pt.y - cy, pt.x - cx);
+  const unwrap = (theta, ref) => {
+    let t = theta;
+    while (t - ref > Math.PI) t -= 2 * Math.PI;
+    while (t - ref < -Math.PI) t += 2 * Math.PI;
+    return t;
+  };
+  // `progress` is a monotonically-increasing (in this arc's own declared direction) scalar, so "more
+  // extreme" reduces to a plain min/max regardless of whether direction is +1 or -1 -- same trick
+  // `linePieces` uses via its own tangent projection.
+  const progress = (pt, ref) => (unwrap(thetaAt(pt), ref) - ref) * direction;
+  // `trustO` (computed once per joint in primitive-ribbon.js's own ribbonPieces, see its header):
+  // false when `o` is a FICTITIOUS point (a primitive dropped between this joint's own two
+  // neighbours is still feasible at d0) -- fall back to `q` alone for that side's own sizing, same
+  // as `linePieces`' own identical fallback.
+  const startProgO = jointStart && jointStart.trustO ? progress(jointStart.point, theta1) : null;
+  const startProgQ = jointStart ? progress(jointStart.q, theta1) : 0;
+  const endProgO = jointEnd && jointEnd.trustO ? progress(jointEnd.point, theta2) : null;
+  const endProgQ = jointEnd ? progress(jointEnd.q, theta2) : 0;
+  const thetaStart = theta1 + (startProgO === null ? startProgQ : Math.min(startProgO, startProgQ)) * direction;
+  const hiTheta = theta1 + (startProgO === null ? startProgQ : Math.max(startProgO, startProgQ)) * direction; // jointStart's own farthest-forward reach -- past this, no piece can ever be clipped
+  const thetaEnd = theta2 + (endProgO === null ? endProgQ : Math.max(endProgO, endProgQ)) * direction;
+  const loTheta = theta2 + (endProgO === null ? endProgQ : Math.min(endProgO, endProgQ)) * direction; // jointEnd's own farthest-backward reach
+  const effectiveArcLength = r * Math.abs(thetaEnd - thetaStart);
+  const { lengths, jointWidth } = effectiveArcLength > 1e-6
+    ? planCornerRun(effectiveArcLength, pitch, nominalJoint, FILL_FRACTIONS)
+    : { lengths: [], jointWidth: nominalJoint };
+  const CLIP_EPS_ANGLE = Math.min(0.02 / r, MAX_EXTEND_ANGLE); // see primitive-ribbon.js's own CLIP_EPS_IN
+
+  // build ONE piece's own clipped polygon for an arbitrary [thetaA,thetaB] span -- shared by the
+  // normal per-piece build below AND the merge-slivers pass that follows it.
+  const buildPiece = (thetaA, thetaB, isVeryFirst, isVeryLast) => {
+    const sampleThetaStart = isVeryFirst ? thetaA - CLIP_EPS_ANGLE * direction : thetaA;
+    const sampleThetaEnd = isVeryLast ? thetaB + CLIP_EPS_ANGLE * direction : thetaB;
     const nSeg = Math.max(1, Math.ceil(Math.abs(sampleThetaEnd - sampleThetaStart) / MAX_SEGMENT_ANGLE));
-
     const outerPts = [];
     for (let k = 0; k <= nSeg; k++) {
       const t = sampleThetaStart + ((sampleThetaEnd - sampleThetaStart) * k) / nSeg;
@@ -162,21 +173,46 @@ export function voussoirPieces(
       const t = sampleThetaStart + ((sampleThetaEnd - sampleThetaStart) * k) / nSeg;
       innerPts.push({ x: cx + rInner * Math.cos(t), y: cy + rInner * Math.sin(t) });
     }
-
     let polygon = [...outerPts, ...innerPts];
     // keepRefAsStart/keepRefAsEnd (computed by the caller, primitive-ribbon.js, from the joint's own
     // point `o` plus a tangent step AT this arc's own radius there) -- not derived locally, since a
     // fixed step from theta1/theta2 only matches `o` when d0=0 (see primitive-ribbon.js's own
     // KEEP_REF_STEP_IN header for the measured reason that breaks on any deeper row).
-    if (jointStart && (isFirst || sAlong < mitreReach)) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
-    if (jointEnd && (isLast || totalArcLength - sEnd < mitreReach)) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
+    // clip-eligibility mirrors `linePieces`' own `s < hiStart` / `sEndPiece > loEnd`: a piece can only
+    // ever be touched by a joint's own mitre line while it hasn't yet passed that joint's own farthest
+    // reach (`hiTheta`/`loTheta`, the OTHER of its o/q pair) -- comparing PROGRESS (raw angle times
+    // `direction`, same monotonic measure used above) keeps this correct regardless of `direction`.
+    // `+ 1e-9`: see primitive-ribbon.js's own identical epsilon -- guarantees the very first/last
+    // piece is always checked even when a `trustO:false` fallback made hiTheta/loTheta coincide with
+    // thetaStart/thetaEnd exactly.
+    if (jointStart && thetaA * direction < hiTheta * direction + 1e-9) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
+    if (jointEnd && thetaB * direction > loTheta * direction - 1e-9) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
+    return polygon;
+  };
+
+  const spans = [];
+  let theta = thetaStart;
+  for (let i = 0; i < lengths.length; i++) {
+    const dTheta = (lengths[i] / r) * direction;
+    const pieceThetaEnd = theta + dTheta;
+    spans.push({ sA: theta, sB: pieceThetaEnd });
+    theta = pieceThetaEnd + (jointWidth / r) * direction;
+  }
+  mergeSlivers(
+    spans,
+    (thetaA, thetaB) => Math.abs(signedArea(buildPiece(thetaA, thetaB, thetaA === thetaStart, thetaB === thetaEnd))),
+    pitch * halfWidth * 2,
+  );
+
+  const pieces = [];
+  let nextId = startId;
+  for (let i = 0; i < spans.length; i++) {
+    const { sA, sB } = spans[i];
+    const polygon = buildPiece(sA, sB, i === 0, i === spans.length - 1);
     const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
     const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
     pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
     nextId++;
-
-    sAlong = sEnd + jointWidth;
-    theta = thetaEnd + (jointWidth / r) * direction;
   }
   return { pieces, nextId };
 }

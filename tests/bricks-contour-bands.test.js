@@ -382,24 +382,19 @@ describe('bricksContourBands — the Frame tool', () => {
       // band depth: a band-width square inevitably crosses several unrelated, perfectly normal
       // mortar joints further from the tip.
       const GRID = 40, sqSize = 0.15;
-      // A KNOWN, bounded residual, RE-MEASURED and RE-TRACED precisely under H23 item 76's own
-      // primitive-ribbon.js rebuild (a different, larger root cause than the item-74 one this
-      // comment originally described, which no longer applies the same way -- the item-76 rebuild
-      // replaced that per-piece clip machinery entirely): `planPieceLengths` (piece-plan.js, shared
-      // by every primitive's own call) can place a SHORT fractional remainder piece (as small as
-      // 1/4 pitch, FILL_FRACTIONS) at the very END of a primitive's own run -- and since EVERY
-      // primitive here is planned INDEPENDENTLY (the architecture's own explicit design: "no band
-      // depends on ... only the original primitives + d"), the TWO primitives meeting at a corner
-      // can each have a DIFFERENT-length piece immediately adjacent to it (one a full pitch, the
-      // other a short fractional remainder) -- MEASURED directly on this exact square/single_soldier
-      // case: the bottom edge's own first piece reaches a full 0.2in from the corner, the left
-      // edge's own LAST piece (a 0.1in fractional remainder) only reaches half that, leaving a real,
-      // geometric triangular gap between them bounded by that difference. A real fix needs the two
-      // primitives' own piece-planning to be aware of each other near a shared corner (a genuine
-      // cross-primitive coordination problem, not a quick patch) -- tracked, not silently papered
-      // over. 0.16 keeps real margin above the measured 0.14625 while still catching a materially
-      // worse regression (the old item-74 bug this threshold originally guarded measured 30-80%).
-      const maxVoidIn = 0.16;
+      // H23 item 76 cont. (advisor review, "plan both runs into a corner together"): the fractional-
+      // end-piece gap this threshold used to accommodate (0.16, re-measured at 0.14625 under the
+      // primitive-ribbon.js rebuild) is now FIXED at its own root cause, not just bounded -- each
+      // primitive's own piece-planning no longer runs independently of its two neighbours.
+      // `planCornerRun` (piece-plan.js) measures the TRUE reach to each corner's own mitre point
+      // (via `o`/`q`, see primitive-ribbon.js's own `linePieces` header) and plans a declared
+      // fractional piece at BOTH ends, not just the far one -- so the two primitives meeting at a
+      // corner now agree on where the corner actually is, instead of each independently landing
+      // wherever its own whole-pitch count happened to fall. RE-MEASURED directly on this exact
+      // square: worst void is 0.00375in, exactly ONE grid cell (sqSize/GRID) -- this measurement's
+      // own resolution floor, not a real geometric gap. 0.01 keeps a small margin above that floor
+      // while still catching a real regression (the original item-74 bug measured 30-80%).
+      const maxVoidIn = 0.01;
       for (const c of corners) {
         // scan along BOTH grid axes (rows and columns) for the longest CONTIGUOUS uncovered run --
         // a direct measurement of void WIDTH, not an aggregate coverage percentage.

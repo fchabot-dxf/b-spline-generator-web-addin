@@ -17769,3 +17769,169 @@ consumption of BRICK_PATTERNS (course/course-alternating map cleanly onto
 the per-band pattern concept already here; tile2d on a curved band is a
 genuinely open question de flagged) -- my own call, whenever I get to it,
 no pressure from de's side.
+
+---
+
+## H23 item 76 cont. -- fillet-junction split + corner cascade fixed: "plan
+both runs into a corner together", from the declared fraction set (f3)
+
+Advisor turn 522 dispatch (DM + formal pass, after reviewing the 12
+screenshots from the previous entry): "(1) FILLET JUNCTIONS: each fillet
+collapse leaves ONE big solid triangle... Split it into bricks... cap the
+piece area at 1.2x a brick; (2) BOTTOM-LEFT/TOP-LEFT corners... cascade of
+ever-smaller pieces... Plan both runs into a corner together so each
+corner gets one mitred end piece per run from the approved set (mitred
+3/4 / mitred 1/2 / king closer); nothing below 1/4." Both items share one
+root cause and one fix, covered here in full; concave clipping for the
+Wall remains the explicit next item, not started.
+
+**Root cause (MEASURED before touching anything).** `linePieces`/
+`voussoirPieces` always planned a run starting FLUSH at its own nominal
+s=0 (via `planPieceLengths`, which only ever sizes a FRACTIONAL piece at
+the FAR end, never the near one), then relied purely on extend+clip
+against the corner's own mitre line to absorb whatever mismatch existed.
+For an ordinary declared corner this produces a smooth diagonal
+"staircase" of shrinking pieces near the corner -- fine, even desirable
+(a real mitred masonry detail) -- but it has no declared FLOOR or
+CEILING: (1) where a neighbour primitive DROPPED OUT (an infeasible
+fillet), the corner's own true mitre point can sit far past where the
+flush-start piece sequence ever reaches, so the clip dumps the ENTIRE gap
+into ONE end piece, stretched into an oversized trapezoid (MEASURED: up
+to 2.95x a nominal brick's own area, on the shoulder-fillet corners
+exactly as the advisor described); (2) depending on where a primitive's
+own independent whole-pitch count happens to land relative to the SAME
+mitre line, the staircase can instead taper to an arbitrarily thin sliver
+before the clip stops (MEASURED: as small as 0.03% of a nominal brick's
+own area -- a near-zero-area triangle), purely by chance of phase, which
+is why it hit the bottom-left/top-left corners and not bottom-right/
+top-right on the exact same board.
+
+**The fix: measure the TRUE corner-to-corner reach FIRST, plan a
+fractional piece at BOTH ends.** Every joint already computes `o` (its
+own point at this row's OUTER edge, d0) and `q` (at the DEEPEST edge, d1)
+to build the mitre line -- previously only kept for the line's own
+direction. `linePieces` now projects both onto its own primitive's fixed
+tangent (an arc projects both to an angle instead, via the same
+"progress" trick, direction-aware so `+1`/`-1` winding both work);
+`voussoirPieces` mirrors it in angle-space. Whichever of `o`/`q` is the
+MORE EXTREME (needs MORE material) on each side becomes that side's own
+TRUE boundary -- not just for the end piece's own clip, but for the whole
+run's own EFFECTIVE LENGTH, planned by a new `planCornerRun`
+(piece-plan.js, PORTABLE, shared by both files): the SAME declared
+fraction set (`FILL_FRACTIONS` -- literally the CORNER_PIECES' own
+lengthFraction values: kingCloser=1, mitredThreeQuarter=0.75,
+mitredHalf=0.5, floored at 0.25) chosen independently at EACH end, whole
+pieces filling in between, the small remaining mismatch absorbed by
+widening every joint slightly -- `planPieceLengths`' own existing trick,
+just applied at both ends now instead of one. The whole wedge near a
+corner is now covered by PROPERLY SIZED pieces by construction, not by
+hoping a generic clip lands somewhere reasonable -- "plan both runs into
+a corner together", exactly as dispatched. Hand-verified `planCornerRun`
+against 8 cases (short run, exact multiples, odd remainders, a
+"used-to-be-one-oversized-piece" case) before wiring it in: every case
+reconstructs to the input length with zero error, every piece lands in
+[0.25,1.0]x pitch.
+
+**A second-order bug this surfaced (NOT present before, specific to
+this turn's own fix): `o` can be FICTITIOUS.** `o`/`q` are computed by
+intersecting a joint's own two LIVE neighbours directly, skipping
+whatever dropped out between them -- correct when the dropped primitive
+is ALSO infeasible at d0 (it was never really there at that depth
+either), WRONG when it's still feasible at d0 and only drops before d1 (a
+"transitional" primitive within THIS one row): `o` then intersects two
+primitives that, at the TRUE outer edge, are not actually adjacent at all
+(the transitional one is still physically between them), landing past the
+real board boundary. MEASURED directly: a shoulder fillet feasible at
+d0=0 but not d1=0.75 produced an `o` 0.68in past the true edge, and the
+new corner-aware sizing (trusting `o` for sizing, which the ORIGINAL
+extend-then-clip design never needed to) built a piece reaching outside
+the board -- caught immediately by the existing centroid-inside-board
+test (`bricks-real-template-contours.test.js`), not shipped unnoticed.
+Fixed with a `trustO` flag computed once per joint in `ribbonPieces`:
+false whenever any primitive skipped between a joint's own two
+neighbours is still feasible at d0, in which case that side falls back
+to `q` alone for sizing (same as the very first, simpler version of this
+fix, before `o` was added for the fillet-collapse case) -- the common
+case (no drop, or the dropped primitive is infeasible at BOTH d0 and d1,
+the vast majority) keeps trusting `o`, which is what the original
+fillet-collapse fix actually needed.
+
+**The 1.2x ceiling and 0.25 floor genuinely conflict in rare cases --
+documented, not hidden.** A new shared `mergeSlivers` (piece-plan.js)
+absorbs any piece whose own CLIPPED (not just planned) area falls below
+the 0.25 floor into its immediate neighbour, re-clipping the merged span
+as one piece -- necessary because the clip itself, not just the plan, can
+still trim an individual piece to a sliver even when every PLANNED length
+is in bounds. MEASURED: a naive "merge forward until clear" loop could
+chain through several genuinely tiny consecutive slivers (each still
+under 0.25 combined) and, on the merge that finally cleared the floor,
+swallow an already-normal ~1.0 piece whole, landing at 1.27x -- over the
+advisor's own numbered cap. Fixed: `mergeSlivers` now refuses any merge
+that would push the result above the 1.2x ceiling, treating the explicit
+numbered cap as the harder constraint of the two (an oversized piece is
+what item 1 was specifically about). Re-measured across all 4 template/
+preset combinations: ceiling violations 0/0/0/0 (was up to 2.95x before
+this entry); floor violations are 0 for single_soldier (both templates)
+and bounded to 12-15 pieces per three_band case, all in [0.117,0.230] --
+nowhere near the original near-zero slivers (0.0003-0.0033), and never
+silently discarded -- this residual is the one place the advisor's own
+two stated bounds cannot both be satisfied by adjacent-pair merging alone
+(a genuinely harder redesign -- pulling from a NON-adjacent neighbour, or
+re-splitting the whole corner run -- would be needed to close it
+further; not attempted this turn, flagged here rather than hidden).
+
+**The item-74/76 fractional-end-piece finding from the PREVIOUS entry is
+now actually FIXED, not just bounded.** That entry's own threshold
+(0.16in, documented as a known residual) was RE-MEASURED after this
+turn's fix: worst void on the same test square is now 0.00375in --
+exactly one grid cell of the test's own 40x40 sampling grid, i.e. the
+measurement's own resolution floor, not a real gap. Tightened the
+threshold to 0.01 and rewrote the test's own comment to describe the
+actual fix instead of the old unfixed residual (`tests/bricks-contour-
+bands.test.js`).
+
+**One existing test needed updating, not just re-passing.**
+`tests/bricks-scale-grout.test.js`'s own "scale=2 doubles a row's own
+cross-width" check was failing for a real reason: it picked `bricks[0]`
+(now ALWAYS corner-fit by design, not a plain scaled whole piece) --
+switched to index 10 (safely past either run's own corner-affected
+pieces at either scale) with a comment explaining why index 0 stopped
+being representative. Full suite re-run clean after every change, not
+just at the end: 199 files / 3636 tests green.
+
+**Screenshots -- new crops, framed per the advisor's own note ("your
+fillet close-up crops are mis-framed, mostly empty canvas").** The
+previous entry's single-shoulder crops only showed ONE of the two
+shoulder fillets per side and the headless-Chrome window size didn't
+match the SVG's own computed pixel dimensions (leaving most of the
+capture empty) -- both fixed: new crops cover the FULL waist (both
+shoulder fillets + the arc between, viewBox measured off the real
+fillet/waist circle centres), and `--window-size` is now set per-image to
+the SVG's own exact width/height. T1+T12 x single_soldier+three_band x
+{full, left waist, right waist} = 12 images, all generated, viewed, and
+confirmed clean: no oversized triangle anywhere, every shoulder
+transitions through 2-4 properly-sized mitred pieces into the voussoir
+fan, exactly the fix the advisor asked for. Filenames: `item76b_
+template_{1,12}_{single_soldier,three_band}_{full,leftwaist,
+rightwaist}.png`, saved to shots/seatA/.
+
+Files: `core/bricks/piece-plan.js` (new `planCornerRun`, new
+`mergeSlivers`), `core/bricks/primitive-ribbon.js` (`linePieces`
+rewritten around true corner-to-corner reach + `trustO`; `jointBefore`
+now computes and carries `trustO`), `core/bricks/arc-voussoir.js`
+(`voussoirPieces` mirrors the same fix in angle-space; `extendStartIn`/
+`extendEndIn`/`mitreReach` params dropped, computed internally now --
+along-path.js's own unrelated call site, which never passed them, is
+unaffected), `tests/bricks-contour-bands.test.js` (threshold tightened
+0.16->0.01, comment rewritten), `tests/bricks-scale-grout.test.js`
+(piece-selection fix).
+
+Full suite: 199 files / 3636 tests green (vitest), re-run after every
+fix, not just once at the end.
+
+Not done this turn, explicitly deferred (advisor's own next item, "then
+concave clipping for the Wall"): not started, awaiting the advisor's
+review of this pass. Also still open, unrelated to this turn's own
+scope: the rare floor-vs-ceiling conflict documented above (12-15 pieces
+per three_band case land in [0.117,0.25), below the declared floor, by
+necessity not oversight).
