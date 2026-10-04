@@ -723,7 +723,8 @@ def provisional_diamond_top_hourglass_pinch_model(waist_reach_of_hw, corner_radi
 
 
 def provisional_narrow_head_arched_top_model(waist_reach_of_hw, corner_radius_top_of_hw, corner_radius_bottom_of_hw,
-                                              waist_center_y_of_hh, waist_radius_of_hw, top_inset_of_hw, arch_rise_of_hw):
+                                              waist_center_y_of_hh, waist_radius_of_hw, top_inset_of_hw, arch_rise_of_hw,
+                                              waist_opening_frame_thickness_in=None):
     """H23 item 78b: Template 10's NEW shape, until its goldens are recorded live -- a PROVISIONAL model
     (never none), replacing the old `provisional_arched_top_model(template_1, ...)` one. Fred's own hand
     reconstruction: a narrow vertical-sided head (`topInset`) topped by an arch (`archRise`), over the
@@ -740,6 +741,15 @@ def provisional_narrow_head_arched_top_model(waist_reach_of_hw, corner_radius_to
     waist/hip arc centres and radii, and the arch's own radius, each to within the dump's own 4-decimal
     rounding (confirmed, not assumed -- see that script's own console output / WORK-LOG-fb-app.md's H23
     item 78b entry). Marked `provisional` so nothing mistakes it for a fit.
+
+    H23 item 78c (the advisor's own size-aware fix, applied after a live Fusion build at 7x9 physically
+    merged the left/right bars -- MEASURED, WORK-LOG.md): `waist_opening_frame_thickness_in`, when given,
+    adds a `waistOpeningFtIn` CONST feature that `editor-shape-lattice-generator.js`'s own
+    `paramsFromShapeModel` reads to CLAMP `waistReach` so the waist's own opening never drops below
+    `FRAME_MIN_OPENING_IN` (0.25in) at the declared frame_thickness, evaluated against the REAL `hw` for
+    whatever board is being resolved -- narrows automatically at small boards (6x9, 7x9), leaves a board
+    where Fred's own declared `waist_reach_of_hw` is already safe (9x12) untouched. Optional and OFF by
+    default (`None`) so every OTHER caller of this function is unaffected.
     """
     base = provisional_diamond_top_hourglass_pinch_model(
         waist_reach_of_hw, corner_radius_top_of_hw, corner_radius_bottom_of_hw,
@@ -747,17 +757,17 @@ def provisional_narrow_head_arched_top_model(waist_reach_of_hw, corner_radius_to
     feats = {k: dict(v) for k, v in base["features"].items()}
     feats["topInset"] = {"hw": top_inset_of_hw, "hh": 0.0}
     feats["archRise"] = {"hw": arch_rise_of_hw, "hh": 0.0}
-    return {
-        "features": feats,
-        "fit": dict(base["fit"]),
-        "provisional": {
-            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-            "baseModel": "provisional_diamond_top_hourglass_pinch_model (Template 11's own side algebra)",
-            "waistReachOfHw": waist_reach_of_hw, "cornerRadiusTopOfHw": corner_radius_top_of_hw,
-            "cornerRadiusBottomOfHw": corner_radius_bottom_of_hw, "waistCenterYOfHh": waist_center_y_of_hh,
-            "waistRadiusOfHw": waist_radius_of_hw, "topInsetOfHw": top_inset_of_hw, "archRiseOfHw": arch_rise_of_hw,
-        },
+    provisional = {
+        "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+        "baseModel": "provisional_diamond_top_hourglass_pinch_model (Template 11's own side algebra)",
+        "waistReachOfHw": waist_reach_of_hw, "cornerRadiusTopOfHw": corner_radius_top_of_hw,
+        "cornerRadiusBottomOfHw": corner_radius_bottom_of_hw, "waistCenterYOfHh": waist_center_y_of_hh,
+        "waistRadiusOfHw": waist_radius_of_hw, "topInsetOfHw": top_inset_of_hw, "archRiseOfHw": arch_rise_of_hw,
     }
+    if waist_opening_frame_thickness_in is not None:
+        feats["waistOpeningFtIn"] = {"hw": 0.0, "hh": 0.0, "const": waist_opening_frame_thickness_in}
+        provisional["waistOpeningFrameThicknessIn"] = waist_opening_frame_thickness_in
+    return {"features": feats, "fit": dict(base["fit"]), "provisional": provisional}
 
 
 def provisional_shape_model(base_model, top_inset_of_depth):

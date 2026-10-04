@@ -1063,6 +1063,24 @@ export function paramsFromShapeModel(preset, model, region) {
   const disc = Math.sqrt(Math.max(0, S * S - f.notch * f.notch));
   const depth = Math.abs(S - disc - f.depth) <= Math.abs(S + disc - f.depth) ? S - disc : S + disc;
   const out = { waistReach: depth / hw, cornerRadius: f.cornerR / hw, waistRadius: f.waistR / hw, waistCenterY: f.waistCy / hh };
+  // H23 item 78c (Template 18, the advisor's own size-aware fix, not a 7x9 special case): a `const` feature
+  // `waistOpeningFtIn`, OPT-IN (every existing template's own model omits it, so this is a no-op for T1/T3/T4/
+  // T5/T10 -- confirmed, not assumed: it's read-only here, nothing writes it unless a template's own
+  // frame_shape_fit.py model sets it). When present, clamps `waistReach` so the waist's own OPENING (the gap
+  // between the left/right side bars' own outer edges at the pinch) never drops below FRAME_MIN_OPENING_IN
+  // (0.25in, the SAME constant frame-handles.js already declares and already enforces for Templates 1-5's own
+  // interactive waistReach DRAG -- duplicated here as a literal, not imported, since frame-handles.js imports
+  // FROM this file and the reverse would cycle) at the DECLARED default frame_thickness. MEASURED, not
+  // guessed: the live Fusion build (H23 item 78c, WORK-LOG.md) physically merged Template 18's own left/right
+  // bars at 7x9 because `hw*(1-waistReach) - frame_thickness` went NEGATIVE there (-0.024in) while staying
+  // safely positive at 9x12 (+0.430in) -- this clamp is evaluated against the REAL `hw` for whatever board is
+  // being resolved, so it narrows automatically at small boards and leaves a board where Fred's own declared
+  // value is already safe (9x12) completely untouched ("keep 9x12 as drawn").
+  if (f.waistOpeningFtIn != null) {
+    const FRAME_MIN_OPENING_IN = 0.25; // frame-handles.js's own declared constant, duplicated (see comment above)
+    const maxSafeWaistReach = 1 - (f.waistOpeningFtIn + FRAME_MIN_OPENING_IN / 2) / hw;
+    out.waistReach = Math.min(out.waistReach, maxSafeWaistReach);
+  }
   // T3 TAPERED HOURGLASS: a narrow-top model (frame_shape_fit.py `hourglass_narrow_top`) also carries the top
   // inset and the two corners separately (its cornerR / notch are then the HIP's: the full-width side, the one
   // the depth root above is for). Absent (Template 1): exactly the four params above.

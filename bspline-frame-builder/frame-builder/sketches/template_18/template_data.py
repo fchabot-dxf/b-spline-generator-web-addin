@@ -136,10 +136,17 @@ FRAME_FEATURES = COMMON_FRAME_FEATURES
 # `cornerRadiusTopOfHw` is 0.27692 (0.9in at 7x9), not Fred's own exact sketch value (0.10554,
 # 0.343in): his exact value is an UNDERCUT at frame_thickness=0.75in (bisected: clears at ~0.88in);
 # Fred approved this rounder shoulder, confirmed against the H23 item 78b-step-1 and 78c renders.
+# H23 item 78c (advisor's Option A, after the live 7x9 build physically merged the left/right bars --
+# MEASURED, WORK-LOG.md): "waistOpeningFrameThicknessIn" arms the size-aware waist-opening clamp
+# (frame_shape_fit.provisional_narrow_head_arched_top_model / editor-shape-lattice-generator.js's own
+# paramsFromShapeModel) at this template's own declared default frame_thickness (SKETCH_3_PARAMETERS
+# above, 0.75in) -- narrows waistReach automatically at small boards so the waist opening never closes
+# below FRAME_MIN_OPENING_IN, leaves 9x12 (already safe) untouched.
 FRAME_SHAPE_EXTRACTOR = "hourglass_narrow_arched_head"
 FRAME_PROVISIONAL_SHAPE = {
     "waistReachOfHw": 0.77292, "cornerRadiusTopOfHw": 0.27692, "cornerRadiusBottomOfHw": 0.39705,
     "waistCenterYOfHh": 0.27784, "waistRadiusOfHw": 0.21726, "topInsetOfHw": 0.41092, "archRiseOfHw": 0.19419,
+    "waistOpeningFrameThicknessIn": 0.75,
 }
 
 # H23 item 78c: hidden from the template picker until the Fusion phases are built and live-verified

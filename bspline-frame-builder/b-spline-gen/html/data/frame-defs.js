@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "68b92eac3620ee52be02c75c2ac15c712e9756a00cbb0e1ee2432eeec6571b65",
+  "sourceHash": "dae72ee57adf76dd8929ee04a3e0dfb6c0241fbd464bb003a8e40c2e8458da5a",
   "templates": [
     {
       "features": [
@@ -13189,6 +13189,11 @@ export default {
             "hh": 0.27784,
             "hw": 0.0
           },
+          "waistOpeningFtIn": {
+            "const": 0.75,
+            "hh": 0.0,
+            "hw": 0.0
+          },
           "waistR": {
             "hh": 0.0,
             "hw": 0.21726
@@ -13210,6 +13215,7 @@ export default {
           "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
           "topInsetOfHw": 0.41092,
           "waistCenterYOfHh": 0.27784,
+          "waistOpeningFrameThicknessIn": 0.75,
           "waistRadiusOfHw": 0.21726,
           "waistReachOfHw": 0.77292
         }

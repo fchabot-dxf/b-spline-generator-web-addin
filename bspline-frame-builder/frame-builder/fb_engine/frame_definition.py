@@ -260,10 +260,16 @@ def template_shape_model(template_id, frame, goldens_dir):
             # "waistCenterYOfHh": cy, "waistRadiusOfHw": wr, "topInsetOfHw": ti, "archRiseOfHw": ar}.
             # Checked BEFORE "waistReachOfHw" below (T11's own plain 5-key dict): this one is a superset
             # (+topInsetOfHw +archRiseOfHw), same "more specific dict wins first" rule T17/T14/T15 use.
+            # H23 item 78c (Template 18 only): an OPTIONAL extra key, "waistOpeningFrameThicknessIn" --
+            # when a template's own provisionalShape declares it, it's forwarded so the size-aware
+            # waist-opening clamp (editor-shape-lattice-generator.js's own paramsFromShapeModel) is armed;
+            # every other caller of this dict (T10 itself) simply omits the key, so `.get()` returns None
+            # and the clamp stays off for them, unchanged.
             from fb_engine.frame_shape_fit import provisional_narrow_head_arched_top_model
             return provisional_narrow_head_arched_top_model(
                 prov["waistReachOfHw"], prov["cornerRadiusTopOfHw"], prov["cornerRadiusBottomOfHw"],
-                prov["waistCenterYOfHh"], prov["waistRadiusOfHw"], prov["topInsetOfHw"], prov["archRiseOfHw"])
+                prov["waistCenterYOfHh"], prov["waistRadiusOfHw"], prov["topInsetOfHw"], prov["archRiseOfHw"],
+                waist_opening_frame_thickness_in=prov.get("waistOpeningFrameThicknessIn"))
         if "waistReachOfHw" in prov:
             # T11 HOURGLASS ROOF: also a shape of its own (no base template -- a gable roof over
             # Template 1's own shoulder/waist/hip pinch, nothing earlier fits both parts at once):

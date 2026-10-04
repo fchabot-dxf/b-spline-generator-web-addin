@@ -84,7 +84,10 @@ describe('frame-defs (generated) — schema', () => {
     // the provisional shim.
     // F30 item 3 (Template 12/13, the taper copies): every base feature kept, plus one new scale-invariant
     // `taperAngle` -- the only extra either preset's own provisional model carries for these two.
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise', 'taperAngle'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [], diamondTopHourglass: [], diamondTopHourglassPinch: [], archedFunnel: [], tulip: [], sandTimer: [], flask: [] };
+    // H23 item 78c (Template 18 only): `waistOpeningFtIn`, a scale-invariant `const` feature arming the
+    // size-aware waist-opening clamp (editor-shape-lattice-generator.js's own paramsFromShapeModel) --
+    // every other hourglass-preset template's own model omits it.
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise', 'taperAngle', 'waistOpeningFtIn'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [], diamondTopHourglass: [], diamondTopHourglassPinch: [], archedFunnel: [], tulip: [], sandTimer: [], flask: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);
