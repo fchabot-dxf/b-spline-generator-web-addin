@@ -3068,6 +3068,10 @@
              everything else here is the "common controls every tool shares" main/brick-panel.js's own
              header already describes. -->
         <aside class="editor-layers-panel" id="editorBrickPanel" style="display:none;">
+          <!-- Fred (2026-10-04): Brick-tab settings only mark the layout pending (main/brick-panel.js
+               BRICK_COMMIT 'generate'); this pinned Generate is the one thing that re-lays it. Same
+               shared sticky-actions slot + cad-btn-primary as the Lattice panels' own Generate. -->
+          <div class="sticky-actions"><button type="button" id="brickGenerate" class="cad-btn cad-btn-primary" style="width:100%; height:32px; border-radius:3px; font-weight:700;">Generate</button></div>
           <div class="layers-header"><span>Brick</span></div>
           <div style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;">
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
