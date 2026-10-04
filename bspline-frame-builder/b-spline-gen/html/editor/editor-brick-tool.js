@@ -242,15 +242,28 @@ function notifyBricksGenerated(settings) {
  *  corners (its own un-mitred "plain point" path). An 'L' primitive is
  *  already a straight edge (its own two endpoints are enough); an 'A' is
  *  subdivided into ARC_STEPS points so a curved frame edge still gets a
- *  reasonably smooth polyline approximation, not one giant straight chord. */
+ *  reasonably smooth polyline approximation, not one giant straight chord.
+ *
+ * OFF-BY-ONE FIX (f3, confirmed against outlineDefects' own notTangent
+ * check): `sil.corners`' OWN declared convention is "index i = the joint
+ * BETWEEN primitive i and primitive i+1" (declaredMiterJointIndices) -- the
+ * first version of this function marked index i as the joint BEFORE
+ * primitive i (between i-1 and i), one position early. MEASURED to leave a
+ * real, visible void at T1 7x9's own bottom-left corner (its own high
+ * symmetry meant the shifted index mostly still landed on SOME real corner,
+ * just the wrong one of an equivalent pair -- why only one of four broke,
+ * not all four). Fixed by marking the corner AFTER primitive i's own points
+ * are appended, not before; a corner declared at the LAST primitive (i =
+ * primitives.length-1, "the joint after the last, back to the first") wraps
+ * to index 0 via the final `% points.length`, since this function never
+ * emits a separate closing point for primitive 0's own repeated start. */
 const ARC_STEPS = 16;
 
 export function primitivesToPolyline(primitives, corners) {
   const cornerSet = new Set(corners || []);
   const points = [];
-  const cornerIndices = [];
+  const rawCornerIndices = [];
   (primitives || []).forEach((prim, i) => {
-    if (cornerSet.has(i)) cornerIndices.push(points.length);
     if (prim.type === 'A') {
       for (let k = 0; k < ARC_STEPS; k++) {
         const t = prim.theta1 + (prim.dTheta * k) / ARC_STEPS;
@@ -259,7 +272,9 @@ export function primitivesToPolyline(primitives, corners) {
     } else {
       points.push({ x: prim.p0.x, y: prim.p0.y });
     }
+    if (cornerSet.has(i)) rawCornerIndices.push(points.length);
   });
+  const cornerIndices = points.length ? rawCornerIndices.map((idx) => idx % points.length) : [];
   return { points, cornerIndices };
 }
 

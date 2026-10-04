@@ -10,22 +10,20 @@
  * technique tests/frame-parity-app.test.js already uses to drive frameCutProfile without a live
  * editor. No synthetic hourglass stand-in: this is T1's and T12's own real, built geometry.
  *
- * CORNER-INDEX FIX, flagged separately (not this item's own scope -- it's the adapter's, not
- * core/bricks'): `sil.corners` (frameContourSilhouette's declared field, built via
- * declaredMiterJointIndices) uses OUTLINEDEFECTS' OWN "index i = the joint BETWEEN primitive i and
- * primitive i+1" convention (confirmed directly against outlineDefects' own notTangent check,
- * editor-shape-lattice-generator.js) -- but `primitivesToPolyline` (both this file's own local copy
- * below AND the real one on the fb-app branch, editor-brick-tool.js, confirmed identical) marks a
- * corner index `i` as "the START of primitive i" = the joint BEFORE primitive i -- one position
- * off. MEASURED directly: T1 7x9's raw `sil.corners` fed unmodified through `primitivesToPolyline`
- * left a real, visible void at the board's own bottom-left corner (shots/seatA/item74_t1_bl_zoom.png);
- * shifting every corner by +1 (`(c + 1) % primitives.length`) closed it exactly, with every other
- * corner still landing cleanly (T1's own high symmetry means the un-shifted indices mostly still
- * land ON some real corner, just the WRONG one of an equivalent pair -- which is why only one of
- * the four corners visibly broke, not all four). This test applies that +1 correction locally so it
- * verifies core/bricks' OWN "corners only at declared corner indices" contract in isolation from
- * the separate adapter bug -- which belongs to editor-brick-tool.js / contour-from-frame.js
- * (fb-app), not here, and is reported to the advisor/de directly rather than fixed in this file.
+ * CORNER-INDEX FIX -- FIXED (de, F35 item 3, advisor-confirmed): `sil.corners`
+ * (frameContourSilhouette's declared field, built via declaredMiterJointIndices) uses
+ * OUTLINEDEFECTS' OWN "index i = the joint BETWEEN primitive i and primitive i+1" convention
+ * (confirmed directly against outlineDefects' own notTangent check, editor-shape-lattice-
+ * generator.js) -- the real `primitivesToPolyline` (editor-brick-tool.js, fb-app branch) marked a
+ * corner index `i` as "the START of primitive i" = the joint BEFORE primitive i, one position off.
+ * MEASURED directly: T1 7x9's raw `sil.corners` fed unmodified left a real, visible void at the
+ * board's own bottom-left corner (shots/seatA/item74_t1_bl_zoom.png). FIXED in editor-brick-tool.js
+ * by marking the corner AFTER a primitive's own points instead of before (wrapping the last
+ * primitive's "after" back to index 0) -- `realContour()` below now imports and calls that real,
+ * fixed function directly, no local +1 workaround needed any more. The LOCAL `primitivesToPolyline`
+ * copy just below is kept ONLY for the "MUTATION CHECK" test at the bottom of this file, which
+ * deliberately demonstrates the ORIGINAL bug's own real effect (off-by-one, unshifted) as a
+ * permanent regression record -- it is never used for the "is the geometry good" tests above it.
  */
 import { describe, it, expect } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
@@ -34,13 +32,16 @@ import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/ht
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
 import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { primitivesToPolyline as primitivesToPolylineFixed } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const SET = BRICK_SETS[0];
 const ARC_STEPS = 16; // matches editor-brick-tool.js's own ARC_STEPS exactly
 
-/** A local copy of editor-brick-tool.js's own primitivesToPolyline (fb-app branch) -- see this
- *  file's own header for why `corners` is shifted by +1 here (the adapter's own bug, not core/bricks'). */
-function primitivesToPolyline(primitives, corners) {
+/** The ORIGINAL, deliberately off-by-one copy of editor-brick-tool.js's own primitivesToPolyline --
+ *  kept ONLY so the "MUTATION CHECK" test below can demonstrate the bug it fixed, as a permanent
+ *  regression record. Every OTHER test in this file uses the real, fixed `primitivesToPolylineFixed`
+ *  import instead (see this file's own header). */
+function primitivesToPolylineBuggy(primitives, corners) {
   const cornerSet = new Set(corners || []);
   const points = [], cornerIndices = [];
   (primitives || []).forEach((prim, i) => {
@@ -78,8 +79,7 @@ function realContour(templateId, widthIn, heightIn) {
   const frame = { defs: FRAME_DEFS, record, board: { widthIn, heightIn } };
   const sil = frameContourSilhouette(frame, 0, 0);
   if (sil.error) throw new Error(`${templateId} ${widthIn}x${heightIn}: frameContourSilhouette failed (${sil.error})`);
-  const correctedCorners = sil.corners.map((c) => (c + 1) % sil.primitives.length);
-  return primitivesToPolyline(sil.primitives, correctedCorners);
+  return primitivesToPolylineFixed(sil.primitives, sil.corners);
 }
 
 describe('bricksContourBands on REAL template geometry (H23 item 74, convex + concave arcs)', () => {
@@ -176,7 +176,7 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
     const record = normalizeFrameRecord({ templateId: 'template_1' });
     const frame = { defs: FRAME_DEFS, record, board: { widthIn: 7, heightIn: 9 } };
     const sil = frameContourSilhouette(frame, 0, 0);
-    const { points, cornerIndices } = primitivesToPolyline(sil.primitives, sil.corners); // NOT shifted
+    const { points, cornerIndices } = primitivesToPolylineBuggy(sil.primitives, sil.corners); // the ORIGINAL bug, for posterity
     const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, seed: 1 });
     const distPointToSeg = (p, a, b) => {
       const dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy;

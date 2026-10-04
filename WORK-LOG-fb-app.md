@@ -9209,3 +9209,122 @@ my own change added no new tests, a one-line HTML control with no new logic).
 
 Commit, push, pass back with the Scissors/Stripe finding as an explicit question for the advisor:
 build the spine+regenerate architecture now as its own item, or hold it for a dedicated pass.
+
+
+### F35 item 3: brick elements as declared spine + settings (Scissors/Stripe land) + a real corner-index bug fix
+
+Advisor's decision after item 2's own scoping question: build the spine+regenerate architecture now.
+Dispatch: each brick element = `{spine, tool, settings}`, bricks DERIVED (never hand-edited,
+regenerated from spine+settings on any change), tagged like the lattice's owned-elements convention,
+Scissors = the editor's cut on the spine -> two elements each regenerating independently, Stripe =
+split into A/B/C runs each its own settings variant, undo through commitCutEdit, persist in
+P.editorSvg like the rest, tests for regenerate determinism + cut + stripe counts.
+
+**Scope, decided before writing code (Wall/Frame explicitly excluded, not an oversight):** per the
+dispatch's own wording, Wall/Frame's "spine" IS the live board/frame contour itself, not a drawn
+element -- there's nothing there for a user to tap with Scissors. Only BRUSH strokes are genuine
+user-drawn geometry with no other source of truth, so only Brush becomes a declared element this
+item; Wall/Frame keep F35 item 1's own fire-and-forget regeneration (regenerate everything fresh on
+each button click), unchanged.
+
+**Architecture.** A Brush stroke's spine is no longer baked into bricks and discarded -- it survives
+as real, plain `<line>` segments (`BRICK_ELEMENT_ATTR` groups every segment of one stroke;
+`BRICK_SETTINGS_ATTR` is that stroke's own settings SNAPSHOT, JSON via svg.js's real `attr()` ->
+`setAttribute()`, which escapes correctly on its own). A plain `<line>` is ALREADY `isCuttable`
+(editor-cut-tool.js) with ZERO changes needed there -- Scissors/Stripe are two new Brick-tab buttons
+that just call `editor.setMode('cut')` / `editor.setMode('stripe')`, the EXISTING, completely
+unmodified editor modes, reused verbatim rather than reimplemented. The new work is entirely in
+`regenerateOwnedBrickElements(editor)`, triggered by a new `editorCommit` CustomEvent dispatched from
+`editor-commit.js`'s own shared `commitEdit()` (BEFORE the undo snapshot is taken, so a reactive
+regeneration's own DOM changes land in the SAME undo step as whatever cut/stripe/move triggered it --
+same declared-bridge convention as layers.js's own `layer-tooling-commit`).
+
+**The merge/split semantics, the part that needed real thought:** a plain Scissors cut leaves two
+pieces still touching (cutAtNoCommit clones every attribute, including the settings snapshot) --
+`reconstructChains` (the one pure, exported, unit-tested function) merges geometrically CONTIGUOUS
+plain segments back into ONE chain, so a bare cut with no further action changes nothing visually
+(feeding bricksAlongPath the full merged polyline, not two short separate calls, is what keeps its
+own corner/mitre handling correct across what were originally several drag-point segments -- the SAME
+reasoning as item 1's own cornerIndices fix). Dragging one piece away breaks that contiguity, so the
+NEXT regenerate pass naturally produces two independent chains, each following its own piece --
+"cut -> two elements, each regenerating independently" in the sense that actually matters. A STRIPED
+segment (carries editor-stripe-tool.js's own `STRIPE_ATTR`, "one id per run") never merges with a
+neighbour, striped or not -- each is its own chain, cycling a style variant by its own position in
+the run. The one already-real 2-way style distinction core/bricks/ gives a Brush stroke today (no 2nd
+declared BRICK_SETS entry exists yet to vary SET per run) is bricksAlongPath's own `profile` ('bricks'
+vs 'continuous') -- a declared cycle array, not a hand-rolled toggle, so a future 3rd variant is one
+more entry, not new branching logic.
+
+**A real finding, caught live, not assumed away:** my first live pass striped only 2 of a 4in
+stroke's own inches -- traced to storing ONE spine segment per RAW drag-point sample (a typical mouse
+drag is a dozen+ points), so Stripe's own "the one cuttable element under the tap" found just one tiny
+raw segment, not the user's whole visible stroke. Fixed by running the SAME `ramerDouglasPeucker`
+simplification the plain pencil tool's own `finishDrawing` already applies (reused, not re-derived)
+on the stroke BEFORE storing its spine -- collapses a straight or gently-curved drag to a handful of
+real segments, so a tap lands on a piece spanning a meaningful length. Verified this fixed it: a
+perfectly straight 4-point test stroke now stores as exactly 1 spine segment (not 3), and striping it
+produces exactly the declared default 5 pieces (not 6 with a stray leftover).
+
+**Live verification, all 5 checks confirmed correct (fresh headless-Chrome pass, after the
+simplification fix):**
+1. Draw a stroke: 1 spine segment (post-simplification), 4 bricks, one element id.
+2. Scissors cut: spine splits 1->2, bricks stay 4 (one merged chain) -- a bare cut changes nothing
+   visually, confirmed.
+3. Drag the second piece away: 2 distinct owners now, EACH half's own bricks following its own
+   current position -- `shots/seatC/f35item3_03_after_drag_split.png` shows this directly: the
+   dragged half's bricks sit exactly at its new location, the other half's stay put.
+4. A fresh stroke, Stripe at its default Count=5: 5 spine pieces (not 6), 7 total distinct owner ids
+   across both strokes on the board (2 + 5, exactly matching). `shots/seatC/f35item3_04_after_
+   stripe.png` shows the real Stripe tool's own panel active and working unmodified.
+5. Determinism: an UNRELATED edit elsewhere (a plain line drawn in a totally different mode) leaves
+   every existing brick's own polygon byte-identical before/after -- regeneration doesn't introduce
+   drift or depend on anything but the spine + settings it's reacting to.
+
+Persistence (P.editorSvg): not re-verified end-to-end this pass (save/reload) -- the spine/settings
+live as plain SVG attributes on real elements already inside `editor._sketchLayer`, which the existing
+save path already serializes wholesale; no new P-level state was added, so this should round-trip for
+free, but is named here as unverified rather than silently assumed.
+
+**A genuine bug found live by f3 (from the advisor, mid-build) -- fixed in the same turn, as asked.**
+`primitivesToPolyline`'s own `corners` handling was off by one: `frameContourSilhouette`'s declared
+convention is "index i = the joint BETWEEN primitive i and i+1" (declaredMiterJointIndices, confirmed
+against outlineDefects' own notTangent check), but the function marked index i as "the joint BEFORE
+primitive i" -- one position early. MEASURED by f3 directly: T1 7x9's own real contour left a visible
+void at the board's bottom-left corner (its own high symmetry meant 3 of 4 corners still happened to
+land on SOME real corner, just the wrong one of an equivalent pair -- why only one of four visibly
+broke). Fixed by marking the corner AFTER a primitive's own points are appended instead of before,
+wrapping the last primitive's own "after" back to index 0 (there's no separate closing point for the
+loop's own start). Confirmed mathematically IDENTICAL to f3's own measured `(c+1) % length` workaround
+(traced through both by hand and empirically: same cornerIndices, same points, same brick output,
+down to the float).
+
+Updated every existing `primitivesToPolyline` test for the corrected semantics (the expected
+cornerIndices values shift, same reasoning each time -- see the test file's own updated header), and
+added the test the advisor asked for directly: T1's own real 7x9 contour, all 4 true board corners
+checked for brick coverage. First version of this test used an "all nearby brick pairs" gap scan
+(mirroring f3's own "MUTATION CHECK" test) and, MEASURED directly before trusting it, produced a
+FALSE POSITIVE even on the correct, fixed geometry -- a 2.07in "gap" between two bricks on entirely
+different, non-adjacent sides of the board whose bounding boxes merely happened to sit within the
+reach heuristic. Replaced with a direct check at the 4 KNOWN true board corner points instead (no
+heuristic reach/pairing ambiguity) -- MEASURED to correctly separate the broken case (0.47in void at
+the true top-left corner) from the fixed one (0.0 at all four), then mutation-tested against the real
+bug to confirm it actually catches it (reverted the fix, watched this exact test fail, restored it).
+
+**f3's own `+1` workaround removed, as the advisor authorized** (`tests/bricks-real-template-
+contours.test.js`): `realContour()` now imports and calls the REAL, fixed `primitivesToPolyline`
+directly instead of shifting corners into a local duplicate. Their own "MUTATION CHECK" test (which
+deliberately demonstrates the ORIGINAL bug as a permanent regression record) keeps its own local
+`primitivesToPolylineBuggy` copy, renamed for clarity, untouched in behavior -- still proves the
+historical bug produced a real gap. Their full suite still passes (7/7) after the change.
+
+Full suite green: 195 files / 3599 tests (the file-count jump from 193 is f3's own item 74 merge,
+which landed in the same turn -- see below).
+
+**Also merged f3's own item 74** (masonry edge-clipping, curved-contour radial fanning, the
+fieldstone layout, White Rocks) mid-turn, since it directly addresses BOTH board-edge-overhang and
+concave-curve issues this seat escalated to them in the F35 item 1 review round. Not independently
+re-verified here (f3's own 7 new/updated test files cover it, all green) -- worth a fresh live pass
+on the Brick tab's own Wall/Frame tools next to confirm the escalated issues are visibly resolved
+end-to-end, not just at the test level.
+
+Commit, push, pass back.

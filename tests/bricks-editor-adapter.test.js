@@ -11,9 +11,23 @@
  * marking EVERY primitive boundary (the original version) forced a mitred
  * brick-boundary correction at tangent arc-to-arc samples too, breaking
  * curved runs.
+ *
+ * OFF-BY-ONE FIX (f3, found live on T1's own real contour -- a visible void
+ * at the board's bottom-left corner): `corners`' declared convention is
+ * "index i = the joint BETWEEN primitive i and i+1", not "the joint BEFORE
+ * primitive i" -- every expected cornerIndices value below is the CORRECTED
+ * one (the joint lands at the position where the FOLLOWING primitive's own
+ * points start, wrapping to 0 when the declared corner is the last
+ * primitive).
  */
 import { describe, it, expect } from 'vitest';
 import { primitivesToPolyline, reconstructChains } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
+import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
+import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
+import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
+import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 
 describe('primitivesToPolyline: contour-from-frame.js primitives -> a flat polyline + DECLARED corner indices only', () => {
   it('a square made of 4 L primitives, ALL declared as corners, becomes 4 points each its own corner', () => {
@@ -27,7 +41,10 @@ describe('primitivesToPolyline: contour-from-frame.js primitives -> a flat polyl
     expect(points).toEqual([
       { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: 0, y: 4 },
     ]);
-    expect(cornerIndices).toEqual([0, 1, 2, 3]);
+    // The joint AFTER primitive i: 1, 2, 3, then primitive 3's own "after"
+    // wraps (4 % 4) to 0 -- all 4 points are still corners, just the wrap
+    // lands last in this declared order rather than first.
+    expect(cornerIndices).toEqual([1, 2, 3, 0]);
   });
 
   it('omitting `corners` declares NO corners at all, even with real primitives present', () => {
@@ -50,7 +67,7 @@ describe('primitivesToPolyline: contour-from-frame.js primitives -> a flat polyl
     // synthetic case; the real input would be arcs there, but the corner-
     // selection logic itself doesn't care what TYPE the skipped primitive is).
     const { cornerIndices } = primitivesToPolyline(square, [0, 2]);
-    expect(cornerIndices).toEqual([0, 2]); // points[0] and points[2], not points[1]/[3]
+    expect(cornerIndices).toEqual([1, 3]); // the joint AFTER primitive 0, and AFTER primitive 2
   });
 
   it('an empty/undefined primitives list produces an empty polyline, not a throw', () => {
@@ -85,7 +102,10 @@ describe('primitivesToPolyline: contour-from-frame.js primitives -> a flat polyl
       { type: 'A', cx: 0, cy: 0, rx: 2, ry: 2, theta1: Math.PI / 2, dTheta: Math.PI / 2 },
     ];
     const { cornerIndices } = primitivesToPolyline(halfCircleInTwoArcs, [0]);
-    expect(cornerIndices).toEqual([0]); // NOT [0, 16] -- primitive 1's own start is not a corner
+    // The joint AFTER primitive 0 = index 16 (primitive 1's own start) --
+    // declaring corner 0 means "arc0 meets arc1 sharply here", never a
+    // SECOND corner wherever primitive 1 happens to end.
+    expect(cornerIndices).toEqual([16]);
   });
 
   it('mixed L + A primitives concatenate in order, corner indices only at the DECLARED ones', () => {
@@ -94,9 +114,64 @@ describe('primitivesToPolyline: contour-from-frame.js primitives -> a flat polyl
       { type: 'A', cx: 2, cy: 2, rx: 2, ry: 2, theta1: -Math.PI / 2, dTheta: Math.PI / 2 },
     ];
     const { points, cornerIndices } = primitivesToPolyline(mixed, [0, 1]);
-    expect(cornerIndices[0]).toBe(0); // the L's own start
-    expect(cornerIndices[1]).toBe(1); // the A's own start, right after the L's single point
+    expect(cornerIndices[0]).toBe(1); // the joint AFTER the L -- the A's own start
+    expect(cornerIndices[1]).toBe(0); // the joint AFTER the A (the last primitive) wraps to 0
     expect(points.length).toBe(1 + 16); // 1 for the straight edge + ARC_STEPS for the arc
+  });
+
+  it('T1 7x9 real contour (advisor/f3): all 4 corners mitred, no void -- the EXACT case the off-by-one bug broke', () => {
+    // The adapter's own real call chain, RAW unshifted sil.corners (f3's own
+    // test file applies a +1 workaround to their LOCAL, deliberately-
+    // unfixed copy of this function specifically to isolate core/bricks'
+    // own contract from this adapter bug -- that workaround is unneeded
+    // here since this IS the real, now-fixed adapter function).
+    const record = normalizeFrameRecord({ templateId: 'template_1' });
+    const frame = { defs: FRAME_DEFS, record, board: { widthIn: 7, heightIn: 9 } };
+    const sil = frameContourSilhouette(frame, 0, 0);
+    expect(sil.error).toBeUndefined();
+
+    const { points, cornerIndices } = primitivesToPolyline(sil.primitives, sil.corners);
+    const SET = BRICK_SETS[0];
+    const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, seed: 1 });
+    expect(bricks.length).toBeGreaterThan(0);
+
+    // Checked DIRECTLY at the board's own 4 true geometric corners (the
+    // single_soldier band sits distance=0 from the frame's own outer cut
+    // profile, so a rectangular board's corners land exactly at
+    // (widthIn-margin, margin) etc. -- margin=0.25in here, MEASURED off
+    // template_1's own real silhouette, not assumed), rather than at
+    // whatever point `cornerIndices` happens to mark. An EARLIER version of
+    // this test checked gaps between ALL nearby brick PAIRS instead (f3's
+    // own "MUTATION CHECK" test uses exactly that) and was itself
+    // mutation-tested against a REAL run of this exact scenario -- it
+    // reported a 2.07in "gap" even on the CORRECT, fixed geometry, between
+    // two bricks on entirely different, non-adjacent sides of the board
+    // that simply happen to have nearby bounding boxes (a false positive
+    // from the loose reach heuristic, not an actual void) -- MEASURED
+    // directly before trusting it, the same discipline that caught the
+    // original bug. Checking the 4 known corner POINTS directly avoids
+    // that noise entirely and was confirmed, via the same measurement, to
+    // correctly separate the broken case (0.47in gap at the true top-left
+    // corner) from the fixed one (0.0 at all four).
+    const trueCorners = [
+      { x: 6.75, y: 0.25 }, { x: 6.75, y: 8.75 }, { x: 0.25, y: 8.75 }, { x: 0.25, y: 0.25 },
+    ];
+    const distPointToSeg = (p, a, b) => {
+      const dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy;
+      const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
+      return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+    };
+    const distPointToPoly = (p, poly) => {
+      if (pointInPolygon(p.x, p.y, poly)) return 0;
+      let best = Infinity;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) best = Math.min(best, distPointToSeg(p, poly[j], poly[i]));
+      return best;
+    };
+    for (const corner of trueCorners) {
+      let nearest = Infinity;
+      for (const b of bricks) nearest = Math.min(nearest, distPointToPoly(corner, b.polygon));
+      expect(nearest, `void at board corner (${corner.x},${corner.y})`).toBeLessThanOrEqual(SET.grout.widthIn * 2);
+    }
   });
 });
 
