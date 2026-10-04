@@ -20906,3 +20906,39 @@ revert + test split), `21860c1` (merge), `a306c4b` (re-recorded T10 goldens), `e
 regen). Passing back to the advisor: the branch should now be genuinely mergeable -- T10 untouched
 (confirmed byte-identical to origin/main), T18's own fix intact and verified, full gate green
 including the two checks the advisor named explicitly.
+
+## H23 item 80, turn 554: Template 19 "Arched Head - Tapered sides" -- diagram only, stopped for Fred's OK
+
+Seat 39, turn 554. T18 merged to main + deployed (`2026.10.04-20`, confirmed) -- new dispatch: Template
+19, "Arched Head - Tapered sides" (the head narrows toward the arch). Dispatch's own explicit
+instruction: diagram next to T18 first, stop for Fred's OK; work on a NEW branch from origin/main;
+never ship a hidden/half template to main.
+
+**New worktree + branch.** The old `t10-reconstruction` worktree was done (merged, nothing left to do
+there) -- repurposed it rather than leaving a stale worktree around: `git checkout -b
+t19-arched-tapered-sides origin/main` in place, then `git worktree move` to rename the directory to
+match (`b-spline-generator-web-addin-t19-arched-tapered-sides`). `node_modules` is a symlink to an
+absolute path (the main checkout's own install), confirmed it survives the directory rename.
+
+**No new geometry needed -- this is T12/T13's own exact precedent, confirmed before building
+anything.** T12 ("Hourglass - Tapered sides") and T13 ("Narrow Neck - Tapered sides") are themselves
+named with the SAME "- Tapered sides" suffix item 80's own name echoes -- both are "an existing preset
+plus `taperAngle` activated," zero new geometry, declared once in `_taperedCorner`
+(editor-shape-lattice-generator.js). Read that function's own construction: `hourglassConstruction`'s
+`topTaper` branch ALREADY factors in `topInset` and `archRise` together when computing the tapered
+corner's own target line (`hh - archRise`, H23 item 59's own fix, built for exactly this combination
+even though nothing used it yet). Confirmed live (JS, no Fusion needed): T18's own exact params with
+`taperAngle` added at 8 and 15 degrees both report ZERO outline defects, same as T18's own untapered
+default. Positive `taperAngle` leans the sides INWARD going up (`_taperedCorner`'s own doc comment,
+"narrower top") -- exactly "narrows toward the arch," confirmed by sign, not assumed.
+
+**Diagram, not a guess at one value.** `tools/repro/h23_item80_template19_proposal.mjs`: 3 panels at
+7x9, same `generateSilhouette` calls the real app uses -- Template 18 as shipped (taper 0), T12/T13's
+own default (8 deg), and the declared band's own outer end (15 deg, so the full visible range is on
+the table, not one picked value). Screenshot: `~/.bspline-status/shots/seatA/
+h23_item80_template19_proposal.png`. Viewed it directly: the progression is clearly visible, 15 deg
+giving a noticeably more pronounced "shield" silhouette than the subtler 8 deg.
+
+**Stopped here, as instructed.** No `sketches/template_19/` scaffold, no `frame-defs.json` entry,
+nothing registered -- this branch carries only the diagram script. Passing back for Fred's OK:
+which taper value (or none of these, a different one) before any real build starts.
