@@ -34,6 +34,8 @@ import { brickTopHeight } from './height-profile.js';
  * @param {boolean} [input.skipWallFill=false] — F35 item 12 follow-up (Fred): the Wall picker's own
  *   'none' pattern (editor-brick-tool.js's applyWallPattern) -- skip bricksFillShape entirely, Wall
  *   produces zero bricks (Frame, if any, is untouched: this only gates the Wall fill call below).
+ * @param {number} [input.largeStones] — T86 item 17: fieldstone layouts only (ignored otherwise,
+ *   same as `zones` is bond-only); see fieldstoneLayout's own header for the declared range.
  * @param {number} input.seed
  * @returns {{ bricks: Array, frameBricks: Array, seed: number }} `seed` is carried along so
  *   sampleHeight (below) can reach it without a breaking signature change -- height-profile chip
@@ -45,6 +47,7 @@ import { brickTopHeight } from './height-profile.js';
  *  item 17, 'exclusions' with T86 item 13) and its control appears by itself. */
 export const ENGINE_OPTIONS = Object.freeze([
   'boardOutline', 'set', 'frame', 'suppression', 'topBias', 'clumping', 'zones', 'scale', 'skipWallFill', 'seed',
+  'largeStones', // T86 item 17
 ]);
 
 export function generateBricks(input) {
@@ -85,6 +88,7 @@ export function generateBricks(input) {
     topBias: input.topBias ?? 0.8,
     clumping: input.clumping ?? 0.3,
     zones: input.zones,
+    largeStones: input.largeStones,
   }).bricks;
   return { bricks, frameBricks, seed };
 }

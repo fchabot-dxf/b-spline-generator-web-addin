@@ -33,11 +33,15 @@ describe('BRICK_CONTROL_REQUIRES', () => {
 });
 
 describe('turn 199: engineOption requirements', () => {
-  it('met only when the engine lists the option; Large stones is NOT in the engine yet', async () => {
+  // T86 item 17 shipped: `largeStones` is now really in ENGINE_OPTIONS, so the rule's own
+  // requirement is met against the REAL array -- the control appears by itself, exactly what the
+  // engine.js ENGINE_OPTIONS header comment (turn 199) declared this mechanism for.
+  it('met now that the engine genuinely lists largeStones (T86 item 17)', async () => {
     const { ENGINE_OPTIONS } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js');
     const rule = BRICK_CONTROL_REQUIRES.find((r) => r.controls.includes('brickLargeStonesRow'));
     expect(rule.hides).toBe(true);
-    expect(requirementMet(rule.requires, null, { engineOptions: ENGINE_OPTIONS })).toBe(false);
-    expect(requirementMet(rule.requires, null, { engineOptions: [...ENGINE_OPTIONS, 'largeStones'] })).toBe(true);
+    expect(ENGINE_OPTIONS).toContain('largeStones');
+    expect(requirementMet(rule.requires, null, { engineOptions: ENGINE_OPTIONS })).toBe(true);
+    expect(requirementMet(rule.requires, null, { engineOptions: ENGINE_OPTIONS.filter((o) => o !== 'largeStones') })).toBe(false);
   });
 });
