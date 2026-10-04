@@ -12348,3 +12348,38 @@ side column hidden. Shots shots/seat37/f35item20_{wall_around_stroke,stripe_one_
 {pending: true, canvas: null, threeD: null} with a Wall laid; Generate with a throwing engine ->
 {pending: true (stays), canvas: false (unchanged), toast}.
 Fusion holder: 39 wrote itself in after I released ("self-serve when free") -- protocol question for you.
+
+## turn 197 (seat C = 37): Stripe hides the shared rows; F35 item 21 Large stones; control greying (88's matrix)
+
+**Stripe hides the shared rows (advisor: declared, not an if).** The Brick panel's shared rows are now two
+containers (#brickSharedSet = Set; #brickSharedLayout = Brick size .. Seed). BRICK_TOOLS declares
+`sharedRows: false` on Stripe; syncToolSections hides BRICK_SHARED_SECTIONS for a tool that declares it.
+**Item 21 Large stones** (advisor's checklist line pulled, b37e412). `P.brickSettings.largeStones` 0.5 (in the
+laid key = a layout setting: pending in the editor, Generate lays it). editor-brick-tool.js `wallLayoutFor`
+(a tile2d pattern's own layout, else the set's layout -- White Rocks = 'fieldstone') decides both where the
+slider shows (Wall section, fieldstone only) and whether `input.largeStones` reaches generateBricks. STUB:
+d3 hasn't DM'd the option name yet (T86 item 17); `input.largeStones` is the provisional field, inert until
+the engine reads it -- one line to rename if d3 picks another.
+**Control greying (88's matrix; the advisor had batched it to me).** Pure, import-free
+main/brick-control-requires.js `BRICK_CONTROL_REQUIRES` (88's exact shape; path agreed with 88 -- not
+core/bricks/, which is seat B's engine folder) + `requirementMet`. brick-panel greys each listed control
+(disabled + the reason as tooltip) while unmet: Clumping (both inputs) needs Suppression > 0; Grout depth
+needs Recessed. Re-checked after every commitBrickSetting and on restore. 88's matrix imports the module.
+
+Tests: panel +5 (Stripe hides/Wall shows the shared rows; Large stones row visibility red/white/fieldstone;
+slider pending then laid; Clumping greyed at 0 / enabled > 0; Grout depth greyed for Flush); kinds +2
+(wallLayoutFor; largeStones reaches the engine only for fieldstone); new brick-control-requires.test.js
+(3: no imports, ids exist in the palette, requirementMet forms). Against the previous sources the new
+behaviour tests fail (5 + 2). Fast tier: first run had 2 FAILURES in tests/bricks-fieldstone.test.js (seat
+B's engine test, untouched here) -- they pass 7/7 alone (~6 s each, near the 5 s default: load-dependent
+timeouts); RE-RUN of the full fast tier: 72 files, 780 passed, 0 failed. Flagging the flaky timing to seat B.
+Live (served fb-app): Wall -> shared rows shown, Large stones hidden for Red, shown for White Rocks,
+Clumping disabled at Suppression 0; Stripe -> both shared containers hidden, its own settings shown.
+Shots shots/seat37/f35item21_{stripe_no_shared_rows,large_stones_white_rocks}.png.
+Matrix rows: 88's matrix imports BRICK_CONTROL_REQUIRES; rows for item 20/21 still owed once it is on main.
+**Turn-197 amendment (88's matrix: 56 rows, 51 PASS, 2 FAIL):** (1)+(2) the two greying rules are exactly
+the BRICK_CONTROL_REQUIRES above. (3) number boxes now apply WHILE TYPING for commits that apply at once
+('surface', 'auto'): each keystroke saves, one apply runs NUMBER_BOX_SETTLE_MS (400 ms) after the last
+keystroke (`settleAfterTyping`, in bindSlider's number box and bindGroutField); 'generate' boxes already mark
+pending per keystroke. This supersedes turn 189's "grout depth re-masks only on change". Test (fake timers):
+2 keystrokes -> 0 re-masks until 400 ms after the last -> exactly 1; fails 1/1 without the debounce.

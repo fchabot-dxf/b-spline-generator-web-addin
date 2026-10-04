@@ -60,6 +60,8 @@ const FIXTURE = `
   <div id="brickSurfaceStyleToggle"></div>
   <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
+  <div id="brickSharedSet"></div><div id="brickSharedLayout"></div>
+  <div id="brickLargeStonesRow" style="display:none;"><input type="range" id="brickLargeStonesSlider" min="0" max="1" step="0.05"><input id="brickLargeStones"></div>
   <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
   <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
@@ -651,5 +653,86 @@ describe('turn 195: Generate failure, and item 20 (a brush stroke change makes t
     stroke.remove(); // deleting the stroke: pending again
     document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } }));
     expect(pending()).toBe(true);
+  });
+});
+
+describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fieldstone walls only)', () => {
+  const shown = (id) => $(id).style.display !== 'none';
+  beforeEach(() => {
+    P.brickSettings.largeStones = 0.5;
+    setup('wall');
+  });
+  it('Stripe declares sharedRows: false -> Set and Brick size..Seed hide; back on Wall they show', () => {
+    expect(shown('brickSharedSet')).toBe(true);
+    $('brickTool_stripe').click();
+    expect(shown('brickSharedSet')).toBe(false);
+    expect(shown('brickSharedLayout')).toBe(false);
+    $('brickTool_wall').click();
+    expect(shown('brickSharedSet')).toBe(true);
+    expect(shown('brickSharedLayout')).toBe(true);
+  });
+  it('the Large stones row shows only for a fieldstone wall (White Rocks, or the Fieldstone pattern)', () => {
+    expect(shown('brickLargeStonesRow')).toBe(false); // red brick, stretcher
+    $('brickSetWhite').click();
+    expect(shown('brickLargeStonesRow')).toBe(true);
+    $('brickSetRed').click();
+    expect(shown('brickLargeStonesRow')).toBe(false);
+    $('brickPattern_fieldstone').click();
+    expect(shown('brickLargeStonesRow')).toBe(true);
+  });
+  it('a layout setting: the slider marks pending, Generate lays with it', () => {
+    $('brickPattern_fieldstone').click();
+    $('brickGenerate').click();
+    runBricks.mockClear();
+    fire('brickLargeStonesSlider', 0.8, 'input');
+    fire('brickLargeStonesSlider', 0.8, 'change');
+    expect(P.brickSettings.largeStones).toBe(0.8);
+    expectPendingThenGenerate((c) => expect(c[1].largeStones).toBe(0.8));
+  });
+});
+
+describe("audit (88's matrix): controls grey out while their declared requirement is unmet", () => {
+  beforeEach(() => {
+    P.brickSettings.suppression = 0;
+    P.brickSettings.grout.profile = 'flush';
+    setup('wall');
+  });
+  it('Clumping (both inputs) is disabled at Suppression 0, with the reason; Suppression > 0 enables it', () => {
+    expect($('brickClumpingSlider').disabled).toBe(true);
+    expect($('brickClumping').disabled).toBe(true);
+    expect($('brickClumping').title).toMatch(/Suppression/);
+    fire('brickSuppressionSlider', 0.3, 'input');
+    fire('brickSuppressionSlider', 0.3, 'change');
+    expect($('brickClumpingSlider').disabled).toBe(false);
+    expect($('brickClumping').title).toBe('');
+  });
+  it('Grout depth is disabled while Flush; Recessed enables it', () => {
+    window.svgEditor._notifyChange = vi.fn();
+    expect($('brickGroutDepth').disabled).toBe(true);
+    $('brickBtnGroutRecessed').click();
+    expect($('brickGroutDepth').disabled).toBe(false);
+    $('brickBtnGroutFlush').click();
+    expect($('brickGroutDepth').disabled).toBe(true);
+  });
+});
+
+describe('turn 197 (88): a number box applies while typing, once the typing pauses', () => {
+  afterEach(() => vi.useRealTimers());
+  it('Grout depth (3D-only): each keystroke saves; ONE re-mask 400 ms after the last one', () => {
+    setup('wall');
+    vi.useFakeTimers();
+    const notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+    P.brickSettings.grout.profile = 'recessed';
+    fire('brickGroutDepth', 0.06, 'input');
+    vi.advanceTimersByTime(200);
+    fire('brickGroutDepth', 0.07, 'input');
+    expect(P.brickSettings.grout.depthIn).toBe(0.07);
+    expect(notify).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(399);
+    expect(notify).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(runBricks).not.toHaveBeenCalled();
   });
 });

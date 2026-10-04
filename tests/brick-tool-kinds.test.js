@@ -13,7 +13,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async
   return { ...actual, generateBricks: vi.fn(() => ({ bricks: [sq(1, 'w1'), sq(3, 'w2')], frameBricks: [sq(5, 'f1')] })) };
 });
 
-import { runBricks, BRICK_KINDS, brushExclusions, dropExcludedWallBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, BRICK_KINDS, brushExclusions, dropExcludedWallBricks, wallLayoutFor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
@@ -133,5 +133,21 @@ describe('F35 item 20: the Wall flows around brush strokes (exclusions)', () => 
     generateBricks.mockImplementationOnce(() => ({ bricks: [sq(1, 'w1'), sq(3, 'w2')], frameBricks: [], exclusionsApplied: true }));
     runBricks(ed, P.brickSettings, null, { kinds: ['wall'] });
     expect(ids(ed, 'wall')).toEqual(['w1', 'w2']);
+  });
+});
+
+describe('F35 item 21: Large stones reaches the engine only for a fieldstone wall', () => {
+  it('wallLayoutFor: tile2d pattern wins, else the set layout', () => {
+    expect(wallLayoutFor({ setId: 1, pattern: 'stretcher' })).toBe('bond');
+    expect(wallLayoutFor({ setId: 3, pattern: 'stretcher' })).toBe('fieldstone');
+    expect(wallLayoutFor({ setId: 1, pattern: 'fieldstone' })).toBe('fieldstone');
+    expect(wallLayoutFor({ setId: 3, pattern: 'herringbone' })).toBe('herringbone');
+  });
+  it('fieldstone: input.largeStones = the setting; anything else: absent', () => {
+    generateBricks.mockClear();
+    runBricks(fakeEditor(), { ...P.brickSettings, setId: 1, pattern: 'fieldstone', largeStones: 0.8 }, null, { kinds: ['wall'] });
+    expect(generateBricks.mock.calls[0][0].largeStones).toBe(0.8);
+    runBricks(fakeEditor(), { ...P.brickSettings, setId: 1, pattern: 'stretcher', largeStones: 0.8 }, null, { kinds: ['wall'] });
+    expect('largeStones' in generateBricks.mock.calls[1][0]).toBe(false);
   });
 });

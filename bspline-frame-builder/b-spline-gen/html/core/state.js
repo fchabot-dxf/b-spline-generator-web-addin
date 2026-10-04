@@ -112,6 +112,9 @@ export const DEFAULT = {
       // F35 item 18: the Wear slider (0..1) of a style that declares `wear` (Weathered); 0.5 = the
       // declared default (edge wear 0.02 in, pit gain 2.5). Read by the height mask only.
       surfaceWear: 0.5,
+      // F35 item 21: the fieldstone wall's share of LARGE stones, 0..1 (d3's engine option, T86 item 17).
+      // A layout setting (it is in the laid key). A saved session without it reads 0.5.
+      largeStones: 0.5,
       // F35 item 16 (advisor turn 189): the Frame tool's OFFSET FROM FRAME, like the Shape Lattice's --
       // ON = the bands follow the frame's outer edge offset by `distance` (+ inward, - outward), default ON
       // at 0; OFF = free placement, the bands follow the board's own outline instead of the frame.

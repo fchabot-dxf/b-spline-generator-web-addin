@@ -3153,10 +3153,14 @@
                  for Red Brick / White Rocks. -->
             <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:0 0 12px;"></div>
 
+            <!-- turn 197: the panel's SHARED rows (Set here; Brick size .. Seed below) -- a tool that declares
+                 sharedRows: false (main/brick-panel.js BRICK_TOOLS: Stripe) hides them -->
+            <div id="brickSharedSet">
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
             <div style="display:flex; gap:6px; margin-bottom:12px;">
               <button type="button" id="brickSetRed" class="cad-btn brick-set-btn active" title="Red brick (Masonry)">Red Brick</button>
               <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="White rocks (fieldstone, Masonry)">White Rocks</button>
+            </div>
             </div>
 
             <!-- F35 item 10 follow-up (Fred): the Brush tool's own section, shown only while Brush
@@ -3189,6 +3193,14 @@
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
               <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+              </div>
+              <!-- F35 item 21 (Fred: "slider for more or less large ones"): fieldstone walls only -->
+              <div id="brickLargeStonesRow" style="display:none;">
+                <label class="cad-label">Large stones</label>
+                <div class="cad-slider-row" style="margin-bottom:12px;">
+                  <input type="range" id="brickLargeStonesSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.5">
+                  <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickLargeStones" value="0.5" min="0" max="1" step="0.05"></div>
+                </div>
               </div>
               <!-- F35 item 16: LEVEL, this element's height offset (+ proud / - recessed), 3D only -->
               <label class="cad-label">Level (in)</label>
@@ -3229,6 +3241,7 @@
                  brickSizeToSliderPos/sliderPosToBrickSize -- a plain linear 0.375-8in range put
                  every everyday size in the first ~15% of the handle's travel. #brickSize (the
                  number box) stays real inches, exact, unchanged. -->
+            <div id="brickSharedLayout">
             <label class="cad-label">Brick size (in)</label>
             <div class="cad-slider-row" style="margin-bottom:6px;">
               <input type="range" id="brickSizeSlider" class="cad-slider" min="0" max="1000" step="1" value="226">
@@ -3266,6 +3279,7 @@
             <div style="display:flex; gap:6px; margin-bottom:4px;">
               <input type="number" id="brickSeed" value="1" style="flex:1;">
               <button type="button" id="brickBtnRandomSeed" class="cad-btn" title="Random seed">🎲</button>
+            </div>
             </div>
           </div>
         </aside>

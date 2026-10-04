@@ -290,6 +290,16 @@ function setForId(id) {
  *  `input` in place, same style resolveFrameBrickSet already uses for its own Frame-only override.
  *  Leaves `input` untouched for an unrecognised/omitted pattern (falls through to bondLayout's own
  *  default single stretcher zone, byte-identical to pre-item-7 behaviour). */
+/** F35 item 21: the layout the Wall fill actually uses -- a tile2d pattern's own layout, otherwise the
+ *  set's declared layout (White Rocks = 'fieldstone'). The Large stones slider shows for 'fieldstone'. */
+export function wallLayoutFor(settings) {
+  const def = settings && settings.pattern && BRICK_PATTERNS[settings.pattern];
+  if (def && def.kind === 'none') return 'none';
+  if (def && def.kind === 'tile2d') return settings.pattern;
+  const set = brickSetById(settings && settings.setId) || brickSetById(1);
+  return set.layout;
+}
+
 function applyWallPattern(input, settings) {
   const pattern = settings.pattern;
   const def = pattern && BRICK_PATTERNS[pattern];
@@ -380,6 +390,8 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   };
   if (frameGeom) input.frame = frameGeom;
   applyWallPattern(input, settings);
+  // F35 item 21: the fieldstone layout's share of large stones (d3's T86 item 17 reads it; inert until then)
+  if (wallLayoutFor(settings) === 'fieldstone') input.largeStones = Number.isFinite(settings.largeStones) ? settings.largeStones : 0.5;
   const exclusions = kinds.includes('wall') ? brushExclusions(editor) : [];
   if (exclusions.length) input.exclusions = exclusions;
 

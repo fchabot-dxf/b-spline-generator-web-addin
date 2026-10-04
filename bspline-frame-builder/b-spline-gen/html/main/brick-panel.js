@@ -22,9 +22,10 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
-  BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions,
+  BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor,
 } from '../editor/editor-brick-tool.js';
 import { commitEdit } from '../editor/editor-commit.js';
+import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { rectToPrimitives } from '../core/inset-window.js';
@@ -65,7 +66,9 @@ const BRICK_TOOLS = [
   // not an oversight).
   { id: 'scissors', buttonId: 'brickTool_scissors', label: 'Scissors', icon: '✂️', settingsSection: null,
     hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
-  { id: 'stripe', buttonId: 'brickTool_stripe', label: 'Stripe', icon: '📏', settingsSection: 'brickStripeSection',
+  // sharedRows: false (turn 197) -- a stripe pick restyles EXISTING strokes, so the panel's shared rows
+  // (BRICK_SHARED_SECTIONS: Set, Brick size .. Seed) don't apply and are hidden
+  { id: 'stripe', buttonId: 'brickTool_stripe', label: 'Stripe', icon: '📏', settingsSection: 'brickStripeSection', sharedRows: false,
     hint: 'Tap a brush stroke to split it into alternating brick-style runs.' },
 ];
 
@@ -77,6 +80,7 @@ function syncSetPicker() {
   document.getElementById('brickSetRed')?.classList.toggle('active', P.brickSettings.setId === 1);
   document.getElementById('brickSetWhite')?.classList.toggle('active', P.brickSettings.setId === 3);
   syncQuickSettings();
+  syncLargeStonesRow();
 }
 
 /** Switching sets also resets the grout WIDTH field to that set's own
@@ -443,12 +447,28 @@ function setOrientation(v) {
 /** Shows ONLY the active tool's own settings section (BRICK_TOOLS' own declared
  *  `settingsSection`), hides every other tool's -- Scissors/Stripe have none (null), so
  *  selecting either hides Brush/Wall/Frame's sections with nothing of their own to show. */
+/** Turn 197: the panel's shared rows -- shown for every tool unless it declares `sharedRows: false`. */
+const BRICK_SHARED_SECTIONS = ['brickSharedSet', 'brickSharedLayout'];
+
 function syncToolSections() {
   for (const tool of BRICK_TOOLS) {
     if (!tool.settingsSection) continue;
     const el = document.getElementById(tool.settingsSection);
     if (el) el.style.display = tool.id === _activeTool ? '' : 'none';
   }
+  const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
+  const shared = !active || active.sharedRows !== false;
+  for (const id of BRICK_SHARED_SECTIONS) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = shared ? '' : 'none';
+  }
+}
+
+/** F35 item 21: the Large stones row shows only while the Wall's layout is fieldstone. */
+function syncLargeStonesRow() {
+  const row = document.getElementById('brickLargeStonesRow');
+  if (row) row.style.display = wallLayoutFor(P.brickSettings) === 'fieldstone' ? '' : 'none';
+  setPair('brickLargeStonesSlider', 'brickLargeStones', Number.isFinite(P.brickSettings.largeStones) ? P.brickSettings.largeStones : 0.5);
 }
 
 function setPair(sliderId, numberId, v) {
@@ -474,6 +494,7 @@ function syncControlsFromState() {
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
   syncReliefToggle();
+  syncControlRequires();
   syncBrickTopToggle();
   syncSurfaceStyleToggle();
   syncFrameOffsetControls();
@@ -561,6 +582,22 @@ function _remaskSurface() {
 /** The one entry point every brick-setting control calls after writing P.brickSettings. */
 export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
   (BRICK_COMMIT[commit] || BRICK_COMMIT.generate)[phase]();
+  syncControlRequires();
+}
+
+/** Audit (88's matrix): grey out every control whose declared requirement is unmet
+ *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
+function syncControlRequires() {
+  for (const rule of BRICK_CONTROL_REQUIRES) {
+    const met = requirementMet(rule.requires, document.getElementById(rule.requires.control));
+    for (const id of rule.controls) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.disabled = !met;
+      if (!met) el.title = rule.why;
+      else if (el.title === rule.why) el.removeAttribute('title');
+    }
+  }
 }
 
 /** Settings keys a Wall/Frame layout never reads -- a Brush stroke's own settings freeze at draw
@@ -681,6 +718,21 @@ export function generateBricks() {
   return _layBricks(editor, frameGeom, kinds) !== false;
 }
 
+/** Turn 197 (88's matrix): a NUMBER BOX applies while typing, like a slider's release -- for a commit
+ *  that applies at once ('surface' re-mask, 'auto' re-lay), each keystroke saves and the apply runs once
+ *  typing pauses for NUMBER_BOX_SETTLE_MS (a re-mask per keystroke would be the expensive height pass).
+ *  'generate' boxes already mark pending on every keystroke. */
+const NUMBER_BOX_SETTLE_MS = 400;
+const APPLIES_AT_ONCE = new Set(['surface', 'auto']);
+function settleAfterTyping(commit) {
+  if (!APPLIES_AT_ONCE.has(commit)) return () => {};
+  let timer = null;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => commitBrickSetting(commit, 'onRelease'), NUMBER_BOX_SETTLE_MS);
+  };
+}
+
 export function bindSlider(sliderId, numberId, key, parse = parseFloat, commit = 'generate') {
   const slider = document.getElementById(sliderId);
   const number = document.getElementById(numberId);
@@ -694,9 +746,10 @@ export function bindSlider(sliderId, numberId, key, parse = parseFloat, commit =
   };
   const drag = (raw) => { if (apply(raw)) commitBrickSetting(commit, 'onDrag'); };
   const release = (raw) => { if (apply(raw)) commitBrickSetting(commit, 'onRelease'); };
+  const settle = settleAfterTyping(commit);
   slider?.addEventListener('input', (e) => drag(e.target.value));
   slider?.addEventListener('change', (e) => release(e.target.value));
-  number?.addEventListener('input', (e) => drag(e.target.value));
+  number?.addEventListener('input', (e) => { drag(e.target.value); settle(); });
   number?.addEventListener('change', (e) => release(e.target.value));
 }
 
@@ -731,7 +784,8 @@ function bindGroutField(id, key, commit = 'generate') {
     P.brickSettings.grout[key] = v;
     commitBrickSetting(commit, phase);
   };
-  document.getElementById(id)?.addEventListener('input', (e) => write(e, 'onDrag'));
+  const settle = settleAfterTyping(commit);
+  document.getElementById(id)?.addEventListener('input', (e) => { write(e, 'onDrag'); settle(); });
   document.getElementById(id)?.addEventListener('change', (e) => write(e, 'onRelease')); // typed value settled
 }
 
@@ -888,6 +942,7 @@ function syncWallPatternButtons() {
     document.getElementById(`brickPattern_${pattern.id}`)?.classList.toggle('active', pattern.id === P.brickSettings.pattern);
   }
   syncQuickSettings();
+  syncLargeStonesRow();
 }
 
 /** F35 item 8: the per-band pattern picker -- one row per band in the CURRENT frameBandPreset, each
@@ -1216,6 +1271,8 @@ export function initBrickPanel() {
   document.getElementById('brickBtnOrientationStretcher')?.addEventListener('click', () => setOrientation('stretcher'));
   document.getElementById('brickBtnOrientationSoldier')?.addEventListener('click', () => setOrientation('soldier'));
   bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn', parseFloat, 'auto');
+  // F35 item 21: a LAYOUT setting -- the editor marks it pending (Generate)
+  bindSlider('brickLargeStonesSlider', 'brickLargeStones', 'largeStones', (v) => Math.max(0, Math.min(1, parseFloat(v))));
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');
   document.getElementById('brickSeed')?.addEventListener('input', (e) => {
