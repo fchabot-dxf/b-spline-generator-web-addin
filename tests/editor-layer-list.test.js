@@ -82,6 +82,22 @@ describe('renderLayerList', () => {
     expect(plainRow.querySelector('.layer-tool-summary')?.textContent).toBe(' · Ball .12"');
   });
 
+  // Audit K7: the Bricks layer's carve profile is never read (the brick mask sets its height), so its
+  // row says Raised/Carved + height, never "Flat" (which also clashed with the Flat | Organic setting).
+  it('the Bricks layer row reads Raised/Carved + height, never its unused profile', () => {
+    for (const [depth, want] of [[0.125, ' · Raised .13"'], [-0.125, ' · Carved .13"']]) {
+      const editor = mockEditor([mockLayer('0', { name: 'Bricks', profile: 'flat', depth })], '0');
+      renderLayerList(container, editor);
+      const summary = container.querySelector('.layer-tool-summary');
+      expect(summary.textContent).toBe(want);
+      expect(summary.title).not.toMatch(/Flat/);
+    }
+    // any other layer with a flat profile still says Flat
+    const other = mockEditor([mockLayer('0', { name: 'Layer 1', profile: 'flat', depth: -0.125 })], '0');
+    renderLayerList(container, other);
+    expect(container.querySelector('.layer-tool-summary').textContent).toBe(' · Flat -.13"');
+  });
+
   it('rows render top-to-bottom in REVERSE array order (top of the list = top of z-order = last in _layers)', () => {
     const editor = mockEditor([mockLayer('0'), mockLayer('1'), mockLayer('2')], '0');
     renderLayerList(container, editor);

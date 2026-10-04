@@ -20,7 +20,7 @@
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
-import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME } from '../editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
@@ -46,10 +46,12 @@ const BRICK_TOOLS = [
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
   // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
   // Brush/Scissors/Stripe act on drawn strokes, whose settings freeze at draw time.
-  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true,
-    hint: 'Fills the whole board with bricks.' },
-  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true,
-    hint: 'Bands of bricks along the current frame\'s own contour.' },
+  // `lays` (audit C1): the ONE element kind this tool lays (editor-brick-tool.js BRICK_KINDS). Picking the
+  // tool only shows its settings (audit C2); Generate lays it.
+  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall',
+    hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Press Generate to lay it.' },
+  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame',
+    hint: 'Bands of bricks along the frame\'s contour. Press Generate to lay them.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
   // (editor-cut-tool.js) with zero changes needed there. Only applies to
@@ -371,7 +373,7 @@ function _runLivePreview() {
   if (_activeTool === 'frame' && !frameGeom) return; // Frame tool, no usable frame: nothing to preview
   if (_dragSlow) { runBricksOutlinePreview(editor); return; }
   const t0 = performance.now();
-  runBricksPreview(editor, P.brickSettings, frameGeom); // Wall: frameGeom may legitimately be undefined (whole-board fill)
+  runBricksPreview(editor, P.brickSettings, frameGeom, _kindsToLay(editor, frameGeom)); // Wall: frameGeom may be undefined (whole-board fill)
   if (performance.now() - t0 > SLOW_PREVIEW_MS) _dragSlow = true; // this drag only -- commit resets it
 }
 
@@ -480,9 +482,9 @@ function syncGeneratePending() {
   btn.title = pending ? 'Brick settings changed -- press Generate to re-lay the bricks' : 'Re-lay the Wall/Frame bricks';
 }
 
-/** Lay the Wall/Frame bricks with the current settings, stamping their key on the Bricks layer. */
-function _layBricks(editor, frameGeom) {
-  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey() }));
+/** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
+function _layBricks(editor, frameGeom, kinds) {
+  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds }));
   _changedWhileUnknown = false;
   syncGeneratePending();
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
@@ -491,9 +493,13 @@ function _layBricks(editor, frameGeom) {
   if (layer && layer.visible === false) showToast('Bricks re-laid on the hidden Bricks layer -- show it in Layers to see them', 'warn');
 }
 
-function _hasLaidWallOrFrame(editor) {
+/** Audit C1: what Generate lays -- every element kind already on the canvas, plus the active tool's
+ *  own kind (BRICK_TOOLS `lays`). Frame needs a usable frame. A Wall alone never brings Frame bands. */
+function _kindsToLay(editor, frameGeom) {
   const node = editor?._sketchLayer?.node;
-  return !!node?.querySelector?.('[data-brick-gen="1"][data-brick="wall"], [data-brick-gen="1"][data-brick="frame"]');
+  const present = (kind) => !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`);
+  const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
+  return BRICK_KINDS.filter((kind) => (present(kind) || (active && active.lays === kind)) && (kind !== 'frame' || !!frameGeom));
 }
 
 /** Generate: re-lay the Wall/Frame bricks with the CURRENT settings -- whatever Wall/Frame bricks
@@ -506,9 +512,9 @@ export function generateBricks() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor) return false;
   const frameGeom = resolveFrameGeom(editor);
-  const lay = _hasLaidWallOrFrame(editor) || _activeTool === 'wall' || (_activeTool === 'frame' && !!frameGeom);
-  if (!lay) return false;
-  _layBricks(editor, frameGeom);
+  const kinds = _kindsToLay(editor, frameGeom);
+  if (!kinds.length) return false;
+  _layBricks(editor, frameGeom, kinds);
   return true;
 }
 
@@ -795,23 +801,11 @@ function selectTool(id) {
     editor.setMode('brickBrush');
     return;
   }
-  if (id === 'wall') {
-    // Advisor review (turn 131): Wall must respect an EXISTING frame's own
-    // interior, not just fill the raw board -- resolve the frame the same
-    // way the Frame tool does; runBricks clips Wall to it via generateBricks
-    // when one is usable, and simply fills the whole board when there isn't.
-    _layBricks(editor, resolveFrameGeom(editor));
-    notifyChange();
-    return;
-  }
-  if (id === 'frame') {
-    const frameGeom = resolveFrameGeom(editor);
-    if (!frameGeom) {
-      console.warn('Brick Frame tool: no usable frame contour on this board.');
-      return;
-    }
-    _layBricks(editor, frameGeom);
-    notifyChange();
+  // Audit C2: picking Wall or Frame only shows its settings (and the pinned Generate); it never lays.
+  // Generate lays the tool's own kind (audit C1, _kindsToLay). Wall stays clipped to an existing frame's
+  // interior via the composer (advisor review, turn 131).
+  if (id === 'wall' || id === 'frame') {
+    if (id === 'frame' && !resolveFrameGeom(editor)) console.warn('Brick Frame tool: no usable frame contour on this board.');
     return;
   }
   if (id === 'scissors') {

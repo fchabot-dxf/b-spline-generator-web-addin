@@ -12133,3 +12133,43 @@ not missing bricks).
 Photo tab: levels/crop/relief go through applyParam/P.photoEdits -> scheduleRebuild) still rebuilds the
 3D and redraws the backdrop -- that is how the photo shows up in the editor today. Freezing it too would
 hide the photo terrain until Apply; say if wanted (it is the same Photo question as the turn-183 gate).
+
+## F35 item 16 (Wall/Frame as tools), turn 187 (seat C = 37): slice 1 = audit C1 + C2 + K7
+
+Merged origin/main first (88's audit fixes b0f7478: laid key on the Bricks layer, pending badge).
+Item 16 in full (wall ELEMENTS with regions, contextual panel, migration, scissors split, per-tool Level,
+offset-from-frame) is several turns; this turn is the first slice, stated plainly rather than rushed.
+
+**C1, each tool lays only its own element.** editor-brick-tool.js: `BRICK_KINDS = ['wall','frame']`;
+`_generateAndDraw` / runBricks / runBricksPreview take an optional `kinds` and clear + draw only those
+(the composer still runs with the frame, so a Wall alone keeps the SAME frame-interior clip; default =
+both = old behaviour). main/brick-panel.js: BRICK_TOOLS declare `lays: 'wall' | 'frame'` next to 88's
+`generates`; `_kindsToLay` = kinds already on the canvas + the active tool's own (frame only with a
+usable frame) -- used by Generate and the live drag preview. `_hasLaidWallOrFrame` became unused by
+this change and is removed. Wall hint now: "Fills the frame's interior with bricks (the whole board when
+there is no frame). Press Generate to lay it."
+**C2, picking a tool never lays.** selectTool's wall/frame branch only shows the settings (and the
+pinned Generate); Generate lays. The panel test setup said "selecting the tool lays the bricks once" --
+updated to the new flow (pick, then Generate); that is the point of C2, not a weakened test.
+**K7, "Bricks · Flat .13"".** The Bricks layer's profile is never read (the brick mask sets its height):
+its row now reads "Raised .13"" / "Carved .13"". To do that layers.js needs the Bricks layer identity but
+cannot import editor-brick-tool.js (that file imports layers.js): BRICKS_LAYER_NAME + isBricksLayer moved
+to layers.js and are re-exported from editor-brick-tool.js, so every importer is unchanged.
+
+Tests: new tests/brick-tool-kinds.test.js (5, real draw path into jsdom, composer stubbed); panel +5 (C2
+no lay on pick; Wall+Generate = ['wall']; Frame+Generate = ['frame']; present frame + Wall = both; hint);
+layer list +1 (K7). Against the previous sources: 8 of the C1/C2 tests fail (the 2 passing pin defaults
+that held), K7 fails. Fast tier 57 files, 605 passed, 0 failed.
+Live (served fb-app, headless): pick Wall -> 0 bricks; Generate -> 193 wall, 0 frame; pick Frame -> still
+193/0; Generate -> 193 wall + 136 frame; Bricks row "Raised .25"". Shots shots/seat37/
+f35item16_c1_{wall_only,wall_plus_frame}.png.
+
+**Open, for the advisor (next slices):**
+- A Wall laid alone fills the BAND interior, leaving an empty ring where the Frame bands would go (the
+  geometry it always had). Should a wall with no frame bands fill out to the frame contour? That is the
+  "region minus frame bands" rule of the wall-ELEMENT design; the engine's composer currently falls
+  back to the rectangular board, not the frame contour, when there are no bands -- needs a seat-B call.
+- "Offset-from-frame default ON" and "Level" per tool: please confirm the meaning. My reading: Frame
+  bands get an "Offset from frame" distance (default ON at 0, like the Shape Lattice); Level = the
+  element's own height offset in inches (proud/recessed, item 15's accent level applied per element).
+- C6 (Brick Stripe shows Artwork's colour panel) not started; next slice with the wall elements.

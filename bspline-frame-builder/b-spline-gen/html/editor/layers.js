@@ -708,11 +708,28 @@ export function renderLayersPanel(editor) {
 // ("V-Bit (Linear)") that wouldn't fit a 44px row.
 const PROFILE_LABELS = { vbit: 'V', adaptive: 'Adapt', ballnose: 'Ball', flat: 'Flat' };
 
+/** The Bricks layer (editor-brick-tool.js ensureBricksLayer), by NAME: the stamp-mask pipeline
+ *  (main/stamp-mask-manager.js) routes it through the brick-aware height mask
+ *  (editor-brick-height-mask.js), matching ensureBricksLayer's own lookup (no reserved id scheme). */
+export const BRICKS_LAYER_NAME = 'Bricks';
+export function isBricksLayer(layer) {
+  return !!layer && layer.name === BRICKS_LAYER_NAME;
+}
+
+/** Audit K7: the Bricks layer's carve profile is never read (its height comes from the brick mask), so
+ *  its row reads "Raised .13"" / "Carved .13"" (the depth sign) instead of the misleading "Flat .13"",
+ *  which also clashed with the Flat | Organic brick-top setting. Every other layer: profile + depth. */
+function _summaryLabel(layer) {
+  if (isBricksLayer(layer)) return (typeof layer.depth === 'number' && layer.depth < 0) ? 'Carved' : 'Raised';
+  return PROFILE_LABELS[layer.profile] || layer.profile || '';
+}
+
 function _formatToolSummary(layer) {
-  const label = PROFILE_LABELS[layer.profile] || layer.profile || '';
+  const label = _summaryLabel(layer);
   const depth = typeof layer.depth === 'number' ? layer.depth : 0;
   const abs = Math.abs(depth).toFixed(2).replace(/^0\./, '.');
-  return `${label} ${depth < 0 ? '-' : ''}${abs}"`;
+  const sign = depth < 0 && !isBricksLayer(layer) ? '-' : ''; // Bricks: the word already says it
+  return `${label} ${sign}${abs}"`;
 }
 
 /** T27: small factory for a fixed-glyph toggle button — same shape (a
@@ -894,7 +911,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   const toolSummary = document.createElement('span');
   toolSummary.className = 'layer-tool-summary' + (carveActive ? '' : ' not-carved');
   toolSummary.textContent = ` · ${_formatToolSummary(layer)}`;
-  toolSummary.title = `${PROFILE_LABELS[layer.profile] || layer.profile || 'tool'}, depth ${layer.depth ?? 0}"${carveActive ? '' : ' (not carved)'}`;
+  toolSummary.title = `${_summaryLabel(layer) || 'tool'}, depth ${layer.depth ?? 0}"${carveActive ? '' : ' (not carved)'}`;
   name.appendChild(toolSummary);
 
   const del = document.createElement('button');

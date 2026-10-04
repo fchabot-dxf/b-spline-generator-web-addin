@@ -82,7 +82,8 @@ function setup(tool) {
   P.brickSettings.setId = 1;
   P.brickSettings.invert = false;
   initBrickPanel();
-  $(`brickTool_${tool}`).click(); // selecting the tool lays the bricks once and records what was laid
+  $(`brickTool_${tool}`).click(); // audit C2: selecting the tool only shows its settings...
+  if (tool === 'wall' || tool === 'frame') $('brickGenerate').click(); // ...Generate lays it and records what was laid
   vi.clearAllMocks();
 }
 afterEach(() => { root.remove(); window.svgEditor = null; vi.unstubAllGlobals(); });
@@ -445,5 +446,45 @@ describe('audit K2: the Band patterns heading follows the preset', () => {
     expect($('brickFrameBandPatternList').children.length).toBe(0);
     $('brickFramePreset_three_band').click();
     expect($('brickFrameBandPatternLabel').style.display).toBe('');
+  });
+});
+
+describe('audit C1/C2 (F35 item 16): Wall and Frame are their own tools', () => {
+  const kindsOfCall = (i = 0) => runBricks.mock.calls[i][3].kinds;
+  const putOnCanvas = (kind) => {
+    const node = document.createElement('div');
+    const el = document.createElement('polygon');
+    el.setAttribute('data-brick-gen', '1');
+    el.setAttribute('data-brick', kind);
+    node.appendChild(el);
+    window.svgEditor._sketchLayer = { node };
+  };
+  beforeEach(() => setup('brush'));
+
+  it('C2: picking Wall or Frame only shows its settings -- nothing is laid', () => {
+    $('brickTool_wall').click();
+    $('brickTool_frame').click();
+    expect(runBricks).not.toHaveBeenCalled();
+  });
+  it('C1: Wall + Generate on an empty board lays the wall only', () => {
+    $('brickTool_wall').click();
+    $('brickGenerate').click();
+    expect(kindsOfCall()).toEqual(['wall']);
+  });
+  it('C1: Frame + Generate lays the frame bands only', () => {
+    $('brickTool_frame').click();
+    $('brickGenerate').click();
+    expect(kindsOfCall()).toEqual(['frame']);
+  });
+  it('Generate re-lays what is already on the canvas plus the active tool\'s own kind', () => {
+    putOnCanvas('frame');
+    $('brickTool_wall').click();
+    $('brickGenerate').click();
+    expect(kindsOfCall()).toEqual(['wall', 'frame']);
+  });
+  it('the Wall hint no longer claims the whole board', () => {
+    $('brickTool_wall').click();
+    expect($('brickToolHint').textContent).toMatch(/frame's interior/);
+    expect($('brickToolHint').textContent).not.toMatch(/^Fills the whole board/);
   });
 });
