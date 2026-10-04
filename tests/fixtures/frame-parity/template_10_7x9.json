@@ -28,7 +28,7 @@
           -1.0
         ]
       },
-      "volume": 5.78427
+      "volume": 5.85073
     },
     "frame_right": {
       "bbox": {
@@ -43,31 +43,32 @@
           -1.0
         ]
       },
-      "volume": 5.78427
+      "volume": 5.85073
     },
     "frame_top": {
       "bbox": {
         "max": [
           3.25,
-          3.64149,
+          4.25,
           0.0
         ],
         "min": [
           -3.25,
-          2.55657,
+          2.73379,
           -1.0
         ]
       },
-      "volume": 4.38058
+      "volume": 4.6241
     }
   },
   "meta": {
-    "core": "flat box 7x9x0.75 in, underside z=0",
+    "core": "flat box 7x9x0.75 in, underside at z=0 (record_frame_parity._make_core convention, extruded upward) (item 44 re-record, send_frame path)",
     "frame_height_offset": "-1 in",
     "frame_thickness": "template default (0.75 in)",
     "heightIn": 9,
-    "recorded": "2026-10-04",
-    "recorder": "tools/repro/record_frame_parity.py",
+    "recorded": "2026-10-03",
+    "recorder": "tools/repro/fusion_t11/item44_record_t10_goldens.py",
+    "reverifiedAfter": "H23 item 63 / T84 item 7 (2026-10-03): T10 taperAngle added; top horns' Vertical made UnseededOnly. Re-recorded live (advisor): geometry identical to the item 47 recording (0 numeric diffs > 1e-4).",
     "template": "template_10",
     "timelineHealthy": true,
     "units": "in / in^2 / in^3",
@@ -77,7 +78,7 @@
     "bbox": {
       "max": [
         3.25,
-        3.64149,
+        4.25,
         0.75
       ],
       "min": [
@@ -86,7 +87,7 @@
         0.0
       ]
     },
-    "volume": 35.57773
+    "volume": 37.63535
   },
   "sketch2_shape_outline": {
     "arc_hip_L": {
@@ -362,7 +363,7 @@
     "top_edge": {
       "center": [
         0.0,
-        -6.60663
+        -0.96161
       ],
       "construction": false,
       "end": [
@@ -371,9 +372,9 @@
       ],
       "mid": [
         0.0,
-        3.64149
+        4.25
       ],
-      "radius": 10.24812,
+      "radius": 5.21161,
       "start": [
         3.25,
         3.1125
@@ -410,7 +411,7 @@
       "construction": false,
       "end": [
         2.5,
-        2.55657
+        2.73379
       ],
       "start": [
         3.25,
@@ -422,7 +423,7 @@
       "construction": false,
       "end": [
         -2.5,
-        2.55657
+        2.73379
       ],
       "start": [
         -3.25,
@@ -619,7 +620,7 @@
     "proj_top_edge": {
       "center": [
         0.0,
-        -6.60663
+        -0.96161
       ],
       "construction": false,
       "end": [
@@ -627,10 +628,10 @@
         3.1125
       ],
       "mid": [
-        0.0,
-        3.64149
+        -0.0,
+        4.25
       ],
-      "radius": 10.24812,
+      "radius": 5.21161,
       "start": [
         3.25,
         3.1125
@@ -712,7 +713,7 @@
   },
   "sketch3_profiles": [
     {
-      "area": 51.00053,
+      "area": 48.25703,
       "bbox": {
         "max": [
           4.375,
@@ -742,7 +743,7 @@
       }
     },
     {
-      "area": 5.78427,
+      "area": 5.85073,
       "bbox": {
         "max": [
           -1.45991,
@@ -757,26 +758,26 @@
       }
     },
     {
-      "area": 4.38058,
+      "area": 4.6241,
       "bbox": {
         "max": [
           3.25,
-          4.19927,
+          5.70509,
           0.0
         ],
         "min": [
           -3.25,
-          2.55657,
+          2.73379,
           0.0
         ]
       }
     },
     {
-      "area": 27.17534,
+      "area": 29.54242,
       "bbox": {
         "max": [
           2.5,
-          3.23865,
+          4.42508,
           0.0
         ],
         "min": [
@@ -787,7 +788,7 @@
       }
     },
     {
-      "area": 5.78427,
+      "area": 5.85073,
       "bbox": {
         "max": [
           3.25,
