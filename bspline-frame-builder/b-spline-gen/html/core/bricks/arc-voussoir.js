@@ -32,6 +32,7 @@
 import { mulberry32, seedFor } from './rng.js';
 import { FILL_FRACTIONS } from './library.js';
 import { planPieceLengths, pickSample } from './piece-plan.js';
+import { clipToHalfPlane } from './geometry.js';
 
 const MAX_SEGMENT_ANGLE = (5 * Math.PI) / 180; // H23 item 76: an outer/inner arc edge is sampled
 // densely enough that no single straight sub-segment spans more than ~5deg -- a declared smoothness
@@ -42,6 +43,16 @@ const MIN_RADIUS_IN = 0.01; // a declared floor (same "don't blow up" pattern as
 // cos floor): a brick's own cross-width can genuinely exceed the available radius at an extremely
 // tight bend (a real physical constraint -- a wide brick doesn't fit around a narrow enough curve),
 // clamped here to a tiny positive sliver rather than letting the inner radius go to zero or negative.
+const MAX_EXTEND_ANGLE = Math.PI / 6; // H23 item 76: a declared cap (30deg) on how far an end piece's
+// own OVERSIZED sampling range (extendStartIn/extendEndIn, see below) is allowed to push past its
+// true edge, converted to angle -- MEASURED to matter on a small-radius arc, where a joint-reach
+// linear distance tuned for ordinary declared corners can translate to well over 90deg. 30deg (not a
+// looser bound) is itself MEASURED, not guessed: a half-plane clip is only guaranteed to keep a
+// polygon simple when the polygon's own boundary crosses the clip line at most twice: past ~45deg of
+// extension on T12's own waist arc, the oversized outer+inner annular sector curves back far enough
+// to cross the SAME joint line a 2nd time, and clipToHalfPlane's single-pass Sutherland-Hodgman
+// produces a self-intersecting "bowtie" instead (CONFIRMED directly: 45deg and below stayed simple
+// on that exact case, 60deg did not) -- 30deg keeps real margin below that measured threshold.
 
 /** Whether a row's own arc at true radius `r` (already adjusted for this row's own depth, same
  *  convention as `voussoirPieces`' own `r`) can fit a piece of cross-width `2*halfWidth` at all --
@@ -66,9 +77,32 @@ export function isArcFeasible(r, radialSign, halfWidth) {
  * @param {number} seed
  * @param {string} pieceId
  * @param {number} startId — first piece id to use (the caller's own running brick-id counter)
+ * @param {number} [extendStartIn=0] @param {number} [extendEndIn=0] — H23 item 76 (primitive-ribbon.js):
+ *   push the FIRST/LAST piece's own geometric sampling range (never the underlying theta walk/length
+ *   planning) this many inches further out, so a caller doing its own mitre-clip against a true joint
+ *   (see `jointStart`/`jointEnd` below) always has enough raw material to reach it -- the SAME
+ *   "extend oversized, then clip" technique along-path.js's own `extrapolatedPointAt` uses for a
+ *   straight run's own end piece, just expressed in angle instead of a linear tangent push. 0 (the
+ *   default) reproduces the exact prior behaviour for every EXISTING caller (along-path.js's own arc
+ *   dispatch, which handles its own corners externally and never wants this).
+ * @param {{point:{x,y},dirX:number,dirY:number,keepRefAsStart:{x,y},keepRefAsEnd:{x,y}}|null} [jointStart=null]
+ * @param {object|null} [jointEnd=null] — H23 item 76 (primitive-ribbon.js): a true mitre line to clip
+ *   this arc's own first/last piece against, plus any piece within `mitreReach` of it (two pieces
+ *   approaching the SAME joint from different primitives can overlap directly near it -- the EXISTING
+ *   along-path.js technique for declared corners, reused here unchanged). The SAME joint object is
+ *   shared by both of the two primitives that meet there, one calling it `jointStart` (the primitive
+ *   that STARTS there -- uses `keepRefAsStart`) and the other `jointEnd` (ENDS there -- uses
+ *   `keepRefAsEnd`); the two keepRefs are on OPPOSITE sides of the line by construction (each
+ *   primitive keeps only its own half of the mitre cut) -- see primitive-ribbon.js's own
+ *   `KEEP_REF_STEP_IN` header for why they can't be derived locally here. `null` (the default)
+ *   applies NO clipping, identical to every existing caller's prior behaviour.
+ * @param {number} [mitreReach=0]
  * @returns {{ pieces: Array, nextId: number }}
  */
-export function voussoirPieces(cx, cy, r, theta1, theta2, halfWidth, radialSign, pitch, nominalJoint, set, seed, pieceId, startId) {
+export function voussoirPieces(
+  cx, cy, r, theta1, theta2, halfWidth, radialSign, pitch, nominalJoint, set, seed, pieceId, startId,
+  extendStartIn = 0, extendEndIn = 0, jointStart = null, jointEnd = null, mitreReach = 0,
+) {
   const direction = Math.sign(theta2 - theta1) || 1;
   const totalArcLength = r * Math.abs(theta2 - theta1);
   if (totalArcLength < 1e-6) return { pieces: [], nextId: startId };
@@ -96,29 +130,52 @@ export function voussoirPieces(cx, cy, r, theta1, theta2, halfWidth, radialSign,
   const { lengths, jointWidth } = planPieceLengths(totalArcLength, pitch, nominalJoint, FILL_FRACTIONS);
 
   const pieces = [];
-  let theta = theta1, nextId = startId;
+  let theta = theta1, nextId = startId, sAlong = 0;
   for (let i = 0; i < lengths.length; i++) {
     const dTheta = (lengths[i] / r) * direction;
     const thetaEnd = theta + dTheta;
-    const nSeg = Math.max(1, Math.ceil(Math.abs(dTheta) / MAX_SEGMENT_ANGLE));
+    const isFirst = i === 0, isLast = i === lengths.length - 1;
+    const sEnd = sAlong + lengths[i];
+    // the extension is in ANGLE here (so it moves uniformly in arc-LENGTH regardless of radius),
+    // converted from the caller's own linear inches the same way `dTheta` converts piece length --
+    // CAPPED at MAX_EXTEND_ANGLE (H23 item 76, primitive-ribbon.js): a joint newly exposed by a
+    // DROPPED neighbour (not a declared template corner) can land unusually far from this piece's
+    // own nominal edge, and `extendStartIn`/`extendEndIn` are a single linear distance shared by
+    // every primitive regardless of radius -- on a SMALL-radius arc that same linear distance can
+    // convert to well over 90deg of extension (MEASURED: 1.925in / 1.055in radius = 104.6deg),
+    // sweeping the oversized sampling range back past the arc's own start, long before the clip
+    // below ever runs. The cap keeps the OVERSIZED-then-clipped technique sane; a joint that
+    // genuinely needs more reach than this is a template-geometry case worth a fresh look, not
+    // something to paper over with an ever-larger extension.
+    const extendAngle = (in_) => Math.min(in_ / r, MAX_EXTEND_ANGLE);
+    const sampleThetaStart = isFirst ? theta - extendAngle(extendStartIn) * direction : theta;
+    const sampleThetaEnd = isLast ? thetaEnd + extendAngle(extendEndIn) * direction : thetaEnd;
+    const nSeg = Math.max(1, Math.ceil(Math.abs(sampleThetaEnd - sampleThetaStart) / MAX_SEGMENT_ANGLE));
 
     const outerPts = [];
     for (let k = 0; k <= nSeg; k++) {
-      const t = theta + (dTheta * k) / nSeg;
+      const t = sampleThetaStart + ((sampleThetaEnd - sampleThetaStart) * k) / nSeg;
       outerPts.push({ x: cx + rOuter * Math.cos(t), y: cy + rOuter * Math.sin(t) });
     }
     const innerPts = [];
     for (let k = nSeg; k >= 0; k--) {
-      const t = theta + (dTheta * k) / nSeg;
+      const t = sampleThetaStart + ((sampleThetaEnd - sampleThetaStart) * k) / nSeg;
       innerPts.push({ x: cx + rInner * Math.cos(t), y: cy + rInner * Math.sin(t) });
     }
 
-    const polygon = [...outerPts, ...innerPts];
+    let polygon = [...outerPts, ...innerPts];
+    // keepRefAsStart/keepRefAsEnd (computed by the caller, primitive-ribbon.js, from the joint's own
+    // point `o` plus a tangent step AT this arc's own radius there) -- not derived locally, since a
+    // fixed step from theta1/theta2 only matches `o` when d0=0 (see primitive-ribbon.js's own
+    // KEEP_REF_STEP_IN header for the measured reason that breaks on any deeper row).
+    if (jointStart && (isFirst || sAlong < mitreReach)) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
+    if (jointEnd && (isLast || totalArcLength - sEnd < mitreReach)) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
     const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
     const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
     pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
     nextId++;
 
+    sAlong = sEnd + jointWidth;
     theta = thetaEnd + (jointWidth / r) * direction;
   }
   return { pieces, nextId };

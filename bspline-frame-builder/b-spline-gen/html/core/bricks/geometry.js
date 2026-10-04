@@ -138,6 +138,23 @@ export function clipToHalfPlane(poly, line, keepRef) {
       out.push({ x: cur.x + (next.x - cur.x) * t, y: cur.y + (next.y - cur.y) * t });
     }
   }
+  // H23 item 76: a vertex sitting (near-)EXACTLY on the clip line is both kept (curS>=-1e-9) AND
+  // produces a crossing point at t~=0 immediately after it -- a harmless but real near-duplicate,
+  // common whenever the caller's own polygon has a corner built FROM the same line (e.g. a mitred
+  // piece next to the very joint it was clipped against). Dropping it here keeps this function's own
+  // "clipping a simple polygon is always simple" guarantee meaningful for every caller, not just the
+  // ones whose own geometry happens to avoid landing on the boundary.
+  return dedupePolygon(out);
+}
+
+/** Drop consecutive (including wrap-around) near-duplicate vertices from a polygon. */
+export function dedupePolygon(poly, eps = 1e-7) {
+  const out = [];
+  for (const p of poly) {
+    const prev = out[out.length - 1];
+    if (!prev || Math.hypot(p.x - prev.x, p.y - prev.y) > eps) out.push(p);
+  }
+  if (out.length > 1 && Math.hypot(out[0].x - out[out.length - 1].x, out[0].y - out[out.length - 1].y) <= eps) out.pop();
   return out;
 }
 

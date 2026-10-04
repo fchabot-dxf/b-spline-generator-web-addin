@@ -17460,3 +17460,139 @@ coverage/overlap test was not added, since there was nothing passing to
 pin).
 
 Full suite: 196 files / 3611 tests green (vitest), unchanged from the prior entry.
+
+## H23 item 76 -- primitive-ribbon.js: bands rebuilt from original primitives, 4th architecture attempt, SUCCEEDED (f3)
+
+Advisor, after the three reverted collapse-to-corner attempts above: stop
+patching bricksAlongPath's own centreline/corner machinery; rebuild
+bricksContourBands so EACH ROW is an independent ribbon built DIRECTLY from
+the original template primitives (lines + true arcs) plus that row's own
+[d0,d1] depth range -- "no band depends on the previous band's own
+polyline, only on the original primitives + d". Per primitive: offset
+ANALYTICALLY (line shifts along its own fixed normal; circle radius becomes
+r-radialSign*d, same convention as radialSignAt). A convex arc whose radius
+at d1 has shrunk past feasible drops out of that row entirely (isArcFeasible,
+reused). Every joint between two consecutive LIVE primitives -- a genuine
+template corner, or one newly exposed because something between them
+dropped -- gets a TRUE mitre line: the two neighbours' own d0-offset curves
+intersected (`o`), and the same at d1 (`q`), via closed-form line/circle
+intersection (new file `curve-intersect.js`: line-line, line-circle,
+circle-circle, each hand-verified against known ground truth -- e.g. two
+r=5 circles 8in apart meet at exactly (4,±3) -- before anything was built
+on top of them). End pieces are built oversized then clipped to (o,q) --
+the same half-plane mitre technique along-path.js already uses for declared
+corners, applied generally to every live-live joint instead of only
+pre-declared ones. New file `core/bricks/primitive-ribbon.js`
+(`ribbonPieces`); `voussoirPieces` (arc-voussoir.js) extended with optional
+`extendStartIn/extendEndIn/jointStart/jointEnd/mitreReach` params, all
+defaulting to prior behaviour (0/0/null/null/0) so along-path.js's own
+existing arc dispatch is completely unaffected.
+
+This is the architecture that finally worked, but getting there took real
+debugging, each stage MEASURED before moving to the next (never re-derived
+by reasoning a second time once proven wrong):
+
+1. **Reference-point degeneracy near a plain 90deg corner.** The first
+   working version used a single reference point per clip (the piece's own
+   geometric centre) to decide which side of a mitre line to keep. MEASURED
+   on T1's own bottom-right corner (a 'soldier' band, where piece length
+   and row width are BOTH brickLengthIn): that centre point lands EXACTLY
+   on the mitre line -- not a rare coincidence, true for every soldier
+   band -- so `clipToHalfPlane`'s own sign-or-fallback silently discarded
+   the wrong half. Fixed (first attempt) with an asymmetric reference
+   biased toward each piece's own far end.
+2. **A piece's own far end is not reliably interior either.** MEASURED: a
+   mitre line sweeps an entire depth's worth of along-run distance as it
+   crosses from d0 to d1 (T1's bottom-right corner: `o` at s=0, `q` at
+   s=0.75) -- any piece shorter than that sweep (every piece near a corner,
+   with ordinary brick proportions) can be ENTIRELY on the clipped-away
+   side, including its own far end. The real diagnosis required working
+   out, BY HAND and then confirming by direct computation (never trusted on
+   reasoning alone), which side of the mitre line is actually "kept" at a
+   given (s, depth) coordinate -- the rule turned out to be "keep s >=
+   depth" for that specific corner, i.e. the true cut genuinely eats most
+   of a near-corner piece's own depth, which is correct mitre behaviour,
+   not a bug.
+3. **The SAME joint needs OPPOSITE keep-sides for its own two primitives.**
+   A first fix (a bisector-offset reference point, `o + (n1+n2)*depth`)
+   turned out to be mathematically ON the mitre line itself for ANY depth
+   (verified algebraically: that's exactly how `q` itself is derived from
+   `o`), so it carried no side information at all. The real fix: the mitre
+   line is shared by prev (which ENDS there) and cur (which STARTS there),
+   and each must keep ONLY ITS OWN half of the cut -- opposite sides of the
+   SAME line, not the same side.
+4. **A primitive's own unoffset start/end point is not `o` once d0>0.**
+   The working fix for (2)/(3) used "a tiny step past each primitive's own
+   true edge, at depth d0" -- correct ONLY by coincidence at d0=0 (where a
+   primitive's own original p0 IS exactly the shared corner point). MEASURED
+   directly: every row of a deeper band (three_band's own 3 stretcher rows)
+   still showed out-of-board vertices while the outermost (d0=0) row stayed
+   clean. Final fix: derive the reference point from `o` ITSELF (already
+   correctly computed at this row's own depth) plus a small step along each
+   primitive's own LOCAL tangent AT `o` -- correct at any depth, since `o`
+   is always the joint's own true point there.
+5. **A linear extension distance can translate to a huge angle on a small
+   radius.** `extendStartIn`/`extendEndIn` (how far an end piece's own
+   sampling range is pushed past its true edge before clipping) are a
+   single linear distance shared by every primitive; on a small-radius arc
+   newly adjacent to a dropped neighbour, the SAME distance converted to
+   over 100deg of angular extension (MEASURED: 1.925in / 1.055in radius =
+   104.6deg), sweeping the oversized polygon back past its own start before
+   the clip ever ran, which a half-plane clip cannot safely handle once the
+   polygon's own boundary crosses the clip line MORE than twice (MEASURED:
+   stays simple up to ~45deg of extension on T12's own waist arc, breaks at
+   60deg) -- capped at 30deg (`MAX_EXTEND_ANGLE`), comfortable margin below
+   the measured breaking point.
+
+**Verified, both T1 and T12, both single_soldier and three_band (the deep
+multi-row stress preset)**: 0 self-intersecting pieces, 0 vertices outside
+the board (ALL FOUR cases, down from the pre-fix 34-76 depending on
+preset). single_soldier: 0 overlap, exactly, on both templates -- the
+advisor's own full success bar, met. three_band: a KNOWN, bounded residual
+(0.300 max pairwise overlap, both templates, down from 1.000 = complete
+overlap pre-fix) at the seam between two DIFFERENT rows of the same
+stretcher band, near where the convex shoulder fillet drops out -- each row
+is built independently per the advisor's own explicit design, so two
+adjacent rows' own corner treatments are not currently guaranteed to align
+pixel-for-pixel at a transition like this one. Not chased further this
+turn (a cross-row interaction, more involved to isolate than the five
+single-row bugs above) -- documented as a specific, bounded, honest
+finding rather than either silently shipped or allowed to block the
+(otherwise complete) win.
+
+New tests: `tests/bricks-curve-intersect.test.js` (10 tests, hand-verified
+ground truth for every intersection case + a mutation check on
+nearest-root selection). `tests/bricks-primitive-ribbon.test.js` (11
+tests): a synthetic square's own sanity checks, plus the real T1/T12
+suite (simple + 0-out-of-board + overlap-bounded, both presets, both
+templates) -- MUTATION-TESTED: reverting the item-4 fix above (so the
+keepRef again uses each primitive's own unoffset point) makes exactly the
+real-template three_band tests fail, with vertex counts (76, 64) matching
+this session's own hand measurements precisely; the synthetic square does
+NOT discriminate this specific bug (confirmed directly, documented in the
+test's own comment rather than left as a silent gap) since its own
+symmetry happens to avoid the degeneracy -- kept only as a basic sanity
+check, not relied on as this bug's regression test.
+
+**Not done this turn, deliberately scoped out:** bricksContourBands's own
+PUBLIC entry point still uses the OLD bricksAlongPath/offsetPathInward
+pipeline -- primitive-ribbon.js is a new, proven, fully-tested capability
+that is NOT YET wired in as the actual row-builder there. That integration
+changes bricksContourBands's own input contract (primitives instead of a
+pre-tessellated path+cornerIndices+arcSegments), which means updating the
+EXISTING test files' own call sites and re-verifying the Wall tool and any
+other caller are unaffected -- a separate, well-scoped task in its own
+right, not rushed at the end of an already very long session. The 0.300
+three_band overlap residual (above) is also tracked as remaining, not
+attempted further. cornerStyles, the 8-piece corner vocabulary, 5+1
+FRAME_PRESETS, seeded length variation, and the meticulous-cut test suite
+remain exactly as scoped in item 76's own original list.
+
+Files: `core/bricks/curve-intersect.js` (new), `core/bricks/primitive-
+ribbon.js` (new), `core/bricks/arc-voussoir.js` (voussoirPieces extended,
+backward-compatible), `core/bricks/geometry.js` (clipToHalfPlane now
+dedupes its own near-duplicate output; new `dedupePolygon` export),
+`tests/bricks-curve-intersect.test.js` (new), `tests/bricks-primitive-
+ribbon.test.js` (new).
+
+Full suite: 199 files / 3637 tests green (vitest).
