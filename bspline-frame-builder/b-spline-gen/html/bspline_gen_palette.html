@@ -2924,14 +2924,14 @@
             </div>
             <div data-no-collapse style="display:flex; flex-direction:column; gap:4px;">
               <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-weight:600; flex:1;">Colours</span>
+                <span id="stripeColoursLabel" style="font-weight:600; flex:1;">Colours</span>
                 <label style="display:flex; flex-direction:row; align-items:center; gap:3px; white-space:nowrap;" title="A third colour, C"><input id="stripeThree" type="checkbox" style="margin:0;">Use C</label>
                 <button id="stripeColorsReset" type="button" title="Back to the lattice's Rails / Ties / Nodes colours" style="height:20px; border:1px solid #ccc; border-radius:3px; background:#f9f9f9; cursor:pointer;">&#8634;</button>
               </div>
               <!-- F32 item 1 (Fred: "a few template colour combos"): one chip per STRIPE_COLOR_PRESETS entry,
                    rendered by properties-stripe.js -- never hand-added here per preset. -->
               <div id="stripeColorPresets" style="display:flex; gap:6px;"></div>
-              <div style="display:flex; gap:6px;">
+              <div id="stripeColorSwatches" style="display:flex; gap:6px;">
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">A
                   <button id="stripeColorA" type="button" aria-label="Colour A" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
                 </label>
@@ -2943,7 +2943,10 @@
                 </label>
               </div>
             </div>
-            <div style="color:#666;">Tap a rail, a contour segment or a line. Tap a striped line again to re-stripe it. A line with no lattice defaults to black / white.</div>
+              <!-- Audit C6: in the Brick tab the A/B/C slots pick a brick STYLE (thumbnails rendered by
+                   main/brick-panel.js from editor-brick-tool.js BRICK_STRIPE_STYLES), not a colour -->
+              <div id="stripeBrickStyles" style="display:none; flex-direction:column; gap:6px;"></div>
+            <div id="stripeTargetHint" style="color:#666;">Tap a rail, a contour segment or a line. Tap a striped line again to re-stripe it. A line with no lattice defaults to black / white.</div>
           </div>
         </aside>
 

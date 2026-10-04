@@ -14,6 +14,9 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
 });
 // A usable frame for the Frame tool (resolveFrameGeom needs a frame context + a valid silhouette).
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ showToast: vi.fn() }));
+// Audit C6: a Stripe style pick re-commits through commitEdit (the editor's real commit pipeline is not
+// under test here).
+vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', () => ({ commitEdit: vi.fn() }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, frameContext: vi.fn(() => ({})) };
@@ -25,7 +28,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
-  setBrickTopMode, setSurfaceStyle,
+  setBrickTopMode, setSurfaceStyle, setStripeStyle,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview, buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
@@ -57,6 +60,9 @@ const FIXTURE = `
   <div id="brickSurfaceStyleToggle"></div>
   <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
+  <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
+  <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
+  <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
   <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
   <input id="brickReliefHeightSlider" type="range" min="0" max="1" step="0.001"><input id="brickReliefHeight">
@@ -564,5 +570,54 @@ describe("turn 189 (Fred): the Wear slider shows only for Weathered, saves on dr
     expect(notify).toHaveBeenCalledTimes(1);
     expect(runBricks).not.toHaveBeenCalled();
     expect(pending()).toBe(false);
+  });
+});
+
+describe('audit C6: the Brick tab Stripe picks a brick STYLE per run (A/B/C thumbnails)', () => {
+  let commit;
+  beforeEach(async () => {
+    P.brickSettings.stripeStyles = ['red_bricks', 'white_continuous', 'red_continuous'];
+    setup('brush');
+    commit = (await import('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js')).commitEdit;
+    commit.mockClear();
+  });
+  const visible = (id) => $(id).style.display !== 'none';
+
+  it('in the Brick tab, Stripe shows brick-style slots (A, B; C with Use C) instead of colour swatches', async () => {
+    const { setEditorTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js');
+    setEditorTab('brick');
+    $('brickTool_stripe').click();
+    expect(visible('stripeBrickStyles')).toBe(true);
+    expect(visible('stripeColorSwatches')).toBe(false);
+    expect(visible('stripeColorPresets')).toBe(false);
+    expect($('stripeColoursLabel').textContent).toBe('Brick styles');
+    expect($('stripeTargetHint').textContent).toMatch(/brush stroke/);
+    expect(visible('stripeBrickSlot_A')).toBe(true);
+    expect(visible('stripeBrickSlot_C')).toBe(false);
+    $('stripeThree').checked = true;
+    $('stripeThree').dispatchEvent(new Event('change'));
+    expect(visible('stripeBrickSlot_C')).toBe(true);
+    expect($('stripeBrickStyle_A_red_bricks').classList.contains('active')).toBe(true);
+    expect($('stripeBrickStyle_B_white_continuous').classList.contains('active')).toBe(true);
+  });
+  it('back in Artwork, the panel is the colour panel again (its own hint restored)', async () => {
+    const { setEditorTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js');
+    setEditorTab('brick');
+    $('brickTool_stripe').click();
+    setEditorTab('artwork');
+    expect(visible('stripeBrickStyles')).toBe(false);
+    expect(visible('stripeColorSwatches')).toBe(true);
+    expect($('stripeColoursLabel').textContent).toBe('Colours');
+    expect($('stripeTargetHint').textContent).toBe('Tap a rail, a contour segment or a line.');
+  });
+  it('a pick is saved, re-commits once (every striped run follows), never re-lays or pends the Wall', () => {
+    $('stripeBrickStyle_B_white_bricks').click();
+    expect(P.brickSettings.stripeStyles).toEqual(['red_bricks', 'white_bricks', 'red_continuous']);
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(window.svgEditor._brickSettings).toBe(P.brickSettings);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+    setStripeStyle(0, 'nope');
+    expect(P.brickSettings.stripeStyles[0]).toBe('red_bricks');
   });
 });

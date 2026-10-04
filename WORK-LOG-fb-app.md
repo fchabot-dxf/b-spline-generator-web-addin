@@ -12233,3 +12233,37 @@ Live: row hidden for Clean, shown for Weathered (grout -> Recessed), Wear 0 vs 1
 by RMS 0.0206 in. Shot shots/seat37/f35item18_wear_slider_sidebar.png.
 CHECKLIST: the amendment asks for a checklist line; NEXT-SESSION-fb-app.md is the advisor's file (worker
 never edits it) -- please add the [F35-item-N] line for the Wear slider.
+
+## F35 item 16 slice 3, turn 191 (seat C = 37): audit C6 -- the Brick Stripe picks a brick STYLE per run
+
+Pulled 5f2c04d (advisor's item 19/20 lines), merged origin/main (clean).
+
+**Before:** the Brick tab's Stripe opened Artwork's colour panel (swatches/presets/lattice text that mean
+nothing for bricks); striped runs cycled a FIXED 2-entry STYLE_CYCLE by position.
+**Now, declared:** editor-brick-tool.js `BRICK_STRIPE_STYLES` (red bricks / white rocks one band / red one
+band / white rocks) + `DEFAULT_STRIPE_STYLE_PICKS` (A red bricks, B white one band, C red one band) and
+`stripeCycleFor(picks, useC)` (2 slots, 3 with the panel's own "Use C"; unknown pick = that slot's
+default). STYLE_CYCLE is gone: the default picks ARE the old cycle, so striped boards look the same.
+`P.brickSettings.stripeStyles` holds the picks (Brush-only key: never pends the Wall/Frame).
+regenerateOwnedBrickElements reads the picks LIVE (editor._brickSettings) -- one setting for every
+striped run, so a pick re-commits (commitEdit) and every run follows at once.
+**Panel:** in the Brick tab the Stripe panel hides the colour swatches/presets/reset, relabels
+"Colours" -> "Brick styles", shows A/B(/C) rows of sample-photo thumbnails (one band marked "="), and
+its hint says "Tap a brush stroke..."; back in Artwork it is the colour panel again (hint restored). New
+ids only (stripeColoursLabel, stripeColorSwatches, stripeBrickStyles, stripeTargetHint); the Artwork
+stripe module is untouched.
+
+**A real bug the live check caught (not the unit tests):** regenerateOwnedBrickElements skips work when a
+fingerprint of its inputs is unchanged ("every input its own output depends on"); the new stripe picks
+were NOT in it, so a pick change was silently skipped. Measured live: B -> red one band left runs 1 and 3
+on set 3; with the cycle ids added to the fingerprint they turn set 1 at once. Not unit-covered (the
+regenerate path needs the real SVG.js sketch layer); the live probe is the proof, run before and after.
+
+Tests: new tests/brick-stripe-styles.test.js (4: default = old cycle; Use C + picks; unknown pick ->
+default; every style a real set+profile); panel +3 (Brick-tab Stripe shows brick slots not swatches, C
+only with Use C, picks highlighted; back in Artwork the colour panel + hint return; a pick saves,
+re-commits once, never re-lays/pends). Against the previous sources 6 fail. Fast tier 61 files, 668
+passed, 0 failed. Live: a scripted brush stroke striped into 4 runs -> sets 1/3/1/3 (default); B = red one
+band -> 1/1/1/1. Shot shots/seat37/f35item16_c6_stripe_brick_styles.png.
+Control matrix (Fred's new rule): asked 88 for the file + format with my 9 new controls and their
+expected {pending, canvas, 3D}; rows to follow once it exists.

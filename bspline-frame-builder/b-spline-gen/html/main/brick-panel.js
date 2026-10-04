@@ -20,7 +20,11 @@
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
-import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS } from '../editor/editor-brick-tool.js';
+import {
+  runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
+  BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS,
+} from '../editor/editor-brick-tool.js';
+import { commitEdit } from '../editor/editor-commit.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { rectToPrimitives } from '../core/inset-window.js';
@@ -234,6 +238,94 @@ function syncElementLevels() {
     const el = document.getElementById(`brickLevel_${kind}`);
     if (el && document.activeElement !== el) el.value = levels[kind] || 0;
   }
+}
+
+/** Audit C6: the Stripe panel in the Brick tab -- its A/B/C slots pick a brick STYLE (thumbnails from
+ *  BRICK_STRIPE_STYLES), Artwork's colour swatches/presets/reset are hidden. Elsewhere it is untouched. */
+const STRIPE_SLOTS = ['A', 'B', 'C'];
+const _thumbOf = (style) => { const set = brickSetById(style.setId); return set && set.samples && set.samples[0] ? set.samples[0].image : ''; };
+
+function renderStripeBrickStyles(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  STRIPE_SLOTS.forEach((slot, i) => {
+    const row = document.createElement('div');
+    row.id = `stripeBrickSlot_${slot}`;
+    row.style.cssText = 'display:flex; align-items:center; gap:4px;';
+    const tag = document.createElement('span');
+    tag.textContent = slot;
+    tag.style.cssText = 'width:12px; font-weight:600;';
+    row.appendChild(tag);
+    for (const style of BRICK_STRIPE_STYLES) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = `stripeBrickStyle_${slot}_${style.id}`;
+      btn.title = style.label;
+      btn.className = 'stripe-brick-style-btn';
+      btn.style.cssText = 'flex:1; height:30px; padding:2px; border:1px solid #ccc; border-radius:3px; background:#fff; cursor:pointer; position:relative;';
+      const img = document.createElement('img');
+      img.src = _thumbOf(style);
+      img.alt = style.label;
+      img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;'
+        + (style.profile === 'continuous' ? ' filter:blur(0.6px) saturate(0.85);' : '');
+      btn.appendChild(img);
+      if (style.profile === 'continuous') {
+        const band = document.createElement('span'); // "one band": no joints
+        band.textContent = '=';
+        band.style.cssText = 'position:absolute; right:2px; bottom:0; font-size:10px; font-weight:700; color:#fff; text-shadow:0 0 2px #000;';
+        btn.appendChild(band);
+      }
+      btn.addEventListener('click', () => setStripeStyle(i, style.id));
+      row.appendChild(btn);
+    }
+    container.appendChild(row);
+  });
+}
+
+function syncStripeBrickStyles() {
+  const picks = P.brickSettings.stripeStyles || DEFAULT_STRIPE_STYLE_PICKS;
+  const useC = !!document.getElementById('stripeThree')?.checked;
+  STRIPE_SLOTS.forEach((slot, i) => {
+    const row = document.getElementById(`stripeBrickSlot_${slot}`);
+    if (row) row.style.display = i < 2 || useC ? 'flex' : 'none';
+    for (const style of BRICK_STRIPE_STYLES) {
+      const btn = document.getElementById(`stripeBrickStyle_${slot}_${style.id}`);
+      if (!btn) continue;
+      const on = (picks[i] || DEFAULT_STRIPE_STYLE_PICKS[i]) === style.id;
+      btn.classList.toggle('active', on);
+      btn.style.outline = on ? '2px solid #0078d4' : 'none';
+    }
+  });
+}
+
+function syncStripePanelContext() {
+  const brick = getEditorTab() === 'brick';
+  const show = (id, on, display = '') => { const el = document.getElementById(id); if (el) el.style.display = on ? display : 'none'; };
+  show('stripeColorPresets', !brick, 'flex');
+  show('stripeColorSwatches', !brick, 'flex');
+  show('stripeColorsReset', !brick);
+  show('stripeBrickStyles', brick, 'flex');
+  const label = document.getElementById('stripeColoursLabel');
+  if (label) label.textContent = brick ? 'Brick styles' : 'Colours';
+  const hint = document.getElementById('stripeTargetHint');
+  if (hint) {
+    if (hint.dataset.artworkText == null) hint.dataset.artworkText = hint.textContent;
+    hint.textContent = brick ? 'Tap a brush stroke to split it into runs; each run takes brick style A / B (/ C), in order. Tap it again to re-stripe.' : hint.dataset.artworkText;
+  }
+  if (brick) syncStripeBrickStyles();
+}
+
+/** Audit C6: pick slot `slot`'s (0 = A) brick style. Brush strokes only (never pending the Wall/Frame);
+ *  re-commits so every striped run shows the new pick at once (regenerateOwnedBrickElements on commit). */
+export function setStripeStyle(slot, styleId) {
+  if (!BRICK_STRIPE_STYLES.some((s) => s.id === styleId)) return;
+  const picks = [...(P.brickSettings.stripeStyles || DEFAULT_STRIPE_STYLE_PICKS)];
+  picks[slot] = styleId;
+  P.brickSettings.stripeStyles = picks;
+  syncStripeBrickStyles();
+  notifyChange();
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor) { editor._brickSettings = P.brickSettings; commitEdit(editor); }
 }
 
 export function setBrickTopMode(mode, commit = 'surface') {
@@ -473,7 +565,7 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 
 /** Settings keys a Wall/Frame layout never reads -- a Brush stroke's own settings freeze at draw
  *  time, so changing them never makes the Wall/Frame layout pending. */
-const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation'];
+const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 'stripeStyles'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'elementLevelIn'];
@@ -867,8 +959,10 @@ function selectTool(id) {
   if (id === 'stripe') {
     // Same reuse, for the existing Stripe mode. editor-brick-tool.js's own
     // regenerateOwnedBrickElements reacts to the resulting STRIPE_ATTR-
-    // tagged pieces on the next commit, cycling each its own brick style.
+    // tagged pieces on the next commit, giving each run its picked brick style (audit C6).
+    editor._brickSettings = P.brickSettings;
     editor.setMode('stripe');
+    syncStripePanelContext();
     return;
   }
 }
@@ -1084,6 +1178,9 @@ export function initBrickPanel() {
   document.getElementById('brickBtnTopOrganic')?.addEventListener('click', () => setBrickTopMode('organic'));
   document.getElementById('brickBtnTopFlat')?.addEventListener('click', () => setBrickTopMode('flat'));
   renderSurfaceStyleToggle(document.getElementById('brickSurfaceStyleToggle'));
+  renderStripeBrickStyles(document.getElementById('stripeBrickStyles'));
+  document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
+  document.addEventListener('editorTabChanged', () => syncStripePanelContext());
   bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
   document.getElementById('brickFrameOffsetOn')?.addEventListener('change', (e) => setFrameOffset({ on: e.target.checked }));
   document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset({ distance: e.target.value }));
