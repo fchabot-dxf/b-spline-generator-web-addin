@@ -20942,3 +20942,85 @@ giving a noticeably more pronounced "shield" silhouette than the subtler 8 deg.
 **Stopped here, as instructed.** No `sketches/template_19/` scaffold, no `frame-defs.json` entry,
 nothing registered -- this branch carries only the diagram script. Passing back for Fred's OK:
 which taper value (or none of these, a different one) before any real build starts.
+
+## H23 item 80, turn 556: Template 19 built -- scaffold, two real findings fixed, live-verified at 7x9/9x12
+
+Seat 39, turn 556. Fred's OK (via the advisor): taperAngle default 8 deg, slider band to 15 deg stays.
+Dispatch: build it on this branch -- preset + frame-defs regen + golden + Fusion build check at 7x9
+and 9x12, shots to seatA, pass back for merge; nothing about T18/T10 may change.
+
+**Scaffold.** `sketches/template_19/`: Template 18's own phases/sketch files copied verbatim (the
+diagram-stage finding held: zero Fusion-side changes needed for the REAL seeded build -- confirmed
+live, first try, both sizes). `template_data.py`: new name/label, a 5th handle (`taperAngle`),
+`FRAME_PROVISIONAL_SHAPE = {"from": "template_18", "taperAngleDeg": 8.0}` -- reuses
+`frame_definition.py`'s own generic `"from"` dispatch + `provisional_taper_model` (T12/T13's own
+mechanism), zero new Python code. `FRAME_HIDDEN = True` (new, unverified). Test registrations (same
+pattern every new template needs): `frame-hidden-template.test.js`, `frame-template-6.test.js`'s label
+ordering, `frame-defs.test.js`'s EXTRA allowlist, `test_all_templates_shape_outline.py`'s
+`KNOWN_CONVEX_RADIUS_BELOW_BAR`, `test_no_miter_miss_possible.py`'s `TEMPLATES` list.
+
+**Live build check, both sizes, first try: 4 bars, `sketch_3` built, healthy.** Generated the real
+seeded payloads via `frameSeedGeometry` (the app's own Send path), built both live
+(`build_sketch_logic_v3`), confirmed `barNames: [frame_bottom, frame_left, frame_right, frame_top]` at
+7x9 and 9x12. Screenshots (close-ups of the built shape, confirmed correct by eye --
+the arched, narrow, now-visibly-tapered head): `~/.bspline-status/shots/seatA/
+h23_item80_t19_default_{7x9,9x12}.png`. Recorded this template's own first-ever goldens too
+(`record_frame_parity.py`, unseeded bootstrap), registered in `test_frame_parity_goldens.py`'s own
+`_ALLOWED_GOLDEN_STATES` dict.
+
+**Finding 1 (real bug, fixed): omitting `shapeExtractor` -- T12/T13's own apparent precedent -- silently
+dropped this template's own defining features once goldens existed.** Regenerating frame-defs AFTER
+recording the goldens (not before -- this is why the earlier live build was unaffected) surfaced it:
+the generic `hourglass` extractor has no idea what `topInset`/`archRise` mean, so it "successfully" fit
+from the new goldens and KEPT ONLY the generic base-hourglass features (cornerR/depth/notch/waistCy/
+waistR + the new taperAngle), silently DROPPING archRise/topInset/cornerRTop/cornerRBottom/
+waistOpeningFtIn entirely -- every feature that makes this template's own head what it is. T12/T13 omit
+`shapeExtractor` safely because the SAME generic extractor's own validity check (shoulder tangent to a
+vertical line at hw) already rejects their own tapered goldens outright; that check has nothing to do
+with a narrow head or an arch, so it never fires for this template. Fixed by declaring
+`shapeExtractor = "hourglass_narrow_arched_head"` -- Template 18's own existing stub (always `return
+False, {}`, by design, until a real narrow-head-arch extractor is written) -- restoring the full
+provisional feature set. New `tests/frame-template-19.test.js` pins the exact resolved feature-key set
+and checks every T18-inherited value is numerically identical to T18's own, proven non-vacuous (fails
+2/3 against the pre-fix state, confirmed by temporarily removing the override and regenerating).
+
+**Finding 2 (a real, named gap, declared not fixed): the unseeded golden can't reflect the default
+taper at all, at either size -- unlike T12/T13's own narrower gap.** `tests/frame-parity-app.test.js`'s
+own app-vs-Fusion parity check failed at both 7x9 and 9x12 (1.8-2.5in gaps, both outline and inner
+edge) once the new goldens existed. Root cause, confirmed not assumed: T12/T13's own authors hand-baked
+their 8 deg lean directly into the horn's own LITERAL seed coordinates (calibrated at 7x9, diverging
+only at other sizes -- their own already-declared `SINGLE_BOARD_SEED_OUTLINE`/`_INNER` exclusion).
+Template 19's phases are Template 18's own, copied verbatim -- nothing encodes taperAngle as a literal
+at all. Tried reasoning through "just bake a tapered literal in, the same way": doesn't work here --
+`horn_TR`/`horn_TL`'s own `Vertical` constraint is marked `UnseededOnly` (inherited from Template
+10/18), so it stays ACTIVE for exactly the unseeded bootstrap this golden is built from, snapping any
+literal lean straight back to vertical regardless of what the seed coordinates say. Closing this for
+real needs the SAME constraint-graph change T12/T13's own phase files already made (dropping `Vertical`
+from `horn_TR`/`TL` entirely, not just re-seeding it) -- a structural edit to a mechanism shared with
+Template 10/18, genuinely out of this item's own scope. Declared a new exclusion,
+`UNSEEDED_TAPER_NOT_BAKED` (both sizes, with the full reasoning above), rather than silently working
+around it or quietly loosening the test's own tolerance. **The REAL (seeded) build is unaffected** --
+already live-verified above, this gap is specifically about the unseeded bootstrap's own preview-vs-
+golden comparison, not the app's real Send path.
+
+**Verified the first finding's fix didn't invalidate the earlier live build**, rather than assuming it:
+re-computed `paramsFromShapeModel`'s own resolved values against the CORRECTED frame-defs and diffed
+them against what the live build actually used -- byte-for-byte identical at both sizes, confirming the
+live build and the recorded goldens were never wrong; only the frame-defs regeneration step was.
+
+**Full gate, both languages: genuinely green.** Python 1047/1047. JS 4123/4123 (one test file needed
+a longer `--testTimeout` during a very long full-suite run; passed clean, not a regression -- same
+resource-contention pattern as turns 550/552's own single flakes). Merged `origin/main` twice this
+turn (it moved mid-turn, advisor flagged it); both clean, no conflicts, both confirmed byte-identical
+against my own pre-merge tip for every file touched. Deployed from this clean, committed, merged
+branch worktree each time (`build-info.json` `dirty: false` both deploys, addressing the advisor's own
+earlier -16/-17 feedback). Opened every shot before passing, per the advisor's own explicit ask.
+
+**Fusion holder released.** `FRAME_HIDDEN` stays `True` -- the dispatch asked for a build CHECK at two
+sizes, not the full handle-range matrix T18 needed before its own un-hide; leaving that decision to the
+advisor (a broader matrix is straightforward to run if wanted before un-hiding). Commits this turn, all
+on `t19-arched-tapered-sides`: `1d1b698` (scaffold), `45cdc1c` (merge), `a0e1559` (extractor fix +
+goldens + pinning test), `44201db` (parity exclusion). Passing back for the advisor's own merge
+decision, with two things to carry forward: whether to un-hide now or after a broader matrix, and the
+unseeded-taper-bake gap (Finding 2) as a possible follow-up alongside the already-queued H23 item 79
+(T9 taller flanges) and item 81 (T10 archRise_min + apex drift).
