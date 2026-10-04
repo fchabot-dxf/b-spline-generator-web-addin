@@ -22,22 +22,28 @@ import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimit
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
-import { setEditorTab } from './editor-tabs.js';
+import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
- * entries plus their engine function, no UI rework"). `settingsSection` is
- * reserved for a future per-tool settings block (Wall's zones, Frame's band
- * picker) -- null for now, every tool uses only the common controls below.
+ * entries plus their engine function, no UI rework"). `settingsSection` names
+ * the DOM id of that tool's own settings block, shown ONLY while it's the
+ * active tool (syncToolSections, below) -- null for a tool with none of its
+ * own (Scissors/Stripe act on an existing stroke, no settings to show).
+ * F35 item 16 follow-up (Fred, live use: "shows every section at once, can't
+ * tell what applies"): Brush was the only consumer when this field was first
+ * declared (a direct `_activeTool === 'brush'` check, not worth generalizing
+ * for one); Wall and Frame needing the exact same treatment is the 3rd
+ * consumer that justifies the declared table this always meant to become.
  * `run` is this file's own entry point for that tool (not re-exported --
  * core/bricks/ itself stays engine-agnostic of "how a UI triggers it"). */
 const BRICK_TOOLS = [
-  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: null,
+  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection',
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
-  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: null,
+  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection',
     hint: 'Fills the whole board with bricks.' },
-  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '🖼️', settingsSection: null,
+  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection',
     hint: 'Bands of bricks along the current frame\'s own contour.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
@@ -229,14 +235,15 @@ function setOrientation(v) {
   notifyChange();
 }
 
-/** Shown only while Brush is the active tool (BRICK_TOOLS' own
- *  `settingsSection` field is reserved for exactly this per-tool-section
- *  concept but unused elsewhere yet -- Brush is the first tool that needs
- *  one, so this stays a direct `_activeTool === 'brush'` check rather than
- *  generalizing settingsSection for a single consumer). */
-function syncBrushSection() {
-  const el = document.getElementById('brickBrushSection');
-  if (el) el.style.display = _activeTool === 'brush' ? '' : 'none';
+/** Shows ONLY the active tool's own settings section (BRICK_TOOLS' own declared
+ *  `settingsSection`), hides every other tool's -- Scissors/Stripe have none (null), so
+ *  selecting either hides Brush/Wall/Frame's sections with nothing of their own to show. */
+function syncToolSections() {
+  for (const tool of BRICK_TOOLS) {
+    if (!tool.settingsSection) continue;
+    const el = document.getElementById(tool.settingsSection);
+    if (el) el.style.display = tool.id === _activeTool ? '' : 'none';
+  }
 }
 
 function setPair(sliderId, numberId, v) {
@@ -268,7 +275,7 @@ function syncControlsFromState() {
   document.getElementById('brickSeed').value = s.seed;
   syncProfileToggle();
   syncOrientationToggle();
-  syncBrushSection();
+  syncToolSections();
 }
 
 /** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): a Brick-tab slider
@@ -390,7 +397,23 @@ function syncToolButtons() {
   const hint = BRICK_TOOLS.find((t) => t.id === _activeTool);
   const hintEl = document.getElementById('brickToolHint');
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
-  syncBrushSection();
+  syncToolSections();
+  syncEmptySelectionPanel();
+}
+
+/** F35 item 16 follow-up (Fred, live use: "don't see the layers"): with no Brick tool picked yet,
+ *  the tab's own panel has nothing contextual to show (syncToolSections hides every section) --
+ *  show the shared editor Layers panel instead of a near-empty Brick panel. Only touches these two
+ *  panels while the Brick tab is actually active (getEditorTab) -- never fights editor-tabs.js's
+ *  own per-tab panel toggle for Artwork/Photo/Frame, which this deliberately leaves alone (not the
+ *  reported problem). */
+function syncEmptySelectionPanel() {
+  if (getEditorTab() !== 'brick') return;
+  const brickPanel = document.getElementById('editorBrickPanel');
+  const layersPanel = document.getElementById('editorLayersPanel');
+  const showLayers = _activeTool === null;
+  if (brickPanel) brickPanel.style.display = showLayers ? 'none' : '';
+  if (layersPanel) layersPanel.style.display = showLayers ? '' : 'none';
 }
 
 /** F35 (advisor: "Esc = back to the select tool in every tab"): Brick has no Select tool of its
@@ -725,6 +748,11 @@ export function initBrickPanel() {
   updateSpacingHint();
 
   document.getElementById('editorTabBrick')?.addEventListener('click', () => setEditorTab('brick'));
+  // F35 item 16 follow-up: re-sync which panel (Brick's own settings vs the shared Layers panel)
+  // shows every time the Brick tab itself becomes active -- syncToolButtons (called from
+  // selectTool/deselectTool already) only runs on a TOOL change, not a bare tab switch, so entering
+  // the tab with no tool yet picked needs its own trigger here.
+  document.addEventListener('editorTabChanged', (e) => { if (e.detail?.tab === 'brick') syncToolButtons(); });
   renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));

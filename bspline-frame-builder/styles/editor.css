@@ -339,6 +339,18 @@
     box-shadow: inset 0 1px 3px rgba(0,0,0,0.12) !important;
 }
 
+/* F35 item 16 follow-up (Fred, live use: "can't tell which tool is selected"): registry-rendered
+   tool buttons (Brick/Photo, editor-tool-registry.js's own `renderToolRegistry`) show a plain text/
+   emoji icon with no equivalent to Artwork's own static SVG buttons' bold-stroke-when-active
+   treatment just above -- the same pale background alone reads as too weak a highlight on its own.
+   A solid, filled background (matching the rest of the app's own "selected" convention, e.g.
+   .cad-btn.active) makes the active tool unambiguous at a glance. */
+.tool-btn-emoji.active {
+    background: var(--cad-accent-blue) !important;
+    color: white !important;
+    border-color: var(--cad-accent-blue) !important;
+}
+
 /* Ensure SVG icons stay dark and become bold when active */
 .tool-btn.active svg {
     stroke: #1a1a1a !important;

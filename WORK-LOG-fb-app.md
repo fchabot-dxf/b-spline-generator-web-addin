@@ -11644,3 +11644,80 @@ panel showing every section at once instead of being contextual; the Layers pane
 nothing selected; and a reported bad brick layout -- wall bricks running under/over frame bands,
 shards fanning at the shoulders -- to reproduce and diagnose as either already-fixed or a real
 wall/frame clip bug).
+
+## F35 item 16, re-prioritized: Fred's live Brick-tab confusion (4-part bug report)
+
+Fred's own live screenshot (`.bspline-status/shots/fred/fred_brick_tab_confusion_2026-10-04.png`,
+add-in 2026.10.04-7, BEFORE this session's earlier UX-unification commit 2245810): "I don't
+understand which tool is selected, can't select brush, don't see the layers." The advisor moved this
+ahead of the rest of item 16. All 4 parts addressed; none assumed broken without checking this
+branch's own current code first.
+
+**(1) Tool icons + highlight.** The Frame tool's own icon was `'🖼️'` -- Unicode literally calls that
+glyph "framed picture," which is exactly the photo-icon confusion Fred reported (confirmed by reading
+`BRICK_TOOLS` directly, not assumed from the screenshot alone) -- changed to `'⬚'` (a plain dotted
+square, reads as "outline/border," no photo association). Tooltips were ALREADY present (`editor-
+tool-registry.js`'s `renderToolRegistry` sets `btn.title` from `label`/`hint` for every entry) --
+nothing to fix there. The highlight itself: `.tool-btn.active` (editor.css) is a pale `#e5f3ff`
+background; Artwork's own static SVG buttons get an ADDITIONAL `.tool-btn.active svg { stroke-width:
+2.5px }` bold-stroke treatment the same rule doesn't reach for Brick/Photo's plain-emoji buttons
+(`btn.textContent = tool.icon`, no `<svg>` to bold) -- confirmed by reading `base.css`'s actual rule,
+not assumed. Registry-rendered buttons now also carry a new `tool-btn-emoji` class
+(`editor-tool-registry.js`), with its own `.tool-btn-emoji.active` rule (editor.css) giving a SOLID
+filled background (matching `.cad-btn.active`'s own established "selected" look elsewhere in the app)
+-- scoped so Artwork's own static buttons are completely untouched.
+
+**(2) Contextual panel.** The right-side panel showed Set/Wall pattern/Frame band preset/Band
+patterns all simultaneously regardless of which tool was active -- confirmed live (own screenshot
+matched Fred's own complaint exactly). `BRICK_TOOLS`' own `settingsSection` field was declared for
+exactly this ("reserved for a future per-tool settings block... null for now") when Brush was its
+only would-be consumer, left unused rather than generalized for one. Wall and Frame needing the
+identical treatment is the 3rd consumer that justifies turning it on: `settingsSection` now names
+each tool's own DOM id (`brickBrushSection`/`brickWallSection`/`brickFrameSection`; Scissors/Stripe
+stay `null`, nothing of their own to show), wrapped the "Wall pattern" and "Frame band preset" + "Band
+patterns" HTML blocks in those two new container divs, and replaced the old Brush-only
+`syncBrushSection()` with a generic `syncToolSections()` that shows ONLY the active tool's own
+section. "Set"/"Brick size"/"Grout"/"Relief"/etc. stay unconditional -- genuinely common to every tool.
+
+**(3) Layers panel on empty selection.** With no Brick tool picked yet, `syncToolSections()` hides
+every section, leaving a near-empty panel -- exactly "don't see the layers." New
+`syncEmptySelectionPanel()`: while the Brick tab is active (`getEditorTab()`) and `_activeTool ===
+null`, swaps `#editorBrickPanel` for the shared `#editorLayersPanel` (editor-tabs.js's own per-tab
+toggle owns every OTHER tab's panel untouched -- this only ever touches these two, only on Brick,
+matching the reported problem's own scope, not a broader redesign). Wired from the SAME
+`syncToolButtons()` already called by `selectTool`/`deselectTool`, plus a new `'editorTabChanged'`
+listener (since entering the tab with no tool picked is a bare tab switch, not a tool change, so
+`syncToolButtons()` needed its own trigger for that case).
+
+**Tests**, 3 new files (14 tests): `tests/brick-tool-contextual-sections.test.js` (one section visible
+at a time per tool, Scissors/Stripe hide all three); `tests/brick-empty-selection-layers-panel.test.js`
+(Layers shows with no tool, Brick panel shows once one's picked, Escape returns to Layers, other tabs
+untouched); `editor-tool-registry.test.js` gained one test for the new `tool-btn-emoji` class. Each
+mutation-tested (reverting `settingsSection` to `null` for wall/frame failed exactly the 5 contextual-
+section tests; disabling `syncEmptySelectionPanel` failed exactly the 2 tests that depend on it, the
+other 2 -- picking a tool, and the other-tabs control -- correctly stayed green). Full suite green:
+220 files / 3938 tests.
+
+**(4) The reported bad brick layout -- reproduced and diagnosed, not blindly "fixed."** Red Brick +
+Stretcher wall + Soldier frame on Template 1 (all defaults -- zero configuration needed to
+reproduce), headless Chrome, real SVG canvas (not the flat terrain backdrop). Measured: 295 bricks
+(171 wall + 124 frame), 23 of the 171 wall bricks' own bounding boxes overlap SOME frame brick's
+bounding box (concentrated at the 4 concave "shoulder" curves, `shots/seatC/
+f35item16_brick_wall_frame_repro_full.png` + a tight `..._shoulder_closeup.png`). Visually, this
+branch's current result is substantially cleaner than Fred's own -7 screenshot's chaos (no stray dark
+gaps, no obviously broken/duplicated geometry) -- consistent with the advisor's own guess that
+d3's notch/medial work (landed after -7) already fixed most of it. What REMAINS at each shoulder: the
+frame band's own soldier bricks fan out as thin radial wedges pivoting around the concave curve, a
+visually busy but geometrically coherent way of keeping each brick roughly perpendicular to the
+local curve tangent -- not obviously broken (no visible self-intersection, no double-rendered
+geometry in the close-up), but genuinely busy enough that Fred may want a different treatment for a
+tight concave corner specifically. Deliberately NOT changed: the bbox-overlap count alone doesn't
+distinguish "two shapes sharing a boundary" from "two shapes actually overlapping," and the fan
+pattern's own correctness depends on a design call (should a frame band even wrap a sharp concave
+notch this way, or should it taper off / use a different corner treatment?) this report surfaces for
+Fred/the advisor's own judgment rather than one this diagnostic pass should decide unilaterally.
+
+**Screenshots** (`.bspline-status/shots/seatC/`): `f35item16_brick_tab_fixed_no_tool_1366.png` (Layers
+panel, nothing highlighted), `f35item16_brick_tab_fixed_wall_tool_1366.png` (Wall tool strongly
+highlighted, ONLY Wall-pattern + common sections visible, the grout hint showing correctly),
+`f35item16_brick_wall_frame_repro_full.png` + `..._shoulder_closeup.png` (item 4's repro).

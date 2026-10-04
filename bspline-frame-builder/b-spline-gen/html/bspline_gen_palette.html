@@ -3101,19 +3101,27 @@
               </div>
             </div>
 
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
-            <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-              <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+            <!-- F35 item 16 follow-up (Fred, live use: "shows every section at once, can't tell
+                 what applies"): shown only while Wall is the active tool (main/brick-panel.js's
+                 syncWallSection), same contextual-section convention brickBrushSection already set. -->
+            <div id="brickWallSection">
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
+              <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+                <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+              </div>
             </div>
 
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
-            <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-              <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
-            </div>
+            <!-- F35 item 16 follow-up: shown only while Frame is the active tool (syncFrameSection). -->
+            <div id="brickFrameSection">
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
+              <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+                <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
+              </div>
 
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
-            <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
-              <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
+              <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
+                <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
+              </div>
             </div>
 
             <!-- F35 item 16 (Fred: "I'd rather they all have the same size"): ONE global brick
