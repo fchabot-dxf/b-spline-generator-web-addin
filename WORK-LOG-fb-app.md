@@ -12096,3 +12096,40 @@ the active filter is the photo (one control, Fred's bound). Removing the Effect-
 I'll sweep registerTweaksTarget/photoTweaksBody/tests when it's decided.
 
 Coordination: told 88 before moving the markup; 88 does its Brick-panel number-box widths after rebasing.
+
+## F35 item 18 part (4), turn 185 (seat C = 37): the editor's static backdrop -- no 3D while editing
+
+Merged origin/main first (fast-forward to 718c33a).
+
+**Measured before deciding what "loads fast" means** (new tools/repro/f35item18_editor_session_perf.mjs:
+real app, headless, PERF log on, a T1 7x9 Wall+Frame brick board Applied at spacing 0.015; busy = a
+rebuild in flight OR the loading line showing a stage, since mask building is not a rebuild):
+
+| step | before | after |
+|---|---|---|
+| open the editor | 1.40 s, 0 remasks | 1.35 s, 0 remasks |
+| one in-editor change (Brick tab Generate, herringbone) | 8.10 s busy: 2 remasks (1.2 s in the commit) + a full 3D rebuild, backdrop redrawn | 0.17 s: serialize 3 ms + persist 29 ms, 0 remasks, backdrop not redrawn |
+| Apply | 7.1 s, 3D rebuilt | 7.3 s, 3D rebuilt |
+
+Opening was never the slow part; EVERY in-editor edit paid the whole 3D cost again (the commit pipeline's
+remask -> refreshAllStampMasks -> rebuild -> updateEditorTopView -> sync3DBackground).
+
+**Change, declared:** main/app-init.js `CHANGE_PIPELINE_IN_EDITOR` = CHANGE_PIPELINE minus `remask`
+(live: serialize; commit: serialize, persist). initSvgEditor's onChange picks it with the EXISTING
+declared fact core/history.js `isEditorOpen()`; runChangePipeline takes the table as an optional third
+argument (default = the old table, so every non-editor caller is unchanged). The backdrop is now the
+board as it was when the editor opened (open() -> sync3DBackground), static for the session. Apply and
+Cancel are the only ways the modal closes and both already remask + rebuild (checked every
+svgEditorModal reference). The sidebar's 'auto'/'surface' brick commits only happen with the editor
+closed, so they still remask.
+
+Tests: change-pipeline.test.js +3 (table = old minus remask, same order; run with it never remasks; no
+table argument still remasks). Fast tier: 59 files, 685 passed, 0 failed.
+Shots: shots/seat37/f35item18_backdrop_{before,after}_editor.png (same look; the after shot shows a few
+bricks white -- their photo textures were still loading 0.17 s after Generate vs 8 s before; load timing,
+not missing bricks).
+
+**Still live inside the editor, NOT changed (flag):** a PARAM change made from inside the editor (the
+Photo tab: levels/crop/relief go through applyParam/P.photoEdits -> scheduleRebuild) still rebuilds the
+3D and redraws the backdrop -- that is how the photo shows up in the editor today. Freezing it too would
+hide the photo terrain until Apply; say if wanted (it is the same Photo question as the turn-183 gate).
