@@ -152,6 +152,9 @@ export const DEFAULT = {
       // centreline) is the closest match to the OLD orientation-only brush's own default look, so an
       // existing saved session's brush strokes don't visibly change on load.
       brushBandPreset: 'stretcher_1',
+      // Audit C6: the Stripe tool's A/B/C brick-style picks (editor-brick-tool.js BRICK_STRIPE_STYLES ids);
+      // the default A/B is the old fixed cycle, so existing striped strokes look the same.
+      stripeStyles: ['red_bricks', 'white_continuous', 'red_continuous'],
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.

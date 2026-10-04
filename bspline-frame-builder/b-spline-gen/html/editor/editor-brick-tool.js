@@ -625,23 +625,32 @@ function decodeBrickSettings(raw) {
  *  per-sample photo texture yet) -- White Rocks (library.js id 3) is real
  *  now (f3's item 74), so the cycle uses it for run B; profile still varies
  *  too (a 'continuous' run is also a genuinely different SHAPE, not just
- *  colour). A declared cycle, not a hand-rolled toggle, so a future 3rd
- *  variant (Fred/advisor's own scale axis, or a real 3rd set once one
- *  exists) is one more array entry, not new branching logic. KNOWN,
- *  SCOPED-OUT gap (not silent): the user cannot yet PICK which variant each
- *  run gets -- the editor-stripe-tool.js panel's own A/B/C swatches are
- *  still generic colour pickers (meaningless for bricks); this cycle is
- *  purely automatic by the run's own position. Giving the user a real
- *  brick-thumbnail picker needs changes to that SHARED panel's own
- *  rendering, which touches every OTHER (non-brick) use of Stripe too --
- *  a separate, carefully-scoped follow-up, not attempted here. */
-const STYLE_CYCLE = Object.freeze([
-  { setId: 1, profile: 'bricks' },
-  { setId: 3, profile: 'continuous' },
+ *  colour).
+ *
+ *  Audit C6 (F35 item 16): the user PICKS each run's style -- the Stripe panel's A/B/C slots show
+ *  brick-style thumbnails in the Brick tab (main/brick-panel.js) instead of Artwork's colour swatches.
+ *  BRICK_STRIPE_STYLES declares the choices; P.brickSettings.stripeStyles holds the A/B/C picks; the
+ *  cycle length follows the panel's own "Use C" (2 or 3). The picks are ONE brick setting read live at
+ *  every regenerate, and changing a pick re-commits, so every striped run always shows the current picks.
+ *  The default picks A = red bricks, B = white continuous are exactly the old fixed 2-style cycle. */
+export const BRICK_STRIPE_STYLES = Object.freeze([
+  Object.freeze({ id: 'red_bricks', label: 'Red bricks', setId: 1, profile: 'bricks' }),
+  Object.freeze({ id: 'white_continuous', label: 'White rocks, one band', setId: 3, profile: 'continuous' }),
+  Object.freeze({ id: 'red_continuous', label: 'Red, one band', setId: 1, profile: 'continuous' }),
+  Object.freeze({ id: 'white_bricks', label: 'White rocks', setId: 3, profile: 'bricks' }),
 ]);
+export const DEFAULT_STRIPE_STYLE_PICKS = Object.freeze(['red_bricks', 'white_continuous', 'red_continuous']);
 
-function settingsVariantForCycle(baseSettings, cycleIndex) {
-  const variant = STYLE_CYCLE[cycleIndex % STYLE_CYCLE.length];
+/** The style cycle for striped runs: the A/B (/C) picks resolved against BRICK_STRIPE_STYLES (an unknown
+ *  or missing pick falls back to that slot's default). */
+export function stripeCycleFor(picks, useC = false) {
+  const n = useC ? 3 : 2;
+  const byId = (id) => BRICK_STRIPE_STYLES.find((s) => s.id === id);
+  return Array.from({ length: n }, (_, i) => byId(picks && picks[i]) || byId(DEFAULT_STRIPE_STYLE_PICKS[i]));
+}
+
+function settingsVariantForCycle(baseSettings, cycleIndex, cycle = stripeCycleFor()) {
+  const variant = cycle[cycleIndex % cycle.length];
   return { ...baseSettings, setId: variant.setId, profile: variant.profile };
 }
 
@@ -759,10 +768,13 @@ export function regenerateOwnedBrickElements(editor) {
   const children = editor._sketchLayer.children().toArray();
   const spineEls = children.filter((el) => el.attr(BRICK_ATTR) === SPINE_KIND);
 
+  // audit C6: the striped runs' style cycle (the A/B/C picks + Use C) is an input too -- without it in the
+  // fingerprint a pick change was skipped as "nothing changed" (measured live, turn 191)
+  const stripeCycle = stripeCycleFor(editor._brickSettings && editor._brickSettings.stripeStyles, !!(editor._stripe && editor._stripe.three));
   const fingerprint = spineEls.map((el) => {
     const [a, b] = pieceEnds(el);
     return `${el.attr(BRICK_ELEMENT_ATTR)}|${a.x},${a.y},${b.x},${b.y}|${el.attr(STRIPE_ATTR) || ''}|${el.attr(BRICK_SETTINGS_ATTR) || ''}`;
-  }).join(';');
+  }).join(';') + `#${stripeCycle.map((v) => v.id).join(',')}`;
   if (fingerprint === _lastSpineFingerprint) return;
   _lastSpineFingerprint = fingerprint;
 
@@ -786,7 +798,7 @@ export function regenerateOwnedBrickElements(editor) {
       if (chain.points.length < 2) return;
       const settings = chain.cycleIndex == null
         ? chain.settings
-        : settingsVariantForCycle(chain.settings, chain.cycleIndex);
+        : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
       const bricks = bricksForBrushStroke(chain.points, settings, toBrickOpts(settings));
       const ownerId = `${elementId}:${chainIdx}`;
       for (const b of bricks) {
