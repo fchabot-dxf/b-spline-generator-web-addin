@@ -104,6 +104,14 @@ const requirementMet = (q) => js(`(()=>{ const e=document.getElementById(${JSON.
   if ('checked' in s) return e.checked === s.checked; return false; })()`);
 // unmet requirement: greyed out (disabled) or not shown at all
 const isDisabled = (elId) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); return !e || !!e.disabled || e.offsetParent===null; })()`);
+const appRule = (elId) => js(`(async()=>{ let mod, eng;
+  try { mod = await import('./main/brick-control-requires.js'); eng = await import('./core/bricks/index.js'); } catch { return null; }
+  const el = document.getElementById(${JSON.stringify(elId)}); if (!el) return null;
+  const ids = []; for (let n = el; n; n = n.parentElement) if (n.id) ids.push(n.id);
+  const rule = (mod.BRICK_CONTROL_REQUIRES || []).find((r) => (r.controls || []).some((c) => ids.includes(c))); if (!rule) return null;
+  const ctl = rule.requires.control ? document.getElementById(rule.requires.control) : null;
+  const met = mod.requirementMet(rule.requires, ctl, { engineOptions: eng.ENGINE_OPTIONS || [] });
+  return JSON.stringify({ met, why: rule.why, requires: rule.requires, source: 'app' }); })()`).then((v) => (v ? JSON.parse(v) : null));
 const exists = (elId) => js(`!!document.getElementById(${JSON.stringify(elId)})`);
 
 // ---------------------------------------------------------------- measures
@@ -188,26 +196,31 @@ try {
         continue;
       }
     }
-    if (c.requires) {
+    // `requires`: the APP's own rule for this control (main/brick-control-requires.js, judged in the page by
+    // the app's requirementMet + the engine's ENGINE_OPTIONS -- found on the control or any ancestor, e.g.
+    // a whole row), else this row's own fallback declaration.
+    let rule = await appRule(targetId(c.do));
+    if (!rule && c.requires) rule = { met: await requirementMet(c.requires), why: c.requires.why, requires: c.requires, source: 'matrix' };
+    if (rule && !rule.met) {
       if (c.kind === 'editor' || c.kind === 'editor3d') await openBrickTool(c.tool);
+      else if (c.kind === 'brush' || c.kind === 'stripe') await openBrickTool('brush');
       else if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
       if (c.kind === 'sidebar') await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
-      if (!(await requirementMet(c.requires))) {
-        // the dependency is unmet: the control must be greyed out -- that is the whole check for this row
-        const disabled = await isDisabled(targetId(c.do));
-        const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: 'requires unmet', requires: c.requires,
-          observed: { disabled }, expect: { disabled: true }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', greyedOut: disabled ? 'PASS' : 'FAIL' } };
-        rows.push(row);
-        console.log(`${disabled ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} requires ${c.requires.control} -> ${disabled ? 'greyed out' : 'NOT greyed out'} (${c.requires.why})`);
-        if (!disabled) await shot(`FAIL_${c.name.replace(/[^a-z0-9]+/gi, '_')}`);
-        continue;
-      }
+      // the dependency is unmet: the control must be greyed out or hidden -- that is the whole check for this row
+      const disabled = await isDisabled(targetId(c.do));
+      const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: 'requires unmet', requires: rule.requires, requiresSource: rule.source,
+        observed: { disabled }, expect: { disabled: true }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', greyedOut: disabled ? 'PASS' : 'FAIL' } };
+      rows.push(row);
+      console.log(`${disabled ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} requires ${JSON.stringify(rule.requires)} unmet -> ${disabled ? 'greyed/hidden' : 'NOT greyed or hidden'} (${rule.why})`);
+      if (!disabled) await shot(`FAIL_${c.name.replace(/[^a-z0-9]+/gi, '_')}`);
+      continue;
     }
     if (c.kind === 'editor' || c.kind === 'editor3d') {
       await openBrickTool(c.tool);
       const c0 = await js(CANVAS);
+      const p0 = await isPending();
       const result = await act(c.do);
-      const p = await isPending();
+      const p = (await isPending()) && !p0;
       if (c.kind === 'editor' && await js(`!!document.getElementById('brickGenerate')?.offsetParent`)) await click('brickGenerate', 1800);
       const c1 = await js(CANVAS);
       await apply();
@@ -219,7 +232,8 @@ try {
       await openBrickTool(brushTool);
       const stroke = async () => { await click(`brickTool_${brushTool}`, 300); await drag([[0.3, 0.45], [0.5, 0.5], [0.7, 0.45]]); };
       await stroke(); const a = await js(BRUSH); await key('z');
-      const result = await act(c.do); const p = await isPending();
+      const p0 = await isPending();
+      const result = await act(c.do); const p = (await isPending()) && !p0;
       await stroke(); const b = await js(BRUSH); await key('z');
       await record(c, { result, pending: p, canvas: a !== b, threeD: null, hashes: { before: a, after: b } });
     } else if (c.kind === 'stripe') {
@@ -231,8 +245,9 @@ try {
         const spine=[...ed._sketchLayer.children()].reverse().find((el)=>el.attr('data-brick')==='brush-spine');
         m.stripeAt(ed, spine, { ...m.stripeSettings(ed), drive: 'count', count: 4 }); await new Promise(r=>setTimeout(r,1200)); return 1; })()`);
       const a = await js(BRUSH);
+      const p0 = await isPending();
       const result = await act(c.do); await sleep(800);
-      const p = await isPending(); const b = await js(BRUSH);
+      const p = (await isPending()) && !p0; const b = await js(BRUSH);
       await record(c, { result, pending: p, canvas: a !== b, threeD: null, hashes: { before: a, after: b } });
     } else if (c.kind === 'sidebar') {
       if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
