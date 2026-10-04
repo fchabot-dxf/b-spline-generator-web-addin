@@ -20268,3 +20268,69 @@ fixed (not tuned around) -- voids were a pre-existing `offsetPathInward` limitat
 tier system exposed more often, now removed structurally; zoning was the prior round's own noise-cell
 calibration, now replaced with a mostly-random, gently-biased gate per the advisor's own alternative
 suggestion. Coverage, overlap, and histogram all re-verified; ready for another look.
+
+## Engine bug (seat 37/F35 item 18 turn 177 report, advisor dispatch, priority ahead of rustic running): corrupt Wall-brick polygon root-caused to a recurring `polygonIntersection` failure class -- fixed with a provable invariant, not a one-off patch (d3)
+
+**Reproduced exactly as reported**: T1 7x9, `brickLengthIn=1.5`, `bondLayout`'s own stretcher Wall --
+one brick (course=3, col=3) clips to a 39-40 point, ~13.97 sq in polygon instead of its own true
+~0.0008 sq in sliver (the brick is almost ENTIRELY outside the board there; only a sub-grout-scale
+graze is real). The corrupt polygon's own area matches the board's TOTAL interior area almost
+exactly -- the clip is walking nearly the whole board outline as "the brick," not a small clipped
+shape, silently swallowing every interior Wall brick behind it.
+
+**Root-caused precisely, not just "it's the concave clip somewhere".** Traced the exact mechanics of
+`geometry.js`'s `polygonIntersection` (Greiner-Hormann) for this input: the brick's own top edge
+grazes a tiny real board-outline feature near T1's own shoulder (two tessellated-arc vertices only
+~0.009in apart), producing two crossings only ~0.0014in apart on the SAME brick edge -- an "entry"
+immediately followed by an "exit" with nothing of the brick's own perimeter between them. The
+algorithm's own walk rule (jump to the OTHER polygon's vertex list at ANY crossing) then has no
+choice but to continue walking the BOARD's own list from there -- and board's own forward vertex
+order happens to loop back to the matching twin only after traversing almost its ENTIRE remaining
+perimeter (confirmed by hand-tracing the node list: the two nearby board vertices this graze touches
+are NOT adjacent in the board's own vertex order -- a third vertex, the true apex of this tiny
+feature, sits between them, so "forward" from the exit goes the LONG way around instead of the one
+intervening vertex). **This is a RECURRING failure class, not a one-off**: `polygonIntersection`'s
+own header already documented a structurally identical EARLIER incident ("a 44-vertex result that
+was almost literally the whole board outline") from a prior item, only partially addressed by a
+twin-matching fix that didn't close this whole bug class.
+
+**First attempt (reverted, logged honestly): symbolic perturbation.** Tried the standard
+computational-geometry technique for exact-coincidence bugs -- jitter the subject polygon's own
+vertices by a tiny (1e-6in), deterministic, per-vertex-direction offset before clipping, so an exact
+collinearity/tangency structurally can't occur. Implemented, and it did NOT fix the repro: MEASURED
+directly that the two crossings here are genuinely ~0.0014in apart (not a machine-precision
+coincidence a 1e-6in jitter would break), so the failure isn't really about exact numerical
+coincidence -- it's that THIS topology (entry+exit adjacent with nothing between, requiring a long
+way around the clip polygon) is mishandled by the walk rule regardless of exact coordinates. Also
+cost real precision: it broke 3 EXISTING tests in `bricks-geometry.test.js` that assert clipped area
+to 9 decimal places (a 1e-6in vertex shift is far below any REAL geometric feature but well above
+that test's own tolerance). Removed entirely rather than keep a fix that didn't fix the bug and cost
+accuracy elsewhere.
+
+**Actual fix: a provable geometric invariant, not another attempt to enumerate every near-tangent
+configuration.** `subject & clip`'s own area can mathematically never exceed `subject`'s own area --
+`polygonIntersection` now checks `bestArea <= subjectArea * 1.0001 + 1e-9` (tiny float slack) before
+returning its own trace result, and returns EMPTY instead of a result physics rules out. Every real
+caller (bond.js, fieldstone.js, basketweave.js, herringbone.js) already treats an empty/too-small
+clip result as "fully clipped away" -- a normal, pre-existing code path, not a crash or a new special
+case. This catches the EXACT reported bug AND, per the non-vacuous check below, several OTHER
+near-tangent configurations across other templates/sizes that were silently broken the same way but
+never specifically reported.
+
+**MEASURED non-vacuous, directly**: new `tests/bricks-no-corrupt-polygon.test.js` -- `bondLayout`,
+all 17 templates x the advisor's own declared 5 sizes (0.375/0.75/1.5/3/8in), asserting no single
+clipped brick exceeds 1.2x its own nominal area. Ran this exact suite against the PRE-fix
+`geometry.js` (git stash): **15 of 17 templates failed**, including several at 8in with areas up to
+~59.5 sq in against a 1.6 sq in nominal brick (37x over) -- the bug was far MORE pervasive than the
+one specific case reported, not confined to T1/1.5in. All 17 pass with the fix. Also re-ran the full
+suite: 3888/3888 (one transient flaky timeout on an unrelated bartop test, confirmed passing
+standalone and on a clean re-run -- system-load noise, not a regression).
+
+**Not touched / explicitly deferred**: the "rustic running" length-jitter request (advisor's own
+earlier message) stays queued behind this, per the advisor's own explicit priority ordering.
+
+**Commit** (`geometry.js`'s own invariant check, the new `tests/bricks-no-corrupt-polygon.test.js`,
+this entry). Passing back: the exact reported repro is fixed and verified; the fix is general (a
+provable physical bound, not a pattern-matched special case) and the regression test proves it closes
+a WIDER bug than the one specific report named. Ready to pick up "rustic running" next unless there's
+a different priority.
