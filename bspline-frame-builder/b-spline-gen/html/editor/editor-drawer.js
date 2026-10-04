@@ -334,6 +334,13 @@ export function initDrawer(editor) {
     onDragStart: () => drawer.classList.add('is-dragging'),
     onDragEnd: () => drawer.classList.remove('is-dragging'),
   });
+  // Audit C11: a tab tap at peek height used to only switch the tab, leaving its panel hidden below
+  // the fold (the handle drag was the only way up). At peek, a tab tap now also opens to 'half'.
+  for (const tab of [toolTab, layersTab]) {
+    on(tab, 'click', () => {
+      if (!isLandscapeMode() && drawer.classList.contains('is-peek')) splitter.snapTo('half');
+    });
+  }
 
   // MOB4: landscape phone's own side-column splitter — a SECOND
   // makeSplitter instance on the SAME drawer element, driving `width`

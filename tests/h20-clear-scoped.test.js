@@ -18,6 +18,10 @@
  * `.call(mock)`, same convention as editor-lattice-undo.test.js.
  */
 import { describe, it, expect, vi } from 'vitest';
+// Audit K5: Clear asks through the in-app confirmDialog (async), not window.confirm.
+const dialog = vi.hoisted(() => ({ answer: true }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/core/confirm-dialog.js', () => ({ confirmDialog: vi.fn(async () => dialog.answer) }));
+const flush = () => new Promise((r) => setTimeout(r, 0));
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
 import { resetArtworkToFresh, sync3DBackground } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 import { registerActionTools } from '../bspline-frame-builder/b-spline-gen/html/editor/tools/action-tools.js';
@@ -140,9 +144,9 @@ describe('H20 item 3: editorClear is scoped to the active tab', () => {
     `;
   }
 
-  it('Artwork tab: Clear resets the artwork to a fresh session in ONE undo step, and undo brings the original back', () => {
+  it('Artwork tab: Clear resets the artwork to a fresh session in ONE undo step, and undo brings the original back', async () => {
     setupDom();
-    window.confirm = vi.fn(() => true);
+    dialog.answer = true;
     const editor = makeEditor();
     editor._editorTab = 'artwork';
     editor.fitView = () => {};
@@ -153,6 +157,7 @@ describe('H20 item 3: editorClear is scoped to the active tab', () => {
 
     const stackDepthBefore = editor._undoStack.length;
     document.getElementById('editorClear').click();
+    await flush(); // Clear awaits the in-app confirmDialog
 
     // Reset happened...
     expect(editor._layers).toHaveLength(1);
@@ -168,13 +173,11 @@ describe('H20 item 3: editorClear is scoped to the active tab', () => {
     expect(editor._layers.find((l) => l.id === '1').pattern).toEqual({ id: 'lattice-1', seed: 42, threeDOff: true });
     expect(editor._activeLayer).toBe('1');
     expect(editor._sketchLayer.children().toArray().map((c) => c.node.getAttribute('id'))).toEqual(['path-1']);
-
-    delete window.confirm;
   });
 
-  it('Frame tab: Clear calls the registered frame-clear handler, NOT resetArtworkToFresh -- the artwork is untouched', () => {
+  it('Frame tab: Clear calls the registered frame-clear handler, NOT resetArtworkToFresh -- the artwork is untouched', async () => {
     setupDom();
-    window.confirm = vi.fn(() => true);
+    dialog.answer = true;
     const editor = makeEditor();
     editor._editorTab = 'frame';
     editor.fitView = () => {};
@@ -189,6 +192,7 @@ describe('H20 item 3: editorClear is scoped to the active tab', () => {
     const layersBefore = editor._layers;
     const sketchChildrenBefore = editor._sketchLayer.children().toArray().length;
     document.getElementById('editorClear').click();
+    await flush(); // Clear awaits the in-app confirmDialog
 
     expect(frameClear).toHaveBeenCalledTimes(1);
     // Artwork completely untouched -- Clear on the Frame tab never called
@@ -197,19 +201,18 @@ describe('H20 item 3: editorClear is scoped to the active tab', () => {
     expect(editor._sketchLayer.children().toArray()).toHaveLength(sketchChildrenBefore);
 
     setFrameClearHandler(null);
-    delete window.confirm;
   });
 
   it('F35 (Fred: "Clear leaves a ghost of the old content"): never snapshots the STALE background ' +
     'synchronously -- #svgEditorTopView has not been repainted yet at the moment Clear runs, so a ' +
     'synchronous sync3DBackground() call there is guaranteed to capture the pre-Clear terrain. The ' +
     'real repaint only happens via the async commitEdit -> onChange -> remask -> rebuild chain, ' +
-    'which already calls sync3DBackground itself once the terrain is actually recomputed', () => {
+    'which already calls sync3DBackground itself once the terrain is actually recomputed', async () => {
     setupDom();
     const canvas = document.createElement('canvas');
     canvas.id = 'svgEditorTopView';
     document.body.appendChild(canvas);
-    window.confirm = vi.fn(() => true);
+    dialog.answer = true;
     const editor = makeEditor();
     editor._editorTab = 'artwork';
     editor._draw = {}; // sync3DBackground's own `editor._draw` truthiness guard
@@ -223,10 +226,11 @@ describe('H20 item 3: editorClear is scoped to the active tab', () => {
     registerActionTools(editor);
 
     document.getElementById('editorClear').click();
+    await flush(); // Clear awaits the in-app confirmDialog
 
-    // Synchronous assertion: nothing in editorClear's own call stack may paint the background --
-    // if it did (the pre-fix bug), this would already show a call by the time .click() returns,
-    // since nothing here awaits a microtask in between.
+    // Nothing in editorClear's own path may paint the background -- if it did (the pre-fix bug), this
+    // would already show a call. The one tick awaited above only lets the confirm dialog's answer
+    // resolve; this fixture has no onChange -> remask chain that could repaint in between.
     expect(editor._bgLayer.image).not.toHaveBeenCalled();
     expect(editor._bgLayer.clear).not.toHaveBeenCalled();
 
@@ -236,12 +240,11 @@ describe('H20 item 3: editorClear is scoped to the active tab', () => {
     expect(editor._bgLayer.image).toHaveBeenCalledTimes(1);
 
     canvas.remove();
-    delete window.confirm;
   });
 
-  it('does nothing when the confirm dialog is declined, on either tab', () => {
+  it('does nothing when the confirm dialog is declined, on either tab', async () => {
     setupDom();
-    window.confirm = vi.fn(() => false);
+    dialog.answer = false;
     const editor = makeEditor();
     editor.fitView = () => {}; editor.resetSelectionTransform = () => {};
     editor.flattenSelectionTransform = () => {}; editor.deleteSelected = () => {};
@@ -251,11 +254,11 @@ describe('H20 item 3: editorClear is scoped to the active tab', () => {
 
     const layersBefore = editor._layers;
     document.getElementById('editorClear').click();
+    await flush(); // Clear awaits the in-app confirmDialog
 
     expect(editor._layers).toBe(layersBefore);
     expect(frameClear).not.toHaveBeenCalled();
 
     setFrameClearHandler(null);
-    delete window.confirm;
   });
 });
