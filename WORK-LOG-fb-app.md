@@ -10813,3 +10813,158 @@ Full suite green: 206 files / 3811 tests.
 both show a single smooth, closed, unbroken contour tracing the full funnel/hourglass outline (no
 stray point, no gap, no sharp jump). Screenshots: `shots/seatC/f8_offset0_fix_t16_arched_funnel.png`,
 `f8_offset0_fix_t17_tulip.png`.
+
+## F35 item 10 follow-up: Brick-tab sliders commit on release, with a throttled 2D-only drag preview
+
+Fred's slider-timing DM, folded in with the rest of this batch: Brick-tab sliders (Scale, Relief
+height, Suppression, Clumping, Frame length) should regenerate on RELEASE, not every raw drag tick --
+but with a live, throttled (~10/sec) 2D-only preview WHILE dragging so the canvas doesn't sit stale
+for the length of a drag, falling back to a cheap outline-only draw if a preview tick measures slow.
+
+**Investigated first, not assumed**: before touching anything, traced what currently happens on a
+slider drag. Answer: NOTHING. `bindSlider` wrote straight to `P.brickSettings[key]`, never calling
+`runBricks`/`commitEdit`/`scheduleRebuild` -- every OTHER app param goes through `applyParam` (which
+already debounces a `scheduleRebuild` call at 200ms, effectively "fires once after dragging stops"),
+but brick settings bypass that entirely. So this wasn't "fix an existing every-tick regen" -- it's a
+genuinely new capability, built from scratch to this spec.
+
+**Why `runBricks` itself can't be the live-preview tier**: it calls `commitEdit` (pushes an undo
+snapshot + rescans every Brush element via `regenerateOwnedBrickElements`) and
+`notifyBricksGenerated` (can trigger a grout-driven mesh-spacing tighten -> `scheduleRebuild`'s own
+EXPENSIVE height-map/3D path) on every call. Running that 10x/sec during a drag would spam the undo
+stack (one drag = dozens of undo steps) and could still cascade into the exact expensive rebuild this
+feature exists to skip. Fixed by splitting `editor-brick-tool.js`'s `runBricks` into a shared
+`_generateAndDraw` (geometry + polygon draw only) plus three callers: `runBricks` (full: generate +
+commitEdit + notifyBricksGenerated, unchanged behavior for the Wall/Frame buttons), NEW
+`runBricksPreview` (generate + draw, no commit/notify -- the live-drag tier), and NEW
+`runBricksOutlinePreview` (one cheap dashed board-outline stroke, no `generateBricks` call at all --
+the slow-drag fallback, costs nothing regardless of brick density).
+
+**The shared mechanism** (`main/brick-panel.js`'s `bindSlider`, declared once, every slider call site
+unchanged): 'input' (every raw tick) writes `P.brickSettings` immediately (cheap) and schedules a live
+preview via `requestAnimationFrame`, gated to actually run at most every 100ms (~10/sec) -- a tick that
+arrives before the gate elapses just re-arms the SAME pending frame rather than queuing a second one,
+so "latest value wins" falls out for free (every raw tick keeps the state current; only the throttled
+frame's OWN read of it, whenever it finally runs, matters). The live tier measures its own
+`runBricksPreview` call with `performance.now()`; crossing 50ms sets a drag-scoped `_dragSlow` flag, so
+every FURTHER tick of that same drag calls `runBricksOutlinePreview` instead. 'change' (blur/Enter/
+mouse-up) cancels any pending live frame and calls the full `runBricks` immediately, resetting
+`_dragSlow` for the next drag. Brush tool active, or Frame tool with no usable frame: the live tier is
+a no-op (nothing to preview -- a Brush element's settings are frozen at draw time regardless of any
+slider, the same existing limitation the Brush Profile/Orientation toggles above already document;
+Frame with no frame is the SAME precondition the Frame button itself already guards on).
+
+**Tests** (`tests/brick-slider-timing.test.js`, new file): mocks `runBricks`/`runBricksPreview`/
+`runBricksOutlinePreview` (editor-brick-tool.js) to isolate the TIMING/dispatch logic from real brick
+geometry (covered elsewhere); a controllable rAF mock (the SAME convention `editor-session.test.js`'s
+own SA-UNDO-1 suite already established -- `requestAnimationFrame` records callbacks, nothing fires
+until the test calls `runPending()`). Covers: dragging never calls the full commit and collapses N raw
+ticks into exactly one scheduled frame using the LATEST value; release cancels any pending frame and
+commits exactly once; a bare release with no prior drag still commits; Brush-active and
+no-usable-frame both suppress the live tier entirely; a measured-slow tick falls back to
+outline-only for the rest of that drag, and a commit resets it for the next one. Mutation-tested:
+reverted `bindSlider` to its pre-this-turn immediate-apply-only form, re-ran -- 6 of 8 new tests
+failed (the 2 that don't depend on the throttle/commit split, e.g. "schedules exactly one frame",
+correctly stayed green since a plain immediate-apply happens to also satisfy "no full commit on
+input"), confirming the suite is not vacuous; restored from a pre-mutation copy, re-confirmed green.
+Full suite green: 207 files / 3819 tests.
+
+**Live-verified** via headless Chrome against the REAL pipeline (unmocked -- the unit tests above
+isolate the timing/dispatch logic, this exercises `generateBricks`/the DOM end to end): on T1 with
+Wall bricks seeded (171 pieces at scale 1.0), firing a bare `input` event on `#brickScaleSlider`
+(value 1.5, no `change` yet) updated the canvas to 66 pieces (fewer, larger bricks, exactly what
+scale 1.5 should produce) -- confirming the live-preview tier really redraws from a raw drag tick,
+not just on release. Firing `change` afterward left the count unchanged (66, stable), confirming the
+full commit reproduces the same, correct result. Zero console errors.
+
+## Post-merge: Brush Orientation vs d3's T86 item 7 band presets
+
+Merged `origin/main` (d3's brush band-preset work, T86 item 7, already conflict-resolved against my
+own Profile/Orientation toggles by the advisor on main) into fb-app -- clean auto-merge, no manual
+conflict resolution needed; full suite green 208/3830 straight after.
+
+Per the advisor's own ask ("decide which wins, or disable orientation when a multi-row preset is
+picked, or disable orientation"): traced `bricksForBrushStroke` (editor-brick-tool.js, the merged
+code) rather than guessing. Finding: `opts.orientation` (my toggle) and a brush preset's own per-band
+`pattern` field never actually COLLIDE in the engine -- `bricksForBrushStroke` reads `orientation`
+ONLY on the `profile:'continuous'` path (`bricksAlongPath`); the DEFAULT Stripped path (every
+`brushBandPreset`, including the 1-wide stretcher one, not just 2/3-wide) goes through
+`bricksContourBands` instead, which derives each band's own brick orientation from its OWN pattern
+name and never reads `opts.orientation` at all. So Orientation isn't in conflict with the preset --
+it's simply INERT for Stripped, full stop (not a "multi-row only" issue as the dispatch assumed).
+
+Fix: `main/brick-panel.js`'s new `syncOrientationAvailability()` disables both Orientation buttons
+(with an explanatory tooltip) whenever `profile !== 'continuous'`, called from both
+`syncProfileToggle` and `syncOrientationToggle` so it stays correct regardless of which one last
+changed. Added the matching `.relief-toggle-btn:disabled` CSS rule (`styles/layout-app.css`) -- it
+had none before, so a disabled toggle button would have looked identical to an enabled one.
+
+Updated `tests/brick-brush-section.test.js`'s own Orientation test (it predated this fix and clicked
+Orientation while Stripped was active, which no longer does anything -- correctly caught by the new
+disabled-button behavior): now asserts disabled-under-Stripped, clicking does nothing, switching to
+Continuous enables it and the toggle works, switching back to Stripped disables it again. Full suite
+green: 208 files / 3830 tests (one `frame-gen.test.js` failure on the first run was a pre-existing,
+unrelated random-seed flake -- reproduced green in isolation and on a full clean re-run).
+
+Live-verified (headless Chrome, T1, Brush tool): Orientation buttons render visibly dimmed/disabled
+under the default Stripped profile; d3's real 3-entry preset list (1/2/3-wide) renders correctly
+alongside; switching to Continuous un-dims and enables Orientation. Screenshots:
+`shots/seatC/f35item10b_brush_merged_stripped.png`, `f35item10b_brush_merged_continuous.png`.
+
+## Bug fix (Fred, "do it next"): Clear leaves a ghost of the old content
+
+Clicking Clear in the editor emptied the drawn content but a ghost of the old terrain/background
+stayed visible. Investigated the 3 named suspects (brick elements, height mask, background render)
+rather than guessing which one: `regenerateOwnedBrickElements` (editor-brick-tool.js) and the brick
+height-mask rasterizer (editor-brick-height-mask.js) are both already fully stateless -- they re-read
+the live DOM every call, no cache to invalidate. The ACTUAL bug was in the background render, and it's
+an ORDERING bug, not a cache-invalidation one.
+
+**Root cause**: `action-tools.js`'s `editorClear` handler (Artwork tab) called `sync3DBackground(editor)`
+SYNCHRONOUSLY, one line before `commitEdit(editor)`. `sync3DBackground` doesn't recompute anything --
+it just `toDataURL()`s whatever `#svgEditorTopView` CURRENTLY shows and stamps that bitmap into the
+background layer. At the point Clear calls it, nothing has told that canvas the content changed yet,
+so it always captured the STALE, pre-Clear terrain. The only thing that ever actually repaints
+`#svgEditorTopView` is the async chain `commitEdit -> _notifyChange('commit') -> onChange -> 
+runChangePipeline('commit') -> remask -> scheduleRebuild (50ms debounce) -> rebuild() ->
+updateEditorTopView()` -- which calls `sync3DBackground` itself, correctly, once the terrain is
+actually recomputed. So the explicit call in Clear was both redundant with that AND guaranteed to
+paint something wrong in the meantime. (The exact same stale-then-corrected idiom exists at 2 other
+call sites in this codebase, `editor.js` `setModelMetrics` and `editor-io.js` `open()` -- not touched
+here, out of scope for this fix, but worth knowing about if a similar ghost ever shows up elsewhere.)
+
+Checked `_restoreState()` (undo/redo) too, per the dispatch's "undo of Clear must bring it all back":
+it never calls `sync3DBackground` at all, relying on the SAME async chain Clear now relies on after
+this fix -- so undo was never making this WORSE, and needed no separate fix.
+
+**Fix**: removed the premature `sync3DBackground(editor)` call from `editorClear` (and its now-unused
+import) -- Clear now relies on the exact same async commit chain every other edit (draw, delete, ...)
+already correctly relies on, with no special-cased extra call.
+
+Considered also touching `editor-brick-surface.js`'s `PATTERN_IDS` cache + its `<defs data-brick-defs>`
+block (lives on the root `<svg>`, a sibling of `_sketchLayer`, so `_sketchLayer.clear()` never removes
+it) -- on inspection this is a content-addressed cache (keyed by set/sample/flip, not by DOM element),
+so a surviving `<pattern>` after Clear is still perfectly valid and gets correctly reused by the next
+brick draw using the same sample; it's bounded by the small, fixed sample catalog size, not unbounded
+per Clear cycle. Concluded this is a real but harmless, invisible, already-correct cache -- not the
+reported bug, and not touched (no speculative fix for something that isn't actually broken).
+
+**Test** (`tests/h20-clear-scoped.test.js`, extended): a mock editor with a spy-able `_bgLayer`
+(`.image`/`.clear`/`.rect`) and a real `#svgEditorTopView` canvas fixture -- asserts `_bgLayer.image`/
+`.clear` are never called SYNCHRONOUSLY within `editorClear`'s own call stack (the precise historical
+bug), then calls the real `sync3DBackground(editor)` directly afterward to prove the fixture itself is
+live (not vacuously passing because the mock no-ops). Mutation-tested: restored the old premature call,
+re-ran -- exactly 1 of 7 tests in the file failed (the new one), confirming it's not vacuous; restored
+from a pre-mutation copy, re-confirmed green. Full suite green: 208 files / 3831 tests.
+
+**Live-verified** (headless Chrome, T1, Wall bricks seeded -- a real photo-textured brick fill with
+real relief carve depth, the most visually obvious case): before Clear, the canvas shows the full red-
+brick wall fill; after Clear + the async rebuild settling (~1.2s margin, well past the 50ms debounce),
+the canvas shows a flat, featureless board -- no brick texture, no leftover relief bump, matching a
+genuinely fresh board. Zero console errors. Screenshots: `shots/seatC/clear_ghost_fix_before.png`,
+`clear_ghost_fix_after.png`.
+
+Not yet separately re-verified on the Photo tab specifically (the dispatch asked for "every tab") --
+the fix is in the one shared Artwork-tab Clear path every tab's own Clear eventually funnels through
+(Brick/Photo content all lives in `_sketchLayer` same as Artwork), so it should already cover them,
+but a dedicated Photo-tab screenshot is still open.

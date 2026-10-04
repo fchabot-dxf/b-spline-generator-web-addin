@@ -294,14 +294,14 @@ function applyWallPattern(input, settings) {
  *  no clipping between them. Using the one real composer instead of two
  *  separate calls means Wall is ALWAYS clipped to whatever the frame's true
  *  interior is (when a frame resolves), with no overlap, regardless of
- *  which button the user clicked. `frameGeom` is `{path, cornerIndices,
- *  bands, arcSegments, set}` or null/undefined (no usable frame -- Wall
- *  alone fills the whole board, same as before Frame existed); its own
- *  `set` (main/brick-panel.js's resolveFrameBrickSet, F35 item 5 review) is
- *  a Frame-ONLY brick-length override, passed through generateBricks' own
- *  optional `frame.set` -- the `set` built here stays what Wall's own
- *  interior fill always used. */
-export function runBricks(editor, settings, frameGeom) {
+ *  which button the user clicked. `frameGeom` is `{primitives, bands, set}`
+ *  (main/brick-panel.js's own resolveFrameGeom) or null/undefined (no usable
+ *  frame -- Wall alone fills the whole board, same as before Frame
+ *  existed); its own `set` (main/brick-panel.js's resolveFrameBrickSet, F35
+ *  item 5 review) is a Frame-ONLY brick-length override, passed through
+ *  generateBricks' own optional `frame.set` -- the `set` built here stays
+ *  what Wall's own interior fill always used. */
+function _generateAndDraw(editor, settings, frameGeom) {
   const layer = ensureBricksLayer(editor);
   clearGenerated(editor, layer, 'wall');
   clearGenerated(editor, layer, 'frame');
@@ -321,9 +321,46 @@ export function runBricks(editor, settings, frameGeom) {
   const { bricks, frameBricks } = generateBricks(input);
   drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
   drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
+  return { wallCount: bricks.length, frameCount: frameBricks.length };
+}
+
+export function runBricks(editor, settings, frameGeom) {
+  const counts = _generateAndDraw(editor, settings, frameGeom);
   commitEdit(editor);
   notifyBricksGenerated(settings);
-  return { wallCount: bricks.length, frameCount: frameBricks.length };
+  return counts;
+}
+
+/** F35 item 10 follow-up (Fred): a Brick-tab slider's LIVE drag preview -- the same generate+draw
+ *  step as runBricks, WITHOUT commitEdit (no undo snapshot pushed per drag tick -- a drag would
+ *  otherwise spam the undo stack) or notifyBricksGenerated (no 'bricksGenerated' listener firing,
+ *  so no grout-driven mesh-spacing tighten -> scheduleRebuild cascade into the expensive height-map
+ *  / 3D rebuild this preview tier exists specifically to skip). main/brick-panel.js's own shared
+ *  slider-binding mechanism calls this at most ~10x/sec (rAF-throttled) while dragging; the final
+ *  value's runBricks() call on release/commit does the full, committed regenerate. */
+export function runBricksPreview(editor, settings, frameGeom) {
+  return _generateAndDraw(editor, settings, frameGeom);
+}
+
+/** F35 item 10 follow-up: the SLOW-drag fallback for runBricksPreview -- once brick-panel.js's own
+ *  shared slider mechanism measures a live preview tick over its declared threshold, further live
+ *  ticks of THAT SAME drag draw just the fill boundary (the frame's own board-outline default --
+ *  deliberately not a precise frame-interior trace, which would need its own arc-sampling just for
+ *  a rare, already-slow fallback) as one cheap dashed outline instead of the full per-brick fill.
+ *  Costs nothing regardless of brick density (a large fieldstone-with-infill fill, the exact case
+ *  this exists for) since it never calls generateBricks at all. The next commit (runBricks) always
+ *  draws the real fill -- this is a drag-only placeholder, never a final state. */
+export function runBricksOutlinePreview(editor) {
+  const layer = ensureBricksLayer(editor);
+  clearGenerated(editor, layer, 'wall');
+  clearGenerated(editor, layer, 'frame');
+  const pts = boardPolygon(editor).map((p) => `${p.x},${p.y}`).join(' ');
+  editor._sketchLayer.polygon(pts)
+    .fill('none')
+    .stroke({ color: '#aa4433', width: 0.03, dasharray: '0.1,0.08' })
+    .attr('data-layer', layer.id)
+    .attr(BRICK_ATTR, 'wall')
+    .attr(BRICK_GEN_ATTR, '1');
 }
 
 /** Advisor review (turn 131, round 2): a 0.06in grout groove needs the

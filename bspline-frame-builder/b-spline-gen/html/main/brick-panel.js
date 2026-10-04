@@ -18,7 +18,7 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession } from '../core/state.js';
-import { runBricks, buildRibbonPrimitives, resolvedSetFor } from '../editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, resolvedSetFor } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
@@ -109,6 +109,7 @@ function syncProfileToggle() {
   const continuous = P.brickSettings.profile === 'continuous';
   document.getElementById('brickBtnProfileStripped')?.classList.toggle('active', !continuous);
   document.getElementById('brickBtnProfileContinuous')?.classList.toggle('active', continuous);
+  syncOrientationAvailability();
 }
 
 function setProfile(v) {
@@ -117,10 +118,31 @@ function setProfile(v) {
   notifyChange();
 }
 
+/** T86 item 7 merge note (advisor asked: "decide which wins, or disable orientation when a
+ *  multi-row preset is picked"): traced `bricksForBrushStroke` (editor-brick-tool.js) -- it reads
+ *  `opts.orientation` ONLY on the `profile:'continuous'` path (bricksAlongPath); the Stripped path
+ *  (the DEFAULT profile, every brushBandPreset including the 1-wide stretcher one) goes through
+ *  `bricksContourBands` instead, which derives each band's own brick orientation from ITS pattern
+ *  name (stretcher/soldier/flemish), never reading `opts.orientation` at all. So the two settings
+ *  never actually COLLIDE in the engine -- Orientation is simply INERT for Stripped, every preset,
+ *  not just multi-row ones. Disabling it there (rather than leaving a control that silently does
+ *  nothing) is the honest fix; Continuous keeps it fully live. */
+function syncOrientationAvailability() {
+  const inert = P.brickSettings.profile !== 'continuous';
+  const title = inert ? 'Only affects the Continuous profile -- Stripped\'s own band pattern already sets each row\'s orientation' : '';
+  for (const id of ['brickBtnOrientationStretcher', 'brickBtnOrientationSoldier']) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.disabled = inert;
+    btn.title = title;
+  }
+}
+
 function syncOrientationToggle() {
   const soldier = P.brickSettings.orientation === 'soldier';
   document.getElementById('brickBtnOrientationStretcher')?.classList.toggle('active', !soldier);
   document.getElementById('brickBtnOrientationSoldier')?.classList.toggle('active', soldier);
+  syncOrientationAvailability();
 }
 
 function setOrientation(v) {
@@ -171,6 +193,57 @@ function syncControlsFromState() {
   syncBrushSection();
 }
 
+/** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): a Brick-tab slider
+ *  regenerates on RELEASE ('change': blur/Enter/mouse-up), not on every raw drag tick ('input') --
+ *  but WITH a live, throttled 2D-only preview while dragging so the canvas doesn't sit stale for
+ *  the length of the drag. Declared ONCE here -- every bindSlider call site below shares this one
+ *  mechanism, not a per-slider copy. Wall/Frame only: a Brush stroke's own settings are frozen at
+ *  draw time (no existing "edit an already-drawn element" mechanism, see the Brush-section header
+ *  above), so there is nothing for a slider to live-preview while Brush is the active tool. */
+const LIVE_PREVIEW_INTERVAL_MS = 100; // ~10/sec, Fred's own spec
+const SLOW_PREVIEW_MS = 50; // measured (not guessed) threshold for falling back to outline-only
+let _liveFrame = null, _lastLiveAt = 0, _dragSlow = false;
+
+function _cancelLivePreview() {
+  if (_liveFrame != null) { cancelAnimationFrame(_liveFrame); _liveFrame = null; }
+}
+
+function _runLivePreview() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor) return;
+  if (_activeTool !== 'wall' && _activeTool !== 'frame') return; // Brush/other: nothing to live-preview
+  const frameGeom = resolveFrameGeom(editor);
+  if (_activeTool === 'frame' && !frameGeom) return; // Frame tool, no usable frame: nothing to preview
+  if (_dragSlow) { runBricksOutlinePreview(editor); return; }
+  const t0 = performance.now();
+  runBricksPreview(editor, P.brickSettings, frameGeom); // Wall: frameGeom may legitimately be undefined (whole-board fill)
+  if (performance.now() - t0 > SLOW_PREVIEW_MS) _dragSlow = true; // this drag only -- commit resets it
+}
+
+function _scheduleLivePreview() {
+  if (_liveFrame != null) return; // already queued -- the frame that runs reads the LATEST settings
+  _liveFrame = requestAnimationFrame(() => {
+    _liveFrame = null;
+    const now = performance.now();
+    if (now - _lastLiveAt < LIVE_PREVIEW_INTERVAL_MS) { _scheduleLivePreview(); return; } // throttle window not up yet
+    _lastLiveAt = now;
+    _runLivePreview();
+  });
+}
+
+function _commitBrickSlider() {
+  _cancelLivePreview();
+  _dragSlow = false;
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor) return;
+  if (_activeTool === 'wall') {
+    runBricks(editor, P.brickSettings, resolveFrameGeom(editor));
+  } else if (_activeTool === 'frame') {
+    const frameGeom = resolveFrameGeom(editor);
+    if (frameGeom) runBricks(editor, P.brickSettings, frameGeom);
+  }
+}
+
 function bindSlider(sliderId, numberId, key, parse = parseFloat) {
   const slider = document.getElementById(sliderId);
   const number = document.getElementById(numberId);
@@ -181,9 +254,13 @@ function bindSlider(sliderId, numberId, key, parse = parseFloat) {
     if (number) number.value = String(v);
     P.brickSettings[key] = v;
     notifyChange();
+    _scheduleLivePreview();
   };
+  const commit = (raw) => { apply(raw); _commitBrickSlider(); };
   slider?.addEventListener('input', (e) => apply(e.target.value));
+  slider?.addEventListener('change', (e) => commit(e.target.value));
   number?.addEventListener('input', (e) => apply(e.target.value));
+  number?.addEventListener('change', (e) => commit(e.target.value));
 }
 
 function bindGroutField(id, key) {
