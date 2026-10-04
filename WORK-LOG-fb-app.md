@@ -9686,3 +9686,54 @@ above, (2)/(3) are DOM/numeric-readback verified live, same precedent as the res
 
 Replied to f3 confirming the adapter now sees their fix end-to-end (0/144 out-of-bounds on the exact
 case they fixed). Commit, push, pass back.
+
+### F35 item 6 correction (advisor): Wall/Frame boundary gap -- diagnosed, NOT this adapter's bug
+
+Advisor caught a real visual defect in `f35item5_framelen_02_long_130.png`: a wide empty grout-
+coloured ring between the Frame's inner edge and the Wall, left/right/top/bottom, at
+frameBrickLengthIn=1.3. Their hypothesis: Wall is clipped to an interior outline computed from a
+DIFFERENT band depth than the Frame actually used.
+
+**Looked at the screenshot closely first (1:1 zoom crop), confirmed the gap is real** -- a clear
+vertical strip of the canvas's own background pattern between the frame band and the wall coursing,
+not a rendering artifact. Then measured precisely rather than guessing at the cause:
+
+- A quick live-DOM bbox check on one y-slice first suggested NO gap (frame/wall even slightly
+  overlapping) -- **this was a red herring from a bad geometric filter** (it mixed TOP-band and
+  LEFT-band bricks, whose own "inward reach" axes are different). Caught this by dumping the actual
+  per-brick polygons at that exact height rather than trusting the aggregate number.
+- Called `bricksContourBands`/`bricksFillShape` DIRECTLY (no DOM, no browser) on template_1's own
+  real contour with the SAME 1.3in override, and scanned the left-side boundary at 0.2in steps from
+  y=0.4 to 8.6, measuring the actual gap between the frame's own rendered reach and the wall's own
+  first brick at each height: **real gaps of 0.26-0.44in at 9 of ~20 sampled heights** -- not a
+  rounding/joint-width discrepancy.
+- **Confirmed `innerPath` (the actual boundary Wall is clipped to) is NOT the bug**: it is exactly
+  the frame's own true offset at every height checked, consistent with the band's own real depth
+  (cross-checked against a synthetic rectangle board first, then the real template -- zero
+  discrepancy in both). The advisor's own "different band depth" hypothesis does not match what's
+  actually computed.
+- **Ran the IDENTICAL scan at the DEFAULT (unoverridden, 0.75in) frame brick length for comparison:
+  the SAME gap pattern is already there** -- 6 occurrences, up to 0.40in, on the SAME template, with
+  NO Frame Brick Length override involved at all. This is not something F35 item 6 introduced.
+
+**Root cause, confirmed by reading the code, not inferred:** `core/bricks/layouts/bond.js`'s own
+edge treatment (its header, H23 item 74, citing my own F35 item 1 review: "a brick crossing the edge
+should be CUT, not dropped or left hanging") calls `geometry.js`'s `clipPolygonToBoard`, which does
+TRUE exact clipping ONLY when the target boundary `isConvex()` -- for a CONCAVE boundary it falls
+back explicitly to the OLD pre-item-74 behaviour: `pointInPolygon(cellRefPoint, boardOutline) ? poly
+: []` (keep the whole cell or drop it entirely, never cut). Wall's own fill target here is
+`innerPath` -- the Frame's inner edge -- and template_1's hourglass waist makes that inner edge
+CONCAVE. So every time Frame is active on a concave template, Wall's interior fill hits the
+UNFIXED concave fallback and drops/keeps whole cells right at the boundary, same mechanism as the
+original (now-fixed-for-convex-only) board-edge-overhang issue from F35 item 1 review round 1. A
+deeper/longer frame band (my own item 6 feature) pushes that concave boundary further in and makes
+the dropped cells more visually prominent, which is why the advisor caught it on the 1.3in shot
+specifically -- but the underlying defect is independent of brick length entirely and already existed
+at the default.
+
+**Not fixed here.** Same reasoning as the original escalation: general exact clipping against a
+concave polygon is real, nontrivial core-engine geometry (this project's own `core/bricks/`
+WORK-LOG already documents multiple compounding bugs just for mitre-corner clipping), not something
+to hand-roll in this adapter by re-clipping SVG output after the fact. Sent f3 the precise repro
+(the exact `isConvex`/`clipPolygonToBoard` code path, template_1's own concave `innerPath`, and the
+measured gap scan at both brick lengths) directly via SendMessage.
