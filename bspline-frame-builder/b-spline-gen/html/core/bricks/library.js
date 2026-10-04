@@ -295,7 +295,14 @@ export const BRICK_PATTERNS = Object.freeze({
   // key, so the Wall picker couldn't select it -- a Poisson-disc Voronoi tiling, not tied to any
   // one set's own sample photos (`fieldstoneLayout` only reads brickLengthIn/grout.widthIn), so it
   // works with either set exactly like herringbone/basketweave already do.
-  fieldstone: { kind: 'tile2d' },
+  // T86 item 20 (Fred: "a frame of fieldstone and a wall of soldier with dot raised"): `bandCapable`
+  // is the declared flag contour-bands.js's own per-band dispatch reads (and 37's own picker, so the
+  // option enables itself there with no separate UI-side list to keep in sync) -- herringbone/
+  // basketweave stay Wall-only (no flag) since nothing asked for them as a band yet; an AREA-fill
+  // pattern needs no new `kind` to become band-capable, just this one flag, since a band fill is the
+  // SAME `fieldstoneLayout` call Wall already makes, just against the band's own ribbon region
+  // instead of the whole interior (see contour-bands.js's own `buildAreaBandBricks`).
+  fieldstone: { kind: 'tile2d', bandCapable: true },
 });
 
 /**

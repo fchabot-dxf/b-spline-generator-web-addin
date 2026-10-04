@@ -21602,3 +21602,74 @@ get, or blocking on one that may not be obtainable right now.
 `bricks-primitive-ribbon.test.js`, the new preview tool; this entry). Passing back with shots, the
 second-bug fix, and the honest third-bug flag; picking up item 13 next per the advisor's own
 turn-335 ordering (16(b) root cause -> item 13 -> item 18).
+
+## T86 item 20: fieldstone as a frame-band pattern -- the ring between a band's own outer/inner edges, same fieldstoneLayout Wall fill already uses, via a "keyhole" slit-polygon reuse -- two honest residuals found and bounded, not hidden (d3)
+
+**Full spec from `NEXT-SESSION-lane-b.md`** (Fred 2026-10-04: "a frame of fieldstone and a wall of
+soldier with dot raised"). Fieldstone was already a real `BRICK_PATTERNS` entry (`kind:'tile2d'`,
+F35 item 12(b)) but `kind:'tile2d'` patterns were never reachable through a band (bond.js's own
+header: course machinery only) -- "greyed in the band patterns" exactly describes that gap. Ask:
+fill a band's own ribbon region (outer edge to inner edge, corners included, no mitres needed) with
+`fieldstoneLayout` (same tiers + `largeStones`), stones clipped at both ring edges with the min-piece
+rule, mixable with course bands in one preset, declared via a flag (not a new pattern) so 37's own
+picker enables it by itself.
+
+**Design, reusing as much EXISTING, already-tested machinery as possible, not building parallel
+infrastructure:** added `bandCapable: true` to the EXISTING `fieldstone` BRICK_PATTERNS entry
+(herringbone/basketweave, also `tile2d`, stay Wall-only -- nothing asked for them as a band). A new
+`ribbonSlitPolygon(outer, inner)` in contour-bands.js represents the ring as a single SIMPLE
+polygon via the standard "keyhole" technique (walk outer, a zero-WIDTH bridge out to inner, walk
+inner in reverse, the SAME bridge back -- the two bridge edges are the exact same segment in
+opposite directions, contributing zero net area/crossings to any ray-cast or Greiner-Hormann walk,
+no changes needed in `pointInPolygon`/`polygonIntersection` themselves). `outer`/`inner` are just
+`boundaryAtDepth` at the band's own two edges -- the SAME function `bricksContourBands` already
+calls for its own `innerPath` return value. The ring then goes through `bricksFillShape` UNCHANGED
+(`set.layout` forced to `patternName` so the BAND's own choice picks the LAYOUTS entry, independent
+of the Wall's own current default), getting the SAME piece/sample/height-offset pipeline Wall fill
+already has, for free. `planBands` treats an area band's own `naturalWidth = band.widthIn` exactly
+(no row-snapping -- there's no "natural brick row" for an area fill). Confirmed WORKING on the first
+real attempt against template_1: 138 stones, zero overlap, a clean mixed-preset render (fieldstone
+outer + soldier inner, corner wedges filling correctly).
+
+**MEASURED rigorously, not point-sampled**: "does a stone escape the ring" needs EXACT polygon-
+intersection area (poly's own area minus its intersection with the boundary), not point-sampling --
+a point sitting exactly ON the ring's own true edge (expected, common, every clipped stone has some)
+would register as a false positive under point-sampling alone. template_1 at both 0.75in and 1in:
+zero overlap, zero area escapes either edge, >=85% ring coverage.
+
+**Two honest, bounded findings, neither silently hidden:**
+(1) **template_18 BLOCKED on the pre-existing item 16(c)** ("T18 neck at 1in: bands from both sides
+collide"), not a new bug: CONFIRMED directly (a convexity/crossing scan, not assumed) that
+`boundaryAtDepth` itself returns a SELF-INTERSECTING boundary at 0.75in AND 1in depth on T18's own
+neck -- the ring isn't simple there regardless of how it gets filled. MEASURED severity: up to ~7.8
+sq in of overlap at 1in, not a small residual. No honest threshold exists until 16(c) itself is
+fixed -- `it.todo` with the real numbers, not a loosened assertion or silently dropped coverage.
+(2) **A small, bounded, corner-transition residual in the mixed-band case**: 19 cross-band
+overlapping pairs (0.183 sq in total) between fieldstone's own ring edge and the NEXT band's own
+independently-built mitred corner pieces -- MEASURED all 16 affected soldier pieces are corner/
+fillet pieces (3-6 vertices), zero WITHIN either band on its own. Same class of "two independently-
+constructed adjacent pieces don't perfectly coordinate at a corner" residual this codebase's own git
+history already documents for course-to-course seams. Test keeps the strict zero requirement for
+within-band overlap, a declared bounded threshold (0.25, measured 0.183) only for the cross-band seam.
+
+**New tests** (`tests/bricks-fieldstone-band.test.js`, 5 cases: template_1 at 0.75/1in with full
+rigorous ring-containment, the T18 `it.todo`, the mixed-preset bounded-residual check, the
+BRICK_PATTERNS flag declaration). MEASURED non-vacuous via `git stash` on `contour-bands.js` +
+`library.js`: 4/4 real (non-todo) tests fail pre-fix.
+
+**Verified**: bricks+brick-UI domain (52 files/554 tests incl. 3 todo, clean), then a full suite gate
+now that fleet contention settled (247/247 files, 4209 tests incl. 3 todo, clean).
+
+**Shots**: `tools/repro/t86_item20_fieldstone_band_preview.mjs` (new) -- template_1, single
+fieldstone band (138 stones) and the mixed fieldstone+soldier preset (242 pieces, corner wedges
+correctly filling the turn) -- `~/.bspline-status/shots/seatB/t86_item20_{single_band,
+mixed_fieldstone_soldier}.png`. One minor cosmetic note, not a geometric defect (confirmed by the
+rigorous area checks above): a thin sliver at one sharp convex corner in both renders, consistent
+with fieldstone's own already-known sharp-corner clipping character elsewhere in this codebase, not
+new to this item.
+
+**Commit** (`library.js`, `contour-bands.js`, the new test, the new preview tool; this entry).
+Passing back with shots and both honest findings (item 19's own separate three_band finding was
+already turned into item 21 by the advisor before this pass landed -- not this item's own findings,
+which are new); per the advisor's own turn-335 ordering (item 19 -> item 20 -> 16(b) -> 13 -> 18 ->
+10), picking up 16(b) root cause next.
