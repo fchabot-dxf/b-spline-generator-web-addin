@@ -37,6 +37,7 @@ import { inwardSignFor, cumulativeLengths, pointAtArcLength } from './geometry.j
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
 import { scaledSet, BRICK_PATTERNS } from './library.js';
+import { bricksFillShape } from './fill-shape.js';
 import { axisLen, courseHeightFor } from './layouts/bond.js';
 
 const ARC_TESS_STEPS = 16; // only for inwardSignFor's own tessellation -- a smoothness floor for
@@ -79,19 +80,68 @@ function enrichPrimitives(primitives, inwardSign) {
 
 /** Every band's own row count + naturalWidth/pitch/sequence/stagger, precomputed ONCE -- shared by
  *  the `centered` total-width pre-pass (T86 item 7) and the main build loop below, so the two never
- *  compute a band's own row geometry two different ways. */
+ *  compute a band's own row geometry two different ways.
+ *
+ *  T86 item 20: a band-capable AREA pattern (fieldstone -- `BRICK_PATTERNS[name].bandCapable`) has
+ *  no "natural brick-row width" to snap to at all (it's a Poisson-disc/power-diagram fill, not
+ *  stacked courses) -- `naturalWidth = band.widthIn` and `rows = 1` makes `naturalWidth * rows`
+ *  (what every other caller of this plan already uses for "how much depth did this band consume")
+ *  equal the band's own DECLARED width exactly, no rounding, instead of snapping to a meaningless
+ *  row count the way a course pattern does. */
 function planBands(bands, L, H) {
   return bands.map((band) => {
     const patternName = band.pattern || 'stretcher';
     const patternDef = BRICK_PATTERNS[patternName] || BRICK_PATTERNS.stretcher;
+    const isAreaBand = patternDef.kind === 'tile2d' && !!patternDef.bandCapable;
     const cornerStyle = band.cornerStyle || 'mitre';
-    const naturalWidth = courseHeightFor(patternDef, L, H);
+    const naturalWidth = isAreaBand ? band.widthIn : courseHeightFor(patternDef, L, H);
     const pitch = patternDef.kind === 'course-alternating' ? L : axisLen(patternDef.pitchAxis, L, H);
     const sequence = patternDef.kind === 'course-alternating' ? [L, H] : undefined;
     const staggerFrac = patternDef.staggerFrac || 0;
-    const rows = Math.max(1, Math.round(band.widthIn / naturalWidth));
-    return { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows };
+    const rows = isAreaBand ? 1 : Math.max(1, Math.round(band.widthIn / naturalWidth));
+    return { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand };
   });
+}
+
+/** Represents the RING between two closed boundaries (`outer`, `inner`, both CCW/CW-consistent
+ *  tessellated polylines from `boundaryAtDepth`) as a single SIMPLE polygon -- the standard
+ *  "keyhole"/slit technique: walk `outer` forward, a zero-WIDTH bridge out to `inner[0]`, walk
+ *  `inner` in REVERSE back to `inner[0]`, the SAME bridge back. The two bridge edges are the exact
+ *  same segment traversed in opposite directions, so they contribute zero net area/crossings to any
+ *  ray-cast or Greiner-Hormann walk -- no changes needed in `pointInPolygon`/`polygonIntersection`
+ *  themselves, this is purely a way to hand an annulus to algorithms that only know "simple
+ *  polygon". KNOWN, ACCEPTED minor cosmetic residual: a stone whose own cell happens to straddle the
+ *  bridge's own single radial seam can get an extra (unnecessary but geometrically correct) cut
+ *  there -- one specific position around the ring, not a general defect, same class of residual
+ *  already documented for cross-row seams elsewhere in this file's own git history. */
+function ribbonSlitPolygon(outer, inner) {
+  if (outer.length < 3 || inner.length < 3) return outer;
+  const innerReversedTail = inner.slice(1).reverse();
+  return [...outer, outer[0], inner[0], ...innerReversedTail, inner[0], outer[0]];
+}
+
+/** T86 item 20 (Fred: "a frame of fieldstone and a wall of soldier with dot raised"): a band-
+ *  capable AREA pattern (today, only fieldstone) fills its own RIBBON region -- the ring between
+ *  the band's own outer edge (`depthSoFar`) and inner edge (`depthSoFar + widthIn`) -- with the
+ *  SAME `fieldstoneLayout` Wall fill already uses (same tiers, same `largeStones` range), reusing
+ *  `bricksFillShape`'s own full pipeline (piece/sample/height-offset assignment) unchanged: the
+ *  ribbon is just handed in as `polygon` via `ribbonSlitPolygon` above, exactly like any other
+ *  (possibly concave) board outline `bricksFillShape` already clips against -- "corners included, no
+ *  mitres needed" per the dispatch, since a stone's own clip against the ring's real edges already
+ *  handles a corner correctly with no separate corner-piece machinery the rectangular bond patterns
+ *  need. `set.layout` is forced to `patternName` (not read from the real set) so the BAND's own
+ *  pattern choice decides which `fill-shape.js` LAYOUTS entry runs, independent of whatever the
+ *  Wall's own current set defaults to. */
+function buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed, bandIndex, nextId) {
+  const outer = boundaryAtDepth(enriched, depthSoFar).filter((p) => p != null);
+  const inner = boundaryAtDepth(enriched, depthSoFar + band.widthIn).filter((p) => p != null);
+  if (outer.length < 3 || inner.length < 3) return { pieces: [], nextId };
+  const ribbon = ribbonSlitPolygon(outer, inner);
+  const { bricks } = bricksFillShape(ribbon, null, {
+    set: { ...set, layout: patternName }, seed, largeStones: band.largeStones,
+  });
+  const pieces = bricks.map((b, i) => ({ ...b, id: `${patternName}-${nextId + i}`, bandIndex, rowIndex: 0, pieceIndex: i }));
+  return { pieces, nextId: nextId + pieces.length };
 }
 
 /**
@@ -145,7 +195,14 @@ export function bricksContourBands(primitives, bands, opts) {
     // flemish ('course-alternating') has no single pitch at all -- its own `sequence` (below)
     // carries [L,H] instead, and `pitch` here is only the FILL-FRACTION base for its own end
     // pieces (same role every other pattern already gives it), not a per-piece length.
-    const { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows } = plannedBands[bandIndex];
+    const { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand } = plannedBands[bandIndex];
+    if (isAreaBand) {
+      const { pieces, nextId: afterId } = buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed, bandIndex, nextId);
+      bricks.push(...pieces);
+      nextId = afterId;
+      depthSoFar += naturalWidth * rows;
+      return; // forEach callback -- next band
+    }
     for (let row = 0; row < rows; row++) {
       const d0 = depthSoFar + naturalWidth * row, d1 = depthSoFar + naturalWidth * (row + 1);
       const odd = row % 2 === 1;
