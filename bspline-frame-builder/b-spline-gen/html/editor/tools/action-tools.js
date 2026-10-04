@@ -30,8 +30,9 @@ export function registerActionTools(editor) {
   // frame" -- supersedes the original dispatch's "Does NOT touch the
   // Frame" wording, which never made it into NEXT-SESSION.md's own text;
   // see WORK-LOG for which channel this was confirmed through).
-  bind('editorClear', () => {
-    if (!confirm('Clear all?')) return;
+  bind('editorClear', async () => {
+    // Audit K5: the same in-app dialog Cancel uses, not the browser's native confirm().
+    if (!(await confirmDialog('Clear everything on this tab?', { okLabel: 'Clear', cancelLabel: 'Keep', zIndex: 10002 }))) return;
     if (editor._editorTab === 'frame') {
       // The Frame tab's own undo (pushFrameHistory, inside the handler)
       // is a completely separate stack from the artwork's -- Ctrl+Z here
