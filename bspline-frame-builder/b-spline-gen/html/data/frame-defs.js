@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "739deec8ac9424f7a619909fb6697283173194db57255a8fb3459c35ee5d0cc1",
+  "sourceHash": "c29b98f87c01fd5f631c722f1488ec151df1c0a6d8f8e7d8157e3c8395a1ce1b",
   "templates": [
     {
       "features": [
