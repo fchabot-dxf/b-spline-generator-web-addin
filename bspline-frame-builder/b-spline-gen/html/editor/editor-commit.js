@@ -9,6 +9,15 @@ import { syncLayerZOrder } from './layers.js';
 
 export function commitEdit(editor) {
   if (!editor) return;
+  // F35 item 3: a generic "a discrete edit just committed" signal, dispatched
+  // FIRST (before the undo snapshot) so a synchronous listener's own DOM
+  // mutations -- e.g. editor-brick-tool.js's regenerateOwnedBrickElements,
+  // reacting to a cut/join/move on a brick's own spine -- land in THIS same
+  // undo step rather than being invisible to it. Same declared-bridge
+  // convention as layers.js's own 'layer-tooling-commit' CustomEvent.
+  if (typeof document !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor } }));
+  }
   syncLayerZOrder(editor); // before the snapshot: the step stores the drawing in its proper order
   if (typeof editor.pushState === 'function') editor.pushState();
   if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');

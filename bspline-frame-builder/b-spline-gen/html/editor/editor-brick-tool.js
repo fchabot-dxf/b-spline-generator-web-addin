@@ -42,15 +42,44 @@
  * yet (joints simply sit at the base terrain level, which is exactly
  * 'flush' -- a genuine carved recess needs a second, inverse-shaped stamp
  * layer at a negative depth, also not built here).
+ *
+ * F35 item 3: Wall/Frame stay exactly this item-1 fire-and-forget regime
+ * (regenerated fresh from current settings on each button click; their own
+ * "spine" is the live board/frame contour, not a drawn element -- there's
+ * nothing there for Scissors/Stripe to tap). Brush is different: it is now
+ * a genuine DECLARED ELEMENT (a persistent spine + a settings snapshot;
+ * bricks are DERIVED and regenerated, never hand-edited) -- see the
+ * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
+ * regenerateOwnedBrickElements block below for the full mechanism.
  */
 import { ensureActiveLayer, addLayer } from './layers.js';
 import { commitEdit } from './editor-commit.js';
+import { ramerDouglasPeucker } from './editor-curves.js';
+import { pieceEnds } from './editor-cut-tool.js';
+import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, generateBricks } from '../core/bricks/index.js';
 import { brickSetById } from '../core/bricks/library.js';
 
-export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame'
+export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
 const BRICKS_LAYER_NAME = 'Bricks';
+
+// F35 item 3 (advisor: "brick elements as declared spine + settings... the
+// prerequisite for Scissors/Stripe"): a Brush stroke is no longer baked
+// once and forgotten -- its SPINE survives as real, plain `<line>` segments
+// (BRICK_ELEMENT_ATTR groups every segment of one stroke; BRICK_SETTINGS_ATTR
+// is that stroke's own settings SNAPSHOT, JSON-encoded via svg.js's real
+// attr() -> setAttribute(), which escapes correctly on its own -- no hand-
+// rolled XML escaping needed here, unlike layers-attr.js's own codec, which
+// exists for a DIFFERENT, raw-string-templated save path). A plain `<line>`
+// is ALREADY `isCuttable` (editor-cut-tool.js) with ZERO changes to that
+// file -- Scissors/Stripe reuse the EXISTING, unmodified cut/stripe modes
+// verbatim; this module's own job is purely: keep the spine real, and
+// regenerate bricks from (spine, settings) whenever either changes.
+export const BRICK_ELEMENT_ATTR = 'data-brick-element';
+export const BRICK_SETTINGS_ATTR = 'data-brick-settings';
+export const BRICK_OWNER_ATTR = 'data-brick-owner'; // on a generated brick: which regenerate-unit made it
+const SPINE_KIND = 'brush-spine';
 
 /** Find the editor's own "Bricks" layer by NAME (not id -- there's no
  *  reserved id scheme for named layers here), creating one if it doesn't
@@ -137,6 +166,11 @@ function toBrickOpts(settings) {
     suppression: settings.suppression,
     clumping: settings.clumping,
     seed: settings.seed,
+    // F35 item 3: a Stripe run cycles this (settingsVariantForCycle below);
+    // every pre-existing call site has no `profile` field at all, so this
+    // keeps defaulting to bricksAlongPath's own 'bricks' -- no behavior
+    // change for Wall/Frame or an un-striped Brush stroke.
+    profile: settings.profile || 'bricks',
   };
 }
 
@@ -208,15 +242,28 @@ function notifyBricksGenerated(settings) {
  *  corners (its own un-mitred "plain point" path). An 'L' primitive is
  *  already a straight edge (its own two endpoints are enough); an 'A' is
  *  subdivided into ARC_STEPS points so a curved frame edge still gets a
- *  reasonably smooth polyline approximation, not one giant straight chord. */
+ *  reasonably smooth polyline approximation, not one giant straight chord.
+ *
+ * OFF-BY-ONE FIX (f3, confirmed against outlineDefects' own notTangent
+ * check): `sil.corners`' OWN declared convention is "index i = the joint
+ * BETWEEN primitive i and primitive i+1" (declaredMiterJointIndices) -- the
+ * first version of this function marked index i as the joint BEFORE
+ * primitive i (between i-1 and i), one position early. MEASURED to leave a
+ * real, visible void at T1 7x9's own bottom-left corner (its own high
+ * symmetry meant the shifted index mostly still landed on SOME real corner,
+ * just the wrong one of an equivalent pair -- why only one of four broke,
+ * not all four). Fixed by marking the corner AFTER primitive i's own points
+ * are appended, not before; a corner declared at the LAST primitive (i =
+ * primitives.length-1, "the joint after the last, back to the first") wraps
+ * to index 0 via the final `% points.length`, since this function never
+ * emits a separate closing point for primitive 0's own repeated start. */
 const ARC_STEPS = 16;
 
 export function primitivesToPolyline(primitives, corners) {
   const cornerSet = new Set(corners || []);
   const points = [];
-  const cornerIndices = [];
+  const rawCornerIndices = [];
   (primitives || []).forEach((prim, i) => {
-    if (cornerSet.has(i)) cornerIndices.push(points.length);
     if (prim.type === 'A') {
       for (let k = 0; k < ARC_STEPS; k++) {
         const t = prim.theta1 + (prim.dTheta * k) / ARC_STEPS;
@@ -225,7 +272,9 @@ export function primitivesToPolyline(primitives, corners) {
     } else {
       points.push({ x: prim.p0.x, y: prim.p0.y });
     }
+    if (cornerSet.has(i)) rawCornerIndices.push(points.length);
   });
+  const cornerIndices = points.length ? rawCornerIndices.map((idx) => idx % points.length) : [];
   return { points, cornerIndices };
 }
 
@@ -265,10 +314,214 @@ export const brickBrushHandler = {
     if (!settings) return;
     const layer = ensureBricksLayer(editor);
     applyBrickLayerTooling(layer, settings);
-    const polyline = points.map(([x, y]) => ({ x, y }));
-    const { bricks } = bricksAlongPath(polyline, { ...toBrickOpts(settings), closed: false });
-    drawBricks(editor, layer, bricks, 'brush');
+
+    // F35 item 3: draw the SPINE (real, persistent, plain <line> segments --
+    // already isCuttable with zero changes to editor-cut-tool.js), not the
+    // bricks directly. commitEdit() below dispatches 'editorCommit' BEFORE
+    // the undo snapshot, so the module-level listener's own
+    // regenerateOwnedBrickElements(editor) call runs synchronously and
+    // draws the actual bricks from this spine + its settings snapshot --
+    // the SAME path a later cut/stripe/move re-triggers, so there is only
+    // ONE brick-generating code path for Brush, not two to keep in sync.
+    //
+    // Simplified FIRST (the SAME ramerDouglasPeucker the plain pencil tool's
+    // own finishDrawing already applies, reused rather than re-derived) --
+    // MEASURED why this matters: one segment per raw drag-point sample (a
+    // typical mouse drag is a dozen+ points) means Stripe's own "the one
+    // cuttable element under the tap" finds just ONE tiny raw segment, not
+    // the user's whole visible stroke (a live test striped only 2 of a
+    // 4-stroke's own inches before this fix). Simplifying first collapses a
+    // straight or gently-curved drag down to a handful of real segments, so
+    // a tap anywhere lands on a piece that actually spans a meaningful
+    // length of the stroke -- Scissors is unaffected either way (cutAt's own
+    // point is exact, not snapped to a segment's own endpoints).
+    const simplified = ramerDouglasPeucker(points, 0.05);
+    const elementId = newBrickElementId();
+    const settingsJson = JSON.stringify(settings);
+    for (let i = 0; i < simplified.length - 1; i++) {
+      drawSpineSegment(
+        editor, layer, elementId, settingsJson,
+        { x: simplified[i][0], y: simplified[i][1] },
+        { x: simplified[i + 1][0], y: simplified[i + 1][1] },
+      );
+    }
     commitEdit(editor);
     notifyBricksGenerated(settings);
   },
 };
+
+function newBrickElementId() {
+  return `be${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** One spine segment -- a plain `<line>`, deliberately unremarkable (no
+ *  lattice kind, no contour-ref): isCuttable (editor-cut-tool.js) already
+ *  accepts ANY `<line>`, so this needs no changes there to be cut/stripe-
+ *  able. Drawn with low stroke-opacity (present for hit-testing/selection,
+ *  not meant to visually compete with the opaque brick polygons drawn on
+ *  top of it in z-order). */
+function drawSpineSegment(editor, layer, elementId, settingsJson, a, b) {
+  return editor._sketchLayer
+    .line(a.x, a.y, b.x, b.y)
+    .stroke({ color: '#aa4433', width: 0.06, linecap: 'round' })
+    .attr('stroke-opacity', '0.15')
+    .attr('data-layer', layer.id)
+    .attr(BRICK_ATTR, SPINE_KIND)
+    .attr(BRICK_ELEMENT_ATTR, elementId)
+    .attr(BRICK_SETTINGS_ATTR, settingsJson);
+}
+
+function decodeBrickSettings(raw) {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+/** F35 item 3 (Fred: "stripe the spine into A/B/C runs, each run its own
+ *  settings variant"): the one already-real 2-way distinction core/bricks/
+ *  gives a Brush stroke today (no second declared BRICK_SETS entry exists
+ *  yet to vary SET per run -- Set 2/3 are parked/empty, per library.js's own
+ *  comments) is bricksAlongPath's own `profile` ('bricks' vs 'continuous').
+ *  A declared cycle, not a hand-rolled toggle, so a future 3rd variant is
+ *  one more array entry, not new branching logic. */
+const STYLE_CYCLE = Object.freeze(['bricks', 'continuous']);
+
+function settingsVariantForCycle(baseSettings, cycleIndex) {
+  return { ...baseSettings, profile: STYLE_CYCLE[cycleIndex % STYLE_CYCLE.length] };
+}
+
+const pointKey = (p) => `${p.x.toFixed(6)},${p.y.toFixed(6)}`;
+
+/**
+ * F35 item 3: raw spine segments -> regenerate UNITS (pure, DOM-free --
+ * exported for direct unit testing). `segments`: `[{a, b, stripeId,
+ * settings}]`, one entry per spine `<line>`.
+ *
+ * Plain (non-striped) segments that are still geometrically CONTIGUOUS
+ * merge into ONE chain: a Scissors cut with no further action leaves two
+ * touching pieces, and feeding bricksAlongPath the merged, full-length
+ * polyline (not two separate short calls) is what keeps its own corner/
+ * mitre handling correct across what were originally several drag-point
+ * segments -- the SAME reasoning behind F35 item 1's own cornerIndices fix
+ * (don't force a correction where the geometry is still one smooth run).
+ * Dragging one of the two pieces away breaks that contiguity, so the NEXT
+ * regenerate pass naturally produces two separate chains, each following
+ * its own piece -- "cut -> two elements, each regenerating its own bricks"
+ * in the sense that matters: they bake independently the moment they
+ * actually diverge, not the instant the cut itself lands.
+ *
+ * A STRIPED segment (carries `stripeId`, editor-stripe-tool.js's own
+ * `STRIPE_ATTR` -- "one id per striped RUN", not per piece) never merges
+ * with a neighbour, striped or not: each is its OWN chain, its style cycled
+ * by its own position within its run (`cycleIndex`), ordered by array
+ * position -- which is DOM/draw order, the same order `cutAtNoCommit`'s own
+ * `insertAfter` always keeps a run's pieces in.
+ */
+export function reconstructChains(segments) {
+  const plain = (segments || []).filter((s) => !s.stripeId);
+  const striped = (segments || []).filter((s) => s.stripeId);
+
+  const chains = [];
+
+  const byRun = new Map();
+  for (const s of striped) {
+    if (!byRun.has(s.stripeId)) byRun.set(s.stripeId, []);
+    byRun.get(s.stripeId).push(s);
+  }
+  for (const run of byRun.values()) {
+    run.forEach((s, idx) => chains.push({ points: [s.a, s.b], cycleIndex: idx, settings: s.settings }));
+  }
+
+  const used = new Set();
+  const byPoint = new Map();
+  plain.forEach((s, i) => {
+    for (const [k, end] of [[pointKey(s.a), 'a'], [pointKey(s.b), 'b']]) {
+      if (!byPoint.has(k)) byPoint.set(k, []);
+      byPoint.get(k).push({ i, end });
+    }
+  });
+  const otherEnd = (i, end) => (end === 'a' ? plain[i].b : plain[i].a);
+
+  for (let i = 0; i < plain.length; i++) {
+    if (used.has(i)) continue;
+    used.add(i);
+    const chainPts = [plain[i].a, plain[i].b];
+
+    let curKey = pointKey(plain[i].b);
+    for (;;) {
+      const cands = (byPoint.get(curKey) || []).filter((c) => !used.has(c.i));
+      if (cands.length !== 1) break;
+      const { i: ni, end } = cands[0];
+      const next = otherEnd(ni, end);
+      chainPts.push(next);
+      used.add(ni);
+      curKey = pointKey(next);
+    }
+
+    curKey = pointKey(plain[i].a);
+    for (;;) {
+      const cands = (byPoint.get(curKey) || []).filter((c) => !used.has(c.i));
+      if (cands.length !== 1) break;
+      const { i: ni, end } = cands[0];
+      const prev = otherEnd(ni, end);
+      chainPts.unshift(prev);
+      used.add(ni);
+      curKey = pointKey(prev);
+    }
+
+    chains.push({ points: chainPts, cycleIndex: null, settings: plain[i].settings });
+  }
+
+  return chains;
+}
+
+/** F35 item 3: the regenerate pass. Scans the Bricks layer's own spine
+ *  segments (grouped by BRICK_ELEMENT_ATTR), reconstructs chains, and
+ *  redraws EVERY brush-owned brick from scratch -- a full rebuild, not a
+ *  diffed/cached update (the simplicity this buys -- no stale-cache class
+ *  of bug possible -- is worth the extra, modest work on an action this
+ *  infrequent; it runs once per discrete editor COMMIT, never per frame).
+ *  Wall/Frame's own bricks (BRICK_GEN_ATTR, no BRICK_OWNER_ATTR) are
+ *  untouched -- they stay the separate, fire-and-forget regime item 1
+ *  already built (their own "spine" is the live board/frame contour itself,
+ *  not a drawn element, so they have nothing here to react to). */
+export function regenerateOwnedBrickElements(editor) {
+  if (!editor || !editor._sketchLayer) return;
+  const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
+  if (!layer) return;
+
+  const children = editor._sketchLayer.children().toArray();
+  const spineEls = children.filter((el) => el.attr(BRICK_ATTR) === SPINE_KIND);
+
+  const byElement = new Map();
+  for (const el of spineEls) {
+    const elementId = el.attr(BRICK_ELEMENT_ATTR);
+    if (!elementId) continue;
+    const [a, b] = pieceEnds(el);
+    const settings = decodeBrickSettings(el.attr(BRICK_SETTINGS_ATTR));
+    if (!settings) continue;
+    const stripeId = el.attr(STRIPE_ATTR) || null;
+    if (!byElement.has(elementId)) byElement.set(elementId, []);
+    byElement.get(elementId).push({ a, b, stripeId, settings });
+  }
+
+  children.filter((el) => el.attr(BRICK_OWNER_ATTR)).forEach((el) => el.remove());
+
+  for (const [elementId, segs] of byElement) {
+    const chains = reconstructChains(segs);
+    chains.forEach((chain, chainIdx) => {
+      if (chain.points.length < 2) return;
+      const settings = chain.cycleIndex == null
+        ? chain.settings
+        : settingsVariantForCycle(chain.settings, chain.cycleIndex);
+      const { bricks } = bricksAlongPath(chain.points, { ...toBrickOpts(settings), closed: false });
+      const ownerId = `${elementId}:${chainIdx}`;
+      for (const b of bricks) drawBrick(editor, layer, b, 'brush').attr(BRICK_OWNER_ATTR, ownerId);
+    });
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('editorCommit', (e) => {
+    regenerateOwnedBrickElements(e.detail && e.detail.editor);
+  });
+}
