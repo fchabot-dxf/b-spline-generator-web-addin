@@ -10418,3 +10418,85 @@ Full suite green: 203 files / 3775 tests. Commit by explicit path, push, report 
 the picker is wired to the proven path, frameBricksFor is gone, band-course.js stays parked/unused
 exactly as instructed, and the real live app now matches the clean preview shots b5's own T86 item 2
 already produced independently.
+
+## F35 item 10: move Photo + Brick sidebar sections into their own editor tabs -- [Frame][Artwork][Photo][Brick]
+
+Fred's own dispatch (via the advisor), with a HOLD/RESUME mid-flight: first "move Brick into a tab",
+then an addition ("and photo"), then Fred said "wait" (paused, no code touched), then RESUMED with his
+own reasoning spelled out: Photo and Brick are HEADER tabs because each uses a COMPLETELY DIFFERENT
+TOOLBAR, not just a different settings panel -- so each of the 4 tabs swaps BOTH its own left toolbar
+(the vertical icon rail) AND its own right panel together, declared as data; the canvas/board/3D
+preview stay shared and layers stay visible across every tab (only Frame dims the artwork, unchanged).
+
+**The existing [Frame|Artwork] switch was NOT a declared registry** -- confirmed by reading it first,
+not assumed: `main/frame-panel.js`'s own `setEditorTab` was a hardcoded 2-way boolean toggling two
+fixed element IDs. Generalizing it into a real 4-way registry needed a new home, not a 3rd special
+case bolted onto a file whose own header already scopes it to "the sidebar FRAME section" -- new
+`main/editor-tabs.js` declares `EDITOR_TABS` (`{id, label, drawerLabel, buttonId, panelId, toolbarId}`
+x4) and the generic switch (toggle `.active`, show/hide each tab's own panel + toolbar pair). It
+dispatches an `editorTabChanged` CustomEvent (the SAME declared-event-bridge convention this app
+already uses, e.g. `bricksGenerated`) rather than importing frame-panel.js/photo-panel.js/
+brick-panel.js directly -- each of those three keeps its OWN reaction to entering its own tab, with
+zero ownership creep onto each other's behaviour. `frame-panel.js` now listens for the event and keeps
+only its own Frame-specific side effects (the view-only shield, `setEditorFocus` dimming, dropping
+hover state, redrawing the shape handles) that used to live inside the old `setEditorTab` itself;
+`setEditorFocus` already treated anything non-'frame' as the 'artwork' case internally, so Photo/Brick
+got the correct (full-opacity, unlocked) treatment with NO changes needed there.
+
+**Left-rail toolbar per tab** (`#editorToolbarFrame/Artwork/Photo/Brick`, one shown at a time inside
+the SAME 44px-wide rail `<aside>`, no 4 separate asides to keep each one's layout styling in sync):
+Artwork's own existing tool buttons (Select/Node/Lattice/.../Flatten) just got wrapped in a named div,
+byte-identical otherwise. Frame's own toolbar is declared EMPTY -- shape editing is plain handle drags
+on the canvas (`editor-frame-profile.js`), no mode to arm, so an empty rail is the honest declaration
+of that, not a placeholder. Brick's own already-declared `BRICK_TOOLS` list (Brush/Wall/Frame/
+Scissors/Stripe) now renders INTO this rail instead of the old sidebar's horizontal icon+label row --
+same `renderToolList`/`selectTool` functions, only the target container and each button's own class
+changed (icon-only `.tool-btn`, label moved to the `title` tooltip, matching the rail's established
+convention). Photo needed a genuinely NEW declared list (nothing in this codebase names Crop/
+Straighten/Rotate-Flip/Levels/Blur as discrete tools before) -- `PHOTO_TOOLS` in `main/photo-panel.js`,
+the SAME `{id,label,icon,hint}` shape `BRICK_TOOLS` already established, each one showing/hiding its
+own `#photoToolSection_<id>` div in the right panel; everything that ISN'T tool-specific (pattern row,
+load-your-own, preview, Relief, Max Height, effect params, Save-to-pattern) stays always-visible,
+mirroring the EXACT "common controls every tool shares" split `brick-panel.js`'s own header already
+documents -- not a new UX pattern invented here, the one precedent already in this codebase applied a
+second time.
+
+**Right panel per tab**: `#editorFramePanel`/`#editorLayersPanel` (pre-existing, untouched) plus two
+new sibling `<aside class="editor-layers-panel">`s, `#editorPhotoPanel` and `#editorBrickPanel`, holding
+the MOVED markup from the old sidebar `panel-photo`/`panel-brick` blocks -- every element ID preserved
+exactly, so `main/photo-panel.js`'s and `main/brick-panel.js`'s own existing `document.getElementById`
+wiring needed ZERO changes beyond the new tool-list/tab-button additions above; both panels' own
+`init*Panel()` already ran at app-init time against this SAME static (always-present, just
+hidden-until-opened) modal markup, the identical assumption `frame-panel.js`'s own init already relied
+on, confirmed live (no console errors). The old sidebar `panel-photo`/`panel-brick` blocks (248 lines,
+including their own comment headers describing the NOW-obsolete sidebar placement) are deleted
+entirely, not just hidden -- no duplicate controls left behind anywhere.
+
+**MEASURED gap in my own first pass, caught by the full suite, not left silent**: removing the old
+`setEditorTab`/`getEditorTab` from `frame-panel.js` broke `tests/frame-tabs.test.js`, which imports
+BOTH by name from that file -- my own grep for "who else imports this" had only checked the app's own
+`html/` tree, not `tests/`. Fixed by re-exporting both from `editor-tabs.js`'s own bindings (one line
+each, `export { getEditorTab };`), not duplicating logic. A SECOND, more interesting regression from
+the same test: the mobile drawer's own side-panel label used to hardcode 'Frame'/'Layers' for the old
+2-way toggle; my first generalization used the tab's own `label` field instead, which is CORRECT for
+Photo/Brick (their panel IS titled Photo/Brick) but WRONG for Artwork (its own panel is titled
+"Layers", not "Artwork", a real pre-existing distinction the test caught). Fixed with an explicit
+`drawerLabel` field per tab entry, separate from `label` -- declared data correcting a declared-data
+shortcut, not a special case in the switching code itself.
+
+**Live-verified** (headless Chrome, template select -> open editor -> click each of the 4 tab
+buttons): all 4 tabs show exactly one visible toolbar + one visible panel each (checked via
+`getComputedStyle` on all 8 containers at every tab, not just eyeballed), zero console errors/
+exceptions at either width. Screenshots at 390 and 1366 for all 4 tabs (8 total,
+`shots/seatC/f35item10_tab_<frame|artwork|photo|brick>_<390|1366>.png`): Frame's params + live handles,
+Artwork's full draw-tool rail + Layers list (byte-identical to before), Photo's new 5-icon rail with
+Crop shown by default (its own right panel showing pattern row/preview/crop controls/relief/height/
+tweaks), Brick's new 5-icon rail (Brush/Wall/Frame/Scissors/Stripe) with its own full settings panel
+(Set/Wall pattern/Frame band preset/Band patterns/length/Scale/Grout/Relief/Height/Suppression/
+Clumping/Seed) -- the identical content the old sidebar panel held, now living in its own tab.
+
+Full suite green: 204 files / 3780 tests (up from 203/3775 -- `tests/frame-tabs.test.js` already
+existed and is unchanged in count, no new test file added this item; the full suite was already run
+once mid-fix to catch the two regressions above, then again clean after both fixes). Commit by
+explicit path, push, report back to the advisor: the design as RESUMED (declared per-tab toolbar +
+panel, both sidebar sections removed with no duplicates, screenshots of all 4 tabs at both widths).
