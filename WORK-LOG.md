@@ -19172,7 +19172,7 @@ mitre line. T1's waist closeup is visually unchanged (voussoirs were never affec
 mismatch is a straight-run, not an arc, mechanism). Published to BOTH `shots/seatB/` (this repo) and
 `~/.bspline-status/shots/seatB/` (the actual status-page source) this time.
 
-**Commit `[pending]`, push to origin/lane-b to follow.** Replying to the advisor with the corrected
+**Commit `c37d1de`, pushed to origin/lane-b.** Replying to the advisor with the corrected
 status: finding (1) fixed structurally (publish step), finding (3) confirmed NOT present in this
 engine (stale image), finding (2) confirmed as a REAL defect independently found and fixed in this
 engine (not just the cited stale image), with the mechanism, the fix, and why area-based sliver
